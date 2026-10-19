@@ -78,12 +78,11 @@ export class AuthClient {
     }
   }
 
-  async logout(): Promise<boolean> {
-    try {
-      const res = await this.f(this.cfg.backendUrl + AUTH_PATHS.logout, { credentials: "include", headers: this.headers() });
-      return res.ok;
-    } catch {
-      return false;
-    }
+  /**
+   * GET /auth/logout is a top-level navigation endpoint (it refuses fetch/XHR and redirects to the OIDC end-session
+   * URL), so sign-out opens this URL in a popup instead of calling it with fetch.
+   */
+  logoutUrl(): string {
+    return this.cfg.backendUrl + AUTH_PATHS.logout;
   }
 }

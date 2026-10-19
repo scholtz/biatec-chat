@@ -55,6 +55,9 @@ const phaseText = computed(
       waiting: "Finish signing in in the popup window.",
       blocked: "Your browser blocked the sign-in window. Allow popups for this site and try again.",
       failed: "Sign-in did not complete. Try again.",
+      "no-cookies":
+        "Sign-in needs cookies for this chat. Your browser may be blocking third-party cookies, or this website's origin is not registered.",
+      "signout-failed": "Sign-out did not complete. You are still signed in; try again.",
     })[props.phase],
 );
 const signingIn = computed(() => props.phase === "opening" || props.phase === "waiting");
@@ -88,7 +91,7 @@ const signingIn = computed(() => props.phase === "opening" || props.phase === "w
       </div>
     </div>
 
-    <p v-if="phaseText" class="bc-signin-status" :class="{ 'bc-bad': phase === 'blocked' || phase === 'failed' }" role="status">{{ phaseText }}</p>
+    <p v-if="phaseText" class="bc-signin-status" :class="{ 'bc-bad': ['blocked', 'failed', 'no-cookies', 'signout-failed'].includes(phase) }" role="status">{{ phaseText }}</p>
     <!-- Announces each finished reply once, instead of every streamed token. -->
     <div class="bc-sr-only" role="status" aria-live="polite" aria-atomic="true" data-testid="announcer">{{ announcement }}</div>
 

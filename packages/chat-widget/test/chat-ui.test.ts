@@ -57,7 +57,7 @@ function services(over: Partial<ChatServices> & { sessions?: SessionState[] } = 
       startLogin: vi.fn(async () => ({ authRequestId: "r1", loginUrl: "https://chat.biatec.io/auth/login?req=r1&nonce=n" })),
       startElevate: vi.fn(async () => ({ authRequestId: "r2", loginUrl: "https://chat.biatec.io/auth/elevate?req=r2" })),
       status: vi.fn(async () => "Complete" as const),
-      logout: vi.fn(async () => true),
+      logoutUrl: vi.fn(() => "https://chat.biatec.io/auth/logout"),
     },
     pollMs: 1,
     timeoutMs: 2000,
@@ -160,7 +160,7 @@ describe("sample prompts by tier", () => {
 describe("header", () => {
   it("shows Guest, then email with primary address after sign-in, without reload", async () => {
     const popup = fakePopup();
-    const svc = services({ sessions: [anon, authed], openPopup: () => popup });
+    const svc = services({ sessions: [anon, anon, authed], openPopup: () => popup });
     const w = await open(svc);
     expect(w.get("[data-testid=tier]").text()).toBe("Guest");
     expect(w.findAll(".bc-chip")).toHaveLength(1);
@@ -182,7 +182,7 @@ describe("header", () => {
 describe("sign-in popup", () => {
   it("polls until complete, tolerating pending and transient errors", async () => {
     const popup = fakePopup();
-    const svc = services({ sessions: [anon, authed], openPopup: () => popup });
+    const svc = services({ sessions: [anon, anon, authed], openPopup: () => popup });
     const status = vi.fn().mockResolvedValueOnce("Pending").mockResolvedValueOnce(null).mockResolvedValueOnce("Complete");
     svc.auth.status = status;
     const w = await open(svc);
@@ -266,6 +266,74 @@ describe("AuthClient", () => {
     expect(await mk(() => new Response('{"status":"Complete"}')).status("x")).toBe("Complete");
     expect(await mk(() => new Response("", { status: 404 })).status("x")).toBe("Failed");
     expect(await mk(() => new Response("", { status: 500 })).status("x")).toBeNull();
+  });
+});
+
+describe("sign out", () => {
+  it("navigates a popup to /auth/logout and clears the session once it is anonymous", async () => {
+    const popup = fakePopup();
+    const svc = services({ sessions: [authed, anon], openPopup: () => popup });
+    const w = await open(svc);
+    await w.get("[data-testid=sign-out]").trigger("click");
+    await vi.waitFor(() => expect(w.find("[data-testid=sign-out]").exists()).toBe(false));
+    expect(popup.location.href).toBe("https://chat.biatec.io/auth/logout");
+    expect(popup.close).toHaveBeenCalled();
+    w.unmount();
+  });
+
+  it("keeps the session and messages when sign-out does not complete", async () => {
+    const popup = fakePopup();
+    (popup as unknown as { closed: boolean }).closed = true;
+    const svc = services({ sessions: [authed], openPopup: () => popup });
+    const w = await open(svc);
+    const chat = (w.vm as unknown as { chat?: { messages: unknown[] } }).chat;
+    await w.get("textarea").setValue("hello");
+    await w.get("textarea").trigger("keydown", { key: "Enter" });
+    await flushPromises();
+    const before = w.text();
+    await w.get("[data-testid=sign-out]").trigger("click");
+    await vi.waitFor(() => expect(w.text()).toContain("Sign-out did not complete"));
+    expect(w.find("[data-testid=sign-out]").exists()).toBe(true);
+    expect(w.text()).toContain("hello");
+    expect(before).toContain("hello");
+    void chat;
+    w.unmount();
+  });
+});
+
+describe("sign-in transport and announcements", () => {
+  it("explains blocked cookies when the transport retry fails and sign-in cannot start", async () => {
+    const popup = fakePopup();
+    const svc = services({ openPopup: () => popup });
+    svc.transport.retryOnSignIn = vi.fn(async () => false);
+    svc.auth.startLogin = vi.fn(async () => null);
+    const w = await open(svc);
+    await w.get("[data-testid=sign-in]").trigger("click");
+    await vi.waitFor(() => expect(w.text()).toContain("blocking third-party cookies"));
+    w.unmount();
+  });
+
+  it("re-announces an identical consecutive error", async () => {
+    const svc = services();
+    svc.transport.send = vi.fn(async function* () {
+      yield { type: "error", message: "Boom" } as ChatEvent;
+    });
+    const w = await open(svc);
+    const send = async () => {
+      await w.get("textarea").setValue("hi");
+      await w.get("textarea").trigger("keydown", { key: "Enter" });
+      await flushPromises();
+    };
+    await send();
+    expect(w.get("[data-testid=announcer]").text()).toBe("Boom");
+    const seen: string[] = [];
+    const el = w.get("[data-testid=announcer]").element;
+    new MutationObserver(() => seen.push(el.textContent ?? "")).observe(el, { childList: true, characterData: true, subtree: true });
+    await send();
+    await flushPromises();
+    expect(seen).toContain("");
+    expect(seen[seen.length - 1]).toBe("Boom");
+    w.unmount();
   });
 });
 
