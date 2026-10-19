@@ -135,11 +135,11 @@ public abstract class LiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpC
         try
         {
             var r = await mcp.GetCryptoBalanceAsync(ctx, network, address, ct);
-            return r.IsError ? AssetBook.Empty : AssetBook.From(WalletBalanceExecutor.Shape(r.Json, r.Text));
+            return r.IsError ? AssetBook.Unreadable : AssetBook.From(WalletBalanceExecutor.Shape(r.Json, r.Text));
         }
         catch (Exception e) when (e is McpToolUnavailableException)
         {
-            return AssetBook.Empty;
+            return AssetBook.Unreadable;
         }
     }
 
@@ -250,6 +250,9 @@ public sealed class AssetBook
 
     private readonly Dictionary<ulong, Meta> _byId = [];
     public static AssetBook Empty => new();
+    /// <summary>The balance read failed or the tool was unavailable: the book says nothing about what is held.</summary>
+    public static AssetBook Unreadable => new() { ReadFailed = true };
+    public bool ReadFailed { get; private init; }
 
     public Meta? Find(ulong id) => _byId.GetValueOrDefault(id);
 
@@ -307,6 +310,8 @@ public sealed class DexRemoveLiquidityExecutor(ILiquidityBuilder liquidity, IBia
 
         var percent = LiquidityRequest.AsLong(arguments["percent"]!);
         var book = await ReadAssetsAsync(mcpCtx, r.Network, r.From, ct);
+        if (book.ReadFailed)
+            return new ToolExecutionResult("The balance could not be read. Tell the user to try again.", true);
         var held = book.Find(pool!.LpTokenId)?.Amount;
         if (!BigInteger.TryParse(held, NumberStyles.None, CultureInfo.InvariantCulture, out var balance) || balance.IsZero)
             return new ToolExecutionResult($"This address holds no liquidity tokens of pool {pool.AppId}, so there is nothing to remove. Tell the user.", true);

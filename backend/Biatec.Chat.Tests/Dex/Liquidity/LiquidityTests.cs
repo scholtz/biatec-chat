@@ -567,7 +567,10 @@ public sealed class LiquidityTests : IAsyncLifetime
         Assert.Contains("rounds down to zero", tiny.Content);
 
         _mcp.BalancesFail = true; // unreadable balances: no position can be proven
-        Assert.True((await _remove.ExecuteAsync(Ctx("dex.removeLiquidity"), RemoveArgs(1001, _builderSender, 100), default)).IsError);
+        var failed = await _remove.ExecuteAsync(Ctx("dex.removeLiquidity"), RemoveArgs(1001, _builderSender, 100), default);
+        Assert.True(failed.IsError);
+        Assert.Contains("could not be read", failed.Content);
+        Assert.DoesNotContain("no liquidity tokens", failed.Content);
         Assert.Empty(_builders.Builds);
     }
 
