@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deletes EVERYTHING tagged Project=biatec in eu-central-1 that create.sh makes. Discovery uses the Resource Groups
+# Deletes EVERYTHING tagged Project=biatec in eu-central-1 that create.sh, k8s-role.sh and infra/guardrail/create.sh make. Discovery uses the Resource Groups
 # Tagging API (read-only), so hand-made tagged resources are found too; types this script cannot delete are reported,
 # never silently skipped. DEFAULT IS DRY-RUN:  BIATEC_AWS_APPROVED=yes ./teardown.sh --apply
 # KMS keys cannot be deleted at once: they are scheduled for deletion after the 7 day minimum waiting period.
@@ -50,6 +50,15 @@ run_aws_ok iam detach-role-policy --role-name "$ROLE" --policy-arn arn:aws:iam::
 run_aws_ok iam delete-role-policy --role-name "$ROLE" --policy-name "$NAME_PREFIX-bedrock-kms"
 run_aws_ok iam delete-role --role-name "$ROLE"
 
+# The k8s web-identity role from k8s-role.sh. Its OIDC provider is shared per cluster issuer, so it is only listed here.
+run_aws_ok iam delete-role-policy --role-name "$NAME_PREFIX-k8s-role" --policy-name "$NAME_PREFIX-bedrock-kms"
+run_aws_ok iam delete-role --role-name "$NAME_PREFIX-k8s-role"
+echo "IAM OIDC providers (delete the cluster's by hand once nothing else uses it):"
+aws_ iam list-open-id-connect-providers --query 'OpenIDConnectProviderList[].Arn' --output text 2>/dev/null || true
+
+# The Bedrock guardrail from infra/guardrail/create.sh (pay per use, not idle-billing).
+for g in $(ids_of guardrail); do run_aws_ok bedrock delete-guardrail --guardrail-identifier "$g"; done
+
 run_aws_ok kms delete-alias --alias-name "alias/$NAME_PREFIX-vault"
 for key in $(ids_of key); do
   STATE="$(aws_ kms describe-key --key-id "$key" --query KeyMetadata.KeyState --output text 2>/dev/null || echo Missing)"
@@ -63,7 +72,7 @@ done
 UNHANDLED=""
 while read -r arn; do
   [ -z "$arn" ] && continue
-  case "$arn" in *:instance/*|*:security-group/*|*:volume/*|*:key/*) ;; *) UNHANDLED="$UNHANDLED$arn"$'\n' ;; esac
+  case "$arn" in *:instance/*|*:security-group/*|*:volume/*|*:key/*|*:guardrail/*) ;; *) UNHANDLED="$UNHANDLED$arn"$'\n' ;; esac
 done <<< "$ARNS"
 if [ -n "$UNHANDLED" ]; then
   echo "WARNING: tagged resources this script does not know how to delete (remove them by hand):" >&2
