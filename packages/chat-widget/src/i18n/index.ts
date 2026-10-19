@@ -1,9 +1,10 @@
 import { createI18n } from "vue-i18n";
 import ui from "./en/ui.json";
 import cards from "./en/cards.json";
+import chat from "./en/chat.json";
 
 /** One catalog file per feature (ui, shell, chat, cards, agent, data) so parallel UI tasks never edit the same file. */
-export const en = { ...ui, ...cards };
+export const en = { ...ui, ...cards, ...chat };
 
 export const i18n = createI18n({
   legacy: false,

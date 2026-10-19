@@ -88,7 +88,7 @@ describe("streaming", () => {
     s.push({ type: "tool_status", toolCallId: "t1", label: "Checking your USDC balance", state: "Started" });
     s.push({ type: "text_delta", text: "Your " });
     await flushPromises();
-    expect(w.get(".bc-tool").text()).toBe("Checking your USDC balance");
+    expect(w.get(".bc-tool-label").text()).toBe("Checking your USDC balance");
     expect(w.get("[data-role=assistant] .bc-text").text()).toBe("Your");
     // still streaming: nothing is announced yet and the composer is locked
     expect(w.get("[data-testid=announcer]").text()).toBe("");
@@ -140,19 +140,19 @@ describe("streaming", () => {
 
 describe("sample prompts by tier", () => {
   it("anonymous sees only the no-account prompt, authenticated sees all", () => {
-    expect(promptsFor("Anonymous", "default")).toHaveLength(1);
-    expect(promptsFor("Authenticated", "default")).toHaveLength(6);
+    expect(promptsFor("Anonymous", "default")).toHaveLength(4);
+    expect(promptsFor("Authenticated", "default")).toHaveLength(4);
     expect(promptsFor("Anonymous", ["a", "b"]).map((p) => p.prompt)).toEqual(["a", "b"]);
   });
   it("renders per tier and sends the prompt on click", async () => {
     const svc = services({ sessions: [authed] });
     const w = await open(svc);
-    expect(w.findAll(".bc-chip")).toHaveLength(6);
-    await w.findAll(".bc-chip")[3]!.trigger("click");
+    expect(w.findAll(".bc-suggest")).toHaveLength(4);
+    await w.findAll(".bc-suggest")[2]!.trigger("click");
     expect(svc.transport.send).toHaveBeenCalledWith(expect.objectContaining({ message: "Swap 50 USDC to ALGO." }));
     w.unmount();
     const w2 = await open(services());
-    expect(w2.findAll(".bc-chip")).toHaveLength(1);
+    expect(w2.findAll(".bc-suggest")).toHaveLength(4);
     w2.unmount();
   });
 });
@@ -163,7 +163,7 @@ describe("header", () => {
     const svc = services({ sessions: [anon, anon, authed], openPopup: () => popup });
     const w = await open(svc);
     expect(w.get("[data-testid=tier]").text()).toBe("Guest");
-    expect(w.findAll(".bc-chip")).toHaveLength(1);
+    expect(w.findAll(".bc-suggest")).toHaveLength(4);
 
     await w.get("[data-testid=sign-in]").trigger("click");
     await vi.waitFor(() => expect(w.find("[data-testid=sign-out]").exists()).toBe(true));
@@ -173,7 +173,7 @@ describe("header", () => {
     expect(w.get("[data-testid=tier]").text()).toContain("alice@example.com");
     expect(w.get("[data-testid=tier]").text()).toContain("ABCDEF...UVWXYZ".slice(0, 6));
     // tier switched in place: the authenticated prompts are now offered
-    expect(w.findAll(".bc-chip")).toHaveLength(6);
+    expect(w.findAll(".bc-suggest")).toHaveLength(4);
     expect(w.get("[data-testid=announcer]").text()).toBe("Signed in as alice@example.com");
     w.unmount();
   });

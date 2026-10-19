@@ -7,7 +7,7 @@ import MinimizedBar from "./shell/MinimizedBar.vue";
 import ChatView from "./chat/ChatView.vue";
 import type { ChatServices } from "./chat/useChat";
 import { agentModeOf, AGENT_MODE_LABEL } from "./shell/agentMode";
-import { createCore, type WidgetCore } from "../api/core";
+import { createCore, pageContext, type WidgetCore } from "../api/core";
 import { hostSettings } from "../api/controller";
 import { resolveTheme, watchTheme, type ResolvedTheme } from "../theme";
 import { setLocale, t } from "../i18n";
@@ -235,7 +235,9 @@ onBeforeUnmount(() => {
         :busy="chat.busy.value"
         :phase="chat.phase.value"
         :announcement="chat.announcement.value"
-        @send="chat.send($event)"
+        :agent-mode="agentMode"
+        :context-label="pageContext(options)?.product ?? null"
+        @send="(text, opts) => chat.send(text, opts)"
         @sign-in="chat.signIn({ scope: $event })"
       />
       <!-- T-066 mounts the Activity timeline (#aside) and the permissions dialog (#dialog) here. -->

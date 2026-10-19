@@ -51,7 +51,7 @@ export function createCore(options: ResolvedOptions, services?: ChatServices) {
   const transport: ChatServices["transport"] = {
     open: () => base.open(),
     retryOnSignIn: () => base.retryOnSignIn(),
-    send: (o) => base.send({ ...o, context: o.context ?? pageContext(options) }),
+    send: (o) => base.send({ ...o, context: o.context !== undefined ? o.context : pageContext(options) }),
     dispose: () => base.dispose(),
   };
   const chat = useChat({ ...svc, transport });

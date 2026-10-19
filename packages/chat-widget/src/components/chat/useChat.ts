@@ -1,5 +1,5 @@
 import { reactive, ref, computed, onBeforeUnmount } from "vue";
-import type { ChatEvent, SessionState, SessionTier } from "@biatec/chat-protocol";
+import type { ChatEvent, SessionState, SessionTier, Suggestion } from "@biatec/chat-protocol";
 import type { TransportManager } from "../../transport";
 import type { AuthClient } from "./auth";
 
@@ -12,6 +12,9 @@ export interface SignInCard {
   reason: "SignIn" | "ElevateScope";
   scope: string | null;
   description: string | null;
+  /** Sign-in cannot run on this host; `url` is then the tenant's own sign-in page. */
+  unavailable: boolean;
+  url: string | null;
 }
 export interface ChatMessage {
   id: number;
@@ -19,6 +22,8 @@ export interface ChatMessage {
   text: string;
   tools: ToolLine[];
   signIn?: SignInCard;
+  /** Follow-up questions the backend suggested for this reply, if any. */
+  followUps?: Suggestion[];
   error?: string;
   streaming: boolean;
 }
@@ -72,7 +77,8 @@ export function useChat(svc: ChatServices) {
     if (result === "success") await refreshSession();
   }
 
-  async function send(text: string): Promise<void> {
+  /** `includeContext: false` sends this one message without the host page context. */
+  async function send(text: string, opts: { includeContext?: boolean } = {}): Promise<void> {
     const message = text.trim();
     if (!message || busy.value) return;
     messages.push({ id: nextId++, role: "user", text: message, tools: [], streaming: false });
@@ -82,7 +88,7 @@ export function useChat(svc: ChatServices) {
     busy.value = true;
     const ctl = (abort = new AbortController());
     try {
-      for await (const e of svc.transport.send({ message, signal: ctl.signal })) apply(reply, e);
+      for await (const e of svc.transport.send({ message, signal: ctl.signal, ...(opts.includeContext === false ? { context: null } : {}) })) apply(reply, e);
     } catch {
       if (!ctl.signal.aborted) reply.error = "Something went wrong. Please try again.";
     } finally {
@@ -108,7 +114,13 @@ export function useChat(svc: ChatServices) {
       }
       case "sign_in_card":
         // The event's own URL is not used: the popup flow always starts from the backend's /auth/popup endpoints.
-        m.signIn = { reason: e.reason, scope: e.scope ?? null, description: e.description ?? null };
+        m.signIn = {
+          reason: e.reason,
+          scope: e.scope ?? null,
+          description: e.description ?? null,
+          unavailable: e.unavailable === true,
+          url: e.unavailable === true ? e.signInUrl : null,
+        };
         break;
       case "error":
         m.error = e.message;
