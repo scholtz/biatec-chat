@@ -1,7 +1,7 @@
 ---
 id: T-035
 title: Record evidence across chat, previews and signing
-status: in-progress
+status: done
 priority: P1
 epic: "Evidence"
 blocked_by: [T-022, T-034]
@@ -51,6 +51,8 @@ dotnet test --filter EvidenceRecording
 
 ## Review
 
+- 2026-10-20 01:12 · approve · PR #119 merged into main @ 77dffe4 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
@@ -60,3 +62,4 @@ dotnet test --filter EvidenceRecording
 - 2026-10-19 23:24 · LukassSoukup · in-progress · conflicts_with revised: dropped T-018 (budget lives in an IModelClient decorator), T-057 kept
 - 2026-10-19 23:59 · LukassSoukup · in-progress · conflicts_with revised: dropped T-057 (T-057 decorates IEvidenceLog from its own area)
 - 2026-10-20 01:09 · LukassSoukup · in-progress · parallel analysis: added T-061 (ConfirmService) and T-067 (ConversationOrchestrator)
+- 2026-10-20 01:12 · user · in-progress → done · PR #119 merged into main @ 77dffe4 (synced by kanban-sync)

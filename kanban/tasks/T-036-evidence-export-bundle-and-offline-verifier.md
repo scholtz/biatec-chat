@@ -1,7 +1,7 @@
 ---
 id: T-036
 title: Evidence export bundle and offline verifier
-status: blocked
+status: backlog
 priority: P1
 epic: "Evidence"
 blocked_by: [T-035]
@@ -56,3 +56,4 @@ pnpm --filter evidence-verifier test; node cli verify bundle.json
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 22:40 · coordinator · blocked · conflicts_with T-066 added: the evidence download link is wired into the widget activity aside
 - 2026-10-20 01:09 · LukassSoukup · blocked · parallel analysis: dropped T-037, T-038, T-039, T-040, T-041 (done)
+- 2026-10-20 01:12 · kanban-board · blocked → backlog · blockers done: T-035
