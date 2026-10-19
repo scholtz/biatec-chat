@@ -100,7 +100,7 @@ public sealed class PublicChatTests : IAsyncLifetime
         Build(ipPermits: 100);
     }
 
-    private void Build(int ipPermits)
+    private void Build(int ipPermits, Dictionary<string, string?>? extra = null)
     {
         _factory?.Dispose();
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
@@ -116,7 +116,7 @@ public sealed class PublicChatTests : IAsyncLifetime
                 ["Algod:Networks:testnet:Url"] = "https://algod.example.test",
                 ["Kms:KeyId"] = "alias/test",
                 ["PublicChat:IpPermitsPerMinute"] = ipPermits.ToString(),
-            }));
+            }.Concat(extra ?? new Dictionary<string, string?>())));
             b.ConfigureLogging(l => l.AddProvider(_logs));
             b.ConfigureServices(s =>
             {
@@ -357,5 +357,83 @@ public sealed class PublicChatTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         Assert.False(r.Headers.Contains("Set-Cookie"));
         Assert.Equal("*", r.Headers.GetValues("Access-Control-Allow-Origin").Single());
+    }
+
+    private async Task<HttpStatusCode> ChatFromAsync(HttpClient c, string? xff, string origin = "https://elsewhere.example")
+    {
+        var req = new HttpRequestMessage(HttpMethod.Post, "http://chat.biatec.io/public/chat") { Content = JsonContent.Create(new { message = "hi" }) };
+        req.Headers.TryAddWithoutValidation("Origin", origin);
+        if (xff is not null) req.Headers.TryAddWithoutValidation("X-Forwarded-For", xff);
+        return (await c.SendAsync(req)).StatusCode;
+    }
+
+    [Fact]
+    public async Task Public_TrustedProxy_ForwardedForSelectsTheIpBucket()
+    {
+        Build(ipPermits: 1, new() { ["ForwardedHeaders:KnownProxies:0"] = RawIp });
+        using var c = _factory.CreateClient();
+        Assert.Equal(HttpStatusCode.OK, await ChatFromAsync(c, "198.51.100.1"));
+        Assert.Equal(HttpStatusCode.TooManyRequests, await ChatFromAsync(c, "198.51.100.1"));
+        Assert.Equal(HttpStatusCode.OK, await ChatFromAsync(c, "198.51.100.2"));
+    }
+
+    [Fact]
+    public async Task Public_UntrustedPeer_ForwardedForIsIgnored()
+    {
+        Build(ipPermits: 1);
+        using var c = _factory.CreateClient();
+        Assert.Equal(HttpStatusCode.OK, await ChatFromAsync(c, "198.51.100.1"));
+        Assert.Equal(HttpStatusCode.TooManyRequests, await ChatFromAsync(c, "198.51.100.2"));
+    }
+
+    [Fact]
+    public async Task Public_UnregisteredOrigin_GetsNoSharedOriginBucket()
+    {
+        Build(ipPermits: 100, new() { ["PublicChat:OriginPermitsPerMinute"] = "2", ["ForwardedHeaders:KnownProxies:0"] = RawIp });
+        using var c = _factory.CreateClient();
+        for (var i = 0; i < 4; i++) Assert.Equal(HttpStatusCode.OK, await ChatFromAsync(c, $"198.51.100.{i + 1}", "https://elsewhere.example"));
+        Assert.Equal(HttpStatusCode.OK, await ChatFromAsync(c, "198.51.100.50", "https://web.biatec.io"));
+        Assert.Equal(HttpStatusCode.OK, await ChatFromAsync(c, "198.51.100.51", "https://web.biatec.io"));
+        Assert.Equal(HttpStatusCode.TooManyRequests, await ChatFromAsync(c, "198.51.100.52", "https://web.biatec.io"));
+    }
+
+    [Fact]
+    public async Task Public_NoOriginRequests_ShareTheirOwnSmallBucket()
+    {
+        Build(ipPermits: 100, new() { ["PublicChat:NoOriginPermitsPerMinute"] = "2", ["ForwardedHeaders:KnownProxies:0"] = RawIp });
+        using var c = _factory.CreateClient();
+        async Task<HttpStatusCode> NoOrigin(string xff)
+        {
+            var req = new HttpRequestMessage(HttpMethod.Post, "http://chat.biatec.io/public/chat") { Content = JsonContent.Create(new { message = "hi" }) };
+            req.Headers.TryAddWithoutValidation("X-Forwarded-For", xff);
+            return (await c.SendAsync(req)).StatusCode;
+        }
+        Assert.Equal(HttpStatusCode.OK, await NoOrigin("198.51.100.1"));
+        Assert.Equal(HttpStatusCode.OK, await NoOrigin("198.51.100.2"));
+        Assert.Equal(HttpStatusCode.TooManyRequests, await NoOrigin("198.51.100.3"));
+        Assert.Equal(HttpStatusCode.OK, await ChatFromAsync(c, "198.51.100.4"));
+    }
+
+    [Fact]
+    public async Task Public_Adopt_RefusesWhenTheCookieSessionAlreadyHasAConversation()
+    {
+        using var c = _factory.CreateClient();
+        var r1 = await ChatAsync(c, null, null);
+        var r2 = await ChatAsync(c, null, null);
+        var first = await c.SendAsync(Adopt(r1.Conversation, r1.Continuation));
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var cookie = first.Headers.GetValues("Set-Cookie").First(v => v.StartsWith(SessionPolicy.CookieName)).Split(';')[0];
+
+        var second = await c.SendAsync(Adopt(r2.Conversation, r2.Continuation, cookie));
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ChatDbContext>();
+        var adoptedId = (await db.PublicConversationStates.SingleAsync(s => s.AdoptedAt != null)).ConversationId;
+        Assert.Equal(adoptedId, (await db.ChatSessions.SingleAsync()).ConversationId);
+        // The empty placeholder conversation the session started with was ended when r1 replaced it.
+        Assert.Single(await db.Conversations.Where(x => x.EndedAt != null).ToListAsync());
+        // The refused conversation was not retired; its public identifier still works.
+        Assert.Equal(HttpStatusCode.OK, (await ChatAsync(c, r2.Conversation, r2.Continuation)).Status);
     }
 }

@@ -25,6 +25,7 @@ public static class PublicCodes
     public const string IdleClosed = "conversation_idle_closed";
     public const string ContinuationRequired = "continuation_required";
     public const string ContinuationInvalid = "continuation_invalid";
+    public const string SessionHasConversation = "session_has_conversation";
     public const string Busy = "turn_in_progress";
     public const string InvalidMessage = "invalid_message";
 }
@@ -93,7 +94,8 @@ public static class PublicChatEndpoints
         var tenant = ctx.GetTenant()!;
         ctx.Response.Headers.CacheControl = "no-store";
 
-        var rate = await limiter.TryAcquireAsync(ctx.Connection.RemoteIpAddress, OriginOf(ctx.Request), ct);
+        var rate = await limiter.TryAcquireAsync(ctx.Connection.RemoteIpAddress,
+            OriginPolicy.AllowedOrigin(tenant, ctx.Request), !ctx.Request.Headers.ContainsKey("Origin"), ct);
         if (!rate.Allowed)
         {
             ctx.Response.Headers.RetryAfter = rate.RetryAfterSeconds.ToString();
@@ -271,12 +273,20 @@ public static class PublicChatEndpoints
         var handle = await sessions.ResolveOrCreateAsync(tenant, SessionEndpoints.ReadCookie(ctx.Request), ct);
         if (handle.NewToken is not null) SessionEndpoints.WriteCookie(ctx.Response, handle.NewToken, handle.Session.AbsoluteExpiresAt, now);
 
+        // Every cookie session starts with an empty placeholder conversation; that one is replaced (and ended). A session
+        // whose conversation already has messages keeps it: adoption never silently unlinks real history.
+        var current = handle.Session.ConversationId;
+        if (current != conv.Id && await db.Messages.AnyAsync(m => m.ConversationId == current, ct))
+            return Refuse(StatusCodes.Status409Conflict, PublicCodes.SessionHasConversation, refused);
+
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         // Retire the identifier first; only one adopter can win.
         var won = await db.PublicConversationStates
             .Where(s => s.ConversationId == conv.Id && s.ContinuationTokenHash == presented && s.AdoptedAt == null)
             .ExecuteUpdateAsync(u => u.SetProperty(s => s.AdoptedAt, now), ct);
         if (won != 1) return Refuse(StatusCodes.Status409Conflict, PublicCodes.ContinuationInvalid, refused);
+        if (current != conv.Id)
+            await db.Conversations.Where(c => c.Id == current && c.EndedAt == null).ExecuteUpdateAsync(u => u.SetProperty(c => c.EndedAt, now), ct);
         var sub = handle.Session.OidcSub;
         await db.ChatSessions.Where(x => x.Id == handle.Session.Id)
             .ExecuteUpdateAsync(u => u.SetProperty(x => x.ConversationId, conv.Id), ct);

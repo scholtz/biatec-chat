@@ -33,6 +33,7 @@ builder.Services.AddChat();
 Biatec.Chat.Api.Chat.SignIn.AnonymousTierRegistration.AddAnonymousTier(builder.Services, builder.Configuration);
 builder.Services.AddOnboarding(builder.Configuration);
 Biatec.Chat.Api.Public.PublicChatEndpoints.AddPublicChat(builder.Services, builder.Configuration);
+Biatec.Chat.Api.Public.ClientAddress.AddClientAddress(builder.Services, builder.Configuration);
 
 builder.Services.AddScopeElevation();
 builder.Services.AddConfirm();
@@ -47,6 +48,7 @@ var app = builder.Build();
 await app.MigrateDevelopmentDatabaseAsync();
 await app.SeedTenantsAsync();
 
+Biatec.Chat.Api.Public.ClientAddress.UseClientAddress(app);
 app.UseTenancy();
 app.UseOnboardingBodyLimit();
 app.UseRateLimiter();

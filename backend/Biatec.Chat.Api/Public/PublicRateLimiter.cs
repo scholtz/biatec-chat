@@ -12,8 +12,10 @@ public sealed class PublicChatOptions
 
     /// <summary>Messages per minute per client address (salted hash) on /public/chat.</summary>
     public int IpPermitsPerMinute { get; set; } = 20;
-    /// <summary>Messages per minute per request Origin on /public/chat.</summary>
+    /// <summary>Coarse backstop: messages per minute per REGISTERED request Origin on /public/chat. Origin is client-supplied, so it is never the main defence.</summary>
     public int OriginPermitsPerMinute { get; set; } = 120;
+    /// <summary>Messages per minute shared by all requests that carry no Origin header (non-browser clients).</summary>
+    public int NoOriginPermitsPerMinute { get; set; } = 30;
     /// <summary>An idle public conversation ends after this many minutes.</summary>
     public int IdleMinutes { get; set; } = 30;
     /// <summary>Secret mixed into the address hash (the date rotates it daily). Unset: a random per-process value.</summary>
@@ -24,8 +26,12 @@ public sealed record RateDecision(bool Allowed, int RetryAfterSeconds);
 
 public interface IPublicRateLimiter
 {
-    /// <summary>Counts one request for this address and origin. The raw address never leaves this method.</summary>
-    Task<RateDecision> TryAcquireAsync(System.Net.IPAddress? address, string? origin, CancellationToken ct);
+    /// <summary>
+    /// Counts one request for this address. <paramref name="registeredOrigin"/> is the Origin only when it is registered for the
+    /// tenant (otherwise null: an unregistered Origin is attacker-chosen and gets no bucket of its own);
+    /// <paramref name="noOrigin"/> is true when the request has no Origin header. The raw address never leaves this method.
+    /// </summary>
+    Task<RateDecision> TryAcquireAsync(System.Net.IPAddress? address, string? registeredOrigin, bool noOrigin, CancellationToken ct);
 }
 
 /// <summary>
@@ -39,19 +45,21 @@ public sealed class RedisPublicRateLimiter(IConnectionMultiplexer redis, IOption
     private static readonly TimeSpan Ttl = TimeSpan.FromMinutes(3);
     private readonly ConcurrentDictionary<string, (long Window, int Count)> _local = new();
 
-    public async Task<RateDecision> TryAcquireAsync(System.Net.IPAddress? address, string? origin, CancellationToken ct)
+    public async Task<RateDecision> TryAcquireAsync(System.Net.IPAddress? address, string? registeredOrigin, bool noOrigin, CancellationToken ct)
     {
         var o = options.Value;
         var now = clock.GetUtcNow();
         var window = now.ToUnixTimeSeconds() / 60;
         var retry = (int)(60 - now.ToUnixTimeSeconds() % 60);
         var ipKey = "ip:" + Hash(now, address?.ToString() ?? "unknown");
-        var originKey = "origin:" + Hash(now, origin ?? "none");
 
         var ip = await IncrementAsync(ipKey, window);
         if (ip > Math.Max(1, o.IpPermitsPerMinute)) return new RateDecision(false, retry);
+        if (registeredOrigin is null && !noOrigin) return new RateDecision(true, 0);
+        var originKey = "origin:" + Hash(now, registeredOrigin ?? "none");
+        var limit = registeredOrigin is null ? o.NoOriginPermitsPerMinute : o.OriginPermitsPerMinute;
         var og = await IncrementAsync(originKey, window);
-        return og > Math.Max(1, o.OriginPermitsPerMinute) ? new RateDecision(false, retry) : new RateDecision(true, 0);
+        return og > Math.Max(1, limit) ? new RateDecision(false, retry) : new RateDecision(true, 0);
     }
 
     private string Hash(DateTimeOffset now, string value)
