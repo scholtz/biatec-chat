@@ -61,12 +61,17 @@ class OidcEnrollmentClient {
     final activeAt = json['active_at'];
     final token = json['device_token'];
     final kid = json['kid'];
-    if (activeAt is! num || token is! String || kid is! String) {
+    final attestation = json['attestation'];
+    if (activeAt is! num ||
+        token is! String ||
+        kid is! String ||
+        (attestation != null && attestation is! String)) {
       throw const EnrollmentException('Malformed enrollment response.');
     }
     return EnrollmentRecord(
       kid: kid,
       deviceToken: token,
+      attestation: attestation as String?,
       // The mock reports epoch seconds.
       activeAt: DateTime.fromMillisecondsSinceEpoch((activeAt * 1000).round(),
           isUtc: true),
