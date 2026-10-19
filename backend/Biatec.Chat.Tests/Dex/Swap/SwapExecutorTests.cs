@@ -21,16 +21,18 @@ public sealed class SwapExecutorTests
 {
     private const string User = "KV2XGKMXGYJ6PWYQA5374BYIQBL3ONRMSIARPCFCJEAMAHQEVYPB7PL3KU";
     private const string Other = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ";
+    private static readonly string PoolAddress = Address.ForApplication(5001).EncodeAsString();
     private static readonly McpCallContext Ctx = new("t1", "s1", ["openid"]);
 
     private static readonly Digest GenHash = new(Convert.FromBase64String("SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI="));
 
     /// <summary>The user's funding transfer: asset 31566704 by default, a payment when <paramref name="asset"/> is 0.</summary>
-    private static string Tx(string sender = User, ulong amount = 1_000_000, ulong asset = 31566704, bool rekey = false)
+    private static string Tx(string sender = User, ulong amount = 1_000_000, ulong asset = 31566704, bool rekey = false, string? receiver = null)
     {
+        receiver ??= PoolAddress;
         Transaction t = asset == 0
-            ? new PaymentTransaction { Sender = new Address(sender), Receiver = new Address(Other), Amount = amount }
-            : new AssetTransferTransaction { Sender = new Address(sender), AssetReceiver = new Address(Other), XferAsset = asset, AssetAmount = amount };
+            ? new PaymentTransaction { Sender = new Address(sender), Receiver = new Address(receiver), Amount = amount }
+            : new AssetTransferTransaction { Sender = new Address(sender), AssetReceiver = new Address(receiver), XferAsset = asset, AssetAmount = amount };
         t.Fee = 1000; t.FirstValid = 710399; t.LastValid = 711399; t.GenesisId = "testnet-v1.0"; t.GenesisHash = GenHash;
         if (rekey) t.RekeyTo = new Address("7ZUECA7HFLZTXENRV24SHLU4AVPUTMTTDUFUBNBD64C73F3UHRTHAIOF6Q");
         return Convert.ToBase64String(AlgoEncoder.EncodeToMsgPackOrdered(t));
@@ -363,6 +365,10 @@ public sealed class SwapExecutorTests
             new[] { Tx(), App(9999) },
             new[] { Tx() },
             new[] { Tx(rekey: true), App(5001) },
+            new[] { Tx(receiver: User), App(5001) },                       // wrong receiver
+            new[] { Tx(), Tx(amount: 7, asset: 777, receiver: Other), App(5001) }, // extra asset outflow
+            new[] { Tx(), Tx(amount: 7, asset: 0, receiver: Other), App(5001) },   // extra payment outflow
+            new[] { Tx(), Tx(), App(5001) },                               // funding sent twice
         };
         foreach (var group in cases)
         {
