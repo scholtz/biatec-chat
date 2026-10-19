@@ -1,7 +1,7 @@
 ---
 id: T-064
 title: Widget conversation UI to the Biatec AI design
-status: backlog
+status: in-progress
 priority: P1
 epic: "Widget UI rework"
 blocked_by: [T-041, T-062]
@@ -9,9 +9,9 @@ area: ["packages/chat-widget/src/components/chat/**"]
 parallel: no
 conflicts_with: [T-042, T-063]
 issue: "#105"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-064"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#user-experience"
 created: 2026-10-19
 updated: 2026-10-20
@@ -73,3 +73,5 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-19 22:40 · coordinator · blocked · conflicts_with T-063: ask() goes through the chat composable in components/chat/**
 - 2026-10-20 00:55 · kanban-board · blocked → backlog · blockers done: T-041, T-062
 - 2026-10-20 01:09 · LukassSoukup · backlog · parallel analysis: added T-042 (ChatView.vue, useChat.ts)
+- 2026-10-20 01:47 · scholtz · taken · status stays backlog
+- 2026-10-20 01:47 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

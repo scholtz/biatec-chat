@@ -1,0 +1,66 @@
+{
+  "cards": {
+    "preview": {
+      "label": "Action preview",
+      "testnet": "Testnet",
+      "mainnet": "Mainnet",
+      "from": "From",
+      "to": "To",
+      "fee": "Fee",
+      "slippage": "Slippage",
+      "simulation": "Simulation",
+      "limit": "Limit bucket",
+      "limitRemaining": "{bucket}: {remaining} {currency} left",
+      "phoneYes": "Approval on your phone is expected",
+      "phoneNo": "No phone approval expected",
+      "validFor": "Valid for",
+      "expired": "This preview has expired. Ask again for a fresh one.",
+      "details": "Details",
+      "hideDetails": "Hide details",
+      "steps": "Steps",
+      "step": "Step {n}",
+      "txId": "Transaction",
+      "downside": "If the value fell 10 percent you would lose about {amount} {currency}.",
+      "review": "Review",
+      "cancel": "Cancel",
+      "confirmAction": "Confirm {action} · {amount}",
+      "confirmActionOnly": "Confirm {action}",
+      "confirmPlain": "Confirm",
+      "needReview": "Open Review and tick the box to enable Confirm.",
+      "tooLittleTime": "Less than 10 minutes of validity remain, so Confirm is disabled. Ask for a fresh preview.",
+      "authorize": "Authorize signing",
+      "authorizeHint": "Signing needs one more permission. A sign-in window will open.",
+      "sessionWarn": "Your session ends in {time}. Finish this action now or save it and sign in again.",
+      "finishNow": "Finish now",
+      "saveAction": "Save for later",
+      "signInAgain": "The session ends before this preview would. Sign in again to get a fresh preview."
+    },
+    "review": {
+      "title": "Review before you confirm",
+      "what": "What will happen",
+      "permissions": "Permissions involved",
+      "permissionsText": "Signing on {network} through Biatec OIDC. {phone}.",
+      "details": "Exact details",
+      "financial": "Financial implications",
+      "noFiat": "No fiat value is known for these assets. Fees and slippage are shown in the details.",
+      "stop": "How to stop it",
+      "stopText": "Press Cancel on the card at any time before signing, reject the request on your phone, or pause the agent from the header.",
+      "ack": "I have read the details and want to continue",
+      "done": "Done"
+    },
+    "consent": {
+      "waiting": "Waiting for approval on your phone",
+      "code": "Binding code",
+      "codeHint": "Type this code into the authenticator.",
+      "timeLeft": "Time left to approve",
+      "cancel": "Cancel"
+    },
+    "receipt": {
+      "title": "Receipt",
+      "txId": "Transaction ID",
+      "viewTx": "View transaction",
+      "evidence": "Download evidence",
+      "none": "Not yet on chain"
+    }
+  }
+}

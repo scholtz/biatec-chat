@@ -1,7 +1,7 @@
 ---
 id: T-073
 title: Document the widget host API in the integration docs
-status: backlog
+status: in-progress
 priority: P3
 epic: "Deploy & docs"
 blocked_by: [T-063]
@@ -9,9 +9,9 @@ area: ["docs/integration-widget.md"]
 parallel: yes
 conflicts_with: []
 issue: "#134"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-073"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#embedding-modes"
 created: 2026-10-20
 updated: 2026-10-20
@@ -58,3 +58,5 @@ Read the docs against `packages/chat-widget/src/api/types.ts` and `src/index.ts`
 
 - 2026-10-20 01:40 · coordinator · (new) → blocked · proposed by T-063; blockers scan: T-068 owns docs/integration-biatec-dex.md, so that doc stays out of this task's area
 - 2026-10-20 01:32 · kanban-board · blocked → backlog · blockers done: T-063
+- 2026-10-20 01:47 · scholtz · taken · status stays backlog
+- 2026-10-20 01:47 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
