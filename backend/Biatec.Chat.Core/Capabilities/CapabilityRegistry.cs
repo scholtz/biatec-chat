@@ -133,6 +133,9 @@ public sealed class CapabilityRegistry
             string desc, JsonObject? schema, CapabilityFlag flag = CapabilityFlag.None) =>
             new(name, 1, tier, build, sign, funds, v, desc, schema?.DeepClone().AsObject(), flag);
 
+        // Evidence redaction: no shipped capability sets OutputSchema or marks a field "sensitive". Tool results are public
+        // on-chain data (the user's own addresses and balances, previews) or text, never secrets or tokens; the generic
+        // pattern redactor still runs. If a tool ever returns private data, set OutputSchema with "sensitive": true there.
         const SessionTier A = SessionTier.Anonymous;
         const SessionTier U = SessionTier.Authenticated;
         return new CapabilityRegistry(
