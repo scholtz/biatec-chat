@@ -40,6 +40,9 @@ class FakeOidc {
   int attempts = 0;
   String status = 'pending';
   bool offline = false;
+
+  /// Records the receipt but loses the answer, like a dropped connection.
+  bool dropAnswers = false;
   final List<Map<String, Object?>> receipts = [];
 
   http.Client get client => MockClient((req) async {
@@ -62,9 +65,15 @@ class FakeOidc {
             req.url.path == '/consent/requests/$id/receipt') {
           final r = (jsonDecode(req.body) as Map).cast<String, Object?>();
           receipts.add(r);
+          if (dropAnswers) throw http.ClientException('connection reset');
           final s = (r['signed'] as Map).cast<String, Object?>();
           Response out(int st, Map<String, Object?> b) =>
               http.Response(jsonEncode(b), st);
+          // Like the mock: after code_failed only the code_failed receipt.
+          if (status == 'code_failed' && s['decision'] != 'code_failed') {
+            return out(
+                403, {'error': 'access_denied', 'reason': 'code_failed'});
+          }
           switch (s['decision']) {
             case 'deny':
               status = 'denied';
@@ -358,6 +367,34 @@ void main() {
       expect(c.phase, ApprovalPhase.expired);
       await c.approve('483920');
       expect(h.oidc.receipts, isEmpty);
+    });
+
+    test('a lost answer to a posted receipt is not reported as offline',
+        () async {
+      final h = Harness(vectorRequest('stepup-transaction-approve'));
+      final c = await h.open();
+      h.oidc.dropAnswers = true;
+      await c.approve('483920');
+      expect(h.oidc.receipts, hasLength(1));
+      expect(c.offline, isFalse);
+      expect(c.error, contains('may or may not be recorded'));
+    });
+
+    test('closing the screen mid-request does not throw', () async {
+      final h = Harness(vectorRequest('stepup-transaction-approve'));
+      final c =
+          h.services.controllerFor(h.oidc.request['auth_req_id'] as String);
+      final pending = c.load();
+      c.dispose();
+      await pending;
+    });
+
+    test('deny after the code already failed ends the request', () async {
+      final h = Harness(vectorRequest('stepup-transaction-approve'));
+      h.oidc.status = 'code_failed';
+      final c = await h.open();
+      await c.deny();
+      expect(c.phase, ApprovalPhase.codeFailed);
     });
 
     test('deny is signed without a code or biometric check', () async {

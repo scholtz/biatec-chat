@@ -131,12 +131,24 @@ class ApprovalClient {
   /// `POST /consent/requests/{id}/receipt`.
   Future<ReceiptOutcome> postReceipt(String deviceToken, String authReqId,
       Map<String, Object?> receipt) async {
-    final res = await _send(() => _client.post(
-          Uri.parse('$baseUrl/consent/requests/'
-              '${Uri.encodeComponent(authReqId)}/receipt'),
-          headers: {..._auth(deviceToken), 'Content-Type': 'application/json'},
-          body: jsonEncode(receipt),
-        ));
+    final http.Response res;
+    try {
+      res = await _send(() => _client.post(
+            Uri.parse('$baseUrl/consent/requests/'
+                '${Uri.encodeComponent(authReqId)}/receipt'),
+            headers: {
+              ..._auth(deviceToken),
+              'Content-Type': 'application/json'
+            },
+            body: jsonEncode(receipt),
+          ));
+    } on ApprovalException catch (e) {
+      // The receipt may have arrived even though no answer did, so this is
+      // not reported as "offline, nothing happened".
+      throw ApprovalException('No answer from Biatec OIDC, so the decision '
+          'may or may not be recorded. Reopen the request to check. '
+          '(${e.message})');
+    }
     final json = _object(res.body, res.statusCode);
     if (res.statusCode == 200) {
       final status = json['status'];

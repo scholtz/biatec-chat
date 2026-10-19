@@ -47,7 +47,7 @@ class ConsentRequest {
   bool isExpired(DateTime now) => !expiresAt.isAfter(now);
 
   /// The single detail, parsed for display.
-  AuthorizationDetail get detail => AuthorizationDetail.parse(
+  late final AuthorizationDetail detail = AuthorizationDetail.parse(
       (authorizationDetails.single as Map).cast<String, Object?>());
 
   /// Parses and checks [json]. Throws [FormatException] on anything the card

@@ -109,8 +109,11 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             decoration: InputDecoration(
               labelText: 'Code shown where you started this action',
-              helperText: '${c.attemptsRemaining} '
-                  '${c.attemptsRemaining == 1 ? 'attempt' : 'attempts'} left',
+              helperText: switch (c.attemptsRemaining) {
+                null => 'Three attempts in total',
+                1 => '1 attempt left',
+                final n => '$n attempts left',
+              },
             ),
           ),
           if (c.error != null) ...[

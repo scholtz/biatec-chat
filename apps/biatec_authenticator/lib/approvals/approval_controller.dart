@@ -76,8 +76,12 @@ class ApprovalController extends ChangeNotifier {
   /// device never approves: approval needs a live fetch right before signing.
   bool get offline => _offline;
 
-  int _attemptsRemaining = 3;
-  int get attemptsRemaining => _attemptsRemaining;
+  int? _attemptsRemaining;
+
+  /// Attempts left as Biatec OIDC last reported them, or null before the
+  /// first wrong code in this session (the server keeps the count, and it may
+  /// already be lower if codes were tried earlier).
+  int? get attemptsRemaining => _attemptsRemaining;
 
   /// The last well-formed code typed, signed into a deny or code_failed
   /// receipt.
@@ -85,7 +89,17 @@ class ApprovalController extends ChangeNotifier {
 
   DateTime get now => _clock();
 
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
   void _set(ApprovalPhase phase, {String? error, bool offline = false}) {
+    // Async steps keep running after the screen is closed.
+    if (_disposed) return;
     _phase = phase;
     _error = error;
     _offline = offline;
@@ -224,14 +238,15 @@ class ApprovalController extends ChangeNotifier {
     String? warning;
     try {
       final outcome = await client.postReceipt(token, authReqId, receipt);
-      if (outcome is! ReceiptAccepted) {
+      if (outcome is ReceiptAccepted) {
+        await _remember(request, Decision.codeFailed, receipt);
+      } else {
         warning = 'The code_failed receipt was not accepted.';
       }
     } on ApprovalException catch (e) {
       warning = e.message;
     }
-    // The request is over either way; only the record is best effort.
-    await _remember(request, Decision.codeFailed, receipt);
+    // The request is over either way; Biatec OIDC already refused it.
     _set(ApprovalPhase.codeFailed, error: warning);
   }
 
@@ -243,20 +258,33 @@ class ApprovalController extends ChangeNotifier {
     _set(ApprovalPhase.working);
     try {
       final (token, device) = await _device();
+      // The receipt must restate the stored request, so sign what Biatec
+      // OIDC holds now.
+      final fresh = await client.fetch(token, authReqId);
+      _request = fresh;
       final receipt = await signReceipt(
         keys: keys,
         device: device,
-        request: shown,
+        request: fresh,
         code: _lastCode,
         decision: Decision.deny,
         now: now,
       );
       final outcome = await client.postReceipt(token, authReqId, receipt);
-      if (outcome case ReceiptAccepted(status: 'denied')) {
-        await _remember(shown, Decision.deny, receipt);
-        _set(ApprovalPhase.denied);
-      } else {
-        _refused(outcome);
+      switch (outcome) {
+        case ReceiptAccepted(status: 'denied'):
+          await _remember(fresh, Decision.deny, receipt);
+          _set(ApprovalPhase.denied);
+        case CodeFailed():
+          // Already ended by wrong codes; record it if a code was typed here.
+          _attemptsRemaining = 0;
+          if (_lastCode.isEmpty) {
+            _set(ApprovalPhase.codeFailed);
+          } else {
+            await _finishCodeFailed(token, device, fresh);
+          }
+        default:
+          _refused(outcome);
       }
     } on ApprovalException catch (e) {
       _set(ApprovalPhase.ready, error: e.message, offline: e.offline);

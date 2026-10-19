@@ -35,6 +35,11 @@ class _PendingScreenState extends State<PendingScreen> {
   void initState() {
     super.initState();
     _refresh();
+    _startPolling();
+  }
+
+  void _startPolling() {
+    _poll?.cancel();
     _poll = Timer.periodic(widget.pollEvery, (_) => _refresh());
   }
 
@@ -73,10 +78,14 @@ class _PendingScreenState extends State<PendingScreen> {
   }
 
   Future<void> _open(ConsentRequest r) async {
+    // No polling for a list nobody sees while a request is open.
+    _poll?.cancel();
     await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) =>
           ApprovalScreen(services: widget.services, authReqId: r.authReqId),
     ));
+    if (!mounted) return;
+    _startPolling();
     await _refresh();
   }
 
