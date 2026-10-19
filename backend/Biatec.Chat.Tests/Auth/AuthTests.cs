@@ -363,6 +363,18 @@ public sealed class AuthTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task CallbackNamingAnotherIssuer_IsNotExchanged()
+    {
+        var cookie = await NewSessionAsync();
+        var (id, login) = await StartPopupAsync(cookie);
+        var callback = await LoginToOidcAsync(cookie, login);
+        var r = await SendAsync(HttpMethod.Get, callback + "&iss=" + Uri.EscapeDataString("https://evil.example.test"), cookie);
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+        Assert.Equal(PopupAuthStatus.Failed, await PopupStatusAsync(id));
+        Assert.Empty(_oidc.TokenRequests);
+    }
+
+    [Fact]
     public async Task Relogin_MovesTheVaultEntryAndInvalidatesTheOldOne()
     {
         var c1 = await NewSessionAsync();

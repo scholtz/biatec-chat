@@ -1,11 +1,13 @@
 using System.Security.Cryptography;
 using System.Text;
+using Biatec.Chat.Api.Config;
 using Biatec.Chat.Api.Contracts;
 using Biatec.Chat.Api.Sessions;
 using Biatec.Chat.Api.Tenancy;
 using Biatec.Chat.Api.Vault;
 using Biatec.Chat.Core.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Biatec.Chat.Api.Auth;
 
@@ -118,7 +120,7 @@ public static class AuthEndpoints
 
         // Step 3, the redirect back from Biatec OIDC. Always answers with the same minimal close-popup page.
         app.MapGet("/auth/callback", async (HttpContext ctx, ChatDbContext db, TimeProvider clock, ISessionService sessions,
-            IAuthStateStore states, IOidcClient oidc, IIdTokenValidator validator, ITokenVault vault, ILogger<AuthLog> log) =>
+            IAuthStateStore states, IOidcClient oidc, IIdTokenValidator validator, ITokenVault vault, IOptions<OidcOptions> options, ILogger<AuthLog> log) =>
         {
             Harden(ctx);
             var tenant = ctx.GetTenant()!;
@@ -137,7 +139,10 @@ public static class AuthEndpoints
             if (!await states.TakeAsync(stateHash, ctx.RequestAborted)) return ClosePage(ctx, 400); // replay or race
 
             var code = ctx.Request.Query["code"].ToString();
-            if (ctx.Request.Query.ContainsKey("error") || code.Length is 0 or > 2048)
+            // RFC 9207: a response that names a different issuer is a mix-up attempt, never exchanged.
+            var iss = ctx.Request.Query["iss"].ToString();
+            var issuerMismatch = iss.Length > 0 && !string.Equals(iss.TrimEnd('/'), options.Value.Issuer.TrimEnd('/'), StringComparison.Ordinal);
+            if (issuerMismatch || ctx.Request.Query.ContainsKey("error") || code.Length is 0 or > 2048)
             {
                 await SetStatusAsync(db, pending.PopupId, session.ConversationId, PopupAuthStatus.Failed, ctx.RequestAborted);
                 return ClosePage(ctx, 400);
