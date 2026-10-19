@@ -75,7 +75,7 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 3
           livenessProbe:
-            httpGet: {path: /health, port: http}
+            httpGet: {path: /health/live, port: http}
             periodSeconds: 20
             timeoutSeconds: 3
           resources:

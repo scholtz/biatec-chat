@@ -29,7 +29,7 @@ no access keys are used.
 ## Images
 
 `ghcr.io/scholtz/biatec-chat-backend` (`backend/Dockerfile`) and `ghcr.io/scholtz/biatec-chat-builders`
-(`builders/sidecar/Dockerfile`); both build with the repository root as context. Probes use `/health`.
+(`builders/sidecar/Dockerfile`); both build with the repository root as context. Startup and readiness probes use `/health` (Redis and PostgreSQL checks); liveness uses `/health/live`, which runs no dependency checks, so a dependency outage removes pods from service without restarting them.
 
 ## Deployment prerequisites
 
