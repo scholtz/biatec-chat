@@ -6,6 +6,7 @@ using Amazon.BedrockRuntime;
 using Amazon.BedrockRuntime.Model;
 using Biatec.Chat.Api.Contracts;
 using Biatec.Chat.Api.Model;
+using Biatec.Chat.Api.Model.Guardrails;
 using Biatec.Chat.Core.Capabilities;
 using Biatec.Chat.Core.Data;
 using Microsoft.EntityFrameworkCore;
@@ -35,6 +36,7 @@ public sealed class ConversationOrchestrator(
     ToolGate gate,
     IEnumerable<IToolExecutor> executors,
     IMessageRedactor redactor,
+    IToolResultGuard toolGuard,
     ChatDbContext db,
     TimeProvider clock,
     ILogger<ConversationOrchestrator> log)
@@ -163,6 +165,12 @@ public sealed class ConversationOrchestrator(
                         result = await RunExecutorAsync(executor, ctx, args, ct);
                     }
                 }
+
+                // Defence in depth for indirect prompt injection; the gate above stays the authority. Gate and
+                // executor errors are our own text, so only executor output is screened. A withheld result is also
+                // what gets stored, so the injected text never returns through the history.
+                if (!result.IsError && await toolGuard.ScreenAsync("tool." + capName, result.Content, ct) is { Withheld: true })
+                    result = new ToolExecutionResult(GuardrailMessages.ToolResultWithheld, true, result.Events);
 
                 foreach (var ev in result.Events ?? []) yield return ev;
                 yield return new ToolStatusEvent(call.ToolUseId, label, result.IsError ? ToolRunState.Failed : ToolRunState.Succeeded);

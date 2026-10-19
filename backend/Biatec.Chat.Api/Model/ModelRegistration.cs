@@ -2,6 +2,7 @@ using Amazon;
 using Amazon.BedrockRuntime;
 using Amazon.Runtime;
 using Biatec.Chat.Api.Config;
+using Biatec.Chat.Api.Model.Guardrails;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
@@ -20,7 +21,8 @@ public static class ModelRegistration
             .ValidateDataAnnotations()
             .ValidateOnStart();
         services.TryAddSingleton<IAmazonBedrockRuntime>(sp => CreateBedrockRuntime(sp.GetRequiredService<IOptions<BedrockOptions>>().Value));
-        services.TryAddSingleton<IConverseStreamSource, BedrockConverseStreamSource>();
+        services.AddBedrockGuardrails();
+        services.TryAddSingleton<IConverseStreamSource,BedrockConverseStreamSource>();
         services.TryAddSingleton<IModelClient, BedrockModelClient>();
         return services;
     }
