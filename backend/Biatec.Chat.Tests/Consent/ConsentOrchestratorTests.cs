@@ -69,9 +69,11 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
     private sealed class MockWallet(Account account) : IWalletSigningClient
     {
         public readonly List<(string Bearer, WalletSignRequest Request)> Calls = [];
+        public bool ThrowOnConsentToken;
         public Task<WalletSignOutcome> SignAsync(string bearer, WalletSignRequest request, CancellationToken ct = default)
         {
             Calls.Add((bearer, request));
+            if (bearer == ConsentToken && ThrowOnConsentToken) throw new InvalidOperationException("boom");
             if (bearer != ConsentToken) return Task.FromResult<WalletSignOutcome>(new WalletSignOutcome.StepUp(AuthReqId, "483920", 300, 2));
             var signed = request.Transactions.Select(t => Convert.ToBase64String(AlgoEncoder.EncodeToMsgPackOrdered(Transaction.FromBase64String(t).Sign(account)))).ToList();
             return Task.FromResult<WalletSignOutcome>(new WalletSignOutcome.Signed(signed, "1200.00"));
@@ -411,6 +413,45 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ApprovalAfterPreviewExpiry_SignsNothing_AndExpiresThePreview()
+    {
+        var b = await BuildPreviewAsync();
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        // A consent window that outlives the step (for example a longer window granted by Biatec OIDC).
+        await using (var db = NewContext())
+        {
+            foreach (var c in await db.ConsentRequests.ToListAsync()) c.ExpiresAt = _clock.Now.AddSeconds(3000);
+            await db.SaveChangesAsync();
+        }
+        _clock.Now = _clock.Now.AddSeconds(1501);
+        _server.State = "approved";
+        var r = await AdvanceAsync(b.PreviewId);
+
+        Assert.Equal("preview_expired", r.Result!.ErrorCode);
+        Assert.Single(_wallet.Calls);
+        Assert.Empty(_mcp.Submits);
+        var (preview, step, _) = await LoadAsync(b.PreviewId);
+        Assert.Equal(ActionPreviewStatus.Expired, preview.Status);
+        Assert.Equal(StepStatus.Expired, step.Status);
+        Assert.Contains(_evidence.Entries, e => e.Kind == "consent_expired" && (string?)e.Payload["reason"] == "preview_expired");
+    }
+
+    [Fact]
+    public async Task ResumeThrowing_DoesNotLeaveTheStepAwaitingConsent()
+    {
+        var b = await BuildPreviewAsync();
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        _wallet.ThrowOnConsentToken = true;
+        _server.State = "approved";
+        var r = await AdvanceAsync(b.PreviewId);
+
+        Assert.Equal(ConfirmOutcome.Failed, r.Result!.Outcome);
+        Assert.Equal("resume_failed", r.Result.ErrorCode);
+        Assert.Empty(_mcp.Submits);
+        Assert.Equal(StepStatus.Expired, (await LoadAsync(b.PreviewId)).Step.Status);
+    }
+
+    [Fact]
     public async Task ApprovalWithoutAReceipt_IsNotAccepted()
     {
         var b = await BuildPreviewAsync();
@@ -422,6 +463,7 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
         var r = await orchestrator.AdvanceAsync(_tenant, _session, b.PreviewId, CancellationToken.None);
 
         Assert.NotEqual(ConsentState.Approved, r.Status.State);
+        Assert.Equal("receipt_missing", r.Result!.ErrorCode);
         Assert.Single(_wallet.Calls);
         Assert.Empty(_mcp.Submits);
     }

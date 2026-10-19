@@ -115,7 +115,11 @@ public static class ConsentEndpoints
                 }
             }
             catch (OperationCanceledException) { }
-            catch (PreviewException) { }
+            catch (PreviewException ex)
+            {
+                try { await WriteAsync(ctx.Response, "error", new { error = ex.Error.ToString(), message = ex.Message }, CancellationToken.None); }
+                catch (Exception) { }
+            }
             return Results.Empty;
         }).WithName("StreamConsent").Produces(StatusCodes.Status200OK, contentType: "text/event-stream");
 

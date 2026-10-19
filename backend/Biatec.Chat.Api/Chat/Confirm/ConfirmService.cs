@@ -361,6 +361,10 @@ public sealed class ConfirmService(
         var preview = snap.Preview;
         var step = snap.Steps.FirstOrDefault(s => s.Status == StepStatus.AwaitingConsent)
             ?? throw new PreviewException(PreviewError.InvalidState, "The preview has no step awaiting consent.");
+        // The consent window starts after the confirm gate, so an approval can arrive after the preview has expired.
+        // The simulation and policy check are stale then: nothing is signed and the preview is rebuilt.
+        if (clock.GetUtcNow() >= step.ExpiresAt || clock.GetUtcNow() >= preview.ExpiresAt)
+            return await EndConsentAsync(session, previewId, denied: false, "preview_expired", ct, "preview_expired");
         IReadOnlyList<Algorand.Algod.Model.Transactions.Transaction> group;
         string address;
         try { (group, address) = PrepareGroup(step); }
@@ -402,7 +406,7 @@ public sealed class ConfirmService(
     /// Consent orchestrator hook (T-049): the consent ended without approval. A denial cancels the action; an expired
     /// or lapsed consent expires it so the widget asks the assistant to rebuild the preview. Nothing was signed.
     /// </summary>
-    public async Task<ConfirmResult> EndConsentAsync(ChatSession session, Guid previewId, bool denied, string? reason, CancellationToken ct)
+    public async Task<ConfirmResult> EndConsentAsync(ChatSession session, Guid previewId, bool denied, string? reason, CancellationToken ct, string? errorCode = null)
     {
         var snap = await previews.GetAsync(session.ConversationId, previewId, session.AbsoluteExpiresAt, ct);
         var step = snap.Steps.FirstOrDefault(s => s.Status == StepStatus.AwaitingConsent)
@@ -416,7 +420,11 @@ public sealed class ConfirmService(
         }, ct);
         return denied
             ? new ConfirmResult(ConfirmOutcome.Failed, "You declined the action on your phone. Nothing was signed.", [], ErrorCode: "consent_denied")
-            : new ConfirmResult(ConfirmOutcome.Failed, "The approval request expired. Nothing was signed; the preview must be rebuilt.", [], ErrorCode: "consent_expired");
+            : new ConfirmResult(ConfirmOutcome.Failed, errorCode == "preview_expired"
+                ? "The preview expired before the approval arrived. Nothing was signed; the preview must be rebuilt."
+                : errorCode == "receipt_missing"
+                    ? "The approval came back without its signed receipt. Nothing was signed; the preview must be rebuilt."
+                    : "The approval request expired. Nothing was signed; the preview must be rebuilt.", [], ErrorCode: errorCode ?? "consent_expired");
     }
 
     private async Task<ConfirmResult> TrackAsync(ChatSession session, ActionPreview preview, ActionStep step, IReadOnlyList<string> txIds, bool unknownSubmit, CancellationToken ct)

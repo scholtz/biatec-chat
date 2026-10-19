@@ -93,7 +93,7 @@ public sealed class ConsentOrchestrator(
     {
         // Biatec OIDC always returns the signed receipt with the token. Without it there is nothing to keep as proof.
         if (string.IsNullOrEmpty(approved.Receipt))
-            return await EndAsync(session, previewId, request, ConsentRequestStatus.Cancelled, denied: false, "receipt_missing", ct);
+            return await EndAsync(session, previewId, request, ConsentRequestStatus.Cancelled, denied: false, "receipt_missing", ct, "receipt_missing");
 
         // Exactly one poller wins the approval (the token can be redeemed once anyway).
         var claimed = await db.ConsentRequests.Where(c => c.Id == request.Id && c.Status == ConsentRequestStatus.Pending)
@@ -114,18 +114,26 @@ public sealed class ConsentOrchestrator(
             log.LogError("Could not record the consent receipt: {ErrorType}", ex.GetType().Name);
         }
 
-        var result = await confirm.ResumeAfterConsentAsync(tenant, session, previewId, approved.AccessToken, ct);
+        ConfirmResult result;
+        try { result = await confirm.ResumeAfterConsentAsync(tenant, session, previewId, approved.AccessToken, ct); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The approval is used up (one-shot token), so the step must not stay AwaitingConsent: end it so the preview is rebuilt.
+            log.LogError("Resuming after consent failed: {ErrorType}", ex.GetType().Name);
+            try { result = await confirm.EndConsentAsync(session, previewId, denied: false, "resume_failed", CancellationToken.None, "resume_failed"); }
+            catch (Exception) { result = new ConfirmResult(ConfirmOutcome.Failed, "The approved action could not be completed. Nothing was submitted; ask for the preview again.", [], ErrorCode: "resume_failed"); }
+        }
         return new ConsentAdvance(StatusOf(previewId, step.Id, ConsentState.Approved, request.BindingCode, request.ExpiresAt), result);
     }
 
     private async Task<ConsentAdvance> EndAsync(ChatSession session, Guid previewId, ConsentRequest request, ConsentRequestStatus status,
-        bool denied, string reason, CancellationToken ct)
+        bool denied, string reason, CancellationToken ct, string? errorCode = null)
     {
         await db.ConsentRequests.Where(c => c.Id == request.Id && c.Status == ConsentRequestStatus.Pending)
             .ExecuteUpdateAsync(u => u.SetProperty(c => c.Status, status), CancellationToken.None);
         request.Status = status;
         db.Entry(request).State = EntityState.Unchanged;
-        var result = await confirm.EndConsentAsync(session, previewId, denied, reason, ct);
+        var result = await confirm.EndConsentAsync(session, previewId, denied, reason, ct, errorCode);
         return new ConsentAdvance(StatusOf(previewId, request.StepId, denied ? ConsentState.Denied : ConsentState.TimedOut, null, request.ExpiresAt), result);
     }
 
