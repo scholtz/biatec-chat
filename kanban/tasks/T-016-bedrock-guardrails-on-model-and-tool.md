@@ -1,7 +1,7 @@
 ---
 id: T-016
 title: Bedrock Guardrails on model and tool results
-status: blocked
+status: backlog
 priority: P2
 epic: "Orchestrator"
 blocked_by: [T-014]
@@ -54,3 +54,4 @@ AWS_PROFILE=hackathon ./infra/guardrail/create.sh; dotnet test --filter Guardrai
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 21:21 · kanban-board · blocked → backlog · blockers done: T-014

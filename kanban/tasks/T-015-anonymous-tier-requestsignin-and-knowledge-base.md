@@ -1,7 +1,7 @@
 ---
 id: T-015
 title: Anonymous tier: requestSignIn and knowledge base search
-status: blocked
+status: backlog
 priority: P0
 epic: "Orchestrator"
 blocked_by: [T-014]
@@ -54,3 +54,4 @@ dotnet test --filter Kb; manual chat run
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 21:21 · kanban-board · blocked → backlog · blockers done: T-014

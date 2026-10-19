@@ -1,7 +1,7 @@
 ---
 id: T-057
 title: OpenTelemetry traces and metrics
-status: blocked
+status: backlog
 priority: P3
 epic: "Deploy & docs"
 blocked_by: [T-014]
@@ -54,3 +54,4 @@ dotnet test; run with console exporter
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 21:21 · kanban-board · blocked → backlog · blockers done: T-014
