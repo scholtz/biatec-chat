@@ -339,3 +339,16 @@ describe("over HTTP", () => {
     expect((await post("/v1/build/safe.list", { network: "testnet", params: {} })).status).toBe(422);
   });
 });
+
+/**
+ * Opt-in: runs the real simulate path (allowEmptySignatures, allowUnnamedResources, group id) against a live node.
+ * TESTNET_ALGOD_URL=<testnet algod> TESTNET_SAFE_SENDER=<funded testnet address> pnpm test
+ */
+describe.skipIf(!process.env.TESTNET_ALGOD_URL || !process.env.TESTNET_SAFE_SENDER)("safe.create simulate against testnet", () => {
+  it("returns a simulation outcome from a real algod", async () => {
+    const real = safeBuilders();
+    const r = await real["safe.create"]!({ sender: process.env.TESTNET_SAFE_SENDER, name: "Sim Safe", simulate: true }, { network: "testnet", algodUrl: process.env.TESTNET_ALGOD_URL! });
+    expect(r.transactions).toHaveLength(1);
+    expect(r.simulation).toMatchObject({ ok: expect.any(Boolean) });
+  }, 60_000);
+});
