@@ -1,0 +1,25 @@
+{
+  "name": "@biatec/chat-protocol",
+  "version": "0.0.0",
+  "description": "Typed JSON contract between the Biatec Chat widget and backend, generated from the backend OpenAPI document.",
+  "type": "module",
+  "license": "MIT",
+  "files": ["dist", "openapi.json"],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "generate": "node scripts/generate.mjs",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.9.1",
+    "typescript": "^5.9.2"
+  }
+}

@@ -1,0 +1,671 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Biatec.Chat.Api | v1",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/contracts": {
+      "get": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "GetContractCatalog",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractCatalog"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ActionDecisionRequest": {
+        "required": [
+          "groupHash"
+        ],
+        "type": "object",
+        "properties": {
+          "groupHash": {
+            "type": "string"
+          }
+        }
+      },
+      "ActionPreview": {
+        "required": [
+          "previewId",
+          "capability",
+          "intent",
+          "network",
+          "genesisId",
+          "status",
+          "steps",
+          "expiresAt"
+        ],
+        "type": "object",
+        "properties": {
+          "previewId": {
+            "type": "string"
+          },
+          "capability": {
+            "type": "string"
+          },
+          "intent": {
+            "type": "string"
+          },
+          "network": {
+            "type": "string"
+          },
+          "genesisId": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ActionPreviewStatus"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActionStep"
+            }
+          },
+          "limit": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LimitHeadroom"
+              }
+            ]
+          },
+          "expectsAuthenticatorApproval": {
+            "type": "boolean"
+          },
+          "approvalReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ActionPreviewStatus": {
+        "enum": [
+          "AwaitingConfirmation",
+          "AwaitingScope",
+          "AwaitingApproval",
+          "Signing",
+          "Submitted",
+          "Completed",
+          "Cancelled",
+          "Expired",
+          "Failed"
+        ]
+      },
+      "ActionStep": {
+        "required": [
+          "stepId",
+          "index",
+          "title",
+          "status",
+          "groupHash"
+        ],
+        "type": "object",
+        "properties": {
+          "stepId": {
+            "type": "string"
+          },
+          "index": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ActionPreviewStatus"
+          },
+          "groupHash": {
+            "type": "string"
+          },
+          "from": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "to": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "assets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssetAmount"
+            }
+          },
+          "feeAmount": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "slippagePercent": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "simulationSummary": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "transactionId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "explorerUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "AssetAmount": {
+        "required": [
+          "assetId",
+          "symbol",
+          "amount",
+          "decimals"
+        ],
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "string"
+          },
+          "decimals": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "fiatValue": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "fiatCurrency": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ConsentState": {
+        "enum": [
+          "NotRequired",
+          "Pending",
+          "Approved",
+          "Denied",
+          "TimedOut"
+        ]
+      },
+      "ConsentStatus": {
+        "required": [
+          "previewId",
+          "stepId",
+          "state"
+        ],
+        "type": "object",
+        "properties": {
+          "previewId": {
+            "type": "string"
+          },
+          "stepId": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ConsentState"
+          },
+          "bindingCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "expiresAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "ContractCatalog": {
+        "required": [
+          "session",
+          "suggestions",
+          "chatRequest",
+          "actionDecision",
+          "event"
+        ],
+        "type": "object",
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/SessionState"
+          },
+          "suggestions": {
+            "$ref": "#/components/schemas/SuggestionList"
+          },
+          "chatRequest": {
+            "$ref": "#/components/schemas/ChatMessageRequest"
+          },
+          "actionDecision": {
+            "$ref": "#/components/schemas/ActionDecisionRequest"
+          },
+          "event": {
+            "$ref": "#/components/schemas/ChatEvent"
+          }
+        }
+      },
+      "HostContext": {
+        "type": "object",
+        "properties": {
+          "route": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "product": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "locale": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ChatEvent": {
+        "required": [
+          "type"
+        ],
+        "type": "object",
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ChatEventTextDeltaEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ChatEventToolStatusEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ChatEventPreviewCardEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ChatEventConsentStatusEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ChatEventSignInCardEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ChatEventErrorEvent"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "text_delta": "#/components/schemas/ChatEventTextDeltaEvent",
+            "tool_status": "#/components/schemas/ChatEventToolStatusEvent",
+            "preview_card": "#/components/schemas/ChatEventPreviewCardEvent",
+            "consent_status": "#/components/schemas/ChatEventConsentStatusEvent",
+            "sign_in_card": "#/components/schemas/ChatEventSignInCardEvent",
+            "error": "#/components/schemas/ChatEventErrorEvent"
+          }
+        }
+      },
+      "ChatEventConsentStatusEvent": {
+        "required": [
+          "consent",
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "consent_status"
+            ],
+            "type": "string"
+          },
+          "consent": {
+            "$ref": "#/components/schemas/ConsentStatus"
+          }
+        }
+      },
+      "ChatEventErrorEvent": {
+        "required": [
+          "code",
+          "message",
+          "retryable",
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "error"
+            ],
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ChatEventPreviewCardEvent": {
+        "required": [
+          "preview",
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "preview_card"
+            ],
+            "type": "string"
+          },
+          "preview": {
+            "$ref": "#/components/schemas/ActionPreview"
+          }
+        }
+      },
+      "ChatEventSignInCardEvent": {
+        "required": [
+          "signInUrl",
+          "reason",
+          "scope",
+          "description",
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "sign_in_card"
+            ],
+            "type": "string"
+          },
+          "signInUrl": {
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/SignInReason"
+          },
+          "scope": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ChatEventTextDeltaEvent": {
+        "required": [
+          "text",
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "text_delta"
+            ],
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "ChatEventToolStatusEvent": {
+        "required": [
+          "toolCallId",
+          "label",
+          "state",
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "tool_status"
+            ],
+            "type": "string"
+          },
+          "toolCallId": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ToolRunState"
+          }
+        }
+      },
+      "ChatMessageRequest": {
+        "required": [
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "conversationId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "context": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HostContext"
+              }
+            ]
+          },
+          "widgetVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "LimitHeadroom": {
+        "required": [
+          "bucket",
+          "remaining",
+          "currency"
+        ],
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string"
+          },
+          "remaining": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          }
+        }
+      },
+      "SessionState": {
+        "required": [
+          "sessionId",
+          "tier",
+          "scopes",
+          "expiresAt"
+        ],
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/SessionTier"
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "primaryAddress": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "authRequestId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "signInStatus": {
+            "$ref": "#/components/schemas/SignInStatus"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SessionTier": {
+        "enum": [
+          "Anonymous",
+          "Authenticated"
+        ]
+      },
+      "SignInReason": {
+        "enum": [
+          "SignIn",
+          "ElevateScope"
+        ]
+      },
+      "SignInStatus": {
+        "enum": [
+          "None",
+          "Pending",
+          "Complete",
+          "Failed"
+        ]
+      },
+      "Suggestion": {
+        "required": [
+          "id",
+          "label",
+          "prompt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "minTier": {
+            "$ref": "#/components/schemas/SessionTier"
+          }
+        }
+      },
+      "SuggestionList": {
+        "required": [
+          "suggestions"
+        ],
+        "type": "object",
+        "properties": {
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Suggestion"
+            }
+          }
+        }
+      },
+      "ToolRunState": {
+        "enum": [
+          "Started",
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Biatec.Chat.Api"
+    }
+  ]
+}
