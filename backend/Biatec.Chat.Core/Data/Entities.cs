@@ -127,6 +127,26 @@ public class EvidenceAnchor
     public string? GapFrom { get; set; }
 }
 
+/// <summary>
+/// Durable record of an anchor attempt: written before the transaction is broadcast, so the sequence number stays
+/// consumed across restarts and failures. <c>pending</c> until the anchor row is stored (then the attempt row is
+/// deleted); <c>lost</c> when the transaction could not be confirmed (the next anchor records the gap).
+/// </summary>
+public class EvidenceAnchorAttempt
+{
+    public long SequenceNumber { get; set; }
+    /// <summary>"pending" or "lost".</summary>
+    public string Status { get; set; } = "pending";
+    public string MerkleRoot { get; set; } = "";
+    public string? PreviousAnchorTxId { get; set; }
+    public string? GapFrom { get; set; }
+    /// <summary>JSON array of the leaves (conversationId, anchoredSeq, headHash) so the proofs can be rebuilt after a crash.</summary>
+    public string Leaves { get; set; } = "[]";
+    /// <summary>Set once the transaction was confirmed on chain, before the anchor row is stored.</summary>
+    public string? TxId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
 public class EvidenceAnchorLeaf
 {
     public Guid AnchorId { get; set; }

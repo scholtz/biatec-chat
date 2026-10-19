@@ -275,6 +275,41 @@ namespace Biatec.Chat.Api.Migrations
                     b.ToTable("EvidenceAnchors");
                 });
 
+            modelBuilder.Entity("Biatec.Chat.Core.Data.EvidenceAnchorAttempt", b =>
+                {
+                    b.Property<long>("SequenceNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("GapFrom")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Leaves")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("MerkleRoot")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PreviousAnchorTxId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("TxId")
+                        .HasColumnType("text");
+
+                    b.HasKey("SequenceNumber");
+
+                    b.ToTable("EvidenceAnchorAttempts");
+                });
+
             modelBuilder.Entity("Biatec.Chat.Core.Data.EvidenceAnchorLeaf", b =>
                 {
                     b.Property<Guid>("AnchorId")
