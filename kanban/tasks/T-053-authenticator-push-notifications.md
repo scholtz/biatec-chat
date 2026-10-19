@@ -65,7 +65,7 @@ manual emulator test
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 21:37 · kanban-board · blocked → backlog · blockers done: T-052
-- 2026-10-19 23:00 · LukassSoukup · taken · status stays backlog
-- 2026-10-19 23:00 · session-20261019-2300 · backlog → in-progress · claimed via /kanban-take + /kanban-next loop
-- 2026-10-20 00:30 · session-20261019-2300 · in-progress → review · PR #111, three review rounds
+- 2026-10-19 22:16 · LukassSoukup · taken · status stays backlog
+- 2026-10-19 22:16 · session-20261019-2300 · backlog → in-progress · claimed via /kanban-take + /kanban-next loop
+- 2026-10-19 22:40 · session-20261019-2300 · in-progress → review · PR #111, three review rounds
 - 2026-10-19 22:40 · user · review → done · PR #111 merged into main @ ade4b18 (synced by kanban-sync)
