@@ -5,9 +5,12 @@
 //   POST /token                               CIBA token grant, returns consent_receipt
 //   GET  /consent/receipts/:auth_req_id       receipt retrieval by the owning client
 //   POST /devices                             device enrollment (rule 7)
+//   PUT  /devices/push                        register or replace the device's FCM/APNs token
 //   GET  /devices/requests, GET /consent/requests/:id, POST /consent/requests/:id/receipt   authenticator side
 //   GET  /.well-known/jwks.json, /.well-known/openid-configuration
-//   GET/POST /mock/...                        test helpers (activate a device, inspect state)
+//   GET/POST /mock/...                        test helpers (activate a device, inspect state, push outbox)
+// Push: opening a request queues one message per active device with a push token; its data is only the
+// auth_req_id (GET /mock/push-outbox shows what would be sent). Nothing is sent to FCM or APNs.
 // Rules enforced: 2 (binding code, 3 attempts), 4 (first use), 5 (300 s, single use, group-hash binding),
 // 7 (24 h inactive first device), 8 (no device, no above-threshold actions), 9 (offline-verifiable receipts).
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -39,7 +42,10 @@ export interface MockOptions {
   oidcKey?: Record<string, string>;
 }
 
-interface Device { kid: string; sub: string; publicKey: Record<string, string>; token: string; activeAt: number; cancelled: boolean; attestation: string; recoveryCode?: string; recoveryAcknowledged?: boolean }
+interface Device { kid: string; sub: string; publicKey: Record<string, string>; token: string; activeAt: number; cancelled: boolean; attestation: string; recoveryCode?: string; recoveryAcknowledged?: boolean; push?: PushTarget }
+interface PushTarget { provider: "fcm" | "apns"; token: string }
+// What a real deployment hands to FCM or APNs. The data payload is the request id and nothing else.
+interface PushMessage { kid: string; provider: PushTarget["provider"]; token: string; data: { auth_req_id: string } }
 interface Pending {
   request: Record<string, any>;
   code: string;
@@ -110,6 +116,7 @@ export function createMockOidc(options: MockOptions = {}) {
   const devices = new Map<string, Device>();
   const pending = new Map<string, Pending>();
   const consumed = new Set<string>();
+  const pushOutbox: PushMessage[] = [];
 
   const attest = (sub: string, kid: string, pub: Record<string, string>) =>
     signCompactJws(oidcKey, { alg: "ES256", kid: oidcKey.kid, typ: ATTESTATION_TYP }, {
@@ -186,6 +193,8 @@ export function createMockOidc(options: MockOptions = {}) {
     };
     validate("consent-request", request, "internal consent request");
     pending.set(authReqId, { request, code, attempts: 0, clientId: opts.client.id, status: "pending", tokenIssued: false, scope: opts.scope, limitsBody: opts.limitsBody });
+    for (const d of activeDevices(opts.user.sub)) if (d.push) pushOutbox.push({ kid: d.kid, ...d.push, data: { auth_req_id: authReqId } });
+    if (pushOutbox.length > 500) pushOutbox.splice(0, pushOutbox.length - 500); // a long-running mock keeps the recent ones
     return { authReqId, code, expiresIn: opts.requestedExpiry };
   }
 
@@ -339,6 +348,18 @@ export function createMockOidc(options: MockOptions = {}) {
     return { status: 200, body: p.receipt };
   }
 
+  function pushTarget(v: any): PushTarget {
+    if (!v || (v.provider !== "fcm" && v.provider !== "apns") || typeof v.token !== "string" || !v.token || v.token.length > 4096) throw new HttpError(400, "invalid_request", "push needs provider fcm or apns and a token");
+    return { provider: v.provider, token: v.token };
+  }
+
+  // A push token reaches one phone, so it belongs to one device record: registering it moves it there, and a
+  // phone re-enrolled for another user stops receiving the previous user's requests.
+  function setPush(d: Device, push: PushTarget | undefined) {
+    if (push) for (const o of devices.values()) if (o !== d && o.push?.provider === push.provider && o.push.token === push.token) o.push = undefined;
+    d.push = push;
+  }
+
   function enroll(req: IncomingMessage, body: Record<string, any>) {
     const t = bearer(req);
     if (t.kind !== "login") throw new HttpError(403, "access_denied", "enrollment needs a fresh full login");
@@ -352,7 +373,9 @@ export function createMockOidc(options: MockOptions = {}) {
       if (!approver || approver.sub !== t.sub || approver.cancelled || approver.activeAt > now()) throw new HttpError(400, "invalid_request", "approved_by_kid is not an active device of this user");
       activeAt = now();
     }
+    const push = body.push === undefined ? undefined : pushTarget(body.push);
     const d = addDevice(t.sub, body.kid, { kty: "EC", crv: "P-256", x: pk.x, y: pk.y }, activeAt);
+    setPush(d, push);
     return { status: 201, body: { kid: d.kid, active: d.activeAt <= now(), active_at: d.activeAt, attestation: d.attestation, device_token: d.token, cancel_notice_sent_to_existing_devices: hadActive && activeAt > now() } };
   }
 
@@ -464,6 +487,11 @@ export function createMockOidc(options: MockOptions = {}) {
       d.recoveryCode = undefined;
       return { status: 200, body: { acknowledged: true } };
     }
+    if (m === "PUT" && path === "/devices/push") {
+      const d = deviceAuth(req);
+      setPush(d, pushTarget(await readBody(req)));
+      return { status: 200, body: { kid: d.kid, provider: d.push!.provider } };
+    }
     if (m === "GET" && path === "/devices/requests") {
       const d = deviceAuth(req);
       return { status: 200, body: { requests: [...pending.values()].filter((p) => p.request.sub === d.sub && p.status === "pending" && !expired(p)).map(deviceView) } };
@@ -478,6 +506,10 @@ export function createMockOidc(options: MockOptions = {}) {
       const d = devices.get(x[1]);
       if (!d) throw new HttpError(404, "not_found");
       return { status: 200, body: { kid: d.kid, sub: d.sub, active: d.activeAt <= now(), active_at: d.activeAt, attestation: d.attestation, device_token: d.token, public_key: d.publicKey } };
+    }
+    if (m === "GET" && path === "/mock/push-outbox") {
+      const kid = url.searchParams.get("kid");
+      return { status: 200, body: { messages: pushOutbox.filter((p) => !kid || p.kid === kid) } };
     }
     if (m === "POST" && (x = path.match(/^\/mock\/devices\/([^/]+)\/activate$/))) {
       const d = devices.get(x[1]);
@@ -505,5 +537,5 @@ export function createMockOidc(options: MockOptions = {}) {
     res.end(JSON.stringify(body));
   }
 
-  return { server, issuer, jwks, keys, state: { pending, consumed, devices, users: userMap, tokens } };
+  return { server, issuer, jwks, keys, state: { pending, consumed, devices, users: userMap, tokens, pushOutbox } };
 }
