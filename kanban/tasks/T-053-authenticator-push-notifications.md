@@ -1,7 +1,7 @@
 ---
 id: T-053
 title: Authenticator push notifications
-status: backlog
+status: in-progress
 priority: P3
 epic: "Consent & authenticator"
 blocked_by: [T-052]
@@ -9,9 +9,9 @@ area: ["apps/biatec_authenticator/lib/push/**"]
 parallel: yes
 conflicts_with: []
 issue: "#54"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-053"
+owner: "session-20261019-2300"
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-19
 updated: 2026-10-19
@@ -55,3 +55,5 @@ manual emulator test
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 21:37 · kanban-board · blocked → backlog · blockers done: T-052
+- 2026-10-19 23:00 · LukassSoukup · taken · status stays backlog
+- 2026-10-19 23:00 · session-20261019-2300 · backlog → in-progress · claimed via /kanban-take + /kanban-next loop
