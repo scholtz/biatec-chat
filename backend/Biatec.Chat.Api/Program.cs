@@ -41,6 +41,7 @@ builder.Services.AddEvidenceAnchoring(builder.Configuration);
 builder.Services.AddSingleton<Biatec.Chat.Tools.Mcp.IMcpBearerSource, Biatec.Chat.Api.Mcp.VaultMcpBearerSource>();
 Biatec.Chat.Tools.Mcp.McpRegistration.AddBiatecMcp(builder.Services, builder.Configuration);
 Biatec.Chat.Api.Wallet.Read.WalletReadRegistration.AddWalletReadTools(builder.Services);
+Biatec.Chat.Api.Limits.LimitsRegistration.AddLimitsTools(builder.Services);
 
 var app = builder.Build();
 await app.MigrateDevelopmentDatabaseAsync();
