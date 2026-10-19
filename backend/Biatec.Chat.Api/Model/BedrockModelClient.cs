@@ -28,15 +28,18 @@ public sealed class BedrockConverseStreamSource(IAmazonBedrockRuntime bedrock) :
 /// <summary>
 /// ConverseStream client: picks the model id for the profile, always sets maxTokens, places a cache point after
 /// each static system block, caps concurrent streams process-wide and retries throttled calls with full jitter.
-/// A call is retried only while nothing has been yielded, so a caller never sees a partial answer twice.
+/// A call is retried only while nothing has been yielded, so a caller never sees a partial answer twice. A slot
+/// is held while a stream is open (including while the caller reads it) and released during backoff.
 /// </summary>
 public sealed class BedrockModelClient(
     IConverseStreamSource source,
     IOptions<BedrockOptions> options,
+    IOptions<BedrockClientOptions> clientOptions,
     ILogger<BedrockModelClient> logger) : IModelClient
 {
     private readonly BedrockOptions _o = options.Value;
-    private readonly SemaphoreSlim _gate = new(options.Value.MaxConcurrency, options.Value.MaxConcurrency);
+    private readonly BedrockClientOptions _c = clientOptions.Value;
+    private readonly SemaphoreSlim _gate = new(clientOptions.Value.MaxConcurrency, clientOptions.Value.MaxConcurrency);
 
     public ConverseStreamRequest BuildRequest(ModelRequest request)
     {
@@ -53,6 +56,9 @@ public sealed class BedrockModelClient(
         var maxTokens = Math.Min(request.MaxTokens ?? _o.MaxTokens, _o.MaxTokens);
         if (maxTokens < 1)
             throw new ArgumentOutOfRangeException(nameof(request), "MaxTokens must be at least 1.");
+        // Bedrock requires a tool config whenever the history holds tool blocks, and rejects an empty tool list.
+        if (request.Tools.Count == 0 && request.Messages.Any(m => m.Content?.Any(c => c.ToolUse is not null || c.ToolResult is not null) == true))
+            throw new ArgumentException("A conversation with tool-use or tool-result blocks must be sent with its tools.", nameof(request));
 
         return new ConverseStreamRequest
         {
@@ -60,7 +66,6 @@ public sealed class BedrockModelClient(
             System = system,
             Messages = [.. request.Messages],
             InferenceConfig = new InferenceConfiguration { MaxTokens = maxTokens },
-            // Bedrock rejects an empty tool list, so a request without tools carries no tool config at all.
             ToolConfig = request.Tools.Count == 0
                 ? null
                 : new ToolConfiguration { Tools = [.. request.Tools.Select(t => new Tool { ToolSpec = t })] },
@@ -70,14 +75,16 @@ public sealed class BedrockModelClient(
     public async IAsyncEnumerable<ModelStreamEvent> StreamAsync(ModelRequest request, [EnumeratorCancellation] CancellationToken ct = default)
     {
         var converse = BuildRequest(request);
-        await _gate.WaitAsync(ct);
-        try
+        var queueTimeout = TimeSpan.FromMilliseconds(_c.QueueTimeoutMs);
+        for (var attempt = 0; ; attempt++)
         {
-            for (var attempt = 0; ; attempt++)
+            if (!await _gate.WaitAsync(queueTimeout, ct))
+                throw new ModelBusyException(queueTimeout);
+            Exception? retryable = null;
+            try
             {
                 var assembler = new StreamAssembler(converse.ModelId);
                 var yielded = false;
-                Exception? retryable = null;
                 var sw = Stopwatch.StartNew();
                 await using var events = source.OpenAsync(converse, ct).GetAsyncEnumerator(ct);
                 while (true)
@@ -87,7 +94,7 @@ public sealed class BedrockModelClient(
                     {
                         more = await events.MoveNextAsync();
                     }
-                    catch (Exception ex) when (!yielded && attempt < _o.MaxRetries && IsRetryable(ex))
+                    catch (Exception ex) when (!yielded && attempt < _c.MaxRetries && IsRetryable(ex))
                     {
                         retryable = ex;
                         break;
@@ -103,29 +110,38 @@ public sealed class BedrockModelClient(
                         yield return output;
                     }
                 }
-                if (retryable is null) yield break;
-
-                var delay = BackoffDelay(attempt);
-                logger.LogWarning("Bedrock {ModelId} {Error}; retry {Attempt} of {Max} in {DelayMs} ms",
-                    converse.ModelId, retryable.GetType().Name, attempt + 1, _o.MaxRetries, (int)delay.TotalMilliseconds);
-                await Task.Delay(delay, ct);
             }
-        }
-        finally
-        {
-            _gate.Release();
+            finally
+            {
+                _gate.Release();
+            }
+            if (retryable is null) yield break;
+
+            var delay = BackoffDelay(attempt);
+            logger.LogWarning("Bedrock {ModelId} {Error}; retry {Attempt} of {Max} in {DelayMs} ms",
+                converse.ModelId, retryable.GetType().Name, attempt + 1, _c.MaxRetries, (int)delay.TotalMilliseconds);
+            await Task.Delay(delay, ct);
         }
     }
 
     /// <summary>Full jitter: a uniform delay between zero and the capped exponential bound.</summary>
     public TimeSpan BackoffDelay(int attempt)
     {
-        var bound = Math.Min(_o.RetryMaxDelayMs, _o.RetryBaseDelayMs * Math.Pow(2, attempt));
+        var bound = Math.Min(_c.RetryMaxDelayMs, _c.RetryBaseDelayMs * Math.Pow(2, attempt));
         return TimeSpan.FromMilliseconds(Random.Shared.NextDouble() * bound);
     }
 
-    public static bool IsRetryable(Exception ex) =>
-        ex is ThrottlingException or ServiceUnavailableException or ModelNotReadyException or InternalServerException;
+    /// <summary>
+    /// Transient errors, also when they arrive inside the event stream, where the SDK may wrap them in a
+    /// <see cref="BedrockRuntimeEventStreamException"/>.
+    /// </summary>
+    public static bool IsRetryable(Exception ex)
+    {
+        for (Exception? e = ex; e is not null; e = e.InnerException)
+            if (e is ThrottlingException or ServiceUnavailableException or ModelNotReadyException or InternalServerException or ModelStreamErrorException)
+                return true;
+        return false;
+    }
 
     private static SystemContentBlock CachePoint() => new() { CachePoint = new CachePointBlock { Type = CachePointType.Default } };
 
@@ -177,7 +193,9 @@ public sealed class BedrockModelClient(
                 case MessageStopEvent stop:
                     FlushText();
                     _stopReason = stop.StopReason?.Value ?? "";
-                    yield return new ModelMessageStop(_stopReason, new Message { Role = ConversationRole.Assistant, Content = [.. _content] });
+                    // Bedrock rejects an assistant message without content, so an empty answer has no message to append.
+                    yield return new ModelMessageStop(_stopReason,
+                        _content.Count == 0 ? null : new Message { Role = ConversationRole.Assistant, Content = [.. _content] });
                     break;
                 case ConverseStreamMetadataEvent { Usage: { } usage } meta:
                     yield return new ModelUsage(modelId,

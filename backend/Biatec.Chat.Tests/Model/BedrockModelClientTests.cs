@@ -32,13 +32,14 @@ public class BedrockModelClientTests
         }
     }
 
-    private static BedrockOptions Opts(int maxConcurrency = 8, int maxRetries = 3) => new()
+    private static BedrockClientOptions Opts(int maxConcurrency = 8, int maxRetries = 3, int queueTimeoutMs = 30000, int baseDelayMs = 1) => new()
     {
-        MaxTokens = 1000, MaxConcurrency = maxConcurrency, MaxRetries = maxRetries, RetryBaseDelayMs = 1, RetryMaxDelayMs = 5,
+        MaxConcurrency = maxConcurrency, MaxRetries = maxRetries, QueueTimeoutMs = queueTimeoutMs,
+        RetryBaseDelayMs = baseDelayMs, RetryMaxDelayMs = Math.Max(5, baseDelayMs),
     };
 
-    private static BedrockModelClient Client(IConverseStreamSource source, BedrockOptions? o = null) =>
-        new(source, Options.Create(o ?? Opts()), NullLogger<BedrockModelClient>.Instance);
+    private static BedrockModelClient Client(IConverseStreamSource source, BedrockClientOptions? c = null) =>
+        new(source, Options.Create(new BedrockOptions { MaxTokens = 1000 }), Options.Create(c ?? Opts()), NullLogger<BedrockModelClient>.Instance);
 
     private static ModelRequest Request(ModelProfile profile = ModelProfile.Anonymous, int? maxTokens = null, params ToolSpecification[] tools) => new()
     {
@@ -113,7 +114,7 @@ public class BedrockModelClientTests
         var stop = Assert.Single(events.OfType<ModelMessageStop>());
         Assert.Equal("end_turn", stop.StopReason);
         Assert.Equal(ConversationRole.Assistant, stop.Message.Role);
-        Assert.Equal("Hello", Assert.Single(stop.Message.Content).Text);
+        Assert.Equal("Hello", Assert.Single(stop.Message!.Content).Text);
         var usage = Assert.IsType<ModelUsage>(events[^1]);
         Assert.Equal(("eu.anthropic.claude-sonnet-4-5-20250929-v1:0", 10, 2, 900, 0, 42L),
             (usage.ModelId, usage.InputTokens, usage.OutputTokens, usage.CacheReadInputTokens, usage.CacheWriteInputTokens, usage.LatencyMs));
@@ -136,9 +137,9 @@ public class BedrockModelClientTests
         Assert.Equal(("tu-1", "wallet_balance", """{"address":"ABC","n":2}"""), (tool.ToolUseId, tool.Name, tool.InputJson));
         var stop = Assert.Single(events.OfType<ModelMessageStop>());
         Assert.Equal("tool_use", stop.StopReason);
-        Assert.Equal(2, stop.Message.Content.Count);
+        Assert.Equal(2, stop.Message!.Content.Count);
         Assert.Equal("Checking.", stop.Message.Content[0].Text);
-        var block = stop.Message.Content[1].ToolUse;
+        var block = stop.Message!.Content[1].ToolUse;
         Assert.Equal("tu-1", block.ToolUseId);
         Assert.Equal("ABC", block.Input.AsDictionary()["address"].AsString());
         Assert.Equal(2, block.Input.AsDictionary()["n"].AsLong());
@@ -202,7 +203,7 @@ public class BedrockModelClientTests
     [Fact]
     public void Backoff_uses_full_jitter_under_a_capped_exponential_bound()
     {
-        var c = Client(new FakeSource(), new BedrockOptions { RetryBaseDelayMs = 100, RetryMaxDelayMs = 1000 });
+        var c = Client(new FakeSource(), new BedrockClientOptions { RetryBaseDelayMs = 100, RetryMaxDelayMs = 1000 });
         for (var i = 0; i < 200; i++)
         {
             Assert.InRange(c.BackoffDelay(0).TotalMilliseconds, 0, 100);
@@ -247,6 +248,80 @@ public class BedrockModelClientTests
 
         var events = await Collect(client.StreamAsync(Request())).WaitAsync(TimeSpan.FromSeconds(5));
         Assert.NotEmpty(events);
+    }
+
+    [Fact]
+    public async Task Retries_errors_raised_inside_the_event_stream()
+    {
+        var wrapped = new BedrockRuntimeEventStreamException("stream error", new ThrottlingException("slow down"));
+        var source = new FakeSource([wrapped], [new ModelStreamErrorException("model hiccup")], TextAnswer);
+
+        var events = await Collect(Client(source).StreamAsync(Request()));
+
+        Assert.Equal(3, source.Calls);
+        Assert.Single(events.OfType<ModelUsage>());
+    }
+
+    [Fact]
+    public async Task Backoff_releases_the_concurrency_slot()
+    {
+        // One slot; the first call is throttled and backs off for up to 2 s. Another call gets the slot meanwhile.
+        var source = new FakeSource([new ThrottlingException("slow down")], TextAnswer);
+        var client = Client(source, Opts(maxConcurrency: 1, baseDelayMs: 2000));
+        var throttled = Task.Run(() => Collect(client.StreamAsync(Request())));
+        while (source.Calls == 0) await Task.Delay(5);
+
+        var other = await Collect(client.StreamAsync(Request())).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.NotEmpty(other);
+        await throttled;
+    }
+
+    [Fact]
+    public async Task Waiting_for_a_slot_times_out_with_model_busy()
+    {
+        var release = new TaskCompletionSource();
+        var source = new FakeSource(TextAnswer) { OnOpen = () => release.Task };
+        var client = Client(source, Opts(maxConcurrency: 1, queueTimeoutMs: 100));
+        var holder = Task.Run(() => Collect(client.StreamAsync(Request())));
+        while (source.Calls == 0) await Task.Delay(5);
+
+        await Assert.ThrowsAsync<ModelBusyException>(() => Collect(client.StreamAsync(Request())));
+
+        release.SetResult();
+        await holder;
+    }
+
+    [Fact]
+    public async Task Empty_answer_has_no_message_to_append()
+    {
+        var events = await Collect(Client(new FakeSource([Stop(StopReason.End_turn), Usage(1, 0)])).StreamAsync(Request()));
+
+        Assert.Null(Assert.Single(events.OfType<ModelMessageStop>()).Message);
+    }
+
+    [Fact]
+    public void Tool_history_without_tools_is_rejected_before_calling_bedrock()
+    {
+        var request = Request() with
+        {
+            Messages =
+            [
+                new Message { Role = ConversationRole.User, Content = [new ContentBlock { Text = "hi" }] },
+                new Message { Role = ConversationRole.Assistant, Content = [new ContentBlock { ToolUse = new ToolUseBlock { ToolUseId = "t", Name = "kb_search", Input = DocumentJson.FromJson("{}") } }] },
+            ],
+        };
+
+        Assert.Throws<ArgumentException>(() => Client(new FakeSource()).BuildRequest(request));
+    }
+
+    [Fact]
+    public void Document_json_keeps_integers_beyond_int64_exact()
+    {
+        var d = DocumentJson.FromJson("""{"amount":18446744073709551615,"neg":-9223372036854775809,"f":1.5e300}""").AsDictionary();
+        Assert.Equal("18446744073709551615", d["amount"].AsString());
+        Assert.Equal("-9223372036854775809", d["neg"].AsString());
+        Assert.Equal(1.5e300, d["f"].AsDouble());
     }
 
     [Fact]

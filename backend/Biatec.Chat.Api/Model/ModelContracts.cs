@@ -34,9 +34,9 @@ public sealed record ModelToolUse(string ToolUseId, string Name, string InputJso
 
 /// <summary>
 /// End of the assistant message. <c>Message</c> is the reconstructed assistant turn (text and tool-use blocks),
-/// ready to append to the conversation before sending tool results back.
+/// ready to append to the conversation before sending tool results back, or null when the model returned no content.
 /// </summary>
-public sealed record ModelMessageStop(string StopReason, Message Message) : ModelStreamEvent;
+public sealed record ModelMessageStop(string StopReason, Message? Message) : ModelStreamEvent;
 
 public sealed record ModelUsage(
     string ModelId,

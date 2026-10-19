@@ -15,6 +15,10 @@ public static class ModelRegistration
     /// </summary>
     public static IServiceCollection AddBedrockModel(this IServiceCollection services)
     {
+        services.AddOptions<BedrockClientOptions>()
+            .BindConfiguration(BedrockOptions.Section)
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
         services.TryAddSingleton<IAmazonBedrockRuntime>(sp => CreateBedrockRuntime(sp.GetRequiredService<IOptions<BedrockOptions>>().Value));
         services.TryAddSingleton<IConverseStreamSource, BedrockConverseStreamSource>();
         services.TryAddSingleton<IModelClient, BedrockModelClient>();
@@ -22,13 +26,13 @@ public static class ModelRegistration
     }
 
     /// <summary>
-    /// Adaptive mode keeps the SDK's client-side rate limiter, which slows down after throttling; the SDK's own
-    /// retries are off because <see cref="BedrockModelClient"/> retries with jitter and must not retry mid-stream.
+    /// The SDK's own retries are off: <see cref="BedrockModelClient"/> is the single retry layer, because it knows
+    /// whether anything was already streamed and must never retry after that.
     /// </summary>
     public static IAmazonBedrockRuntime CreateBedrockRuntime(BedrockOptions o) => new AmazonBedrockRuntimeClient(new AmazonBedrockRuntimeConfig
     {
         RegionEndpoint = RegionEndpoint.GetBySystemName(o.Region),
-        RetryMode = RequestRetryMode.Adaptive,
+        RetryMode = RequestRetryMode.Standard,
         MaxErrorRetry = 0,
     });
 }

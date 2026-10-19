@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Amazon.BedrockRuntime;
 using Amazon.BedrockRuntime.Model;
 using Biatec.Chat.Api.Config;
@@ -22,7 +23,12 @@ public static class BedrockSmoke
             .AddJsonFile("appsettings.json", optional: true)
             .AddEnvironmentVariables()
             .Build();
-        var o = config.GetSection(BedrockOptions.Section).Get<BedrockOptions>() ?? new BedrockOptions();
+        var section = config.GetSection(BedrockOptions.Section);
+        var o = section.Get<BedrockOptions>() ?? new BedrockOptions();
+        var c = section.Get<BedrockClientOptions>() ?? new BedrockClientOptions();
+        // Same rules the web host enforces at startup (eu-central-1, eu.anthropic.* ids).
+        Validator.ValidateObject(o, new ValidationContext(o), validateAllProperties: true);
+        Validator.ValidateObject(c, new ValidationContext(c), validateAllProperties: true);
         o.MaxTokens = Math.Min(o.MaxTokens, 200);
 
         var profile = args.Contains("--authenticated") ? ModelProfile.Authenticated : ModelProfile.Anonymous;
@@ -31,13 +37,14 @@ public static class BedrockSmoke
 
         var client = new BedrockModelClient(
             new BedrockConverseStreamSource(ModelRegistration.CreateBedrockRuntime(o)),
-            Options.Create(o), NullLogger<BedrockModelClient>.Instance);
+            Options.Create(o), Options.Create(c), NullLogger<BedrockModelClient>.Instance);
+        // Longer than the minimum cacheable prefix (1024 tokens on Sonnet 4.5, 4096 on Opus 4.5), so the second call reads the cache.
+        var rules = profile == ModelProfile.Authenticated ? 320 : 120;
         var request = new ModelRequest
         {
             Profile = profile,
-            // Long enough to pass the model's minimum cacheable prefix, so the second call reports cache reads.
             Persona = "You are the Biatec assistant for the Algorand DeFi platform. Answer briefly. " +
-                      string.Concat(Enumerable.Repeat("Never sign, move funds or change limits without an explicit user confirmation. ", 120)),
+                      string.Concat(Enumerable.Repeat("Never sign, move funds or change limits without an explicit user confirmation. ", rules)),
             Catalogue = "Capabilities in this tier: explain.platform, explain.dex, requestSignIn.",
             Messages = [new Message { Role = ConversationRole.User, Content = [new ContentBlock { Text = prompt }] }],
         };

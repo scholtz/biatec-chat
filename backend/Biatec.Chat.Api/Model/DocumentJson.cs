@@ -18,9 +18,13 @@ public static class DocumentJson
         JsonValueKind.Array => new Document(e.EnumerateArray().Select(FromElement).ToList()),
         JsonValueKind.String => new Document(e.GetString()!),
         JsonValueKind.Number when e.TryGetInt64(out var l) => new Document(l),
+        // Document has no ulong or decimal; an integer beyond Int64 (an Algorand uint64) keeps its exact digits as text.
+        JsonValueKind.Number when IsInteger(e.GetRawText()) => new Document(e.GetRawText()),
         JsonValueKind.Number => new Document(e.GetDouble()),
         JsonValueKind.True => new Document(true),
         JsonValueKind.False => new Document(false),
         _ => new Document(),
     };
+
+    private static bool IsInteger(string raw) => raw.TrimStart('-').All(char.IsAsciiDigit);
 }

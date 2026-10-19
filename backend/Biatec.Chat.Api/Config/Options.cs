@@ -35,16 +35,6 @@ public sealed class BedrockOptions
     public string AuthenticatedModelId { get; set; } = "eu.anthropic.claude-opus-4-5-20251101-v1:0";
 
     [Range(1, 64000)] public int MaxTokens { get; set; } = 4096;
-
-    /// <summary>Process-wide cap on concurrent Bedrock streams; the account's Claude rate limit is shared by the team.</summary>
-    [Range(1, 256)] public int MaxConcurrency { get; set; } = 8;
-
-    /// <summary>Retries after a throttled or transiently failed call, with exponential backoff and full jitter.</summary>
-    [Range(0, 10)] public int MaxRetries { get; set; } = 4;
-
-    [Range(1, 60000)] public int RetryBaseDelayMs { get; set; } = 500;
-
-    [Range(1, 120000)] public int RetryMaxDelayMs { get; set; } = 20000;
 }
 
 public sealed class RedisOptions
