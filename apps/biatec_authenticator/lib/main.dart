@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'config.dart';
+import 'enrollment/enrollment_screen.dart';
 import 'routes.dart';
 import 'screens/home_screen.dart';
 import 'theme.dart';
@@ -25,6 +26,7 @@ class AuthenticatorApp extends StatelessWidget {
       routes: {
         '/': (_) => HomeScreen(config: config),
         for (final route in appRoutes) route.path: (_) => route.build(),
+        '/enrollment': (_) => EnrollmentScreen(config: config),
       },
     );
   }
