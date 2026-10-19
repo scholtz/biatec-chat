@@ -60,7 +60,7 @@ public sealed class SimulateAndPolicyTests
 
     private sealed class ThrowingTransport : IAlgodTransport
     {
-        public Task<SimulateResponse> SimulateAsync(SimulateRequest request, CancellationToken ct) => throw new HttpRequestException("400 bad request");
+        public Task<SimulateResponse> SimulateAsync(SimulateRequest request, CancellationToken ct) => throw new ApiException("bad", 400, "resp", new Dictionary<string, IEnumerable<string>>(), null);
         public Task<ulong> GetLastRoundAsync(CancellationToken ct) => Task.FromResult(1UL);
     }
 
@@ -70,6 +70,26 @@ public sealed class SimulateAndPolicyTests
         var outcome = await new AlgodSimulateClient(new ThrowingTransport()).SimulateAsync([Pay()]);
         Assert.False(outcome.Success);
         Assert.Contains("400", outcome.FailureMessage);
+    }
+
+    private sealed class OutageTransport : IAlgodTransport
+    {
+        public Task<SimulateResponse> SimulateAsync(SimulateRequest request, CancellationToken ct) => throw new HttpRequestException("unreachable");
+        public Task<ulong> GetLastRoundAsync(CancellationToken ct) => Task.FromResult(1UL);
+    }
+
+    [Fact]
+    public async Task Simulate_Outage_PropagatesSoTheCallerCanRetry() =>
+        await Assert.ThrowsAsync<HttpRequestException>(() => new AlgodSimulateClient(new OutageTransport()).SimulateAsync([Pay()]));
+
+    [Fact]
+    public async Task Simulate_IsStrictAboutUnnamedResources_ByDefault()
+    {
+        var transport = new FakeTransport(new SimulateResponse { TxnGroups = [new SimulateTransactionGroupResult()] });
+        await new AlgodSimulateClient(transport).SimulateAsync([Pay()]);
+        Assert.False(transport.Last!.AllowUnnamedResources);
+        await new AlgodSimulateClient(transport).SimulateAsync([Pay()], allowUnnamedResources: true);
+        Assert.True(transport.Last!.AllowUnnamedResources);
     }
 
     [Fact]

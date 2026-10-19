@@ -296,4 +296,32 @@ public sealed class ActionPreviewServiceTests : IAsyncLifetime
         var ex = await Assert.ThrowsAsync<PreviewException>(() => svc.RebuildAsync(_conversation, p.Preview.Id, "{}", [Step("n", 100)]));
         Assert.Equal(PreviewError.InvalidState, ex.Error);
     }
+
+    [Fact]
+    public async Task StepsMustExpireInTheFuture()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var ex = await Assert.ThrowsAsync<PreviewException>(() => svc.CreateAsync(Spec(Step("h1", -1))));
+        Assert.Equal(PreviewError.InvalidSpec, ex.Error);
+    }
+
+    [Fact]
+    public async Task FinalStepFlag_IsRefusedWhileOtherStepsAreUnlanded_AndCompletedPreviewIsNotShownExpired()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var p = await svc.CreateAsync(Spec(Step("a", 700), Step("b", 700)));
+        await svc.ConfirmAsync(_conversation, p.Preview.Id, "a");
+
+        var ex = await Assert.ThrowsAsync<PreviewException>(() => svc.MarkStepLandedAsync(_conversation, p.Preview.Id, 0, ["T"], isFinalStep: true));
+        Assert.Equal(PreviewError.InvalidState, ex.Error);
+
+        await svc.MarkStepLandedAsync(_conversation, p.Preview.Id, 0, ["T0"]);
+        await svc.MarkStepLandedAsync(_conversation, p.Preview.Id, 1, ["T1"], isFinalStep: true);
+        _clock.Now = _clock.Now.AddHours(1);
+        var done = await svc.GetAsync(_conversation, p.Preview.Id);
+        Assert.Equal(ActionPreviewStatus.Completed, done.Preview.Status);
+        Assert.Equal("not-awaiting-confirmation", done.Countdown.DisabledReason);
+    }
 }

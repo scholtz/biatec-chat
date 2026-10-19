@@ -13,9 +13,17 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
     /// <summary>Landed means confirmed on chain; a submitted step's outcome is still unknown.</summary>
     private static bool IsLanded(StepStatus s) => s == StepStatus.Confirmed;
 
+    private void RequireFuture(IEnumerable<NewStepSpec> specs)
+    {
+        var now = clock.GetUtcNow();
+        if (specs.Any(s => s.ExpiresAt <= now))
+            throw new PreviewException(PreviewError.InvalidSpec, "A step must expire in the future.");
+    }
+
     public async Task<PreviewSnapshot> CreateAsync(NewPreviewSpec spec, CancellationToken ct = default)
     {
         if (spec.Steps.Count == 0) throw new PreviewException(PreviewError.InvalidSpec, "A preview needs at least one step.");
+        RequireFuture(spec.Steps);
         var preview = new ActionPreview
         {
             Id = Guid.NewGuid(),
@@ -94,8 +102,10 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
             throw new PreviewException(PreviewError.InvalidState, $"A {preview.Status} preview has no step in flight.");
         var step = steps.FirstOrDefault(s => s.Seq == seq)
             ?? throw new PreviewException(PreviewError.NotFound, $"Step {seq} not found.");
-        if (step.Status == StepStatus.Confirmed)
-            throw new PreviewException(PreviewError.InvalidState, $"Step {seq} already landed.");
+        if (step.Status is StepStatus.Confirmed or StepStatus.Expired or StepStatus.Cancelled or StepStatus.Failed)
+            throw new PreviewException(PreviewError.InvalidState, $"Step {seq} is {step.Status}.");
+        if (isFinalStep && steps.Any(x => x.Seq != seq && !IsLanded(x.Status)))
+            throw new PreviewException(PreviewError.InvalidState, "Other steps have not landed, so this is not the final step.");
         step.Status = StepStatus.Confirmed;
         step.TxIds = txIds.ToArray();
         // Between steps the preview stays InProgress; the last step completes it.
@@ -109,6 +119,7 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
     /// </summary>
     public async Task<PreviewSnapshot> AddNextStepAsync(Guid conversationId, Guid previewId, NewStepSpec spec, CancellationToken ct = default)
     {
+        RequireFuture([spec]);
         var (preview, steps) = await LoadAsync(conversationId, previewId, ct);
         if (preview.Status is ActionPreviewStatus.Cancelled or ActionPreviewStatus.Failed or ActionPreviewStatus.Expired or ActionPreviewStatus.Completed)
             throw new PreviewException(PreviewError.InvalidState, $"The preview is {preview.Status}.");
@@ -123,6 +134,7 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
         try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateException)
         {
+            db.Entry(step).State = EntityState.Detached;
             // The (PreviewId, Seq) unique index caught a concurrent AddNextStep.
             throw new PreviewException(PreviewError.InvalidState, "The next step was added concurrently.");
         }
@@ -138,6 +150,7 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
         decimal? predictedValueEur = null, bool predictedNeedsConsent = false, CancellationToken ct = default)
     {
         if (newSteps.Count == 0) throw new PreviewException(PreviewError.InvalidSpec, "A rebuilt preview needs at least one step.");
+        RequireFuture(newSteps);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var (old, oldSteps) = await LoadAsync(conversationId, previewId, ct);
         if (old.RebuiltAsPreviewId is not null)
@@ -176,8 +189,22 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
         created.ExpiresAt = steps.Where(s => s.Status == StepStatus.Pending).Min(s => s.ExpiresAt);
         db.ActionPreviews.Add(created);
         db.ActionSteps.AddRange(steps);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            await ClaimOldAsync();
+        }
+        catch
+        {
+            Detach(created, steps);
+            throw;
+        }
+        await tx.CommitAsync(ct);
+        Detach(old, oldSteps); // the bulk updates bypassed the tracker; do not leave stale entities behind
+        return Snapshot(created, steps, null);
 
+        async Task ClaimOldAsync()
+        {
         // Claim the old preview atomically so two concurrent rebuilds cannot both succeed.
         var claimed = await db.ActionPreviews
             .Where(p => p.Id == old.Id && p.RebuiltAsPreviewId == null)
@@ -187,9 +214,13 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
         await db.ActionSteps
             .Where(s => s.PreviewId == old.Id && s.Status == StepStatus.Pending)
             .ExecuteUpdateAsync(u => u.SetProperty(s => s.Status, StepStatus.Expired), ct);
-        await tx.CommitAsync(ct);
-        db.ChangeTracker.Clear(); // the bulk updates bypassed the tracker; do not leave stale entities behind
-        return Snapshot(created, steps, null);
+        }
+    }
+
+    private void Detach(ActionPreview p, IEnumerable<ActionStep> steps)
+    {
+        foreach (var s in steps) db.Entry(s).State = EntityState.Detached;
+        db.Entry(p).State = EntityState.Detached;
     }
 
     private async Task<(ActionPreview, List<ActionStep>)> LoadAsync(Guid conversationId, Guid previewId, CancellationToken ct)
@@ -213,8 +244,9 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
         var now = clock.GetUtcNow();
         var remaining = PreviewPolicy.RemainingSeconds(preview.ExpiresAt, now, sessionAbsoluteExpiry);
         string? reason = null;
-        if (preview.Status == ActionPreviewStatus.Expired || remaining == 0) reason = "expired";
+        if (preview.Status == ActionPreviewStatus.Expired) reason = "expired";
         else if (preview.Status != ActionPreviewStatus.Proposed) reason = "not-awaiting-confirmation";
+        else if (remaining == 0) reason = "expired";
         else if (!PreviewPolicy.CanConfirm(remaining)) reason = "too-close-to-expiry";
         return new PreviewSnapshot(preview, steps, new PreviewCountdown(remaining, reason is null, reason));
     }

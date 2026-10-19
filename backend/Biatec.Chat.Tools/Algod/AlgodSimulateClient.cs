@@ -1,3 +1,4 @@
+using Algorand;
 using Algorand.Algod;
 using Algorand.Algod.Model;
 using Algorand.Algod.Model.Transactions;
@@ -38,20 +39,21 @@ public sealed class SdkAlgodTransport(IDefaultApi api) : IAlgodTransport
 
 public interface IAlgodSimulateClient
 {
-    Task<SimulationOutcome> SimulateAsync(IReadOnlyList<Transaction> unsignedGroup, CancellationToken ct = default);
+    Task<SimulationOutcome> SimulateAsync(IReadOnlyList<Transaction> unsignedGroup, bool allowUnnamedResources = false, CancellationToken ct = default);
     Task<ulong> GetLastRoundAsync(CancellationToken ct = default);
 }
 
 /// <summary>Simulates an unsigned group on one network. Signatures are not needed and no state is changed.</summary>
 public sealed class AlgodSimulateClient(IAlgodTransport transport) : IAlgodSimulateClient
 {
-    public async Task<SimulationOutcome> SimulateAsync(IReadOnlyList<Transaction> unsignedGroup, CancellationToken ct = default)
+    public async Task<SimulationOutcome> SimulateAsync(IReadOnlyList<Transaction> unsignedGroup, bool allowUnnamedResources = false, CancellationToken ct = default)
     {
         if (unsignedGroup.Count == 0) throw new GroupException("Nothing to simulate.");
         var request = new SimulateRequest
         {
             AllowEmptySignatures = true,
-            AllowUnnamedResources = true,
+            // Strict by default: a group missing the references it needs must not show as a success.
+            AllowUnnamedResources = allowUnnamedResources,
             TxnGroups =
             [
                 new SimulateRequestTransactionGroup
@@ -62,10 +64,11 @@ public sealed class AlgodSimulateClient(IAlgodTransport transport) : IAlgodSimul
         };
         SimulateResponse response;
         try { response = await transport.SimulateAsync(request, ct); }
-        catch (Exception e) when (e is not OperationCanceledException)
+        catch (ApiException e)
         {
-            // algod rejects a malformed group with an HTTP error; that is a failed simulation, not a crash.
-            return new SimulationOutcome(false, $"algod simulate request failed: {e.Message}", [], 0, null, unsignedGroup.Count);
+            // algod rejects a malformed group with an HTTP 4xx; that is a failed simulation. Outages (timeouts,
+            // DNS, 5xx-as-HttpRequestException) propagate so the caller can retry; no raw message is surfaced.
+            return new SimulationOutcome(false, $"algod rejected the group (HTTP {e.StatusCode})", [], 0, null, unsignedGroup.Count);
         }
         var group = response.TxnGroups?.FirstOrDefault();
         if (group is null) return new SimulationOutcome(false, "algod returned no simulation result", [], response.LastRound, null, unsignedGroup.Count);
@@ -94,7 +97,7 @@ public sealed class AlgodClientFactory
         _create = name =>
         {
             var o = _networks[name];
-            var http = httpClient?.Invoke(o) ?? new HttpClient { BaseAddress = new Uri(o.BaseUrl) };
+            var http = httpClient?.Invoke(o) ?? new HttpClient { BaseAddress = new Uri(o.BaseUrl), Timeout = TimeSpan.FromSeconds(15) };
             if (o.Token is { Length: > 0 }) {
                 http.DefaultRequestHeaders.Remove("X-Algo-API-Token");
                 http.DefaultRequestHeaders.TryAddWithoutValidation("X-Algo-API-Token", o.Token);
