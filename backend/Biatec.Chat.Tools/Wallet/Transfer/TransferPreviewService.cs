@@ -35,6 +35,7 @@ public sealed class TransferPreviewService(
     ActionPreviewService previews,
     ChatDbContext db,
     TimeProvider clock,
+    AlgodClientFactory? algod = null,
     IAlgodSimulateClient? simulate = null)
 {
     private readonly TransferStepBuilder _builder = new(mcp);
@@ -60,7 +61,9 @@ public sealed class TransferPreviewService(
         if (held is null)
             return TransferOutcome.Error(request.AssetId == 0 ? "The source address holds no ALGO." : $"The source address does not hold asset {request.AssetId}.");
         var symbol = request.AssetId == 0 ? "ALGO" : string.IsNullOrWhiteSpace(held.Symbol) ? $"asset {request.AssetId}" : held.Symbol!;
-        var decimals = held.Decimals ?? 0;
+        if (held.Decimals is null)
+            return TransferOutcome.Error($"The number of decimals of {symbol} is unknown, so the amount cannot be shown correctly. Nothing was previewed.");
+        var decimals = held.Decimals.Value;
         if (BigInteger.Parse(request.Amount, CultureInfo.InvariantCulture) > BigInteger.Parse(held.Amount, CultureInfo.InvariantCulture))
             return TransferOutcome.Error($"The source address holds only {TransferPlanner.FormatAmount(held.Amount, decimals)} {symbol}, less than the requested {TransferPlanner.FormatAmount(request.Amount, decimals)}.");
 
@@ -156,6 +159,14 @@ public sealed class TransferPreviewService(
         return new TransferOutcome(snap, request, symbol, decimals, plan, msg, Simulation: built.Simulation);
     }
 
+    private IAlgodSimulateClient? SimulatorFor(string stepNetwork)
+    {
+        if (simulate is not null) return simulate;
+        if (algod is null) return null;
+        try { return algod.For(stepNetwork); }
+        catch (ArgumentException) { return null; }
+    }
+
     private sealed record BuiltSpec(NewStepSpec Spec, string? Simulation, bool SimulationFailed);
 
     private async Task<BuiltSpec> BuildStepAsync(McpCallContext ctx, TransferRequest request, TransferStepPlan step, CancellationToken ct)
@@ -164,14 +175,15 @@ public sealed class TransferPreviewService(
         string? simText = null;
         var failed = false;
         ulong currentRound = built.FirstValid;
-        if (simulate is not null)
+        var sim = SimulatorFor(request.StepNetwork);
+        if (sim is not null)
         {
             try
             {
-                var sim = await simulate.SimulateAsync(built.Group.Transactions, ct: ct);
-                simText = sim.Summary;
-                failed = !sim.Success;
-                currentRound = await simulate.GetLastRoundAsync(ct);
+                var outcome = await sim.SimulateAsync(built.Group.Transactions, ct: ct);
+                simText = outcome.Summary;
+                failed = !outcome.Success;
+                currentRound = await sim.GetLastRoundAsync(ct);
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {

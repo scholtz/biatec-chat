@@ -34,7 +34,7 @@ public sealed class TransferStepBuilder(IBiatecMcpClient mcp)
         var txns = Decode(result);
         if (txns.Count != 1) throw new TransferException("The builder did not return exactly one transaction.");
         var tx = txns[0];
-        Verify(tx, step);
+        Verify(tx, step, network);
         var group = AlgorandGroup.Ensure([tx]);
         return new BuiltTransferStep(group, group.Transactions[0]);
     }
@@ -94,11 +94,17 @@ public sealed class TransferStepBuilder(IBiatecMcpClient mcp)
         return false;
     }
 
-    internal static void Verify(Transaction tx, TransferStepPlan step)
+    /// <summary>Highest fee accepted for a single transaction: ten times the network minimum (1000 microALGO).</summary>
+    internal const ulong MaxFee = 10_000;
+
+    internal static void Verify(Transaction tx, TransferStepPlan step, string network)
     {
         void Fail(string what) => throw new TransferException($"The built transaction does not match the request ({what}); nothing was previewed.");
         if (A(tx.Sender) != step.Sender) Fail("sender");
         if (!IsZero(tx.RekeyTo)) Fail("rekey");
+        var genesis = network == "mainnet" ? "mainnet-v1.0" : "testnet-v1.0";
+        if (tx.GenesisId != genesis) Fail("network");
+        if (tx.Fee > MaxFee) Fail("fee");
         if (HasForbiddenField(tx)) Fail("close-out or clawback");
         switch (tx)
         {
@@ -111,7 +117,6 @@ public sealed class TransferStepBuilder(IBiatecMcpClient mcp)
                 if (axfer.XferAsset != step.AssetId) Fail("asset");
                 if (A(axfer.AssetReceiver) != step.Receiver) Fail("receiver");
                 if (axfer.AssetAmount.ToString() != step.Amount) Fail("amount");
-                break;
                 break;
             case AssetAcceptTransaction accept when step.Kind == TransferStepKind.OptIn:
                 // The SDK reads a zero-amount transfer to oneself as an opt-in.

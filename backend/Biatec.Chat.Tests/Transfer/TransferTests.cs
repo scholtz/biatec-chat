@@ -137,11 +137,75 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
 
     private static McpCallContext Ctx => new("t1", "sess", ["openid"]);
 
-    private (TransferPreviewService Service, ActionPreviewService Previews, ChatDbContext Db) NewService()
+    private (TransferPreviewService Service, ActionPreviewService Previews, ChatDbContext Db) NewService(IAlgodSimulateClient? sim = null)
     {
         var db = NewContext();
         var previews = new ActionPreviewService(db, _clock);
-        return (new TransferPreviewService(_mcp, previews, db, _clock), previews, db);
+        return (new TransferPreviewService(_mcp, previews, db, _clock, simulate: sim), previews, db);
+    }
+
+    private sealed class FakeSim(bool success) : IAlgodSimulateClient
+    {
+        public Task<SimulationOutcome> SimulateAsync(IReadOnlyList<Transaction> g, bool allowUnnamedResources = false, CancellationToken ct = default) =>
+            Task.FromResult(new SimulationOutcome(success, success ? null : "asset missing", success ? [] : [0UL], 1005, null, g.Count));
+        public Task<ulong> GetLastRoundAsync(CancellationToken ct = default) => Task.FromResult(1005UL);
+    }
+
+    [Fact]
+    public async Task A_failing_simulation_means_no_preview()
+    {
+        FundMine();
+        var (svc, _, db) = NewService(new FakeSim(false));
+        var r = await svc.StartAsync(Ctx, _conversation, Req(Stranger), default);
+        Assert.True(r.IsError);
+        Assert.Contains("would fail on chain", r.Message);
+        Assert.Equal(0, await db.ActionPreviews.CountAsync(x => x.ConversationId == _conversation));
+    }
+
+    [Fact]
+    public async Task A_passing_simulation_puts_its_summary_on_the_preview()
+    {
+        FundMine();
+        var (svc, _, _) = NewService(new FakeSim(true));
+        var r = await svc.StartAsync(Ctx, _conversation, Req(Stranger), default);
+        Assert.False(r.IsError, r.Message);
+        Assert.Contains("Simulation succeeded", r.Simulation);
+        Assert.Contains("Simulation succeeded", TransferCard.Map(r).Steps[0].SimulationSummary);
+    }
+
+    [Fact]
+    public async Task The_factory_picks_the_simulate_client_of_the_request_network()
+    {
+        FundMine();
+        var db = NewContext();
+        var factory = new AlgodClientFactory(new Dictionary<string, IAlgodSimulateClient>
+        {
+            ["algorand-testnet"] = new FakeSim(false), ["algorand-mainnet"] = new FakeSim(true),
+        });
+        var svc = new TransferPreviewService(_mcp, new ActionPreviewService(db, _clock), db, _clock, factory);
+        var r = await svc.StartAsync(Ctx, _conversation, Req(Stranger), default);
+        Assert.True(r.IsError);
+    }
+
+    [Fact]
+    public async Task An_asa_with_unknown_decimals_is_refused()
+    {
+        _mcp.Balances[Mine.EncodeAsString()] = $"{{\"balances\":[{{\"assetId\":0,\"amount\":\"10000000\"}},{{\"assetId\":{Usdc},\"symbol\":\"USDC\",\"amount\":\"50000000\"}}]}}";
+        var (svc, _, _) = NewService();
+        var r = await svc.StartAsync(Ctx, _conversation, Req(Stranger, Usdc, "2500000"), default);
+        Assert.True(r.IsError);
+        Assert.Contains("decimals", r.Message);
+    }
+
+    [Fact]
+    public void ParseRequest_normalises_the_amount_and_rejects_a_negative_asset()
+    {
+        var args = Args(Stranger, amount: "0100");
+        var req = WalletTransferExecutor.ParseRequest(args, out _);
+        Assert.Equal("100", req!.Amount);
+        args["assetId"] = -5;
+        Assert.Null(WalletTransferExecutor.ParseRequest(args, out var problem));
+        Assert.NotNull(problem);
     }
 
     private static string Algo(string addr, string micro) => $"{{\"balances\":[{{\"assetId\":0,\"amount\":\"{micro}\"}}]}}";
@@ -364,6 +428,8 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
         [(Func<Transaction, Transaction>)(t => { ((PaymentTransaction)t).CloseRemainderTo = Stranger; return t; }), "close-out"],
         [(Func<Transaction, Transaction>)(t => { t.RekeyTo = Stranger; return t; }), "rekey"],
         [(Func<Transaction, Transaction>)(t => { t.Sender = Mine2; return t; }), "sender"],
+        [(Func<Transaction, Transaction>)(t => { t.GenesisId = "mainnet-v1.0"; return t; }), "network"],
+        [(Func<Transaction, Transaction>)(t => { t.Fee = 5_000_000; return t; }), "fee"],
     ];
 
     [Theory]

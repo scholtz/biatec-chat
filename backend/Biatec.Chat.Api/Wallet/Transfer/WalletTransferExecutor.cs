@@ -6,6 +6,7 @@ using Biatec.Chat.Api.Contracts;
 using Biatec.Chat.Api.Orchestration;
 using Biatec.Chat.Core.Previews;
 using Biatec.Chat.Tools.Mcp;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Biatec.Chat.Tools.Wallet.Transfer;
 using CoreStatus = Biatec.Chat.Core.Data.ActionPreviewStatus;
 using CoreStep = Biatec.Chat.Core.Data.ActionStep;
@@ -58,7 +59,7 @@ public sealed class WalletTransferExecutor(IServiceScopeFactory scopes) : IToolE
         }
     }
 
-    internal static TransferRequest? ParseRequest(JsonNode arguments, out string? problem)
+    public static TransferRequest? ParseRequest(JsonNode arguments, out string? problem)
     {
         problem = null;
         var network = (string?)arguments["network"];
@@ -77,7 +78,12 @@ public sealed class WalletTransferExecutor(IServiceScopeFactory scopes) : IToolE
         ulong assetId = 0;
         if (arguments["assetId"] is { } a)
         {
-            try { assetId = (ulong)a.GetValue<long>(); }
+            try
+            {
+                var raw = a.GetValue<long>();
+                if (raw < 0) { problem = "Invalid asset ID."; return null; }
+                assetId = (ulong)raw;
+            }
             catch (Exception e) when (e is InvalidOperationException or FormatException) { problem = "Invalid asset ID."; return null; }
         }
         var amount = (string?)arguments["amount"];
@@ -86,7 +92,7 @@ public sealed class WalletTransferExecutor(IServiceScopeFactory scopes) : IToolE
             problem = "The amount must be a positive whole number of base units.";
             return null;
         }
-        return new TransferRequest(network, from!, to!, assetId, amount);
+        return new TransferRequest(network, from!, to!, assetId, amt.ToString(CultureInfo.InvariantCulture));
     }
 
     private static bool ValidAddress(string? s)
@@ -197,6 +203,13 @@ public static class WalletTransferRegistration
     /// <summary>Registers the wallet.transfer executor. Needs AddBiatecMcp and AddConfirm (for <see cref="ActionPreviewService"/>).</summary>
     public static IServiceCollection AddWalletTransferTools(this IServiceCollection services)
     {
+        // One algod simulate client per network, from the Algod:Networks configuration (keyed "algorand-<name>").
+        services.TryAddSingleton(sp =>
+        {
+            var nets = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Biatec.Chat.Api.Config.AlgodOptions>>().Value.Networks
+                .ToDictionary(n => "algorand-" + n.Key, n => new Biatec.Chat.Tools.Algod.AlgodNetworkOptions(n.Value.Url, n.Value.Token), StringComparer.OrdinalIgnoreCase);
+            return new Biatec.Chat.Tools.Algod.AlgodClientFactory(nets);
+        });
         services.AddScoped<TransferPreviewService>();
         services.AddSingleton<IToolExecutor, WalletTransferExecutor>();
         return services;
