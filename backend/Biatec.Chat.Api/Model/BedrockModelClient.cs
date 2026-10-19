@@ -114,7 +114,9 @@ public sealed class BedrockModelClient(
             }
             else
             {
-                pumpCts.Cancel();
+                // Cancel runs the response-abort callback inline; whatever it throws must not skip awaiting the pump.
+                try { pumpCts.Cancel(); }
+                catch (AggregateException ex) { logger.LogDebug(ex, "Aborting the Bedrock stream threw"); }
                 await pump;
                 pumpCts.Dispose();
             }
@@ -242,6 +244,8 @@ public sealed class BedrockModelClient(
     /// </summary>
     public static bool IsRetryable(Exception ex, CancellationToken ct)
     {
+        // Once the caller cancelled, a failing read is the abort itself, not a transient fault.
+        if (ct.IsCancellationRequested) return false;
         // Only the SDK's stream wrapper is looked through; any other error that merely wraps a transient one isn't.
         while (ex is BedrockRuntimeEventStreamException { InnerException: { } inner }) ex = inner;
         return ex switch

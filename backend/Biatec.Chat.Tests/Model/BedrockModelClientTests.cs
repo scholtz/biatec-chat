@@ -334,7 +334,7 @@ public class BedrockModelClientTests
         var source = new FakeSource([new ThrottlingException("slow down")], TextAnswer);
         var client = Client(source, Opts(maxConcurrency: 1, baseDelayMs: 2000));
         var throttled = Task.Run(() => Collect(client.StreamAsync(Request())));
-        while (source.Calls == 0) await Task.Delay(5);
+        await Until(() => source.Calls > 0);
 
         var other = await Collect(client.StreamAsync(Request())).WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -349,7 +349,7 @@ public class BedrockModelClientTests
         var source = new FakeSource(TextAnswer) { OnOpen = () => release.Task };
         var client = Client(source, Opts(maxConcurrency: 1, queueTimeoutMs: 100));
         var holder = Task.Run(() => Collect(client.StreamAsync(Request())));
-        while (source.Calls == 0) await Task.Delay(5);
+        await Until(() => source.Calls > 0);
 
         await Assert.ThrowsAsync<ModelBusyException>(() => Collect(client.StreamAsync(Request())));
 
@@ -447,6 +447,7 @@ public class BedrockModelClientTests
         using var cts = new CancellationTokenSource();
         cts.Cancel();
         Assert.False(BedrockModelClient.IsRetryable(new OperationCanceledException(cts.Token), cts.Token));
+        Assert.False(BedrockModelClient.IsRetryable(new IOException("aborted by the caller"), cts.Token));
     }
 
     [Fact]
@@ -638,7 +639,7 @@ public class BedrockModelClientTests
         var source = new FakeSource(TextAnswer) { OnOpen = () => release.Task };
         var client = Client(source, Opts(maxConcurrency: 1, queueTimeoutMs: 200));
         var opus = Task.Run(() => Collect(client.StreamAsync(Request(ModelProfile.Authenticated))));
-        while (source.Calls == 0) await Task.Delay(5);
+        await Until(() => source.Calls > 0);
 
         await Assert.ThrowsAsync<ModelBusyException>(() => Collect(client.StreamAsync(Request(ModelProfile.Anonymous))));
 
@@ -657,6 +658,16 @@ public class BedrockModelClientTests
         Assert.True(a[3].AsBool());
         Assert.True(a[4].IsNull());
         Assert.False(d["b"].AsDictionary()["c"].AsBool());
+    }
+
+    private static async Task Until(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline) Assert.Fail("condition not reached within 10 s");
+            await Task.Delay(5);
+        }
     }
 
     private static void InterlockedMax(ref int target, int value)
