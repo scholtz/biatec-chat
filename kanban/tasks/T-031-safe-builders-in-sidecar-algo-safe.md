@@ -1,7 +1,7 @@
 ---
 id: T-031
 title: Safe builders in sidecar (algo-safe)
-status: in-progress
+status: done
 priority: P1
 epic: "Safe"
 blocked_by: [T-027]
@@ -51,9 +51,12 @@ pnpm --filter builders test
 
 ## Review
 
+- 2026-10-19 21:22 · approve · PR #95 merged into main @ 9be5b13 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 20:10 · kanban-board · blocked → backlog · blockers done: T-027
 - 2026-10-19 20:38 · scholtz · taken · status stays backlog
 - 2026-10-19 20:38 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-19 21:22 · user · in-progress → done · PR #95 merged into main @ 9be5b13 (synced by kanban-sync)
