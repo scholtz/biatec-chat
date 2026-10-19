@@ -11,7 +11,8 @@ Arguments: `$ARGUMENTS`
 
 **No arguments: list.** For every task in `review`, show its ID, title, branch, time in review, the Hand-off
 summary, the verification results, any unmet acceptance criteria, open questions, and
-`git diff --stat main...task/T-###`. Suggest an order: P0 first, then tasks that unblock the most other tasks.
+`git diff --stat main...task/T-###`, and what it unblocks (`kanban/scripts/board.py unblocks T-###`). Suggest an
+order: P0 first, then tasks that make the most other tasks ready.
 Change nothing.
 
 **`T-### approve`:**
@@ -24,8 +25,10 @@ Change nothing.
 4. Append to the **Review** section: `- <YYYY-MM-DD HH:MM> · approve · <any extra text from the arguments>`.
    Set `status: done` and update `updated`; keep `owner` and `branch` as the record. Append
    `- <now> · user · review → done · approved, merged @ <merge commit>`.
-5. Run the `/kanban-board` steps (they unblock dependants), commit `kanban: T-### done`, and report which tasks
-   became ready. The user can run `/kanban-dispatch` to start them.
+5. Run `kanban/scripts/board.py sync` (it unblocks dependants and regenerates the board), commit
+   `kanban: T-### done`, and report every `unblocked: T-###` line. Cross-check with `board.py unblocks T-###`: each
+   task listed as "ready once it is done" must now be in `backlog`. The user can run `/kanban-dispatch` to start
+   them.
 
 **`T-### changes <feedback>`:**
 1. The task must be in `review`.
@@ -35,5 +38,5 @@ Change nothing.
    `- <now> · user · review → backlog · changes requested (resume on existing branch)`. This deliberately relaxes
    the `review → in-progress` transition so that the next `/kanban-dispatch` or `/kanban-next` picks the task up
    again on its existing branch, with the Review feedback as extra scope.
-4. Regenerate the board, commit `kanban: T-### changes requested`, and say how to continue: `/kanban-dispatch`, or
+4. Run `kanban/scripts/board.py sync`, commit `kanban: T-### changes requested`, and say how to continue: `/kanban-dispatch`, or
    `/kanban-next T-###`.

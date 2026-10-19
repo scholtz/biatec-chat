@@ -1,7 +1,9 @@
 using Biatec.Chat.Api.Auth;
+using Biatec.Chat.Api.Auth.Elevation;
 using Biatec.Chat.Api.Config;
 using Biatec.Chat.Api.Contracts;
 using Biatec.Chat.Api.Data;
+using Biatec.Chat.Api.Evidence.Jwks;
 using Biatec.Chat.Api.Health;
 using Biatec.Chat.Api.Onboarding;
 using Biatec.Chat.Api.Sessions;
@@ -20,6 +22,9 @@ builder.Services.AddTenancy();
 builder.Services.AddSessions();
 builder.Services.AddOnboarding(builder.Configuration);
 
+builder.Services.AddScopeElevation();
+builder.Services.AddEvidence(builder.Configuration);
+
 var app = builder.Build();
 await app.MigrateDevelopmentDatabaseAsync();
 await app.SeedTenantsAsync();
@@ -33,6 +38,9 @@ app.MapContractCatalog();
 app.MapSessions();
 app.MapAuth();
 app.MapOnboarding();
+
+app.MapElevation();
+app.MapEvidenceJwks();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();

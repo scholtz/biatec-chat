@@ -1,0 +1,57 @@
+# Keeps the kanban board in step with main: a merged task PR (merge, squash or rebase) marks the task done,
+# dependants whose blockers are all done move to backlog, and kanban/BOARD.md is regenerated.
+# The same logic runs locally via `kanban/scripts/board.py sync`; see kanban/README.md.
+name: kanban-sync
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: kanban-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TZ: Europe/Prague
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Sync board and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python3 kanban/scripts/board.py sync
+            if git diff --quiet -- kanban; then
+              echo "board already in sync"
+              exit 0
+            fi
+            git add kanban
+            git commit -m "kanban: sync board (merged tasks done, unblock dependants)"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "push rejected (main moved); retrying from the new main"
+            sleep $((attempt * 5))
+          done
+          echo "::error::could not push the kanban sync after 5 attempts"
+          exit 1
+
+      - name: Report invariant violations
+        if: always()
+        run: |
+          python3 kanban/scripts/board.py check 2>&1 | sed 's/^warning: /::warning::/' || true
