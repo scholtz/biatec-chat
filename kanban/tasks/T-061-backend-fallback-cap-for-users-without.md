@@ -6,6 +6,8 @@ priority: P3
 epic: "Consent & authenticator"
 blocked_by: [T-025, T-049]
 area: ["backend/Biatec.Chat.Tools/Caps/NoDevice/**"]
+parallel: yes
+conflicts_with: []
 issue: "#62"
 branch: ""
 owner: ""
@@ -33,6 +35,10 @@ Implement the rule 4 fallback until Biatec OIDC enforces it.
   store; refusal of above-threshold signing with a message that offers enrollment; a config switch to turn it off
   once Biatec OIDC ships the real rule.
 - Out: The OIDC-side implementation (record it in `docs/required-changes-biatec-oidc.md`, T-044).
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

@@ -6,6 +6,8 @@ priority: P0
 epic: "Widget"
 blocked_by: [T-005, T-039]
 area: ["packages/chat-widget/src/transport/**"]
+parallel: no
+conflicts_with: [T-036]
 issue: "#41"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ A client layer the UI uses without caring which transport is active.
 
 - In: Transport module with cookie and public implementations, probe logic, adoption call on switch, SSE parser using chat-protocol types, keepalive timer.
 - Out: UI.
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-036: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

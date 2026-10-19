@@ -1,11 +1,13 @@
 ---
 id: T-027
 title: Node builder sidecar for CLAMM and algo-safe
-status: blocked
+status: backlog
 priority: P0
 epic: "DEX"
 blocked_by: [T-001]
 area: ["builders/**", "docker-compose.yml", "backend/Biatec.Chat.Tools/Builders/**"]
+parallel: no
+conflicts_with: [T-057]
 issue: "#28"
 branch: ""
 owner: ""
@@ -29,6 +31,10 @@ Internal HTTP service the .NET Tools call to build unsigned groups.
 - In: builders/ Node 22 TypeScript service (Hono), internal shared-secret auth, health, JSON in/out of base64 unsigned transactions, network config (algod per network), Dockerfile, compose service (uncomment placeholder), .NET typed client in backend/Biatec.Chat.Tools/Builders.
 - Out: Specific builders (T-028, T-030).
 
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-057: they change the same files, and running them together causes merge conflicts or broken behaviour.
+
 ## Acceptance criteria
 
 - [ ] pnpm --filter builders test green
@@ -47,3 +53,4 @@ pnpm --filter builders test; docker compose up builders
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 18:21 · kanban-board · blocked → backlog · blockers done: T-001

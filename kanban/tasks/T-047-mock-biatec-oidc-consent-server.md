@@ -6,6 +6,8 @@ priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-046]
 area: ["packages/consent-protocol/mock-oidc/**"]
+parallel: yes
+conflicts_with: []
 issue: "#48"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ A local OIDC stand-in for consent, used by backend tests, authenticator and conf
 
 - In: Node TS server implementing the endpoints and rules needed (binding code, 3 attempts, 300 s validity, single use, group-hash binding), seeded test users and clients, Dockerfile.
 - Out: Real identity providers.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

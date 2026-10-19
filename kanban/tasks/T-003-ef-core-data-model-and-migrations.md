@@ -6,6 +6,8 @@ priority: P0
 epic: "Foundation"
 blocked_by: [T-002]
 area: ["backend/Biatec.Chat.Core/Data/**", "backend/Biatec.Chat.Api/Migrations/**"]
+parallel: yes
+conflicts_with: []
 issue: "#4"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ PostgreSQL schema for all entities with migrations.
 
 - In: Entities and DbContext in Core with the listed fields, indexes for hot lookups (conversation+seq, session id, authReqId), initial migration, auto-migrate in Development.
 - Out: Business logic using the entities.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

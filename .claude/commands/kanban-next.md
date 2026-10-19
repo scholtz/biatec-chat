@@ -10,7 +10,8 @@ tasks in parallel, use `/kanban-dispatch` instead.
    the lowest ID. Before claiming, re-read the file and confirm that:
    - `status: backlog` and `owner` is empty;
    - every ID in `blocked_by` has `status: done` (read those files; don't trust `BOARD.md`);
-   - its `area` doesn't overlap any `in-progress` task.
+   - its `area` doesn't overlap any `in-progress` task;
+   - if it is `parallel: no`, no task in its `conflicts_with` is `in-progress`. Otherwise pick the next task.
 
    If nothing is ready, run the `/kanban-board` steps, report what is blocked on what, and stop.
 2. **Claim on `main`.** Set `status: in-progress`, `owner: session-YYYYMMDD-HHMM`, `branch: task/T-###` and

@@ -6,6 +6,8 @@ priority: P1
 epic: "Sessions & auth"
 blocked_by: [T-015]
 area: ["backend/Biatec.Chat.Api/Public/**"]
+parallel: no
+conflicts_with: [T-009, T-022, T-032, T-036, T-060]
 issue: "#39"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Anonymous chat on any page, and continuity when the cookie transport becomes ava
 
 - In: Endpoint, PublicConversationState, rate limiting in Redis, origin-registered query, adoption endpoint on cookie transport, refusals with distinct codes.
 - Out: Ingress-level config.
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-009, T-022, T-032, T-036, T-060: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

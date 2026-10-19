@@ -6,6 +6,8 @@ priority: P0
 epic: "Sessions & auth"
 blocked_by: [T-003]
 area: ["backend/Biatec.Chat.Api/Tenancy/**", "backend/Biatec.Chat.Api/Security/**"]
+parallel: yes
+conflicts_with: []
 issue: "#7"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Every request knows its tenant and is origin-checked.
 
 - In: Tenant lookup by Host (seed the Biatec Chat tenant: chat.biatec.io, origins web.biatec.io, dex.biatec.io; plus localhost dev tenant), exact-origin CORS with credentials, CSRF middleware (custom header + Origin in allow-list) on non-GET, clientKey validation on cookie transport.
 - Out: Self-service onboarding (T-045).
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

@@ -1,13 +1,15 @@
 ---
 id: T-004
 title: RFC 8785 canonical JSON and hashing library
-status: blocked
+status: done
 priority: P0
 epic: "Foundation"
 blocked_by: [T-001]
 area: ["backend/Biatec.Chat.Core/Canonical/**", "backend/Biatec.Chat.Tests/Canonical/**"]
+parallel: yes
+conflicts_with: []
 issue: "#5"
-branch: ""
+branch: "task/T-004"
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#evidence-record"
 created: 2026-10-19
@@ -29,6 +31,10 @@ One shared, tested implementation of JCS + SHA-256 used by previews, evidence an
 - In: JCS serializer for JsonNode/objects, Sha256Hex helper, guard that rejects raw large integers, RFC 8785 test vectors.
 - Out: Evidence chain logic itself.
 
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
+
 ## Acceptance criteria
 
 - [ ] All RFC 8785 appendix test vectors pass
@@ -47,3 +53,4 @@ dotnet test --filter Canonical
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 18:21 · user · blocked → done · PR #64 merged into main on GitHub (board synced after the merge)

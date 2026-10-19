@@ -6,6 +6,8 @@ priority: P0
 epic: "Sessions & auth"
 blocked_by: [T-007, T-008]
 area: ["backend/Biatec.Chat.Api/Auth/**"]
+parallel: no
+conflicts_with: [T-038]
 issue: "#10"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Users sign in without any token reaching the browser.
 
 - In: PopupAuthRequest with one-time nonce; /auth/login (Sec-Fetch checks, nonce required), redirect to oidc.biatec.io/authorize scope openid profile email; /auth/callback verifies state and session, exchanges code with secret and verifier and resource, validates id_token, rotates session id, vaults tokens, marks popup complete; popup status endpoint. Mock OIDC in Tests.
 - Out: Scope elevation (T-010), logout (T-011).
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-038: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

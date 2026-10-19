@@ -6,6 +6,8 @@ priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-022, T-047]
 area: ["backend/Biatec.Chat.Tools/Consent/**"]
+parallel: no
+conflicts_with: [T-014, T-024, T-025, T-035, T-057]
 issue: "#50"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Phone approval completes the confirm path.
 
 - In: ConsentRequest lifecycle, CIBA polling, retry signing, consent status SSE, receipt into evidence, prediction fallback text, configurable OIDC base URL so tests use the mock.
 - Out: Real OIDC support (handoff in T-044).
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-014, T-024, T-025, T-035, T-057: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

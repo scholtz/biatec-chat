@@ -6,6 +6,8 @@ priority: P2
 epic: "Deploy & docs"
 blocked_by: [T-002, T-027]
 area: ["backend/Dockerfile", "builders/Dockerfile", "k8s/**"]
+parallel: yes
+conflicts_with: []
 issue: "#55"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Deployable artifacts (not applied).
 
 - In: Dockerfiles for backend and builders, k8s deployment/service/ingress/configmap for main and stage, secret references, health probes.
 - Out: Applying to any cluster.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

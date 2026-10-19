@@ -6,6 +6,8 @@ priority: P0
 epic: "Orchestrator"
 blocked_by: [T-014]
 area: ["backend/Biatec.Chat.Tools/Kb/**", "backend/Biatec.Chat.Api/Chat/SignIn/**", "docs/kb/**"]
+parallel: no
+conflicts_with: [T-035]
 issue: "#16"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ A useful anonymous assistant that cannot act.
 
 - In: kb.search over markdown files in docs/kb (simple ranked keyword search), seed KB pages about Biatec products, Algorand, DEX, Safe, fees, getting started; requestSignIn emitting sign-in card or sign-in-unavailable card with signInPageUrl.
 - Out: Vector search.
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-035: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

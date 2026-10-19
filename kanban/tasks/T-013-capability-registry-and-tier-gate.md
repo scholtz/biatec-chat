@@ -1,11 +1,13 @@
 ---
 id: T-013
 title: Capability registry and tier gate
-status: blocked
+status: backlog
 priority: P0
 epic: "Orchestrator"
 blocked_by: [T-001]
 area: ["backend/Biatec.Chat.Core/Capabilities/**", "backend/Biatec.Chat.Tests/Capabilities/**"]
+parallel: yes
+conflicts_with: []
 issue: "#14"
 branch: ""
 owner: ""
@@ -29,6 +31,10 @@ Single source of truth for what the model may call.
 - In: Capability records for the initial set (x402.pay behind a flag), tool list per tier and scope, gate with JSON schema validation returning a model-facing error and a policy event.
 - Out: Executors themselves.
 
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
+
 ## Acceptance criteria
 
 - [ ] Anonymous tool list is exactly requestSignIn and kb.search
@@ -47,3 +53,4 @@ dotnet test --filter Capabilities
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 18:21 · kanban-board · blocked → backlog · blockers done: T-001

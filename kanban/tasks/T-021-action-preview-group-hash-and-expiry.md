@@ -6,6 +6,8 @@ priority: P0
 epic: "Wallet tools"
 blocked_by: [T-003, T-004, T-005]
 area: ["backend/Biatec.Chat.Core/Previews/**", "backend/Biatec.Chat.Tools/Algod/**"]
+parallel: yes
+conflicts_with: []
 issue: "#22"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Shared preview machinery all capabilities use.
 
 - In: ActionPreview/ActionStep service, Algorand group id computation and grp assignment using the Algorand .NET SDK, simulate client per network, expiry and countdown fields, rebuild linkage (rebuiltAsPreviewId), multi-step state, preview DTO.
 - Out: Bitcoin specifics (T-024), signing (T-022).
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

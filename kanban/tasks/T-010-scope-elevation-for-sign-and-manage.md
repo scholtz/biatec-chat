@@ -6,6 +6,8 @@ priority: P0
 epic: "Sessions & auth"
 blocked_by: [T-009]
 area: ["backend/Biatec.Chat.Api/Auth/Elevation/**"]
+parallel: yes
+conflicts_with: []
 issue: "#11"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Incremental consent in the same popup mechanism.
 
 - In: /auth/elevate with allow-list and union, same state/PKCE handling, scope check helper used before signing or limits calls, error to offer re-authorization.
 - Out: Revocation (not available at OIDC yet).
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

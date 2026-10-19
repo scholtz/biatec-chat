@@ -6,6 +6,8 @@ priority: P1
 epic: "Evidence"
 blocked_by: [T-022, T-034]
 area: ["backend/Biatec.Chat.Api/Evidence/Recording/**"]
+parallel: no
+conflicts_with: [T-014, T-015, T-016, T-018, T-024, T-025, T-049, T-057]
 issue: "#36"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Every action leaves a trail.
 
 - In: Recording hooks in orchestrator, preview, confirm, signing and submit paths; schema-driven redaction of fields marked sensitive.
 - Out: Export (T-036).
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-014, T-015, T-016, T-018, T-024, T-025, T-049, T-057: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

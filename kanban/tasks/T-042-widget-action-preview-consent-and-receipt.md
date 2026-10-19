@@ -6,6 +6,8 @@ priority: P0
 epic: "Widget"
 blocked_by: [T-041]
 area: ["packages/chat-widget/src/components/cards/**"]
+parallel: no
+conflicts_with: [T-036]
 issue: "#43"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ The trust surface in the browser.
 
 - In: Card components bound to chat-protocol types, countdown, confirm and cancel calls, elevation popup reuse, consent pending state, receipt card.
 - Out: Authenticator.
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-036: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

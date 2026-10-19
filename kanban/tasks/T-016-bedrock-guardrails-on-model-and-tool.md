@@ -6,6 +6,8 @@ priority: P2
 epic: "Orchestrator"
 blocked_by: [T-014]
 area: ["infra/guardrail/**", "backend/Biatec.Chat.Api/Model/Guardrails/**"]
+parallel: no
+conflicts_with: [T-018, T-035, T-057]
 issue: "#17"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Add a defense layer without changing tier enforcement.
 
 - In: Guardrail definition and create/version script (tag Project=biatec), guardrailConfig with sync streaming on Converse, ApplyGuardrail on untrusted tool results before they reach the model, config toggle.
 - Out: Replacing server-side gates.
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-018, T-035, T-057: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

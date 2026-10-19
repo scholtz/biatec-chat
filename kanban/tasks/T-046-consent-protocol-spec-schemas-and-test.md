@@ -6,6 +6,8 @@ priority: P1
 epic: "Consent & authenticator"
 blocked_by: []
 area: ["packages/consent-protocol/spec/**", "packages/consent-protocol/schemas/**", "packages/consent-protocol/vectors/**"]
+parallel: yes
+conflicts_with: []
 issue: "#47"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ The open protocol document integrators can read.
 
 - In: Spec markdown, JSON schemas for request objects, authorization_details types and receipts, signed receipt test vectors (JCS + ES256), both entry points described.
 - Out: Mock server (T-047).
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

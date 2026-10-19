@@ -6,6 +6,8 @@ priority: P0
 epic: "Orchestrator"
 blocked_by: [T-002]
 area: ["backend/Biatec.Chat.Api/Model/**"]
+parallel: yes
+conflicts_with: []
 issue: "#13"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ A reusable ConverseStream client with caching, retries and limits.
 
 - In: AWSSDK.BedrockRuntime ConverseStream in eu-central-1, default credential chain, eu. Claude 4.5 ids (Opus 4.5 authenticated, Sonnet 4.5 anonymous), maxTokens always set, cachePoint after each static system block, tool config, adaptive retry with jitter on ThrottlingException, global concurrency cap, usage capture.
 - Out: Tool loop (T-014), guardrails (T-016).
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

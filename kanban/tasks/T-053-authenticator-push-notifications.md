@@ -6,6 +6,8 @@ priority: P3
 epic: "Consent & authenticator"
 blocked_by: [T-052]
 area: ["apps/biatec_authenticator/lib/push/**"]
+parallel: yes
+conflicts_with: []
 issue: "#54"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Approvals arrive without manual refresh.
 
 - In: Push plugin setup, token registration with mock, handler opening the pending request.
 - Out: Production push credentials.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

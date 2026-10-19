@@ -6,6 +6,8 @@ priority: P0
 epic: "Sessions & auth"
 blocked_by: [T-002]
 area: ["backend/Biatec.Chat.Api/Vault/**"]
+parallel: yes
+conflicts_with: []
 issue: "#9"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Vault service storing access, refresh and id tokens safely.
 
 - In: IKeyProvider with AWS KMS envelope encryption (eu-central-1, default credential chain) and a local dev key provider; TokenVaultEntry in Redis; refresh-on-demand with distributed lock and rotation; log redaction.
 - Out: OAuth flows themselves.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

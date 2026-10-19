@@ -6,6 +6,8 @@ priority: P2
 epic: "Consent & authenticator"
 blocked_by: []
 area: ["apps/biatec_authenticator/**"]
+parallel: yes
+conflicts_with: []
 issue: "#51"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Runnable app shell for later flows.
 
 - In: flutter create, navigation, empty screens, config for OIDC base URL (mock by default), theming with large-type support.
 - Out: Enrollment and approval logic.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

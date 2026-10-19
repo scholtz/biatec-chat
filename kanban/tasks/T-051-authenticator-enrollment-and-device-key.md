@@ -6,6 +6,8 @@ priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-047, T-050]
 area: ["apps/biatec_authenticator/lib/enrollment/**", "apps/biatec_authenticator/lib/keys/**"]
+parallel: yes
+conflicts_with: []
 issue: "#52"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Device enrolled against the mock OIDC.
 
 - In: Key generation via platform keystore plugin, enrollment calls to mock, activation state, recovery code screen.
 - Out: Real App Attest / Play Integrity verification (stubbed in mock).
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 
