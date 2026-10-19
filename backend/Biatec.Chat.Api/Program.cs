@@ -1,5 +1,6 @@
 using Biatec.Chat.Api.Config;
 using Biatec.Chat.Api.Contracts;
+using Biatec.Chat.Api.Data;
 using Biatec.Chat.Api.Health;
 using Biatec.Chat.Api.Vault;
 
@@ -8,9 +9,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddBiatecOptions(builder.Configuration);
 builder.Services.AddBiatecHealth();
 builder.Services.AddContractsOpenApi();
+builder.Services.AddBiatecData();
 builder.Services.AddTokenVault(builder.Configuration);
 
 var app = builder.Build();
+await app.MigrateDevelopmentDatabaseAsync();
 
 // 200 Healthy when Redis and PostgreSQL answer, 503 Unhealthy otherwise. The body is the status only.
 app.MapHealthChecks("/health");
