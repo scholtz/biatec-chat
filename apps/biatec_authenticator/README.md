@@ -18,6 +18,9 @@ The Biatec OIDC base URL comes from `--dart-define=OIDC_BASE_URL=...` and defaul
 
     flutter run --dart-define=OIDC_BASE_URL=https://oidc.example
 
+Nothing serves the default mock URL yet; it is a placeholder until the authenticator enrollment and approval tasks
+add an HTTP mock of Biatec OIDC. The app makes no network calls today.
+
 ## Checks
 
     flutter analyze && flutter test

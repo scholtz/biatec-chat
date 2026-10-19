@@ -5,7 +5,7 @@ import 'package:flutter/widgets.dart' show Size;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  Future<void> tall(WidgetTester tester) async {
+  void tall(WidgetTester tester) {
     tester.view.physicalSize = const Size(800, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -30,7 +30,7 @@ void main() {
   });
 
   testWidgets('home shows mock OIDC config', (tester) async {
-    await tall(tester);
+    tall(tester);
     await tester.pumpWidget(AuthenticatorApp(config: AppConfig.resolve('')));
     expect(find.text('Biatec Authenticator'), findsOneWidget);
     expect(find.text(AppConfig.mockOidcBaseUrl), findsOneWidget);
@@ -38,7 +38,7 @@ void main() {
   });
 
   testWidgets('every screen is reachable from home', (tester) async {
-    await tall(tester);
+    tall(tester);
     await tester.pumpWidget(AuthenticatorApp(config: AppConfig.resolve('')));
     for (final route in appRoutes) {
       await tester.tap(find.text(route.title));
