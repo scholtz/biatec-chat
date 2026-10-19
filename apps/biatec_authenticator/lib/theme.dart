@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Material 3 theme with roomy touch targets. Type size follows the system scale.
+/// Material 3 theme. Type size follows the system scale (see largeTypeBuilder).
 ThemeData buildTheme(Brightness brightness) {
   final base = ThemeData(
     useMaterial3: true,
@@ -8,7 +8,6 @@ ThemeData buildTheme(Brightness brightness) {
     colorSchemeSeed: const Color(0xFF1B5E8C),
   );
   return base.copyWith(
-    textTheme: base.textTheme,
     listTileTheme: const ListTileThemeData(minVerticalPadding: 12),
   );
 }
