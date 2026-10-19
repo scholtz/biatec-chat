@@ -57,7 +57,15 @@ void showRequestArrived(GlobalKey<ScaffoldMessengerState> messenger,
       content: const Text('New approval request'),
       action: SnackBarAction(
           label: 'Open',
-          onPressed: () => navigator.currentState?.pushNamed('/pending')),
+          onPressed: () {
+            // Back to the list if it is already open, else open it.
+            final nav = navigator.currentState;
+            if (nav == null) return;
+            var found = false;
+            nav.popUntil((r) =>
+                (found = found || r.settings.name == '/pending') || r.isFirst);
+            if (!found) nav.pushNamed('/pending');
+          }),
     ));
 }
 

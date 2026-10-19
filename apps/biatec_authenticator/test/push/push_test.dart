@@ -149,6 +149,17 @@ void main() {
       expect(registry.calls, hasLength(4));
     });
 
+    test('a re-enrollment registers at once on the next navigation', () async {
+      await store.write(record('dev-token'));
+      await push.start(transport);
+      expect(registry.calls, hasLength(1));
+      await store.write(record('dev-token-new'));
+      push.didPop(
+          MaterialPageRoute<void>(builder: (_) => const SizedBox()), null);
+      await pumpEventQueue();
+      expect(registry.calls.last['auth'], 'Device dev-token-new');
+    });
+
     test('nothing happens before a transport is attached', () async {
       await store.write(record('dev-token'));
       await push.registerIfEnrolled();
@@ -297,6 +308,13 @@ void main() {
       showRequestArrived(messenger, navigator);
       await tester.pump();
       expect(find.text('New approval request'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      expect(find.byType(PendingScreen), findsOneWidget);
+
+      // From the list itself, Open does not stack a second list.
+      showRequestArrived(messenger, navigator);
       await tester.pump(const Duration(seconds: 1));
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();

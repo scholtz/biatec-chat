@@ -81,8 +81,7 @@ class PushController extends NavigatorObserver {
   }
 
   // Every navigation (for example back from enrollment) is also a chance to
-  // register a device that was not enrolled before; within the resend window
-  // that check is free.
+  // register a device that was not enrolled before, or was re-enrolled.
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     final id = _requestOf(route);
@@ -110,8 +109,6 @@ class PushController extends NavigatorObserver {
   Future<void> _register(String? token) async {
     final transport = _transport;
     if (transport == null) return;
-    // Recently registered and no new token: nothing to check, no storage read.
-    if (token == null && _fresh()) return;
     try {
       final record = await enrollment.read();
       if (record == null) return;

@@ -234,7 +234,9 @@ POST /devices
     inactive device `403`.
   - The attestation JWS returned by `POST /devices` is stored by the device and sent back in every receipt.
   - `PUT /devices/push` with `{ "provider": "fcm" | "apns", "token": "..." }` → `200`: registers or replaces where
-    the device's notifications go (the same `push` object `POST /devices` accepts). Called on app start, on token
+    the device's notifications go. For `fcm` the token is the **Firebase Installation ID** that `firebase_messaging`
+    17 reports from `register()` / `onRegistered` (its direct-send target), not a legacy registration token, so
+    delivery must address it accordingly (the same `push` object `POST /devices` accepts). Called on app start, on token
     rotation, on app resume and on navigation, re-sent at most every 10 minutes (T-053). A token belongs to one
     device: registering it on a device removes it from any other device record.
 - Push delivery: when a consent request opens, Biatec OIDC notifies every active device of the user that has a push

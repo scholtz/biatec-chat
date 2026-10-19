@@ -194,6 +194,7 @@ export function createMockOidc(options: MockOptions = {}) {
     validate("consent-request", request, "internal consent request");
     pending.set(authReqId, { request, code, attempts: 0, clientId: opts.client.id, status: "pending", tokenIssued: false, scope: opts.scope, limitsBody: opts.limitsBody });
     for (const d of activeDevices(opts.user.sub)) if (d.push) pushOutbox.push({ kid: d.kid, ...d.push, data: { auth_req_id: authReqId } });
+    if (pushOutbox.length > 500) pushOutbox.splice(0, pushOutbox.length - 500); // a long-running mock keeps the recent ones
     return { authReqId, code, expiresIn: opts.requestedExpiry };
   }
 
