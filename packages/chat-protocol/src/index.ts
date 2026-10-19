@@ -5,6 +5,9 @@ type Schemas = components["schemas"];
 export type { components, paths } from "./generated/schema.js";
 
 export type SessionState = Schemas["SessionState"];
+export type AgentMode = Schemas["AgentModeValue"];
+export type AgentSettings = Schemas["AgentSettings"];
+export type AgentSettingsRequest = Schemas["AgentSettingsRequest"];
 export type SessionTier = Schemas["SessionTier"];
 export type SignInStatus = Schemas["SignInStatus"];
 export type Suggestion = Schemas["Suggestion"];

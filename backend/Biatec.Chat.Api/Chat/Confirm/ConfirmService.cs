@@ -31,6 +31,8 @@ public enum ConfirmOutcome
     SignInRequired,
     /// <summary>Signing or submission failed for good; the preview must be rebuilt.</summary>
     Failed,
+    /// <summary>The user set the agent to analyze only or paused it; nothing was touched and the preview stays valid.</summary>
+    AgentRestricted,
 }
 
 public sealed record ConfirmResult(
@@ -64,6 +66,10 @@ public sealed class ConfirmService(
     public async Task<ConfirmResult> ConfirmAsync(Tenant tenant, ChatSession session, Guid previewId, string groupHash, CancellationToken ct)
     {
         var sessionId = session.Id.ToString("N");
+
+        // Agent mode and pause are enforced here, server-side, before anything is read or flipped.
+        if (Biatec.Chat.Api.Agent.AgentModePolicy.ConfirmRefusal(session) is { } refusal)
+            return new ConfirmResult(ConfirmOutcome.AgentRestricted, refusal.Message, [], ErrorCode: refusal.Code);
 
         // Peek first: scope and group integrity are checked before the preview is flipped to Confirmed, so a refusal
         // here leaves it awaiting confirmation.

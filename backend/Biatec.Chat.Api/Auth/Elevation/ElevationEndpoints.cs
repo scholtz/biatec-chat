@@ -1,3 +1,4 @@
+using Biatec.Chat.Api.Agent;
 using Biatec.Chat.Api.Sessions;
 using Biatec.Chat.Api.Tenancy;
 using Biatec.Chat.Api.Vault;
@@ -44,6 +45,8 @@ public static class ElevationEndpoints
             var session = await AuthEndpoints.FindLiveAsync(db, tenant, SessionEndpoints.ReadCookie(ctx.Request), now, ctx.RequestAborted);
             if (session is null || session.Tier != SessionTier.Authenticated || await vault.GetAsync(session.Id.ToString("N"), ctx.RequestAborted) is null)
                 return Results.Unauthorized();
+            if (AgentModePolicy.ConfirmRefusal(session) is { } refusal)
+                return Results.Json(new { error = refusal.Code, message = refusal.Message }, statusCode: StatusCodes.Status403Forbidden);
 
             await db.PopupAuthRequests
                 .Where(p => p.ConversationId == session.ConversationId && p.Purpose == PopupAuthPurpose.Elevate && p.Status == PopupAuthStatus.Pending)
@@ -83,6 +86,7 @@ public static class ElevationEndpoints
             var nonce = ctx.Request.Query["nonce"].ToString();
             if (session is null || session.Tier != SessionTier.Authenticated || !Guid.TryParse(ctx.Request.Query["req"], out var reqId) || nonce.Length is 0 or > 128)
                 return Results.StatusCode(StatusCodes.Status403Forbidden);
+            if (AgentModePolicy.ConfirmRefusal(session) is not null) return AuthEndpoints.ClosePage(ctx, 403);
 
             var hash = NonceHash(scope, nonce);
             var used = await db.PopupAuthRequests

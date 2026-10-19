@@ -36,6 +36,10 @@ public sealed record SessionState
     public SignInStatus SignInStatus { get; init; }
     /// <summary>Session expiry, used by the widget to warn before a multi-step action runs out of time.</summary>
     public required DateTimeOffset ExpiresAt { get; init; }
+    /// <summary>What Biatec AI may do: analyze (read only) or prepare. Anonymous sessions are always analyze.</summary>
+    public Biatec.Chat.Api.Agent.AgentModeValue AgentMode { get; init; } = Biatec.Chat.Api.Agent.AgentModeValue.Analyze;
+    /// <summary>True while the user has paused Biatec AI.</summary>
+    public bool Paused { get; init; }
 }
 
 /// <summary>A clickable prompt suggested for an empty or ongoing session.</summary>
