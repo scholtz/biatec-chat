@@ -237,3 +237,19 @@ public class SoftCapSpend
     /// <summary>Where AmountEur came from: oidc (valuedEur returned with the signature) or predicted.</summary>
     public string ValueSource { get; set; } = "predicted";
 }
+
+/// <summary>
+/// A Biatec Safe deployed through this tenant's chat (<c>safe.create</c>). Public on-chain data only, no user
+/// identifier: <c>safe.list</c> asks the chain which of these the signed-in user is a member of.
+/// </summary>
+public class KnownSafe
+{
+    public Guid Id { get; set; }
+    public string TenantId { get; set; } = "";
+    /// <summary>"mainnet" or "testnet".</summary>
+    public string Network { get; set; } = "";
+    public long AppId { get; set; }
+    /// <summary>The deployment transaction, so a later call resolves the app id without asking the chain again.</summary>
+    public string? DeployTxId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
