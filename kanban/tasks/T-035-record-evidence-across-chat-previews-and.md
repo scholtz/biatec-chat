@@ -7,7 +7,7 @@ epic: "Evidence"
 blocked_by: [T-022, T-034]
 area: ["backend/Biatec.Chat.Api/Evidence/Recording/**"]
 parallel: no
-conflicts_with: [T-014, T-015, T-016, T-018, T-024, T-025, T-049, T-057]
+conflicts_with: [T-014, T-015, T-016, T-024, T-025, T-049, T-057]
 issue: "#36"
 branch: "task/T-035"
 owner: "session-20261019-agent"
@@ -34,7 +34,7 @@ Every action leaves a trail.
 
 ## Parallel work
 
-Parallel work possible: **no**. Don't run it at the same time as T-014, T-015, T-016, T-018, T-024, T-025, T-049, T-057: they change the same files, and running them together causes merge conflicts or broken behaviour.
+Parallel work possible: **no**. Don't run it at the same time as T-014, T-015, T-016, T-024, T-025, T-049, T-057: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
@@ -57,3 +57,4 @@ dotnet test --filter EvidenceRecording
 - 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-022, T-034
 - 2026-10-19 22:32 · scholtz · taken · status stays backlog
 - 2026-10-19 22:32 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-19 23:24 · LukassSoukup · in-progress · conflicts_with revised: dropped T-018 (budget lives in an IModelClient decorator), T-057 kept
