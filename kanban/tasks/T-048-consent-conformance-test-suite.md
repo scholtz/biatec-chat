@@ -1,11 +1,7 @@
 ---
 id: T-048
 title: Consent conformance test suite
-<<<<<<< HEAD
-status: backlog
-=======
 status: in-progress
->>>>>>> 97714e0 (kanban: scholtz takes and claims T-014 T-040 T-031 T-048 T-051 T-054 T-056)
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-047]
@@ -59,8 +55,5 @@ pnpm --filter consent-protocol conformance
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 20:38 · kanban-board · blocked → backlog · blockers done: T-047
-<<<<<<< HEAD
-=======
 - 2026-10-19 20:38 · scholtz · taken · status stays backlog
 - 2026-10-19 20:38 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
->>>>>>> 97714e0 (kanban: scholtz takes and claims T-014 T-040 T-031 T-048 T-051 T-054 T-056)
