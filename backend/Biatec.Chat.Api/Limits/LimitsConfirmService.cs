@@ -27,13 +27,17 @@ public sealed class LimitsConfirmService(
     IEvidenceLog evidence,
     ILogger<LimitsConfirmService> log)
 {
-    public async Task<ConfirmResult> ConfirmAsync(ChatSession session, Guid previewId, string groupHash, CancellationToken ct)
+    public async Task<ConfirmResult> ConfirmAsync(Tenant tenant, ChatSession session, Guid previewId, string groupHash, CancellationToken ct)
     {
         var sessionId = session.Id.ToString("N");
         var peek = await previews.GetAsync(session.ConversationId, previewId, session.AbsoluteExpiresAt, ct);
         var pending = peek.Steps.FirstOrDefault(s => s.Status == StepStatus.Pending);
         if (pending is null || pending.Kind != ActionStepKind.Limits || peek.Preview.Status != ActionPreviewStatus.Proposed)
             throw new PreviewException(PreviewError.InvalidState, "The preview has no limits step awaiting confirmation.");
+
+        // The tenant flag is enforced again here: an operator may have turned it off since the preview was made.
+        if (!tenant.LimitsUpdateEnabled)
+            return new ConfirmResult(ConfirmOutcome.Failed, "Changing limits from chat is not enabled here. Nothing was changed.", [], ErrorCode: "feature_disabled");
 
         var scope = await scopes.CheckAsync(sessionId, ElevationScopes.ManageLimits, ct);
         if (!scope.Allowed)

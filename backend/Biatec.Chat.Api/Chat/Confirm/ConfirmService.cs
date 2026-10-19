@@ -72,7 +72,7 @@ public sealed class ConfirmService(
         var pending = peek.Steps.FirstOrDefault(s => s.Status == StepStatus.Pending);
         // A limits step (lowering only) goes to Biatec OIDC PUT /wallet/limits, not to the signing endpoint.
         if (pending is { Kind: ActionStepKind.Limits } && limits is not null && peek.Preview.Status == ActionPreviewStatus.Proposed)
-            return await limits.ConfirmAsync(session, previewId, groupHash, ct);
+            return await limits.ConfirmAsync(tenant, session, previewId, groupHash, ct);
         if (pending is null || pending.Kind != ActionStepKind.Sign || peek.Preview.Status != ActionPreviewStatus.Proposed)
             throw new PreviewException(PreviewError.InvalidState, "The preview has no signing step awaiting confirmation.");
 

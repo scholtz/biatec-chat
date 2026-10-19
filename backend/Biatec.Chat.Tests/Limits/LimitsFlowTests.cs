@@ -262,7 +262,7 @@ public sealed class LimitsFlowTests : IAsyncLifetime
         var previews = new ActionPreviewService(db, _clock);
         var scopes = new ScopeGuard(_vault, _clock);
         var limitsConfirm = new LimitsConfirmService(db, previews, scopes, _vault, _oidc, _evidence, NullLogger<LimitsConfirmService>.Instance);
-        if (!viaConfirmService) return await limitsConfirm.ConfirmAsync(_session, previewId, hash, default);
+        if (!viaConfirmService) return await limitsConfirm.ConfirmAsync(_tenant, _session, previewId, hash, default);
         // The shared confirm endpoint's service hands a limits step to the limits path.
         var svc = new ConfirmService(db, previews, scopes, _vault, new NoSigner(), new NoMcp(), new NoConfirmer(), _evidence, _clock,
             NullLogger<ConfirmService>.Instance, limitsConfirm);
@@ -304,6 +304,31 @@ public sealed class LimitsFlowTests : IAsyncLifetime
         Assert.Equal(ConfirmOutcome.Failed, r.Outcome);
         Assert.Equal("raise_refused", r.ErrorCode);
         Assert.Empty(_oidc.Puts);
+        Assert.Equal(Biatec.Chat.Core.Data.ActionPreviewStatus.Failed, (await LoadAsync(id)).Preview.Status);
+    }
+
+    [Fact]
+    public async Task Confirm_is_refused_when_the_tenant_flag_was_turned_off_after_the_preview()
+    {
+        var (id, hash) = await PrepareAsync();
+        _tenant.LimitsUpdateEnabled = false;
+        var r = await ConfirmAsync(id, hash);
+        Assert.Equal(ConfirmOutcome.Failed, r.Outcome);
+        Assert.Equal("feature_disabled", r.ErrorCode);
+        Assert.Empty(_oidc.Puts);
+        Assert.Equal(Biatec.Chat.Core.Data.ActionPreviewStatus.Proposed, (await LoadAsync(id)).Preview.Status);
+    }
+
+    [Theory]
+    [InlineData(LimitsFailure.Rejected, "rejected")]
+    [InlineData(LimitsFailure.Forbidden, "forbidden")]
+    public async Task Confirm_ends_the_preview_as_failed_when_the_upstream_put_is_rejected(LimitsFailure failure, string code)
+    {
+        var (id, hash) = await PrepareAsync();
+        _oidc.Write = new LimitsWriteResult(false, failure, "x");
+        var r = await ConfirmAsync(id, hash);
+        Assert.Equal(ConfirmOutcome.Failed, r.Outcome);
+        Assert.Equal(code, r.ErrorCode);
         Assert.Equal(Biatec.Chat.Core.Data.ActionPreviewStatus.Failed, (await LoadAsync(id)).Preview.Status);
     }
 
