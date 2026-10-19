@@ -1,7 +1,7 @@
 ---
 id: T-063
 title: Widget shell: launcher, panel modes, header and host API
-status: review
+status: done
 priority: P1
 epic: "Widget UI rework"
 blocked_by: [T-062]
@@ -79,6 +79,8 @@ Filled in by the agent when it moves the task to `review`.
 
 ## Review
 
+- 2026-10-20 01:32 · approve · PR #132 merged into main @ f6385d0 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 22:40 · coordinator · (new) → blocked · created from the Biatec AI design handoff (docs/design/) for the widget UI rework
@@ -87,3 +89,4 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-20 01:12 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 01:13 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 01:32 · coordinator · in-progress → review · branch task/T-063 @ a5185b1, PR #132
+- 2026-10-20 01:32 · user · review → done · PR #132 merged into main @ f6385d0 (synced by kanban-sync)

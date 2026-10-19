@@ -1,7 +1,7 @@
 ---
 id: T-068
 title: BiatecDEX integration playground and hand-off doc
-status: blocked
+status: backlog
 priority: P2
 epic: "Widget UI rework"
 blocked_by: [T-063]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#visual-design"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-068 · BiatecDEX integration playground and hand-off doc
@@ -65,3 +65,4 @@ Filled in by the agent when it moves the task to `review`.
 ## Activity log
 
 - 2026-10-19 22:40 · coordinator · (new) → blocked · created from the Biatec AI design handoff (docs/design/) for the widget UI rework
+- 2026-10-20 01:32 · kanban-board · blocked → backlog · blockers done: T-063
