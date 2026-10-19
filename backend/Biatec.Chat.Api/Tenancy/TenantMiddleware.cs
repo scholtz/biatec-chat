@@ -42,7 +42,6 @@ public static class TenancyRegistration
 {
     public static IServiceCollection AddTenancy(this IServiceCollection services)
     {
-        services.AddMemoryCache();
         services.AddSingleton<ITenantStore, DbTenantStore>();
         return services;
     }

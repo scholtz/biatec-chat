@@ -12,9 +12,12 @@ public interface ITenantStore
 }
 
 /// <summary>Tenant lookup backed by PostgreSQL with a short cache (misses included).</summary>
-public sealed class DbTenantStore(IServiceScopeFactory scopes, IMemoryCache cache) : ITenantStore
+public sealed class DbTenantStore(IServiceScopeFactory scopes) : ITenantStore
 {
     private static readonly TimeSpan Ttl = TimeSpan.FromSeconds(60);
+
+    // Private and size-bounded: the key is attacker-controlled (any Host header), so misses must not grow memory.
+    private readonly MemoryCache cache = new(new MemoryCacheOptions { SizeLimit = 5000 });
 
     public async Task<Tenant?> FindByHostAsync(string host, CancellationToken ct)
     {
@@ -22,7 +25,7 @@ public sealed class DbTenantStore(IServiceScopeFactory scopes, IMemoryCache cach
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ChatDbContext>();
         var tenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Host == host, ct);
-        cache.Set(host, tenant, Ttl);
+        cache.Set(host, tenant, new MemoryCacheEntryOptions { Size = 1, AbsoluteExpirationRelativeToNow = Ttl });
         return tenant;
     }
 }
