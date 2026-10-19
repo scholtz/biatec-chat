@@ -119,7 +119,7 @@ public sealed class TokenVault(
     private async Task<string> RefreshAsync(string sessionId, TokenVaultEntry old, string lockToken, CancellationToken ct)
     {
         TokenRefreshResult r;
-        try { r = await refresher.RefreshAsync(old.RefreshToken, ct); }
+        try { r = await refresher.RefreshAsync(sessionId, old.RefreshToken, ct); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // Waiters fail fast instead of presenting a refresh token that may already be spent. No token in the message.
