@@ -368,11 +368,10 @@ public class BedrockModelClientTests
         var source = new FakeSource([Text("partial"), new ThrottlingException("mid-stream")], TextAnswer);
         var seen = new List<ModelStreamEvent>();
 
-        var busy = await Assert.ThrowsAsync<ModelBusyException>(async () =>
+        await Assert.ThrowsAsync<ThrottlingException>(async () =>
         {
             await foreach (var e in Client(source).StreamAsync(Request())) seen.Add(e);
         });
-        Assert.IsType<ThrottlingException>(busy.InnerException);
 
         Assert.Equal(1, source.Calls);
         Assert.Equal("partial", Assert.IsType<ModelTextDelta>(Assert.Single(seen)).Text);
@@ -382,8 +381,7 @@ public class BedrockModelClientTests
     public async Task Gives_up_after_max_retries_and_does_not_retry_validation_errors()
     {
         var throttled = new FakeSource([new ThrottlingException("slow down")]);
-        var busy = await Assert.ThrowsAsync<ModelBusyException>(() => Collect(Client(throttled, Opts(maxRetries: 2)).StreamAsync(Request())));
-        Assert.IsType<ThrottlingException>(busy.InnerException);
+        await Assert.ThrowsAsync<ThrottlingException>(() => Collect(Client(throttled, Opts(maxRetries: 2)).StreamAsync(Request())));
         Assert.Equal(3, throttled.Calls);
 
         var invalid = new FakeSource([new ValidationException("bad model id")]);

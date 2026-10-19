@@ -138,11 +138,6 @@ public sealed class BedrockModelClient(
         {
             await RunAttemptsAsync(converse, writer, ct);
         }
-        catch (Exception ex) when (Unwrap(ex) is ThrottlingException or ServiceUnavailableException)
-        {
-            // Retries ran out on an overloaded service: the same "busy, try again" as a full queue.
-            failure = new ModelBusyException("Bedrock stayed throttled or unavailable through every retry.", ex);
-        }
         catch (Exception ex)
         {
             failure = ex;

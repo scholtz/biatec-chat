@@ -7,11 +7,13 @@ namespace Biatec.Chat.Api.Model;
 /// <summary>
 /// Manual check against real Bedrock, without starting the web host:
 /// <c>AWS_PROFILE=hackathon dotnet run --project backend/Biatec.Chat.Api -- bedrock-smoke [--authenticated] [--Key=value ...] [prompt]</c>.
-/// It sends the request twice so the second call shows cache reads, and spends a few cents at most.
+/// It runs on Haiku 4.5 unless a <c>--Bedrock:*ModelId=</c> override says otherwise, and sends the request twice so
+/// the second call shows cache reads; it costs well under a cent.
 /// </summary>
 public static class BedrockSmoke
 {
     public const string Command = "bedrock-smoke";
+    public const string HaikuModelId = "eu.anthropic.claude-haiku-4-5-20251001-v1:0";
 
     public static async Task<int> RunAsync(string[] args)
     {
@@ -22,7 +24,13 @@ public static class BedrockSmoke
         args = [.. args.Where(a => !overrides.Contains(a))];
         var builder = WebApplication.CreateBuilder(overrides);
         builder.Services.AddOptions<BedrockOptions>().BindConfiguration(BedrockOptions.Section).ValidateDataAnnotations();
-        builder.Services.PostConfigure<BedrockOptions>(o => o.MaxTokens = Math.Min(o.MaxTokens, 200));
+        // Haiku unless a model id is overridden explicitly: the smoke checks the plumbing, not the model.
+        var keepModels = overrides.Any(a => a.Contains("ModelId", StringComparison.OrdinalIgnoreCase));
+        builder.Services.PostConfigure<BedrockOptions>(o =>
+        {
+            o.MaxTokens = Math.Min(o.MaxTokens, 200);
+            if (!keepModels) o.AnonymousModelId = o.AuthenticatedModelId = HaikuModelId;
+        });
         builder.Services.AddBedrockModel();
         await using var services = builder.Services.BuildServiceProvider();
         var client = services.GetRequiredService<IModelClient>();
@@ -30,8 +38,8 @@ public static class BedrockSmoke
         var profile = args.Contains("--authenticated") ? ModelProfile.Authenticated : ModelProfile.Anonymous;
         var prompt = string.Join(' ', args.Where(a => a != "--authenticated"));
         if (prompt.Length == 0) prompt = "In two sentences, what can you help me with?";
-        // Longer than the minimum cacheable prefix (1024 tokens on Sonnet 4.5, 4096 on Opus 4.5), so the second call reads the cache.
-        var rules = profile == ModelProfile.Authenticated ? 320 : 120;
+        // Longer than the minimum cacheable prefix (4096 tokens on Haiku and Opus 4.5), so the second call reads the cache.
+        const int rules = 320;
         var request = new ModelRequest
         {
             Profile = profile,
