@@ -23,7 +23,7 @@ public sealed class CorsMiddleware(RequestDelegate next)
 
         if (tenant is not null && hasOrigin)
         {
-            if (OriginPolicy.IsPublic(req.Path))
+            if (OriginPolicy.IsPublic(req.Path) && !OriginPolicy.IsOperatorOnboarding(req.Path))
             {
                 res.Headers["Access-Control-Allow-Origin"] = "*";
             }
