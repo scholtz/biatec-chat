@@ -9,14 +9,28 @@ export const CHAT_EVENT_TYPES = [
   "error",
 ] as const;
 
-/** Narrow an unknown JSON value to a ChatEvent by its discriminator. Unknown event types are dropped by callers. */
+const isStr = (v: unknown): v is string => typeof v === "string";
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
+
+/** Narrow an unknown JSON value to a ChatEvent: the discriminator and the required fields of that event type. */
 export function isChatEvent(v: unknown): v is ChatEvent {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    typeof (v as { type?: unknown }).type === "string" &&
-    (CHAT_EVENT_TYPES as readonly string[]).includes((v as { type: string }).type)
-  );
+  if (!isObj(v) || !isStr(v.type)) return false;
+  switch (v.type) {
+    case "text_delta":
+      return isStr(v.text);
+    case "tool_status":
+      return isStr(v.toolCallId) && isStr(v.label) && isStr(v.state);
+    case "preview_card":
+      return isObj(v.preview);
+    case "consent_status":
+      return isObj(v.consent) && isStr(v.consent.previewId) && isStr(v.consent.state);
+    case "sign_in_card":
+      return isStr(v.signInUrl) && isStr(v.reason);
+    case "error":
+      return isStr(v.code) && isStr(v.message) && typeof v.retryable === "boolean";
+    default:
+      return false;
+  }
 }
 
 /** Incremental server-sent-events parser. Feed text chunks; it returns the data payloads completed so far. */
@@ -46,7 +60,7 @@ export class SseParser {
   }
 }
 
-/** Read a fetch response body as typed chat events. Malformed or unknown payloads are skipped. */
+/** Read a fetch response body as typed chat events. Malformed or unknown payloads are skipped, and an incomplete final frame is discarded (SSE spec). */
 export async function* readChatEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<ChatEvent> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -54,7 +68,7 @@ export async function* readChatEvents(body: ReadableStream<Uint8Array>): AsyncGe
   try {
     for (;;) {
       const { value, done } = await reader.read();
-      const payloads = parser.push(done ? decoder.decode() + "\n\n" : decoder.decode(value, { stream: true }));
+      const payloads = done ? [] : parser.push(decoder.decode(value, { stream: true }));
       for (const p of payloads) {
         let parsed: unknown;
         try {

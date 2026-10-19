@@ -2,6 +2,12 @@ import type { ChatEvent } from "@biatec/chat-protocol";
 import { readChatEvents } from "./sse";
 import { CLIENT_KEY_HEADER, PATHS, TransportError, type ChatTransport, type SendOptions, type TransportConfig } from "./types";
 
+export type OriginStatus = "registered" | "unregistered" | "unknown";
+
+/**
+ * Contract with /public/chat (see docs/public-chat-contract.md): these response headers must be listed in
+ * Access-Control-Expose-Headers, or cross-origin script cannot read them.
+ */
 export const CAPABILITY_HEADER = "X-Biatec-Conversation";
 export const CONTINUATION_HEADER = "X-Biatec-Continuation";
 /** Error code of a public conversation the server closed on idle (spec: "a distinct error code"). */
@@ -115,17 +121,21 @@ export class PublicTransport implements ChatTransport {
     this.capability = this.continuation = this.previousContinuation = null;
   }
 
-  /** Ask the public endpoint whether the calling Origin is registered for this tenant. */
-  async isOriginRegistered(): Promise<boolean> {
+  /**
+   * Ask the public endpoint whether the calling Origin is registered for this tenant. Only a definite
+   * `{registered:false}` 200 answer is "unregistered"; any failure is "unknown" (transient) and must be retried.
+   */
+  async isOriginRegistered(): Promise<OriginStatus> {
     try {
       const res = await this.f(this.cfg.backendUrl + PATHS.publicOrigin, {
         credentials: "omit",
         headers: { [CLIENT_KEY_HEADER]: this.cfg.clientKey },
       });
-      if (!res.ok) return false;
-      return ((await res.json()) as { registered?: boolean }).registered === true;
+      if (!res.ok) return "unknown";
+      const registered = ((await res.json()) as { registered?: unknown }).registered;
+      return registered === true ? "registered" : registered === false ? "unregistered" : "unknown";
     } catch {
-      return false;
+      return "unknown";
     }
   }
 }

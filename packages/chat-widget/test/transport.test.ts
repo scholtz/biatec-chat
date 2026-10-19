@@ -34,6 +34,14 @@ describe("SSE", () => {
     expect(events).toEqual([a, b]);
   });
 
+  it("discards a truncated final frame and malformed payloads", async () => {
+    const ok: ChatEvent = { type: "text_delta", text: "a" };
+    const body = sse([frame(ok), 'data: {"type":"text_delta"}\n\n', 'data: {"type":"error","code":"x"}\n\n', 'data: {"type":"text_delta","text":"cut"}\n']).body!;
+    const events = [];
+    for await (const e of readChatEvents(body)) events.push(e);
+    expect(events).toEqual([ok]);
+  });
+
   it("joins multi-line data", () => {
     expect(new SseParser().push("data: a\ndata: b\n\n")).toEqual(["a\nb"]);
   });
@@ -75,6 +83,24 @@ describe("probe and fallback", () => {
     expect(m.kind).toBe("public");
     expect(await m.retryOnSignIn()).toBe(false);
     expect(f.mock.calls.filter((c) => String(c[0]).endsWith("/probe"))).toHaveLength(1);
+  });
+
+  it("transient /public/origin failure is not unregistered: keeps retrying", async () => {
+    vi.useFakeTimers();
+    let originUp = false;
+    let cookieWorks = false;
+    const f = vi.fn(async (u: string) => {
+      if (u.endsWith("/session/probe")) return cookieWorks ? json({ cookieReturned: true }) : new Response("", { status: 503 });
+      if (u.endsWith("/public/origin")) return originUp ? json({ registered: true }) : new Response("", { status: 503 });
+      throw new Error(u);
+    });
+    const m = new TransportManager(cfg(f as unknown as typeof fetch), { backoffMs: [100], warn: vi.fn() });
+    expect(await m.open()).toBe("failed-registered");
+    originUp = true;
+    cookieWorks = true;
+    await vi.advanceTimersByTimeAsync(150);
+    expect(m.kind).toBe("cookie");
+    m.dispose();
   });
 
   it("registered origin: provisional public, backoff retry switches and adopts conversation", async () => {

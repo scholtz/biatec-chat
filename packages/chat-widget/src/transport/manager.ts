@@ -74,7 +74,7 @@ export class TransportManager implements ChatTransport {
       return "failed-registered";
     }
     if (first) {
-      if (!(await this.pub.isOriginRegistered())) {
+      if ((await this.pub.isOriginRegistered()) === "unregistered") {
         this.unregistered = true;
         (this.opts.warn ?? console.warn)("BiatecChat: this origin is not registered for the tenant; using the public transport.");
         return "failed-unregistered";
