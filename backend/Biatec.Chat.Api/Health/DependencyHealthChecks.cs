@@ -20,8 +20,7 @@ public static class HealthRegistration
 
 public sealed class RedisHealthCheck(IOptions<RedisOptions> options) : IHealthCheck, IAsyncDisposable
 {
-    private readonly SemaphoreSlim _gate = new(1, 1);
-    private ConnectionMultiplexer? _mux;
+    private readonly object _gate = new();
 
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
@@ -37,30 +36,31 @@ public sealed class RedisHealthCheck(IOptions<RedisOptions> options) : IHealthCh
         }
     }
 
-    private async Task<ConnectionMultiplexer> GetAsync(CancellationToken ct)
+    // The connect task is created once and reused, so a slow first connect is never abandoned and duplicated.
+    private Task<ConnectionMultiplexer>? _connect;
+
+    private Task<ConnectionMultiplexer> GetAsync(CancellationToken ct)
     {
-        if (_mux is not null) return _mux;
-        await _gate.WaitAsync(ct);
-        try
+        lock (_gate)
         {
-            if (_mux is null)
-            {
-                var cfg = ConfigurationOptions.Parse(options.Value.ConnectionString);
-                cfg.AbortOnConnectFail = false; // keep retrying in the background; health reflects current state
-                cfg.ConnectTimeout = 2000;
-                cfg.SyncTimeout = 2000;
-                cfg.AsyncTimeout = 2000;
-                _mux = await ConnectionMultiplexer.ConnectAsync(cfg).WaitAsync(TimeSpan.FromSeconds(3), ct);
-            }
-            return _mux;
+            _connect ??= ConnectAsync();
+            return _connect.WaitAsync(TimeSpan.FromSeconds(3), ct);
         }
-        finally { _gate.Release(); }
+    }
+
+    private Task<ConnectionMultiplexer> ConnectAsync()
+    {
+        var cfg = ConfigurationOptions.Parse(options.Value.ConnectionString);
+        cfg.AbortOnConnectFail = false; // keep retrying in the background; health reflects current state
+        cfg.ConnectTimeout = 2000;
+        cfg.SyncTimeout = 2000;
+        cfg.AsyncTimeout = 2000;
+        return ConnectionMultiplexer.ConnectAsync(cfg);
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_mux is not null) await _mux.DisposeAsync();
-        _gate.Dispose();
+        if (_connect is { IsCompletedSuccessfully: true }) await (await _connect).DisposeAsync();
     }
 }
 
