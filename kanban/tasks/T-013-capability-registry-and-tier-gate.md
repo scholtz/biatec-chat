@@ -1,7 +1,7 @@
 ---
 id: T-013
 title: Capability registry and tier gate
-status: in-progress
+status: done
 priority: P0
 epic: "Orchestrator"
 blocked_by: [T-001]
@@ -51,9 +51,12 @@ dotnet test --filter Capabilities
 
 ## Review
 
+- 2026-10-19 19:41 · approve · PR #75 merged into main @ af8f0ea (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:21 · kanban-board · blocked → backlog · blockers done: T-001
 - 2026-10-19 19:05 · scholtz · taken · status stays backlog
 - 2026-10-19 19:05 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-19 19:41 · user · in-progress → done · PR #75 merged into main @ af8f0ea (synced by kanban-sync)
