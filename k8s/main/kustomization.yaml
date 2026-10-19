@@ -7,6 +7,6 @@ resources:
   - ingress.yaml
 images:
   - name: ghcr.io/scholtz/biatec-chat-backend
-    newTag: latest
+    newTag: REPLACE-WITH-RELEASE-SHA
   - name: ghcr.io/scholtz/biatec-chat-builders
-    newTag: latest
+    newTag: REPLACE-WITH-RELEASE-SHA

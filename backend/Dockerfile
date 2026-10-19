@@ -14,7 +14,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0
 ENV ASPNETCORE_URLS=http://+:8080
 WORKDIR /app
 COPY --from=build /out .
-# The aspnet image ships a non-root "app" user (UID 1654).
-USER app
+# The aspnet image ships a non-root "app" user (UID 1654); numeric so the kubelet can verify runAsNonRoot.
+USER 1654
 EXPOSE 8080
 CMD ["dotnet", "Biatec.Chat.Api.dll"]
