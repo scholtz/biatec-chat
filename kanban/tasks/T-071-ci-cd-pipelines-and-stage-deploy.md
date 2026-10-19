@@ -47,8 +47,7 @@ to stage, with all credentials coming from the `Stage` environment secrets.
 
 ## Parallel work
 
-Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same
-files.
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 
