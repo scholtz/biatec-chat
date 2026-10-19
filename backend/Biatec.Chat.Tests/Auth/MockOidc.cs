@@ -30,6 +30,8 @@ public sealed class MockOidc : HttpMessageHandler
     public DateTimeOffset Now = DateTimeOffset.UtcNow;
     public string AccessToken = "ACCESS-TOKEN-SECRET";
     public string RefreshToken = "REFRESH-TOKEN-SECRET";
+    /// <summary>When set, the token endpoint reports this scope instead of the requested one (a user who declined a scope).</summary>
+    public string? GrantedScopeOverride;
 
     /// <summary>Tamper switches for the id_token the next exchange returns.</summary>
     public string? IdTokenIssuer, IdTokenAudience, IdTokenNonceOverride;
@@ -38,7 +40,7 @@ public sealed class MockOidc : HttpMessageHandler
     public List<Dictionary<string, string>> TokenRequests { get; } = [];
 
     /// <summary>What the browser does at Biatec OIDC: validates the authorize request and returns (code, state) for the callback.</summary>
-    public (string Code, string State) Authorize(Uri location)
+    public (string Code, string State) Authorize(Uri location, string expectedScope = "openid profile email")
     {
         Assert.Equal(Issuer, location.GetLeftPart(UriPartial.Authority));
         Assert.Equal("/authorize", location.AbsolutePath);
@@ -46,7 +48,7 @@ public sealed class MockOidc : HttpMessageHandler
         Assert.Equal("code", q["response_type"]);
         Assert.Equal(ClientId, q["client_id"]);
         Assert.Equal("S256", q["code_challenge_method"]);
-        Assert.Equal("openid profile email", q["scope"]);
+        Assert.Equal(expectedScope, q["scope"]);
         Assert.Equal(Resource, q["resource"]);
         Assert.Null(q["client_secret"]);
         Assert.False(string.IsNullOrEmpty(q["state"]));
@@ -101,7 +103,7 @@ public sealed class MockOidc : HttpMessageHandler
                 return Json(new
                 {
                     access_token = AccessToken, refresh_token = RefreshToken, token_type = "Bearer", expires_in = 900,
-                    scope = issued.Scope, id_token = IdToken(issued.Nonce),
+                    scope = GrantedScopeOverride ?? issued.Scope, id_token = IdToken(issued.Nonce),
                 });
             case "refresh_token":
                 if (form.GetValueOrDefault("refresh_token") != RefreshToken) return Error("invalid_grant");

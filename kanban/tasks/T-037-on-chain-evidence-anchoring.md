@@ -1,7 +1,7 @@
 ---
 id: T-037
 title: On-chain evidence anchoring
-status: blocked
+status: backlog
 priority: P2
 epic: "Evidence"
 blocked_by: [T-034]
@@ -54,3 +54,4 @@ dotnet test --filter Anchoring; testnet run
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 19:18 · kanban-board · blocked → backlog · blockers done: T-034
