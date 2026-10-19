@@ -12,8 +12,8 @@ scope to build, `sign` to sign).
    preview shows the decoded transfer, never the seller's advertised price. A group that is not exactly one plain
    transfer of the advertised asset, to the advertised payee, by the user, for at most the advertised amount, is refused.
 4. The user confirms the preview; signing goes to Biatec OIDC as for every other capability.
-5. `X402PayService.PayAsync` has the facilitator verify and settle the signed group, then fetches the resource with
-   `X-PAYMENT`. Wiring this into the confirm flow is not part of this task.
+5. After signing, the confirm flow does not broadcast through Biatec MCP for this capability: `X402SettlementHandler` calls `X402PayService.PayAsync`, which has the facilitator verify and settle the signed group (this is the broadcast), then fetches the resource with
+   `X-PAYMENT`. The confirm response carries the content as `resourceContent` (untrusted seller data). Verify refused: nothing paid, preview failed. Settle unknown: step stays submitted and is reconciled on chain. Settled but no content: step lands with `errorCode: resource_failed`.
 
 ## Settings
 
@@ -22,7 +22,8 @@ scope to build, `sign` to sign).
 | `X402__Enabled` | `false` | Platform flag. Nothing x402 is registered when false. |
 | `X402__AllowedHosts__0..n` | empty (deny all) | Exact hosts or `*.example.com` |
 | `X402__AllowedPorts__0..n` | `443` | |
-| `X402__FacilitatorUrl` | unset | Unset uses the in-process mock facilitator (no funds move) |
+| `X402__FacilitatorUrl` | unset | Required when enabled, unless the mock is opted into; startup fails otherwise |
+| `X402__UseMockFacilitator` | `false` | Explicit opt-in to the in-process mock (no funds move), for demos and tests only |
 | `X402__MaxAmountBaseUnits` | `5000000` | Cap per payment (5 USDC) |
 | sidecar env `X402_ENABLED=true` | unset | The sidecar only serves the `x402` builder when set |
 

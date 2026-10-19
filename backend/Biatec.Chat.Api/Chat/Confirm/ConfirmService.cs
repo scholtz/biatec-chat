@@ -39,7 +39,8 @@ public sealed record ConfirmResult(
     IReadOnlyList<string> TxIds,
     Contracts.ConsentStatus? Consent = null,
     string? ReauthorizeScope = null,
-    string? ErrorCode = null);
+    string? ErrorCode = null,
+    string? ResourceContent = null);
 
 /// <summary>
 /// The confirm path every fund-moving capability shares: the user's Confirm, then the scope check, then the
@@ -57,7 +58,8 @@ public sealed class ConfirmService(
     ITransactionConfirmer confirmer,
     IEvidenceLog evidence,
     TimeProvider clock,
-    ILogger<ConfirmService> log)
+    ILogger<ConfirmService> log,
+    IEnumerable<ISettlementHandler>? settlementHandlers = null)
 {
     public const string OutageMessage = "The sign-in service is unavailable. Your session is unchanged; please try again shortly.";
 
@@ -213,6 +215,9 @@ public sealed class ConfirmService(
         await db.SaveChangesAsync(CancellationToken.None);
 
         var sessionId = session.Id.ToString("N");
+        var handler = settlementHandlers?.FirstOrDefault(h => string.Equals(h.Capability, preview.Capability, StringComparison.Ordinal));
+        if (handler is not null)
+            return await SettleViaHandlerAsync(handler, session, preview, step, raw, txIds, signed, ct);
         var entry = await vault.GetAsync(sessionId, ct);
         var ctx = new McpCallContext(tenant.Id, sessionId, entry?.Scopes ?? []);
         McpToolResult? result = null;
@@ -245,6 +250,49 @@ public sealed class ConfirmService(
         if (unknownError == "cancelled") throw new OperationCanceledException(ct);
 
         return await TrackAsync(session, preview, step, txIds, unknownError is not null, ct);
+    }
+
+    /// <summary>
+    /// Capabilities that settle the signed group themselves (x402) instead of the MCP broadcast. The step is recorded as
+    /// submitted first, exactly as for the MCP path, so an abort or an unknown outcome can be reconciled on chain.
+    /// </summary>
+    private async Task<ConfirmResult> SettleViaHandlerAsync(ISettlementHandler handler, ChatSession session, ActionPreview preview, ActionStep step,
+        IReadOnlyList<byte[]> raw, string[] txIds, WalletSignOutcome.Signed signed, CancellationToken ct)
+    {
+        await RecordAsync(session, "action_submitted", new JsonObject
+        {
+            ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["seq"] = step.Seq, ["groupHash"] = step.SubjectHash,
+            ["txIds"] = new JsonArray(txIds.Select(t => (JsonNode?)JsonValue.Create(t)).ToArray()), ["valuedEur"] = signed.ValuedEur,
+            ["settledBy"] = handler.Capability,
+        }, CancellationToken.None);
+
+        SettlementResult result;
+        try { result = await handler.SettleAsync(preview, step, raw.Select(Convert.ToBase64String).ToArray(), ct); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            result = new SettlementResult(SettlementKind.Unknown, "The payment could not be confirmed either way; it may still settle. Check again shortly.", ErrorCode: ex.GetType().Name);
+        }
+
+        switch (result.Kind)
+        {
+            case SettlementKind.NotBroadcast:
+                step.TxIds = [];
+                await FailAsync(preview, step, CancellationToken.None);
+                await RecordAsync(session, "submission_failed", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["reason"] = result.ErrorCode ?? "settlement_refused" }, CancellationToken.None);
+                return new ConfirmResult(ConfirmOutcome.Failed, result.Message, [], ErrorCode: result.ErrorCode ?? "submit_failed");
+            case SettlementKind.Settled:
+                await previews.MarkStepLandedAsync(session.ConversationId, preview.Id, step.Seq, txIds, IsFinalStep(preview, step), CancellationToken.None);
+                await RecordAsync(session, "action_receipt", new JsonObject
+                {
+                    ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["seq"] = step.Seq, ["groupHash"] = step.SubjectHash,
+                    ["txIds"] = new JsonArray(txIds.Select(t => (JsonNode?)JsonValue.Create(t)).ToArray()),
+                    ["settledBy"] = handler.Capability, ["delivered"] = result.Content is not null,
+                }, CancellationToken.None);
+                return new ConfirmResult(ConfirmOutcome.Landed, result.Message, txIds, ErrorCode: result.ErrorCode, ResourceContent: result.Content);
+            default:
+                await RecordAsync(session, "submission_unknown", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["error"] = result.ErrorCode }, CancellationToken.None);
+                return await TrackAsync(session, preview, step, txIds, true, ct);
+        }
     }
 
     /// <summary>

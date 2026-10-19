@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json.Nodes;
+using Biatec.Chat.Api.Chat.Confirm;
 using Biatec.Chat.Api.Contracts;
 using Biatec.Chat.Api.Orchestration;
 using Biatec.Chat.Api.Wallet.Read;
@@ -35,9 +36,13 @@ public sealed class X402PayExecutor(IServiceScopeFactory scopes, IBiatecMcpClien
         if (context.Tier != Core.Data.SessionTier.Authenticated || context.Tenant?.X402Enabled != true)
             return new ToolExecutionResult("x402 payments are not available.", true);
 
-        var network = arguments["network"]!.GetValue<string>();
-        var from = arguments["from"]!.GetValue<string>();
-        var resourceUrl = arguments["resourceUrl"]!.GetValue<string>();
+        var network = Arg(arguments, "network");
+        var from = Arg(arguments, "from");
+        var resourceUrl = Arg(arguments, "resourceUrl");
+        if (string.IsNullOrWhiteSpace(network) || !X402PayService.UsdcAssetIds.ContainsKey(network))
+            return new ToolExecutionResult("network must be \"mainnet\" or \"testnet\".", true);
+        if (string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(resourceUrl))
+            return new ToolExecutionResult("from and resourceUrl are required strings.", true);
 
         var own = await mcp.ListAlgorandAddressesAsync(new McpCallContext(context.TenantId, context.SessionId, context.Scopes), ct);
         if (own.IsError) return new ToolExecutionResult("The addresses could not be read. Tell the user to try again.", true);
@@ -54,8 +59,8 @@ public sealed class X402PayExecutor(IServiceScopeFactory scopes, IBiatecMcpClien
         var t = prep.Transfer;
         var amount = FormatUsdc(t.Amount);
         var (_, lastValid) = prep.Group.ValidityWindow();
-        var window = TimeSpan.FromSeconds((lastValid - prep.Group.Transactions.Min(x => x.FirstValid)) * SecondsPerRound);
-        var expires = clock.GetUtcNow() + (window < MaxStepLifetime ? window : MaxStepLifetime);
+        var window = ExpiryWindow(prep.Group.Transactions.Min(x => x.FirstValid), lastValid);
+        var expires = clock.GetUtcNow() + window;
 
         var canonical = JsonCanonicalizer.Canonicalize(new JsonObject
         {
@@ -101,7 +106,8 @@ public sealed class X402PayExecutor(IServiceScopeFactory scopes, IBiatecMcpClien
                     SimulationSummary = $"Decoded from the built transaction: {amount} USDC from {t.Sender} to {t.Receiver}.",
                 },
             ],
-            ExpectsAuthenticatorApproval = false,
+            // x402 predicts no step-up; if OIDC asks at confirm time the confirm flow reports consent_pending.
+            ExpectsAuthenticatorApproval = snapshot.Preview.PredictedNeedsConsent,
         };
 
         var content = new JsonObject
@@ -114,6 +120,17 @@ public sealed class X402PayExecutor(IServiceScopeFactory scopes, IBiatecMcpClien
         };
         return new ToolExecutionResult(content.ToJsonString(), false, [new PreviewCardEvent(card)]);
     }
+
+    /// <summary>Wall-clock lifetime of the group's round window, capped at <see cref="MaxStepLifetime"/>.</summary>
+    public static TimeSpan ExpiryWindow(ulong firstValid, ulong lastValid)
+    {
+        var rounds = lastValid > firstValid ? lastValid - firstValid : 0;
+        var window = TimeSpan.FromSeconds(rounds * SecondsPerRound);
+        return window < MaxStepLifetime ? window : MaxStepLifetime;
+    }
+
+    private static string? Arg(JsonNode arguments, string name) =>
+        arguments is JsonObject o && o[name] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
 
     internal static string FormatUsdc(ulong baseUnits)
     {
@@ -135,6 +152,7 @@ public static class X402Registration
         services.AddBuildersClient(configuration);
         services.AddX402(configuration);
         services.AddSingleton<IToolExecutor, X402PayExecutor>();
+        services.AddSingleton<ISettlementHandler, X402SettlementHandler>();
         return services;
     }
 }

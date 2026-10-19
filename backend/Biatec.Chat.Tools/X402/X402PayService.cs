@@ -54,6 +54,8 @@ public sealed class X402PayService(
     public async Task<X402Preparation> PrepareAsync(string network, string from, string resourceUrl, CancellationToken ct)
     {
         if (!options.Enabled) throw new X402Exception("feature_disabled", "x402 payments are not enabled.");
+        if (!UsdcAssetIds.ContainsKey(network ?? "")) throw new X402Exception("network_not_supported", "The network must be mainnet or testnet.");
+        if (string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(resourceUrl)) throw new X402Exception("bad_arguments", "from and resourceUrl are required.");
         var uri = await policy.CheckAsync(resourceUrl, ct);
 
         var requirements = await FetchRequirementsAsync(uri, network, ct);
@@ -123,22 +125,32 @@ public sealed class X402PayService(
 
     private static bool IsZero(Address a) => a.Bytes.All(b => b == 0);
 
-    public async Task<X402PayResult> PayAsync(X402Preparation preparation, IReadOnlyList<string> signedGroup, CancellationToken ct)
+    public Task<X402PayResult> PayAsync(X402Preparation preparation, IReadOnlyList<string> signedGroup, CancellationToken ct) =>
+        PayAsync(preparation.Requirements, preparation.ResourceUrl, signedGroup, ct);
+
+    /// <summary>
+    /// Rebuilds the requirements the confirmed preview was bound to (see <see cref="X402PayExecutor"/>'s canonical JSON), so
+    /// settlement after the user's Confirm does not depend on in-memory state.
+    /// </summary>
+    public static X402Requirements RequirementsFor(string network, string resourceUrl, string payTo, ulong asset, ulong amount) =>
+        new("exact", "algorand-" + network, amount, resourceUrl, payTo, asset, null);
+
+    public async Task<X402PayResult> PayAsync(X402Requirements requirements, string resourceUrl, IReadOnlyList<string> signedGroup, CancellationToken ct)
     {
         if (!options.Enabled) throw new X402Exception("feature_disabled", "x402 payments are not enabled.");
-        var uri = await policy.CheckAsync(preparation.ResourceUrl, ct);
+        var uri = await policy.CheckAsync(resourceUrl, ct);
         var payment = new X402PaymentPayload(signedGroup);
 
-        var verified = await facilitator.VerifyAsync(payment, preparation.Requirements, ct);
+        var verified = await facilitator.VerifyAsync(payment, requirements, ct);
         if (!verified.IsValid) throw new X402Exception("verify_failed", "The facilitator did not accept the payment.");
-        var settled = await facilitator.SettleAsync(payment, preparation.Requirements, ct);
+        var settled = await facilitator.SettleAsync(payment, requirements, ct);
         if (!settled.Success || string.IsNullOrEmpty(settled.Transaction)) throw new X402Exception("settle_failed", "The payment could not be settled.");
 
         var header = Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new
         {
             x402Version = 1,
-            scheme = preparation.Requirements.Scheme,
-            network = preparation.Requirements.Network,
+            scheme = requirements.Scheme,
+            network = requirements.Network,
             payload = new { paymentGroup = signedGroup, paymentIndex = 0 },
         }, Json));
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
@@ -157,7 +169,7 @@ public sealed class X402PayService(
         return ParseRequirements(body, network, uri);
     }
 
-    internal static X402Requirements ParseRequirements(string body, string network, Uri resource)
+    public static X402Requirements ParseRequirements(string body, string network, Uri resource)
     {
         try
         {
@@ -168,13 +180,12 @@ public sealed class X402PayService(
             {
                 var scheme = Str(a, "scheme");
                 var net = Str(a, "network");
-                if (scheme != "exact" || net is null || !net.Contains("algorand", StringComparison.OrdinalIgnoreCase)
-                    || !net.Contains(network, StringComparison.OrdinalIgnoreCase)) continue;
+                if (scheme != "exact" || !string.Equals(net, "algorand-" + network, StringComparison.OrdinalIgnoreCase)) continue;
                 var payTo = Str(a, "payTo");
                 if (payTo is null || !Algorand.Address.IsValid(payTo) || !TryUlong(a, "maxAmountRequired", out var amount) || !TryUlong(a, "asset", out var asset) || asset == 0) continue;
                 var description = Str(a, "description");
                 if (description is { Length: > 200 }) description = description[..200];
-                return new X402Requirements(scheme, net, amount, resource.AbsoluteUri, payTo, asset, description);
+                return new X402Requirements(scheme, net!, amount, resource.AbsoluteUri, payTo, asset, description);
             }
         }
         catch (JsonException) { }
@@ -215,8 +226,8 @@ public static class X402ServiceCollectionExtensions
 
     /// <summary>
     /// Registers x402. The resource client never follows redirects, ignores proxies and re-checks the resolved address when
-    /// the socket connects. The facilitator is the HTTP one when <c>X402:FacilitatorUrl</c> is set, else the mock, which
-    /// moves no funds. Binds <c>X402</c> options; <c>X402:Enabled</c> is false by default.
+    /// the socket connects. The facilitator is the HTTP one when <c>X402:FacilitatorUrl</c> is set; the mock (no funds move) only with
+    /// <c>X402:UseMockFacilitator</c>; otherwise registration fails when x402 is enabled. Binds <c>X402</c> options; <c>X402:Enabled</c> is false by default.
     /// </summary>
     public static IServiceCollection AddX402(this IServiceCollection services, Microsoft.Extensions.Configuration.IConfiguration configuration)
     {
@@ -248,8 +259,10 @@ public static class X402ServiceCollectionExtensions
             });
         if (!string.IsNullOrWhiteSpace(options.FacilitatorUrl))
             services.AddHttpClient<IX402Facilitator, HttpX402Facilitator>(c => c.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds));
-        else
+        else if (options.UseMockFacilitator)
             services.AddSingleton<IX402Facilitator, MockX402Facilitator>();
+        else if (options.Enabled)
+            throw new InvalidOperationException("X402:Enabled is true but X402:FacilitatorUrl is not set. Set the facilitator, or X402:UseMockFacilitator=true for a demo that moves no funds.");
         services.AddTransient(sp => new X402PayService(
             sp.GetRequiredService<X402HostPolicy>(),
             sp.GetRequiredService<IHttpClientFactory>().CreateClient(ResourceClientName),

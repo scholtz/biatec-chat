@@ -23,6 +23,12 @@ public sealed record X402Options
     /// <summary>Base URL of the x402 facilitator (<c>/verify</c>, <c>/settle</c>). Required unless the mock is used.</summary>
     public string? FacilitatorUrl { get; init; }
 
+    /// <summary>
+    /// Explicit opt-in to the in-process mock facilitator (no funds move). Without it, <c>FacilitatorUrl</c> is required
+    /// whenever x402 is enabled, so a misconfiguration can never report payments that did not happen.
+    /// </summary>
+    public bool UseMockFacilitator { get; init; }
+
     /// <summary>Largest USDC amount (base units) one call may pay; protects against a hostile or buggy seller.</summary>
     public ulong MaxAmountBaseUnits { get; init; } = 5_000_000;
 

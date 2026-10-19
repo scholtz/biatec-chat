@@ -138,6 +138,51 @@ public sealed class X402ExecutorGuardTests : X402ExecutorBase
     }
 
     [Fact]
+    public async Task X402_executor_refuses_a_session_that_is_not_authenticated()
+    {
+        var exec = Executor([X402Fixtures.From], true, out _);
+        var result = await exec.ExecuteAsync(Ctx(true, Biatec.Chat.Core.Data.SessionTier.Anonymous), Args(), default);
+        Assert.True(result.IsError);
+        Assert.Null(result.Events);
+    }
+
+    [Theory]
+    [InlineData("network", null)]
+    [InlineData("network", "net")]
+    [InlineData("network", "algorand-testnet")]
+    [InlineData("from", null)]
+    [InlineData("from", "")]
+    [InlineData("resourceUrl", null)]
+    [InlineData("resourceUrl", "  ")]
+    public async Task X402_executor_returns_a_tool_error_for_bad_arguments_without_any_request(string name, string? value)
+    {
+        var exec = Executor([X402Fixtures.From], true, out _);
+        var args = Args();
+        args[name] = value;
+        var result = await exec.ExecuteAsync(Ctx(true), args, default);
+        Assert.True(result.IsError);
+        Assert.Null(result.Events);
+    }
+
+    [Fact]
+    public async Task X402_executor_returns_a_tool_error_when_an_argument_is_not_a_string()
+    {
+        var exec = Executor([X402Fixtures.From], true, out _);
+        var args = Args();
+        args["from"] = 5;
+        var result = await exec.ExecuteAsync(Ctx(true), args, default);
+        Assert.True(result.IsError);
+    }
+
+    [Fact]
+    public void X402_expiry_follows_the_round_window_and_is_capped()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(100 * 2.8), X402PayExecutor.ExpiryWindow(1000, 1100));
+        Assert.Equal(TimeSpan.FromMinutes(30), X402PayExecutor.ExpiryWindow(1000, 1_000_000));
+        Assert.Equal(TimeSpan.Zero, X402PayExecutor.ExpiryWindow(1000, 900));
+    }
+
+    [Fact]
     public async Task X402_executor_reports_policy_violations_without_a_preview()
     {
         var exec = Executor([X402Fixtures.From], true, out _);

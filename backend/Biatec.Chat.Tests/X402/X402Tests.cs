@@ -286,11 +286,11 @@ public sealed class X402PayServiceTests
     }
 
     [Fact]
-    public void X402_registration_binds_options_and_defaults_to_the_mock_facilitator()
+    public void X402_registration_binds_options_and_uses_the_mock_facilitator_only_when_asked()
     {
         var cfg = new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["X402:Enabled"] = "true", ["X402:AllowedHosts:0"] = "shop.example.com",
+            ["X402:Enabled"] = "true", ["X402:UseMockFacilitator"] = "true", ["X402:AllowedHosts:0"] = "shop.example.com",
             ["Builders:BaseAddress"] = "http://builders:3100", ["Builders:InternalSecret"] = "s3cret-value",
         }).Build();
         var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
@@ -303,5 +303,38 @@ public sealed class X402PayServiceTests
         Assert.Equal(["shop.example.com"], options.AllowedHosts);
         Assert.IsType<MockX402Facilitator>(Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<IX402Facilitator>(sp));
         Assert.NotNull(Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<X402PayService>(sp));
+    }
+
+    [Fact]
+    public void X402_registration_fails_at_startup_when_enabled_without_a_facilitator_or_the_mock_opt_in()
+    {
+        var cfg = new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["X402:Enabled"] = "true",
+        }).Build();
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        Assert.Throws<InvalidOperationException>(() => X402ServiceCollectionExtensions.AddX402(services, cfg));
+    }
+
+    [Theory]
+    [InlineData("net")]
+    [InlineData("")]
+    [InlineData("algorand-testnet")]
+    public async Task X402_prepare_rejects_unknown_networks_before_any_request(string network)
+    {
+        var (svc, resource, _, _) = Make();
+        var ex = await Assert.ThrowsAsync<X402Exception>(() => svc.PrepareAsync(network, X402Fixtures.From, "https://shop.example.com/premium", default));
+        Assert.Equal("network_not_supported", ex.Code);
+        Assert.Empty(resource.Seen);
+    }
+
+    [Fact]
+    public void X402_requirements_match_the_network_exactly()
+    {
+        var body = X402Fixtures.Requirements(network: "algorand-testnet");
+        var uri = new Uri("https://shop.example.com/premium");
+        Assert.Throws<X402Exception>(() => X402PayService.ParseRequirements(body, "net", uri));
+        Assert.Throws<X402Exception>(() => X402PayService.ParseRequirements(body, "mainnet", uri));
+        Assert.Equal("algorand-testnet", X402PayService.ParseRequirements(body, "testnet", uri).Network);
     }
 }
