@@ -1,0 +1,35 @@
+{
+  "name": "biatec-chat-guardrail",
+  "description": "Prompt-injection and unsafe-content defence for Biatec Chat model calls and untrusted tool results",
+  "blockedInputMessaging": "I can't help with that request.",
+  "blockedOutputsMessaging": "I can't share that response.",
+  "contentPolicyConfig": {
+    "filtersConfig": [
+      {"type": "PROMPT_ATTACK", "inputStrength": "HIGH", "outputStrength": "NONE"},
+      {"type": "MISCONDUCT", "inputStrength": "MEDIUM", "outputStrength": "MEDIUM"},
+      {"type": "HATE", "inputStrength": "MEDIUM", "outputStrength": "MEDIUM"},
+      {"type": "VIOLENCE", "inputStrength": "MEDIUM", "outputStrength": "MEDIUM"}
+    ]
+  },
+  "topicPolicyConfig": {
+    "topicsConfig": [
+      {
+        "name": "InvestmentAdvice",
+        "definition": "Recommendations on which crypto assets to buy, sell or hold, price predictions, or personalised investment advice.",
+        "examples": ["Should I buy ALGO now?", "Which token will go up next week?"],
+        "type": "DENY"
+      }
+    ]
+  },
+  "sensitiveInformationPolicyConfig": {
+    "regexesConfig": [
+      {
+        "name": "Mnemonic25Words",
+        "description": "Algorand 25-word recovery phrase",
+        "pattern": "\\b([a-z]{3,8}\\s+){24}[a-z]{3,8}\\b",
+        "action": "BLOCK"
+      }
+    ]
+  },
+  "tags": [{"key": "Project", "value": "biatec"}]
+}

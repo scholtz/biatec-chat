@@ -8,6 +8,7 @@ using Amazon.BedrockRuntime.Model;
 using Amazon.Runtime;
 using Amazon.Runtime.EventStreams;
 using Biatec.Chat.Api.Config;
+using Biatec.Chat.Api.Model.Guardrails;
 using Microsoft.Extensions.Options;
 
 namespace Biatec.Chat.Api.Model;
@@ -50,8 +51,11 @@ public sealed class BedrockModelClient(
     IConverseStreamSource source,
     IOptions<BedrockOptions> options,
     IOptions<BedrockClientOptions> clientOptions,
-    ILogger<BedrockModelClient> logger) : IModelClient
+    ILogger<BedrockModelClient> logger,
+    IOptions<GuardrailOptions>? guardrailOptions = null) : IModelClient
 {
+    private readonly GuardrailOptions _g = guardrailOptions?.Value ?? new GuardrailOptions();
+
     /// <summary>How long the pump waits for the usage event once the message has stopped.</summary>
     public static readonly TimeSpan UsageWait = TimeSpan.FromSeconds(10);
 
@@ -85,6 +89,13 @@ public sealed class BedrockModelClient(
             // With tools a follow-up call (the tool result) is likely to reuse the history; without, it would be a paid write nobody reads.
             Messages = request.Tools.Count > 0 ? WithHistoryCachePoint(request.Messages) : [.. request.Messages],
             InferenceConfig = new InferenceConfiguration { MaxTokens = maxTokens },
+            // Sync mode screens each chunk before it is streamed, so blocked text never reaches the browser.
+            GuardrailConfig = !_g.Enabled ? null : new GuardrailStreamConfiguration
+            {
+                GuardrailIdentifier = _g.GuardrailId,
+                GuardrailVersion = _g.GuardrailVersion,
+                StreamProcessingMode = GuardrailStreamProcessingMode.Sync,
+            },
             ToolConfig = request.Tools.Count == 0
                 ? null
                 : new ToolConfiguration { Tools = [.. request.Tools.Select(t => new Tool { ToolSpec = t })] },
