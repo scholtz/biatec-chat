@@ -1,5 +1,6 @@
 using System.Net;
 using Biatec.Chat.Api.Auth;
+using Biatec.Chat.Api.Auth.Logout;
 using Biatec.Chat.Api.Data;
 using Biatec.Chat.Api.Sessions;
 using Biatec.Chat.Api.Tenancy;
@@ -37,6 +38,18 @@ public sealed class LogoutTests : IAsyncLifetime
     private readonly string _dbName = "biatec_test_" + Guid.NewGuid().ToString("N");
     private readonly FakeTime _time = new();
     private readonly MockOidc _oidc = new();
+    private sealed class ThrowingRevocation : IRevocationService
+    {
+        public bool IsConfigured => false;
+        public Task RevokeOrParkAsync(Tenant tenant, string refreshToken, CancellationToken ct) => throw new InvalidOperationException("db down");
+        public Task<int> RetryPendingAsync(CancellationToken ct) => Task.FromResult(0);
+    }
+    private sealed class ThrowingMetadata : IOidcMetadataProvider
+    {
+        public Task<OidcMetadata> GetAsync(CancellationToken ct) => throw new HttpRequestException("discovery down");
+        public Task<IReadOnlyList<Microsoft.IdentityModel.Tokens.SecurityKey>> GetSigningKeysAsync(bool forceRefresh, CancellationToken ct) => throw new HttpRequestException("down");
+    }
+    private Action<IServiceCollection>? _extra;
     private readonly SweeperTests.MemoryVault _vault = new();
     private WebApplicationFactory<Program> _factory = null!;
     private string Cs => new NpgsqlConnectionStringBuilder(AdminCs) { Database = _dbName, Pooling = false }.ConnectionString;
@@ -59,6 +72,12 @@ public sealed class LogoutTests : IAsyncLifetime
             db.Tenants.Add(TenantSeed.BiatecChat());
             await db.SaveChangesAsync();
         }
+        BuildFactory();
+    }
+
+    private void BuildFactory(Action<IServiceCollection>? extra = null)
+    {
+        _extra = extra;
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Testing");
@@ -83,6 +102,7 @@ public sealed class LogoutTests : IAsyncLifetime
                 s.RemoveAll<ITokenVault>();
                 s.AddSingleton<ITokenVault>(_vault);
                 s.AddHttpClient(OidcMetadataProvider.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => _oidc);
+                _extra?.Invoke(s);
             });
         });
     }
@@ -186,5 +206,79 @@ public sealed class LogoutTests : IAsyncLifetime
         Assert.NotEmpty(_vault.Items);
         await using var db2 = NewContext();
         Assert.True(await db2.ChatSessions.AnyAsync());
+    }
+
+    private async Task<(string Cookie, HttpResponseMessage Res)> LogoutAsync(Action<SweeperTests.MemoryVault>? arrange = null)
+    {
+        var cookie = await NewSessionAsync();
+        Vault(cookie);
+        arrange?.Invoke(_vault);
+        return (cookie, await GetAsync("/auth/logout", cookie));
+    }
+
+    private static void AssertCookieCleared(HttpResponseMessage res) =>
+        Assert.Contains(res.Headers.GetValues("Set-Cookie"), x => x.StartsWith(SessionPolicy.CookieName + "=;"));
+
+    [Fact]
+    public async Task Sweeper_Logout_UnreadableVaultEntry_StillEndsSessionAndClearsCookie()
+    {
+        var (_, res) = await LogoutAsync(v => v.CorruptReads = true);
+
+        Assert.Equal(HttpStatusCode.NoContent, res.StatusCode);
+        AssertCookieCleared(res);
+        Assert.Empty(_vault.Items);
+        await using var db = NewContext();
+        Assert.False(await db.ChatSessions.AnyAsync());
+    }
+
+    [Fact]
+    public async Task Sweeper_Logout_VaultOutage_ClearsCookie_LeavesSessionForSweeper()
+    {
+        var (_, res) = await LogoutAsync(v => v.FailReads = true);
+
+        Assert.Equal(HttpStatusCode.NoContent, res.StatusCode);
+        AssertCookieCleared(res);
+        Assert.NotEmpty(_vault.Items);
+        await using var db = NewContext();
+        Assert.True(await db.ChatSessions.AnyAsync());
+    }
+
+    [Fact]
+    public async Task Sweeper_Logout_VaultDeleteFails_ClearsCookie_KeepsSession()
+    {
+        var (_, res) = await LogoutAsync(v => v.FailDeletes = true);
+
+        Assert.Equal(HttpStatusCode.NoContent, res.StatusCode);
+        AssertCookieCleared(res);
+        await using var db = NewContext();
+        Assert.True(await db.ChatSessions.AnyAsync());
+    }
+
+    [Fact]
+    public async Task Sweeper_Logout_RevocationAndParkFail_StillDeletesEntryAndSession_Redirects()
+    {
+        _factory.Dispose();
+        BuildFactory(s => { s.RemoveAll<IRevocationService>(); s.AddScoped<IRevocationService, ThrowingRevocation>(); });
+        var (_, res) = await LogoutAsync();
+
+        Assert.Equal(HttpStatusCode.Redirect, res.StatusCode);
+        AssertCookieCleared(res);
+        Assert.Empty(_vault.Items);
+        await using var db = NewContext();
+        Assert.False(await db.ChatSessions.AnyAsync());
+    }
+
+    [Fact]
+    public async Task Sweeper_Logout_EndSessionDiscoveryFails_Returns204AfterSessionDeleted()
+    {
+        _factory.Dispose();
+        BuildFactory(s => { s.RemoveAll<IOidcMetadataProvider>(); s.AddSingleton<IOidcMetadataProvider, ThrowingMetadata>(); });
+        var (_, res) = await LogoutAsync();
+
+        Assert.Equal(HttpStatusCode.NoContent, res.StatusCode);
+        AssertCookieCleared(res);
+        Assert.Empty(_vault.Items);
+        await using var db = NewContext();
+        Assert.False(await db.ChatSessions.AnyAsync());
     }
 }

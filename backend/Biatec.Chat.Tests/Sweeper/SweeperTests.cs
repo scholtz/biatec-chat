@@ -29,11 +29,12 @@ public sealed class SweeperTests : IAsyncLifetime
     internal sealed class MemoryVault : ITokenVault
     {
         public readonly Dictionary<string, TokenVaultEntry> Items = new();
-        public bool FailReads;
+        public bool FailReads, CorruptReads, FailDeletes;
         public Task PutAsync(string id, TokenVaultEntry e, CancellationToken ct = default) { Items[id] = e; return Task.CompletedTask; }
         public Task<TokenVaultEntry?> GetAsync(string id, CancellationToken ct = default) =>
+            CorruptReads ? throw new System.Security.Cryptography.CryptographicException("bad") :
             FailReads ? throw new InvalidOperationException("redis down") : Task.FromResult(Items.GetValueOrDefault(id));
-        public Task DeleteAsync(string id, CancellationToken ct = default) { Items.Remove(id); return Task.CompletedTask; }
+        public Task DeleteAsync(string id, CancellationToken ct = default) { if (FailDeletes) throw new InvalidOperationException("redis down"); Items.Remove(id); return Task.CompletedTask; }
         public Task<string?> GetAccessTokenAsync(string id, CancellationToken ct = default) => Task.FromResult(Items.GetValueOrDefault(id)?.AccessToken);
     }
 

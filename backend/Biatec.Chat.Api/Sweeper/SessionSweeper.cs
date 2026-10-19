@@ -81,14 +81,17 @@ public sealed class SessionSweeper(
         if (entry is not null)
         {
             var tenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == s.TenantId, ct);
-            if (tenant is not null)
+            if (tenant is null)
             {
-                try { await revocation.RevokeOrParkAsync(tenant, entry.RefreshToken, ct); }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    // Not even parked: the fallback is to destroy the entry and let the token age out.
-                    log.LogError("A refresh token could be neither revoked nor parked: {ErrorType}", ex.GetType().Name);
-                }
+                // Cannot revoke or park without the tenant: keep the vault entry and the session for the next run.
+                log.LogWarning("A session's tenant is missing; the session is left for the next run.");
+                throw new InvalidOperationException("Tenant missing for session.");
+            }
+            try { await revocation.RevokeOrParkAsync(tenant, entry.RefreshToken, ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Not even parked: the fallback is to destroy the entry and let the token age out.
+                log.LogError("A refresh token could be neither revoked nor parked: {ErrorType}", ex.GetType().Name);
             }
         }
         await vault.DeleteAsync(vaultId, ct);

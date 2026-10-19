@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Biatec.Chat.Api.Sessions;
 using Biatec.Chat.Api.Sweeper;
 using Biatec.Chat.Api.Tenancy;
@@ -50,19 +51,35 @@ public static class LogoutEndpoints
                 if (exists)
                 {
                     var vaultId = id.ToString("N");
-                    var entry = await vault.GetAsync(vaultId, ctx.RequestAborted);
-                    if (entry is not null)
+                    try
                     {
-                        idToken = entry.IdToken;
-                        try { await revocation.RevokeOrParkAsync(tenant, entry.RefreshToken, ctx.RequestAborted); }
-                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        TokenVaultEntry? entry = null;
+                        try { entry = await vault.GetAsync(vaultId, ctx.RequestAborted); }
+                        catch (CryptographicException)
                         {
-                            // Not even parked: the fallback is to destroy the entry and let the token age out.
-                            log.LogError("A refresh token could be neither revoked nor parked: {ErrorType}", ex.GetType().Name);
+                            // Unreadable entry: nothing to revoke or hint with; delete it and let the token age out.
+                            log.LogError("A vault entry could not be decrypted at logout; it is deleted without revocation.");
                         }
+                        if (entry is not null)
+                        {
+                            idToken = entry.IdToken;
+                            try { await revocation.RevokeOrParkAsync(tenant, entry.RefreshToken, ctx.RequestAborted); }
+                            catch (Exception ex) when (ex is not OperationCanceledException)
+                            {
+                                // Not even parked: the fallback is to destroy the entry and let the token age out.
+                                log.LogError("A refresh token could be neither revoked nor parked: {ErrorType}", ex.GetType().Name);
+                            }
+                        }
+                        await vault.DeleteAsync(vaultId, ctx.RequestAborted);
+                        await db.ChatSessions.Where(s => s.Id == id).ExecuteDeleteAsync(ctx.RequestAborted);
                     }
-                    await vault.DeleteAsync(vaultId, ctx.RequestAborted);
-                    await db.ChatSessions.Where(s => s.Id == id).ExecuteDeleteAsync(ctx.RequestAborted);
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        // Transient vault/database failure: the session stays for the sweeper (which retries revocation
+                        // and deletion), but the browser still forgets the cookie. No hint, so no redirect.
+                        idToken = null;
+                        log.LogError("Logout could not end the session, the sweeper will: {ErrorType}", ex.GetType().Name);
+                    }
                 }
             }
 
