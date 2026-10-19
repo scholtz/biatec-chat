@@ -1,7 +1,7 @@
 ---
 id: T-030
 title: dex.addLiquidity and dex.removeLiquidity capabilities
-status: in-progress
+status: done
 priority: P1
 epic: "DEX"
 blocked_by: [T-022, T-028]
@@ -14,7 +14,7 @@ owner: "session-20261019-agent"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#tool-executors"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-030 · dex.addLiquidity and dex.removeLiquidity capabilities
@@ -51,9 +51,12 @@ dotnet test --filter Liquidity; testnet manual run
 
 ## Review
 
+- 2026-10-20 01:04 · approve · PR #120 merged into main @ b8660ea (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-022, T-028
 - 2026-10-19 22:32 · scholtz · taken · status stays backlog
 - 2026-10-19 22:32 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 01:04 · user · in-progress → done · PR #120 merged into main @ b8660ea (synced by kanban-sync)
