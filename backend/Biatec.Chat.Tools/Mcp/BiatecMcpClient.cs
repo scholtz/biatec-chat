@@ -62,8 +62,19 @@ public sealed class BiatecMcpClient(
         if (McpToolNames.IsBlocked(tool)) throw new McpToolBlockedException(tool);
         await using var conn = await ConnectAsync(ctx, ct);
         // Piggyback: the list is refreshed on this authenticated call once stale, never on a timer.
-        var tools = cache.TryGet(ctx, _o.CacheTtl) ?? await RefreshAsync(conn, ctx, ct);
-        if (tools.All(t => t.Name != tool)) throw new McpToolUnavailableException(tool);
+        var cached = cache.TryGet(ctx, _o.CacheTtl);
+        var tools = cached ?? await RefreshAsync(conn, ctx, ct);
+        if (cached is not null && tools.All(t => t.Name != tool))
+        {
+            // A cached list lacking the tool may be stale (the tool can have reappeared): one forced refresh before giving up.
+            log.LogWarning("Cached Biatec MCP tool list lacks {Tool} (tenant {Tenant}); refreshing once.", tool, ctx.TenantId);
+            tools = await RefreshAsync(conn, ctx, ct);
+        }
+        if (tools.All(t => t.Name != tool))
+        {
+            log.LogError("Biatec MCP does not offer tool {Tool} (tenant {Tenant}, scopes {Scopes}).", tool, ctx.TenantId, ctx.ScopeKey);
+            throw new McpToolUnavailableException(tool);
+        }
         return await conn.CallToolAsync(tool, args, ct);
     }
 

@@ -24,6 +24,8 @@ builder.Services.AddOnboarding(builder.Configuration);
 
 builder.Services.AddScopeElevation();
 builder.Services.AddEvidence(builder.Configuration);
+builder.Services.AddSingleton<Biatec.Chat.Tools.Mcp.IMcpBearerSource, Biatec.Chat.Api.Mcp.VaultMcpBearerSource>();
+Biatec.Chat.Tools.Mcp.McpRegistration.AddBiatecMcp(builder.Services, builder.Configuration);
 
 var app = builder.Build();
 await app.MigrateDevelopmentDatabaseAsync();
