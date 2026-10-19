@@ -427,6 +427,7 @@
           "reason",
           "scope",
           "description",
+          "unavailable",
           "type"
         ],
         "properties": {
@@ -453,6 +454,9 @@
               "null",
               "string"
             ]
+          },
+          "unavailable": {
+            "type": "boolean"
           }
         }
       },

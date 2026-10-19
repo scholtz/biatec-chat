@@ -25,7 +25,7 @@ export function isChatEvent(v: unknown): v is ChatEvent {
     case "consent_status":
       return isObj(v.consent) && isStr(v.consent.previewId) && isStr(v.consent.state);
     case "sign_in_card":
-      return isStr(v.signInUrl) && isStr(v.reason);
+      return isStr(v.signInUrl) && isStr(v.reason) && typeof v.unavailable === "boolean";
     case "error":
       return isStr(v.code) && isStr(v.message) && typeof v.retryable === "boolean";
     default:

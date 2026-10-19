@@ -49,7 +49,8 @@ public static class ChatEndpoints
                 scopes = entry?.Scopes ?? [];
             }
 
-            var turn = new ChatTurn(session.ConversationId, session.Id.ToString("N"), tenant, session.Tier, scopes, body.Message, body.Context);
+            var turn = new ChatTurn(session.ConversationId, session.Id.ToString("N"), tenant, session.Tier, scopes, body.Message, body.Context,
+                SignInAvailable: true); // cookie transport; /public/chat must pass false
 
             if (!TurnsInFlight.TryAdd(session.ConversationId, 0))
                 return Results.Problem("A previous message in this conversation is still being answered.", statusCode: StatusCodes.Status409Conflict);

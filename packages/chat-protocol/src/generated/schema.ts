@@ -115,6 +115,7 @@ export interface components {
             reason: components["schemas"]["SignInReason"];
             scope: null | string;
             description: null | string;
+            unavailable: boolean;
         };
         ChatEventTextDeltaEvent: {
             /** @enum {string} */
