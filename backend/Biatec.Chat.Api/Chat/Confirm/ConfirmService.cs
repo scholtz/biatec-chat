@@ -129,6 +129,22 @@ public sealed class ConfirmService(
     private async Task<ConfirmResult> SignAndSubmitAsync(Tenant tenant, ChatSession session, ActionPreview preview, ActionStep step,
         IReadOnlyList<Algorand.Algod.Model.Transactions.Transaction> group, string address, string sessionId, Guid previewId, CancellationToken ct)
     {
+        // Fail closed BEFORE anything is signed: x402.pay needs the tenant flag (it may have been turned off after the
+        // preview was made) and its settlement handler (platform flag); the MCP broadcast would pay for nothing.
+        if (string.Equals(preview.Capability, "x402.pay", StringComparison.Ordinal))
+        {
+            string? refusal = null, message = null;
+            if (!tenant.X402Enabled) { refusal = "feature_disabled"; message = "x402 payments are disabled for this workspace. Nothing was signed; the preview must be rebuilt."; }
+            else if (settlementHandlers?.Any(h => string.Equals(h.Capability, preview.Capability, StringComparison.Ordinal)) != true)
+            { refusal = "settlement_unavailable"; message = "x402 payments are not available right now. Nothing was signed; the preview must be rebuilt."; }
+            if (refusal is not null)
+            {
+                await FailAsync(preview, step, CancellationToken.None);
+                await RecordAsync(session, "submission_failed", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["reason"] = refusal }, CancellationToken.None);
+                return new ConfirmResult(ConfirmOutcome.Failed, message!, [], ErrorCode: refusal);
+            }
+        }
+
         string? bearer;
         try { bearer = await vault.GetAccessTokenAsync(sessionId, ct); }
         catch (VaultRefreshException)
@@ -203,16 +219,6 @@ public sealed class ConfirmService(
             await FailAsync(preview, step, ct);
             await RecordAsync(session, "signing_refused", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["reason"] = "signed_group_mismatch" }, ct);
             return new ConfirmResult(ConfirmOutcome.Failed, ex.Message + " Nothing was submitted.", [], ErrorCode: "signed_group_mismatch");
-        }
-
-        // Fail closed: x402.pay must settle through its handler (facilitator + resource fetch). If the handler is not
-        // registered (platform flag turned off after the preview was made) the MCP broadcast would pay for nothing.
-        if (string.Equals(preview.Capability, "x402.pay", StringComparison.Ordinal)
-            && settlementHandlers?.Any(h => string.Equals(h.Capability, preview.Capability, StringComparison.Ordinal)) != true)
-        {
-            await FailAsync(preview, step, CancellationToken.None);
-            await RecordAsync(session, "submission_failed", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["reason"] = "settlement_unavailable" }, CancellationToken.None);
-            return new ConfirmResult(ConfirmOutcome.Failed, "x402 payments are not available right now. Nothing was submitted; the preview must be rebuilt.", [], ErrorCode: "settlement_unavailable");
         }
 
         var txIds = Biatec.Chat.Tools.Algod.AlgorandGroup.Ensure(group).TxIds.ToArray();

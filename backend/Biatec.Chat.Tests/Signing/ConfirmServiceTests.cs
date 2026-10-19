@@ -251,6 +251,7 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
 
     private async Task<Built> BuildX402PreviewAsync()
     {
+        _tenant.X402Enabled = true;
         var group = AlgorandGroup.Ensure([Pay(_user.Address, 250_000)]);
         await using var db = NewContext();
         var canonical = new JsonObject
@@ -307,6 +308,26 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task X402_confirm_is_refused_before_signing_when_the_tenant_disabled_x402_after_the_preview()
+    {
+        var b = await BuildX402PreviewAsync();
+        var (handler, resource, facilitator) = X402Handler();
+        _tenant.X402Enabled = false;
+        var r = await ConfirmAsync(b.PreviewId, b.Group.GroupHash, handlers: [handler]);
+
+        Assert.Equal(ConfirmOutcome.Failed, r.Outcome);
+        Assert.Equal("feature_disabled", r.ErrorCode);
+        Assert.Empty(_oidc.Calls);
+        Assert.Empty(_mcp.Submits);
+        Assert.Empty(facilitator.Settled);
+        Assert.Empty(resource.Seen);
+        var (preview, step) = await LoadAsync(b.PreviewId);
+        Assert.NotEqual(ActionPreviewStatus.Completed, preview.Status);
+        Assert.NotEqual(ActionPreviewStatus.InProgress, preview.Status);
+        Assert.Empty(step.TxIds ?? []);
+    }
+
+    [Fact]
     public async Task X402_confirm_fails_closed_when_no_settlement_handler_is_registered()
     {
         var b = await BuildX402PreviewAsync();
@@ -314,6 +335,7 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
 
         Assert.Equal(ConfirmOutcome.Failed, r.Outcome);
         Assert.Equal("settlement_unavailable", r.ErrorCode);
+        Assert.Empty(_oidc.Calls); // refused before anything was signed
         Assert.Empty(_mcp.Submits);
         var (preview, step) = await LoadAsync(b.PreviewId);
         Assert.NotEqual(ActionPreviewStatus.Completed, preview.Status);
