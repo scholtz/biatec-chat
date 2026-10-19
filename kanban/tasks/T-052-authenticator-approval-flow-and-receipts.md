@@ -1,7 +1,7 @@
 ---
 id: T-052
 title: Authenticator approval flow and receipts
-status: blocked
+status: backlog
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-051]
@@ -54,3 +54,4 @@ flutter test; manual run with mock + backend
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 21:07 · kanban-board · blocked → backlog · blockers done: T-051
