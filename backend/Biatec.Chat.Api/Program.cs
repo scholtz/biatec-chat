@@ -1,6 +1,7 @@
 using Biatec.Chat.Api.Auth;
 using Biatec.Chat.Api.Auth.Elevation;
 using Biatec.Chat.Api.Auth.Logout;
+using Biatec.Chat.Api.Chat;
 using Biatec.Chat.Api.Config;
 using Biatec.Chat.Api.Contracts;
 using Biatec.Chat.Api.Data;
@@ -27,6 +28,7 @@ builder.Services.AddTokenVault(builder.Configuration);
 builder.Services.AddTenancy();
 builder.Services.AddSessions();
 builder.Services.AddBedrockModel();
+builder.Services.AddChat();
 builder.Services.AddOnboarding(builder.Configuration);
 
 builder.Services.AddScopeElevation();
@@ -49,6 +51,7 @@ app.MapHealthChecks("/health");
 
 app.MapContractCatalog();
 app.MapSessions();
+app.MapChat();
 app.MapAuth();
 app.MapOnboarding();
 
