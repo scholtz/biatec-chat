@@ -41,9 +41,11 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The widget and builders import @biatec/chat-protocol from its dist, so it is built first.
+      - name: Build chat-protocol
+        run: pnpm --filter @biatec/chat-protocol build
       - name: Typecheck
         run: |
-          pnpm --filter @biatec/chat-protocol typecheck
           pnpm --filter @biatec/chat-widget typecheck
           pnpm --filter builders typecheck
       - name: Test
@@ -54,7 +56,6 @@ jobs:
           pnpm --filter mock-oidc test
       - name: Build
         run: |
-          pnpm --filter @biatec/chat-protocol build
           pnpm --filter @biatec/chat-widget build
           pnpm --filter builders build
 
