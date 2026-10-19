@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="biatec-tokens.css">
+<style>body{margin:0;background:var(--color-bg-primary);} a{color:var(--color-brand-text);} a:hover{color:var(--color-text-primary);}</style>
+</helmet>
+<section id="components" data-screen-label="03 Components" style="background:transparent;color:var(--color-text-primary);font-family:var(--font-sans);">
+<div style="max-width:1320px;margin:0 auto;padding:0 32px 64px;">
+
+  <header style="display:grid;grid-template-columns:72px minmax(0,1fr);gap:24px;padding:64px 0 40px;border-top:1px solid var(--color-border-default);">
+    <div style="font-size:14px;font-weight:600;color:var(--color-brand-text);font-variant-numeric:tabular-nums;padding-top:10px;">03</div>
+    <div><h2 style="margin:0;font-size:36px;font-weight:600;letter-spacing:-0.02em;line-height:1.15;">Components</h2><p style="margin:8px 0 0;font-size:16px;line-height:1.6;color:var(--color-text-secondary);max-width:680px;">Every component appears twice, in dark and light, from the same source and the same semantic tokens. Only the theme attribute changes.</p></div>
+  </header>
+
+  <h3 style="margin:0 0 16px;font-size:22px;font-weight:600;letter-spacing:-0.01em;">Buttons &amp; form controls</h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,560px),1fr));gap:16px;margin-bottom:56px;">
+    <sc-for list="{{ themes }}" as="th" hint-placeholder-count="2">
+      <div data-theme="{{ th.id }}" style="background:var(--color-bg-primary);color:var(--color-text-primary);border:1px solid var(--color-border-default);border-radius:var(--radius-xl);padding:24px;display:flex;flex-direction:column;gap:22px;min-width:0;">
+        <div style="font-size:12px;font-weight:600;color:var(--color-text-secondary);">{{ th.label }}</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Variants</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;">
+            <button type="button" style="display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:var(--radius-md);font:inherit;font-size:14px;font-weight:500;cursor:pointer;background:var(--color-brand-primary);color:var(--color-brand-on);border:1px solid transparent;" style-hover="background:var(--color-brand-hover);">Review trade</button>
+            <button type="button" style="display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:var(--radius-md);font:inherit;font-size:14px;font-weight:500;cursor:pointer;background:transparent;color:var(--color-text-primary);border:1px solid var(--color-border-strong);" style-hover="background:var(--color-bg-interactive);">Edit parameters</button>
+            <button type="button" style="display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 12px;border-radius:var(--radius-md);font:inherit;font-size:14px;font-weight:500;cursor:pointer;background:transparent;color:var(--color-text-primary);border:1px solid transparent;" style-hover="background:var(--color-bg-interactive);">View details</button>
+            <button type="button" style="display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:var(--radius-md);font:inherit;font-size:14px;font-weight:500;cursor:pointer;background:var(--color-status-danger-subtle);color:var(--color-status-danger);border:1px solid transparent;" style-hover="border-color:var(--color-status-danger);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0"></path><path d="m4.9 4.9 14.2 14.2"></path></svg>Revoke access</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Sizes · 32 / 40 / 48</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+            <button type="button" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:var(--radius-md);font:inherit;font-size:13px;font-weight:500;background:var(--color-brand-primary);color:var(--color-brand-on);border:0;cursor:pointer;">Small</button>
+            <button type="button" style="display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:var(--radius-md);font:inherit;font-size:14px;font-weight:500;background:var(--color-brand-primary);color:var(--color-brand-on);border:0;cursor:pointer;">Medium</button>
+            <button type="button" style="display:inline-flex;align-items:center;gap:8px;height:48px;padding:0 20px;border-radius:10px;font:inherit;font-size:15px;font-weight:500;background:var(--color-brand-primary);color:var(--color-brand-on);border:0;cursor:pointer;">Large · touch</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">States · primary</div>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;">
+            <div style="display:flex;flex-direction:column;gap:6px;"><span style="display:flex;align-items:center;height:40px;padding:0 16px;border-radius:var(--radius-md);font-size:14px;font-weight:500;background:var(--color-brand-primary);color:var(--color-brand-on);">Send</span><span style="font-size:11px;color:var(--color-text-secondary);">Default</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px;"><span style="display:flex;align-items:center;height:40px;padding:0 16px;border-radius:var(--radius-md);font-size:14px;font-weight:500;background:var(--color-brand-hover);color:var(--color-brand-on);">Send</span><span style="font-size:11px;color:var(--color-text-secondary);">Hover</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px;"><span style="display:flex;align-items:center;height:40px;padding:0 16px;border-radius:var(--radius-md);font-size:14px;font-weight:500;background:var(--color-brand-pressed);color:var(--color-brand-on);">Send</span><span style="font-size:11px;color:var(--color-text-secondary);">Pressed</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px;"><span style="display:flex;align-items:center;height:40px;padding:0 16px;border-radius:var(--radius-md);font-size:14px;font-weight:500;background:var(--color-brand-primary);color:var(--color-brand-on);outline:2px solid var(--color-border-focus);outline-offset:2px;">Send</span><span style="font-size:11px;color:var(--color-text-secondary);">Focus · keyboard</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px;"><span style="display:flex;align-items:center;height:40px;padding:0 16px;border-radius:var(--radius-md);font-size:14px;font-weight:500;background:var(--color-bg-interactive);color:var(--color-text-secondary);">Send</span><span style="font-size:11px;color:var(--color-text-secondary);">Disabled · still legible</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px;"><span aria-busy="true" style="display:flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:var(--radius-md);font-size:14px;font-weight:500;background:var(--color-brand-primary);color:var(--color-brand-on);opacity:.8;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"></path></svg>Sending…</span><span style="font-size:11px;color:var(--color-text-secondary);">Loading · locked</span></div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Trading actions · escalating weight</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+            <button type="button" style="display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 12px;border-radius:var(--radius-md);font:inherit;font-size:14px;font-weight:500;background:var(--color-brand-subtle);color:var(--color-brand-text);border:0;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.13-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.13a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.13 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.13a.5.5 0 0 1-.96 0z"></path></svg>Analyze</button>
+            <button type="button" style="display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:var(--radius-md);font:inherit;font-size:14px;font-weight:500;background:transparent;color:var(--color-text-primary);border:1px solid var(--color-border-strong);cursor:pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"></path><path d="M14 2v5h5"></path><path d="M16 13H8"></path><path d="M16 17H8"></path></svg>Prepare trade</button>
+            <button type="button" style="display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:var(--radius-md);font:inherit;font-size:14px;font-weight:500;background:var(--color-brand-primary);color:var(--color-brand-on);border:0;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0"></path><path d="M9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"></path></svg>Review trade</button>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+            <button type="button" style="display:inline-flex;align-items:center;gap:10px;height:48px;padding:0 20px;border-radius:10px;font:inherit;font-size:15px;font-weight:600;background:var(--color-brand-primary);color:var(--color-brand-on);border:0;box-shadow:0 0 0 1px var(--color-bg-primary), 0 0 0 3px var(--color-brand-primary);cursor:pointer;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg>Approve demo trade · $100.00</button>
+            <button type="button" style="display:inline-flex;align-items:center;gap:8px;height:48px;padding:0 16px;border-radius:10px;font:inherit;font-size:15px;font-weight:500;background:transparent;color:var(--color-text-primary);border:1px solid var(--color-border-strong);cursor:pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>Reject proposal</button>
+            <button type="button" style="display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px;border-radius:var(--radius-md);font:inherit;font-size:14px;font-weight:500;background:var(--color-status-warning-subtle);color:var(--color-status-warning);border:1px solid transparent;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0"></path><path d="M10 15V9"></path><path d="M14 15V9"></path></svg>Pause agent</button>
+          </div>
+          <div style="font-size:12px;line-height:1.5;color:var(--color-text-secondary);">Approve is the only 48 px, double-ringed, icon-led primary, and it always states the amount. Navigation never uses this treatment.</div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+            <span role="tooltip" style="font-size:12px;padding:4px 8px;border-radius:var(--radius-sm);background:var(--color-text-primary);color:var(--color-bg-primary);white-space:nowrap;">Copy response</span>
+            <button type="button" aria-label="Copy response" style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-md);background:var(--color-bg-interactive);border:0;color:var(--color-text-primary);cursor:pointer;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z"></path><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg></button>
+          </div>
+          <div style="display:flex;gap:4px;padding-top:30px;">
+            <button type="button" aria-label="Retry" title="Retry" style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-md);background:transparent;border:0;color:var(--color-text-secondary);cursor:pointer;" style-hover="background:var(--color-bg-interactive);color:var(--color-text-primary);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg></button>
+            <button type="button" aria-label="Expand" title="Expand" style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-md);background:transparent;border:0;color:var(--color-text-secondary);cursor:pointer;" style-hover="background:var(--color-bg-interactive);color:var(--color-text-primary);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg></button>
+          </div>
+          <div style="font-size:12px;line-height:1.5;color:var(--color-text-secondary);padding-top:30px;">Icon-only buttons: 40 px hit area, an aria-label, and a tooltip on hover and focus.</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;padding-top:16px;border-top:1px solid var(--color-border-default);">
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;">Max order
+            <span style="display:flex;align-items:center;height:40px;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);background:var(--color-bg-secondary);padding:0 12px;gap:6px;"><span style="color:var(--color-text-secondary);">$</span><input value="250.00" aria-describedby="h1" style="flex:1;min-width:0;border:0;background:transparent;font:inherit;font-size:14px;font-weight:400;color:var(--color-text-primary);font-variant-numeric:tabular-nums;outline:none;"><span style="font-size:12px;font-weight:400;color:var(--color-text-secondary);">per order</span></span>
+            <span style="font-size:12px;font-weight:400;color:var(--color-text-secondary);">Risk limit input · default</span></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;">Daily allocation
+            <span style="display:flex;align-items:center;height:40px;border:1px solid var(--color-border-focus);outline:2px solid var(--color-brand-subtle);border-radius:var(--radius-md);background:var(--color-bg-secondary);padding:0 12px;gap:6px;"><span style="color:var(--color-text-secondary);">$</span><span style="flex:1;font-size:14px;font-weight:400;font-variant-numeric:tabular-nums;">500.00</span></span>
+            <span style="font-size:12px;font-weight:400;color:var(--color-text-secondary);">Focused</span></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;">Stop at loss
+            <span style="display:flex;align-items:center;height:40px;border:1px solid var(--color-status-danger);border-radius:var(--radius-md);background:var(--color-bg-secondary);padding:0 12px;gap:6px;"><span style="flex:1;font-size:14px;font-weight:400;font-variant-numeric:tabular-nums;">80</span><span style="color:var(--color-text-secondary);">%</span></span>
+            <span role="alert" style="display:flex;gap:6px;align-items:center;font-size:12px;font-weight:500;color:var(--color-status-danger);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>Must be 50% or less</span></label>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start;">
+          <div style="display:flex;flex-direction:column;gap:8px;"><span style="font-size:13px;font-weight:500;">Allowed assets</span>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <sc-for list="{{ assets }}" as="a"><button type="button" aria-pressed="{{ a.on }}" onClick="{{ a.toggle }}" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:var(--radius-full);font:inherit;font-size:13px;font-weight:500;cursor:pointer;background:{{ a.bg }};color:{{ a.fg }};border:1px solid {{ a.bd }};"><sc-if value="{{ a.on }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>{{ a.sym }}</button></sc-for>
+            </div></div>
+          <div style="display:flex;flex-direction:column;gap:8px;"><span style="font-size:13px;font-weight:500;">Confirm every trade</span>
+            <button type="button" role="switch" aria-checked="{{ sw }}" onClick="{{ toggleSw }}" style="width:44px;height:26px;border-radius:var(--radius-full);border:0;padding:3px;cursor:pointer;display:flex;justify-content:{{ swJust }};background:{{ swBg }};"><span style="width:20px;height:20px;border-radius:50%;background:{{ swKnob }};"></span></button></div>
+          <label style="display:flex;gap:10px;align-items:flex-start;font-size:13px;max-width:240px;cursor:pointer;"><span style="width:18px;height:18px;flex:none;border-radius:5px;background:var(--color-brand-primary);color:var(--color-brand-on);display:flex;align-items:center;justify-content:center;margin-top:1px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></span>I understand this is a simulated order.</label>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start;">
+          <div role="tablist" style="display:flex;gap:2px;padding:3px;border-radius:var(--radius-md);background:var(--color-bg-secondary);border:1px solid var(--color-border-default);">
+            <span role="tab" aria-selected="true" style="padding:6px 12px;border-radius:6px;font-size:13px;font-weight:500;background:var(--color-bg-elevated);box-shadow:var(--shadow-sm);">Overview</span><span role="tab" style="padding:6px 12px;font-size:13px;color:var(--color-text-secondary);">Risks</span><span role="tab" style="padding:6px 12px;font-size:13px;color:var(--color-text-secondary);">Fees</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:200px;">
+            <span style="display:flex;align-items:center;justify-content:space-between;height:36px;padding:0 12px;border:1px solid var(--color-border-focus);border-radius:var(--radius-md);background:var(--color-bg-secondary);font-size:13px;">Context · BTC/USDC<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m18 15-6-6-6 6"></path></svg></span>
+            <div role="menu" style="border:1px solid var(--color-border-default);border-radius:var(--radius-md);background:var(--color-bg-elevated);box-shadow:var(--shadow-md);padding:4px;font-size:13px;">
+              <div style="padding:8px 10px;border-radius:6px;background:var(--color-brand-subtle);color:var(--color-brand-text);display:flex;justify-content:space-between;">BTC/USDC<span>✓</span></div><div style="padding:8px 10px;">ETH/USDC</div><div style="padding:8px 10px;">Portfolio</div><div style="padding:8px 10px;color:var(--color-text-secondary);">No context</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <h3 style="margin:0 0 16px;font-size:22px;font-weight:600;letter-spacing:-0.01em;">Chat components</h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,560px),1fr));gap:16px;margin-bottom:56px;">
+    <sc-for list="{{ themes }}" as="th" hint-placeholder-count="2">
+      <div data-theme="{{ th.id }}" style="background:var(--color-bg-primary);color:var(--color-text-primary);border:1px solid var(--color-border-default);border-radius:var(--radius-xl);padding:24px;display:flex;flex-direction:column;gap:20px;min-width:0;">
+        <div style="font-size:12px;font-weight:600;color:var(--color-text-secondary);">{{ th.label }}</div>
+        <div style="display:flex;justify-content:flex-end;"><div style="max-width:80%;background:var(--color-bg-elevated);border:1px solid var(--color-border-default);padding:10px 14px;border-radius:12px 12px 4px 12px;font-size:14px;line-height:1.5;">Can you analyze Bitcoin and help me understand a possible trade?</div></div>
+        <div style="display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;">
+          <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;"><dc-import name="BAI Logo" variant="symbol" size="28" hint-size="28px,28px"></dc-import></div>
+          <div style="display:flex;flex-direction:column;gap:12px;min-width:0;">
+            <div style="display:flex;align-items:baseline;gap:8px;"><span style="font-size:13px;font-weight:600;color:var(--color-brand-text);">Biatec AI</span><span style="font-size:12px;color:var(--color-text-secondary);font-variant-numeric:tabular-nums;">14:32</span></div>
+            <div style="font-size:17px;font-weight:600;letter-spacing:-0.005em;">Bitcoin · 24h overview</div>
+            <p style="margin:0;font-size:14px;line-height:1.6;">Bitcoin is up <strong style="font-weight:600;font-variant-numeric:tabular-nums;">2.41%</strong> over the last 24 hours, trading near <strong style="font-weight:600;font-variant-numeric:tabular-nums;">$67,412</strong>. The move has been steady rather than sharp.</p>
+            <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);background:var(--color-bg-secondary);overflow:hidden;">
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px 0;"><span style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">BTC/USD · 24h</span><span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;padding:2px 8px;border-radius:var(--radius-full);background:var(--color-status-info-subtle);color:var(--color-status-info);">Demo data</span></div>
+              <div style="display:flex;align-items:baseline;gap:10px;padding:6px 14px 0;"><span style="font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;">67,412.50</span><span style="display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600;color:var(--color-status-success);font-variant-numeric:tabular-nums;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 7l-8.5 8.5-5-5L2 17"></path><path d="M16 7h6v6"></path></svg>+2.41%</span></div>
+              <svg viewBox="0 0 360 80" preserveAspectRatio="none" style="display:block;width:100%;height:80px;margin-top:6px;"><path d="{{ chartArea }}" fill="var(--color-brand-subtle)"></path><path d="{{ chartLine }}" fill="none" stroke="var(--color-brand-primary)" stroke-width="2" vector-effect="non-scaling-stroke"></path></svg>
+              <div style="display:flex;justify-content:space-between;padding:6px 14px 10px;font-size:11px;color:var(--color-text-secondary);font-variant-numeric:tabular-nums;"><span>14:30 yesterday</span><span>Low 65,610 · High 67,980</span><span>Now</span></div>
+            </div>
+            <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);">
+              <button type="button" onClick="{{ toggleWhy }}" aria-expanded="{{ whyOpen }}" style="display:flex;align-items:center;gap:8px;width:100%;padding:12px 14px;border:0;background:transparent;color:var(--color-text-primary);font:inherit;font-size:14px;font-weight:500;cursor:pointer;text-align:left;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-text)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"></path><path d="M9 18h6"></path><path d="M10 22h4"></path></svg>Analysis and assumptions<span style="margin-left:auto;font-size:12px;color:var(--color-text-secondary);">{{ whyLabel }}</span></button>
+              <sc-if value="{{ whyOpen }}">
+                <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--color-border-default);border-top:1px solid var(--color-border-default);font-size:13px;line-height:1.5;">
+                  <div style="background:var(--color-bg-primary);padding:12px 14px;"><div style="font-size:12px;font-weight:500;color:var(--color-text-secondary);margin-bottom:2px;">Evidence</div>Higher lows since 06:00; volume +18% vs 7-day average.</div>
+                  <div style="background:var(--color-bg-primary);padding:12px 14px;"><div style="font-size:12px;font-weight:500;color:var(--color-text-secondary);margin-bottom:2px;">Assumptions</div>24h window only; demo prices, not a live feed.</div>
+                  <div style="background:var(--color-bg-primary);padding:12px 14px;"><div style="font-size:12px;font-weight:500;color:var(--color-text-secondary);margin-bottom:2px;">Limitations</div>No news or on-chain data considered.</div>
+                  <div style="background:var(--color-bg-primary);padding:12px 14px;"><div style="font-size:12px;font-weight:500;color:var(--color-text-secondary);margin-bottom:2px;">Risks</div>Resistance near $68,000 has capped price twice.</div>
+                </div>
+              </sc-if>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+              <button type="button" style="height:32px;padding:0 12px;border-radius:var(--radius-full);border:1px solid var(--color-border-strong);background:transparent;color:var(--color-text-primary);font:inherit;font-size:13px;cursor:pointer;" style-hover="background:var(--color-bg-interactive);">Explain this trend</button>
+              <button type="button" style="height:32px;padding:0 12px;border-radius:var(--radius-full);border:1px solid var(--color-border-strong);background:transparent;color:var(--color-text-primary);font:inherit;font-size:13px;cursor:pointer;" style-hover="background:var(--color-bg-interactive);">Compare with ETH</button>
+              <button type="button" style="height:32px;padding:0 12px;border-radius:var(--radius-full);border:1px solid var(--color-brand-primary);background:var(--color-brand-subtle);color:var(--color-brand-text);font:inherit;font-size:13px;font-weight:500;cursor:pointer;">Explore trade scenario</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--color-text-secondary);flex-wrap:wrap;">
+              <button type="button" style="display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 8px;border-radius:6px;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;" style-hover="background:var(--color-bg-interactive);color:var(--color-text-primary);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z"></path><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>Copy</button>
+              <button type="button" style="display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 8px;border-radius:6px;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;" style-hover="background:var(--color-bg-interactive);color:var(--color-text-primary);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>Retry</button>
+              <span style="width:1px;height:14px;background:var(--color-border-default);margin:0 6px;"></span>
+              <span>Sources: demo dataset · VWAP, RSI(14)</span><span>·</span><span style="font-variant-numeric:tabular-nums;">19 Oct 2026, 14:32 UTC</span>
+            </div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;align-items:center;">
+          <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;"><dc-import name="BAI Logo" variant="symbol" size="28" hint-size="28px,28px"></dc-import></div>
+          <div role="status" style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--color-text-secondary);"><span style="display:flex;gap:4px;"><span style="width:6px;height:6px;border-radius:50%;background:var(--color-brand-primary);"></span><span style="width:6px;height:6px;border-radius:50%;background:var(--color-brand-primary);opacity:.6;"></span><span style="width:6px;height:6px;border-radius:50%;background:var(--color-brand-primary);opacity:.3;"></span></span>Analyzing BTC/USD · reading 24h candles…</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding-top:16px;border-top:1px solid var(--color-border-default);">
+          <button type="button" style="display:flex;flex-direction:column;align-items:flex-start;gap:12px;text-align:left;padding:14px;border-radius:var(--radius-lg);border:1px solid var(--color-border-default);background:var(--color-bg-secondary);color:var(--color-text-primary);font:inherit;cursor:pointer;" style-hover="border-color:var(--color-border-strong);background:var(--color-bg-elevated);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-text)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 7l-8.5 8.5-5-5L2 17"></path><path d="M16 7h6v6"></path></svg><span style="font-size:14px;font-weight:500;line-height:1.35;">What's happening with Bitcoin today?</span></button>
+          <button type="button" style="display:flex;flex-direction:column;align-items:flex-start;gap:12px;text-align:left;padding:14px;border-radius:var(--radius-lg);border:1px solid var(--color-border-default);background:var(--color-bg-secondary);color:var(--color-text-primary);font:inherit;cursor:pointer;" style-hover="border-color:var(--color-border-strong);background:var(--color-bg-elevated);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-text)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg><span style="font-size:14px;font-weight:500;line-height:1.35;">Help me understand trading risks</span></button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Composer · default / focused / sending</div>
+          <div style="border:1px solid var(--color-border-strong);border-radius:var(--radius-lg);background:var(--color-bg-secondary);padding:12px 12px 8px;display:flex;flex-direction:column;gap:8px;">
+            <span style="font-size:14px;color:var(--color-text-secondary);">Ask Biatec AI anything about crypto…</span>
+            <div style="display:flex;align-items:center;gap:6px;"><span style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;color:var(--color-text-secondary);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg></span><span style="font-size:12px;padding:4px 8px;border-radius:6px;background:var(--color-bg-interactive);">BTC/USDC</span><span style="margin-left:auto;font-size:11px;color:var(--color-text-secondary);">⏎ send · ⇧⏎ new line</span><span style="width:32px;height:32px;border-radius:var(--radius-md);background:var(--color-bg-interactive);color:var(--color-text-secondary);display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg></span></div>
+          </div>
+          <div style="border:1px solid var(--color-border-focus);box-shadow:0 0 0 3px var(--color-brand-subtle);border-radius:var(--radius-lg);background:var(--color-bg-secondary);padding:12px 12px 8px;display:flex;flex-direction:column;gap:8px;">
+            <span style="font-size:14px;">Prepare a hypothetical BTC trade using $100<span style="display:inline-block;width:1.5px;height:16px;background:var(--color-brand-primary);vertical-align:-3px;margin-left:1px;"></span></span>
+            <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:12px;padding:4px 8px;border-radius:6px;background:var(--color-bg-interactive);">BTC/USDC</span><span style="margin-left:auto;width:32px;height:32px;border-radius:var(--radius-md);background:var(--color-brand-primary);color:var(--color-brand-on);display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg></span></div>
+          </div>
+          <div aria-busy="true" style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);background:var(--color-bg-secondary);padding:12px;display:flex;align-items:center;gap:10px;opacity:.85;">
+            <span style="font-size:14px;color:var(--color-text-secondary);flex:1;">Biatec AI is responding…</span>
+            <button type="button" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--color-border-strong);background:transparent;color:var(--color-text-primary);font:inherit;font-size:13px;cursor:pointer;"><span style="width:10px;height:10px;border-radius:2px;background:currentColor;"></span>Stop</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;padding:24px;border:1px dashed var(--color-border-strong);border-radius:var(--radius-lg);">
+          <dc-import name="BAI Logo" variant="symbol" size="32" hint-size="32px,32px"></dc-import>
+          <div style="font-size:19px;font-weight:600;">Meet Biatec AI.</div>
+          <div style="font-size:14px;line-height:1.55;color:var(--color-text-secondary);">Your intelligent companion for exploring crypto markets, understanding trading strategies, and staying in control of every decision.</div>
+          <div style="font-size:12px;color:var(--color-text-secondary);">Empty conversation state</div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <h3 style="margin:0 0 16px;font-size:22px;font-weight:600;letter-spacing:-0.01em;">Financial components</h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,560px),1fr));gap:16px;margin-bottom:56px;">
+    <sc-for list="{{ themes }}" as="th" hint-placeholder-count="2">
+      <div data-theme="{{ th.id }}" style="background:var(--color-bg-primary);color:var(--color-text-primary);border:1px solid var(--color-border-default);border-radius:var(--radius-xl);padding:24px;display:flex;flex-direction:column;gap:20px;min-width:0;">
+        <div style="font-size:12px;font-weight:600;color:var(--color-text-secondary);">{{ th.label }}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
+          <div style="background:var(--color-bg-secondary);border:1px solid var(--color-border-default);border-radius:var(--radius-lg);padding:16px;display:flex;flex-direction:column;gap:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Portfolio balance</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:var(--radius-full);background:var(--color-status-info-subtle);color:var(--color-status-info);">Mock</span></div>
+            <div style="font-size:30px;font-weight:600;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;">$11,700.00</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-variant-numeric:tabular-nums;"><span style="display:inline-flex;align-items:center;gap:3px;color:var(--color-status-success);font-weight:600;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg>+$142.80 (+1.24%)</span><span style="color:var(--color-text-secondary);">past 24h</span></div>
+            <div style="display:flex;height:8px;gap:2px;border-radius:var(--radius-full);overflow:hidden;"><span style="width:46%;background:var(--color-brand-primary);"></span><span style="width:22%;background:var(--color-status-info);"></span><span style="width:18%;background:var(--color-text-secondary);"></span><span style="width:14%;background:var(--color-border-strong);"></span></div>
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;font-size:12px;font-variant-numeric:tabular-nums;">
+              <span style="display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;border-radius:2px;background:var(--color-brand-primary);"></span>BTC 46%</span><span style="display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;border-radius:2px;background:var(--color-status-info);"></span>ETH 22%</span>
+              <span style="display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;border-radius:2px;background:var(--color-text-secondary);"></span>USDC 18%</span><span style="display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;border-radius:2px;background:var(--color-border-strong);"></span>ALGO 14%</span>
+            </div>
+          </div>
+          <div style="background:var(--color-bg-secondary);border:1px solid var(--color-border-default);border-radius:var(--radius-lg);display:flex;flex-direction:column;">
+            <div style="padding:12px 16px;font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);border-bottom:1px solid var(--color-border-default);">Watchlist</div>
+            <sc-for list="{{ watch }}" as="w">
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--color-border-default);font-size:13px;font-variant-numeric:tabular-nums;" style-hover="background:var(--color-bg-interactive);">
+                <div><div style="font-weight:600;">{{ w.sym }}</div><div style="font-size:11px;color:var(--color-text-secondary);">{{ w.name }}</div></div>
+                <span style="font-weight:500;">{{ w.price }}</span>
+                <span style="display:inline-flex;align-items:center;gap:3px;min-width:72px;justify-content:flex-end;font-weight:600;color:{{ w.color }};">{{ w.arrow }} {{ w.chg }}</span>
+              </div>
+            </sc-for>
+            <div style="padding:8px 16px;font-size:11px;color:var(--color-text-secondary);">Arrow and sign always accompany color.</div>
+          </div>
+        </div>
+        <div style="background:var(--color-bg-secondary);border:1px solid var(--color-border-default);border-radius:var(--radius-lg);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));">
+          <div style="padding:12px 16px;border-right:1px solid var(--color-border-default);"><div style="font-size:11px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Position</div><div style="font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;">0.0798 BTC</div></div>
+          <div style="padding:12px 16px;border-right:1px solid var(--color-border-default);"><div style="font-size:11px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Avg. cost</div><div style="font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;">$63,180</div></div>
+          <div style="padding:12px 16px;border-right:1px solid var(--color-border-default);"><div style="font-size:11px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Value</div><div style="font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;">$5,382</div></div>
+          <div style="padding:12px 16px;"><div style="font-size:11px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Unrealized</div><div style="font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--color-status-success);">▲ +$337</div></div>
+        </div>
+
+        <div style="border:1px solid var(--color-border-strong);border-radius:var(--radius-lg);background:var(--color-bg-secondary);overflow:hidden;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;border-bottom:1px solid var(--color-border-default);">
+            <div style="display:flex;align-items:center;gap:8px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-text)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"></path><path d="M14 2v5h5"></path></svg><span style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Trade proposal · demo</span></div>
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;padding:3px 10px 3px 8px;border-radius:var(--radius-full);background:var(--color-status-warning-subtle);color:var(--color-status-warning);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0"></path><path d="M12 7v5l3 2"></path></svg>Awaiting approval</span>
+          </div>
+          <div style="padding:14px 16px 4px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;"><span style="font-size:20px;font-weight:600;">Buy BTC</span><span style="font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;">$100.00</span><span style="font-size:13px;color:var(--color-text-secondary);font-variant-numeric:tabular-nums;">≈ 0.001479 BTC</span></div>
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 24px;padding:8px 16px 12px;font-size:13px;font-variant-numeric:tabular-nums;">
+            <sc-for list="{{ orderRows }}" as="r"><div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--color-border-default);"><span style="color:var(--color-text-secondary);">{{ r.k }}</span><span style="font-weight:500;text-align:right;">{{ r.v }}</span></div></sc-for>
+          </div>
+          <div style="margin:0 16px 12px;padding:12px;border-radius:var(--radius-md);background:var(--color-bg-primary);border:1px solid var(--color-border-default);display:flex;flex-direction:column;gap:6px;">
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-status-warning)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"></path><path d="M3.34 19a10 10 0 1 1 17.32 0"></path></svg>Risk summary · Moderate</div>
+            <div style="font-size:13px;line-height:1.5;color:var(--color-text-secondary);">If BTC falls 10% after purchase, this position would be worth about <strong style="color:var(--color-text-primary);font-weight:600;font-variant-numeric:tabular-nums;">$89.73</strong> (−$10.27 incl. fees). Larger falls are possible.</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--color-border-default);font-size:13px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-text)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg><span>Mode <strong style="font-weight:600;">Prepare for approval</strong> · nothing runs until you approve.</span></div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;padding:12px 16px;border-top:1px solid var(--color-border-default);background:var(--color-bg-primary);">
+            <button type="button" style="display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:var(--radius-md);font:inherit;font-size:14px;font-weight:600;background:var(--color-brand-primary);color:var(--color-brand-on);border:0;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0"></path><path d="M9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"></path></svg>Review &amp; approve</button>
+            <button type="button" style="display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px;border-radius:var(--radius-md);font:inherit;font-size:14px;font-weight:500;background:transparent;color:var(--color-text-primary);border:1px solid var(--color-border-strong);cursor:pointer;">Edit parameters</button>
+            <button type="button" style="display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 12px;border-radius:var(--radius-md);font:inherit;font-size:14px;font-weight:500;background:transparent;color:var(--color-text-secondary);border:0;cursor:pointer;margin-left:auto;">Reject</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
+          <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);padding:14px 16px;font-size:13px;font-variant-numeric:tabular-nums;">
+            <div style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);margin-bottom:6px;">Fee breakdown</div>
+            <div style="display:flex;justify-content:space-between;padding:5px 0;"><span style="color:var(--color-text-secondary);">Trading fee 0.30%</span><span>$0.30</span></div>
+            <div style="display:flex;justify-content:space-between;padding:5px 0;"><span style="color:var(--color-text-secondary);">Network fee (est.)</span><span>$0.01</span></div>
+            <div style="display:flex;justify-content:space-between;padding:5px 0;"><span style="color:var(--color-text-secondary);">Max slippage 0.50%</span><span>≤ $0.50</span></div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0 0;margin-top:4px;border-top:1px solid var(--color-border-default);font-weight:600;"><span>Total cost, worst case</span><span>$100.81</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Transaction status</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+              <sc-for list="{{ statuses }}" as="s"><span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;padding:3px 10px 3px 8px;border-radius:var(--radius-full);background:{{ s.bg }};color:{{ s.fg }};border:1px {{ s.bs }} {{ s.bd }};"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><sc-for list="{{ s.d }}" as="d"><path d="{{ d }}"></path></sc-for></svg>{{ s.label }}</span></sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <h3 style="margin:0 0 16px;font-size:22px;font-weight:600;letter-spacing:-0.01em;">Agent controls</h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,560px),1fr));gap:16px;margin-bottom:56px;">
+    <sc-for list="{{ themes }}" as="th" hint-placeholder-count="2">
+      <div data-theme="{{ th.id }}" style="background:var(--color-bg-primary);color:var(--color-text-primary);border:1px solid var(--color-border-default);border-radius:var(--radius-xl);padding:24px;display:flex;flex-direction:column;gap:20px;min-width:0;">
+        <div style="font-size:12px;font-weight:600;color:var(--color-text-secondary);">{{ th.label }}</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Autonomy mode selector</div>
+          <div role="radiogroup" style="display:flex;flex-direction:column;gap:8px;">
+            <sc-for list="{{ modes }}" as="m">
+              <button type="button" role="radio" aria-checked="{{ m.sel }}" onClick="{{ m.pick }}" style="display:grid;grid-template-columns:36px minmax(0,1fr) 20px;gap:12px;align-items:center;text-align:left;padding:12px 14px;border-radius:var(--radius-lg);border:1px solid {{ m.bd }};background:{{ m.bg }};color:var(--color-text-primary);font:inherit;cursor:pointer;">
+                <span style="width:36px;height:36px;border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;background:{{ m.iconBg }};color:{{ m.iconFg }};"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><sc-for list="{{ m.d }}" as="d"><path d="{{ d }}"></path></sc-for></svg></span>
+                <span><span style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;">{{ m.label }}<span style="display:inline-flex;gap:2px;">{{ m.pips }}</span></span><span style="display:block;font-size:12px;line-height:1.45;color:var(--color-text-secondary);margin-top:2px;">{{ m.desc }}</span></span>
+                <span style="width:18px;height:18px;border-radius:50%;border:2px solid {{ m.ring }};display:flex;align-items:center;justify-content:center;"><span style="width:8px;height:8px;border-radius:50%;background:{{ m.dot }};"></span></span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
+          <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);background:var(--color-bg-secondary);padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-size:14px;font-weight:600;">Permission summary</span><span style="font-size:11px;color:var(--color-text-secondary);">Expires in 6 days</span></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;font-size:12px;font-variant-numeric:tabular-nums;">
+              <div><div style="color:var(--color-text-secondary);">Max order</div><div style="font-size:14px;font-weight:600;">$250.00</div></div>
+              <div><div style="color:var(--color-text-secondary);">Daily allocation</div><div style="font-size:14px;font-weight:600;">$120 / $500</div></div>
+              <div><div style="color:var(--color-text-secondary);">Stop at loss</div><div style="font-size:14px;font-weight:600;">5%</div></div>
+              <div><div style="color:var(--color-text-secondary);">Assets</div><div style="font-size:14px;font-weight:600;">BTC, ETH, USDC</div></div>
+            </div>
+            <div style="height:6px;border-radius:var(--radius-full);background:var(--color-bg-interactive);overflow:hidden;"><span style="display:block;width:24%;height:100%;background:var(--color-brand-primary);"></span></div>
+            <div style="font-size:11px;color:var(--color-text-secondary);">24% of today's allocation used</div>
+          </div>
+          <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+            <div style="display:flex;align-items:center;gap:10px;"><span style="width:10px;height:10px;border-radius:50%;background:{{ pauseDot }};box-shadow:0 0 0 3px {{ pauseRing }};"></span><span style="font-size:14px;font-weight:600;">{{ pauseTitle }}</span></div>
+            <div style="font-size:13px;line-height:1.5;color:var(--color-text-secondary);">{{ pauseBody }}</div>
+            <button type="button" onClick="{{ togglePause }}" style="align-self:flex-start;display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px;border-radius:var(--radius-md);font:inherit;font-size:14px;font-weight:500;cursor:pointer;background:{{ pauseBtnBg }};color:{{ pauseBtnFg }};border:1px solid {{ pauseBtnBd }};"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0"></path><path d="{{ pauseIcon1 }}"></path><path d="{{ pauseIcon2 }}"></path></svg>{{ pauseLabel }}</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <div style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);margin-bottom:8px;">Agent activity timeline</div>
+          <sc-for list="{{ timeline }}" as="e">
+            <div style="display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;">
+              <div style="display:flex;flex-direction:column;align-items:center;"><span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:{{ e.bg }};color:{{ e.fg }};flex:none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><sc-for list="{{ e.d }}" as="d"><path d="{{ d }}"></path></sc-for></svg></span><span style="flex:1;width:1px;background:var(--color-border-default);min-height:12px;"></span></div>
+              <div style="padding-bottom:14px;"><div style="display:flex;justify-content:space-between;gap:8px;"><span style="font-size:14px;font-weight:600;">{{ e.title }}</span><span style="font-size:12px;color:var(--color-text-secondary);font-variant-numeric:tabular-nums;">{{ e.t }}</span></div><div style="font-size:13px;color:var(--color-text-secondary);line-height:1.45;">{{ e.detail }}</div></div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;padding:20px;border-radius:var(--radius-lg);background:var(--color-scrim);">
+          <div role="dialog" aria-label="Confirm increase" style="background:var(--color-bg-elevated);border:1px solid var(--color-border-default);border-radius:var(--radius-xl);box-shadow:var(--shadow-lg);padding:20px;display:flex;flex-direction:column;gap:12px;">
+            <span style="width:36px;height:36px;border-radius:var(--radius-md);background:var(--color-brand-subtle);color:var(--color-brand-text);display:flex;align-items:center;justify-content:center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+            <div style="font-size:17px;font-weight:600;">Allow trade proposals?</div>
+            <div style="font-size:13px;line-height:1.5;color:var(--color-text-secondary);">Biatec AI will draft orders in chat. Each one still needs your approval. You can pause or revoke at any time.</div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;"><button type="button" style="height:36px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--color-border-strong);background:transparent;color:var(--color-text-primary);font:inherit;font-size:13px;cursor:pointer;">Cancel</button><button type="button" style="height:36px;padding:0 14px;border-radius:var(--radius-md);border:0;background:var(--color-brand-primary);color:var(--color-brand-on);font:inherit;font-size:13px;font-weight:600;cursor:pointer;">Allow proposals</button></div>
+          </div>
+          <div role="alertdialog" aria-label="Revoke access" style="background:var(--color-bg-elevated);border:1px solid var(--color-status-danger);border-radius:var(--radius-xl);box-shadow:var(--shadow-lg);padding:20px;display:flex;flex-direction:column;gap:12px;">
+            <span style="width:36px;height:36px;border-radius:var(--radius-md);background:var(--color-status-danger-subtle);color:var(--color-status-danger);display:flex;align-items:center;justify-content:center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0"></path><path d="m4.9 4.9 14.2 14.2"></path></svg></span>
+            <div style="font-size:17px;font-weight:600;">Revoke all agent access?</div>
+            <div style="font-size:13px;line-height:1.5;color:var(--color-text-secondary);">2 pending proposals will be voided and automation stops immediately. Completed trades are not affected.</div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;"><button type="button" style="height:36px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--color-border-strong);background:transparent;color:var(--color-text-primary);font:inherit;font-size:13px;cursor:pointer;">Keep access</button><button type="button" style="height:36px;padding:0 14px;border-radius:var(--radius-md);border:0;background:var(--color-status-danger);color:#070B14;font:inherit;font-size:13px;font-weight:600;cursor:pointer;">Revoke access</button></div>
+          </div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <h3 style="margin:0 0 16px;font-size:22px;font-weight:600;letter-spacing:-0.01em;">Status, feedback &amp; system</h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,560px),1fr));gap:16px;">
+    <sc-for list="{{ themes }}" as="th" hint-placeholder-count="2">
+      <div data-theme="{{ th.id }}" style="background:var(--color-bg-primary);color:var(--color-text-primary);border:1px solid var(--color-border-default);border-radius:var(--radius-xl);padding:24px;display:flex;flex-direction:column;gap:20px;min-width:0;">
+        <div style="font-size:12px;font-weight:600;color:var(--color-text-secondary);">{{ th.label }}</div>
+        <div style="display:grid;grid-template-columns:200px minmax(0,1fr);gap:16px;">
+          <nav style="display:flex;flex-direction:column;gap:2px;background:var(--color-bg-secondary);border:1px solid var(--color-border-default);border-radius:var(--radius-lg);padding:8px;">
+            <sc-for list="{{ navItems }}" as="n"><span style="display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border-radius:var(--radius-md);font-size:13px;font-weight:{{ n.w }};background:{{ n.bg }};color:{{ n.fg }};"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><sc-for list="{{ n.d }}" as="d"><path d="{{ d }}"></path></sc-for></svg>{{ n.label }}<span style="margin-left:auto;font-size:11px;color:var(--color-text-secondary);">{{ n.note }}</span></span></sc-for>
+          </nav>
+          <div style="display:flex;flex-direction:column;gap:10px;min-width:0;">
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--color-border-default);border-radius:var(--radius-lg);background:var(--color-bg-secondary);font-size:13px;flex-wrap:wrap;">
+              <span style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 8px;border-radius:var(--radius-full);background:var(--color-brand-subtle);color:var(--color-brand-text);font-size:12px;font-weight:500;"><span style="width:6px;height:6px;border-radius:50%;background:currentColor;"></span>Prepare for approval</span>
+              <span style="color:var(--color-text-secondary);font-variant-numeric:tabular-nums;">0x8f…3a21 · demo wallet</span>
+              <span style="margin-left:auto;width:28px;height:28px;border-radius:50%;background:var(--color-bg-interactive);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;">JR</span>
+            </div>
+            <div role="status" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius-lg);background:var(--color-bg-elevated);border:1px solid var(--color-border-default);box-shadow:var(--shadow-md);font-size:13px;"><span style="color:var(--color-status-success);display:flex;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0"></path><path d="m9 12 2 2 4-4"></path></svg></span><span style="flex:1;">Demo order filled · DEMO-7F3A21</span><span style="color:var(--color-brand-text);font-weight:500;">View</span></div>
+            <div role="alert" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius-lg);background:var(--color-bg-elevated);border:1px solid var(--color-border-default);box-shadow:var(--shadow-md);font-size:13px;"><span style="color:var(--color-status-danger);display:flex;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg></span><span style="flex:1;">Quote expired. Nothing was executed.</span><span style="color:var(--color-brand-text);font-weight:500;">Refresh</span></div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <sc-for list="{{ alerts }}" as="al">
+            <div role="note" style="display:grid;grid-template-columns:18px minmax(0,1fr);gap:10px;padding:12px 14px;border-radius:var(--radius-lg);background:{{ al.bg }};border:1px solid {{ al.bd }};font-size:13px;line-height:1.5;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{{ al.fg }}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><sc-for list="{{ al.d }}" as="d"><path d="{{ d }}"></path></sc-for></svg>
+              <div><strong style="font-weight:600;">{{ al.title }}</strong> <span style="color:var(--color-text-secondary);">{{ al.body }}</span></div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
+          <div aria-busy="true" style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);padding:14px;display:flex;flex-direction:column;gap:10px;">
+            <span style="height:12px;width:40%;border-radius:4px;background:var(--color-bg-interactive);"></span><span style="height:24px;width:70%;border-radius:4px;background:var(--color-bg-interactive);"></span><span style="height:56px;border-radius:6px;background:var(--color-bg-interactive);"></span><span style="font-size:11px;color:var(--color-text-secondary);">Loading skeleton</span>
+          </div>
+          <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);padding:14px;display:flex;flex-direction:column;gap:8px;">
+            <span style="color:var(--color-status-danger);display:flex;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg></span>
+            <span style="font-size:14px;font-weight:600;">Couldn't load market data</span><span style="font-size:13px;color:var(--color-text-secondary);line-height:1.45;">The demo feed didn't respond. Your proposals are unaffected.</span>
+            <button type="button" style="align-self:flex-start;height:32px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--color-border-strong);background:transparent;color:var(--color-text-primary);font:inherit;font-size:13px;cursor:pointer;">Try again</button>
+          </div>
+          <div style="border:1px dashed var(--color-border-strong);border-radius:var(--radius-lg);padding:14px;display:flex;flex-direction:column;gap:8px;">
+            <span style="color:var(--color-text-secondary);display:flex;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg></span>
+            <span style="font-size:14px;font-weight:600;">No agent activity yet</span><span style="font-size:13px;color:var(--color-text-secondary);line-height:1.45;">Analyses, proposals and approvals will appear here.</span>
+          </div>
+        </div>
+        <div role="status" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:var(--radius-lg);background:var(--color-status-success-subtle);border:1px solid var(--color-status-success);font-size:13px;flex-wrap:wrap;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-status-success)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0"></path><path d="m9 12 2 2 4-4"></path></svg>
+          <span style="flex:1;min-width:200px;"><strong style="font-weight:600;">Permissions saved.</strong> <span style="color:var(--color-text-secondary);">Mode is now Prepare for approval, valid for 7 days.</span></span>
+          <span style="color:var(--color-brand-text);font-weight:500;">Undo</span>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const C = (cx, cy, r) => `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`;
+const SHIELD = 'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z';
+const TRI = ['m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3', 'M12 9v4', 'M12 17h.01'];
+const SER = [67.1, 66.9, 67.0, 66.6, 66.2, 65.8, 65.61, 65.9, 66.3, 66.1, 66.7, 66.9, 67.1, 67.3, 67.2, 67.6, 67.98, 67.5, 67.41];
+function paths(s, w, h) { const mn = Math.min(...s), mx = Math.max(...s); const l = s.map((v, i) => (i ? 'L' : 'M') + (i / (s.length - 1) * w).toFixed(1) + ' ' + (h - 6 - (v - mn) / (mx - mn) * (h - 14)).toFixed(1)).join(' '); return { l, a: l + ` L ${w} ${h} L 0 ${h} Z` }; }
+class Component extends DCLogic {
+  state = { whyOpen: true, assets: { BTC: true, ETH: true, ALGO: false, USDC: true }, sw: true, mode: 'prepare', paused: false };
+  renderVals() {
+    const s = this.state, p = paths(SER, 360, 80);
+    const S = (label, kind, d, dashed) => {
+      const m = { neutral: ['var(--color-bg-interactive)', 'var(--color-text-secondary)'], warning: ['var(--color-status-warning-subtle)', 'var(--color-status-warning)'], brand: ['var(--color-brand-subtle)', 'var(--color-brand-text)'], info: ['var(--color-status-info-subtle)', 'var(--color-status-info)'], success: ['var(--color-status-success-subtle)', 'var(--color-status-success)'], danger: ['var(--color-status-danger-subtle)', 'var(--color-status-danger)'] }[kind];
+      return { label, d, bg: dashed ? 'transparent' : m[0], fg: m[1], bs: dashed ? 'dashed' : 'solid', bd: dashed ? 'var(--color-border-strong)' : 'transparent' };
+    };
+    const MODES = [
+      { id: 'analyze', label: 'Analyze only', lvl: 1, desc: 'Explains and analyzes. Cannot prepare or execute trades.', d: [C(11, 11, 8), 'm21 21-4.3-4.3'] },
+      { id: 'prepare', label: 'Prepare for approval', lvl: 2, desc: 'Drafts orders. Every trade needs your explicit approval.', d: [SHIELD, 'm9 12 2 2 4-4'] },
+      { id: 'rules', label: 'Rule-based automation', lvl: 3, desc: 'Executes eligible trades only inside your limits.', d: ['M20 7h-9', 'M14 17H5', C(17, 17, 3), C(7, 7, 3)] }
+    ];
+    return {
+      themes: [{ id: 'dark', label: 'Dark · default' }, { id: 'light', label: 'Light' }],
+      chartLine: p.l, chartArea: p.a,
+      whyOpen: s.whyOpen, whyLabel: s.whyOpen ? 'Hide' : 'Show', toggleWhy: () => this.setState({ whyOpen: !s.whyOpen }),
+      assets: Object.keys(s.assets).map(k => { const on = s.assets[k]; return { sym: k, on, bg: on ? 'var(--color-brand-subtle)' : 'transparent', fg: on ? 'var(--color-brand-text)' : 'var(--color-text-secondary)', bd: on ? 'var(--color-brand-primary)' : 'var(--color-border-strong)', toggle: () => this.setState({ assets: { ...s.assets, [k]: !on } }) }; }),
+      sw: s.sw, toggleSw: () => this.setState({ sw: !s.sw }), swJust: s.sw ? 'flex-end' : 'flex-start', swBg: s.sw ? 'var(--color-brand-primary)' : 'var(--color-bg-interactive)', swKnob: s.sw ? 'var(--color-brand-on)' : 'var(--color-text-secondary)',
+      watch: [['BTC', 'Bitcoin', '67,412.50', 2.41], ['ETH', 'Ethereum', '2,618.40', -0.86], ['ALGO', 'Algorand', '0.1841', -3.1], ['USDC', 'USD Coin', '1.0000', 0]].map(([sym, name, price, c]) => ({ sym, name, price, chg: (c > 0 ? '+' : c < 0 ? '−' : '') + Math.abs(c).toFixed(2) + '%', arrow: c > 0 ? '▲' : c < 0 ? '▼' : '●', color: c > 0 ? 'var(--color-status-success)' : c < 0 ? 'var(--color-status-danger)' : 'var(--color-status-neutral)' })),
+      orderRows: [['Pair', 'BTC/USDC'], ['Order type', 'Market'], ['Est. price', '$67,412.50'], ['Worst-case price', '$67,749.56'], ['Est. fees', '$0.31'], ['Valid for', 'Demo · no live quote']].map(([k, v]) => ({ k, v })),
+      statuses: [S('Draft', 'neutral', [C(12, 12, 10)], true), S('Awaiting approval', 'warning', [C(12, 12, 10), 'M12 7v5l3 2']), S('Approved', 'brand', [SHIELD, 'm9 12 2 2 4-4']), S('Pending execution', 'info', ['M21 12a9 9 0 1 1-6.22-8.56']), S('Completed', 'success', [C(12, 12, 10), 'm9 12 2 2 4-4']), S('Rejected', 'neutral', ['M18 6 6 18', 'm6 6 12 12']), S('Failed', 'danger', TRI), S('Cancelled', 'neutral', [C(12, 12, 10), 'm4.9 4.9 14.2 14.2'])],
+      modes: MODES.map(m => { const sel = s.mode === m.id; return { ...m, sel, pips: '●'.repeat(m.lvl) + '○'.repeat(3 - m.lvl), pick: () => this.setState({ mode: m.id }), bd: sel ? 'var(--color-brand-primary)' : 'var(--color-border-default)', bg: sel ? 'var(--color-brand-subtle)' : 'transparent', iconBg: sel ? 'var(--color-brand-primary)' : 'var(--color-bg-interactive)', iconFg: sel ? 'var(--color-brand-on)' : 'var(--color-text-secondary)', ring: sel ? 'var(--color-brand-primary)' : 'var(--color-border-strong)', dot: sel ? 'var(--color-brand-primary)' : 'transparent' }; }),
+      pauseDot: s.paused ? 'var(--color-status-warning)' : 'var(--color-status-success)', pauseRing: s.paused ? 'var(--color-status-warning-subtle)' : 'var(--color-status-success-subtle)',
+      pauseTitle: s.paused ? 'Agent paused' : 'Agent active', pauseBody: s.paused ? 'Analysis still works. No proposals or executions until you resume.' : 'Pausing puts every proposal and automation on hold instantly.',
+      pauseLabel: s.paused ? 'Resume agent' : 'Pause agent', togglePause: () => this.setState({ paused: !s.paused }),
+      pauseBtnBg: s.paused ? 'transparent' : 'var(--color-status-warning-subtle)', pauseBtnFg: s.paused ? 'var(--color-text-primary)' : 'var(--color-status-warning)', pauseBtnBd: s.paused ? 'var(--color-border-strong)' : 'transparent',
+      pauseIcon1: s.paused ? 'm10 8 6 4-6 4z' : 'M10 15V9', pauseIcon2: s.paused ? '' : 'M14 15V9',
+      timeline: [
+        ['Demo trade executed', 'Buy 0.001479 BTC · $100.00 · DEMO-7F3A21', '14:36', 'success', [C(12, 12, 10), 'm9 12 2 2 4-4']],
+        ['Approved by you', 'Reviewed risks and fees, then confirmed', '14:36', 'brand', [SHIELD, 'm9 12 2 2 4-4']],
+        ['Proposal drafted', 'Buy BTC/USDC · $100.00 · market', '14:34', 'neutral', ['M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z', 'M14 2v5h5']],
+        ['Autonomy increased', 'Analyze only → Prepare for approval', '14:33', 'warning', ['m5 12 7-7 7 7', 'M12 19V5']]
+      ].map(([title, detail, t, k, d]) => ({ title, detail, t, d, bg: { success: 'var(--color-status-success-subtle)', brand: 'var(--color-brand-subtle)', neutral: 'var(--color-bg-interactive)', warning: 'var(--color-status-warning-subtle)' }[k], fg: { success: 'var(--color-status-success)', brand: 'var(--color-brand-text)', neutral: 'var(--color-text-secondary)', warning: 'var(--color-status-warning)' }[k] })),
+      navItems: [
+        ['Assistant', ['M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'], 'sel', ''],
+        ['Portfolio', ['M21.21 15.89A10 10 0 1 1 8 2.83', 'M22 12A10 10 0 0 0 12 2v10z'], 'hover', ''],
+        ['Markets', ['M3 3v18h18', 'M18 17V9', 'M13 17V5', 'M8 17v-3'], '', ''],
+        ['Activity', ['M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8', 'M3 3v5h5', 'M12 7v5l4 2'], '', '4'],
+        ['Permissions', [SHIELD], '', ''],
+        ['Settings', ['M20 7h-9', 'M14 17H5', C(17, 17, 3), C(7, 7, 3)], 'disabled', '']
+      ].map(([label, d, st, note]) => ({ label, d, note, bg: st === 'sel' ? 'var(--color-brand-subtle)' : st === 'hover' ? 'var(--color-bg-interactive)' : 'transparent', fg: st === 'sel' ? 'var(--color-brand-text)' : st === 'disabled' ? 'var(--color-text-disabled)' : 'var(--color-text-primary)', w: st === 'sel' ? 600 : 400 })),
+      alerts: [
+        ['info', 'Demo data.', 'Prices are a static snapshot from 14:32 UTC, not a live feed.', [C(12, 12, 10), 'M12 16v-4', 'M12 8h.01']],
+        ['warning', 'Approaching your daily limit.', '$420 of $500 allocated today. Larger orders will ask for approval.', TRI],
+        ['danger', 'High concentration risk.', 'BTC is 46% of your portfolio. A 20% drop would reduce total value by about 9%.', TRI]
+      ].map(([k, title, body, d]) => ({ title, body, d, bg: `var(--color-status-${k}-subtle)`, fg: `var(--color-status-${k})`, bd: k === 'danger' ? 'var(--color-status-danger)' : 'transparent' }))
+    };
+  }
+}
+</script>
+</body>
+</html>

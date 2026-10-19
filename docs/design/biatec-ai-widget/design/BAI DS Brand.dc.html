@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="biatec-tokens.css">
+<style>body{margin:0;background:var(--color-bg-primary);} a{color:var(--color-brand-text);} a:hover{color:var(--color-text-primary);}</style>
+</helmet>
+<section id="brand" data-screen-label="01 Brand Identity" style="background:transparent;color:var(--color-text-primary);font-family:var(--font-sans);">
+<div style="max-width:1200px;margin:0 auto;padding:0 32px 64px;">
+
+  <header style="display:grid;grid-template-columns:72px minmax(0,1fr);gap:24px;padding:64px 0 40px;border-top:1px solid var(--color-border-default);">
+    <div style="font-size:14px;font-weight:600;color:var(--color-brand-text);font-variant-numeric:tabular-nums;padding-top:10px;">01</div>
+    <div><h2 style="margin:0;font-size:36px;font-weight:600;letter-spacing:-0.02em;line-height:1.15;">Brand identity</h2><p style="margin:8px 0 0;font-size:16px;line-height:1.6;color:var(--color-text-secondary);max-width:640px;">Who Biatec AI is, how it sounds, and the mark that carries it, from a 16 px favicon to the app icon.</p></div>
+  </header>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));gap:24px;margin-bottom:48px;">
+    <div style="background:var(--color-bg-secondary);border:1px solid var(--color-border-default);border-radius:var(--radius-lg);padding:32px;display:flex;flex-direction:column;gap:16px;">
+      <div style="font-size:12px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--color-text-secondary);">Brand promise</div>
+      <div style="font-size:30px;font-weight:600;letter-spacing:-0.02em;line-height:1.2;text-wrap:balance;">Intelligent by design. Transparent by default. <span style="color:var(--color-brand-text);">Always under your control.</span></div>
+      <p style="margin:0;font-size:15px;line-height:1.6;color:var(--color-text-secondary);">Biatec AI is a conversational trading assistant. It analyzes, explains and prepares, and the user decides. Every visual decision should make the agent's capability legible and its limits obvious.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1px;background:var(--color-border-default);border:1px solid var(--color-border-default);border-radius:var(--radius-lg);overflow:hidden;">
+      <sc-for list="{{ traits }}" as="t" hint-placeholder-count="5">
+        <div style="background:var(--color-bg-secondary);padding:20px;display:flex;flex-direction:column;gap:6px;">
+          <div style="font-size:16px;font-weight:600;">{{ t.name }}</div>
+          <div style="font-size:13px;line-height:1.5;color:var(--color-text-secondary);">{{ t.desc }}</div>
+          <div style="font-size:12px;line-height:1.5;color:var(--color-brand-text);margin-top:auto;padding-top:8px;">{{ t.cue }}</div>
+        </div>
+      </sc-for>
+      <div style="background:var(--color-bg-secondary);padding:20px;display:flex;flex-direction:column;gap:6px;">
+        <div style="font-size:12px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--color-text-secondary);">We avoid</div>
+        <div style="font-size:13px;line-height:1.6;color:var(--color-text-secondary);">Coin logos, neon and glow, robots and mascots, heavy glass, decorative charts, red/green as the only signal.</div>
+      </div>
+    </div>
+  </div>
+
+  <h3 style="margin:0 0 16px;font-size:20px;font-weight:600;letter-spacing:-0.01em;">Six principles</h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:16px;margin-bottom:64px;">
+    <sc-for list="{{ principles }}" as="p" hint-placeholder-count="6">
+      <div style="display:grid;grid-template-columns:32px minmax(0,1fr);gap:12px;padding:20px;border:1px solid var(--color-border-default);border-radius:var(--radius-lg);">
+        <span style="font-size:13px;font-weight:600;color:var(--color-brand-text);font-variant-numeric:tabular-nums;padding-top:2px;">{{ p.n }}</span>
+        <div><div style="font-size:16px;font-weight:600;line-height:1.35;">{{ p.title }}</div><div style="font-size:14px;line-height:1.55;color:var(--color-text-secondary);margin-top:4px;">{{ p.desc }}</div></div>
+      </div>
+    </sc-for>
+  </div>
+
+  <h3 style="margin:0 0 4px;font-size:20px;font-weight:600;letter-spacing:-0.01em;">Logo concepts</h3>
+  <p style="margin:0 0 16px;font-size:14px;color:var(--color-text-secondary);">Three flat, geometric directions in the Biatec DEX greens. The shared idea: intelligence as a dependable mechanism, not a mystery.</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px;margin-bottom:64px;"><div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-secondary);"><div style="height:200px;display:flex;align-items:center;justify-content:center;background:var(--color-bg-elevated);"><svg width="120" height="120" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="25" stroke="#2DD4A7" stroke-width="8" stroke-dasharray="7 4.5"></circle><circle cx="32" cy="32" r="18" fill="#14B88A"></circle><rect x="24" y="24" width="16" height="16" rx="3" fill="#C9F5E7"></rect></svg></div><div style="padding:20px;display:flex;flex-direction:column;gap:6px;flex:1;"><div style="display:flex;gap:8px;align-items:center;font-size:12px;font-weight:500;color:var(--color-text-secondary);">Concept A</div><div style="font-size:17px;font-weight:600;">Intelligent gear</div><div style="font-size:14px;line-height:1.55;color:var(--color-text-secondary);">An AI chip held inside a gear: the platform and its rules around the intelligence. Friendly, but the gear adds detail that gets lost at small sizes.</div></div></div><div style="border:1px solid var(--color-brand-primary);border-radius:var(--radius-lg);overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-secondary);"><div style="height:200px;display:flex;align-items:center;justify-content:center;background:var(--color-bg-elevated);"><dc-import name="BAI Logo" variant="symbol" size="128" hint-size="128px,128px"></dc-import></div><div style="padding:20px;display:flex;flex-direction:column;gap:6px;flex:1;"><div style="display:flex;gap:8px;align-items:center;font-size:12px;font-weight:500;color:var(--color-text-secondary);">Concept B<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--color-brand-subtle);color:var(--color-brand-text);">Selected</span></div><div style="font-size:17px;font-weight:600;">Bare chip</div><div style="font-size:14px;line-height:1.55;color:var(--color-text-secondary);">One solid Biatec-green chip with a bold AI label and short pins. It is the most direct and most legible at every size, from a 16 px favicon to a launcher.</div></div></div><div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-secondary);"><div style="height:200px;display:flex;align-items:center;justify-content:center;background:var(--color-bg-elevated);"><svg width="120" height="120" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="24" stroke="#2DD4A7" stroke-width="7" stroke-dasharray="9.4 3.2"></circle><circle cx="32" cy="32" r="12" fill="#14B88A"></circle><circle cx="32" cy="32" r="4.5" fill="#F5F8FC"></circle></svg></div><div style="padding:20px;display:flex;flex-direction:column;gap:6px;flex:1;"><div style="display:flex;gap:8px;align-items:center;font-size:12px;font-weight:500;color:var(--color-text-secondary);">Concept C</div><div style="font-size:17px;font-weight:600;">Segmented ring</div><div style="font-size:14px;line-height:1.55;color:var(--color-text-secondary);">An abstract gear made from ring segments around a core. Elegant, but at small sizes it loses the AI cue and reads as a loading spinner.</div></div></div></div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:24px;align-items:stretch;margin-bottom:24px;">
+    <div style="background:var(--color-bg-secondary);border:1px solid var(--color-border-default);border-radius:var(--radius-lg);padding:32px;display:flex;align-items:center;justify-content:center;"><dc-import name="BAI Logo" variant="symbol" size="200" hint-size="200px,200px"></dc-import></div>
+    <div style="display:flex;flex-direction:column;gap:16px;justify-content:center;">
+      <h3 style="margin:0;font-size:28px;font-weight:600;letter-spacing:-0.02em;line-height:1.2;">Intelligence you can read at a glance.</h3>
+      <p style="margin:0;font-size:15px;line-height:1.65;color:var(--color-text-secondary);">A single Biatec DEX green chip with a bold, dark AI label and short pins. Below 24 px the pins drop and the chip grows to fill the frame, so "AI" stays readable in every workspace. The wordmark keeps Biatec's script lettering beside a solid AI tag.</p>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--color-border-default);border:1px solid var(--color-border-default);border-radius:var(--radius-md);overflow:hidden;"><div style="background:var(--color-bg-primary);padding:12px;display:flex;flex-direction:column;gap:6px;"><span style="width:24px;height:24px;border-radius:6px;background:#2DD4A7;border:1px solid var(--color-border-default);"></span><div style="font-size:12px;font-weight:600;">Chip</div><div style="font-size:11px;color:var(--color-text-secondary);">#2DD4A7</div></div><div style="background:var(--color-bg-primary);padding:12px;display:flex;flex-direction:column;gap:6px;"><span style="width:24px;height:24px;border-radius:6px;background:#04221A;border:1px solid var(--color-border-default);"></span><div style="font-size:12px;font-weight:600;">AI label</div><div style="font-size:11px;color:var(--color-text-secondary);">#04221A · 9.6:1</div></div><div style="background:var(--color-bg-primary);padding:12px;display:flex;flex-direction:column;gap:6px;"><span style="width:24px;height:24px;border-radius:6px;background:#9AA7BA;border:1px solid var(--color-border-default);"></span><div style="font-size:12px;font-weight:600;">Pins</div><div style="font-size:11px;color:var(--color-text-secondary);">text.secondary</div></div></div>
+    </div>
+  </div>
+
+  <h3 style="margin:40px 0 16px;font-size:20px;font-weight:600;letter-spacing:-0.01em;">Logo family</h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr));gap:16px;margin-bottom:48px;">
+    <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);overflow:hidden;"><div style="height:150px;background:#070B14;display:flex;align-items:center;padding:0 28px;" data-theme="dark"><dc-import name="BAI Logo" variant="horizontal" size="48" hint-size="220px,48px"></dc-import></div><div style="padding:12px 16px;font-size:13px;"><strong style="font-weight:600;">Primary horizontal</strong><div style="color:var(--color-text-secondary);">Default on dark surfaces</div></div></div>
+    <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);overflow:hidden;"><div style="height:150px;background:#FFFFFF;display:flex;align-items:center;padding:0 28px;" data-theme="light"><dc-import name="BAI Logo" variant="horizontal" size="48" hint-size="220px,48px"></dc-import></div><div style="padding:12px 16px;font-size:13px;"><strong style="font-weight:600;">Primary horizontal · light</strong><div style="color:var(--color-text-secondary);">Light theme green #0EA371</div></div></div>
+    <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);overflow:hidden;"><div style="height:150px;background:#111827;display:flex;align-items:center;padding:0 28px;" data-theme="dark"><dc-import name="BAI Logo" variant="compact" size="48" hint-size="120px,48px"></dc-import></div><div style="padding:12px 16px;font-size:13px;"><strong style="font-weight:600;">Chip only</strong><div style="color:var(--color-text-secondary);">Inside partner platforms, next to the host's brand · the chip already says AI</div></div></div>
+    <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);overflow:hidden;"><div style="height:150px;background:#070B14;display:flex;align-items:center;padding:0 28px;"><dc-import name="BAI Logo" variant="horizontal" size="48" mono="white" hint-size="220px,48px"></dc-import></div><div style="padding:12px 16px;font-size:13px;"><strong style="font-weight:600;">Monochrome white</strong><div style="color:var(--color-text-secondary);">Dark backgrounds, photography, single-ink print</div></div></div>
+    <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);overflow:hidden;"><div style="height:150px;background:#E6EDF6;display:flex;align-items:center;padding:0 28px;"><dc-import name="BAI Logo" variant="horizontal" size="48" mono="dark" hint-size="220px,48px"></dc-import></div><div style="padding:12px 16px;font-size:13px;"><strong style="font-weight:600;">Monochrome dark</strong><div style="color:var(--color-text-secondary);">Light backgrounds, documents, fax-safe</div></div></div>
+    <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);overflow:hidden;"><div style="height:150px;background:var(--color-bg-secondary);display:flex;align-items:center;gap:28px;padding:0 28px;"><dc-import name="BAI Logo" variant="symbol" size="24" hint-size="24px,24px"></dc-import><dc-import name="BAI Logo" variant="symbol" size="32" hint-size="32px,32px"></dc-import><dc-import name="BAI Logo" variant="symbol" size="48" hint-size="48px,48px"></dc-import></div><div style="padding:12px 16px;font-size:13px;"><strong style="font-weight:600;">Small-size optimized</strong><div style="color:var(--color-text-secondary);">≤ 24 px: pins drop, chip fills the frame</div></div></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));gap:24px;">
+    <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);padding:24px;display:flex;flex-direction:column;gap:20px;">
+      <div><div style="font-size:17px;font-weight:600;">Size test</div><div style="font-size:13px;color:var(--color-text-secondary);">Recognizable at every step. At 16 and 24 px the small-size master is used.</div></div>
+      <div data-theme="dark" style="display:flex;align-items:flex-end;gap:32px;padding:20px;background:#070B14;border-radius:var(--radius-md);color:#9AA7BA;">
+        <sc-for list="{{ sizes }}" as="s"><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start;"><dc-import name="BAI Logo" variant="symbol" size="{{ s }}" hint-size="48px,48px"></dc-import><span style="font-size:11px;font-variant-numeric:tabular-nums;">{{ s }} px</span></div></sc-for>
+      </div>
+      <div data-theme="light" style="display:flex;align-items:flex-end;gap:32px;padding:20px;background:#FFFFFF;border-radius:var(--radius-md);color:#475569;border:1px solid #E2E8F0;">
+        <sc-for list="{{ sizes }}" as="s"><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start;"><dc-import name="BAI Logo" variant="symbol" size="{{ s }}" hint-size="48px,48px"></dc-import><span style="font-size:11px;font-variant-numeric:tabular-nums;">{{ s }} px</span></div></sc-for>
+      </div>
+    </div>
+    <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);padding:24px;display:flex;flex-direction:column;gap:20px;">
+      <div><div style="font-size:17px;font-weight:600;">App icon &amp; favicon</div><div style="font-size:13px;color:var(--color-text-secondary);">Night tile (#070B14), 22% corner radius. The symbol sits at 70% of tile size.</div></div>
+      <div style="display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap;">
+        <div data-theme="dark" style="width:120px;height:120px;border-radius:27px;background:#070B14;border:1px solid #1E293B;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-md);"><dc-import name="BAI Logo" variant="symbol" size="72" hint-size="72px,72px"></dc-import></div>
+        <div data-theme="dark" style="width:72px;height:72px;border-radius:16px;background:#070B14;border:1px solid #1E293B;display:flex;align-items:center;justify-content:center;"><dc-import name="BAI Logo" variant="symbol" size="44" hint-size="44px,44px"></dc-import></div>
+        <div data-theme="light" style="width:72px;height:72px;border-radius:16px;background:#E3F7F0;display:flex;align-items:center;justify-content:center;"><dc-import name="BAI Logo" variant="symbol" size="44" hint-size="44px,44px"></dc-import></div>
+        <div style="display:flex;flex-direction:column;gap:6px;"><div data-theme="dark" style="width:32px;height:32px;border-radius:7px;background:#070B14;display:flex;align-items:center;justify-content:center;border:1px solid #1E293B;"><dc-import name="BAI Logo" variant="symbol" size="22" hint-size="22px,22px"></dc-import></div><span style="font-size:11px;color:var(--color-text-secondary);">Favicon</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:center;padding-top:16px;border-top:1px solid var(--color-border-default);">
+        <div style="position:relative;display:flex;align-items:center;justify-content:flex-start;padding:24px;border:1px dashed var(--color-brand-primary);border-radius:var(--radius-sm);">
+          <dc-import name="BAI Logo" variant="horizontal" size="36" hint-size="160px,36px"></dc-import>
+          <span style="position:absolute;top:4px;left:6px;font-size:10px;font-weight:600;color:var(--color-brand-text);">x</span><span style="position:absolute;bottom:4px;right:6px;font-size:10px;font-weight:600;color:var(--color-brand-text);">x</span>
+        </div>
+        <div style="font-size:13px;line-height:1.6;color:var(--color-text-secondary);"><strong style="color:var(--color-text-primary);font-weight:600;">Clear space</strong> x = one pin length on every side.<br><strong style="color:var(--color-text-primary);font-weight:600;">Minimum size</strong> symbol 16 px · compact 56 px wide · horizontal 96 px wide.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      traits: [
+        { name:'Intelligent', desc:'Precise, analytical and structured.', cue:'Looks like: tabular figures, exact labels' },
+        { name:'Trustworthy', desc:'Transparent, stable and predictable.', cue:'Looks like: the same pattern every time' },
+        { name:'Controlled', desc:'Explicit permissions, clear boundaries.', cue:'Looks like: visible mode, deliberate confirms' },
+        { name:'Progressive', desc:'Modern AI without the sci-fi.', cue:'Looks like: one green voice, no neon' },
+        { name:'Minimal', desc:'Purposeful elements, generous space.', cue:'Looks like: fewer cards, stronger hierarchy' }
+      ],
+      principles: [
+        { n:'01', title:'Clarity over complexity', desc:'Make financial information understandable at a glance. One number, one label, one meaning.' },
+        { n:'02', title:'Control over blind automation', desc:'The agent\u2019s mode and permissions are always visible and one click from changing.' },
+        { n:'03', title:'Transparency over persuasion', desc:'Show uncertainty, assumptions and risks. Never promise returns.' },
+        { n:'04', title:'Consistency over novelty', desc:'Important financial actions always look and behave the same way.' },
+        { n:'05', title:'Calm over urgency', desc:'No countdowns, flashing prices or pressure. Users decide at their own pace.' },
+        { n:'06', title:'Accessibility by default', desc:'AA contrast, keyboard paths, clear labels, and no signal carried by color alone.' }
+      ],
+      sizes: [16, 24, 32, 48]
+    };
+  }
+}
+</script>
+</body>
+</html>

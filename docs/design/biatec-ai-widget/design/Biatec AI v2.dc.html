@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/modernist-99bf0980-78ce-41ce-a673-74652b0b91d8/styles.css">
+<script src="_ds/modernist-99bf0980-78ce-41ce-a673-74652b0b91d8/_ds_bundle.js"></script>
+<link rel="stylesheet" href="biatec-tokens.css">
+<style>
+body{margin:0}
+a{color:var(--color-accent-700)}
+a:hover{color:var(--color-accent)}
+@keyframes bai-pulse{0%,80%,100%{opacity:.2;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+</style>
+</helmet>
+<div ref="{{ rootRef }}" data-theme="{{ dsTheme }}" style="min-height:100vh;background:var(--ambient), var(--color-bg);background-attachment:fixed;color:var(--color-text);font-family:var(--font-body);">
+
+<div style="padding:6px 16px;font-size:12px;border-bottom:1px solid var(--color-divider);color:var(--color-neutral-700);">Concept prototype — Biatec-inspired host layout (provisional). All market data, portfolios and trades are simulated.</div>
+
+<nav class="nav" style="flex-wrap:wrap;">
+  <span class="nav-brand" style="font-family:var(--font-script);font-weight:400;font-size:20px;white-space:nowrap;">{{ hostName }}</span>
+  <a href="#" aria-current="page">Trade</a>
+  <a href="#">Liquidity</a>
+  <a href="#">Portfolio</a>
+  <a href="#" onClick="{{ openSpec }}">Developers</a>
+  <button class="btn btn-secondary" type="button">Connect wallet (demo)</button>
+</nav>
+
+<div style="display:grid;grid-template-columns:{{ hostCols }};gap:24px;padding:24px 24px 120px;align-items:start;">
+  <main style="display:flex;flex-direction:column;gap:24px;min-width:0;">
+    <section style="display:flex;flex-direction:column;gap:12px;border-bottom:1px solid var(--color-divider);padding-bottom:24px;">
+      <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px 32px;">
+        <div><h6 style="margin:0 0 4px;color:var(--color-neutral-700);">BTC / USDC · Demo</h6><div style="font-size:40px;font-weight:600;line-height:1;letter-spacing:-0.02em;">67,412.50</div></div>
+        <div style="font-size:14px;font-weight:600;">▲ +2.41% <span style="font-weight:400;color:var(--color-neutral-700);">24h</span></div>
+        <div style="display:flex;gap:0;margin-left:auto;border:1px solid var(--color-divider);">
+          <span style="padding:6px 12px;font-size:13px;">1H</span><span style="padding:6px 12px;font-size:13px;background:var(--color-text);color:var(--color-bg);">1D</span><span style="padding:6px 12px;font-size:13px;">1W</span><span style="padding:6px 12px;font-size:13px;">1M</span>
+        </div>
+      </div>
+      <svg viewBox="0 0 800 220" preserveAspectRatio="none" style="width:100%;height:220px;display:block;" aria-label="Illustrative BTC/USDC price chart, demo data">
+        <path d="{{ hostArea }}" fill="var(--color-surface)"></path>
+        <path d="{{ hostLine }}" fill="none" stroke="var(--color-text)" stroke-width="2" vector-effect="non-scaling-stroke"></path>
+      </svg>
+    </section>
+    <section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px;">
+      <div class="card" style="gap:12px;padding:16px;">
+        <div class="card-kicker">Order · demo</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--color-divider);">
+          <span style="padding:8px 12px;font-size:13px;font-weight:600;background:var(--color-text);color:var(--color-bg);">Buy</span><span style="padding:8px 12px;font-size:13px;">Sell</span>
+        </div>
+        <div class="field"><label>Amount (USDC)</label><input class="input" value="100.00" readOnly="{{ true }}"></div>
+        <button class="btn btn-primary" type="button" style="justify-content:flex-start;">Review order (demo)</button>
+        <button class="btn btn-ghost" type="button" style="justify-content:flex-start;" onClick="{{ hostAsk }}">Ask Biatec AI about this order →</button>
+      </div>
+      <div style="min-width:0;">
+        <h6 style="margin:0 0 8px;color:var(--color-neutral-700);">Recent trades · demo</h6>
+        <table class="table">
+          <thead><tr><th>Price</th><th>Size</th><th>Time</th></tr></thead>
+          <tbody>
+            <tr><td>67,412.50</td><td>0.0412</td><td>14:32:08</td></tr>
+            <tr><td>67,408.10</td><td>0.1150</td><td>14:31:55</td></tr>
+            <tr><td>67,415.00</td><td>0.0083</td><td>14:31:40</td></tr>
+            <tr><td>67,399.60</td><td>0.2200</td><td>14:31:12</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div style="position:relative;min-width:0;">
+    <sc-if value="{{ showLauncher }}" hint-placeholder-val="{{ false }}">
+      <div style="position:fixed;right:24px;bottom:24px;z-index:40;display:flex;align-items:center;gap:10px;">
+        <sc-if value="{{ tip }}"><div role="tooltip" style="background:var(--color-text);color:var(--color-bg);font-size:13px;padding:6px 10px;white-space:nowrap;">Ask Biatec AI</div></sc-if>
+        <button type="button" aria-label="Ask Biatec AI" onClick="{{ openWidget }}" onMouseEnter="{{ tipOn }}" onMouseLeave="{{ tipOff }}" onFocus="{{ tipOn }}" onBlur="{{ tipOff }}" style="position:relative;width:60px;height:60px;border:0;cursor:pointer;background:var(--color-accent);color:var(--color-bg);border-radius:var(--radius-md);box-shadow:var(--shadow-lg);display:flex;align-items:center;justify-content:center;padding:0;font-family:var(--font-heading);" style-hover="background:var(--color-accent-600);">
+          <dc-import name="BAI Logo" variant="symbol" size="44" mono="dark" hint-size="44px,44px"></dc-import>
+          <sc-if value="{{ unread }}"><span aria-label="1 new" style="position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;background:var(--color-text);color:var(--color-bg);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;">1</span></sc-if>
+        </button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ showMinBar }}" hint-placeholder-val="{{ false }}">
+      <div style="position:fixed;right:24px;bottom:24px;z-index:40;width:min(320px,calc(100vw - 32px));display:flex;align-items:center;gap:10px;padding:10px 10px 10px 12px;background:var(--color-bg);border:1px solid var(--color-divider);border-radius:var(--radius-md);box-shadow:var(--shadow-lg);">
+        <dc-import name="BAI Logo" variant="symbol" size="36" hint-size="36px,36px"></dc-import>
+        <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14px;line-height:1.2;">Biatec AI</div><div style="font-size:12px;color:var(--color-neutral-700);">{{ minBarText }}</div></div>
+        <button class="btn btn-secondary" type="button" onClick="{{ openWidget }}">Restore</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ showPanel }}" hint-placeholder-val="{{ true }}">
+      <section aria-label="Biatec AI chat" style="position:{{ g.pos }};top:{{ g.top }};right:{{ g.right }};bottom:{{ g.bottom }};left:{{ g.left }};width:{{ g.width }};height:{{ g.height }};z-index:45;display:flex;flex-direction:column;background:var(--color-bg);color:var(--color-text);border:{{ g.border }};border-radius:{{ g.radius }};box-shadow:{{ g.shadow }};overflow:hidden;">
+
+        <header style="display:flex;align-items:center;gap:12px;padding:12px 10px 12px 16px;border-bottom:1px solid var(--color-divider);">
+          <dc-import name="BAI Logo" variant="symbol" size="42" hint-size="42px,42px"></dc-import>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:16px;line-height:1.2;">Biatec AI</div>
+            <div style="font-size:12px;color:var(--color-neutral-700);">Your crypto-trading assistant</div>
+          </div>
+          <div style="display:flex;gap:2px;">
+            <button class="btn btn-icon" type="button" aria-label="{{ expandLabel }}" title="{{ expandLabel }}" onClick="{{ toggleWorkspace }}" style="width:34px;height:34px;" style-hover="background:var(--color-surface);">
+              <sc-if value="{{ workspace }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" x2="21" y1="10" y2="3"></line><line x1="3" x2="10" y1="21" y2="14"></line></svg></sc-if>
+              <sc-if value="{{ notWorkspace }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" x2="14" y1="3" y2="10"></line><line x1="3" x2="10" y1="21" y2="14"></line></svg></sc-if>
+            </button>
+            <sc-if value="{{ showMin }}">
+              <button class="btn btn-icon" type="button" aria-label="Minimize" title="Minimize" onClick="{{ minimize }}" style="width:34px;height:34px;" style-hover="background:var(--color-surface);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M5 12h14"></path></svg></button>
+            </sc-if>
+            <sc-if value="{{ showClose }}">
+              <button class="btn btn-icon" type="button" aria-label="Close" title="Close" onClick="{{ closeWidget }}" style="width:34px;height:34px;" style-hover="background:var(--color-surface);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
+            </sc-if>
+          </div>
+        </header>
+
+        <div style="display:flex;align-items:center;gap:6px;padding:6px 10px 6px 16px;border-bottom:1px solid var(--color-divider);">
+          <button type="button" onClick="{{ openPermsBtn }}" aria-haspopup="dialog" aria-label="Agent status: {{ statusLabel }}. Change permissions" style="display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid var(--color-divider);background:transparent;color:var(--color-text);font:inherit;font-size:12px;cursor:pointer;border-radius:var(--radius-sm);white-space:nowrap;text-align:left;justify-content:flex-start;" style-hover="background:var(--color-surface);">
+            <span style="flex:none;width:8px;height:8px;background:{{ statusDot }};border:2px solid {{ statusEdge }};"></span>
+            <span style="color:var(--color-neutral-700);">Status:</span><span style="font-weight:600;">{{ statusLabel }}</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="m6 9 6 6 6-6"></path></svg>
+          </button>
+          <div style="flex:1;"></div>
+          <sc-if value="{{ showHistoryBtn }}">
+            <button class="btn" type="button" onClick="{{ toggleHistory }}" aria-pressed="{{ historyOn }}" style="font-size:12px;padding:5px 8px;gap:5px;" style-hover="background:var(--color-surface);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>Chats</button>
+          </sc-if>
+          <button class="btn" type="button" onClick="{{ toggleActivity }}" aria-pressed="{{ activityOn }}" style="font-size:12px;padding:5px 8px;gap:5px;" style-hover="background:var(--color-surface);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Activity</button>
+        </div>
+
+        <sc-if value="{{ paused }}">
+          <div role="status" style="display:flex;align-items:center;gap:10px;padding:8px 16px;background:var(--bai-warning-subtle);color:var(--bai-warning);font-size:13px;border-bottom:1px solid var(--color-divider);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="14" y="4" width="4" height="16"></rect><rect x="6" y="4" width="4" height="16"></rect></svg>
+            <span style="flex:1;">Agent paused. Analysis still works — proposals and approvals are on hold.</span>
+            <button class="btn btn-ghost" type="button" onClick="{{ togglePause }}" style="color:var(--bai-warning);font-size:13px;">Resume</button>
+          </div>
+        </sc-if>
+
+        <div style="flex:1;min-height:0;display:flex;position:relative;">
+
+          <sc-if value="{{ showSidebar }}">
+            <nav aria-label="Conversation history" style="position:{{ sb.pos }};top:0;bottom:0;left:0;right:{{ sb.right }};width:{{ sb.w }};flex:none;z-index:6;background:var(--color-bg);border-right:{{ sb.br }};display:flex;flex-direction:column;">
+              <div style="padding:12px;display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--color-divider);">
+                <button class="btn btn-secondary" type="button" onClick="{{ newChat }}" style="flex:1;justify-content:flex-start;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>New chat</button>
+                <sc-if value="{{ sb.overlay }}"><button class="btn btn-ghost" type="button" onClick="{{ closeSheet }}">Back to chat</button></sc-if>
+              </div>
+              <h6 style="margin:0;padding:14px 16px 6px;color:var(--color-neutral-700);">Recent</h6>
+              <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;">
+                <sc-for list="{{ convList }}" as="c" hint-placeholder-count="3">
+                  <button type="button" onClick="{{ c.onClick }}" aria-current="{{ c.current }}" style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:10px 16px;border:0;border-bottom:1px solid var(--color-divider);background:{{ c.bg }};color:var(--color-text);font:inherit;cursor:pointer;" style-hover="background:var(--color-surface);">
+                    <span style="font-size:13px;font-weight:{{ c.weight }};line-height:1.35;">{{ c.title }}</span>
+                    <span style="font-size:11px;color:var(--color-neutral-700);">{{ c.when }}</span>
+                  </button>
+                </sc-for>
+              </div>
+              <div style="padding:12px 16px;font-size:11px;color:var(--color-neutral-700);border-top:1px solid var(--color-divider);">Demo session · conversations stay in this browser tab</div>
+            </nav>
+          </sc-if>
+
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;position:relative;">
+            <sc-if value="{{ hasToast }}">
+              <div role="status" aria-live="polite" style="position:absolute;top:12px;left:16px;right:16px;z-index:4;background:var(--color-text);color:var(--color-bg);font-size:13px;padding:10px 12px;box-shadow:var(--shadow-md);display:flex;gap:8px;align-items:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="M20 6 9 17l-5-5"></path></svg>{{ toast }}</div>
+            </sc-if>
+
+            <div ref="{{ scrollRef }}" data-bai-scroll="1" aria-live="polite" style="flex:1;min-height:0;overflow-y:auto;padding:20px 16px;">
+              <div style="max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:22px;">
+
+                <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;flex-direction:column;gap:18px;padding-top:8px;">
+                    <h2 style="font-size:32px;margin:0;letter-spacing:-0.025em;">Meet Biatec AI.</h2>
+                    <p style="margin:0;font-size:15px;line-height:1.55;color:var(--color-neutral-800);text-wrap:pretty;max-width:520px;">Your intelligent companion for exploring crypto markets, understanding trading strategies, and staying in control of every decision.</p>
+                    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px;background:var(--color-divider);border:1px solid var(--color-divider);">
+                      <button type="button" onClick="{{ sug1 }}" style="display:flex;flex-direction:column;align-items:flex-start;gap:14px;text-align:left;padding:14px;min-height:96px;border:0;background:var(--color-bg);color:var(--color-text);font:inherit;cursor:pointer;" style-hover="background:var(--color-surface);">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2" stroke-linecap="square"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>
+                        <span style="font-size:14px;font-weight:600;line-height:1.35;">What's happening with Bitcoin today?</span>
+                      </button>
+                      <button type="button" onClick="{{ sug2 }}" style="display:flex;flex-direction:column;align-items:flex-start;gap:14px;text-align:left;padding:14px;min-height:96px;border:0;background:var(--color-bg);color:var(--color-text);font:inherit;cursor:pointer;" style-hover="background:var(--color-surface);">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2" stroke-linecap="square"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+                        <span style="font-size:14px;font-weight:600;line-height:1.35;">Analyze ETH market trends</span>
+                      </button>
+                      <button type="button" onClick="{{ sug3 }}" style="display:flex;flex-direction:column;align-items:flex-start;gap:14px;text-align:left;padding:14px;min-height:96px;border:0;background:var(--color-bg);color:var(--color-text);font:inherit;cursor:pointer;" style-hover="background:var(--color-surface);">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2" stroke-linecap="square"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.810 17 5 19 5a1 1 0 0 1 1 1z"></path></svg>
+                        <span style="font-size:14px;font-weight:600;line-height:1.35;">Help me understand trading risks</span>
+                      </button>
+                      <button type="button" onClick="{{ sug4 }}" style="display:flex;flex-direction:column;align-items:flex-start;gap:14px;text-align:left;padding:14px;min-height:96px;border:0;background:var(--color-bg);color:var(--color-text);font:inherit;cursor:pointer;" style-hover="background:var(--color-surface);">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2" stroke-linecap="square"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
+                        <span style="font-size:14px;font-weight:600;line-height:1.35;">Explore a trading strategy</span>
+                      </button>
+                    </div>
+                    <button class="btn btn-ghost" type="button" onClick="{{ sugJourney }}" style="align-self:flex-start;justify-content:flex-start;">Try the full journey: analyze Bitcoin and a possible trade →</button>
+                    <div style="display:flex;gap:10px;align-items:flex-start;font-size:12px;color:var(--color-neutral-700);border-top:1px solid var(--color-divider);padding-top:12px;">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" style="flex:none;margin-top:2px;"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg>
+                      <span>{{ welcomeNote }}</span>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <sc-for list="{{ messages }}" as="m" hint-placeholder-count="0">
+                  <div style="display:flex;flex-direction:column;">
+                    <sc-if value="{{ m.isUser }}">
+                      <div style="display:flex;justify-content:flex-end;">
+                        <div style="max-width:85%;background:var(--color-surface);padding:10px 14px;font-size:14px;line-height:1.5;border-radius:var(--radius-md);box-shadow:var(--shadow-sm);white-space:pre-wrap;">{{ m.text }}</div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ m.isAi }}">
+                      <div style="display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;align-items:start;">
+                        <div aria-hidden="true" style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;"><dc-import name="BAI Logo" variant="symbol" size="28" hint-size="28px,28px"></dc-import></div>
+                        <div style="display:flex;flex-direction:column;gap:12px;min-width:0;">
+                          <sc-if value="{{ m.hasTitle }}"><div style="font-weight:600;font-size:16px;line-height:1.3;padding-top:1px;">{{ m.title }}</div></sc-if>
+                          <sc-for list="{{ m.paras }}" as="p"><p style="margin:0;font-size:14px;line-height:1.6;text-wrap:pretty;">{{ p }}</p></sc-for>
+
+                          <sc-if value="{{ m.hasMarket }}">
+                            <div style="border:1px solid var(--color-divider);border-radius:var(--radius-md);overflow:hidden;">
+                              <div style="display:flex;justify-content:space-between;gap:8px;padding:8px 12px;border-bottom:1px solid var(--color-divider);">
+                                <span class="card-kicker" style="color:var(--color-accent-700);">Market snapshot · demo data</span>
+                                <span style="font-size:12px;font-weight:600;">{{ m.mk.pair }}</span>
+                              </div>
+                              <div style="padding:12px 12px 0;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;">
+                                <span style="font-size:26px;font-weight:600;letter-spacing:-0.02em;line-height:1;">{{ m.mk.price }}</span>
+                                <span style="font-size:13px;font-weight:600;color:{{ m.mk.chgColor }};">{{ m.mk.chg }}</span>
+                                <span style="font-size:12px;color:var(--color-neutral-700);">{{ m.mk.dir }} · 24h</span>
+                              </div>
+                              <svg viewBox="0 0 360 96" preserveAspectRatio="none" style="display:block;width:100%;height:96px;margin-top:8px;" role="img" aria-label="Illustrative 24 hour price chart, demo data">
+                                <path d="{{ m.mk.area }}" fill="var(--color-surface)"></path>
+                                <path d="{{ m.mk.line }}" fill="none" stroke="var(--color-text)" stroke-width="2" vector-effect="non-scaling-stroke"></path>
+                              </svg>
+                              <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--color-divider);">
+                                <div style="padding:8px 12px;border-right:1px solid var(--color-divider);"><div style="font-size:11px;color:var(--color-neutral-700);">24h high</div><div style="font-size:13px;font-weight:600;">{{ m.mk.hi }}</div></div>
+                                <div style="padding:8px 12px;border-right:1px solid var(--color-divider);"><div style="font-size:11px;color:var(--color-neutral-700);">24h low</div><div style="font-size:13px;font-weight:600;">{{ m.mk.lo }}</div></div>
+                                <div style="padding:8px 12px;"><div style="font-size:11px;color:var(--color-neutral-700);">Volume</div><div style="font-size:13px;font-weight:600;">{{ m.mk.vol }}</div></div>
+                              </div>
+                              <div style="padding:6px 12px;font-size:11px;color:var(--color-neutral-700);border-top:1px solid var(--color-divider);">{{ m.mk.stamp }}</div>
+                            </div>
+                          </sc-if>
+
+                          <sc-if value="{{ m.hasStrategy }}">
+                            <div style="border:1px solid var(--color-divider);border-radius:var(--radius-md);">
+                              <div style="padding:8px 12px;border-bottom:1px solid var(--color-divider);"><span class="card-kicker" style="color:var(--color-accent-700);">Illustration · $25 every week · demo prices</span></div>
+                              <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;align-items:end;height:110px;padding:12px 12px 0;">
+                                <sc-for list="{{ m.bars }}" as="b">
+                                  <div style="display:flex;flex-direction:column;justify-content:flex-end;height:100%;gap:4px;">
+                                    <span style="font-size:10px;color:var(--color-neutral-700);">{{ b.units }}</span>
+                                    <div style="height:{{ b.h }};background:{{ b.fill }};"></div>
+                                  </div>
+                                </sc-for>
+                              </div>
+                              <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;padding:4px 12px 10px;">
+                                <sc-for list="{{ m.bars }}" as="b"><div style="font-size:10px;line-height:1.3;"><div style="font-weight:600;">{{ b.w }}</div><div style="color:var(--color-neutral-700);">{{ b.price }}</div></div></sc-for>
+                              </div>
+                              <div style="padding:8px 12px;font-size:12px;border-top:1px solid var(--color-divider);">{{ m.stratNote }}</div>
+                              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));border-top:1px solid var(--color-divider);">
+                                <div style="padding:10px 12px;"><div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">Advantages</div><sc-for list="{{ m.pros }}" as="x"><div style="font-size:13px;line-height:1.5;">+ {{ x }}</div></sc-for></div>
+                                <div style="padding:10px 12px;border-left:1px solid var(--color-divider);"><div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">Limitations</div><sc-for list="{{ m.cons }}" as="x"><div style="font-size:13px;line-height:1.5;">− {{ x }}</div></sc-for></div>
+                              </div>
+                            </div>
+                          </sc-if>
+
+                          <sc-if value="{{ m.hasPortfolio }}">
+                            <div style="border:1px solid var(--color-divider);border-radius:var(--radius-md);overflow:hidden;">
+                              <div style="display:flex;justify-content:space-between;gap:8px;padding:8px 12px;border-bottom:1px solid var(--color-divider);">
+                                <span class="card-kicker" style="color:var(--color-accent-700);">Mock portfolio · not your holdings</span>
+                                <span style="font-size:12px;font-weight:600;">$11,700.00</span>
+                              </div>
+                              <div style="display:flex;height:14px;margin:12px;gap:2px;">
+                                <sc-for list="{{ m.alloc }}" as="a"><div style="width:{{ a.w }};background:{{ a.fill }};"></div></sc-for>
+                              </div>
+                              <div style="display:flex;flex-direction:column;">
+                                <sc-for list="{{ m.alloc }}" as="a">
+                                  <div style="display:grid;grid-template-columns:12px minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:7px 12px;border-top:1px solid var(--color-divider);font-size:13px;">
+                                    <span style="width:10px;height:10px;background:{{ a.fill }};"></span>
+                                    <span style="font-weight:{{ a.weight }};">{{ a.sym }}</span>
+                                    <span style="color:var(--color-neutral-700);">{{ a.val }}</span>
+                                    <span style="font-weight:600;min-width:40px;text-align:right;">{{ a.pct }}</span>
+                                  </div>
+                                </sc-for>
+                              </div>
+                              <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;background:var(--bai-warning-subtle);color:var(--bai-warning);font-size:13px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" style="flex:none;margin-top:1px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+                                <span><strong>Concentration risk: high.</strong> BTC is 46% of this portfolio, above a common 40% single-asset guideline.</span>
+                              </div>
+                            </div>
+                          </sc-if>
+
+                          <sc-if value="{{ m.hasProposal }}">
+                            <div style="border:1.5px {{ m.pr.border }} var(--bai-border-strong);border-radius:var(--radius-md);overflow:hidden;">
+                              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;background:{{ m.pr.headBg }};color:{{ m.pr.headColor }};border-bottom:1px solid var(--color-divider);">
+                                <span style="font-size:10px;letter-spacing:0.1em;text-transform:uppercase;font-weight:600;">Trade proposal · demo</span>
+                                <span style="font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;padding:2px 8px;border:1px solid currentColor;">{{ m.pr.statusLabel }}</span>
+                              </div>
+                              <div style="padding:12px 12px 4px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+                                <span style="font-size:20px;font-weight:600;letter-spacing:-0.01em;">Buy BTC · {{ m.pr.amount }}</span>
+                                <span style="font-size:12px;color:var(--color-neutral-700);">≈ {{ m.pr.qty }}</span>
+                              </div>
+                              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));">
+                                <div style="padding:8px 12px;border-top:1px solid var(--color-divider);border-right:1px solid var(--color-divider);"><div style="font-size:11px;color:var(--color-neutral-700);">Pair</div><div style="font-size:13px;font-weight:600;">BTC/USDC</div></div>
+                                <div style="padding:8px 12px;border-top:1px solid var(--color-divider);"><div style="font-size:11px;color:var(--color-neutral-700);">Direction · type</div><div style="font-size:13px;font-weight:600;">Buy · Market</div></div>
+                                <div style="padding:8px 12px;border-top:1px solid var(--color-divider);border-right:1px solid var(--color-divider);"><div style="font-size:11px;color:var(--color-neutral-700);">Est. execution price</div><div style="font-size:13px;font-weight:600;">{{ m.pr.price }}</div></div>
+                                <div style="padding:8px 12px;border-top:1px solid var(--color-divider);"><div style="font-size:11px;color:var(--color-neutral-700);">Est. fees</div><div style="font-size:13px;font-weight:600;">{{ m.pr.fee }}</div></div>
+                              </div>
+                              <sc-if value="{{ m.pr.open }}">
+                                <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));">
+                                  <div style="padding:8px 12px;border-top:1px solid var(--color-divider);border-right:1px solid var(--color-divider);"><div style="font-size:11px;color:var(--color-neutral-700);">Max slippage</div><div style="font-size:13px;font-weight:600;">0.50%</div></div>
+                                  <div style="padding:8px 12px;border-top:1px solid var(--color-divider);"><div style="font-size:11px;color:var(--color-neutral-700);">Worst-case price</div><div style="font-size:13px;font-weight:600;">{{ m.pr.worst }}</div></div>
+                                  <div style="padding:8px 12px;border-top:1px solid var(--color-divider);border-right:1px solid var(--color-divider);"><div style="font-size:11px;color:var(--color-neutral-700);">Routing</div><div style="font-size:13px;font-weight:600;">Simulated</div></div>
+                                  <div style="padding:8px 12px;border-top:1px solid var(--color-divider);"><div style="font-size:11px;color:var(--color-neutral-700);">Quote valid</div><div style="font-size:13px;font-weight:600;">Demo only</div></div>
+                                </div>
+                              </sc-if>
+                              <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-top:1px solid var(--color-divider);background:var(--color-surface);font-size:13px;line-height:1.5;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--bai-warning)" stroke-width="2" stroke-linecap="square" style="flex:none;margin-top:2px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+                                <span><strong>Downside scenario.</strong> {{ m.pr.downside }}</span>
+                              </div>
+                              <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-top:1px solid var(--color-divider);font-size:13px;line-height:1.5;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" style="flex:none;margin-top:2px;"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg>
+                                <span><strong>Authorization.</strong> {{ m.pr.auth }}</span>
+                              </div>
+                              <sc-if value="{{ m.pr.editing }}">
+                                <div style="padding:10px 12px;border-top:1px solid var(--color-divider);display:flex;flex-direction:column;gap:8px;">
+                                  <div class="field"><label for="amt-{{ m.id }}">Amount (USD)</label><input id="amt-{{ m.id }}" class="input" type="number" min="10" step="5" value="{{ m.pr.amountRaw }}" onChange="{{ m.pr.onAmount }}"></div>
+                                  <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                                    <sc-for list="{{ m.pr.chips }}" as="ch"><button class="btn btn-secondary" type="button" aria-pressed="{{ ch.pressed }}" onClick="{{ ch.onClick }}" style="font-size:12px;padding:5px 10px;background:{{ ch.bg }};color:{{ ch.color }};">{{ ch.label }}</button></sc-for>
+                                  </div>
+                                  <sc-if value="{{ m.pr.hasNote }}"><div role="alert" style="font-size:12px;color:var(--color-accent-700);font-weight:600;">{{ m.pr.note }}</div></sc-if>
+                                </div>
+                              </sc-if>
+                              <sc-if value="{{ m.pr.isExecuted }}">
+                                <div style="padding:8px 12px;border-top:1px solid var(--color-divider);font-size:12px;color:var(--color-neutral-700);">Receipt {{ m.pr.receipt }} · simulated fill · no funds moved</div>
+                              </sc-if>
+                              <sc-if value="{{ m.pr.isProposed }}">
+                                <div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px;border-top:1px solid var(--color-divider);">
+                                  <button class="btn btn-primary" type="button" disabled="{{ m.pr.approveDisabled }}" onClick="{{ m.pr.onApprove }}" style="justify-content:flex-start;">{{ m.pr.approveLabel }}</button>
+                                  <button class="btn btn-secondary" type="button" onClick="{{ m.pr.onReview }}">Review risks</button>
+                                  <button class="btn btn-secondary" type="button" onClick="{{ m.pr.onEdit }}" aria-pressed="{{ m.pr.editing }}">{{ m.pr.editLabel }}</button>
+                                  <button class="btn btn-ghost" type="button" onClick="{{ m.pr.onCancel }}">Cancel</button>
+                                </div>
+                              </sc-if>
+                              <button type="button" onClick="{{ m.pr.onToggle }}" aria-expanded="{{ m.pr.open }}" style="display:flex;align-items:center;gap:6px;width:100%;padding:8px 12px;border:0;border-top:1px solid var(--color-divider);background:transparent;color:var(--color-text);font:inherit;font-size:12px;font-weight:600;cursor:pointer;text-align:left;" style-hover="background:var(--color-surface);">{{ m.pr.detailsLabel }}</button>
+                            </div>
+                          </sc-if>
+
+                          <sc-if value="{{ m.hasConfirm }}">
+                            <div style="border:1px solid var(--color-divider);border-radius:var(--radius-md);overflow:hidden;">
+                              <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bai-success-subtle);color:var(--bai-success);">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"><path d="M20 6 9 17l-5-5"></path></svg>
+                                <span style="font-weight:600;font-size:14px;">Demo order filled</span>
+                                <span style="margin-left:auto;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;">Simulated</span>
+                              </div>
+                              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));">
+                                <div style="padding:8px 12px;border-right:1px solid var(--color-divider);"><div style="font-size:11px;color:var(--color-neutral-700);">Filled</div><div style="font-size:13px;font-weight:600;">{{ m.cf.qty }}</div></div>
+                                <div style="padding:8px 12px;"><div style="font-size:11px;color:var(--color-neutral-700);">Avg. price</div><div style="font-size:13px;font-weight:600;">{{ m.cf.price }}</div></div>
+                                <div style="padding:8px 12px;border-top:1px solid var(--color-divider);border-right:1px solid var(--color-divider);"><div style="font-size:11px;color:var(--color-neutral-700);">Total incl. fee</div><div style="font-size:13px;font-weight:600;">{{ m.cf.total }}</div></div>
+                                <div style="padding:8px 12px;border-top:1px solid var(--color-divider);"><div style="font-size:11px;color:var(--color-neutral-700);">Receipt</div><div style="font-size:13px;font-weight:600;">{{ m.cf.receipt }}</div></div>
+                              </div>
+                              <div style="padding:8px 12px;border-top:1px solid var(--color-divider);font-size:12px;color:var(--color-neutral-700);">Approved by you at {{ m.cf.time }} · logged to Activity · no wallet signature requested</div>
+                            </div>
+                          </sc-if>
+
+                          <sc-if value="{{ m.hasBullets }}">
+                            <div style="display:flex;flex-direction:column;gap:6px;">
+                              <sc-if value="{{ m.hasBulletsTitle }}"><div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;">{{ m.bulletsTitle }}</div></sc-if>
+                              <sc-for list="{{ m.bullets }}" as="bl">
+                                <div style="display:grid;grid-template-columns:14px minmax(0,1fr);gap:8px;font-size:14px;line-height:1.55;"><span style="width:6px;height:6px;background:var(--color-accent);margin-top:8px;"></span><span style="text-wrap:pretty;">{{ bl }}</span></div>
+                              </sc-for>
+                            </div>
+                          </sc-if>
+
+                          <sc-if value="{{ m.showMore }}"><p style="margin:0;font-size:14px;line-height:1.6;padding-left:12px;border-left:2px solid var(--color-divider);text-wrap:pretty;">{{ m.more }}</p></sc-if>
+                          <sc-if value="{{ m.showSources }}"><div style="font-size:12px;line-height:1.5;padding:8px 10px;background:var(--color-surface);color:var(--color-neutral-800);"><strong>Supporting information.</strong> {{ m.sources }}</div></sc-if>
+
+                          <sc-if value="{{ m.hasFollowups }}">
+                            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                              <sc-for list="{{ m.followups }}" as="f"><button class="btn btn-secondary" type="button" onClick="{{ f.onClick }}" disabled="{{ busy }}" style="font-size:13px;font-weight:600;padding:6px 10px;justify-content:flex-start;">{{ f.label }}</button></sc-for>
+                            </div>
+                          </sc-if>
+
+                          <div style="display:flex;gap:2px;flex-wrap:wrap;margin-left:-6px;">
+                            <button class="btn" type="button" onClick="{{ m.onCopy }}" style="font-size:12px;font-weight:600;padding:4px 6px;color:var(--color-neutral-700);" style-hover="background:var(--color-surface);color:var(--color-text);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><rect width="14" height="14" x="8" y="8"></rect><path d="M4 16V4h12"></path></svg>{{ m.copyLabel }}</button>
+                            <button class="btn" type="button" onClick="{{ m.onRetry }}" disabled="{{ busy }}" style="font-size:12px;font-weight:600;padding:4px 6px;color:var(--color-neutral-700);" style-hover="background:var(--color-surface);color:var(--color-text);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>Retry</button>
+                            <sc-if value="{{ m.hasMore }}"><button class="btn" type="button" onClick="{{ m.onExpand }}" aria-expanded="{{ m.showMore }}" style="font-size:12px;font-weight:600;padding:4px 6px;color:var(--color-neutral-700);" style-hover="background:var(--color-surface);color:var(--color-text);">{{ m.expandLabel }}</button></sc-if>
+                            <button class="btn" type="button" onClick="{{ m.onSources }}" aria-expanded="{{ m.showSources }}" style="font-size:12px;font-weight:600;padding:4px 6px;color:var(--color-neutral-700);" style-hover="background:var(--color-surface);color:var(--color-text);">{{ m.srcLabel }}</button>
+                          </div>
+                        </div>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+
+                <sc-if value="{{ thinking }}">
+                  <div style="display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;align-items:center;">
+                    <div aria-hidden="true" style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;"><dc-import name="BAI Logo" variant="symbol" size="28" hint-size="28px,28px"></dc-import></div>
+                    {{ typing }}
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+
+            <div style="border-top:1px solid var(--color-divider);padding:10px 12px 8px;background:var(--color-bg);">
+              <div style="max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:6px;">
+                <div style="border:1px solid var(--color-divider);background:var(--color-surface);border-radius:var(--radius-md);display:flex;flex-direction:column;">
+                  <textarea ref="{{ inputRef }}" aria-label="Message Biatec AI" rows="2" placeholder="Ask Biatec AI anything about crypto…" value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onKey }}" style="border:0;background:transparent;resize:none;font:inherit;font-size:15px;line-height:1.45;padding:10px 12px 4px;min-height:52px;max-height:140px;color:var(--color-text);outline:none;" style-focus="outline:2px solid var(--color-accent);outline-offset:-1px;"></textarea>
+                  <div style="display:flex;align-items:center;gap:4px;padding:4px 6px 6px;">
+                    <button class="btn btn-icon" type="button" aria-label="Attach a chart (not available in demo)" title="Attach a chart (not available in demo)" disabled="{{ true }}" style="width:32px;height:32px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg></button>
+                    <button class="btn" type="button" onClick="{{ cycleCtx }}" title="Change market context" aria-label="Market context: {{ ctxLabel }}. Click to change" style="font-size:12px;font-weight:600;padding:5px 8px;border:1px solid var(--color-divider);gap:4px;" style-hover="background:var(--color-bg);"><span style="color:var(--color-neutral-700);font-weight:400;">Context</span> {{ ctxLabel }}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="m6 9 6 6 6-6"></path></svg></button>
+                    <div style="flex:1;"></div>
+                    <button class="btn btn-primary btn-icon" type="button" aria-label="Send message" disabled="{{ sendDisabled }}" onClick="{{ sendNow }}" style="width:36px;height:36px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg></button>
+                  </div>
+                </div>
+                <div style="font-size:11px;color:var(--color-neutral-700);">Demo · simulated data · not financial advice. Biatec AI can be wrong — check before acting.</div>
+              </div>
+            </div>
+          </div>
+
+          <sc-if value="{{ showAside }}">
+            <aside aria-label="Agent and activity" style="position:{{ as.pos }};top:0;bottom:0;right:0;left:{{ as.left }};width:{{ as.w }};flex:none;z-index:6;background:var(--color-bg);border-left:{{ as.bl }};display:flex;flex-direction:column;overflow-y:auto;">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--color-divider);">
+                <h6 style="margin:0;">Agent</h6>
+                <button class="btn btn-ghost" type="button" onClick="{{ closeAside }}">{{ asideCloseLabel }}</button>
+              </div>
+              <div style="padding:14px 16px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--color-divider);">
+                <div style="display:flex;align-items:center;gap:8px;"><span style="width:10px;height:10px;background:{{ statusDot }};border:2px solid {{ statusEdge }};"></span><span style="font-weight:600;font-size:18px;">{{ modeLabel }}</span></div>
+                <div style="font-size:13px;color:var(--color-neutral-700);">{{ agentState }} · {{ modeDesc }}</div>
+                <sc-if value="{{ isRules }}">
+                  <div style="display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--color-divider);font-size:12px;">
+                    <sc-for list="{{ limitRows }}" as="lr"><div style="padding:6px 8px;border-bottom:1px solid var(--color-divider);"><div style="color:var(--color-neutral-700);">{{ lr.k }}</div><div style="font-weight:600;">{{ lr.v }}</div></div></sc-for>
+                  </div>
+                </sc-if>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                  <button class="btn btn-secondary" type="button" onClick="{{ openPermsBtn }}" style="justify-content:flex-start;">Manage permissions</button>
+                  <button class="btn btn-ghost" type="button" onClick="{{ togglePause }}">{{ pauseLabel }}</button>
+                </div>
+              </div>
+              <h6 style="margin:0;padding:14px 16px 4px;">Activity</h6>
+              <div style="padding:0 16px 16px;display:flex;flex-direction:column;">
+                <sc-for list="{{ activityList }}" as="ev" hint-placeholder-count="2">
+                  <div style="display:grid;grid-template-columns:12px minmax(0,1fr);gap:10px;padding:10px 0;border-bottom:1px solid var(--color-divider);">
+                    <span style="width:10px;height:10px;margin-top:5px;background:{{ ev.fill }};border:2px solid {{ ev.edge }};"></span>
+                    <div style="display:flex;flex-direction:column;gap:2px;min-width:0;">
+                      <div style="display:flex;justify-content:space-between;gap:8px;"><span style="font-weight:600;font-size:13px;">{{ ev.title }}</span><span style="font-size:11px;color:var(--color-neutral-700);flex:none;">{{ ev.t }}</span></div>
+                      <div style="font-size:12px;line-height:1.45;color:var(--color-neutral-700);">{{ ev.detail }}</div>
+                      <span style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;font-weight:600;">{{ ev.kindLabel }}</span>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </aside>
+          </sc-if>
+        </div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{ permOpen }}">
+      <div class="dialog-backdrop" style="z-index:100;" onClick="{{ backdropPerms }}">
+        <div ref="{{ permRef }}" class="dialog" role="dialog" aria-modal="true" aria-labelledby="perm-title" tabIndex="-1" style="width:min(540px,100%);max-height:calc(100vh - 32px);overflow-y:auto;background:var(--color-bg);border:1px solid var(--color-divider);">
+          <sc-if value="{{ permEdit }}">
+            <div style="display:flex;flex-direction:column;gap:14px;">
+              <div><div class="card-kicker" style="color:var(--color-accent-700);">Biatec AI · Agent permissions</div><div id="perm-title" class="dialog-title">What may Biatec AI do?</div><div class="dialog-body" style="margin-top:4px;">Change or revoke this at any time. Increasing autonomy always asks you to confirm.</div></div>
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--color-divider);">
+                <span style="flex:1;font-size:13px;"><strong>{{ agentState }}.</strong> {{ pauseHint }}</span>
+                <button class="btn btn-secondary" type="button" onClick="{{ togglePause }}">{{ pauseLabel }}</button>
+              </div>
+              <div role="radiogroup" aria-label="Autonomy mode" style="display:flex;flex-direction:column;gap:8px;">
+                <sc-for list="{{ modeOpts }}" as="o">
+                  <button type="button" role="radio" aria-checked="{{ o.sel }}" onClick="{{ o.onClick }}" style="display:grid;grid-template-columns:36px minmax(0,1fr) 18px;gap:10px;align-items:start;text-align:left;padding:12px;background:{{ o.bg }};border:2px solid {{ o.edge }};color:var(--color-text);font:inherit;cursor:pointer;border-radius:var(--radius-md);" style-hover="background:var(--color-surface);">
+                    <span style="font-size:20px;font-weight:600;line-height:1;color:{{ o.numColor }};">{{ o.n }}</span>
+                    <span><span style="display:block;font-weight:600;font-size:15px;">{{ o.label }}</span><span style="display:block;font-size:13px;line-height:1.45;color:var(--color-neutral-700);margin-top:2px;">{{ o.desc }}</span></span>
+                    <span style="width:16px;height:16px;border:2px solid {{ o.edge }};background:{{ o.dot }};box-shadow:inset 0 0 0 3px var(--color-bg);margin-top:2px;"></span>
+                  </button>
+                </sc-for>
+              </div>
+              <sc-if value="{{ draftIsRules }}">
+                <div style="display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--color-divider);padding-top:12px;">
+                  <h6 style="margin:0;">Automation limits</h6>
+                  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
+                    <div class="field"><label for="p-max">Max order (USD)</label><input id="p-max" class="input" type="number" min="10" value="{{ d.maxOrder }}" onChange="{{ dMax }}"></div>
+                    <div class="field"><label for="p-daily">Daily allocation (USD)</label><input id="p-daily" class="input" type="number" min="10" value="{{ d.daily }}" onChange="{{ dDaily }}"></div>
+                    <div class="field"><label for="p-loss">Stop at loss of (%)</label><input id="p-loss" class="input" type="number" min="1" max="50" value="{{ d.maxLoss }}" onChange="{{ dLoss }}"></div>
+                    <div class="field"><label for="p-conf">Always confirm above (USD)</label><input id="p-conf" class="input" type="number" min="0" value="{{ d.confirmAbove }}" onChange="{{ dConf }}"></div>
+                    <div class="field"><label for="p-exp">Permission expires</label><select id="p-exp" class="input" value="{{ d.expiry }}" onChange="{{ dExp }}"><option>24 hours</option><option>7 days</option><option>30 days</option></select></div>
+                  </div>
+                  <div class="field"><label>Allowed assets · pairs vs USDC</label>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                      <sc-for list="{{ assetChips }}" as="ac"><button type="button" aria-pressed="{{ ac.on }}" onClick="{{ ac.onClick }}" style="padding:6px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--color-text);background:{{ ac.bg }};color:{{ ac.color }};border-radius:var(--radius-sm);">{{ ac.label }}</button></sc-for>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5;color:var(--bai-warning);background:var(--bai-warning-subtle);padding:8px 10px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" style="flex:none;margin-top:2px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+                    <span>Limits are safeguards, not guarantees against loss. Only trades the platform supports are eligible. In this demo nothing executes for real.</span>
+                  </div>
+                </div>
+              </sc-if>
+              <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-top:1px solid var(--color-divider);padding-top:12px;">
+                <button class="btn btn-ghost" type="button" onClick="{{ revoke }}" style="color:var(--bai-danger);">Revoke all access</button>
+                <div style="flex:1;"></div>
+                <button class="btn btn-secondary" type="button" onClick="{{ closePerms }}">Cancel</button>
+                <button class="btn btn-primary" type="button" onClick="{{ savePerms }}">{{ saveLabel }}</button>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ permConfirm }}">
+            <div style="display:flex;flex-direction:column;gap:14px;">
+              <div><div class="card-kicker" style="color:var(--color-accent-700);">Confirm increase</div><div id="perm-title" class="dialog-title">Give Biatec AI more autonomy?</div><div class="dialog-body" style="margin-top:4px;">You're moving from <strong>{{ confirmFrom }}</strong> to <strong>{{ confirmTo }}</strong>. Biatec AI will be able to:</div></div>
+              <div style="display:flex;flex-direction:column;border:1px solid var(--color-divider);">
+                <sc-for list="{{ confirmCaps }}" as="cap"><div style="display:grid;grid-template-columns:16px minmax(0,1fr);gap:10px;padding:10px 12px;border-bottom:1px solid var(--color-divider);font-size:14px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square" style="margin-top:2px;"><path d="M20 6 9 17l-5-5"></path></svg><span>{{ cap }}</span></div></sc-for>
+              </div>
+              <label style="display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer;"><input type="checkbox" checked="{{ permAck }}" onChange="{{ togglePermAck }}" style="width:18px;height:18px;margin-top:2px;accent-color:var(--color-accent);"><span>I understand I can pause or revoke this at any time, and that limits don't prevent losses.</span></label>
+              <div style="display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--color-divider);padding-top:12px;">
+                <button class="btn btn-secondary" type="button" onClick="{{ permBack }}">Back</button>
+                <button class="btn btn-primary" type="button" disabled="{{ permAckOff }}" onClick="{{ savePerms }}">Confirm increase</button>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ reviewOpen }}">
+      <div class="dialog-backdrop" style="z-index:100;" onClick="{{ backdropReview }}">
+        <div ref="{{ reviewRef }}" class="dialog" role="dialog" aria-modal="true" aria-labelledby="rv-title" tabIndex="-1" style="width:min(500px,100%);max-height:calc(100vh - 32px);overflow-y:auto;background:var(--color-bg);border:1px solid var(--color-divider);">
+          <div><div class="card-kicker" style="color:var(--color-accent-700);">Proposed · not executed</div><div id="rv-title" class="dialog-title">Review demo trade</div></div>
+          <table class="table" style="font-size:13px;">
+            <tbody>
+              <tr><td style="color:var(--color-neutral-700);">Order</td><td style="font-weight:600;">Buy BTC/USDC · Market</td></tr>
+              <tr><td style="color:var(--color-neutral-700);">Amount</td><td style="font-weight:600;">{{ rv.amount }}</td></tr>
+              <tr><td style="color:var(--color-neutral-700);">Est. quantity</td><td>{{ rv.qty }}</td></tr>
+              <tr><td style="color:var(--color-neutral-700);">Est. price · worst case</td><td>{{ rv.price }} · {{ rv.worst }}</td></tr>
+              <tr><td style="color:var(--color-neutral-700);">Est. fees</td><td>{{ rv.fee }}</td></tr>
+            </tbody>
+          </table>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;">Risks</div>
+            <sc-for list="{{ rv.risks }}" as="r"><div style="display:grid;grid-template-columns:16px minmax(0,1fr);gap:8px;font-size:13px;line-height:1.5;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--bai-warning)" stroke-width="2" stroke-linecap="square" style="margin-top:3px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg><span>{{ r }}</span></div></sc-for>
+          </div>
+          <div style="font-size:13px;padding:10px 12px;background:var(--color-surface);line-height:1.5;"><strong>What happens next.</strong> This order is simulated. No funds move and no wallet signature is requested. It will be recorded in Activity.</div>
+          <label style="display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer;"><input type="checkbox" checked="{{ reviewAck }}" onChange="{{ toggleReviewAck }}" style="width:18px;height:18px;margin-top:2px;accent-color:var(--color-accent);"><span>I've reviewed the risks and understand this is a demo trade.</span></label>
+          <div class="dialog-actions" style="border-top:1px solid var(--color-divider);padding-top:12px;">
+            <button class="btn btn-secondary" type="button" onClick="{{ closeReview }}">Back to chat</button>
+            <button class="btn btn-primary" type="button" disabled="{{ rv.disabled }}" onClick="{{ confirmApprove }}">{{ rv.cta }}</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ specOpen }}">
+      <div class="dialog-backdrop" style="z-index:100;" onClick="{{ backdropSpec }}">
+        <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="sp-title" style="width:min(620px,100%);max-height:calc(100vh - 32px);overflow-y:auto;background:var(--color-bg);border:1px solid var(--color-divider);">
+          <div><div class="card-kicker" style="color:var(--color-accent-700);">For partner platforms · concept</div><div id="sp-title" class="dialog-title">Embedding Biatec AI</div></div>
+          <pre style="margin:0;padding:12px;background:var(--color-surface);font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.55;overflow-x:auto;">&lt;biatec-ai-widget
+  mode="floating"          &lt;!-- floating | inline | workspace --&gt;
+  theme="/partner-theme.css"
+  context="market,portfolio"
+  features="proposals,automation"&gt;
+&lt;/biatec-ai-widget&gt;</pre>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:2px;background:var(--color-divider);border:1px solid var(--color-divider);">
+            <div style="background:var(--color-bg);padding:12px;"><h6 style="margin:0 0 6px;">Components</h6><div style="font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.7;white-space:pre;">BiatecAIWidget
+├ ChatLauncher
+└ ChatPanel
+  ├ ChatHeader · AutonomySelector
+  ├ ChatMessages → AIResponse
+  │ ├ MarketInsightCard
+  │ ├ TradeProposalCard
+  │ └ RiskSummary
+  ├ ChatComposer
+  ├ PermissionDialog
+  └ ActivityTimeline</div></div>
+            <div style="background:var(--color-bg);padding:12px;display:flex;flex-direction:column;gap:8px;font-size:13px;line-height:1.5;"><h6 style="margin:0;">Isolation &amp; theming</h6>
+              <span>Renders inside Shadow DOM so host CSS can't leak in or out.</span>
+              <span>Hosts override CSS custom properties only: <code>--color-*</code>, <code>--font-*</code>, <code>--radius-*</code>, <code>--space-*</code>, <code>--shadow-*</code>.</span>
+              <span>Signing stays in the host's wallet flow. The widget never receives keys, seed phrases or API secrets; permissions are enforced server-side.</span>
+            </div>
+          </div>
+          <div style="font-size:13px;color:var(--color-neutral-700);">Try it: switch <strong>Host theme</strong> or <strong>Embed mode</strong> in Tweaks.</div>
+          <div class="dialog-actions"><button class="btn btn-primary" type="button" onClick="{{ closeSpec }}">Close</button></div>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;embedMode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;floating&quot;,&quot;inline&quot;],&quot;default&quot;:&quot;floating&quot;,&quot;tsType&quot;:&quot;'floating'|'inline'&quot;,&quot;section&quot;:&quot;Integration&quot;},&quot;hostTheme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;,&quot;partner&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark'|'light'|'partner'&quot;,&quot;section&quot;:&quot;Integration&quot;},&quot;startOpen&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Demo&quot;}}">
+const MK = {
+  BTC: { pair:'BTC/USD', price:67412.5, chg:2.41, hi:'67,980.00', lo:'65,610.20', vol:'$31.2B', series:[65.82,65.61,65.98,65.9,66.31,66.12,66.64,66.93,66.71,67.12,67.44,67.2,67.63,67.98,67.55,67.41] },
+  ETH: { pair:'ETH/USD', price:2618.4, chg:-0.86, hi:'2,671.10', lo:'2,589.30', vol:'$14.8B', series:[2641,2650,2644,2638,2652,2630,2622,2628,2611,2605,2614,2620,2609,2615,2622,2618] }
+};
+const MODES = [
+  { id:'analyze', n:'01', label:'Analyze only', desc:'Answers questions, analyzes markets and explains strategies. Never prepares or executes trades.' },
+  { id:'prepare', n:'02', label:'Prepare for approval', desc:'Drafts trade proposals in chat. Every trade needs your explicit approval before it runs.' },
+  { id:'rules', n:'03', label:'Rule-based automation', desc:'May execute eligible trades only inside the limits you set. Everything else still asks you.' }
+];
+const LVL = { analyze:0, prepare:1, rules:2 };
+const ML = id => MODES.find(m => m.id === id).label;
+const usd = n => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
+const num = n => Number(n).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
+const clock = () => new Date().toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+let UID = 100; const nid = () => 'm' + (UID++);
+const ai = o => Object.assign({ id:nid(), role:'ai' }, o);
+const SUGS = ["What's happening with Bitcoin today?", 'Analyze ETH market trends', 'Help me understand trading risks', 'Explore a trading strategy'];
+const JOURNEY = 'Can you analyze Bitcoin and help me understand a possible trade?';
+const CTX = ['BTC/USDC', 'ETH/USDC', 'Portfolio', 'None'];
+
+function paths(series, w, h) {
+  const mn = Math.min(...series), mx = Math.max(...series), r = (mx - mn) || 1;
+  const line = series.map((v, i) => (i ? 'L' : 'M') + ((i / (series.length - 1)) * w).toFixed(1) + ' ' + (h - 8 - ((v - mn) / r) * (h - 16)).toFixed(1)).join(' ');
+  return { line, area: line + ' L ' + w + ' ' + h + ' L 0 ' + h + ' Z' };
+}
+const HOST = paths(Array.from({ length: 80 }, (_, i) => 65800 + i * 22 + Math.sin(i / 4) * 260 + Math.sin(i / 1.7) * 90), 800, 220);
+
+function mMarket(sym, o = {}) {
+  if (sym === 'BTC') return ai({ kind:'market', asset:'BTC', title:'Bitcoin · 24h overview',
+    paras:['Bitcoin is up 2.41% over the last 24 hours, trading near $67,412 in this demo snapshot. The move has been steady rather than sharp: buyers stepped in after a dip to $65,610, and price has held above $67,000 for most of the session.']
+      .concat(o.trade ? ['If you want to explore a possible trade, I can lay out a scenario with costs and downside first. Nothing executes without your approval.'] : []),
+    bulletsTitle:'Key risk factors',
+    bullets:['Momentum is moderate: RSI(14) near 61 is positive but not stretched, and rallies can reverse quickly.', 'Resistance near $68,000 has capped price twice in this window.', 'Macro news and fund flows can move price sharply outside normal hours.'],
+    more:'Why it matters: steady climbs on rising volume tend to hold better than sudden spikes, but this snapshot covers only 24 hours. Longer timeframes and your own goals matter more than one day\u2019s move.',
+    sources:'Static demo dataset, 24h window, 15-minute candles. Indicators: VWAP, RSI(14). Not live market data.',
+    followups:[{ label:'Explain this trend' }, { label:'Compare with ETH' }, { label:'Explore trade scenario' }],
+    log:['Market analysis', 'BTC/USD · 24h snapshot (demo data)', 'analysis'] });
+  return ai({ kind:'market', asset:'ETH', title: o.compare ? 'Ethereum vs Bitcoin · 24h' : 'Ethereum · 24h overview',
+    paras:[(o.compare ? 'While Bitcoin gained 2.41%, ' : '') + 'Ethereum is down 0.86% over 24 hours, near $2,618. It\u2019s moving sideways in a narrow range' + (o.compare ? '' : ' while Bitcoin leads') + ', and ETH/BTC has weakened slightly, which often signals money rotating toward BTC.'],
+    bulletsTitle:'Key risk factors',
+    bullets:['A break below $2,589 (24h low) would turn the range into a downtrend.', 'Relative weakness versus BTC can persist for weeks.', 'Network upgrade news can cause sudden moves in either direction.'],
+    more:'Sideways markets are often where false breakouts happen. Waiting for a clear close outside the range is one way traders reduce whipsaw risk; it is not a guarantee.',
+    sources:'Static demo dataset, 24h window. ETH/BTC ratio derived from demo prices. Not live market data.',
+    followups:[{ label:'Explain this trend' }, { label:'How much of my portfolio is exposed to Bitcoin?' }, { label:'Explore trade scenario' }],
+    log:['Market analysis', 'ETH/USD' + (o.compare ? ' vs BTC' : '') + ' · demo data', 'analysis'] });
+}
+function mTrade(amount, st) {
+  if (st.paused) return ai({ kind:'text', title:'The agent is paused', paras:['I can keep analyzing, but I won\u2019t prepare trade proposals until you resume the agent.'], followups:[{ label:'Resume agent', action:'resume' }] });
+  if (st.perms.mode === 'analyze') return ai({ kind:'text', title:'Proposals are switched off',
+    paras:['You\u2019re in Analyze only, so I can discuss a ' + usd(amount) + ' BTC scenario but I\u2019m not allowed to prepare an order.', 'Allow trade proposals and I\u2019ll draft one for you to review. Nothing will execute without your explicit approval.'],
+    followups:[{ label:'Allow trade proposals', action:'gate', amount }, { label:'Help me understand trading risks' }] });
+  return ai({ kind:'proposal', paras:['Here\u2019s a hypothetical market buy of ' + usd(amount) + ' in BTC. Review the costs and downside. It stays a proposal until you approve it.'],
+    proposal:{ amount, status:'proposed', editing:false, open:false },
+    more:'Why a market order: for a small amount, the simplicity and near-certain fill usually outweigh the small slippage. A limit order would give price control but might not fill.',
+    sources:'Price from the demo snapshot. Fee assumed at 0.30%. Slippage capped at 0.50%. No live quote was requested.',
+    followups:[{ label:'Help me understand trading risks' }, { label:'Explain dollar-cost averaging for Bitcoin' }],
+    log:['Proposal drafted', 'Buy BTC/USDC · ' + usd(amount) + ' · awaiting your approval', 'proposal'] });
+}
+function mStrategy() {
+  return ai({ kind:'strategy', title:'Dollar-cost averaging (DCA)',
+    paras:['DCA means investing a fixed amount on a regular schedule, say $25 every week, whatever the price. You automatically buy more when price is low and less when it\u2019s high, which smooths your average entry price.'],
+    bulletsTitle:'Risks to keep in mind',
+    bullets:['DCA does not prevent losses if prices fall over the whole period.', 'Many small buys can add up in fees.', 'This illustration uses invented prices; past paths don\u2019t predict future ones.'],
+    more:'Would you like me to model a weekly plan on demo data? I can show what a $25 purchase looks like as a trade proposal, which you would still approve yourself.',
+    followups:[{ label:'Prepare a hypothetical BTC trade using $25' }, { label:'Help me understand trading risks' }],
+    log:['Strategy explanation', 'Dollar-cost averaging', 'analysis'] });
+}
+function mPortfolio() {
+  return ai({ kind:'portfolio', title:'Your Bitcoin exposure',
+    paras:['In this mock portfolio, Bitcoin is your largest position: 46%, about $5,382 of $11,700. Adding ETH, 68% of the value moves with the two largest crypto assets.'],
+    bulletsTitle:'What this means',
+    bullets:['A 10% BTC drop would reduce total value by about 4.6%.', 'Your 18% in USDC acts as a buffer and dry powder.'],
+    more:'Concentration isn\u2019t wrong in itself; it just means outcomes depend heavily on one asset. Some people rebalance on a schedule, others set a cap per asset.',
+    sources:'Mock portfolio generated for the demo. No wallet or account was connected.',
+    followups:[{ label:'Explain dollar-cost averaging for Bitcoin' }, { label:'Help me understand trading risks' }],
+    log:['Portfolio analysis', 'BTC exposure · mock portfolio', 'analysis'] });
+}
+function mRisks() {
+  return ai({ kind:'text', title:'Trading risks, plainly',
+    paras:['Every crypto trade carries risks that are easy to underestimate. These matter most for everyday traders:'],
+    bullets:['Volatility: prices can move 5\u201310% in a day, so even small positions can lose meaningfully.', 'Slippage and liquidity: the price you get can differ from the price you see, especially in thin markets.', 'Fees: trading and network fees reduce returns, more so on frequent small trades.', 'Custody and smart-contract risk: funds on any platform or protocol carry technical and counterparty risk.', 'Behavior: chasing moves or panic-selling is a common cause of losses.'],
+    more:'A useful habit: decide the most you\u2019re willing to lose on a trade before placing it, and size the position so that loss is acceptable.',
+    followups:[{ label:'Explain dollar-cost averaging for Bitcoin' }, { label:'How much of my portfolio is exposed to Bitcoin?' }],
+    log:['Risk explanation', 'General trading risks', 'analysis'] });
+}
+function mTrend() {
+  return ai({ kind:'text', title:'Reading the BTC trend',
+    paras:['Over this 24h window Bitcoin has made a series of higher lows ($65,610, then $65,900, then $66,700), the textbook sign of a short-term uptrend.', 'Two things temper that: price stalled twice near $68,000, and momentum is positive but not strong. Trends like this can continue, stall into a range, or reverse; the chart alone can\u2019t tell you which.'],
+    bulletsTitle:'What would change the picture',
+    bullets:['A close above $68,000 would suggest buyers are in control.', 'A drop below $66,000 would break the higher-low pattern.'],
+    followups:[{ label:'Explore trade scenario' }, { label:'Compare with ETH' }],
+    log:['Trend explanation', 'BTC/USD', 'analysis'] });
+}
+function respond(text, st) {
+  const t = text.toLowerCase();
+  const am = t.match(/\$\s?(\d+(?:\.\d+)?)/); const amount = am ? Math.max(1, parseFloat(am[1])) : 100;
+  const btc = /bitcoin|btc/.test(t), eth = /\beth\b|ethereum/.test(t), an = /analy|happening|today|price|market/.test(t);
+  if (/portfolio|exposed|exposure|holding/.test(t)) return mPortfolio();
+  if (/dca|dollar.cost|strategy/.test(t)) return mStrategy();
+  if (an && eth && !btc) return mMarket('ETH');
+  if (an && btc) return mMarket('BTC', { trade:/trade/.test(t) });
+  if (/compare/.test(t)) return mMarket('ETH', { compare:true });
+  if (/trade|scenario|buy|order/.test(t)) return mTrade(amount, st);
+  if (/risk/.test(t)) return mRisks();
+  if (/trend/.test(t)) return mTrend();
+  if (eth) return mMarket('ETH');
+  if (btc) return mMarket('BTC');
+  return ai({ kind:'text', paras:['I can analyze markets, explain strategies, review mock portfolio exposure and prepare demo trades for your approval. A few places to start:'], followups:SUGS.map(label => ({ label })) });
+}
+
+class Component extends DCLogic {
+  rootRef = React.createRef(); scrollRef = React.createRef(); inputRef = React.createRef(); permRef = React.createRef(); reviewRef = React.createRef();
+  rc = 0;
+  state = {
+    vw: window.innerWidth, open: this.props.startOpen ?? true, minimized:false, workspace:false, unread:true, tip:false,
+    convs: [
+      { id:'c1', title:'New conversation', when:'Now', msgs:[] },
+      { id:'c2', title:'Why did ALGO dip this morning?', when:'Yesterday', msgs:[{ id:nid(), role:'user', text:'Why did ALGO dip this morning?' }, ai({ kind:'text', paras:['In the demo dataset ALGO fell 3.1% between 06:00 and 09:00 UTC, in line with a broader dip across mid-cap assets. There was no asset-specific news in the dataset.'] })] },
+      { id:'c3', title:'Explain dollar-cost averaging', when:'Mon', msgs:[{ id:nid(), role:'user', text:'Explain dollar-cost averaging for Bitcoin.' }, mStrategy()] }
+    ],
+    activeId:'c1', draft:'', thinking:false, sheet:null, ctxOpen:true, ctxIdx:0,
+    perms:{ mode:'analyze', maxOrder:250, daily:500, maxLoss:5, confirmAbove:100, expiry:'7 days', assets:{ BTC:true, ETH:true, ALGO:false, USDC:true } },
+    paused:false, permOpen:false, permStep:'edit', permDraft:null, permAck:false, pendingTrade:null,
+    reviewId:null, reviewAck:false, specOpen:false,
+    activity:[{ id:'a0', t:'09:12', title:'Session started', detail:'Mode: Analyze only · no trading permissions', kind:'permission' }],
+    toast:null, copiedId:null
+  };
+
+  componentDidMount() {
+    this.onResize = () => this.setState({ vw: window.innerWidth });
+    this.onEsc = e => {
+      if (e.key !== 'Escape') return;
+      const s = this.state;
+      if (s.reviewId) this.setState({ reviewId:null });
+      else if (s.permOpen) this.setState({ permOpen:false });
+      else if (s.specOpen) this.setState({ specOpen:false });
+      else if (s.sheet) this.setState({ sheet:null });
+    };
+    window.addEventListener('resize', this.onResize);
+    window.addEventListener('keydown', this.onEsc);
+    this.applyTheme();
+  }
+  componentWillUnmount() { window.removeEventListener('resize', this.onResize); window.removeEventListener('keydown', this.onEsc); clearTimeout(this.tm); clearTimeout(this.tt); }
+  componentDidUpdate(pp, ps) {
+    this.applyTheme();
+    const cnt = s => (s.convs.find(c => c.id === s.activeId) || { msgs:[] }).msgs.length + ':' + (s.thinking ? 1 : 0) + ':' + s.activeId;
+    const key = cnt(this.state);
+    if (key !== this._lastKey) { this._lastKey = key; this.scrollDown(); }
+    if (this.state.permOpen && (!ps.permOpen || ps.permStep !== this.state.permStep)) this.permRef.current?.focus();
+    if (this.state.reviewId && !ps.reviewId) this.reviewRef.current?.focus();
+    if (!this.state.reviewId && ps.reviewId || !this.state.permOpen && ps.permOpen) this.inputRef.current?.focus();
+  }
+  scrollDown() {
+    const go = () => { const r = this.rootRef.current; const el = (r && r.querySelector('[data-bai-scroll]')) || document.querySelector('[data-bai-scroll]'); if (el) el.scrollTop = el.scrollHeight; };
+    requestAnimationFrame(go); setTimeout(go, 80); setTimeout(go, 300);
+  }
+  applyTheme() {
+    const el = this.rootRef.current; if (!el) return;
+    const font = '"Inter", ui-sans-serif, system-ui, sans-serif';
+    const base = { '--font-heading': font, '--font-body': font, '--font-heading-weight': '600', '--radius-sm': '8px', '--radius-md': '8px', '--radius-lg': '18px' };
+    const T = {
+      dark: { '--color-bg':'#070B14', '--color-surface':'#111827', '--color-text':'#E6EDF6', '--color-divider':'rgba(148,163,184,.16)', '--color-accent':'#2DD4A7', '--color-accent-100':'rgba(45,212,167,.14)', '--color-accent-600':'#4BE0B8', '--color-accent-700':'#2DD4A7', '--color-accent-800':'#2DD4A7', '--color-neutral-300':'#334155', '--color-neutral-500':'#6B7A90', '--color-neutral-700':'#9AA7BA', '--color-neutral-800':'#CBD5E1', '--shadow-sm':'0 1px 2px rgba(0,0,0,.4)', '--shadow-md':'0 12px 32px -14px rgba(0,0,0,.7)', '--shadow-lg':'0 28px 56px -22px rgba(0,0,0,.8)', '--bai-success':'#34D399', '--bai-success-subtle':'rgba(52,211,153,.14)', '--bai-warning':'#FBBF24', '--bai-warning-subtle':'rgba(251,191,36,.13)', '--bai-danger':'#FB7185', '--bai-border-strong':'rgba(148,163,184,.28)' },
+      light: { '--color-bg':'#EEF2F6', '--color-surface':'#FFFFFF', '--color-text':'#0F172A', '--color-divider':'rgba(15,23,42,.1)', '--color-accent':'#0EA371', '--color-accent-100':'rgba(14,163,113,.12)', '--color-accent-600':'#0B8A60', '--color-accent-700':'#087453', '--color-accent-800':'#0A774F', '--color-neutral-300':'#CBD5E1', '--color-neutral-500':'#94A3B8', '--color-neutral-700':'#475569', '--color-neutral-800':'#1E293B', '--shadow-sm':'0 1px 2px rgba(15,23,42,.06)', '--shadow-md':'0 8px 24px -12px rgba(15,23,42,.25)', '--shadow-lg':'0 24px 48px -20px rgba(15,23,42,.35)', '--bai-success':'#0F7A45', '--bai-success-subtle':'rgba(21,160,90,.12)', '--bai-warning':'#946200', '--bai-warning-subtle':'rgba(217,145,0,.12)', '--bai-danger':'#E11D48', '--bai-border-strong':'rgba(15,23,42,.2)' },
+      partner: { '--color-bg':'#111316', '--color-surface':'#1b1e23', '--color-text':'#eef0f2', '--color-divider':'#2c3138', '--color-accent':'#4c8dff', '--color-accent-100':'#17243b', '--color-accent-600':'#3a78e8', '--color-accent-700':'#9cc0ff', '--color-accent-800':'#c4d9ff', '--color-neutral-300':'#3a4048', '--color-neutral-500':'#6b737d', '--color-neutral-700':'#a9b1ba', '--color-neutral-800':'#d3d8de', '--shadow-sm':'0 1px 2px rgba(0,0,0,.4)', '--shadow-md':'0 4px 14px rgba(0,0,0,.45)', '--shadow-lg':'0 16px 40px rgba(0,0,0,.55)', '--bai-success':'#3ccf9a', '--bai-success-subtle':'#10291f', '--bai-warning':'#f0b860', '--bai-warning-subtle':'#2c2415', '--bai-danger':'#ff6b80', '--bai-border-strong':'#3a4048', '--radius-md':'4px', '--radius-lg':'6px', '--font-heading': 'ui-sans-serif, system-ui, sans-serif', '--font-body': 'ui-sans-serif, system-ui, sans-serif' }
+    };
+    const V = Object.assign({}, base, T[this.props.hostTheme] || T.dark);
+    Object.keys(V).forEach(k => el.style.setProperty(k, V[k]));
+  }
+  updConv(id, fn) { this.setState(s => ({ convs: s.convs.map(c => c.id === id ? fn(c) : c) })); }
+  updMsg(mid, fn) { this.setState(s => ({ convs: s.convs.map(c => ({ ...c, msgs: c.msgs.map(m => m.id === mid ? fn(m) : m) })) })); }
+  updPr(mid, o) { this.updMsg(mid, m => ({ ...m, proposal: { ...m.proposal, ...o } })); }
+  log(title, detail, kind) { this.setState(s => ({ activity: [{ id:nid(), t:clock(), title, detail, kind }, ...s.activity] })); }
+  toast(msg) { this.setState({ toast:msg }); clearTimeout(this.tt); this.tt = setTimeout(() => this.setState({ toast:null }), 2800); }
+  findMsg(mid) { for (const c of this.state.convs) { const m = c.msgs.find(x => x.id === mid); if (m) return m; } }
+
+  reply(cid, text, delay) {
+    this.setState({ thinking:true });
+    clearTimeout(this.tm);
+    this.tm = setTimeout(() => {
+      const out = respond(text, this.state);
+      this.updConv(cid, c => ({ ...c, msgs: [...c.msgs, out] }));
+      this.setState({ thinking:false });
+      if (out.log) this.log(...out.log);
+      this.scrollDown();
+    }, delay ?? (850 + Math.min(text.length * 8, 500)));
+  }
+  send(raw) {
+    const text = String(raw ?? this.state.draft).trim();
+    if (!text || this.state.thinking) return;
+    const cid = this.state.activeId;
+    this.updConv(cid, c => ({ ...c, title: c.msgs.length ? c.title : text.slice(0, 44), when:'Now', msgs: [...c.msgs, { id:nid(), role:'user', text }] }));
+    this.setState({ draft:'', sheet:null });
+    this.reply(cid, text);
+    this.scrollDown();
+  }
+  retry(mid) {
+    if (this.state.thinking) return;
+    const cid = this.state.activeId, c = this.state.convs.find(x => x.id === cid);
+    const i = c.msgs.findIndex(m => m.id === mid);
+    const prev = c.msgs.slice(0, i).reverse().find(m => m.role === 'user');
+    if (!prev) return;
+    this.updConv(cid, cc => ({ ...cc, msgs: cc.msgs.filter(m => m.id !== mid) }));
+    this.reply(cid, prev.text, 700);
+  }
+  follow(f) {
+    if (f.action === 'resume') return this.setPaused(false);
+    if (f.action === 'gate') return this.openPerms('prepare', f.amount);
+    if (f.action === 'activity') return this.toggleActivity();
+    this.send(f.label);
+  }
+  setPaused(p) {
+    this.setState({ paused:p });
+    this.log(p ? 'Agent paused' : 'Agent resumed', p ? 'Proposals and approvals on hold' : 'Mode: ' + ML(this.state.perms.mode), 'permission');
+    this.toast(p ? 'Agent paused. No proposals or approvals until you resume.' : 'Agent resumed.');
+  }
+  openPerms(mode, pending) {
+    const p = this.state.perms;
+    this.setState({ permOpen:true, permStep:'edit', permAck:false, pendingTrade: pending ?? null, permDraft: { ...p, mode: mode || p.mode, assets: { ...p.assets } } });
+  }
+  savePerms() {
+    const { perms, permDraft:d, permStep, permAck, pendingTrade } = this.state;
+    const up = LVL[d.mode] > LVL[perms.mode];
+    if (up && permStep === 'edit') return this.setState({ permStep:'confirm', permAck:false });
+    if (permStep === 'confirm' && !permAck) return;
+    const np = { ...d, maxOrder:+d.maxOrder || 0, daily:+d.daily || 0, maxLoss:+d.maxLoss || 0, confirmAbove:+d.confirmAbove || 0, assets: { ...d.assets } };
+    this.setState({ perms:np, permOpen:false, pendingTrade:null });
+    this.log(up ? 'Autonomy increased' : 'Permissions updated', ML(np.mode) + (np.mode === 'rules' ? ' · max ' + usd(np.maxOrder) + '/order · expires in ' + np.expiry : ''), 'permission');
+    this.toast((up ? 'Autonomy set to ' : 'Saved: ') + ML(np.mode) + '.');
+    if (pendingTrade && LVL[np.mode] >= 1) setTimeout(() => this.reply(this.state.activeId, 'Prepare a hypothetical BTC trade using $' + pendingTrade, 700), 50);
+  }
+  revoke() {
+    this.setState(s => ({ perms: { ...s.perms, mode:'analyze' }, paused:false, permOpen:false, pendingTrade:null,
+      convs: s.convs.map(c => ({ ...c, msgs: c.msgs.map(m => m.proposal && m.proposal.status === 'proposed' ? { ...m, proposal: { ...m.proposal, status:'revoked', editing:false } } : m) })) }));
+    this.log('Access revoked', 'All trading permissions removed. Pending proposals voided.', 'permission');
+    this.toast('Access revoked. Biatec AI is back to Analyze only.');
+  }
+  approve(mid) {
+    const s = this.state; if (s.paused) return;
+    if (s.perms.mode === 'analyze') return this.openPerms('prepare');
+    this.setState({ reviewId:mid, reviewAck:false });
+  }
+  confirmApprove() {
+    const mid = this.state.reviewId, m = this.findMsg(mid); if (!m || !this.state.reviewAck) return;
+    const a = +m.proposal.amount, fee = a * 0.003, qty = (a - fee) / MK.BTC.price;
+    const receipt = 'DEMO-' + (0x7F3A21 + this.rc++).toString(16).toUpperCase(), time = clock();
+    this.updPr(mid, { status:'executed', editing:false, receipt });
+    this.setState({ reviewId:null, thinking:true });
+    this.log('Demo trade executed', 'Buy ' + qty.toFixed(6) + ' BTC · ' + usd(a) + ' · ' + receipt, 'executed');
+    const cid = this.state.activeId;
+    clearTimeout(this.tm);
+    this.tm = setTimeout(() => {
+      this.updConv(cid, c => ({ ...c, msgs: [...c.msgs, ai({ kind:'confirm', paras:['Done. Your simulated order was filled. No real funds moved and no wallet signature was requested.'],
+        confirm:{ qty: qty.toFixed(6) + ' BTC', price: usd(MK.BTC.price), total: usd(a), receipt, time },
+        followups:[{ label:'View activity', action:'activity' }, { label:'How much of my portfolio is exposed to Bitcoin?' }] })] }));
+      this.setState({ thinking:false });
+      this.scrollDown();
+    }, 700);
+  }
+
+  renderVals() {
+    const s = this.state, P = this.props;
+    const mobile = s.vw < 640, inline = (P.embedMode ?? 'floating') === 'inline';
+    const full = s.workspace || (mobile && !inline && s.open);
+    const ws = s.workspace && !mobile;
+    const g = full ? { pos:'fixed', top:'0', right:'0', bottom:'0', left:'0', width:'auto', height:'auto', border:'0', radius:'0', shadow:'none' }
+      : inline ? { pos:'relative', top:'auto', right:'auto', bottom:'auto', left:'auto', width:'100%', height: mobile ? '82vh' : 'min(700px, calc(100vh - 48px))', border:'1px solid var(--color-divider)', radius:'var(--radius-lg)', shadow:'none' }
+      : { pos:'fixed', top:'auto', right:'24px', bottom:'24px', left:'auto', width:'min(420px, calc(100vw - 32px))', height:'min(700px, calc(100vh - 48px))', border:'1px solid var(--color-divider)', radius:'var(--radius-lg)', shadow:'var(--shadow-lg)' };
+    const conv = s.convs.find(c => c.id === s.activeId);
+    const mode = s.perms.mode, rules = s.perms.mode === 'rules';
+    const statusDot = s.paused ? 'transparent' : mode === 'analyze' ? 'var(--color-neutral-500)' : mode === 'prepare' ? 'var(--color-text)' : 'var(--color-accent)';
+    const statusEdge = s.paused ? 'var(--color-accent)' : statusDot;
+
+    const messages = conv.msgs.map(m => {
+      if (m.role === 'user') return { id:m.id, isUser:true, isAi:false, text:m.text };
+      const v = { id:m.id, isUser:false, isAi:true, title:m.title || '', hasTitle:!!m.title, paras:m.paras || [],
+        bullets:m.bullets || [], hasBullets:!!(m.bullets && m.bullets.length), bulletsTitle:m.bulletsTitle || '', hasBulletsTitle:!!m.bulletsTitle,
+        hasMore:!!m.more, more:m.more || '', showMore:!!(m.more && m.expanded), expandLabel: m.expanded ? 'Show less' : 'Expand explanation',
+        sources: m.sources || 'Generated from the Biatec AI demo knowledge base. No live data or account was used.', showSources:!!m.showSrc, srcLabel: m.showSrc ? 'Hide info' : 'Supporting info',
+        copyLabel: s.copiedId === m.id ? 'Copied' : 'Copy',
+        followups:(m.followups || []).map(f => ({ label:f.label, onClick:() => this.follow(f) })), hasFollowups:!!(m.followups && m.followups.length),
+        onCopy:() => { const t = [m.title, ...(m.paras || []), ...(m.bullets || [])].filter(Boolean).join('\n'); navigator.clipboard?.writeText(t).catch(() => {}); this.setState({ copiedId:m.id }); setTimeout(() => this.setState({ copiedId:null }), 1500); },
+        onRetry:() => this.retry(m.id), onExpand:() => this.updMsg(m.id, x => ({ ...x, expanded:!x.expanded })), onSources:() => this.updMsg(m.id, x => ({ ...x, showSrc:!x.showSrc })),
+        hasMarket:false, hasStrategy:false, hasPortfolio:false, hasProposal:false, hasConfirm:false };
+      if (m.kind === 'market') { const k = MK[m.asset], p = paths(k.series, 360, 96); v.hasMarket = true;
+        v.mk = { pair:k.pair, price:num(k.price), chg:(k.chg > 0 ? '▲ +' : '▼ −') + Math.abs(k.chg).toFixed(2) + '%', chgColor: k.chg > 0 ? 'var(--bai-success)' : 'var(--bai-danger)', dir: k.chg > 0 ? 'Up' : 'Down', hi:k.hi, lo:k.lo, vol:k.vol, line:p.line, area:p.area, stamp:'Demo data · snapshot 19 Oct 2026, 14:32 UTC · not live' }; }
+      if (m.kind === 'strategy') { const W = [64200, 61800, 63500, 66100, 65000, 67400], u = W.map(p => 25 / p * 1e8), mx = Math.max(...u), mn = Math.min(...u);
+        v.hasStrategy = true;
+        v.bars = W.map((p, i) => ({ w:'W' + (i + 1), price:'$' + (p / 1000).toFixed(1) + 'k', units:Math.round(u[i] / 1000) + 'k sats', h:(30 + (u[i] - mn) / (mx - mn) * 70).toFixed(0) + '%', fill: u[i] === mx ? 'var(--color-accent)' : 'var(--color-text)' }));
+        const avgCost = 150 / (u.reduce((a, b) => a + b, 0) / 1e8), avgPrice = W.reduce((a, b) => a + b, 0) / 6;
+        v.stratNote = 'Bars show BTC bought each week. Average cost ' + usd(avgCost) + ' vs average price ' + usd(avgPrice) + '. Lower prices bought more.';
+        v.pros = ['Removes timing pressure', 'Builds a habit', 'Smooths entry price'];
+        v.cons = ['Can lag a rising market', 'Doesn\u2019t prevent losses', 'Fees add up']; }
+      if (m.kind === 'portfolio') { v.hasPortfolio = true;
+        v.alloc = [['BTC', 46, 5382, 'var(--color-accent)'], ['ETH', 22, 2574, 'var(--color-text)'], ['USDC', 18, 2106, 'var(--color-neutral-500)'], ['ALGO', 14, 1638, 'var(--color-neutral-300)']]
+          .map(([sym, pct, val, fill]) => ({ sym, pct:pct + '%', w:pct + '%', val:usd(val), fill, weight: sym === 'BTC' ? 800 : 400 })); }
+      if (m.kind === 'proposal') { const pr = m.proposal, a = +pr.amount || 0, fee = a * 0.003, qty = (a - fee) / MK.BTC.price, down = (a - fee) * 0.9, st = pr.status;
+        const inRules = rules && a <= s.perms.maxOrder && s.perms.assets.BTC;
+        const auth = st === 'executed' ? 'Approved by you · simulated fill. No funds moved.' : st === 'cancelled' ? 'Cancelled by you. Nothing was executed.' : st === 'revoked' ? 'Voided when you revoked access.'
+          : s.paused ? 'Agent paused. Approvals are on hold until you resume.' : mode === 'analyze' ? 'Approval unavailable in Analyze only. Enable approvals to continue.'
+          : mode === 'prepare' ? 'Requires your explicit approval. Nothing executes automatically.'
+          : inRules ? 'Within your rules (max ' + usd(s.perms.maxOrder) + ' per order). The demo still asks you to confirm.' : 'Outside your automation rules, so it requires your explicit approval.';
+        const note = a < 10 ? 'Minimum demo order is $10.' : rules && a > s.perms.maxOrder ? 'Above your ' + usd(s.perms.maxOrder) + ' max order. Approval required.' : '';
+        v.hasProposal = true;
+        v.pr = { amount:usd(a), amountRaw:pr.amount, qty:qty.toFixed(6) + ' BTC', price:usd(MK.BTC.price), worst:usd(MK.BTC.price * 1.005), fee:usd(fee) + ' (0.30%)',
+          downside:'If BTC falls 10% after purchase, this position would be worth about ' + usd(down) + ', a loss of about ' + usd(a - down) + ' including fees. Larger falls are possible.',
+          auth, isProposed: st === 'proposed', isExecuted: st === 'executed',
+          statusLabel:{ proposed:'Proposed · not executed', executed:'✓ Demo executed', cancelled:'Cancelled', revoked:'Voided' }[st],
+          border: st === 'executed' ? 'solid' : 'dashed', headBg: st === 'executed' ? 'var(--bai-success-subtle)' : 'transparent', headColor: st === 'executed' ? 'var(--bai-success)' : 'var(--color-text)',
+          receipt:pr.receipt || '', open:!!pr.open, editing:!!pr.editing, editLabel: pr.editing ? 'Done editing' : 'Edit trade',
+          detailsLabel: pr.open ? '− Hide order details' : '+ Show order details',
+          approveLabel: mode === 'analyze' ? 'Enable approvals' : 'Approve demo trade', approveDisabled: s.paused || a < 10,
+          note, hasNote:!!note,
+          onApprove:() => this.approve(m.id), onReview:() => this.setState({ reviewId:m.id, reviewAck:false }),
+          onEdit:() => this.updPr(m.id, { editing:!pr.editing }), onToggle:() => this.updPr(m.id, { open:!pr.open }),
+          onCancel:() => { this.updPr(m.id, { status:'cancelled', editing:false }); this.log('Proposal cancelled', 'Buy BTC/USDC · ' + usd(a), 'proposal'); },
+          onAmount:e => this.updPr(m.id, { amount:e.target.value }),
+          chips:[25, 50, 100, 250].map(n => ({ label:'$' + n, pressed: a === n, bg: a === n ? 'var(--color-text)' : 'transparent', color: a === n ? 'var(--color-bg)' : 'var(--color-text)', onClick:() => this.updPr(m.id, { amount:n }) })) }; }
+      if (m.kind === 'confirm') { v.hasConfirm = true; v.cf = m.confirm; }
+      return v;
+    });
+
+    const rm = s.reviewId && this.findMsg(s.reviewId);
+    let rv = { amount:'', qty:'', price:'', worst:'', fee:'', risks:[], disabled:true, cta:'' };
+    if (rm) { const a = +rm.proposal.amount || 0, fee = a * 0.003, prop = rm.proposal.status === 'proposed', can = prop && !s.paused && mode !== 'analyze' && a >= 10;
+      rv = { amount:usd(a), qty:((a - fee) / MK.BTC.price).toFixed(6) + ' BTC', price:usd(MK.BTC.price), worst:usd(MK.BTC.price * 1.005), fee:usd(fee),
+        risks:['Price can move before and after execution; a 10% fall would cost about ' + usd(a - (a - fee) * 0.9) + '.', 'Market orders accept slippage up to 0.50%.', 'Biatec AI\u2019s analysis can be wrong or incomplete. This is not financial advice.'],
+        disabled: !can || !s.reviewAck, cta: mode === 'analyze' ? 'Needs approval mode' : s.paused ? 'Agent paused' : 'Approve demo trade' }; }
+
+    const d = s.permDraft || s.perms;
+    const typing = React.createElement('div', { role:'status', 'aria-label':'Biatec AI is thinking', style:{ display:'flex', gap:5, alignItems:'center', height:24 } },
+      [0, 0.15, 0.3].map(t => React.createElement('span', { key:t, style:{ width:6, height:6, background:'var(--color-text)', display:'inline-block', animation:'bai-pulse 1.1s ' + t + 's infinite ease-in-out' } })),
+      React.createElement('span', { key:'l', style:{ fontSize:12, marginLeft:8, color:'var(--color-neutral-700)' } }, 'Analyzing…'));
+    const kindMap = { analysis:['Analysis', 'var(--color-neutral-300)', 'var(--color-neutral-500)'], proposal:['Proposal', 'transparent', 'var(--color-text)'], executed:['Demo execution', 'var(--color-accent)', 'var(--color-accent)'], permission:['Permissions', 'var(--color-text)', 'var(--color-text)'] };
+    const pending = s.convs.reduce((n, c) => n + c.msgs.filter(m => m.proposal && m.proposal.status === 'proposed').length, 0);
+
+    return {
+      rootRef:this.rootRef, scrollRef:this.scrollRef, inputRef:this.inputRef, permRef:this.permRef, reviewRef:this.reviewRef,
+      hostName: P.hostTheme === 'partner' ? 'Northwind Exchange' : 'Biatec DEX',
+      dsTheme: P.hostTheme === 'light' ? 'light' : 'dark',
+      hostCols: inline && !mobile ? 'minmax(0,1fr) minmax(360px,420px)' : 'minmax(0,1fr)',
+      hostLine:HOST.line, hostArea:HOST.area,
+      hostAsk:() => { this.setState({ open:true, minimized:false, unread:false }); setTimeout(() => this.send('Prepare a hypothetical BTC trade using $100'), 60); },
+      openSpec:e => { e.preventDefault(); this.setState({ specOpen:true }); }, closeSpec:() => this.setState({ specOpen:false }),
+      backdropSpec:e => { if (e.target === e.currentTarget) this.setState({ specOpen:false }); },
+      showLauncher: !inline && !s.open, showMinBar: !inline && s.open && s.minimized, showPanel: inline || (s.open && !s.minimized),
+      tip:s.tip, unread:s.unread, tipOn:() => this.setState({ tip:true }), tipOff:() => this.setState({ tip:false }),
+      openWidget:() => { this.setState({ open:true, minimized:false, unread:false, tip:false }); setTimeout(() => this.inputRef.current?.focus(), 60); },
+      minBarText: (s.paused ? 'Paused' : ML(mode)) + (pending ? ' · ' + pending + ' proposal' + (pending > 1 ? 's' : '') + ' pending' : ''),
+      g, workspace:s.workspace, notWorkspace:!s.workspace, expandLabel: s.workspace ? 'Exit full screen' : 'Expand to full screen',
+      toggleWorkspace:() => this.setState({ workspace:!s.workspace, sheet:null }),
+      showMin: !inline && !s.workspace, showClose: !inline || s.workspace,
+      minimize:() => this.setState({ minimized:true, sheet:null }), closeWidget:() => s.workspace && inline ? this.setState({ workspace:false }) : this.setState({ open:false, workspace:false, sheet:null }),
+      statusLabel: s.paused ? 'Paused' : ({ analyze:'Analyze only', prepare:'Approval mode', rules:'Rule-based' })[mode], statusDot, statusEdge,
+      openPermsBtn:() => this.openPerms(), paused:s.paused, togglePause:() => this.setPaused(!s.paused),
+      showHistoryBtn: !ws, historyOn: s.sheet === 'history', activityOn: ws ? s.ctxOpen : s.sheet === 'activity',
+      toggleHistory:() => this.setState({ sheet: s.sheet === 'history' ? null : 'history' }),
+      toggleActivity:() => ws ? this.setState({ ctxOpen:!s.ctxOpen }) : this.setState({ sheet: s.sheet === 'activity' ? null : 'activity' }),
+      closeSheet:() => this.setState({ sheet:null }),
+      showSidebar: ws || s.sheet === 'history',
+      sb: ws ? { pos:'relative', right:'auto', w:'260px', br:'2px solid var(--color-divider)', overlay:false } : { pos:'absolute', right:'0', w:'auto', br:'0', overlay:true },
+      showAside: (ws && s.ctxOpen) || (!ws && s.sheet === 'activity'),
+      as: ws ? { pos:'relative', left:'auto', w:'300px', bl:'2px solid var(--color-divider)' } : { pos:'absolute', left:'0', w:'auto', bl:'0' },
+      asideCloseLabel: ws ? 'Hide' : 'Back to chat', closeAside:() => ws ? this.setState({ ctxOpen:false }) : this.setState({ sheet:null }),
+      convList: s.convs.map(c => ({ title:c.title, when:c.when, current: c.id === s.activeId, bg: c.id === s.activeId ? 'var(--color-surface)' : 'transparent', weight: c.id === s.activeId ? 800 : 400, onClick:() => this.setState({ activeId:c.id, sheet:null }) })),
+      newChat:() => { const c = s.convs.find(x => x.id === s.activeId); if (c && !c.msgs.length) return this.setState({ sheet:null }); const id = 'c' + nid(); this.setState({ convs:[{ id, title:'New conversation', when:'Now', msgs:[] }, ...s.convs], activeId:id, sheet:null }); },
+      hasToast:!!s.toast, toast:s.toast || '',
+      isEmpty: !conv.msgs.length && !s.thinking,
+      welcomeNote: mode === 'analyze' ? 'You\u2019re in Analyze only. I can explain and analyze, but I can\u2019t trade. Change this any time from Status.' : 'Mode: ' + ML(mode) + '. Nothing executes without the permissions you\u2019ve set.',
+      sug1:() => this.send(SUGS[0]), sug2:() => this.send(SUGS[1]), sug3:() => this.send(SUGS[2]), sug4:() => this.send(SUGS[3]), sugJourney:() => this.send(JOURNEY),
+      messages, thinking:s.thinking, busy:s.thinking, typing,
+      draft:s.draft, onDraft:e => this.setState({ draft:e.target.value }),
+      onKey:e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); this.send(); } },
+      sendNow:() => this.send(), sendDisabled: !s.draft.trim() || s.thinking,
+      ctxLabel:CTX[s.ctxIdx], cycleCtx:() => this.setState({ ctxIdx:(s.ctxIdx + 1) % CTX.length }),
+      modeLabel:ML(mode), modeDesc: MODES.find(x => x.id === mode).desc, agentState: s.paused ? 'Agent paused' : 'Agent active', isRules:rules,
+      pauseLabel: s.paused ? 'Resume agent' : 'Pause agent', pauseHint: s.paused ? 'No proposals or approvals until you resume.' : 'Pause anytime to put everything on hold.',
+      limitRows:[{ k:'Max order', v:usd(s.perms.maxOrder) }, { k:'Daily allocation', v:usd(s.perms.daily) }, { k:'Stop at loss', v:s.perms.maxLoss + '%' }, { k:'Expires', v:s.perms.expiry }, { k:'Confirm above', v:usd(s.perms.confirmAbove) }, { k:'Assets', v:Object.keys(s.perms.assets).filter(k => s.perms.assets[k]).join(', ') || 'None' }],
+      activityList: s.activity.map(a => { const k = kindMap[a.kind] || kindMap.analysis; return { ...a, kindLabel:k[0], fill:k[1], edge:k[2] }; }),
+      permOpen:s.permOpen, permEdit: s.permStep === 'edit', permConfirm: s.permStep === 'confirm',
+      closePerms:() => this.setState({ permOpen:false, pendingTrade:null }), backdropPerms:e => { if (e.target === e.currentTarget) this.setState({ permOpen:false }); },
+      modeOpts: MODES.map(o => { const sel = d.mode === o.id; return { ...o, sel, bg: sel ? 'var(--color-surface)' : 'transparent', edge: sel ? 'var(--color-accent)' : 'var(--color-divider)', dot: sel ? 'var(--color-accent)' : 'transparent', numColor: sel ? 'var(--color-accent)' : 'var(--color-neutral-500)', onClick:() => this.setState({ permDraft:{ ...d, mode:o.id } }) }; }),
+      draftIsRules: d.mode === 'rules', d,
+      dMax:e => this.setState({ permDraft:{ ...d, maxOrder:e.target.value } }), dDaily:e => this.setState({ permDraft:{ ...d, daily:e.target.value } }),
+      dLoss:e => this.setState({ permDraft:{ ...d, maxLoss:e.target.value } }), dConf:e => this.setState({ permDraft:{ ...d, confirmAbove:e.target.value } }), dExp:e => this.setState({ permDraft:{ ...d, expiry:e.target.value } }),
+      assetChips: Object.keys(d.assets || {}).map(k => ({ label:k, on:!!d.assets[k], bg: d.assets[k] ? 'var(--color-text)' : 'transparent', color: d.assets[k] ? 'var(--color-bg)' : 'var(--color-text)', onClick:() => this.setState({ permDraft:{ ...d, assets:{ ...d.assets, [k]:!d.assets[k] } } }) })),
+      saveLabel: LVL[d.mode] > LVL[mode] ? 'Continue' : 'Save changes', savePerms:() => this.savePerms(), revoke:() => this.revoke(),
+      confirmFrom:ML(mode), confirmTo:ML(d.mode),
+      confirmCaps: d.mode === 'rules'
+        ? ['Execute eligible trades up to ' + usd(d.maxOrder) + ' per order and ' + usd(d.daily) + ' per day', 'Stop automatically once losses reach ' + d.maxLoss + '%', 'Trade only ' + (Object.keys(d.assets).filter(k => d.assets[k]).join(', ') || 'no assets'), 'Ask you first for anything above ' + usd(d.confirmAbove), 'Lose this permission automatically after ' + d.expiry]
+        : ['Draft trade proposals in chat', 'Show fees, risks and downside before you decide', 'Never execute without your explicit approval'],
+      permAck:s.permAck, permAckOff:!s.permAck, togglePermAck:() => this.setState({ permAck:!s.permAck }), permBack:() => this.setState({ permStep:'edit' }),
+      reviewOpen:!!rm, rv, reviewAck:s.reviewAck, toggleReviewAck:() => this.setState({ reviewAck:!s.reviewAck }),
+      closeReview:() => this.setState({ reviewId:null }), backdropReview:e => { if (e.target === e.currentTarget) this.setState({ reviewId:null }); },
+      confirmApprove:() => this.confirmApprove(),
+      specOpen:s.specOpen
+    };
+  }
+}
+</script>
+</body>
+</html>

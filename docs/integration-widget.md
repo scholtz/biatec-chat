@@ -5,7 +5,9 @@ wins on any conflict. What works today is marked; see [architecture.md](architec
 
 **Status of the widget on `main`:** the package, plugin install, launcher, panel, theme tokens and options are built and tested.
 The cookie probe, public fallback transport, streaming chat UI, sign-in popup handling, action preview and consent cards, and
-the Slovak translation are planned (tasks T-040 to T-043). The package version is `0.0.0` and is not published to npm yet, so
+the Slovak translation are planned (tasks T-040 to T-043). The rework to the **Biatec AI** design system (Shadow DOM isolation,
+`theme: 'host'`, `mode`, `useBiatecChat()`, permissions and activity) is planned in tasks T-062 to T-069; the options and APIs
+marked *planned* below arrive with it. For Biatec DEX specifically, see [integration-biatec-dex.md](integration-biatec-dex.md). The package version is `0.0.0` and is not published to npm yet, so
 install it from the workspace until it is.
 
 ## 1. Install the plugin
@@ -48,7 +50,9 @@ another. Run the playground with `pnpm --filter @biatec/chat-widget dev`.
 | `backendUrl` | yes | | Base URL of your chat backend. Trailing slashes are removed. Must be same-site with the host page to get the authenticated tier |
 | `clientKey` | yes | | A label for the host, not a secret. The backend checks it against the tenant's registered keys on the cookie transport |
 | `locale` | no | `en` | Message language. English now; Slovak is planned |
-| `theme` | no | `auto` | `auto`, `light` or `dark` |
+| `theme` | no | `auto` | `auto`, `light` or `dark`; *planned:* `host` follows the host's dark class on `<html>` |
+| `hostDarkClass` | no | `p-dark` | *Planned.* The class `theme: 'host'` watches (PrimeVue's `darkModeSelector`, as in Biatec DEX and Biatec Web) |
+| `mode` | no | `floating` | *Planned.* `floating` (launcher bottom-right), `inline` (fills a host column; or mount `BiatecChatInline`) or `workspace` (full screen) |
 | `suggestions` | no | `default` | `default` or your own list of sample prompts |
 | `pageContext` | no | none | Opt-in string describing the page (for example the pool being shown). Nothing is read from the host page unless you set it. The assistant treats it as untrusted data |
 | `autoMount` | no | `true` | Set `false` to provide the options only and mount `BiatecChatRoot` yourself |
@@ -57,8 +61,25 @@ The plugin throws at install if `backendUrl` or `clientKey` is missing.
 
 ### Styling
 
-Styles are scoped under a `biatec-chat` root with CSS custom properties (`packages/chat-widget/src/styles.css`), so they do not
-fight PrimeVue or another design system. Override the tokens on that root rather than targeting inner elements.
+The widget's look is the Biatec AI design system ([design/README.md](design/README.md)); dark is the default. Today styles are
+scoped under a `biatec-chat` root with CSS custom properties (`packages/chat-widget/src/styles.css`). *Planned (T-062):* the
+widget renders into a Shadow DOM root on its host element, so host CSS such as Tailwind preflight or a PrimeVue theme cannot reach
+it, and the styles are injected there (no stylesheet import needed). Restyle it only through CSS custom properties on the host
+element: `--color-*`, `--font-*`, `--radius-*`, `--space-*`, `--shadow-*`, and `--bc-z` for the stacking order (default 1000,
+below PrimeVue overlays). The widget never loads web fonts; it uses Inter when the host provides it.
+
+### Driving the widget from the host (planned, T-063)
+
+```ts
+import { useBiatecChat } from '@biatec/chat-widget'
+
+const chat = useBiatecChat()
+chat.ask('Add liquidity to the Biatec DEX EURS/USDC pool') // opens the panel and sends a visible user message
+chat.setPageContext('Biatec DEX · testnet · pair EURS/USDC') // untrusted data, sent only after the panel is opened
+chat.setTheme('host'); chat.setLocale('sk'); chat.open(); chat.close()
+```
+
+`ask` never executes anything: actions still end in a preview the user reviews and confirms.
 
 ### Accessibility
 

@@ -1,10 +1,10 @@
 ---
 id: T-043
-title: Widget i18n (en, sk), theming and accessibility pass
+title: Widget Slovak translation and accessibility pass
 status: blocked
 priority: P2
 epic: "Widget"
-blocked_by: [T-042]
+blocked_by: [T-042, T-064, T-066]
 area: ["packages/chat-widget/src/i18n/**", "packages/chat-widget/src/styles/**"]
 parallel: no
 conflicts_with: [T-036]
@@ -17,11 +17,13 @@ created: 2026-10-19
 updated: 2026-10-19
 ---
 
-# T-043 · Widget i18n (en, sk), theming and accessibility pass
+# T-043 · Widget Slovak translation and accessibility pass
 
 ## Context
 
 WCAG 2.1 AA, vue-i18n with English and Slovak, theme auto, prefers-reduced-motion.
+
+Widget UI rework: the vue-i18n setup, English catalog, Biatec AI tokens, light/dark/host theming and reduced-motion handling now come from T-062, and each UI task adds its English strings. This task adds the Slovak catalog, the host-locale fallback (any other locale → English, `setLocale` follows the host) and audits accessibility across the reworked UI (T-062 to T-066, T-042) in both themes, against the rules in `packages/chat-widget/AGENTS.md`.
 
 ## Goal
 
@@ -29,7 +31,8 @@ Launch-quality widget polish.
 
 ## Scope
 
-- In: Message catalogs, locale option, dark/light tokens, reduced motion, contrast checks, axe test.
+- In: Slovak catalog for every string, locale fallback, contrast checks in dark and light, 44 px touch targets on mobile, axe test over every view (empty, conversation, preview, review dialog, permissions dialog, activity), reduced-motion audit.
+- Out: token and theme implementation (T-062).
 - Out: New features.
 
 ## Parallel work
@@ -38,8 +41,8 @@ Parallel work possible: **no**. Don't run it at the same time as T-036: they cha
 
 ## Acceptance criteria
 
-- [ ] All UI strings come from catalogs in en and sk
-- [ ] Theme follows prefers-color-scheme with auto
+- [ ] All UI strings come from catalogs in en and sk; an unsupported locale (de) falls back to English
+- [ ] axe passes in both `data-theme="dark"` and `data-theme="light""
 - [ ] axe reports no serious violations
 - [ ] Reduced motion disables animations
 
@@ -54,3 +57,4 @@ pnpm --filter chat-widget test
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 22:40 · coordinator · blocked · widget UI rework: theming moved to T-062; now Slovak catalog + a11y audit of the reworked UI, blocked_by T-064, T-066
