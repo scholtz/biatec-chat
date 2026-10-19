@@ -38,7 +38,7 @@ public class VaultTests
     {
         private int _calls;
         public int Calls => _calls;
-        public async Task<TokenRefreshResult> RefreshAsync(string refreshToken, CancellationToken ct)
+        public async Task<TokenRefreshResult> RefreshAsync(string sessionId, string refreshToken, CancellationToken ct)
         {
             var n = Interlocked.Increment(ref _calls);
             await Task.Delay(delay, ct);
@@ -189,7 +189,7 @@ public class VaultTests
 
     private sealed class ThrowingRefresher : ITokenRefresher
     {
-        public Task<TokenRefreshResult> RefreshAsync(string refreshToken, CancellationToken ct) =>
+        public Task<TokenRefreshResult> RefreshAsync(string sessionId, string refreshToken, CancellationToken ct) =>
             throw new HttpRequestException("boom");
     }
 

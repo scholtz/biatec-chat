@@ -9,7 +9,7 @@ public static class VaultRegistration
 {
     /// <summary>
     /// Registers the token vault. Everything is resolved lazily, so the app starts without Redis or AWS. An
-    /// <see cref="ITokenRefresher"/> (the OIDC refresh grant) must be registered by the auth code.
+    /// <see cref="ITokenRefresher"/> (the OIDC refresh grant, registered by AddOidcAuth) must be present.
     /// </summary>
     public static IServiceCollection AddTokenVault(this IServiceCollection services, IConfiguration config)
     {
@@ -31,15 +31,7 @@ public static class VaultRegistration
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger("Vault").LogWarning("Vault uses the local Dev key provider outside Development; set Vault:KeyProvider=Kms.");
             return new DevKeyProvider(o.DevKey is null ? null : Convert.FromBase64String(o.DevKey));
         });
-        services.TryAddSingleton<ITokenRefresher, UnconfiguredTokenRefresher>();
         services.TryAddSingleton<ITokenVault, TokenVault>();
         return services;
     }
-}
-
-/// <summary>Placeholder until the OIDC refresh grant is registered; refreshing fails clearly rather than silently.</summary>
-public sealed class UnconfiguredTokenRefresher : ITokenRefresher
-{
-    public Task<TokenRefreshResult> RefreshAsync(string refreshToken, CancellationToken ct) =>
-        throw new NotSupportedException("No ITokenRefresher is registered; the OIDC refresh grant is provided by the auth flow.");
 }
