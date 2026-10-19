@@ -472,3 +472,36 @@ test("rule 7: a first device is inactive for 24 hours unless an active device ap
   assert.equal(b2.status, 401, "after 24 hours the device is active");
   clock -= 86400;
 });
+
+test("push: the payload is the request id only, sent to active devices with a registered token", async () => {
+  const dev = await device(ALICE);
+  assert.equal((await call("PUT", "/devices/push", { auth: dev.auth, body: { provider: "fcm" } })).status, 400);
+  assert.equal((await call("PUT", "/devices/push", { auth: dev.auth, body: { provider: "sms", token: "t" } })).status, 400);
+  assert.equal((await call("PUT", "/devices/push", { auth: "Device nope", body: { provider: "fcm", token: "t" } })).status, 401);
+  assert.equal((await call("PUT", "/devices/push", { auth: dev.auth, body: { provider: "fcm", token: "fcm-alice-1" } })).status, 200);
+
+  const before = (await call("GET", `/mock/push-outbox?kid=${dev.kid}`)).json.messages.length;
+  const r = await challenge();
+  const sent = (await call("GET", `/mock/push-outbox?kid=${dev.kid}`)).json.messages;
+  assert.equal(sent.length, before + 1);
+  const msg = sent.at(-1);
+  assert.deepEqual(msg, { kid: dev.kid, provider: "fcm", token: "fcm-alice-1", data: { auth_req_id: r.json.auth_req_id } });
+
+  // A token given at enrollment is used once the device is active, and not while it is inactive.
+  const fresh = (await import("node:crypto")).generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" }) as Record<string, string>;
+  const e = await call("POST", "/devices", { auth: bearer("login-alice"), body: { kid: "alice-push-phone", public_key: fresh, push: { provider: "apns", token: "apns-1" } } });
+  assert.equal(e.status, 201);
+  assert.equal((await call("POST", "/devices", { auth: bearer("login-alice"), body: { kid: "alice-push-bad", public_key: fresh, push: { provider: "fcm", token: "" } } })).status, 400);
+  await challenge();
+  assert.equal((await call("GET", "/mock/push-outbox?kid=alice-push-phone")).json.messages.length, 0, "inactive device gets no push");
+  await call("POST", "/mock/devices/alice-push-phone/activate");
+  const r2 = await challenge();
+  assert.deepEqual((await call("GET", "/mock/push-outbox?kid=alice-push-phone")).json.messages.map((m: any) => m.data), [{ auth_req_id: r2.json.auth_req_id }]);
+
+  // The same phone token registered on another device record moves there: one token, one recipient.
+  const carol = await device("carol");
+  assert.equal((await call("PUT", "/devices/push", { auth: carol.auth, body: { provider: "fcm", token: "fcm-alice-1" } })).status, 200);
+  const n = (await call("GET", `/mock/push-outbox?kid=${dev.kid}`)).json.messages.length;
+  await challenge();
+  assert.equal((await call("GET", `/mock/push-outbox?kid=${dev.kid}`)).json.messages.length, n, "alice's old record no longer holds the token");
+});
