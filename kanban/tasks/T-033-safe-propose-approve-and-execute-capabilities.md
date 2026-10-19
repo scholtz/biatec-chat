@@ -1,7 +1,7 @@
 ---
 id: T-033
 title: safe.propose, approve and execute capabilities
-status: blocked
+status: backlog
 priority: P1
 epic: "Safe"
 blocked_by: [T-023, T-030, T-032]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#safe-capabilities"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-033 · safe.propose, approve and execute capabilities
@@ -55,3 +55,4 @@ dotnet test --filter SafeProposals; testnet demo run
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:00 · coordinator · review · added T-023: safe funding and box top-ups are separate wallet.transfer steps
+- 2026-10-20 01:57 · kanban-board · blocked → backlog · blockers done: T-023, T-030, T-032
