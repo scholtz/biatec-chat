@@ -4,6 +4,7 @@ using Amazon.BedrockRuntime.Model;
 using Amazon.Runtime.EventStreams;
 using Biatec.Chat.Api.Config;
 using Biatec.Chat.Api.Model;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -115,8 +116,8 @@ public class BedrockModelClientTests
         Assert.Equal("end_turn", stop.StopReason);
         Assert.Equal(ConversationRole.Assistant, stop.Message.Role);
         Assert.Equal("Hello", Assert.Single(stop.Message!.Content).Text);
-        Assert.IsType<ModelMessageStop>(events[^1]);
-        var usage = Assert.IsType<ModelUsage>(events[^2]);
+        Assert.IsType<ModelMessageStop>(events[^2]);
+        var usage = Assert.IsType<ModelUsage>(events[^1]);
         Assert.Equal(("eu.anthropic.claude-sonnet-4-5-20250929-v1:0", 10, 2, 900, 0, 42L),
             (usage.ModelId, usage.InputTokens, usage.OutputTokens, usage.CacheReadInputTokens, usage.CacheWriteInputTokens, usage.LatencyMs));
     }
@@ -498,22 +499,59 @@ public class BedrockModelClientTests
         Assert.NotNull(Assert.Single(Assert.Single(events.OfType<ModelMessageStop>()).Message!.Content).ToolUse);
     }
 
-    [Fact]
-    public async Task Usage_arrives_before_the_stop_so_breaking_at_the_stop_keeps_it()
+    private sealed class ListLogger : ILogger<BedrockModelClient>
     {
-        ModelUsage? usage = null;
-        await foreach (var e in Client(new FakeSource(TextAnswer)).StreamAsync(Request()))
+        public List<string> Lines { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
-            if (e is ModelUsage u) usage = u;
-            if (e is ModelMessageStop) break;
+            lock (Lines) Lines.Add(formatter(state, exception));
         }
-        Assert.NotNull(usage);
+    }
+
+    [Fact]
+    public async Task Usage_is_logged_even_when_the_caller_stops_reading_at_the_stop()
+    {
+        var log = new ListLogger();
+        var client = new BedrockModelClient(new FakeSource(TextAnswer), Options.Create(new BedrockOptions()), Options.Create(Opts()), log);
+
+        await foreach (var e in client.StreamAsync(Request()))
+            if (e is ModelMessageStop) break;
+
+        lock (log.Lines) Assert.Contains(log.Lines, l => l.StartsWith("Bedrock usage") && l.Contains("cache read 900"));
+    }
+
+    [Fact]
+    public async Task A_slow_reader_does_not_keep_the_slot()
+    {
+        var client = Client(new FakeSource(TextAnswer), Opts(maxConcurrency: 1, queueTimeoutMs: 2000));
+        await foreach (var e in client.StreamAsync(Request()))
+        {
+            if (e is not ModelTextDelta) continue;
+            // Still reading the first answer's first delta: the pump has drained it, so the slot is free again.
+            await Task.Delay(100);
+            Assert.NotEmpty(await Collect(client.StreamAsync(Request())).WaitAsync(TimeSpan.FromSeconds(5)));
+            break;
+        }
+    }
+
+    [Fact]
+    public async Task Caller_cancellation_surfaces_as_cancellation()
+    {
+        using var cts = new CancellationTokenSource();
+        var source = new FakeSource(TextAnswer) { OnOpen = () => Task.Delay(Timeout.Infinite, cts.Token) };
+        var run = Collect(Client(source).StreamAsync(Request(), cts.Token));
+        cts.CancelAfter(50);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
     }
 
     [Fact]
     public void A_transport_failure_wrapped_without_a_status_code_is_transient()
     {
         Assert.True(BedrockModelClient.IsRetryable(new AmazonBedrockRuntimeException("send failed", new HttpRequestException("reset")), default));
+        Assert.True(BedrockModelClient.IsRetryable(new Amazon.Runtime.AmazonClientException("dns", new HttpRequestException("no such host")), default));
     }
 
     [Fact]
@@ -523,22 +561,18 @@ public class BedrockModelClientTests
     }
 
     [Fact]
-    public async Task Each_model_has_its_own_concurrency_gate()
+    public async Task The_concurrency_cap_is_global_across_models()
     {
         var release = new TaskCompletionSource();
         var source = new FakeSource(TextAnswer) { OnOpen = () => release.Task };
-        var client = Client(source, Opts(maxConcurrency: 1, queueTimeoutMs: 2000));
+        var client = Client(source, Opts(maxConcurrency: 1, queueTimeoutMs: 200));
         var opus = Task.Run(() => Collect(client.StreamAsync(Request(ModelProfile.Authenticated))));
         while (source.Calls == 0) await Task.Delay(5);
 
-        // Opus holds its only slot; a Sonnet call still gets through.
-        var sonnet = Task.Run(() => Collect(client.StreamAsync(Request(ModelProfile.Anonymous))));
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (source.Calls < 2 && DateTime.UtcNow < deadline) await Task.Delay(5);
-        Assert.Equal(2, source.Calls);
+        await Assert.ThrowsAsync<ModelBusyException>(() => Collect(client.StreamAsync(Request(ModelProfile.Anonymous))));
 
         release.SetResult();
-        await Task.WhenAll(opus, sonnet);
+        await opus;
     }
 
     [Fact]
