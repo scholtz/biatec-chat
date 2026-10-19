@@ -112,6 +112,8 @@ public static class SessionEndpoints
                 _ => SignInStatus.Failed,
             },
             ExpiresAt = s.AbsoluteExpiresAt,
+            AgentMode = Agent.AgentModePolicy.ToWire(Agent.AgentModePolicy.Effective(s)),
+            Paused = s.Paused && s.Tier != Core.Data.SessionTier.Anonymous,
         };
     }
 }

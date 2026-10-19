@@ -24,6 +24,412 @@
           }
         }
       }
+    },
+    "/session": {
+      "get": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "GetSession",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionState"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/session/probe": {
+      "get": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "ProbeSession",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/session/keepalive": {
+      "post": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "KeepAliveSession",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeepAliveResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/session/agent": {
+      "put": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "SetAgentMode",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AgentSettingsRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSettings"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/messages": {
+      "post": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "PostChatMessage",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/auth/popup": {
+      "post": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "StartAuthPopup",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PopupStartResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "get": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "AuthLogin",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/auth/callback": {
+      "get": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "AuthCallback",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/auth/popup/{id}": {
+      "get": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "GetAuthPopupStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PopupStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/elevate/popup": {
+      "post": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "StartElevationPopup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ElevatePopupRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PopupStartResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/elevate": {
+      "get": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "AuthElevate",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/chat/previews/{previewId}/confirm": {
+      "post": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "ConfirmPreview",
+        "parameters": [
+          {
+            "name": "previewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/chat/previews/{previewId}/reconcile": {
+      "post": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "ReconcilePreview",
+        "parameters": [
+          {
+            "name": "previewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "get": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "Logout",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/onboarding/challenges": {
+      "post": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/OnboardingRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/onboarding/tenants": {
+      "post": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/OnboardingRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/onboarding/operator/tenants": {
+      "post": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/OperatorApprovalRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -194,6 +600,48 @@
           }
         }
       },
+      "AgentModeValue": {
+        "enum": [
+          "analyze",
+          "prepare"
+        ]
+      },
+      "AgentSettings": {
+        "required": [
+          "agentMode",
+          "paused"
+        ],
+        "type": "object",
+        "properties": {
+          "agentMode": {
+            "$ref": "#/components/schemas/AgentModeValue"
+          },
+          "paused": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AgentSettingsRequest": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentModeValue"
+              }
+            ]
+          },
+          "paused": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
       "AssetAmount": {
         "required": [
           "assetId",
@@ -227,6 +675,17 @@
             ]
           },
           "fiatCurrency": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ConfirmRequest": {
+        "type": "object",
+        "properties": {
+          "groupHash": {
             "type": [
               "null",
               "string"
@@ -299,6 +758,17 @@
           },
           "event": {
             "$ref": "#/components/schemas/ChatEvent"
+          }
+        }
+      },
+      "ElevatePopupRequest": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -535,6 +1005,18 @@
           }
         }
       },
+      "KeepAliveResponse": {
+        "required": [
+          "expiresAt"
+        ],
+        "type": "object",
+        "properties": {
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "LimitHeadroom": {
         "required": [
           "bucket",
@@ -551,6 +1033,109 @@
           },
           "currency": {
             "type": "string"
+          }
+        }
+      },
+      "OnboardingRequest": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "signInPageUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "allowedOrigins": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "clientKeys": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "OperatorApprovalRequest": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OnboardingRequest"
+              }
+            ]
+          },
+          "oidcClientId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "clientSecretRef": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PopupStartResponse": {
+        "required": [
+          "authRequestId",
+          "loginUrl"
+        ],
+        "type": "object",
+        "properties": {
+          "authRequestId": {
+            "type": "string"
+          },
+          "loginUrl": {
+            "type": "string"
+          }
+        }
+      },
+      "PopupStatusResponse": {
+        "required": [
+          "authRequestId",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "authRequestId": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SignInStatus"
+          }
+        }
+      },
+      "ProbeResponse": {
+        "required": [
+          "cookieReturned"
+        ],
+        "type": "object",
+        "properties": {
+          "cookieReturned": {
+            "type": "boolean"
           }
         }
       },
@@ -599,6 +1184,12 @@
           "expiresAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "agentMode": {
+            "$ref": "#/components/schemas/AgentModeValue"
+          },
+          "paused": {
+            "type": "boolean"
           }
         }
       },

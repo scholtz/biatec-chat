@@ -107,6 +107,7 @@ public static class ConfirmEndpoints
     {
             var (code, label) = r.Outcome switch
             {
+                ConfirmOutcome.AgentRestricted => (StatusCodes.Status403Forbidden, r.ErrorCode ?? "agent_analyze_only"),
                 ConfirmOutcome.Landed => (StatusCodes.Status200OK, "landed"),
                 ConfirmOutcome.Submitted => (StatusCodes.Status202Accepted, "submitted"),
                 ConfirmOutcome.ConsentPending => (StatusCodes.Status202Accepted, "consent_pending"),

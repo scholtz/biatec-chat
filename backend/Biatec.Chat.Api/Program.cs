@@ -1,3 +1,4 @@
+using Biatec.Chat.Api.Agent;
 using Biatec.Chat.Api.Auth;
 using Biatec.Chat.Api.Auth.Elevation;
 using Biatec.Chat.Api.Auth.Logout;
@@ -64,6 +65,7 @@ app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthC
 
 app.MapContractCatalog();
 app.MapSessions();
+app.MapAgentMode();
 app.MapChat();
 Biatec.Chat.Api.Public.PublicChatEndpoints.MapPublic(app);
 app.MapAuth();
