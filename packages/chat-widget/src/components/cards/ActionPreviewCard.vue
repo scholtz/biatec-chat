@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ActionPreview, ConsentStatus } from "@biatec/chat-protocol";
 import { ShieldCheck } from "lucide-vue-next";
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { t } from "../../i18n";
 import { Button, StatusBadge } from "../../ui";
 import ReviewDialog from "./ReviewDialog.vue";
@@ -96,6 +96,14 @@ const hint = computed(() => {
   if (!reviewed.value || !acknowledged.value) return t("cards.preview.needReview");
   return "";
 });
+
+// A confirm that ends (submitting back to false) while the preview still awaits confirmation failed: allow a retry.
+watch(
+  () => props.submitting,
+  (now, was) => {
+    if (was && !now && props.preview.status === "AwaitingConfirmation") confirmed.value = false;
+  },
+);
 
 function openReview() {
   reviewOpen.value = true;

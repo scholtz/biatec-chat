@@ -32,10 +32,14 @@ export function consentFor(preview: ActionPreview, consent?: ConsentStatus | nul
 
 /** Seconds left of the smaller of the group's validity and the session's absolute lifetime (never negative). */
 export function remainingSeconds(expiresAt: string, sessionExpiresAt: string | null | undefined, nowMs: number): number {
-  const ends = [Date.parse(expiresAt)];
-  if (sessionExpiresAt) ends.push(Date.parse(sessionExpiresAt));
-  const end = Math.min(...ends.filter((n) => !Number.isNaN(n)));
-  return Number.isFinite(end) ? Math.max(0, Math.floor((end - nowMs) / 1000)) : 0;
+  const own = Date.parse(expiresAt);
+  if (Number.isNaN(own)) return 0; // fail closed: unknown validity never enables Confirm
+  let end = own;
+  if (sessionExpiresAt) {
+    const session = Date.parse(sessionExpiresAt);
+    if (!Number.isNaN(session)) end = Math.min(end, session);
+  }
+  return Math.max(0, Math.floor((end - nowMs) / 1000));
 }
 
 export function sessionSecondsLeft(sessionExpiresAt: string | null | undefined, nowMs: number): number | null {
@@ -76,17 +80,21 @@ export function actionWord(p: ActionPreview): string {
   return (p.intent.trim().split(/\s+/)[0] ?? "").toLowerCase();
 }
 
-/** What a 10 percent fall in the value of the assets being spent would cost, when every fiat value is known. */
+/**
+ * What a 10 percent fall in the value of the assets being spent would cost.
+ * Convention: assets[0] of a step is the asset it spends. Returns null unless every step that lists assets has a
+ * parsable fiat value on that asset, all in one currency (a partial total would understate the risk).
+ */
 export function downside(p: ActionPreview): { amount: string; currency: string } | null {
   let total = 0;
   let currency: string | null = null;
   for (const step of p.steps) {
     const first = step.assets?.[0];
-    if (!first?.fiatValue) continue;
-    const v = Number.parseFloat(first.fiatValue);
-    if (Number.isNaN(v)) continue;
-    if (currency && first.fiatCurrency && first.fiatCurrency !== currency) return null;
-    currency = first.fiatCurrency ?? currency;
+    if (!first) continue;
+    const v = first.fiatValue ? Number.parseFloat(first.fiatValue) : Number.NaN;
+    if (Number.isNaN(v) || !first.fiatCurrency) return null;
+    if (currency && first.fiatCurrency !== currency) return null;
+    currency = first.fiatCurrency;
     total += v;
   }
   return currency && total > 0 ? { amount: (total * 0.1).toFixed(2), currency } : null;

@@ -146,6 +146,22 @@ describe("Confirm gating", () => {
     await w.setProps({ submitting: true });
     expect(w.get("[data-test=confirm]").attributes("aria-busy")).toBe("true");
   });
+  it("a failed confirm (submitting ends, still awaiting) can be retried", async () => {
+    const w = card();
+    await review(w);
+    await w.get("[data-test=confirm]").trigger("click");
+    await w.setProps({ submitting: true });
+    await w.setProps({ submitting: false });
+    expect(w.get("article").attributes("data-border")).toBe("dashed");
+    expect(w.get("[data-test=confirm]").attributes("disabled")).toBeUndefined();
+    await w.get("[data-test=confirm]").trigger("click");
+    expect(w.emitted("confirm")).toHaveLength(2);
+  });
+  it("a malformed preview expiry keeps Confirm disabled", async () => {
+    const w = card({ preview: fixture({ expiresAt: "garbage" }), sessionExpiresAt: iso(3600) });
+    await review(w);
+    expect(w.get("[data-test=confirm]").attributes("disabled")).toBeDefined();
+  });
   it("emits cancel", async () => {
     const w = card();
     await w.findAll("button").find((b) => b.text() === "Cancel")!.trigger("click");
@@ -248,5 +264,20 @@ describe("model", () => {
     const f = fixture();
     f.steps[0]!.assets![0]!.fiatValue = null;
     expect(downside(f)).toBeNull();
+  });
+  it("downside is null for a partially priced or mixed-currency multi-step action", () => {
+    const step = (id: string, fiatValue: string | null, fiatCurrency: string | null) => ({
+      ...fixture().steps[0]!,
+      stepId: id,
+      assets: [{ assetId: "1", symbol: "X", amount: "1", decimals: 6, fiatValue, fiatCurrency }],
+    });
+    const base = fixture();
+    expect(downside({ ...base, steps: [step("a", "100", "USD"), step("b", "50", "USD")] })).toEqual({ amount: "15.00", currency: "USD" });
+    expect(downside({ ...base, steps: [step("a", "100", "USD"), step("b", null, null)] })).toBeNull();
+    expect(downside({ ...base, steps: [step("a", "100", "USD"), step("b", "50", "EUR")] })).toBeNull();
+  });
+  it("remainingSeconds is 0 when the preview expiry is malformed", () => {
+    expect(remainingSeconds("nope", iso(900), NOW)).toBe(0);
+    expect(remainingSeconds(iso(900), null, NOW)).toBe(900);
   });
 });
