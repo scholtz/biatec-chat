@@ -10,7 +10,7 @@ import { TransportManager } from "../transport";
 import { useTheme } from "../theme";
 import { setLocale } from "../i18n";
 
-const props = defineProps<{ options: ResolvedOptions; services?: ChatServices }>();
+const props = defineProps<{ options: ResolvedOptions; services?: ChatServices; shadow?: boolean }>();
 // Transport and auth are created here, but nothing touches the network until the panel is first opened.
 const cfg = { backendUrl: props.options.backendUrl, clientKey: props.options.clientKey };
 const chat = useChat(props.services ?? { transport: new TransportManager(cfg), auth: new AuthClient(cfg) });
@@ -19,7 +19,8 @@ const rootEl = ref<HTMLElement | null>(null);
 const theme = useTheme(props.options);
 setLocale(props.options.locale);
 // Without a shadow root (host mounts BiatecChatRoot itself) the tokens apply to the root element instead of :host.
-const standalone = ref(false);
+// Known synchronously from the `shadow` prop so the first render already has its tokens; onMounted confirms it.
+const standalone = ref(!props.shadow);
 function shadowHost(): Element | null {
   const root = rootEl.value?.getRootNode();
   return typeof ShadowRoot !== "undefined" && root instanceof ShadowRoot ? root.host : null;

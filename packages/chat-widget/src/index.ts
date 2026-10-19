@@ -28,6 +28,6 @@ export const BiatecChat: Plugin<[BiatecChatOptions]> = {
     shadow.appendChild(style);
     const mountPoint = document.createElement("div");
     shadow.appendChild(mountPoint);
-    createApp(BiatecChatRoot, { options: resolved }).mount(mountPoint);
+    createApp(BiatecChatRoot, { options: resolved, shadow: true }).mount(mountPoint);
   },
 };

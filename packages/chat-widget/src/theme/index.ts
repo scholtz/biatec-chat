@@ -13,7 +13,10 @@ export function resolveTheme(o: ThemeOptions): ResolvedTheme {
   if (o.theme === "light" || o.theme === "dark") return o.theme;
   if (o.theme === "host") {
     if (typeof document === "undefined") return "dark";
-    return document.documentElement.classList.contains(o.hostDarkClass) ? "dark" : "light";
+    const wanted = (o.hostDarkClass ?? "").split(/\s+/).filter(Boolean);
+    if (!wanted.length) return "light";
+    const cl = document.documentElement.classList;
+    return wanted.every((c) => cl.contains(c)) ? "dark" : "light";
   }
   if (typeof window === "undefined" || !window.matchMedia) return "dark";
   return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";

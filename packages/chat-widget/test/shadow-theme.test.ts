@@ -1,5 +1,10 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { createApp } from "vue";
+import { createApp, createSSRApp, h, ref } from "vue";
+import { renderToString } from "vue/server-renderer";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import BiatecChatRoot from "../src/components/BiatecChatRoot.vue";
+import { Button, Dialog } from "../src/ui";
 import { BiatecChat } from "../src/index";
 import { resolveOptions } from "../src/options";
 import { resolveTheme, watchTheme } from "../src/theme";
@@ -90,5 +95,76 @@ describe("theme", () => {
     expect(seen).toEqual(["light", "dark"]);
     expect(resolveTheme({ theme: "light", hostDarkClass: "p-dark" })).toBe("light");
     expect(resolveTheme({ theme: "dark", hostDarkClass: "p-dark" })).toBe("dark");
+  });
+});
+
+describe("review fixes", () => {
+  it("hostDarkClass tolerates whitespace lists and an empty string", () => {
+    document.documentElement.className = "p-dark dark";
+    expect(resolveTheme({ theme: "host", hostDarkClass: "p-dark dark" })).toBe("dark");
+    expect(resolveTheme({ theme: "host", hostDarkClass: "  " })).toBe("light");
+    expect(resolveTheme({ theme: "host", hostDarkClass: "" })).toBe("light");
+    document.documentElement.className = "dark";
+    expect(resolveTheme({ theme: "host", hostDarkClass: "p-dark dark" })).toBe("light");
+  });
+
+  it("a standalone root carries data-standalone on its very first render", async () => {
+    const html = await renderToString(createSSRApp(BiatecChatRoot, { options: resolveOptions(base) }));
+    expect(html).toContain("data-standalone");
+  });
+
+  it("the plugin mount is not marked standalone", () => {
+    const { shadow } = mountWidget();
+    expect(shadow.querySelector(".biatec-chat")!.hasAttribute("data-standalone")).toBe(false);
+  });
+
+  it("Dialog and Button inside a shadow root: focus trap and Esc return use shadowRoot.activeElement", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const shadow = host.attachShadow({ mode: "open" });
+    const mp = document.createElement("div");
+    shadow.appendChild(mp);
+    const open = ref(false);
+    const app = createApp({
+      render: () =>
+        h("div", { class: "biatec-chat" }, [
+          h(Button, { id: "opener", onClick: () => (open.value = true) }, () => "open"),
+          h(Dialog, { open: open.value, title: "T", onClose: () => (open.value = false) }, () => [
+            h(Button, { id: "a" }, () => "A"),
+            h(Button, { id: "b", variant: "danger" }, () => "B"),
+          ]),
+        ]),
+    });
+    app.mount(mp);
+    const flush = async () => {
+      await Promise.resolve();
+      await new Promise((r) => setTimeout(r, 0));
+    };
+    const opener = shadow.getElementById("opener")!;
+    opener.focus();
+    expect(shadow.activeElement).toBe(opener);
+    opener.click();
+    await flush();
+    const a = shadow.getElementById("a")!;
+    const b = shadow.getElementById("b")!;
+    expect(shadow.activeElement).toBe(a);
+    b.focus();
+    const tab = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    b.dispatchEvent(tab);
+    expect(tab.defaultPrevented).toBe(true);
+    expect(shadow.activeElement).toBe(a);
+    a.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await flush();
+    expect(shadow.querySelector("[role=dialog]")).toBeNull();
+    expect(shadow.activeElement).toBe(opener);
+    app.unmount();
+  });
+
+  it("danger button and status badges follow the design (subtle fill, bordered badges)", () => {
+    const css = readFileSync(resolve(__dirname, "../src/styles/ui.css"), "utf8");
+    expect(css).toMatch(/data-variant="danger"\]\s*\{[^}]*background: var\(--color-status-danger-subtle\)[^}]*color: var\(--color-status-danger\)/);
+    for (const tone of ["brand", "info", "success", "danger"]) {
+      expect(css).toMatch(new RegExp(`data-tone="${tone}"\\] \\{ border-color`));
+    }
   });
 });

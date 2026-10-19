@@ -26,7 +26,12 @@
 .biatec-chat .bc-btn[data-variant="ghost"] { background: transparent; color: var(--color-text-primary); }
 .biatec-chat .bc-btn[data-variant="ghost"]:hover:not(:disabled),
 .biatec-chat .bc-btn[data-variant="secondary"]:hover:not(:disabled) { background: var(--color-bg-elevated); }
-.biatec-chat .bc-btn[data-variant="danger"] { background: var(--color-status-danger); color: var(--color-brand-on); }
+.biatec-chat .bc-btn[data-variant="danger"] {
+  background: var(--color-status-danger-subtle);
+  color: var(--color-status-danger);
+  border-color: transparent;
+}
+.biatec-chat .bc-btn[data-variant="danger"]:hover:not(:disabled) { border-color: var(--color-status-danger); }
 .biatec-chat .bc-btn[data-variant="soft"] { background: var(--color-brand-subtle); color: var(--color-brand-text); }
 .biatec-chat .bc-btn:disabled,
 .biatec-chat .bc-btn[aria-busy="true"] { opacity: 0.55; cursor: not-allowed; }
@@ -90,6 +95,12 @@
 .biatec-chat .bc-badge[data-tone="success"] { color: var(--color-status-success); background: var(--color-status-success-subtle); }
 .biatec-chat .bc-badge[data-tone="danger"] { color: var(--color-status-danger); background: var(--color-status-danger-subtle); }
 .biatec-chat .bc-badge[data-tone="neutral"] { color: var(--color-status-neutral); background: var(--color-bg-interactive); }
+.biatec-chat .bc-badge[data-tone="brand"] { border-color: var(--color-brand-primary); }
+.biatec-chat .bc-badge[data-tone="info"] { border-color: var(--color-status-info); }
+.biatec-chat .bc-badge[data-tone="success"] { border-color: var(--color-status-success); }
+.biatec-chat .bc-badge[data-tone="danger"] { border-color: var(--color-status-danger); }
+.biatec-chat .bc-badge[data-tone="warning"] { border-color: var(--color-status-warning); }
+.biatec-chat .bc-badge[data-tone="neutral"] { border-color: var(--color-border-strong); }
 .biatec-chat .bc-badge[data-dashed="true"] { border-style: dashed; border-color: currentcolor; }
 
 .biatec-chat .bc-ui-chip {
