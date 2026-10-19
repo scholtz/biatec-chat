@@ -222,9 +222,17 @@ POST /devices
   `POST /devices/recovery-code` (`Authorization: Device <token>`): `403` with `reason: device_inactive` while inactive, `200 { "recovery_code" }`
   (the same code until acknowledged), then `POST /devices/recovery-code/ack` after which the endpoint answers `409`. The kid in
   `POST /devices` is chosen by the device and must be unique (random per install). The mock implements this fallback.
-- Pending request fetch by the device (device-key authenticated, never from the push body): `GET /devices/{id}/requests/{auth_req_id}`
-  returns the `authorization_details`, verified client name and `expiry`. The decision is
-  `POST /devices/{id}/requests/{auth_req_id}/decision` with the signed receipt (denials are signed too).
+- Authenticator side (all `Authorization: Device <token>`, never from the push body), as the authenticator (T-052) and
+  the mock implement it:
+  - `GET /devices/requests` → `200 { "requests": [<consent request>] }`: pending, unexpired requests of the device's user.
+  - `GET /consent/requests/{auth_req_id}` → the consent request object (`schemas/consent-request.schema.json`), never the
+    binding code.
+  - `POST /consent/requests/{auth_req_id}/receipt` with the signed receipt envelope (approve, deny and code_failed are all
+    signed). Answers: `200 { "status": "approved" | "denied" | "code_failed" }`; wrong code
+    `400 { "error": "wrong_code", "attempts_remaining": n }`; the third wrong code, or any decision after it other than the
+    `code_failed` receipt, `403 { "error": "access_denied", "reason": "code_failed" }`; already decided `409`; expired `410`;
+    inactive device `403`.
+  - The attestation JWS returned by `POST /devices` is stored by the device and sent back in every receipt.
 - Receipt retrieval, by the client that opened the request (direct entry) or whose token was challenged (step-up):
 
 ```http
