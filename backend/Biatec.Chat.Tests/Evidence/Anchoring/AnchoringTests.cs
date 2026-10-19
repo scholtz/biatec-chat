@@ -633,6 +633,7 @@ internal sealed class FakeAlgod : HttpMessageHandler
     public ulong LastRound = 1000;
     public bool ConfirmAll;                          // pending lookups report a confirmed round
     public bool FailSubmitAfterAccepting;            // the node takes the tx, then the HTTP call errors
+    public bool IndexerConfirms;                     // the indexer knows the tx as confirmed while the pending endpoint 404s
     public List<byte[]> Submitted { get; } = [];
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
@@ -646,6 +647,8 @@ internal sealed class FakeAlgod : HttpMessageHandler
             if (FailSubmitAfterAccepting) return new HttpResponseMessage(System.Net.HttpStatusCode.BadGateway);
             return Json("{\"txId\":\"X\"}");
         }
+        if (req.RequestUri.Host == "indexer.test")
+            return IndexerConfirms ? Json("{\"transaction\":{\"confirmed-round\":1001},\"current-round\":1002}") : new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
         if (path.Contains("/v2/transactions/pending/"))
             return ConfirmAll ? Json("{\"confirmed-round\":1001}") : new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
         return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
@@ -658,10 +661,10 @@ public class AlgodAnchorBroadcasterTests
 {
     private static readonly byte[] Note = "{\"root\":\"x\",\"seq\":1,\"v\":1}"u8.ToArray();
 
-    private static AlgodAnchorBroadcaster Make(FakeAlgod algod)
+    private static AlgodAnchorBroadcaster Make(FakeAlgod algod, bool indexer = false)
     {
         var mnemonic = new Algorand.Algod.Model.Account().ToMnemonic();
-        var o = Options.Create(new AnchoringOptions { AccountMnemonic = mnemonic, Network = "testnet", ConfirmTimeout = TimeSpan.FromMilliseconds(30), ConfirmPollInterval = TimeSpan.FromMilliseconds(5) });
+        var o = Options.Create(new AnchoringOptions { AccountMnemonic = mnemonic, Network = "testnet", IndexerUrl = indexer ? "http://indexer.test/" : null, ConfirmTimeout = TimeSpan.FromMilliseconds(30), ConfirmPollInterval = TimeSpan.FromMilliseconds(5) });
         var a = Options.Create(new Biatec.Chat.Api.Config.AlgodOptions { Networks = { ["testnet"] = new() { Url = "http://algod.test/" } } });
         return new AlgodAnchorBroadcaster(o, a, algod);
     }
@@ -729,6 +732,41 @@ public class AlgodAnchorBroadcasterTests
         algod.LastRound += 100;                         // past LastValid (+40)
         Assert.Equal(AnchorResolutionKind.Expired, (await b.ResolveAsync(Note, default)).Kind);
         Assert.Equal(AnchorResolutionKind.Unknown, (await b.ResolveAsync(Note, default)).Kind); // entry dropped, no leak
+    }
+
+    [Fact]
+    public async Task PendingEndpoint404_ButIndexerReportsConfirmed_IsConfirmed_NotExpired()
+    {
+        var algod = new FakeAlgod();
+        var b = Make(algod, indexer: true);
+        await Assert.ThrowsAsync<TimeoutException>(() => b.BroadcastAsync(Note, default));
+        algod.IndexerConfirms = true;
+        algod.LastRound += 5000;                        // past LastValid: without the indexer this would be Expired
+        var r = await b.ResolveAsync(Note, default);
+        Assert.Equal(AnchorResolutionKind.Confirmed, r.Kind);
+        Assert.False(string.IsNullOrEmpty(r.TxId));
+    }
+
+    [Fact]
+    public async Task Broadcast_RetryFindsTheTxInTheIndexer_AndSendsNoSecondTransaction()
+    {
+        var algod = new FakeAlgod();
+        var b = Make(algod, indexer: true);
+        await Assert.ThrowsAsync<TimeoutException>(() => b.BroadcastAsync(Note, default));
+        algod.IndexerConfirms = true;
+        algod.LastRound += 5000;
+        Assert.False(string.IsNullOrEmpty(await b.BroadcastAsync(Note, default)));
+        Assert.Single(algod.Submitted);
+    }
+
+    [Fact]
+    public async Task Resolve_404FromBothAlgodAndIndexer_IsNotLanded()
+    {
+        var algod = new FakeAlgod();
+        var b = Make(algod, indexer: true);
+        await Assert.ThrowsAsync<TimeoutException>(() => b.BroadcastAsync(Note, default));
+        algod.LastRound += 5000;
+        Assert.Equal(AnchorResolutionKind.Expired, (await b.ResolveAsync(Note, default)).Kind);
     }
 
     [Fact]

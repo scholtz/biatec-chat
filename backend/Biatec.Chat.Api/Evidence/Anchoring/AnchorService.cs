@@ -21,6 +21,15 @@ public sealed class AnchoringOptions
     /// <summary>The 25-word mnemonic of the evidence account. Supply only through env vars or a secret store, never a committed file.</summary>
     public string? AccountMnemonic { get; set; }
 
+    /// <summary>
+    /// Indexer base URL for the same network. Algod forgets confirmed transactions quickly, so this is how a transaction that
+    /// confirmed after a timeout is still found. Strongly recommended whenever anchoring is enabled.
+    /// </summary>
+    public string? IndexerUrl { get; set; }
+
+    /// <summary>Optional indexer API token. Supply only through env vars or a secret store.</summary>
+    public string? IndexerToken { get; set; }
+
     public TimeSpan Interval { get; set; } = TimeSpan.FromMinutes(10);
 
     /// <summary>A conversation with no new entry for this long is anchored one last time, then dropped from later ticks.</summary>

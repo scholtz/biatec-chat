@@ -4,6 +4,9 @@
 - `AnchorService.TickAsync`: one tick. `AnchorHostedService` runs it every 10 minutes when `Evidence:Anchoring:Enabled` is true.
   Needs `Evidence:Anchoring:AccountMnemonic` (env var or secret store only), `Evidence:Anchoring:Network` (default `testnet`)
   and the matching `Algod:Networks:<network>` endpoint. Fund the evidence account on testnet only.
+  Also set `Evidence:Anchoring:IndexerUrl` (and optionally `IndexerToken`): algod's pending endpoint forgets confirmed
+  transactions quickly, so the indexer is how a transaction that confirmed after a timeout is still found. Without it, a
+  late-confirmed anchor can be misread as lost.
 - `AnchoredEvidenceWriter`: first entry (`anchorRef`), `resume` entry, `end` marker.
 - `AnchorExporter` gives T-036 the anchors and inclusion proofs for the bundle; `AnchorVerifier.Verify` checks them
   against the anchors read from the chain (indexer) and parsed with `AnchorNote.TryParse`.

@@ -111,15 +111,37 @@ public sealed class AlgodAnchorBroadcaster(IOptions<AnchoringOptions> options, I
         }
     }
 
-    /// <summary>True when the node reports a confirmed round for the transaction (404 means unknown or not yet in a block).</summary>
-    private static async Task<bool> IsConfirmedAsync(HttpClient http, string txId, CancellationToken ct)
+    /// <summary>
+    /// True when the transaction is confirmed. Algod's pending endpoint remembers a confirmed transaction only briefly, so
+    /// a 404 there is followed by an indexer lookup (when <see cref="AnchoringOptions.IndexerUrl"/> is set). Not landed
+    /// means a 404 from both.
+    /// </summary>
+    private async Task<bool> IsConfirmedAsync(HttpClient http, string txId, CancellationToken ct)
     {
-        using var res = await http.GetAsync($"v2/transactions/pending/{txId}", ct);
-        if (res.StatusCode == System.Net.HttpStatusCode.NotFound) return false;
-        res.EnsureSuccessStatusCode();
-        using var doc = await System.Text.Json.JsonDocument.ParseAsync(await res.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
-        return doc.RootElement.TryGetProperty("confirmed-round", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.Number && r.GetUInt64() > 0;
+        using (var res = await http.GetAsync($"v2/transactions/pending/{txId}", ct))
+        {
+            if (res.StatusCode != System.Net.HttpStatusCode.NotFound)
+            {
+                res.EnsureSuccessStatusCode();
+                using var doc = await System.Text.Json.JsonDocument.ParseAsync(await res.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+                return ConfirmedRound(doc.RootElement); // known to the pool; confirmed only once it has a round
+            }
+        }
+        var indexerUrl = options.Value.IndexerUrl;
+        if (string.IsNullOrWhiteSpace(indexerUrl)) return false;
+        using var ix = handler is null ? new HttpClient() : new HttpClient(handler, disposeHandler: false);
+        ix.BaseAddress = new Uri(indexerUrl.EndsWith('/') ? indexerUrl : indexerUrl + "/");
+        ix.Timeout = TimeSpan.FromSeconds(20);
+        if (options.Value.IndexerToken is { Length: > 0 } t) ix.DefaultRequestHeaders.TryAddWithoutValidation("X-Indexer-API-Token", t);
+        using var ires = await ix.GetAsync($"v2/transactions/{txId}", ct);
+        if (ires.StatusCode == System.Net.HttpStatusCode.NotFound) return false;
+        ires.EnsureSuccessStatusCode();
+        using var idoc = await System.Text.Json.JsonDocument.ParseAsync(await ires.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+        return idoc.RootElement.TryGetProperty("transaction", out var tx) && ConfirmedRound(tx);
     }
+
+    private static bool ConfirmedRound(System.Text.Json.JsonElement e) =>
+        e.TryGetProperty("confirmed-round", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.Number && r.GetUInt64() > 0;
 }
 
 /// <summary>Runs <see cref="AnchorService.TickAsync"/> every <see cref="AnchoringOptions.Interval"/> while anchoring is enabled.</summary>
