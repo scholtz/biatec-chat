@@ -427,6 +427,15 @@ public sealed class ElevationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Elevation_StartingALoginDoesNotRetireAPendingElevation()
+    {
+        var cookie = await LoginAsync();
+        var (id, _) = await StartElevationAsync(cookie, "sign");
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(HttpMethod.Post, "/auth/popup", cookie)).StatusCode);
+        Assert.Equal(PopupAuthStatus.Pending, await StatusAsync(id));
+    }
+
+    [Fact]
     public async Task Elevation_NeverReRequestsAHeldScopeOutsideTheAllowList()
     {
         var cookie = await LoginAsync();

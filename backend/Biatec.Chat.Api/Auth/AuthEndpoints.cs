@@ -46,7 +46,7 @@ public static class AuthEndpoints
 
             // One open request per conversation: starting another retires the earlier pending one.
             await db.PopupAuthRequests
-                .Where(p => p.ConversationId == handle.Session.ConversationId && p.Status == PopupAuthStatus.Pending)
+                .Where(p => p.ConversationId == handle.Session.ConversationId && p.Purpose == PopupAuthPurpose.Login && p.Status == PopupAuthStatus.Pending)
                 .ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, PopupAuthStatus.Expired), ctx.RequestAborted);
 
             var nonce = Random64();
@@ -157,7 +157,7 @@ public static class AuthEndpoints
             {
                 try
                 {
-                    // A superseded or expired popup request must not still change the vault.
+                    // A superseded popup request must not still change the vault (the nonce check at /auth/elevate enforced its expiry; the state TTL bounds the rest).
                     var open = await db.PopupAuthRequests.AsNoTracking().AnyAsync(p => p.Id == pending.PopupId && p.ConversationId == session.ConversationId
                         && p.Purpose == PopupAuthPurpose.Elevate && p.Status == PopupAuthStatus.Pending, ctx.RequestAborted);
                     var ok = open && await Elevation.ElevationCompletion.CompleteAsync(tenant, session, pending, code, clock, oidc, validator, vault, ctx.RequestAborted);
