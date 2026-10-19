@@ -23,7 +23,7 @@ const List<AppRoute> appRoutes = [
   AppRoute(
     path: '/enrollment',
     title: 'Enrollment',
-    description: 'Enroll this device. Not implemented yet.',
+    description: 'Enroll this device.',
     icon: Icons.phonelink_setup,
   ),
   AppRoute(
