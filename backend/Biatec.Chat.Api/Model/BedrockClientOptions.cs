@@ -15,9 +15,13 @@ public sealed class BedrockClientOptions : IValidatableObject
     /// <summary>Retries after a throttled or transiently failed call, with exponential backoff and equal jitter.</summary>
     [Range(0, 10)] public int MaxRetries { get; set; } = 4;
 
-    [Range(1, 60000)] public int RetryBaseDelayMs { get; set; } = 500;
+    /// <summary>
+    /// Bedrock quotas are per minute and shared by the team, so the defaults spread retries over about half a
+    /// minute (bounds 2, 4, 8 and 16 s) rather than retrying straight back into an exhausted window.
+    /// </summary>
+    [Range(1, 60000)] public int RetryBaseDelayMs { get; set; } = 2000;
 
-    [Range(1, 120000)] public int RetryMaxDelayMs { get; set; } = 20000;
+    [Range(1, 120000)] public int RetryMaxDelayMs { get; set; } = 30000;
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {

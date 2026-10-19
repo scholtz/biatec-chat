@@ -6,7 +6,7 @@ namespace Biatec.Chat.Api.Model;
 
 /// <summary>
 /// Manual check against real Bedrock, without starting the web host:
-/// <c>AWS_PROFILE=hackathon dotnet run --project backend/Biatec.Chat.Api -- bedrock-smoke [--authenticated] [prompt]</c>.
+/// <c>AWS_PROFILE=hackathon dotnet run --project backend/Biatec.Chat.Api -- bedrock-smoke [--authenticated] [--Key=value ...] [prompt]</c>.
 /// It sends the request twice so the second call shows cache reads, and spends a few cents at most.
 /// </summary>
 public static class BedrockSmoke
@@ -17,7 +17,10 @@ public static class BedrockSmoke
     {
         // The web host's configuration sources (appsettings.{Environment}.json, user secrets, env vars) and the same
         // registrations and validation, but only the Bedrock part, so no Redis, PostgreSQL or OIDC settings are needed.
-        var builder = WebApplication.CreateBuilder();
+        // --Key=value arguments are configuration overrides (for example --Bedrock:AnonymousModelId=...), the rest is the prompt.
+        var overrides = args.Where(a => a.StartsWith("--") && a.Contains('=')).ToArray();
+        args = [.. args.Except(overrides)];
+        var builder = WebApplication.CreateBuilder(overrides);
         builder.Services.AddOptions<BedrockOptions>().BindConfiguration(BedrockOptions.Section).ValidateDataAnnotations();
         builder.Services.PostConfigure<BedrockOptions>(o => o.MaxTokens = Math.Min(o.MaxTokens, 200));
         builder.Services.AddBedrockModel();

@@ -83,10 +83,11 @@ public sealed class BedrockModelClient(
     public async IAsyncEnumerable<ModelStreamEvent> StreamAsync(ModelRequest request, [EnumeratorCancellation] CancellationToken ct = default)
     {
         var converse = BuildRequest(request);
-        using var pumpCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var pumpCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         // Unbounded is fine: one answer is at most maxTokens of output.
         var channel = Channel.CreateUnbounded<ModelStreamEvent>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
         var pump = PumpAsync(converse, channel.Writer, pumpCts.Token);
+        var stopSeen = false;
         try
         {
             // WaitToReadAsync rethrows the error the pump completed the channel with.
@@ -95,14 +96,25 @@ public sealed class BedrockModelClient(
                 while (channel.Reader.TryRead(out var output))
                 {
                     ct.ThrowIfCancellationRequested();
+                    stopSeen |= output is ModelMessageStop;
                     yield return output;
                 }
             }
         }
         finally
         {
-            pumpCts.Cancel();
-            await pump;
+            if (stopSeen)
+            {
+                // A reader that stops at the message stop (to run tools) doesn't wait for usage, but the pump still
+                // reads and logs it, for at most UsageWait, and then frees the slot.
+                _ = pump.ContinueWith(_ => pumpCts.Dispose(), TaskScheduler.Default);
+            }
+            else
+            {
+                pumpCts.Cancel();
+                await pump;
+                pumpCts.Dispose();
+            }
         }
     }
 
@@ -141,51 +153,60 @@ public sealed class BedrockModelClient(
                 var written = false;
                 var stopped = false;
                 var sw = Stopwatch.StartNew();
-                await using var events = source.OpenAsync(converse, attemptCts.Token).GetAsyncEnumerator(attemptCts.Token);
-                while (true)
+                var events = source.OpenAsync(converse, attemptCts.Token).GetAsyncEnumerator(attemptCts.Token);
+                try
                 {
-                    bool more;
-                    try
+                    while (true)
                     {
-                        more = await events.MoveNextAsync();
-                    }
-                    catch (Exception ex) when (stopped)
-                    {
-                        // The answer is complete and handed out; only the usage event is missing. Don't fail it.
-                        if (!ct.IsCancellationRequested)
-                            logger.LogWarning(ex, "Bedrock {ModelId} stream failed after the message stop; usage is missing", converse.ModelId);
-                        return;
-                    }
-                    catch (Exception ex) when (!written && attempt < _c.MaxRetries && IsRetryable(ex, ct))
-                    {
-                        lastError = ex;
-                        break;
-                    }
-                    if (!more)
-                    {
-                        if (stopped) return;
-                        // A stream that ends without a message stop is a truncated answer, never a success.
-                        var truncated = new ModelStreamIncompleteException(converse.ModelId);
-                        if (written || attempt >= _c.MaxRetries) throw truncated;
-                        lastError = truncated;
-                        break;
-                    }
+                        bool more;
+                        try
+                        {
+                            more = await events.MoveNextAsync();
+                        }
+                        catch (Exception ex) when (stopped)
+                        {
+                            // The answer is complete and handed out; only the usage event is missing. Don't fail it.
+                            if (!ct.IsCancellationRequested)
+                                logger.LogWarning(ex, "Bedrock {ModelId} stream failed after the message stop; usage is missing", converse.ModelId);
+                            return;
+                        }
+                        catch (Exception ex) when (!written && attempt < _c.MaxRetries && IsRetryable(ex, ct))
+                        {
+                            lastError = ex;
+                            break;
+                        }
+                        if (!more)
+                        {
+                            if (stopped) return;
+                            // A stream that ends without a message stop is a truncated answer, never a success.
+                            var truncated = new ModelStreamIncompleteException(converse.ModelId);
+                            if (written || attempt >= _c.MaxRetries) throw truncated;
+                            lastError = truncated;
+                            break;
+                        }
 
-                    if (events.Current is MessageStopEvent)
-                    {
-                        stopped = true;
-                        attemptCts.CancelAfter(UsageWait);
+                        if (events.Current is MessageStopEvent)
+                        {
+                            stopped = true;
+                            attemptCts.CancelAfter(UsageWait);
+                        }
+                        foreach (var output in assembler.Accept(events.Current, sw))
+                        {
+                            if (output is ModelUsage u)
+                                logger.LogInformation("Bedrock usage {ModelId}: in {In}, out {Out}, cache read {CacheRead}, cache write {CacheWrite}, {LatencyMs} ms",
+                                    u.ModelId, u.InputTokens, u.OutputTokens, u.CacheReadInputTokens, u.CacheWriteInputTokens, u.LatencyMs);
+                            written = true;
+                            writer.TryWrite(output);
+                        }
+                        // Usage is the last event Bedrock sends after the stop; nothing else is worth waiting for.
+                        if (stopped && events.Current is ConverseStreamMetadataEvent) return;
                     }
-                    foreach (var output in assembler.Accept(events.Current, sw))
-                    {
-                        if (output is ModelUsage u)
-                            logger.LogInformation("Bedrock usage {ModelId}: in {In}, out {Out}, cache read {CacheRead}, cache write {CacheWrite}, {LatencyMs} ms",
-                                u.ModelId, u.InputTokens, u.OutputTokens, u.CacheReadInputTokens, u.CacheWriteInputTokens, u.LatencyMs);
-                        written = true;
-                        writer.TryWrite(output);
-                    }
-                    // Usage is the last event Bedrock sends after the stop; nothing else is worth waiting for.
-                    if (stopped && events.Current is ConverseStreamMetadataEvent) return;
+                }
+                finally
+                {
+                    // A failure while closing the response must not turn a delivered answer into an error.
+                    try { await events.DisposeAsync(); }
+                    catch (Exception ex) { logger.LogWarning(ex, "Closing the Bedrock {ModelId} stream failed", converse.ModelId); }
                 }
             }
             finally
@@ -228,17 +249,24 @@ public sealed class BedrockModelClient(
                 or HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout } => true,
             // A generic (not modelled) error without a status code: the SDK wrapped a transport failure (connection
             // reset, DNS) before any response arrived.
-            AmazonServiceException { StatusCode: 0, InnerException: HttpRequestException or IOException or TimeoutException } generic
-                when generic.GetType() == typeof(AmazonBedrockRuntimeException) || generic.GetType() == typeof(AmazonServiceException) => true,
+            AmazonServiceException { StatusCode: 0, InnerException: { } inner } generic
+                when (generic.GetType() == typeof(AmazonBedrockRuntimeException) || generic.GetType() == typeof(AmazonServiceException))
+                     && IsTransport(inner, ct) => true,
             AmazonServiceException => false,
             // The SDK's client-side wrapper for a failure before any response (connection reset, DNS, timeout).
-            AmazonClientException { InnerException: HttpRequestException or IOException or TimeoutException } client
-                when client.GetType() == typeof(AmazonClientException) => true,
-            HttpRequestException or IOException or TimeoutException => true,
-            OperationCanceledException => !ct.IsCancellationRequested,
-            _ => false,
+            AmazonClientException { InnerException: { } inner } client
+                when client.GetType() == typeof(AmazonClientException) && IsTransport(inner, ct) => true,
+            _ => IsTransport(ex, ct),
         };
     }
+
+    // An HttpClient timeout surfaces as a TaskCanceledException the caller didn't ask for.
+    private static bool IsTransport(Exception ex, CancellationToken ct) => ex switch
+    {
+        HttpRequestException or IOException or TimeoutException => true,
+        OperationCanceledException => !ct.IsCancellationRequested,
+        _ => false,
+    };
 
     private static SystemContentBlock CachePoint() => new() { CachePoint = new CachePointBlock { Type = CachePointType.Default } };
 
@@ -275,7 +303,8 @@ public sealed class BedrockModelClient(
                     }
                     else if (delta.ToolUse?.Input is { } input)
                     {
-                        BlockAt(e.ContentBlockIndex).Input?.Append(input);
+                        if (BlockAt(e.ContentBlockIndex).Input is { } open) open.Append(input);
+                        else logger.LogWarning("Bedrock {ModelId} sent tool input for block {Index} without a tool start; dropped", modelId, e.ContentBlockIndex);
                     }
                     break;
                 case ContentBlockStopEvent e when BlockAt(e.ContentBlockIndex) is { Tool: { } tool, Input: { } raw } block:
@@ -312,8 +341,8 @@ public sealed class BedrockModelClient(
             {
                 if (b.Tool is { } tool && b.InputJson is { } input)
                     content.Add(new ContentBlock { ToolUse = new ToolUseBlock { ToolUseId = tool.ToolUseId, Name = tool.Name, Input = ToDocument(tool, input) } });
-                else if (b.Tool is null && !string.IsNullOrWhiteSpace(b.Text.ToString()))
-                    content.Add(new ContentBlock { Text = b.Text.ToString() });
+                else if (b.Tool is null && b.Text.ToString() is var text && !string.IsNullOrWhiteSpace(text))
+                    content.Add(new ContentBlock { Text = text });
             }
             return content.Count == 0 ? null : new Message { Role = ConversationRole.Assistant, Content = content };
         }

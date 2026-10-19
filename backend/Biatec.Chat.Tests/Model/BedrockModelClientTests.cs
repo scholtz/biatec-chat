@@ -523,6 +523,71 @@ public class BedrockModelClientTests
     }
 
     [Fact]
+    public async Task Usage_is_still_read_and_logged_when_it_arrives_after_the_reader_stopped()
+    {
+        var log = new ListLogger();
+        var usageGate = new TaskCompletionSource();
+        var source = new DelayedUsageSource(usageGate.Task);
+        var client = new BedrockModelClient(source, Options.Create(new BedrockOptions()), Options.Create(Opts()), log);
+
+        await foreach (var e in client.StreamAsync(Request()))
+            if (e is ModelMessageStop) break;
+        usageGate.SetResult();
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            lock (log.Lines) if (log.Lines.Any(l => l.StartsWith("Bedrock usage"))) return;
+            await Task.Delay(10);
+        }
+        Assert.Fail("usage was not logged");
+    }
+
+    /// <summary>Streams a full answer, but holds the usage event back until the gate opens.</summary>
+    private sealed class DelayedUsageSource(Task usageGate) : IConverseStreamSource
+    {
+        public async IAsyncEnumerable<IEventStreamEvent> OpenAsync(ConverseStreamRequest request, [EnumeratorCancellation] CancellationToken ct)
+        {
+            yield return Text("Hi");
+            yield return BlockStop();
+            yield return Stop(StopReason.End_turn);
+            await usageGate.WaitAsync(ct);
+            yield return Usage(3, 1);
+        }
+    }
+
+    [Fact]
+    public async Task A_failure_while_closing_the_stream_does_not_fail_a_delivered_answer()
+    {
+        var events = await Collect(Client(new ThrowOnDisposeSource()).StreamAsync(Request()));
+        Assert.Single(events.OfType<ModelMessageStop>());
+    }
+
+    private sealed class ThrowOnDisposeSource : IConverseStreamSource
+    {
+        public IAsyncEnumerable<IEventStreamEvent> OpenAsync(ConverseStreamRequest request, CancellationToken ct) => new Stream();
+
+        private sealed class Stream : IAsyncEnumerable<IEventStreamEvent>, IAsyncEnumerator<IEventStreamEvent>
+        {
+            private int _i = -1;
+            public IEventStreamEvent Current => (IEventStreamEvent)TextAnswer[_i];
+            public IAsyncEnumerator<IEventStreamEvent> GetAsyncEnumerator(CancellationToken ct) => this;
+            public ValueTask<bool> MoveNextAsync() => ValueTask.FromResult(++_i < TextAnswer.Length);
+            public ValueTask DisposeAsync() => throw new IOException("close failed");
+        }
+    }
+
+    [Fact]
+    public void Claude_5_model_ids_fail_validation()
+    {
+        var o = new BedrockOptions { AuthenticatedModelId = "eu.anthropic.claude-sonnet-5-20260101-v1:0" };
+        var results = new List<System.ComponentModel.DataAnnotations.ValidationResult>();
+        Assert.False(System.ComponentModel.DataAnnotations.Validator.TryValidateObject(o, new(o), results, validateAllProperties: true));
+        var defaults = new BedrockOptions();
+        Assert.True(System.ComponentModel.DataAnnotations.Validator.TryValidateObject(defaults, new(defaults), [], validateAllProperties: true));
+    }
+
+    [Fact]
     public async Task A_slow_reader_does_not_keep_the_slot()
     {
         var client = Client(new FakeSource(TextAnswer), Opts(maxConcurrency: 1, queueTimeoutMs: 2000));
@@ -552,6 +617,7 @@ public class BedrockModelClientTests
     {
         Assert.True(BedrockModelClient.IsRetryable(new AmazonBedrockRuntimeException("send failed", new HttpRequestException("reset")), default));
         Assert.True(BedrockModelClient.IsRetryable(new Amazon.Runtime.AmazonClientException("dns", new HttpRequestException("no such host")), default));
+        Assert.True(BedrockModelClient.IsRetryable(new AmazonBedrockRuntimeException("http timeout", new TaskCanceledException()), default));
     }
 
     [Fact]
