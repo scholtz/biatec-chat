@@ -1,4 +1,5 @@
 using Biatec.Chat.Core.Data;
+using Biatec.Chat.Core.Evidence;
 using Microsoft.EntityFrameworkCore;
 
 namespace Biatec.Chat.Core.Previews;
@@ -8,8 +9,11 @@ namespace Biatec.Chat.Core.Previews;
 /// expiry and the 600 second Confirm gate, rebuilds expired previews as new linked previews, and sequences
 /// multi-step actions so a later step is only built after the earlier one has landed.
 /// </summary>
-public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
+public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock, IEvidenceRecorder? recorder = null)
 {
+    private Task RecordAsync(Guid conversationId, string kind, System.Text.Json.Nodes.JsonObject payload, CancellationToken ct) =>
+        recorder is null ? Task.CompletedTask : recorder.RecordAsync(conversationId, kind, payload, ct);
+
     /// <summary>Landed means confirmed on chain; a submitted step's outcome is still unknown.</summary>
     private static bool IsLanded(StepStatus s) => s == StepStatus.Confirmed;
 
@@ -39,6 +43,7 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
         db.ActionPreviews.Add(preview);
         db.ActionSteps.AddRange(steps);
         await db.SaveChangesAsync(ct);
+        await RecordAsync(preview.ConversationId, EvidenceKinds.ActionPreview, PreviewEvidence.Preview(preview, steps), ct);
         return Snapshot(preview, steps, null);
     }
 
@@ -144,6 +149,10 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
             // The (PreviewId, Seq) unique index caught a concurrent AddNextStep.
             throw new PreviewException(PreviewError.InvalidState, "The next step was added concurrently.");
         }
+        await RecordAsync(preview.ConversationId, EvidenceKinds.ActionStepAdded, new System.Text.Json.Nodes.JsonObject
+        {
+            ["previewId"] = preview.Id.ToString(), ["step"] = PreviewEvidence.Step(step),
+        }, ct);
         return Snapshot(preview, steps, null);
     }
 
@@ -207,6 +216,7 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
         }
         await tx.CommitAsync(ct);
         Detach(old, oldSteps); // the bulk updates bypassed the tracker; do not leave stale entities behind
+        await RecordAsync(created.ConversationId, EvidenceKinds.ActionPreview, PreviewEvidence.Preview(created, steps, old.Id), ct);
         return Snapshot(created, steps, null);
 
         async Task ClaimOldAsync()

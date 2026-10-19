@@ -40,7 +40,8 @@ public sealed record Capability(
     ValuationBasis Valuation,
     string Description,
     JsonObject? InputSchema,
-    CapabilityFlag Flag = CapabilityFlag.None)
+    CapabilityFlag Flag = CapabilityFlag.None,
+    JsonObject? OutputSchema = null)
 {
     /// <summary>The tool name sent to the model, or null if the capability has no tool.</summary>
     public string? ToolName => InputSchema is null ? null : Name;
