@@ -1,7 +1,7 @@
 ---
 id: T-017
 title: Tier policy test suite
-status: blocked
+status: backlog
 priority: P1
 epic: "Orchestrator"
 blocked_by: [T-010, T-015]
@@ -55,3 +55,4 @@ dotnet test --filter Policy
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:00 · coordinator · review · added T-010: missing-scope test needs the scope check helper
+- 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-010, T-015

@@ -1,7 +1,7 @@
 ---
 id: T-038
 title: Public anonymous endpoint with continuation tokens
-status: blocked
+status: backlog
 priority: P1
 epic: "Sessions & auth"
 blocked_by: [T-015]
@@ -54,3 +54,4 @@ dotnet test --filter Public
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-015
