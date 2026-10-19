@@ -1,7 +1,7 @@
 ---
 id: T-021
 title: Action preview, group hash and expiry
-status: blocked
+status: backlog
 priority: P0
 epic: "Wallet tools"
 blocked_by: [T-003, T-004, T-005]
@@ -54,3 +54,4 @@ dotnet test --filter Previews
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 18:41 · kanban-board · blocked → backlog · blockers done: T-003, T-004, T-005

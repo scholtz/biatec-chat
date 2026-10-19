@@ -1,7 +1,7 @@
 ---
 id: T-034
 title: Evidence log hash chain and signing keys
-status: blocked
+status: backlog
 priority: P1
 epic: "Evidence"
 blocked_by: [T-003, T-004]
@@ -54,3 +54,4 @@ dotnet test --filter Evidence
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 18:41 · kanban-board · blocked → backlog · blockers done: T-003, T-004

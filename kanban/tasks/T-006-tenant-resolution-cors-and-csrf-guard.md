@@ -1,7 +1,7 @@
 ---
 id: T-006
 title: Tenant resolution, CORS and CSRF guard
-status: blocked
+status: done
 priority: P0
 epic: "Sessions & auth"
 blocked_by: [T-003]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Api/Tenancy/**", "backend/Biatec.Chat.Api/Security/*
 parallel: yes
 conflicts_with: []
 issue: "#7"
-branch: ""
+branch: "task/T-006"
 owner: ""
-taken_by: ""
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#rules"
 created: 2026-10-19
 updated: 2026-10-19
@@ -54,3 +54,4 @@ dotnet test --filter Tenancy
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 18:34 · user · blocked → done · PR #69 merged into main @ b86405f (synced by kanban-board)
