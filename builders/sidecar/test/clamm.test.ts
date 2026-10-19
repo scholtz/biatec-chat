@@ -6,7 +6,7 @@ import { loadConfig } from "../src/config.js";
 import type { ClammContext } from "../src/clamm/context.js";
 import { algosdk } from "../src/clamm/lib.js";
 import { address, asParams, uint64 } from "../src/clamm/params.js";
-import { formatScaled, registeredPool, registeredPools, selectPools } from "../src/clamm/pools.js";
+import { formatScaled, registeredPool, registeredPools, selectPoolById, selectPools } from "../src/clamm/pools.js";
 import { swapOnPool } from "../src/clamm/builders.js";
 
 /** The pool provider's pool list as recorded from testnet (all ALGO/USDC and Vote/ALGO pools, class 0). */
@@ -78,6 +78,15 @@ describe("pools", () => {
     expect(anon.excluded.every((x) => x.verificationClass === 2 && x.reason === "verification_class")).toBe(true);
     expect(selectPools(gated, 0n, USDC, 2).excluded).toHaveLength(0);
     expect(selectPools(gated, 0n, USDC).excluded).toHaveLength(0);
+  });
+
+  it("finds one pool by app id, honouring the account's class", () => {
+    const gated = fixture.map((p) => (p.appId === 768784928n ? { ...p, verificationClass: 2 } : p));
+    expect(selectPoolById(gated, 768787834n, 0).eligible.map((p) => p.appId)).toEqual([768787834n]);
+    const refused = selectPoolById(gated, 768784928n, 0);
+    expect(refused.eligible).toHaveLength(0);
+    expect(refused.excluded).toEqual([{ appId: "768784928", verificationClass: 2, reason: "verification_class" }]);
+    expect(selectPoolById(gated, 123n).eligible).toHaveLength(0);
   });
 
   it("only builds against registered pools", async () => {

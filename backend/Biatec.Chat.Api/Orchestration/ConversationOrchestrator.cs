@@ -27,7 +27,9 @@ public sealed record ChatTurn(
     IReadOnlyCollection<string> Scopes,
     string Message,
     HostContext? Context,
-    bool SignInAvailable);
+    bool SignInAvailable,
+    AgentMode Mode = AgentMode.Prepare,
+    bool Paused = false);
 
 /// <summary>
 /// The tool loop: model, then gate, then executor, then the result (wrapped as untrusted data) back to the model,
@@ -59,7 +61,7 @@ public sealed class ConversationOrchestrator(
     public async IAsyncEnumerable<ChatEvent> RunAsync(ChatTurn turn, [EnumeratorCancellation] CancellationToken ct = default)
     {
         var gateCtx = new GateContext(turn.Tier, turn.Scopes, turn.Tenant.X402Enabled, turn.Tenant.LimitsUpdateEnabled,
-            turn.SessionId, turn.Tenant.Id);
+            turn.SessionId, turn.Tenant.Id, turn.Tier == DataTier.Anonymous ? AgentMode.Analyze : turn.Mode, turn.Paused);
         var visible = gate.ToolsFor(gateCtx);
         // All tool-bearing capabilities map back, so a call to a hidden tool is reported as such (tier or scope) by the gate.
         var wireToCapability = gate.Registry.All.Where(c => c.ToolName is not null).ToDictionary(c => PromptBuilder.WireName(c.Name), c => c.Name, StringComparer.Ordinal);

@@ -45,6 +45,12 @@ public sealed record Capability(
 {
     /// <summary>The tool name sent to the model, or null if the capability has no tool.</summary>
     public string? ToolName => InputSchema is null ? null : Name;
+
+    /// <summary>
+    /// True when the capability moves funds or builds a signable group or a limits raise (safe.create, safe.propose,
+    /// limits.update included). These are withheld while the session is in analyze mode or paused.
+    /// </summary>
+    public bool IsFundMoving => MovesFunds || SignScope is not null || Valuation == ValuationBasis.LimitsChange;
 }
 
 /// <summary>Context of one gate decision: who is calling and what the deployment enables.</summary>
@@ -54,4 +60,6 @@ public sealed record GateContext(
     bool X402Enabled = false,
     bool LimitsUpdateEnabled = false,
     string? SessionId = null,
-    string? TenantId = null);
+    string? TenantId = null,
+    AgentMode Mode = AgentMode.Prepare,
+    bool Paused = false);

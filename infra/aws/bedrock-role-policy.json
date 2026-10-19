@@ -4,7 +4,10 @@
     {
       "Sid": "InvokeClaude45EuProfilesOnly",
       "Effect": "Allow",
-      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+      ],
       "Resource": [
         "arn:aws:bedrock:eu-central-1:${ACCOUNT_ID}:inference-profile/eu.anthropic.claude-opus-4-5-20251101-v1:0",
         "arn:aws:bedrock:eu-central-1:${ACCOUNT_ID}:inference-profile/eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -15,12 +18,25 @@
       ]
     },
     {
+      "Sid": "ApplyBiatecGuardrail",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:ApplyGuardrail"
+      ],
+      "Resource": "arn:aws:bedrock:eu-central-1:${ACCOUNT_ID}:guardrail/*"
+    },
+    {
       "Sid": "TokenVaultKmsKeyOnly",
       "Effect": "Allow",
-      "Action": ["kms:GenerateDataKey", "kms:Decrypt"],
+      "Action": [
+        "kms:GenerateDataKey",
+        "kms:Decrypt"
+      ],
       "Resource": "${KMS_KEY_ARN}",
       "Condition": {
-        "StringEquals": { "kms:EncryptionContext:purpose": "biatec-chat-token-vault" }
+        "StringEquals": {
+          "kms:EncryptionContext:purpose": "biatec-chat-token-vault"
+        }
       }
     }
   ]

@@ -1,3 +1,4 @@
+using Biatec.Chat.Api.Agent;
 using Biatec.Chat.Api.Auth;
 using Biatec.Chat.Api.Auth.Elevation;
 using Biatec.Chat.Api.Auth.Logout;
@@ -34,6 +35,8 @@ Biatec.Chat.Api.Budget.BudgetRegistration.AddBedrockBudget(builder.Services);
 builder.Services.AddChat();
 Biatec.Chat.Api.Chat.SignIn.AnonymousTierRegistration.AddAnonymousTier(builder.Services, builder.Configuration);
 builder.Services.AddOnboarding(builder.Configuration);
+Biatec.Chat.Api.Public.PublicChatEndpoints.AddPublicChat(builder.Services, builder.Configuration);
+Biatec.Chat.Api.Public.ClientAddress.AddClientAddress(builder.Services, builder.Configuration);
 
 builder.Services.AddScopeElevation();
 builder.Services.AddConfirm();
@@ -44,6 +47,9 @@ builder.Services.AddEvidenceRecording();
 builder.Services.AddSingleton<Biatec.Chat.Tools.Mcp.IMcpBearerSource, Biatec.Chat.Api.Mcp.VaultMcpBearerSource>();
 Biatec.Chat.Tools.Mcp.McpRegistration.AddBiatecMcp(builder.Services, builder.Configuration);
 Biatec.Chat.Api.Wallet.Read.WalletReadRegistration.AddWalletReadTools(builder.Services);
+Biatec.Chat.Api.Limits.LimitsRegistration.AddLimitsTools(builder.Services);
+Biatec.Chat.Api.X402.X402Registration.AddX402Pay(builder.Services, builder.Configuration);
+Biatec.Chat.Api.Dex.Liquidity.DexLiquidityRegistration.AddDexLiquidityTools(builder.Services, builder.Configuration);
 // Last: it decorates services registered above.
 Biatec.Chat.Api.Telemetry.TelemetryRegistration.AddBiatecTelemetry(builder.Services, builder.Configuration);
 
@@ -51,6 +57,7 @@ var app = builder.Build();
 await app.MigrateDevelopmentDatabaseAsync();
 await app.SeedTenantsAsync();
 
+Biatec.Chat.Api.Public.ClientAddress.UseClientAddress(app);
 app.UseTenancy();
 app.UseOnboardingBodyLimit();
 app.UseRateLimiter();
@@ -62,7 +69,9 @@ app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthC
 
 app.MapContractCatalog();
 app.MapSessions();
+app.MapAgentMode();
 app.MapChat();
+Biatec.Chat.Api.Public.PublicChatEndpoints.MapPublic(app);
 app.MapAuth();
 app.MapOnboarding();
 

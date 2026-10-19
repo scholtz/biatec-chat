@@ -126,6 +126,8 @@ public sealed class SessionService(ChatDbContext db, TimeProvider clock, IEviden
             Tier = old.Tier,
             TenantId = old.TenantId,
             OidcSub = old.OidcSub,
+            AgentMode = old.AgentMode,
+            Paused = old.Paused,
             CreatedAt = old.CreatedAt,
             LastActivityAt = now,
             AbsoluteExpiresAt = old.AbsoluteExpiresAt,

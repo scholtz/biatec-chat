@@ -1,7 +1,7 @@
 ---
 id: T-058
 title: x402.pay capability behind feature flag
-status: in-progress
+status: done
 priority: P3
 epic: "Wallet tools"
 blocked_by: [T-022, T-031]
@@ -14,7 +14,7 @@ owner: "session-20261019-agent"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#x402-and-the-agent-to-agent-economy"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-058 · x402.pay capability behind feature flag
@@ -51,9 +51,12 @@ dotnet test --filter X402
 
 ## Review
 
+- 2026-10-20 00:53 · approve · PR #118 merged into main @ 0c5558c (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-022, T-031
 - 2026-10-19 22:32 · scholtz · taken · status stays backlog
 - 2026-10-19 22:32 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 00:53 · user · in-progress → done · PR #118 merged into main @ 0c5558c (synced by kanban-sync)

@@ -201,7 +201,8 @@ public static class AuthEndpoints
                 await vault.DeleteAsync(session.Id.ToString("N"), ctx.RequestAborted);
 
                 await db.ChatSessions.Where(s => s.Id == rotated.Session.Id)
-                    .ExecuteUpdateAsync(u => u.SetProperty(s => s.Tier, Core.Data.SessionTier.Authenticated).SetProperty(s => s.OidcSub, identity.Subject), ctx.RequestAborted);
+                    .ExecuteUpdateAsync(u => u.SetProperty(s => s.Tier, Core.Data.SessionTier.Authenticated).SetProperty(s => s.OidcSub, identity.Subject)
+                        .SetProperty(s => s.AgentMode, AgentMode.Prepare).SetProperty(s => s.Paused, false), ctx.RequestAborted);
                 await db.Conversations.Where(c => c.Id == rotated.Session.ConversationId)
                     .ExecuteUpdateAsync(u => u.SetProperty(c => c.OidcSub, identity.Subject), ctx.RequestAborted);
                 if (ctx.RequestServices.GetService<Biatec.Chat.Core.Evidence.IEvidenceRecorder>() is { } recorder)

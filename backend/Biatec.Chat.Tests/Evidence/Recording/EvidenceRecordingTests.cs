@@ -259,7 +259,7 @@ public sealed class EvidenceRecordingTests : IAsyncLifetime
             Scopes = ["openid", "sign"], AbsoluteExpiresAt = session.AbsoluteExpiresAt,
         };
         var confirm = new ConfirmService(db, previews, new ScopeGuard(_vault, _clock), _vault, new FakeOidc(_user), new FakeMcp(), new FakeConfirmer(),
-            evidenceLog, _clock, NullLogger<ConfirmService>.Instance, recorder);
+            evidenceLog, _clock, NullLogger<ConfirmService>.Instance, recorder: recorder);
         var result = await confirm.ConfirmAsync(_tenant, session, snap.Preview.Id, group.GroupHash, CancellationToken.None);
         Assert.Equal(ConfirmOutcome.Landed, result.Outcome);
 
@@ -398,7 +398,7 @@ public sealed class EvidenceRecordingTests : IAsyncLifetime
             _ => new WalletSignOutcome.Unavailable("oidc_down"),
         };
         var confirm = new ConfirmService(db, previews, new ScopeGuard(_vault, _clock), _vault, new ScriptedOidc(outcome), new FakeMcp(), new FakeConfirmer(),
-            log, _clock, NullLogger<ConfirmService>.Instance, recorder);
+            log, _clock, NullLogger<ConfirmService>.Instance, recorder: recorder);
         await confirm.ConfirmAsync(_tenant, session, snap.Preview.Id, group.GroupHash, CancellationToken.None);
 
         var o = await EntryAsync(log, conversationId, EvidenceKinds.SigningOutcome);

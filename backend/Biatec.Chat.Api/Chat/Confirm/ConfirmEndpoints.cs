@@ -28,6 +28,8 @@ public sealed record ConfirmResponse
     public Contracts.ConsentStatus? Consent { get; init; }
     /// <summary>Set when Status is scope_required: the scope to pass to the elevation popup.</summary>
     public string? ReauthorizeScope { get; init; }
+    /// <summary>Set after a settled x402 payment: the paid resource's content. Untrusted seller data, shown as data only.</summary>
+    public string? ResourceContent { get; init; }
 }
 
 public static class ConfirmRegistration
@@ -105,6 +107,7 @@ public static class ConfirmEndpoints
     {
             var (code, label) = r.Outcome switch
             {
+                ConfirmOutcome.AgentRestricted => (StatusCodes.Status403Forbidden, r.ErrorCode ?? "agent_analyze_only"),
                 ConfirmOutcome.Landed => (StatusCodes.Status200OK, "landed"),
                 ConfirmOutcome.Submitted => (StatusCodes.Status202Accepted, "submitted"),
                 ConfirmOutcome.ConsentPending => (StatusCodes.Status202Accepted, "consent_pending"),
@@ -115,7 +118,7 @@ public static class ConfirmEndpoints
             };
             return Results.Json(new ConfirmResponse
             {
-                Status = label, Message = r.Message, TxIds = r.TxIds, Consent = r.Consent, ReauthorizeScope = r.ReauthorizeScope,
+                Status = label, Message = r.Message, TxIds = r.TxIds, Consent = r.Consent, ReauthorizeScope = r.ReauthorizeScope, ResourceContent = r.ResourceContent,
             }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)
             {
                 Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase) },
