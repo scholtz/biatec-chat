@@ -1,7 +1,7 @@
 ---
 id: T-047
 title: Mock Biatec OIDC consent server
-status: blocked
+status: backlog
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-046]
@@ -55,3 +55,4 @@ pnpm --filter mock-oidc test
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:00 · coordinator · review · P2 → P1: on the critical path of the P1 demo test (T-059)
+- 2026-10-19 19:30 · kanban-board · blocked → backlog · blockers done: T-046

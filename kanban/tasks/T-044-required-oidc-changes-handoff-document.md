@@ -1,7 +1,7 @@
 ---
 id: T-044
 title: Required OIDC changes handoff document
-status: in-progress
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: []
@@ -51,8 +51,11 @@ Review the document
 
 ## Review
 
+- 2026-10-19 19:14 · approve · PR #74 merged into main @ 31c876f (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → backlog · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 19:05 · scholtz · taken · status stays backlog
 - 2026-10-19 19:05 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-19 19:14 · user · in-progress → done · PR #74 merged into main @ 31c876f (synced by kanban-sync)
