@@ -5,6 +5,9 @@ resources:
   - namespace.yaml
   - ../base
   - ingress.yaml
+patches:
+  - path: backend-config.patch.yaml
+  - path: builders-env.patch.yaml
 images:
   - name: ghcr.io/scholtz/biatec-chat-backend
     newTag: REPLACE-WITH-RELEASE-SHA

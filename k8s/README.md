@@ -6,6 +6,19 @@ Not applied by this repository.
 Validate offline: `kubectl kustomize k8s/stage` and `kubectl kustomize k8s/main` must render. `kubectl apply --dry-run=client`
 still needs a reachable API server for discovery (even with `--validate=false`), so run it against a kind cluster.
 
+## Environment-specific endpoints
+
+`base/` holds no environment endpoints. Each overlay sets them in `backend-config.patch.yaml` (ConfigMap:
+`Oidc__Issuer`, `Oidc__McpResource`, `Mcp__Endpoint`, `Algod__Networks__*`) and `builders-env.patch.yaml` (`ALGOD_URL_*`).
+`main` uses `oidc.biatec.io` and `mcp.biatec.io/tools`; `stage` uses `stage.oidc.biatec.io` and `stage.mcp.biatec.io/tools`
+(per `docs/AWS-AGENTCORE-GUIDE.md`). Both use the public Nodely mainnet/testnet algod; change per overlay if stage needs other nodes.
+
+## Dry-run status
+
+`kubectl kustomize` renders both overlays offline (the substitute used when no cluster is reachable). The literal
+`kubectl apply --dry-run=client` step needs an API server (for example a kind cluster) and was not run here; the cluster
+owner should run `kubectl kustomize k8s/stage | kubectl apply --dry-run=client -f -`.
+
 ## Secrets (never in git)
 
 Create `biatec-chat-secrets` in each namespace out of band (sealed-secrets, external-secrets or `kubectl create secret`) with keys:
