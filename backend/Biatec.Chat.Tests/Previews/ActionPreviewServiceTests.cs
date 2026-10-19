@@ -324,4 +324,36 @@ public sealed class ActionPreviewServiceTests : IAsyncLifetime
         Assert.Equal(ActionPreviewStatus.Completed, done.Preview.Status);
         Assert.Equal("not-awaiting-confirmation", done.Countdown.DisabledReason);
     }
+
+    [Fact]
+    public async Task ConfirmedPreview_IsNotRebuilt_UntilItIsMarkedExpired()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var p = await svc.CreateAsync(Spec(Step("h1", 2000)));
+        await svc.ConfirmAsync(_conversation, p.Preview.Id, "h1");
+
+        var ex = await Assert.ThrowsAsync<PreviewException>(() => svc.RebuildAsync(_conversation, p.Preview.Id, "{}", [Step("h2", 2000)]));
+        Assert.Equal(PreviewError.InvalidState, ex.Error);
+        Assert.False(await svc.ExpireIfLapsedAsync(_conversation, p.Preview.Id)); // window still open
+
+        _clock.Now = _clock.Now.AddSeconds(2001);
+        Assert.True(await svc.ExpireIfLapsedAsync(_conversation, p.Preview.Id));
+        var rebuilt = await svc.RebuildAsync(_conversation, p.Preview.Id, "{}", [Step("h2", 2000)]);
+        Assert.Equal("h2", Assert.Single(rebuilt.Steps).SubjectHash);
+    }
+
+    [Fact]
+    public async Task MarkStepLanded_RequiresEarlierStepsAndTxIds()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var p = await svc.CreateAsync(Spec(Step("a", 2000), Step("b", 2000)));
+        await svc.ConfirmAsync(_conversation, p.Preview.Id, "a");
+
+        var skip = await Assert.ThrowsAsync<PreviewException>(() => svc.MarkStepLandedAsync(_conversation, p.Preview.Id, 1, ["T"]));
+        Assert.Equal(PreviewError.InvalidState, skip.Error);
+        var empty = await Assert.ThrowsAsync<PreviewException>(() => svc.MarkStepLandedAsync(_conversation, p.Preview.Id, 0, []));
+        Assert.Equal(PreviewError.InvalidSpec, empty.Error);
+    }
 }

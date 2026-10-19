@@ -97,6 +97,9 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
     /// </summary>
     public async Task MarkStepLandedAsync(Guid conversationId, Guid previewId, int seq, IEnumerable<string> txIds, bool isFinalStep = false, CancellationToken ct = default)
     {
+        var ids = txIds.ToArray();
+        if (ids.Length == 0 || ids.Any(string.IsNullOrWhiteSpace))
+            throw new PreviewException(PreviewError.InvalidSpec, "A landed step needs its transaction IDs.");
         var (preview, steps) = await LoadAsync(conversationId, previewId, ct);
         if (preview.Status is not (ActionPreviewStatus.Confirmed or ActionPreviewStatus.InProgress))
             throw new PreviewException(PreviewError.InvalidState, $"A {preview.Status} preview has no step in flight.");
@@ -104,10 +107,12 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
             ?? throw new PreviewException(PreviewError.NotFound, $"Step {seq} not found.");
         if (step.Status is StepStatus.Confirmed or StepStatus.Expired or StepStatus.Cancelled or StepStatus.Failed)
             throw new PreviewException(PreviewError.InvalidState, $"Step {seq} is {step.Status}.");
+        if (steps.Any(x => x.Seq < seq && !IsLanded(x.Status)))
+            throw new PreviewException(PreviewError.InvalidState, "An earlier step has not landed.");
         if (isFinalStep && steps.Any(x => x.Seq != seq && !IsLanded(x.Status)))
             throw new PreviewException(PreviewError.InvalidState, "Other steps have not landed, so this is not the final step.");
         step.Status = StepStatus.Confirmed;
-        step.TxIds = txIds.ToArray();
+        step.TxIds = ids;
         // Between steps the preview stays InProgress; the last step completes it.
         preview.Status = isFinalStep ? ActionPreviewStatus.Completed : ActionPreviewStatus.InProgress;
         await db.SaveChangesAsync(ct);
@@ -132,9 +137,10 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
         preview.ExpiresAt = step.ExpiresAt;
         preview.Status = ActionPreviewStatus.Proposed;
         try { await db.SaveChangesAsync(ct); }
-        catch (DbUpdateException)
+        catch (DbUpdateException e) when (IsUniqueViolation(e))
         {
             db.Entry(step).State = EntityState.Detached;
+            await db.Entry(preview).ReloadAsync(ct);
             // The (PreviewId, Seq) unique index caught a concurrent AddNextStep.
             throw new PreviewException(PreviewError.InvalidState, "The next step was added concurrently.");
         }
@@ -155,8 +161,8 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
         var (old, oldSteps) = await LoadAsync(conversationId, previewId, ct);
         if (old.RebuiltAsPreviewId is not null)
             throw new PreviewException(PreviewError.AlreadyRebuilt, "The preview was already rebuilt.");
-        if (old.Status is not (ActionPreviewStatus.Proposed or ActionPreviewStatus.Confirmed or ActionPreviewStatus.Expired))
-            throw new PreviewException(PreviewError.InvalidState, $"A {old.Status} preview cannot be rebuilt.");
+        if (old.Status is not (ActionPreviewStatus.Proposed or ActionPreviewStatus.Expired))
+            throw new PreviewException(PreviewError.InvalidState, $"A {old.Status} preview cannot be rebuilt; a confirmed one may already be signing.");
 
         if (oldSteps.Any(x => x.Status is StepStatus.Submitted or StepStatus.Signed or StepStatus.AwaitingConsent))
             throw new PreviewException(PreviewError.InvalidState, "A step is in flight; its outcome must be known before rebuilding.");
@@ -207,7 +213,8 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
         {
         // Claim the old preview atomically so two concurrent rebuilds cannot both succeed.
         var claimed = await db.ActionPreviews
-            .Where(p => p.Id == old.Id && p.RebuiltAsPreviewId == null)
+            .Where(p => p.Id == old.Id && p.RebuiltAsPreviewId == null
+                        && (p.Status == ActionPreviewStatus.Proposed || p.Status == ActionPreviewStatus.Expired))
             .ExecuteUpdateAsync(u => u.SetProperty(p => p.RebuiltAsPreviewId, created.Id)
                                       .SetProperty(p => p.Status, ActionPreviewStatus.Expired), ct);
         if (claimed == 0) throw new PreviewException(PreviewError.AlreadyRebuilt, "The preview was already rebuilt.");
@@ -215,6 +222,29 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
             .Where(s => s.PreviewId == old.Id && s.Status == StepStatus.Pending)
             .ExecuteUpdateAsync(u => u.SetProperty(s => s.Status, StepStatus.Expired), ct);
         }
+    }
+
+    private static bool IsUniqueViolation(DbUpdateException e) =>
+        e.InnerException?.GetType().GetProperty("SqlState")?.GetValue(e.InnerException) as string == "23505";
+
+    /// <summary>
+    /// Marks a preview whose group window has passed as Expired (atomic; only Proposed or Confirmed previews).
+    /// The signing step calls this when it finds a confirmed group past its expiry, so the preview is rebuilt.
+    /// </summary>
+    public async Task<bool> ExpireIfLapsedAsync(Guid conversationId, Guid previewId, CancellationToken ct = default)
+    {
+        var now = clock.GetUtcNow();
+        var n = await db.ActionPreviews
+            .Where(p => p.Id == previewId && p.ConversationId == conversationId && p.ExpiresAt <= now
+                        && (p.Status == ActionPreviewStatus.Proposed || p.Status == ActionPreviewStatus.Confirmed))
+            .ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, ActionPreviewStatus.Expired), ct);
+        if (n == 0) return false;
+        await db.ActionSteps.Where(x => x.PreviewId == previewId && x.Status == StepStatus.Pending)
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.Status, StepStatus.Expired), ct);
+        // The bulk updates bypassed the tracker; drop this preview's stale tracked copies.
+        foreach (var e in db.ChangeTracker.Entries<ActionPreview>().Where(e => e.Entity.Id == previewId).ToList()) e.State = EntityState.Detached;
+        foreach (var e in db.ChangeTracker.Entries<ActionStep>().Where(e => e.Entity.PreviewId == previewId).ToList()) e.State = EntityState.Detached;
+        return true;
     }
 
     private void Detach(ActionPreview p, IEnumerable<ActionStep> steps)

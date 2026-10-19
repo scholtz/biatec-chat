@@ -58,9 +58,9 @@ public sealed class SimulateAndPolicyTests
         Assert.Contains("overspend", outcome.Summary);
     }
 
-    private sealed class ThrowingTransport : IAlgodTransport
+    private sealed class ThrowingTransport(int status = 400) : IAlgodTransport
     {
-        public Task<SimulateResponse> SimulateAsync(SimulateRequest request, CancellationToken ct) => throw new ApiException("bad", 400, "resp", new Dictionary<string, IEnumerable<string>>(), null);
+        public Task<SimulateResponse> SimulateAsync(SimulateRequest request, CancellationToken ct) => throw new ApiException("bad", status, "resp", new Dictionary<string, IEnumerable<string>>(), null);
         public Task<ulong> GetLastRoundAsync(CancellationToken ct) => Task.FromResult(1UL);
     }
 
@@ -71,6 +71,14 @@ public sealed class SimulateAndPolicyTests
         Assert.False(outcome.Success);
         Assert.Contains("400", outcome.FailureMessage);
     }
+
+    [Theory]
+    [InlineData(401)]
+    [InlineData(429)]
+    [InlineData(500)]
+    [InlineData(503)]
+    public async Task Simulate_AuthThrottleAndServerErrors_Propagate(int status) =>
+        await Assert.ThrowsAsync<ApiException>(() => new AlgodSimulateClient(new ThrowingTransport(status)).SimulateAsync([Pay()]));
 
     private sealed class OutageTransport : IAlgodTransport
     {

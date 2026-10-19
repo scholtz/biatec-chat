@@ -64,10 +64,10 @@ public sealed class AlgodSimulateClient(IAlgodTransport transport) : IAlgodSimul
         };
         SimulateResponse response;
         try { response = await transport.SimulateAsync(request, ct); }
-        catch (ApiException e)
+        catch (ApiException e) when (e.StatusCode is >= 400 and < 500 and not (401 or 403 or 404 or 408 or 429))
         {
-            // algod rejects a malformed group with an HTTP 4xx; that is a failed simulation. Outages (timeouts,
-            // DNS, 5xx-as-HttpRequestException) propagate so the caller can retry; no raw message is surfaced.
+            // algod rejects a malformed group with an HTTP 4xx; that is a failed simulation. Auth errors, 404,
+            // throttling, 5xx and outages (timeouts, DNS) propagate so the caller can retry; no raw message is surfaced.
             return new SimulationOutcome(false, $"algod rejected the group (HTTP {e.StatusCode})", [], 0, null, unsignedGroup.Count);
         }
         var group = response.TxnGroups?.FirstOrDefault();
