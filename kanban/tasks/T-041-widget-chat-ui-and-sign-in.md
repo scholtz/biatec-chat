@@ -1,7 +1,7 @@
 ---
 id: T-041
 title: Widget chat UI and sign-in popup
-status: blocked
+status: backlog
 priority: P0
 epic: "Widget"
 blocked_by: [T-040]
@@ -54,3 +54,4 @@ pnpm --filter chat-widget test; manual playground run against local backend
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 21:19 · kanban-board · blocked → backlog · blockers done: T-040
