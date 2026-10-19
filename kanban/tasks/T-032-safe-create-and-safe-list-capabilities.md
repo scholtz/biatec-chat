@@ -1,7 +1,7 @@
 ---
 id: T-032
 title: safe.create and safe.list capabilities
-status: backlog
+status: in-progress
 priority: P1
 epic: "Safe"
 blocked_by: [T-022, T-031]
@@ -9,8 +9,8 @@ area: ["backend/Biatec.Chat.Tools/Safe/Create/**"]
 parallel: no
 conflicts_with: [T-036, T-060]
 issue: "#33"
-branch: ""
-owner: ""
+branch: "task/T-032"
+owner: "worker-T-032"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#safe-capabilities"
 created: 2026-10-19
@@ -57,3 +57,4 @@ dotnet test --filter SafeCreate
 - 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-022, T-031
 - 2026-10-20 01:09 · LukassSoukup · backlog · parallel analysis: dropped T-038 (done)
 - 2026-10-20 01:12 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 01:13 · coordinator · backlog → in-progress · dispatched to worker
