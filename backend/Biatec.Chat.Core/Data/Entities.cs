@@ -4,6 +4,8 @@ namespace Biatec.Chat.Core.Data;
 // Hashes and signatures are stored as text (hex or base64url as the producer defines); JSON columns are jsonb.
 
 public enum SessionTier { Anonymous, Authenticated, Elevated }
+/// <summary>What the assistant may do for the user: analyze (read only) or prepare (build previews the user confirms).</summary>
+public enum AgentMode { Analyze, Prepare }
 public enum MessageRole { User, Assistant, Tool, System }
 public enum ActionPreviewStatus { Proposed, Confirmed, InProgress, Completed, Failed, Cancelled, Expired }
 public enum ActionStepKind { Sign, Limits }
@@ -34,6 +36,9 @@ public class ChatSession
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset LastActivityAt { get; set; }
     public DateTimeOffset AbsoluteExpiresAt { get; set; }
+    /// <summary>Set only by the user through PUT /session/agent. Per session: a new sign-in resets it to Prepare.</summary>
+    public AgentMode AgentMode { get; set; } = AgentMode.Prepare;
+    public bool Paused { get; set; }
 }
 
 public class Message

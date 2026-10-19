@@ -64,7 +64,7 @@ describe("plugin", () => {
   it("mounts a separate host in body and reads nothing from the page", () => {
     document.title = "secret title";
     createApp({ render: () => null }).use(BiatecChat, { backendUrl: "https://x", clientKey: "k" });
-    const host = document.querySelector("[data-biatec-chat-host]");
+    const host = document.querySelector("[data-biatec-chat-host]")?.shadowRoot;
     expect(host?.querySelector(".biatec-chat")).toBeTruthy();
     expect(host?.textContent).not.toContain("secret title");
   });

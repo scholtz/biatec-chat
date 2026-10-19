@@ -1,0 +1,181 @@
+/* Styles of the shared primitives in src/ui. Tokens only: no hex colour, and no px value a token carries. */
+.biatec-chat .bc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--size-control-md);
+  padding: 0 var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease);
+}
+.biatec-chat .bc-btn[data-size="sm"] { min-height: var(--size-control-sm); padding: 0 var(--space-3); }
+.biatec-chat .bc-btn[data-size="lg"] { min-height: var(--size-control-lg); padding: 0 var(--space-6); }
+.biatec-chat .bc-btn[data-variant="primary"] { background: var(--color-brand-primary); color: var(--color-brand-on); }
+.biatec-chat .bc-btn[data-variant="primary"]:hover:not(:disabled) { background: var(--color-brand-hover); }
+.biatec-chat .bc-btn[data-variant="primary"]:active:not(:disabled) { background: var(--color-brand-pressed); }
+.biatec-chat .bc-btn[data-variant="secondary"] {
+  background: var(--color-bg-interactive);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+}
+.biatec-chat .bc-btn[data-variant="ghost"] { background: transparent; color: var(--color-text-primary); }
+.biatec-chat .bc-btn[data-variant="ghost"]:hover:not(:disabled),
+.biatec-chat .bc-btn[data-variant="secondary"]:hover:not(:disabled) { background: var(--color-bg-elevated); }
+.biatec-chat .bc-btn[data-variant="danger"] {
+  background: var(--color-status-danger-subtle);
+  color: var(--color-status-danger);
+  border-color: transparent;
+}
+.biatec-chat .bc-btn[data-variant="danger"]:hover:not(:disabled) { border-color: var(--color-status-danger); }
+.biatec-chat .bc-btn[data-variant="soft"] { background: var(--color-brand-subtle); color: var(--color-brand-text); }
+.biatec-chat .bc-btn:disabled,
+.biatec-chat .bc-btn[aria-busy="true"] { opacity: 0.55; cursor: not-allowed; }
+.biatec-chat .bc-btn:focus-visible,
+.biatec-chat .bc-iconbtn:focus-visible,
+.biatec-chat .bc-ui-chip[data-interactive="true"]:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+.biatec-chat .bc-iconbtn-wrap { position: relative; display: inline-flex; }
+.biatec-chat .bc-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-icon-hit);
+  height: var(--size-icon-hit);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.biatec-chat .bc-iconbtn:hover:not(:disabled) { background: var(--color-bg-interactive); color: var(--color-text-primary); }
+.biatec-chat .bc-iconbtn:disabled { opacity: 0.55; cursor: not-allowed; }
+@media (pointer: coarse) {
+  .biatec-chat .bc-iconbtn { width: var(--size-icon-hit-touch); height: var(--size-icon-hit-touch); }
+}
+.biatec-chat .bc-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-strong);
+  box-shadow: var(--shadow-md);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.biatec-chat .bc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid transparent;
+}
+.biatec-chat .bc-badge[data-tone="warning"] { color: var(--color-status-warning); background: var(--color-status-warning-subtle); }
+.biatec-chat .bc-badge[data-tone="brand"] { color: var(--color-brand-text); background: var(--color-brand-subtle); }
+.biatec-chat .bc-badge[data-tone="info"] { color: var(--color-status-info); background: var(--color-status-info-subtle); }
+.biatec-chat .bc-badge[data-tone="success"] { color: var(--color-status-success); background: var(--color-status-success-subtle); }
+.biatec-chat .bc-badge[data-tone="danger"] { color: var(--color-status-danger); background: var(--color-status-danger-subtle); }
+.biatec-chat .bc-badge[data-tone="neutral"] { color: var(--color-status-neutral); background: var(--color-bg-interactive); }
+.biatec-chat .bc-badge[data-tone="brand"] { border-color: var(--color-brand-primary); }
+.biatec-chat .bc-badge[data-tone="info"] { border-color: var(--color-status-info); }
+.biatec-chat .bc-badge[data-tone="success"] { border-color: var(--color-status-success); }
+.biatec-chat .bc-badge[data-tone="danger"] { border-color: var(--color-status-danger); }
+.biatec-chat .bc-badge[data-tone="warning"] { border-color: var(--color-status-warning); }
+.biatec-chat .bc-badge[data-tone="neutral"] { border-color: var(--color-border-strong); }
+.biatec-chat .bc-badge[data-dashed="true"] { border-style: dashed; border-color: currentcolor; }
+
+.biatec-chat .bc-ui-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+.biatec-chat .bc-ui-chip[data-interactive="true"] { cursor: pointer; }
+.biatec-chat .bc-ui-chip[data-interactive="true"]:hover:not(:disabled) { background: var(--color-bg-interactive); }
+.biatec-chat .bc-ui-chip[aria-pressed="true"] { background: var(--color-brand-subtle); border-color: var(--color-brand-primary); }
+.biatec-chat .bc-ui-chip:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.biatec-chat .bc-scrim {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--color-scrim);
+}
+.biatec-chat .bc-dialog {
+  width: min(480px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  padding: var(--space-6);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-lg);
+}
+.biatec-chat .bc-dialog-title { margin: 0 0 var(--space-3); font-size: 16px; font-weight: 600; }
+
+.biatec-chat .bc-toasts {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.biatec-chat .bc-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-md);
+}
+.biatec-chat .bc-toast[data-tone="danger"] { border-color: var(--color-status-danger); }
+
+.biatec-chat .bc-spinner {
+  display: inline-block;
+  width: var(--space-4);
+  height: var(--space-4);
+  border: 2px solid var(--color-border-strong);
+  border-top-color: currentcolor;
+  border-radius: var(--radius-full);
+  animation: bc-spin var(--motion-slow) linear infinite;
+}
+@keyframes bc-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .biatec-chat .bc-spinner { animation-duration: 1.5s; }
+  .biatec-chat * { transition-duration: 0.01ms !important; }
+}
