@@ -1,7 +1,7 @@
 ---
 id: T-040
 title: Widget transport: cookie probe, public fallback, SSE
-status: blocked
+status: backlog
 priority: P0
 epic: "Widget"
 blocked_by: [T-005, T-039]
@@ -54,3 +54,4 @@ pnpm --filter chat-widget test
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 20:06 · kanban-board · blocked → backlog · blockers done: T-005, T-039
