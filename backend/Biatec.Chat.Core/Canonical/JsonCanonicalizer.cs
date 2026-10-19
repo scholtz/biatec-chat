@@ -88,7 +88,10 @@ public static class JsonCanonicalizer
             case JsonValueKind.False: sb.Append("false"); return;
             case JsonValueKind.Null: sb.Append("null"); return;
             case JsonValueKind.String:
-                WriteString(sb, val.GetValue<string>());
+                // Non-string CLR values that serialize as strings (DateTime, Guid) go through the serializer.
+                WriteString(sb, val.TryGetValue<string>(out var str)
+                    ? str
+                    : JsonSerializer.Deserialize<string>(val.ToJsonString())!);
                 return;
         }
 

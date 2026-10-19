@@ -97,6 +97,14 @@ public class CanonicalTests
     }
 
     [Fact]
+    public void ClrStringLikeValues_Work()
+    {
+        var g = Guid.Parse("11111111-2222-3333-4444-555555555555");
+        Assert.Equal("{\"g\":\"11111111-2222-3333-4444-555555555555\"}",
+            JsonCanonicalizer.Canonicalize(new JsonObject { ["g"] = JsonValue.Create(g) }));
+    }
+
+    [Fact]
     public void Sha256Hex_KnownVectors()
     {
         Assert.Equal("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", Hashing.Sha256Hex(""));
