@@ -3,6 +3,7 @@
 @import "./styles/tokens.css";
 @import "./styles/ui.css";
 @import "./styles/cards.css";
+@import "./components/shell/shell.css";
 
 :host {
   all: initial;
@@ -11,10 +12,6 @@
   color-scheme: dark;
 }
 .biatec-chat {
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  z-index: var(--bc-z);
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.4;
@@ -25,90 +22,9 @@
 .biatec-chat *::after {
   box-sizing: border-box;
 }
-.biatec-chat .bc-launcher {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 56px;
-  height: 56px;
-  margin-left: auto;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: var(--color-brand-primary);
-  color: var(--color-brand-on);
-  font-size: 14px;
-  box-shadow: var(--shadow-lg);
-  cursor: pointer;
-}
-.biatec-chat .bc-launcher:focus-visible,
-.biatec-chat .bc-close:focus-visible {
-  outline: 2px solid var(--color-brand-primary);
-  outline-offset: 2px;
-}
-.biatec-chat .bc-panel {
-  position: absolute;
-  right: 0;
-  bottom: 68px;
-  display: flex;
-  flex-direction: column;
-  width: var(--bc-panel-width);
-  height: min(640px, calc(100vh - 110px));
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-}
-.biatec-chat .bc-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--color-border-default);
-}
-.biatec-chat .bc-title {
-  font-weight: 600;
-  flex: 1;
-}
-.biatec-chat .bc-tier {
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-.biatec-chat .bc-close {
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-  border-radius: 6px;
-}
-.biatec-chat .bc-body {
-  flex: 1;
-  overflow: auto;
-  padding: 14px;
-}
 .biatec-chat .bc-placeholder {
   margin: 0;
   color: var(--color-text-secondary);
-}
-@media (max-width: 640px) {
-  .biatec-chat .bc-panel {
-    position: fixed;
-    inset: 0;
-    width: 100vw;
-    height: 100dvh;
-    border-radius: 0;
-    border: 0;
-  }
-}
-.biatec-chat .bc-body {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  padding: 0;
-  overflow: hidden;
 }
 .biatec-chat .bc-chat {
   display: flex;
