@@ -29,6 +29,7 @@ builder.Services.AddTokenVault(builder.Configuration);
 builder.Services.AddTenancy();
 builder.Services.AddSessions();
 builder.Services.AddBedrockModel();
+Biatec.Chat.Api.Budget.BudgetRegistration.AddBedrockBudget(builder.Services);
 builder.Services.AddChat();
 Biatec.Chat.Api.Chat.SignIn.AnonymousTierRegistration.AddAnonymousTier(builder.Services, builder.Configuration);
 builder.Services.AddOnboarding(builder.Configuration);
@@ -41,6 +42,8 @@ builder.Services.AddEvidenceAnchoring(builder.Configuration);
 builder.Services.AddSingleton<Biatec.Chat.Tools.Mcp.IMcpBearerSource, Biatec.Chat.Api.Mcp.VaultMcpBearerSource>();
 Biatec.Chat.Tools.Mcp.McpRegistration.AddBiatecMcp(builder.Services, builder.Configuration);
 Biatec.Chat.Api.Wallet.Read.WalletReadRegistration.AddWalletReadTools(builder.Services);
+// Last: it decorates services registered above.
+Biatec.Chat.Api.Telemetry.TelemetryRegistration.AddBiatecTelemetry(builder.Services, builder.Configuration);
 
 var app = builder.Build();
 await app.MigrateDevelopmentDatabaseAsync();
