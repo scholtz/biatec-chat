@@ -33,12 +33,6 @@ const List<AppRoute> appRoutes = [
     icon: Icons.pending_actions,
   ),
   AppRoute(
-    path: '/approval',
-    title: 'Approval card',
-    description: 'Approval details appear here. Not implemented yet.',
-    icon: Icons.fact_check,
-  ),
-  AppRoute(
     path: '/history',
     title: 'Approval history',
     description: 'No approvals yet.',

@@ -1,7 +1,7 @@
 ---
 id: T-053
 title: Authenticator push notifications
-status: blocked
+status: backlog
 priority: P3
 epic: "Consent & authenticator"
 blocked_by: [T-052]
@@ -54,3 +54,4 @@ manual emulator test
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 21:37 · kanban-board · blocked → backlog · blockers done: T-052
