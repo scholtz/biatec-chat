@@ -8,7 +8,7 @@ blocked_by: [T-020, T-064]
 area: ["packages/chat-widget/src/components/data/**", "backend/Biatec.Chat.Api/Chat/DataCards/**"]
 parallel: no
 conflicts_with: [T-065]
-issue: ""
+issue: "#108"
 branch: ""
 owner: ""
 taken_by: ""

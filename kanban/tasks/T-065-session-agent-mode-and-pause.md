@@ -8,7 +8,7 @@ blocked_by: [T-022]
 area: ["backend/Biatec.Chat.Api/Agent/**", "backend/Biatec.Chat.Tests/Agent/**"]
 parallel: no
 conflicts_with: [T-067, T-069]
-issue: ""
+issue: "#106"
 branch: ""
 owner: ""
 taken_by: ""

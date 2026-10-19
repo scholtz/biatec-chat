@@ -8,7 +8,7 @@ blocked_by: [T-063, T-065]
 area: ["packages/chat-widget/src/components/agent/**", "packages/chat-widget/src/components/activity/**"]
 parallel: no
 conflicts_with: [T-036]
-issue: ""
+issue: "#107"
 branch: ""
 owner: ""
 taken_by: ""

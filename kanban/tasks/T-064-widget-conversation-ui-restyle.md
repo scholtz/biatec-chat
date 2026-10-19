@@ -8,7 +8,7 @@ blocked_by: [T-041, T-062]
 area: ["packages/chat-widget/src/components/chat/**"]
 parallel: no
 conflicts_with: [T-063]
-issue: ""
+issue: "#105"
 branch: ""
 owner: ""
 taken_by: ""

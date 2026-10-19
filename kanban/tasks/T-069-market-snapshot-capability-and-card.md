@@ -8,7 +8,7 @@ blocked_by: [T-067]
 area: ["backend/Biatec.Chat.Tools/Market/**", "backend/Biatec.Chat.Tests/Market/**", "packages/chat-widget/src/components/data/MarketCard.vue"]
 parallel: no
 conflicts_with: [T-065]
-issue: ""
+issue: "#110"
 branch: ""
 owner: ""
 taken_by: ""

@@ -8,7 +8,7 @@ blocked_by: [T-063]
 area: ["packages/chat-widget/playground/**", "docs/integration-biatec-dex.md"]
 parallel: yes
 conflicts_with: []
-issue: ""
+issue: "#109"
 branch: ""
 owner: ""
 taken_by: ""

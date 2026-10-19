@@ -8,7 +8,7 @@ blocked_by: [T-062]
 area: ["packages/chat-widget/src/components/ChatLauncher.vue", "packages/chat-widget/src/components/ChatPanel.vue", "packages/chat-widget/src/components/BiatecChatRoot.vue", "packages/chat-widget/src/components/shell/**", "packages/chat-widget/src/api/**"]
 parallel: no
 conflicts_with: [T-064]
-issue: ""
+issue: "#104"
 branch: ""
 owner: ""
 taken_by: ""

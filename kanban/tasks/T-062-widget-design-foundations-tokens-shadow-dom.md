@@ -8,7 +8,7 @@ blocked_by: [T-041]
 area: ["packages/chat-widget/src/styles/**", "packages/chat-widget/src/styles.css", "packages/chat-widget/src/index.ts", "packages/chat-widget/src/options.ts", "packages/chat-widget/src/theme/**", "packages/chat-widget/src/ui/**", "packages/chat-widget/src/i18n/**", "packages/chat-widget/src/assets/**"]
 parallel: yes
 conflicts_with: []
-issue: ""
+issue: "#103"
 branch: ""
 owner: ""
 taken_by: ""
