@@ -11,7 +11,7 @@ conflicts_with: []
 issue: "#29"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#tool-executors"
 created: 2026-10-19
 updated: 2026-10-19
@@ -55,3 +55,4 @@ pnpm --filter builders test; testnet simulate script
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 20:10 · kanban-board · blocked → backlog · blockers done: T-027
+- 2026-10-19 20:30 · LukassSoukup · taken · status stays backlog
