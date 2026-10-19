@@ -113,7 +113,7 @@ public sealed class OrchestrationTests : IAsyncLifetime
             });
         });
 
-    private static async Task<HttpResponseMessage> PostChatAsync(WebApplicationFactory<Program> f, object body, string? cookie = null, bool csrf = true)
+    private static async Task<HttpResponseMessage> PostChatAsync(WebApplicationFactory<Program> f, object body, string? cookie = null, bool csrf = true, bool headersOnly = false)
     {
         using var client = f.CreateClient();
         var r = new HttpRequestMessage(HttpMethod.Post, "http://chat.biatec.io/chat/messages") { Content = JsonContent.Create(body) };
@@ -124,7 +124,7 @@ public sealed class OrchestrationTests : IAsyncLifetime
             r.Headers.TryAddWithoutValidation("X-Biatec-Client-Key", "biatec-web");
         }
         if (cookie is not null) r.Headers.TryAddWithoutValidation("Cookie", $"{SessionPolicy.CookieName}={cookie}");
-        return await client.SendAsync(r);
+        return await client.SendAsync(r, headersOnly ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead);
     }
 
     private static List<(string Type, JsonElement Data)> Parse(string sse) =>
@@ -341,6 +341,95 @@ public sealed class OrchestrationTests : IAsyncLifetime
         var events = Parse(await (await PostChatAsync(f, new { message = "loop" })).Content.ReadAsStringAsync());
         Assert.Equal("tool_loop_limit", events[^1].Data.GetProperty("code").GetString());
         Assert.Equal(ConversationOrchestrator.MaxToolRounds, exec.Calls);
+    }
+
+    private static void AssertAlternating(ModelRequest r)
+    {
+        Assert.Equal("user", r.Messages[0].Role.Value);
+        for (var i = 1; i < r.Messages.Count; i++) Assert.NotEqual(r.Messages[i - 1].Role.Value, r.Messages[i].Role.Value);
+    }
+
+    [Fact]
+    public async Task Orchestration_TurnAfterModelFailure_KeepsRolesAlternating()
+    {
+        var model = new ScriptedModel(_ => throw new AmazonBedrockRuntimeException("boom"), _ => Text("fine"));
+        using var f = Factory(model);
+
+        var first = await PostChatAsync(f, new { message = "one" });
+        var cookie = CookieOf(first);
+        await first.Content.ReadAsStringAsync();
+        await (await PostChatAsync(f, new { message = "two" }, cookie)).Content.ReadAsStringAsync();
+
+        var second = model.Requests[1];
+        AssertAlternating(second);
+        Assert.Equal(["one", "two"], second.Messages.Single().Content.Select(c => c.Text));
+    }
+
+    [Fact]
+    public async Task Orchestration_TurnAfterToolLoopLimit_KeepsRolesAlternating()
+    {
+        var exec = new FakeExecutor("kb.search", _ => new ToolExecutionResult("again"));
+        var calls = 0;
+        var model = new ScriptedModel(_ => ++calls <= ConversationOrchestrator.MaxToolRounds
+            ? ToolCall("tu-" + calls, "kb_search", """{"query":"x"}""") : Text("ok"));
+        using var f = Factory(model, exec);
+
+        var first = await PostChatAsync(f, new { message = "loop" });
+        var cookie = CookieOf(first);
+        await first.Content.ReadAsStringAsync();
+        await (await PostChatAsync(f, new { message = "again" }, cookie)).Content.ReadAsStringAsync();
+
+        var last = model.Requests[^1];
+        AssertAlternating(last);
+        Assert.Equal("again", last.Messages[^1].Content.Last().Text);
+    }
+
+    [Fact]
+    public async Task Orchestration_ConcurrentTurnOnSameConversation_IsRefusedWith409()
+    {
+        var release = new ManualResetEventSlim();
+        var model = new ScriptedModel(_ => Slow(release), _ => Text("done"));
+        using var f = Factory(model);
+
+        var first = await PostChatAsync(f, new { message = "one" }, headersOnly: true);
+        var cookie = CookieOf(first);
+        // The first response is open (headers sent) while its model call is parked.
+        var second = await PostChatAsync(f, new { message = "two" }, cookie);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        release.Set();
+        await first.Content.ReadAsStringAsync();
+
+        // After the first turn finishes the conversation accepts a new one.
+        Assert.Equal(HttpStatusCode.OK, (await PostChatAsync(f, new { message = "three" }, cookie)).StatusCode);
+
+        static IEnumerable<ModelStreamEvent> Slow(ManualResetEventSlim gate)
+        {
+            gate.Wait(TimeSpan.FromSeconds(30));
+            return Text("done");
+        }
+    }
+
+    private sealed class ThrowingRedactor : IMessageRedactor
+    {
+        public string Redact(MessageRole role, string? toolName, string content) => throw new InvalidOperationException("db password hunter2");
+    }
+
+    [Fact]
+    public async Task Orchestration_UnexpectedFailureAfterHeaders_EmitsInternalErrorEvent()
+    {
+        var model = new ScriptedModel(_ => Text("ok"));
+        using var f = Factory(model).WithWebHostBuilder(b => b.ConfigureServices(s =>
+        {
+            s.RemoveAll<IMessageRedactor>();
+            s.AddSingleton<IMessageRedactor>(new ThrowingRedactor());
+        }));
+
+        var body = await (await PostChatAsync(f, new { message = "hi" })).Content.ReadAsStringAsync();
+        var ev = Assert.Single(Parse(body));
+        Assert.Equal("error", ev.Type);
+        Assert.Equal("internal", ev.Data.GetProperty("code").GetString());
+        Assert.True(ev.Data.GetProperty("retryable").GetBoolean());
+        Assert.DoesNotContain("hunter2", body);
     }
 
     [Fact]

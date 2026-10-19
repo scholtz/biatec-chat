@@ -65,7 +65,7 @@ public sealed class ConversationOrchestrator(
         var nextSeq = await NextSeqAsync(turn.ConversationId, ct);
 
         await StoreAsync(turn.ConversationId, nextSeq++, MessageRole.User, redactor.Redact(MessageRole.User, null, turn.Message), null, null, null, null, ct);
-        messages.Add(UserMessage(turn.Message, turn.Context));
+        AddMerged(messages, UserMessage(turn.Message, turn.Context));
 
         for (var round = 0; round < MaxToolRounds; round++)
         {
@@ -180,7 +180,7 @@ public sealed class ConversationOrchestrator(
             }
 
             await StoreAsync(turn.ConversationId, nextSeq++, MessageRole.Tool, "", null, JsonSerializer.Serialize(results, Json), null, null, ct);
-            messages.Add(new ModelMessage { Role = ConversationRole.User, Content = blocks });
+            AddMerged(messages, new ModelMessage { Role = ConversationRole.User, Content = blocks });
         }
 
         yield return new ErrorEvent("tool_loop_limit", "The assistant took too many steps. Please rephrase and try again.", false);
@@ -264,13 +264,13 @@ public sealed class ConversationOrchestrator(
             switch (r.Role)
             {
                 case MessageRole.User when r.Content.Length > 0:
-                    result.Add(new ModelMessage { Role = ConversationRole.User, Content = [new ContentBlock { Text = r.Content }] });
+                    AddMerged(result, new ModelMessage { Role = ConversationRole.User, Content = [new ContentBlock { Text = r.Content }] });
                     break;
                 case MessageRole.Assistant:
                 {
                     var calls = ParseCalls(r.ToolCalls);
                     if (r.Content.Length == 0 && calls.Count == 0) break;
-                    result.Add(AssistantMessage(r.Content, calls));
+                    AddMerged(result, AssistantMessage(r.Content, calls));
                     if (calls.Count == 0) break;
                     var stored = i + 1 < rows.Count && rows[i + 1].Role == MessageRole.Tool ? ParseResults(rows[i + 1].ToolResults) : [];
                     var blocks = calls.Select(c =>
@@ -287,12 +287,27 @@ public sealed class ConversationOrchestrator(
                             },
                         };
                     }).ToList();
-                    result.Add(new ModelMessage { Role = ConversationRole.User, Content = blocks });
+                    AddMerged(result, new ModelMessage { Role = ConversationRole.User, Content = blocks });
                     break;
                 }
             }
         }
         return result;
+    }
+
+    /// <summary>
+    /// Bedrock Converse needs strictly alternating roles. A turn that ended without a reply (model failure, loop limit,
+    /// cancellation) leaves adjacent same-role messages; those become one message with several content blocks.
+    /// </summary>
+    internal static void AddMerged(List<ModelMessage> list, ModelMessage next)
+    {
+        if (list.Count > 0 && list[^1].Role == next.Role)
+        {
+            var merged = new List<ContentBlock>(list[^1].Content);
+            merged.AddRange(next.Content);
+            list[^1] = new ModelMessage { Role = next.Role, Content = merged };
+        }
+        else list.Add(next);
     }
 
     private static List<StoredToolCall> ParseCalls(string? json) =>

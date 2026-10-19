@@ -15,6 +15,9 @@ public static class ChatEndpoints
     public const int MaxMessageLength = 4000;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    // One turn at a time per conversation (per process): concurrent turns would race on Seq and interleave history.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> TurnsInFlight = new();
+
     /// <summary>
     /// POST /chat/messages streams the reply as server-sent events: one <c>data:</c> line per <see cref="ChatEvent"/>,
     /// with the event name equal to its <c>type</c>. The CSRF guard (custom header, registered Origin, client key) is
@@ -48,20 +51,35 @@ public static class ChatEndpoints
 
             var turn = new ChatTurn(session.ConversationId, session.Id.ToString("N"), tenant, session.Tier, scopes, body.Message, body.Context);
 
-            ctx.Response.StatusCode = StatusCodes.Status200OK;
-            ctx.Response.ContentType = "text/event-stream";
-            ctx.Response.Headers.CacheControl = "no-store";
-            ctx.Response.Headers["X-Accel-Buffering"] = "no";
-            ctx.Response.Headers["X-Biatec-Conversation"] = session.ConversationId.ToString();
-            await ctx.Response.Body.FlushAsync(ctx.RequestAborted);
+            if (!TurnsInFlight.TryAdd(session.ConversationId, 0))
+                return Results.Problem("A previous message in this conversation is still being answered.", statusCode: StatusCodes.Status409Conflict);
 
             try
             {
-                await foreach (var ev in orchestrator.RunAsync(turn, ctx.RequestAborted))
-                    await WriteEventAsync(ctx.Response, ev, ctx.RequestAborted);
+                ctx.Response.StatusCode = StatusCodes.Status200OK;
+                ctx.Response.ContentType = "text/event-stream";
+                ctx.Response.Headers.CacheControl = "no-store";
+                ctx.Response.Headers["X-Accel-Buffering"] = "no";
+                ctx.Response.Headers["X-Biatec-Conversation"] = session.ConversationId.ToString();
+                await ctx.Response.Body.FlushAsync(ctx.RequestAborted);
+
+                try
+                {
+                    await foreach (var ev in orchestrator.RunAsync(turn, ctx.RequestAborted))
+                        await WriteEventAsync(ctx.Response, ev, ctx.RequestAborted);
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception ex)
+                {
+                    // Headers are already sent, so tell the widget in-band. Log the type only: the text may hold user data.
+                    ctx.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Biatec.Chat.Api.Chat.ChatEndpoints")
+                        .LogError("Chat turn failed for conversation {Conversation}: {ErrorType}", session.ConversationId, ex.GetType().Name);
+                    try { await WriteEventAsync(ctx.Response, new ErrorEvent("internal", "Something went wrong. Please try again.", true), CancellationToken.None); }
+                    catch { /* the client is gone */ }
+                }
+                return Results.Empty;
             }
-            catch (OperationCanceledException) { }
-            return Results.Empty;
+            finally { TurnsInFlight.TryRemove(session.ConversationId, out _); }
         }).WithName("PostChatMessage").Produces(StatusCodes.Status200OK, contentType: "text/event-stream");
 
         return app;
