@@ -1,7 +1,7 @@
 ---
 id: T-034
 title: Evidence log hash chain and signing keys
-status: in-progress
+status: done
 priority: P1
 epic: "Evidence"
 blocked_by: [T-003, T-004]
@@ -51,9 +51,12 @@ dotnet test --filter Evidence
 
 ## Review
 
+- 2026-10-19 19:18 · approve · PR #76 merged into main @ dabdbf9 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:41 · kanban-board · blocked → backlog · blockers done: T-003, T-004
 - 2026-10-19 19:05 · scholtz · taken · status stays backlog
 - 2026-10-19 19:05 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-19 19:18 · user · in-progress → done · PR #76 merged into main @ dabdbf9 (synced by kanban-sync)
