@@ -1,8 +1,10 @@
 using System.Diagnostics;
+using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Amazon.BedrockRuntime;
 using Amazon.BedrockRuntime.Model;
+using Amazon.Runtime;
 using Amazon.Runtime.EventStreams;
 using Biatec.Chat.Api.Config;
 using Microsoft.Extensions.Options;
@@ -94,7 +96,7 @@ public sealed class BedrockModelClient(
             var tailStarted = false;
             try
             {
-                var assembler = new StreamAssembler(converse.ModelId);
+                var assembler = new StreamAssembler(converse.ModelId, logger);
                 var yielded = false;
                 var sw = Stopwatch.StartNew();
                 await using var events = source.OpenAsync(converse, ct).GetAsyncEnumerator(ct);
@@ -105,12 +107,26 @@ public sealed class BedrockModelClient(
                     {
                         more = await events.MoveNextAsync();
                     }
+                    catch (Exception ex) when (tailStarted && !ct.IsCancellationRequested)
+                    {
+                        // The answer is complete; only the usage event can be missing. Neither retry nor fail.
+                        logger.LogWarning(ex, "Bedrock {ModelId} stream failed after the message stop; usage may be missing", converse.ModelId);
+                        break;
+                    }
                     catch (Exception ex) when (!yielded && attempt < _c.MaxRetries && IsRetryable(ex, ct))
                     {
                         lastError = ex;
                         break;
                     }
-                    if (!more) break;
+                    if (!more)
+                    {
+                        if (tailStarted) break;
+                        // A stream that ends without a message stop is a truncated answer, never a success.
+                        var truncated = new ModelStreamIncompleteException(converse.ModelId);
+                        if (yielded || attempt >= _c.MaxRetries) throw truncated;
+                        lastError = truncated;
+                        break;
+                    }
 
                     tailStarted |= events.Current is MessageStopEvent;
                     foreach (var output in assembler.Accept(events.Current, sw))
@@ -149,17 +165,21 @@ public sealed class BedrockModelClient(
         }
     }
 
-    /// <summary>Full jitter: a uniform delay between zero and the capped exponential bound.</summary>
+    /// <summary>
+    /// Equal jitter: half the capped exponential bound plus a uniform share of the other half, so a retry into the
+    /// team's shared, exhausted rate window never fires immediately.
+    /// </summary>
     public TimeSpan BackoffDelay(int attempt)
     {
         var bound = Math.Min(_c.RetryMaxDelayMs, _c.RetryBaseDelayMs * Math.Pow(2, attempt));
-        return TimeSpan.FromMilliseconds(Random.Shared.NextDouble() * bound);
+        return TimeSpan.FromMilliseconds(bound / 2 + Random.Shared.NextDouble() * bound / 2);
     }
 
     /// <summary>
     /// Transient errors: Bedrock's throttling and availability errors (also when they arrive inside the event
     /// stream, where the SDK may wrap them in a <see cref="BedrockRuntimeEventStreamException"/>), transport
-    /// failures, and SDK timeouts. The SDK's own retries are off, so this is the only retry layer.
+    /// failures, SDK timeouts, a truncated stream, and any other 429 or 5xx service response. The SDK's own retries
+    /// are off, so this is the only retry layer.
     /// </summary>
     public static bool IsRetryable(Exception ex, CancellationToken ct)
     {
@@ -167,7 +187,9 @@ public sealed class BedrockModelClient(
         {
             switch (e)
             {
-                case ThrottlingException or ServiceUnavailableException or ModelNotReadyException or InternalServerException or ModelStreamErrorException:
+                case ThrottlingException or ServiceUnavailableException or ModelNotReadyException or InternalServerException
+                    or ModelStreamErrorException or ModelTimeoutException:
+                case AmazonServiceException { StatusCode: HttpStatusCode.TooManyRequests or >= HttpStatusCode.InternalServerError }:
                 case HttpRequestException or IOException or TimeoutException:
                 case OperationCanceledException when !ct.IsCancellationRequested:
                     return true;
@@ -182,25 +204,26 @@ public sealed class BedrockModelClient(
     /// Turns ConverseStream events into text deltas, complete tool calls, the final message and usage. Blocks are
     /// tracked by their content-block index, so the reconstructed message keeps the model's block order.
     /// </summary>
-    private sealed class StreamAssembler(string modelId)
+    private sealed class StreamAssembler(string modelId, ILogger logger)
     {
         private sealed class Block
         {
             public readonly StringBuilder Text = new();
             public ToolUseBlockStart? Tool;
-            public string? ToolInput;
+            public StringBuilder? Input; // set while a tool block is open
+            public string? InputJson;    // set once the tool block stopped
         }
 
         private readonly SortedDictionary<int, Block> _blocks = [];
-        private readonly Dictionary<int, StringBuilder> _toolInput = [];
 
         public IEnumerable<ModelStreamEvent> Accept(IEventStreamEvent ev, Stopwatch sw)
         {
             switch (ev)
             {
                 case ContentBlockStartEvent { Start.ToolUse: { } start } e:
-                    BlockAt(e.ContentBlockIndex).Tool = start;
-                    _toolInput[e.ContentBlockIndex ?? 0] = new StringBuilder();
+                    var opened = BlockAt(e.ContentBlockIndex);
+                    opened.Tool = start;
+                    opened.Input = new StringBuilder();
                     break;
                 case ContentBlockDeltaEvent { Delta: { } delta } e:
                     if (delta.Text is { Length: > 0 } text)
@@ -208,16 +231,15 @@ public sealed class BedrockModelClient(
                         BlockAt(e.ContentBlockIndex).Text.Append(text);
                         yield return new ModelTextDelta(text);
                     }
-                    else if (delta.ToolUse?.Input is { } input && _toolInput.TryGetValue(e.ContentBlockIndex ?? 0, out var sb))
+                    else if (delta.ToolUse?.Input is { } input)
                     {
-                        sb.Append(input);
+                        BlockAt(e.ContentBlockIndex).Input?.Append(input);
                     }
                     break;
-                case ContentBlockStopEvent e when _blocks.TryGetValue(e.ContentBlockIndex ?? 0, out var block)
-                                                  && block.Tool is { } tool && block.ToolInput is null:
-                    var json = _toolInput.Remove(e.ContentBlockIndex ?? 0, out var raw) && raw.Length > 0 ? raw.ToString() : "{}";
-                    block.ToolInput = json;
-                    yield return new ModelToolUse(tool.ToolUseId, tool.Name, json);
+                case ContentBlockStopEvent e when BlockAt(e.ContentBlockIndex) is { Tool: { } tool, Input: { } raw } block:
+                    block.InputJson = raw.Length > 0 ? raw.ToString() : "{}";
+                    block.Input = null;
+                    yield return new ModelToolUse(tool.ToolUseId, tool.Name, block.InputJson);
                     break;
                 case MessageStopEvent stop:
                     yield return new ModelMessageStop(stop.StopReason?.Value ?? "", BuildMessage());
@@ -245,8 +267,8 @@ public sealed class BedrockModelClient(
             var content = new List<ContentBlock>();
             foreach (var b in _blocks.Values)
             {
-                if (b.Tool is { } tool && b.ToolInput is { } input)
-                    content.Add(new ContentBlock { ToolUse = new ToolUseBlock { ToolUseId = tool.ToolUseId, Name = tool.Name, Input = ToDocument(input) } });
+                if (b.Tool is { } tool && b.InputJson is { } input)
+                    content.Add(new ContentBlock { ToolUse = new ToolUseBlock { ToolUseId = tool.ToolUseId, Name = tool.Name, Input = ToDocument(tool, input) } });
                 else if (b.Tool is null && b.Text.Length > 0)
                     content.Add(new ContentBlock { Text = b.Text.ToString() });
             }
@@ -255,10 +277,18 @@ public sealed class BedrockModelClient(
 
         // Tool input is model output: anything that doesn't convert (malformed JSON, duplicate keys, a number out of
         // double range) goes back to the model as an empty object; the orchestrator rejects the call from InputJson.
-        private static Amazon.Runtime.Documents.Document ToDocument(string json)
+        private Amazon.Runtime.Documents.Document ToDocument(ToolUseBlockStart tool, string json)
         {
-            try { return DocumentJson.FromJson(json); }
-            catch (Exception) { return DocumentJson.FromJson("{}"); }
+            try
+            {
+                return DocumentJson.FromJson(json);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning("Tool input of {Tool} ({ToolUseId}) is not convertible ({Error}); the history carries {{}} instead",
+                    tool.Name, tool.ToolUseId, ex.GetType().Name);
+                return DocumentJson.FromJson("{}");
+            }
         }
     }
 }

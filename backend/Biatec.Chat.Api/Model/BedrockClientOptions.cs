@@ -26,3 +26,7 @@ public sealed class BedrockClientOptions
 /// </summary>
 public sealed class ModelBusyException(TimeSpan budget, Exception? retryCause = null)
     : Exception($"No Bedrock slot became free within {budget.TotalSeconds:0.#} s.", retryCause);
+
+/// <summary>The event stream ended before the message stop: the answer is truncated.</summary>
+public sealed class ModelStreamIncompleteException(string modelId)
+    : IOException($"The Bedrock stream for {modelId} ended before the message stop.");

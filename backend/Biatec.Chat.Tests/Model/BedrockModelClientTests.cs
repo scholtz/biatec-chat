@@ -201,15 +201,49 @@ public class BedrockModelClientTests
     }
 
     [Fact]
-    public void Backoff_uses_full_jitter_under_a_capped_exponential_bound()
+    public void Backoff_uses_equal_jitter_under_a_capped_exponential_bound()
     {
         var c = Client(new FakeSource(), new BedrockClientOptions { RetryBaseDelayMs = 100, RetryMaxDelayMs = 1000 });
         for (var i = 0; i < 200; i++)
         {
-            Assert.InRange(c.BackoffDelay(0).TotalMilliseconds, 0, 100);
-            Assert.InRange(c.BackoffDelay(2).TotalMilliseconds, 0, 400);
-            Assert.InRange(c.BackoffDelay(10).TotalMilliseconds, 0, 1000);
+            Assert.InRange(c.BackoffDelay(0).TotalMilliseconds, 50, 100);
+            Assert.InRange(c.BackoffDelay(2).TotalMilliseconds, 200, 400);
+            Assert.InRange(c.BackoffDelay(10).TotalMilliseconds, 500, 1000);
         }
+    }
+
+    [Fact]
+    public async Task A_stream_that_ends_before_the_message_stop_is_truncated_not_done()
+    {
+        var retried = new FakeSource([], TextAnswer);
+        Assert.Single((await Collect(Client(retried).StreamAsync(Request()))).OfType<ModelMessageStop>());
+        Assert.Equal(2, retried.Calls);
+
+        var afterText = new FakeSource([Text("partial")], TextAnswer);
+        await Assert.ThrowsAsync<ModelStreamIncompleteException>(() => Collect(Client(afterText).StreamAsync(Request())));
+        Assert.Equal(1, afterText.Calls);
+    }
+
+    [Fact]
+    public async Task An_error_after_the_message_stop_keeps_the_answer_and_is_not_retried()
+    {
+        var source = new FakeSource([Text("Hi"), BlockStop(), Stop(StopReason.End_turn), new ModelStreamErrorException("late")], TextAnswer);
+
+        var events = await Collect(Client(source).StreamAsync(Request()));
+
+        Assert.Equal(1, source.Calls);
+        Assert.Equal("Hi", Assert.Single(events.OfType<ModelMessageStop>()).Message!.Content[0].Text);
+        Assert.Empty(events.OfType<ModelUsage>());
+    }
+
+    [Fact]
+    public void Model_timeouts_and_5xx_or_429_responses_are_transient()
+    {
+        Assert.True(BedrockModelClient.IsRetryable(new ModelTimeoutException("slow model"), default));
+        Assert.True(BedrockModelClient.IsRetryable(new AmazonBedrockRuntimeException("bad gateway") { StatusCode = System.Net.HttpStatusCode.BadGateway }, default));
+        Assert.True(BedrockModelClient.IsRetryable(new AmazonBedrockRuntimeException("rate") { StatusCode = System.Net.HttpStatusCode.TooManyRequests }, default));
+        Assert.False(BedrockModelClient.IsRetryable(new AmazonBedrockRuntimeException("denied") { StatusCode = System.Net.HttpStatusCode.Forbidden }, default));
+        Assert.False(BedrockModelClient.IsRetryable(new AccessDeniedException("no"), default));
     }
 
     [Fact]
