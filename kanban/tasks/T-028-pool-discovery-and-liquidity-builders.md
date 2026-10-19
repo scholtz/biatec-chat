@@ -1,7 +1,7 @@
 ---
 id: T-028
 title: Pool discovery and liquidity builders
-status: blocked
+status: backlog
 priority: P1
 epic: "DEX"
 blocked_by: [T-027]
@@ -54,3 +54,4 @@ pnpm --filter builders test; testnet simulate script
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 20:10 · kanban-board · blocked → backlog · blockers done: T-027

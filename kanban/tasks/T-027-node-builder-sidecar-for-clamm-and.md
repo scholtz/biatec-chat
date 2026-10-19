@@ -1,7 +1,7 @@
 ---
 id: T-027
 title: Node builder sidecar for CLAMM and algo-safe
-status: in-progress
+status: done
 priority: P0
 epic: "DEX"
 blocked_by: [T-001]
@@ -51,9 +51,12 @@ pnpm --filter builders test; docker compose up builders
 
 ## Review
 
+- 2026-10-19 20:10 · approve · PR #83 merged into main @ afda417 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:21 · kanban-board · blocked → backlog · blockers done: T-001
 - 2026-10-19 19:42 · scholtz · taken · status stays backlog
 - 2026-10-19 19:42 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-19 20:10 · user · in-progress → done · PR #83 merged into main @ afda417 (synced by kanban-sync)
