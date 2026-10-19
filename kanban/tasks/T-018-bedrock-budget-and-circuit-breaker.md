@@ -1,7 +1,7 @@
 ---
 id: T-018
 title: Bedrock budget and circuit breaker
-status: backlog
+status: in-progress
 priority: P2
 epic: "Orchestrator"
 blocked_by: [T-014]
@@ -9,8 +9,8 @@ area: ["backend/Biatec.Chat.Api/Budget/**"]
 parallel: no
 conflicts_with: [T-057]
 issue: "#19"
-branch: ""
-owner: ""
+branch: "task/T-018"
+owner: "session-20261019-2341"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#non-functional-requirements"
 created: 2026-10-19
@@ -58,3 +58,4 @@ dotnet test --filter Budget
 - 2026-10-19 21:21 · kanban-board · blocked → backlog · blockers done: T-014
 - 2026-10-19 23:24 · LukassSoukup · backlog · conflicts_with revised: dropped T-016 (done) and T-035: budget accounting and breaker go in an IModelClient decorator, not the orchestrator
 - 2026-10-19 23:25 · LukassSoukup · taken · status stays backlog
+- 2026-10-19 23:41 · session-20261019-2341 · backlog → in-progress · claimed by /kanban-next
