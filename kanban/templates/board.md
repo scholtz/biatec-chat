@@ -17,15 +17,15 @@ Updated: YYYY-MM-DD HH:MM · Tasks: N total · backlog N · in-progress N · blo
 
 ## Blocked
 
-| ID | Title | Priority | Blocked by (not done yet) |
-|---|---|---|---|
+| ID | Title | Priority | Blocked by (not done yet) | Parallel |
+|---|---|---|---|---|
 
 ## Backlog
 
 Sorted by priority, then ID. The first row is what `/kanban-next` picks.
 
-| ID | Title | Priority | Epic |
-|---|---|---|---|
+| ID | Title | Priority | Epic | Parallel |
+|---|---|---|---|---|
 
 ## Done
 

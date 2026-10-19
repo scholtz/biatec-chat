@@ -6,6 +6,8 @@ priority: P1
 epic: "Sessions & auth"
 blocked_by: [T-009]
 area: ["backend/Biatec.Chat.Api/Auth/Logout/**", "backend/Biatec.Chat.Api/Sweeper/**"]
+parallel: no
+conflicts_with: [T-056]
 issue: "#12"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Sessions end cleanly and nothing outlives them longer than necessary.
 
 - In: Logout endpoint and redirect, background sweeper, PendingRevocation retry worker that is a no-op until a revocation URL is configured, security note in docs.
 - Out: OIDC revocation endpoint implementation (other repo).
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-056: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

@@ -6,6 +6,8 @@ priority: P1
 epic: "Safe"
 blocked_by: [T-027]
 area: ["builders/src/safe/**"]
+parallel: yes
+conflicts_with: []
 issue: "#32"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ All safe building and reading behind the sidecar.
 
 - In: Endpoints: safe/create, safe/list (by member), safe/proposals, proposal/create, proposal/approve, proposal/execute; return unsigned groups and decoded payload previews.
 - Out: Backend capabilities.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

@@ -6,6 +6,8 @@ priority: P1
 epic: "Orchestrator"
 blocked_by: [T-010, T-015]
 area: ["backend/Biatec.Chat.Tests/Policy/**"]
+parallel: yes
+conflicts_with: []
 issue: "#18"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Regression net for the most important security property.
 
 - In: Tests with a fake model forging wallet tool calls in anonymous tier, missing-scope signing, tool names not in registry, injected instructions in tool results.
 - Out: New features.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

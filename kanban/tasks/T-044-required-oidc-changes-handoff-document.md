@@ -6,6 +6,8 @@ priority: P1
 epic: "Consent & authenticator"
 blocked_by: []
 area: ["docs/required-changes-biatec-oidc.md"]
+parallel: yes
+conflicts_with: []
 issue: "#45"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ One precise handoff spec plus the fallback matrix agents implement against.
 
 - In: Document each addition from the table: API shape, error formats (step-up 401 body, CIBA token response with consent_receipt), and which fallback this repo implements now; include the confidential client registration request for the Biatec Chat tenant.
 - Out: Implementing them.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

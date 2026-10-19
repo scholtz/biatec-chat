@@ -6,6 +6,8 @@ priority: P1
 epic: "Evidence"
 blocked_by: [T-035]
 area: ["backend/Biatec.Chat.Api/Evidence/Export/**", "packages/evidence-verifier/**"]
+parallel: no
+conflicts_with: [T-032, T-037, T-038, T-039, T-040, T-041, T-042, T-043]
 issue: "#37"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Demo step 8 and success criterion 6.
 
 - In: Export endpoint for the session's conversation, bundle format, TypeScript verifier package with CLI, widget download link uses the endpoint.
 - Out: Anchor proofs (T-037).
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-032, T-037, T-038, T-039, T-040, T-041, T-042, T-043: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

@@ -24,6 +24,9 @@ Then read the **whole** product description before writing anything.
    - self-contained, so an agent can work it from the task file plus the linked sections;
    - given an `area` (path globs). Keep areas of tasks that can run at the same time disjoint, and give shared files
      (solution file, root `package.json`, `docker-compose.yml`) to one early scaffolding task.
+   - given a `parallel` flag: `yes`, or `no` with `conflicts_with` listing every unfinished task that could run at the
+     same time and changes the same files (overlapping `area`, or files it has to edit outside its area). Fill in
+     the **Parallel work** section to match. Rules: `kanban/README.md`, "Parallel work".
 5. **Dependencies.** Set `blocked_by` only for real ordering needs. The graph must have no cycles and should be wide;
    several tasks must be startable at once.
 6. **Initial status.** Use `backlog` if `blocked_by` is empty, otherwise `blocked`. `owner` and `branch` stay empty.

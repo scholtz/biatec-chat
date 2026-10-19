@@ -6,6 +6,8 @@ priority: P3
 epic: "Sessions & auth"
 blocked_by: [T-006]
 area: ["backend/Biatec.Chat.Api/Onboarding/**"]
+parallel: yes
+conflicts_with: []
 issue: "#46"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Third-party tenants without code changes.
 
 - In: Onboarding endpoints, DNS TXT challenge check, tenant record with clientSecretRef, operator approval fallback, origin proofs.
 - Out: OpenID Federation evaluation.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

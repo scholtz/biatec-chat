@@ -6,6 +6,8 @@ priority: P2
 epic: "Wallet tools"
 blocked_by: [T-022]
 area: ["backend/Biatec.Chat.Tools/Caps/**"]
+parallel: no
+conflicts_with: [T-024, T-035, T-049, T-057]
 issue: "#26"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Damage limiter against a hostile host page.
 
 - In: SoftCapSpend reservations and finalization, release on expiry/cancel/deny/fail/step-up, SafeApprovalCount caps, requireConsent flag on sign requests, pruning.
 - Out: OIDC-side enforcement.
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-024, T-035, T-049, T-057: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

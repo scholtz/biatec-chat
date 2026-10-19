@@ -6,6 +6,8 @@ priority: P0
 epic: "Wallet tools"
 blocked_by: [T-010, T-019, T-021]
 area: ["backend/Biatec.Chat.Tools/Signing/**", "backend/Biatec.Chat.Api/Chat/Confirm/**"]
+parallel: no
+conflicts_with: [T-014, T-038, T-057]
 issue: "#23"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ The confirm path every fund-moving capability shares.
 
 - In: Confirm endpoint (CSRF), scope check, sign call with the exact previewed bytes, handling of 401 insufficient_user_authentication (store ConsentRequest, emit consent status; completion in T-049); Biatec OIDC unreachable yields a clear "sign-in service unavailable" message without changing the tier or vault, recorded as an outage event, submit via MCP submitTransactionToBlockchain or algod, confirmation tracking, txIds on ActionStep, receipt event.
 - Out: Consent completion (T-049).
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-014, T-038, T-057: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

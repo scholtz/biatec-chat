@@ -6,6 +6,8 @@ priority: P2
 epic: "Widget"
 blocked_by: [T-042]
 area: ["packages/chat-widget/src/i18n/**", "packages/chat-widget/src/styles/**"]
+parallel: no
+conflicts_with: [T-036]
 issue: "#44"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Launch-quality widget polish.
 
 - In: Message catalogs, locale option, dark/light tokens, reduced motion, contrast checks, axe test.
 - Out: New features.
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-036: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

@@ -6,6 +6,8 @@ priority: P1
 epic: "Deploy & docs"
 blocked_by: [T-054]
 area: ["infra/aws/**", "docs/deploy-aws.md"]
+parallel: yes
+conflicts_with: []
 issue: "#56"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ A ready plan the user can approve and run for the demo.
 
 - In: Doc comparing options (local backend with SSO profile for demo; EC2 t4g.small with instance role running compose), IAM role policy scoped to the eu. model ids and KMS key, scripts that create but are not executed without user approval, teardown script, tags Project=biatec.
 - Out: Provisioning anything.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

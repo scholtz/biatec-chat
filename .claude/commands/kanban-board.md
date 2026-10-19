@@ -15,6 +15,7 @@ Rebuild the board from the task files. The rules are in `kanban/README.md`.
      "yes" or "no".
    - Blocked: list only the blockers that aren't done yet.
    - Backlog: sort by priority (P0 first), then ID.
+   - Backlog and Blocked: the Parallel column shows `yes`, or `no (T-###, …)` with the `conflicts_with` IDs.
    - Done: the approval date comes from the log.
    - Mermaid graph: one `BLOCKER --> BLOCKED` edge per `blocked_by` entry. Label each node `T-###` and use
      `classDef` colours per status.

@@ -6,6 +6,8 @@ priority: P2
 epic: "Deploy & docs"
 blocked_by: []
 area: ["docs/architecture.md", "docs/threat-model.md", "docs/integration-widget.md", "docs/integration-third-party-consent.md", "docs/hackathon-demo.md"]
+parallel: no
+conflicts_with: [T-011]
 issue: "#57"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Docs a judge or integrator can follow.
 
 - In: Write the five docs from the product description adapted to what this repo implements and its fallbacks.
 - Out: Code.
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-011: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

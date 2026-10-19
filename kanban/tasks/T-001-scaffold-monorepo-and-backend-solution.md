@@ -6,6 +6,8 @@ priority: P0
 epic: "Foundation"
 blocked_by: []
 area: ["backend/*.slnx", "backend/*/*.csproj", "package.json", "pnpm-workspace.yaml", ".gitignore", ".editorconfig", "README.md", "docker-compose.yml"]
+parallel: yes
+conflicts_with: []
 issue: "#2"
 branch: "task/T-001"
 owner: ""
@@ -28,6 +30,10 @@ Empty but building skeleton so later tasks never touch shared root files.
 
 - In: Folders per layout; backend/Biatec.Chat.slnx with 4 net10.0 projects and references (Api->Core,Tools; Tools->Core; Tests->all); pnpm workspace listing packages/*, packages/consent-protocol/*, builders and e2e; root .gitignore/.editorconfig/README; docker-compose.yml with redis:7 and postgres:16 services (named volumes) plus a commented placeholder for the builder sidecar.
 - Out: Any feature code.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

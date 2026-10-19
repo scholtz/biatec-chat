@@ -6,6 +6,8 @@ priority: P0
 epic: "Sessions & auth"
 blocked_by: [T-006]
 area: ["backend/Biatec.Chat.Api/Sessions/**"]
+parallel: yes
+conflicts_with: []
 issue: "#8"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Server-side sessions with the cookie probe the widget needs.
 
 - In: ChatSession creation on first session call, probe endpoint semantics (first sets cookie, second reports cookie seen), keepalive endpoint, idle/absolute expiry checks, session state endpoint (tier, email, primary address, popup request status).
 - Out: Login (T-009), sweeper (T-011).
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

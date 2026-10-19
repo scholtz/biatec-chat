@@ -6,6 +6,8 @@ priority: P0
 epic: "Wallet tools"
 blocked_by: [T-020, T-022]
 area: ["backend/Biatec.Chat.Tools/Wallet/Transfer/**"]
+parallel: yes
+conflicts_with: []
 issue: "#24"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Users can move funds from chat with a preview that matches the chain.
 
 - In: Executor for wallet.transfer (Algorand family), own-address opt-in detection, multi-step sequencing on top of T-021/T-022.
 - Out: Bitcoin (T-024).
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

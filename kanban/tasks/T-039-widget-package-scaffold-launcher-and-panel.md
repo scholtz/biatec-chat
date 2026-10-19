@@ -1,11 +1,13 @@
 ---
 id: T-039
 title: Widget package scaffold, launcher and panel
-status: blocked
+status: backlog
 priority: P0
 epic: "Widget"
 blocked_by: [T-001]
 area: ["packages/chat-widget/**"]
+parallel: no
+conflicts_with: [T-036]
 issue: "#40"
 branch: ""
 owner: ""
@@ -29,6 +31,10 @@ Installable widget shell.
 - In: Vite library build, plugin install API (including the opt-in host page context string; nothing read from the host page by default), launcher, panel with header (tier display placeholder), scoped CSS tokens, playground app (packages/chat-widget/playground).
 - Out: Transport and chat logic (T-040).
 
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-036: they change the same files, and running them together causes merge conflicts or broken behaviour.
+
 ## Acceptance criteria
 
 - [ ] pnpm --filter chat-widget build emits ESM, UMD and style.css
@@ -48,3 +54,4 @@ pnpm --filter chat-widget build; pnpm --filter chat-widget dev
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:00 · coordinator · review · added opt-in page context option from Packaging section
+- 2026-10-19 18:21 · kanban-board · blocked → backlog · blockers done: T-001

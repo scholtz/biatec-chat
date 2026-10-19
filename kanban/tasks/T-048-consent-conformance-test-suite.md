@@ -6,6 +6,8 @@ priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-047]
 area: ["packages/consent-protocol/conformance/**"]
+parallel: yes
+conflicts_with: []
 issue: "#49"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Third parties can self-test integrations.
 
 - In: Runnable suite (vitest) parameterized by base URL, default against the mock, report output.
 - Out: Real OIDC certification.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

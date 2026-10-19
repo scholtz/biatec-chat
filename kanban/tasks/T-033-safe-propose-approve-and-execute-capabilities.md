@@ -6,6 +6,8 @@ priority: P1
 epic: "Safe"
 blocked_by: [T-023, T-030, T-032]
 area: ["backend/Biatec.Chat.Tools/Safe/Proposals/**"]
+parallel: yes
+conflicts_with: []
 issue: "#34"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Demo steps 2 to 7.
 
 - In: Executors, payload preview with version, guided multi-step sequences, execution with step-up handling via T-022.
 - Out: x402.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 
