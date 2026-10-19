@@ -1,7 +1,7 @@
 ---
 id: T-056
 title: Architecture, threat model and demo docs
-status: in-progress
+status: done
 priority: P2
 epic: "Deploy & docs"
 blocked_by: []
@@ -51,8 +51,11 @@ Review docs
 
 ## Review
 
+- 2026-10-19 21:21 · approve · PR #92 merged into main @ eb8901a (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → backlog · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 20:38 · scholtz · taken · status stays backlog
 - 2026-10-19 20:38 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-19 21:21 · user · in-progress → done · PR #92 merged into main @ eb8901a (synced by kanban-sync)

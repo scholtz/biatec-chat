@@ -1,7 +1,7 @@
 ---
 id: T-055
 title: Hackathon AWS hosting plan and scripts
-status: blocked
+status: backlog
 priority: P1
 epic: "Deploy & docs"
 blocked_by: [T-054]
@@ -54,3 +54,4 @@ Review doc; bash -n infra/aws/*.sh
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 21:21 · kanban-board · blocked → backlog · blockers done: T-054

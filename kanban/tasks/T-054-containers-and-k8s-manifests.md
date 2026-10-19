@@ -1,7 +1,7 @@
 ---
 id: T-054
 title: Containers and k8s manifests
-status: in-progress
+status: done
 priority: P2
 epic: "Deploy & docs"
 blocked_by: [T-002, T-027]
@@ -51,9 +51,12 @@ docker build; kubectl apply --dry-run=client -f k8s/stage
 
 ## Review
 
+- 2026-10-19 21:21 · approve · PR #91 merged into main @ baa1cff (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 20:10 · kanban-board · blocked → backlog · blockers done: T-002, T-027
 - 2026-10-19 20:38 · scholtz · taken · status stays backlog
 - 2026-10-19 20:38 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-19 21:21 · user · in-progress → done · PR #91 merged into main @ baa1cff (synced by kanban-sync)
