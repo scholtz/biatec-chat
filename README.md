@@ -23,4 +23,6 @@ dotnet test backend/Biatec.Chat.slnx
 docker compose up -d   # redis:7 and postgres:16
 ```
 
+To run the whole app locally (dependencies, backend, widget playground) use `./scripts/run.sh`; see [runGuide.md](runGuide.md).
+
 Work is tracked on the board in [kanban/](kanban/README.md).
