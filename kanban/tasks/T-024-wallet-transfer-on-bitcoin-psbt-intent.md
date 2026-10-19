@@ -7,7 +7,7 @@ epic: "Wallet tools"
 blocked_by: [T-020, T-022]
 area: ["backend/Biatec.Chat.Tools/Wallet/Bitcoin/**"]
 parallel: no
-conflicts_with: [T-025, T-035, T-049, T-057]
+conflicts_with: [T-025, T-035, T-049]
 issue: "#25"
 branch: ""
 owner: ""
@@ -34,7 +34,7 @@ Transfers between the user's Bitcoin addresses.
 
 ## Parallel work
 
-Parallel work possible: **no**. Don't run it at the same time as T-025, T-035, T-049, T-057: they change the same files, and running them together causes merge conflicts or broken behaviour.
+Parallel work possible: **no**. Don't run it at the same time as T-025, T-035, T-049: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
@@ -56,3 +56,4 @@ dotnet test --filter Bitcoin
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:00 · coordinator · review · added T-020: transfers between own Bitcoin addresses need address listing (same as T-023)
 - 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-020, T-022
+- 2026-10-19 23:24 · LukassSoukup · backlog · conflicts_with revised: dropped T-057: OTel spans come from HttpClient/AWS SDK instrumentation at registration
