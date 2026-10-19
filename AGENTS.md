@@ -11,7 +11,8 @@ other document.**
   don't change them.
 - When the product needs a change in another product (for example everything under "Required Changes To Biatec
   OIDC"), implement the documented **fallback** here, mock the missing API inside this repo for tests, and record
-  the needed change in `docs/required-changes-biatec-oidc.md`.
+  the needed change in [docs/required-changes-biatec-oidc.md](docs/required-changes-biatec-oidc.md), which holds the
+  API shapes and the fallback matrix for every row.
 
 ## Work is tracked on the kanban board
 
