@@ -21,15 +21,18 @@ owner should run `kubectl kustomize k8s/stage | kubectl apply --dry-run=client -
 
 ## Secrets (never in git)
 
-Create `biatec-chat-secrets` in each namespace out of band (sealed-secrets, external-secrets or `kubectl create secret`) with keys:
-`postgres-connection-string`, `redis-connection-string`, `kms-key-id`, `oidc-client-secret`, `builders-internal-secret`,
-`aws-role-arn`.
+`biatec-chat-secrets` holds `oidc-client-secret`, `kms-key-id`, `aws-role-arn`: synced by
+`.github/workflows/deploy-stage.yml` from the GitHub `Stage` environment, or created out of band. `biatec-chat-generated`
+holds `postgres-password`, `redis-password`, `builders-internal-secret`: generated once by the deploy, never leaves the
+cluster. Postgres and Redis run in the namespace (`base/postgres.yaml`, `base/redis.yaml`, reachable only from the
+backend through network policies); the backend's connection strings are built from the generated passwords. Schema
+migrations are a deploy step (docs/cicd.md).
 
 ## AWS access (no keys)
 
 The pod gets a projected service-account token (audience `sts.amazonaws.com`) at `/var/run/secrets/aws/token`; the AWS SDK
 exchanges it for the role in `AWS_ROLE_ARN` (`sts:AssumeRoleWithWebIdentity`, `AWSSDK.SecurityToken`). One-time setup per
-cluster and AWS account, with `infra/aws/k8s-role.sh` (dry-run by default):
+cluster and AWS account; the full walk-through is [docs/aws-setup.md](../docs/aws-setup.md):
 
 1. The cluster's service-account issuer must be reachable over HTTPS from AWS: `<issuer>/.well-known/openid-configuration`
    and its `jwks_uri` (`kubectl get --raw /.well-known/openid-configuration` shows the issuer). On a self-managed cluster

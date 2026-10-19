@@ -1,5 +1,8 @@
 # Hackathon AWS hosting plan
 
+> The stage deployment runs on Biatec's Kubernetes cluster; its AWS setup is [aws-setup.md](aws-setup.md). This page
+> covers the laptop and EC2 alternatives.
+
 Plan and scripts. **Provisioned so far (2026-10-20): only the Bedrock guardrail** `biatec-chat-guardrail`, id `rwa0b0by3y18`,
 version `1`, tagged `Project=biatec` (pay per use, nothing while idle). No EC2, KMS key or IAM role exists yet. Everything that bills while idle needs the
 user's explicit approval before `--apply`. Rules come from [AGENTS.md](../AGENTS.md): region `eu-central-1`, no IAM users or

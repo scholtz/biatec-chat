@@ -1,0 +1,81 @@
+# In-cluster Redis for the backend (sessions, encrypted token vault, locks, soft-cap counters). One replica with
+# append-only persistence, password from biatec-chat-generated (redis-password).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: biatec-chat-redis
+  labels: {app.kubernetes.io/name: biatec-chat-redis, app.kubernetes.io/part-of: biatec-chat}
+spec:
+  serviceName: biatec-chat-redis
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: biatec-chat-redis}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: biatec-chat-redis, app.kubernetes.io/part-of: biatec-chat}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: redis
+          image: redis:7
+          args: ["--requirepass", "$(REDIS_PASSWORD)", "--appendonly", "yes", "--dir", "/data"]
+          ports:
+            - {name: redis, containerPort: 6379}
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom: {secretKeyRef: {name: biatec-chat-generated, key: redis-password}}
+          readinessProbe:
+            exec: {command: [sh, -c, 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli ping | grep -q PONG']}
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: {port: redis}
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels: {app.kubernetes.io/name: biatec-chat-redis, app.kubernetes.io/part-of: biatec-chat}
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: {storage: 1Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: biatec-chat-redis
+  labels: {app.kubernetes.io/name: biatec-chat-redis, app.kubernetes.io/part-of: biatec-chat}
+spec:
+  selector: {app.kubernetes.io/name: biatec-chat-redis}
+  ports:
+    - {name: redis, port: 6379, targetPort: redis}
+---
+# Only the backend reaches Redis.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: biatec-chat-redis
+  labels: {app.kubernetes.io/name: biatec-chat-redis, app.kubernetes.io/part-of: biatec-chat}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: biatec-chat-redis}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: biatec-chat-backend}
+      ports:
+        - {port: 6379}

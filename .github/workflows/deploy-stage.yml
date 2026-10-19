@@ -78,31 +78,41 @@ jobs:
           echo "$KUBE_CONFIG" | base64 -d > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
 
-      # Optional: when POSTGRES_CONNECTION_STRING is set, biatec-chat-secrets is (re)created from the environment
-      # secrets and all six must be present. Otherwise the cluster secret is managed out of band and left untouched.
+      - name: Ensure namespace
+        run: kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$NAMESPACE"
+
+      # Passwords for the in-cluster Postgres and Redis and the backend-builders shared secret. Generated once, never
+      # leave the cluster, never rotated by a deploy (Postgres only reads its password when the volume is first
+      # initialised). Delete the secret only together with the database volumes.
+      - name: Ensure generated secrets
+        run: |
+          if kubectl get secret biatec-chat-generated -n "$NAMESPACE" >/dev/null 2>&1; then
+            echo "biatec-chat-generated exists, keeping it."
+          else
+            kubectl create secret generic biatec-chat-generated -n "$NAMESPACE" \
+              --from-literal=postgres-password="$(openssl rand -hex 24)" \
+              --from-literal=redis-password="$(openssl rand -hex 24)" \
+              --from-literal=builders-internal-secret="$(openssl rand -hex 32)"
+          fi
+
+      # Optional: when OIDC_CLIENT_SECRET is set, biatec-chat-secrets is (re)created from the environment secrets and
+      # all three must be present. Otherwise the cluster secret is managed out of band and left untouched.
       - name: Sync biatec-chat-secrets
         env:
-          POSTGRES_CONNECTION_STRING: ${{ secrets.POSTGRES_CONNECTION_STRING }}
-          REDIS_CONNECTION_STRING: ${{ secrets.REDIS_CONNECTION_STRING }}
-          KMS_KEY_ID: ${{ secrets.KMS_KEY_ID }}
           OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
-          BUILDERS_INTERNAL_SECRET: ${{ secrets.BUILDERS_INTERNAL_SECRET }}
+          KMS_KEY_ID: ${{ secrets.KMS_KEY_ID }}
           AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
         run: |
-          if [ -z "$POSTGRES_CONNECTION_STRING" ]; then
-            echo "POSTGRES_CONNECTION_STRING not set: leaving biatec-chat-secrets as it is in the cluster."
+          if [ -z "$OIDC_CLIENT_SECRET" ]; then
+            echo "OIDC_CLIENT_SECRET not set: leaving biatec-chat-secrets as it is in the cluster."
             exit 0
           fi
-          for v in REDIS_CONNECTION_STRING KMS_KEY_ID OIDC_CLIENT_SECRET BUILDERS_INTERNAL_SECRET AWS_ROLE_ARN; do
-            if [ -z "${!v}" ]; then echo "::error::Stage secret $v is missing (see docs/cicd.md)."; exit 1; fi
+          for v in KMS_KEY_ID AWS_ROLE_ARN; do
+            if [ -z "${!v}" ]; then echo "::error::Stage secret $v is missing (see docs/aws-setup.md)."; exit 1; fi
           done
-          kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$NAMESPACE"
           kubectl create secret generic biatec-chat-secrets -n "$NAMESPACE" \
-            --from-literal=postgres-connection-string="$POSTGRES_CONNECTION_STRING" \
-            --from-literal=redis-connection-string="$REDIS_CONNECTION_STRING" \
-            --from-literal=kms-key-id="$KMS_KEY_ID" \
             --from-literal=oidc-client-secret="$OIDC_CLIENT_SECRET" \
-            --from-literal=builders-internal-secret="$BUILDERS_INTERNAL_SECRET" \
+            --from-literal=kms-key-id="$KMS_KEY_ID" \
             --from-literal=aws-role-arn="$AWS_ROLE_ARN" \
             --dry-run=client -o yaml | kubectl apply -f -
 
@@ -111,6 +121,25 @@ jobs:
           sed -i "s/newTag: stage$/newTag: ${{ steps.version.outputs.version }}/" k8s/stage/kustomization.yaml
           [ "$(grep -c "newTag: ${{ steps.version.outputs.version }}" k8s/stage/kustomization.yaml)" = 2 ]
           kubectl apply -k k8s/stage
+
+      - name: Wait for databases
+        run: |
+          kubectl rollout status statefulset/biatec-chat-postgres -n "$NAMESPACE" --timeout=5m
+          kubectl rollout status statefulset/biatec-chat-redis -n "$NAMESPACE" --timeout=5m
+
+      # The backend migrates only in Development; elsewhere the schema is a deploy step. The idempotent script applies
+      # just the migrations missing from __EFMigrationsHistory, so it is safe on every deploy.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Migrate database
+        run: |
+          dotnet tool restore
+          dotnet ef migrations script --idempotent --project backend/Biatec.Chat.Api --output migrate.sql
+          sed -i '1s/^\xEF\xBB\xBF//' migrate.sql
+          kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
+            psql -q -v ON_ERROR_STOP=1 -U biatec -d biatec_chat < migrate.sql
 
       - name: Wait for rollout
         run: |
