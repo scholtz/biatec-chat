@@ -33,6 +33,9 @@ public static class JsonSchemaValidator
             if (k == "enum" && v is not JsonArray) throw new ArgumentException($"{path}: enum must be an array.");
             if (k == "items" && v is not JsonObject) throw new ArgumentException($"{path}: items must be a schema object.");
         }
+        if (schema["type"] is JsonValue tv0 && tv0.TryGetValue<string>(out var t0)
+            && t0 is not ("object" or "array" or "string" or "boolean" or "null" or "number" or "integer"))
+            throw new ArgumentException($"{path}: unknown type '{t0}'.");
         if (schema["type"] is not JsonValue) throw new ArgumentException($"{path}: schema must declare a type.");
         if (schema["properties"] is JsonObject props)
             foreach (var (k, v) in props)

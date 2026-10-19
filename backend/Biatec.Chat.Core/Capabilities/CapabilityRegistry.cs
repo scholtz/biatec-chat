@@ -79,8 +79,8 @@ public sealed class CapabilityRegistry
     private static JsonObject Network() => new() { ["type"] = "string", ["enum"] = new JsonArray("mainnet", "testnet") };
     private static JsonObject Address() => Str(max: 64, pattern: @"\A[A-Za-z0-9]+\z");
     // Canonical non-negative integer string (no leading zeros); AmountPositive additionally excludes zero.
-    private static JsonObject Amount() => Str(max: 40, pattern: @"\A(0|[1-9][0-9]*)\z");
-    private static JsonObject AmountPositive() => Str(max: 40, pattern: @"\A[1-9][0-9]*\z");
+    private static JsonObject Amount() => Str(max: 20, pattern: @"\A(0|[1-9][0-9]*)\z");
+    private static JsonObject AmountPositive() => Str(max: 20, pattern: @"\A[1-9][0-9]*\z");
     private static JsonObject Id() => new() { ["type"] = "integer", ["minimum"] = 0, ["maximum"] = 9007199254740991 };
 
     /// <summary>The initial capability set from the product description.</summary>
@@ -161,7 +161,7 @@ public sealed class CapabilityRegistry
                 WithMinProperties(Obj(new JsonObject { ["daily"] = Amount(), ["weekly"] = Amount(), ["monthly"] = Amount() }), 1),
                 CapabilityFlag.LimitsUpdate),
             Tool("x402.pay", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Pay for an x402-protected resource.",
-                Obj(new JsonObject { ["network"] = Network(), ["from"] = Address(), ["resourceUrl"] = Str(max: 2048) }, "network", "from", "resourceUrl"),
+                Obj(new JsonObject { ["network"] = Network(), ["from"] = Address(), ["resourceUrl"] = Str(max: 2048, pattern: @"\Ahttps://[^\s]+\z") }, "network", "from", "resourceUrl"),
                 CapabilityFlag.X402),
         ]);
     }
