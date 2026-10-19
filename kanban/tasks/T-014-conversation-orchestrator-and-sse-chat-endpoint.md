@@ -1,7 +1,7 @@
 ---
 id: T-014
 title: Conversation orchestrator and SSE chat endpoint
-status: backlog
+status: in-progress
 priority: P0
 epic: "Orchestrator"
 blocked_by: [T-003, T-005, T-007, T-012, T-013]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Api/Chat/**", "backend/Biatec.Chat.Api/Orchestration
 parallel: no
 conflicts_with: [T-022, T-035, T-049]
 issue: "#15"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-014"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#chat-backend-biatecchatapi"
 created: 2026-10-19
 updated: 2026-10-19
@@ -55,3 +55,5 @@ dotnet test --filter Orchestration; curl -N POST /chat/messages
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 20:29 · kanban-board · blocked → backlog · blockers done: T-003, T-005, T-007, T-012, T-013
+- 2026-10-19 20:38 · scholtz · taken · status stays backlog
+- 2026-10-19 20:38 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
