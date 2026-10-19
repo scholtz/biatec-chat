@@ -21,6 +21,7 @@ docker build -f packages/consent-protocol/mock-oidc/Dockerfile -t biatec-mock-oi
 | `POST /token` | CIBA grant (`authorization_pending`, `access_denied`, `expired_token`), returns `consent_receipt` |
 | `GET /consent/receipts/{auth_req_id}` | Receipt, owning client only |
 | `POST /devices` | Enrollment with a `login-*` token; inactive 24 h unless `approved_by_kid` names an active device |
+| `POST /devices/recovery-code`, `POST /devices/recovery-code/ack` | `Authorization: Device <token>`; the recovery code is issued only once the device is active (403 while inactive), re-issued until acknowledged, then 409 (rule 7) |
 | `GET /devices/requests`, `GET /consent/requests/{id}`, `POST /consent/requests/{id}/receipt` | Authenticator side, `Authorization: Device <token>`; the request never contains the binding code |
 | `GET /.well-known/jwks.json`, `/.well-known/openid-configuration` | Discovery |
 | `GET /mock/devices/{kid}`, `POST /mock/devices/{kid}/activate` | Test helpers |

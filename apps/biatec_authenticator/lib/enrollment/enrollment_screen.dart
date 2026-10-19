@@ -109,8 +109,24 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
           ]),
         );
       case EnrollmentPhase.activeRecoveryPending:
+        final code = _controller.recoveryCodeToShow;
+        if (code == null) {
+          final err = _controller.recoveryCodeError;
+          return Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              if (err == null) const CircularProgressIndicator(),
+              if (err != null) ...[
+                Text(err, textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                    onPressed: _controller.loadRecoveryCode,
+                    child: const Text('Try again')),
+              ],
+            ]),
+          );
+        }
         return RecoveryCodeView(
-          code: _controller.recoveryCodeToShow!,
+          code: code,
           onSaved: _controller.acknowledgeRecoveryCode,
         );
       case EnrollmentPhase.active:

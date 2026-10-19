@@ -216,6 +216,11 @@ POST /devices
 201 { "device_id": "dev_1", "status": "pending_activation", "active_at": "2026-10-20T09:00:00Z", "recovery_code": "XXXX-XXXX-XXXX" }
 ```
 
+- Recovery code (protocol rule 7): the enrollment response above must not carry `recovery_code`; whoever enrolls a device
+  could otherwise use the code to skip the delay. The code is issued once the device is active, through
+  `POST /devices/recovery-code` (`Authorization: Device <token>`): `403` with `reason: device_inactive` while inactive, `200 { "recovery_code" }`
+  (the same code until acknowledged), then `POST /devices/recovery-code/ack` after which the endpoint answers `409`. The kid in
+  `POST /devices` is chosen by the device and must be unique (random per install). The mock implements this fallback.
 - Pending request fetch by the device (device-key authenticated, never from the push body): `GET /devices/{id}/requests/{auth_req_id}`
   returns the `authorization_details`, verified client name and `expiry`. The decision is
   `POST /devices/{id}/requests/{auth_req_id}/decision` with the signed receipt (denials are signed too).

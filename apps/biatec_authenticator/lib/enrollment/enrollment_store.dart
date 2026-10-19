@@ -8,6 +8,12 @@ abstract class EnrollmentStore {
   Future<EnrollmentRecord?> read();
   Future<void> write(EnrollmentRecord record);
   Future<void> clear();
+
+  /// The keystore alias (also the device kid) of this install, generated on
+  /// first enrollment so it is unique per device.
+  Future<String?> readAlias();
+  Future<void> writeAlias(String alias);
+  Future<void> clearAlias();
 }
 
 class SecureEnrollmentStore implements EnrollmentStore {
@@ -21,9 +27,26 @@ class SecureEnrollmentStore implements EnrollmentStore {
   Future<EnrollmentRecord?> read() async {
     final raw = await _storage.read(key: _key);
     if (raw == null) return null;
-    return EnrollmentRecord.fromJson(
-        (jsonDecode(raw) as Map).cast<String, Object?>());
+    try {
+      return EnrollmentRecord.fromJson(
+          (jsonDecode(raw) as Map).cast<String, Object?>());
+    } on Object {
+      // A corrupt record counts as not enrolled.
+      return null;
+    }
   }
+
+  static const _aliasKey = 'biatec.enrollment.alias';
+
+  @override
+  Future<String?> readAlias() => _storage.read(key: _aliasKey);
+
+  @override
+  Future<void> writeAlias(String alias) =>
+      _storage.write(key: _aliasKey, value: alias);
+
+  @override
+  Future<void> clearAlias() => _storage.delete(key: _aliasKey);
 
   @override
   Future<void> write(EnrollmentRecord record) =>
@@ -35,6 +58,16 @@ class SecureEnrollmentStore implements EnrollmentStore {
 
 class MemoryEnrollmentStore implements EnrollmentStore {
   EnrollmentRecord? _record;
+  String? _alias;
+
+  @override
+  Future<String?> readAlias() async => _alias;
+
+  @override
+  Future<void> writeAlias(String alias) async => _alias = alias;
+
+  @override
+  Future<void> clearAlias() async => _alias = null;
 
   @override
   Future<EnrollmentRecord?> read() async => _record;

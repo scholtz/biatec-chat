@@ -44,23 +44,20 @@ class OidcEnrollmentClient {
           if (name != null) 'name': name,
         }),
       );
-    } on Exception catch (e) {
+    } on Object catch (e) {
       throw EnrollmentException('Could not reach Biatec OIDC: $e');
     }
     return parseResponse(res.statusCode, res.body);
   }
 
   static EnrollmentRecord parseResponse(int status, String body) {
-    Map<String, Object?> json;
-    try {
-      json = (jsonDecode(body) as Map).cast<String, Object?>();
-    } on Object {
-      throw EnrollmentException('Unexpected response ($status).');
-    }
+    final json = _decodeObject(body, status);
     if (status != 201) {
       final detail = json['error_description'] ?? json['error'] ?? 'error';
       throw EnrollmentException('Enrollment refused ($status): $detail');
     }
+    // The recovery code is deliberately not read here: rule 7 issues it only
+    // once the device is active, through [requestRecoveryCode].
     final activeAt = json['active_at'];
     final token = json['device_token'];
     final kid = json['kid'];
@@ -73,7 +70,50 @@ class OidcEnrollmentClient {
       // The mock reports epoch seconds.
       activeAt: DateTime.fromMillisecondsSinceEpoch((activeAt * 1000).round(),
           isUtc: true),
-      recoveryCode: json['recovery_code'] as String?,
     );
+  }
+
+  static Map<String, Object?> _decodeObject(String body, int status) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map) return decoded.cast<String, Object?>();
+    } on Object {
+      // Falls through to the error below.
+    }
+    throw EnrollmentException('Unexpected response ($status).');
+  }
+
+  Future<http.Response> _deviceCall(String path, String deviceToken) async {
+    try {
+      return await _client.post(
+        Uri.parse('$baseUrl$path'),
+        headers: {'Authorization': 'Device $deviceToken'},
+      );
+    } on Object catch (e) {
+      throw EnrollmentException('Could not reach Biatec OIDC: $e');
+    }
+  }
+
+  /// Asks for the one-time recovery code. The server refuses while the device
+  /// is still inactive (rule 7), so this is only called once it is active.
+  Future<String> requestRecoveryCode(String deviceToken) async {
+    final res = await _deviceCall('/devices/recovery-code', deviceToken);
+    final json = _decodeObject(res.body, res.statusCode);
+    final code = json['recovery_code'];
+    if (res.statusCode != 200 || code is! String || code.isEmpty) {
+      final detail = json['error_description'] ?? json['error'] ?? 'error';
+      throw EnrollmentException(
+          'Recovery code unavailable (${res.statusCode}): $detail');
+    }
+    return code;
+  }
+
+  /// Tells the server the user saved the code, so it is never issued again.
+  Future<void> acknowledgeRecoveryCode(String deviceToken) async {
+    final res = await _deviceCall('/devices/recovery-code/ack', deviceToken);
+    if (res.statusCode != 200) {
+      throw EnrollmentException(
+          'Could not confirm the recovery code (${res.statusCode}).');
+    }
   }
 }

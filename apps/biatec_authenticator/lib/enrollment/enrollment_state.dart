@@ -4,7 +4,6 @@ class EnrollmentRecord {
     required this.kid,
     required this.deviceToken,
     required this.activeAt,
-    this.recoveryCode,
     this.recoveryCodeShown = false,
   });
 
@@ -16,16 +15,15 @@ class EnrollmentRecord {
   /// When the device becomes active (a time in the past means active).
   final DateTime activeAt;
 
-  /// Issued at enrollment, revealed only once the device is active.
-  final String? recoveryCode;
+  /// Whether the user has confirmed saving the recovery code. The code itself
+  /// is never part of the record: the server issues it only once the device is
+  /// active (rule 7) and the app holds it in memory while it is on screen.
   final bool recoveryCodeShown;
 
-  /// Marks the code as shown and erases it.
   EnrollmentRecord withCodeShown() => EnrollmentRecord(
         kid: kid,
         deviceToken: deviceToken,
         activeAt: activeAt,
-        recoveryCode: null,
         recoveryCodeShown: true,
       );
 
@@ -33,7 +31,6 @@ class EnrollmentRecord {
         'kid': kid,
         'device_token': deviceToken,
         'active_at': activeAt.toUtc().millisecondsSinceEpoch,
-        'recovery_code': recoveryCode,
         'recovery_code_shown': recoveryCodeShown,
       };
 
@@ -43,7 +40,6 @@ class EnrollmentRecord {
         deviceToken: json['device_token'] as String,
         activeAt: DateTime.fromMillisecondsSinceEpoch(json['active_at'] as int,
             isUtc: true),
-        recoveryCode: json['recovery_code'] as String?,
         recoveryCodeShown: json['recovery_code_shown'] as bool? ?? false,
       );
 }
@@ -62,7 +58,7 @@ enum EnrollmentPhase {
   /// Enrolled, but inactive during the 24 h delay (rule 7).
   inactive,
 
-  /// Active, recovery code issued and not yet shown.
+  /// Active; the recovery code has not been shown yet.
   activeRecoveryPending,
 
   /// Active and nothing left to show.
@@ -82,14 +78,18 @@ class EnrollmentState {
   static const notEnrolled = EnrollmentState(EnrollmentPhase.notEnrolled);
 
   /// The state a stored [record] means at time [now].
-  static EnrollmentState fromRecord(EnrollmentRecord record, DateTime now) {
+  static EnrollmentState fromRecord(EnrollmentRecord record, DateTime now,
+      {String? error}) {
     if (record.activeAt.isAfter(now)) {
-      return EnrollmentState(EnrollmentPhase.inactive, record: record);
+      return EnrollmentState(EnrollmentPhase.inactive,
+          record: record, error: error);
     }
-    final pending = record.recoveryCode != null && !record.recoveryCodeShown;
     return EnrollmentState(
-      pending ? EnrollmentPhase.activeRecoveryPending : EnrollmentPhase.active,
+      record.recoveryCodeShown
+          ? EnrollmentPhase.active
+          : EnrollmentPhase.activeRecoveryPending,
       record: record,
+      error: error,
     );
   }
 

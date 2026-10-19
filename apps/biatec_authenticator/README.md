@@ -33,8 +33,20 @@ add an HTTP mock of Biatec OIDC. The app makes no network calls today.
   `activeRecoveryPending`, `active`, `failed`), `OidcEnrollmentClient` (`POST /devices`), secure-storage record, and
   the enrollment and recovery-code screen. Attestation is stubbed by the mock (not sent).
 - The mock `POST /devices` takes a `login-*` bearer token (`login-alice` is prefilled against the mock) and
-  returns `active_at` in epoch seconds; it does not issue a `recovery_code` yet, so the recovery screen appears
-  only when the server returns one.
+  returns `active_at` in epoch seconds. The kid is a random per-install alias (`biatec-authenticator-<hex>`),
+  persisted before the key is created and used as both keystore alias and kid, because the server rejects a kid it
+  has already seen.
+- Recovery code (rule 7): never part of the enrollment response and never stored on the device. Once the device is
+  active the app calls `POST /devices/recovery-code` (`Authorization: Device <token>`, refused with 403 while
+  inactive), holds the code in memory while it is shown, and confirms with `POST /devices/recovery-code/ack`. These
+  two calls are a fallback implemented in the mock; the needed change is in
+  `docs/required-changes-biatec-oidc.md` section 4.
+- Known gap: the native Secure Enclave and StrongBox code does not exist yet, so "key is non-exportable on device"
+  is by interface design only (no export method) and is not verified on hardware; a manual emulator run is not
+  possible until the platform folders and native keystore are added.
+- Contract test against the real mock: start `pnpm --filter mock-oidc start`, then
+  `flutter test --dart-define=MOCK_OIDC_URL=http://127.0.0.1:8089 test/enrollment/mock_oidc_contract_test.dart`
+  (skipped otherwise).
 
 ## Checks
 

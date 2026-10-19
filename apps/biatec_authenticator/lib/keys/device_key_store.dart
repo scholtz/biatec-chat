@@ -4,7 +4,8 @@ import 'package:flutter/services.dart';
 class DeviceKey {
   const DeviceKey({required this.kid, required this.x, required this.y});
 
-  /// Stable identifier of the key (the keystore alias).
+  /// Stable identifier of the key (the keystore alias). The alias is random
+  /// per install, so the kid is unique per device.
   final String kid;
 
   /// Base64url P-256 coordinates.
@@ -49,8 +50,13 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
   final MethodChannel _channel;
 
   DeviceKey _parse(Object? raw, String alias) {
-    final map = (raw as Map).cast<String, Object?>();
-    return DeviceKey(kid: alias, x: map['x'] as String, y: map['y'] as String);
+    try {
+      final map = (raw as Map).cast<String, Object?>();
+      return DeviceKey(
+          kid: alias, x: map['x'] as String, y: map['y'] as String);
+    } on Object {
+      throw const FormatException('The keystore returned malformed key data.');
+    }
   }
 
   @override

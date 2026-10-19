@@ -15,13 +15,21 @@ import 'package:http/testing.dart';
 
 class FakeKeyStore implements DeviceKeyStore {
   bool failGenerate = false;
+  bool throwTypeError = false;
+  final List<String> generated = [];
   final List<String> deleted = [];
   DeviceKey? key;
 
   @override
   Future<DeviceKey> generate(String alias) async {
     if (failGenerate) throw Exception('no secure hardware');
-    return key ??= DeviceKey(kid: alias, x: 'xx', y: 'yy');
+    if (throwTypeError) {
+      // Like a malformed platform channel payload.
+      final Object? bad = null;
+      return DeviceKey(kid: alias, x: bad as String, y: 'yy');
+    }
+    generated.add(alias);
+    return key = DeviceKey(kid: alias, x: 'xx', y: 'yy');
   }
 
   @override
@@ -37,16 +45,53 @@ class FakeKeyStore implements DeviceKeyStore {
   }
 }
 
+/// A store whose reads and writes can be made to fail.
+class FlakyStore extends MemoryEnrollmentStore {
+  bool failWrite = false;
+  bool failRead = false;
+
+  @override
+  Future<void> write(EnrollmentRecord record) async {
+    if (failWrite) throw Exception('secure storage unavailable');
+    return super.write(record);
+  }
+
+  @override
+  Future<EnrollmentRecord?> read() async {
+    if (failRead) throw const FormatException('corrupt');
+    return super.read();
+  }
+}
+
 void main() {
   final t0 = DateTime.utc(2026, 10, 19, 9);
   late DateTime clock;
   late FakeKeyStore keys;
-  late MemoryEnrollmentStore store;
+  late FlakyStore store;
   late List<http.Request> requests;
+  late String lastKid;
+  late int activeAtSeconds;
+  var acknowledged = false;
 
   EnrollmentController build(http.Response Function(http.Request) respond) {
     final client = MockClient((r) async {
       requests.add(r);
+      // Recovery code endpoints behave like the mock: refused while inactive
+      // (rule 7), served after activation, 409 once acknowledged.
+      if (r.url.path == '/devices/recovery-code') {
+        if (clock.millisecondsSinceEpoch ~/ 1000 < activeAtSeconds) {
+          return http.Response('{"error":"access_denied"}', 403);
+        }
+        if (acknowledged) return http.Response('{"error":"conflict"}', 409);
+        return http.Response('{"recovery_code":"AAAA-BBBB-CCCC"}', 200);
+      }
+      if (r.url.path == '/devices/recovery-code/ack') {
+        acknowledged = true;
+        return http.Response('{"acknowledged":true}', 200);
+      }
+      if (r.url.path == '/devices') {
+        lastKid = (jsonDecode(r.body) as Map)['kid'] as String;
+      }
       return respond(r);
     });
     return EnrollmentController(
@@ -57,24 +102,28 @@ void main() {
     );
   }
 
-  http.Response created({int? activeAt, String? recovery = 'AAAA-BBBB-CCCC'}) =>
-      http.Response(
-        jsonEncode({
-          'kid': EnrollmentController.keyAlias,
-          'active': false,
-          'active_at':
-              activeAt ?? t0.add(const Duration(hours: 24)).millisecondsSinceEpoch ~/ 1000,
-          'device_token': 'tok',
-          if (recovery != null) 'recovery_code': recovery,
-        }),
-        201,
-      );
+  http.Response created({int? activeAt, String? recovery}) {
+    activeAtSeconds = activeAt ??
+        t0.add(const Duration(hours: 24)).millisecondsSinceEpoch ~/ 1000;
+    return http.Response(
+      jsonEncode({
+        'kid': lastKid,
+        'active': false,
+        'active_at': activeAtSeconds,
+        'device_token': 'tok',
+        if (recovery != null) 'recovery_code': recovery,
+      }),
+      201,
+    );
+  }
 
   setUp(() {
     clock = t0;
     keys = FakeKeyStore();
-    store = MemoryEnrollmentStore();
+    store = FlakyStore();
     requests = [];
+    acknowledged = false;
+    activeAtSeconds = 1 << 40;
   });
 
   group('state machine', () {
@@ -118,10 +167,12 @@ void main() {
     });
 
     test('approved by an active device is active at once', () async {
-      final c = build((_) => created(
-          activeAt: t0.millisecondsSinceEpoch ~/ 1000, recovery: null));
+      final c = build(
+          (_) => created(activeAt: t0.millisecondsSinceEpoch ~/ 1000));
       await c.enroll(loginToken: 'login-alice', approvedByKid: 'alice-device');
-      expect(c.state.phase, EnrollmentPhase.active);
+      // The code is fetched after activation, also for an approved device.
+      expect(c.state.phase, EnrollmentPhase.activeRecoveryPending);
+      expect(c.recoveryCodeToShow, 'AAAA-BBBB-CCCC');
       expect(
           (jsonDecode(requests.single.body) as Map)['approved_by_kid'],
           'alice-device');
@@ -141,7 +192,42 @@ void main() {
       await fresh.refresh();
       expect(fresh.state.phase, EnrollmentPhase.active);
       expect(fresh.recoveryCodeToShow, isNull);
-      expect((await store.read())!.recoveryCode, isNull);
+      expect(jsonEncode((await store.read())!.toJson()),
+          isNot(contains('AAAA')));
+      expect(acknowledged, isTrue);
+    });
+
+    test('the recovery code is not requested while inactive', () async {
+      final c = build((_) => created());
+      await c.enroll(loginToken: 'login-alice');
+      await c.refresh();
+      expect(requests.map((r) => r.url.path), ['/devices']);
+    });
+
+    test('a recovery code in the enrollment response is ignored, not stored',
+        () async {
+      final c = build((_) => created(recovery: 'EVIL-EVIL-EVIL'));
+      await c.enroll(loginToken: 'login-alice');
+      expect(c.recoveryCodeToShow, isNull);
+      expect(jsonEncode((await store.read())!.toJson()),
+          isNot(contains('EVIL')));
+      clock = t0.add(const Duration(hours: 24));
+      await c.refresh();
+      expect(c.recoveryCodeToShow, 'AAAA-BBBB-CCCC');
+    });
+
+    test('a failed code fetch can be retried', () async {
+      final c = build((_) => created());
+      await c.enroll(loginToken: 'login-alice');
+      acknowledged = true; // the server answers 409 now
+      clock = t0.add(const Duration(hours: 24));
+      await c.refresh();
+      expect(c.recoveryCodeToShow, isNull);
+      expect(c.recoveryCodeError, contains('409'));
+      acknowledged = false;
+      await c.loadRecoveryCode();
+      expect(c.recoveryCodeToShow, 'AAAA-BBBB-CCCC');
+      expect(c.recoveryCodeError, isNull);
     });
 
     test('an enrollment state survives a restart', () async {
@@ -159,7 +245,7 @@ void main() {
       await c.enroll(loginToken: 'bad');
       expect(c.state.phase, EnrollmentPhase.failed);
       expect(c.state.error, contains('403'));
-      expect(keys.deleted, [EnrollmentController.keyAlias]);
+      expect(keys.deleted, [keys.generated.single]);
 
       await c.enroll(loginToken: 'login-alice');
       expect(c.state.phase, EnrollmentPhase.inactive);
@@ -178,6 +264,82 @@ void main() {
       await c.enroll(loginToken: '  ');
       expect(c.state.phase, EnrollmentPhase.failed);
       expect(requests, isEmpty);
+    });
+
+    test('each install enrolls with its own kid', () async {
+      final a = build((_) => created());
+      await a.enroll(loginToken: 'login-alice');
+      final kidA = lastKid;
+
+      final otherStore = FlakyStore();
+      final b = EnrollmentController(
+        keys: FakeKeyStore(),
+        store: otherStore,
+        client: OidcEnrollmentClient(
+            baseUrl: 'http://mock',
+            client: MockClient((r) async {
+              lastKid = (jsonDecode(r.body) as Map)['kid'] as String;
+              return created();
+            })),
+        clock: () => clock,
+      );
+      await b.enroll(loginToken: 'login-bob');
+      expect(lastKid, isNot(kidA));
+      expect(kidA, startsWith('biatec-authenticator-'));
+      expect(kidA, isNot('biatec-authenticator-device-key'));
+      expect(await store.readAlias(), kidA);
+      expect(await otherStore.readAlias(), lastKid);
+    });
+
+    test('a refusal discards the alias and a retry mints a new one', () async {
+      var attempt = 0;
+      final c = build((_) =>
+          ++attempt == 1 ? http.Response('{"error":"x"}', 403) : created());
+      await c.enroll(loginToken: 'bad');
+      expect(await store.readAlias(), isNull);
+      await c.enroll(loginToken: 'login-alice');
+      expect(keys.generated, hasLength(2));
+      expect(keys.generated[0], isNot(keys.generated[1]));
+    });
+
+    test('a non-object 201 body fails instead of hanging in enrolling',
+        () async {
+      final c = build((_) => http.Response('[1,2]', 201));
+      await c.enroll(loginToken: 'login-alice');
+      expect(c.state.phase, EnrollmentPhase.failed);
+      expect(c.state.error, isNotNull);
+    });
+
+    test('a malformed key from the keystore fails instead of hanging',
+        () async {
+      keys.throwTypeError = true;
+      final c = build((_) => created());
+      await c.enroll(loginToken: 'login-alice');
+      expect(c.state.phase, EnrollmentPhase.failed);
+      expect(requests, isEmpty);
+    });
+
+    test('a failed storage write keeps the enrollment and retries later',
+        () async {
+      store.failWrite = true;
+      final c = build((_) => created());
+      await c.enroll(loginToken: 'login-alice');
+      expect(c.state.phase, EnrollmentPhase.inactive);
+      expect(c.state.error, contains('could not save'));
+      expect(keys.deleted, isEmpty);
+
+      store.failWrite = false;
+      await c.refresh();
+      expect(c.state.phase, EnrollmentPhase.inactive);
+      expect(c.state.error, isNull);
+      expect((await store.read())!.kid, lastKid);
+    });
+
+    test('a corrupt stored record counts as not enrolled', () async {
+      store.failRead = true;
+      final c = build((_) => created());
+      await c.refresh();
+      expect(c.state.phase, EnrollmentPhase.notEnrolled);
     });
 
     test('enrolling twice is ignored', () async {
