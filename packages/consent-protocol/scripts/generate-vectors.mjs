@@ -127,7 +127,7 @@ const receipts = cases.map((c, i) => {
     origin: "https://app.biatec.io",
     sub: SUB,
   };
-  if (!verifyReceipt(receipt, jwks)) throw new Error("self-check failed for " + c.name);
+  if (!verifyReceipt(receipt, jwks, { now: NOW + 60, issuer: "https://oidc.biatec.test" })) throw new Error("self-check failed for " + c.name);
   const v = { name: c.name, description: c.note, request, receipt, canonical, canonical_sha256: sha256Hex(canonical) };
   if (c.limitsRequestBody) v.limits_request_body = c.limitsRequestBody;
   if (c.rawClientMessage) v.unsigned_client_binding_message = c.rawClientMessage;

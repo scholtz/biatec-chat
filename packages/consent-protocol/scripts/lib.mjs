@@ -1,6 +1,6 @@
 // Shared helpers: RFC 8785 (JCS) canonicalization, receipt signing and verification.
 // Node's JSON.stringify already emits ECMAScript number and minimal string formatting, which is what RFC 8785 requires.
-import { createHash, createPublicKey, createPrivateKey, sign, verify } from "node:crypto";
+import { timingSafeEqual, createHash, createPublicKey, createPrivateKey, sign, verify } from "node:crypto";
 
 export function jcs(value) {
   if (typeof value === "string") {
@@ -72,12 +72,13 @@ const nowSeconds = () => Math.floor(Date.now() / 1000);
 /**
  * Verifies the attestation JWS with the Biatec OIDC JWKS and that it binds this receipt's sub and device key.
  * Fails closed: the attestation must not be expired at `opts.now` (Unix seconds, default the current time),
- * its `iss` must equal `opts.issuer` when given (callers SHOULD always give it), and the signing key must be
+ * its `iss` must equal `opts.issuer` (required), and the signing key must be
  * an EC P-256 signature key. Returns false (never throws) on malformed input.
  */
 export function verifyAttestation(receipt, jwks, opts = {}) {
   try {
     const now = opts.now ?? nowSeconds();
+    if (typeof opts.issuer !== "string" || opts.issuer === "") return false;
     const parts = receipt.device.attestation.split(".");
     if (parts.length !== 3) return false;
     const [h, p, s] = parts;
@@ -87,7 +88,7 @@ export function verifyAttestation(receipt, jwks, opts = {}) {
     if (!key || key.kty !== "EC" || key.crv !== "P-256" || (key.use !== undefined && key.use !== "sig")) return false;
     if (header.alg !== "ES256" || header.typ !== ATTESTATION_TYP) return false;
     if (!verifyEs256(key, Buffer.from(h + "." + p, "ascii"), s)) return false;
-    if (typeof payload.iss !== "string" || (opts.issuer !== undefined && payload.iss !== opts.issuer)) return false;
+    if (payload.iss !== opts.issuer) return false;
     if (typeof payload.exp !== "number" || payload.exp <= now) return false;
     return (
       payload.sub === receipt.signed.sub &&
@@ -109,28 +110,44 @@ export function verifyReceipt(receipt, jwks, opts = {}) {
 }
 
 /**
- * Authorization check for one pending request. `request` is the stored consent request the caller is waiting on
- * (never anything the receipt supplies). The receipt must match it member for member, carry a valid approval,
- * not be expired at `opts.now`, and its `auth_req_id` must not be in `consumed` (a Set the caller owns,
- * updated on success).
+ * Authorization check for one pending request. Fails closed and never throws.
+ * - `request` is the stored consent request the caller is waiting on (never anything the receipt supplies).
+ * - `expectedBindingCode` is the binding code Biatec OIDC issued for that request (number matching, rule 2).
+ * - `consumed` is a Set the caller owns; `auth_req_id` is added on success and a repeat is refused.
+ * - `opts.issuer` (required) is the expected Biatec OIDC issuer; `opts.now` defaults to the current time.
+ * The receipt must match the request member for member, carry decision "approve" and not be expired.
  */
-export function verifyApproval(receipt, jwks, request, consumed, opts = {}) {
-  const now = opts.now ?? nowSeconds();
-  if (!verifyReceipt(receipt, jwks, { ...opts, now })) return false;
-  const s = receipt.signed;
-  const d = s.authorization_details?.[0];
-  if (s.decision !== "approve" || !/^[0-9]{6}$/.test(s.binding_code) || s.expiry <= now) return false;
-  if (
-    s.auth_req_id !== request.auth_req_id ||
-    s.client_entity_id !== request.client.entity_id ||
-    s.binding_message !== request.binding_message ||
-    s.expiry !== request.expiry ||
-    s.sub !== request.sub ||
-    jcs(s.authorization_details) !== jcs(request.authorization_details) ||
-    (d?.group_hash ?? d?.request_hash) !== request.bound_hash
-  )
+export function verifyApproval(receipt, jwks, request, expectedBindingCode, consumed, opts) {
+  try {
+    const now = opts.now ?? nowSeconds();
+    if (!verifyReceipt(receipt, jwks, { ...opts, now })) return false;
+    const s = receipt.signed;
+    const d = s.authorization_details?.[0];
+    if (typeof expectedBindingCode !== "string" || !/^[0-9]{6}$/.test(expectedBindingCode)) return false;
+    if (s.decision !== "approve" || !timingSafeEqualStr(s.binding_code, expectedBindingCode)) return false;
+    if (!Number.isInteger(s.expiry) || s.expiry <= now) return false;
+    if (
+      typeof request.auth_req_id !== "string" ||
+      typeof request.bound_hash !== "string" ||
+      s.auth_req_id !== request.auth_req_id ||
+      s.client_entity_id !== request.client.entity_id ||
+      s.binding_message !== request.binding_message ||
+      s.expiry !== request.expiry ||
+      s.sub !== request.sub ||
+      jcs(s.authorization_details) !== jcs(request.authorization_details) ||
+      (d?.group_hash ?? d?.request_hash) !== request.bound_hash
+    )
+      return false;
+    if (consumed.has(s.auth_req_id)) return false;
+    consumed.add(s.auth_req_id);
+    return true;
+  } catch {
     return false;
-  if (consumed.has(s.auth_req_id)) return false;
-  consumed.add(s.auth_req_id);
-  return true;
+  }
+}
+
+function timingSafeEqualStr(a, b) {
+  const x = Buffer.from(String(a), "utf8");
+  const y = Buffer.from(String(b), "utf8");
+  return x.length === y.length && timingSafeEqual(x, y);
 }

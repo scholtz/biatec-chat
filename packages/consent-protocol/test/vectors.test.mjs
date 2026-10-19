@@ -153,27 +153,29 @@ test("verifyApproval accepts the matching approve once and rejects deny, code_fa
   const o = { ...O, now: vectors[0].receipt.signed.expiry - 100 };
   const v = vectors.find((x) => x.receipt.signed.decision === "approve");
   const consumed = new Set();
-  assert.equal(verifyApproval(v.receipt, jwks, v.request, consumed, o), true);
-  assert.equal(verifyApproval(v.receipt, jwks, v.request, consumed, o), false, "replay");
-  assert.equal(verifyApproval(v.receipt, jwks, v.request, new Set(), { ...o, now: v.receipt.signed.expiry }), false, "expired");
+  assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, consumed, o), true);
+  assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, consumed, o), false, "replay");
+  assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, new Set(), { ...o, now: v.receipt.signed.expiry }), false, "expired");
   for (const d of ["deny", "code_failed"]) {
     const x = vectors.find((y) => y.receipt.signed.decision === d);
     assert.ok(verifyReceipt(x.receipt, jwks, o), d + " signatures are valid");
-    assert.equal(verifyApproval(x.receipt, jwks, x.request, new Set(), o), false, d);
+    assert.equal(verifyApproval(x.receipt, jwks, x.request, x.receipt.signed.binding_code || "123456", new Set(), o), false, d);
   }
   // A genuine approval for another request must not satisfy this one.
   const other = vectors.find((x) => x !== v && x.receipt.signed.decision === "approve");
-  assert.equal(verifyApproval(v.receipt, jwks, other.request, new Set(), o), false, "different request");
+  assert.equal(verifyApproval(v.receipt, jwks, other.request, v.receipt.signed.binding_code, new Set(), o), false, "different request");
+  assert.equal(verifyApproval(v.receipt, jwks, v.request, "000000", new Set(), o), false, "number matching: wrong code");
+  assert.equal(verifyApproval(v.receipt, jwks, {}, v.receipt.signed.binding_code, new Set(), o), false, "malformed request does not throw");
   const changed = clone(v.request);
   changed.bound_hash = other.request.bound_hash;
-  assert.equal(verifyApproval(v.receipt, jwks, changed, new Set(), o), false, "different bound hash");
+  assert.equal(verifyApproval(v.receipt, jwks, changed, v.receipt.signed.binding_code, new Set(), o), false, "different bound hash");
 });
 
 test("attestation checks fail closed", () => {
   const r = vectors[0].receipt;
   assert.equal(verifyReceipt(r, jwks, { ...O, now: 4102444800 }), false, "expired attestation");
   assert.equal(verifyReceipt(r, jwks, { ...O, issuer: "https://evil.example" }), false, "issuer");
-  assert.equal(verifyReceipt(r, jwks, { issuer: O.issuer }), true, "defaults to the current time, still inside the one year validity until 2027-10");
+  assert.equal(verifyReceipt(r, jwks, { now: O.now }), false, "issuer is required");
   const enc = { keys: [{ ...jwks.keys[0], use: "enc" }] };
   assert.equal(verifyAttestation(r, enc, O), false, "key must be a signature key");
 });
