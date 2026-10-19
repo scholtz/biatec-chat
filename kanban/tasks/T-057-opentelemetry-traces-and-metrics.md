@@ -6,8 +6,8 @@ priority: P3
 epic: "Deploy & docs"
 blocked_by: [T-014]
 area: ["backend/Biatec.Chat.Api/Telemetry/**"]
-parallel: no
-conflicts_with: [T-018, T-035, T-049]
+parallel: yes
+conflicts_with: []
 issue: "#58"
 branch: ""
 owner: ""
@@ -31,10 +31,11 @@ Observability for the backend.
 
 - In: OTel setup with OTLP exporter config, spans around outbound calls, the listed metrics, no PII in attributes.
 - Out: Dashboards.
+- Constraint: hook metrics in by decorating registered services (`IPolicyEventSink`, `IEvidenceLog`, executors) from `Telemetry/`; don't edit `ConversationOrchestrator`, `ConfirmService`, consent or evidence code (T-035, T-049).
 
 ## Parallel work
 
-Parallel work possible: **no**. Don't run it at the same time as T-018, T-035, T-049: they change the same files, and running them together causes merge conflicts or broken behaviour.
+Parallel work possible: **yes**. It changes only its own area, plus append-only wiring.
 
 ## Acceptance criteria
 
@@ -57,3 +58,4 @@ dotnet test; run with console exporter
 - 2026-10-19 21:21 · kanban-board · blocked → backlog · blockers done: T-014
 - 2026-10-19 23:24 · LukassSoukup · backlog · conflicts_with revised: dropped done T-016, T-019, T-022, T-027 and T-024, T-025: spans come from instrumentation at registration
 - 2026-10-19 23:25 · LukassSoukup · taken · status stays backlog
+- 2026-10-19 23:59 · LukassSoukup · backlog · conflicts_with revised: dropped T-018 (done), T-035 and T-049: metrics come from decorators on IPolicyEventSink, IEvidenceLog and the requestSignIn executor registered from Telemetry/, so no orchestrator, confirm, consent or evidence code is edited
