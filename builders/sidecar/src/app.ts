@@ -11,6 +11,12 @@ export interface BuildContext {
 export interface BuildResult {
   /** Unsigned transactions as base64 msgpack, in group order. */
   transactions: string[];
+  /** Decoded preview of what the group does, JSON-safe (amounts as decimal strings). */
+  preview?: unknown;
+  /** Read results for builders that return data instead of, or next to, a group. */
+  data?: unknown;
+  /** algod simulate outcome when the caller asked for it. */
+  simulation?: unknown;
   /** What the group does, decoded by the builder (pool, amounts, simulation), for the action preview. */
   facts?: Record<string, unknown>;
 }
