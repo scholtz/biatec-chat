@@ -60,8 +60,9 @@ spec:
           env:
             - name: AWS_REGION
               value: eu-central-1
+            # Optional, so a secret without the key (an older deployment, or EKS with IRSA) still starts.
             - name: AWS_ROLE_ARN
-              valueFrom: {secretKeyRef: {name: biatec-chat-secrets, key: aws-role-arn}}
+              valueFrom: {secretKeyRef: {name: biatec-chat-secrets, key: aws-role-arn, optional: true}}
             - name: AWS_WEB_IDENTITY_TOKEN_FILE
               value: /var/run/secrets/aws/token
             - name: Postgres__ConnectionString

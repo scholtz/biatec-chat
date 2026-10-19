@@ -50,13 +50,20 @@ JSON
 sed -e "s|\${ACCOUNT_ID}|$ACCOUNT_ID|g" -e "s|\${KMS_KEY_ARN}|$KMS_KEY_ARN|g" "$DIR/bedrock-role-policy.json" > "$POLICY_FILE"
 
 if [ "$APPLY" = 1 ] && aws_ iam get-open-id-connect-provider --open-id-connect-provider-arn "$PROVIDER_ARN" >/dev/null 2>&1; then
-  echo "OIDC provider $PROVIDER_ARN already exists."
+  echo "OIDC provider $PROVIDER_ARN already exists; making sure it accepts the sts.amazonaws.com audience."
+  # Adding a client id the provider already lists is a no-op.
+  run_aws iam add-client-id-to-open-id-connect-provider --open-id-connect-provider-arn "$PROVIDER_ARN" --client-id sts.amazonaws.com
 else
   run_aws iam create-open-id-connect-provider --url "https://$ISSUER_HOST" --client-id-list sts.amazonaws.com \
     --tags "Key=$TAG_KEY,Value=$TAG_VALUE"
 fi
-run_aws iam create-role --role-name "$ROLE" --assume-role-policy-document "file://$TRUST_FILE" \
-  --max-session-duration 3600 --tags "Key=$TAG_KEY,Value=$TAG_VALUE"
+# Re-running updates the trust and the policy (new namespaces, another key) instead of stopping on EntityAlreadyExists.
+if [ "$APPLY" = 1 ] && aws_ iam get-role --role-name "$ROLE" >/dev/null 2>&1; then
+  run_aws iam update-assume-role-policy --role-name "$ROLE" --policy-document "file://$TRUST_FILE"
+else
+  run_aws iam create-role --role-name "$ROLE" --assume-role-policy-document "file://$TRUST_FILE" \
+    --max-session-duration 3600 --tags "Key=$TAG_KEY,Value=$TAG_VALUE"
+fi
 run_aws iam put-role-policy --role-name "$ROLE" --policy-name "$NAME_PREFIX-bedrock-kms" --policy-document "file://$POLICY_FILE"
 
 echo "Put this in the aws-role-arn key of biatec-chat-secrets: arn:aws:iam::$ACCOUNT_ID:role/$ROLE"
