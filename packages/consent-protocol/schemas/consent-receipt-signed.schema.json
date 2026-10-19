@@ -8,7 +8,7 @@
   "required": ["authorization_details", "auth_req_id", "client_entity_id", "binding_code", "decision", "expiry", "sub", "binding_message"],
   "allOf": [
     {
-      "if": { "properties": { "decision": { "const": "approve" } } },
+      "if": { "required": ["decision"], "properties": { "decision": { "enum": ["approve", "code_failed"] } } },
       "then": { "properties": { "binding_code": { "type": "string", "pattern": "^[0-9]{6}$" } } }
     }
   ],

@@ -14,6 +14,8 @@ export function jcs(value) {
   }
   if (Array.isArray(value)) return "[" + value.map(jcs).join(",") + "]";
   if (typeof value === "object") {
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) throw new Error("only plain objects, arrays and primitives can be canonicalized");
     // Array#sort on strings compares UTF-16 code units, as RFC 8785 requires.
     const keys = Object.keys(value).sort();
     return "{" + keys.map((k) => jcs(k) + ":" + jcs(value[k])).join(",") + "}";

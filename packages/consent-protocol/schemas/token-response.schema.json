@@ -9,6 +9,8 @@
     "token_type": { "const": "Bearer" },
     "expires_in": { "type": "integer", "minimum": 1, "maximum": 300 },
     "scope": { "type": "string" },
+    "refresh_token": false,
+    "id_token": false,
     "consent_receipt": { "$ref": "consent-receipt.schema.json" }
   }
 }

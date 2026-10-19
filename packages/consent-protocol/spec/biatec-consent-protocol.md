@@ -86,7 +86,7 @@ Content-Type: application/x-www-form-urlencoded
 grant_type=urn:openid:params:grant-type:ciba&auth_req_id=ciba_8257c10231dd9b46e2f877484cf0b2a3&resource=https%3A%2F%2Fapi.biatec.io
 ```
 
-The token response carries the access token (`acr` = `biatec:consent`, bound to the group hash, 300 seconds) and the signed receipt in `consent_receipt` (`schemas/token-response.schema.json`). A step-up receipt signs an empty `binding_message`, because no client text exists.
+The token response carries the access token (and never a refresh or ID token; the schema forbids both) (`acr` = `biatec:consent`, bound to the group hash, 300 seconds) and the signed receipt in `consent_receipt` (`schemas/token-response.schema.json`). A step-up receipt signs an empty `binding_message`, because no client text exists.
 
 ## 5. Direct entry
 
@@ -205,7 +205,7 @@ Anyone with the Biatec OIDC JWKS verifies a receipt without further lookups:
 
 1. Validate the receipt against the schema.
 2. Verify the attestation JWS with the JWKS key named by its `kid`.
-3. Check that the attestation header `typ` is `biatec-device-attestation+jwt`, that its signing key is an EC P-256 signature key of the Biatec OIDC JWKS, that its `iss` is the expected issuer, that its `exp` is in the future (verifiers fail closed on a missing clock input), and that its `sub` equals `signed.sub`, `device_kid` equals `device.kid` and `device_jwk_thumbprint` equals the thumbprint of `device.public_key`.
+3. Check that the attestation header `typ` is `biatec-device-attestation+jwt`, that its signing key is an EC P-256 signature key of the Biatec OIDC JWKS, that its `iss` is the expected issuer, that its `exp` is in the future (verifiers use a trusted clock), and that its `sub` equals `signed.sub`, `device_kid` equals `device.kid` and `device_jwk_thumbprint` equals the thumbprint of `device.public_key`.
 4. Canonicalize `signed` (RFC 8785) and verify `signature` over its UTF-8 bytes with `device.public_key`.
 5. For authorization, compare every signed member (`authorization_details`, `auth_req_id`, `client_entity_id`, `binding_message`, `expiry`, `sub`) and the bound hash with the stored request the verifier is waiting on, never with data the receipt supplies. Additionally require `decision` = `approve` and that `binding_code` equals, in constant time, the code Biatec OIDC issued for this `auth_req_id` (number matching, rule 2), compare the `signed.authorization_details` hash fields with the group or body presented, check `expiry`, and mark `auth_req_id` spent only when the signing call actually proceeds (rule 5); a verification that is followed by a failed signing call leaves the consent unspent. A verifier MUST NOT treat a `deny` or `code_failed` receipt, or an expired one, as consent. Verification helpers return a boolean and never throw on malformed input.
 

@@ -31,7 +31,11 @@
       },
       "allOf": [
         {
-          "if": { "properties": { "verified": { "const": false } } },
+          "if": { "required": ["verified"], "properties": { "verified": { "const": true } } },
+          "then": { "required": ["display_name", "domain"], "properties": { "display_name": true, "domain": true } }
+        },
+        {
+          "if": { "required": ["verified"], "properties": { "verified": { "const": false } } },
           "then": {
             "required": ["fingerprint"],
             "properties": { "fingerprint": true, "display_name": false, "logo_uri": false, "domain": false }
