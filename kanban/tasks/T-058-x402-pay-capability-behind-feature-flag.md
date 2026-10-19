@@ -1,7 +1,7 @@
 ---
 id: T-058
 title: x402.pay capability behind feature flag
-status: blocked
+status: backlog
 priority: P3
 epic: "Wallet tools"
 blocked_by: [T-022, T-031]
@@ -54,3 +54,4 @@ dotnet test --filter X402
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-022, T-031

@@ -1,7 +1,7 @@
 ---
 id: T-035
 title: Record evidence across chat, previews and signing
-status: blocked
+status: backlog
 priority: P1
 epic: "Evidence"
 blocked_by: [T-022, T-034]
@@ -54,3 +54,4 @@ dotnet test --filter EvidenceRecording
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-022, T-034

@@ -1,7 +1,7 @@
 ---
 id: T-029
 title: dex.swap capability
-status: blocked
+status: backlog
 priority: P1
 epic: "DEX"
 blocked_by: [T-022, T-028]
@@ -54,3 +54,4 @@ dotnet test --filter Swap
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-022, T-028

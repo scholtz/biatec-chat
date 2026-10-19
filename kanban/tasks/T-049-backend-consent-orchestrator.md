@@ -1,7 +1,7 @@
 ---
 id: T-049
 title: Backend consent orchestrator
-status: blocked
+status: backlog
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-022, T-047]
@@ -55,3 +55,4 @@ dotnet test --filter Consent
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:00 · coordinator · review · P2 → P1: on the critical path of the P1 demo test (T-059)
+- 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-022, T-047

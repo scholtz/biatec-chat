@@ -1,7 +1,7 @@
 ---
 id: T-026
 title: limits.view and lowering-only limits.update
-status: blocked
+status: backlog
 priority: P2
 epic: "Wallet tools"
 blocked_by: [T-022]
@@ -54,3 +54,4 @@ dotnet test --filter Limits
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-022

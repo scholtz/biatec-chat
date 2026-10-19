@@ -1,7 +1,7 @@
 ---
 id: T-022
 title: Confirm, sign at Biatec OIDC and submit
-status: in-progress
+status: done
 priority: P0
 epic: "Wallet tools"
 blocked_by: [T-010, T-019, T-021]
@@ -52,6 +52,8 @@ dotnet test --filter Signing
 
 ## Review
 
+- 2026-10-19 22:29 · approve · PR #102 merged into main @ fcef252 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
@@ -59,3 +61,4 @@ dotnet test --filter Signing
 - 2026-10-19 20:34 · kanban-board · blocked → backlog · blockers done: T-010, T-019, T-021
 - 2026-10-19 21:24 · scholtz · taken · status stays backlog
 - 2026-10-19 21:24 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-19 22:29 · user · in-progress → done · PR #102 merged into main @ fcef252 (synced by kanban-sync)

@@ -1,7 +1,7 @@
 ---
 id: T-024
 title: wallet.transfer on Bitcoin (PSBT intent hash)
-status: blocked
+status: backlog
 priority: P1
 epic: "Wallet tools"
 blocked_by: [T-020, T-022]
@@ -55,3 +55,4 @@ dotnet test --filter Bitcoin
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:00 · coordinator · review · added T-020: transfers between own Bitcoin addresses need address listing (same as T-023)
+- 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-020, T-022

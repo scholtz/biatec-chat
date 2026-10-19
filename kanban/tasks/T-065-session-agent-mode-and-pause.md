@@ -1,7 +1,7 @@
 ---
 id: T-065
 title: Session agent mode (analyze / prepare) and pause, enforced server-side
-status: blocked
+status: backlog
 priority: P2
 epic: "Widget UI rework"
 blocked_by: [T-022]
@@ -74,3 +74,4 @@ Filled in by the agent when it moves the task to `review`.
 
 - 2026-10-19 22:40 · coordinator · (new) → blocked · created from the Biatec AI design handoff (docs/design/) for the widget UI rework
 - 2026-10-19 22:40 · coordinator · blocked · conflicts_with T-067, T-069: all three regenerate packages/chat-protocol
+- 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-022

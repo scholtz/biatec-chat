@@ -1,7 +1,7 @@
 ---
 id: T-023
 title: wallet.transfer on Algorand with opt-in steps
-status: blocked
+status: backlog
 priority: P0
 epic: "Wallet tools"
 blocked_by: [T-020, T-022]
@@ -54,3 +54,4 @@ dotnet test --filter Transfer; testnet manual run with stage identity
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-020, T-022
