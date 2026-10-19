@@ -1,7 +1,7 @@
 ---
 id: T-012
 title: Bedrock Converse streaming client
-status: backlog
+status: in-progress
 priority: P0
 epic: "Orchestrator"
 blocked_by: [T-002]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Api/Model/**"]
 parallel: yes
 conflicts_with: []
 issue: "#13"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-012"
+owner: "session-20261019-1848"
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#model-layer"
 created: 2026-10-19
 updated: 2026-10-19
@@ -55,3 +55,5 @@ dotnet test --filter Model; AWS_PROFILE=hackathon dotnet run smoke command
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:23 · kanban-board · blocked → backlog · blockers done: T-002
+- 2026-10-19 18:48 · LukassSoukup · taken · status stays backlog
+- 2026-10-19 18:48 · session-20261019-1848 · backlog → in-progress · claimed
