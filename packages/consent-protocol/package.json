@@ -4,7 +4,7 @@
   "description": "Biatec Consent Protocol: specification, JSON schemas and signed test vectors.",
   "type": "module",
   "license": "MIT",
-  "files": ["spec", "schemas", "vectors"],
+  "files": ["spec", "schemas", "vectors", "scripts/lib.mjs"],
   "scripts": {
     "generate:vectors": "node scripts/generate-vectors.mjs",
     "test": "node --test \"test/*.test.mjs\""

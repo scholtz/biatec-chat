@@ -72,6 +72,37 @@ public class ConsentProtocolVectorTests
     }
 
     [Fact]
+    public void ReceiptVectors_AttestationVerifiesAndBindsSubAndDeviceKey()
+    {
+        var jwks = Load("jwks.json")["keys"]!.AsArray();
+        foreach (var v in Load("receipts.json")["vectors"]!.AsArray())
+        {
+            var receipt = v!["receipt"]!;
+            var parts = ((string)receipt["device"]!["attestation"]!).Split('.');
+            Assert.Equal(3, parts.Length);
+            var header = JsonNode.Parse(B64Url(parts[0]))!;
+            var payload = JsonNode.Parse(B64Url(parts[1]))!;
+            Assert.Equal("biatec-device-attestation+jwt", (string)header["typ"]!);
+            var jwk = jwks.Single(k => (string)k!["kid"]! == (string)header["kid"]!)!;
+            using var oidc = ECDsa.Create(new ECParameters
+            {
+                Curve = ECCurve.NamedCurves.nistP256,
+                Q = new ECPoint { X = B64Url((string)jwk["x"]!), Y = B64Url((string)jwk["y"]!) },
+            });
+            Assert.True(oidc.VerifyData(Encoding.ASCII.GetBytes(parts[0] + "." + parts[1]), B64Url(parts[2]), HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation));
+
+            var dev = receipt["device"]!;
+            Assert.Equal((string)receipt["signed"]!["sub"]!, (string)payload["sub"]!);
+            Assert.Equal((string)dev["kid"]!, (string)payload["device_kid"]!);
+            // RFC 7638 thumbprint of the device key: SHA-256 over the members in lexicographic order.
+            var pk = dev["public_key"]!;
+            var thumbInput = $"{{\"crv\":\"{(string)pk["crv"]!}\",\"kty\":\"{(string)pk["kty"]!}\",\"x\":\"{(string)pk["x"]!}\",\"y\":\"{(string)pk["y"]!}\"}}";
+            var thumb = Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(thumbInput))).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            Assert.Equal(thumb, (string)payload["device_jwk_thumbprint"]!);
+        }
+    }
+
+    [Fact]
     public void LimitsChangeVector_RequestHashIsSha256OfCanonicalBody()
     {
         var v = Load("receipts.json")["vectors"]!.AsArray().Single(x => x!["limits_request_body"] is not null)!;

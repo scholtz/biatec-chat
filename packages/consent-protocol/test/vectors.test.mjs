@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
-import { jcs, sha256Hex, verifyReceipt, verifyReceiptSignature, verifyAttestation, signEs256 } from "../scripts/lib.mjs";
+import { jcs, sha256Hex, verifyApproval, verifyReceipt, verifyReceiptSignature, verifyAttestation, signEs256 } from "../scripts/lib.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const load = (...p) => JSON.parse(readFileSync(join(root, ...p), "utf8"));
@@ -146,4 +146,49 @@ test("schemas reject malformed objects", () => {
   const unverified = vectors.find((x) => !x.request.client.verified).request;
   bad("consent-request", (r) => (r.client.display_name = "Example Bank"), unverified);
   bad("consent-request", (r) => delete r.client.fingerprint, unverified);
+});
+
+test("verifyApproval accepts approve once and rejects deny, code_failed, expiry and replay", () => {
+  const now = vectors[0].receipt.signed.expiry - 100;
+  const consumed = new Set();
+  const approve = vectors.find((v) => v.receipt.signed.decision === "approve").receipt;
+  assert.equal(verifyApproval(approve, jwks, now, consumed), true);
+  assert.equal(verifyApproval(approve, jwks, now, consumed), false, "replay");
+  assert.equal(verifyApproval(approve, jwks, approve.signed.expiry, new Set()), false, "expired");
+  for (const d of ["deny", "code_failed"]) {
+    const r = vectors.find((v) => v.receipt.signed.decision === d).receipt;
+    assert.ok(verifyReceipt(r, jwks), d + " signatures are valid");
+    assert.equal(verifyApproval(r, jwks, now, new Set()), false, d);
+  }
+  assert.equal(verifyReceipt(approve, jwks, 4102444800), false, "attestation expired");
+});
+
+test("verifiers return false instead of throwing on malformed input", () => {
+  const r = clone(vectors[0].receipt);
+  r.device.attestation = "garbage";
+  assert.equal(verifyAttestation(r, jwks), false);
+  r.device.attestation = "a.b.c";
+  assert.equal(verifyReceipt(r, jwks), false);
+  assert.equal(verifyReceipt({}, jwks), false);
+  assert.equal(verifyReceipt(vectors[0].receipt, { keys: [{ kid: "oidc-test-key-1", kty: "oct" }] }), false);
+});
+
+test("schemas enforce cross-field rules", () => {
+  const approve = vectors[0].receipt;
+  const r = clone(approve);
+  r.signed.binding_code = "";
+  assert.equal(valid("consent-receipt", r), false, "approve needs a code");
+  const stepUp = clone(vectors[0].request);
+  stepUp.binding_message = "Pay me";
+  assert.equal(valid("consent-request", stepUp), false, "step-up has no client text");
+  const unverified = clone(vectors.find((v) => !v.request.client.verified).request);
+  unverified.binding_message = "Example Bank refund";
+  assert.equal(valid("consent-request", unverified), false, "unverified client has no text channel");
+  const big = clone(approve);
+  big.signed.expiry = 2 ** 53;
+  assert.equal(valid("consent-receipt", big), false);
+});
+
+test("jcs rejects lone surrogates", () => {
+  assert.throws(() => jcs({ a: "\ud800" }));
 });

@@ -5,7 +5,7 @@ import { generateKeyPairSync, createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { jcs, sha256Hex, signEs256, signCompactJws, thumbprint, verifyReceipt } from "./lib.mjs";
+import { ATTESTATION_TYP, jcs, sha256Hex, signEs256, signCompactJws, thumbprint, verifyReceipt } from "./lib.mjs";
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "vectors");
 const write = (name, v) => writeFileSync(join(dir, name), JSON.stringify(v, null, 2) + "\n");
@@ -47,8 +47,8 @@ const NOW = 1792425600; // 2026-10-19T16:00:00Z
 const deviceJwk = publicOf(keys.device);
 const attestation = signCompactJws(
   keys.oidc,
-  { alg: "ES256", kid: keys.oidc.kid, typ: "biatec-device-attestation+jwt" },
-  { iss: "https://oidc.biatec.test", sub: SUB, device_kid: keys.device.kid, device_jwk_thumbprint: thumbprint(deviceJwk), iat: NOW - 86400 * 3 },
+  { alg: "ES256", kid: keys.oidc.kid, typ: ATTESTATION_TYP },
+  { iss: "https://oidc.biatec.test", sub: SUB, device_kid: keys.device.kid, device_jwk_thumbprint: thumbprint(deviceJwk), iat: NOW - 86400 * 3, exp: NOW + 86400 * 365 },
 );
 const device = {
   kid: keys.device.kid,

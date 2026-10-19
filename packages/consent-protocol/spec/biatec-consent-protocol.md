@@ -205,11 +205,11 @@ Anyone with the Biatec OIDC JWKS verifies a receipt without further lookups:
 
 1. Validate the receipt against the schema.
 2. Verify the attestation JWS with the JWKS key named by its `kid`.
-3. Check that the attestation's `sub` equals `signed.sub`, `device_kid` equals `device.kid` and `device_jwk_thumbprint` equals the thumbprint of `device.public_key`.
+3. Check that the attestation header `typ` is `biatec-device-attestation+jwt`, that its `exp` is in the future, and that its `sub` equals `signed.sub`, `device_kid` equals `device.kid` and `device_jwk_thumbprint` equals the thumbprint of `device.public_key`.
 4. Canonicalize `signed` (RFC 8785) and verify `signature` over its UTF-8 bytes with `device.public_key`.
-5. For authorization, compare `signed.authorization_details` hash fields with the group or body presented, check `expiry`, and consume `auth_req_id` once.
+5. For authorization, additionally require `decision` = `approve` with a six digit `binding_code`, compare the `signed.authorization_details` hash fields with the group or body presented, check `expiry`, and consume `auth_req_id` once. A verifier MUST NOT treat a `deny` or `code_failed` receipt, or an expired one, as consent. Verification helpers return a boolean and never throw on malformed input.
 
-Reference implementations: `scripts/lib.mjs` (JavaScript) and `backend/Biatec.Chat.Tests/Canonical/ConsentProtocolVectorTests.cs` (.NET, using the backend `JsonCanonicalizer`). Both verify every vector.
+Reference implementations: `scripts/lib.mjs` (JavaScript; `verifyReceipt` covers steps 2-4 and `verifyApproval` step 5) and `backend/Biatec.Chat.Tests/Canonical/ConsentProtocolVectorTests.cs` (.NET, using the backend `JsonCanonicalizer`). Both verify every vector signature; the .NET test also verifies the attestation.
 
 ## 9. Test vectors
 

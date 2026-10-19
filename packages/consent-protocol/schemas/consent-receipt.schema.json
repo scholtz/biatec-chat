@@ -11,7 +11,7 @@
     "signed": { "$ref": "consent-receipt-signed.schema.json" },
     "alg": { "const": "ES256" },
     "signature": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$", "description": "base64url of the 64-byte IEEE P1363 (r || s) ES256 signature over the UTF-8 bytes of JCS(signed)." },
-    "issued_at": { "type": "integer", "minimum": 0, "description": "Unix time in seconds when the device signed. Informational; not part of the signed object." },
+    "issued_at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "Unix time in seconds when the device signed. Informational; not part of the signed object." },
     "device": {
       "type": "object",
       "additionalProperties": false,
