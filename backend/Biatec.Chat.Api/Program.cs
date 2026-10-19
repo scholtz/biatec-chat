@@ -29,6 +29,7 @@ builder.Services.AddTokenVault(builder.Configuration);
 builder.Services.AddTenancy();
 builder.Services.AddSessions();
 builder.Services.AddBedrockModel();
+Biatec.Chat.Api.Budget.BudgetRegistration.AddBedrockBudget(builder.Services);
 builder.Services.AddChat();
 Biatec.Chat.Api.Chat.SignIn.AnonymousTierRegistration.AddAnonymousTier(builder.Services, builder.Configuration);
 builder.Services.AddOnboarding(builder.Configuration);
