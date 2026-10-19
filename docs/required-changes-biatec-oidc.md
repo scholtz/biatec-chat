@@ -14,7 +14,7 @@ decoding for limit enforcement.
 ## Fallback matrix
 
 "Mock" means the in-repo mock OIDC used by tests (`backend/Biatec.Chat.Tests/Auth/MockOidc.cs` and its successors) implements the
-shape below so the backend is tested against it. "None" means the spec states there is no safe fallback: the feature runs only
+shape below so the backend is tested against it. "None" means the spec states there is no fallback, so an agent builds against the mock and records the dependency rather than inventing one: the feature runs only
 against the mock and cannot be enabled against real Biatec OIDC until the row ships.
 
 | # | Addition | Fallback implemented in this repo now |
@@ -28,14 +28,14 @@ against the mock and cannot be enabled against real Biatec OIDC until the row sh
 | 7 | Test-network valuation from a static price table | Demo identities set to "always ask" for the Biatec Chat client with no spending limits |
 | 8 | Group-hash binding in the signing endpoint | None. The backend also recomputes the group ID before calling, as defence in depth, not a substitute |
 | 9 | Confidential-client registration for tenants | Operator adds the tenant client to the static client list (section 9) |
-| 10 | Reduced per-client daily cap without an active device | Backend enforces the 100 EUR per-client daily cap for users with no active device and blocks above-threshold signing for them |
+| 10 | Reduced per-client daily cap without an active device | Backend enforces the 100 EUR per-client daily cap and blocks above-threshold signing for users with no active device. "No active device" is known only through the backend's own enrollment record or row 20; where neither exists, the backend cannot tell and relies on OIDC's step-up challenge |
 | 11 | `valuedEur` in every signing response | Backend counts its own predicted value in the soft cap; only as good as its price feed |
 | 12 | OpenID Federation trust-chain evaluation for client display names | Biatec's own clients pinned as verified by configuration; all others shown unverified |
 | 13 | Forced fresh consent on scope elevation | Not needed: every authorization shows the consent screen |
-| 14 | RFC 7009 revocation of exactly the presented refresh token | Destroy the vault entry and let the token age out; deployment security notes say so |
+| 14 | RFC 7009 revocation of exactly the presented refresh token | Destroy the vault entry and let the token age out; deployment security notes say so. Residual risk: a refresh token stolen earlier stays valid at the IdP until expiry (see row 18) |
 | 15 | Pairwise subject identifiers per tenant client | Public `sub` used; deletion cannot unlink retained receipts (documented) |
 | 16 | `maxConsentSeconds` on the signing request | Rely on the 600-second Confirm gate and rebuild more often |
-| 17 | Origin-aware consent requests | Pending slots, rate limits and pauses apply per client for all Biatec sites together |
+| 17 | Origin-aware consent requests | Pending slots, rate limits and pauses apply per client for all Biatec sites together; the backend treats HTTP 429 as "try later" in the widget |
 | 18 | Per-client refresh token lifetime (8 h) with absolute-expiry-preserving rotation | Keep 30-day tokens and rely on revocation; residual exposure at the IdP is 30 days |
 | 19 | Consent-gated loosening of consent settings | Loosening only from an enrolled device's own screen; chat hides raising limits (`limits.update` is lowering-only) |
 | 20 | `GET /consent/settings` | Card says "may need approval on your phone" without predicting |
@@ -72,6 +72,8 @@ scope=sign&resource=https%3A%2F%2Fmcp.biatec.io%2Ftools
 
 ```http
 POST /connect/token
+Authorization: Basic <client credentials>
+
 grant_type=urn:openid:params:grant-type:ciba&auth_req_id=ar_8f2c...&resource=https%3A%2F%2Fmcp.biatec.io%2Ftools
 ```
 
@@ -131,7 +133,10 @@ section 4. The elevated token is for the bound group only and expires in 300 s.
 }
 ```
 
-Bitcoin: `group_hash` is the intent hash derived from a PSBT carrying prevout data (section 8) and `kind` is `bitcoin_output`.
+`group_hash` is `sha256:` plus the hex SHA-256 of the canonical form OIDC derives from the group (proposal for the owners to fix
+and publish, with a test vector; the Algorand group ID itself is carried separately by `grp`). For Bitcoin it is the intent hash
+derived from a PSBT carrying prevout data (section 8) and `kind` is `bitcoin_output`. The backend's own recomputation must use the
+published algorithm.
 
 ## 3. Step-up challenge on sign and `PUT /wallet/limits`, and `requireConsent`
 
@@ -167,7 +172,10 @@ Content-Type: application/json
 }
 ```
 
-The backend then polls the CIBA token grant (section 1) and retries the same request with the elevated bearer. The wallet endpoint
+`expires_in` is the consent window, never longer than `maxConsentSeconds` (section 16) or the group's remaining validity. The
+600-second Confirm gate in the fallback of section 16 bounds how long a built preview may be confirmed, a separate clock.
+
+The backend then polls the CIBA token grant (section 1, authenticated as the confidential client, honouring `interval` and `slow_down`) and retries the same request with the elevated bearer. The wallet endpoint
 accepts only a consent bound to the hash of what it is asked to do, and consumes it only if signing proceeds. The mock returns this
 exact body so the backend is tested against the real shape.
 
@@ -210,6 +218,8 @@ Receipts verify offline against the device public key and attestation. The backe
   "safe": { "proposal_id": 12, "payload": [ { "kind": "payment", "to": "ADDR...", "amount": "100000000", "fiat": { "currency": "EUR", "value": "20.00" } } ] },
   "value_eur": "20.00" }
 ```
+
+Here `value_eur` on the entry is the per-call value and the top-level `value_eur` of section 2 is the sum over the group.
 
 ## 6. Biatec DEX pool call decoding
 
@@ -265,7 +275,7 @@ Content-Type: application/json
   "response_types": ["code"],
   "token_endpoint_auth_method": "client_secret_basic",
   "scope": "openid profile offline_access sign",
-  "subject_type": "pairwise",
+  "subject_type": "pairwise",   // omit while section 15 is on its fallback: the backend and mock assume the public `sub`
   "backchannel_token_delivery_mode": "poll",
   "authorization_details_types": ["biatec_transaction", "biatec_limits_change"],
   "post_logout_redirect_uris": ["https://chat.biatec.io/"],
