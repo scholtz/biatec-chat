@@ -1,29 +1,99 @@
 import 'package:flutter/material.dart';
 
+import 'approvals/approval_screen.dart';
 import 'approvals/approval_services.dart';
 import 'approvals/history_screen.dart';
 import 'approvals/pending_screen.dart';
 import 'config.dart';
 import 'enrollment/enrollment_screen.dart';
+import 'push/fcm_push_transport.dart';
+import 'push/push_controller.dart';
 import 'routes.dart';
 import 'screens/home_screen.dart';
 import 'theme.dart';
 
-void main() {
-  runApp(AuthenticatorApp(config: AppConfig.fromEnvironment()));
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final config = AppConfig.fromEnvironment();
+  final approvals = ApprovalServices.fromConfig(config);
+  final firebase = FirebasePushConfig.fromEnvironment();
+  if (firebase == null) {
+    runApp(AuthenticatorApp(config: config, approvals: approvals));
+    return;
+  }
+  final navigator = GlobalKey<NavigatorState>();
+  final messenger = GlobalKey<ScaffoldMessengerState>();
+  final push = PushController(
+    enrollment: approvals.enrollment,
+    client: approvals.client,
+    onOpenRequest: (id) =>
+        navigator.currentState?.push(ApprovalScreen.route(approvals, id)),
+  );
+  runApp(AuthenticatorApp(
+      config: config,
+      approvals: approvals,
+      push: push,
+      navigatorKey: navigator,
+      messengerKey: messenger));
+  // Firebase starts after the first frame: the UI never waits for it, and a
+  // tapped notification that launched the app finds a mounted navigator.
+  await WidgetsBinding.instance.endOfFrame;
+  final transport = await FcmPushTransport.create(firebase);
+  if (transport == null) return;
+  // Coming back to the app retries a registration that failed earlier.
+  AppLifecycleListener(onResume: push.registerIfEnrolled);
+  // The OS shows nothing for a push while the app is open, so say it here.
+  push.requestArrived.listen((_) => showRequestArrived(messenger, navigator));
+  await push.start(transport);
+}
+
+/// In-app notice for a push received in the foreground. It names no detail:
+/// the list is fetched from Biatec OIDC when opened.
+void showRequestArrived(GlobalKey<ScaffoldMessengerState> messenger,
+    GlobalKey<NavigatorState> navigator) {
+  messenger.currentState
+    ?..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(
+      content: const Text('New approval request'),
+      action: SnackBarAction(
+          label: 'Open',
+          onPressed: () {
+            // Back to the list if it is already open, else open it.
+            final nav = navigator.currentState;
+            if (nav == null) return;
+            var found = false;
+            nav.popUntil((r) =>
+                (found = found || r.settings.name == '/pending') || r.isFirst);
+            if (!found) nav.pushNamed('/pending');
+          }),
+    ));
 }
 
 class AuthenticatorApp extends StatelessWidget {
   AuthenticatorApp(
-      {super.key, required this.config, ApprovalServices? approvals})
+      {super.key,
+      required this.config,
+      ApprovalServices? approvals,
+      this.push,
+      this.navigatorKey,
+      this.messengerKey})
       : approvals = approvals ?? ApprovalServices.fromConfig(config);
 
   final AppConfig config;
   final ApprovalServices approvals;
 
+  /// Null when push is not configured; the pending list then polls only.
+  final PushController? push;
+  final GlobalKey<NavigatorState>? navigatorKey;
+  final GlobalKey<ScaffoldMessengerState>? messengerKey;
+
   @override
   Widget build(BuildContext context) {
+    final push = this.push;
     return MaterialApp(
+      navigatorKey: navigatorKey,
+      scaffoldMessengerKey: messengerKey,
+      navigatorObservers: [if (push != null) push],
       title: 'Biatec Authenticator',
       theme: buildTheme(Brightness.light),
       darkTheme: buildTheme(Brightness.dark),
@@ -33,7 +103,10 @@ class AuthenticatorApp extends StatelessWidget {
         '/': (_) => HomeScreen(config: config),
         for (final route in appRoutes) route.path: (_) => route.build(),
         '/enrollment': (_) => EnrollmentScreen(config: config),
-        '/pending': (_) => PendingScreen(services: approvals),
+        '/pending': (_) => PendingScreen(
+              services: approvals,
+              pushes: push?.requestArrived,
+            ),
         '/history': (_) => HistoryScreen(history: approvals.history),
       },
     );
