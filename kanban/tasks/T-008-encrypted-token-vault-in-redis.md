@@ -1,7 +1,7 @@
 ---
 id: T-008
 title: Encrypted token vault in Redis
-status: blocked
+status: backlog
 priority: P0
 epic: "Sessions & auth"
 blocked_by: [T-002]
@@ -58,3 +58,4 @@ dotnet test --filter Vault
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:00 · coordinator · review · added note: KMS key bills while idle, needs user approval (AGENTS.md rule)
+- 2026-10-19 18:23 · kanban-board · blocked → backlog · blockers done: T-002

@@ -1,7 +1,7 @@
 ---
 id: T-002
 title: Backend config, options and health endpoint
-status: review
+status: done
 priority: P0
 epic: "Foundation"
 blocked_by: [T-001]
@@ -10,7 +10,7 @@ parallel: yes
 conflicts_with: []
 issue: "#3"
 branch: "task/T-002"
-owner: "pr-66"
+owner: ""
 source: "PRODUCT-DESCRIPTION.md#chat-backend-biatecchatapi"
 created: 2026-10-19
 updated: 2026-10-19
@@ -54,3 +54,4 @@ dotnet run; curl localhost:<port>/health; stop redis and curl again
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:21 · coordinator · blocked → review · PR #66 open on GitHub, waiting for the user's review
+- 2026-10-19 18:23 · user · review → done · PR #66 merged into main @ 7dd7ccc

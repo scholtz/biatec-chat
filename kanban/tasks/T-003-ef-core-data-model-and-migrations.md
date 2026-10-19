@@ -1,7 +1,7 @@
 ---
 id: T-003
 title: EF Core data model and migrations
-status: blocked
+status: backlog
 priority: P0
 epic: "Foundation"
 blocked_by: [T-002]
@@ -53,3 +53,4 @@ dotnet ef database update; dotnet test --filter Data
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 18:23 · kanban-board · blocked → backlog · blockers done: T-002

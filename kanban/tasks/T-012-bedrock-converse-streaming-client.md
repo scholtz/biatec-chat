@@ -1,7 +1,7 @@
 ---
 id: T-012
 title: Bedrock Converse streaming client
-status: blocked
+status: backlog
 priority: P0
 epic: "Orchestrator"
 blocked_by: [T-002]
@@ -53,3 +53,4 @@ dotnet test --filter Model; AWS_PROFILE=hackathon dotnet run smoke command
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 18:23 · kanban-board · blocked → backlog · blockers done: T-002
