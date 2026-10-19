@@ -83,6 +83,33 @@ public class BedrockModelClientTests
     }
 
     [Fact]
+    public void The_history_ends_with_a_cache_point_without_changing_the_callers_messages()
+    {
+        var request = Request();
+        var r = Client(new FakeSource()).BuildRequest(request);
+
+        var last = r.Messages[^1].Content;
+        Assert.Equal("hello", last[0].Text);
+        Assert.Equal(CachePointType.Default, last[^1].CachePoint.Type);
+        Assert.Single(request.Messages[^1].Content);
+    }
+
+    [Fact]
+    public async Task A_tool_block_left_open_at_the_message_stop_is_still_handed_out()
+    {
+        var source = new FakeSource([
+            new ContentBlockStartEvent { ContentBlockIndex = 0, Start = new ContentBlockStart { ToolUse = new ToolUseBlockStart { ToolUseId = "tu-9", Name = "kb_search" } } },
+            new ContentBlockDeltaEvent { ContentBlockIndex = 0, Delta = new ContentBlockDelta { ToolUse = new ToolUseBlockDelta { Input = """{"q":"x"}""" } } },
+            Stop(StopReason.Tool_use),
+        ]);
+
+        var events = await Collect(Client(source).StreamAsync(Request()));
+
+        Assert.Equal("tu-9", Assert.Single(events.OfType<ModelToolUse>()).ToolUseId);
+        Assert.Equal("tu-9", Assert.Single(events.OfType<ModelMessageStop>()).Message!.Content[0].ToolUse.ToolUseId);
+    }
+
+    [Fact]
     public void Max_tokens_is_always_set_and_never_above_the_configured_cap()
     {
         var c = Client(new FakeSource());

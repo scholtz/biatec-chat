@@ -37,7 +37,8 @@ public sealed class BedrockConverseStreamSource(IAmazonBedrockRuntime bedrock) :
 /// jitter. A background pump drains the Bedrock stream into a channel while it holds a slot, so the slot's lifetime
 /// never depends on how fast the caller reads, and a caller that stops reading frees it at once. A call is retried
 /// only while nothing has been handed out, so a caller never sees a partial answer twice. Events keep Bedrock's
-/// order: text and tool-use deltas, the message stop, then usage (which the client also logs).
+/// order: text and tool-use deltas, the message stop, then usage (which the client also logs). A ModelToolUse is
+/// only a proposal until its ModelMessageStop arrives: run tools after the stop, never on the tool-use event.
 /// </summary>
 public sealed class BedrockModelClient(
     IConverseStreamSource source,
@@ -75,7 +76,7 @@ public sealed class BedrockModelClient(
         {
             ModelId = request.Profile == ModelProfile.Authenticated ? _o.AuthenticatedModelId : _o.AnonymousModelId,
             System = system,
-            Messages = [.. request.Messages],
+            Messages = WithHistoryCachePoint(request.Messages),
             InferenceConfig = new InferenceConfiguration { MaxTokens = maxTokens },
             ToolConfig = request.Tools.Count == 0
                 ? null
@@ -260,22 +261,37 @@ public sealed class BedrockModelClient(
             // reset, DNS) before any response arrived.
             AmazonServiceException { StatusCode: 0, InnerException: { } inner } generic
                 when (generic.GetType() == typeof(AmazonBedrockRuntimeException) || generic.GetType() == typeof(AmazonServiceException))
-                     && IsTransport(inner, ct) => true,
+                     && IsTransport(inner) => true,
             AmazonServiceException => false,
             // The SDK's client-side wrapper for a failure before any response (connection reset, DNS, timeout).
             AmazonClientException { InnerException: { } inner } client
-                when client.GetType() == typeof(AmazonClientException) && IsTransport(inner, ct) => true,
-            _ => IsTransport(ex, ct),
+                when client.GetType() == typeof(AmazonClientException) && IsTransport(inner) => true,
+            _ => IsTransport(ex),
         };
     }
 
-    // An HttpClient timeout surfaces as a TaskCanceledException the caller didn't ask for.
-    private static bool IsTransport(Exception ex, CancellationToken ct) => ex switch
+    // An HttpClient timeout surfaces as a TaskCanceledException; IsRetryable already ruled out caller cancellation.
+    private static bool IsTransport(Exception ex) =>
+        ex is HttpRequestException or IOException or TimeoutException or OperationCanceledException;
+
+    /// <summary>
+    /// Adds a cache point after the last message (the third of Bedrock's four), so a tool loop that resends the
+    /// growing history reads it from the cache. The caller's messages are copied, never changed.
+    /// </summary>
+    private static List<Message> WithHistoryCachePoint(IReadOnlyList<Message> messages)
     {
-        HttpRequestException or IOException or TimeoutException => true,
-        OperationCanceledException => !ct.IsCancellationRequested,
-        _ => false,
-    };
+        var copy = messages.ToList();
+        if (copy.Count > 0)
+        {
+            var last = copy[^1];
+            copy[^1] = new Message
+            {
+                Role = last.Role,
+                Content = [.. last.Content ?? [], new ContentBlock { CachePoint = new CachePointBlock { Type = CachePointType.Default } }],
+            };
+        }
+        return copy;
+    }
 
     private static SystemContentBlock CachePoint() => new() { CachePoint = new CachePointBlock { Type = CachePointType.Default } };
 
@@ -322,6 +338,15 @@ public sealed class BedrockModelClient(
                     yield return new ModelToolUse(tool.ToolUseId, tool.Name, block.InputJson);
                     break;
                 case MessageStopEvent stop:
+                    // A tool block whose stop never came is closed here, so a tool_use stop always has its calls.
+                    foreach (var (index, open) in _blocks)
+                    {
+                        if (open is not { Tool: { } pending, Input: { } raw }) continue;
+                        logger.LogWarning("Bedrock {ModelId} stopped without closing tool block {Index}", modelId, index);
+                        open.InputJson = raw.Length > 0 ? raw.ToString() : "{}";
+                        open.Input = null;
+                        yield return new ModelToolUse(pending.ToolUseId, pending.Name, open.InputJson);
+                    }
                     yield return new ModelMessageStop(stop.StopReason?.Value ?? "", BuildMessage());
                     break;
                 case ConverseStreamMetadataEvent { Usage: { } usage } meta:
@@ -342,7 +367,6 @@ public sealed class BedrockModelClient(
 
         // Bedrock rejects an assistant message without content, and a whitespace-only text block, so those are dropped
         // and an empty answer has no message to append.
-        // A tool block that never completed is left out: the caller never got a ModelToolUse for it.
         private Message? BuildMessage()
         {
             var content = new List<ContentBlock>();
