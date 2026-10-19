@@ -6,6 +6,7 @@ priority: P3
 epic: "Consent & authenticator"
 blocked_by: [T-025, T-049]
 area: ["backend/Biatec.Chat.Tools/Caps/NoDevice/**"]
+issue: "#62"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#required-changes-to-biatec-oidc"

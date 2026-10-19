@@ -6,6 +6,7 @@ priority: P2
 epic: "Deploy & docs"
 blocked_by: [T-002, T-027]
 area: ["backend/Dockerfile", "builders/Dockerfile", "k8s/**"]
+issue: "#55"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#repository-layout"

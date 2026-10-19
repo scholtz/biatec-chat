@@ -6,6 +6,7 @@ priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-047, T-050]
 area: ["apps/biatec_authenticator/lib/enrollment/**", "apps/biatec_authenticator/lib/keys/**"]
+issue: "#52"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#protocol-rules"

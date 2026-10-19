@@ -6,6 +6,7 @@ priority: P0
 epic: "Widget"
 blocked_by: [T-040]
 area: ["packages/chat-widget/src/components/chat/**"]
+issue: "#42"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#user-experience"

@@ -6,6 +6,7 @@ priority: P0
 epic: "Wallet tools"
 blocked_by: [T-020, T-022]
 area: ["backend/Biatec.Chat.Tools/Wallet/Transfer/**"]
+issue: "#24"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#capabilities-and-intents"

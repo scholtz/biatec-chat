@@ -6,6 +6,7 @@ priority: P0
 epic: "Foundation"
 blocked_by: [T-001]
 area: ["backend/Biatec.Chat.Core/Canonical/**", "backend/Biatec.Chat.Tests/Canonical/**"]
+issue: "#5"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#evidence-record"

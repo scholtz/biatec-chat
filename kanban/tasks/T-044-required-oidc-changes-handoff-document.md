@@ -6,6 +6,7 @@ priority: P1
 epic: "Consent & authenticator"
 blocked_by: []
 area: ["docs/required-changes-biatec-oidc.md"]
+issue: "#45"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#required-changes-to-biatec-oidc"

@@ -6,6 +6,7 @@ priority: P3
 epic: "Wallet tools"
 blocked_by: [T-022, T-031]
 area: ["backend/Biatec.Chat.Tools/X402/**", "builders/src/x402/**"]
+issue: "#59"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#x402-and-the-agent-to-agent-economy"

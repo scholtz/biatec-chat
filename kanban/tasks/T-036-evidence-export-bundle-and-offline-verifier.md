@@ -6,6 +6,7 @@ priority: P1
 epic: "Evidence"
 blocked_by: [T-035]
 area: ["backend/Biatec.Chat.Api/Evidence/Export/**", "packages/evidence-verifier/**"]
+issue: "#37"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#session-recording-and-evidence"

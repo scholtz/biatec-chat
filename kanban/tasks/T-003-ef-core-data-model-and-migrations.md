@@ -6,6 +6,7 @@ priority: P0
 epic: "Foundation"
 blocked_by: [T-002]
 area: ["backend/Biatec.Chat.Core/Data/**", "backend/Biatec.Chat.Api/Migrations/**"]
+issue: "#4"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#data-model-backend"

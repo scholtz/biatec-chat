@@ -6,6 +6,7 @@ priority: P0
 epic: "Wallet tools"
 blocked_by: [T-010, T-019, T-021]
 area: ["backend/Biatec.Chat.Tools/Signing/**", "backend/Biatec.Chat.Api/Chat/Confirm/**"]
+issue: "#23"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#tool-executors"

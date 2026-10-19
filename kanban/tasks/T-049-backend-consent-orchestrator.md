@@ -6,6 +6,7 @@ priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-022, T-047]
 area: ["backend/Biatec.Chat.Tools/Consent/**"]
+issue: "#50"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#flow-1"

@@ -6,6 +6,7 @@ priority: P0
 epic: "Foundation"
 blocked_by: []
 area: ["backend/*.slnx", "backend/*/*.csproj", "package.json", "pnpm-workspace.yaml", ".gitignore", ".editorconfig", "README.md", "docker-compose.yml"]
+issue: "#2"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#repository-layout"

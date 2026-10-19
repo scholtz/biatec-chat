@@ -6,6 +6,7 @@ priority: P2
 epic: "Evidence"
 blocked_by: [T-034]
 area: ["backend/Biatec.Chat.Api/Evidence/Anchoring/**"]
+issue: "#38"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#threat-model-highlights"

@@ -6,6 +6,7 @@ priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-047]
 area: ["packages/consent-protocol/conformance/**"]
+issue: "#49"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#permissionless-third-party-integration"

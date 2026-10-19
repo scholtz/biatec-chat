@@ -6,6 +6,7 @@ priority: P3
 epic: "Evidence"
 blocked_by: [T-035, T-036]
 area: ["backend/Biatec.Chat.Api/Retention/**"]
+issue: "#61"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#session-recording-and-evidence"

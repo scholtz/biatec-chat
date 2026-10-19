@@ -6,6 +6,7 @@ priority: P1
 epic: "Orchestrator"
 blocked_by: [T-010, T-015]
 area: ["backend/Biatec.Chat.Tests/Policy/**"]
+issue: "#18"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#tier-enforcement"

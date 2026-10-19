@@ -6,6 +6,7 @@ priority: P1
 epic: "DEX"
 blocked_by: [T-027]
 area: ["builders/src/clamm/**"]
+issue: "#29"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#tool-executors"

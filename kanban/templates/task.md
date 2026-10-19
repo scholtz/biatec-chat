@@ -6,6 +6,7 @@ priority: P2             # P0 = critical path · P1 = needed for demo · P2 = sh
 epic: ""                 # optional grouping, e.g. "Identity", "Agent", "Gateway", "Web UI"
 blocked_by: []           # IDs of tasks that must be done first, e.g. [T-003, T-007]; keep them after they finish
 area: []                 # globs this task is expected to change, e.g. ["backend/Biatec.Chat.Api/Auth/**"]
+issue: ""               # GitHub issue in scholtz/biatec-chat, e.g. "#12"; the task file stays the source of truth
 branch: ""               # task/T-000 once work has started
 owner: ""                # set while in-progress/review; empty in backlog/blocked
 source: "PRODUCT-DESCRIPTION.md#section-anchor"

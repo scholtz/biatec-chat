@@ -6,6 +6,7 @@ priority: P2
 epic: "Widget"
 blocked_by: [T-042]
 area: ["packages/chat-widget/src/i18n/**", "packages/chat-widget/src/styles/**"]
+issue: "#44"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#accessibility-and-localization"

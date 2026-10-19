@@ -6,6 +6,7 @@ priority: P2
 epic: "Wallet tools"
 blocked_by: [T-022]
 area: ["backend/Biatec.Chat.Tools/Caps/**"]
+issue: "#26"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#rules"

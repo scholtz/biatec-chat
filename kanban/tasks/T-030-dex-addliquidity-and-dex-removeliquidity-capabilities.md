@@ -6,6 +6,7 @@ priority: P1
 epic: "DEX"
 blocked_by: [T-022, T-028]
 area: ["backend/Biatec.Chat.Tools/Dex/Liquidity/**"]
+issue: "#31"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#tool-executors"

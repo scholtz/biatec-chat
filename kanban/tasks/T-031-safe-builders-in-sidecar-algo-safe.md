@@ -6,6 +6,7 @@ priority: P1
 epic: "Safe"
 blocked_by: [T-027]
 area: ["builders/src/safe/**"]
+issue: "#32"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#safe-capabilities"

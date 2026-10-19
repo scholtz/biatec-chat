@@ -6,6 +6,7 @@ priority: P1
 epic: "Sessions & auth"
 blocked_by: [T-015]
 area: ["backend/Biatec.Chat.Api/Public/**"]
+issue: "#39"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#embedding-modes"

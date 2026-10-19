@@ -6,6 +6,7 @@ priority: P2
 epic: "Consent & authenticator"
 blocked_by: []
 area: ["apps/biatec_authenticator/**"]
+issue: "#51"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"

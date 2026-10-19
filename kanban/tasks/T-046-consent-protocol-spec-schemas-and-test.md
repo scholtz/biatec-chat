@@ -6,6 +6,7 @@ priority: P1
 epic: "Consent & authenticator"
 blocked_by: []
 area: ["packages/consent-protocol/spec/**", "packages/consent-protocol/schemas/**", "packages/consent-protocol/vectors/**"]
+issue: "#47"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#biatec-authenticator-and-the-biatec-consent-protocol"

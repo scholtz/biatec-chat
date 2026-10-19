@@ -6,6 +6,7 @@ priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-046]
 area: ["packages/consent-protocol/mock-oidc/**"]
+issue: "#48"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#two-entry-points-one-request-model"

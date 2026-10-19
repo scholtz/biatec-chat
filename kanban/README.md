@@ -70,6 +70,9 @@ in `blocked_by`, or that links it in Context.
   background worker agent per task in its own git worktree, and records each worker's result. Workers **never edit
   anything under `kanban/`**. They report their hand-off, blockers and proposed follow-up tasks back to the
   coordinator, which writes them into the task files. This avoids merge conflicts on board files and duplicate IDs.
+- **GitHub issues.** Each task has a mirror issue in `scholtz/biatec-chat`, recorded in its `issue` field. The
+  issue is for visibility only: status lives in the task file, and the task's PR or merge commit references it
+  (`Refs #N`). A new task gets its issue when the coordinator creates it.
 - **Commits.** Workers commit their work on their task branch. The coordinator commits board changes on `main`
   (message `kanban: ...`), because worktrees are created from the last commit. Nothing is ever pushed unless the
   user asks.

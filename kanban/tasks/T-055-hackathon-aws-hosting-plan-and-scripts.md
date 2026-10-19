@@ -6,6 +6,7 @@ priority: P1
 epic: "Deploy & docs"
 blocked_by: [T-054]
 area: ["infra/aws/**", "docs/deploy-aws.md"]
+issue: "#56"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#chat-backend-biatecchatapi"

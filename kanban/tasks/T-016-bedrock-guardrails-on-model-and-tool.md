@@ -6,6 +6,7 @@ priority: P2
 epic: "Orchestrator"
 blocked_by: [T-014]
 area: ["infra/guardrail/**", "backend/Biatec.Chat.Api/Model/Guardrails/**"]
+issue: "#17"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#model-layer"

@@ -6,6 +6,7 @@ priority: P0
 epic: "Widget"
 blocked_by: [T-005, T-039]
 area: ["packages/chat-widget/src/transport/**"]
+issue: "#41"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#embedding-modes"

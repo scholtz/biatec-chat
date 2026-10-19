@@ -6,6 +6,7 @@ priority: P0
 epic: "Sessions & auth"
 blocked_by: [T-007, T-008]
 area: ["backend/Biatec.Chat.Api/Auth/**"]
+issue: "#10"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#security-model-authorization-without-tokens-in-the-browser"

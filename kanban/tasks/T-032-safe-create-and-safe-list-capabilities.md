@@ -6,6 +6,7 @@ priority: P1
 epic: "Safe"
 blocked_by: [T-022, T-031]
 area: ["backend/Biatec.Chat.Tools/Safe/Create/**"]
+issue: "#33"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#safe-capabilities"

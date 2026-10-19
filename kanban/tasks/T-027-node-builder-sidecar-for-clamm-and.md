@@ -6,6 +6,7 @@ priority: P0
 epic: "DEX"
 blocked_by: [T-001]
 area: ["builders/**", "docker-compose.yml", "backend/Biatec.Chat.Tools/Builders/**"]
+issue: "#28"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#tool-executors"

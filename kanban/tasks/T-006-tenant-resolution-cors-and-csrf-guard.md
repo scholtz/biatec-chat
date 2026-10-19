@@ -6,6 +6,7 @@ priority: P0
 epic: "Sessions & auth"
 blocked_by: [T-003]
 area: ["backend/Biatec.Chat.Api/Tenancy/**", "backend/Biatec.Chat.Api/Security/**"]
+issue: "#7"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#rules"

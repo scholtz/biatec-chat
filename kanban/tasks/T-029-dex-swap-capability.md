@@ -6,6 +6,7 @@ priority: P1
 epic: "DEX"
 blocked_by: [T-022, T-028]
 area: ["backend/Biatec.Chat.Tools/Dex/Swap/**"]
+issue: "#30"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#capabilities-and-intents"

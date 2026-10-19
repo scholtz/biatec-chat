@@ -6,6 +6,7 @@ priority: P0
 epic: "Wallet tools"
 blocked_by: [T-003, T-004, T-005]
 area: ["backend/Biatec.Chat.Core/Previews/**", "backend/Biatec.Chat.Tools/Algod/**"]
+issue: "#22"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#action-preview"

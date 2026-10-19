@@ -6,6 +6,7 @@ priority: P0
 epic: "Foundation"
 blocked_by: [T-001]
 area: ["packages/chat-protocol/**", "backend/Biatec.Chat.Api/Contracts/**"]
+issue: "#6"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#products-in-this-monorepo"

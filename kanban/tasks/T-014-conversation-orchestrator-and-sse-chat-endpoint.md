@@ -6,6 +6,7 @@ priority: P0
 epic: "Orchestrator"
 blocked_by: [T-003, T-005, T-007, T-012, T-013]
 area: ["backend/Biatec.Chat.Api/Chat/**", "backend/Biatec.Chat.Api/Orchestration/**"]
+issue: "#15"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#chat-backend-biatecchatapi"

@@ -6,6 +6,7 @@ priority: P1
 epic: "Deploy & docs"
 blocked_by: [T-033, T-036, T-042, T-049]
 area: ["e2e/**"]
+issue: "#60"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#demonstration-script"

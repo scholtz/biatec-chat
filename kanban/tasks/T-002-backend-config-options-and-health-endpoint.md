@@ -6,6 +6,7 @@ priority: P0
 epic: "Foundation"
 blocked_by: [T-001]
 area: ["backend/Biatec.Chat.Api/Program.cs", "backend/Biatec.Chat.Api/Config/**", "backend/Biatec.Chat.Api/appsettings*.json", "backend/Biatec.Chat.Api/Health/**"]
+issue: "#3"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#chat-backend-biatecchatapi"

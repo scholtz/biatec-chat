@@ -6,6 +6,7 @@ priority: P2
 epic: "Deploy & docs"
 blocked_by: []
 area: ["docs/architecture.md", "docs/threat-model.md", "docs/integration-widget.md", "docs/integration-third-party-consent.md", "docs/hackathon-demo.md"]
+issue: "#57"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#repository-layout"

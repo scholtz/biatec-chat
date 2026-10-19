@@ -6,6 +6,7 @@ priority: P3
 epic: "Deploy & docs"
 blocked_by: [T-014]
 area: ["backend/Biatec.Chat.Api/Telemetry/**"]
+issue: "#58"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#non-functional-requirements"

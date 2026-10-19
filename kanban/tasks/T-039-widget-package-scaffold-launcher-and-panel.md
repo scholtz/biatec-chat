@@ -6,6 +6,7 @@ priority: P0
 epic: "Widget"
 blocked_by: [T-001]
 area: ["packages/chat-widget/**"]
+issue: "#40"
 branch: ""
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#chat-widget-biatecchat-widget"
