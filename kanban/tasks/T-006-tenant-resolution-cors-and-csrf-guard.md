@@ -11,6 +11,7 @@ conflicts_with: []
 issue: "#7"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#rules"
 created: 2026-10-19
 updated: 2026-10-19

@@ -18,7 +18,9 @@ other document.**
 - Read `kanban/README.md` before starting. Work only on a task you've claimed or been assigned, follow its Scope,
   and never mark a task `done`: only the user approves, via `/kanban-review`.
 - Commands: `/kanban-split`, `/kanban-dispatch` (parallel agents), `/kanban-next` (one task in this session),
-  `/kanban-move`, `/kanban-board`, `/kanban-review` (user only).
+  `/kanban-move`, `/kanban-board`, `/kanban-parallel`, `/kanban-take`, `/kanban-review` (user only).
+- We work as a team: take tasks with `/kanban-take` (marks `taken_by: <GitHub username>`, commits and pushes the
+  board), and never pick up a task another teammate has taken.
 
 ## Hackathon AWS rules (from the AWS + Deloitte participant guide)
 

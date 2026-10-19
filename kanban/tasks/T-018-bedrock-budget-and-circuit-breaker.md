@@ -11,6 +11,7 @@ conflicts_with: [T-016, T-035, T-057]
 issue: "#19"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#non-functional-requirements"
 created: 2026-10-19
 updated: 2026-10-19

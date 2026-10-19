@@ -11,6 +11,7 @@ conflicts_with: [T-032, T-037, T-038, T-039, T-040, T-041, T-042, T-043]
 issue: "#37"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#session-recording-and-evidence"
 created: 2026-10-19
 updated: 2026-10-19

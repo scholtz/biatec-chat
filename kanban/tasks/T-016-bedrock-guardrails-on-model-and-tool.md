@@ -11,6 +11,7 @@ conflicts_with: [T-018, T-035, T-057]
 issue: "#17"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#model-layer"
 created: 2026-10-19
 updated: 2026-10-19

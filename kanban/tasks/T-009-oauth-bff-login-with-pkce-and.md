@@ -11,6 +11,7 @@ conflicts_with: [T-038]
 issue: "#10"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#security-model-authorization-without-tokens-in-the-browser"
 created: 2026-10-19
 updated: 2026-10-19

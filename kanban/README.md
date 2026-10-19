@@ -40,7 +40,7 @@ backlog ──claim──▶ in-progress ──hand-off──▶ review ──us
 | backlog → blocked | A dependency was found: add its ID to `blocked_by` |
 | in-progress → blocked | The work needs another unfinished task. Add the ID to `blocked_by`, write the progress so far in the log, and clear `owner`. The branch is kept |
 | in-progress → backlog | The worker failed or gave up without a result. The log says why; clear `owner`, keep the branch if it has useful commits |
-| blocked → backlog | Every `blocked_by` task is `done`. `/kanban-board` does this automatically |
+| blocked → backlog | Every `blocked_by` task is `done`. `kanban/scripts/list-parallel-ready.py --unblock` does this; `/kanban-board` runs it |
 | in-progress → review | Every acceptance criterion is checked, or explained in the Hand-off; verification was run; the **Hand-off** section is filled in; the work is committed on the task branch |
 | review → done | **The user approved it** and the task branch was merged into `main`. An agent may do this only while running `/kanban-review <id> approve` that the user typed |
 | review → backlog | The user requested changes (`/kanban-review <id> changes ...`). The feedback goes in the **Review** section; `owner` is cleared and the existing branch is kept, so the next dispatch resumes it |
@@ -62,6 +62,23 @@ in `blocked_by`, or that links it in Context.
    `conflicts_with` is symmetric (if A lists B, B lists A), every ID exists, and it never names a task's own
    transitive blockers or dependants (those can't run at the same time anyway).
 10. No two `in-progress` tasks list each other in `conflicts_with`.
+11. `taken_by` is empty or a GitHub username. An `in-progress` or `review` task has `taken_by` set, and its `owner`
+    was claimed by that teammate's session or coordinator.
+
+## Team: who takes which task
+
+Several teammates work on the board at the same time, each with their own Claude sessions. `taken_by` records
+whose task it is, as a GitHub username (`gh api user -q .login`).
+
+- **Take before you work.** A teammate takes tasks with `/kanban-take T-### …`. It sets `taken_by`, commits the
+  board on `main`, and **pushes it**, so that the others see the reservation. Taking doesn't change `status`; a
+  `blocked` task can be taken in advance. `/kanban-take release T-###` gives a task back.
+- **Never touch a teammate's task.** `/kanban-next`, `/kanban-dispatch` and `/kanban-parallel` only pick tasks whose
+  `taken_by` is empty or is the current user. Claiming an untaken task takes it first (`/kanban-take` steps).
+- **Pull before you pick.** Run `git pull --rebase origin main` before choosing work, or you may take a task a
+  teammate already has. If two teammates take the same task, the one whose push landed first keeps it.
+- `taken_by` stays set through `review` and `done` as the record of who did the work.
+- `kanban/scripts/list-parallel-ready.py --user <me>` lists the untaken ready tasks plus your own.
 
 ## Parallel work: branches, areas, coordinator
 
@@ -95,11 +112,12 @@ in `blocked_by`, or that links it in Context.
   (`Refs #N`). A new task gets its issue when the coordinator creates it.
 - **Commits.** Workers commit their work on their task branch. The coordinator commits board changes on `main`
   (message `kanban: ...`), because worktrees are created from the last commit. Nothing is ever pushed unless the
-  user asks.
+  user asks, except the board commits of `/kanban-take`, which push `main` so teammates see what is taken.
 
 ## Rules for every agent
 
-- **Before claiming**, re-read the task file. If `owner` is set or `status` isn't `backlog`, pick another task.
+- **Before claiming**, pull `main` and re-read the task file. If `owner` is set, `status` isn't `backlog`, or
+  `taken_by` names another teammate, pick another task.
 - **Stay in scope.** If you find work outside the task's scope, propose a follow-up task instead of expanding this
   one. A worker proposes it in its report; an agent running `/kanban-next` creates it from the template.
 - **Every status change** updates `status`, `updated` and `owner`, and appends one line to the Activity log:
@@ -111,6 +129,10 @@ in `blocked_by`, or that links it in Context.
   the user.
 - Rebuild `BOARD.md` (the `/kanban-board` steps) after any status change. Never hand-merge `BOARD.md`;
   regenerate it.
+- **Unblock after every `done`**, however the task got there: `/kanban-review`, a PR merged on GitHub, or a manual
+  edit. Run `/kanban-board` (or at least `kanban/scripts/list-parallel-ready.py --unblock`) on `main` right after,
+  so that dependants move from `blocked` to `backlog`. Before picking work, run it too: a `blocked` task whose
+  blockers are all `done` is stale and must be unblocked, not skipped.
 
 ## Commands
 
@@ -121,4 +143,6 @@ in `blocked_by`, or that links it in Context.
 | `/kanban-next [T-###]` | user | Work one task in the current session, on its own branch |
 | `/kanban-move <T-###> <status> [note]` | user or coordinator | Make one manual move, checked against the transition table |
 | `/kanban-board` | anyone | Unblock tasks whose blockers are done, check the invariants, regenerate `BOARD.md` |
+| `/kanban-parallel` | anyone | Unblock stale tasks, then list ready `parallel: yes` tasks that are untaken or yours (runs `kanban/scripts/list-parallel-ready.py --unblock --user <me>`) |
+| `/kanban-take <T-### …> \| release <T-### …>` | user | Take tasks for your GitHub user (or release them), commit and push the board |
 | `/kanban-review [T-### approve \| changes <feedback>]` | **user only** | List tasks waiting for review, or approve (merge) a task or send it back |

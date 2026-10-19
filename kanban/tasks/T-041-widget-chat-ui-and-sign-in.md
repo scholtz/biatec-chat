@@ -11,6 +11,7 @@ conflicts_with: [T-036]
 issue: "#42"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#user-experience"
 created: 2026-10-19
 updated: 2026-10-19

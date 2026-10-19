@@ -11,6 +11,7 @@ conflicts_with: []       # when parallel: no, the task IDs it must not run at th
 issue: ""               # GitHub issue in scholtz/biatec-chat, e.g. "#12"; the task file stays the source of truth
 branch: ""               # task/T-000 once work has started
 owner: ""                # set while in-progress/review; empty in backlog/blocked
+taken_by: ""             # GitHub username of the teammate who took the task (/kanban-take); kept until done
 source: "PRODUCT-DESCRIPTION.md#section-anchor"
 created: YYYY-MM-DD
 updated: YYYY-MM-DD

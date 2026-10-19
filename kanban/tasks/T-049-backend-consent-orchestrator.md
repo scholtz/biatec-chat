@@ -11,6 +11,7 @@ conflicts_with: [T-014, T-024, T-025, T-035, T-057]
 issue: "#50"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#flow-1"
 created: 2026-10-19
 updated: 2026-10-19

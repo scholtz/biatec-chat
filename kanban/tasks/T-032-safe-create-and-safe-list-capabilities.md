@@ -11,6 +11,7 @@ conflicts_with: [T-036, T-038, T-060]
 issue: "#33"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#safe-capabilities"
 created: 2026-10-19
 updated: 2026-10-19

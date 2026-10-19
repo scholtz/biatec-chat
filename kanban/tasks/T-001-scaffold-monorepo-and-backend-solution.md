@@ -11,6 +11,7 @@ conflicts_with: []
 issue: "#2"
 branch: "task/T-001"
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#repository-layout"
 created: 2026-10-19
 updated: 2026-10-19

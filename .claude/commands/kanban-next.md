@@ -6,15 +6,20 @@ argument-hint: "[T-###]"
 Work one kanban task end to end in this session. The rules are in `kanban/README.md`; read it first. To run several
 tasks in parallel, use `/kanban-dispatch` instead.
 
-1. **Pick.** If `$ARGUMENTS` names a task, use it. Otherwise pick the `backlog` task with the highest priority, then
-   the lowest ID. Before claiming, re-read the file and confirm that:
+1. **Pick.** Run `git pull --rebase origin main`, get your GitHub username `<me>` (`gh api user -q .login`), and
+   run `kanban/scripts/list-parallel-ready.py --unblock --user <me>` so that tasks whose blockers are done are back
+   in `backlog` (if it unblocked anything, regenerate the board and commit `kanban: unblock T-###, …`).
+   If `$ARGUMENTS` names a task, use it. Otherwise pick the `backlog` task taken by `<me>`, or else untaken, with the
+   highest priority, then the lowest ID. Before claiming, re-read the file and confirm that:
    - `status: backlog` and `owner` is empty;
+   - `taken_by` is empty or `<me>`; a teammate's task is never yours to pick, even when named in `$ARGUMENTS`;
    - every ID in `blocked_by` has `status: done` (read those files; don't trust `BOARD.md`);
    - its `area` doesn't overlap any `in-progress` task;
    - if it is `parallel: no`, no task in its `conflicts_with` is `in-progress`. Otherwise pick the next task.
 
    If nothing is ready, run the `/kanban-board` steps, report what is blocked on what, and stop.
-2. **Claim on `main`.** Set `status: in-progress`, `owner: session-YYYYMMDD-HHMM`, `branch: task/T-###` and
+2. **Claim on `main`.** If `taken_by` is empty, take the task first with the `/kanban-take` steps (it commits and
+   pushes, so teammates see it). Set `status: in-progress`, `owner: session-YYYYMMDD-HHMM`, `branch: task/T-###` and
    `updated`; append the log line; regenerate `kanban/BOARD.md`; and commit `kanban: claim T-###`. Then
    `git switch -c task/T-###` (or switch to the existing branch).
 3. **Work.** Read the task's Context links, `AGENTS.md`, and the code that its `blocked_by` tasks merged. Implement

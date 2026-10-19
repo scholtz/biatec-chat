@@ -17,5 +17,6 @@ Move a single task: `$ARGUMENTS` (the task ID, then the target status, then an o
    - **→ review**: every acceptance criterion is ticked, or explained under Hand-off, and every Hand-off field is
      filled in.
 3. If the move isn't allowed, change nothing and explain which rule fails.
-4. Otherwise update `status`, `owner` and `updated`, append the Activity log line with the note, and regenerate
-   `kanban/BOARD.md` the way `/kanban-board` does. Report the move in one line.
+4. Otherwise update `status`, `owner` and `updated`, append the Activity log line with the note, and run the
+   `/kanban-board` steps (they unblock dependants and regenerate `kanban/BOARD.md`). Report the move in one line,
+   plus any tasks that were unblocked.

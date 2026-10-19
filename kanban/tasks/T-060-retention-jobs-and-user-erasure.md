@@ -11,6 +11,7 @@ conflicts_with: [T-032, T-038]
 issue: "#61"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#session-recording-and-evidence"
 created: 2026-10-19
 updated: 2026-10-19

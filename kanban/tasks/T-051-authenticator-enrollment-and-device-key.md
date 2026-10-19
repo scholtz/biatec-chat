@@ -11,6 +11,7 @@ conflicts_with: []
 issue: "#52"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#protocol-rules"
 created: 2026-10-19
 updated: 2026-10-19
