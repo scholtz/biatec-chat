@@ -60,7 +60,9 @@ public sealed record SwapPreviewCard(
     SwapPool? Pool,
     string GroupHash,
     IReadOnlyList<string> TxIds,
-    IReadOnlyList<string> Notes);
+    IReadOnlyList<string> Notes,
+    int? AccountVerificationClass = null,
+    string? Simulation = null);
 
 public abstract record SwapOutcome;
 

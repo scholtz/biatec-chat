@@ -26,7 +26,8 @@ public sealed class SwapExecutor(
     ISwapPoolDirectory pools,
     IOptions<SwapOptions> options,
     TimeProvider clock,
-    ILogger<SwapExecutor> log)
+    ILogger<SwapExecutor> log,
+    AlgodClientFactory? algod = null)
 {
     public const string Capability = "dex.swap";
     public const string PoolBuilder = "clamm.swap.pool";
@@ -46,7 +47,7 @@ public sealed class SwapExecutor(
         if (req.PoolAppId is { } chosen)
             return await BuildOnPoolAsync(req, amount, chosen, slippage, ct);
 
-        var router = await TryRouterAsync(req, slippage, ct);
+        var router = await TryRouterAsync(req, amount, slippage, ct);
         if (router.Outcome is not null) return router.Outcome;
 
         SwapPoolListing listing;
@@ -71,7 +72,7 @@ public sealed class SwapExecutor(
     private sealed record RouterAttempt(SwapOutcome? Outcome, string Reason);
 
     /// <summary>Outcome is set when the router path produced a preview or a hard refusal; otherwise Reason says why it did not win.</summary>
-    private async Task<RouterAttempt> TryRouterAsync(SwapRequest req, int slippageBps, CancellationToken ct)
+    private async Task<RouterAttempt> TryRouterAsync(SwapRequest req, BigInteger amount, int slippageBps, CancellationToken ct)
     {
         McpToolResult result;
         try
@@ -102,15 +103,17 @@ public sealed class SwapExecutor(
         var effectiveBps = (int)((expected - min) * Bps / expected);
 
         GroupedTransactions group;
-        try { group = Group(txs, req.From); }
+        try { group = Group(txs, req.From, req.FromAssetId, amount, null); }
         catch (Exception e) when (e is GroupException or FormatException or ArgumentException or InvalidOperationException)
         {
             log.LogWarning(e, "Router swap group rejected");
             return new(new SwapRefused("The swap the router built did not pass the safety checks, so it was discarded."), "");
         }
 
+        var (sim, simFailed) = await SimulateAsync(req.Network, group, ct);
+        if (simFailed) return new(new SwapRefused("The swap the router built failed simulation, so it was discarded. " + sim), "");
         var card = Card(SwapRoute.BiatecRouter, req, expected, min, effectiveBps, Str(quote, "priceImpact"), null, group,
-            ["Quoted by Biatec Router through Biatec MCP."]);
+            ["Quoted by Biatec Router through Biatec MCP."], null, sim);
         return new(Ready(req, group, card), "");
     }
 
@@ -130,7 +133,7 @@ public sealed class SwapExecutor(
                 ? new SwapRefused("That pool needs a higher verification class than your account has. Getting the account verified in Biatec would unlock it.")
                 : new SwapRefused("That is not a Biatec DEX pool for this pair.");
 
-        if (!TryEstimate(pool, req.FromAssetId, amount, out var expected))
+        if (!TryEstimate(pool, req.FromAssetId, amount, out var expected, out var impactPpm))
             return new SwapRefused("The pool has no usable price right now.");
         var min = ApplySlippage(expected, slippageBps);
         if (min.IsZero) return new SwapRefused("The amount is too small to swap with slippage protection.");
@@ -154,18 +157,27 @@ public sealed class SwapExecutor(
         }
 
         GroupedTransactions group;
-        try { group = Group(built.Transactions, req.From); }
+        try { group = Group(built.Transactions, req.From, req.FromAssetId, amount, pool.AppId); }
         catch (Exception e) when (e is GroupException or FormatException or ArgumentException or InvalidOperationException)
         {
             log.LogWarning(e, "Pool swap group rejected");
             return new SwapRefused("The swap the builder produced did not pass the safety checks, so it was discarded.");
         }
 
-        var card = Card(SwapRoute.BiatecPool, req, expected, min, slippageBps, null, pool, group,
-        [
+        var (sim, simFailed) = await SimulateAsync(req.Network, group, ct);
+        if (simFailed) return new SwapRefused("The swap the builder produced failed simulation, so it was discarded. " + sim);
+
+        var notes = new List<string>
+        {
             "Biatec Router was not used; this swap runs on the pool you chose.",
-            "The expected amount is an estimate from the pool's current price and fee. The minimum received is enforced on chain: the swap fails rather than pay less.",
-        ]);
+            "The expected amount is an estimate from the pool's current price, fee and liquidity. The minimum received is enforced on chain: the swap fails rather than pay less.",
+        };
+        if (impactPpm is null) notes.Add("The pool's liquidity is unknown, so the price impact was not estimated and the expected amount may be too high.");
+        else if (impactPpm.Value >= 10_000) notes.Add($"This amount is large relative to the pool's liquidity: the estimated price impact is {FormatImpact(impactPpm.Value)} %.");
+        if (TryBig(pool.CurrentPrice, out var cp) && (!TryBig(pool.PriceMin, out var lo) || !TryBig(pool.PriceMax, out var hi) || cp < lo || cp > hi))
+            notes.Add("The pool's current price is outside its configured price range.");
+        var impact = impactPpm is { } ppm ? FormatImpact(ppm) : null;
+        var card = Card(SwapRoute.BiatecPool, req, expected, min, slippageBps, impact, pool, group, notes, listing.AccountVerificationClass, sim);
         return Ready(req, group, card);
     }
 
@@ -189,33 +201,88 @@ public sealed class SwapExecutor(
     };
 
     private static SwapPreviewCard Card(SwapRoute route, SwapRequest req, BigInteger expected, BigInteger min, int bps, string? impact,
-        SwapPool? pool, GroupedTransactions group, IReadOnlyList<string> notes)
+        SwapPool? pool, GroupedTransactions group, IReadOnlyList<string> notes, int? accountClass, string? simulation)
     {
         var where = route == SwapRoute.BiatecRouter ? "Biatec Router" : $"Biatec DEX pool {pool!.AppId}";
         return new SwapPreviewCard(route,
             $"Swap {req.Amount} of asset {req.FromAssetId} for at least {min} of asset {req.ToAssetId} on {where} (base units)",
             req.Network, req.From, req.FromAssetId, req.ToAssetId, req.Amount, expected.ToString(CultureInfo.InvariantCulture),
-            min.ToString(CultureInfo.InvariantCulture), bps, impact, pool, group.GroupHash, group.TxIds, notes);
+            min.ToString(CultureInfo.InvariantCulture), bps, impact, pool, group.GroupHash, group.TxIds, notes, accountClass, simulation);
     }
 
     /// <summary>Decodes the builder's transactions, requires every one to come from the user's address and groups them.</summary>
-    private static GroupedTransactions Group(IReadOnlyList<string> base64, string from)
+    private static GroupedTransactions Group(IReadOnlyList<string> base64, string from, ulong fromAsset, BigInteger amount, ulong? poolAppId)
     {
         var txs = AlgorandGroup.Decode(base64);
         if (txs.Any(t => !string.Equals(t.Sender.EncodeAsString(), from, StringComparison.Ordinal)))
             throw new GroupException("A transaction in the swap is not sent from the user's address.");
+        SwapGroupVerifier.Verify(txs, from, fromAsset, (ulong)amount, poolAppId);
         return AlgorandGroup.Ensure(txs);
     }
 
-    /// <summary>Output of the pool for <paramref name="amount"/> of the given asset at the pool's spot price, net of its fee.</summary>
-    private static bool TryEstimate(SwapPool pool, ulong fromAsset, BigInteger amount, out BigInteger expected)
+    /// <summary>
+    /// Output of the pool for <paramref name="amount"/> of the given asset: spot price, net of the fee and of the price
+    /// impact. Impact treats the active range as constant product with virtual reserves derived from the liquidity L
+    /// (x = L / sqrtP, y = L * sqrtP), so a trade that moves the price is not shown at the spot rate. It is an estimate
+    /// that ignores crossing out of the active range. <paramref name="impactPpm"/> is null when liquidity is unknown.
+    /// </summary>
+    private static bool TryEstimate(SwapPool pool, ulong fromAsset, BigInteger amount, out BigInteger expected, out BigInteger? impactPpm)
     {
         expected = BigInteger.Zero;
+        impactPpm = null;
         if (!TryBig(pool.CurrentPrice, out var price) || price.IsZero || !TryBig(pool.Fee, out var fee) || fee >= Scale) return false;
         // currentPrice is the price of asset A in asset B, scaled by 1e9.
         var gross = fromAsset == pool.AssetA ? amount * price / Scale : amount * Scale / price;
+        if (TryBig(pool.Liquidity, out var liquidity) && !liquidity.IsZero)
+        {
+            var sqrt = ISqrt(price * Scale); // sqrt(price) scaled by 1e9
+            var reserveIn = fromAsset == pool.AssetA ? liquidity * Scale / sqrt : liquidity * sqrt / Scale;
+            if (reserveIn.IsZero) return false;
+            var denom = reserveIn + amount;
+            gross -= gross * amount / denom;
+            impactPpm = amount * 1_000_000 / denom;
+        }
         expected = gross * (Scale - fee) / Scale;
         return !expected.IsZero;
+    }
+
+    private static string FormatImpact(BigInteger ppm) => ((decimal)(long)BigInteger.Min(ppm, 1_000_000) / 10_000m).ToString("0.####", CultureInfo.InvariantCulture);
+
+    private static BigInteger ISqrt(BigInteger n)
+    {
+        if (n < 2) return n;
+        var x = (BigInteger)Math.Sqrt((double)n);
+        while (x * x > n) x--;
+        while ((x + 1) * (x + 1) <= n) x++;
+        return x;
+    }
+
+    /// <summary>Simulates the group on algod when a client is configured. Failed means the chain would reject it.</summary>
+    private async Task<(string? Summary, bool Failed)> SimulateAsync(string network, GroupedTransactions group, CancellationToken ct)
+    {
+        var client = ClientFor(network);
+        if (client is null) return ("Not simulated: no algod endpoint is configured for this network.", false);
+        try
+        {
+            var outcome = await client.SimulateAsync(group.Transactions, false, ct);
+            return (outcome.Summary, !outcome.Success);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            log.LogWarning(e, "Swap simulation unavailable for {Network}", network);
+            return ("Not simulated: algod was unreachable.", false);
+        }
+    }
+
+    private IAlgodSimulateClient? ClientFor(string network)
+    {
+        if (algod is null) return null;
+        foreach (var name in new[] { network, "algorand-" + network })
+        {
+            try { return algod.For(name); }
+            catch (ArgumentException) { }
+        }
+        return null;
     }
 
     private static BigInteger ApplySlippage(BigInteger expected, int bps) => expected * (Bps - bps) / Bps;

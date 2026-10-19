@@ -1,4 +1,5 @@
 using System.Net;
+using System.Numerics;
 using System.Text;
 using System.Text.Json;
 using Algorand;
@@ -22,17 +23,39 @@ public sealed class SwapExecutorTests
     private const string Other = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ";
     private static readonly McpCallContext Ctx = new("t1", "s1", ["openid"]);
 
-    private static string Tx(string sender = User, ulong amount = 1_000_000)
+    private static readonly Digest GenHash = new(Convert.FromBase64String("SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI="));
+
+    /// <summary>The user's funding transfer: asset 31566704 by default, a payment when <paramref name="asset"/> is 0.</summary>
+    private static string Tx(string sender = User, ulong amount = 1_000_000, ulong asset = 31566704, bool rekey = false)
     {
-        var t = new PaymentTransaction
+        Transaction t = asset == 0
+            ? new PaymentTransaction { Sender = new Address(sender), Receiver = new Address(Other), Amount = amount }
+            : new AssetTransferTransaction { Sender = new Address(sender), AssetReceiver = new Address(Other), XferAsset = asset, AssetAmount = amount };
+        t.Fee = 1000; t.FirstValid = 710399; t.LastValid = 711399; t.GenesisId = "testnet-v1.0"; t.GenesisHash = GenHash;
+        if (rekey) t.RekeyTo = new Address("7ZUECA7HFLZTXENRV24SHLU4AVPUTMTTDUFUBNBD64C73F3UHRTHAIOF6Q");
+        return Convert.ToBase64String(AlgoEncoder.EncodeToMsgPackOrdered(t));
+    }
+
+    private static string App(ulong app, string sender = User)
+    {
+        var t = new ApplicationNoopTransaction
         {
-            Sender = new Address(sender),
-            Receiver = new Address(Other),
-            Amount = amount, Fee = 1000, FirstValid = 710399, LastValid = 711399,
-            GenesisId = "testnet-v1.0",
-            GenesisHash = new Digest(Convert.FromBase64String("SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=")),
+            Sender = new Address(sender), ApplicationId = app,
+            Fee = 1000, FirstValid = 710399, LastValid = 711399, GenesisId = "testnet-v1.0", GenesisHash = GenHash,
         };
         return Convert.ToBase64String(AlgoEncoder.EncodeToMsgPackOrdered(t));
+    }
+
+    private sealed class FakeSim(SimulationOutcome? outcome, Exception? throws = null) : IAlgodSimulateClient
+    {
+        public int Calls;
+        public Task<SimulationOutcome> SimulateAsync(IReadOnlyList<Transaction> g, bool allowUnnamedResources = false, CancellationToken ct = default)
+        {
+            Calls++;
+            if (throws is not null) throw throws;
+            return Task.FromResult(outcome!);
+        }
+        public Task<ulong> GetLastRoundAsync(CancellationToken ct = default) => Task.FromResult(1UL);
     }
 
     private sealed class FakeMcp : IBiatecMcpClient
@@ -83,8 +106,8 @@ public sealed class SwapExecutorTests
     }
 
     // Asset 31566704 (A) priced at 1 : 0.9 of asset 0 (B)? Price of A in B is 0.9, fee 0.1 %.
-    private static SwapPool Pool(ulong app = 5001, string fee = "1000000", string price = "900000000") =>
-        new(app, 31566704, 0, fee, "0.1", "800000000", "1000000000", price, "123456789", 1);
+    private static SwapPool Pool(ulong app = 5001, string fee = "1000000", string price = "900000000", string liquidity = "1000000000000000000") =>
+        new(app, 31566704, 0, fee, "0.1", "800000000", "1000000000", price, liquidity, 1);
 
     private static McpToolResult RouterWin(string? router = "biatec", string expected = "1000000", string? min = "995000", string? impact = "0.01", string? tx = null)
     {
@@ -166,7 +189,7 @@ public sealed class SwapExecutorTests
         var choice = Assert.IsType<SwapPoolChoiceRequired>(outcome);
         Assert.Equal([5001UL, 5002UL], choice.Pools.Select(p => p.AppId).ToArray());
         Assert.Equal("3000000", choice.Pools[1].Fee);
-        Assert.Equal("123456789", choice.Pools[0].Liquidity);
+        Assert.Equal("1000000000000000000", choice.Pools[0].Liquidity);
         Assert.Equal(5003UL, Assert.Single(choice.Excluded).AppId);
         Assert.Contains("cancel", choice.Question, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(builders.Calls);
@@ -200,7 +223,7 @@ public sealed class SwapExecutorTests
     public async Task Swap_chosen_pool_builds_with_clamm_swap_and_previews_slippage()
     {
         var (exec, mcp, builders, _) = Make();
-        builders.Result = () => new BuildResult([Tx()]);
+        builders.Result = () => new BuildResult([Tx(), App(5001)]);
 
         var outcome = await exec.ExecuteAsync(Req(pool: 5001));
 
@@ -228,7 +251,7 @@ public sealed class SwapExecutorTests
     public async Task Swap_pool_in_the_reverse_direction_divides_by_the_price()
     {
         var (exec, _, builders, _) = Make();
-        builders.Result = () => new BuildResult([Tx()]);
+        builders.Result = () => new BuildResult([Tx(amount: 900_000, asset: 0), App(5001)]);
         var req = Req(pool: 5001) with { FromAssetId = 0, ToAssetId = 31566704, Amount = "900000" };
 
         var ready = Assert.IsType<SwapPreviewReady>(await exec.ExecuteAsync(req));
@@ -264,7 +287,7 @@ public sealed class SwapExecutorTests
     public async Task Swap_refuses_builder_groups_not_sent_from_the_user()
     {
         var (exec, _, builders, _) = Make();
-        builders.Result = () => new BuildResult([Tx(Other)]);
+        builders.Result = () => new BuildResult([Tx(Other), App(5001)]);
         Assert.IsType<SwapRefused>(await exec.ExecuteAsync(Req(pool: 5001)));
     }
 
@@ -326,6 +349,93 @@ public sealed class SwapExecutorTests
         var handler = new StubHandler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadGateway)));
         var dir = new SidecarSwapPoolDirectory(new HttpClient(handler), new BuildersOptions { BaseAddress = new Uri("http://builders:3100"), InternalSecret = "unit-secret-0123456789" });
         await Assert.ThrowsAsync<SwapPoolDirectoryException>(() => dir.ListAsync("testnet", 0, 1, User));
+    }
+
+    [Fact]
+    public async Task Swap_refuses_groups_that_do_not_match_the_request()
+    {
+        var (exec, _, builders, _) = Make();
+        // wrong amount, wrong asset, wrong pool app, missing app call, rekey
+        var cases = new[]
+        {
+            new[] { Tx(amount: 5), App(5001) },
+            new[] { Tx(asset: 777), App(5001) },
+            new[] { Tx(), App(9999) },
+            new[] { Tx() },
+            new[] { Tx(rekey: true), App(5001) },
+        };
+        foreach (var group in cases)
+        {
+            builders.Result = () => new BuildResult(group);
+            var r = await exec.ExecuteAsync(Req(pool: 5001)); Assert.True(r is SwapRefused, "case " + Array.IndexOf(cases, group));
+        }
+    }
+
+    [Fact]
+    public async Task Swap_refuses_router_groups_that_move_a_different_amount()
+    {
+        var (exec, mcp, _, _) = Make();
+        mcp.Swap = () => RouterWin(tx: Tx(amount: 5));
+        Assert.IsType<SwapRefused>(await exec.ExecuteAsync(Req()));
+    }
+
+    private static SwapExecutor MakeWithSim(IAlgodSimulateClient sim, FakeBuilders builders)
+    {
+        var factory = new AlgodClientFactory(new Dictionary<string, IAlgodSimulateClient> { ["algorand-testnet"] = sim });
+        return new SwapExecutor(new FakeMcp(), builders, new FakePools(new SwapPoolListing([Pool(5001)], [], 2)),
+            Options.Create(new SwapOptions()), TimeProvider.System, NullLogger<SwapExecutor>.Instance, factory);
+    }
+
+    [Fact]
+    public async Task Swap_simulation_result_is_in_the_card_and_a_failed_simulation_is_refused()
+    {
+        var builders = new FakeBuilders { Result = () => new BuildResult([Tx(), App(5001)]) };
+        var ok = new FakeSim(new SimulationOutcome(true, null, [], 99, 1000, 2));
+        var ready = Assert.IsType<SwapPreviewReady>(await MakeWithSim(ok, builders).ExecuteAsync(Req(pool: 5001)));
+        Assert.Equal(1, ok.Calls);
+        Assert.Contains("Simulation succeeded", ready.Card.Simulation);
+        Assert.Contains("\"simulation\":", ready.Spec.CanonicalJson);
+        Assert.Equal(2, ready.Card.AccountVerificationClass);
+        Assert.Contains("\"accountVerificationClass\":2", ready.Spec.CanonicalJson);
+
+        var bad = new FakeSim(new SimulationOutcome(false, "logic eval error", [1], 99, null, 2));
+        Assert.IsType<SwapRefused>(await MakeWithSim(bad, builders).ExecuteAsync(Req(pool: 5001)));
+
+        var down = new FakeSim(null, new HttpRequestException("down"));
+        var unsimulated = Assert.IsType<SwapPreviewReady>(await MakeWithSim(down, builders).ExecuteAsync(Req(pool: 5001)));
+        Assert.Contains("Not simulated", unsimulated.Card.Simulation);
+    }
+
+    [Fact]
+    public async Task Swap_pool_estimate_includes_price_impact_and_warns_on_large_trades()
+    {
+        var listing = new SwapPoolListing([Pool(5001, liquidity: "1000000")], [], 1);
+        var (exec, _, builders, _) = Make(listing);
+        builders.Result = () => new BuildResult([Tx(), App(5001)]);
+
+        var ready = Assert.IsType<SwapPreviewReady>(await exec.ExecuteAsync(Req(pool: 5001)));
+
+        // Spot output would be 899_100; with ~1M of liquidity the trade moves the price a lot.
+        Assert.True(BigInteger.Parse(ready.Card.ExpectedReceived) < 600_000);
+        Assert.NotNull(ready.Card.PriceImpact);
+        Assert.Contains(ready.Card.Notes, n => n.Contains("price impact"));
+        Assert.True(BigInteger.Parse(ready.Card.MinimumReceived) < BigInteger.Parse(ready.Card.ExpectedReceived));
+    }
+
+    [Fact]
+    public async Task Swap_pool_directory_network_failures_become_directory_exceptions_and_a_refusal()
+    {
+        foreach (Exception failure in new Exception[] { new HttpRequestException("down"), new TaskCanceledException("timeout") })
+        {
+            var handler = new StubHandler((_, _) => throw failure);
+            var dir = new SidecarSwapPoolDirectory(new HttpClient(handler), new BuildersOptions { BaseAddress = new Uri("http://builders:3100"), InternalSecret = "unit-secret-0123456789" });
+            await Assert.ThrowsAsync<SwapPoolDirectoryException>(() => dir.ListAsync("testnet", 0, 1, User));
+
+            var mcp = new FakeMcp { Swap = RouterLoses };
+            var exec = new SwapExecutor(mcp, new FakeBuilders(), dir, Options.Create(new SwapOptions()), TimeProvider.System, NullLogger<SwapExecutor>.Instance);
+            Assert.IsType<SwapRefused>(await exec.ExecuteAsync(Req()));
+            Assert.IsType<SwapRefused>(await exec.ExecuteAsync(Req(pool: 5001)));
+        }
     }
 
     private sealed class StubHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond) : HttpMessageHandler

@@ -20,18 +20,25 @@ public sealed class SidecarSwapPoolDirectory(HttpClient http, BuildersOptions op
 
     public async Task<SwapPoolListing> ListAsync(string network, ulong assetA, ulong assetB, string account, CancellationToken ct = default)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(options.BaseAddress, "v1/query/clamm.pools.list"));
-        request.Headers.TryAddWithoutValidation(BuildersOptions.SecretHeader, options.InternalSecret);
-        request.Content = JsonContent.Create(new
-        {
-            network,
-            @params = new { assetA = assetA.ToString(), assetB = assetB.ToString(), account },
-        }, options: Json);
-        using var response = await http.SendAsync(request, ct);
-        if (!response.IsSuccessStatusCode) throw new SwapPoolDirectoryException($"Pool query failed ({(int)response.StatusCode}).");
         Body? body;
-        try { body = await response.Content.ReadFromJsonAsync<Body>(Json, ct); }
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(options.BaseAddress, "v1/query/clamm.pools.list"));
+            request.Headers.TryAddWithoutValidation(BuildersOptions.SecretHeader, options.InternalSecret);
+            request.Content = JsonContent.Create(new
+            {
+                network,
+                @params = new { assetA = assetA.ToString(), assetB = assetB.ToString(), account },
+            }, options: Json);
+            using var response = await http.SendAsync(request, ct);
+            if (!response.IsSuccessStatusCode) throw new SwapPoolDirectoryException($"Pool query failed ({(int)response.StatusCode}).");
+            body = await response.Content.ReadFromJsonAsync<Body>(Json, ct);
+        }
         catch (JsonException) { throw new SwapPoolDirectoryException("Pool query returned invalid JSON."); }
+        catch (HttpRequestException) { throw new SwapPoolDirectoryException("Pool query could not reach the builder."); }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested) { throw new SwapPoolDirectoryException("Pool query timed out."); }
+        catch (UriFormatException) { throw new SwapPoolDirectoryException("Pool query address is invalid."); }
+        catch (InvalidOperationException) { throw new SwapPoolDirectoryException("Pool query could not be sent."); }
         if (body is null) throw new SwapPoolDirectoryException("Pool query returned nothing.");
         var pools = new List<SwapPool>();
         foreach (var p in body.Pools ?? [])
