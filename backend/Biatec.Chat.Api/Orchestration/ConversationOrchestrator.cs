@@ -144,6 +144,7 @@ public sealed class ConversationOrchestrator(
                 yield return new ToolStatusEvent(call.ToolUseId, label, ToolRunState.Started);
 
                 ToolExecutionResult result;
+                var fromExecutor = false;
                 if (!TryParse(call.InputJson, out var args))
                 {
                     result = new ToolExecutionResult("The tool arguments were not valid JSON.", true);
@@ -163,14 +164,15 @@ public sealed class ConversationOrchestrator(
                             turn.SessionId, turn.Tenant.Id, turn.Tier, turn.Scopes);
                         label = executor.StatusLabel(args) ?? label;
                         result = await RunExecutorAsync(executor, ctx, args, ct);
+                        fromExecutor = true;
                     }
                 }
 
                 // Defence in depth for indirect prompt injection; the gate above stays the authority. Gate and
-                // executor errors are our own text, so only executor output is screened. A withheld result is also
-                // what gets stored, so the injected text never returns through the history.
-                if (!result.IsError && await toolGuard.ScreenAsync("tool." + capName, result.Content, ct) is { Withheld: true })
-                    result = new ToolExecutionResult(GuardrailMessages.ToolResultWithheld, true, result.Events);
+                // executor errors are screened too, since error text may be upstream data; only the orchestrator's
+                // own fixed messages skip it. A withheld result is also what gets stored and drops its events.
+                if (fromExecutor && await toolGuard.ScreenAsync("tool." + capName, result.Content, ct) is { Withheld: true })
+                    result = new ToolExecutionResult(GuardrailMessages.ToolResultWithheld, true);
 
                 foreach (var ev in result.Events ?? []) yield return ev;
                 yield return new ToolStatusEvent(call.ToolUseId, label, result.IsError ? ToolRunState.Failed : ToolRunState.Succeeded);

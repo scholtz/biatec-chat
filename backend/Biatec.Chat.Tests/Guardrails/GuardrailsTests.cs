@@ -4,6 +4,7 @@ using System.Reflection;
 using Amazon.BedrockRuntime;
 using Amazon.BedrockRuntime.Model;
 using Biatec.Chat.Api.Config;
+using Biatec.Chat.Api.Contracts;
 using Biatec.Chat.Api.Data;
 using Biatec.Chat.Api.Model;
 using Biatec.Chat.Api.Model.Guardrails;
@@ -183,11 +184,11 @@ public sealed class GuardrailsTests : IAsyncLifetime
         }
     }
 
-    private sealed class FakeExecutor(string name, string content) : IToolExecutor
+    private sealed class FakeExecutor(string name, string content, bool isError = false, IReadOnlyList<ChatEvent>? events = null) : IToolExecutor
     {
         public string CapabilityName => name;
         public Task<ToolExecutionResult> ExecuteAsync(ToolExecutionContext context, System.Text.Json.Nodes.JsonNode arguments, CancellationToken ct) =>
-            Task.FromResult(new ToolExecutionResult(content));
+            Task.FromResult(new ToolExecutionResult(content, isError, events));
     }
 
     private static readonly string AdminCs = Environment.GetEnvironmentVariable("Postgres__AdminConnectionString")
@@ -291,6 +292,47 @@ public sealed class GuardrailsTests : IAsyncLifetime
         await using var db = new ChatDbContext(new DbContextOptionsBuilder<ChatDbContext>().ConfigureNpgsql(Cs).Options);
         var stored = await db.Messages.AsNoTracking().Where(m => m.Role == MessageRole.Tool).Select(m => m.ToolResults).SingleAsync();
         Assert.DoesNotContain("ATTACKER", stored);
+    }
+
+    [Fact]
+    public async Task Orchestrator_InjectedIsErrorExecutorResult_IsWithheld()
+    {
+        var (rt, fake) = NewRuntime();
+        var model = new ScriptedModel(ToolCall, Done);
+        using var f = Factory(model, new FakeExecutor("kb.search", $"Upstream error: {Attack}", isError: true), rt, guardrail: true);
+
+        await ChatAsync(f);
+
+        var fed = Assert.Single(ToolResultTexts(model.Requests[1]));
+        Assert.Contains(GuardrailMessages.ToolResultWithheld, fed);
+        Assert.DoesNotContain("ATTACKER", fed);
+        Assert.Single(fake.Calls);
+
+        await using var db = new ChatDbContext(new DbContextOptionsBuilder<ChatDbContext>().ConfigureNpgsql(Cs).Options);
+        var stored = await db.Messages.AsNoTracking().Where(m => m.Role == MessageRole.Tool).Select(m => m.ToolResults).SingleAsync();
+        Assert.DoesNotContain("ATTACKER", stored);
+    }
+
+    [Fact]
+    public async Task Orchestrator_WithheldResult_EmitsNoEvents()
+    {
+        var (rt, _) = NewRuntime();
+        var model = new ScriptedModel(ToolCall, Done);
+        var exec = new FakeExecutor("kb.search", $"Asset note: {Attack}", events: [new TextDeltaEvent("EVENTMARKER")]);
+        using var f = Factory(model, exec, rt, guardrail: true);
+
+        Assert.DoesNotContain("EVENTMARKER", await ChatAsync(f));
+    }
+
+    [Fact]
+    public async Task Orchestrator_BenignResultEvents_AreEmitted()
+    {
+        var (rt, _) = NewRuntime();
+        var model = new ScriptedModel(ToolCall, Done);
+        var exec = new FakeExecutor("kb.search", "A pool holds assets.", events: [new TextDeltaEvent("EVENTMARKER")]);
+        using var f = Factory(model, exec, rt, guardrail: true);
+
+        Assert.Contains("EVENTMARKER", await ChatAsync(f));
     }
 
     [Fact]

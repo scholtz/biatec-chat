@@ -22,7 +22,7 @@ public static class ModelRegistration
             .ValidateOnStart();
         services.TryAddSingleton<IAmazonBedrockRuntime>(sp => CreateBedrockRuntime(sp.GetRequiredService<IOptions<BedrockOptions>>().Value));
         services.AddBedrockGuardrails();
-        services.TryAddSingleton<IConverseStreamSource,BedrockConverseStreamSource>();
+        services.TryAddSingleton<IConverseStreamSource, BedrockConverseStreamSource>();
         services.TryAddSingleton<IModelClient, BedrockModelClient>();
         return services;
     }
