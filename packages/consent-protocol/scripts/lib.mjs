@@ -18,7 +18,7 @@ export function jcs(value) {
     const keys = Object.keys(value).sort();
     return "{" + keys.map((k) => jcs(k) + ":" + jcs(value[k])).join(",") + "}";
   }
-  throw new Error("unsupported value");
+  throw new Error("unsupported value (undefined, function, symbol or bigint)");
 }
 
 export const b64u = (buf) => Buffer.from(buf).toString("base64url");
@@ -84,6 +84,7 @@ export function verifyAttestation(receipt, jwks, opts = {}) {
     const [h, p, s] = parts;
     const header = JSON.parse(decodeB64u(h).toString("utf8"));
     const payload = JSON.parse(decodeB64u(p).toString("utf8"));
+    if (typeof header.kid !== "string" || header.kid === "") return false;
     const key = jwks.keys.find((k) => k.kid === header.kid);
     if (!key || key.kty !== "EC" || key.crv !== "P-256" || (key.use !== undefined && key.use !== "sig")) return false;
     if (header.alg !== "ES256" || header.typ !== ATTESTATION_TYP) return false;
@@ -113,7 +114,8 @@ export function verifyReceipt(receipt, jwks, opts = {}) {
  * Authorization check for one pending request. Fails closed and never throws.
  * - `request` is the stored consent request the caller is waiting on (never anything the receipt supplies).
  * - `expectedBindingCode` is the binding code Biatec OIDC issued for that request (number matching, rule 2).
- * - `consumed` is a Set the caller owns; `auth_req_id` is added on success and a repeat is refused.
+ * - `consumed` is a Set of already spent `auth_req_id` values owned by the caller. This function only reads it:
+ *   a consent is spent when Biatec OIDC actually signs (rule 5), so the caller adds the id after a successful sign.
  * - `opts.issuer` (required) is the expected Biatec OIDC issuer; `opts.now` defaults to the current time.
  * The receipt must match the request member for member, carry decision "approve" and not be expired.
  */
@@ -138,9 +140,7 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
       (d?.group_hash ?? d?.request_hash) !== request.bound_hash
     )
       return false;
-    if (consumed.has(s.auth_req_id)) return false;
-    consumed.add(s.auth_req_id);
-    return true;
+    return !consumed.has(s.auth_req_id);
   } catch {
     return false;
   }

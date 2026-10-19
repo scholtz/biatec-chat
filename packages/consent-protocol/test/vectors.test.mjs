@@ -154,7 +154,9 @@ test("verifyApproval accepts the matching approve once and rejects deny, code_fa
   const v = vectors.find((x) => x.receipt.signed.decision === "approve");
   const consumed = new Set();
   assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, consumed, o), true);
-  assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, consumed, o), false, "replay");
+  assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, consumed, o), true, "still unspent: a failed signing call must not burn the consent");
+  consumed.add(v.receipt.signed.auth_req_id);
+  assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, consumed, o), false, "replay after spending");
   assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, new Set(), { ...o, now: v.receipt.signed.expiry }), false, "expired");
   for (const d of ["deny", "code_failed"]) {
     const x = vectors.find((y) => y.receipt.signed.decision === d);
@@ -217,7 +219,8 @@ test("schemas enforce cross-field rules", () => {
   assert.equal(valid("consent-receipt", big), false);
 });
 
-test("jcs rejects lone surrogates", () => {
+test("jcs rejects lone surrogates and undefined members", () => {
+  assert.throws(() => jcs({ a: undefined }));
   assert.throws(() => jcs({ a: "\ud800" }));
 });
 

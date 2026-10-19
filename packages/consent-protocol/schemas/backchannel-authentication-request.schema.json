@@ -8,14 +8,14 @@
   "required": ["scope", "resource", "login_hint", "origin"],
   "allOf": [
     {
-      "if": { "properties": { "scope": { "const": "sign" } } },
+      "if": { "required": ["scope"], "properties": { "scope": { "const": "sign" } } },
       "then": {
         "required": ["unsigned_group", "network", "address"],
         "properties": { "unsigned_group": true, "network": true, "address": true, "limits_request": false }
       }
     },
     {
-      "if": { "properties": { "scope": { "const": "manage-limits" } } },
+      "if": { "required": ["scope"], "properties": { "scope": { "const": "manage-limits" } } },
       "then": {
         "required": ["limits_request"],
         "properties": { "limits_request": true, "unsigned_group": false, "network": false, "address": false }
