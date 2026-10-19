@@ -300,9 +300,22 @@ public sealed class EvidenceLogTests : IAsyncLifetime
         var jwks = EvidenceJwks.ToJwks(await _keys.GetPublicKeysAsync(default));
         var map = jwks["keys"]!.AsArray().Select(j => new EvidencePublicKey(
             (string)j!["kid"]!, EvidenceVerifier.FromBase64Url((string)j["x"]!), EvidenceVerifier.FromBase64Url((string)j["y"]!),
-            DateTimeOffset.UtcNow, null)).ToDictionary(k => k.Kid);
+            DateTimeOffset.Parse((string)j["created_at"]!), j["retired_at"] is null ? null : DateTimeOffset.Parse((string)j["retired_at"]!))).ToDictionary(k => k.Kid);
         Assert.True(EvidenceVerifier.Verify(chain, map).Valid);
         Assert.NotNull(jwks["keys"]!.AsArray().Single(j => (string)j!["kid"]! == chain[0].Kid)!["retired_at"]);
+    }
+
+    [Fact]
+    public async Task SignedAt_OutsideTheKeyLifetime_IsRejected()
+    {
+        var conv = Guid.NewGuid();
+        await using var db = NewContext();
+        var log = NewLog(db);
+        await log.AppendAsync(conv, "message", Payload(1));
+        var chain = await log.GetChainAsync(conv);
+        var k = (await _keys.GetPublicKeysAsync(default)).Single();
+        var retiredBefore = k with { RetiredAt = chain[0].SignedAt.AddHours(-1) };
+        Assert.False(EvidenceVerifier.Verify(chain, new Dictionary<string, EvidencePublicKey> { [k.Kid] = retiredBefore }).Valid);
     }
 
     [Fact]
@@ -340,7 +353,7 @@ public sealed class EvidenceLogTests : IAsyncLifetime
             await scope.ServiceProvider.GetRequiredService<IEvidenceLog>().AppendAsync(conv, "message", Payload(1));
 
         using var client = factory.CreateClient();
-        var res = await client.GetAsync("http://chat.biatec.io" + EvidenceJwks.Path);
+        var res = await client.GetAsync("http://chat.biatec.io" + EvidenceJwks.JwksPath);
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         Assert.Equal("application/jwk-set+json", res.Content.Headers.ContentType?.MediaType);
         var jwks = JsonNode.Parse(await res.Content.ReadAsStringAsync())!["keys"]!.AsArray();
@@ -349,7 +362,8 @@ public sealed class EvidenceLogTests : IAsyncLifetime
         Assert.NotNull(jwks.Single(j => (string)j!["kid"]! == retired)!["retired_at"]);
 
         var map = jwks.ToDictionary(j => (string)j!["kid"]!, j => new EvidencePublicKey(
-            (string)j!["kid"]!, EvidenceVerifier.FromBase64Url((string)j["x"]!), EvidenceVerifier.FromBase64Url((string)j["y"]!), DateTimeOffset.UtcNow, null));
+            (string)j!["kid"]!, EvidenceVerifier.FromBase64Url((string)j["x"]!), EvidenceVerifier.FromBase64Url((string)j["y"]!),
+            DateTimeOffset.Parse((string)j["created_at"]!), j["retired_at"] is null ? null : DateTimeOffset.Parse((string)j["retired_at"]!)));
         await using var db = NewContext();
         Assert.True(EvidenceVerifier.Verify(await NewLog(db).GetChainAsync(conv), map).Valid);
     }

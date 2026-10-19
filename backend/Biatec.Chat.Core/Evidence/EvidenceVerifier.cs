@@ -50,6 +50,9 @@ public static class EvidenceVerifier
                 return EvidenceVerification.Fail(e.Seq, "entryHash does not match the entry.");
 
             if (!keys.TryGetValue(e.Kid, out var key)) return EvidenceVerification.Fail(e.Seq, $"Unknown signing key '{e.Kid}'.");
+            var skew = TimeSpan.FromMinutes(1);
+            if (e.SignedAt < key.CreatedAt - skew || (key.RetiredAt is { } retired && e.SignedAt > retired + skew))
+                return EvidenceVerification.Fail(e.Seq, "signedAt is outside the signing key's lifetime.");
             bool sigOk;
             try
             {

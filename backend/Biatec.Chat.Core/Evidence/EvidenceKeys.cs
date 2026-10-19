@@ -27,7 +27,7 @@ public interface IEvidenceKeyStore
 /// <c>filePath</c> is set so they survive restarts. Production deployments replace it with a store backed by
 /// Secrets Manager or KMS. Never use it in production.
 /// </summary>
-public sealed class DevEvidenceKeyStore : IEvidenceKeyStore
+public sealed class DevEvidenceKeyStore : IEvidenceKeyStore, IDisposable
 {
     private sealed class Held
     {
@@ -57,6 +57,8 @@ public sealed class DevEvidenceKeyStore : IEvidenceKeyStore
                 _keys.Add(new Held { Kid = k.Kid, Key = ec, CreatedAt = k.CreatedAt, RetiredAt = k.RetiredAt });
             }
         }
+        if (_keys.Count(k => k.RetiredAt is null) > 1)
+            throw new InvalidOperationException("The evidence key file holds more than one active key.");
         if (!_keys.Any(k => k.RetiredAt is null))
         {
             _keys.Add(NewKey());
@@ -76,7 +78,16 @@ public sealed class DevEvidenceKeyStore : IEvidenceKeyStore
         if (_filePath is null) return;
         var json = JsonSerializer.Serialize(_keys.Select(k =>
             new FileKey(k.Kid, Convert.ToBase64String(k.Key.ExportPkcs8PrivateKey()), k.CreatedAt, k.RetiredAt)));
-        File.WriteAllText(_filePath, json);
+        var tmp = _filePath + ".tmp";
+        File.WriteAllText(tmp, json);
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        File.Move(tmp, _filePath, overwrite: true);
+    }
+
+    public void Dispose()
+    {
+        lock (_gate) foreach (var k in _keys) k.Key.Dispose();
     }
 
     public Task<string> GetActiveKidAsync(CancellationToken ct)

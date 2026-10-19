@@ -88,10 +88,17 @@ public sealed class EvidenceLog(ChatDbContext db, IEvidenceKeyStore keys, TimePr
                 if (tx is not null) await tx.CommitAsync(ct);
                 return entry;
             }
-            catch (DbUpdateException) when (attempt < MaxAttempts)
+            catch (DbUpdateException) when (tx is not null && attempt < MaxAttempts)
             {
-                // Lost a race on (conversationId, seq): re-read the head and try again.
+                // Only a lost race on (conversationId, seq) is retried: after rolling back, the seq we tried must now
+                // exist. Any other failure (foreign key, connection, ...) is rethrown unchanged. Inside a caller's
+                // transaction nothing is retried, because PostgreSQL has aborted that transaction.
                 if (entry is not null) db.Entry(entry).State = EntityState.Detached;
+                await tx.DisposeAsync();
+                tx = null;
+                var raced = entry is not null && await db.EvidenceEntries.AsNoTracking()
+                    .AnyAsync(e => e.ConversationId == conversationId && e.Seq == entry.Seq, ct);
+                if (!raced) throw;
             }
             finally
             {

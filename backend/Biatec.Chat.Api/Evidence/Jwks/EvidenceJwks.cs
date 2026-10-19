@@ -15,7 +15,7 @@ public sealed class EvidenceOptions
 
 public static class EvidenceJwks
 {
-    public const string Path = "/.well-known/evidence-jwks.json";
+    public const string JwksPath = "/.well-known/evidence-jwks.json";
 
     /// <summary>Registers the evidence log and the dev signing key store (register a production <see cref="IEvidenceKeyStore"/> first to replace it).</summary>
     public static IServiceCollection AddEvidence(this IServiceCollection services, IConfiguration config)
@@ -24,7 +24,10 @@ public static class EvidenceJwks
         services.TryAddSingleton<IEvidenceKeyStore>(sp =>
         {
             var o = config.GetSection(EvidenceOptions.Section).Get<EvidenceOptions>() ?? new EvidenceOptions();
-            if (!sp.GetRequiredService<IHostEnvironment>().IsDevelopment())
+            var dev = sp.GetRequiredService<IHostEnvironment>().IsDevelopment();
+            if (!dev && !string.IsNullOrWhiteSpace(o.DevKeyFile))
+                throw new InvalidOperationException("Evidence:DevKeyFile is only allowed in Development; register a production IEvidenceKeyStore.");
+            if (!dev)
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger("Evidence").LogWarning("Evidence signing uses the local Dev key store; register a production IEvidenceKeyStore.");
             return new DevEvidenceKeyStore(o.DevKeyFile);
         });
@@ -55,9 +58,9 @@ public static class EvidenceJwks
 
     public static IEndpointRouteBuilder MapEvidenceJwks(this IEndpointRouteBuilder app)
     {
-        app.MapGet(Path, async (IEvidenceKeyStore store, HttpContext ctx, CancellationToken ct) =>
+        app.MapGet(JwksPath, async (IEvidenceKeyStore store, HttpContext ctx, CancellationToken ct) =>
         {
-            ctx.Response.Headers.CacheControl = "public, max-age=300";
+            ctx.Response.Headers.CacheControl = "public, max-age=60";
             return Results.Content(ToJwks(await store.GetPublicKeysAsync(ct)).ToJsonString(), "application/jwk-set+json");
         }).ExcludeFromDescription();
         return app;
