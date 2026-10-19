@@ -7,10 +7,14 @@ using Biatec.Chat.Api.Data;
 using Biatec.Chat.Api.Evidence.Anchoring;
 using Biatec.Chat.Api.Evidence.Jwks;
 using Biatec.Chat.Api.Health;
+using Biatec.Chat.Api.Model;
 using Biatec.Chat.Api.Onboarding;
 using Biatec.Chat.Api.Sessions;
 using Biatec.Chat.Api.Tenancy;
 using Biatec.Chat.Api.Vault;
+
+if (args is [BedrockSmoke.Command, .. var smokeArgs])
+    return await BedrockSmoke.RunAsync(smokeArgs);
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,12 +26,15 @@ builder.Services.AddOidcAuth();
 builder.Services.AddTokenVault(builder.Configuration);
 builder.Services.AddTenancy();
 builder.Services.AddSessions();
+builder.Services.AddBedrockModel();
 builder.Services.AddOnboarding(builder.Configuration);
 
 builder.Services.AddScopeElevation();
 builder.Services.AddLogoutAndSweeper(builder.Configuration);
 builder.Services.AddEvidence(builder.Configuration);
 builder.Services.AddEvidenceAnchoring(builder.Configuration);
+builder.Services.AddSingleton<Biatec.Chat.Tools.Mcp.IMcpBearerSource, Biatec.Chat.Api.Mcp.VaultMcpBearerSource>();
+Biatec.Chat.Tools.Mcp.McpRegistration.AddBiatecMcp(builder.Services, builder.Configuration);
 
 var app = builder.Build();
 await app.MigrateDevelopmentDatabaseAsync();
@@ -54,6 +61,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.Run();
+return 0;
 
 // Lets the integration tests use WebApplicationFactory<Program>.
 public partial class Program;
