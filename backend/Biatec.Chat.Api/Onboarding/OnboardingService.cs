@@ -4,6 +4,7 @@ using Biatec.Chat.Api.Security;
 using Biatec.Chat.Core.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace Biatec.Chat.Api.Onboarding;
 
@@ -68,8 +69,8 @@ public sealed partial class OnboardingService(
     private OnboardingResult? Validate(OnboardingRequest? req, out Validated? v)
     {
         v = null;
-        if (string.IsNullOrEmpty(options.Value.ChallengeKey))
-            return new(OnboardingStatus.Disabled, "Tenant onboarding is not configured on this deployment.");
+        if (options.Value.ChallengeKey is not { Length: >= OnboardingOptions.MinKeyLength })
+            return new(OnboardingStatus.Disabled, "Tenant onboarding is not configured on this deployment (Onboarding:ChallengeKey missing or shorter than 32 characters).");
         var host = NormalizeHostName(req?.Host);
         if (host is null) return new(OnboardingStatus.Invalid, "host must be a DNS name with at least two labels.");
 
@@ -160,8 +161,10 @@ public sealed partial class OnboardingService(
 
         var tenantId = v.Host;
         var redirectUri = $"https://{v.Host}/auth/callback";
+        using var external = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        external.CancelAfter(TimeSpan.FromSeconds(20)); // the advisory lock and its connection are held meanwhile
         RegisteredClient? client;
-        try { client = await registrar.RegisterAsync($"Biatec Chat ({v.Host})", redirectUri, ct); }
+        try { client = await registrar.RegisterAsync($"Biatec Chat ({v.Host})", redirectUri, external.Token); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             log.LogWarning(ex, "Dynamic client registration failed for {Host}", v.Host);
@@ -176,7 +179,7 @@ public sealed partial class OnboardingService(
         }
 
         string secretRef;
-        try { secretRef = await secrets.PutAsync($"tenants/{tenantId}/oidc-client-secret", client.ClientSecret, ct); }
+        try { secretRef = await secrets.PutAsync($"tenants/{tenantId}/oidc-client-secret", client.ClientSecret, external.Token); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             log.LogWarning(ex, "Storing the client secret failed for {Host}", v.Host);
@@ -196,6 +199,12 @@ public sealed partial class OnboardingService(
             return new(OnboardingStatus.Invalid, "oidcClientId is required.");
         if (req.ClientSecretRef is null || !SecretRefRegex().IsMatch(req.ClientSecretRef) || req.ClientSecretRef["secret://".Length..].Split('/').Any(seg => seg is "" or "." or ".."))
             return new(OnboardingStatus.Invalid, "clientSecretRef must be a secret:// reference into the secret store, never the secret itself.");
+        var ownPath = $"secret://tenants/{v!.Host}/oidc-client-secret";
+        if (req.ClientSecretRef.StartsWith("secret://tenants/", StringComparison.Ordinal) && req.ClientSecretRef != ownPath)
+            return new(OnboardingStatus.Invalid, $"clientSecretRef under secret://tenants/ must be {ownPath}.");
+        // Operator approvals are rare: one global lock makes the reference-uniqueness check below race free.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended('biatec-chat-onboarding:operator', 0))", ct);
         if (await db.Tenants.AnyAsync(t => t.Host == v!.Host, ct)) return HostTaken(v!.Host);
         if (await db.Tenants.AnyAsync(t => t.ClientSecretRef == req.ClientSecretRef, ct))
             return new(OnboardingStatus.Invalid, "clientSecretRef is already used by another tenant.");
@@ -204,7 +213,9 @@ public sealed partial class OnboardingService(
         if (missing.Length > 0)
             return new(OnboardingStatus.Unverified, "DNS TXT challenge not found for: " + string.Join(", ", missing), new { unverified = missing });
 
-        return await CreateTenantAsync(v!, v!.Host, clientId, req.ClientSecretRef, $"https://{v.Host}/auth/callback", ct);
+        var created = await CreateTenantAsync(v!, v!.Host, clientId, req.ClientSecretRef, $"https://{v.Host}/auth/callback", ct);
+        if (created.Status == OnboardingStatus.Created) await tx.CommitAsync(ct);
+        return created;
     }
 
     private async Task<OnboardingResult> CreateTenantAsync(Validated v, string tenantId, string clientId, string secretRef, string redirectUri, CancellationToken ct)
@@ -226,12 +237,12 @@ public sealed partial class OnboardingService(
         };
         db.Tenants.Add(tenant);
         try { await db.SaveChangesAsync(ct); }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            // The unique index on Host (or the primary key) decides races between concurrent onboardings.
+            // The unique index on Host decides races (for example with the operator route). The transaction is already
+            // aborted, so no further query runs on it.
             db.Entry(tenant).State = EntityState.Detached;
-            if (await db.Tenants.AnyAsync(t => t.Host == v.Host, ct)) return HostTaken(v.Host);
-            throw;
+            return HostTaken(v.Host);
         }
         return new(OnboardingStatus.Created, Body: new
         {

@@ -6,6 +6,7 @@ namespace Biatec.Chat.Api.Onboarding;
 public sealed class OnboardingOptions
 {
     public const string Section = "Onboarding";
+    public const int MinKeyLength = 32;
 
     /// <summary>Secret that derives the per-host DNS challenge values. Onboarding is disabled (503) while unset.</summary>
     public string? ChallengeKey { get; set; }

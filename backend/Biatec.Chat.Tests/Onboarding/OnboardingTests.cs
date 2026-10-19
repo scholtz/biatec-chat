@@ -31,8 +31,8 @@ public sealed class OnboardingRegistrableDomainTests
 /// <summary>Needs the docker-compose postgres. DNS, the OIDC registrar and the secret store are fakes.</summary>
 public sealed class OnboardingTests : IAsyncLifetime
 {
-    private const string ChallengeKey = "test-challenge-key";
-    private const string OperatorKey = "test-operator-key";
+    private const string ChallengeKey = "test-challenge-key-0123456789-abcdefghij";
+    private const string OperatorKey = "test-operator-key-0123456789-abcdefghij";
     private const string Secret = "super-secret-client-secret-value";
 
     private sealed class MemoryTenantStore(params Tenant[] tenants) : ITenantStore
@@ -317,6 +317,23 @@ public sealed class OnboardingTests : IAsyncLifetime
         var t = await TenantAsync("chat.example-bank.com");
         Assert.Equal("static-client", t!.OidcClientId);
         Assert.Equal("secret://tenants/chat.example-bank.com/oidc-client-secret", t.ClientSecretRef);
+    }
+
+    [Fact]
+    public async Task OperatorApproval_AcceptsLowercaseBearerScheme_AndOnlyOwnTenantsPath()
+    {
+        _dns.Prove("chat.example-bank.com", "chat.example-bank.com");
+        object Body(string r) => new { request = Req("chat.example-bank.com"), oidcClientId = "c", clientSecretRef = r };
+        using var client = _factory.CreateClient();
+        async Task<HttpStatusCode> Send(string r)
+        {
+            var m = new HttpRequestMessage(HttpMethod.Post, "http://chat.biatec.io/onboarding/operator/tenants") { Content = JsonContent.Create(Body(r)) };
+            m.Headers.TryAddWithoutValidation("Authorization", "bearer " + OperatorKey);
+            return (await client.SendAsync(m)).StatusCode;
+        }
+        // Another host's reserved path is refused, the tenant's own path is accepted.
+        Assert.Equal(HttpStatusCode.BadRequest, await Send("secret://tenants/other.example-bank.com/oidc-client-secret"));
+        Assert.Equal(HttpStatusCode.Created, await Send("secret://tenants/chat.example-bank.com/oidc-client-secret"));
     }
 
     [Fact]

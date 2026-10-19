@@ -46,9 +46,10 @@ public static class OnboardingEndpoints
         g.MapPost("/operator/tenants", async (HttpContext ctx, OperatorApprovalRequest? req, OnboardingService svc, IOptions<OnboardingOptions> opts, CancellationToken ct) =>
         {
             var key = opts.Value.OperatorKey;
-            if (string.IsNullOrEmpty(key)) return Results.NotFound();
-            var auth = ctx.Request.Headers.Authorization.ToString();
-            if (!auth.StartsWith("Bearer ", StringComparison.Ordinal) || !FixedEquals(auth["Bearer ".Length..], key))
+            if (key is not { Length: >= OnboardingOptions.MinKeyLength }) return Results.NotFound();
+            var authValues = ctx.Request.Headers.Authorization;
+            var auth = authValues.Count == 1 ? authValues[0] ?? "" : "";
+            if (!auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) || !FixedEquals(auth["Bearer ".Length..].Trim(), key))
                 return Results.Json(new { error = "Operator authorization required." }, statusCode: 401);
             return ToResult(await svc.ApproveAsync(req, ct));
         });
