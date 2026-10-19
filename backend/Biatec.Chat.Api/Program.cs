@@ -4,6 +4,7 @@ using Biatec.Chat.Api.Auth.Logout;
 using Biatec.Chat.Api.Config;
 using Biatec.Chat.Api.Contracts;
 using Biatec.Chat.Api.Data;
+using Biatec.Chat.Api.Evidence.Anchoring;
 using Biatec.Chat.Api.Evidence.Jwks;
 using Biatec.Chat.Api.Health;
 using Biatec.Chat.Api.Model;
@@ -31,6 +32,9 @@ builder.Services.AddOnboarding(builder.Configuration);
 builder.Services.AddScopeElevation();
 builder.Services.AddLogoutAndSweeper(builder.Configuration);
 builder.Services.AddEvidence(builder.Configuration);
+builder.Services.AddEvidenceAnchoring(builder.Configuration);
+builder.Services.AddSingleton<Biatec.Chat.Tools.Mcp.IMcpBearerSource, Biatec.Chat.Api.Mcp.VaultMcpBearerSource>();
+Biatec.Chat.Tools.Mcp.McpRegistration.AddBiatecMcp(builder.Services, builder.Configuration);
 
 var app = builder.Build();
 await app.MigrateDevelopmentDatabaseAsync();

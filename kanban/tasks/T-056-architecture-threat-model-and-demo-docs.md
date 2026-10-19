@@ -1,7 +1,7 @@
 ---
 id: T-056
 title: Architecture, threat model and demo docs
-status: backlog
+status: in-progress
 priority: P2
 epic: "Deploy & docs"
 blocked_by: []
@@ -9,9 +9,9 @@ area: ["docs/architecture.md", "docs/threat-model.md", "docs/integration-widget.
 parallel: no
 conflicts_with: [T-011]
 issue: "#57"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-056"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#repository-layout"
 created: 2026-10-19
 updated: 2026-10-19
@@ -54,3 +54,5 @@ Review docs
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → backlog · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 20:38 · scholtz · taken · status stays backlog
+- 2026-10-19 20:38 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

@@ -7,6 +7,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0" />
     <PackageReference Include="Algorand4" Version="4.7.4.2026080422" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0" />
+    <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
   </ItemGroup>
 
   <PropertyGroup>

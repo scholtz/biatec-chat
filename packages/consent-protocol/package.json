@@ -8,9 +8,11 @@
   "files": ["spec", "schemas", "vectors", "scripts/lib.mjs"],
   "scripts": {
     "generate:vectors": "node scripts/generate-vectors.mjs",
-    "test": "node --test \"test/*.test.mjs\""
+    "test": "node --test \"test/*.test.mjs\"",
+    "conformance": "vitest run --config conformance/vitest.config.ts"
   },
   "devDependencies": {
-    "ajv": "^8.17.1"
+    "ajv": "^8.17.1",
+    "vitest": "^3.2.4"
   }
 }

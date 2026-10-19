@@ -1,7 +1,7 @@
 ---
 id: T-040
 title: Widget transport: cookie probe, public fallback, SSE
-status: backlog
+status: in-progress
 priority: P0
 epic: "Widget"
 blocked_by: [T-005, T-039]
@@ -9,9 +9,9 @@ area: ["packages/chat-widget/src/transport/**"]
 parallel: no
 conflicts_with: [T-036]
 issue: "#41"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-040"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#embedding-modes"
 created: 2026-10-19
 updated: 2026-10-19
@@ -55,3 +55,5 @@ pnpm --filter chat-widget test
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 20:06 · kanban-board · blocked → backlog · blockers done: T-005, T-039
+- 2026-10-19 20:38 · scholtz · taken · status stays backlog
+- 2026-10-19 20:38 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
