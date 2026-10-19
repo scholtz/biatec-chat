@@ -6,6 +6,7 @@ using Biatec.Chat.Api.Contracts;
 using Biatec.Chat.Api.Data;
 using Biatec.Chat.Api.Evidence.Jwks;
 using Biatec.Chat.Api.Health;
+using Biatec.Chat.Api.Onboarding;
 using Biatec.Chat.Api.Sessions;
 using Biatec.Chat.Api.Tenancy;
 using Biatec.Chat.Api.Vault;
@@ -20,6 +21,8 @@ builder.Services.AddOidcAuth();
 builder.Services.AddTokenVault(builder.Configuration);
 builder.Services.AddTenancy();
 builder.Services.AddSessions();
+builder.Services.AddOnboarding(builder.Configuration);
+
 builder.Services.AddScopeElevation();
 builder.Services.AddLogoutAndSweeper(builder.Configuration);
 builder.Services.AddEvidence(builder.Configuration);
@@ -29,6 +32,8 @@ await app.MigrateDevelopmentDatabaseAsync();
 await app.SeedTenantsAsync();
 
 app.UseTenancy();
+app.UseOnboardingBodyLimit();
+app.UseRateLimiter();
 
 // 200 Healthy when Redis and PostgreSQL answer, 503 Unhealthy otherwise. The body is the status only.
 app.MapHealthChecks("/health");
@@ -36,6 +41,8 @@ app.MapHealthChecks("/health");
 app.MapContractCatalog();
 app.MapSessions();
 app.MapAuth();
+app.MapOnboarding();
+
 app.MapElevation();
 app.MapLogout();
 app.MapEvidenceJwks();
