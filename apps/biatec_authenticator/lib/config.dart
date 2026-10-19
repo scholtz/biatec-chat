@@ -18,7 +18,7 @@ class AppConfig {
   factory AppConfig.fromEnvironment() => AppConfig.resolve(_definedOidcBaseUrl);
 
   factory AppConfig.resolve(String defined) {
-    final url = defined.trim();
+    final url = defined.trim().replaceAll(RegExp(r'/+$'), '');
     if (url.isEmpty) {
       return const AppConfig(oidcBaseUrl: mockOidcBaseUrl, isMock: true);
     }

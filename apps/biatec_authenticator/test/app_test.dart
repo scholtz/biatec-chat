@@ -23,6 +23,10 @@ void main() {
     expect(config.oidcBaseUrl, 'https://oidc.example');
   });
 
+  test('config strips trailing slashes', () {
+    expect(AppConfig.resolve('http://10.0.2.2:5080/mock-oidc/').isMock, isTrue);
+  });
+
   testWidgets('home shows mock OIDC config', (tester) async {
     await tall(tester);
     await tester.pumpWidget(AuthenticatorApp(config: AppConfig.resolve('')));

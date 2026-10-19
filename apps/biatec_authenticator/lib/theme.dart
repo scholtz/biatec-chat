@@ -20,7 +20,6 @@ Widget largeTypeBuilder(BuildContext context, Widget? child) {
   return MediaQuery(
     data: media.copyWith(
       textScaler: media.textScaler.clamp(
-        minScaleFactor: 1.0,
         maxScaleFactor: 2.0,
       ),
     ),
