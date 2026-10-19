@@ -1,7 +1,7 @@
 ---
 id: T-048
 title: Consent conformance test suite
-status: blocked
+status: backlog
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-047]
@@ -54,3 +54,4 @@ pnpm --filter consent-protocol conformance
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 20:38 · kanban-board · blocked → backlog · blockers done: T-047

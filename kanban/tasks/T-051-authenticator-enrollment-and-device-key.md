@@ -1,7 +1,7 @@
 ---
 id: T-051
 title: Authenticator enrollment and device key
-status: blocked
+status: backlog
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-047, T-050]
@@ -54,3 +54,4 @@ flutter test; manual emulator run
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 20:38 · kanban-board · blocked → backlog · blockers done: T-047, T-050
