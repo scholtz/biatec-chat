@@ -4,6 +4,7 @@ using Biatec.Chat.Api.Orchestration;
 using Biatec.Chat.Core.Capabilities;
 using Biatec.Chat.Core.Evidence;
 using OpenTelemetry;
+using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -42,17 +43,26 @@ public static class TelemetryRegistration
                 .AddHttpClientInstrumentation()
                 .AddAWSInstrumentation()
                 .AddMeter(ChatMetrics.MeterName));
-        if (string.Equals(o.Exporter, "Console", StringComparison.OrdinalIgnoreCase))
+        // Traces and metrics only: logs are not exported, because the scrubber only sees spans.
+        switch (o.Exporter.Trim().ToLowerInvariant())
         {
-            services.ConfigureOpenTelemetryTracerProvider(t => t.AddConsoleExporter());
-            services.ConfigureOpenTelemetryMeterProvider(m => m.AddConsoleExporter());
+            case "console":
+                otel.WithTracing(t => t.AddConsoleExporter()).WithMetrics(m => m.AddConsoleExporter());
+                break;
+            case "none":
+                break;
+            case "otlp":
+                var protocol = Enum.Parse<OtlpExportProtocol>(o.OtlpProtocol, ignoreCase: true);
+                void Otlp(OtlpExporterOptions e)
+                {
+                    e.Protocol = protocol;
+                    if (!string.IsNullOrWhiteSpace(o.OtlpEndpoint)) e.Endpoint = new Uri(o.OtlpEndpoint);
+                }
+                otel.WithTracing(t => t.AddOtlpExporter(Otlp)).WithMetrics(m => m.AddOtlpExporter(Otlp));
+                break;
+            default:
+                throw new InvalidOperationException("Telemetry:Exporter must be Otlp, Console or None.");
         }
-        else if (string.IsNullOrWhiteSpace(o.OtlpEndpoint))
-        {
-            if (!string.Equals(o.Exporter, "None", StringComparison.OrdinalIgnoreCase)) otel.UseOtlpExporter();
-        }
-        else if (!string.Equals(o.Exporter, "None", StringComparison.OrdinalIgnoreCase))
-            otel.UseOtlpExporter(OpenTelemetry.Exporter.OtlpExportProtocol.Grpc, new Uri(o.OtlpEndpoint));
         return services;
     }
 
@@ -77,8 +87,9 @@ public static class TelemetryRegistration
 
 /// <summary>
 /// Strips attributes that can carry personal data or credentials before a span leaves the process: client and peer
-/// addresses, the user agent, query strings and any end-user identity. Request paths stay (they hold no secrets:
-/// tokens never travel in URLs here).
+/// addresses, the user agent, query strings, URL credentials and any end-user identity. In URL paths, segments that
+/// look like a wallet address or another long identifier (for example <c>/wallet/{network}/{address}/sign</c> at
+/// Biatec OIDC, or algod account lookups) are replaced with <c>{id}</c>.
 /// </summary>
 public sealed class TelemetryScrubber : BaseProcessor<Activity>
 {
@@ -93,8 +104,14 @@ public sealed class TelemetryScrubber : BaseProcessor<Activity>
         foreach (var key in Dropped)
             if (activity.GetTagItem(key) is not null)
                 activity.SetTag(key, null);
-        // url.full keeps the scheme, host and path only.
-        if (activity.GetTagItem("url.full") is string full && Uri.TryCreate(full, UriKind.Absolute, out var u) && (u.Query.Length > 0 || u.UserInfo.Length > 0))
-            activity.SetTag("url.full", u.GetLeftPart(UriPartial.Path).Replace(u.UserInfo + "@", ""));
+        // url.full keeps the scheme, host and the redacted path only.
+        if (activity.GetTagItem("url.full") is string full && Uri.TryCreate(full, UriKind.Absolute, out var u))
+            activity.SetTag("url.full", $"{u.Scheme}://{u.Authority}{RedactPath(u.AbsolutePath)}");
+        if (activity.GetTagItem("url.path") is string path)
+            activity.SetTag("url.path", RedactPath(path));
     }
+
+    /// <summary>Algorand addresses are 58 characters and Bitcoin ones 26 to 62; no route segment of ours is that long.</summary>
+    public static string RedactPath(string path) =>
+        string.Join('/', path.Split('/').Select(seg => seg.Length >= 25 && seg.All(char.IsAsciiLetterOrDigit) ? "{id}" : seg));
 }

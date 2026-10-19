@@ -139,6 +139,34 @@ public class TelemetryTests
         Assert.All(seen, m => Assert.DoesNotContain(m.Tags.Values, v => v is "session-secret" or "tenant-1" or "wallet.transfer"));
     }
 
+    private const string Address = "7ZUECA7HFLZTXENRV24SHLU4AVPUTMTTDUFUBNBD64C73F3UHRTHAIOF6Q";
+
+    [Fact]
+    public void Scrubber_RedactsAddressLikePathSegments()
+    {
+        Assert.Equal("/wallet/testnet/{id}/sign", TelemetryScrubber.RedactPath("/wallet/testnet/" + Address + "/sign"));
+        Assert.Equal("/v2/accounts/{id}", TelemetryScrubber.RedactPath("/v2/accounts/bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq"));
+        Assert.Equal("/connect/token", TelemetryScrubber.RedactPath("/connect/token"));
+    }
+
+    [Fact]
+    public void Metrics_ModelErrorsAreViolationsButNotRefusals()
+    {
+        using var rec = new Recorder();
+        using var metrics = new ChatMetrics();
+        foreach (var reason in new[] { "unknown_tool", "not_a_tool", "schema_invalid", "scope_missing" })
+            metrics.PolicyViolation(new PolicyEvent("tool_call_rejected", "x", reason, SessionTier.Authenticated, null, null, DateTimeOffset.UtcNow));
+        Assert.Equal(4, rec.Seen.Count(m => m.Name == "biatec.chat.policy_violations"));
+        Assert.Equal("scope_missing", rec.Seen.Single(m => m.Name == "biatec.chat.refusals").Tags["reason"]);
+    }
+
+    [Fact]
+    public void UnknownExporter_FailsStartup()
+    {
+        var cfg = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Telemetry:Enabled"] = "true", ["Telemetry:Exporter"] = "otel" }).Build();
+        Assert.Throws<InvalidOperationException>(() => AppServices().AddBiatecTelemetry(cfg));
+    }
+
     [Fact]
     public void Metrics_FoldUnexpectedLabels()
     {
@@ -190,6 +218,7 @@ public class TelemetryTests
 
             using var http = new HttpClient();
             await http.GetAsync(baseUrl + "/connect/token?code=secret-code");
+            await http.PostAsync(baseUrl + "/wallet/testnet/" + Address + "/sign", null);
 
             var bedrock = new AmazonBedrockRuntimeClient(new BasicAWSCredentials("test", "test"),
                 new AmazonBedrockRuntimeConfig { ServiceURL = baseUrl, AuthenticationRegion = "eu-central-1", MaxErrorRetry = 0 });
@@ -199,11 +228,13 @@ public class TelemetryTests
 
         var httpSpan = Assert.Single(exported, a => a.Kind == ActivityKind.Client && (a.GetTagItem("url.full") as string)?.Contains("/connect/token") == true);
         Assert.DoesNotContain("secret-code", (string)httpSpan.GetTagItem("url.full")!);
+        Assert.Contains(exported, a => (a.GetTagItem("url.full") as string)?.EndsWith("/wallet/testnet/{id}/sign") == true);
         Assert.Contains(exported, a => a.Source.Name.Contains("AWS", StringComparison.OrdinalIgnoreCase) && a.DisplayName.Contains("Converse", StringComparison.Ordinal));
         Assert.All(exported, a =>
         {
             foreach (var key in TelemetryScrubber.Dropped) Assert.Null(a.GetTagItem(key));
             Assert.DoesNotContain(a.TagObjects, t => t.Value?.ToString()?.Contains("secret-code") == true);
+            Assert.DoesNotContain(a.TagObjects, t => t.Value?.ToString()?.Contains(Address) == true);
         });
     }
 

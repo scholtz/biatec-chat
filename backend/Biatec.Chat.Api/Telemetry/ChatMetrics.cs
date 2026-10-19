@@ -25,16 +25,20 @@ public sealed class ChatMetrics : IDisposable
     {
         _refusals = _meter.CreateCounter<long>("biatec.chat.refusals", "{refusal}", "Actions refused, by session tier and reason.");
         _policyViolations = _meter.CreateCounter<long>("biatec.chat.policy_violations", "{event}", "Tool calls rejected by the server-side gate.");
-        _consent = _meter.CreateCounter<long>("biatec.chat.consent", "{event}", "Consent requests and their outcomes (approved, denied, expired).");
+        _consent = _meter.CreateCounter<long>("biatec.chat.consent", "{event}", "Consent evidence entries by kind (consent_requested, and the outcomes the consent orchestrator records).");
     }
 
     public void Refusal(SessionTier tier, string reason) =>
         _refusals.Add(1, new TagList { { "tier", Tier(tier) }, { "reason", Label(reason) } });
 
+    /// <summary>Gate reasons that are model mistakes, not an action refused to the user.</summary>
+    private static readonly HashSet<string> ModelErrors = ["unknown_tool", "not_a_tool", "schema_invalid"];
+
     public void PolicyViolation(PolicyEvent e)
     {
         _policyViolations.Add(1, new TagList { { "kind", Label(e.Kind) }, { "reason", Label(e.Reason) }, { "tier", Tier(e.Tier) } });
-        Refusal(e.Tier, e.Reason);
+        if (!ModelErrors.Contains(e.Reason))
+            Refusal(e.Tier, e.Reason);
     }
 
     public void Consent(string evidenceKind) => _consent.Add(1, new TagList { { "kind", Label(evidenceKind) } });
@@ -88,9 +92,10 @@ public sealed class MeteringSignInExecutor(IToolExecutor inner, ChatMetrics metr
 
     public string? StatusLabel(JsonNode arguments) => inner.StatusLabel(arguments);
 
-    public Task<ToolExecutionResult> ExecuteAsync(ToolExecutionContext context, JsonNode arguments, CancellationToken ct)
+    public async Task<ToolExecutionResult> ExecuteAsync(ToolExecutionContext context, JsonNode arguments, CancellationToken ct)
     {
+        var result = await inner.ExecuteAsync(context, arguments, ct);
         metrics.Refusal(context.Tier, Reason);
-        return inner.ExecuteAsync(context, arguments, ct);
+        return result;
     }
 }
