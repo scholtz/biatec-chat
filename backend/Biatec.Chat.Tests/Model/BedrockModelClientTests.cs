@@ -24,7 +24,7 @@ public class BedrockModelClientTests
         {
             var script = attempts[Math.Min(Interlocked.Increment(ref _calls) - 1, attempts.Length - 1)];
             lock (Requests) Requests.Add(request);
-            if (OnOpen is not null) await OnOpen();
+            if (OnOpen is not null) await OnOpen().WaitAsync(ct);
             foreach (var item in script)
             {
                 if (item is Exception ex) throw ex;
@@ -85,13 +85,29 @@ public class BedrockModelClientTests
     [Fact]
     public void The_history_ends_with_a_cache_point_without_changing_the_callers_messages()
     {
-        var request = Request();
+        var tool = new ToolSpecification { Name = "kb_search", Description = "d", InputSchema = new ToolInputSchema { Json = DocumentJson.FromJson("""{"type":"object"}""") } };
+        var request = Request(tools: tool);
         var r = Client(new FakeSource()).BuildRequest(request);
 
         var last = r.Messages[^1].Content;
         Assert.Equal("hello", last[0].Text);
         Assert.Equal(CachePointType.Default, last[^1].CachePoint.Type);
         Assert.Single(request.Messages[^1].Content);
+
+        // Without tools no follow-up call reads it, and an empty last message can't take one.
+        Assert.Single(Client(new FakeSource()).BuildRequest(Request()).Messages[^1].Content);
+        var empty = request with { Messages = [new Message { Role = ConversationRole.User, Content = [] }] };
+        Assert.Empty(Client(new FakeSource()).BuildRequest(empty).Messages[^1].Content);
+    }
+
+    [Fact]
+    public async Task A_stream_that_stalls_before_the_stop_is_retried_then_reported()
+    {
+        var stall = new FakeSource(TextAnswer) { OnOpen = () => Task.Delay(Timeout.Infinite) };
+        var o = Opts(maxRetries: 1);
+        o.StreamIdleTimeoutMs = 1000;
+        await Assert.ThrowsAsync<ModelStreamIncompleteException>(() => Collect(Client(stall, o).StreamAsync(Request())).WaitAsync(TimeSpan.FromSeconds(20)));
+        Assert.Equal(2, stall.Calls);
     }
 
     [Fact]
@@ -266,9 +282,9 @@ public class BedrockModelClientTests
     }
 
     [Fact]
-    public void Model_timeouts_and_5xx_or_429_responses_are_transient()
+    public void Throttling_5xx_and_429_responses_are_transient_but_model_timeouts_are_not()
     {
-        Assert.True(BedrockModelClient.IsRetryable(new ModelTimeoutException("slow model"), default));
+        Assert.False(BedrockModelClient.IsRetryable(new ModelTimeoutException("slow model"), default));
         Assert.True(BedrockModelClient.IsRetryable(new AmazonBedrockRuntimeException("bad gateway") { StatusCode = System.Net.HttpStatusCode.BadGateway }, default));
         Assert.True(BedrockModelClient.IsRetryable(new AmazonBedrockRuntimeException("rate") { StatusCode = System.Net.HttpStatusCode.TooManyRequests }, default));
         Assert.False(BedrockModelClient.IsRetryable(new AmazonBedrockRuntimeException("denied") { StatusCode = System.Net.HttpStatusCode.Forbidden }, default));

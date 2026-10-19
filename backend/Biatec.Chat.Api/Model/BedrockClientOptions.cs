@@ -12,6 +12,9 @@ public sealed class BedrockClientOptions : IValidatableObject
     /// <summary>How long a call may wait for free slots in total, retries included, before <see cref="ModelBusyException"/>.</summary>
     [Range(1, 600000)] public int QueueTimeoutMs { get; set; } = 30000;
 
+    /// <summary>Longest gap between two stream events before the message stop; a stalled stream frees its slot.</summary>
+    [Range(1000, 600000)] public int StreamIdleTimeoutMs { get; set; } = 60000;
+
     /// <summary>Retries after a throttled or transiently failed call, with exponential backoff and equal jitter.</summary>
     [Range(0, 10)] public int MaxRetries { get; set; } = 4;
 
@@ -38,5 +41,5 @@ public sealed class ModelBusyException(TimeSpan budget, Exception? retryCause = 
     : Exception($"No Bedrock slot became free within {budget.TotalSeconds:0.#} s.", retryCause);
 
 /// <summary>The event stream ended before the message stop: the answer is truncated.</summary>
-public sealed class ModelStreamIncompleteException(string modelId)
-    : IOException($"The Bedrock stream for {modelId} ended before the message stop.");
+public sealed class ModelStreamIncompleteException(string modelId, string reason = "ended")
+    : IOException($"The Bedrock stream for {modelId} {reason} before the message stop.");

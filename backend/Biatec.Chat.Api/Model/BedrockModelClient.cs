@@ -76,7 +76,8 @@ public sealed class BedrockModelClient(
         {
             ModelId = request.Profile == ModelProfile.Authenticated ? _o.AuthenticatedModelId : _o.AnonymousModelId,
             System = system,
-            Messages = WithHistoryCachePoint(request.Messages),
+            // With tools a follow-up call (the tool result) is likely to reuse the history; without, it would be a paid write nobody reads.
+            Messages = request.Tools.Count > 0 ? WithHistoryCachePoint(request.Messages) : [.. request.Messages],
             InferenceConfig = new InferenceConfiguration { MaxTokens = maxTokens },
             ToolConfig = request.Tools.Count == 0
                 ? null
@@ -165,9 +166,18 @@ public sealed class BedrockModelClient(
                     while (true)
                     {
                         bool more;
+                        // Before the stop every read gets the idle limit; after it the usage wait (set below) applies.
+                        if (!stopped) attemptCts.CancelAfter(_c.StreamIdleTimeoutMs);
                         try
                         {
                             more = await events.MoveNextAsync();
+                        }
+                        catch (Exception) when (!stopped && attemptCts.IsCancellationRequested && !ct.IsCancellationRequested)
+                        {
+                            var stalled = new ModelStreamIncompleteException(converse.ModelId, $"stalled for {_c.StreamIdleTimeoutMs} ms");
+                            if (written || attempt >= _c.MaxRetries) throw stalled;
+                            lastError = stalled;
+                            break;
                         }
                         catch (Exception ex) when (stopped)
                         {
@@ -251,8 +261,8 @@ public sealed class BedrockModelClient(
         while (ex is BedrockRuntimeEventStreamException { InnerException: { } inner }) ex = inner;
         return ex switch
         {
-            ThrottlingException or ServiceUnavailableException or ModelNotReadyException or InternalServerException
-                or ModelTimeoutException => true,
+            // ModelTimeoutException isn't here: a prompt that timed out the model usually does so again, at full price.
+            ThrottlingException or ServiceUnavailableException or ModelNotReadyException or InternalServerException => true,
             // Wraps the model's own error, which can be a 4xx that would fail the same way again.
             ModelStreamErrorException stream => stream.OriginalStatusCode is null or 429 or >= 500,
             AmazonServiceException { StatusCode: HttpStatusCode.TooManyRequests or HttpStatusCode.InternalServerError
@@ -281,7 +291,8 @@ public sealed class BedrockModelClient(
     private static List<Message> WithHistoryCachePoint(IReadOnlyList<Message> messages)
     {
         var copy = messages.ToList();
-        if (copy.Count > 0)
+        // A cache point can't be a message's only content.
+        if (copy.Count > 0 && copy[^1].Content is { Count: > 0 })
         {
             var last = copy[^1];
             copy[^1] = new Message
@@ -332,20 +343,16 @@ public sealed class BedrockModelClient(
                         else logger.LogWarning("Bedrock {ModelId} sent tool input for block {Index} without a tool start; dropped", modelId, e.ContentBlockIndex);
                     }
                     break;
-                case ContentBlockStopEvent e when BlockAt(e.ContentBlockIndex) is { Tool: { } tool, Input: { } raw } block:
-                    block.InputJson = raw.Length > 0 ? raw.ToString() : "{}";
-                    block.Input = null;
-                    yield return new ModelToolUse(tool.ToolUseId, tool.Name, block.InputJson);
+                case ContentBlockStopEvent e when BlockAt(e.ContentBlockIndex) is { Tool: not null, Input: not null } block:
+                    yield return Close(block);
                     break;
                 case MessageStopEvent stop:
                     // A tool block whose stop never came is closed here, so a tool_use stop always has its calls.
                     foreach (var (index, open) in _blocks)
                     {
-                        if (open is not { Tool: { } pending, Input: { } raw }) continue;
+                        if (open is not { Tool: not null, Input: not null }) continue;
                         logger.LogWarning("Bedrock {ModelId} stopped without closing tool block {Index}", modelId, index);
-                        open.InputJson = raw.Length > 0 ? raw.ToString() : "{}";
-                        open.Input = null;
-                        yield return new ModelToolUse(pending.ToolUseId, pending.Name, open.InputJson);
+                        yield return Close(open);
                     }
                     yield return new ModelMessageStop(stop.StopReason?.Value ?? "", BuildMessage());
                     break;
@@ -356,6 +363,13 @@ public sealed class BedrockModelClient(
                         meta.Metrics?.LatencyMs ?? sw.ElapsedMilliseconds);
                     break;
             }
+        }
+
+        private static ModelToolUse Close(Block block)
+        {
+            block.InputJson = block.Input!.Length > 0 ? block.Input.ToString() : "{}";
+            block.Input = null;
+            return new ModelToolUse(block.Tool!.ToolUseId, block.Tool.Name, block.InputJson);
         }
 
         private Block BlockAt(int? index)
