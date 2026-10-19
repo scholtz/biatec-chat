@@ -28,9 +28,9 @@ function signerGroup(over: Partial<Record<string, bigint | string>> = {}) {
   return encodeStruct("SignerGroup", [v.name as string, v.threshold as bigint, v.memberCount as bigint, v.adminPrivileges as bigint, v.allowedActions as bigint, 0n, 0n, 0n, 0n, 0n, 0n, 0n, 0n, 0n, 1n, v.active as bigint, 0n, 0n]);
 }
 
-function proposal(over: Partial<{ status: bigint; payloadType: bigint; approvals: bigint; version: bigint; numPayloads: bigint; proposer: string }> = {}) {
-  const v = { status: 1n, payloadType: PT_TRANSACTION_GROUP, approvals: 1n, version: 3n, numPayloads: 1n, proposer: alice, ...over };
-  return encodeStruct("Proposal", [1n, v.status, v.payloadType, v.approvals, 2n, 9_999_999n, v.proposer, v.numPayloads, 1n, v.version, 1n]);
+function proposal(over: Partial<{ status: bigint; payloadType: bigint; approvals: bigint; version: bigint; numPayloads: bigint; proposer: string; expiry: bigint }> = {}) {
+  const v = { status: 1n, payloadType: PT_TRANSACTION_GROUP, approvals: 1n, version: 3n, numPayloads: 1n, proposer: alice, expiry: 9_999_999n, ...over };
+  return encodeStruct("Proposal", [1n, v.status, v.payloadType, v.approvals, 2n, v.expiry, v.proposer, v.numPayloads, 1n, v.version, 1n]);
 }
 
 const txGroupType = algosdk.ABIType.from("(uint64,byte[])[]");
@@ -100,6 +100,18 @@ describe("proposal.create", () => {
     expect((r.preview as { change: { type: string; threshold: string } }).change).toMatchObject({ type: "changeThreshold", threshold: "1" });
   });
 
+  it("refuses createGroup with several members or a threshold above the member count, and past expiry", async () => {
+    const run = (params: unknown) => b()["proposal.create"]!(params, ctx());
+    const m = (a: string) => ({ address: a });
+    const base = { appId: APP, sender: alice, groupId: 1 };
+    await expect(run({ ...base, change: { type: "createGroup", name: "Ops", threshold: 2, members: [m(alice), m(bob)] } })).rejects.toThrow(/exactly one initial member/);
+    await expect(run({ ...base, change: { type: "createGroup", name: "Ops", threshold: 2, members: [m(alice)] } })).rejects.toThrow(/threshold/);
+    await expect(run({ ...base, change: { type: "createGroup", name: "Ops", members: [] } })).rejects.toThrow(/exactly one initial member/);
+    const ok = await run({ ...base, change: { type: "createGroup", name: "Ops", threshold: 1, members: [m(alice)] } });
+    expect(ok.transactions).toHaveLength(1);
+    await expect(run({ ...base, expiryRound: 1000, payload: [{ type: "payment", receiver, amount: 1 }] })).rejects.toThrow(/future/);
+  });
+
   it("refuses non-members, bad input and actions the group may not take", async () => {
     const run = (params: unknown) => b()["proposal.create"]!(params, ctx());
     const pay = [{ type: "payment", receiver, amount: 1 }];
@@ -131,23 +143,27 @@ describe("proposal.approve", () => {
     expect(preview.proposal.payload).toHaveLength(1);
   });
 
-  it("defaults to the live payload version when none is supplied", async () => {
-    const r = await b()["proposal.approve"]!({ appId: APP, sender: bob, proposalId: 1 }, ctx());
-    expect(uintArg(decode(r.transactions[0]!), 2)).toBe(3n);
+  it("requires the reviewed expectedPayloadVersion", async () => {
+    await expect(b()["proposal.approve"]!({ appId: APP, sender: bob, proposalId: 1 }, ctx())).rejects.toThrow(/expectedPayloadVersion is required/);
+  });
+
+  it("refuses an expired proposal", async () => {
+    put(APP, boxName("proposals", "uint64", 6n), proposal({ expiry: 500n }));
+    await expect(b()["proposal.approve"]!({ appId: APP, sender: bob, proposalId: 6, expectedPayloadVersion: 3 }, ctx())).rejects.toThrow(/expired/);
   });
 
   it("admin proposals approve at version 1", async () => {
-    const r = await b()["proposal.approve"]!({ appId: APP, sender: bob, proposalId: 3 }, ctx());
+    const r = await b()["proposal.approve"]!({ appId: APP, sender: bob, proposalId: 3, expectedPayloadVersion: 1 }, ctx());
     expect(uintArg(decode(r.transactions[0]!), 2)).toBe(1n);
   });
 
   it("refuses a stale version, a repeat approval, a non-member and a closed proposal", async () => {
     const run = (params: unknown) => b()["proposal.approve"]!(params, ctx());
     await expect(run({ appId: APP, sender: bob, proposalId: 1, expectedPayloadVersion: 2 })).rejects.toThrow(/payload changed/);
-    await expect(run({ appId: APP, sender: alice, proposalId: 1 })).rejects.toThrow(/already approved/);
-    await expect(run({ appId: APP, sender: carol, proposalId: 1 })).rejects.toThrow(/not a member/);
-    await expect(run({ appId: APP, sender: bob, proposalId: 4 })).rejects.toThrow(/not active/);
-    await expect(run({ appId: APP, sender: bob, proposalId: 99 })).rejects.toThrow(/not found/);
+    await expect(run({ appId: APP, sender: alice, proposalId: 1, expectedPayloadVersion: 3 })).rejects.toThrow(/already approved/);
+    await expect(run({ appId: APP, sender: carol, proposalId: 1, expectedPayloadVersion: 3 })).rejects.toThrow(/not a member/);
+    await expect(run({ appId: APP, sender: bob, proposalId: 4, expectedPayloadVersion: 3 })).rejects.toThrow(/not active/);
+    await expect(run({ appId: APP, sender: bob, proposalId: 99, expectedPayloadVersion: 1 })).rejects.toThrow(/not found/);
   });
 });
 
@@ -203,6 +219,16 @@ describe("safe.list and safe.proposals", () => {
     expect((ready.data as { proposals: { proposalId: string }[] }).proposals.map((p) => p.proposalId)).toEqual(["3", "2"]);
     await expect(b()["safe.proposals"]!({ appId: APP, status: "bogus" }, ctx())).rejects.toThrow(/status/);
   });
+});
+
+describe("safe.proposals scan bound", () => {
+  it("stops after a bounded scan and returns a cursor", async () => {
+    fake.addSafe({ appId: 790, globals: { name: "Big", nextGroupId: 1n, nextProposalId: 1301n, groupCount: 0n }, boxes: new Map() });
+    const first = await b()["safe.proposals"]!({ appId: 790, status: "ready" }, ctx());
+    expect(first.data).toMatchObject({ proposals: [], truncated: true, before: 801n });
+    const last = await b()["safe.proposals"]!({ appId: 790, status: "ready", before: 301 }, ctx());
+    expect(last.data).toMatchObject({ truncated: false });
+  }, 60_000);
 });
 
 describe("safe.create", () => {
@@ -261,7 +287,7 @@ describe("simulation and resources", () => {
 
   it("does not simulate unless asked, except to find references", async () => {
     const before = fake.simulated.length;
-    const r = await b()["proposal.approve"]!({ appId: APP, sender: bob, proposalId: 1 }, ctx());
+    const r = await b()["proposal.approve"]!({ appId: APP, sender: bob, proposalId: 1, expectedPayloadVersion: 3 }, ctx());
     expect(r.simulation).toBeUndefined();
     expect(fake.simulated.length).toBe(before + 1);
     const deploy = await b()["safe.create"]!({ sender: alice, name: "Team Safe" }, ctx());

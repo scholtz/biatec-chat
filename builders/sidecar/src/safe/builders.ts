@@ -44,6 +44,8 @@ const STATUS_NAMES = new Map<bigint, string>([
 const MIN_FEE = 1000n;
 const MAX_LIST = 50;
 const MAX_PAGE = 100;
+/** Most proposal ids one safe.proposals request will probe; the caller continues with `before`. */
+const MAX_SCAN = 500n;
 /** About a week of rounds at roughly 2.8 seconds each. */
 const DEFAULT_EXPIRY_ROUNDS = 216_000n;
 const MAX_PAYLOAD_TXNS = 16;
@@ -226,13 +228,18 @@ export function safeProposals(makeChain: ChainFactory): Builder {
     if (p.status !== undefined && want === undefined) throw new BadRequest("status must be active, ready, executed or cancelled");
     const cfg = await safe.config();
     const out: Json[] = [];
-    // Newest first. Pruned proposals have no box and are skipped.
-    for (let id = cfg.nextProposalId - 1n; id >= 1n && out.length < limit; id--) {
+    // `before` is the exclusive upper id of the page, so a cursor from a truncated reply continues where it stopped.
+    const top = p.before === undefined ? cfg.nextProposalId : uint(p.before, "before", { min: 1n });
+    let id = (top < cfg.nextProposalId ? top : cfg.nextProposalId) - 1n;
+    let scanned = 0n;
+    // Newest first. Pruned proposals have no box and are skipped. The scan is bounded: a filter few proposals match must not cost thousands of RPCs.
+    for (; id >= 1n && out.length < limit && scanned < MAX_SCAN; id--, scanned++) {
       const prop = await safe.proposal(id);
       if (!prop || (want !== undefined && prop.status !== want)) continue;
       out.push(await proposalView(safe, id, prop, member));
     }
-    return { transactions: [], data: { appId: safe.appId, safeAddress: safe.appAddress, proposals: out } };
+    const truncated = id >= 1n;
+    return { transactions: [], data: { appId: safe.appId, safeAddress: safe.appAddress, proposals: out, truncated, ...(truncated ? { before: id + 1n } : {}) } };
   };
 }
 
@@ -271,11 +278,13 @@ function adminChange(raw: unknown): AdminChange {
   const o = obj(raw, "change");
   switch (o.type) {
     case "createGroup": {
-      const first = obj((Array.isArray(o.members) ? o.members[0] : undefined) ?? {}, "members[0]");
+      // The contract takes a single initial member; more members are added with addMember proposals afterwards.
+      if (!Array.isArray(o.members) || o.members.length !== 1) throw new BadRequest("createGroup takes exactly one initial member; add the others with addMember proposals");
+      const first = obj(o.members[0], "members[0]");
       return createAdminChange({
         changeType: ADM_CREATE_GROUP,
         groupName: text(o.name, "name", 32),
-        threshold: uint(o.threshold ?? 1, "threshold", { min: 1n }),
+        threshold: uint(o.threshold ?? 1, "threshold", { min: 1n, max: 1n }),
         memberAddr: address(first.address, "members[0].address"),
         memberLabel: text(first.label, "label", 64, { optional: true }),
         allowedActions: uint(o.allowedActions ?? ACT_PAY, "allowedActions", { max: ACT_ALL }),
@@ -308,6 +317,7 @@ export function proposalCreate(makeChain: ChainFactory): Builder {
     const groupId = uint(p.groupId, "groupId", { min: 1n });
     if (!(await safe.isMember(groupId, sender))) throw new BadRequest("sender is not a member of that signer group");
     const expiryRound = p.expiryRound === undefined ? (await chain.currentRound()) + DEFAULT_EXPIRY_ROUNDS : uint(p.expiryRound, "expiryRound", { min: 1n });
+    if (expiryRound <= (await chain.currentRound())) throw new BadRequest("expiryRound must be in the future");
 
     if ((p.payload === undefined) === (p.change === undefined)) throw new BadRequest("give exactly one of payload or change");
 
@@ -342,7 +352,7 @@ async function loadProposal(safe: SafeHandle, p: Record<string, unknown>): Promi
 }
 
 /**
- * The approval is bound to the payload version the member reviewed. A caller-supplied `expectedPayloadVersion` must match
+ * The approval is bound to the payload version the member reviewed. The caller must supply `expectedPayloadVersion`, and it must match
  * the live one, otherwise the proposal changed since the preview and the build is refused.
  */
 export function proposalApprove(makeChain: ChainFactory): Builder {
@@ -355,7 +365,9 @@ export function proposalApprove(makeChain: ChainFactory): Builder {
     if (prop.status !== STATUS_ACTIVE) throw new BadRequest(`proposal is ${STATUS_NAMES.get(prop.status) ?? "not open"}, not active`);
     if (!(await safe.isMember(prop.groupId, sender))) throw new BadRequest("sender is not a member of the proposal's signer group");
     if (await safe.hasApproved(id, sender)) throw new BadRequest("sender has already approved this proposal");
-    const expectedPayloadVersion = p.expectedPayloadVersion === undefined ? prop.payloadVersion : uint(p.expectedPayloadVersion, "expectedPayloadVersion", { min: 1n });
+    if (p.expectedPayloadVersion === undefined) throw new BadRequest("expectedPayloadVersion is required: approve the version you reviewed");
+    const expectedPayloadVersion = uint(p.expectedPayloadVersion, "expectedPayloadVersion", { min: 1n });
+    if (prop.expiryRound <= (await chain.currentRound())) throw new BadRequest("proposal has expired");
     if (expectedPayloadVersion !== prop.payloadVersion) throw new BadRequest("payload changed since review; review the proposal again");
     const txn = await safe.approveTxn(sender, { proposalId: id, expectedPayloadVersion });
     const view = await proposalView(safe, id, prop, sender);

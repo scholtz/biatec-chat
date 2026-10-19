@@ -159,7 +159,8 @@ export function address(v: unknown, what: string): string {
 /** Non-negative integer from a JSON number or decimal string (strings are required above 2^53). */
 export function uint(v: unknown, what: string, opts: { min?: bigint; max?: bigint } = {}): bigint {
   let n: bigint;
-  if (typeof v === "number" && Number.isSafeInteger(v) && v >= 0) n = BigInt(v);
+  if (typeof v === "bigint" && v >= 0n) n = v;
+  else if (typeof v === "number" && Number.isSafeInteger(v) && v >= 0) n = BigInt(v);
   else if (typeof v === "string" && /^\d{1,20}$/.test(v)) n = BigInt(v);
   else throw new BadRequest(`${what} must be a non-negative integer (use a decimal string above 2^53)`);
   if (n < (opts.min ?? 0n) || n > (opts.max ?? (1n << 64n) - 1n)) throw new BadRequest(`${what} is out of range`);
