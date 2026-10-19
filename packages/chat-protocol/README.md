@@ -40,5 +40,9 @@ pnpm --filter chat-protocol build
 directory, then runs `openapi-typescript` to produce `src/generated/schema.ts`. Commit both files. To regenerate only
 the TypeScript from the committed document (no .NET needed): `pnpm --filter chat-protocol generate -- --skip-backend`.
 
+The `build` step only matters for the published `dist`: inside this repository the widget resolves the package's
+`source` export (`src/index.ts`, through `customConditions: ["source"]` in its tsconfig), so its typecheck, tests and
+build don't need `dist`.
+
 If the backend gains a new event type, `src/index.ts` stops compiling until the new variant is added to `ChatEvent`.
 Add a variant to a polymorphic C# type by adding a `[JsonDerivedType]` to `ChatEvent`.

@@ -22,9 +22,25 @@ owner should run `kubectl kustomize k8s/stage | kubectl apply --dry-run=client -
 ## Secrets (never in git)
 
 Create `biatec-chat-secrets` in each namespace out of band (sealed-secrets, external-secrets or `kubectl create secret`) with keys:
-`postgres-connection-string`, `redis-connection-string`, `kms-key-id`, `oidc-client-secret`, `builders-internal-secret`.
-AWS access for Bedrock and KMS (eu-central-1) comes from an IAM role bound to the `biatec-chat-backend` service account;
-no access keys are used.
+`postgres-connection-string`, `redis-connection-string`, `kms-key-id`, `oidc-client-secret`, `builders-internal-secret`,
+`aws-role-arn`.
+
+## AWS access (no keys)
+
+The pod gets a projected service-account token (audience `sts.amazonaws.com`) at `/var/run/secrets/aws/token`; the AWS SDK
+exchanges it for the role in `AWS_ROLE_ARN` (`sts:AssumeRoleWithWebIdentity`, `AWSSDK.SecurityToken`). One-time setup per
+cluster and AWS account, with `infra/aws/k8s-role.sh` (dry-run by default):
+
+1. The cluster's service-account issuer must be reachable over HTTPS from AWS: `<issuer>/.well-known/openid-configuration`
+   and its `jwks_uri` (`kubectl get --raw /.well-known/openid-configuration` shows the issuer). On a self-managed cluster
+   that usually means setting `--service-account-issuer` to a public URL and serving those two documents there.
+2. `ISSUER_URL=<issuer> KMS_KEY_ARN=<vault key arn> infra/aws/k8s-role.sh --apply` creates the IAM OIDC provider and the
+   role `biatec-chat-k8s-role`, trusted only for `system:serviceaccount:biatec-chat-main:biatec-chat-backend` and
+   `...-stage:...`, with the same inline policy as the EC2 role (Claude 4.5 `eu.` profiles, the guardrail, the vault key).
+3. Put the printed role ARN in the `aws-role-arn` key of `biatec-chat-secrets`.
+
+The hackathon AWS account turns read-only after the event; for a lasting deployment run the guardrail script and this one
+in Biatec's own account and update `Bedrock__Guardrail__GuardrailId` in the base config map.
 
 ## Images
 

@@ -134,6 +134,11 @@ namespace Biatec.Chat.Api.Migrations
                     b.Property<DateTimeOffset>("AbsoluteExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("AgentMode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<Guid>("ConversationId")
                         .HasColumnType("uuid");
 
@@ -145,6 +150,9 @@ namespace Biatec.Chat.Api.Migrations
 
                     b.Property<string>("OidcSub")
                         .HasColumnType("text");
+
+                    b.Property<bool>("Paused")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("TenantId")
                         .IsRequired()

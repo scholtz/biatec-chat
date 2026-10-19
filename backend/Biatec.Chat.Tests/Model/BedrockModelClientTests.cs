@@ -660,10 +660,13 @@ public class BedrockModelClientTests
         Task? holder = null;
         var throttled = new FakeSource([new ThrottlingException("slow down")])
         {
-            OnOpen = async () =>
+            OnOpen = () =>
             {
-                holder = Task.Run(() => Collect(client.StreamAsync(Request())));
-                await Task.Delay(100);
+                // Started inline, not on the thread pool: StreamAsync runs synchronously up to the slot wait, so the
+                // second call is queued before the throttled attempt releases the slot. A Task.Run plus a fixed delay
+                // raced on a busy pool, and the retry then took the slot back.
+                holder = Collect(client.StreamAsync(Request()));
+                return Task.CompletedTask;
             },
         };
         client = Client(new SwitchSource(throttled, blocker), Opts(maxConcurrency: 1, queueTimeoutMs: 300, baseDelayMs: 1));

@@ -1,6 +1,7 @@
 # Hackathon AWS hosting plan
 
-Plan and scripts only. **Nothing here has been run and nothing was provisioned.** Everything that bills while idle needs the
+Plan and scripts. **Provisioned so far (2026-10-20): only the Bedrock guardrail** `biatec-chat-guardrail`, id `rwa0b0by3y18`,
+version `1`, tagged `Project=biatec` (pay per use, nothing while idle). No EC2, KMS key or IAM role exists yet. Everything that bills while idle needs the
 user's explicit approval before `--apply`. Rules come from [AGENTS.md](../AGENTS.md): region `eu-central-1`, no IAM users or
 access keys, Claude 4.5 only with `eu.` ids, every resource tagged `Project=biatec`, code freeze Tuesday 20 October 2026 13:30.
 
@@ -27,6 +28,7 @@ SSM Session Manager port forwarding, or add one rule for your own IP on purpose)
 ```
 aws sso login --profile hackathon
 export AWS_PROFILE=hackathon AWS_REGION=eu-central-1
+export Bedrock__Guardrail__Enabled=true Bedrock__Guardrail__GuardrailId=rwa0b0by3y18 Bedrock__Guardrail__GuardrailVersion=1
 docker compose up -d
 dotnet run --project backend/Biatec.Chat.Api
 ```
@@ -46,7 +48,8 @@ Created by `infra/aws/create.sh` (dry-run by default):
    containers reach the role. User data installs docker and clones the repo.
 
 After the instance is up, open a session (`aws ssm start-session --target <id>`), put the settings in `/opt/biatec-chat/.env`
-(typed by the operator, never committed): `Kms__KeyId=<key id>`, the three Bedrock model ids, OIDC settings and secrets.
+(typed by the operator, never committed): `Kms__KeyId=<key id>`, the three Bedrock model ids, the three
+`Bedrock__Guardrail__*` values above, OIDC settings and secrets.
 Then `docker compose up -d --build`.
 
 ### Role policy scope
@@ -58,7 +61,17 @@ Then `docker compose up -d --build`.
   - `eu.anthropic.claude-haiku-4-5-20251001-v1:0`
 - `kms:GenerateDataKey` and `kms:Decrypt` only on the vault key ARN, and only with encryption context
   `purpose=biatec-chat-token-vault` (the context `KmsKeyProvider` uses).
+- `bedrock:ApplyGuardrail` on guardrails in this account in eu-central-1. Both the guardrail on the Converse stream and the
+  standalone screening of tool results need it; without it every tool result is withheld (the screen fails closed).
 - Nothing else: no wildcard model access, no IAM, no S3.
+
+## Option C: Kubernetes (Biatec's cluster)
+
+No keys either: the pod's projected service-account token is exchanged for role `biatec-chat-k8s-role` through
+`sts:AssumeRoleWithWebIdentity`. `infra/aws/k8s-role.sh` creates the IAM OIDC provider for the cluster's issuer and the role
+(same inline policy as above, nothing idle-billing). Setup steps are in [k8s/README.md](../k8s/README.md#aws-access-no-keys).
+The hackathon account becomes read-only after the event, so a lasting deployment repeats the guardrail and role scripts in
+Biatec's own AWS account.
 
 ## Approval gate
 

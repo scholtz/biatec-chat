@@ -72,9 +72,28 @@ public class BudgetTests
 
     private static BudgetOptions Options() => new() { GlobalUsdPerWindow = 10m, TenantUsdPerWindow = 4m, ReservedAuthenticatedShare = 0.25m };
 
-    private static BudgetedModelClient Client(IModelClient inner, MemoryLedger ledger, MemoryCache cache, BudgetOptions? o = null, Tenant? tenant = null) =>
+    private static BudgetedModelClient Client(IModelClient inner, MemoryLedger ledger, MemoryCache cache, BudgetOptions? o = null, Tenant? tenant = null,
+        Biatec.Chat.Api.Telemetry.ChatMetrics? metrics = null) =>
         new(inner, ledger, cache, new FixedTenant(tenant ?? new Tenant { Id = "t1" }), Microsoft.Extensions.Options.Options.Create(o ?? Options()),
-            TimeProvider.System, NullLogger<BudgetedModelClient>.Instance);
+            TimeProvider.System, NullLogger<BudgetedModelClient>.Instance, metrics);
+
+    /// <summary>Budget refusals seen on biatec.chat.refusals, by tier. Only this class emits reason budget_exhausted.</summary>
+    private sealed class RefusalRecorder : IDisposable
+    {
+        private readonly System.Diagnostics.Metrics.MeterListener _l = new();
+        public readonly List<string?> Tiers = [];
+        public RefusalRecorder()
+        {
+            _l.InstrumentPublished = (i, l) => { if (i.Name == "biatec.chat.refusals") l.EnableMeasurementEvents(i); };
+            _l.SetMeasurementEventCallback<long>((_, _, tags, _) =>
+            {
+                var t = tags.ToArray().ToDictionary(x => x.Key, x => x.Value?.ToString());
+                if (t.GetValueOrDefault("reason") == BudgetedModelClient.RefusalReason) lock (Tiers) Tiers.Add(t.GetValueOrDefault("tier"));
+            });
+            _l.Start();
+        }
+        public void Dispose() => _l.Dispose();
+    }
 
     private static ModelRequest Request(ModelProfile profile, params string[] userTurns)
     {
@@ -276,5 +295,40 @@ public class BudgetTests
         var mine = keys.Where(k => mux.GetDatabase().StringGet(k) == answer).ToList();
         Assert.Single(mine);
         Assert.All(mine, k => Assert.InRange(mux.GetDatabase().KeyTimeToLive(k)!.Value.TotalMinutes, 4, 5));
+    }
+
+    [Fact]
+    public async Task Refusals_AreCountedPerTier_CachedAnswersAreNot()
+    {
+        using var rec = new RefusalRecorder();
+        using var metrics = new Biatec.Chat.Api.Telemetry.ChatMetrics();
+        var cache = new MemoryCache();
+        await cache.PutAsync("t1", "cached question", "cached answer", default);
+
+        var anonymousUsed = new MemoryLedger { Tenant = 3_000_000 };
+        await Drain(Client(new FakeModel(Reply), anonymousUsed, cache, metrics: metrics), Request(ModelProfile.Anonymous, "new question"));
+        await Drain(Client(new FakeModel(Reply), anonymousUsed, cache, metrics: metrics), Request(ModelProfile.Anonymous, "cached question"));
+        await Drain(Client(new FakeModel(Reply), anonymousUsed, cache, metrics: metrics), Request(ModelProfile.Authenticated, "within reserve"));
+
+        var fullyUsed = new MemoryLedger { Global = 10_000_000 };
+        await Assert.ThrowsAsync<BudgetExhaustedException>(() => Drain(Client(new FakeModel(Reply), fullyUsed, cache, metrics: metrics), Request(ModelProfile.Authenticated, "hi")));
+
+        Assert.Equal(["anonymous", "authenticated"], rec.Tiers);
+    }
+
+    [Fact]
+    public async Task Refusals_WithoutTelemetry_StillRefuse()
+    {
+        // ChatMetrics is only registered when telemetry is on; the client works the same without it.
+        var registered = new ServiceCollection();
+        registered.AddLogging();
+        registered.AddSingleton<Microsoft.Extensions.Configuration.IConfiguration>(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        registered.AddSingleton<IModelClient>(new FakeModel(Reply));
+        registered.AddSingleton<IBudgetLedger>(new MemoryLedger { Global = 20_000_000 }); // the default global budget is 20 USD
+        registered.AddSingleton<IAnswerCache>(new MemoryCache());
+        registered.AddBedrockBudget();
+        using var sp = registered.BuildServiceProvider();
+        var events = await Drain(sp.GetRequiredService<IModelClient>(), Request(ModelProfile.Anonymous, "hi"));
+        Assert.Equal(BudgetedModelClient.AnonymousRefusal, Text(events));
     }
 }

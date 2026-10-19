@@ -1,7 +1,7 @@
 ---
 id: T-063
 title: Widget shell: launcher, panel modes, header and host API
-status: blocked
+status: backlog
 priority: P1
 epic: "Widget UI rework"
 blocked_by: [T-062]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#user-experience"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-063 · Widget shell: launcher, panel modes, header and host API
@@ -74,3 +74,4 @@ Filled in by the agent when it moves the task to `review`.
 
 - 2026-10-19 22:40 · coordinator · (new) → blocked · created from the Biatec AI design handoff (docs/design/) for the widget UI rework
 - 2026-10-19 22:40 · coordinator · blocked · conflicts_with T-064: ask() goes through the chat composable in components/chat/**
+- 2026-10-20 00:55 · kanban-board · blocked → backlog · blockers done: T-062
