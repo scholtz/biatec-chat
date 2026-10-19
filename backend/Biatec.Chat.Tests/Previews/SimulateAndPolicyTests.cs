@@ -58,6 +58,20 @@ public sealed class SimulateAndPolicyTests
         Assert.Contains("overspend", outcome.Summary);
     }
 
+    private sealed class ThrowingTransport : IAlgodTransport
+    {
+        public Task<SimulateResponse> SimulateAsync(SimulateRequest request, CancellationToken ct) => throw new HttpRequestException("400 bad request");
+        public Task<ulong> GetLastRoundAsync(CancellationToken ct) => Task.FromResult(1UL);
+    }
+
+    [Fact]
+    public async Task Simulate_TransportError_IsAFailedOutcome_NotACrash()
+    {
+        var outcome = await new AlgodSimulateClient(new ThrowingTransport()).SimulateAsync([Pay()]);
+        Assert.False(outcome.Success);
+        Assert.Contains("400", outcome.FailureMessage);
+    }
+
     [Fact]
     public async Task Simulate_NoGroupResult_IsAFailure()
     {

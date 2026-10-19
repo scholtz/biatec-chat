@@ -10,7 +10,8 @@ namespace Biatec.Chat.Core.Previews;
 /// </summary>
 public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
 {
-    private static bool IsLanded(StepStatus s) => s is StepStatus.Confirmed or StepStatus.Submitted;
+    /// <summary>Landed means confirmed on chain; a submitted step's outcome is still unknown.</summary>
+    private static bool IsLanded(StepStatus s) => s == StepStatus.Confirmed;
 
     public async Task<PreviewSnapshot> CreateAsync(NewPreviewSpec spec, CancellationToken ct = default)
     {
@@ -33,9 +34,9 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
         return Snapshot(preview, steps, null);
     }
 
-    public async Task<PreviewSnapshot> GetAsync(Guid previewId, DateTimeOffset? sessionAbsoluteExpiry = null, CancellationToken ct = default)
+    public async Task<PreviewSnapshot> GetAsync(Guid conversationId, Guid previewId, DateTimeOffset? sessionAbsoluteExpiry = null, CancellationToken ct = default)
     {
-        var (preview, steps) = await LoadAsync(previewId, ct);
+        var (preview, steps) = await LoadAsync(conversationId, previewId, ct);
         return Snapshot(preview, steps, sessionAbsoluteExpiry);
     }
 
@@ -44,9 +45,9 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
     /// is not the hash of the step being confirmed, when the group has expired (the preview is then marked
     /// Expired and must be rebuilt) and when under 600 seconds remain.
     /// </summary>
-    public async Task<PreviewSnapshot> ConfirmAsync(Guid previewId, string groupHash, DateTimeOffset? sessionAbsoluteExpiry = null, CancellationToken ct = default)
+    public async Task<PreviewSnapshot> ConfirmAsync(Guid conversationId, Guid previewId, string groupHash, DateTimeOffset? sessionAbsoluteExpiry = null, CancellationToken ct = default)
     {
-        var (preview, steps) = await LoadAsync(previewId, ct);
+        var (preview, steps) = await LoadAsync(conversationId, previewId, ct);
         if (preview.Status == ActionPreviewStatus.Expired)
             throw new PreviewException(PreviewError.Expired, "The preview has expired; it must be rebuilt.");
         if (preview.Status != ActionPreviewStatus.Proposed)
@@ -71,19 +72,34 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
             throw new PreviewException(PreviewError.TooCloseToExpiry,
                 $"Only {remaining} s remain; at least {PreviewPolicy.MinConfirmSeconds} s are needed. Rebuild the preview.");
 
-        preview.Status = ActionPreviewStatus.Confirmed;
-        await db.SaveChangesAsync(ct);
+        // Atomic: of two concurrent Confirms only one flips Proposed to Confirmed.
+        var flipped = await db.ActionPreviews
+            .Where(p => p.Id == preview.Id && p.Status == ActionPreviewStatus.Proposed)
+            .ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, ActionPreviewStatus.Confirmed), ct);
+        if (flipped == 0) throw new PreviewException(PreviewError.InvalidState, "The preview was already confirmed or changed.");
+        var status = db.Entry(preview).Property(p => p.Status);
+        status.CurrentValue = ActionPreviewStatus.Confirmed;
+        status.OriginalValue = ActionPreviewStatus.Confirmed; // already persisted by the bulk update
         return Snapshot(preview, steps, sessionAbsoluteExpiry);
     }
 
-    /// <summary>Records that a step has landed on chain, with its transaction IDs.</summary>
-    public async Task MarkStepLandedAsync(Guid previewId, int seq, IEnumerable<string> txIds, CancellationToken ct = default)
+    /// <summary>
+    /// Records that a step has landed on chain, with its transaction IDs. The preview must have been confirmed;
+    /// <paramref name="isFinalStep"/> completes it.
+    /// </summary>
+    public async Task MarkStepLandedAsync(Guid conversationId, Guid previewId, int seq, IEnumerable<string> txIds, bool isFinalStep = false, CancellationToken ct = default)
     {
-        var (_, steps) = await LoadAsync(previewId, ct);
+        var (preview, steps) = await LoadAsync(conversationId, previewId, ct);
+        if (preview.Status is not (ActionPreviewStatus.Confirmed or ActionPreviewStatus.InProgress))
+            throw new PreviewException(PreviewError.InvalidState, $"A {preview.Status} preview has no step in flight.");
         var step = steps.FirstOrDefault(s => s.Seq == seq)
             ?? throw new PreviewException(PreviewError.NotFound, $"Step {seq} not found.");
+        if (step.Status == StepStatus.Confirmed)
+            throw new PreviewException(PreviewError.InvalidState, $"Step {seq} already landed.");
         step.Status = StepStatus.Confirmed;
         step.TxIds = txIds.ToArray();
+        // Between steps the preview stays InProgress; the last step completes it.
+        preview.Status = isFinalStep ? ActionPreviewStatus.Completed : ActionPreviewStatus.InProgress;
         await db.SaveChangesAsync(ct);
     }
 
@@ -91,9 +107,9 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
     /// Builds the next step of a multi-step action. Every earlier step must have landed; the new step brings its
     /// own validity window and the preview's expiry becomes that step's expiry.
     /// </summary>
-    public async Task<PreviewSnapshot> AddNextStepAsync(Guid previewId, NewStepSpec spec, CancellationToken ct = default)
+    public async Task<PreviewSnapshot> AddNextStepAsync(Guid conversationId, Guid previewId, NewStepSpec spec, CancellationToken ct = default)
     {
-        var (preview, steps) = await LoadAsync(previewId, ct);
+        var (preview, steps) = await LoadAsync(conversationId, previewId, ct);
         if (preview.Status is ActionPreviewStatus.Cancelled or ActionPreviewStatus.Failed or ActionPreviewStatus.Expired or ActionPreviewStatus.Completed)
             throw new PreviewException(PreviewError.InvalidState, $"The preview is {preview.Status}.");
         if (steps.Any(s => !IsLanded(s.Status)))
@@ -104,7 +120,12 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
         steps.Add(step);
         preview.ExpiresAt = step.ExpiresAt;
         preview.Status = ActionPreviewStatus.Proposed;
-        await db.SaveChangesAsync(ct);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException)
+        {
+            // The (PreviewId, Seq) unique index caught a concurrent AddNextStep.
+            throw new PreviewException(PreviewError.InvalidState, "The next step was added concurrently.");
+        }
         return Snapshot(preview, steps, null);
     }
 
@@ -113,17 +134,19 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
     /// <c>RebuiltAsPreviewId</c>. Steps that already landed are copied over as completed, with their transaction
     /// IDs, and are never rebuilt; <paramref name="newSteps"/> are the remaining steps and must carry new hashes.
     /// </summary>
-    public async Task<PreviewSnapshot> RebuildAsync(Guid previewId, string canonicalJson, IReadOnlyList<NewStepSpec> newSteps,
+    public async Task<PreviewSnapshot> RebuildAsync(Guid conversationId, Guid previewId, string canonicalJson, IReadOnlyList<NewStepSpec> newSteps,
         decimal? predictedValueEur = null, bool predictedNeedsConsent = false, CancellationToken ct = default)
     {
         if (newSteps.Count == 0) throw new PreviewException(PreviewError.InvalidSpec, "A rebuilt preview needs at least one step.");
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        var (old, oldSteps) = await LoadAsync(previewId, ct);
+        var (old, oldSteps) = await LoadAsync(conversationId, previewId, ct);
         if (old.RebuiltAsPreviewId is not null)
             throw new PreviewException(PreviewError.AlreadyRebuilt, "The preview was already rebuilt.");
         if (old.Status is not (ActionPreviewStatus.Proposed or ActionPreviewStatus.Confirmed or ActionPreviewStatus.Expired))
             throw new PreviewException(PreviewError.InvalidState, $"A {old.Status} preview cannot be rebuilt.");
 
+        if (oldSteps.Any(x => x.Status is StepStatus.Submitted or StepStatus.Signed or StepStatus.AwaitingConsent))
+            throw new PreviewException(PreviewError.InvalidState, "A step is in flight; its outcome must be known before rebuilding.");
         var oldPending = oldSteps.Where(s => !IsLanded(s.Status)).Select(s => s.SubjectHash).ToHashSet(StringComparer.Ordinal);
         if (newSteps.Any(s => oldPending.Contains(s.SubjectHash)))
             throw new PreviewException(PreviewError.RebuildReusedHash, "A rebuilt group must have a new hash.");
@@ -165,12 +188,13 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
             .Where(s => s.PreviewId == old.Id && s.Status == StepStatus.Pending)
             .ExecuteUpdateAsync(u => u.SetProperty(s => s.Status, StepStatus.Expired), ct);
         await tx.CommitAsync(ct);
+        db.ChangeTracker.Clear(); // the bulk updates bypassed the tracker; do not leave stale entities behind
         return Snapshot(created, steps, null);
     }
 
-    private async Task<(ActionPreview, List<ActionStep>)> LoadAsync(Guid previewId, CancellationToken ct)
+    private async Task<(ActionPreview, List<ActionStep>)> LoadAsync(Guid conversationId, Guid previewId, CancellationToken ct)
     {
-        var preview = await db.ActionPreviews.SingleOrDefaultAsync(p => p.Id == previewId, ct)
+        var preview = await db.ActionPreviews.SingleOrDefaultAsync(p => p.Id == previewId && p.ConversationId == conversationId, ct)
             ?? throw new PreviewException(PreviewError.NotFound, "Preview not found.");
         var steps = await db.ActionSteps.Where(s => s.PreviewId == previewId).OrderBy(s => s.Seq).ToListAsync(ct);
         return (preview, steps);

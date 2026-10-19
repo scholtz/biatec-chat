@@ -115,6 +115,22 @@ public sealed class AlgorandGroupTests
     }
 
     [Fact]
+    public void Ensure_AssetTransfer_KeepsEveryFieldExceptGrp()
+    {
+        var axfer = new AssetTransferTransaction
+        {
+            Sender = new Address(AddrA), AssetReceiver = new Address(AddrB), XferAsset = 31566704UL, AssetAmount = 5,
+            Fee = 1000, FirstValid = 10, LastValid = 1010, GenesisId = "devnet-v1.0",
+            GenesisHash = new Digest(Convert.FromBase64String("sC3P7e2SdbqKJK0tbiCdK9tdSpbe6XeCGKdoNzmlj0E=")),
+            Note = [1, 2, 3], Lease = new byte[32], RekeyTo = new Address(AddrB),
+        };
+        var grouped = AlgorandGroup.Ensure([axfer, Pay(1)]);
+        var back = Encoder.DecodeFromMsgPack<Transaction>(Encoder.EncodeToMsgPackOrdered(grouped.Transactions[0]));
+        back.Group = null!;
+        Assert.Equal(Encoder.EncodeToMsgPackOrdered(axfer), Encoder.EncodeToMsgPackOrdered(back));
+    }
+
+    [Fact]
     public void Ensure_MultiTransactionGroup_AssignsSameGrpToEveryTransaction()
     {
         var grouped = AlgorandGroup.Ensure(Group(3));

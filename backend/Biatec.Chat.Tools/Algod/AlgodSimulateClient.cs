@@ -60,7 +60,13 @@ public sealed class AlgodSimulateClient(IAlgodTransport transport) : IAlgodSimul
                 },
             ],
         };
-        var response = await transport.SimulateAsync(request, ct);
+        SimulateResponse response;
+        try { response = await transport.SimulateAsync(request, ct); }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // algod rejects a malformed group with an HTTP error; that is a failed simulation, not a crash.
+            return new SimulationOutcome(false, $"algod simulate request failed: {e.Message}", [], 0, null, unsignedGroup.Count);
+        }
         var group = response.TxnGroups?.FirstOrDefault();
         if (group is null) return new SimulationOutcome(false, "algod returned no simulation result", [], response.LastRound, null, unsignedGroup.Count);
         var failed = !string.IsNullOrEmpty(group.FailureMessage) || (group.FailedAt?.Count ?? 0) > 0;
@@ -89,7 +95,10 @@ public sealed class AlgodClientFactory
         {
             var o = _networks[name];
             var http = httpClient?.Invoke(o) ?? new HttpClient { BaseAddress = new Uri(o.BaseUrl) };
-            if (o.Token is { Length: > 0 }) http.DefaultRequestHeaders.TryAddWithoutValidation("X-Algo-API-Token", o.Token);
+            if (o.Token is { Length: > 0 }) {
+                http.DefaultRequestHeaders.Remove("X-Algo-API-Token");
+                http.DefaultRequestHeaders.TryAddWithoutValidation("X-Algo-API-Token", o.Token);
+            }
             if (http.BaseAddress is null) http.BaseAddress = new Uri(o.BaseUrl);
             return new AlgodSimulateClient(new SdkAlgodTransport(new DefaultApi(http)));
         };
