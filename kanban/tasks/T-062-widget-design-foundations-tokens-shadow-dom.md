@@ -1,7 +1,7 @@
 ---
 id: T-062
 title: Widget design foundations: Biatec AI tokens, Shadow DOM, theme sync, primitives
-status: blocked
+status: backlog
 priority: P1
 epic: "Widget UI rework"
 blocked_by: [T-041]
@@ -77,3 +77,4 @@ Filled in by the agent when it moves the task to `review`.
 ## Activity log
 
 - 2026-10-19 22:40 · coordinator · (new) → blocked · created from the Biatec AI design handoff (docs/design/) for the widget UI rework
+- 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-041
