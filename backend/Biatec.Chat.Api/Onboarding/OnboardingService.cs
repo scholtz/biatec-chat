@@ -49,7 +49,7 @@ public sealed partial class OnboardingService(
     [GeneratedRegex(@"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")]
     private static partial Regex LabelRegex();
 
-    [GeneratedRegex(@"^secret://[a-z0-9][a-z0-9._/-]{0,200}$")]
+    [GeneratedRegex(@"^secret://[a-z0-9][a-z0-9._/-]{0,300}$")]
     private static partial Regex SecretRefRegex();
 
     /// <summary>A lower-case ASCII DNS name with at least two labels and no IP literal, or null.</summary>
