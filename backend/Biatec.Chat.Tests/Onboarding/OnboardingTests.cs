@@ -52,8 +52,9 @@ public sealed class OnboardingTests : IAsyncLifetime
     private sealed class FakeRegistrar : IOidcClientRegistrar
     {
         public bool Available;
+        public int Calls;
         public Task<RegisteredClient?> RegisterAsync(string clientName, string redirectUri, CancellationToken ct) =>
-            Task.FromResult(Available ? new RegisteredClient("client-" + redirectUri.Split('/')[2], Secret) : null);
+            Task.FromResult(Available && Interlocked.Increment(ref Calls) > 0 ? new RegisteredClient("client-" + redirectUri.Split('/')[2], Secret) : null);
     }
 
     private sealed class FakeSecrets : ISecretStore
@@ -234,6 +235,31 @@ public sealed class OnboardingTests : IAsyncLifetime
         await using var cmd = new NpgsqlCommand("SELECT t::text FROM \"Tenants\" t", conn);
         await using var rd = await cmd.ExecuteReaderAsync();
         while (await rd.ReadAsync()) Assert.DoesNotContain(Secret, rd.GetString(0));
+    }
+
+    [Fact]
+    public async Task ConcurrentOnboardingOfOneHost_RegistersOnce()
+    {
+        _registrar.Available = true;
+        _dns.Prove("chat.example-bank.com", "chat.example-bank.com");
+        var rs = await Task.WhenAll(Enumerable.Range(0, 5).Select(_ => PostAsync("/onboarding/tenants", Req("chat.example-bank.com"))));
+        Assert.Equal(1, rs.Count(r => r.StatusCode == HttpStatusCode.Created));
+        Assert.Equal(4, rs.Count(r => r.StatusCode == HttpStatusCode.Conflict));
+        Assert.Equal(1, _registrar.Calls);
+        Assert.Single(_secrets.Items);
+    }
+
+    [Theory]
+    [InlineData("secret://../biatec-chat/x")]
+    [InlineData("secret://a//b")]
+    [InlineData("secret://biatec-chat/oidc-client-secret")] // already used by the seed tenant
+    public async Task OperatorApproval_RejectsTraversalAndReusedSecretRefs(string secretRef)
+    {
+        _dns.Prove("chat.example-bank.com", "chat.example-bank.com");
+        var r = await PostAsync("/onboarding/operator/tenants",
+            new { request = Req("chat.example-bank.com"), oidcClientId = "c", clientSecretRef = secretRef }, OperatorKey);
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+        Assert.Null(await TenantAsync("chat.example-bank.com"));
     }
 
     [Fact]

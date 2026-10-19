@@ -73,8 +73,10 @@ public sealed partial class OnboardingService(
         var host = NormalizeHostName(req?.Host);
         if (host is null) return new(OnboardingStatus.Invalid, "host must be a DNS name with at least two labels.");
 
+        if ((req!.AllowedOrigins?.Length ?? 0) > 10 || (req.ClientKeys?.Length ?? 0) > 20)
+            return new(OnboardingStatus.Invalid, "At most 10 allowedOrigins and 20 clientKeys.");
         var origins = new List<string>();
-        foreach (var raw in req!.AllowedOrigins ?? [])
+        foreach (var raw in req.AllowedOrigins ?? [])
         {
             var o = OriginPolicy.Canonicalize(raw);
             if (o is null || !o.StartsWith("https://", StringComparison.Ordinal))
@@ -99,8 +101,8 @@ public sealed partial class OnboardingService(
         }
 
         var keys = (req.ClientKeys is { Length: > 0 } ? req.ClientKeys : [host]).Select(k => k?.Trim() ?? "").Distinct().ToArray();
-        if (keys.Length > 20 || keys.Any(k => k.Length is 0 or > 64 || k.Any(char.IsControl)))
-            return new(OnboardingStatus.Invalid, "clientKeys must be 1-20 labels of at most 64 characters.");
+        if (keys.Length > 20 || keys.Any(k => k.Length is 0 or > 64 || !k.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-' or ':')))
+            return new(OnboardingStatus.Invalid, "clientKeys must be 1-20 labels of at most 64 characters from [A-Za-z0-9._:-].");
 
         v = new Validated(host, signIn, origins.ToArray(), keys);
         return null;
@@ -150,7 +152,13 @@ public sealed partial class OnboardingService(
         if (missing.Length > 0)
             return new(OnboardingStatus.Unverified, "DNS TXT challenge not found for: " + string.Join(", ", missing), new { unverified = missing });
 
-        var tenantId = v!.Host;
+        // Serialize concurrent onboardings of one host (transaction-scoped advisory lock), so a lost race never
+        // registers a second client or overwrites the winner's secret.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({"biatec-chat-onboarding:" + v!.Host}, 0))", ct);
+        if (await db.Tenants.AnyAsync(t => t.Host == v.Host, ct)) return HostTaken(v.Host);
+
+        var tenantId = v.Host;
         var redirectUri = $"https://{v.Host}/auth/callback";
         RegisteredClient? client;
         try { client = await registrar.RegisterAsync($"Biatec Chat ({v.Host})", redirectUri, ct); }
@@ -168,13 +176,15 @@ public sealed partial class OnboardingService(
         }
 
         string secretRef;
-        try { secretRef = await secrets.PutAsync($"tenants/{tenantId}/{Guid.NewGuid():N}/oidc-client-secret", client.ClientSecret, ct); }
+        try { secretRef = await secrets.PutAsync($"tenants/{tenantId}/oidc-client-secret", client.ClientSecret, ct); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             log.LogWarning(ex, "Storing the client secret failed for {Host}", v.Host);
             return new(OnboardingStatus.Failed, "Could not store the client secret; try again later.");
         }
-        return await CreateTenantAsync(v, tenantId, client.ClientId, secretRef, redirectUri, ct);
+        var created = await CreateTenantAsync(v, tenantId, client.ClientId, secretRef, redirectUri, ct);
+        if (created.Status == OnboardingStatus.Created) await tx.CommitAsync(ct);
+        return created;
     }
 
     /// <summary>Operator fallback: the proofs are re-checked, the operator supplies the static client and a secret reference.</summary>
@@ -184,9 +194,11 @@ public sealed partial class OnboardingService(
         var clientId = req!.OidcClientId?.Trim();
         if (string.IsNullOrEmpty(clientId) || clientId.Length > 128 || clientId.Any(char.IsControl))
             return new(OnboardingStatus.Invalid, "oidcClientId is required.");
-        if (req.ClientSecretRef is null || !SecretRefRegex().IsMatch(req.ClientSecretRef))
+        if (req.ClientSecretRef is null || !SecretRefRegex().IsMatch(req.ClientSecretRef) || req.ClientSecretRef["secret://".Length..].Split('/').Any(seg => seg is "" or "." or ".."))
             return new(OnboardingStatus.Invalid, "clientSecretRef must be a secret:// reference into the secret store, never the secret itself.");
         if (await db.Tenants.AnyAsync(t => t.Host == v!.Host, ct)) return HostTaken(v!.Host);
+        if (await db.Tenants.AnyAsync(t => t.ClientSecretRef == req.ClientSecretRef, ct))
+            return new(OnboardingStatus.Invalid, "clientSecretRef is already used by another tenant.");
 
         var missing = await UnverifiedAsync(v!, ct);
         if (missing.Length > 0)
