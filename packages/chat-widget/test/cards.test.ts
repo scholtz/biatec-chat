@@ -162,6 +162,16 @@ describe("Confirm gating", () => {
     await review(w);
     expect(w.get("[data-test=confirm]").attributes("disabled")).toBeDefined();
   });
+  it("resets review, acknowledgement and confirmed state when the previewId changes", async () => {
+    const w = card();
+    await review(w);
+    expect(w.get("[data-test=confirm]").attributes("disabled")).toBeUndefined();
+    await w.get("[data-test=confirm]").trigger("click");
+    await w.setProps({ preview: fixture({ previewId: "p2" }) });
+    await w.vm.$nextTick();
+    expect(w.get("[data-test=confirm]").attributes("disabled")).toBeDefined();
+    expect(document.body.querySelector(".bc-check input")).toBeNull();
+  });
   it("emits cancel", async () => {
     const w = card();
     await w.findAll("button").find((b) => b.text() === "Cancel")!.trigger("click");

@@ -105,6 +105,18 @@ watch(
   },
 );
 
+// A reused card instance must not carry review state over to a different action.
+watch(
+  () => props.preview.previewId,
+  () => {
+    reviewed.value = false;
+    acknowledged.value = false;
+    confirmed.value = false;
+    expanded.value = false;
+    reviewOpen.value = false;
+  },
+);
+
 function openReview() {
   reviewOpen.value = true;
   reviewed.value = true;
