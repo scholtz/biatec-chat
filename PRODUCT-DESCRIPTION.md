@@ -44,7 +44,7 @@ Longer term, the same backend, consent protocol, and authenticator serve agents 
 
 | Product | Package / project | Stack | Purpose |
 | --- | --- | --- | --- |
-| Chat widget | `@biatec/chat-widget` (npm) | Vue 3, TypeScript, Vite library build | Floating chat icon and chat panel injected into Biatec Web, Biatec DEX, and any Vue 3 host |
+| Chat widget (shown to users as **Biatec AI**) | `@biatec/chat-widget` (npm) | Vue 3, TypeScript, Vite library build, Biatec AI design system | Floating launcher and chat panel injected into Biatec DEX, Biatec Web, and any Vue 3 host |
 | Chat backend | `Biatec.Chat.Api` | ASP.NET Core 10 (.NET), AWS Bedrock, Redis, PostgreSQL | OAuth 2 BFF, model orchestration, tool execution via Biatec MCP, session recording, evidence log, consent orchestration |
 | Authenticator | `biatec_authenticator` | Flutter (iOS, Android) | Device-bound approval of high-value actions and sign-in; reference implementation of the Biatec Consent Protocol |
 
@@ -222,13 +222,16 @@ createApp(App)
     backendUrl: 'https://chat.biatec.io',
     clientKey: 'biatec-web',          // identifies the host, not a secret
     locale: 'en',
-    theme: 'auto',
+    theme: 'auto',                    // 'auto' | 'light' | 'dark' | 'host'
+    mode: 'floating',                 // 'floating' | 'inline' | 'workspace'
     suggestions: 'default',
   })
   .mount('#app')
 ```
 
-- Styles are scoped under a `biatec-chat` root with CSS custom properties, so the widget does not fight the host's PrimeVue theme in Biatec Web or any other design system.
+- The widget renders into a Shadow DOM root attached to its own host element, so neither the host's CSS (PrimeVue themes, Tailwind preflight) nor the widget's CSS leaks across. Hosts restyle it only through CSS custom properties set on that host element (`--color-*`, `--font-*`, `--radius-*`, `--space-*`, `--shadow-*`). `style.css` remains exported for hosts that mount `BiatecChatRoot` themselves.
+- `theme: 'host'` follows the host's dark-mode class on `<html>` (`p-dark` by default, as in Biatec DEX and Biatec Web; configurable with `hostDarkClass`); `auto` follows `prefers-color-scheme`. Dark is the default look.
+- A host can drive the widget from its own UI through `useBiatecChat()`: `open()`, `close()`, `ask(prompt)` (opens the panel and sends the prompt as if the user typed it), `setPageContext(context)`, `setTheme(theme)` and `setLocale(locale)`. `ask` never sends anything the user cannot see in the composer history, and nothing is sent while the panel is closed.
 - No host-page data is read by default. A host can opt in to pass a page context string (for example the pool currently shown on Biatec DEX) that the assistant may use to pre-fill suggestions.
 
 ### Embedding Modes
@@ -245,8 +248,10 @@ Each tenant is a separate Biatec OIDC client with its own `client_id`, client se
 
 ### User Experience
 
-1. **Launcher**: a round chat icon in the bottom-right corner. Keyboard accessible, respects `prefers-reduced-motion`, and can be positioned by the host.
-2. **Panel**: opens as a drawer on desktop and full-screen on mobile. Header shows the Biatec logo, the current tier ("Guest" or the signed-in email with the active primary address), and a sign-in or sign-out control.
+The look follows the **Biatec AI design system** (see Visual Design below). The flow:
+
+1. **Launcher**: a 60 px brand-green button with the Biatec AI chip in the bottom-right corner (24 px from the edges, positionable by the host), with a tooltip "Ask Biatec AI" and an unread badge. Keyboard accessible, respects `prefers-reduced-motion`. A minimized panel collapses to a small bar with the status line and a Restore button.
+2. **Panel**: three modes. **Floating** (default) is a 420 × 700 px panel above the launcher; **inline** fills a host column (for example next to the Biatec DEX order form); **workspace** is full screen with the Activity aside next to the conversation. Below 640 px an open panel is always full screen. The header shows the Biatec AI chip, the current tier ("Guest", or the signed-in email with the active primary address), a sign-in or sign-out control, and expand, minimize and close buttons. Under it, a **status pill** shows the agent mode ("Analyze only", "Prepare for approval", or "Paused") and opens the permissions dialog; an **Activity** toggle opens the session timeline.
 3. **Sample prompts** shown on an empty session, chosen by tier and host context:
    - "Explain to me what the blockchain is and why Biatec uses Algorand."
    - "Transfer funds from my primary Bitcoin address to my secondary Bitcoin address."
@@ -255,14 +260,32 @@ Each tenant is a separate Biatec OIDC client with its own `client_id`, client se
    - "Create a Biatec Safe for my team with 2-of-3 approvals."
    - "What are my current spending limits?"
 4. **Streaming replies** over Server-Sent Events, with tool progress shown as compact status lines ("Checking your USDC balance", "Simulating transaction group").
-5. **Action preview card** with Confirm and Cancel. A consent-elevated action shows a "Waiting for approval on your phone" state with a countdown, the short binding code the user must type into the authenticator, and a Cancel button.
+5. **Action preview card** with Review, Confirm and Cancel. The card has a dashed border until the user confirms and a solid one after, a status badge from the fixed status set (Visual Design), the intent as its title, the network label, fees, slippage or worst case, the limit bucket, and whether phone approval is expected. Confirm is the only 48 px primary in the widget and names the action and amount ("Confirm swap · 100 USDC"); it is enabled only after the user has opened the review step, which answers what will happen, which permissions are involved, the exact details, the financial implications (including, when a fiat value is known, what a 10 percent fall would cost), and how to stop it. A consent-elevated action shows a "Waiting for approval on your phone" state with a countdown, the short binding code the user must type into the authenticator, and a Cancel button.
 6. **Sign-in handoff**: clicking Sign in opens a backend URL in a popup; the backend redirects to Biatec OIDC and back. The widget's JavaScript never sees the OAuth parameters; the only OAuth artifact that transits the browser, inside the popup's redirects, is the single-use, PKCE-bound authorization code, which is useless without the backend's verifier and client secret. Each popup flow has an authorization request ID; the widget polls the backend's session endpoint until that request is reported complete (or failed), then closes the popup and resumes whatever the user was doing. The same popup mechanism is reused when a capability needs a scope the session does not have yet (for example the first fund-moving action needs `sign`), so the chat context is never lost to a full-page redirect.
 7. **Receipts**: after an action completes, the card shows the transaction ID with an explorer link, and a "Download evidence" link for the session.
+8. **Agent mode and permissions**: the status pill opens a dialog "What may Biatec AI do?" with the agent modes below, the user's Biatec OIDC spending limits (read with `limits.view`; lowered with `limits.update` where the tenant has `manage-limits`), Pause, and "Revoke all access". Lowering the mode, pausing and revoking take effect immediately; raising the mode or resuming needs a second confirmation step with an explicit "I understand" checkbox.
+   - **Analyze only**: answers, explanations, balances and market information; fund-moving capabilities are withheld from the model and refused server-side. The anonymous tier is always in this mode.
+   - **Prepare for approval** (the default once signed in): the assistant may build action previews; every action still needs Confirm in the widget and, above the threshold, approval in Biatec Authenticator.
+   - **Rule-based automation** is shown as not available yet: version 1 requires a confirmation per action.
+   - **Pause** behaves like Analyze only and also disables Confirm on previews that are already open, until the user resumes. **Revoke all access** cancels every open preview and signs out.
+   The agent mode and pause flag belong to the backend session, are enforced by the capability gate exactly like the tier, and every change is an evidence entry.
+9. **Activity timeline**: newest first, grouped by day, filterable (All, Analysis, Previews, Executions, Permissions), listing this session's analyses, previews, confirmations, consent results, receipts and mode changes with who did each ("You" or "Biatec AI"). It is built from the session's chat events; the signed evidence export remains the durable record.
+10. **Data cards**: balances from `wallet.balance` render as a holdings card (total, allocation bar, one row per asset, a concentration note when one asset dominates). A market snapshot card (price, 24 h change with arrow and sign, high, low, volume, sparkline, timestamp) is planned for public Biatec DEX data and needs its own anonymous capability first.
+
+### Visual Design
+
+The widget's visual language is the Biatec AI design system, imported in [`docs/design/biatec-ai-widget/`](docs/design/biatec-ai-widget/README.md), with the mapping onto this specification in [`docs/design/README.md`](docs/design/README.md). This specification wins on behaviour, the design-system pages win on look, and the prototype only illustrates layout and interaction.
+
+- **Fits Biatec DEX.** The tokens mirror Biatec DEX (`scholtz/BiatecDEX`, `src/assets/app.css`): Night `#070B14` background, frosted cards, Biatec Green `#2DD4A7` for the brand mark, primary action, selection and focus only, and nothing else. Dark is the default, light follows the host. The Biatec-specific host changes are in [`docs/integration-biatec-dex.md`](docs/integration-biatec-dex.md).
+- **Type and shape.** Inter (the widget never fetches fonts), tabular numerals for every amount, percentage, time and countdown, radii 6 / 8 / 12 / 16, an 8 px spacing grid, Lucide icons, motion of 150 to 220 ms that respects reduced motion.
+- **Fixed status set** for previews: Awaiting confirmation or approval (amber, dashed), Approved and signing, Submitted, Completed, Rejected, Failed, Cancelled or Expired; every status pairs colour, icon and word, and the mapping to `ActionPreviewStatus` and `ConsentState` is in `docs/design/README.md`.
+- **Copy voice.** Concrete, neutral and calm: name the action and the amount, state downside in money, no hype, no promised returns, no emoji. The network (Testnet or Mainnet) is labelled at the point of action; nothing simulated is presented as real.
+- **Not adopted from the design:** signing through the host page's wallet (signing always goes from the backend to Biatec OIDC), rule-based automation, a multi-conversation history sidebar, strategy illustrations, and file attachments.
 
 ### Accessibility And Localization
 
-- WCAG 2.1 AA: focus trapping in the panel, ARIA live region for streamed messages, visible focus styles, contrast-checked theme tokens.
-- Localization through the same `vue-i18n` message format Biatec Web already uses, with English and Slovak at launch.
+- WCAG 2.1 AA: focus trapping in the panel and dialogs, ARIA live region for streamed messages, toasts and status changes, a visible 2 px focus ring, contrast-checked theme tokens in both themes, 44 × 44 px touch targets on mobile, `aria-pressed` / `aria-expanded` / `aria-checked` on toggles and a radiogroup for agent modes, and no signal by colour alone.
+- Localization through the same `vue-i18n` message format Biatec Web and Biatec DEX already use, with English and Slovak at launch; any other host locale falls back to English, and `setLocale` follows the host's language switch.
 
 ---
 
@@ -294,6 +317,7 @@ Enforcement is layered so a model mistake cannot become a security incident:
 2. **Server-side gate**: every tool call is checked against the session tier, the token's scopes, and the capability registry (which also lists the anonymous tools `requestSignIn` and knowledge-base search, at the Anonymous tier) before execution.
 3. **Refusal content**: there is no separate intent classifier in front of the model. In the anonymous tier the model has the refusal rules in its system prompt and exactly one action-related tool, `requestSignIn`, which renders the sign-in card (or the "sign-in unavailable here" card). When a visitor asks for an action, the model explains in general terms what the action would do and calls that tool; the backend logs the attempt. Whatever the model says, it cannot act, because no wallet tool exists in that request and the server-side gate rejects any other tool call.
 4. **Scope check at signing**: building and previewing need only `openid`, so previews work before any elevation; before every signing or limits call to Biatec OIDC, the backend inspects the stored access token's `scope` claim. A capability whose scope is missing is refused with a message that offers to re-authorize with the needed scope.
+5. **Agent mode**: an Authenticated session also carries the user's agent mode (`analyze` or `prepare`) and a `paused` flag, set only by the user through the widget's permissions dialog (a CSRF-protected session endpoint, never a model tool). In `analyze` or while paused, fund-moving capabilities are left out of the tool list sent to the model, the server-side gate refuses them, and confirming an open preview is refused; reads, explanations and balances keep working. Every change is an evidence entry. The anonymous tier is always `analyze`.
 
 ### Tool Executors
 
@@ -559,7 +583,7 @@ This is the bridge from "a human chats with an agent" to "agents pay agents unde
 | Entity | Key fields | Notes |
 | --- | --- | --- |
 | `Conversation` | id, tenantId, oidcSub (nullable), createdAt, lastMessageAt, endedAt | Stable identifier the evidence chain is keyed on; survives anonymous-to-cookie adoption and session rotation. A conversation ends when its last session ends (session rotation at login is not an end)  or, for the public transport, after 30 minutes without a message; an ended conversation is anchored until its end marker is anchored, and not afterwards |
-| `ChatSession` | id, conversationId, tier, tenantId, oidcSub (nullable), createdAt, lastActivityAt, absoluteExpiresAt | Cookie maps to this id; a new id is issued at login and points at the same conversation |
+| `ChatSession` | id, conversationId, tier, tenantId, oidcSub (nullable), agentMode (analyze or prepare, default prepare once signed in), paused, createdAt, lastActivityAt, absoluteExpiresAt | Cookie maps to this id; a new id is issued at login and points at the same conversation. Agent mode and pause are per session and reset at the next sign-in |
 | `Message` | conversationId, seq, role, content, toolCalls, toolResults, modelId, usage | Content stored after redaction |
 | `ActionPreview` | id, conversationId, capability, canonicalJson, predictedValueEur, predictedNeedsConsent, expiresAt (earliest step expiry), status, rebuiltAsPreviewId | One card as the user sees it. Status: proposed, confirmed, in-progress, completed, failed, cancelled, expired. An expired preview points at the preview that replaced it so the evidence shows why a hash changed. Predicted fields are UI hints; Biatec OIDC decides |
 | `ActionStep` | id, previewId, seq, kind (sign or limits), subjectHash (group hash, or hash of the canonical limits request body), unsignedGroup (sign only), limitsRequest (limits only), senderAddress, network, firstValid, lastValid, expiresAt, status, txIds | One Biatec OIDC call. Most actions have one step; an opt-in plus transfer has two or three, each with its own hash, consent, and evidence entries |
@@ -582,7 +606,7 @@ This is the bridge from "a human chats with an agent" to "agents pay agents unde
 ```
 biatec-chat/
 ├── packages/
-│   ├── chat-widget/              @biatec/chat-widget (Vue 3 library)
+│   ├── chat-widget/              @biatec/chat-widget (Vue 3 library, Biatec AI UI)
 │   ├── chat-protocol/            shared TypeScript types generated from backend OpenAPI
 │   └── consent-protocol/         Biatec Consent Protocol spec, schemas, conformance tests
 ├── backend/
@@ -593,9 +617,11 @@ biatec-chat/
 ├── apps/
 │   └── biatec_authenticator/     Flutter app
 ├── docs/
+│   ├── design/                   Biatec AI design system handoff and its mapping to this spec
 │   ├── architecture.md
 │   ├── threat-model.md
 │   ├── integration-widget.md
+│   ├── integration-biatec-dex.md
 │   ├── integration-third-party-consent.md
 │   └── hackathon-demo.md
 ├── k8s/                          deployment manifests (main, stage) following Biatec conventions

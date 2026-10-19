@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="stylesheet" href="biatec-tokens.css"></helmet>
+<div style="display:inline-flex;align-items:center;gap:{{ gap }};color:{{ ink }};flex:none;">
+  <sc-if value="{{ showScript }}"><span style="font-family:var(--font-script);font-weight:400;font-size:{{ fs }};line-height:1.25;padding-bottom:{{ pb }};white-space:nowrap;">Biatec</span></sc-if>
+  <svg width="{{ size }}" height="{{ size }}" viewBox="0 0 64 64" fill="none" role="img" aria-label="Biatec AI" style="flex:none;">
+    <sc-if value="{{ showPins }}">
+      <path d="M24 3.5V12M32 3.5V12M40 3.5V12M24 52V60.5M32 52V60.5M40 52V60.5M3.5 24H12M3.5 32H12M3.5 40H12M52 24H60.5M52 32H60.5M52 40H60.5" stroke="{{ cPin }}" stroke-width="{{ pinW }}" stroke-linecap="round"></path>
+    </sc-if>
+    <rect x="{{ cx }}" y="{{ cx }}" width="{{ cs }}" height="{{ cs }}" rx="{{ cr }}" fill="{{ cChip }}"></rect>
+    <text x="32" y="{{ ty }}" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="{{ tf }}" letter-spacing="0.5" fill="{{ cText }}">AI</text>
+  </svg>
+  <sc-if value="{{ showPill }}">
+    <span style="font-family:var(--font-sans);font-weight:800;font-size:{{ fsAi }};letter-spacing:0.02em;padding:{{ pillPad }};border-radius:{{ pillR }};background:{{ pillBg }};color:{{ pillFg }};white-space:nowrap;line-height:1;">AI</span>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:320,&quot;height&quot;:110},&quot;variant&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;symbol&quot;,&quot;horizontal&quot;,&quot;compact&quot;],&quot;default&quot;:&quot;horizontal&quot;,&quot;tsType&quot;:&quot;'symbol'|'horizontal'|'compact'&quot;},&quot;size&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:72,&quot;min&quot;:12,&quot;max&quot;:240,&quot;tsType&quot;:&quot;number&quot;},&quot;mono&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;none&quot;,&quot;white&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;none&quot;,&quot;tsType&quot;:&quot;'none'|'white'|'dark'&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const v = this.props.variant ?? 'symbol', size = +(this.props.size ?? 32), mono = this.props.mono ?? 'none';
+    const W = '#F5F8FC', D = '#070B14';
+    const small = size <= 24;
+    const ink = mono === 'white' ? W : mono === 'dark' ? D : 'var(--color-text-primary)';
+    const col = mono === 'none' ? { cPin: 'var(--color-text-secondary)', cChip: '#2DD4A7', cText: '#04221A' }
+      : mono === 'white' ? { cPin: W, cChip: W, cText: D } : { cPin: D, cChip: D, cText: W };
+    const g = small ? { cx: 4, cs: 56, cr: 12, tf: 30, ty: 42.6 } : { cx: 11, cs: 42, cr: 9, tf: 22, ty: 39.8 };
+    return {
+      size, ink, ...col, ...g, showPins: !small, pinW: size >= 96 ? 3.2 : 3.8,
+      gap: Math.round(size * (v === 'horizontal' ? 0.12 : 0.26)) + 'px',
+      showPill: false, showScript: v === 'horizontal',
+      fs: Math.round(size * 0.72) + 'px', pb: Math.round(size * 0.08) + 'px', fsAi: Math.round(size * (v === 'compact' ? 0.42 : 0.34)) + 'px',
+      pillPad: Math.round(size * 0.06) + 'px ' + Math.round(size * 0.13) + 'px', pillR: Math.round(size * 0.12) + 'px',
+      pillBg: mono === 'none' ? 'var(--color-brand-primary)' : ink, pillFg: mono === 'none' ? 'var(--color-brand-on)' : mono === 'white' ? D : W
+    };
+  }
+}
+</script>
+</body>
+</html>

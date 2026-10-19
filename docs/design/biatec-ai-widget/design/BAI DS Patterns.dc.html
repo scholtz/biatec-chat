@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="biatec-tokens.css">
+<style>body{margin:0;background:var(--color-bg-primary);} a{color:var(--color-brand-text);} a:hover{color:var(--color-text-primary);}</style>
+</helmet>
+<div style="background:transparent;color:var(--color-text-primary);font-family:var(--font-sans);">
+<section id="patterns" data-screen-label="04 Patterns">
+<div style="max-width:1320px;margin:0 auto;padding:0 32px 64px;">
+  <header style="display:grid;grid-template-columns:72px minmax(0,1fr);gap:24px;padding:64px 0 40px;border-top:1px solid var(--color-border-default);">
+    <div style="font-size:14px;font-weight:600;color:var(--color-brand-text);font-variant-numeric:tabular-nums;padding-top:10px;">04</div>
+    <div><h2 style="margin:0;font-size:36px;font-weight:600;letter-spacing:-0.02em;line-height:1.15;">Patterns</h2><p style="margin:8px 0 0;font-size:16px;line-height:1.6;color:var(--color-text-secondary);max-width:680px;">How components combine into the moments that matter: conversation, proposal, authorization, risk, permissions and history.</p></div>
+  </header>
+
+  <h3 style="margin:0 0 4px;font-size:20px;font-weight:600;">AI conversation layout</h3>
+  <p style="margin:0 0 16px;font-size:14px;color:var(--color-text-secondary);">The conversation is always the widest column. Context is optional and collapsible, and charts appear inside messages, never as a permanent dashboard.</p>
+  <div style="overflow-x:auto;margin-bottom:48px;"><div style="display:grid;grid-template-columns:200px minmax(0,1fr) 240px;min-width:900px;height:320px;border:1px solid var(--color-border-default);border-radius:var(--radius-xl);overflow:hidden;font-size:12px;">
+    <div style="background:var(--color-bg-secondary);border-right:1px solid var(--color-border-default);padding:16px;display:flex;flex-direction:column;gap:8px;"><strong style="font-weight:600;font-size:13px;">Sidebar · 240</strong><span style="color:var(--color-text-secondary);">Logo, new chat, nav, recent conversations</span><span style="height:8px;width:80%;border-radius:4px;background:var(--color-bg-interactive);margin-top:8px;"></span><span style="height:8px;width:60%;border-radius:4px;background:var(--color-bg-interactive);"></span><span style="height:8px;width:70%;border-radius:4px;background:var(--color-bg-interactive);"></span></div>
+    <div style="display:flex;flex-direction:column;">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--color-border-default);display:flex;justify-content:space-between;"><strong style="font-weight:600;">Header · title + autonomy mode</strong><span style="padding:2px 8px;border-radius:var(--radius-full);background:var(--color-brand-subtle);color:var(--color-brand-text);">Mode</span></div>
+      <div style="flex:1;padding:16px;display:flex;flex-direction:column;gap:10px;align-items:stretch;"><strong style="font-weight:600;font-size:13px;">Conversation · max 760, centered column</strong>
+        <span style="align-self:flex-end;height:28px;width:45%;border-radius:10px;background:var(--color-bg-elevated);"></span>
+        <div style="display:flex;gap:8px;"><span style="width:20px;height:20px;border-radius:6px;background:var(--color-brand-subtle);flex:none;"></span><div style="flex:1;display:flex;flex-direction:column;gap:6px;"><span style="height:8px;width:90%;border-radius:4px;background:var(--color-bg-interactive);"></span><span style="height:8px;width:70%;border-radius:4px;background:var(--color-bg-interactive);"></span><span style="height:64px;border-radius:8px;border:1px solid var(--color-border-default);"></span></div></div>
+      </div>
+      <div style="margin:0 16px 16px;padding:10px 12px;border:1px solid var(--color-border-strong);border-radius:var(--radius-lg);color:var(--color-text-secondary);">Composer · sticky</div>
+    </div>
+    <div style="background:var(--color-bg-secondary);border-left:1px solid var(--color-border-default);padding:16px;display:flex;flex-direction:column;gap:8px;"><strong style="font-weight:600;font-size:13px;">Context · 320, collapsible</strong><span style="color:var(--color-text-secondary);">Agent status, permissions, activity. Hidden below 1100 px.</span></div>
+  </div></div>
+
+  <h3 style="margin:0 0 4px;font-size:20px;font-weight:600;">Proposal lifecycle</h3>
+  <p style="margin:0 0 16px;font-size:14px;color:var(--color-text-secondary);">Four stages that never look alike: border, badge, icon and wording all change at each step.</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:48px;">
+    <sc-for list="{{ stages }}" as="st" hint-placeholder-count="4">
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:12px;font-weight:500;color:var(--color-text-secondary);font-variant-numeric:tabular-nums;">{{ st.n }} · {{ st.stage }}</div>
+        <div style="border:1.5px {{ st.bs }} {{ st.bd }};border-radius:var(--radius-lg);background:{{ st.bg }};padding:14px;display:flex;flex-direction:column;gap:10px;min-height:170px;">
+          <span style="align-self:flex-start;display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;padding:3px 10px 3px 8px;border-radius:var(--radius-full);background:{{ st.tagBg }};color:{{ st.tagFg }};"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><sc-for list="{{ st.d }}" as="d"><path d="{{ d }}"></path></sc-for></svg>{{ st.tag }}</span>
+          <div style="font-size:15px;font-weight:600;">{{ st.title }}</div>
+          <div style="font-size:13px;line-height:1.5;color:var(--color-text-secondary);">{{ st.body }}</div>
+          <div style="margin-top:auto;font-size:12px;font-weight:500;color:{{ st.tagFg }};">{{ st.action }}</div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));gap:24px;margin-bottom:48px;">
+    <div>
+      <h3 style="margin:0 0 4px;font-size:20px;font-weight:600;">Trade authorization</h3>
+      <p style="margin:0 0 16px;font-size:14px;color:var(--color-text-secondary);">Every consequential action answers five questions before the button is enabled.</p>
+      <div style="background:var(--color-bg-elevated);border:1px solid var(--color-border-default);border-radius:var(--radius-xl);box-shadow:var(--shadow-lg);overflow:hidden;">
+        <div style="padding:20px 20px 12px;"><div style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Review demo trade</div><div style="font-size:22px;font-weight:600;margin-top:4px;font-variant-numeric:tabular-nums;">Buy BTC · $100.00</div></div>
+        <sc-for list="{{ authParts }}" as="ap">
+          <div style="display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;padding:12px 20px;border-top:1px solid var(--color-border-default);">
+            <span style="width:24px;height:24px;border-radius:50%;background:var(--color-brand-subtle);color:var(--color-brand-text);font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;">{{ ap.n }}</span>
+            <div><div style="font-size:12px;font-weight:500;color:var(--color-text-secondary);">{{ ap.q }}</div><div style="font-size:14px;line-height:1.5;margin-top:2px;">{{ ap.a }}</div></div>
+          </div>
+        </sc-for>
+        <div style="display:flex;gap:8px;align-items:center;padding:14px 20px;border-top:1px solid var(--color-border-default);background:var(--color-bg-secondary);flex-wrap:wrap;">
+          <label style="display:flex;gap:8px;align-items:center;font-size:13px;flex:1;min-width:200px;"><span style="width:18px;height:18px;border-radius:5px;background:var(--color-brand-primary);color:var(--color-brand-on);display:flex;align-items:center;justify-content:center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></span>I've reviewed the risks</label>
+          <button type="button" style="height:40px;padding:0 14px;border-radius:var(--radius-md);border:1px solid var(--color-border-strong);background:transparent;color:var(--color-text-primary);font:inherit;font-size:14px;cursor:pointer;">Back</button>
+          <button type="button" style="display:inline-flex;align-items:center;gap:8px;height:48px;padding:0 18px;border-radius:10px;border:0;background:var(--color-brand-primary);color:var(--color-brand-on);font:inherit;font-size:15px;font-weight:600;box-shadow:0 0 0 1px var(--color-bg-secondary), 0 0 0 3px var(--color-brand-primary);cursor:pointer;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg>Approve demo trade</button>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:24px;">
+      <div>
+        <h3 style="margin:0 0 4px;font-size:20px;font-weight:600;">Risk review</h3>
+        <p style="margin:0 0 16px;font-size:14px;color:var(--color-text-secondary);">Ordinary risk is explained on a neutral surface. Only consequential risk gets a warning treatment.</p>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="padding:14px 16px;border-radius:var(--radius-lg);background:var(--color-bg-secondary);border:1px solid var(--color-border-default);font-size:13px;line-height:1.55;"><div style="font-size:12px;font-weight:500;color:var(--color-text-secondary);margin-bottom:4px;">Standard · neutral surface</div>Crypto prices can move 5–10% in a day. A $100 position could lose about $10 in an ordinary move.</div>
+          <div style="padding:14px 16px;border-radius:var(--radius-lg);background:var(--color-status-warning-subtle);border:1px solid var(--color-status-warning);font-size:13px;line-height:1.55;display:grid;grid-template-columns:18px minmax(0,1fr);gap:10px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-status-warning)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg><div><div style="font-size:12px;font-weight:600;color:var(--color-status-warning);margin-bottom:2px;">Elevated · warning</div>This order uses 84% of today's allocation.</div></div>
+          <div style="padding:14px 16px;border-radius:var(--radius-lg);background:var(--color-status-danger-subtle);border:1px solid var(--color-status-danger);font-size:13px;line-height:1.55;display:grid;grid-template-columns:18px minmax(0,1fr);gap:10px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-status-danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg><div><div style="font-size:12px;font-weight:600;color:var(--color-status-danger);margin-bottom:2px;">Consequential · danger</div>Slippage would exceed your 0.5% cap in current liquidity. Approval is blocked until you edit the order.</div></div>
+        </div>
+      </div>
+      <div>
+        <h3 style="margin:0 0 4px;font-size:20px;font-weight:600;">Permission management</h3>
+        <p style="margin:0 0 16px;font-size:14px;color:var(--color-text-secondary);">Lowering autonomy is one click. Raising it always takes a separate confirmation step.</p>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--color-border-default);border:1px solid var(--color-border-default);border-radius:var(--radius-lg);overflow:hidden;">
+          <sc-for list="{{ permSteps }}" as="ps"><div style="background:var(--color-bg-secondary);padding:14px;display:flex;flex-direction:column;gap:6px;"><span style="font-size:12px;font-weight:600;color:var(--color-brand-text);font-variant-numeric:tabular-nums;">{{ ps.n }}</span><span style="font-size:14px;font-weight:600;">{{ ps.t }}</span><span style="font-size:12px;line-height:1.45;color:var(--color-text-secondary);">{{ ps.d }}</span></div></sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3 style="margin:0 0 4px;font-size:20px;font-weight:600;">Activity history</h3>
+  <p style="margin:0 0 16px;font-size:14px;color:var(--color-text-secondary);">A chronological record of everything the agent analyzed, proposed or did, and every permission change, grouped by day and filterable.</p>
+  <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-xl);overflow:hidden;">
+    <div style="display:flex;gap:6px;padding:12px 16px;border-bottom:1px solid var(--color-border-default);flex-wrap:wrap;">
+      <sc-for list="{{ filters }}" as="f"><span style="height:28px;padding:0 10px;display:inline-flex;align-items:center;border-radius:var(--radius-full);font-size:12px;font-weight:500;background:{{ f.bg }};color:{{ f.fg }};border:1px solid {{ f.bd }};">{{ f.label }}</span></sc-for>
+    </div>
+    <div style="padding:8px 16px 4px;font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Today</div>
+    <sc-for list="{{ history }}" as="h">
+      <div style="display:grid;grid-template-columns:56px 140px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 16px;border-top:1px solid var(--color-border-default);font-size:13px;">
+        <span style="color:var(--color-text-secondary);font-variant-numeric:tabular-nums;">{{ h.t }}</span>
+        <span style="justify-self:start;display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;padding:2px 8px;border-radius:var(--radius-full);background:{{ h.bg }};color:{{ h.fg }};">{{ h.kind }}</span>
+        <span><strong style="font-weight:600;">{{ h.title }}</strong> <span style="color:var(--color-text-secondary);">{{ h.detail }}</span></span>
+        <span style="color:var(--color-text-secondary);font-size:12px;">{{ h.by }}</span>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</section>
+
+<section id="preview" data-screen-label="05 Application Preview">
+<div style="max-width:1320px;margin:0 auto;padding:0 32px 64px;">
+  <header style="display:grid;grid-template-columns:72px minmax(0,1fr);gap:24px;padding:64px 0 40px;border-top:1px solid var(--color-border-default);">
+    <div style="font-size:14px;font-weight:600;color:var(--color-brand-text);font-variant-numeric:tabular-nums;padding-top:10px;">05</div>
+    <div><h2 style="margin:0;font-size:36px;font-weight:600;letter-spacing:-0.02em;line-height:1.15;">Application preview</h2><p style="margin:8px 0 0;font-size:16px;line-height:1.6;color:var(--color-text-secondary);max-width:680px;">The system applied: the assistant workspace in dark and light, the mobile chat, and the trade review flow. For the working prototype, open <a href="Biatec AI v2.dc.html">the restyled widget</a>.</p></div>
+  </header>
+
+  <div style="display:flex;flex-direction:column;gap:32px;margin-bottom:56px;">
+    <sc-for list="{{ themes }}" as="th" hint-placeholder-count="2">
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:13px;font-weight:600;color:var(--color-text-secondary);">{{ th.label }}</div>
+        <div style="overflow-x:auto;padding-bottom:8px;"><div data-theme="{{ th.id }}" style="display:grid;grid-template-columns:232px minmax(0,1fr) 300px;min-width:1200px;height:720px;background:var(--color-bg-primary);color:var(--color-text-primary);border:1px solid var(--color-border-default);border-radius:var(--radius-xl);overflow:hidden;box-shadow:var(--shadow-lg);">
+          <aside style="background:var(--color-bg-secondary);border-right:1px solid var(--color-border-default);display:flex;flex-direction:column;padding:16px 12px;gap:16px;">
+            <div style="padding:0 6px;"><dc-import name="BAI Logo" variant="horizontal" size="28" hint-size="130px,28px"></dc-import></div>
+            <button type="button" style="display:flex;align-items:center;gap:8px;height:36px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--color-border-strong);background:transparent;color:var(--color-text-primary);font:inherit;font-size:13px;font-weight:500;cursor:pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>New chat</button>
+            <nav style="display:flex;flex-direction:column;gap:2px;">
+              <sc-for list="{{ nav }}" as="n"><span style="display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:var(--radius-md);font-size:13px;font-weight:{{ n.w }};background:{{ n.bg }};color:{{ n.fg }};"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><sc-for list="{{ n.d }}" as="d"><path d="{{ d }}"></path></sc-for></svg>{{ n.label }}</span></sc-for>
+            </nav>
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              <div style="font-size:11px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);padding:0 10px 6px;">Recent</div>
+              <sc-for list="{{ recent }}" as="r"><span style="padding:7px 10px;border-radius:var(--radius-md);font-size:13px;color:{{ r.fg }};background:{{ r.bg }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.t }}</span></sc-for>
+            </div>
+            <div style="margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px;border-top:1px solid var(--color-border-default);"><span style="width:28px;height:28px;border-radius:50%;background:var(--color-bg-interactive);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;">JR</span><div style="font-size:12px;line-height:1.3;"><div style="font-weight:600;">Jordan R.</div><div style="color:var(--color-text-secondary);">Demo wallet</div></div></div>
+          </aside>
+          <main style="display:flex;flex-direction:column;min-width:0;">
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 24px;border-bottom:1px solid var(--color-border-default);">
+              <div style="font-size:15px;font-weight:600;flex:1;">Bitcoin analysis &amp; a possible trade</div>
+              <span style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:var(--radius-full);background:var(--color-brand-subtle);color:var(--color-brand-text);font-size:12px;font-weight:500;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg>Prepare for approval</span>
+            </div>
+            <div style="flex:1;overflow:hidden;padding:24px;">
+              <div style="max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:20px;">
+                <div style="align-self:flex-end;max-width:80%;background:var(--color-bg-elevated);border:1px solid var(--color-border-default);padding:10px 14px;border-radius:12px 12px 4px 12px;font-size:14px;">Can you analyze Bitcoin and help me understand a possible trade?</div>
+                <div style="display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;">
+                  <span style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;"><dc-import name="BAI Logo" variant="symbol" size="28" hint-size="28px,28px"></dc-import></span>
+                  <div style="display:flex;flex-direction:column;gap:12px;">
+                    <p style="margin:0;font-size:14px;line-height:1.6;">Bitcoin is up <strong style="font-weight:600;">2.41%</strong> over 24 hours, near <strong style="font-weight:600;font-variant-numeric:tabular-nums;">$67,412</strong>. Here's a $100 scenario. It stays a proposal until you approve it.</p>
+                    <div style="border:1.5px dashed var(--color-border-strong);border-radius:var(--radius-lg);background:var(--color-bg-secondary);">
+                      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--color-border-default);"><span style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Trade proposal · demo</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;padding:2px 10px;border-radius:var(--radius-full);background:var(--color-status-warning-subtle);color:var(--color-status-warning);">◷ Awaiting approval</span></div>
+                      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));font-size:12px;font-variant-numeric:tabular-nums;">
+                        <div style="padding:10px 14px;"><div style="color:var(--color-text-secondary);">Order</div><div style="font-size:14px;font-weight:600;">Buy BTC</div></div>
+                        <div style="padding:10px 14px;"><div style="color:var(--color-text-secondary);">Amount</div><div style="font-size:14px;font-weight:600;">$100.00</div></div>
+                        <div style="padding:10px 14px;"><div style="color:var(--color-text-secondary);">Est. price</div><div style="font-size:14px;font-weight:600;">67,412.50</div></div>
+                        <div style="padding:10px 14px;"><div style="color:var(--color-text-secondary);">Fees</div><div style="font-size:14px;font-weight:600;">$0.31</div></div>
+                      </div>
+                      <div style="margin:0 14px 12px;padding:10px 12px;border-radius:var(--radius-md);background:var(--color-bg-primary);font-size:13px;color:var(--color-text-secondary);">If BTC falls 10%, this position would be worth ≈ <strong style="color:var(--color-text-primary);font-weight:600;">$89.73</strong>.</div>
+                      <div style="display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--color-border-default);"><span style="display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:var(--radius-md);background:var(--color-brand-primary);color:var(--color-brand-on);font-size:13px;font-weight:600;">Review &amp; approve</span><span style="display:inline-flex;align-items:center;height:36px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--color-border-strong);font-size:13px;">Edit parameters</span><span style="margin-left:auto;display:inline-flex;align-items:center;height:36px;padding:0 10px;font-size:13px;color:var(--color-text-secondary);">Reject</span></div>
+                    </div>
+                    <div style="display:flex;gap:6px;"><span style="height:30px;padding:0 12px;display:inline-flex;align-items:center;border-radius:var(--radius-full);border:1px solid var(--color-border-strong);font-size:12px;">Help me understand the risks</span><span style="height:30px;padding:0 12px;display:inline-flex;align-items:center;border-radius:var(--radius-full);border:1px solid var(--color-border-strong);font-size:12px;">Try $50 instead</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style="padding:0 24px 20px;"><div style="max-width:640px;margin:0 auto;border:1px solid var(--color-border-strong);border-radius:var(--radius-lg);background:var(--color-bg-secondary);padding:12px;display:flex;align-items:center;gap:10px;"><span style="flex:1;font-size:14px;color:var(--color-text-secondary);">Ask Biatec AI anything about crypto…</span><span style="font-size:12px;padding:4px 8px;border-radius:6px;background:var(--color-bg-interactive);">BTC/USDC</span><span style="width:32px;height:32px;border-radius:var(--radius-md);background:var(--color-bg-interactive);display:flex;align-items:center;justify-content:center;color:var(--color-text-secondary);">↑</span></div></div>
+          </main>
+          <aside style="background:var(--color-bg-secondary);border-left:1px solid var(--color-border-default);padding:20px;display:flex;flex-direction:column;gap:16px;">
+            <div style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Agent</div>
+            <div style="display:flex;flex-direction:column;gap:6px;"><div style="display:flex;align-items:center;gap:8px;"><span style="width:8px;height:8px;border-radius:50%;background:var(--color-status-success);"></span><span style="font-size:15px;font-weight:600;">Active · Prepare for approval</span></div><div style="font-size:12px;line-height:1.5;color:var(--color-text-secondary);">Drafts orders. Every trade needs your approval.</div></div>
+            <div style="display:flex;gap:6px;"><span style="height:32px;padding:0 10px;display:inline-flex;align-items:center;border-radius:var(--radius-md);border:1px solid var(--color-border-strong);font-size:12px;">Manage</span><span style="height:32px;padding:0 10px;display:inline-flex;align-items:center;gap:6px;border-radius:var(--radius-md);background:var(--color-status-warning-subtle);color:var(--color-status-warning);font-size:12px;font-weight:500;">❙❙ Pause</span></div>
+            <div style="border-top:1px solid var(--color-border-default);padding-top:16px;font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Activity</div>
+            <sc-for list="{{ act }}" as="a"><div style="display:grid;grid-template-columns:10px minmax(0,1fr);gap:10px;font-size:12px;"><span style="width:8px;height:8px;border-radius:50%;margin-top:5px;background:{{ a.c }};"></span><div><div style="display:flex;justify-content:space-between;gap:6px;"><span style="font-weight:600;font-size:13px;">{{ a.t }}</span><span style="color:var(--color-text-secondary);font-variant-numeric:tabular-nums;">{{ a.time }}</span></div><div style="color:var(--color-text-secondary);">{{ a.d }}</div></div></div></sc-for>
+          </aside>
+        </div></div>
+      </div>
+    </sc-for>
+  </div>
+
+  <h3 style="margin:0 0 16px;font-size:20px;font-weight:600;">Mobile chat · trade review flow</h3>
+  <div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:16px;">
+    <sc-for list="{{ phones }}" as="ph" hint-placeholder-count="4">
+      <div style="display:flex;flex-direction:column;gap:10px;flex:none;">
+        <div style="font-size:13px;font-weight:600;color:var(--color-text-secondary);">{{ ph.label }}</div>
+        <div data-theme="{{ ph.theme }}" style="width:340px;height:700px;border-radius:40px;border:8px solid #1a1d24;background:var(--color-bg-primary);color:var(--color-text-primary);overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--shadow-lg);">
+          <div style="height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;"><span>9:41</span><span style="width:80px;height:22px;border-radius:12px;background:#000;"></span><span>●●●</span></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 16px 12px;border-bottom:1px solid var(--color-border-default);">
+            <span style="width:44px;height:44px;margin-left:-10px;display:flex;align-items:center;justify-content:center;font-size:20px;">‹</span>
+            <dc-import name="BAI Logo" variant="symbol" size="28" hint-size="28px,28px"></dc-import>
+            <div style="flex:1;min-width:0;"><div style="font-size:15px;font-weight:600;">Biatec AI</div><div style="font-size:12px;color:var(--color-brand-text);">{{ ph.mode }}</div></div>
+          </div>
+          <sc-if value="{{ ph.isChat }}">
+            <div style="flex:1;padding:16px;display:flex;flex-direction:column;gap:14px;overflow:hidden;">
+              <div style="align-self:flex-end;max-width:85%;background:var(--color-bg-elevated);border:1px solid var(--color-border-default);padding:10px 12px;border-radius:12px 12px 4px 12px;font-size:14px;">What's happening with Bitcoin today?</div>
+              <div style="display:flex;flex-direction:column;gap:10px;">
+                <div style="display:flex;align-items:center;gap:8px;"><dc-import name="BAI Logo" variant="symbol" size="24" hint-size="24px,24px"></dc-import><span style="font-size:12px;font-weight:600;color:var(--color-brand-text);">Biatec AI</span></div>
+                <p style="margin:0;font-size:15px;line-height:1.55;">Bitcoin is up <strong style="font-weight:600;">2.41%</strong> in 24 hours, near <strong style="font-weight:600;">$67,412</strong>. Steady, not spiky.</p>
+                <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);background:var(--color-bg-secondary);padding:12px;"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--color-text-secondary);"><span>BTC/USD · 24h</span><span>Demo data</span></div><div style="font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:4px;">67,412.50 <span style="font-size:13px;color:var(--color-status-success);">▲ +2.41%</span></div><svg viewBox="0 0 360 80" preserveAspectRatio="none" style="display:block;width:100%;height:60px;margin-top:6px;"><path d="{{ cl }}" fill="none" stroke="var(--color-brand-primary)" stroke-width="2" vector-effect="non-scaling-stroke"></path></svg></div>
+                <div style="display:flex;flex-direction:column;gap:6px;"><span style="min-height:44px;display:flex;align-items:center;padding:0 14px;border-radius:var(--radius-md);border:1px solid var(--color-border-strong);font-size:14px;">Explain this trend</span><span style="min-height:44px;display:flex;align-items:center;padding:0 14px;border-radius:var(--radius-md);border:1px solid var(--color-brand-primary);background:var(--color-brand-subtle);color:var(--color-brand-text);font-size:14px;font-weight:500;">Explore trade scenario</span></div>
+              </div>
+            </div>
+            <div style="padding:10px 12px 22px;border-top:1px solid var(--color-border-default);"><div style="display:flex;align-items:center;gap:8px;border:1px solid var(--color-border-strong);border-radius:var(--radius-lg);background:var(--color-bg-secondary);padding:6px 6px 6px 14px;"><span style="flex:1;font-size:15px;color:var(--color-text-secondary);">Ask anything…</span><span style="width:44px;height:44px;border-radius:var(--radius-md);background:var(--color-brand-primary);color:var(--color-brand-on);display:flex;align-items:center;justify-content:center;font-size:18px;">↑</span></div></div>
+          </sc-if>
+          <sc-if value="{{ ph.isReview }}">
+            <div style="flex:1;padding:16px;display:flex;flex-direction:column;gap:12px;overflow:hidden;">
+              <div style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Review demo trade</div>
+              <div style="font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;">Buy BTC · $100.00</div>
+              <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);font-size:14px;font-variant-numeric:tabular-nums;">
+                <div style="display:flex;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--color-border-default);"><span style="color:var(--color-text-secondary);">Est. quantity</span><span>0.001479 BTC</span></div>
+                <div style="display:flex;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--color-border-default);"><span style="color:var(--color-text-secondary);">Est. price</span><span>$67,412.50</span></div>
+                <div style="display:flex;justify-content:space-between;padding:12px 14px;"><span style="color:var(--color-text-secondary);">Fees</span><span>$0.31</span></div>
+              </div>
+              <div style="padding:12px 14px;border-radius:var(--radius-lg);background:var(--color-bg-secondary);font-size:14px;line-height:1.5;"><strong style="font-weight:600;">If BTC falls 10%</strong> <span style="color:var(--color-text-secondary);">you'd hold ≈ $89.73.</span></div>
+              <div style="padding:12px 14px;border-radius:var(--radius-lg);background:var(--color-brand-subtle);font-size:13px;line-height:1.5;color:var(--color-brand-text);">Simulated. No funds move and no wallet signature is requested.</div>
+              <label style="display:flex;gap:10px;align-items:center;font-size:14px;min-height:44px;"><span style="width:22px;height:22px;border-radius:6px;background:var(--color-brand-primary);color:var(--color-brand-on);display:flex;align-items:center;justify-content:center;font-size:13px;">✓</span>I've reviewed the risks</label>
+            </div>
+            <div style="padding:12px 16px 24px;border-top:1px solid var(--color-border-default);display:flex;flex-direction:column;gap:8px;"><span style="height:52px;border-radius:12px;background:var(--color-brand-primary);color:var(--color-brand-on);display:flex;align-items:center;padding:0 18px;gap:10px;font-size:16px;font-weight:600;box-shadow:0 0 0 1px var(--color-bg-primary), 0 0 0 3px var(--color-brand-primary);">⛉ Approve demo trade</span><span style="height:48px;border-radius:12px;border:1px solid var(--color-border-strong);display:flex;align-items:center;padding:0 18px;font-size:15px;">Back to chat</span></div>
+          </sc-if>
+          <sc-if value="{{ ph.isDone }}">
+            <div style="flex:1;padding:16px;display:flex;flex-direction:column;gap:14px;">
+              <div style="border:1px solid var(--color-status-success);border-radius:var(--radius-lg);overflow:hidden;">
+                <div style="display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--color-status-success-subtle);color:var(--color-status-success);font-size:14px;font-weight:600;">✓ Completed · simulated</div>
+                <div style="padding:12px 14px;font-size:14px;font-variant-numeric:tabular-nums;display:flex;flex-direction:column;gap:8px;"><div style="display:flex;justify-content:space-between;"><span style="color:var(--color-text-secondary);">Filled</span><span>0.001479 BTC</span></div><div style="display:flex;justify-content:space-between;"><span style="color:var(--color-text-secondary);">Total</span><span>$100.00</span></div><div style="display:flex;justify-content:space-between;"><span style="color:var(--color-text-secondary);">Receipt</span><span>DEMO-7F3A21</span></div></div>
+              </div>
+              <p style="margin:0;font-size:15px;line-height:1.55;">Done. Your demo order was filled and logged to Activity. No real funds moved.</p>
+              <div style="display:flex;flex-direction:column;gap:6px;"><span style="min-height:44px;display:flex;align-items:center;padding:0 14px;border-radius:var(--radius-md);border:1px solid var(--color-border-strong);font-size:14px;">View activity</span><span style="min-height:44px;display:flex;align-items:center;padding:0 14px;border-radius:var(--radius-md);border:1px solid var(--color-border-strong);font-size:14px;">Check my portfolio exposure</span></div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const C = (cx, cy, r) => `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`;
+const SHIELD = 'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z';
+const SER = [67.1, 66.9, 67.0, 66.6, 66.2, 65.8, 65.61, 65.9, 66.3, 66.1, 66.7, 66.9, 67.1, 67.3, 67.2, 67.6, 67.98, 67.5, 67.41];
+class Component extends DCLogic {
+  renderVals() {
+    const mn = Math.min(...SER), mx = Math.max(...SER);
+    const cl = SER.map((v, i) => (i ? 'L' : 'M') + (i / (SER.length - 1) * 360).toFixed(1) + ' ' + (74 - (v - mn) / (mx - mn) * 66).toFixed(1)).join(' ');
+    const tone = k => ({ neutral: ['var(--color-bg-interactive)', 'var(--color-text-secondary)'], warning: ['var(--color-status-warning-subtle)', 'var(--color-status-warning)'], brand: ['var(--color-brand-subtle)', 'var(--color-brand-text)'], success: ['var(--color-status-success-subtle)', 'var(--color-status-success)'], info: ['var(--color-status-info-subtle)', 'var(--color-status-info)'] }[k]);
+    return {
+      cl,
+      themes: [{ id: 'dark', label: 'Dark theme · assistant workspace' }, { id: 'light', label: 'Light theme · same layout, same tokens' }],
+      stages: [
+        ['01', 'Suggestion', 'Analysis', 'neutral', [C(12, 12, 10), 'M12 16v-4', 'M12 8h.01'], 'An idea in prose', 'The AI describes a scenario. No order exists yet.', 'Action: Explore', 'solid', 'var(--color-border-default)', 'transparent'],
+        ['02', 'Prepared order', 'Awaiting approval', 'warning', [C(12, 12, 10), 'M12 7v5l3 2'], 'Buy BTC · $100.00', 'Concrete parameters, fees and downside. Dashed border: not real yet.', 'Action: Review & approve', 'dashed', 'var(--color-border-strong)', 'var(--color-bg-secondary)'],
+        ['03', 'Authorized', 'Approved · pending', 'brand', [SHIELD, 'm9 12 2 2 4-4'], 'Approved by you, 14:36', 'Your approval is recorded. Execution is in progress and can still be cancelled.', 'Action: Cancel order', 'solid', 'var(--color-brand-primary)', 'var(--color-bg-secondary)'],
+        ['04', 'Completed', 'Completed', 'success', [C(12, 12, 10), 'm9 12 2 2 4-4'], 'Filled 0.001479 BTC', 'Receipt DEMO-7F3A21. Logged to Activity. Demo, no funds moved.', 'Action: View receipt', 'solid', 'var(--color-status-success)', 'var(--color-bg-secondary)']
+      ].map(([n, stage, tag, k, d, title, body, action, bs, bd, bg]) => ({ n, stage, tag, d, title, body, action, bs, bd, bg, tagBg: tone(k)[0], tagFg: tone(k)[1] })),
+      authParts: [
+        ['1', 'What will happen', 'A market buy of $100.00 in BTC at about $67,412.50.'],
+        ['2', 'Which permissions are involved', 'Prepare for approval: a one-time approval for this order only.'],
+        ['3', 'Order details', '≈ 0.001479 BTC · fee $0.31 · max slippage 0.50%'],
+        ['4', 'Financial implications', 'A 10% fall would cost ≈ $10.27. Larger falls are possible.'],
+        ['5', 'How to stop it', 'Back out now. After approval, cancel from Activity until filled.']
+      ].map(([n, q, a]) => ({ n, q, a })),
+      permSteps: [['01', 'Choose mode', 'Analyze, Prepare, or Rule-based'], ['02', 'Set limits', 'Max order, daily cap, loss stop, assets, expiry'], ['03', 'Confirm increase', 'Plain-language list of new powers, then an explicit tick']].map(([n, t, d]) => ({ n, t, d })),
+      filters: ['All', 'Analysis', 'Proposals', 'Executions', 'Permissions'].map((l, i) => ({ label: l, bg: i ? 'transparent' : 'var(--color-brand-subtle)', fg: i ? 'var(--color-text-secondary)' : 'var(--color-brand-text)', bd: i ? 'var(--color-border-default)' : 'var(--color-brand-primary)' })),
+      history: [
+        ['14:36', 'Execution', 'success', 'Demo trade completed', 'Buy 0.001479 BTC · $100.00', 'You approved'],
+        ['14:34', 'Proposal', 'warning', 'Proposal drafted', 'Buy BTC/USDC · $100.00', 'Biatec AI'],
+        ['14:33', 'Permissions', 'brand', 'Autonomy increased', 'Analyze only → Prepare for approval', 'You'],
+        ['14:32', 'Analysis', 'neutral', 'Market analysis', 'BTC/USD · 24h snapshot', 'Biatec AI']
+      ].map(([t, kind, k, title, detail, by]) => ({ t, kind, title, detail, by, bg: tone(k)[0], fg: tone(k)[1] })),
+      nav: [['Assistant', ['M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'], 1], ['Portfolio', ['M21.21 15.89A10 10 0 1 1 8 2.83', 'M22 12A10 10 0 0 0 12 2v10z']], ['Markets', ['M3 3v18h18', 'M18 17V9', 'M13 17V5', 'M8 17v-3']], ['Activity', ['M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8', 'M3 3v5h5', 'M12 7v5l4 2']], ['Permissions', [SHIELD]]].map(([label, d, sel]) => ({ label, d, bg: sel ? 'var(--color-brand-subtle)' : 'transparent', fg: sel ? 'var(--color-brand-text)' : 'var(--color-text-primary)', w: sel ? 600 : 400 })),
+      recent: ['Bitcoin analysis & a possible trade', 'Why did ALGO dip this morning?', 'Explain dollar-cost averaging', 'ETH vs BTC this week'].map((t, i) => ({ t, bg: i ? 'transparent' : 'var(--color-bg-interactive)', fg: i ? 'var(--color-text-secondary)' : 'var(--color-text-primary)' })),
+      act: [['Proposal drafted', 'Buy BTC · $100.00', '14:34', 'var(--color-status-warning)'], ['Autonomy increased', 'Now: Prepare for approval', '14:33', 'var(--color-brand-primary)'], ['Market analysis', 'BTC/USD · 24h', '14:32', 'var(--color-text-secondary)']].map(([t, d, time, c]) => ({ t, d, time, c })),
+      phones: [
+        { label: 'Mobile chat · dark', theme: 'dark', mode: 'Analyze only', isChat: true, isReview: false, isDone: false },
+        { label: 'Mobile chat · light', theme: 'light', mode: 'Analyze only', isChat: true, isReview: false, isDone: false },
+        { label: 'Flow 2 · review', theme: 'dark', mode: 'Prepare for approval', isChat: false, isReview: true, isDone: false },
+        { label: 'Flow 3 · confirmed', theme: 'dark', mode: 'Prepare for approval', isChat: false, isReview: false, isDone: true }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -50,6 +50,7 @@ signature, binding code, wrong-code attempts, group-hash mismatch refused).
    dotnet run --project backend/Biatec.Chat.Api           # Development seeds the Biatec Chat and localhost tenants
    pnpm --filter mock-oidc start                          # consent side, http://127.0.0.1:8089
    pnpm --filter @biatec/chat-widget dev                  # widget playground
+   # once T-068 lands, /dex.html shows the widget inside a Biatec DEX-like page
    ```
 
 3. Two browsers, two identities (Alice, Bob), two phones with the authenticator, each enrolled and activated **at least a day

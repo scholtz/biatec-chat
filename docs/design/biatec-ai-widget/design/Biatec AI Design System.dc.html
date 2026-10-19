@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="biatec-tokens.css">
+<style>body{margin:0;background:var(--color-bg-primary);} html{scroll-behavior:smooth;scroll-padding-top:72px;} a{color:var(--color-brand-text);} a:hover{color:var(--color-text-primary);}</style>
+</helmet>
+<div data-theme="{{ theme }}" style="min-height:100vh;background:var(--ambient), var(--color-bg-primary);background-attachment:fixed;color:var(--color-text-primary);font-family:var(--font-sans);">
+  <div style="position:sticky;top:0;z-index:20;background:color-mix(in srgb, var(--color-bg-primary) 72%, transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--color-border-default);">
+    <div style="max-width:1320px;margin:0 auto;padding:12px 32px;display:flex;align-items:center;gap:24px;flex-wrap:wrap;">
+      <dc-import name="BAI Logo" variant="horizontal" size="28" hint-size="130px,28px"></dc-import>
+      <span style="font-size:12px;color:var(--color-text-secondary);">Design system v1.0</span>
+      <nav style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto;font-size:13px;">
+        <sc-for list="{{ nav }}" as="n"><a href="{{ n.href }}" style="padding:6px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;" style-hover="background:var(--color-bg-interactive);color:var(--color-text-primary);">{{ n.label }}</a></sc-for>
+      </nav>
+      <div role="radiogroup" aria-label="Theme" style="display:flex;gap:2px;padding:3px;border-radius:var(--radius-md);background:var(--color-bg-secondary);border:1px solid var(--color-border-default);">
+        <sc-for list="{{ themeOpts }}" as="o"><button type="button" role="radio" aria-checked="{{ o.sel }}" onClick="{{ o.pick }}" style="height:28px;padding:0 12px;border-radius:6px;border:0;font:inherit;font-size:12px;font-weight:500;cursor:pointer;background:{{ o.bg }};color:{{ o.fg }};">{{ o.label }}</button></sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="max-width:1200px;margin:0 auto;padding:96px 32px 80px;display:flex;flex-direction:column;gap:24px;">
+    <dc-import name="BAI Logo" variant="symbol" size="64" hint-size="64px,64px"></dc-import>
+    <div style="font-size:13px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Biatec AI · Visual identity &amp; design system</div>
+    <h1 style="margin:0;font-size:56px;font-weight:600;letter-spacing:-0.03em;line-height:1.05;max-width:900px;text-wrap:balance;">Intelligent by design. Transparent by default. <span style="color:var(--color-brand-text);">Always under your control.</span></h1>
+    <p style="margin:0;font-size:17px;line-height:1.6;color:var(--color-text-secondary);max-width:640px;">The foundations, components and rules behind Biatec AI, the conversational crypto-trading assistant. Dark-first, with a complete light twin built on the same semantic tokens.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <a href="Biatec AI v2.dc.html" style="display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 18px;border-radius:var(--radius-md);background:var(--color-brand-primary);color:var(--color-brand-on);font-size:14px;font-weight:600;text-decoration:none;">Open the prototype</a>
+      <a href="Biatec AI Brand Deck.dc.html" style="display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 18px;border-radius:var(--radius-md);border:1px solid var(--color-border-strong);color:var(--color-text-primary);font-size:14px;font-weight:500;text-decoration:none;">View the pitch deck</a>
+      <a href="biatec-tokens.css" style="display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 14px;border-radius:var(--radius-md);color:var(--color-text-secondary);font-size:14px;font-weight:500;text-decoration:none;">biatec-tokens.css</a>
+    </div>
+  </div>
+
+  <dc-import name="BAI DS Brand" hint-size="100%,2400px"></dc-import>
+  <dc-import name="BAI DS Foundations" hint-size="100%,3200px"></dc-import>
+  <dc-import name="BAI DS Components" hint-size="100%,5000px"></dc-import>
+  <dc-import name="BAI DS Patterns" hint-size="100%,3600px"></dc-import>
+  <dc-import name="BAI DS Guidelines" hint-size="100%,1800px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark'|'light'&quot;}}">
+class Component extends DCLogic {
+  state = { theme: null };
+  renderVals() {
+    const theme = this.state.theme || this.props.theme || 'dark';
+    return {
+      theme,
+      nav: [['01 Brand', '#brand'], ['02 Foundations', '#foundations'], ['03 Components', '#components'], ['04 Patterns', '#patterns'], ['05 Preview', '#preview'], ['06 Guidelines', '#guidelines']].map(([label, href]) => ({ label, href })),
+      themeOpts: [['dark', 'Dark'], ['light', 'Light']].map(([id, label]) => ({ label, sel: theme === id, pick: () => this.setState({ theme: id }), bg: theme === id ? 'var(--color-bg-elevated)' : 'transparent', fg: theme === id ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }))
+    };
+  }
+}
+</script>
+</body>
+</html>

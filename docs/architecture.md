@@ -12,7 +12,7 @@ Status words used below: **built** (code and tests on `main`), **partial** (some
 
 | Piece | Path | Status |
 | --- | --- | --- |
-| Chat widget `@biatec/chat-widget` (Vue 3 plugin) | `packages/chat-widget` | partial: launcher, panel, plugin install, theming tokens. Transport, chat UI, preview/consent cards are planned |
+| Chat widget `@biatec/chat-widget` (Vue 3 plugin, shown to users as Biatec AI) | `packages/chat-widget` | partial: launcher, panel, plugin install, transport. Chat UI is in progress; the rework to the Biatec AI design system ([design/README.md](design/README.md)), preview/consent cards, permissions and activity are planned |
 | Chat backend `Biatec.Chat.Api` (+ `.Core`, `.Tools`, `.Tests`) | `backend/` | partial, see the table below |
 | Shared wire types `@biatec/chat-protocol` | `packages/chat-protocol` | built: generated from the backend OpenAPI document (`/contracts` only declares the types) |
 | Biatec Consent Protocol: spec, JSON schemas, vectors | `packages/consent-protocol` | built; the conformance suite is in progress |
@@ -146,7 +146,8 @@ These are specified in the product description and tracked on the board. The doc
 
 - Conversation orchestrator and the SSE chat endpoint (in progress), the anonymous `requestSignIn` and knowledge-base tools, and the public anonymous endpoint `/public/chat`.
 - Confirm-and-sign at Biatec OIDC, submit, the wallet, DEX and safe capability executors, the tenant soft cap and the backend consent orchestrator.
-- Widget chat UI, transport probe, action preview and consent cards, i18n (English, Slovak).
+- Widget chat UI, action preview and consent cards, i18n (English, Slovak).
+- Widget rework to the Biatec AI design system (T-062 to T-069): tokens and Shadow DOM isolation, `theme: 'host'`, floating / inline / workspace modes, the `useBiatecChat()` host API, the agent-mode permissions dialog with its server-side enforcement, the activity timeline, data cards, and the Biatec DEX integration ([integration-biatec-dex.md](integration-biatec-dex.md)).
 - Authenticator enrollment, approval and push.
 - Evidence export bundle, retention jobs and user erasure, OpenTelemetry, the x402 capability.
 - Containers, Kubernetes manifests and the hackathon hosting scripts.

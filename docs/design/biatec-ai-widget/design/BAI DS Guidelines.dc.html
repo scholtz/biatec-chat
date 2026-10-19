@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="biatec-tokens.css">
+<style>body{margin:0;background:var(--color-bg-primary);} a{color:var(--color-brand-text);} a:hover{color:var(--color-text-primary);}</style>
+</helmet>
+<section id="guidelines" data-screen-label="06 Guidelines" style="background:transparent;color:var(--color-text-primary);font-family:var(--font-sans);">
+<div style="max-width:1200px;margin:0 auto;padding:0 32px 96px;">
+  <header style="display:grid;grid-template-columns:72px minmax(0,1fr);gap:24px;padding:64px 0 40px;border-top:1px solid var(--color-border-default);">
+    <div style="font-size:14px;font-weight:600;color:var(--color-brand-text);font-variant-numeric:tabular-nums;padding-top:10px;">06</div>
+    <div><h2 style="margin:0;font-size:36px;font-weight:600;letter-spacing:-0.02em;line-height:1.15;">Guidelines</h2><p style="margin:8px 0 0;font-size:16px;line-height:1.6;color:var(--color-text-secondary);max-width:640px;">The rules that keep the system honest: what to do, what never to do, and how financial status is always shown.</p></div>
+  </header>
+
+  <h3 style="margin:0 0 16px;font-size:20px;font-weight:600;">Do / Don't</h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,540px),1fr));gap:16px;margin-bottom:56px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--color-border-default);border:1px solid var(--color-border-default);border-radius:var(--radius-lg);overflow:hidden;">
+      <div style="background:var(--color-bg-secondary);padding:16px;display:flex;flex-direction:column;gap:10px;"><span style="font-size:12px;font-weight:600;color:var(--color-status-success);">✓ Do</span><span style="align-self:flex-start;display:inline-flex;gap:4px;font-size:15px;font-weight:600;color:var(--color-status-success);font-variant-numeric:tabular-nums;">▲ +2.41%</span><span style="font-size:13px;color:var(--color-text-secondary);">Arrow, sign and color together.</span></div>
+      <div style="background:var(--color-bg-secondary);padding:16px;display:flex;flex-direction:column;gap:10px;"><span style="font-size:12px;font-weight:600;color:var(--color-status-danger);">✕ Don't</span><span style="align-self:flex-start;font-size:15px;font-weight:600;color:var(--color-status-success);font-variant-numeric:tabular-nums;">2.41</span><span style="font-size:13px;color:var(--color-text-secondary);">Color as the only signal.</span></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--color-border-default);border:1px solid var(--color-border-default);border-radius:var(--radius-lg);overflow:hidden;">
+      <div style="background:var(--color-bg-secondary);padding:16px;display:flex;flex-direction:column;gap:10px;"><span style="font-size:12px;font-weight:600;color:var(--color-status-success);">✓ Do</span><span style="align-self:flex-start;height:40px;display:inline-flex;align-items:center;padding:0 14px;border-radius:var(--radius-md);background:var(--color-brand-primary);color:var(--color-brand-on);font-size:13px;font-weight:600;">⛉ Approve demo trade · $100</span><span style="font-size:13px;color:var(--color-text-secondary);">Name the action and the amount.</span></div>
+      <div style="background:var(--color-bg-secondary);padding:16px;display:flex;flex-direction:column;gap:10px;"><span style="font-size:12px;font-weight:600;color:var(--color-status-danger);">✕ Don't</span><span style="align-self:flex-start;height:40px;display:inline-flex;align-items:center;padding:0 14px;border-radius:var(--radius-md);background:var(--color-brand-primary);color:var(--color-brand-on);font-size:13px;font-weight:600;">Continue</span><span style="font-size:13px;color:var(--color-text-secondary);">An approval that looks like navigation.</span></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--color-border-default);border:1px solid var(--color-border-default);border-radius:var(--radius-lg);overflow:hidden;">
+      <div style="background:var(--color-bg-secondary);padding:16px;display:flex;flex-direction:column;gap:10px;"><span style="font-size:12px;font-weight:600;color:var(--color-status-success);">✓ Do</span><span style="font-size:14px;line-height:1.5;">"A 10% fall would cost about $10."</span><span style="font-size:13px;color:var(--color-text-secondary);">Concrete, neutral downside.</span></div>
+      <div style="background:var(--color-bg-secondary);padding:16px;display:flex;flex-direction:column;gap:10px;"><span style="font-size:12px;font-weight:600;color:var(--color-status-danger);">✕ Don't</span><span style="font-size:14px;line-height:1.5;">"Strong buy! Up to +40% 🚀"</span><span style="font-size:13px;color:var(--color-text-secondary);">Promised returns, hype, urgency.</span></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--color-border-default);border:1px solid var(--color-border-default);border-radius:var(--radius-lg);overflow:hidden;">
+      <div style="background:var(--color-bg-secondary);padding:16px;display:flex;flex-direction:column;gap:10px;"><span style="font-size:12px;font-weight:600;color:var(--color-status-success);">✓ Do</span><div style="display:flex;gap:6px;"><span style="width:28px;height:28px;border-radius:7px;background:var(--color-brand-subtle);"></span><span style="flex:1;display:flex;flex-direction:column;gap:5px;"><span style="height:7px;border-radius:3px;background:var(--color-bg-interactive);"></span><span style="height:7px;width:70%;border-radius:3px;background:var(--color-bg-interactive);"></span></span></div><span style="font-size:13px;color:var(--color-text-secondary);">Green only for the brand mark and primary action.</span></div>
+      <div style="background:var(--color-bg-secondary);padding:16px;display:flex;flex-direction:column;gap:10px;"><span style="font-size:12px;font-weight:600;color:var(--color-status-danger);">✕ Don't</span><div style="display:flex;gap:6px;padding:6px;border-radius:8px;background:linear-gradient(90deg,#2DD4A7,#38BDF8);box-shadow:0 0 18px #2DD4A7;"><span style="width:28px;height:28px;border-radius:7px;background:#2DD4A7;"></span><span style="flex:1;"></span></div><span style="font-size:13px;color:var(--color-text-secondary);">Neon glow, loud gradients, green everywhere.</span></div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:16px;margin-bottom:56px;">
+    <sc-for list="{{ rules }}" as="g" hint-placeholder-count="4">
+      <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);padding:20px;display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:16px;font-weight:600;">{{ g.title }}</div>
+        <sc-for list="{{ g.items }}" as="it"><div style="display:grid;grid-template-columns:14px minmax(0,1fr);gap:8px;font-size:14px;line-height:1.5;"><span style="color:var(--color-brand-text);">—</span><span>{{ it }}</span></div></sc-for>
+      </div>
+    </sc-for>
+  </div>
+
+  <h3 style="margin:0 0 4px;font-size:20px;font-weight:600;">Financial status conventions</h3>
+  <p style="margin:0 0 16px;font-size:14px;color:var(--color-text-secondary);">One meaning per signal. Each state has a fixed label, icon, color and border, and the label is never dropped.</p>
+  <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);overflow-x:auto;">
+    <div style="min-width:720px;">
+      <div style="display:grid;grid-template-columns:200px 120px 120px minmax(0,1fr);font-size:12px;font-weight:500;color:var(--color-text-secondary);border-bottom:1px solid var(--color-border-default);"><span style="padding:12px 16px;">State</span><span style="padding:12px 16px;">Color</span><span style="padding:12px 16px;">Border</span><span style="padding:12px 16px;">Means</span></div>
+      <sc-for list="{{ conv }}" as="c">
+        <div style="display:grid;grid-template-columns:200px 120px 120px minmax(0,1fr);align-items:center;font-size:13px;border-bottom:1px solid var(--color-border-default);">
+          <span style="padding:10px 16px;"><span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:3px 10px;border-radius:var(--radius-full);background:{{ c.bg }};color:{{ c.fg }};">{{ c.glyph }} {{ c.label }}</span></span>
+          <span style="padding:10px 16px;color:var(--color-text-secondary);">{{ c.color }}</span>
+          <span style="padding:10px 16px;color:var(--color-text-secondary);">{{ c.border }}</span>
+          <span style="padding:10px 16px;">{{ c.means }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const t = { neutral: ['var(--color-bg-interactive)', 'var(--color-text-secondary)'], warning: ['var(--color-status-warning-subtle)', 'var(--color-status-warning)'], brand: ['var(--color-brand-subtle)', 'var(--color-brand-text)'], info: ['var(--color-status-info-subtle)', 'var(--color-status-info)'], success: ['var(--color-status-success-subtle)', 'var(--color-status-success)'], danger: ['var(--color-status-danger-subtle)', 'var(--color-status-danger)'] };
+    return {
+      rules: [
+        { title: 'Accessibility', items: ['Text ≥ 4.5:1; large text and UI boundaries ≥ 3:1. Measured, not guessed.', 'Visible 2 px focus ring on every interactive element, with logical tab order.', 'Dialogs trap focus, close on Esc, and return focus to their trigger.', '44 × 44 px touch targets on mobile; 40 px minimum on desktop.', 'Live regions announce AI replies, toasts and status changes.', 'Honor prefers-reduced-motion; nothing important hides behind animation.'] },
+        { title: 'Color usage', items: ['Biatec green is for the brand mark, the primary action, selection and focus. Nothing else.', 'Green and red describe the past, never a forecast.', 'Red only for negative movement, destructive actions and real risk.', 'Warning amber marks states that need the user, such as Awaiting approval.', 'Frosted surfaces over the ambient glow create depth before shadows do, as on Biatec DEX.'] },
+        { title: 'Icon usage', items: ['Lucide geometry: 2 px stroke, round caps, 24 px grid.', 'Critical financial actions always pair an icon with text.', 'Never rely on an unfamiliar icon alone for permissions or risk.', 'Icons inherit text color; brand color only on the AI marker.', 'No filled illustrations mixed into line UI.'] },
+        { title: 'Interaction rules', items: ['Raising autonomy always needs a separate confirmation; lowering it is instant.', 'Approve buttons lock while submitting to prevent double orders.', 'Every meaningful action gives feedback: loading, success, failure.', 'Transitions take 150–220 ms with cubic-bezier(.2, 0, 0, 1).', 'Pause and revoke are reachable from the header in one step.', 'Demo and simulated actions are labelled at the point of action.'] }
+      ],
+      conv: [
+        ['○', 'Draft', 'neutral', 'Neutral', 'Dashed', 'Being shaped in chat; no order exists.'],
+        ['◷', 'Awaiting approval', 'warning', 'Warning', 'Dashed', 'Prepared order waiting on the user.'],
+        ['⛉', 'Approved', 'brand', 'Brand', 'Solid green', 'The user has authorized it; queued.'],
+        ['◌', 'Pending execution', 'info', 'Info', 'Solid green', 'Submitted; can still be cancelled.'],
+        ['✓', 'Completed', 'success', 'Success', 'Solid green', 'Filled and recorded (demo fills are labelled).'],
+        ['✕', 'Rejected', 'neutral', 'Neutral', 'Solid', 'The user declined the proposal.'],
+        ['!', 'Failed', 'danger', 'Danger', 'Solid red', 'The platform could not execute. Nothing was charged.'],
+        ['⊘', 'Cancelled', 'neutral', 'Neutral', 'Solid', 'Stopped by the user, or voided by a revoke.']
+      ].map(([glyph, label, k, color, border, means]) => ({ glyph, label, color, border, means, bg: t[k][0], fg: t[k][1] }))
+    };
+  }
+}
+</script>
+</body>
+</html>

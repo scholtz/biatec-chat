@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="biatec-tokens.css">
+<style>body{margin:0;background:var(--color-bg-primary);} a{color:var(--color-brand-text);} a:hover{color:var(--color-text-primary);}</style>
+</helmet>
+<section id="foundations" data-screen-label="02 Foundations" style="background:transparent;color:var(--color-text-primary);font-family:var(--font-sans);">
+<div style="max-width:1200px;margin:0 auto;padding:0 32px 64px;">
+
+  <header style="display:grid;grid-template-columns:72px minmax(0,1fr);gap:24px;padding:64px 0 40px;border-top:1px solid var(--color-border-default);">
+    <div style="font-size:14px;font-weight:600;color:var(--color-brand-text);font-variant-numeric:tabular-nums;padding-top:10px;">02</div>
+    <div><h2 style="margin:0;font-size:36px;font-weight:600;letter-spacing:-0.02em;line-height:1.15;">Foundations</h2><p style="margin:8px 0 0;font-size:16px;line-height:1.6;color:var(--color-text-secondary);max-width:640px;">Biatec DEX color (night, frosted surfaces, ambient teal glow), semantic tokens with a light twin, Inter with tabular figures, an 8 px rhythm, and one line-icon family.</p></div>
+  </header>
+
+  <h3 style="margin:0 0 16px;font-size:20px;font-weight:600;">Core palette</h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;margin-bottom:32px;">
+    <sc-for list="{{ core }}" as="c" hint-placeholder-count="9">
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="height:96px;border-radius:var(--radius-lg);background:{{ c.hex }};border:1px solid var(--color-border-default);"></div>
+        <div><div style="font-size:14px;font-weight:600;">{{ c.name }}</div><div style="font-size:12px;color:var(--color-text-secondary);font-variant-numeric:tabular-nums;">{{ c.hex }}</div><div style="font-size:12px;line-height:1.45;color:var(--color-text-secondary);margin-top:2px;">{{ c.use }}</div></div>
+      </div>
+    </sc-for>
+  </div>
+
+  <h3 style="margin:0 0 4px;font-size:20px;font-weight:600;">Semantic colors</h3>
+  <p style="margin:0 0 16px;font-size:14px;color:var(--color-text-secondary);">Every status pairs a color with an icon and a word. Green describes what happened, never what will happen.</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:48px;">
+    <sc-for list="{{ semantic }}" as="c" hint-placeholder-count="5">
+      <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);overflow:hidden;">
+        <div style="height:64px;background:{{ c.hex }};"></div>
+        <div style="padding:12px;display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;justify-content:space-between;gap:8px;"><span style="font-size:14px;font-weight:600;">{{ c.name }}</span><span style="font-size:12px;color:var(--color-text-secondary);font-variant-numeric:tabular-nums;">{{ c.hex }}</span></div>
+          <span style="align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:3px 10px 3px 8px;border-radius:var(--radius-full);background:{{ c.subtle }};color:{{ c.hex }};"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><sc-for list="{{ c.icon }}" as="d"><path d="{{ d }}"></path></sc-for></svg>{{ c.example }}</span>
+          <div style="font-size:12px;line-height:1.45;color:var(--color-text-secondary);">{{ c.use }}</div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <h3 style="margin:0 0 16px;font-size:20px;font-weight:600;">Semantic tokens · dark &amp; light</h3>
+  <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);overflow-x:auto;margin-bottom:48px;">
+    <div style="min-width:720px;font-size:13px;">
+      <div style="display:grid;grid-template-columns:220px 140px 140px minmax(0,1fr);color:var(--color-text-secondary);border-bottom:1px solid var(--color-border-default);"><span style="padding:12px 16px;font-weight:500;">Token</span><span style="padding:12px 16px;font-weight:500;">Dark</span><span style="padding:12px 16px;font-weight:500;">Light</span><span style="padding:12px 16px;font-weight:500;">Use for</span></div>
+      <sc-for list="{{ tokens }}" as="tk" hint-placeholder-count="8">
+        <div style="display:grid;grid-template-columns:220px 140px 140px minmax(0,1fr);align-items:center;border-bottom:1px solid var(--color-border-default);">
+          <span style="padding:10px 16px;font-family:ui-monospace,Menlo,monospace;font-size:12px;">{{ tk.name }}</span>
+          <span style="padding:10px 16px;display:flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums;"><span style="width:20px;height:20px;border-radius:5px;background:{{ tk.dark }};border:1px solid rgba(128,128,140,.35);"></span>{{ tk.dark }}</span>
+          <span style="padding:10px 16px;display:flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums;"><span style="width:20px;height:20px;border-radius:5px;background:{{ tk.light }};border:1px solid rgba(128,128,140,.35);"></span>{{ tk.light }}</span>
+          <span style="padding:10px 16px;color:var(--color-text-secondary);">{{ tk.use }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <h3 style="margin:0 0 4px;font-size:20px;font-weight:600;">Contrast guidance</h3>
+  <p style="margin:0 0 16px;font-size:14px;color:var(--color-text-secondary);">WCAG 2.2 AA: 4.5:1 for text, 3:1 for large text and UI boundaries. Ratios below are measured.</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-bottom:64px;">
+    <sc-for list="{{ contrast }}" as="c" hint-placeholder-count="8">
+      <div style="display:grid;grid-template-columns:56px minmax(0,1fr);gap:12px;align-items:center;padding:12px;border:1px solid var(--color-border-default);border-radius:var(--radius-lg);">
+        <div style="height:56px;border-radius:var(--radius-md);background:{{ c.bg }};color:{{ c.fg }};display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:600;border:1px solid rgba(128,128,140,.3);">Aa</div>
+        <div style="min-width:0;"><div style="display:flex;gap:8px;align-items:baseline;"><span style="font-size:18px;font-weight:600;font-variant-numeric:tabular-nums;">{{ c.ratio }}</span><span style="font-size:11px;font-weight:600;padding:1px 6px;border-radius:var(--radius-sm);background:{{ c.badgeBg }};color:{{ c.badgeFg }};">{{ c.verdict }}</span></div><div style="font-size:12px;line-height:1.4;color:var(--color-text-secondary);">{{ c.label }}</div></div>
+      </div>
+    </sc-for>
+  </div>
+
+  <h3 style="margin:0 0 16px;font-size:20px;font-weight:600;">Typography · Inter</h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));gap:24px;margin-bottom:64px;">
+    <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);">
+      <sc-for list="{{ type }}" as="ty" hint-placeholder-count="10">
+        <div style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:16px;align-items:baseline;padding:14px 20px;border-bottom:1px solid var(--color-border-default);">
+          <div><div style="font-size:13px;font-weight:600;">{{ ty.name }}</div><div style="font-size:11px;color:var(--color-text-secondary);font-variant-numeric:tabular-nums;">{{ ty.spec }}</div></div>
+          <div style="font-size:{{ ty.size }};font-weight:{{ ty.weight }};line-height:{{ ty.lh }};letter-spacing:{{ ty.ls }};text-transform:{{ ty.tt }};font-variant-numeric:{{ ty.num }};color:{{ ty.color }};min-width:0;overflow-wrap:anywhere;">{{ ty.txt }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <div style="background:var(--color-bg-secondary);border:1px solid var(--color-border-default);border-radius:var(--radius-lg);padding:24px;">
+        <div style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);margin-bottom:8px;">Tabular numerals · <code>font-variant-numeric: tabular-nums</code></div>
+        <div style="display:grid;grid-template-columns:auto auto auto;justify-content:start;column-gap:32px;row-gap:6px;font-size:15px;font-variant-numeric:tabular-nums;">
+          <span style="color:var(--color-text-secondary);">BTC</span><span style="text-align:right;font-weight:600;">67,412.50</span><span style="text-align:right;color:var(--color-status-success);">▲ +2.41%</span>
+          <span style="color:var(--color-text-secondary);">ETH</span><span style="text-align:right;font-weight:600;">2,618.40</span><span style="text-align:right;color:var(--color-status-danger);">▼ −0.86%</span>
+          <span style="color:var(--color-text-secondary);">ALGO</span><span style="text-align:right;font-weight:600;">0.1841</span><span style="text-align:right;color:var(--color-status-danger);">▼ −3.10%</span>
+          <span style="color:var(--color-text-secondary);">USDC</span><span style="text-align:right;font-weight:600;">1.0000</span><span style="text-align:right;color:var(--color-status-neutral);">● 0.00%</span>
+        </div>
+      </div>
+      <div style="background:var(--color-bg-secondary);border:1px solid var(--color-border-default);border-radius:var(--radius-lg);padding:24px;display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);">Rules</div>
+        <sc-for list="{{ typeRules }}" as="r"><div style="font-size:14px;line-height:1.55;display:grid;grid-template-columns:14px minmax(0,1fr);gap:8px;"><span style="color:var(--color-brand-text);">—</span><span>{{ r }}</span></div></sc-for>
+      </div>
+    </div>
+  </div>
+
+  <h3 style="margin:0 0 16px;font-size:20px;font-weight:600;">Spacing · radius · borders · elevation · motion</h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:24px;margin-bottom:64px;">
+    <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);padding:24px;display:flex;flex-direction:column;gap:10px;">
+      <div style="font-size:15px;font-weight:600;margin-bottom:4px;">Spacing · 8 px base, 4 px for details</div>
+      <sc-for list="{{ spacing }}" as="s"><div style="display:grid;grid-template-columns:72px 1fr;gap:12px;align-items:center;font-size:12px;"><span style="font-variant-numeric:tabular-nums;color:var(--color-text-secondary);">{{ s.token }}</span><div style="display:flex;align-items:center;gap:10px;"><span style="height:12px;width:{{ s.px }};background:var(--color-brand-primary);border-radius:2px;flex:none;"></span><span style="color:var(--color-text-secondary);">{{ s.use }}</span></div></div></sc-for>
+    </div>
+    <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);padding:24px;display:flex;flex-direction:column;gap:16px;">
+      <div style="font-size:15px;font-weight:600;">Radius</div>
+      <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;">
+        <sc-for list="{{ radii }}" as="r"><div style="display:flex;flex-direction:column;gap:6px;"><div style="aspect-ratio:1;background:var(--color-bg-elevated);border:1px solid var(--color-border-strong);border-radius:{{ r.v }};"></div><div style="font-size:11px;line-height:1.35;"><strong style="font-weight:600;">{{ r.name }}</strong><br><span style="color:var(--color-text-secondary);">{{ r.use }}</span></div></div></sc-for>
+      </div>
+      <div style="font-size:15px;font-weight:600;padding-top:8px;border-top:1px solid var(--color-border-default);">Borders &amp; focus</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;">
+        <div style="padding:10px 14px;border:1px solid var(--color-border-default);border-radius:var(--radius-md);">1 px default</div>
+        <div style="padding:10px 14px;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);">1 px strong · inputs</div>
+        <div style="padding:10px 14px;border:1px solid var(--color-border-default);border-radius:var(--radius-md);outline:2px solid var(--color-border-focus);outline-offset:2px;">2 px focus · offset 2</div>
+      </div>
+    </div>
+    <div style="border:1px solid var(--color-border-default);border-radius:var(--radius-lg);padding:24px;display:flex;flex-direction:column;gap:16px;">
+      <div style="font-size:15px;font-weight:600;">Elevation</div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;">
+        <div style="height:72px;border-radius:var(--radius-lg);background:var(--color-bg-secondary);border:1px solid var(--color-border-default);box-shadow:var(--shadow-sm);padding:10px;font-size:11px;">sm · cards</div>
+        <div style="height:72px;border-radius:var(--radius-lg);background:var(--color-bg-elevated);border:1px solid var(--color-border-default);box-shadow:var(--shadow-md);padding:10px;font-size:11px;">md · menus</div>
+        <div style="height:72px;border-radius:var(--radius-lg);background:var(--color-bg-elevated);border:1px solid var(--color-border-default);box-shadow:var(--shadow-lg);padding:10px;font-size:11px;">lg · dialogs, widget</div>
+      </div>
+      <div style="font-size:12px;line-height:1.5;color:var(--color-text-secondary);">As on Biatec DEX, surfaces are frosted (14 px blur) over the ambient glow; shadows only separate floating layers.</div>
+      <div style="font-size:15px;font-weight:600;padding-top:8px;border-top:1px solid var(--color-border-default);">Motion</div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;font-size:12px;">
+        <div><div style="font-weight:600;font-variant-numeric:tabular-nums;">150 ms</div><div style="color:var(--color-text-secondary);">hover, press</div></div>
+        <div><div style="font-weight:600;font-variant-numeric:tabular-nums;">180 ms</div><div style="color:var(--color-text-secondary);">expand, toast</div></div>
+        <div><div style="font-weight:600;font-variant-numeric:tabular-nums;">220 ms</div><div style="color:var(--color-text-secondary);">panel, dialog</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--color-text-secondary);">Easing cubic-bezier(.2, 0, 0, 1). Respect prefers-reduced-motion.</div>
+    </div>
+  </div>
+
+  <h3 style="margin:0 0 4px;font-size:20px;font-weight:600;">Iconography</h3>
+  <p style="margin:0 0 16px;font-size:14px;color:var(--color-text-secondary);">Lucide geometry · 24 px grid · 2 px stroke (1.75 at 24 px) · round caps and joins · sizes 16, 20, 24 · 32 for empty states only.</p>
+  <div style="display:flex;flex-direction:column;gap:24px;">
+    <sc-for list="{{ iconGroups }}" as="g" hint-placeholder-count="4">
+      <div>
+        <div style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary);margin-bottom:10px;">{{ g.name }}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:1px;background:var(--color-border-default);border:1px solid var(--color-border-default);border-radius:var(--radius-lg);overflow:hidden;">
+          <sc-for list="{{ g.icons }}" as="i">
+            <div style="background:var(--color-bg-primary);padding:16px 12px;display:flex;flex-direction:column;gap:10px;align-items:flex-start;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{{ i.color }}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><sc-for list="{{ i.d }}" as="d"><path d="{{ d }}"></path></sc-for></svg>
+              <span style="font-size:12px;line-height:1.3;color:var(--color-text-secondary);">{{ i.name }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const C = (cx, cy, r) => `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`;
+const SHIELD = 'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z';
+const TRI = ['m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3', 'M12 9v4', 'M12 17h.01'];
+const ICONS = {
+  Navigation: [
+    ['AI assistant', ['M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z', 'M8 9h8', 'M8 13h5']],
+    ['Portfolio', ['M21.21 15.89A10 10 0 1 1 8 2.83', 'M22 12A10 10 0 0 0 12 2v10z']],
+    ['Markets', ['M3 3v18h18', 'M18 17V9', 'M13 17V5', 'M8 17v-3']],
+    ['Activity', ['M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8', 'M3 3v5h5', 'M12 7v5l4 2']],
+    ['Risk & permissions', [SHIELD, 'M12 8v4', 'M12 16h.01']],
+    ['Settings', ['M20 7h-9', 'M14 17H5', C(17, 17, 3), C(7, 7, 3)]]
+  ],
+  'AI interaction': [
+    ['Intelligence', ['M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.13-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.13a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.13 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.13a.5.5 0 0 1-.96 0z'], true],
+    ['Send', ['m5 12 7-7 7 7', 'M12 19V5']],
+    ['Attach context', ['m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48']],
+    ['Expand details', ['m7 15 5 5 5-5', 'm7 9 5-5 5 5']],
+    ['Explain reasoning', ['M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5', 'M9 18h6', 'M10 22h4']],
+    ['Copy', ['M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z', 'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2']],
+    ['Retry', ['M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8', 'M3 3v5h5']]
+  ],
+  'Financial activity': [
+    ['Trending up', ['M22 7l-8.5 8.5-5-5L2 17', 'M16 7h6v6']],
+    ['Trending down', ['M22 17l-8.5-8.5-5 5L2 7', 'M16 17h6v-6']],
+    ['Candlestick', ['M9 5v4', 'M7 9h4v6H7z', 'M9 15v2', 'M17 3v2', 'M15 5h4v8h-4z', 'M17 13v3', 'M3 3v18h18']],
+    ['Wallet', ['M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1', 'M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4']],
+    ['Exchange link', ['M8 3 4 7l4 4', 'M4 7h16', 'm16 21 4-4-4-4', 'M20 17H4']],
+    ['Order', ['M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z', 'M14 2v5h5', 'M16 13H8', 'M16 17H8', 'M10 9H8']],
+    ['Transactions', ['M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z', 'M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8', 'M12 17.5v-11']],
+    ['Balance', ['M12 3v18', 'M7 21h10', 'M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2', 'm16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z', 'm2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z']],
+    ['Fee', ['M19 5 5 19', C(6.5, 6.5, 2.5), C(17.5, 17.5, 2.5)]],
+    ['Risk level', ['m12 14 4-4', 'M3.34 19a10 10 0 1 1 17.32 0']]
+  ],
+  'Security & control': [
+    ['Shield check', [SHIELD, 'm9 12 2 2 4-4']],
+    ['Lock', ['M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z', 'M7 11V7a5 5 0 0 1 10 0v4']],
+    ['Key', ['m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4', 'm21 2-9.6 9.6', C(7.5, 15.5, 5.5)]],
+    ['Permission', ['M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z', 'm9 12 2 2 4-4']],
+    ['Visibility', ['M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0', C(12, 12, 3)]],
+    ['Pause agent', [C(12, 12, 10), 'M10 15V9', 'M14 15V9']],
+    ['Revoke access', [C(12, 12, 10), 'm4.9 4.9 14.2 14.2']],
+    ['Warning', TRI],
+    ['Confirmation', [C(12, 12, 10), 'm9 12 2 2 4-4']]
+  ]
+};
+class Component extends DCLogic {
+  renderVals() {
+    const ic = n => { for (const g of Object.values(ICONS)) { const f = g.find(x => x[0] === n); if (f) return f[1]; } return []; };
+    return {
+      core: [
+        { name:'Night', hex:'#070B14', use:'App background' }, { name:'Card', hex:'#111827', use:'Frosted cards, navigation' },
+        { name:'Panel', hex:'#161E2E', use:'Elevated surface, menus' }, { name:'Interactive', hex:'#1E293B', use:'Hover and pressed fills' },
+        { name:'Text', hex:'#E6EDF6', use:'Primary text' }, { name:'Muted', hex:'#9AA7BA', use:'Secondary text, metadata' },
+        { name:'Biatec Green', hex:'#2DD4A7', use:'Brand, primary action, focus' }, { name:'Green Strong', hex:'#14B88A', use:'Pressed, logo ring' },
+        { name:'Deep Teal', hex:'#0F3B53', use:'Logo pins, wordmark on light' }, { name:'Sky', hex:'#38BDF8', use:'Info, secondary trade action' },
+        { name:'Ambient Teal', hex:'#0A3247', use:'Background glow' }, { name:'Ambient Green', hex:'#0D5C46', use:'Background glow' }
+      ],
+      semantic: [
+        { name:'Success', hex:'var(--color-status-success)', subtle:'var(--color-status-success-subtle)', example:'Completed', icon:[C(12,12,10),'m9 12 2 2 4-4'], use:'Completed actions, positive past movement.' },
+        { name:'Warning', hex:'var(--color-status-warning)', subtle:'var(--color-status-warning-subtle)', example:'Awaiting approval', icon:[C(12,12,10),'M12 7v5l3 2'], use:'Needs attention, approaching a limit.' },
+        { name:'Danger', hex:'var(--color-status-danger)', subtle:'var(--color-status-danger-subtle)', example:'High risk', icon:TRI, use:'Negative movement, destructive actions, real risk.' },
+        { name:'Information', hex:'var(--color-status-info)', subtle:'var(--color-status-info-subtle)', example:'Demo data', icon:[C(12,12,10),'M12 16v-4','M12 8h.01'], use:'Neutral facts, data provenance, tips.' },
+        { name:'Neutral', hex:'var(--color-status-neutral)', subtle:'var(--color-bg-interactive)', example:'Draft', icon:[C(12,12,10)], use:'Inactive, draft, unchanged.' }
+      ],
+      tokens: [
+        ['color.bg.primary','#070B14','#EEF2F6','App background (+ ambient glow)'], ['color.bg.secondary','#111827','#FFFFFF','Cards, sidebar, chat panel'],
+        ['color.bg.elevated','#161E2E','#FFFFFF','Menus, dialogs, user messages'], ['color.bg.interactive','#1E293B','#E2E8F0','Hover and pressed fills'],
+        ['color.text.primary','#E6EDF6','#0F172A','Body, headings, values'], ['color.text.secondary','#9AA7BA','#475569','Metadata, helper text'],
+        ['color.text.disabled','#6B7A90','#94A3B8','Disabled labels (exempt from AA)'], ['color.border.default','rgba(148,163,184,.14)','rgba(15,23,42,.10)','Dividers, card outlines'],
+        ['color.border.focus','#2DD4A7','#0B8A60','Keyboard focus ring'], ['color.brand.primary','#2DD4A7','#0EA371','Primary button, logo'],
+        ['color.brand.hover','#4BE0B8','#0B8A60','Primary hover'], ['color.brand.subtle','rgba(45,212,167,.14)','rgba(14,163,113,.12)','Tints, selected nav'],
+        ['color.brand.text','#2DD4A7','#087453','Accent text and links'], ['color.brand.on','#04221A','#04221A','Label on brand fill'],
+        ['color.status.success','#34D399','#0F7A45','Completed, positive past move'], ['color.status.warning','#FBBF24','#946200','Attention, awaiting approval'],
+        ['color.status.danger','#FB7185','#E11D48','Negative, destructive, risk'], ['color.status.info','#38BDF8','#0369A1','Information, provenance']
+      ].map(([name, dark, light, use]) => ({ name, dark, light, use })),
+      contrast: [
+        ['#070B14','#E6EDF6','16.6:1','AAA','Text on Night · body'],
+        ['#070B14','#9AA7BA','8.0:1','AAA','Muted on Night · metadata'],
+        ['#070B14','#2DD4A7','10.4:1','AAA','Green on Night · accent text'],
+        ['#2DD4A7','#04221A','9.6:1','AAA','Dark label on Biatec Green · buttons'],
+        ['#2DD4A7','#FFFFFF','1.9:1','Avoid','White on Biatec Green · fails'],
+        ['#070B14','#FB7185','7.3:1','AA','Danger on Night'],
+        ['#070B14','#38BDF8','9.2:1','AAA','Sky on Night · info'],
+        ['#FFFFFF','#087453','5.8:1','AA','Light theme · green text'],
+        ['#0EA371','#04221A','4.6:1','AA','Light theme · label on green'],
+        ['#FFFFFF','#475569','7.6:1','AAA','Light theme · secondary text']
+      ].map(([bg, fg, ratio, verdict, label]) => ({ bg, fg, ratio, verdict, label,
+        badgeBg: verdict === 'Avoid' ? 'var(--color-status-danger-subtle)' : verdict === 'Decor' ? 'var(--color-bg-interactive)' : 'var(--color-status-success-subtle)',
+        badgeFg: verdict === 'Avoid' ? 'var(--color-status-danger)' : verdict === 'Decor' ? 'var(--color-text-secondary)' : 'var(--color-status-success)' })),
+      type: [
+        ['Display','40/48 · 600 · −2%','40px',600,'48px','-0.02em','none','normal','Your trading companion.'],
+        ['H1','30/38 · 600 · −1.5%','30px',600,'38px','-0.015em','none','normal','Bitcoin · 24h overview'],
+        ['H2','23/30 · 600 · −1%','23px',600,'30px','-0.01em','none','normal','Trade proposal'],
+        ['H3','19/26 · 600','19px',600,'26px','-0.005em','none','normal','Why this recommendation?'],
+        ['Body large','16/26 · 400','16px',400,'26px','0','none','Bitcoin is up 2.41% over 24 hours, a steady move rather than a spike.'],
+        ['Body','14/22 · 400','14px',400,'22px','0','none','Every trade needs your explicit approval before it runs.'],
+        ['Supporting','13/18 · 400','13px',400,'18px','0','none','Demo data · snapshot 19 Oct 2026, 14:32 UTC'],
+        ['Data label','12/16 · 500 · +4%','12px',500,'16px','0.04em','uppercase','Est. fees · 24h volume'],
+        ['Value XL','32/36 · 600 · tnum','32px',600,'36px','-0.02em','none','tabular-nums','$11,700.00'],
+        ['Value M','20/26 · 600 · tnum','20px',600,'26px','-0.01em','none','tabular-nums','67,412.50 USDC']
+      ].map(([name, spec, size, weight, lh, ls, tt, num, sample]) => ({ name, spec, size, weight, lh, ls, tt, num, txt: sample, color: name === 'Supporting' || name === 'Data label' ? 'var(--color-text-secondary)' : 'var(--color-text-primary)' })),
+      typeRules: ['Semibold (600) for headings and values; Regular (400) for reading; Medium (500) for labels and buttons.', 'Tighten tracking only above 19 px. Never track body text.', 'All prices, balances, percentages and times use tabular figures.', 'Risk disclosures never go below 13 px or below AA contrast.', 'Sentence case everywhere. Uppercase only for 12 px data labels.'],
+      spacing: [['4','4px','Icon to label, micro'], ['8','8px','Related elements'], ['12','12px','Compact component padding'], ['16','16px','Standard internal padding'], ['24','24px','Card padding, section gaps'], ['32','32px','Major separation'], ['48','48px','Page spacing'], ['64','64px','Page spacing, large']].map(([t, px, use]) => ({ token:'space.' + t, px, use })),
+      radii: [{ name:'6', v:'6px', use:'Tags, chips' }, { name:'8', v:'8px', use:'Buttons, inputs' }, { name:'12', v:'12px', use:'Cards' }, { name:'16', v:'16px', use:'Panels, widget' }, { name:'Full', v:'999px', use:'Badges, avatars' }],
+      iconGroups: Object.keys(ICONS).map(name => ({ name, icons: ICONS[name].map(([n, d, brand]) => ({ name:n, d, color: brand ? 'var(--color-brand-primary)' : 'var(--color-text-primary)' })) }))
+    };
+  }
+}
+</script>
+</body>
+</html>
