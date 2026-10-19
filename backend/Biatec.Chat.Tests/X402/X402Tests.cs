@@ -286,6 +286,39 @@ public sealed class X402PayServiceTests
     }
 
     [Fact]
+    public async Task X402_pay_reports_resource_failed_when_the_paid_body_is_oversized_after_settle()
+    {
+        var (svc, _, _, facilitator) = Make(resource: r => r.Headers.Contains("X-PAYMENT")
+            ? Json(HttpStatusCode.OK, new string('x', 200_000)) : Json(HttpStatusCode.PaymentRequired, X402Fixtures.Requirements()));
+        var prep = await svc.PrepareAsync("testnet", X402Fixtures.From, Url, default);
+        var ex = await Assert.ThrowsAsync<X402Exception>(() => svc.PayAsync(prep, ["c2lnbmVk"], default));
+        Assert.Equal("resource_failed", ex.Code);
+        Assert.Single(facilitator.Settled);
+    }
+
+    [Fact]
+    public async Task X402_pay_reports_resource_failed_when_the_paid_fetch_hits_a_policy_error()
+    {
+        var (svc, _, _, facilitator) = Make(resource: r => r.Headers.Contains("X-PAYMENT")
+            ? throw new HttpRequestException("x", new X402PolicyException("host_not_public", "no")) : Json(HttpStatusCode.PaymentRequired, X402Fixtures.Requirements()));
+        var prep = await svc.PrepareAsync("testnet", X402Fixtures.From, Url, default);
+        var ex = await Assert.ThrowsAsync<X402Exception>(() => svc.PayAsync(prep, ["c2lnbmVk"], default));
+        Assert.Equal("resource_failed", ex.Code);
+        Assert.Single(facilitator.Settled);
+    }
+
+    [Fact]
+    public async Task X402_facilitator_oversized_response_is_not_a_policy_error()
+    {
+        var stub = new StubResource(_ => Json(HttpStatusCode.OK, new string('x', 200_000)));
+        var options = new X402Options { Enabled = true, FacilitatorUrl = "https://fac.example.com", AllowedHosts = ["shop.example.com"] };
+        var fac = new HttpX402Facilitator(new HttpClient(stub), options);
+        var req = X402PayService.RequirementsFor("testnet", Url, X402Fixtures.From, 10458941UL, 1);
+        var ex = await Assert.ThrowsAsync<X402Exception>(() => fac.SettleAsync(new X402PaymentPayload(["c2lnbmVk"]), req, default));
+        Assert.Equal("facilitator_response_too_large", ex.Code);
+    }
+
+    [Fact]
     public void X402_registration_binds_options_and_uses_the_mock_facilitator_only_when_asked()
     {
         var cfg = new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>

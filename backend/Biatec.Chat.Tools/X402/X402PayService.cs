@@ -155,7 +155,14 @@ public sealed class X402PayService(
         }, Json));
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
         request.Headers.TryAddWithoutValidation("X-PAYMENT", header);
-        var (status, body) = await SendAsync(request, ct);
+        HttpStatusCode status;
+        string body;
+        try { (status, body) = await SendAsync(request, ct); }
+        catch (Exception e) when (e is X402PolicyException or X402Exception or HttpRequestException)
+        {
+            // The facilitator has settled: whatever goes wrong now, the money moved and must never read as "nothing was paid".
+            throw new X402Exception("resource_failed", "The payment was settled but the resource could not be delivered.");
+        }
         if (status != HttpStatusCode.OK) throw new X402Exception("resource_failed", "The paid payment was settled but the resource did not return content.");
         return new X402PayResult(settled.Transaction!, body);
     }

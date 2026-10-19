@@ -62,7 +62,13 @@ public sealed class HttpX402Facilitator(HttpClient http, X402Options options) : 
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         if (!response.IsSuccessStatusCode) return default;
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
-        var bytes = await X402Http.ReadBoundedAsync(stream, options.MaxResponseBytes, ct);
+        byte[] bytes;
+        try { bytes = await X402Http.ReadBoundedAsync(stream, options.MaxResponseBytes, ct); }
+        catch (X402PolicyException)
+        {
+            // The facilitator may already have acted: this is an unknown outcome, never "nothing was paid".
+            throw new X402Exception("facilitator_response_too_large", "The facilitator response was too large to read.");
+        }
         try { return JsonSerializer.Deserialize<T>(bytes, Json); }
         catch (JsonException) { return default; }
     }

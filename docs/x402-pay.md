@@ -34,3 +34,12 @@ every resolved address public (re-checked at connect time against DNS rebinding)
 response bodies capped at 64 KB. Seller text is untrusted data.
 
 Only USDC is supported (mainnet 31566704, testnet 10458941). Seller side is out of scope.
+
+## Running the testnet demo
+
+1. `docker compose up -d` (Postgres, Redis).
+2. Set `X402__Enabled=true`, `X402__AllowedHosts__0=<seller host>`, and either `X402__FacilitatorUrl=<algo-safe-x402-facilitator URL>` or, for a demo that moves no funds, `X402__UseMockFacilitator=true`.
+3. Point the seller at a resource that answers `402` with an Algorand `exact` option on `algorand-testnet` (USDC asset 10458941) and returns content when `X-PAYMENT` is present.
+4. Ask the assistant to pay for that URL on testnet, review the preview, confirm, and approve in the authenticator.
+
+After settlement, a failure to deliver the resource (oversized body, DNS rebinding) is reported as settled with no content, never as "nothing was paid". The `ConfirmService` x402 settlement tests need Postgres and run in CI.
