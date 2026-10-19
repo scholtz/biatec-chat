@@ -3,6 +3,7 @@ using Biatec.Chat.Api.Auth.Elevation;
 using Biatec.Chat.Api.Config;
 using Biatec.Chat.Api.Contracts;
 using Biatec.Chat.Api.Data;
+using Biatec.Chat.Api.Evidence.Anchoring;
 using Biatec.Chat.Api.Evidence.Jwks;
 using Biatec.Chat.Api.Health;
 using Biatec.Chat.Api.Sessions;
@@ -21,6 +22,7 @@ builder.Services.AddTenancy();
 builder.Services.AddSessions();
 builder.Services.AddScopeElevation();
 builder.Services.AddEvidence(builder.Configuration);
+builder.Services.AddEvidenceAnchoring(builder.Configuration);
 
 var app = builder.Build();
 await app.MigrateDevelopmentDatabaseAsync();
