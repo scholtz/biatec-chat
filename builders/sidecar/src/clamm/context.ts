@@ -13,16 +13,18 @@ export interface ClammContext {
   params: SuggestedParams;
 }
 
+/** The chain each network name must be served by (genesis id); a network without a Biatec deployment has no entry. */
+const GENESIS: Record<string, string> = { mainnet: "mainnet-v1.0", testnet: "testnet-v1.0", voimain: "voimain-v1.0" };
+
 export async function clammContext(ctx: BuildContext): Promise<ClammContext> {
+  const expected = GENESIS[ctx.network];
+  if (!expected) throw new Error(`no Biatec CLAMM deployment is known for network ${ctx.network}`);
   const algod = new algosdk.Algodv2("", ctx.algodUrl, "");
   const params = await algod.getTransactionParams().do();
   // The app ids follow from the chain itself (genesis id), and the chain must be the one the caller named, so a
   // misconfigured algod URL can't build a group for another chain than the one the user is shown.
-  const genesisId = params.genesisID ?? "";
-  if (genesisId.split("-")[0] !== ctx.network.replaceAll("-", "")) {
-    throw new Error(`algod for ${ctx.network} serves ${genesisId || "an unknown chain"}`);
-  }
-  const apps = clamm.getConfig(genesisId);
+  if (params.genesisID !== expected) throw new Error(`algod for ${ctx.network} serves ${params.genesisID || "an unknown chain"}`);
+  const apps = clamm.getConfig(expected);
   return { algod, algorand: AlgorandClient.fromClients({ algod }), apps, params };
 }
 

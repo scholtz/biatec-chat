@@ -50,7 +50,11 @@ async function finish(prep: Prepared, kind: string, txs: Transaction[], action: 
   if (!simulation.ok) throw new Error(`the group fails in simulation: ${simulation.failureMessage}`);
   return {
     transactions: txs.map((t) => Buffer.from(algosdk.encodeUnsignedTransaction(t)).toString("base64")),
-    facts: { kind, sender: prep.sender, pool, ...action, txIds: txs.map((t) => t.txID()), simulation },
+    facts: {
+      kind, sender: prep.sender, pool, ...action, txIds: txs.map((t) => t.txID()), simulation,
+      // The group is valid only in these rounds; the backend rebuilds it if signing would come later.
+      firstValid: prep.c.params.firstValid.toString(), lastValid: prep.c.params.lastValid.toString(),
+    },
   };
 }
 
@@ -62,6 +66,15 @@ async function holdsAsset(c: ClammContext, account: string, assetId: bigint): Pr
   } catch (e) {
     if ((e as { response?: { status?: number } }).response?.status === 404) return false;
     throw e;
+  }
+}
+
+/** The sender must be able to receive what the pool pays out; a clear refusal beats a logic error from simulation. */
+async function requireOptedIn(prep: Prepared, assets: bigint[]): Promise<void> {
+  for (const asset of assets) {
+    if (asset !== 0n && !(await holdsAsset(prep.c, prep.sender, asset))) {
+      throw new Error(`${prep.sender} is not opted in to asset ${asset}`);
+    }
   }
 }
 
@@ -105,6 +118,7 @@ export async function removeLiquidity(params: unknown, ctx: BuildContext): Promi
   const p = asParams(params);
   const lpAmount = uint64(p, "lpAmount", { positive: true });
   const prep = await prepare(p, ctx);
+  await requireOptedIn(prep, [prep.pool.assetA, prep.pool.assetB]);
   const txs = await clamm.clammRemoveLiquidityTxs({ ...common(prep), assetLp: prep.pool.lpTokenId, lpToSend: lpAmount });
   return finish(prep, "clamm.liquidity.remove", txs, { lpAmount: lpAmount.toString() });
 }
@@ -121,6 +135,7 @@ export async function swapOnPool(params: unknown, ctx: BuildContext): Promise<Bu
     throw new Error(`fromAsset ${fromAsset} is not traded in pool ${prep.pool.appId}`);
   }
   const toAsset = fromAsset === prep.pool.assetA ? prep.pool.assetB : prep.pool.assetA;
+  await requireOptedIn(prep, [toAsset]);
   const txs = await clamm.clammSwapTxs({
     ...common(prep),
     appBiatecPoolProvider: prep.c.apps.poolProviderAppId,
