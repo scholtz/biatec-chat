@@ -115,7 +115,10 @@ public sealed class CapabilityRegistry
         {
             ["network"] = Network(),
             ["from"] = Address(),
+            // 0 = the user has not named a pool: pass assetAId and assetBId and the tool lists the pair's pools to ask about.
             ["poolAppId"] = Id(),
+            ["assetAId"] = Id(),
+            ["assetBId"] = Id(),
             ["amountA"] = AmountPositive(),
             ["amountB"] = AmountPositive(),
         }, "network", "from", "poolAppId", "amountA", "amountB");
@@ -124,6 +127,8 @@ public sealed class CapabilityRegistry
             ["network"] = Network(),
             ["from"] = Address(),
             ["poolAppId"] = Id(),
+            ["assetAId"] = Id(),
+            ["assetBId"] = Id(),
             ["percent"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 100 },
         }, "network", "from", "poolAppId", "percent");
         var proposalInput = Obj(new JsonObject
@@ -138,6 +143,9 @@ public sealed class CapabilityRegistry
             string desc, JsonObject? schema, CapabilityFlag flag = CapabilityFlag.None) =>
             new(name, 1, tier, build, sign, funds, v, desc, schema?.DeepClone().AsObject(), flag);
 
+        // Evidence redaction: no shipped capability sets OutputSchema or marks a field "sensitive". Tool results are public
+        // on-chain data (the user's own addresses and balances, previews) or text, never secrets or tokens; the generic
+        // pattern redactor still runs. If a tool ever returns private data, set OutputSchema with "sensitive": true there.
         const SessionTier A = SessionTier.Anonymous;
         const SessionTier U = SessionTier.Authenticated;
         return new CapabilityRegistry(
@@ -153,8 +161,8 @@ public sealed class CapabilityRegistry
                 Obj(new JsonObject { ["network"] = Network(), ["address"] = Address() }, "network", "address")),
             Tool("wallet.transfer", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Build and preview a transfer.", transferInput),
             Tool("dex.swap", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Quote and build a swap.", swapInput),
-            Tool("dex.addLiquidity", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Build an add-liquidity group.", liquidityInput),
-            Tool("dex.removeLiquidity", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Build a remove-liquidity group.", removeLiquidityInput),
+            Tool("dex.addLiquidity", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Add liquidity to a Biatec DEX pool (amountA/amountB are in base units of the pool's asset A/B). Set poolAppId 0 with assetAId and assetBId when the user has not named a pool: the tool lists the pair's pools and you must ask which one.", liquidityInput),
+            Tool("dex.removeLiquidity", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Remove liquidity (percent of the user's LP tokens) from a Biatec DEX pool. Set poolAppId 0 with assetAId and assetBId when the user has not named a pool: the tool lists the pair's pools and you must ask which one.", removeLiquidityInput),
             Tool("safe.create", U, Open, Sign, false, ValuationBasis.ZeroValued, "Deploy a safe.",
                 Obj(new JsonObject { ["network"] = Network(), ["from"] = Address() }, "network", "from")),
             Tool("safe.propose", U, Open, Sign, false, ValuationBasis.ZeroValued, "Create a safe proposal.",

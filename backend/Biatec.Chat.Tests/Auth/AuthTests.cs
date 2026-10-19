@@ -92,6 +92,7 @@ public sealed class AuthTests : IAsyncLifetime
                 ["Postgres:ConnectionString"] = Cs,
                 ["Algod:Networks:testnet:Url"] = "https://algod.example.test",
                 ["Kms:KeyId"] = "alias/test",
+                ["Evidence:AllowEphemeralKeys"] = "true",
                 ["Secrets:biatec-chat:oidc-client-secret"] = MockOidc.ClientSecret,
             }));
             b.ConfigureServices(s =>
@@ -200,6 +201,14 @@ public sealed class AuthTests : IAsyncLifetime
             var s = await db.ChatSessions.SingleAsync(x => x.Id == newId);
             Assert.Equal(Biatec.Chat.Core.Data.SessionTier.Authenticated, s.Tier);
             Assert.Equal("user-123", s.OidcSub);
+
+            // The tier change is evidence (T-035): from/to, no addresses.
+            var tier = await db.EvidenceEntries.AsNoTracking().Where(e => e.ConversationId == s.ConversationId && e.Kind == "tier_changed").SingleAsync();
+            var payload = System.Text.Json.Nodes.JsonNode.Parse(tier.Payload!)!;
+            Assert.Equal("Anonymous", payload["from"]!.GetValue<string>());
+            Assert.Equal("Authenticated", payload["to"]!.GetValue<string>());
+            Assert.Equal("sign_in", payload["reason"]!.GetValue<string>());
+            Assert.DoesNotMatch(new System.Text.RegularExpressions.Regex(@"(\d{1,3}\.){3}\d{1,3}"), tier.Payload!);
         }
         Assert.Equal(PopupAuthStatus.Completed, await PopupStatusAsync(reqId));
 

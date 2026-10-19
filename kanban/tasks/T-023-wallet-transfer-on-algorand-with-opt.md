@@ -1,7 +1,7 @@
 ---
 id: T-023
 title: wallet.transfer on Algorand with opt-in steps
-status: in-progress
+status: done
 priority: P0
 epic: "Wallet tools"
 blocked_by: [T-020, T-022]
@@ -14,7 +14,7 @@ owner: "session-20261019-agent"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#capabilities-and-intents"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-023 · wallet.transfer on Algorand with opt-in steps
@@ -51,9 +51,12 @@ dotnet test --filter Transfer; testnet manual run with stage identity
 
 ## Review
 
+- 2026-10-20 01:08 · approve · PR #121 merged into main @ 3ce20fc (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-020, T-022
 - 2026-10-19 22:32 · scholtz · taken · status stays backlog
 - 2026-10-19 22:32 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 01:08 · user · in-progress → done · PR #121 merged into main @ 3ce20fc (synced by kanban-sync)

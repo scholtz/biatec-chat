@@ -4,17 +4,17 @@ title: wallet.transfer on Bitcoin (PSBT intent hash)
 status: backlog
 priority: P1
 epic: "Wallet tools"
-blocked_by: [T-020, T-022]
+blocked_by: [T-020, T-022, T-023]
 area: ["backend/Biatec.Chat.Tools/Wallet/Bitcoin/**"]
 parallel: no
-conflicts_with: [T-025, T-035, T-049]
+conflicts_with: [T-025, T-035, T-049, T-061]
 issue: "#25"
 branch: ""
 owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#action-preview"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-024 · wallet.transfer on Bitcoin (PSBT intent hash)
@@ -34,7 +34,7 @@ Transfers between the user's Bitcoin addresses.
 
 ## Parallel work
 
-Parallel work possible: **no**. Don't run it at the same time as T-025, T-035, T-049: they change the same files, and running them together causes merge conflicts or broken behaviour.
+Parallel work possible: **no**. Don't run it at the same time as T-025, T-035, T-049, T-061: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
@@ -57,3 +57,4 @@ dotnet test --filter Bitcoin
 - 2026-10-19 18:00 · coordinator · review · added T-020: transfers between own Bitcoin addresses need address listing (same as T-023)
 - 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-020, T-022
 - 2026-10-19 23:24 · LukassSoukup · backlog · conflicts_with revised: dropped T-057: OTel spans come from HttpClient/AWS SDK instrumentation at registration
+- 2026-10-20 01:09 · LukassSoukup · backlog · parallel analysis: blocked_by + T-023 (Bitcoin extends T-023's wallet.transfer executor in Api/Wallet/Transfer); added T-061 (ConfirmService)

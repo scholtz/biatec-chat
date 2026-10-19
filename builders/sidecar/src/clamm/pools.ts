@@ -74,6 +74,16 @@ export function selectPools(all: FullConfig[], assetA: bigint, assetB: bigint, a
   return { eligible, excluded };
 }
 
+/** The registered pool with this app id (empty when it isn't one), split by the account's verification class like {@link selectPools}. */
+export function selectPoolById(all: FullConfig[], appId: bigint, accountClass?: number) {
+  const found = all.filter((x) => x.appId === appId);
+  const eligible = found.filter((x) => accountClass === undefined || Number(x.verificationClass) <= accountClass);
+  const excluded = found
+    .filter((x) => !eligible.includes(x))
+    .map((x) => ({ appId: x.appId.toString(), verificationClass: Number(x.verificationClass), reason: "verification_class" }));
+  return { eligible, excluded };
+}
+
 /**
  * `clamm.pools.list`: the pools for an asset pair (either order), with fee tier, price range and liquidity. With an
  * `account`, pools whose minimum verification class the account doesn't meet are left out and listed under
@@ -81,13 +91,16 @@ export function selectPools(all: FullConfig[], assetA: bigint, assetB: bigint, a
  */
 export async function listPools(params: unknown, ctx: BuildContext) {
   const p = asParams(params);
-  const assetA = uint64(p, "assetA");
-  const assetB = uint64(p, "assetB");
   const account = optionalAddress(p, "account");
   const c = await clammContext(ctx);
 
   const accountClass = account ? (await identityOf(c, account)).verificationClass : undefined;
-  const { eligible, excluded } = selectPools(await registeredPools(c), assetA, assetB, accountClass);
+  const all = await registeredPools(c);
+  // With `poolAppId` the one registered pool is returned (asset ids not needed); otherwise the pair's pools.
+  const { eligible, excluded } =
+    p.poolAppId !== undefined
+      ? selectPoolById(all, uint64(p, "poolAppId", { positive: true }), accountClass)
+      : selectPools(all, uint64(p, "assetA"), uint64(p, "assetB"), accountClass);
 
   const pools = await Promise.all(eligible.map((x) => poolFacts(c, x)));
   pools.sort((a, b) => Number(BigInt(a.fee) - BigInt(b.fee)) || Number(BigInt(a.priceMin) - BigInt(b.priceMin)));

@@ -7,14 +7,14 @@ epic: "Evidence"
 blocked_by: [T-035, T-036]
 area: ["backend/Biatec.Chat.Api/Retention/**"]
 parallel: no
-conflicts_with: [T-032, T-038]
+conflicts_with: [T-032]
 issue: "#61"
 branch: ""
 owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#session-recording-and-evidence"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-060 · Retention jobs and user erasure
@@ -41,7 +41,7 @@ Configurable retention and a user-requested erasure that keep every bundle verif
 
 ## Parallel work
 
-Parallel work possible: **no**. Don't run it at the same time as T-032, T-038: they change the same files, and running them together causes merge conflicts or broken behaviour.
+Parallel work possible: **no**. Don't run it at the same time as T-032: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
@@ -61,3 +61,4 @@ dotnet test --filter Retention
 ## Activity log
 
 - 2026-10-19 18:00 · coordinator · (new) → blocked · created in task review: retention and erasure had no task
+- 2026-10-20 01:09 · LukassSoukup · blocked · parallel analysis: dropped T-038 (done)

@@ -7,7 +7,7 @@ epic: "Widget UI rework"
 blocked_by: [T-041, T-062]
 area: ["packages/chat-widget/src/components/chat/**"]
 parallel: no
-conflicts_with: [T-063]
+conflicts_with: [T-042, T-063]
 issue: "#105"
 branch: ""
 owner: ""
@@ -41,7 +41,7 @@ An empty session, a streamed conversation, tool progress and the composer look a
 
 ## Parallel work
 
-Parallel work possible: **no**. Don't run it at the same time as T-063: they change the same files, and running them together causes merge conflicts or broken behaviour.
+Parallel work possible: **no**. Don't run it at the same time as T-042, T-063: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
@@ -72,3 +72,4 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-19 22:40 · coordinator · (new) → blocked · created from the Biatec AI design handoff (docs/design/) for the widget UI rework
 - 2026-10-19 22:40 · coordinator · blocked · conflicts_with T-063: ask() goes through the chat composable in components/chat/**
 - 2026-10-20 00:55 · kanban-board · blocked → backlog · blockers done: T-041, T-062
+- 2026-10-20 01:09 · LukassSoukup · backlog · parallel analysis: added T-042 (ChatView.vue, useChat.ts)

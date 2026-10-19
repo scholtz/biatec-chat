@@ -9,6 +9,8 @@ using Biatec.Chat.Api.Model;
 using Biatec.Chat.Api.Model.Guardrails;
 using Biatec.Chat.Core.Capabilities;
 using Biatec.Chat.Core.Data;
+using Biatec.Chat.Core.Evidence;
+using Biatec.Chat.Api.Evidence.Recording;
 using Microsoft.EntityFrameworkCore;
 using DataMessage = Biatec.Chat.Core.Data.Message;
 using DataTier = Biatec.Chat.Core.Data.SessionTier;
@@ -42,7 +44,8 @@ public sealed class ConversationOrchestrator(
     IToolResultGuard toolGuard,
     ChatDbContext db,
     TimeProvider clock,
-    ILogger<ConversationOrchestrator> log)
+    ILogger<ConversationOrchestrator> log,
+    IEvidenceRecorder? evidence = null)
 {
     public const int MaxToolRounds = 8;
     public const int MaxHistoryRows = 60;
@@ -69,7 +72,9 @@ public sealed class ConversationOrchestrator(
         var messages = await LoadHistoryAsync(turn.ConversationId, ct);
         var nextSeq = await NextSeqAsync(turn.ConversationId, ct);
 
-        await StoreAsync(turn.ConversationId, nextSeq++, MessageRole.User, redactor.Redact(MessageRole.User, null, turn.Message), null, null, null, null, ct);
+        var userText = redactor.Redact(MessageRole.User, null, turn.Message);
+        await StoreAsync(turn.ConversationId, nextSeq++, MessageRole.User, userText, null, null, null, null, ct);
+        await RecordAsync(turn.ConversationId, EvidenceKinds.UserMessage, EvidencePayloads.Message(EvidenceKinds.UserMessage, userText), CancellationToken.None);
         AddMerged(messages, UserMessage(turn.Message, turn.Context));
 
         for (var round = 0; round < MaxToolRounds; round++)
@@ -123,15 +128,26 @@ public sealed class ConversationOrchestrator(
             if (failure is not null)
             {
                 if (text.Length > 0)
-                    await StoreAsync(turn.ConversationId, nextSeq++, MessageRole.Assistant, redactor.Redact(MessageRole.Assistant, null, text.ToString()), null, null, null, null, ct);
+                {
+                    var partial = redactor.Redact(MessageRole.Assistant, null, text.ToString());
+                    await StoreAsync(turn.ConversationId, nextSeq++, MessageRole.Assistant, partial, null, null, null, null, ct);
+                    await RecordAsync(turn.ConversationId, EvidenceKinds.AssistantMessage, EvidencePayloads.Message(EvidenceKinds.AssistantMessage, partial), CancellationToken.None);
+                }
                 yield return new ErrorEvent(failure, "The assistant could not answer right now. Please try again.", true);
                 yield break;
             }
 
             var storedCalls = toolUses.Select(t => new StoredToolCall(t.ToolUseId, ResolveName(t.Name, wireToCapability), t.InputJson)).ToList();
-            await StoreAsync(turn.ConversationId, nextSeq++, MessageRole.Assistant, redactor.Redact(MessageRole.Assistant, null, text.ToString()),
-                storedCalls.Count == 0 ? null : JsonSerializer.Serialize(storedCalls.Select(c => c with { Input = redactor.Redact(MessageRole.Assistant, c.Name, c.Input) }), Json),
+            // Tool arguments are redacted by the capability's input schema before they are stored or recorded.
+            var storedForDb = storedCalls.Select(c => c with { Input = redactor.Redact(MessageRole.Assistant, c.Name, RedactBySchema(c.Name, c.Input, input: true)) }).ToList();
+            var assistantText = redactor.Redact(MessageRole.Assistant, null, text.ToString());
+            await StoreAsync(turn.ConversationId, nextSeq++, MessageRole.Assistant, assistantText,
+                storedCalls.Count == 0 ? null : JsonSerializer.Serialize(storedForDb, Json),
                 null, usage?.ModelId, usage is null ? null : JsonSerializer.Serialize(usage, Json), ct);
+            await RecordAsync(turn.ConversationId, EvidenceKinds.AssistantMessage,
+                EvidencePayloads.Message(EvidenceKinds.AssistantMessage, assistantText, usage?.ModelId, storedCalls.Count), CancellationToken.None);
+            foreach (var c in storedForDb)
+                await RecordAsync(turn.ConversationId, EvidenceKinds.ToolCall, EvidencePayloads.ToolCall(c.Id, c.Name, c.Input), CancellationToken.None);
 
             if (toolUses.Count == 0) yield break;
 
@@ -180,7 +196,10 @@ public sealed class ConversationOrchestrator(
                 foreach (var ev in result.Events ?? []) yield return ev;
                 yield return new ToolStatusEvent(call.ToolUseId, label, result.IsError ? ToolRunState.Failed : ToolRunState.Succeeded);
 
-                results.Add(new StoredToolResult(call.ToolUseId, capName, redactor.Redact(MessageRole.Tool, capName, result.Content), result.IsError));
+                // Anything the tool's output schema marks sensitive is removed before it is stored or recorded.
+                var storedContent = redactor.Redact(MessageRole.Tool, capName, RedactBySchema(capName, result.Content, input: false));
+                results.Add(new StoredToolResult(call.ToolUseId, capName, storedContent, result.IsError));
+                await RecordAsync(turn.ConversationId, EvidenceKinds.ToolResult, EvidencePayloads.ToolResult(call.ToolUseId, capName, result.IsError, storedContent), CancellationToken.None);
                 blocks.Add(new ContentBlock
                 {
                     ToolResult = new ToolResultBlock
@@ -197,6 +216,15 @@ public sealed class ConversationOrchestrator(
         }
 
         yield return new ErrorEvent("tool_loop_limit", "The assistant took too many steps. Please rephrase and try again.", false);
+    }
+
+    private Task RecordAsync(Guid conversationId, string kind, System.Text.Json.Nodes.JsonObject payload, CancellationToken ct) =>
+        evidence is null ? Task.CompletedTask : evidence.RecordAsync(conversationId, kind, payload, ct);
+
+    private string RedactBySchema(string capabilityName, string json, bool input)
+    {
+        var cap = gate.Registry.Find(capabilityName);
+        return EvidencePayloads.RedactJsonText(json, input ? cap?.InputSchema : cap?.OutputSchema);
     }
 
     private async Task<ToolExecutionResult> RunExecutorAsync(IToolExecutor executor, ToolExecutionContext ctx, JsonNode args, CancellationToken ct)

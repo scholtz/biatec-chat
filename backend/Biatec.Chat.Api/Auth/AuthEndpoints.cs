@@ -205,6 +205,12 @@ public static class AuthEndpoints
                         .SetProperty(s => s.AgentMode, AgentMode.Prepare).SetProperty(s => s.Paused, false), ctx.RequestAborted);
                 await db.Conversations.Where(c => c.Id == rotated.Session.ConversationId)
                     .ExecuteUpdateAsync(u => u.SetProperty(c => c.OidcSub, identity.Subject), ctx.RequestAborted);
+                if (ctx.RequestServices.GetService<Biatec.Chat.Core.Evidence.IEvidenceRecorder>() is { } recorder)
+                    await recorder.RecordAsync(rotated.Session.ConversationId, Biatec.Chat.Core.Evidence.EvidenceKinds.TierChanged, new System.Text.Json.Nodes.JsonObject
+                    {
+                        ["from"] = session.Tier.ToString(), ["to"] = nameof(Core.Data.SessionTier.Authenticated), ["reason"] = "sign_in",
+                        ["tenantId"] = tenant.Id, ["at"] = now.ToString("O"),
+                    }, ctx.RequestAborted);
 
                 SessionEndpoints.WriteCookie(ctx.Response, rotated.NewToken!, rotated.Session.AbsoluteExpiresAt, now);
                 await SetStatusAsync(db, pending.PopupId, rotated.Session.ConversationId, PopupAuthStatus.Completed, ctx.RequestAborted);

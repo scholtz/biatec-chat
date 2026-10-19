@@ -1,7 +1,7 @@
 ---
 id: T-063
 title: Widget shell: launcher, panel modes, header and host API
-status: backlog
+status: in-progress
 priority: P1
 epic: "Widget UI rework"
 blocked_by: [T-062]
@@ -9,9 +9,9 @@ area: ["packages/chat-widget/src/components/ChatLauncher.vue", "packages/chat-wi
 parallel: no
 conflicts_with: [T-064]
 issue: "#104"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-063"
+owner: "worker-T-063"
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#user-experience"
 created: 2026-10-19
 updated: 2026-10-20
@@ -75,3 +75,5 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-19 22:40 · coordinator · (new) → blocked · created from the Biatec AI design handoff (docs/design/) for the widget UI rework
 - 2026-10-19 22:40 · coordinator · blocked · conflicts_with T-064: ask() goes through the chat composable in components/chat/**
 - 2026-10-20 00:55 · kanban-board · blocked → backlog · blockers done: T-062
+- 2026-10-20 01:12 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 01:13 · coordinator · backlog → in-progress · dispatched to worker

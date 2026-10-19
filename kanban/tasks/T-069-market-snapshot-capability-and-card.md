@@ -6,15 +6,15 @@ priority: P3
 epic: "Widget UI rework"
 blocked_by: [T-067]
 area: ["backend/Biatec.Chat.Tools/Market/**", "backend/Biatec.Chat.Tests/Market/**", "packages/chat-widget/src/components/data/MarketCard.vue"]
-parallel: no
-conflicts_with: [T-065]
+parallel: yes
+conflicts_with: []
 issue: "#110"
 branch: ""
 owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#user-experience"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-069 · market.snapshot capability and market card from Biatec DEX data
@@ -40,7 +40,7 @@ Visitors and users can ask about an Algorand asset or a Biatec DEX pair and get 
 
 ## Parallel work
 
-Parallel work possible: **no**. Don't run it at the same time as T-065: they change the same files, and running them together causes merge conflicts or broken behaviour.
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 
@@ -68,3 +68,4 @@ Filled in by the agent when it moves the task to `review`.
 
 - 2026-10-19 22:40 · coordinator · (new) → blocked · created from the Biatec AI design handoff (docs/design/) for the widget UI rework
 - 2026-10-19 22:40 · coordinator · blocked · conflicts_with T-065: both regenerate packages/chat-protocol and change the capability registry
+- 2026-10-20 01:09 · LukassSoukup · blocked · parallel analysis: dropped T-065 (done); no remaining overlap, parallel: yes

@@ -1,7 +1,7 @@
 ---
 id: T-049
 title: Backend consent orchestrator
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-022, T-047]
@@ -9,12 +9,12 @@ area: ["backend/Biatec.Chat.Tools/Consent/**"]
 parallel: no
 conflicts_with: [T-024, T-025, T-035]
 issue: "#50"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-049"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#flow-1"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-049 · Backend consent orchestrator
@@ -58,3 +58,5 @@ dotnet test --filter Consent
 - 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-022, T-047
 - 2026-10-19 23:24 · LukassSoukup · backlog · conflicts_with revised: dropped T-014 (done)
 - 2026-10-19 23:59 · LukassSoukup · backlog · conflicts_with revised: dropped T-057 (consent metrics come from an IEvidenceLog decorator in Telemetry/)
+- 2026-10-20 01:16 · scholtz · taken · status stays backlog
+- 2026-10-20 01:16 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
