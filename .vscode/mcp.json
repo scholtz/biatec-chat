@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "Biatec": {
+      "url": "https://stage.mcp.biatec.io/tools",
+      "type": "http"
+    }
+  }
+}
