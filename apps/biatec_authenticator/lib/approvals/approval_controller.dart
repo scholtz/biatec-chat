@@ -119,7 +119,20 @@ class ApprovalController extends ChangeNotifier {
     if (_phase == ApprovalPhase.working) return;
     _set(ApprovalPhase.loading);
     try {
-      _request = await client.fetch(await _deviceToken(), authReqId);
+      final token = await _deviceToken();
+      final request = await client.fetch(token, authReqId);
+      // The request object carries no status: one missing from the pending
+      // list was already decided (or expired) and is not offered again.
+      final pending = await client.pending(token);
+      if (!pending.any((p) => p.authReqId == authReqId)) {
+        _request = null;
+        _set(ApprovalPhase.unavailable,
+            error: request.isExpired(now)
+                ? 'This request has expired.'
+                : 'This request is no longer pending. It was already decided.');
+        return;
+      }
+      _request = request;
     } on ApprovalException catch (e) {
       _set(ApprovalPhase.unavailable, error: e.message, offline: e.offline);
       return;
@@ -207,8 +220,11 @@ class ApprovalController extends ChangeNotifier {
         case WrongCode(:final attemptsRemaining):
           _attemptsRemaining = attemptsRemaining;
           _set(ApprovalPhase.ready,
-              error: 'Wrong code. $attemptsRemaining '
-                  '${attemptsRemaining == 1 ? 'attempt' : 'attempts'} left.');
+              error: switch (attemptsRemaining) {
+                null => 'Wrong code.',
+                1 => 'Wrong code. 1 attempt left.',
+                final n => 'Wrong code. $n attempts left.',
+              });
         case CodeFailed():
           _attemptsRemaining = 0;
           await _finishCodeFailed(token, device, fresh);
@@ -227,24 +243,24 @@ class ApprovalController extends ChangeNotifier {
   /// records that with a signed code_failed receipt.
   Future<void> _finishCodeFailed(
       String token, DeviceIdentity device, ConsentRequest request) async {
-    final receipt = await signReceipt(
-      keys: keys,
-      device: device,
-      request: request,
-      code: _lastCode,
-      decision: Decision.codeFailed,
-      now: now,
-    );
     String? warning;
     try {
+      final receipt = await signReceipt(
+        keys: keys,
+        device: device,
+        request: request,
+        code: _lastCode,
+        decision: Decision.codeFailed,
+        now: now,
+      );
       final outcome = await client.postReceipt(token, authReqId, receipt);
       if (outcome is ReceiptAccepted) {
         await _remember(request, Decision.codeFailed, receipt);
       } else {
         warning = 'The code_failed receipt was not accepted.';
       }
-    } on ApprovalException catch (e) {
-      warning = e.message;
+    } on Object catch (e) {
+      warning = e is ApprovalException ? e.message : 'Could not sign: $e';
     }
     // The request is over either way; Biatec OIDC already refused it.
     _set(ApprovalPhase.codeFailed, error: warning);

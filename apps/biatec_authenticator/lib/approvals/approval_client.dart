@@ -28,7 +28,9 @@ class ReceiptAccepted extends ReceiptOutcome {
 /// The binding code did not match; the user may try again.
 class WrongCode extends ReceiptOutcome {
   const WrongCode(this.attemptsRemaining);
-  final int attemptsRemaining;
+
+  /// Null when the server did not say.
+  final int? attemptsRemaining;
 }
 
 /// The third wrong code ended the request (rule 2). The device then posts a
@@ -160,7 +162,7 @@ class ApprovalClient {
     if (json['reason'] == 'code_failed') return const CodeFailed();
     if (json['error'] == 'wrong_code') {
       final left = json['attempts_remaining'];
-      return WrongCode(left is int ? left : 0);
+      return WrongCode(left is int ? left : null);
     }
     return ReceiptRefused(
         res.statusCode, '${json['error'] ?? 'error'}', _detail(json));

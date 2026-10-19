@@ -243,6 +243,12 @@ void main() {
           throwsFormatException);
     });
 
+    test('a string the receipt cannot sign is rejected', () {
+      final json = vectorRequest('stepup-transaction-approve');
+      expect(() => ConsentRequest.fromJson({...json, 'origin': '\uD800'}),
+          throwsFormatException);
+    });
+
     test('an unverified client never gets a display name', () {
       final json = vectorRequest('direct-transaction-approve-unverified');
       final client = Map<String, Object?>.from(json['client'] as Map)
@@ -391,10 +397,19 @@ void main() {
 
     test('deny after the code already failed ends the request', () async {
       final h = Harness(vectorRequest('stepup-transaction-approve'));
-      h.oidc.status = 'code_failed';
       final c = await h.open();
+      h.oidc.status = 'code_failed'; // ended on another screen meanwhile
       await c.deny();
       expect(c.phase, ApprovalPhase.codeFailed);
+    });
+
+    test('a decided request reopens as unavailable, not ready', () async {
+      final h = Harness(vectorRequest('stepup-transaction-approve'));
+      await (await h.open()).approve('483920');
+      final again = await h.open();
+      expect(again.phase, ApprovalPhase.unavailable);
+      expect(again.error, contains('already decided'));
+      expect(again.request, isNull);
     });
 
     test('deny is signed without a code or biometric check', () async {

@@ -1,3 +1,5 @@
+import 'jcs.dart';
+
 /// The consent request object fetched from Biatec OIDC
 /// (`schemas/consent-request.schema.json`). It never carries the binding code.
 ///
@@ -80,6 +82,12 @@ class ConsentRequest {
       origin: str('origin'),
       sub: str('sub'),
     );
+    try {
+      // A string the receipt could not sign must not reach the card.
+      canonicalize(json);
+    } on ArgumentError catch (e) {
+      throw FormatException('consent request: ${e.message}');
+    }
     final d = request.detail; // throws when the detail is malformed
     if (d.boundHash != request.boundHash) {
       throw const FormatException(
