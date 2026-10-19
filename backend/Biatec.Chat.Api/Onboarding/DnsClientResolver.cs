@@ -3,7 +3,7 @@ using DnsClient;
 namespace Biatec.Chat.Api.Onboarding;
 
 /// <summary>System-resolver TXT lookups through DnsClient.</summary>
-public sealed class DnsClientTxtResolver(ILogger<DnsClientTxtResolver> log) : IDnsTxtResolver
+public sealed class DnsClientTxtResolver : IDnsTxtResolver
 {
     private readonly LookupClient client = new(new LookupClientOptions { UseCache = false, Timeout = TimeSpan.FromSeconds(5), Retries = 1 });
 
@@ -12,8 +12,15 @@ public sealed class DnsClientTxtResolver(ILogger<DnsClientTxtResolver> log) : ID
         try
         {
             var answer = await client.QueryAsync(name, QueryType.TXT, cancellationToken: ct);
+            // NXDOMAIN and "no data" mean the record is absent; any other error is a failed lookup, not a verdict.
+            if (answer.HasError && answer.Header.ResponseCode != DnsHeaderResponseCode.NotExistentDomain)
+                throw new DnsLookupException($"TXT lookup for {name} returned {answer.Header.ResponseCode}.");
             return answer.Answers.TxtRecords().Select(r => string.Concat(r.Text)).ToArray();
         }
-        catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "TXT lookup for {Name} failed", name); return []; } // any lookup failure means "not proven"
+        catch (DnsLookupException) { throw; }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw new DnsLookupException($"TXT lookup for {name} failed.", ex);
+        }
     }
 }

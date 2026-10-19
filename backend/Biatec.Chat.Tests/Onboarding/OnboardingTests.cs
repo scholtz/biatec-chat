@@ -43,10 +43,11 @@ public sealed class OnboardingTests : IAsyncLifetime
     private sealed class FakeDns : IDnsTxtResolver
     {
         public readonly Dictionary<string, List<string>> Records = new(StringComparer.OrdinalIgnoreCase);
+        public bool Fail;
         public Task<IReadOnlyList<string>> GetTxtRecordsAsync(string name, CancellationToken ct) =>
-            Task.FromResult<IReadOnlyList<string>>(Records.TryGetValue(name, out var v) ? v : []);
+            Fail ? throw new DnsLookupException("simulated resolver outage") : Task.FromResult<IReadOnlyList<string>>(Records.TryGetValue(name, out var v) ? v : []);
         public void Prove(string proofHost, string configHost, params string[] origins) =>
-            Records[Challenge.RecordName(proofHost)] = [Challenge.Value(ChallengeKey, proofHost, Challenge.Digest(configHost, origins.FirstOrDefault(), origins, [configHost]))];
+            Records[Challenge.RecordName(proofHost)] = [Challenge.Value(ChallengeKey, proofHost, Challenge.Digest(configHost, origins.FirstOrDefault(), origins.Length == 0 ? ["https://" + configHost] : origins, [configHost]))];
     }
 
     private sealed class FakeRegistrar : IOidcClientRegistrar
@@ -185,6 +186,16 @@ public sealed class OnboardingTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
         Assert.Null(await TenantAsync("chat.example-bank.com"));
         Assert.Empty(_secrets.Items);
+    }
+
+    [Fact]
+    public async Task ResolverFailure_IsA502NotAMissingRecordVerdict()
+    {
+        _registrar.Available = true;
+        _dns.Fail = true;
+        var r = await PostAsync("/onboarding/tenants", Req("chat.example-bank.com"));
+        Assert.Equal(HttpStatusCode.BadGateway, r.StatusCode);
+        Assert.Null(await TenantAsync("chat.example-bank.com"));
     }
 
     [Fact]

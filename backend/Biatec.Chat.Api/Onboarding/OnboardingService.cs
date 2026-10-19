@@ -28,6 +28,8 @@ public sealed record ChallengeRecord(string Host, string RecordType, string Reco
 
 public enum OnboardingStatus { Ok, Created, PendingOperator, Invalid, HostTaken, Unverified, Disabled, Failed }
 
+public sealed class DnsLookupException(string message, Exception? inner = null) : Exception(message, inner);
+
 public sealed record OnboardingResult(OnboardingStatus Status, string? Error = null, object? Body = null);
 
 public sealed partial class OnboardingService(
@@ -47,7 +49,7 @@ public sealed partial class OnboardingService(
     [GeneratedRegex(@"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")]
     private static partial Regex LabelRegex();
 
-    [GeneratedRegex(@"^secret://[A-Za-z0-9][A-Za-z0-9._/-]{0,200}$")]
+    [GeneratedRegex(@"^secret://[a-z0-9][a-z0-9._/-]{0,200}$")]
     private static partial Regex SecretRefRegex();
 
     /// <summary>A lower-case ASCII DNS name with at least two labels and no IP literal, or null.</summary>
@@ -90,6 +92,7 @@ public sealed partial class OnboardingService(
                     "use an origin under the same registrable domain.");
             if (!origins.Contains(o)) origins.Add(o);
         }
+        if (origins.Count == 0) origins.Add($"https://{host}"); // the backend host itself is always a valid origin
         if (origins.Count > 10) return new(OnboardingStatus.Invalid, "At most 10 allowedOrigins.");
 
         string? signIn = null;
@@ -134,29 +137,39 @@ public sealed partial class OnboardingService(
     private static OnboardingResult HostTaken(string host) =>
         new(OnboardingStatus.HostTaken, $"Host {host} already belongs to a tenant.");
 
-    private async Task<string[]> UnverifiedAsync(Validated v, CancellationToken ct)
+    /// <summary>Null when every proof holds; otherwise the 422 (or 502 on a lookup failure) result.</summary>
+    private async Task<OnboardingResult?> VerifyProofsAsync(Validated v, CancellationToken ct)
     {
         var key = options.Value.ChallengeKey!;
         var hosts = ProofHosts(v);
         var digest = v.ConfigDigest;
-        var lookups = await Task.WhenAll(hosts.Select(h => dns.GetTxtRecordsAsync(Challenge.RecordName(h), ct)));
-        return hosts.Where((h, i) => !Challenge.Matches(key, h, digest, lookups[i])).ToArray();
+        IReadOnlyList<string>[] lookups;
+        try { lookups = await Task.WhenAll(hosts.Select(h => dns.GetTxtRecordsAsync(Challenge.RecordName(h), ct))); }
+        catch (DnsLookupException ex)
+        {
+            log.LogWarning(ex, "DNS lookup failed while verifying {Host}", v.Host);
+            return new(OnboardingStatus.Failed, "DNS lookup failed; try again later.");
+        }
+        var missing = hosts.Where((h, i) => !Challenge.Matches(key, h, digest, lookups[i])).ToArray();
+        return missing.Length == 0
+            ? null
+            : new(OnboardingStatus.Unverified, "DNS TXT challenge not found for: " + string.Join(", ", missing), new { unverified = missing });
     }
+
+    private static Task LockAsync(ChatDbContext db, string name, CancellationToken ct) =>
+        db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({name}, 0))", ct);
 
     /// <summary>Self-service: verify the proofs, then register a confidential client or fall back to operator approval.</summary>
     public async Task<OnboardingResult> OnboardAsync(OnboardingRequest? req, CancellationToken ct)
     {
         if (Validate(req, out var v) is { } bad) return bad;
         if (await db.Tenants.AnyAsync(t => t.Host == v!.Host, ct)) return HostTaken(v!.Host);
+        if (await VerifyProofsAsync(v!, ct) is { } unverified) return unverified;
 
-        var missing = await UnverifiedAsync(v!, ct);
-        if (missing.Length > 0)
-            return new(OnboardingStatus.Unverified, "DNS TXT challenge not found for: " + string.Join(", ", missing), new { unverified = missing });
-
-        // Serialize concurrent onboardings of one host (transaction-scoped advisory lock), so a lost race never
-        // registers a second client or overwrites the winner's secret.
+        // Serialize onboardings of one host (transaction-scoped advisory lock, also taken by the operator route), so a
+        // lost race never registers a second client or overwrites the winner's secret.
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({"biatec-chat-onboarding:" + v!.Host}, 0))", ct);
+        await LockAsync(db, "biatec-chat-onboarding:" + v!.Host, ct);
         if (await db.Tenants.AnyAsync(t => t.Host == v.Host, ct)) return HostTaken(v.Host);
 
         var tenantId = v.Host;
@@ -165,7 +178,7 @@ public sealed partial class OnboardingService(
         external.CancelAfter(TimeSpan.FromSeconds(20)); // the advisory lock and its connection are held meanwhile
         RegisteredClient? client;
         try { client = await registrar.RegisterAsync($"Biatec Chat ({v.Host})", redirectUri, external.Token); }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             log.LogWarning(ex, "Dynamic client registration failed for {Host}", v.Host);
             return new(OnboardingStatus.Failed, "Client registration failed; try again later.");
@@ -180,7 +193,7 @@ public sealed partial class OnboardingService(
 
         string secretRef;
         try { secretRef = await secrets.PutAsync($"tenants/{tenantId}/oidc-client-secret", client.ClientSecret, external.Token); }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             log.LogWarning(ex, "Storing the client secret failed for {Host}", v.Host);
             return new(OnboardingStatus.Failed, "Could not store the client secret; try again later.");
@@ -198,22 +211,23 @@ public sealed partial class OnboardingService(
         if (string.IsNullOrEmpty(clientId) || clientId.Length > 128 || clientId.Any(char.IsControl))
             return new(OnboardingStatus.Invalid, "oidcClientId is required.");
         if (req.ClientSecretRef is null || !SecretRefRegex().IsMatch(req.ClientSecretRef) || req.ClientSecretRef["secret://".Length..].Split('/').Any(seg => seg is "" or "." or ".."))
-            return new(OnboardingStatus.Invalid, "clientSecretRef must be a secret:// reference into the secret store, never the secret itself.");
+            return new(OnboardingStatus.Invalid, "clientSecretRef must be a lower-case secret:// reference into the secret store, never the secret itself.");
         var ownPath = $"secret://tenants/{v!.Host}/oidc-client-secret";
         if (req.ClientSecretRef.StartsWith("secret://tenants/", StringComparison.Ordinal) && req.ClientSecretRef != ownPath)
             return new(OnboardingStatus.Invalid, $"clientSecretRef under secret://tenants/ must be {ownPath}.");
-        // Operator approvals are rare: one global lock makes the reference-uniqueness check below race free.
+        if (await db.Tenants.AnyAsync(t => t.Host == v.Host, ct)) return HostTaken(v.Host);
+        if (await VerifyProofsAsync(v, ct) is { } unverified) return unverified;
+
+        // Lock order: global operator lock, then the host lock. Operator approvals are rare, so the global lock makes the
+        // reference-uniqueness check race free; the host lock excludes a concurrent self-service onboarding of the host.
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended('biatec-chat-onboarding:operator', 0))", ct);
-        if (await db.Tenants.AnyAsync(t => t.Host == v!.Host, ct)) return HostTaken(v!.Host);
+        await LockAsync(db, "biatec-chat-onboarding:operator", ct);
+        await LockAsync(db, "biatec-chat-onboarding:" + v.Host, ct);
+        if (await db.Tenants.AnyAsync(t => t.Host == v.Host, ct)) return HostTaken(v.Host);
         if (await db.Tenants.AnyAsync(t => t.ClientSecretRef == req.ClientSecretRef, ct))
             return new(OnboardingStatus.Invalid, "clientSecretRef is already used by another tenant.");
 
-        var missing = await UnverifiedAsync(v!, ct);
-        if (missing.Length > 0)
-            return new(OnboardingStatus.Unverified, "DNS TXT challenge not found for: " + string.Join(", ", missing), new { unverified = missing });
-
-        var created = await CreateTenantAsync(v!, v!.Host, clientId, req.ClientSecretRef, $"https://{v.Host}/auth/callback", ct);
+        var created = await CreateTenantAsync(v, v.Host, clientId, req.ClientSecretRef, $"https://{v.Host}/auth/callback", ct);
         if (created.Status == OnboardingStatus.Created) await tx.CommitAsync(ct);
         return created;
     }
