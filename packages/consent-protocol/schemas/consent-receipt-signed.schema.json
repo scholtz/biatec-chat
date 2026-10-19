@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/consent-receipt-signed.schema.json",
+  "title": "Signed receipt object",
+  "description": "The object whose RFC 8785 canonical form the device key signs. Exactly these eight members.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["authorization_details", "auth_req_id", "client_entity_id", "binding_code", "decision", "expiry", "sub", "binding_message"],
+  "properties": {
+    "authorization_details": { "$ref": "authorization-details.schema.json" },
+    "auth_req_id": { "type": "string", "minLength": 16, "description": "Single-use nonce." },
+    "client_entity_id": { "type": "string", "minLength": 1 },
+    "binding_code": { "type": "string", "pattern": "^([0-9]{6})?$", "description": "The code the user typed; the empty string for an explicit Deny before any code was typed." },
+    "decision": { "enum": ["approve", "deny", "code_failed"] },
+    "expiry": { "type": "integer", "minimum": 0, "description": "Unix time in seconds." },
+    "sub": { "type": "string", "minLength": 1 },
+    "binding_message": { "type": "string", "maxLength": 140, "description": "Text as rendered on the card, or the empty string if none was rendered." }
+  }
+}

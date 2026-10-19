@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/authorization-details-transaction.schema.json",
+  "title": "biatec_transaction authorization detail",
+  "description": "RFC 9396 authorization_details object describing one signing call. Every field is decoded by Biatec OIDC from the unsigned group itself; client-supplied amounts or payees are never accepted.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "network", "group_hash", "sender", "asset", "amount", "fiat_value"],
+  "properties": {
+    "type": { "const": "biatec_transaction" },
+    "network": { "enum": ["algorand-mainnet", "algorand-testnet", "bitcoin-mainnet", "bitcoin-testnet"] },
+    "group_hash": {
+      "type": "string",
+      "description": "Algorand: the base32 group ID (grp) recomputed by Biatec OIDC. Bitcoin: lowercase hex SHA-256 intent hash derived from the PSBT with prevout data.",
+      "pattern": "^([A-Z2-7]{52}|[0-9a-f]{64})$"
+    },
+    "sender": { "type": "string", "minLength": 1, "description": "Address that signs." },
+    "receiver": { "type": "string", "minLength": 1, "description": "Payee address. Absent when the group is an application call without a single payee." },
+    "application_id": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "Application called, when the group is an app call." },
+    "asset": { "$ref": "#/$defs/asset" },
+    "amount": { "$ref": "#/$defs/decimalString" },
+    "fiat_value": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["amount", "currency"],
+      "properties": {
+        "amount": { "$ref": "#/$defs/decimalString" },
+        "currency": { "const": "EUR" }
+      }
+    }
+  },
+  "$defs": {
+    "decimalString": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+      "description": "Non-negative decimal as a string; never a JSON number, so no precision is lost under RFC 8785."
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "symbol", "decimals"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "Algorand asset ID as decimal string, '0' for the native token, or 'BTC'." },
+        "symbol": { "type": "string", "minLength": 1 },
+        "decimals": { "type": "integer", "minimum": 0, "maximum": 19 }
+      }
+    }
+  }
+}

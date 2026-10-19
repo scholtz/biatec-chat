@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/backchannel-authentication-request.schema.json",
+  "title": "Direct entry: backchannel authentication request",
+  "description": "Parameters a client posts (form-encoded on the wire, shown here as JSON) to the CIBA backchannel authentication endpoint. The unsigned group (or canonical limits body) is the thing consented to; authorization_details is built by Biatec OIDC and is never accepted from the client.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["scope", "resource", "login_hint", "origin"],
+  "anyOf": [
+    { "required": ["unsigned_group", "network", "address"], "properties": { "unsigned_group": true, "network": true, "address": true } },
+    { "required": ["limits_request"], "properties": { "limits_request": true } }
+  ],
+  "properties": {
+    "scope": { "enum": ["sign", "manage-limits"] },
+    "resource": { "type": "string", "minLength": 1 },
+    "login_hint": { "type": "string", "minLength": 1, "description": "Identifies the user to be asked." },
+    "network": { "enum": ["algorand-mainnet", "algorand-testnet", "bitcoin-mainnet", "bitcoin-testnet"] },
+    "address": { "type": "string", "minLength": 1 },
+    "unsigned_group": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1, "description": "Base64 unsigned transaction (Algorand) or a single base64 PSBT (Bitcoin)." }
+    },
+    "limits_request": { "type": "object", "description": "Canonical request body of PUT /wallet/limits." },
+    "binding_message": { "type": "string", "maxLength": 140, "description": "Optional purpose text. Rendered, and therefore signed, only for clients chaining to a recognized trust anchor; otherwise the signed value is the empty string." },
+    "requested_expiry": { "type": "integer", "minimum": 1, "maximum": 300, "default": 300 },
+    "origin": { "type": "string", "minLength": 1, "description": "Origin of the requesting surface, used for pending-request and pause scoping (rule 10)." },
+    "authorization_details": false,
+    "client_notification_token": { "type": "string", "description": "Ping mode only." }
+  }
+}
