@@ -1,0 +1,10 @@
+{
+  "name": "biatec-chat",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Biatec Chat monorepo: embeddable chat widget, shared protocol packages and tooling.",
+  "packageManager": "pnpm@10.11.1",
+  "engines": {
+    "node": ">=20"
+  }
+}
