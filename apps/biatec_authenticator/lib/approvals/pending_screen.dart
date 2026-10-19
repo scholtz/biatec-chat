@@ -16,7 +16,6 @@ class PendingScreen extends StatefulWidget {
     required this.services,
     this.pollEvery = const Duration(seconds: 5),
     this.pushes,
-    this.onShown,
   });
 
   final ApprovalServices services;
@@ -24,9 +23,6 @@ class PendingScreen extends StatefulWidget {
 
   /// Fires when a push announced a new request.
   final Stream<void>? pushes;
-
-  /// Called once when the list is shown (push registration hooks in here).
-  final VoidCallback? onShown;
 
   @override
   State<PendingScreen> createState() => _PendingScreenState();
@@ -40,13 +36,16 @@ class _PendingScreenState extends State<PendingScreen> {
   Timer? _poll;
   StreamSubscription<void>? _pushSub;
 
+  /// A refresh was asked for while one was running (for example a push
+  /// arrived mid-request); it runs again once the current one ends.
+  bool _again = false;
+
   @override
   void initState() {
     super.initState();
     _refresh();
     _startPolling();
     _pushSub = widget.pushes?.listen((_) => _refresh());
-    widget.onShown?.call();
   }
 
   void _startPolling() {
@@ -62,7 +61,10 @@ class _PendingScreenState extends State<PendingScreen> {
   }
 
   Future<void> _refresh() async {
-    if (_loading) return;
+    if (_loading) {
+      _again = true;
+      return;
+    }
     _loading = true;
     try {
       final record = await widget.services.enrollment.read();
@@ -86,6 +88,10 @@ class _PendingScreenState extends State<PendingScreen> {
       });
     } finally {
       _loading = false;
+    }
+    if (_again && mounted) {
+      _again = false;
+      await _refresh();
     }
   }
 

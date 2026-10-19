@@ -11,7 +11,7 @@ import 'dart:convert';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/push/push_controller.dart';
-import 'package:biatec_authenticator/push/push_registration_client.dart';
+import 'package:biatec_authenticator/approvals/approval_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -34,12 +34,11 @@ void main() {
     final transport = FakeTransport()..current = 'fcm-contract-token';
     final opened = <String>[];
     final push = PushController(
-      transport: transport,
       enrollment: store,
-      client: PushRegistrationClient(baseUrl: baseUrl!),
+      client: ApprovalClient(baseUrl: baseUrl!),
       onOpenRequest: opened.add,
     );
-    await push.start();
+    await push.start(transport);
 
     final tx = base64.encode(utf8.encode(jsonEncode({
       'sender': 'ALICEADDRESS',

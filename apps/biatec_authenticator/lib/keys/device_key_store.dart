@@ -45,7 +45,8 @@ abstract class DeviceKeyStore {
 /// `{x, y}` (base64url) for `generate` and `load`.
 class PlatformDeviceKeyStore implements DeviceKeyStore {
   const PlatformDeviceKeyStore(
-      [this._channel = const MethodChannel('io.biatec.authenticator/keystore')]);
+      [this._channel =
+          const MethodChannel('io.biatec.authenticator/keystore')]);
 
   final MethodChannel _channel;
 

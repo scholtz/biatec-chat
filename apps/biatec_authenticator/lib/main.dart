@@ -8,7 +8,6 @@ import 'config.dart';
 import 'enrollment/enrollment_screen.dart';
 import 'push/fcm_push_transport.dart';
 import 'push/push_controller.dart';
-import 'push/push_registration_client.dart';
 import 'routes.dart';
 import 'screens/home_screen.dart';
 import 'theme.dart';
@@ -18,14 +17,12 @@ Future<void> main() async {
   final config = AppConfig.fromEnvironment();
   final approvals = ApprovalServices.fromConfig(config);
   final navigator = GlobalKey<NavigatorState>();
-  final transport =
-      await FcmPushTransport.create(FirebasePushConfig.fromEnvironment());
-  final push = transport == null
+  final firebase = FirebasePushConfig.fromEnvironment();
+  final push = firebase == null
       ? null
       : PushController(
-          transport: transport,
           enrollment: approvals.enrollment,
-          client: PushRegistrationClient(baseUrl: config.oidcBaseUrl),
+          client: approvals.client,
           onOpenRequest: (id) => openApprovalRequest(navigator, approvals, id),
         );
   runApp(AuthenticatorApp(
@@ -33,7 +30,15 @@ Future<void> main() async {
       approvals: approvals,
       push: push,
       navigatorKey: navigator));
-  await push?.start();
+  if (push == null || firebase == null) return;
+  // Firebase starts after the first frame: the UI never waits for it, and a
+  // tapped notification that launched the app finds a mounted navigator.
+  await WidgetsBinding.instance.endOfFrame;
+  final transport = await FcmPushTransport.create(firebase);
+  if (transport == null) return;
+  // Coming back to the app retries a registration that failed earlier.
+  AppLifecycleListener(onResume: push.registerIfEnrolled);
+  await push.start(transport);
 }
 
 /// Opens the approval screen for a tapped notification. The screen fetches
@@ -66,6 +71,7 @@ class AuthenticatorApp extends StatelessWidget {
     final push = this.push;
     return MaterialApp(
       navigatorKey: navigatorKey,
+      navigatorObservers: [if (push != null) push],
       title: 'Biatec Authenticator',
       theme: buildTheme(Brightness.light),
       darkTheme: buildTheme(Brightness.dark),
@@ -77,12 +83,7 @@ class AuthenticatorApp extends StatelessWidget {
         '/enrollment': (_) => EnrollmentScreen(config: config),
         '/pending': (_) => PendingScreen(
               services: approvals,
-              // With push, polling is only the fallback for a lost push.
-              pollEvery: push == null
-                  ? const Duration(seconds: 5)
-                  : const Duration(seconds: 30),
               pushes: push?.requestArrived,
-              onShown: push?.registerIfEnrolled,
             ),
         '/history': (_) => HistoryScreen(history: approvals.history),
       },

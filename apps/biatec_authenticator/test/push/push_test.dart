@@ -14,7 +14,6 @@ import 'package:biatec_authenticator/main.dart';
 import 'package:biatec_authenticator/push/fcm_push_transport.dart';
 import 'package:biatec_authenticator/push/push_controller.dart';
 import 'package:biatec_authenticator/push/push_payload.dart';
-import 'package:biatec_authenticator/push/push_registration_client.dart';
 import 'package:biatec_authenticator/push/push_transport.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -93,24 +92,25 @@ void main() {
     late MemoryEnrollmentStore store;
     late List<String> openedIds;
     late PushController push;
+    late DateTime now;
 
     setUp(() {
       transport = FakeTransport();
       registry = FakeRegistry();
       store = MemoryEnrollmentStore();
       openedIds = [];
+      now = DateTime.utc(2026, 10, 19, 12);
       push = PushController(
-        transport: transport,
         enrollment: store,
-        client: PushRegistrationClient(
-            baseUrl: 'http://oidc', client: registry.client),
+        client: ApprovalClient(baseUrl: 'http://oidc', client: registry.client),
         onOpenRequest: openedIds.add,
+        clock: () => now,
       );
     });
     tearDown(() => push.dispose());
 
     test('registers nothing before enrollment, then once per token', () async {
-      await push.start();
+      await push.start(transport);
       expect(registry.calls, isEmpty);
 
       await store.write(record('dev-token'));
@@ -135,12 +135,33 @@ void main() {
       await push.registerIfEnrolled('push-2');
       expect(registry.calls.last['auth'], 'Device dev-token-2');
       expect(registry.calls, hasLength(3));
+
+      // Sent again after the resend window, in case the server lost it.
+      now = now.add(PushController.resendAfter);
+      await push.registerIfEnrolled();
+      expect(registry.calls, hasLength(4));
+    });
+
+    test('nothing happens before a transport is attached', () async {
+      await store.write(record('dev-token'));
+      await push.registerIfEnrolled();
+      expect(registry.calls, isEmpty);
+    });
+
+    test('navigation registers a device enrolled after start', () async {
+      await push.start(transport);
+      expect(registry.calls, isEmpty);
+      await store.write(record('dev-token'));
+      final route = MaterialPageRoute<void>(builder: (_) => const SizedBox());
+      push.didPop(route, null);
+      await pumpEventQueue();
+      expect(registry.calls, hasLength(1));
     });
 
     test('a refused registration is retried on the next call', () async {
       await store.write(record('dev-token'));
       registry.status = 503;
-      await push.start();
+      await push.start(transport);
       registry.status = 200;
       await push.registerIfEnrolled();
       await push.registerIfEnrolled();
@@ -150,13 +171,13 @@ void main() {
     test('no token (declined notifications) registers nothing', () async {
       await store.write(record('dev-token'));
       transport.current = null;
-      await push.start();
+      await push.start(transport);
       expect(registry.calls, isEmpty);
     });
 
     test('tap and launch payloads open the request; junk is ignored', () async {
       transport.launch = {'auth_req_id': 'ciba_launch'};
-      await push.start();
+      await push.start(transport);
       transport.openedC.add({'auth_req_id': 'ciba_tap', 'body': 'Send 1 BTC'});
       transport.openedC.add({'title': 'no id'});
       await pumpEventQueue();
@@ -165,7 +186,7 @@ void main() {
 
     test('a foreground push signals the pending list, without opening it',
         () async {
-      await push.start();
+      await push.start(transport);
       var arrived = 0;
       push.requestArrived.listen((_) => arrived++);
       transport.receivedC.add({'auth_req_id': 'ciba_1'});
@@ -227,22 +248,53 @@ void main() {
       expect(fetched, contains('/consent/requests/ciba_tapped'));
     });
 
-    testWidgets('the pending list refreshes on a push and reports being shown',
-        (tester) async {
+    testWidgets('the pending list refreshes on a push', (tester) async {
       final pushes = StreamController<void>.broadcast();
-      var shown = 0;
       await tester.pumpWidget(MaterialApp(
           home: PendingScreen(
               services: services,
               pollEvery: const Duration(hours: 1),
-              pushes: pushes.stream,
-              onShown: () => shown++)));
+              pushes: pushes.stream)));
       await tester.pumpAndSettle();
       final before = fetched.where((p) => p == '/devices/requests').length;
       pushes.add(null);
       await tester.pumpAndSettle();
       expect(fetched.where((p) => p == '/devices/requests').length, before + 1);
-      expect(shown, 1);
+      await tester.pumpWidget(const SizedBox());
+      await pushes.close();
+    });
+
+    testWidgets('a push during a running refresh refreshes again afterwards',
+        (tester) async {
+      final gate = Completer<void>();
+      var calls = 0;
+      final slow = ApprovalServices(
+        client: ApprovalClient(
+            baseUrl: 'http://oidc',
+            client: MockClient((req) async {
+              calls++;
+              if (calls == 1) await gate.future;
+              return http.Response('{"requests":[]}', 200);
+            })),
+        keys: services.keys,
+        enrollment: services.enrollment,
+        gate: services.gate,
+        history: services.history,
+      );
+      final pushes = StreamController<void>.broadcast();
+      await tester.pumpWidget(MaterialApp(
+          home: PendingScreen(
+              services: slow,
+              pollEvery: const Duration(hours: 1),
+              pushes: pushes.stream)));
+      await tester.pump();
+      expect(calls, 1);
+      pushes.add(null);
+      await tester.pump();
+      expect(calls, 1, reason: 'no second request while one runs');
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(calls, 2);
       await tester.pumpWidget(const SizedBox());
       await pushes.close();
     });

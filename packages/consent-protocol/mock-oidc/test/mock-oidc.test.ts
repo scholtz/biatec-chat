@@ -497,4 +497,11 @@ test("push: the payload is the request id only, sent to active devices with a re
   await call("POST", "/mock/devices/alice-push-phone/activate");
   const r2 = await challenge();
   assert.deepEqual((await call("GET", "/mock/push-outbox?kid=alice-push-phone")).json.messages.map((m: any) => m.data), [{ auth_req_id: r2.json.auth_req_id }]);
+
+  // The same phone token registered on another device record moves there: one token, one recipient.
+  const carol = await device("carol");
+  assert.equal((await call("PUT", "/devices/push", { auth: carol.auth, body: { provider: "fcm", token: "fcm-alice-1" } })).status, 200);
+  const n = (await call("GET", `/mock/push-outbox?kid=${dev.kid}`)).json.messages.length;
+  await challenge();
+  assert.equal((await call("GET", `/mock/push-outbox?kid=${dev.kid}`)).json.messages.length, n, "alice's old record no longer holds the token");
 });

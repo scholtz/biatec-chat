@@ -1,42 +1,57 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
+
+import '../approvals/approval_client.dart';
 import '../enrollment/enrollment_store.dart';
 import 'push_payload.dart';
-import 'push_registration_client.dart';
 import 'push_transport.dart';
 
 /// Connects a [PushTransport] to the app: keeps the token registered at
 /// Biatec OIDC, opens the request the user tapped, and tells the pending list
 /// to refresh when a push arrives. Polling stays as the fallback, so a lost
 /// push or a failed registration only delays a request.
-class PushController {
+///
+/// It exists before the transport does: the app renders first and [start]
+/// attaches the transport once Firebase is up.
+class PushController extends NavigatorObserver {
   PushController({
-    required this.transport,
     required this.enrollment,
     required this.client,
     required this.onOpenRequest,
-  });
+    DateTime Function()? clock,
+  }) : _clock = clock ?? DateTime.now;
 
-  final PushTransport transport;
   final EnrollmentStore enrollment;
-  final PushRegistrationClient client;
+  final ApprovalClient client;
 
   /// Opens the approval screen for the request id. The screen fetches the
   /// request from Biatec OIDC; nothing from the push is shown.
   final void Function(String authReqId) onOpenRequest;
+  final DateTime Function() _clock;
 
+  /// A registration is sent again after this long, so a server that lost it
+  /// (restart, replaced record) gets it back without an app restart.
+  static const resendAfter = Duration(minutes: 10);
+
+  PushTransport? _transport;
   final _arrived = StreamController<void>.broadcast();
   final _subs = <StreamSubscription<Object?>>[];
 
-  /// The (device token, push token) pair last registered, so repeated calls
-  /// don't repeat the request. A new enrollment has a new device token.
+  /// The (device token, push token) pair last registered and when, so
+  /// frequent calls don't repeat the request. A new enrollment has a new
+  /// device token and registers at once.
   (String, String)? _registered;
+  DateTime? _registeredAt;
   Future<void> _queue = Future<void>.value();
 
   /// Fires when a push for a request arrived while the app is open.
   Stream<void> get requestArrived => _arrived.stream;
 
-  Future<void> start() async {
+  /// Attaches [transport]. Call after the first frame, so a launch payload
+  /// finds a mounted navigator.
+  Future<void> start(PushTransport transport) async {
+    _transport = transport;
     _subs
       ..add(transport.opened.listen(_open))
       ..add(transport.received.listen((data) {
@@ -53,28 +68,42 @@ class PushController {
     if (id != null) onOpenRequest(id);
   }
 
+  // Every navigation (for example back from enrollment, or into the pending
+  // list) is a chance to register a device that was not enrolled before.
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      registerIfEnrolled();
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      registerIfEnrolled();
+
   /// Registers the push token once this device is enrolled. Safe to call
-  /// often (app start, resume, pending list shown); failures are retried on
-  /// the next call.
+  /// often; failures are retried on the next call.
   Future<void> registerIfEnrolled([String? token]) =>
       // One registration at a time, in order, so a refreshed token is never
       // overtaken by an older one.
       _queue = _queue.then((_) => _register(token));
 
   Future<void> _register(String? token) async {
+    final transport = _transport;
+    if (transport == null) return;
     try {
       final record = await enrollment.read();
       if (record == null) return;
       final pushToken = token ?? await transport.token();
       if (pushToken == null || pushToken.isEmpty) return;
       final pair = (record.deviceToken, pushToken);
-      if (_registered == pair) return;
-      await client.register(
-        deviceToken: record.deviceToken,
-        provider: transport.provider,
-        pushToken: pushToken,
-      );
+      final at = _registeredAt;
+      if (_registered == pair &&
+          at != null &&
+          _clock().difference(at) < resendAfter) {
+        return;
+      }
+      await client.registerPush(
+          record.deviceToken, transport.provider, pushToken);
       _registered = pair;
+      _registeredAt = _clock();
     } on Object {
       // Polling still finds requests; the next call retries.
     }

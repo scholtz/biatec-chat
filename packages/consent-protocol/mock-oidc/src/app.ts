@@ -352,6 +352,13 @@ export function createMockOidc(options: MockOptions = {}) {
     return { provider: v.provider, token: v.token };
   }
 
+  // A push token reaches one phone, so it belongs to one device record: registering it moves it there, and a
+  // phone re-enrolled for another user stops receiving the previous user's requests.
+  function setPush(d: Device, push: PushTarget | undefined) {
+    if (push) for (const o of devices.values()) if (o !== d && o.push?.provider === push.provider && o.push.token === push.token) o.push = undefined;
+    d.push = push;
+  }
+
   function enroll(req: IncomingMessage, body: Record<string, any>) {
     const t = bearer(req);
     if (t.kind !== "login") throw new HttpError(403, "access_denied", "enrollment needs a fresh full login");
@@ -367,7 +374,7 @@ export function createMockOidc(options: MockOptions = {}) {
     }
     const push = body.push === undefined ? undefined : pushTarget(body.push);
     const d = addDevice(t.sub, body.kid, { kty: "EC", crv: "P-256", x: pk.x, y: pk.y }, activeAt);
-    d.push = push;
+    setPush(d, push);
     return { status: 201, body: { kid: d.kid, active: d.activeAt <= now(), active_at: d.activeAt, attestation: d.attestation, device_token: d.token, cancel_notice_sent_to_existing_devices: hadActive && activeAt > now() } };
   }
 
@@ -481,8 +488,8 @@ export function createMockOidc(options: MockOptions = {}) {
     }
     if (m === "PUT" && path === "/devices/push") {
       const d = deviceAuth(req);
-      d.push = pushTarget(await readBody(req));
-      return { status: 200, body: { kid: d.kid, provider: d.push.provider } };
+      setPush(d, pushTarget(await readBody(req)));
+      return { status: 200, body: { kid: d.kid, provider: d.push!.provider } };
     }
     if (m === "GET" && path === "/devices/requests") {
       const d = deviceAuth(req);

@@ -56,7 +56,7 @@ add an HTTP mock of Biatec OIDC. The app makes no network calls today.
 
 - `lib/approvals/`: `ApprovalClient` (`GET /devices/requests`, `GET /consent/requests/{id}`,
   `POST /consent/requests/{id}/receipt`, all `Authorization: Device <token>`), `ApprovalController` (one request),
-  the card, the pending list (polls every 5 s, or every 30 s as a fallback when push is on) and the local history (secure storage, last
+  the card, the pending list (polls every 5 s, and refreshes at once on a push) and the local history (secure storage, last
   100 decisions with their full receipts).
 - The card is rendered only from the fetched consent request. The receipt signs `authorization_details` exactly as
   fetched, canonicalized with `jcs.dart` (RFC 8785, checked against `packages/consent-protocol/vectors`), with ES256
@@ -77,7 +77,7 @@ add an HTTP mock of Biatec OIDC. The app makes no network calls today.
 ## Push notifications (T-053)
 
 - `lib/push/`: `PushController` keeps the push token registered at Biatec OIDC (`PUT /devices/push`,
-  `Authorization: Device <token>`) on start, on token rotation and whenever the pending list is shown; a tapped
+  `Authorization: Device <token>`) on start, on token rotation, on app resume and on navigation, re-sent at most every 10 minutes; a tapped
   notification opens the approval screen for its `auth_req_id`, and a push received in the foreground refreshes the
   pending list. The payload is read only for `auth_req_id` (`push_payload.dart`); the request itself is always
   fetched from Biatec OIDC, so a forged or altered push can at most open a request the device's user really has.

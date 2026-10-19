@@ -48,13 +48,17 @@ class FcmPushTransport implements PushTransport {
   String? _latest;
 
   /// Initializes Firebase and asks for notification permission. Returns null
-  /// when push is not configured or cannot start; the app then polls.
-  static Future<FcmPushTransport?> create(FirebaseOptions? options) async {
-    if (options == null) return null;
+  /// when push cannot start, Firebase does not answer within [timeout], or
+  /// the user declines notifications; the app then polls.
+  static Future<FcmPushTransport?> create(FirebaseOptions options,
+      {Duration timeout = const Duration(seconds: 10)}) async {
     try {
-      await Firebase.initializeApp(options: options);
+      await Firebase.initializeApp(options: options).timeout(timeout);
       final messaging = FirebaseMessaging.instance;
-      await messaging.requestPermission();
+      final settings = await messaging.requestPermission();
+      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        return null;
+      }
       return FcmPushTransport._(messaging);
     } on Object {
       return null;
