@@ -1,14 +1,14 @@
 ---
 id: T-001
 title: Scaffold monorepo and backend solution
-status: backlog
+status: in-progress
 priority: P0
 epic: "Foundation"
 blocked_by: []
 area: ["backend/*.slnx", "backend/*/*.csproj", "package.json", "pnpm-workspace.yaml", ".gitignore", ".editorconfig", "README.md", "docker-compose.yml"]
 issue: "#2"
-branch: ""
-owner: ""
+branch: "task/T-001"
+owner: "session-20261019-1900"
 source: "PRODUCT-DESCRIPTION.md#repository-layout"
 created: 2026-10-19
 updated: 2026-10-19
@@ -47,3 +47,4 @@ dotnet build; dotnet test; pnpm install; docker compose up -d && docker compose 
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → backlog · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 19:00 · session-20261019-1900 · backlog → in-progress · claimed via /kanban-next (GitHub issue #2)
