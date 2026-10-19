@@ -36,7 +36,7 @@ against the mock and cannot be enabled against real Biatec OIDC until the row sh
 | 15 | Pairwise subject identifiers per tenant client | Public `sub` used; deletion cannot unlink retained receipts (documented) |
 | 16 | `maxConsentSeconds` on the signing request | Rely on the 600-second Confirm gate and rebuild more often |
 | 17 | Origin-aware consent requests | Pending slots, rate limits and pauses apply per client for all Biatec sites together; the backend treats HTTP 429 as "try later" in the widget |
-| 18 | Per-client refresh token lifetime (8 h) with absolute-expiry-preserving rotation | Keep 30-day tokens and rely on revocation; residual exposure at the IdP is 30 days |
+| 18 | Per-client refresh token lifetime (8 h) with absolute-expiry-preserving rotation | Keep 30-day tokens, destroy the vault entry at logout (no IdP revocation, row 14); residual exposure at the IdP is 30 days |
 | 19 | Consent-gated loosening of consent settings | Loosening only from an enrolled device's own screen; chat hides raising limits (`limits.update` is lowering-only) |
 | 20 | `GET /consent/settings` | Card says "may need approval on your phone" without predicting |
 
@@ -61,7 +61,7 @@ Content-Type: application/x-www-form-urlencoded
 Authorization: Basic <client credentials>
 
 scope=sign&resource=https%3A%2F%2Fmcp.biatec.io%2Ftools
-&login_hint=<sub>&requested_expiry=300
+&login_hint=<the client's own sub for this user (pairwise once row 15 ships)>&requested_expiry=300
 &binding_message=Add%20liquidity%20to%20EURS%2FUSDC
 &biatec_network=algorand-testnet&biatec_address=ADDR...
 &biatec_origin=https%3A%2F%2Fdex.biatec.io
@@ -280,7 +280,7 @@ Content-Type: application/json
   "grant_types": ["authorization_code", "refresh_token", "urn:openid:params:grant-type:ciba"],
   "response_types": ["code"],
   "token_endpoint_auth_method": "client_secret_basic",
-  "scope": "openid profile offline_access sign",
+  "scope": "openid profile email offline_access sign",
   "subject_type": "pairwise",
   "backchannel_token_delivery_mode": "poll",
   "authorization_details_types": ["biatec_transaction", "biatec_limits_change"],
@@ -296,7 +296,7 @@ Content-Type: application/json
 
 The redirect URI must equal the tenant's `Tenant.RedirectUri` as implemented by `/auth/callback`. **Registration today** (what an operator enters on the static client list while sections 1, 2 and 15 are on their fallbacks):
 the same request without `urn:openid:params:grant-type:ciba` in `grant_types`, without `subject_type`,
-`backchannel_token_delivery_mode` and `authorization_details_types`, and with `scope` `openid profile offline_access sign`. The
+`backchannel_token_delivery_mode` and `authorization_details_types`, and with `scope` `openid profile email offline_access sign` (the client may request `sign` only at elevation; the registration allows it). The
 backend and mock assume a public `sub`; adding the omitted fields later is a registration update, not a code change.
 
 Scopes `manage-limits` and
@@ -389,13 +389,13 @@ elevation survives revocation of the one it replaced.
 
 ## 18. Per-client refresh token lifetime with absolute-expiry rotation
 
-- **Purpose:** shrink the window a stolen vault is useful for. **Fallback:** keep 30-day tokens and rely on revocation (residual
+- **Purpose:** shrink the window a stolen vault is useful for. **Fallback:** keep 30-day tokens; revocation (row 14) is not available, so the vault entry is destroyed at logout (residual
   exposure 30 days).
 - Client metadata (proposed name) `refresh_token_lifetime_seconds: 28800`. On rotation the new refresh token inherits the original
   absolute expiry:
 
 ```json
-{ "access_token": "...", "refresh_token": "...", "expires_in": 600, "refresh_token_expires_at": "2026-10-20T17:00:00Z" }
+{ "access_token": "...", "refresh_token": "...", "expires_in": 900, "refresh_token_expires_at": "2026-10-20T17:00:00Z" }
 ```
 
 A rotated token's expiry is never later than the first token's `refresh_token_expires_at`. Reuse detection applies as today; the
