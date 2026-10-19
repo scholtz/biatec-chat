@@ -1,0 +1,322 @@
+/* Widget shell (T-063): launcher, minimized bar, panel frame per mode, header and status bar.
+   Geometry from docs/design/biatec-ai-widget/README.md screens 1 to 3. Tokens only for colour, radius and spacing.
+   Hosts can move the floating widget with --bc-offset-right / --bc-offset-bottom on the host element (default 24 px). */
+
+:host([data-biatec-chat-inline-host]) {
+  display: block;
+  width: 100%;
+}
+.biatec-chat[data-inline] {
+  position: relative;
+  width: 100%;
+}
+
+/* 1. Launcher */
+.biatec-chat .bc-launcher-wrap {
+  position: fixed;
+  right: var(--bc-offset-right, var(--space-6));
+  bottom: var(--bc-offset-bottom, var(--space-6));
+  z-index: var(--bc-z);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.biatec-chat .bc-launcher {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-brand-primary);
+  color: var(--color-brand-on);
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease);
+}
+.biatec-chat .bc-launcher:hover {
+  background: var(--color-brand-hover);
+}
+.biatec-chat .bc-launcher:active {
+  background: var(--color-brand-pressed);
+}
+.biatec-chat .bc-launcher-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--space-5);
+  height: var(--space-5);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--color-text-primary);
+  color: var(--color-bg-primary);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.biatec-chat .bc-launcher-tip {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-text-primary);
+  color: var(--color-bg-primary);
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* 2. Minimized bar */
+.biatec-chat .bc-minbar {
+  position: fixed;
+  right: var(--bc-offset-right, var(--space-6));
+  bottom: var(--bc-offset-bottom, var(--space-6));
+  z-index: var(--bc-z);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: min(320px, calc(100vw - 32px));
+  padding: 10px 10px 10px var(--space-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+  box-shadow: var(--shadow-lg);
+  animation: bc-shell-in var(--motion-slow) var(--ease);
+}
+.biatec-chat .bc-minbar-text {
+  flex: 1;
+  min-width: 0;
+}
+.biatec-chat .bc-minbar-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.biatec-chat .bc-minbar-status {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 3. Panel frame, by mode */
+.biatec-chat .bc-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--color-bg-primary);
+  background-image: var(--ambient);
+  color: var(--color-text-primary);
+  animation: bc-shell-in var(--motion-slow) var(--ease);
+}
+.biatec-chat .bc-panel[data-mode="floating"] {
+  position: fixed;
+  right: var(--bc-offset-right, var(--space-6));
+  bottom: var(--bc-offset-bottom, var(--space-6));
+  z-index: var(--bc-z);
+  width: min(420px, calc(100vw - 32px));
+  height: min(700px, calc(100vh - 48px));
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+}
+.biatec-chat .bc-panel[data-mode="inline"] {
+  position: relative;
+  width: 100%;
+  height: min(700px, calc(100vh - 48px));
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-xl);
+  box-shadow: none;
+}
+/* Workspace, and a floating panel below 640 px: the whole viewport. */
+.biatec-chat .bc-panel[data-mode="workspace"],
+.biatec-chat .bc-panel[data-fullscreen] {
+  position: fixed;
+  inset: 0;
+  z-index: var(--bc-z);
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+@keyframes bc-shell-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-2));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .biatec-chat .bc-panel,
+  .biatec-chat .bc-minbar {
+    animation: none;
+  }
+}
+
+/* Header */
+.biatec-chat .bc-shell-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 10px var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border-default);
+}
+.biatec-chat .bc-shell-heading {
+  flex: 1;
+  min-width: 0;
+}
+.biatec-chat .bc-shell-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.biatec-chat .bc-shell-sub {
+  margin: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.biatec-chat .bc-shell-addr {
+  font-variant-numeric: tabular-nums;
+}
+.biatec-chat .bc-shell-actions {
+  display: flex;
+  gap: 2px;
+}
+/* Header tooltips open below: above the header they would be clipped by the panel. */
+.biatec-chat .bc-shell-actions .bc-tooltip {
+  top: 100%;
+  bottom: auto;
+  margin-top: var(--space-1);
+  margin-bottom: 0;
+}
+.biatec-chat .bc-shell-actions .bc-iconbtn-wrap:last-child .bc-tooltip {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+/* Status bar */
+.biatec-chat .bc-shell-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px var(--space-4);
+  border-bottom: 1px solid var(--color-border-default);
+}
+.biatec-chat .bc-shell-spacer {
+  flex: 1;
+}
+.biatec-chat .bc-status-pill,
+.biatec-chat .bc-status-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--size-control-sm);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease);
+}
+.biatec-chat .bc-status-toggle {
+  border-color: transparent;
+}
+.biatec-chat .bc-status-pill:hover,
+.biatec-chat .bc-status-toggle:hover,
+.biatec-chat .bc-status-toggle[aria-pressed="true"] {
+  background: var(--color-bg-interactive);
+}
+.biatec-chat .bc-status-pill:focus-visible,
+.biatec-chat .bc-status-toggle:focus-visible,
+.biatec-chat .bc-launcher:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+.biatec-chat .bc-status-prefix {
+  color: var(--color-text-secondary);
+}
+.biatec-chat .bc-status-mode {
+  font-weight: 600;
+}
+.biatec-chat .bc-status-dot {
+  flex: none;
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: 2px;
+  background: var(--color-status-neutral);
+}
+.biatec-chat .bc-status-dot[data-mode="prepare"] {
+  background: var(--color-text-primary);
+}
+.biatec-chat .bc-status-dot[data-mode="paused"] {
+  background: transparent;
+  border: 2px solid var(--color-brand-primary);
+}
+.biatec-chat .bc-shell-notice {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border-default);
+  background: var(--color-status-warning-subtle);
+  color: var(--color-status-warning);
+  font-size: 13px;
+}
+
+/* Body: conversation, plus the Activity aside (beside it in workspace, an overlay sheet otherwise). */
+.biatec-chat .bc-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.biatec-chat .bc-shell-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.biatec-chat .bc-panel[data-mode="workspace"] .bc-shell-main > * {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+}
+.biatec-chat .bc-shell-aside {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: auto;
+  background: var(--color-bg-primary);
+}
+.biatec-chat .bc-panel[data-mode="workspace"] .bc-shell-aside {
+  position: static;
+  flex: none;
+  width: 300px;
+  border-left: 1px solid var(--color-border-default);
+}
+@media (max-width: 639.98px) {
+  .biatec-chat .bc-panel[data-mode="workspace"] .bc-shell-aside {
+    position: absolute;
+    width: auto;
+    border-left: 0;
+  }
+}
