@@ -139,6 +139,8 @@ The rest of the spec's flow (chat message, tool call, preview, confirm, sign, co
 | Evidence anchoring | `Evidence/Anchoring/` | Every 10 minutes a Merkle root of conversation heads in an Algorand note; durable attempts; verifier | built, off by default (`Evidence:Anchoring:Enabled`); not yet called from a conversation; no recorded testnet run |
 | Tenant onboarding | `Onboarding/` | DNS TXT challenge, host and origin proof, operator approval fallback | built |
 | Builder sidecar client | `Tools/Builders/` | Calls the Node sidecar with a shared secret header | built |
+| Bedrock budget | `Budget/` | Per-tenant and global spend caps per window; the breaker answers anonymous sessions from cached answers or a refusal | built |
+| Telemetry | `Telemetry/` | OpenTelemetry traces (requests, HTTP, AWS SDK, Npgsql) and metrics (refusals per tier, policy violations, consent events) over OTLP; off unless `Telemetry:Enabled`; addresses, user agents and query strings are stripped | built |
 
 ## What is not built yet
 
@@ -149,7 +151,7 @@ These are specified in the product description and tracked on the board. The doc
 - Widget chat UI, action preview and consent cards, i18n (English, Slovak).
 - Widget rework to the Biatec AI design system (T-062 to T-069): tokens and Shadow DOM isolation, `theme: 'host'`, floating / inline / workspace modes, the `useBiatecChat()` host API, the agent-mode permissions dialog with its server-side enforcement, the activity timeline, data cards, and the Biatec DEX integration ([integration-biatec-dex.md](integration-biatec-dex.md)).
 - Authenticator enrollment, approval and push.
-- Evidence export bundle, retention jobs and user erasure, OpenTelemetry, the x402 capability.
+- Evidence export bundle, retention jobs and user erasure, the x402 capability.
 - Containers, Kubernetes manifests and the hackathon hosting scripts.
 
 ## Fallbacks for changes in other products

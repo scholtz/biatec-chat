@@ -205,6 +205,16 @@ public sealed class ConfirmService(
             return new ConfirmResult(ConfirmOutcome.Failed, ex.Message + " Nothing was submitted.", [], ErrorCode: "signed_group_mismatch");
         }
 
+        // Fail closed: x402.pay must settle through its handler (facilitator + resource fetch). If the handler is not
+        // registered (platform flag turned off after the preview was made) the MCP broadcast would pay for nothing.
+        if (string.Equals(preview.Capability, "x402.pay", StringComparison.Ordinal)
+            && settlementHandlers?.Any(h => string.Equals(h.Capability, preview.Capability, StringComparison.Ordinal)) != true)
+        {
+            await FailAsync(preview, step, CancellationToken.None);
+            await RecordAsync(session, "submission_failed", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["reason"] = "settlement_unavailable" }, CancellationToken.None);
+            return new ConfirmResult(ConfirmOutcome.Failed, "x402 payments are not available right now. Nothing was submitted; the preview must be rebuilt.", [], ErrorCode: "settlement_unavailable");
+        }
+
         var txIds = Biatec.Chat.Tools.Algod.AlgorandGroup.Ensure(group).TxIds.ToArray();
         // Record "submitted, unconfirmed" BEFORE handing the group to MCP and ignore the request's cancellation: once
         // the signed bytes leave, the group may be broadcast even if this request is aborted, and Reconcile can only

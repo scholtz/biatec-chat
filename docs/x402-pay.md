@@ -43,3 +43,13 @@ Only USDC is supported (mainnet 31566704, testnet 10458941). Seller side is out 
 4. Ask the assistant to pay for that URL on testnet, review the preview, confirm, and approve in the authenticator.
 
 After settlement, a failure to deliver the resource (oversized body, DNS rebinding) is reported as settled with no content, never as "nothing was paid". The `ConfirmService` x402 settlement tests need Postgres and run in CI.
+
+## Verification status
+
+The acceptance criterion "with the flag on, a demo shop resource is paid on testnet" is **not verified end to end**. It is
+covered by unit and integration tests against a mock facilitator and a stub resource server only. No demo seller was built
+and no testnet run against `algo-safe-x402-facilitator` has been recorded; that needs an external seller, a facilitator and
+a funded testnet wallet. The DB-backed ConfirmService x402 tests need Postgres (`docker compose up -d`).
+
+If the `X402:Enabled` flag is turned off after an `x402.pay` preview was created, confirming it fails closed
+(`settlement_unavailable`) and nothing is broadcast.

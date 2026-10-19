@@ -307,6 +307,21 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task X402_confirm_fails_closed_when_no_settlement_handler_is_registered()
+    {
+        var b = await BuildX402PreviewAsync();
+        var r = await ConfirmAsync(b.PreviewId, b.Group.GroupHash, handlers: null);
+
+        Assert.Equal(ConfirmOutcome.Failed, r.Outcome);
+        Assert.Equal("settlement_unavailable", r.ErrorCode);
+        Assert.Empty(_mcp.Submits);
+        var (preview, step) = await LoadAsync(b.PreviewId);
+        Assert.NotEqual(ActionPreviewStatus.Completed, preview.Status);
+        Assert.NotEqual(ActionPreviewStatus.InProgress, preview.Status);
+        Assert.Empty(step.TxIds ?? []);
+    }
+
+    [Fact]
     public async Task X402_confirm_fails_cleanly_when_the_facilitator_refuses_to_verify()
     {
         var b = await BuildX402PreviewAsync();
