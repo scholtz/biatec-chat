@@ -101,12 +101,23 @@ public static class AnchorVerifier
             if (proofIdx[i].Proof.AnchoredSeq < proofIdx[i - 1].Proof.AnchoredSeq) errors.Add("Anchored seq goes backwards between anchors.");
 
         // 3. Starts: the first entry and every resume entry record the latest confirmed anchor.
+        // The bundle's anchor records must match the chain and carry the id derived from the tx id, so the operator
+        // cannot re-label which on-chain anchor an entry points to.
+        foreach (var b in bundleAnchors)
+        {
+            if (!indexOfTx.TryGetValue(b.TxId, out var bi)) { errors.Add($"Bundle anchor {b.Seq} (tx {b.TxId}) is not on the chain."); continue; }
+            var c = chainSorted[bi];
+            if (b.Id != AnchorIds.FromTxId(b.TxId)) errors.Add($"Bundle anchor {c.Seq} has an id that is not derived from its transaction ID.");
+            if (b.Seq != c.Seq || b.Root != c.Root || b.PrevTxId != c.PrevTxId || b.GapFrom != c.GapFrom)
+                errors.Add($"Bundle anchor {c.Seq} differs from the chain (sequence, root, previous transaction or gap).");
+        }
+        var indexOfId = new Dictionary<Guid, int>();
+        for (var i = 0; i < chainSorted.Count; i++) indexOfId.TryAdd(AnchorIds.FromTxId(chainSorted[i].TxId), i);
         int RefIndex(EvidenceEntry e, out bool ok)
         {
             ok = true;
             if (e.AnchorRef is not { } id) return -1;
-            var tx = bundleAnchors.FirstOrDefault(a => a.Id == id)?.TxId;
-            if (tx is not null && indexOfTx.TryGetValue(tx, out var i)) return i;
+            if (indexOfId.TryGetValue(id, out var i)) return i;
             ok = false;
             return -1;
         }

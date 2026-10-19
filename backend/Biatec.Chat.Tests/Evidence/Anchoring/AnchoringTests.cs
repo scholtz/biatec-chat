@@ -235,6 +235,45 @@ public sealed class AnchoringServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AnchorId_IsDerivedFromTheTxId_AndRelabelledBundleAnchorsAreRejected()
+    {
+        Guid a = Guid.NewGuid();
+        await using var db = NewContext();
+        var w = Writer(db);
+        await w.AppendFirstAsync(a, "message", P("a1"));
+        var t1 = await Service(db).TickAsync();
+        Assert.Equal(AnchorIds.FromTxId(t1.Anchor!.AnchorTxId), t1.Anchor.Id);
+        _time.Advance(TimeSpan.FromMinutes(10));
+        await w.AppendFirstAsync(Guid.NewGuid(), "message", P("x"));
+        await Service(db).TickAsync();
+
+        Assert.True((await VerifyAsync(a)).V.Valid);
+        // Operator swaps the tx behind an anchor record, or changes its root.
+        var relabel = await VerifyAsync(a, e => e with { Anchors = e.Anchors.Select(x => x with { TxId = e.Anchors[^1].TxId }).ToList() });
+        Assert.False(relabel.V.Valid);
+        var badRoot = await VerifyAsync(a, e => e with { Anchors = e.Anchors.Select(x => x with { Root = new string('0', x.Root.Length) }).ToList() });
+        Assert.False(badRoot.V.Valid);
+        var badId = await VerifyAsync(a, e => e with { Anchors = e.Anchors.Select(x => x with { Id = Guid.NewGuid() }).ToList() });
+        Assert.False(badId.V.Valid);
+    }
+
+    [Fact]
+    public async Task Tick_IgnoresLongIdleConversationsAlreadyAnchored()
+    {
+        Guid a = Guid.NewGuid(), b = Guid.NewGuid();
+        await using var db = NewContext();
+        var w = Writer(db);
+        await w.AppendFirstAsync(a, "message", P("a1"));
+        await Service(db).TickAsync();
+        _time.Advance(TimeSpan.FromHours(5));
+        await w.AppendFirstAsync(b, "message", P("b1"));
+        var r = await Service(db).TickAsync();
+        Assert.Equal(1, r.Leaves); // only b; a is idle and fully anchored
+        _time.Advance(TimeSpan.FromHours(5));
+        Assert.Null((await Service(db).TickAsync()).Anchor);
+    }
+
+    [Fact]
     public async Task Tick_WithNothingDue_DoesNotBroadcast()
     {
         await using var db = NewContext();

@@ -90,11 +90,21 @@ public sealed class AnchorService(
     {
         var now = _time.GetUtcNow();
         if (await RecoverAsync(ct)) return new AnchorTickResult(null, 0, false); // an earlier transaction may still confirm: do not fork the chain
+        // Only conversations that can be due: those with an entry since the cutoff. Anything older was covered by an earlier
+        // tick (the cutoff reaches back past the last confirmed anchor, so entries missed by lost or slow ticks are included).
+        var lastAnchoredAt = await db.EvidenceAnchors.AsNoTracking().OrderByDescending(a => a.SequenceNumber)
+            .Select(a => (DateTimeOffset?)a.AnchoredAt).FirstOrDefaultAsync(ct);
+        var margin = _o.UnknownGrace + (_o.ConfirmTimeout + _o.RetryDelay) * Math.Max(1, _o.MaxBroadcastAttempts) + _o.Interval;
+        var cutoff = lastAnchoredAt is null ? DateTimeOffset.MinValue : Min(now - _o.IdleDrop, lastAnchoredAt.Value - margin);
+        var candidates = db.EvidenceEntries.AsNoTracking().Where(e => e.SignedAt >= cutoff).Select(e => e.ConversationId).Distinct();
         var heads = await db.EvidenceEntries.AsNoTracking()
+            .Where(e => candidates.Contains(e.ConversationId))
             .Where(e => e.Seq == db.EvidenceEntries.Where(x => x.ConversationId == e.ConversationId).Max(x => x.Seq))
             .Select(e => new Head(e.ConversationId, e.Seq, e.EntryHash, e.Kind, e.SignedAt))
             .ToListAsync(ct);
+        var headIds = heads.Select(h => h.ConversationId).ToList();
         var lastLeaf = (await db.EvidenceAnchorLeaves.AsNoTracking()
+                .Where(l => headIds.Contains(l.ConversationId))
                 .GroupBy(l => l.ConversationId)
                 .Select(g => new { ConversationId = g.Key, Seq = g.Max(l => l.AnchoredSeq) })
                 .ToListAsync(ct))
@@ -185,6 +195,8 @@ public sealed class AnchorService(
         return new AnchorTickResult(anchor, picked.Count, false);
     }
 
+    private static DateTimeOffset Min(DateTimeOffset a, DateTimeOffset b) => a < b ? a : b;
+
     public const string PendingStatus = "pending";
     public const string LostStatus = "lost";
 
@@ -212,7 +224,7 @@ public sealed class AnchorService(
     {
         var anchor = new EvidenceAnchor
         {
-            Id = Guid.NewGuid(),
+            Id = AnchorIds.FromTxId(txId),
             SequenceNumber = seq,
             PreviousAnchorTxId = previousTxId,
             AnchorTxId = txId,
@@ -294,4 +306,11 @@ public sealed class AnchorService(
     public static IReadOnlyList<MerkleSibling> ParseSiblings(string json) =>
         (JsonNode.Parse(json) as JsonArray ?? throw new JsonException("siblingHashes must be an array."))
             .Select(n => new MerkleSibling((string)n!["hash"]!, (string)n["side"]!)).ToList();
+}
+
+/// <summary>An anchor id is derived from its transaction ID, so a bundle's anchorRef can be checked against the chain.</summary>
+public static class AnchorIds
+{
+    public static Guid FromTxId(string txId) =>
+        new(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(txId)).AsSpan(0, 16));
 }

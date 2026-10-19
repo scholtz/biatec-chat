@@ -38,6 +38,11 @@ chain. Changing the column to the transaction ID string needs a migration and a 
 
 ## Wired vs deferred
 
+Open acceptance criteria (not ticked, do not tick until done): a recorded testnet run, calling `AnchoredEvidenceWriter` from the
+conversation flow, and embedding `AnchorExporter` output in the export bundle with an end-to-end test (hand-off to T-036).
+
+Tick cost: a tick only reads conversations with an entry since a cutoff reaching back past the last confirmed anchor, not all history.
+
 Wired: tick job, broadcaster, gap handling, exporter and verifier. Not yet called from the conversation flow:
 `AnchoredEvidenceWriter.AppendFirstAsync / ResumeIfDroppedAsync / EndAsync`, and the evidence bundle integration (T-036).
 A testnet run is not recorded: it needs a funded evidence account, which this environment does not have. The broadcaster is
@@ -49,5 +54,7 @@ covered against a fake Algod (transaction shape, idempotent retry, expiry). To r
 The spec defines `anchorRef` as the transaction ID. `EvidenceEntry.AnchorRef` is a `Guid?` from T-034, so it holds the
 `EvidenceAnchor.Id`, and that id is part of `entryHash`. Switching to the tx id string changes the T-034 column, the
 entry hash input and `EvidenceVerifier`, which other tasks build on, so it is left for the user to approve. Until then a
-verifier must not trust the bundle's id-to-tx mapping on its own: `AnchorVerifier` checks each referenced anchor against
-the chain-read anchor list (sequence, tx id, root, prev, gap).
+verifier must not trust the bundle's id-to-tx mapping: `EvidenceAnchor.Id` is `AnchorIds.FromTxId(txId)` (first 16 bytes of
+SHA-256 of the tx id), `AnchorVerifier` resolves every `anchorRef` by recomputing that id from the chain's anchors, and it
+rejects any bundle anchor record whose id, sequence, root, prev or gap differs from the chain. The operator therefore cannot
+re-label which on-chain anchor an entry points to. Anchor rows created before this change keep random ids.
