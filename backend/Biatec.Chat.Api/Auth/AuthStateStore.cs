@@ -17,6 +17,8 @@ public sealed class PendingAuth
     public required string Nonce { get; init; }
     public required string Verifier { get; init; }
     public required string Scope { get; init; }
+    /// <summary>For Purpose "elevate": the single allow-listed scope being added.</summary>
+    public string? Elevate { get; init; }
 }
 
 public interface IAuthStateStore

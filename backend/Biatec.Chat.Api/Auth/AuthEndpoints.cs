@@ -148,6 +148,22 @@ public static class AuthEndpoints
                 return ClosePage(ctx, 400);
             }
 
+            if (pending.Purpose == Elevation.ElevationEndpoints.Purpose)
+            {
+                try
+                {
+                    var ok = await Elevation.ElevationCompletion.CompleteAsync(tenant, session, pending, code, clock, oidc, validator, vault, ctx.RequestAborted);
+                    await SetStatusAsync(db, pending.PopupId, session.ConversationId, ok ? PopupAuthStatus.Completed : PopupAuthStatus.Failed, ctx.RequestAborted);
+                    return ClosePage(ctx, ok ? 200 : 400);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    log.LogWarning("Scope elevation failed: {ErrorType}", ex.GetType().Name);
+                    await SetStatusAsync(db, pending.PopupId, session.ConversationId, PopupAuthStatus.Failed, CancellationToken.None);
+                    return ClosePage(ctx, 400);
+                }
+            }
+
             string? newSessionToken = null;
             string? newSessionId = null;
             try
@@ -255,7 +271,7 @@ public static class AuthEndpoints
     }
 
     /// <summary>The only HTML this flow serves: no data, no tokens, the same page for every outcome.</summary>
-    private static IResult ClosePage(HttpContext ctx, int status)
+    internal static IResult ClosePage(HttpContext ctx, int status)
     {
         var scriptNonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
         ctx.Response.Headers.ContentSecurityPolicy = $"default-src 'none'; script-src 'nonce-{scriptNonce}'; base-uri 'none'; frame-ancestors 'none'";
@@ -265,7 +281,7 @@ public static class AuthEndpoints
     }
 
     /// <summary>Read-only live session lookup: unlike ResolveOrCreate it never creates a session for an unknown cookie.</summary>
-    private static async Task<ChatSession?> FindLiveAsync(ChatDbContext db, Tenant tenant, string? token, DateTimeOffset now, CancellationToken ct)
+    internal static async Task<ChatSession?> FindLiveAsync(ChatDbContext db, Tenant tenant, string? token, DateTimeOffset now, CancellationToken ct)
     {
         if (!SessionService.WellFormed(token)) return null;
         var id = SessionService.IdFromToken(token!);
@@ -274,13 +290,13 @@ public static class AuthEndpoints
             s => s.Id == id && s.TenantId == tenant.Id && s.AbsoluteExpiresAt > now && s.LastActivityAt > idleCutoff, ct);
     }
 
-    private static Task SetStatusAsync(ChatDbContext db, Guid id, Guid conversationId, PopupAuthStatus status, CancellationToken ct) =>
+    internal static Task SetStatusAsync(ChatDbContext db, Guid id, Guid conversationId, PopupAuthStatus status, CancellationToken ct) =>
         db.PopupAuthRequests.Where(p => p.Id == id && p.ConversationId == conversationId && p.Status == PopupAuthStatus.Pending)
             .ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, status), ct);
 
-    private static string Random64() => Base64Url(RandomNumberGenerator.GetBytes(32));
-    private static string Hash(string value) => Base64Url(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
-    private static string Challenge(string verifier) => Base64Url(SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
+    internal static string Random64() => Base64Url(RandomNumberGenerator.GetBytes(32));
+    internal static string Hash(string value) => Base64Url(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+    internal static string Challenge(string verifier) => Base64Url(SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
     private static string Base64Url(byte[] b) => Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
     /// <summary>Logger category for the auth endpoints.</summary>
