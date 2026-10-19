@@ -28,14 +28,17 @@ Then read the **whole** product description before writing anything.
      same time and changes the same files (overlapping `area`, or files it has to edit outside its area). Fill in
      the **Parallel work** section to match. Rules: `kanban/README.md`, "Parallel work".
 5. **Dependencies.** Set `blocked_by` only for real ordering needs. The graph must have no cycles and should be wide;
-   several tasks must be startable at once.
+   several tasks must be startable at once. When adding to an existing board, also check existing unfinished tasks:
+   a new task can block an old one too.
 6. **Initial status.** Use `backlog` if `blocked_by` is empty, otherwise `blocked`. `owner` and `branch` stay empty.
    `created` and `updated` are today's date. The single Activity log line reads
    `kanban-split · (new) → <status> · created from <description file>`.
 7. **Priority.** P0 for the critical path to a working demo before the code freeze in `AGENTS.md`, P1 for things
    needed in the demo, P2 for things that should exist, P3 for nice-to-haves.
-8. **Write the files** as `kanban/tasks/T-###-kebab-slug.md`, then build `kanban/BOARD.md` exactly as
-   `/kanban-board` does.
+8. **Write the files** as `kanban/tasks/T-###-kebab-slug.md`. For each new task run
+   `kanban/scripts/board.py blockers T-###` and decide every candidate (`kanban/README.md` → "Creating a task").
+   Then run `kanban/scripts/board.py sync`: it corrects `status` from the final `blocked_by`, builds
+   `kanban/BOARD.md`, and reports cycles and other invariant violations, which you fix before finishing.
 9. **Summary to the user.** Report the task count per epic and priority, the critical path, the first wave a
    dispatcher can start in parallel, human prerequisites (things only the user or an operator can do), ambiguous
    requirements with your assumptions, and what you deliberately left out. Don't start any task.

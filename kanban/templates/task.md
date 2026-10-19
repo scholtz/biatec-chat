@@ -65,6 +65,7 @@ Filled in by the agent when it moves the task to `review`.
 - **Files changed:** ...
 - **How it was verified:** commands run and their results.
 - **Follow-up tasks created:** IDs, or "none".
+- **Unblocks:** output of `kanban/scripts/board.py unblocks T-###`: tasks that become ready once this is approved.
 - **Open questions:** for the user, or "none".
 
 ## Review
