@@ -27,11 +27,11 @@ public sealed class BedrockOptions
     public string Region { get; set; } = "eu-central-1";
 
     /// <summary>The cost-saving model for anonymous capability-discovery sessions (Sonnet generation).</summary>
-    [Required, RegularExpression(@"^eu\.anthropic\.claude-(haiku|sonnet|opus)-4-5-.+", ErrorMessage = "Bedrock:AnonymousModelId must be an eu.anthropic.claude-*-4-5 inference profile id (Claude 5 isn't available on this account).")]
+    [Required, RegularExpression(@"^eu\.anthropic\.claude-(haiku|sonnet|opus)-4-\d+-.+", ErrorMessage = "Bedrock:AnonymousModelId must be an eu.anthropic.claude-*-4-* inference profile id (Claude 5 isn't available on this account).")]
     public string AnonymousModelId { get; set; } = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0";
 
     /// <summary>The default model for signed-in sessions (current Opus generation available on this account).</summary>
-    [Required, RegularExpression(@"^eu\.anthropic\.claude-(haiku|sonnet|opus)-4-5-.+", ErrorMessage = "Bedrock:AuthenticatedModelId must be an eu.anthropic.claude-*-4-5 inference profile id (Claude 5 isn't available on this account).")]
+    [Required, RegularExpression(@"^eu\.anthropic\.claude-(haiku|sonnet|opus)-4-\d+-.+", ErrorMessage = "Bedrock:AuthenticatedModelId must be an eu.anthropic.claude-*-4-* inference profile id (Claude 5 isn't available on this account).")]
     public string AuthenticatedModelId { get; set; } = "eu.anthropic.claude-opus-4-5-20251101-v1:0";
 
     [Range(1, 64000)] public int MaxTokens { get; set; } = 4096;

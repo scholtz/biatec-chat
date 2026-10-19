@@ -37,12 +37,18 @@ public sealed class BedrockClientOptions : IValidatableObject
 }
 
 /// <summary>
-/// Every concurrency slot stayed taken for the whole queue budget; the caller should answer "busy, try again".
-/// When the wait was for a retry, the error that caused the retry is the inner exception.
+/// Bedrock capacity ran out: every concurrency slot stayed taken for the whole queue budget, or the service stayed
+/// throttled through every retry. The caller should answer "busy, try again"; the inner exception is the cause.
 /// </summary>
-public sealed class ModelBusyException(TimeSpan budget, Exception? retryCause = null)
-    : Exception($"No Bedrock slot became free within {budget.TotalSeconds:0.#} s.", retryCause);
+public sealed class ModelBusyException : Exception
+{
+    public ModelBusyException(TimeSpan budget, Exception? retryCause = null)
+        : base($"No Bedrock slot became free within {budget.TotalSeconds:0.#} s.", retryCause) { }
+
+    public ModelBusyException(string message, Exception cause) : base(message, cause) { }
+}
 
 /// <summary>The event stream ended before the message stop: the answer is truncated.</summary>
+/// Not an IOException: a truncated answer must never be mistaken for a transport fault that is safe to resend.
 public sealed class ModelStreamIncompleteException(string modelId, string reason = "ended")
-    : IOException($"The Bedrock stream for {modelId} {reason} before the message stop.");
+    : Exception($"The Bedrock stream for {modelId} {reason} before the message stop.");

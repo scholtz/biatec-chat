@@ -138,6 +138,11 @@ public sealed class BedrockModelClient(
         {
             await RunAttemptsAsync(converse, writer, ct);
         }
+        catch (Exception ex) when (Unwrap(ex) is ThrottlingException or ServiceUnavailableException)
+        {
+            // Retries ran out on an overloaded service: the same "busy, try again" as a full queue.
+            failure = new ModelBusyException("Bedrock stayed throttled or unavailable through every retry.", ex);
+        }
         catch (Exception ex)
         {
             failure = ex;
@@ -164,7 +169,8 @@ public sealed class BedrockModelClient(
             {
                 using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 var assembler = new StreamAssembler(converse.ModelId, logger);
-                var written = false;
+                var written = false;  // something was handed to the caller: no retry from here on
+                var received = false; // the stream is live: later reads get the idle limit, not the first-event one
                 var stopped = false;
                 var sw = Stopwatch.StartNew();
                 var events = source.OpenAsync(converse, attemptCts.Token).GetAsyncEnumerator(attemptCts.Token);
@@ -179,7 +185,7 @@ public sealed class BedrockModelClient(
                         read = events.MoveNextAsync().AsTask();
                         // The first read includes connecting and the model's time to first token, so it gets longer.
                         var limit = stopped ? UsageWait
-                            : TimeSpan.FromMilliseconds(written ? _c.StreamIdleTimeoutMs : _c.FirstEventTimeoutMs);
+                            : TimeSpan.FromMilliseconds(received ? _c.StreamIdleTimeoutMs : _c.FirstEventTimeoutMs);
                         if (!await CompletesWithinAsync(read, limit, ct))
                         {
                             await SettleAsync(attemptCts, read);
@@ -223,6 +229,7 @@ public sealed class BedrockModelClient(
                             break;
                         }
 
+                        received = true;
                         stopped |= events.Current is MessageStopEvent;
                         foreach (var output in assembler.Accept(events.Current, sw))
                         {
@@ -299,10 +306,10 @@ public sealed class BedrockModelClient(
     {
         // Once the caller cancelled, a failing read is the abort itself, not a transient fault.
         if (ct.IsCancellationRequested) return false;
-        // Only the SDK's stream wrapper is looked through; any other error that merely wraps a transient one isn't.
-        while (ex is BedrockRuntimeEventStreamException { InnerException: { } inner }) ex = inner;
+        ex = Unwrap(ex);
         return ex switch
         {
+            ModelStreamIncompleteException => true,
             // ModelTimeoutException isn't here: a prompt that timed out the model usually does so again, at full price.
             ThrottlingException or ServiceUnavailableException or ModelNotReadyException or InternalServerException => true,
             // Wraps the model's own error, which can be a 4xx that would fail the same way again.
@@ -320,6 +327,13 @@ public sealed class BedrockModelClient(
                 when client.GetType() == typeof(AmazonClientException) && IsTransport(inner) => true,
             _ => IsTransport(ex),
         };
+    }
+
+    // Only the SDK's stream wrapper is looked through; any other error that merely wraps a transient one isn't.
+    private static Exception Unwrap(Exception ex)
+    {
+        while (ex is BedrockRuntimeEventStreamException { InnerException: { } inner }) ex = inner;
+        return ex;
     }
 
     // An HttpClient timeout surfaces as a TaskCanceledException; IsRetryable already ruled out caller cancellation.

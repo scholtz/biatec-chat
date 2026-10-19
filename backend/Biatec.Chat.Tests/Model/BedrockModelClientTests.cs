@@ -180,6 +180,46 @@ public class BedrockModelClientTests
     }
 
     [Fact]
+    public async Task After_the_first_event_the_idle_limit_applies_even_before_any_output()
+    {
+        // A tool start is an event but produces no output; a stall after it must be caught by the short idle limit.
+        var o = Opts(maxRetries: 0);
+        o.StreamIdleTimeoutMs = 500;
+        o.FirstEventTimeoutMs = 60000;
+        var source = new StallAfterSource(new ContentBlockStartEvent
+        {
+            ContentBlockIndex = 0, Start = new ContentBlockStart { ToolUse = new ToolUseBlockStart { ToolUseId = "tu-1", Name = "kb_search" } },
+        });
+
+        await Assert.ThrowsAsync<ModelStreamIncompleteException>(() => Collect(Client(source, o).StreamAsync(Request())).WaitAsync(TimeSpan.FromSeconds(10)));
+    }
+
+    private sealed class StallAfterSource(IEventStreamEvent first) : IConverseStreamSource
+    {
+        public async IAsyncEnumerable<IEventStreamEvent> OpenAsync(ConverseStreamRequest request, [EnumeratorCancellation] CancellationToken ct)
+        {
+            yield return first;
+            await Task.Delay(Timeout.Infinite, ct);
+        }
+    }
+
+    [Fact]
+    public void Model_ids_accept_any_claude_4_generation_but_not_claude_5()
+    {
+        foreach (var (id, ok) in new[]
+        {
+            ("eu.anthropic.claude-opus-4-5-20251101-v1:0", true),
+            ("eu.anthropic.claude-opus-4-6-20260101-v1:0", true),
+            ("eu.anthropic.claude-sonnet-5-20260101-v1:0", false),
+            ("eu.anthropic.claude-opus-5-5-20260101-v1:0", false),
+        })
+        {
+            var o = new BedrockOptions { AuthenticatedModelId = id };
+            Assert.Equal(ok, System.ComponentModel.DataAnnotations.Validator.TryValidateObject(o, new(o), [], validateAllProperties: true));
+        }
+    }
+
+    [Fact]
     public async Task A_slow_first_token_gets_the_longer_first_event_limit()
     {
         var o = Opts(maxRetries: 0);
@@ -328,10 +368,11 @@ public class BedrockModelClientTests
         var source = new FakeSource([Text("partial"), new ThrottlingException("mid-stream")], TextAnswer);
         var seen = new List<ModelStreamEvent>();
 
-        await Assert.ThrowsAsync<ThrottlingException>(async () =>
+        var busy = await Assert.ThrowsAsync<ModelBusyException>(async () =>
         {
             await foreach (var e in Client(source).StreamAsync(Request())) seen.Add(e);
         });
+        Assert.IsType<ThrottlingException>(busy.InnerException);
 
         Assert.Equal(1, source.Calls);
         Assert.Equal("partial", Assert.IsType<ModelTextDelta>(Assert.Single(seen)).Text);
@@ -341,7 +382,8 @@ public class BedrockModelClientTests
     public async Task Gives_up_after_max_retries_and_does_not_retry_validation_errors()
     {
         var throttled = new FakeSource([new ThrottlingException("slow down")]);
-        await Assert.ThrowsAsync<ThrottlingException>(() => Collect(Client(throttled, Opts(maxRetries: 2)).StreamAsync(Request())));
+        var busy = await Assert.ThrowsAsync<ModelBusyException>(() => Collect(Client(throttled, Opts(maxRetries: 2)).StreamAsync(Request())));
+        Assert.IsType<ThrottlingException>(busy.InnerException);
         Assert.Equal(3, throttled.Calls);
 
         var invalid = new FakeSource([new ValidationException("bad model id")]);
