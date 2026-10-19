@@ -113,6 +113,39 @@ public sealed class SafeCreateBuilderTests
         var priced = new SafeBuilder(new OneShot((_, _) => SidecarFixture.Result(JsonDocument.Parse(valued.ToJsonString()).RootElement)));
         await Assert.ThrowsAsync<SafeBuildException>(() => priced.BuildDeployAsync("testnet", Alice, "Team Safe"));
     }
+
+    [Fact]
+    public async Task SafeCreate_builder_trusts_the_transaction_bytes_not_the_sidecars_description()
+    {
+        var carol = new Account().Address.EncodeAsString();
+        // The description claims exactly the requested signers and threshold, but the bytes encode Alice and Bob, 2-of-2.
+        var lying = JsonNode.Parse(Fx.GetProperty("bootstrap").GetRawText())!;
+        lying["preview"]!["groups"]![0]!["members"] = new JsonArray(Alice, carol);
+        var b = new SafeBuilder(new OneShot((_, _) => SidecarFixture.Result(JsonDocument.Parse(lying.ToJsonString()).RootElement)));
+        var e = await Assert.ThrowsAsync<SafeBuildException>(() => b.BuildBootstrapAsync("testnet", Alice, 778, "Signers", [Alice, carol], 2));
+        Assert.Contains("encodes different signers", e.Message);
+
+        lying["preview"]!["groups"]![0]!["members"] = new JsonArray(Alice, Bob);
+        lying["preview"]!["groups"]![0]!["threshold"] = "1";
+        b = new SafeBuilder(new OneShot((_, _) => SidecarFixture.Result(JsonDocument.Parse(lying.ToJsonString()).RootElement)));
+        e = await Assert.ThrowsAsync<SafeBuildException>(() => b.BuildBootstrapAsync("testnet", Alice, 778, "Signers", [Alice, Bob], 1));
+        Assert.Contains("different threshold", e.Message);
+
+        // The deployment: the description names "Other", the createApplication call encodes "Team Safe".
+        var renamed = JsonNode.Parse(Fx.GetProperty("deploy").GetRawText())!;
+        renamed["preview"]!["name"] = "Other";
+        var d = new SafeBuilder(new OneShot((_, _) => SidecarFixture.Result(JsonDocument.Parse(renamed.ToJsonString()).RootElement)));
+        await Assert.ThrowsAsync<SafeBuildException>(() => d.BuildDeployAsync("testnet", Alice, "Other"));
+
+        // The real bytes decode to exactly what algo-safe was asked for.
+        var tx = Transaction.FromBase64String(Fx.GetProperty("bootstrap").GetProperty("transactions")[0].GetString()!);
+        var g = SafeAbi.BootstrapGroupArgs(tx);
+        Assert.Equal([Alice, Bob], g.Members);
+        Assert.Equal(2UL, g.Threshold);
+        Assert.Equal(7UL, g.AllowedActions);
+        Assert.Equal("Signers", g.Name);
+        Assert.Equal("Team Safe", SafeAbi.DeployName(Transaction.FromBase64String(Fx.GetProperty("deploy").GetProperty("transactions")[0].GetString()!)));
+    }
 }
 
 /// <summary>
@@ -145,18 +178,21 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
     private sealed class FakeOidc(Account account) : IWalletSigningClient
     {
         public readonly List<WalletSignRequest> Calls = [];
+        public bool Reject;
         public Task<WalletSignOutcome> SignAsync(string bearer, WalletSignRequest request, CancellationToken ct = default)
         {
             Calls.Add(request);
+            if (Reject) return Task.FromResult<WalletSignOutcome>(new WalletSignOutcome.Rejected(400, "access_denied"));
             var signed = request.Transactions.Select(t => Convert.ToBase64String(AlgoEncoder.EncodeToMsgPackOrdered(Transaction.FromBase64String(t).Sign(account)))).ToList();
             return Task.FromResult<WalletSignOutcome>(new WalletSignOutcome.Signed(signed, "0.00"));
         }
     }
 
-    private sealed class FakeConfirmer : ITransactionConfirmer
+    /// <summary>algod's answer for a landed transaction: a deployment reports the app id it created (null = algod did not say).</summary>
+    private sealed class FakeConfirmer(Func<ulong?> createdAppId) : ITransactionConfirmer
     {
         public Task<TxConfirmation> WaitAsync(string network, string txId, ulong lastValid, CancellationToken ct = default) =>
-            Task.FromResult(new TxConfirmation(TxConfirmationState.Confirmed, 4242));
+            Task.FromResult(new TxConfirmation(TxConfirmationState.Confirmed, 4242, CreatedAppId: createdAppId()));
     }
 
     private sealed class FakeEvidence : IEvidenceLog
@@ -196,6 +232,12 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         public readonly List<(string Name, JsonElement Params)> Builds = [];
         public readonly List<(string Name, JsonElement Params)> Reads = [];
         public bool SimulationFails;
+        public string FailureMessage = "logic eval error: account balance 100000 below min 142500";
+        /// <summary>App ids the sidecar reports under skipped, and app ids whose listing fails outright.</summary>
+        public readonly HashSet<ulong> Skipped = [];
+        public readonly HashSet<ulong> Failing = [];
+        /// <summary>(appId, member) pairs that approved, for approvedByMember.</summary>
+        public readonly HashSet<(ulong, string)> Approved = [];
         /// <summary>appId → members, as on chain.</summary>
         public readonly Dictionary<ulong, HashSet<string>> Members = new();
         public JsonArray Proposals = [];
@@ -221,6 +263,15 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
                 tx.LastValid = 2000;
                 return tx;
             }).ToList();
+            if (step == "bootstrap")
+            {
+                // Encode the requested signer group into the bootstrapGroup call, as algo-safe does.
+                var g0 = p.GetProperty("groups")[0];
+                SetArgs(txns[0], [SafeAbi.BootstrapGroup,
+                    Seed(g0.GetProperty("name").GetString()!, (ulong)g0.GetProperty("threshold").GetInt32(), 3, (ulong)g0.GetProperty("allowedActions").GetInt32()),
+                    MembersArg(g0.GetProperty("members").EnumerateArray().Select(m => m.GetProperty("address").GetString()!).ToList()), new byte[8]]);
+            }
+            else SetArgs(txns[0], [SafeAbi.CreateApplication, AbiString(p.GetProperty("name").GetString()!), new byte[8]]);
             var grouped = Biatec.Chat.Tools.Algod.AlgorandGroup.Ensure(txns).Transactions;
             var preview = JsonNode.Parse(fx.GetProperty("preview").GetRawText())!.AsObject();
             if (step == "bootstrap")
@@ -235,7 +286,7 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
                 });
             }
             else preview["name"] = p.GetProperty("name").GetString();
-            var sim = new JsonObject { ["ok"] = !SimulationFails, ["failureMessage"] = SimulationFails ? "logic eval error: below min balance" : null };
+            var sim = new JsonObject { ["ok"] = !SimulationFails, ["failureMessage"] = SimulationFails ? FailureMessage : null };
             return Task.FromResult(new BuildResult(grouped.Select(t => Convert.ToBase64String(AlgoEncoder.EncodeToMsgPackOrdered(t))).ToList(),
                 Preview: JsonDocument.Parse(preview.ToJsonString()).RootElement.Clone(), Simulation: JsonDocument.Parse(sim.ToJsonString()).RootElement.Clone()));
         }
@@ -249,8 +300,12 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
             {
                 var member = p.GetProperty("member").GetString()!;
                 var safes = new JsonArray();
-                foreach (var id in p.GetProperty("appIds").EnumerateArray().Select(x => ulong.Parse(x.GetString()!)))
-                    if (Members.TryGetValue(id, out var m) && m.Contains(member))
+                var skipped = new JsonArray();
+                var ids = p.GetProperty("appIds").EnumerateArray().Select(x => ulong.Parse(x.GetString()!)).ToList();
+                if (ids.Any(Failing.Contains)) throw new BuilderException("query failed (422)");
+                foreach (var id in ids)
+                    if (Skipped.Contains(id)) skipped.Add(new JsonObject { ["appId"] = id.ToString(), ["reason"] = "unreadable" });
+                    else if (Members.TryGetValue(id, out var m) && m.Contains(member))
                         safes.Add(new JsonObject
                         {
                             ["appId"] = id.ToString(), ["address"] = SafeCreateService.SafeAddress(id), ["name"] = "Team Safe", ["paused"] = false,
@@ -260,26 +315,59 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
                                 ["allowedActions"] = new JsonArray("payment", "assetTransfer", "appCall"), ["isAdminGroup"] = true, ["membershipEpoch"] = 1,
                             }),
                         });
-                data = new JsonObject { ["member"] = member, ["safes"] = safes, ["skipped"] = new JsonArray() };
+                data = new JsonObject { ["member"] = member, ["safes"] = safes, ["skipped"] = skipped };
             }
             else
             {
                 Assert.Equal("safe.proposals", builder);
                 var id = ulong.Parse(p.GetProperty("appId").GetString()!);
-                data = new JsonObject { ["appId"] = id.ToString(), ["safeAddress"] = SafeCreateService.SafeAddress(id), ["proposals"] = Proposals.DeepClone(), ["truncated"] = false };
+                var member = p.GetProperty("member").GetString()!;
+                var proposals = Proposals.DeepClone().AsArray();
+                foreach (var x in proposals) x!["approvedByMember"] = Approved.Contains((id, member));
+                data = new JsonObject { ["appId"] = id.ToString(), ["safeAddress"] = SafeCreateService.SafeAddress(id), ["proposals"] = proposals, ["truncated"] = false };
             }
             return Task.FromResult(JsonDocument.Parse(data.ToJsonString()).RootElement.Clone());
         }
+    }
+
+    private static void SetArgs(Transaction tx, List<byte[]> args) =>
+        tx.GetType().GetProperty("ApplicationArgs")!.SetValue(tx, args);
+
+    private static byte[] AbiString(string s)
+    {
+        var b = System.Text.Encoding.UTF8.GetBytes(s);
+        return [(byte)(b.Length >> 8), (byte)b.Length, .. b];
+    }
+
+    private static byte[] U64(ulong v)
+    {
+        var b = new byte[8];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(b, v);
+        return b;
+    }
+
+    /// <summary>ABI (string,uint64 x8): the string's offset, the eight integers, then the string.</summary>
+    internal static byte[] Seed(string name, ulong threshold, ulong admin, ulong allowed) =>
+        [0, 66, .. U64(threshold), .. U64(admin), .. U64(allowed), .. U64(0), .. U64(0), .. U64(0), .. U64(0), .. U64(0), .. AbiString(name)];
+
+    /// <summary>ABI (address,uint64,string)[]: count, element offsets, then each element (address, uint64, string offset, empty string).</summary>
+    internal static byte[] MembersArg(IReadOnlyList<string> members)
+    {
+        var o = new List<byte> { (byte)(members.Count >> 8), (byte)members.Count };
+        for (var i = 0; i < members.Count; i++) { var off = 2 * members.Count + 44 * i; o.Add((byte)(off >> 8)); o.Add((byte)off); }
+        foreach (var m in members) { o.AddRange(new Address(m).Bytes); o.AddRange(U64(0)); o.Add(0); o.Add(42); o.Add(0); o.Add(0); }
+        return o.ToArray();
     }
 
     private sealed class FakeChain : ISafeChainReader
     {
         public ulong? CreatedAppId = AppId;
         public ulong Balance;
+        public ulong MinBalance = 100_000;
         public int AppIdLookups;
         public Task<ulong?> CreatedAppIdAsync(string network, string txId, CancellationToken ct = default) { AppIdLookups++; return Task.FromResult(CreatedAppId); }
         public Task<SafeAccountBalance?> BalanceAsync(string network, string address, CancellationToken ct = default) =>
-            Task.FromResult<SafeAccountBalance?>(new SafeAccountBalance(Balance, 100_000));
+            Task.FromResult<SafeAccountBalance?>(new SafeAccountBalance(Balance, MinBalance));
     }
 
     private readonly string _dbName = "biatec_test_" + Guid.NewGuid().ToString("N");
@@ -293,6 +381,8 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
     private FakeMcp _mcp = null!;
     private FakeBuilders _builders = null!;
     private FakeOidc _oidc = null!;
+    /// <summary>The app id algod reports when the deployment lands (null: algod did not say).</summary>
+    private ulong? _landedAppId = AppId;
     private Tenant _tenant = null!;
     private ChatSession _session = null!;
     private ServiceProvider _sp = null!;
@@ -381,7 +471,9 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
     private async Task<ConfirmResult> ConfirmAsync(ActionPreview card, int step)
     {
         await using var db = NewContext();
-        var confirm = new ConfirmService(db, new ActionPreviewService(db, _clock), new ScopeGuard(_vault, _clock), _vault, _oidc, _mcp, new FakeConfirmer(), new FakeEvidence(), _clock, NullLogger<ConfirmService>.Instance);
+        var confirm = new ConfirmService(db, new ActionPreviewService(db, _clock), new ScopeGuard(_vault, _clock), _vault, _oidc, _mcp,
+            new FakeConfirmer(() => card.Capability == "safe.create" && card.Steps[step].Title.Contains("Deploy") ? _landedAppId : null), new FakeEvidence(), _clock,
+            NullLogger<ConfirmService>.Instance, landedObservers: [new SafeDeployLandedObserver(db, _clock)]);
         return await confirm.ConfirmAsync(_tenant, _session, Guid.Parse(card.PreviewId), card.Steps[step].GroupHash, default);
     }
 
@@ -497,8 +589,8 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         Assert.Equal("778", boot.GetProperty("appId").GetString());
         Assert.Equal([Alice, _bob], boot.GetProperty("groups")[0].GetProperty("members").EnumerateArray().Select(m => m.GetProperty("address").GetString()));
         Assert.Equal(2, boot.GetProperty("groups")[0].GetProperty("threshold").GetInt32());
-        // The app id was read from the chain once, then remembered.
-        Assert.Equal(1, _chain.AppIdLookups);
+        // The app id was recorded by the confirm path when the deployment landed: no later chain lookup was needed.
+        Assert.Equal(0, _chain.AppIdLookups);
 
         var c3 = await ConfirmAsync(card3, 1);
         Assert.Equal(ConfirmOutcome.Landed, c3.Outcome);
@@ -544,6 +636,7 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
     [Fact]
     public async Task SafeCreate_waits_when_the_app_id_cannot_be_read_yet()
     {
+        _landedAppId = null; // algod's confirmation did not carry it
         var card = Card(await _create.ExecuteAsync(Ctx("safe.create"), Full(), default));
         Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(card, 0)).Outcome);
         _chain.CreatedAppId = null;
@@ -551,6 +644,108 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         var r = await _create.ExecuteAsync(Ctx("safe.create"), Full(), default);
         Assert.True(r.IsError);
         Assert.Contains("app id could not be read", r.Content);
+    }
+
+    [Fact]
+    public async Task SafeCreate_after_a_failed_setup_resumes_for_the_deployed_safe_instead_of_deploying_another()
+    {
+        var card = Card(await _create.ExecuteAsync(Ctx("safe.create"), Full(), default));
+        Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(card, 0)).Outcome);
+        _chain.Balance = 600_000;
+        var setup = Card(await _create.ExecuteAsync(Ctx("safe.create"), Full(), default));
+
+        // The setup step fails for good (signing refused): the preview is Failed.
+        _oidc.Reject = true;
+        Assert.Equal(ConfirmOutcome.Failed, (await ConfirmAsync(setup, 1)).Outcome);
+        _oidc.Reject = false;
+        await using (var db = NewContext())
+            Assert.Equal(ActionPreviewStatus.Failed, (await db.ActionPreviews.SingleAsync()).Status);
+
+        // Asked again: no second deployment; a new preview resumes at the setup of safe 778.
+        var r = await _create.ExecuteAsync(Ctx("safe.create"), Full(), default);
+        Assert.False(r.IsError, r.Content);
+        Assert.Equal(1, _builders.Builds.Count(b => b.Params.GetProperty("step").GetString() == "deploy"));
+        var resumed = Card(r);
+        Assert.NotEqual(card.PreviewId, resumed.PreviewId);
+        Assert.Equal(CardStatus.Completed, resumed.Steps[0].Status);
+        Assert.Equal(await DeployTxIdAsync(), resumed.Steps[0].TransactionId);
+        Assert.NotEqual("", resumed.Steps[1].GroupHash);
+        Assert.Equal("778", _builders.Builds[^1].Params.GetProperty("appId").GetString());
+
+        Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(resumed, 1)).Outcome);
+        var done = JsonNode.Parse((await _create.ExecuteAsync(Ctx("safe.create"), Full(), default)).Content)!;
+        Assert.Equal("safe_created", done["status"]!.GetValue<string>());
+        Assert.Equal("778", done["appId"]!.GetValue<string>());
+        await using (var db = NewContext())
+        {
+            Assert.Equal(ActionPreviewStatus.Completed, (await db.ActionPreviews.SingleAsync(p => p.Id == Guid.Parse(resumed.PreviewId))).Status);
+            Assert.Single(await db.KnownSafes.ToListAsync());
+        }
+    }
+
+    private async Task<string> DeployTxIdAsync()
+    {
+        await using var db = NewContext();
+        return (await db.ActionSteps.Where(s => s.Seq == 0 && s.Status == StepStatus.Confirmed).OrderBy(s => s.ExpiresAt).FirstAsync()).TxIds[0];
+    }
+
+    [Fact]
+    public async Task SafeCreate_records_the_app_id_when_the_deployment_lands_so_algod_forgetting_it_does_not_matter()
+    {
+        _chain.CreatedAppId = null; // algod no longer remembers the transaction and no indexer is configured
+        var card = Card(await _create.ExecuteAsync(Ctx("safe.create"), Full(), default));
+        Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(card, 0)).Outcome);
+        await using (var db = NewContext())
+        {
+            var known = await db.KnownSafes.SingleAsync();
+            Assert.Equal(778L, known.AppId);
+            Assert.Equal((await db.ActionSteps.SingleAsync()).TxIds[0], known.DeployTxId);
+        }
+        var r = await _create.ExecuteAsync(Ctx("safe.create"), Full(), default);
+        Assert.False(r.IsError, r.Content);
+        Assert.Equal("778", JsonNode.Parse(r.Content)!["appId"]!.GetValue<string>());
+        Assert.Equal(0, _chain.AppIdLookups);
+    }
+
+    [Fact]
+    public async Task SafeCreate_asks_for_funding_only_for_a_balance_problem()
+    {
+        var card = Card(await _create.ExecuteAsync(Ctx("safe.create"), Full(), default));
+        Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(card, 0)).Outcome);
+
+        // Above the configured floor but below the account's own minimum balance: funding is asked for the difference.
+        _chain.Balance = 600_000;
+        _chain.MinBalance = 750_000;
+        var low = JsonNode.Parse((await _create.ExecuteAsync(Ctx("safe.create"), Full(), default)).Content)!;
+        Assert.Equal("safe_needs_funding", low["status"]!.GetValue<string>());
+        Assert.Equal("200000", low["fundingMicroAlgo"]!.GetValue<string>());
+
+        // Funded, but the simulation fails for another reason: the reason is reported and no money is asked for.
+        _chain.MinBalance = 100_000;
+        _builders.SimulationFails = true;
+        _builders.FailureMessage = "logic eval error: assert failed pc=812";
+        var other = await _create.ExecuteAsync(Ctx("safe.create"), Full(), default);
+        Assert.True(other.IsError);
+        Assert.Contains("assert failed pc=812", other.Content);
+        Assert.Contains("do not ask the user to send ALGO", other.Content);
+        Assert.DoesNotContain("wallet.transfer", other.Content);
+    }
+
+    [Fact]
+    public async Task SafeCreate_refuses_a_threshold_that_would_wrap()
+    {
+        var r = await _create.ExecuteAsync(Ctx("safe.create"), new JsonObject
+        {
+            ["network"] = "testnet", ["from"] = Alice, ["name"] = "Team Safe", ["signers"] = new JsonArray(_bob), ["threshold"] = 4294967298L,
+        }, default);
+        Assert.True(r.IsError);
+        Assert.Contains("threshold", r.Content);
+        Assert.Empty(_builders.Builds);
+        Assert.Null(SafeCreateExecutor.Parse(new JsonObject
+        {
+            ["network"] = "testnet", ["from"] = Alice, ["name"] = "x", ["signers"] = new JsonArray(_bob), ["threshold"] = -4294967294L,
+        }, out var problem, out _));
+        Assert.NotNull(problem);
     }
 
     // ---- safe.list ---------------------------------------------------------------------------------------------------
@@ -603,6 +798,40 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         Assert.Equal(_bob, list.GetProperty("member").GetString());
         Assert.Equal(2, list.GetProperty("appIds").GetArrayLength());
         Assert.Equal("778", Assert.Single(_builders.Reads, x => x.Name == "safe.proposals").Params.GetProperty("appId").GetString());
+    }
+
+    [Fact]
+    public async Task SafeCreate_list_approved_by_you_counts_any_of_the_users_member_addresses()
+    {
+        var second = new Account().Address.EncodeAsString();
+        _own = [_bob, second];
+        await SeedKnownSafeAsync(AppId);
+        _builders.Members[AppId] = [Alice, _bob, second];
+        _builders.Proposals = [Proposal(1, "active", 1, false)];
+        _builders.Approved.Add((AppId, second)); // the user approved with their second address
+
+        var o = JsonNode.Parse((await _list.ExecuteAsync(Ctx("safe.list"), new JsonObject { ["network"] = "testnet" }, default)).Content)!;
+        var safe = o["safes"]![0]!;
+        Assert.Equal([_bob, second], safe["yourAddresses"]!.AsArray().Select(a => a!.GetValue<string>()));
+        Assert.True(safe["pendingProposals"]![0]!["approvedByYou"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task SafeCreate_list_shows_readable_safes_and_reports_unreadable_ones_as_not_read()
+    {
+        _own = [_bob];
+        await SeedKnownSafeAsync(AppId);
+        _builders.Members[AppId] = [_bob];
+        _builders.Failing.Add(555);  // its read fails outright
+        _builders.Skipped.Add(666);  // the sidecar skips it
+
+        var r = await _list.ExecuteAsync(Ctx("safe.list"), new JsonObject { ["network"] = "testnet", ["safeAppIds"] = new JsonArray(555, 666) }, default);
+        Assert.False(r.IsError, r.Content);
+        var o = JsonNode.Parse(r.Content)!;
+        Assert.Equal(["778"], o["safes"]!.AsArray().Select(x => x!["appId"]!.GetValue<string>()));
+        Assert.Equal(["555", "666"], o["couldNotRead"]!.AsArray().Select(x => x!.GetValue<string>()));
+        Assert.Contains("could not be read", o["instruction"]!.GetValue<string>());
+        Assert.DoesNotContain("not a member of any", o["instruction"]!.GetValue<string>());
     }
 
     [Fact]

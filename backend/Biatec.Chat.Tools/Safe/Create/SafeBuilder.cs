@@ -41,6 +41,9 @@ public sealed record SafeProposalSummary(
 
 public sealed record SafeProposalPage(ulong AppId, string SafeAddress, IReadOnlyList<SafeProposalSummary> Proposals, bool Truncated);
 
+/// <summary>The safes the member belongs to, and the asked-for app ids the sidecar could not read (not a safe, or unreadable).</summary>
+public sealed record SafeListing(IReadOnlyList<SafeSummary> Safes, IReadOnlyList<ulong> Unreadable);
+
 /// <summary>The group or data the sidecar returned is not what was asked for. Nothing is previewed.</summary>
 public sealed class SafeBuildException(string message) : Exception(message);
 
@@ -61,7 +64,7 @@ public interface ISafeBuilder
     Task<SafeBuild> BuildBootstrapAsync(string network, string sender, ulong appId, string groupName, IReadOnlyList<string> members, int threshold, CancellationToken ct = default);
 
     /// <summary>The safes among <paramref name="appIds"/> that <paramref name="member"/> belongs to.</summary>
-    Task<IReadOnlyList<SafeSummary>> ListAsync(string network, string member, IReadOnlyList<ulong> appIds, CancellationToken ct = default);
+    Task<SafeListing> ListAsync(string network, string member, IReadOnlyList<ulong> appIds, CancellationToken ct = default);
 
     /// <summary>Newest proposals of one safe, with whether <paramref name="member"/> already approved each.</summary>
     Task<SafeProposalPage> ProposalsAsync(string network, ulong appId, string? member, CancellationToken ct = default);
@@ -76,13 +79,18 @@ public sealed class SafeBuilder(IBuildersClient builders) : ISafeBuilder
     /// <summary>algo-safe action bits: payment, asset transfer and application call (ACT_PAY | ACT_AXFER | ACT_APPL).</summary>
     public const int InitialAllowedActions = 1 | 2 | 4;
 
+    /// <summary>algo-safe admin privileges of the first group: manage groups and policy (PRIV_GROUP | PRIV_POLICY).</summary>
+    public const int InitialAdminPrivileges = 1 | 2;
+
     public async Task<SafeBuild> BuildDeployAsync(string network, string sender, string name, CancellationToken ct = default)
     {
         var result = await builders.BuildAsync(CreateBuilder, network, new { step = "deploy", sender, name, simulate = true }, ct);
         var (group, preview) = Check(result, sender, "deploy");
         if (group.Transactions.Count != 1 || group.Transactions[0] is not ApplicationCreateTransaction)
             throw new SafeBuildException("The deployment is not a single application-create call.");
-        if (!string.Equals(Str(preview, "name"), name, StringComparison.Ordinal))
+        // The bytes decide: the createApplication call itself must carry the requested name.
+        if (!string.Equals(SafeAbi.DeployName(group.Transactions[0]), name, StringComparison.Ordinal)
+            || !string.Equals(Str(preview, "name"), name, StringComparison.Ordinal))
             throw new SafeBuildException("The builder named a different safe.");
         ulong? validator = ulong.TryParse(Str(preview, "validatorAppId"), NumberStyles.None, CultureInfo.InvariantCulture, out var v) ? v : null;
         return Finish(result, group, sender, "deploy", validator);
@@ -119,28 +127,24 @@ public sealed class SafeBuilder(IBuildersClient builders) : ISafeBuilder
         if (Str(preview, "appId") != appId.ToString(CultureInfo.InvariantCulture))
             throw new SafeBuildException("The builder facts name a different safe.");
 
-        // The signer group the builder describes must be exactly the one requested.
-        try
-        {
-            var groups = preview.GetProperty("groups");
-            if (groups.GetArrayLength() != 1) throw new SafeBuildException("The builder describes a different number of signer groups.");
-            var g = groups[0];
-            var described = g.GetProperty("members").EnumerateArray().Select(m => m.GetString()).ToHashSet(StringComparer.Ordinal);
-            if (!described.SetEquals(members) || described.Count != members.Count)
-                throw new SafeBuildException("The builder describes different signers.");
-            if (Str(g, "threshold") != threshold.ToString(CultureInfo.InvariantCulture))
-                throw new SafeBuildException("The builder describes a different threshold.");
-        }
-        catch (Exception e) when (e is KeyNotFoundException or InvalidOperationException)
-        {
-            throw new SafeBuildException("The builder facts are malformed.");
-        }
+        // The bytes decide, never the builder's description: exactly one bootstrapGroup call encoding the requested
+        // signer set, threshold and actions, then finalizeBootstrap.
+        if (group.Transactions.Count != 2 || !SafeAbi.IsFinalize(group.Transactions[1]))
+            throw new SafeBuildException("The bootstrap group is not one bootstrapGroup call followed by finalizeBootstrap.");
+        var encoded = SafeAbi.BootstrapGroupArgs(group.Transactions[0]);
+        if (encoded.Members.Count != members.Count || !encoded.Members.ToHashSet(StringComparer.Ordinal).SetEquals(members))
+            throw new SafeBuildException("The bootstrap call encodes different signers.");
+        if (encoded.Threshold != (ulong)threshold)
+            throw new SafeBuildException("The bootstrap call encodes a different threshold.");
+        if (encoded.AllowedActions != InitialAllowedActions || encoded.AdminPrivileges != InitialAdminPrivileges
+            || !string.Equals(encoded.Name, groupName, StringComparison.Ordinal))
+            throw new SafeBuildException("The bootstrap call encodes a different signer group.");
         return Finish(result, group, sender, "bootstrap", null);
     }
 
-    public async Task<IReadOnlyList<SafeSummary>> ListAsync(string network, string member, IReadOnlyList<ulong> appIds, CancellationToken ct = default)
+    public async Task<SafeListing> ListAsync(string network, string member, IReadOnlyList<ulong> appIds, CancellationToken ct = default)
     {
-        if (appIds.Count == 0) return [];
+        if (appIds.Count == 0) return new SafeListing([], []);
         var data = await builders.ReadAsync(ListBuilder, network,
             new { member, appIds = appIds.Select(a => a.ToString(CultureInfo.InvariantCulture)).ToArray() }, ct);
         try
@@ -160,7 +164,8 @@ public sealed class SafeBuilder(IBuildersClient builders) : ISafeBuilder
                 list.Add(new SafeSummary(appId, Str(s, "address") ?? "", Str(s, "name") ?? "",
                     s.TryGetProperty("paused", out var p) && p.ValueKind == JsonValueKind.True, groups));
             }
-            return list;
+            var unreadable = Items(data, "skipped").Select(x => U64(x, "appId")).Where(asked.Contains).Distinct().ToList();
+            return new SafeListing(list, unreadable);
         }
         catch (Exception e) when (e is KeyNotFoundException or InvalidOperationException or FormatException or OverflowException)
         {

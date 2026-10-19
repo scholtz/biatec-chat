@@ -32,7 +32,8 @@ public sealed record SafeCreateOutcome(
     ulong? AppId = null,
     string? SafeAddress = null,
     ulong? FundingMicroAlgo = null,
-    string? Simulation = null)
+    string? Simulation = null,
+    string? ResumedDeployTxId = null)
 {
     public static SafeCreateOutcome Error(string message) => new(SafeCreateState.Error, message);
 }
@@ -77,24 +78,63 @@ public sealed class SafeCreateService(
         if (!McpWalletJson.Addresses(own.Json).Contains(request.From, StringComparer.Ordinal))
             return SafeCreateOutcome.Error("That address does not belong to the signed-in user. Use wallet.listAddresses to see the user's addresses.");
 
-        var existing = await FindExistingAsync(conversationId, request, ct);
         try
         {
-            return existing is null
-                ? await StartDeployAsync(conversationId, request, null, ct)
-                : await ContinueAsync(conversationId, tenantId, request, existing, ct);
+            var existing = await FindExistingAsync(conversationId, request, ct);
+            if (existing is not null) return await ContinueAsync(conversationId, tenantId, request, existing, ct);
+            // A deployment of this exact safe already landed (its later setup failed or was cancelled): resume at
+            // funding and setup for that app id instead of deploying a second safe.
+            var deployed = await FindLandedDeployAsync(conversationId, request, ct);
+            return deployed is not null
+                ? await ResumeAsync(conversationId, tenantId, request, deployed, ct)
+                : await StartDeployAsync(conversationId, request, null, ct);
         }
         catch (PreviewException e) { return SafeCreateOutcome.Error(e.Message); }
     }
 
-    private async Task<ActionPreview?> FindExistingAsync(Guid conversationId, SafeCreateRequest request, CancellationToken ct)
+    private async Task<List<ActionPreview>> SameRequestAsync(Guid conversationId, SafeCreateRequest request, bool activeOnly, CancellationToken ct)
     {
-        var candidates = await db.ActionPreviews
-            .Where(p => p.ConversationId == conversationId && p.Capability == Capability && p.RebuiltAsPreviewId == null
-                        && p.Status != ActionPreviewStatus.Failed && p.Status != ActionPreviewStatus.Cancelled)
-            .ToListAsync(ct);
+        var q = db.ActionPreviews.Where(p => p.ConversationId == conversationId && p.Capability == Capability);
+        if (activeOnly)
+            q = q.Where(p => p.RebuiltAsPreviewId == null && p.Status != ActionPreviewStatus.Failed && p.Status != ActionPreviewStatus.Cancelled);
+        var candidates = await q.ToListAsync(ct);
         return candidates.Where(p => SafeCreateRequest.FromCanonical(p.CanonicalJson) is { } r && r.SameAs(request))
-            .OrderByDescending(p => p.ExpiresAt).FirstOrDefault();
+            .OrderByDescending(p => p.ExpiresAt).ToList();
+    }
+
+    private async Task<ActionPreview?> FindExistingAsync(Guid conversationId, SafeCreateRequest request, CancellationToken ct) =>
+        (await SameRequestAsync(conversationId, request, activeOnly: true, ct)).FirstOrDefault();
+
+    /// <summary>The transaction id of a landed deployment of this request, in any preview of the conversation whatever its later status.</summary>
+    private async Task<string?> FindLandedDeployAsync(Guid conversationId, SafeCreateRequest request, CancellationToken ct)
+    {
+        foreach (var p in await SameRequestAsync(conversationId, request, activeOnly: false, ct))
+        {
+            var steps = await db.ActionSteps.AsNoTracking().Where(s => s.PreviewId == p.Id).OrderBy(s => s.Seq).ToListAsync(ct);
+            if (Read(p, steps).DeployTxId is { } tx) return tx;
+        }
+        return null;
+    }
+
+    /// <summary>Where a safe.create preview stands. A resume preview holds only the setup step; its deployment landed in an earlier preview.</summary>
+    private sealed record Progress(string? DeployTxId, ActionStep? Bootstrap, bool Resume);
+
+    private static Progress Read(ActionPreview preview, IReadOnlyList<ActionStep> steps)
+    {
+        if (ResumedDeployTxId(preview.CanonicalJson) is { } resumed) return new Progress(resumed, steps.FirstOrDefault(), true);
+        var deploy = steps.FirstOrDefault(s => s.Seq == 0);
+        var tx = deploy is { Status: StepStatus.Confirmed } && deploy.TxIds.Length > 0 ? deploy.TxIds[0] : null;
+        return new Progress(tx, steps.FirstOrDefault(s => s.Seq == 1), false);
+    }
+
+    private static string? ResumedDeployTxId(string canonicalJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(canonicalJson);
+            return doc.RootElement.TryGetProperty("resumesDeployTxId", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null;
+        }
+        catch (JsonException) { return null; }
     }
 
     private async Task<SafeCreateOutcome> StartDeployAsync(Guid conversationId, SafeCreateRequest request, Guid? rebuildOf, CancellationToken ct)
@@ -123,60 +163,97 @@ public sealed class SafeCreateService(
         if (steps.Any(s => s.Status is StepStatus.Submitted or StepStatus.AwaitingConsent or StepStatus.Signed) || preview.Status == ActionPreviewStatus.Confirmed)
             return new SafeCreateOutcome(SafeCreateState.Busy, "A step of this safe creation is being signed or is waiting to land. Wait for it before asking again.", snap, request);
 
-        var landed = steps.Count(s => s.Status == StepStatus.Confirmed);
-        ulong? appId = landed > 0 ? await ResolveAppIdAsync(tenantId, request.Network, steps[0], ct) : null;
-        if (landed > 0 && appId is null)
+        var progress = Read(preview, steps);
+        ulong? appId = progress.DeployTxId is { } tx ? await ResolveAppIdAsync(tenantId, request.Network, tx, ct) : null;
+        if (progress.DeployTxId is not null && appId is null)
             return SafeCreateOutcome.Error("The safe was deployed, but its app id could not be read from the chain yet. Tell the user to try again in a moment.");
         var address = appId is { } id ? SafeAddress(id) : null;
+        var resumed = progress.Resume ? progress.DeployTxId : null;
 
-        if (landed >= TotalSteps)
+        if (progress.Bootstrap is { Status: StepStatus.Confirmed })
             return new SafeCreateOutcome(SafeCreateState.Created,
                 $"The safe exists: app id {appId}, safe address {address}. Tell the user both, and that the safe needs ALGO and asset opt-ins before it can hold assets.",
-                snap, request, appId, address);
+                snap, request, appId, address, ResumedDeployTxId: resumed);
 
         var pending = steps.FirstOrDefault(s => s.Status == StepStatus.Pending);
         if (pending is not null && preview.Status == ActionPreviewStatus.Proposed && snap.Countdown.CanConfirm)
-            return new SafeCreateOutcome(SafeCreateState.AwaitingConfirmation, "The preview is waiting for the user's confirmation.", snap, request, appId, address);
+            return new SafeCreateOutcome(SafeCreateState.AwaitingConfirmation, "The preview is waiting for the user's confirmation.", snap, request, appId, address, ResumedDeployTxId: resumed);
 
-        if (landed == 0)
+        if (progress.DeployTxId is null)
             return await StartDeployAsync(conversationId, request, preview.Id, ct); // the deploy preview expired: rebuild it
 
-        // The deployment landed. Step 2 needs the safe's account funded for its boxes, by a separate transfer.
-        var balance = await chain.BalanceAsync(request.Network, address!, ct);
+        return await SetUpAsync(request, appId!.Value, snap, resumed, async (spec, build) =>
+            preview.Status == ActionPreviewStatus.InProgress && progress.Bootstrap is null && !progress.Resume
+                ? await previews.AddNextStepAsync(conversationId, preview.Id, spec, ct)
+                : await previews.RebuildAsync(conversationId, preview.Id, Canonical(request, build, appId, resumed), [spec], predictedValueEur: 0m, ct: ct), ct);
+    }
+
+    /// <summary>A landed deployment whose setup preview failed or was cancelled: a new preview holding only the setup step.</summary>
+    private async Task<SafeCreateOutcome> ResumeAsync(Guid conversationId, string tenantId, SafeCreateRequest request, string deployTxId, CancellationToken ct)
+    {
+        var appId = await ResolveAppIdAsync(tenantId, request.Network, deployTxId, ct);
+        if (appId is null)
+            return SafeCreateOutcome.Error("The safe was deployed, but its app id could not be read from the chain yet. Tell the user to try again in a moment.");
+        return await SetUpAsync(request, appId.Value, null, deployTxId, (spec, build) =>
+            previews.CreateAsync(new NewPreviewSpec(conversationId, Capability, Canonical(request, build, appId, deployTxId), [spec], PredictedValueEur: 0m), ct), ct);
+    }
+
+    /// <summary>Funding check, then the bootstrap + finalize step for the deployed safe, persisted by <paramref name="persist"/>.</summary>
+    private async Task<SafeCreateOutcome> SetUpAsync(SafeCreateRequest request, ulong appId, PreviewSnapshot? snap, string? resumed,
+        Func<NewStepSpec, SafeBuild, Task<PreviewSnapshot>> persist, CancellationToken ct)
+    {
+        var address = SafeAddress(appId);
+        // The setup needs the safe's account funded for its boxes, by a separate transfer.
+        var balance = await chain.BalanceAsync(request.Network, address, ct);
         if (balance is null)
             return SafeCreateOutcome.Error("The safe account's balance could not be read. Tell the user to try again in a moment.");
-        if (balance.Amount < _options.MinimumFundingMicroAlgo)
+        var floor = Math.Max(_options.MinimumFundingMicroAlgo, balance.MinBalance);
+        if (balance.Amount < floor)
+            return NeedsFunding(request, appId, address, snap, resumed, RoundUpToTenthAlgo(floor - balance.Amount),
+                "Before its signer group can be set up, the safe account needs more ALGO for its storage.");
+
+        var build = await builder.BuildBootstrapAsync(request.Network, request.From, appId, SafeCreateRequest.GroupName, request.Signers, request.Threshold, ct);
+        if (build.Simulation is { Ok: false } sim)
         {
-            var missing = RoundUpToTenthAlgo(_options.MinimumFundingMicroAlgo - balance.Amount);
-            return new SafeCreateOutcome(SafeCreateState.NeedsFunding,
-                $"The safe is deployed: app id {appId}, safe address {address}. Before its signer group can be set up, the safe account needs " +
-                $"{FormatAlgo(missing)} ALGO for its storage. Tell the user, then call wallet.transfer from {request.From} to {address} for " +
-                $"{missing.ToString(CultureInfo.InvariantCulture)} base units of ALGO (assetId 0). After that transfer has landed, call safe.create again with the same arguments.",
-                snap, request, appId, address, missing);
+            // Only a balance failure is a reason to ask for money; anything else is reported as it is.
+            if (IsBalanceFailure(sim.FailureMessage))
+                return NeedsFunding(request, appId, address, snap, resumed, _options.MinimumFundingMicroAlgo,
+                    "Setting up its signer group would fail on chain because the safe account's balance is too low for its storage.");
+            return SafeCreateOutcome.Error(
+                $"Setting up the signer group of safe {appId} (address {address}) would fail on chain, so nothing was previewed. Simulation reported: '" +
+                Sanitize(sim.FailureMessage) + "'. This is not a funding problem: do not ask the user to send ALGO. Tell the user the setup cannot be prepared right now.");
         }
 
-        var build = await builder.BuildBootstrapAsync(request.Network, request.From, appId!.Value, SafeCreateRequest.GroupName, request.Signers, request.Threshold, ct);
-        if (build.Simulation is { Ok: false })
-            return new SafeCreateOutcome(SafeCreateState.NeedsFunding,
-                $"Setting up the signer group of safe {appId} would fail on chain (simulation), so it was not previewed. The safe account {address} " +
-                $"probably needs more ALGO for storage: suggest a wallet.transfer of {FormatAlgo(_options.MinimumFundingMicroAlgo)} ALGO to it, then call safe.create again with the same arguments.",
-                snap, request, appId, address, _options.MinimumFundingMicroAlgo);
-
-        var spec = Spec(request, build);
-        var next = preview.Status == ActionPreviewStatus.InProgress
-            ? await previews.AddNextStepAsync(conversationId, preview.Id, spec, ct)
-            : await previews.RebuildAsync(conversationId, preview.Id, Canonical(request, build, appId), [spec], predictedValueEur: 0m, ct: ct);
+        var next = await persist(Spec(request, build), build);
         return new SafeCreateOutcome(SafeCreateState.AwaitingConfirmation,
             $"The safe is deployed (app id {appId}, safe address {address}). Step 2 of {TotalSteps} (set up the {request.Describe()} signer group) " +
             "is ready for the user's confirmation. When it has landed, call safe.create again with the same arguments to confirm the safe is ready.",
-            next, request, appId, address, Simulation: SimulationText(build));
+            next, request, appId, address, Simulation: SimulationText(build), ResumedDeployTxId: resumed);
     }
 
-    /// <summary>The app id created by the landed deployment step: from the tenant's known safes, else from the chain (then remembered).</summary>
-    private async Task<ulong?> ResolveAppIdAsync(string tenantId, string network, ActionStep deploy, CancellationToken ct)
+    private static SafeCreateOutcome NeedsFunding(SafeCreateRequest request, ulong appId, string address, PreviewSnapshot? snap, string? resumed, ulong missing, string why) =>
+        new(SafeCreateState.NeedsFunding,
+            $"The safe is deployed: app id {appId}, safe address {address}. {why} Tell the user, then call wallet.transfer from {request.From} to {address} for " +
+            $"{missing.ToString(CultureInfo.InvariantCulture)} base units of ALGO ({FormatAlgo(missing)} ALGO, assetId 0). After that transfer has landed, call safe.create again with the same arguments.",
+            snap, request, appId, address, missing, ResumedDeployTxId: resumed);
+
+    private static bool IsBalanceFailure(string? message) =>
+        message is not null && System.Text.RegularExpressions.Regex.IsMatch(message, "balance|overspend|insufficient", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>Sidecar and algod text is untrusted: control characters and quotes removed, length bounded.</summary>
+    private static string Sanitize(string? text)
     {
-        if (deploy.TxIds.Length == 0) return null;
-        var txId = deploy.TxIds[0];
+        if (string.IsNullOrWhiteSpace(text)) return "unknown failure";
+        var clean = new string(text.Select(c => char.IsControl(c) || c is '\'' or '"' ? ' ' : c).ToArray()).Trim();
+        return clean.Length <= 200 ? clean : clean[..200] + "...";
+    }
+
+    /// <summary>
+    /// The app id created by the landed deployment: from the tenant's known safes (recorded by the confirm path when the
+    /// deployment landed), else, as a fallback, from algod or the indexer (then remembered).
+    /// </summary>
+    private async Task<ulong?> ResolveAppIdAsync(string tenantId, string network, string txId, CancellationToken ct)
+    {
         var known = await db.KnownSafes.AsNoTracking().FirstOrDefaultAsync(k => k.TenantId == tenantId && k.Network == network && k.DeployTxId == txId, ct);
         if (known is not null) return (ulong)known.AppId;
 
@@ -205,7 +282,7 @@ public sealed class SafeCreateService(
         UnsignedGroup: JsonSerializer.Serialize(build.Group.ToBase64()), SenderAddress: request.From, Network: request.StepNetwork,
         FirstValid: (long)build.FirstValid, LastValid: (long)build.LastValid);
 
-    private static string Canonical(SafeCreateRequest request, SafeBuild build, ulong? appId)
+    private static string Canonical(SafeCreateRequest request, SafeBuild build, ulong? appId, string? resumesDeployTxId = null)
     {
         var o = new JsonObject
         {
@@ -228,6 +305,12 @@ public sealed class SafeCreateService(
         {
             o["appId"] = id.ToString(CultureInfo.InvariantCulture);
             o["safeAddress"] = SafeAddress(id);
+        }
+        if (resumesDeployTxId is not null)
+        {
+            // The deployment landed in an earlier preview; this one holds only the setup step.
+            o["resumesDeployTxId"] = resumesDeployTxId;
+            o["totalSteps"] = 1;
         }
         return JsonCanonicalizer.Canonicalize(o);
     }
