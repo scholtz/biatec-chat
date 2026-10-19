@@ -32,7 +32,7 @@ public abstract class LiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpC
     protected ILiquidityBuilder Liquidity => liquidity;
     protected IBiatecMcpClient Mcp => mcp;
 
-    protected abstract Task<ToolExecutionResult> RunAsync(ToolExecutionContext context, McpCallContext mcpCtx, LiquidityRequest request, JsonNode arguments, CancellationToken ct);
+        protected abstract Task<ToolExecutionResult> RunAsync(ToolExecutionContext context, McpCallContext mcpCtx, LiquidityRequest request, JsonNode arguments, CancellationToken ct);
 
     public async Task<ToolExecutionResult> ExecuteAsync(ToolExecutionContext context, JsonNode arguments, CancellationToken ct)
     {
@@ -77,24 +77,24 @@ public abstract class LiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpC
     /// The pool the user named, or the clarifying listing. A non-null <paramref name="refusal"/> is the tool result to
     /// return as is (a listing to ask about, or a reason the pool cannot be used).
     /// </summary>
-    protected async Task<(PoolInfo? Pool, ToolExecutionResult? Refusal)> ResolvePoolAsync(LiquidityRequest r, string callAgain, CancellationToken ct)
+    protected async Task<(PoolInfo? Pool, ToolExecutionResult? Refusal, int? AccountClass)> ResolvePoolAsync(LiquidityRequest r, string callAgain, CancellationToken ct)
     {
         if (r.PoolAppId == 0)
         {
             if (r.AssetA is null || r.AssetB is null)
                 return (null, new ToolExecutionResult(
-                    "No pool was named. Ask the user which two assets the pool is for (wallet.balance shows asset ids), then call this tool again with poolAppId 0, assetAId and assetBId. Do not guess a pool.", true));
+                    "No pool was named. Ask the user which two assets the pool is for (wallet.balance shows asset ids), then call this tool again with poolAppId 0, assetAId and assetBId. Do not guess a pool.", true), null);
             var listing = await liquidity.ListPoolsAsync(r.Network, r.AssetA, r.AssetB, null, r.From, ct);
-            return (null, new ToolExecutionResult(DescribePools(r, listing, callAgain)));
+            return (null, new ToolExecutionResult(DescribePools(r, listing, callAgain)), listing.AccountVerificationClass);
         }
 
         var one = await liquidity.ListPoolsAsync(r.Network, null, null, r.PoolAppId, r.From, ct);
-        if (one.Pools.Count == 1) return (one.Pools[0], null);
+        if (one.Pools.Count == 1) return (one.Pools[0], null, one.AccountVerificationClass);
         if (one.Excluded.Count > 0)
             return (null, new ToolExecutionResult(
                 $"Pool {r.PoolAppId} is not open to this address: it needs Biatec verification class {one.Excluded[0].RequiredVerificationClass} and the address has class {one.AccountVerificationClass?.ToString(CultureInfo.InvariantCulture) ?? "none"}. " +
-                "Explain that the address must be verified with Biatec to use this pool, and offer to look at other pools instead.", true));
-        return (null, new ToolExecutionResult($"{r.PoolAppId} is not a Biatec DEX pool on {r.Network}. Ask the user which pool they mean.", true));
+                "Explain that the address must be verified with Biatec to use this pool, and offer to look at other pools instead.", true), one.AccountVerificationClass);
+        return (null, new ToolExecutionResult($"{r.PoolAppId} is not a Biatec DEX pool on {r.Network}. Ask the user which pool they mean.", true), one.AccountVerificationClass);
     }
 
     private static string DescribePools(LiquidityRequest r, PoolListing listing, string callAgain)
@@ -145,13 +145,14 @@ public abstract class LiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpC
 
     /// <summary>Persists the preview and returns the card plus a model-facing summary. Nothing is signed.</summary>
     protected async Task<ToolExecutionResult> CreatePreviewAsync(
-        ToolExecutionContext context, LiquidityRequest r, LiquidityBuild b, string intent, IReadOnlyList<AssetAmount> assets, string title, JsonObject extraFacts, CancellationToken ct)
+        ToolExecutionContext context, LiquidityRequest r, LiquidityBuild b, string intent, IReadOnlyList<AssetAmount> assets, string title, JsonObject extraFacts, int? accountVerificationClass, CancellationToken ct)
     {
         var now = clock.GetUtcNow();
         var expiresAt = Biatec.Chat.Core.Previews.PreviewPolicy.ExpiryFromLastValid(b.LastValid, b.BuiltAtRound, now);
         var stepNetwork = "algorand-" + r.Network;
         var fee = b.Group.Transactions.Aggregate(BigInteger.Zero, (s, t) => s + t.Fee);
-        var summary = $"Biatec DEX pool {b.Pool.AppId} · fee tier {b.Pool.FeePercent}% · price range {b.Pool.PriceRange} · verification class {b.Pool.VerificationClass} · simulation passed";
+        var accountClass = accountVerificationClass?.ToString(CultureInfo.InvariantCulture) ?? "none";
+        var summary = $"Biatec DEX pool {b.Pool.AppId} · fee tier {b.Pool.FeePercent}% · price range {b.Pool.PriceRange} · pool minimum verification class {b.Pool.VerificationClass} · your verification class {accountClass} · simulation passed";
 
         var canonical = new JsonObject
         {
@@ -164,6 +165,7 @@ public abstract class LiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpC
             ["priceMin"] = b.Pool.PriceMin,
             ["priceMax"] = b.Pool.PriceMax,
             ["verificationClass"] = b.Pool.VerificationClass,
+            ["accountVerificationClass"] = accountVerificationClass,
             ["groupHash"] = b.Group.GroupHash,
             ["txIds"] = new JsonArray(b.Group.TxIds.Select(t => (JsonNode?)JsonValue.Create(t)).ToArray()),
             ["firstValid"] = b.FirstValid.ToString(CultureInfo.InvariantCulture),
@@ -275,7 +277,7 @@ public sealed class DexAddLiquidityExecutor(ILiquidityBuilder liquidity, IBiatec
 
     protected override async Task<ToolExecutionResult> RunAsync(ToolExecutionContext context, McpCallContext mcpCtx, LiquidityRequest r, JsonNode arguments, CancellationToken ct)
     {
-        var (pool, refusal) = await ResolvePoolAsync(r, "After the user chooses, call dex.addLiquidity again with that poolAppId and amountA/amountB in base units of that pool's assetA and assetB.", ct);
+        var (pool, refusal, accountClass) = await ResolvePoolAsync(r, "After the user chooses, call dex.addLiquidity again with that poolAppId and amountA/amountB in base units of that pool's assetA and assetB.", ct);
         if (refusal is not null) return refusal;
 
         var amountA = arguments["amountA"]!.GetValue<string>();
@@ -287,7 +289,7 @@ public sealed class DexAddLiquidityExecutor(ILiquidityBuilder liquidity, IBiatec
         var b = Amount(book, build.Pool.AssetB, amountB);
         var intent = $"Add {Display(a)} and {Display(b)} to Biatec DEX pool {build.Pool.AppId} ({build.Pool.FeePercent}% fee, price range {build.Pool.PriceRange})";
         var extra = new JsonObject { ["amountA"] = amountA, ["amountB"] = amountB, ["assetA"] = a.AssetId, ["assetB"] = b.AssetId, ["lpOptIn"] = build.LpOptIn };
-        return await CreatePreviewAsync(context, r, build, intent, [a, b], $"Add liquidity to pool {build.Pool.AppId}", extra, ct);
+        return await CreatePreviewAsync(context, r, build, intent, [a, b], $"Add liquidity to pool {build.Pool.AppId}", extra, accountClass, ct);
     }
 }
 
@@ -300,7 +302,7 @@ public sealed class DexRemoveLiquidityExecutor(ILiquidityBuilder liquidity, IBia
 
     protected override async Task<ToolExecutionResult> RunAsync(ToolExecutionContext context, McpCallContext mcpCtx, LiquidityRequest r, JsonNode arguments, CancellationToken ct)
     {
-        var (pool, refusal) = await ResolvePoolAsync(r, "After the user chooses, call dex.removeLiquidity again with that poolAppId and the percent of their position to remove.", ct);
+        var (pool, refusal, accountClass) = await ResolvePoolAsync(r, "After the user chooses, call dex.removeLiquidity again with that poolAppId and the percent of their position to remove.", ct);
         if (refusal is not null) return refusal;
 
         var percent = LiquidityRequest.AsLong(arguments["percent"]!);
@@ -325,7 +327,7 @@ public sealed class DexRemoveLiquidityExecutor(ILiquidityBuilder liquidity, IBia
         };
         var intent = $"Withdraw {percent}% of your position ({Display(lpAsset)}) from Biatec DEX pool {build.Pool.AppId} ({build.Pool.FeePercent}% fee, price range {build.Pool.PriceRange}); you receive your share of both pool assets";
         var extra = new JsonObject { ["percent"] = percent, ["lpTokenId"] = lpAsset.AssetId, ["lpAmount"] = lpAmount };
-        return await CreatePreviewAsync(context, r, build, intent, [lpAsset], $"Remove liquidity from pool {build.Pool.AppId}", extra, ct);
+        return await CreatePreviewAsync(context, r, build, intent, [lpAsset], $"Remove liquidity from pool {build.Pool.AppId}", extra, accountClass, ct);
     }
 }
 

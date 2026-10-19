@@ -112,6 +112,7 @@ public sealed class LiquidityTests : IAsyncLifetime
         public readonly List<(string Name, JsonElement Params)> Builds = [];
         public readonly List<JsonElement> Queries = [];
         public int PoolClassForAccount = 0;
+        public Action<JsonObject>? MutateFacts;
 
         private static JsonObject Pool(ulong id, string fee, string min, string max, string liquidity, int cls) => new()
         {
@@ -119,6 +120,8 @@ public sealed class LiquidityTests : IAsyncLifetime
             ["fee"] = "1000000", ["feePercent"] = fee, ["priceMin"] = min, ["priceMax"] = max, ["currentPrice"] = "1080000000",
             ["liquidity"] = liquidity, ["verificationClass"] = cls,
         };
+
+        public JsonNode PoolFact(ulong id) => AllPools.First(x => x["appId"]!.GetValue<string>() == id.ToString()).DeepClone();
 
         private static readonly JsonObject[] AllPools =
         [
@@ -163,6 +166,7 @@ public sealed class LiquidityTests : IAsyncLifetime
             };
             if (p.TryGetProperty("amountA", out var a)) { facts["amountA"] = a.GetString(); facts["amountB"] = p.GetProperty("amountB").GetString(); facts["lpOptIn"] = true; }
             if (p.TryGetProperty("lpAmount", out var lp)) facts["lpAmount"] = lp.GetString();
+            MutateFacts?.Invoke(facts);
             return Task.FromResult(new BuildResult(group.ToBase64(), JsonDocument.Parse(facts.ToJsonString()).RootElement.Clone()));
         }
     }
@@ -367,7 +371,7 @@ public sealed class LiquidityTests : IAsyncLifetime
         Assert.Contains("pool 1001", step.To);
         Assert.Contains("fee tier 0.1%", step.SimulationSummary);
         Assert.Contains("price range 1 to 1.2", step.SimulationSummary);
-        Assert.Contains("verification class 0", step.SimulationSummary);
+        Assert.Contains("pool minimum verification class 0", step.SimulationSummary);
         Assert.Equal(["100", "200"], step.Assets.Select(a => a.AssetId));
         Assert.Equal(["100000000", "108000000"], step.Assets.Select(a => a.Amount));
         Assert.Equal("0.002000 ALGO", step.FeeAmount);
@@ -387,6 +391,8 @@ public sealed class LiquidityTests : IAsyncLifetime
         Assert.Equal("1000000000", canonical["priceMin"]!.GetValue<string>());
         Assert.Equal("1200000000", canonical["priceMax"]!.GetValue<string>());
         Assert.Equal(0, canonical["verificationClass"]!.GetValue<int>());
+        Assert.Equal(0, canonical["accountVerificationClass"]!.GetValue<int>());
+        Assert.Contains("your verification class 0", step.SimulationSummary);
         Assert.Equal(step.GroupHash, canonical["groupHash"]!.GetValue<string>());
 
         // The builder was asked for exactly what the user said.
@@ -451,6 +457,52 @@ public sealed class LiquidityTests : IAsyncLifetime
         Assert.True(r.IsError);
         Assert.Null(r.Events);
         Assert.Equal(0, await PreviewCountAsync());
+    }
+
+    [Theory]
+    [InlineData("amountA")]
+    [InlineData("amountB")]
+    [InlineData("pool")]
+    [InlineData("missingAmount")]
+    public async Task Liquidity_add_facts_that_differ_from_the_request_are_never_previewed(string tamper)
+    {
+        _builders.MutateFacts = f =>
+        {
+            if (tamper == "amountA") f["amountA"] = "1";
+            else if (tamper == "amountB") f["amountB"] = "1";
+            else if (tamper == "pool") f["pool"] = _builders.PoolFact(1002);
+            else f.Remove("amountA");
+        };
+        var r = await _add.ExecuteAsync(Ctx("dex.addLiquidity"), AddArgs(1001, _builderSender), default);
+        Assert.True(r.IsError);
+        Assert.Null(r.Events);
+        Assert.Equal(0, await PreviewCountAsync());
+    }
+
+    [Fact]
+    public async Task Liquidity_remove_facts_that_differ_from_the_request_are_never_previewed()
+    {
+        _mcp.BalancesJson = Balances;
+        _builders.MutateFacts = f => f["lpAmount"] = "1";
+        var r = await _remove.ExecuteAsync(Ctx("dex.removeLiquidity"), RemoveArgs(1001, _builderSender, 50), default);
+        Assert.True(r.IsError);
+        Assert.Null(r.Events);
+        Assert.Equal(0, await PreviewCountAsync());
+    }
+
+    [Fact]
+    public async Task Liquidity_preview_carries_the_accounts_verification_class_next_to_the_pool_minimum()
+    {
+        _builders.PoolClassForAccount = 2;
+        var r = await _add.ExecuteAsync(Ctx("dex.addLiquidity"), AddArgs(1003, _builderSender), default);
+        Assert.False(r.IsError);
+        var card = Assert.IsType<PreviewCardEvent>(Assert.Single(r.Events!)).Preview;
+        Assert.Contains("pool minimum verification class 2", card.Steps[0].SimulationSummary);
+        Assert.Contains("your verification class 2", card.Steps[0].SimulationSummary);
+        var (preview, _) = await LoadAsync(Guid.Parse(card.PreviewId));
+        var canonical = JsonNode.Parse(preview.CanonicalJson)!;
+        Assert.Equal(2, canonical["verificationClass"]!.GetValue<int>());
+        Assert.Equal(2, canonical["accountVerificationClass"]!.GetValue<int>());
     }
 
     [Fact]

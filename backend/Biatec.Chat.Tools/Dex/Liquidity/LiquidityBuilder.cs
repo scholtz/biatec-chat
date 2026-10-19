@@ -92,12 +92,22 @@ public sealed class LiquidityBuilder(IBuildersClient builders) : ILiquidityBuild
     }
 
     public Task<LiquidityBuild> BuildAddAsync(string network, string sender, ulong poolAppId, string amountA, string amountB, CancellationToken ct = default) =>
-        BuildAsync(AddBuilder, network, sender, new { poolAppId = poolAppId.ToString(CultureInfo.InvariantCulture), sender, amountA, amountB }, ct);
+        BuildAsync(AddBuilder, network, sender, poolAppId, new { poolAppId = poolAppId.ToString(CultureInfo.InvariantCulture), sender, amountA, amountB },
+            b => { Same(b.AmountA, amountA, "amountA"); Same(b.AmountB, amountB, "amountB"); }, ct);
 
     public Task<LiquidityBuild> BuildRemoveAsync(string network, string sender, ulong poolAppId, string lpAmount, CancellationToken ct = default) =>
-        BuildAsync(RemoveBuilder, network, sender, new { poolAppId = poolAppId.ToString(CultureInfo.InvariantCulture), sender, lpAmount }, ct);
+        BuildAsync(RemoveBuilder, network, sender, poolAppId, new { poolAppId = poolAppId.ToString(CultureInfo.InvariantCulture), sender, lpAmount },
+            b => Same(b.LpAmount, lpAmount, "lpAmount"), ct);
 
-    private async Task<LiquidityBuild> BuildAsync(string builder, string network, string sender, object parameters, CancellationToken ct)
+    /// <summary>The amount the builder reports must equal the requested one, else the card would show a transfer the group does not make.</summary>
+    private static void Same(string? reported, string requested, string name)
+    {
+        if (!BigInteger.TryParse(reported, NumberStyles.None, CultureInfo.InvariantCulture, out var r)
+            || !BigInteger.TryParse(requested, NumberStyles.None, CultureInfo.InvariantCulture, out var q) || r != q)
+            throw new LiquidityBuildException($"The builder facts {name} differ from the request.");
+    }
+
+    private async Task<LiquidityBuild> BuildAsync(string builder, string network, string sender, ulong poolAppId, object parameters, Action<LiquidityBuild> matchesRequest, CancellationToken ct)
     {
         var result = await builders.BuildAsync(builder, network, parameters, ct);
         if (result.Facts is not { ValueKind: JsonValueKind.Object } facts)
@@ -121,9 +131,12 @@ public sealed class LiquidityBuilder(IBuildersClient builders) : ILiquidityBuild
             if (!facts.TryGetProperty("pool", out var pool)) throw new LiquidityBuildException("The builder facts have no pool.");
             var (first, last) = group.ValidityWindow();
             var builtAt = Str(facts, "firstValid") is null ? first : U64(facts, "firstValid");
-            return new LiquidityBuild(Str(facts, "kind") ?? builder, ParsePool(pool), sender, group,
+            var build = new LiquidityBuild(Str(facts, "kind") ?? builder, ParsePool(pool), sender, group,
                 Str(facts, "amountA"), Str(facts, "amountB"), Str(facts, "lpAmount"),
                 facts.TryGetProperty("lpOptIn", out var o) && o.ValueKind == JsonValueKind.True, first, last, builtAt);
+            if (build.Pool.AppId != poolAppId) throw new LiquidityBuildException("The builder facts name a different pool.");
+            matchesRequest(build);
+            return build;
         }
         catch (Exception e) when (e is KeyNotFoundException or InvalidOperationException or FormatException or OverflowException)
         {
