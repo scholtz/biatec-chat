@@ -1,7 +1,7 @@
 ---
 id: T-062
 title: Widget design foundations: Biatec AI tokens, Shadow DOM, theme sync, primitives
-status: in-progress
+status: done
 priority: P1
 epic: "Widget UI rework"
 blocked_by: [T-041]
@@ -14,7 +14,7 @@ owner: "session-20261019-agent"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#visual-design"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-062 · Widget design foundations: Biatec AI tokens, Shadow DOM, theme sync, primitives
@@ -74,9 +74,12 @@ Filled in by the agent when it moves the task to `review`.
 
 ## Review
 
+- 2026-10-20 00:55 · approve · PR #114 merged into main @ 55274d5 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 22:40 · coordinator · (new) → blocked · created from the Biatec AI design handoff (docs/design/) for the widget UI rework
 - 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-041
 - 2026-10-19 22:32 · scholtz · taken · status stays backlog
 - 2026-10-19 22:32 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 00:55 · user · in-progress → done · PR #114 merged into main @ 55274d5 (synced by kanban-sync)
