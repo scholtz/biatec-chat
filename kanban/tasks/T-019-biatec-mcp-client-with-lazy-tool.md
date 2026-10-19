@@ -1,7 +1,7 @@
 ---
 id: T-019
 title: Biatec MCP client with lazy tool cache
-status: in-progress
+status: done
 priority: P0
 epic: "Wallet tools"
 blocked_by: [T-008]
@@ -51,9 +51,12 @@ dotnet test --filter Mcp
 
 ## Review
 
+- 2026-10-19 20:34 · approve · PR #81 merged into main @ 7a0b820 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:41 · kanban-board · blocked → backlog · blockers done: T-008
 - 2026-10-19 19:42 · scholtz · taken · status stays backlog
 - 2026-10-19 19:42 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-19 20:34 · user · in-progress → done · PR #81 merged into main @ 7a0b820 (synced by kanban-sync)

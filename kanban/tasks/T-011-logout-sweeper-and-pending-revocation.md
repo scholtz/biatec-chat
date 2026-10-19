@@ -1,7 +1,7 @@
 ---
 id: T-011
 title: Logout, sweeper and pending revocation
-status: in-progress
+status: done
 priority: P1
 epic: "Sessions & auth"
 blocked_by: [T-009]
@@ -51,9 +51,12 @@ dotnet test --filter Sweeper
 
 ## Review
 
+- 2026-10-19 20:08 · approve · PR #85 merged into main @ 55c7502 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:56 · kanban-board · blocked → backlog · blockers done: T-009
 - 2026-10-19 19:42 · scholtz · taken · status stays backlog
 - 2026-10-19 19:42 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-19 20:08 · user · in-progress → done · PR #85 merged into main @ 55c7502 (synced by kanban-sync)

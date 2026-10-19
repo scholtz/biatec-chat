@@ -6,7 +6,11 @@ using Microsoft.IdentityModel.Tokens;
 namespace Biatec.Chat.Api.Auth;
 
 /// <summary>The endpoints of Biatec OIDC discovered from its metadata. Every endpoint is on the configured issuer's origin.</summary>
-public sealed record OidcMetadata(string Issuer, Uri AuthorizationEndpoint, Uri TokenEndpoint, Uri JwksUri);
+public sealed record OidcMetadata(string Issuer, Uri AuthorizationEndpoint, Uri TokenEndpoint, Uri JwksUri)
+{
+    /// <summary>RP-initiated logout. Discovery's end_session_endpoint when it is on the issuer origin, else the existing /connect/endsession.</summary>
+    public Uri EndSessionEndpoint { get; init; } = new(Issuer.TrimEnd('/') + "/connect/endsession");
+}
 
 public interface IOidcMetadataProvider
 {
@@ -59,7 +63,12 @@ public sealed class OidcMetadataProvider(IHttpClientFactory http, IOptions<OidcO
             var issuer = r.GetProperty("issuer").GetString()?.TrimEnd('/');
             if (!string.Equals(issuer, Issuer, StringComparison.Ordinal)) throw new OidcException("Discovery issuer does not match the configured issuer.");
             return new OidcMetadata(Issuer,
-                SameOrigin(r, "authorization_endpoint"), SameOrigin(r, "token_endpoint"), SameOrigin(r, "jwks_uri"));
+                SameOrigin(r, "authorization_endpoint"), SameOrigin(r, "token_endpoint"), SameOrigin(r, "jwks_uri"))
+            {
+                EndSessionEndpoint = r.TryGetProperty("end_session_endpoint", out _)
+                    ? SameOrigin(r, "end_session_endpoint")
+                    : new Uri(Issuer + "/connect/endsession"),
+            };
         }
         catch (Exception ex) when (ex is not OidcException and not OperationCanceledException)
         {
