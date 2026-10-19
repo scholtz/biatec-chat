@@ -8,17 +8,21 @@ import 'approval_screen.dart';
 import 'approval_services.dart';
 import 'consent_request.dart';
 
-/// Pending requests for this device's user. Polls while open; push
-/// notifications (T-053) replace the polling.
+/// Pending requests for this device's user. Refreshes when [pushes] fires and
+/// polls while open as the fallback for lost pushes.
 class PendingScreen extends StatefulWidget {
   const PendingScreen({
     super.key,
     required this.services,
     this.pollEvery = const Duration(seconds: 5),
+    this.pushes,
   });
 
   final ApprovalServices services;
   final Duration pollEvery;
+
+  /// Fires when a push announced a new request.
+  final Stream<void>? pushes;
 
   @override
   State<PendingScreen> createState() => _PendingScreenState();
@@ -30,12 +34,18 @@ class _PendingScreenState extends State<PendingScreen> {
   bool _offline = false;
   bool _loading = false;
   Timer? _poll;
+  StreamSubscription<void>? _pushSub;
+
+  /// A refresh was asked for while one was running (for example a push
+  /// arrived mid-request); it runs again once the current one ends.
+  bool _again = false;
 
   @override
   void initState() {
     super.initState();
     _refresh();
     _startPolling();
+    _pushSub = widget.pushes?.listen((_) => _refresh());
   }
 
   void _startPolling() {
@@ -46,11 +56,15 @@ class _PendingScreenState extends State<PendingScreen> {
   @override
   void dispose() {
     _poll?.cancel();
+    _pushSub?.cancel();
     super.dispose();
   }
 
   Future<void> _refresh() async {
-    if (_loading) return;
+    if (_loading) {
+      _again = true;
+      return;
+    }
     _loading = true;
     try {
       final record = await widget.services.enrollment.read();
@@ -75,15 +89,17 @@ class _PendingScreenState extends State<PendingScreen> {
     } finally {
       _loading = false;
     }
+    if (_again && mounted) {
+      _again = false;
+      await _refresh();
+    }
   }
 
   Future<void> _open(ConsentRequest r) async {
     // No polling for a list nobody sees while a request is open.
     _poll?.cancel();
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) =>
-          ApprovalScreen(services: widget.services, authReqId: r.authReqId),
-    ));
+    await Navigator.of(context)
+        .push(ApprovalScreen.route(widget.services, r.authReqId));
     if (!mounted) return;
     _startPolling();
     await _refresh();
