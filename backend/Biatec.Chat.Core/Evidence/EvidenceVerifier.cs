@@ -41,7 +41,10 @@ public static class EvidenceVerifier
             if (e.Payload is not null || e.Salt is not null)
             {
                 if (e.Payload is null || e.Salt is null) return EvidenceVerification.Fail(e.Seq, "Payload and salt must be present or deleted together.");
-                if (EvidenceHasher.PayloadHash(e.Salt, JsonNode.Parse(e.Payload)) != e.PayloadHash)
+                JsonNode? parsed;
+                try { parsed = JsonNode.Parse(e.Payload); }
+                catch (System.Text.Json.JsonException) { return EvidenceVerification.Fail(e.Seq, "Payload is not valid JSON."); }
+                if (EvidenceHasher.PayloadHash(e.Salt, parsed) != e.PayloadHash)
                     return EvidenceVerification.Fail(e.Seq, "payloadHash does not match the payload.");
             }
 
@@ -73,6 +76,6 @@ public static class EvidenceVerifier
             prev = e.EntryHash;
             expected++;
         }
-        return EvidenceVerification.Ok;
+        return conv is null ? EvidenceVerification.Fail(0, "No entries.") : EvidenceVerification.Ok;
     }
 }

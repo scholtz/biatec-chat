@@ -79,9 +79,12 @@ public sealed class DevEvidenceKeyStore : IEvidenceKeyStore, IDisposable
         var json = JsonSerializer.Serialize(_keys.Select(k =>
             new FileKey(k.Kid, Convert.ToBase64String(k.Key.ExportPkcs8PrivateKey()), k.CreatedAt, k.RetiredAt)));
         var tmp = _filePath + ".tmp";
-        File.WriteAllText(tmp, json);
-        if (!OperatingSystem.IsWindows())
-            File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        var opts = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write };
+        if (!OperatingSystem.IsWindows()) opts.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        using (var fs = new FileStream(tmp, opts))
+        {
+            fs.Write(System.Text.Encoding.UTF8.GetBytes(json));
+        }
         File.Move(tmp, _filePath, overwrite: true);
     }
 
@@ -119,10 +122,19 @@ public sealed class DevEvidenceKeyStore : IEvidenceKeyStore, IDisposable
     {
         lock (_gate)
         {
-            _keys.Single(k => k.RetiredAt is null).RetiredAt = _time.GetUtcNow();
+            var old = _keys.Single(k => k.RetiredAt is null);
             var fresh = NewKey();
+            old.RetiredAt = _time.GetUtcNow();
             _keys.Add(fresh);
-            Persist();
+            try { Persist(); }
+            catch
+            {
+                // Keep memory and file consistent: a key that is not on disk must not sign anything.
+                _keys.Remove(fresh);
+                old.RetiredAt = null;
+                fresh.Key.Dispose();
+                throw;
+            }
             return Task.FromResult(fresh.Kid);
         }
     }

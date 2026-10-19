@@ -100,6 +100,12 @@ public sealed class EvidenceLog(ChatDbContext db, IEvidenceKeyStore keys, TimePr
                     .AnyAsync(e => e.ConversationId == conversationId && e.Seq == entry.Seq, ct);
                 if (!raced) throw;
             }
+            catch (DbUpdateException)
+            {
+                // Inside a caller's transaction (or out of attempts): leave no stale Added entry behind.
+                if (entry is not null) db.Entry(entry).State = EntityState.Detached;
+                throw;
+            }
             finally
             {
                 if (tx is not null) await tx.DisposeAsync();

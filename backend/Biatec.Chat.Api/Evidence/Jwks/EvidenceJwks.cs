@@ -11,6 +11,9 @@ public sealed class EvidenceOptions
 
     /// <summary>Optional file for the local dev signing keys (so they survive restarts). Never a production setting.</summary>
     public string? DevKeyFile { get; set; }
+
+    /// <summary>Outside Development the in-memory dev key store is refused unless this is true (keys are lost on restart).</summary>
+    public bool AllowEphemeralKeys { get; set; }
 }
 
 public static class EvidenceJwks
@@ -27,6 +30,8 @@ public static class EvidenceJwks
             var dev = sp.GetRequiredService<IHostEnvironment>().IsDevelopment();
             if (!dev && !string.IsNullOrWhiteSpace(o.DevKeyFile))
                 throw new InvalidOperationException("Evidence:DevKeyFile is only allowed in Development; register a production IEvidenceKeyStore.");
+            if (!dev && !o.AllowEphemeralKeys)
+                throw new InvalidOperationException("No production IEvidenceKeyStore is registered. Register one, or set Evidence:AllowEphemeralKeys=true to accept signing keys that are lost on restart.");
             if (!dev)
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger("Evidence").LogWarning("Evidence signing uses the local Dev key store; register a production IEvidenceKeyStore.");
             return new DevEvidenceKeyStore(o.DevKeyFile);
