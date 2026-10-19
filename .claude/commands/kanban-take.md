@@ -22,7 +22,7 @@ reservation nobody else can see doesn't work. Push nothing else.
 4. **Mark.** Set `taken_by: "<me>"` (or `taken_by: ""` when releasing) and `updated`, and append to the Activity log
    `- <YYYY-MM-DD HH:MM> · <me> · taken · status stays <status>` (or `· released`). `status` and `owner` don't
    change: taking is a reservation, and claiming still happens in `/kanban-next` or `/kanban-dispatch`.
-5. **Board.** Run the `/kanban-board` steps.
+5. **Board.** Run `kanban/scripts/board.py sync` (the `/kanban-board` steps).
 6. **Commit and push.** `git add kanban && git commit -m "kanban: <me> takes T-###, …"` (or `releases`), then
    `git push origin main`. If the push is rejected, run `git pull --rebase origin main`. If the rebase conflicts on a
    task file because a teammate took the same task first, keep the remote version of that file (during a rebase

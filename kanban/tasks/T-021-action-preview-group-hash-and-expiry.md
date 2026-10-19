@@ -1,7 +1,7 @@
 ---
 id: T-021
 title: Action preview, group hash and expiry
-status: backlog
+status: done
 priority: P0
 epic: "Wallet tools"
 blocked_by: [T-003, T-004, T-005]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Core/Previews/**", "backend/Biatec.Chat.Tools/Algod/
 parallel: yes
 conflicts_with: []
 issue: "#22"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-021"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#action-preview"
 created: 2026-10-19
 updated: 2026-10-19
@@ -51,7 +51,12 @@ dotnet test --filter Previews
 
 ## Review
 
+- 2026-10-19 19:32 · approve · PR #80 merged into main @ 82672c3 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:41 · kanban-board · blocked → backlog · blockers done: T-003, T-004, T-005
+- 2026-10-19 19:05 · scholtz · taken · status stays backlog
+- 2026-10-19 19:05 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-19 19:32 · user · in-progress → done · PR #80 merged into main @ 82672c3 (synced by kanban-sync)

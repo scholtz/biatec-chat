@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/consent-receipt.schema.json",
+  "title": "Consent receipt",
+  "description": "Signed receipt as returned in consent_receipt and at GET /consent/receipts/{auth_req_id}. Verifiable offline with the Biatec OIDC JWKS.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "signed", "alg", "signature", "device", "issued_at"],
+  "properties": {
+    "version": { "const": "1" },
+    "signed": { "$ref": "consent-receipt-signed.schema.json" },
+    "alg": { "const": "ES256" },
+    "signature": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$", "description": "base64url of the 64-byte IEEE P1363 (r || s) ES256 signature over the UTF-8 bytes of JCS(signed)." },
+    "issued_at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "Unix time in seconds when the device signed. Informational; not part of the signed object." },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kid", "public_key", "attestation"],
+      "properties": {
+        "kid": { "type": "string", "minLength": 1 },
+        "public_key": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kty", "crv", "x", "y"],
+          "properties": {
+            "kty": { "const": "EC" },
+            "crv": { "const": "P-256" },
+            "x": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+            "y": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" }
+          }
+        },
+        "attestation": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+          "description": "Compact JWS (ES256) signed by a Biatec OIDC JWKS key; the payload binds sub, device kid and the device public key thumbprint."
+        }
+      }
+    }
+  }
+}

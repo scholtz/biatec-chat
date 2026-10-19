@@ -1,7 +1,7 @@
 ---
 id: T-039
 title: Widget package scaffold, launcher and panel
-status: backlog
+status: done
 priority: P0
 epic: "Widget"
 blocked_by: [T-001]
@@ -9,9 +9,9 @@ area: ["packages/chat-widget/**"]
 parallel: no
 conflicts_with: [T-036]
 issue: "#40"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-039"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#chat-widget-biatecchat-widget"
 created: 2026-10-19
 updated: 2026-10-19
@@ -51,8 +51,13 @@ pnpm --filter chat-widget build; pnpm --filter chat-widget dev
 
 ## Review
 
+- 2026-10-19 20:06 · approve · PR #82 merged into main @ 762bb6b (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:00 · coordinator · review · added opt-in page context option from Packaging section
 - 2026-10-19 18:21 · kanban-board · blocked → backlog · blockers done: T-001
+- 2026-10-19 19:42 · scholtz · taken · status stays backlog
+- 2026-10-19 19:42 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-19 20:06 · user · in-progress → done · PR #82 merged into main @ 762bb6b (synced by kanban-sync)

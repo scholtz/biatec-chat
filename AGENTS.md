@@ -11,12 +11,20 @@ other document.**
   don't change them.
 - When the product needs a change in another product (for example everything under "Required Changes To Biatec
   OIDC"), implement the documented **fallback** here, mock the missing API inside this repo for tests, and record
-  the needed change in `docs/required-changes-biatec-oidc.md`.
+  the needed change in [docs/required-changes-biatec-oidc.md](docs/required-changes-biatec-oidc.md), which holds the
+  API shapes and, per row, the fallback (or "None": build against the mock only and keep the feature disabled by configuration against real Biatec OIDC).
 
 ## Work is tracked on the kanban board
 
 - Read `kanban/README.md` before starting. Work only on a task you've claimed or been assigned, follow its Scope,
   and never mark a task `done`: only the user approves, via `/kanban-review`.
+- **Always tag tasks in progress, in three places, at the moment work starts:** (1) the task file (`status:
+  in-progress`, `taken_by`, `owner`, `branch: task/T-###`, an Activity log line) and `kanban/BOARD.md`, committed and
+  pushed to `main` before any code is written; (2) the mirror GitHub issue gets the `in-progress` label and is
+  assigned to the person who took it (`gh issue edit N --add-label in-progress --add-assignee <me>`); (3) the PR is
+  titled `T-###: <title>` and its body says `Closes #N`. When the task moves to `review`, `blocked`, back to
+  `backlog` or to `done`, remove the `in-progress` label (`gh issue edit N --remove-label in-progress`), and make sure
+  the issue is closed once the PR is merged. An untagged task counts as free: another agent may take it.
 - Commands: `/kanban-split`, `/kanban-dispatch` (parallel agents), `/kanban-next` (one task in this session),
   `/kanban-move`, `/kanban-board`, `/kanban-parallel`, `/kanban-take`, `/kanban-review` (user only).
 - We work as a team: take tasks with `/kanban-take` (marks `taken_by: <GitHub username>`, commits and pushes the

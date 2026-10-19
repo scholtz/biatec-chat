@@ -34,7 +34,8 @@ public sealed class TokenRefreshResult
 /// <summary>Performs the OAuth refresh grant against Biatec OIDC. The OAuth flows themselves are out of scope for the vault.</summary>
 public interface ITokenRefresher
 {
-    Task<TokenRefreshResult> RefreshAsync(string refreshToken, CancellationToken ct);
+    /// <summary>The session id identifies the tenant (client credentials) the refresh token was issued to.</summary>
+    Task<TokenRefreshResult> RefreshAsync(string sessionId, string refreshToken, CancellationToken ct);
 }
 
 public sealed class VaultRefreshException(string message, Exception? inner = null) : Exception(message, inner);

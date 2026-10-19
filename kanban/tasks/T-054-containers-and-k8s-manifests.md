@@ -1,7 +1,7 @@
 ---
 id: T-054
 title: Containers and k8s manifests
-status: blocked
+status: backlog
 priority: P2
 epic: "Deploy & docs"
 blocked_by: [T-002, T-027]
@@ -54,3 +54,4 @@ docker build; kubectl apply --dry-run=client -f k8s/stage
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 20:10 · kanban-board · blocked → backlog · blockers done: T-002, T-027

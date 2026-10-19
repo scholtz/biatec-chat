@@ -1,7 +1,7 @@
 ---
 id: T-009
 title: OAuth BFF login with PKCE and popup
-status: blocked
+status: done
 priority: P0
 epic: "Sessions & auth"
 blocked_by: [T-007, T-008]
@@ -9,7 +9,7 @@ area: ["backend/Biatec.Chat.Api/Auth/**"]
 parallel: no
 conflicts_with: [T-038]
 issue: "#10"
-branch: ""
+branch: "task/T-009"
 owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#security-model-authorization-without-tokens-in-the-browser"
@@ -54,3 +54,4 @@ dotnet test --filter Auth; manual run against stage OIDC once the client exists
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 19:00 · user · backlog → done · user asked in conversation to implement, review and merge; PR #71 merged into main @ bd39efc

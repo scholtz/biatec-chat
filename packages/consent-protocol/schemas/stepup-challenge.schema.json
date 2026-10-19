@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/stepup-challenge.schema.json",
+  "title": "Step-up entry: wallet endpoint challenge",
+  "description": "JSON body of the 401 answer of /wallet/{network}/{address}/sign or PUT /wallet/limits. The WWW-Authenticate header carries error=insufficient_user_authentication and acr_values per RFC 9470.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["error", "acr_values", "auth_req_id", "expires_in", "binding_code"],
+  "properties": {
+    "error": { "const": "insufficient_user_authentication" },
+    "error_description": { "type": "string" },
+    "acr_values": { "const": "biatec:consent" },
+    "auth_req_id": { "type": "string", "minLength": 16 },
+    "expires_in": { "type": "integer", "minimum": 1, "maximum": 300 },
+    "interval": { "type": "integer", "minimum": 1 },
+    "binding_code": { "$ref": "binding-code.schema.json" }
+  }
+}

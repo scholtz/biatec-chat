@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/authorization-details-limits-change.schema.json",
+  "title": "biatec_limits_change authorization detail",
+  "description": "RFC 9396 authorization_details object describing a change of spending limits (PUT /wallet/limits).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "current_limits", "requested_limits", "request_hash"],
+  "properties": {
+    "type": { "const": "biatec_limits_change" },
+    "current_limits": { "$ref": "#/$defs/limits" },
+    "requested_limits": { "$ref": "#/$defs/limits" },
+    "request_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lowercase hex SHA-256 of the RFC 8785 canonical request body of PUT /wallet/limits."
+    }
+  },
+  "$defs": {
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["per_transaction_eur", "per_day_eur"],
+      "properties": {
+        "per_transaction_eur": { "type": "string", "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$" },
+        "per_day_eur": { "type": "string", "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$" }
+      }
+    }
+  }
+}
