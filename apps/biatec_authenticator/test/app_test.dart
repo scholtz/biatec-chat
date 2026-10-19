@@ -24,7 +24,9 @@ void main() {
   });
 
   test('config strips trailing slashes', () {
-    expect(AppConfig.resolve('http://10.0.2.2:5080/mock-oidc/').isMock, isTrue);
+    final config = AppConfig.resolve('http://10.0.2.2:5080/mock-oidc/');
+    expect(config.isMock, isTrue);
+    expect(config.oidcBaseUrl, AppConfig.mockOidcBaseUrl);
   });
 
   testWidgets('home shows mock OIDC config', (tester) async {
@@ -32,6 +34,7 @@ void main() {
     await tester.pumpWidget(AuthenticatorApp(config: AppConfig.resolve('')));
     expect(find.text('Biatec Authenticator'), findsOneWidget);
     expect(find.text(AppConfig.mockOidcBaseUrl), findsOneWidget);
+    expect(find.text('Biatec OIDC (mock)'), findsOneWidget);
   });
 
   testWidgets('every screen is reachable from home', (tester) async {
