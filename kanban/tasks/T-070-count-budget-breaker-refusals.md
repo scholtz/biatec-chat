@@ -1,7 +1,7 @@
 ---
 id: T-070
 title: Count budget-breaker refusals in the refusals metric
-status: review
+status: done
 priority: P3
 epic: "Deploy & docs"
 blocked_by: [T-018, T-057]
@@ -62,8 +62,11 @@ dotnet test --filter Budget
 
 ## Review
 
+- 2026-10-20 00:30 · approve · PR #127 merged into main @ ba44635 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 00:40 · LukassSoukup · (new) → backlog · follow-up from T-057's hand-off; blockers T-018, T-057 (done); no file overlap with unfinished tasks
 - 2026-10-20 00:26 · session-20261020-0026 · backlog → in-progress · claimed by /kanban-next
 - 2026-10-20 00:30 · session-20261020-0026 · in-progress → review · PR #127, tests and review passed
+- 2026-10-20 00:30 · user · review → done · PR #127 merged into main @ ba44635 (synced by kanban-sync)
