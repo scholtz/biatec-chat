@@ -33,7 +33,9 @@ public static class BudgetRegistration
             sp.GetRequiredService<IBudgetTenantSource>(),
             sp.GetRequiredService<IOptions<BudgetOptions>>(),
             sp.GetRequiredService<TimeProvider>(),
-            sp.GetRequiredService<ILogger<BudgetedModelClient>>()), inner.Lifetime));
+            sp.GetRequiredService<ILogger<BudgetedModelClient>>(),
+            // Registered by AddBiatecTelemetry only when telemetry is on.
+            sp.GetService<Biatec.Chat.Api.Telemetry.ChatMetrics>()), inner.Lifetime));
         return services;
     }
 
