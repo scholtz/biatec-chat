@@ -7,8 +7,11 @@ public static class OriginPolicy
     public const string CsrfHeader = "X-Biatec-Chat";
     public const string ClientKeyHeader = "X-Biatec-Client-Key";
 
-    /// <summary>Endpoints that carry no cookie and accept any origin.</summary>
-    public static bool IsPublic(PathString path) => path.StartsWithSegments("/public");
+    /// <summary>Endpoints that carry no cookie and accept any origin (/public, and /onboarding which authenticates by DNS proof or operator bearer key).</summary>
+    public static bool IsPublic(PathString path) => path.StartsWithSegments("/public") || path.StartsWithSegments("/onboarding");
+
+    /// <summary>The operator approval route: exempt from CSRF (bearer key, no ambient credential) but never gets a CORS wildcard.</summary>
+    public static bool IsOperatorOnboarding(PathString path) => path.StartsWithSegments("/onboarding/operator");
 
     /// <summary>
     /// Browser navigations and metadata that cannot carry the custom header; they have their own protection
