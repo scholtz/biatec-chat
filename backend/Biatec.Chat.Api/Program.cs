@@ -45,6 +45,7 @@ builder.Services.AddEvidenceAnchoring(builder.Configuration);
 builder.Services.AddSingleton<Biatec.Chat.Tools.Mcp.IMcpBearerSource, Biatec.Chat.Api.Mcp.VaultMcpBearerSource>();
 Biatec.Chat.Tools.Mcp.McpRegistration.AddBiatecMcp(builder.Services, builder.Configuration);
 Biatec.Chat.Api.Wallet.Read.WalletReadRegistration.AddWalletReadTools(builder.Services);
+Biatec.Chat.Api.Wallet.Transfer.WalletTransferRegistration.AddWalletTransferTools(builder.Services);
 Biatec.Chat.Api.Limits.LimitsRegistration.AddLimitsTools(builder.Services);
 Biatec.Chat.Api.X402.X402Registration.AddX402Pay(builder.Services, builder.Configuration);
 Biatec.Chat.Api.Dex.Liquidity.DexLiquidityRegistration.AddDexLiquidityTools(builder.Services, builder.Configuration);
