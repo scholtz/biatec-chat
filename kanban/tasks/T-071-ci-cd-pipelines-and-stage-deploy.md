@@ -5,7 +5,7 @@ status: review
 priority: P1
 epic: "Deployment"
 blocked_by: [T-054]
-area: [".github/workflows/ci.yml", ".github/workflows/deploy-stage.yml", "docs/cicd.md", "k8s/base/backend.yaml", "k8s/base/builders.yaml", "k8s/main/kustomization.yaml", "k8s/stage/kustomization.yaml", "k8s/README.md"]
+area: [".github/workflows/ci.yml", ".github/workflows/deploy-stage.yml", "docs/cicd.md", "k8s/base/backend.yaml", "k8s/base/builders.yaml", "k8s/main/kustomization.yaml", "k8s/stage/kustomization.yaml", "k8s/README.md", "k8s/base/kustomization.yaml", "k8s/base/postgres.yaml", "k8s/base/redis.yaml", "docs/aws-setup.md", "docs/deploy-aws.md", "docs/AWS-AGENTCORE-GUIDE.md", "infra/aws/**", "infra/guardrail/**"]
 parallel: yes
 conflicts_with: []
 issue: "#128"
@@ -92,3 +92,4 @@ Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>
   blockers scan: T-054 (k8s manifests, done) is the only ordering need
 - 2026-10-20 00:44 · session-20261020-claude · backlog → in-progress · claimed by LukassSoukup
 - 2026-10-20 00:49 · session-20261020-claude · in-progress → review · PR #130
+- 2026-10-20 00:57 · session-20261020-claude · review → review · scope extended at the user's request: in-cluster Postgres/Redis with generated passwords, deploy-time migrations, AWS setup guide, merged fix/aws-access (#124)
