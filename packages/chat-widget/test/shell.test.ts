@@ -398,3 +398,53 @@ describe("inline mode", () => {
     w.unmount();
   });
 });
+
+describe("review fixes", () => {
+  it("an inline panel never becomes the workspace, even when the shared core is expanded", async () => {
+    viewport(1280);
+    const svc = services();
+    const Host = defineComponent({
+      setup: () => () =>
+        h("div", [h(BiatecChatRoot, { options: resolveOptions({ ...base, mode: "workspace" }), services: svc }), h(BiatecChatInline)]),
+    });
+    const w = mount(Host, { attachTo: document.body });
+    await flushPromises();
+    const shadow = document.querySelector<HTMLElement>("[data-biatec-chat-inline-host]")!.shadowRoot!;
+    const panel = shadow.querySelector<HTMLElement>(".bc-panel")!;
+    expect(panel.getAttribute("data-mode")).toBe("inline");
+    expect(panel.hasAttribute("data-fullscreen")).toBe(false);
+    expect(panel.getAttribute("aria-modal")).toBeNull();
+    expect(shadow.querySelector("[data-testid=expand]")).toBeNull();
+    w.unmount();
+  });
+
+  it("the refused-ask notice clears when the streaming reply finishes (inline, no close)", async () => {
+    const s = controlledStream();
+    const svc = services(anon, vi.fn(() => s.gen()));
+    const Host = defineComponent({ setup: () => () => h(BiatecChatInline, { options: base, services: svc }) });
+    const w = mount(Host, { attachTo: document.body });
+    await flushPromises();
+    const shadow = document.querySelector<HTMLElement>("[data-biatec-chat-inline-host]")!.shadowRoot!;
+    expect(await useBiatecChat().ask("first")).toBe("sent");
+    expect(await useBiatecChat().ask("second")).toBe("busy");
+    await nextTick();
+    expect(shadow.querySelector("[data-testid=shell-notice]")).toBeTruthy();
+    s.push("end");
+    await flushPromises();
+    expect(shadow.querySelector("[data-testid=shell-notice]")).toBeNull();
+    w.unmount();
+  });
+
+  it("closing from the minimized bar returns focus to the launcher", async () => {
+    viewport(1280);
+    const w = mountRoot();
+    await w.get(".bc-launcher").trigger("click");
+    await w.get("[data-testid=minimize] button").trigger("click");
+    await flushPromises();
+    expect(document.activeElement).toBe(w.get("[data-testid=restore]").element);
+    useBiatecChat().close();
+    await flushPromises();
+    expect(document.activeElement).toBe(w.get(".bc-launcher").element);
+    w.unmount();
+  });
+});

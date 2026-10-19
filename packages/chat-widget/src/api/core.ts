@@ -144,6 +144,8 @@ export function createCore(options: ResolvedOptions, services?: ChatServices) {
 
   // Unread badge: a reply that finishes while the panel is closed or minimized.
   watch(chat.busy, (now, before) => {
+    // A refused ask's notice holds only while the reply it waited for streams, and goes with any new send.
+    if (now !== before) ui.notice = "";
     if (before && !now && !visible.value) ui.unread++;
   });
   watch(visible, (v) => {

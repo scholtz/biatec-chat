@@ -67,7 +67,8 @@ const floatingUi = computed(() => !inline && ui.inline === 0 && options.mode !==
 const showPanel = computed(() => inline || (floatingUi.value && ui.open && !ui.minimized));
 const showMinBar = computed(() => floatingUi.value && ui.open && ui.minimized);
 const showLauncher = computed(() => floatingUi.value && !ui.open);
-const panelMode = computed<PanelMode>(() => (ui.expanded ? "workspace" : inline ? "inline" : "floating"));
+// An inline panel always stays in the host's column: it never becomes the workspace (its header has no Expand).
+const panelMode = computed<PanelMode>(() => (inline ? "inline" : ui.expanded ? "workspace" : "floating"));
 const fullscreen = computed(() => panelMode.value === "workspace" || (panelMode.value === "floating" && small.value));
 const modal = computed(() => showPanel.value && fullscreen.value);
 
@@ -95,8 +96,9 @@ watch(
     composer()?.focus();
   },
 );
-watch([showPanel, showMinBar, showLauncher], async ([, bar, launch], [wasPanel]) => {
-  if (!wasPanel) return;
+watch([showPanel, showMinBar, showLauncher], async ([, bar, launch], [wasPanel, wasBar]) => {
+  // The launcher comes back after the panel or the minimized bar (host close() from the bar): focus goes with it.
+  if (!wasPanel && !(wasBar && launch)) return;
   await nextTick();
   if (bar) minbar.value?.focus();
   else if (launch) launcher.value?.focus();

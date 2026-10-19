@@ -13,6 +13,7 @@ const props = defineProps<{
   signingIn?: boolean;
   /** Workspace (full screen) is active. */
   expanded: boolean;
+  showExpand: boolean;
   showMinimize: boolean;
   showClose: boolean;
 }>();
@@ -46,6 +47,7 @@ const short = computed(() => shortAddress(props.primaryAddress));
     </Button>
     <div class="bc-shell-actions">
       <IconButton
+        v-if="showExpand"
         :label="expanded ? t('shell.exitFullScreen') : t('shell.expand')"
         data-testid="expand"
         @click="emit('toggleExpand')"

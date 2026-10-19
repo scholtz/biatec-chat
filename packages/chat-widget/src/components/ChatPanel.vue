@@ -58,6 +58,7 @@ const asideId = `${props.id}-activity`;
       :signing-in="signingIn"
       :expanded="mode === 'workspace'"
       :show-minimize="mode === 'floating'"
+      :show-expand="!inline"
       :show-close="!inline"
       @sign-in="emit('signIn')"
       @sign-out="emit('signOut')"
