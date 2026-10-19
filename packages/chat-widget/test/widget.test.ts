@@ -41,7 +41,8 @@ describe("launcher and panel", () => {
     const w = mount(BiatecChatRoot, { props: { options: opts } });
     await w.get(".bc-launcher").trigger("click");
     expect(w.find(".bc-panel").exists()).toBe(true);
-    expect(w.get(".bc-launcher").attributes("aria-expanded")).toBe("true");
+    // The panel takes the launcher's place (design screen 3); Close brings the launcher back.
+    expect(w.find(".bc-launcher").exists()).toBe(false);
     expect(w.get("[data-testid=tier]").text()).toBeTruthy();
   });
   it("closes with Escape and the close button", async () => {

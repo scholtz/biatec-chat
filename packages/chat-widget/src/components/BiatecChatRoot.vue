@@ -1,23 +1,43 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, watchEffect, onMounted, onBeforeUnmount } from "vue";
+import { ref, computed, nextTick, watch, watchEffect, onMounted, onBeforeUnmount } from "vue";
 import type { ResolvedOptions } from "../options";
 import ChatLauncher from "./ChatLauncher.vue";
-import ChatPanel from "./ChatPanel.vue";
+import ChatPanel, { type PanelMode } from "./ChatPanel.vue";
+import MinimizedBar from "./shell/MinimizedBar.vue";
 import ChatView from "./chat/ChatView.vue";
-import { AuthClient } from "./chat/auth";
-import { useChat, type ChatServices } from "./chat/useChat";
-import { TransportManager } from "../transport";
-import { useTheme } from "../theme";
-import { setLocale } from "../i18n";
+import type { ChatServices } from "./chat/useChat";
+import { agentModeOf, AGENT_MODE_LABEL } from "./shell/agentMode";
+import { createCore, type WidgetCore } from "../api/core";
+import { hostSettings } from "../api/controller";
+import { resolveTheme, watchTheme, type ResolvedTheme } from "../theme";
+import { setLocale, t } from "../i18n";
 
-const props = defineProps<{ options: ResolvedOptions; services?: ChatServices; shadow?: boolean }>();
-// Transport and auth are created here, but nothing touches the network until the panel is first opened.
-const cfg = { backendUrl: props.options.backendUrl, clientKey: props.options.clientKey };
-const chat = useChat(props.services ?? { transport: new TransportManager(cfg), auth: new AuthClient(cfg) });
-let started = false;
+const props = defineProps<{
+  options: ResolvedOptions;
+  services?: ChatServices;
+  shadow?: boolean;
+  /** Share an existing widget's session and shell state (BiatecChatInline next to the floating widget). */
+  core?: WidgetCore;
+  /** Render the panel in the host's layout instead of the floating launcher and panel. */
+  inline?: boolean;
+}>();
+
+// Transport and auth are created here, but nothing touches the network until the panel is first shown.
+const core = props.core ?? createCore(props.options, props.services);
+const { chat, ui } = core;
+const options = core.options;
+const inline = !!props.inline;
+
 const rootEl = ref<HTMLElement | null>(null);
-const theme = useTheme(props.options);
-setLocale(props.options.locale);
+
+// Theme: the plugin option, or what the host set through setTheme(), applied without remount.
+const themeChoice = computed(() => hostSettings.theme ?? options.theme);
+const theme = ref<ResolvedTheme>(resolveTheme({ theme: themeChoice.value, hostDarkClass: options.hostDarkClass }));
+let stopTheme = () => {};
+// Locale: the plugin option, or setLocale(); vue-i18n re-renders every string in place.
+const lang = computed(() => hostSettings.locale ?? options.locale);
+setLocale(lang.value);
+
 // Without a shadow root (host mounts BiatecChatRoot itself) the tokens apply to the root element instead of :host.
 // Known synchronously from the `shadow` prop so the first render already has its tokens; onMounted confirms it.
 const standalone = ref(!props.shadow);
@@ -25,40 +45,117 @@ function shadowHost(): Element | null {
   const root = rootEl.value?.getRootNode();
   return typeof ShadowRoot !== "undefined" && root instanceof ShadowRoot ? root.host : null;
 }
-onMounted(() => {
-  standalone.value = !shadowHost();
-});
 // The :host([data-theme]) rules in the shadow root read the attribute from the host element.
 watchEffect(() => {
   shadowHost()?.setAttribute("data-theme", theme.value);
 });
-const open = ref(false);
-const modal = ref(false);
+
+/** Below 640 px an open floating or workspace panel is full screen. */
+const small = ref(false);
+let mq: MediaQueryList | null = null;
+const onMq = () => (small.value = !!mq?.matches);
+function measure() {
+  if (typeof window !== "undefined" && window.matchMedia) small.value = !!window.matchMedia("(max-width: 639.98px)").matches;
+}
+
 const launcher = ref<InstanceType<typeof ChatLauncher> | null>(null);
-const panelId = "biatec-chat-panel";
+const minbar = ref<InstanceType<typeof MinimizedBar> | null>(null);
+const panelId = inline ? "biatec-chat-inline-panel" : "biatec-chat-panel";
 
-async function setOpen(v: boolean) {
-  open.value = v;
-  if (v && !started) {
-    started = true;
-    void chat.start();
-  }
-  if (!v) {
+/** This root draws the floating UI only while no inline panel is mounted, and never in `mode: 'inline'`. */
+const floatingUi = computed(() => !inline && ui.inline === 0 && options.mode !== "inline");
+const showPanel = computed(() => inline || (floatingUi.value && ui.open && !ui.minimized));
+const showMinBar = computed(() => floatingUi.value && ui.open && ui.minimized);
+const showLauncher = computed(() => floatingUi.value && !ui.open);
+const panelMode = computed<PanelMode>(() => (ui.expanded ? "workspace" : inline ? "inline" : "floating"));
+const fullscreen = computed(() => panelMode.value === "workspace" || (panelMode.value === "floating" && small.value));
+const modal = computed(() => showPanel.value && fullscreen.value);
+
+const agentMode = computed(() => agentModeOf(chat.session.value));
+const statusLine = computed(() => {
+  const mode = t(AGENT_MODE_LABEL[agentMode.value]);
+  if (chat.busy.value) return `${mode} · ${t("shell.replying")}`;
+  return ui.unread ? `${mode} · ${t("shell.unread", { count: ui.unread })}` : mode;
+});
+
+function composer(): HTMLTextAreaElement | null {
+  return rootEl.value?.querySelector<HTMLTextAreaElement>(".bc-panel textarea") ?? null;
+}
+function close() {
+  core.closePanel();
+}
+function minimize() {
+  core.minimize();
+}
+// Focus follows the shell: composer when the panel appears, Restore when minimized, the launcher when closed.
+watch(
+  () => ui.focusTick,
+  async () => {
     await nextTick();
-    (launcher.value?.$el as HTMLElement | undefined)?.focus();
+    composer()?.focus();
+  },
+);
+watch([showPanel, showMinBar, showLauncher], async ([, bar, launch], [wasPanel]) => {
+  if (!wasPanel) return;
+  await nextTick();
+  if (bar) minbar.value?.focus();
+  else if (launch) launcher.value?.focus();
+});
+// Probe on first show: the floating panel calls start() from openPanel; an inline panel is shown when mounted.
+onMounted(() => {
+  standalone.value = !shadowHost();
+  if (typeof window !== "undefined" && window.matchMedia) {
+    mq = window.matchMedia("(max-width: 639.98px)");
+    onMq();
+    mq.addEventListener?.("change", onMq);
   }
-}
-
-/** The panel covers the whole viewport on small screens, so it behaves as a modal there only. */
-function isModal(): boolean {
-  return typeof window !== "undefined" && !!window.matchMedia?.("(max-width: 640px)").matches;
-}
+  watch(
+    themeChoice,
+    (c) => {
+      stopTheme();
+      stopTheme = watchTheme({ theme: c, hostDarkClass: options.hostDarkClass }, (v) => (theme.value = v));
+    },
+    { immediate: true },
+  );
+  if (inline) {
+    ui.inline++;
+    ui.unread = 0;
+    void core.start();
+  }
+});
+onBeforeUnmount(() => {
+  stopTheme();
+  mq?.removeEventListener?.("change", onMq);
+  if (inline) ui.inline = Math.max(0, ui.inline - 1);
+});
 
 const FOCUSABLE = "button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex='-1'])";
 
+function inWidget(e: Event): boolean {
+  return !!rootEl.value && e.composedPath().includes(rootEl.value);
+}
+
+/** Esc order: permissions dialog, then the Activity sheet, then (floating and workspace only) the panel itself. */
+function onEscape(e: KeyboardEvent) {
+  if (e.defaultPrevented) return;
+  if (inline && !inWidget(e)) return;
+  if (ui.permissions) {
+    ui.permissions = false;
+    return;
+  }
+  if (ui.activity && (panelMode.value !== "workspace" || small.value)) {
+    ui.activity = false;
+    return;
+  }
+  if (inline) return;
+  // Esc must not throw away a half-written message.
+  if (composer()?.value.trim()) return;
+  close();
+}
+
 function onDocKeydown(e: KeyboardEvent) {
   if (e.key === "Escape") {
-    void setOpen(false);
+    onEscape(e);
     return;
   }
   if (e.key !== "Tab" || !modal.value || !rootEl.value) return;
@@ -80,13 +177,21 @@ function onDocKeydown(e: KeyboardEvent) {
   }
 }
 
-// Escape works wherever focus is while the panel is open; Tab is trapped on mobile, where the panel is full screen.
-watch(open, (v) => {
-  modal.value = v && isModal();
-  if (v) document.addEventListener("keydown", onDocKeydown);
-  else document.removeEventListener("keydown", onDocKeydown);
+// Keys are handled while a panel is on screen: Esc wherever focus is (floating), Tab trapped while full screen.
+watch(
+  showPanel,
+  (v) => {
+    if (typeof document === "undefined") return;
+    if (v) {
+      measure();
+      document.addEventListener("keydown", onDocKeydown);
+    } else document.removeEventListener("keydown", onDocKeydown);
+  },
+  { immediate: true },
+);
+onBeforeUnmount(() => {
+  if (typeof document !== "undefined") document.removeEventListener("keydown", onDocKeydown);
 });
-onBeforeUnmount(() => document.removeEventListener("keydown", onDocKeydown));
 </script>
 
 <template>
@@ -95,31 +200,45 @@ onBeforeUnmount(() => document.removeEventListener("keydown", onDocKeydown));
     class="biatec-chat"
     :data-theme="theme"
     :data-standalone="standalone ? '' : undefined"
-    :lang="props.options.locale"
+    :data-inline="inline ? '' : undefined"
+    :lang="lang"
   >
     <ChatPanel
-      v-if="open"
+      v-if="showPanel"
       :id="panelId"
+      :mode="panelMode"
+      :fullscreen="fullscreen"
+      :modal="modal"
+      :inline="inline"
       :tier="chat.session.value?.tier ?? null"
       :email="chat.session.value?.email"
       :primary-address="chat.session.value?.primaryAddress"
       :signing-in="chat.phase.value === 'opening' || chat.phase.value === 'waiting'"
-      :modal="modal"
-      @close="setOpen(false)"
+      :agent-mode="agentMode"
+      :activity-open="ui.activity"
+      :permissions-open="ui.permissions"
+      :notice="ui.notice"
+      @close="close"
+      @minimize="minimize"
+      @toggle-expand="core.toggleExpand()"
       @sign-in="chat.signIn()"
       @sign-out="chat.signOut()"
+      @open-permissions="ui.permissions = !ui.permissions"
+      @toggle-activity="ui.activity = !ui.activity"
     >
       <ChatView
         :messages="chat.messages"
         :tier="chat.tier.value"
-        :suggestions="props.options.suggestions"
+        :suggestions="options.suggestions"
         :busy="chat.busy.value"
         :phase="chat.phase.value"
         :announcement="chat.announcement.value"
         @send="chat.send($event)"
         @sign-in="chat.signIn({ scope: $event })"
       />
+      <!-- T-066 mounts the Activity timeline (#aside) and the permissions dialog (#dialog) here. -->
     </ChatPanel>
-    <ChatLauncher ref="launcher" :open="open" :controls="panelId" @toggle="setOpen(!open)" />
+    <MinimizedBar v-if="showMinBar" ref="minbar" :status-line="statusLine" :controls="panelId" @restore="core.openPanel()" />
+    <ChatLauncher v-if="showLauncher" ref="launcher" :controls="panelId" :unread="ui.unread" @open="core.openPanel()" />
   </div>
 </template>

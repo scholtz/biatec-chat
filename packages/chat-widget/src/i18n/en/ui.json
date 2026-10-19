@@ -17,5 +17,28 @@
     "timedOut": "Approval timed out · nothing was signed",
     "cancelled": "Cancelled",
     "expired": "Expired"
+  },
+  "shell": {
+    "launcher": "Ask Biatec AI",
+    "unread": "{count} new",
+    "title": "Biatec AI",
+    "panelLabel": "Biatec AI chat",
+    "guest": "Guest",
+    "signedIn": "Signed in",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "expand": "Expand to full screen",
+    "exitFullScreen": "Exit full screen",
+    "minimize": "Minimize",
+    "close": "Close",
+    "restore": "Restore",
+    "statusPrefix": "Status:",
+    "statusAria": "Agent status: {mode}. Change permissions",
+    "modeAnalyze": "Analyze only",
+    "modePrepare": "Prepare for approval",
+    "modePaused": "Paused",
+    "activity": "Activity",
+    "replying": "Answering…",
+    "askBusy": "Biatec AI is still answering. Your prompt was not sent; ask again when the reply has finished."
   }
 }

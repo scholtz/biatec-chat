@@ -1,4 +1,10 @@
 export type ChatTheme = "auto" | "light" | "dark" | "host";
+/**
+ * `floating` (default): the launcher and a floating panel. `workspace`: the launcher, and the panel opens full
+ * screen. `inline`: no launcher; a panel shows only where the host mounts `BiatecChatInline`.
+ */
+export type ChatMode = "floating" | "inline" | "workspace";
+const MODES: readonly ChatMode[] = ["floating", "inline", "workspace"];
 
 export interface BiatecChatOptions {
   backendUrl: string;
@@ -14,6 +20,8 @@ export interface BiatecChatOptions {
   pageContext?: string;
   /** Mount the widget into document.body automatically (default true). */
   autoMount?: boolean;
+  /** Panel mode (default `floating`). */
+  mode?: ChatMode;
 }
 
 export type ResolvedOptions = Required<Omit<BiatecChatOptions, "pageContext">> & { pageContext?: string };
@@ -29,6 +37,7 @@ export function resolveOptions(o: BiatecChatOptions): ResolvedOptions {
     hostDarkClass: o.hostDarkClass ?? "p-dark",
     suggestions: o.suggestions ?? "default",
     autoMount: o.autoMount ?? true,
+    mode: o.mode && MODES.includes(o.mode) ? o.mode : "floating",
     pageContext: o.pageContext,
   };
 }
