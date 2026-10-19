@@ -226,9 +226,11 @@ public class TelemetryTests
             tracer.ForceFlush();
         }
 
-        var httpSpan = Assert.Single(exported, a => a.Kind == ActivityKind.Client && (a.GetTagItem("url.full") as string)?.Contains("/connect/token") == true);
+        // Activity sources are process-wide: only spans to this test's stub (its own port) are ours.
+        var mine = exported.Where(a => (a.GetTagItem("url.full") as string)?.StartsWith(baseUrl, StringComparison.Ordinal) == true).ToList();
+        var httpSpan = Assert.Single(mine, a => a.Kind == ActivityKind.Client && ((string)a.GetTagItem("url.full")!).Contains("/connect/token"));
         Assert.DoesNotContain("secret-code", (string)httpSpan.GetTagItem("url.full")!);
-        Assert.Contains(exported, a => (a.GetTagItem("url.full") as string)?.EndsWith("/wallet/testnet/{id}/sign") == true);
+        Assert.Contains(mine, a => ((string)a.GetTagItem("url.full")!).EndsWith("/wallet/testnet/{id}/sign"));
         Assert.Contains(exported, a => a.Source.Name.Contains("AWS", StringComparison.OrdinalIgnoreCase) && a.DisplayName.Contains("Converse", StringComparison.Ordinal));
         Assert.All(exported, a =>
         {
@@ -268,11 +270,13 @@ public class TelemetryTests
             });
         });
         using var client = factory.CreateClient();
-        var response = await client.GetAsync("/contracts?x=secret-q");
+        // Activity sources are process-wide, so other tests' hosts show up too: find ours by a unique path.
+        var probe = "/probe-" + Guid.NewGuid().ToString("N")[..8];
+        var response = await client.GetAsync(probe + "?x=secret-q");
         Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
         Assert.IsType<MeteringPolicyEventSink>(factory.Services.GetRequiredService<IPolicyEventSink>());
         factory.Services.GetRequiredService<TracerProvider>().ForceFlush();
-        var server = Assert.Single(exported, a => a.Kind == ActivityKind.Server);
+        var server = Assert.Single(exported, a => a.Kind == ActivityKind.Server && a.GetTagItem("url.path") as string == probe);
         Assert.Null(server.GetTagItem("client.address"));
         Assert.DoesNotContain(server.TagObjects, t => t.Value?.ToString()?.Contains("secret-q") == true);
     }
