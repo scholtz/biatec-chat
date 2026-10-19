@@ -244,6 +244,31 @@ public class BedrockModelClientTests
         Assert.True(BedrockModelClient.IsRetryable(new AmazonBedrockRuntimeException("rate") { StatusCode = System.Net.HttpStatusCode.TooManyRequests }, default));
         Assert.False(BedrockModelClient.IsRetryable(new AmazonBedrockRuntimeException("denied") { StatusCode = System.Net.HttpStatusCode.Forbidden }, default));
         Assert.False(BedrockModelClient.IsRetryable(new AccessDeniedException("no"), default));
+        Assert.False(BedrockModelClient.IsRetryable(new AmazonBedrockRuntimeException("not implemented") { StatusCode = System.Net.HttpStatusCode.NotImplemented }, default));
+        // Only the stream wrapper is looked through; another error that wraps a transient one fails fast.
+        Assert.False(BedrockModelClient.IsRetryable(new InvalidOperationException("unmarshal", new IOException("eof")), default));
+        Assert.False(BedrockModelClient.IsRetryable(new ValidationException("bad", new HttpRequestException("x")), default));
+    }
+
+    [Fact]
+    public async Task Caller_cancelling_after_the_message_stop_still_gets_the_answer()
+    {
+        using var cts = new CancellationTokenSource();
+        var source = new FakeSource([Text("Hi"), BlockStop(), Stop(StopReason.End_turn), new OperationCanceledException(cts.Token)]);
+        cts.Cancel();
+
+        var events = await Collect(Client(source).StreamAsync(Request()));
+
+        Assert.Single(events.OfType<ModelMessageStop>());
+    }
+
+    [Fact]
+    public void Retry_max_delay_below_the_base_delay_is_invalid()
+    {
+        var o = new BedrockClientOptions { RetryBaseDelayMs = 5000, RetryMaxDelayMs = 100 };
+        var results = new List<System.ComponentModel.DataAnnotations.ValidationResult>();
+        Assert.False(System.ComponentModel.DataAnnotations.Validator.TryValidateObject(o, new(o), results, validateAllProperties: true));
+        Assert.Contains(results, r => r.ErrorMessage!.Contains("RetryMaxDelayMs"));
     }
 
     [Fact]

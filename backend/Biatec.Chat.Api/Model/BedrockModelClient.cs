@@ -29,7 +29,7 @@ public sealed class BedrockConverseStreamSource(IAmazonBedrockRuntime bedrock) :
 
 /// <summary>
 /// ConverseStream client: picks the model id for the profile, always sets maxTokens, places a cache point after
-/// each static system block, caps concurrent streams process-wide and retries throttled calls with full jitter.
+/// each static system block, caps concurrent streams process-wide and retries throttled calls with equal jitter.
 /// A call is retried only while nothing has been yielded, so a caller never sees a partial answer twice. A slot
 /// is held while the stream is open, including while the caller handles text and tool-use events, and is released
 /// during backoff and before the final stop and usage events, so run tools after the message stop.
@@ -107,9 +107,10 @@ public sealed class BedrockModelClient(
                     {
                         more = await events.MoveNextAsync();
                     }
-                    catch (Exception ex) when (tailStarted && !ct.IsCancellationRequested)
+                    catch (Exception ex) when (tailStarted)
                     {
-                        // The answer is complete; only the usage event can be missing. Neither retry nor fail.
+                        // The answer is complete; only the usage event can be missing. Neither retry nor fail, even
+                        // when the caller cancelled, so the finished assistant turn can still be stored.
                         logger.LogWarning(ex, "Bedrock {ModelId} stream failed after the message stop; usage may be missing", converse.ModelId);
                         break;
                     }
@@ -178,24 +179,24 @@ public sealed class BedrockModelClient(
     /// <summary>
     /// Transient errors: Bedrock's throttling and availability errors (also when they arrive inside the event
     /// stream, where the SDK may wrap them in a <see cref="BedrockRuntimeEventStreamException"/>), transport
-    /// failures, SDK timeouts, a truncated stream, and any other 429 or 5xx service response. The SDK's own retries
+    /// failures, SDK timeouts, a truncated stream, and any other 429, 500, 502, 503 or 504 service response. The SDK's own retries
     /// are off, so this is the only retry layer.
     /// </summary>
     public static bool IsRetryable(Exception ex, CancellationToken ct)
     {
-        for (Exception? e = ex; e is not null; e = e.InnerException)
+        // Only the SDK's stream wrapper is looked through; any other error that merely wraps a transient one isn't.
+        while (ex is BedrockRuntimeEventStreamException { InnerException: { } inner }) ex = inner;
+        return ex switch
         {
-            switch (e)
-            {
-                case ThrottlingException or ServiceUnavailableException or ModelNotReadyException or InternalServerException
-                    or ModelStreamErrorException or ModelTimeoutException:
-                case AmazonServiceException { StatusCode: HttpStatusCode.TooManyRequests or >= HttpStatusCode.InternalServerError }:
-                case HttpRequestException or IOException or TimeoutException:
-                case OperationCanceledException when !ct.IsCancellationRequested:
-                    return true;
-            }
-        }
-        return false;
+            ThrottlingException or ServiceUnavailableException or ModelNotReadyException or InternalServerException
+                or ModelStreamErrorException or ModelTimeoutException => true,
+            AmazonServiceException { StatusCode: HttpStatusCode.TooManyRequests or HttpStatusCode.InternalServerError
+                or HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout } => true,
+            AmazonServiceException => false,
+            HttpRequestException or IOException or TimeoutException => true,
+            OperationCanceledException => !ct.IsCancellationRequested,
+            _ => false,
+        };
     }
 
     private static SystemContentBlock CachePoint() => new() { CachePoint = new CachePointBlock { Type = CachePointType.Default } };
