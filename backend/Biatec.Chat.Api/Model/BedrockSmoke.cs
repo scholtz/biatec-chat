@@ -19,7 +19,7 @@ public static class BedrockSmoke
         // registrations and validation, but only the Bedrock part, so no Redis, PostgreSQL or OIDC settings are needed.
         // --Key=value arguments are configuration overrides (for example --Bedrock:AnonymousModelId=...), the rest is the prompt.
         var overrides = args.Where(a => a.StartsWith("--") && a.Contains('=')).ToArray();
-        args = [.. args.Except(overrides)];
+        args = [.. args.Where(a => !overrides.Contains(a))];
         var builder = WebApplication.CreateBuilder(overrides);
         builder.Services.AddOptions<BedrockOptions>().BindConfiguration(BedrockOptions.Section).ValidateDataAnnotations();
         builder.Services.PostConfigure<BedrockOptions>(o => o.MaxTokens = Math.Min(o.MaxTokens, 200));

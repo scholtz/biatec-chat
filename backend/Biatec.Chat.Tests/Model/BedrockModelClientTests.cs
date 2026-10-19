@@ -246,6 +246,8 @@ public class BedrockModelClientTests
         Assert.True(BedrockModelClient.IsRetryable(new AmazonBedrockRuntimeException("rate") { StatusCode = System.Net.HttpStatusCode.TooManyRequests }, default));
         Assert.False(BedrockModelClient.IsRetryable(new AmazonBedrockRuntimeException("denied") { StatusCode = System.Net.HttpStatusCode.Forbidden }, default));
         Assert.False(BedrockModelClient.IsRetryable(new AccessDeniedException("no"), default));
+        Assert.True(BedrockModelClient.IsRetryable(new ModelStreamErrorException("busy") { OriginalStatusCode = 503 }, default));
+        Assert.False(BedrockModelClient.IsRetryable(new ModelStreamErrorException("too long") { OriginalStatusCode = 400 }, default));
         Assert.False(BedrockModelClient.IsRetryable(new AmazonBedrockRuntimeException("not implemented") { StatusCode = System.Net.HttpStatusCode.NotImplemented }, default));
         // Only the stream wrapper is looked through; another error that wraps a transient one fails fast.
         Assert.False(BedrockModelClient.IsRetryable(new InvalidOperationException("unmarshal", new IOException("eof")), default));
@@ -389,12 +391,15 @@ public class BedrockModelClientTests
     [InlineData("""{"amount":1,"amount":2}""")]
     [InlineData("""{"amount":1e400}""")]
     [InlineData("""{"amount":""")]
+    [InlineData("[1,2]")]
+    [InlineData("\"abc\"")]
     public async Task Odd_tool_input_reaches_the_caller_raw_and_never_breaks_the_stream(string input)
     {
         var events = await Collect(Client(new FakeSource([.. ToolCall("tu-1", input), Stop(StopReason.Tool_use)])).StreamAsync(Request()));
 
         Assert.Equal(input, Assert.Single(events.OfType<ModelToolUse>()).InputJson);
-        Assert.NotNull(Assert.Single(events.OfType<ModelMessageStop>()).Message!.Content[0].ToolUse);
+        var block = Assert.Single(events.OfType<ModelMessageStop>()).Message!.Content[0].ToolUse;
+        Assert.True(block.Input.IsDictionary());
     }
 
     [Fact]

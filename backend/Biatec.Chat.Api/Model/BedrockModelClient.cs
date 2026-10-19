@@ -23,6 +23,9 @@ public sealed class BedrockConverseStreamSource(IAmazonBedrockRuntime bedrock) :
     public async IAsyncEnumerable<IEventStreamEvent> OpenAsync(ConverseStreamRequest request, [EnumeratorCancellation] CancellationToken ct)
     {
         using var response = await bedrock.ConverseStreamAsync(request, ct);
+        // Disposing the response aborts a read that is already waiting on the network, so cancellation (the
+        // caller leaving, or the wait for usage running out) doesn't depend on the read honouring the token.
+        await using var abort = ct.Register(response.Dispose);
         await foreach (var ev in response.Stream.WithCancellation(ct))
             yield return ev;
     }
@@ -244,7 +247,9 @@ public sealed class BedrockModelClient(
         return ex switch
         {
             ThrottlingException or ServiceUnavailableException or ModelNotReadyException or InternalServerException
-                or ModelStreamErrorException or ModelTimeoutException => true,
+                or ModelTimeoutException => true,
+            // Wraps the model's own error, which can be a 4xx that would fail the same way again.
+            ModelStreamErrorException stream => stream.OriginalStatusCode is null or 429 or >= 500,
             AmazonServiceException { StatusCode: HttpStatusCode.TooManyRequests or HttpStatusCode.InternalServerError
                 or HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout } => true,
             // A generic (not modelled) error without a status code: the SDK wrapped a transport failure (connection
@@ -353,7 +358,10 @@ public sealed class BedrockModelClient(
         {
             try
             {
-                return DocumentJson.FromJson(json);
+                // Bedrock requires toolUse.input to be an object; anything else would poison the conversation.
+                var document = DocumentJson.FromJson(json);
+                if (document.IsDictionary()) return document;
+                throw new System.Text.Json.JsonException("Tool input is not a JSON object.");
             }
             catch (Exception ex)
             {
