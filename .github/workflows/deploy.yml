@@ -1,0 +1,124 @@
+# Reusable deploy of already-pushed images to one Kubernetes environment. Called by deploy-stage.yml (Stage, k8s/stage)
+# and promote-production.yml (Production, k8s/main); it never builds anything. Credentials come only from the GitHub
+# environment's secrets (KUBE_CONFIG, OIDC_CLIENT_SECRET, AWS_ROLE_ARN); see docs/cicd.md.
+name: deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment: {type: string, required: true, description: "GitHub environment: Stage or Production"}
+      url: {type: string, required: true}
+      overlay: {type: string, required: true, description: "k8s/<overlay>: stage or main"}
+      namespace: {type: string, required: true}
+      tag: {type: string, required: true, description: "Image tag of both images, already in the registry"}
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ inputs.url }}
+    env:
+      NAMESPACE: ${{ inputs.namespace }}
+      OVERLAY: k8s/${{ inputs.overlay }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+        run: |
+          if [ -z "$KUBE_CONFIG" ]; then echo "::error::KUBE_CONFIG is not set on the ${{ inputs.environment }} environment."; exit 1; fi
+          mkdir -p "$HOME/.kube"
+          echo "$KUBE_CONFIG" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Ensure namespace
+        run: kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$NAMESPACE"
+
+      # Postgres, Redis and builders passwords and the token-vault master key. Generated in the cluster, never leave it,
+      # never rotated by a deploy (Postgres only reads its password when its volume is first initialised); keys missing
+      # from an older secret are added. Delete the secret only together with the database volumes.
+      - name: Ensure generated secrets
+        run: |
+          gen() {
+            case "$1" in
+              vault-master-key) openssl rand -base64 32 ;;
+              builders-internal-secret) openssl rand -hex 32 ;;
+              *) openssl rand -hex 24 ;;
+            esac
+          }
+          keys="postgres-password redis-password builders-internal-secret vault-master-key"
+          if ! kubectl get secret biatec-chat-generated -n "$NAMESPACE" >/dev/null 2>&1; then
+            args=(); for k in $keys; do args+=("--from-literal=$k=$(gen "$k")"); done
+            kubectl create secret generic biatec-chat-generated -n "$NAMESPACE" "${args[@]}"
+            exit 0
+          fi
+          for k in $keys; do
+            if [ -z "$(kubectl get secret biatec-chat-generated -n "$NAMESPACE" -o "jsonpath={.data.$k}")" ]; then
+              echo "Adding missing key $k."
+              v="$(gen "$k" | base64 -w0)"
+              kubectl patch secret biatec-chat-generated -n "$NAMESPACE" --type merge -p "{\"data\":{\"$k\":\"$v\"}}"
+            fi
+          done
+
+      # Optional: when OIDC_CLIENT_SECRET is set, biatec-chat-secrets is (re)created from the environment secrets and
+      # AWS_ROLE_ARN must be set too. Otherwise the cluster secret is managed out of band and left untouched.
+      - name: Sync biatec-chat-secrets
+        env:
+          OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+        run: |
+          if [ -z "$OIDC_CLIENT_SECRET" ]; then
+            echo "OIDC_CLIENT_SECRET not set: leaving biatec-chat-secrets as it is in the cluster."
+            exit 0
+          fi
+          if [ -z "$AWS_ROLE_ARN" ]; then echo "::error::AWS_ROLE_ARN is missing (see docs/aws-setup.md)."; exit 1; fi
+          kubectl create secret generic biatec-chat-secrets -n "$NAMESPACE" \
+            --from-literal=oidc-client-secret="$OIDC_CLIENT_SECRET" \
+            --from-literal=aws-role-arn="$AWS_ROLE_ARN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      # Both images carry the same tag; pin it in the overlay (not committed) and apply.
+      - name: Apply ${{ inputs.overlay }} with tag ${{ inputs.tag }}
+        run: |
+          sed -i "s/^\(\s*newTag:\).*/\1 $TAG/" "$OVERLAY/kustomization.yaml"
+          [ "$(grep -c "newTag: $TAG$" "$OVERLAY/kustomization.yaml")" = 2 ]
+          kubectl apply -k "$OVERLAY"
+
+      - name: Wait for databases
+        run: |
+          kubectl rollout status statefulset/biatec-chat-postgres -n "$NAMESPACE" --timeout=5m
+          kubectl rollout status statefulset/biatec-chat-redis -n "$NAMESPACE" --timeout=5m
+
+      # The backend migrates only in Development; elsewhere the schema is a deploy step. The idempotent script applies
+      # just the migrations missing from __EFMigrationsHistory, so it is safe on every deploy.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Migrate database
+        run: |
+          dotnet tool restore
+          dotnet ef migrations script --idempotent --project backend/Biatec.Chat.Api --output migrate.sql
+          sed -i '1s/^\xEF\xBB\xBF//' migrate.sql
+          kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
+            psql -q -v ON_ERROR_STOP=1 -U biatec -d biatec_chat < migrate.sql
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/biatec-chat-builders -n "$NAMESPACE" --timeout=5m
+          kubectl rollout status deployment/biatec-chat-backend -n "$NAMESPACE" --timeout=5m
+
+      - name: Summary
+        run: echo "Deployed \`$TAG\` to ${{ inputs.environment }} (\`$NAMESPACE\`)." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove kubeconfig
+        if: always()
+        run: rm -f "$HOME/.kube/config"

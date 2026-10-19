@@ -62,7 +62,6 @@ public class ConfigAndHealthTests
     [InlineData("Redis:ConnectionString")]
     [InlineData("Postgres:ConnectionString")]
     [InlineData("Algod:Networks:testnet:Url")]
-    [InlineData("Kms:KeyId")]
     public void MissingRequiredOption_FailsStartup_NamingTheOption(string key)
     {
         using var factory = Factory(c => c.Remove(key));
@@ -73,6 +72,38 @@ public class ConfigAndHealthTests
         Assert.NotNull(validation);
         Assert.Contains(validation!.Failures, f => f.Contains(key.Split(':')[^1], StringComparison.OrdinalIgnoreCase)
                                                     || f.Contains(key.Split(':')[0], StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("Kms", null, "Kms:KeyId")]
+    [InlineData("Secret", null, "Vault:MasterKey")]
+    [InlineData("Secret", "c2hvcnQ=", "Vault:MasterKey")]
+    [InlineData("Plain", null, "Vault:KeyProvider")]
+    public void VaultKeyProvider_WithoutItsKey_FailsStartup(string provider, string? masterKey, string named)
+    {
+        using var factory = Factory(c =>
+        {
+            c.Remove("Kms:KeyId");
+            c["Vault:KeyProvider"] = provider;
+            c["Vault:MasterKey"] = masterKey;
+        });
+
+        var ex = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
+
+        Assert.Contains(Flatten(ex).OfType<OptionsValidationException>(), v => v.Failures.Any(f => f.Contains(named)));
+    }
+
+    [Fact]
+    public void SecretKeyProvider_WithMasterKeyAndNoKms_Starts()
+    {
+        using var factory = Factory(c =>
+        {
+            c.Remove("Kms:KeyId");
+            c["Vault:KeyProvider"] = "Secret";
+            c["Vault:MasterKey"] = Convert.ToBase64String(new byte[32]);
+        });
+
+        using var client = factory.CreateClient();
     }
 
     [Fact]

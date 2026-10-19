@@ -21,29 +21,19 @@ owner should run `kubectl kustomize k8s/stage | kubectl apply --dry-run=client -
 
 ## Secrets (never in git)
 
-`biatec-chat-secrets` holds `oidc-client-secret`, `kms-key-id`, `aws-role-arn`: synced by
+`biatec-chat-secrets` holds `oidc-client-secret`, `aws-role-arn`: synced by
 `.github/workflows/deploy-stage.yml` from the GitHub `Stage` environment, or created out of band. `biatec-chat-generated`
-holds `postgres-password`, `redis-password`, `builders-internal-secret`: generated once by the deploy, never leaves the
+holds `postgres-password`, `redis-password`, `builders-internal-secret`, `vault-master-key`: generated once by the deploy, never leaves the
 cluster. Postgres and Redis run in the namespace (`base/postgres.yaml`, `base/redis.yaml`, reachable only from the
 backend through network policies); the backend's connection strings are built from the generated passwords. Schema
 migrations are a deploy step (docs/cicd.md).
 
-## AWS access (no keys)
+## AWS access (Bedrock only, no keys)
 
-The pod gets a projected service-account token (audience `sts.amazonaws.com`) at `/var/run/secrets/aws/token`; the AWS SDK
-exchanges it for the role in `AWS_ROLE_ARN` (`sts:AssumeRoleWithWebIdentity`, `AWSSDK.SecurityToken`). One-time setup per
-cluster and AWS account; the full walk-through is [docs/aws-setup.md](../docs/aws-setup.md):
-
-1. The cluster's service-account issuer must be reachable over HTTPS from AWS: `<issuer>/.well-known/openid-configuration`
-   and its `jwks_uri` (`kubectl get --raw /.well-known/openid-configuration` shows the issuer). On a self-managed cluster
-   that usually means setting `--service-account-issuer` to a public URL and serving those two documents there.
-2. `ISSUER_URL=<issuer> KMS_KEY_ARN=<vault key arn> infra/aws/k8s-role.sh --apply` creates the IAM OIDC provider and the
-   role `biatec-chat-k8s-role`, trusted only for `system:serviceaccount:biatec-chat-main:biatec-chat-backend` and
-   `...-stage:...`, with the same inline policy as the EC2 role (Claude 4.5 `eu.` profiles, the guardrail, the vault key).
-3. Put the printed role ARN in the `aws-role-arn` key of `biatec-chat-secrets`.
-
-The hackathon AWS account turns read-only after the event; for a lasting deployment run the guardrail script and this one
-in Biatec's own account and update `Bedrock__Guardrail__GuardrailId` in the base config map.
+AWS is used for Bedrock (model and guardrail) and nothing else. The pod gets a projected service-account token
+(audience `sts.amazonaws.com`) at `/var/run/secrets/aws/token`; the AWS SDK exchanges it for the role in `AWS_ROLE_ARN`
+(`sts:AssumeRoleWithWebIdentity`, `AWSSDK.SecurityToken`). One-time setup per cluster with `infra/aws/k8s-role.sh`; the
+full walk-through is [docs/aws-setup.md](../docs/aws-setup.md).
 
 ## Images
 
@@ -52,15 +42,16 @@ in Biatec's own account and update `Bedrock__Guardrail__GuardrailId` in the base
 
 ## Deployment prerequisites
 
-- **Image tags.** `main` pins `newTag: REPLACE-WITH-RELEASE-SHA` on purpose: release automation must set an immutable tag
-  (`kustomize edit set image scholtz2/biatec-chat-backend=...:<sha>`) before applying, so a deploy never floats on `latest`.
-  `stage` is pinned by `.github/workflows/deploy-stage.yml` on every deploy (both `newTag: stage` lines are replaced by the
-  immutable `1.<date>-<sha>-beta` tag); the `stage` tag in the file is only a placeholder. See `docs/cicd.md`.
+- **Image tags.** The `newTag` values in the overlays are placeholders. `.github/workflows/deploy.yml` replaces both with
+  the immutable tag it deploys: `1.<date>-<sha7>-beta` on stage (deploy-stage.yml), `1.<date>-<sha7>-main` on production
+  (promote-production.yml, the same images re-tagged). Applying an overlay by hand without pinning fails on purpose
+  (`REPLACE-WITH-RELEASE-SHA` doesn't exist). See `docs/cicd.md`.
 - **Tenants are not seeded outside Development.** After the first deploy, create the `biatec-chat` tenant row (host
   `chat.biatec.io`, `ClientSecretRef=secret://biatec-chat/oidc-client-secret`) via the onboarding API or SQL.
   The secret itself is the `oidc-client-secret` key above, exposed as `Secrets__biatec-chat__oidc-client-secret`.
-- **Vault** uses KMS (`Vault__KeyProvider=Kms`, `Kms__KeyId`); the pod's IAM role needs `kms:GenerateDataKey` and `kms:Decrypt` on that key.
+- **Vault** uses the `Secret` key provider: `Vault__MasterKey` from `biatec-chat-generated` wraps the per-entry data keys
+  (AES-GCM). Losing that key only forces users to sign in again.
 - **Evidence signing keys** have no production store yet. `Evidence__AllowEphemeralKeys=true` is set knowingly: keys are
-  in-memory, lost on restart and differ between replicas (so the JWKS may be inconsistent across the 2 replicas) until a KMS-backed
+  in-memory, lost on restart and differ between replicas (so the JWKS may be inconsistent across the 2 replicas) until a persistent
   `IEvidenceKeyStore` is registered.
 - The backend runs as numeric UID 1654 (`runAsUser` plus `USER 1654` in the Dockerfile).

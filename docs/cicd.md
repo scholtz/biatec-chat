@@ -1,47 +1,59 @@
 # CI/CD
 
-Two GitHub Actions workflows. Nothing in the repository holds a credential: deploy credentials are GitHub environment
-secrets, and AWS access in the cluster is a keyless IAM role (see [k8s/README.md](../k8s/README.md#aws-access-no-keys)).
+Biatec Chat runs on Biatec's own Kubernetes cluster in two environments. AWS is used for Bedrock only
+([aws-setup.md](aws-setup.md)). Nothing in the repository holds a credential: deploy credentials are GitHub secrets.
+
+| Environment | GitHub environment | Overlay | Namespace | Host | Image tag |
+|---|---|---|---|---|---|
+| stage | `Stage` | `k8s/stage` | `biatec-chat-stage` | chat.stage.biatec.io | `1.<yyyy.mm.dd>-<sha7>-beta` |
+| production | `Production` | `k8s/main` | `biatec-chat-main` | chat.biatec.io | `1.<yyyy.mm.dd>-<sha7>-main` (same image) |
+
+## Workflows
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| [`ci.yml`](../.github/workflows/ci.yml) | every pull request; called by `deploy-stage.yml` | backend `dotnet test`; typecheck, test and build of `chat-protocol`, `chat-widget`, `builders`, `consent-protocol`, `mock-oidc`; Flutter analyze + test of the authenticator (non-blocking until T-072); Docker builds of both images (no push); `kubectl kustomize` of both overlays |
-| [`deploy-stage.yml`](../.github/workflows/deploy-stage.yml) | push to `main` (except `kanban/**`, `docs/**`, `*.md`) and manual run | runs `ci.yml`; then, in the `Stage` environment: pushes `scholtz2/biatec-chat-backend` and `scholtz2/biatec-chat-builders` tagged `1.<yyyy.mm.dd>-<sha7>-beta`, generates DB passwords once, optionally syncs `biatec-chat-secrets`, applies `k8s/stage` (backend, builders, Postgres, Redis) with that tag, migrates the database, waits for the rollouts |
+| [`ci.yml`](../.github/workflows/ci.yml) | every pull request; called by `deploy-stage.yml` | backend `dotnet test` (with Postgres and Redis containers); typecheck, test and build of `chat-protocol`, `chat-widget`, `builders`, `consent-protocol`, `mock-oidc`; Flutter analyze + test of the authenticator (non-blocking until T-072); Docker builds of both images; `kubectl kustomize` of both overlays |
+| [`deploy-stage.yml`](../.github/workflows/deploy-stage.yml) | push to `main` (except `kanban/**`, `docs/**`, `*.md`) and manual run | runs `ci.yml`, builds and pushes `scholtz2/biatec-chat-backend` and `scholtz2/biatec-chat-builders` as `<version>-beta` and the moving `stage` tag, then `deploy.yml` to `Stage` |
+| [`promote-production.yml`](../.github/workflows/promote-production.yml) | manual only (Actions → promote-production → Run workflow) | takes a stage version (empty = what `stage` runs now), re-tags both images `<version>-beta` → `<version>-main` without rebuilding (same digest, checked), then `deploy.yml` to `Production` |
+| [`deploy.yml`](../.github/workflows/deploy.yml) | called by the two above | in the given environment: ensures the namespace and the generated secrets, syncs `biatec-chat-secrets`, pins the tag in the overlay, `kubectl apply -k`, waits for Postgres and Redis, applies database migrations, waits for builders and backend |
 
-Production promotion is not automated yet (follow the BiatecDEX `promote-production.yml` pattern: re-tag the verified
-stage image, never rebuild).
+Production is never deployed by a push. To approve production deploys, add required reviewers to the `Production`
+environment (Settings → Environments → Production → Required reviewers); the deploy job then waits for approval.
 
-## Secrets for the `Stage` environment
+## Secrets
 
-Set in GitHub → Settings → Environments → `Stage` (add required reviewers there if deploys should be approved). Where
-the AWS values come from is in [aws-setup.md](aws-setup.md) §3.
+Settings → Secrets and variables → Actions:
 
-| Secret | Required | Value |
+| Secret | Where | Value |
 |---|---|---|
-| `DOCKERHUB_USER` | yes | Docker Hub user that can push `scholtz2/biatec-chat-*` |
-| `DOCKERHUB_TOKEN` | yes | Docker Hub access token (read/write) for that user |
-| `KUBE_CONFIG` | yes | `base64 -w0` of a kubeconfig allowed to manage namespace `biatec-chat-stage` (deployments, statefulsets, services, ingress, network policies, config maps, secrets, service accounts, `pods/exec` for the migration; and create the namespace on the first run) |
-| `OIDC_CLIENT_SECRET` | optional* | Biatec OIDC client secret of the `biatec-chat` tenant on stage OIDC |
-| `KMS_KEY_ID` | optional* | ARN of the token-vault key (`infra/aws/kms-key.sh`) |
-| `AWS_ROLE_ARN` | optional* | role from `infra/aws/k8s-role.sh`, e.g. `arn:aws:iam::<account>:role/biatec-chat-k8s-role` |
+| `DOCKERHUB_USER` | repository | Docker Hub user that can push `scholtz2/biatec-chat-*` |
+| `DOCKERHUB_TOKEN` | repository | Docker Hub access token (read/write) for that user |
+| `KUBE_CONFIG` | `Stage` and `Production` environments, each its own | `base64 -w0` of a kubeconfig allowed to manage that environment's namespace: deployments, statefulsets, services, ingresses, network policies, config maps, secrets, service accounts, persistent volume claims, `pods/exec` (migration), and create the namespace on the first run |
+| `OIDC_CLIENT_SECRET` | `Stage` and `Production` | Biatec OIDC client secret of the `biatec-chat` tenant at that environment's OIDC (stage.oidc.biatec.io / oidc.biatec.io) |
+| `AWS_ROLE_ARN` | `Stage` and `Production` | Bedrock role from `infra/aws/k8s-role.sh` (aws-setup.md §3), e.g. `arn:aws:iam::<account>:role/biatec-chat-k8s-role` |
 
-\* All three or none. When `OIDC_CLIENT_SECRET` is set, every deploy recreates `biatec-chat-secrets` from them and
-fails if one is missing; when it isn't, the cluster's `biatec-chat-secrets` is left alone (managed out of band).
+`OIDC_CLIENT_SECRET` and `AWS_ROLE_ARN` go together: when `OIDC_CLIENT_SECRET` is set, every deploy recreates
+`biatec-chat-secrets` from both and fails if `AWS_ROLE_ARN` is missing; when it isn't set, the cluster's
+`biatec-chat-secrets` is left alone (managed out of band).
 
-**No database credentials.** Postgres and Redis run in the namespace. On the first deploy the workflow creates
-`biatec-chat-generated` with random `postgres-password`, `redis-password` and `builders-internal-secret`; later deploys
-keep it. The backend builds its connection strings from those passwords and the in-cluster service names, so they are
-configuration, not secrets. Deleting `biatec-chat-generated` without also deleting the Postgres volume locks the backend
-out (Postgres keeps the password it was initialised with).
+**Generated in the cluster, never in GitHub.** On the first deploy to a namespace, `deploy.yml` creates
+`biatec-chat-generated` with random `postgres-password`, `redis-password`, `builders-internal-secret` and
+`vault-master-key` (the token-vault key, `Vault__KeyProvider=Secret`); later deploys keep it and only add keys that
+are missing. The backend builds its connection strings from those passwords and the in-cluster service names, so they
+are configuration. Deleting `biatec-chat-generated` without the Postgres volume locks the backend out (Postgres keeps
+the password it was initialised with); losing `vault-master-key` signs every user out.
 
-## What a deploy does
+## Database migrations
 
-1. Runs `ci.yml`. 2. Builds and pushes both images. 3. Ensures the namespace and `biatec-chat-generated`, syncs
-`biatec-chat-secrets`. 4. `kubectl apply -k k8s/stage` with the pinned tag. 5. Waits for Postgres and Redis.
-6. Applies database migrations: `dotnet ef migrations script --idempotent` piped into `psql` in the Postgres pod (the
-backend migrates on startup only in Development). 7. Waits for builders and backend rollouts.
+The backend migrates on startup only in Development. Each deploy runs
+`dotnet ef migrations script --idempotent` and pipes it into `psql` in the Postgres pod, which applies just the
+migrations missing from `__EFMigrationsHistory`. A migration must therefore be compatible with the previous backend
+version for the few seconds both run.
 
-## First deploy checklist
+## First deploy
 
-Follow [aws-setup.md](aws-setup.md) §3 (AWS, cluster, GitHub secrets), then run `deploy-stage` manually and seed the
-`biatec-chat` tenant row (k8s/README.md).
+1. AWS part: [aws-setup.md](aws-setup.md) §3 (guardrail exists; role for the cluster).
+2. Secrets above, `Stage` first.
+3. Merge to `main` or run `deploy-stage` manually; check https://chat.stage.biatec.io/health.
+4. Seed the `biatec-chat` tenant row (k8s/README.md, "Tenants are not seeded outside Development").
+5. When stage is verified: set the `Production` secrets, run `promote-production`, seed the tenant there too.

@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# Lets the backend pods on a Kubernetes cluster (EKS or not) reach Bedrock and KMS without access keys: registers the
+# Lets the backend pods on a Kubernetes cluster (EKS or not) reach Bedrock without access keys: registers the
 # cluster's service-account issuer as an IAM OIDC provider and creates role biatec-chat-k8s-role, assumable only by the
 # biatec-chat-backend service account through sts:AssumeRoleWithWebIdentity. See k8s/README.md "AWS access".
 # Nothing here bills while idle. DEFAULT IS DRY-RUN:
-#   ISSUER_URL=https://<issuer> KMS_KEY_ARN=arn:aws:kms:eu-central-1:<acct>:key/<id> BIATEC_AWS_APPROVED=yes ./k8s-role.sh --apply
+#   ISSUER_URL=https://<issuer> BIATEC_AWS_APPROVED=yes ./k8s-role.sh --apply
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=common.sh
 source "$DIR/common.sh"
 
 ISSUER_URL="${ISSUER_URL:?set ISSUER_URL to the cluster service-account issuer (https://...)}"
-KMS_KEY_ARN="${KMS_KEY_ARN:?set KMS_KEY_ARN to the token vault key ARN}"
 NAMESPACES="${NAMESPACES:-biatec-chat-main biatec-chat-stage}"
 SERVICE_ACCOUNT="$NAME_PREFIX-backend"
 ROLE="$NAME_PREFIX-k8s-role"
@@ -47,7 +46,7 @@ cat > "$TRUST_FILE" <<JSON
   }]
 }
 JSON
-sed -e "s|\${ACCOUNT_ID}|$ACCOUNT_ID|g" -e "s|\${KMS_KEY_ARN}|$KMS_KEY_ARN|g" "$DIR/bedrock-role-policy.json" > "$POLICY_FILE"
+sed -e "s|\${ACCOUNT_ID}|$ACCOUNT_ID|g" "$DIR/bedrock-role-policy.json" > "$POLICY_FILE"
 
 if [ "$APPLY" = 1 ] && aws_ iam get-open-id-connect-provider --open-id-connect-provider-arn "$PROVIDER_ARN" >/dev/null 2>&1; then
   echo "OIDC provider $PROVIDER_ARN already exists; making sure it accepts the sts.amazonaws.com audience."
@@ -64,6 +63,6 @@ else
   run_aws iam create-role --role-name "$ROLE" --assume-role-policy-document "file://$TRUST_FILE" \
     --max-session-duration 3600 --tags "Key=$TAG_KEY,Value=$TAG_VALUE"
 fi
-run_aws iam put-role-policy --role-name "$ROLE" --policy-name "$NAME_PREFIX-bedrock-kms" --policy-document "file://$POLICY_FILE"
+run_aws iam put-role-policy --role-name "$ROLE" --policy-name "$NAME_PREFIX-bedrock" --policy-document "file://$POLICY_FILE"
 
 echo "Put this in the aws-role-arn key of biatec-chat-secrets: arn:aws:iam::$ACCOUNT_ID:role/$ROLE"

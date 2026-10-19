@@ -1,7 +1,7 @@
-# Every push to main: run ci.yml, then build and push both images with an immutable tag and deploy k8s/stage to
-# chat.stage.biatec.io. Credentials come only from the "Stage" GitHub environment secrets (docs/cicd.md lists them).
-# Follows BiatecDEX deploy-stage.yml (Docker Hub, base64 KUBE_CONFIG, rollout status), but pins the tag through
-# k8s/stage/kustomization.yaml at deploy time instead of committing it back to main.
+# Every push to main: run ci.yml, build and push both images, deploy them to stage (k8s/stage, chat.stage.biatec.io).
+# Production is never touched here: promote-production.yml re-tags the exact stage images. Follows BiatecDEX
+# deploy-stage.yml (Docker Hub, date-based tag, base64 KUBE_CONFIG), but pins the tag at deploy time instead of
+# committing it back to main. See docs/cicd.md.
 name: deploy-stage
 
 on:
@@ -21,25 +21,27 @@ concurrency:
 env:
   BACKEND_IMAGE: scholtz2/biatec-chat-backend
   BUILDERS_IMAGE: scholtz2/biatec-chat-builders
-  NAMESPACE: biatec-chat-stage
 
 jobs:
   ci:
     uses: ./.github/workflows/ci.yml
 
-  deploy:
+  build:
     needs: ci
     runs-on: ubuntu-latest
-    environment:
-      name: Stage
-      url: https://chat.stage.biatec.io
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
-      # 1.<year>.<month>.<day>-<sha>-beta: Biatec's date scheme plus the commit, so every deploy has its own tag.
+      # 1.<year>.<month>.<day>-<sha7>: Biatec's date scheme plus the commit, so every build is unique. Stage images are
+      # <version>-beta; promote-production.yml adds <version>-main to the same image.
       - name: Compute version
         id: version
-        run: echo "version=1.$(date -u '+%Y.%m.%d')-${GITHUB_SHA::7}-beta" >> "$GITHUB_OUTPUT"
+        run: |
+          version="1.$(date -u '+%Y.%m.%d')-${GITHUB_SHA::7}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$version-beta" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -48,13 +50,21 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USER }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # The version label lets promote-production.yml find out what the moving `stage` tag points at. Provenance is
+      # off so each tag is a plain image manifest whose labels imagetools can read.
       - name: Build and push backend
         uses: docker/build-push-action@v6
         with:
           context: .
           file: backend/Dockerfile
           push: true
-          tags: ${{ env.BACKEND_IMAGE }}:${{ steps.version.outputs.version }}
+          provenance: false
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:${{ steps.version.outputs.tag }}
+            ${{ env.BACKEND_IMAGE }}:stage
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=max
 
@@ -64,88 +74,23 @@ jobs:
           context: .
           file: builders/sidecar/Dockerfile
           push: true
-          tags: ${{ env.BUILDERS_IMAGE }}:${{ steps.version.outputs.version }}
+          provenance: false
+          tags: |
+            ${{ env.BUILDERS_IMAGE }}:${{ steps.version.outputs.tag }}
+            ${{ env.BUILDERS_IMAGE }}:stage
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=builders
           cache-to: type=gha,scope=builders,mode=max
 
-      - uses: azure/setup-kubectl@v4
-
-      - name: Configure kubeconfig
-        env:
-          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
-        run: |
-          mkdir -p "$HOME/.kube"
-          echo "$KUBE_CONFIG" | base64 -d > "$HOME/.kube/config"
-          chmod 600 "$HOME/.kube/config"
-
-      - name: Ensure namespace
-        run: kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$NAMESPACE"
-
-      # Passwords for the in-cluster Postgres and Redis and the backend-builders shared secret. Generated once, never
-      # leave the cluster, never rotated by a deploy (Postgres only reads its password when the volume is first
-      # initialised). Delete the secret only together with the database volumes.
-      - name: Ensure generated secrets
-        run: |
-          if kubectl get secret biatec-chat-generated -n "$NAMESPACE" >/dev/null 2>&1; then
-            echo "biatec-chat-generated exists, keeping it."
-          else
-            kubectl create secret generic biatec-chat-generated -n "$NAMESPACE" \
-              --from-literal=postgres-password="$(openssl rand -hex 24)" \
-              --from-literal=redis-password="$(openssl rand -hex 24)" \
-              --from-literal=builders-internal-secret="$(openssl rand -hex 32)"
-          fi
-
-      # Optional: when OIDC_CLIENT_SECRET is set, biatec-chat-secrets is (re)created from the environment secrets and
-      # all three must be present. Otherwise the cluster secret is managed out of band and left untouched.
-      - name: Sync biatec-chat-secrets
-        env:
-          OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
-          KMS_KEY_ID: ${{ secrets.KMS_KEY_ID }}
-          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-        run: |
-          if [ -z "$OIDC_CLIENT_SECRET" ]; then
-            echo "OIDC_CLIENT_SECRET not set: leaving biatec-chat-secrets as it is in the cluster."
-            exit 0
-          fi
-          for v in KMS_KEY_ID AWS_ROLE_ARN; do
-            if [ -z "${!v}" ]; then echo "::error::Stage secret $v is missing (see docs/aws-setup.md)."; exit 1; fi
-          done
-          kubectl create secret generic biatec-chat-secrets -n "$NAMESPACE" \
-            --from-literal=oidc-client-secret="$OIDC_CLIENT_SECRET" \
-            --from-literal=kms-key-id="$KMS_KEY_ID" \
-            --from-literal=aws-role-arn="$AWS_ROLE_ARN" \
-            --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Apply k8s/stage with the new tag
-        run: |
-          sed -i "s/newTag: stage$/newTag: ${{ steps.version.outputs.version }}/" k8s/stage/kustomization.yaml
-          [ "$(grep -c "newTag: ${{ steps.version.outputs.version }}" k8s/stage/kustomization.yaml)" = 2 ]
-          kubectl apply -k k8s/stage
-
-      - name: Wait for databases
-        run: |
-          kubectl rollout status statefulset/biatec-chat-postgres -n "$NAMESPACE" --timeout=5m
-          kubectl rollout status statefulset/biatec-chat-redis -n "$NAMESPACE" --timeout=5m
-
-      # The backend migrates only in Development; elsewhere the schema is a deploy step. The idempotent script applies
-      # just the migrations missing from __EFMigrationsHistory, so it is safe on every deploy.
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
-
-      - name: Migrate database
-        run: |
-          dotnet tool restore
-          dotnet ef migrations script --idempotent --project backend/Biatec.Chat.Api --output migrate.sql
-          sed -i '1s/^\xEF\xBB\xBF//' migrate.sql
-          kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
-            psql -q -v ON_ERROR_STOP=1 -U biatec -d biatec_chat < migrate.sql
-
-      - name: Wait for rollout
-        run: |
-          kubectl rollout status deployment/biatec-chat-builders -n "$NAMESPACE" --timeout=5m
-          kubectl rollout status deployment/biatec-chat-backend -n "$NAMESPACE" --timeout=5m
-
-      - name: Remove kubeconfig
-        if: always()
-        run: rm -f "$HOME/.kube/config"
+  deploy:
+    needs: build
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: Stage
+      url: https://chat.stage.biatec.io
+      overlay: stage
+      namespace: biatec-chat-stage
+      tag: ${{ needs.build.outputs.tag }}
+    secrets: inherit
