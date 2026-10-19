@@ -46,7 +46,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: backend
-          image: ghcr.io/scholtz/biatec-chat-backend:latest
+          image: scholtz2/biatec-chat-backend:latest
           imagePullPolicy: Always
           ports:
             - {name: http, containerPort: 8080}

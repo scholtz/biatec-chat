@@ -28,14 +28,15 @@ no access keys are used.
 
 ## Images
 
-`ghcr.io/scholtz/biatec-chat-backend` (`backend/Dockerfile`) and `ghcr.io/scholtz/biatec-chat-builders`
+`scholtz2/biatec-chat-backend` (`backend/Dockerfile`) and `scholtz2/biatec-chat-builders`
 (`builders/sidecar/Dockerfile`); both build with the repository root as context. Startup and readiness probes use `/health` (Redis and PostgreSQL checks); liveness uses `/health/live`, which runs no dependency checks, so a dependency outage removes pods from service without restarting them.
 
 ## Deployment prerequisites
 
 - **Image tags.** `main` pins `newTag: REPLACE-WITH-RELEASE-SHA` on purpose: release automation must set an immutable tag
-  (`kustomize edit set image ghcr.io/scholtz/biatec-chat-backend=...:<sha>`) before applying, so a deploy never floats on `latest`.
-  `stage` follows the moving `stage` tag.
+  (`kustomize edit set image scholtz2/biatec-chat-backend=...:<sha>`) before applying, so a deploy never floats on `latest`.
+  `stage` is pinned by `.github/workflows/deploy-stage.yml` on every deploy (both `newTag: stage` lines are replaced by the
+  immutable `1.<date>-<sha>-beta` tag); the `stage` tag in the file is only a placeholder. See `docs/cicd.md`.
 - **Tenants are not seeded outside Development.** After the first deploy, create the `biatec-chat` tenant row (host
   `chat.biatec.io`, `ClientSecretRef=secret://biatec-chat/oidc-client-secret`) via the onboarding API or SQL.
   The secret itself is the `oidc-client-secret` key above, exposed as `Secrets__biatec-chat__oidc-client-secret`.

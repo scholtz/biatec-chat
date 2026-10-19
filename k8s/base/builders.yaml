@@ -17,7 +17,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: builders
-          image: ghcr.io/scholtz/biatec-chat-builders:latest
+          image: scholtz2/biatec-chat-builders:latest
           imagePullPolicy: Always
           ports:
             - {name: http, containerPort: 3100}
