@@ -50,7 +50,7 @@ public static class SessionEndpoints
             var handle = await sessions.ResolveOrCreateAsync(ctx.GetTenant()!, ReadCookie(ctx.Request), ctx.RequestAborted);
             if (handle.NewToken is not null) WriteCookie(ctx.Response, handle.NewToken, handle.Session.AbsoluteExpiresAt, clock.GetUtcNow());
             return Results.Ok(await BuildStateAsync(db, handle.Session, ctx.RequestAborted));
-        }).WithName("GetSession").Produces<SessionState>();
+        }).WithName("GetSession").Produces<SessionState>().RegisteredOriginsOnly();
 
         // Cookie probe. Without a live cookie: creates the session, sets the cookie, reports false. With it: true.
         app.MapGet("/session/probe", async (HttpContext ctx, ISessionService sessions, TimeProvider clock) =>
@@ -59,7 +59,7 @@ public static class SessionEndpoints
             var handle = await sessions.ResolveOrCreateAsync(ctx.GetTenant()!, ReadCookie(ctx.Request), ctx.RequestAborted);
             if (handle.NewToken is not null) WriteCookie(ctx.Response, handle.NewToken, handle.Session.AbsoluteExpiresAt, clock.GetUtcNow());
             return Results.Ok(new ProbeResponse { CookieReturned = !handle.Created });
-        }).WithName("ProbeSession").Produces<ProbeResponse>();
+        }).WithName("ProbeSession").Produces<ProbeResponse>().RegisteredOriginsOnly();
 
         // Keepalive: extends the idle timeout only. An expired or missing session gets 401 and no new session.
         app.MapPost("/session/keepalive", async (HttpContext ctx, ISessionService sessions, ChatDbContext db) =>
@@ -69,10 +69,19 @@ public static class SessionEndpoints
             if (!await sessions.KeepAliveAsync(ctx.GetTenant()!, token, ctx.RequestAborted)) return Results.Unauthorized();
             var s = await db.ChatSessions.AsNoTracking().FirstOrDefaultAsync(x => x.Id == SessionService.IdFromToken(token!), ctx.RequestAborted);
             return s is null ? Results.Unauthorized() : Results.Ok(new KeepAliveResponse { ExpiresAt = s.AbsoluteExpiresAt });
-        }).WithName("KeepAliveSession").Produces<KeepAliveResponse>();
+        }).WithName("KeepAliveSession").Produces<KeepAliveResponse>().RegisteredOriginsOnly();
 
         return app;
     }
+
+    /// <summary>A browser Origin outside the tenant allow-list gets no session and no Set-Cookie (a missing Origin is a same-origin or non-browser call).</summary>
+    private static RouteHandlerBuilder RegisteredOriginsOnly(this RouteHandlerBuilder b) => b.AddEndpointFilter(async (c, next) =>
+    {
+        var req = c.HttpContext.Request;
+        if (req.Headers.ContainsKey("Origin") && Security.OriginPolicy.AllowedOrigin(c.HttpContext.GetTenant()!, req) is null)
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        return await next(c);
+    });
 
     private static void NoStore(HttpContext ctx)
     {

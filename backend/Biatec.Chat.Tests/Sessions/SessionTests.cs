@@ -283,4 +283,17 @@ public sealed class SessionTests : IAsyncLifetime
         r.Headers.TryAddWithoutValidation("Cookie", $"{SessionPolicy.CookieName}={token}");
         Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(r)).StatusCode);
     }
+
+    [Fact]
+    public async Task UnregisteredOrigin_GetsNoSessionAndNoCookie()
+    {
+        using var client = _factory.CreateClient();
+        var r = new HttpRequestMessage(HttpMethod.Get, "http://chat.biatec.io/session/probe");
+        r.Headers.TryAddWithoutValidation("Origin", "https://evil.example");
+        var res = await client.SendAsync(r);
+        Assert.Equal(HttpStatusCode.Forbidden, res.StatusCode);
+        Assert.Null(SetCookie(res));
+        await using var db = NewContext();
+        Assert.Equal(0, await db.ChatSessions.CountAsync());
+    }
 }
