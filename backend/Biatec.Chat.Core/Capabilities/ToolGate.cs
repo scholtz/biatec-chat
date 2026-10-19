@@ -68,7 +68,7 @@ public sealed class ToolGate(CapabilityRegistry registry, IPolicyEventSink sink,
             {
                 "tier_too_low" => $"'{cap.Name}' needs a signed-in user. Call requestSignIn instead and explain in general terms what the action would do.",
                 "scope_missing" => $"'{cap.Name}' needs a permission the session does not hold. Offer the user to re-authorize with the needed scope.",
-                _ => $"'{cap.Name}' is not available.",
+                _ => $"Tool '{Sanitize(name)}' does not exist.", // same text as unknown_tool: no capability enumeration
             };
             return Reject(name, ctx, why, msg);
         }

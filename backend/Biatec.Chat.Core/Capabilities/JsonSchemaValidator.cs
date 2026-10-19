@@ -26,8 +26,14 @@ public static class JsonSchemaValidator
         foreach (var (k, v) in schema)
         {
             if (!Supported.Contains(k)) throw new ArgumentException($"{path}: unsupported schema keyword '{k}'.");
-            if (k == "additionalProperties" && v is not JsonValue) throw new ArgumentException($"{path}: additionalProperties must be boolean.");
+            if (k == "additionalProperties" && !(v is JsonValue ap && ap.TryGetValue<bool>(out _)))
+                throw new ArgumentException($"{path}: additionalProperties must be boolean.");
+            if (k == "required" && !(v is JsonArray ra && ra.All(x => x is JsonValue xv && xv.TryGetValue<string>(out _))))
+                throw new ArgumentException($"{path}: required must be an array of strings.");
+            if (k == "enum" && v is not JsonArray) throw new ArgumentException($"{path}: enum must be an array.");
+            if (k == "items" && v is not JsonObject) throw new ArgumentException($"{path}: items must be a schema object.");
         }
+        if (schema["type"] is not JsonValue) throw new ArgumentException($"{path}: schema must declare a type.");
         if (schema["properties"] is JsonObject props)
             foreach (var (k, v) in props)
                 if (v is JsonObject o) AssertSupported(o, $"{path}.{k}");
