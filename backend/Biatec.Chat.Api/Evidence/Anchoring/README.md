@@ -22,8 +22,19 @@ chain. Changing the column to the transaction ID string needs a migration and a 
   the broadcast, marked `lost` when unconfirmed (the next note's `gapFrom` is derived from the table, so a restart does
   not forget it), and given the tx id as soon as it confirms. If storing the anchor and proofs then fails, the half-added
   entities are cleared and the next tick rebuilds the anchor and proofs from the stored leaves. Assumes one anchoring instance.
-- Residual: an attempt marked lost whose transaction lands later (for example after a long outage) is an on-chain anchor
-  that the database does not list; the verifier works from the chain list it is given and the declared gap.
+- Lost is definitive (review round 2): the anchor transaction is valid for `ValidRounds` (40) rounds only. After failed
+  confirmations the service asks the broadcaster (`ResolveAsync`) before deciding: confirmed means the anchor is completed,
+  still valid means the attempt stays `pending`, no new anchor is started and the next tick checks again, expired means
+  lost (and the broadcaster drops its `_submitted` entry). After a restart the broadcaster does not know the transaction;
+  the attempt then stays pending until `UnknownGrace` (5 min) after its creation.
+
+## Integration points for T-036 and the chat flow (must adopt)
+
+- Chat flow: first entry of a conversation via `AnchoredEvidenceWriter.AppendFirstAsync`; the first entry after the
+  conversation was dropped from ticks via `ResumeIfDroppedAsync`; closing a conversation via `EndAsync`. Entries appended
+  without the writer have no `anchorRef` and no `resume`.
+- Evidence export (T-036): call `AnchorExporter.ExportAsync(db, conversationId)` and put its `Proofs` and `Anchors` in the
+  bundle ("Bundle includes proofs"); verify with `AnchorVerifier.Verify`.
 
 ## Wired vs deferred
 

@@ -34,13 +34,33 @@ public sealed class AnchoringOptions
     public TimeSpan ConfirmTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
     public TimeSpan ConfirmPollInterval { get; set; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>How many rounds a signed anchor transaction stays valid (LastValid = LastRound + this). Short, so "lost" becomes definitive quickly.</summary>
+    public int ValidRounds { get; set; } = 40;
+
+    /// <summary>
+    /// When the broadcaster no longer knows an unconfirmed transaction (for example after a restart), the attempt is treated as
+    /// still able to land until this long after it was created. Must exceed ValidRounds times the round time.
+    /// </summary>
+    public TimeSpan UnknownGrace { get; set; } = TimeSpan.FromMinutes(5);
 }
+
+public enum AnchorResolutionKind { Confirmed, Pending, Expired, Unknown }
+
+/// <summary>Whether the transaction for a note can still land. Expired means it never confirmed and its LastValid round has passed.</summary>
+public sealed record AnchorResolution(AnchorResolutionKind Kind, string? TxId = null);
 
 /// <summary>Sends one anchor transaction (0 ALGO self-payment from the evidence account) and waits for confirmation.</summary>
 public interface IAnchorBroadcaster
 {
     /// <returns>The confirmed transaction ID. Throws when the transaction was not confirmed.</returns>
     Task<string> BroadcastAsync(byte[] note, CancellationToken ct);
+
+    /// <summary>
+    /// Asks the node what became of the transaction sent for this note. Default: Expired, for broadcasters whose failure is
+    /// already definitive. Expired also forgets the note.
+    /// </summary>
+    Task<AnchorResolution> ResolveAsync(byte[] note, CancellationToken ct) => Task.FromResult(new AnchorResolution(AnchorResolutionKind.Expired));
 }
 
 public sealed record AnchorTickResult(EvidenceAnchor? Anchor, int Leaves, bool Lost);
@@ -69,7 +89,7 @@ public sealed class AnchorService(
     public async Task<AnchorTickResult> TickAsync(CancellationToken ct = default)
     {
         var now = _time.GetUtcNow();
-        await RecoverAsync(ct);
+        if (await RecoverAsync(ct)) return new AnchorTickResult(null, 0, false); // an earlier transaction may still confirm: do not fork the chain
         var heads = await db.EvidenceEntries.AsNoTracking()
             .Where(e => e.Seq == db.EvidenceEntries.Where(x => x.ConversationId == e.ConversationId).Max(x => x.Seq))
             .Select(e => new Head(e.ConversationId, e.Seq, e.EntryHash, e.Kind, e.SignedAt))
@@ -120,6 +140,18 @@ public sealed class AnchorService(
             }
         }
         ct.ThrowIfCancellationRequested();
+
+        if (txId is null)
+        {
+            // Not confirmed in time is not lost: the signed transaction can still land until its LastValid round.
+            var res = await ResolveSafeAsync(noteBytes, ct);
+            if (res.Kind == AnchorResolutionKind.Confirmed) txId = res.TxId;
+            else if (res.Kind is AnchorResolutionKind.Pending or AnchorResolutionKind.Unknown)
+            {
+                log.LogWarning("Anchor {Seq} not confirmed yet but still valid; it is checked again on the next tick.", seq);
+                return new AnchorTickResult(null, picked.Count, false);
+            }
+        }
 
         if (txId is null)
         {
@@ -209,21 +241,43 @@ public sealed class AnchorService(
     /// to be confirmed gets its anchor row and proofs rebuilt from the stored leaves; one that never got a tx id is
     /// marked lost (this assumes a single anchoring instance).
     /// </summary>
-    private async Task RecoverAsync(CancellationToken ct)
+    private async Task<AnchorResolution> ResolveSafeAsync(byte[] note, CancellationToken ct)
     {
+        try { return await broadcaster.ResolveAsync(note, ct); }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            log.LogWarning(e, "Could not check the anchor transaction on the node; treating it as still pending.");
+            return new AnchorResolution(AnchorResolutionKind.Pending);
+        }
+    }
+
+    /// <returns>True when an unconfirmed attempt can still land, so this tick must not start a new anchor.</returns>
+    private async Task<bool> RecoverAsync(CancellationToken ct)
+    {
+        var blocked = false;
         var stale = await db.EvidenceAnchorAttempts.Where(a => a.Status == PendingStatus).OrderBy(a => a.SequenceNumber).ToListAsync(ct);
         foreach (var a in stale)
         {
-            if (a.TxId is null) { a.Status = LostStatus; continue; }
+            if (a.TxId is null)
+            {
+                var res = await ResolveSafeAsync(new AnchorNote(a.MerkleRoot, a.SequenceNumber, a.PreviousAnchorTxId,
+                    long.TryParse(a.GapFrom, out var g) ? g : null).ToBytes(), ct);
+                if (res.Kind == AnchorResolutionKind.Confirmed) a.TxId = res.TxId;
+                else if (res.Kind == AnchorResolutionKind.Pending
+                    || (res.Kind == AnchorResolutionKind.Unknown && _time.GetUtcNow() - a.CreatedAt < _o.UnknownGrace))
+                { blocked = true; continue; }
+                else { a.Status = LostStatus; continue; }
+            }
             var leaves = JsonSerializer.Deserialize<List<AnchorLeafInput>>(a.Leaves) ?? [];
             var tree = MerkleTree.Build(leaves);
             if (tree.Root != a.MerkleRoot) { log.LogError("Attempt {Seq} leaves do not match its root; marking it lost.", a.SequenceNumber); a.Status = LostStatus; continue; }
             if (!await db.EvidenceAnchors.AnyAsync(x => x.SequenceNumber == a.SequenceNumber, ct))
-                StoreAnchor(a.SequenceNumber, a.TxId, a.PreviousAnchorTxId, tree, a.GapFrom);
+                StoreAnchor(a.SequenceNumber, a.TxId!, a.PreviousAnchorTxId, tree, a.GapFrom);
             db.EvidenceAnchorAttempts.Remove(a);
             log.LogWarning("Completed anchor {Seq} (tx {TxId}) from its attempt row.", a.SequenceNumber, a.TxId);
         }
         if (stale.Count > 0) await SaveWithRetryAsync(0, null, ct);
+        return blocked;
     }
 
     /// <summary>Open (changed or not), changed since the last anchor, or an end marker not yet anchored; idle ones get one last anchor.</summary>

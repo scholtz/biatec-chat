@@ -131,6 +131,10 @@ internal sealed class FakeBroadcaster : IAnchorBroadcaster
     public List<byte[]> Notes { get; } = [];
     public int FailNext { get; set; }
     public int Calls { get; private set; }
+    public AnchorResolution? Resolution { get; set; }
+
+    public Task<AnchorResolution> ResolveAsync(byte[] note, CancellationToken ct) =>
+        Task.FromResult(Resolution ?? new AnchorResolution(AnchorResolutionKind.Expired));
 
     public Task<string> BroadcastAsync(byte[] note, CancellationToken ct)
     {
@@ -505,6 +509,69 @@ public sealed class AnchoringServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task UnconfirmedButStillValid_IsNotLost_BlocksNewAnchors_AndCompletesWhenItLands()
+    {
+        var a = Guid.NewGuid();
+        await using var db = NewContext();
+        await Writer(db).AppendFirstAsync(a, "message", P("a1"));
+        await Service(db).TickAsync();                 // seq 1
+        _chain.FailNext = 2;
+        _chain.Resolution = new AnchorResolution(AnchorResolutionKind.Pending);
+        _time.Advance(TimeSpan.FromMinutes(10));
+        var r = await Service(db).TickAsync();          // seq 2 not confirmed in time, but still valid
+        Assert.False(r.Lost);
+        Assert.Null(r.Anchor);
+
+        _time.Advance(TimeSpan.FromMinutes(1));
+        var calls = _chain.Calls;
+        Assert.Null((await Service(db).TickAsync()).Anchor);   // still pending: no second anchor is started
+        Assert.Equal(calls, _chain.Calls);
+
+        _chain.Resolution = new AnchorResolution(AnchorResolutionKind.Confirmed, "TXLANDED");
+        _time.Advance(TimeSpan.FromMinutes(1));
+        await Service(db).TickAsync();                  // completes seq 2 from the attempt row
+        await using var check = NewContext();
+        var two = await check.EvidenceAnchors.SingleAsync(x => x.SequenceNumber == 2);
+        Assert.Equal("TXLANDED", two.AnchorTxId);
+        Assert.Null(two.GapFrom);
+        Assert.Empty(await check.EvidenceAnchorAttempts.ToListAsync());
+    }
+
+    [Fact]
+    public async Task UnconfirmedAndExpired_IsLost_AndTheNextAnchorRecordsTheGap()
+    {
+        var a = Guid.NewGuid();
+        await using var db = NewContext();
+        await Writer(db).AppendFirstAsync(a, "message", P("a1"));
+        await Service(db).TickAsync();
+        _chain.FailNext = 2;
+        _chain.Resolution = new AnchorResolution(AnchorResolutionKind.Pending);
+        _time.Advance(TimeSpan.FromMinutes(10));
+        await Service(db).TickAsync();                  // pending
+        _chain.Resolution = new AnchorResolution(AnchorResolutionKind.Expired);
+        _time.Advance(TimeSpan.FromMinutes(1));
+        var next = await Service(db).TickAsync();
+        Assert.Equal(3, next.Anchor!.SequenceNumber);
+        Assert.Equal("2", next.Anchor.GapFrom);
+    }
+
+    [Fact]
+    public async Task UnknownToTheBroadcaster_StaysPendingUntilTheGraceHasPassed()
+    {
+        var a = Guid.NewGuid();
+        await using var db = NewContext();
+        await Writer(db).AppendFirstAsync(a, "message", P("a1"));
+        _chain.FailNext = 2;
+        _chain.Resolution = new AnchorResolution(AnchorResolutionKind.Unknown);
+        await Service(db).TickAsync();                  // seq 1 unconfirmed; the broadcaster forgot it (restart)
+        _time.Advance(TimeSpan.FromMinutes(1));
+        Assert.Null((await Service(db).TickAsync()).Anchor);
+        _time.Advance(TimeSpan.FromMinutes(10));        // past UnknownGrace
+        var next = await Service(db).TickAsync();
+        Assert.Equal(2, next.Anchor!.SequenceNumber);
+    }
+
+    [Fact]
     public async Task CrashBeforeTheTxIdIsKnown_ConsumesTheSequenceNumberAndRecordsTheGap()
     {
         var a = Guid.NewGuid();
@@ -606,9 +673,34 @@ public class AlgodAnchorBroadcasterTests
         var algod = new FakeAlgod();
         var b = Make(algod);
         await Assert.ThrowsAsync<TimeoutException>(() => b.BroadcastAsync(Note, default));
-        algod.LastRound += 5000;                       // LastValid (+1000) has passed and it never confirmed
+        algod.LastRound += 5000;                       // LastValid has passed and it never confirmed
         await Assert.ThrowsAsync<TimeoutException>(() => b.BroadcastAsync(Note, default)); // expired: a fresh transaction is sent
         Assert.Equal(2, algod.Submitted.Count);
         Assert.NotEqual(algod.Submitted[0], algod.Submitted[1]);
+    }
+
+    [Fact]
+    public async Task Resolve_ReportsPending_ThenExpired_AndForgetsTheNote()
+    {
+        var algod = new FakeAlgod();
+        var b = Make(algod);
+        Assert.Equal(AnchorResolutionKind.Unknown, (await b.ResolveAsync(Note, default)).Kind);
+        await Assert.ThrowsAsync<TimeoutException>(() => b.BroadcastAsync(Note, default));
+        Assert.Equal(AnchorResolutionKind.Pending, (await b.ResolveAsync(Note, default)).Kind);
+        algod.LastRound += 100;                         // past LastValid (+40)
+        Assert.Equal(AnchorResolutionKind.Expired, (await b.ResolveAsync(Note, default)).Kind);
+        Assert.Equal(AnchorResolutionKind.Unknown, (await b.ResolveAsync(Note, default)).Kind); // entry dropped, no leak
+    }
+
+    [Fact]
+    public async Task Resolve_FindsATransactionThatConfirmedAfterTheTimeout()
+    {
+        var algod = new FakeAlgod();
+        var b = Make(algod);
+        await Assert.ThrowsAsync<TimeoutException>(() => b.BroadcastAsync(Note, default));
+        algod.ConfirmAll = true;
+        var r = await b.ResolveAsync(Note, default);
+        Assert.Equal(AnchorResolutionKind.Confirmed, r.Kind);
+        Assert.False(string.IsNullOrEmpty(r.TxId));
     }
 }

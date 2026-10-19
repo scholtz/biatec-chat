@@ -64,7 +64,7 @@ public sealed class AlgodAnchorBroadcaster(IOptions<AnchoringOptions> options, I
                 Amount = 0,
                 Fee = Math.Max(p.MinFee, 1000),
                 FirstValid = p.LastRound,
-                LastValid = p.LastRound + 1000,
+                LastValid = p.LastRound + (ulong)Math.Max(1, o.ValidRounds),
                 GenesisId = p.GenesisId,
                 GenesisHash = new Digest(p.GenesisHash),
                 Note = note,
@@ -73,6 +73,29 @@ public sealed class AlgodAnchorBroadcaster(IOptions<AnchoringOptions> options, I
             _submitted[key] = created; // remembered before the submit: an error after the node accepted it must not lose the txId
             await Algorand.Utils.Utils.SubmitTransaction(api, created.Signed);
             return await WaitAsync(http, key, created, o, ct);
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<AnchorResolution> ResolveAsync(byte[] note, CancellationToken ct)
+    {
+        var o = options.Value;
+        if (!algod.Value.Networks.TryGetValue(o.Network, out var net)) throw new InvalidOperationException($"No Algod endpoint configured for '{o.Network}'.");
+        using var http = handler is null ? new HttpClient() : new HttpClient(handler, disposeHandler: false);
+        http.BaseAddress = new Uri(net.Url);
+        http.Timeout = TimeSpan.FromSeconds(20);
+        if (net.Token is { Length: > 0 }) http.DefaultRequestHeaders.TryAddWithoutValidation("X-Algo-API-Token", net.Token);
+        var api = new DefaultApi(http);
+        var key = Convert.ToBase64String(note);
+        await _gate.WaitAsync(ct);
+        try
+        {
+            if (!_submitted.TryGetValue(key, out var s)) return new AnchorResolution(AnchorResolutionKind.Unknown);
+            if (await IsConfirmedAsync(http, s.TxId, ct)) { _submitted.Remove(key); return new AnchorResolution(AnchorResolutionKind.Confirmed, s.TxId); }
+            var p = await api.TransactionParamsAsync(ct);
+            if (p.LastRound <= s.LastValid) return new AnchorResolution(AnchorResolutionKind.Pending);
+            _submitted.Remove(key); // can no longer land: lost is definitive and the entry is dropped
+            return new AnchorResolution(AnchorResolutionKind.Expired);
         }
         finally { _gate.Release(); }
     }
