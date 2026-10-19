@@ -61,7 +61,8 @@ public sealed class ConfirmService(
     IEvidenceLog evidence,
     TimeProvider clock,
     ILogger<ConfirmService> log,
-    IEnumerable<ISettlementHandler>? settlementHandlers = null)
+    IEnumerable<ISettlementHandler>? settlementHandlers = null,
+    Biatec.Chat.Api.Limits.LimitsConfirmService? limits = null)
 {
     public const string OutageMessage = "The sign-in service is unavailable. Your session is unchanged; please try again shortly.";
 
@@ -77,6 +78,9 @@ public sealed class ConfirmService(
         // here leaves it awaiting confirmation.
         var peek = await previews.GetAsync(session.ConversationId, previewId, session.AbsoluteExpiresAt, ct);
         var pending = peek.Steps.FirstOrDefault(s => s.Status == StepStatus.Pending);
+        // A limits step (lowering only) goes to Biatec OIDC PUT /wallet/limits, not to the signing endpoint.
+        if (pending is { Kind: ActionStepKind.Limits } && limits is not null && peek.Preview.Status == ActionPreviewStatus.Proposed)
+            return await limits.ConfirmAsync(tenant, session, previewId, groupHash, ct);
         if (pending is null || pending.Kind != ActionStepKind.Sign || peek.Preview.Status != ActionPreviewStatus.Proposed)
             throw new PreviewException(PreviewError.InvalidState, "The preview has no signing step awaiting confirmation.");
 
