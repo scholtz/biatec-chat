@@ -1,7 +1,7 @@
 ---
 id: T-020
 title: wallet.listAddresses and wallet.balance
-status: backlog
+status: in-progress
 priority: P0
 epic: "Wallet tools"
 blocked_by: [T-014, T-019]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Tools/Wallet/Read/**"]
 parallel: yes
 conflicts_with: []
 issue: "#21"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-020"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#capabilities-and-intents"
 created: 2026-10-19
 updated: 2026-10-19
@@ -55,3 +55,5 @@ dotnet test --filter WalletRead
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 21:21 · kanban-board · blocked → backlog · blockers done: T-014, T-019
+- 2026-10-19 21:24 · scholtz · taken · status stays backlog
+- 2026-10-19 21:24 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

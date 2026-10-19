@@ -1,7 +1,7 @@
 ---
 id: T-055
 title: Hackathon AWS hosting plan and scripts
-status: backlog
+status: in-progress
 priority: P1
 epic: "Deploy & docs"
 blocked_by: [T-054]
@@ -9,9 +9,9 @@ area: ["infra/aws/**", "docs/deploy-aws.md"]
 parallel: yes
 conflicts_with: []
 issue: "#56"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-055"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#chat-backend-biatecchatapi"
 created: 2026-10-19
 updated: 2026-10-19
@@ -55,3 +55,5 @@ Review doc; bash -n infra/aws/*.sh
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 21:21 · kanban-board · blocked → backlog · blockers done: T-054
+- 2026-10-19 21:24 · scholtz · taken · status stays backlog
+- 2026-10-19 21:24 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

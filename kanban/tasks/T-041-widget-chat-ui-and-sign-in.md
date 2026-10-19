@@ -1,7 +1,7 @@
 ---
 id: T-041
 title: Widget chat UI and sign-in popup
-status: backlog
+status: in-progress
 priority: P0
 epic: "Widget"
 blocked_by: [T-040]
@@ -9,9 +9,9 @@ area: ["packages/chat-widget/src/components/chat/**"]
 parallel: no
 conflicts_with: [T-036]
 issue: "#42"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-041"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#user-experience"
 created: 2026-10-19
 updated: 2026-10-19
@@ -55,3 +55,5 @@ pnpm --filter chat-widget test; manual playground run against local backend
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 21:19 · kanban-board · blocked → backlog · blockers done: T-040
+- 2026-10-19 21:24 · scholtz · taken · status stays backlog
+- 2026-10-19 21:24 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

@@ -1,7 +1,7 @@
 ---
 id: T-016
 title: Bedrock Guardrails on model and tool results
-status: backlog
+status: in-progress
 priority: P2
 epic: "Orchestrator"
 blocked_by: [T-014]
@@ -9,9 +9,9 @@ area: ["infra/guardrail/**", "backend/Biatec.Chat.Api/Model/Guardrails/**"]
 parallel: no
 conflicts_with: [T-018, T-035, T-057]
 issue: "#17"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-016"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#model-layer"
 created: 2026-10-19
 updated: 2026-10-19
@@ -55,3 +55,5 @@ AWS_PROFILE=hackathon ./infra/guardrail/create.sh; dotnet test --filter Guardrai
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 21:21 · kanban-board · blocked → backlog · blockers done: T-014
+- 2026-10-19 21:24 · scholtz · taken · status stays backlog
+- 2026-10-19 21:24 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

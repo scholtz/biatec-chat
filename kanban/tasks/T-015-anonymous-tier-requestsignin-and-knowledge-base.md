@@ -1,7 +1,7 @@
 ---
 id: T-015
 title: Anonymous tier: requestSignIn and knowledge base search
-status: backlog
+status: in-progress
 priority: P0
 epic: "Orchestrator"
 blocked_by: [T-014]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Tools/Kb/**", "backend/Biatec.Chat.Api/Chat/SignIn/*
 parallel: no
 conflicts_with: [T-035]
 issue: "#16"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-015"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#session-tiers"
 created: 2026-10-19
 updated: 2026-10-19
@@ -55,3 +55,5 @@ dotnet test --filter Kb; manual chat run
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 21:21 · kanban-board · blocked → backlog · blockers done: T-014
+- 2026-10-19 21:24 · scholtz · taken · status stays backlog
+- 2026-10-19 21:24 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

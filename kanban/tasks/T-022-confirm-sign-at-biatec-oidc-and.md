@@ -1,7 +1,7 @@
 ---
 id: T-022
 title: Confirm, sign at Biatec OIDC and submit
-status: backlog
+status: in-progress
 priority: P0
 epic: "Wallet tools"
 blocked_by: [T-010, T-019, T-021]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Tools/Signing/**", "backend/Biatec.Chat.Api/Chat/Con
 parallel: no
 conflicts_with: [T-014, T-038, T-057]
 issue: "#23"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-022"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#tool-executors"
 created: 2026-10-19
 updated: 2026-10-19
@@ -57,3 +57,5 @@ dotnet test --filter Signing
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:00 · coordinator · review · fixed consent-completion reference (T-041 → T-049); added OIDC-outage behaviour from Non-Functional Requirements
 - 2026-10-19 20:34 · kanban-board · blocked → backlog · blockers done: T-010, T-019, T-021
+- 2026-10-19 21:24 · scholtz · taken · status stays backlog
+- 2026-10-19 21:24 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
