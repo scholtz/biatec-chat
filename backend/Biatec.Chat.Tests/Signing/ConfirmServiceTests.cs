@@ -71,9 +71,11 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
         public readonly List<(McpCallContext Ctx, string Network, string Blob)> Submits = [];
         public bool SubmitFails;
         public bool SubmitThrows;
+        public bool SubmitCancels;
         public Task<McpToolResult> SubmitTransactionToBlockchainAsync(McpCallContext ctx, string network, string signedTransactionBase64, CancellationToken ct = default)
         {
             Submits.Add((ctx, network, signedTransactionBase64));
+            if (SubmitCancels) throw new OperationCanceledException("request aborted");
             if (SubmitThrows) throw new TimeoutException("submit timed out");
             return Task.FromResult(new McpToolResult(SubmitFails, "", null));
         }
@@ -243,6 +245,28 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
         Assert.Equal("4242", _evidence.Entries[1].Payload["confirmedRound"]!.GetValue<string>());
         // No token ever reaches evidence.
         Assert.DoesNotContain("SECRET", string.Concat(_evidence.Entries.Select(e => e.Payload.ToJsonString())));
+    }
+
+    [Fact]
+    public async Task CancelledDuringSubmit_LeavesTheStepSubmittedWithTxIds_SoReconcileCanResolveIt()
+    {
+        _mcp.SubmitCancels = true;
+        var b = await BuildPreviewAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ConfirmAsync(b.PreviewId, b.Group.GroupHash));
+
+        var (preview, step) = await LoadAsync(b.PreviewId);
+        Assert.Equal(StepStatus.Submitted, step.Status);
+        Assert.Equal(b.Group.TxIds, step.TxIds);
+        Assert.Equal(ActionPreviewStatus.InProgress, preview.Status);
+        Assert.Contains(_evidence.Entries, e => e.Kind == "submission_unknown");
+
+        // Reconcile finds it on chain.
+        await using var db = NewContext();
+        var svc = new ConfirmService(db, new ActionPreviewService(db, _clock), new ScopeGuard(_vault, _clock), _vault, _oidc, _mcp, _confirmer, _evidence, _clock,
+            NullLogger<ConfirmService>.Instance);
+        var r = await svc.ReconcileAsync(_session, b.PreviewId, CancellationToken.None);
+        Assert.Equal(ConfirmOutcome.Landed, r.Outcome);
+        Assert.Equal(ActionPreviewStatus.Completed, (await LoadAsync(b.PreviewId)).Preview.Status);
     }
 
     [Fact]

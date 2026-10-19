@@ -57,6 +57,15 @@ public sealed class AlgodNetworkOptions
 
     /// <summary>Optional API token. Supply it only through env vars or user-secrets.</summary>
     public string? Token { get; set; }
+
+    /// <summary>
+    /// Optional indexer base URL for this network. Algod forgets confirmed transactions quickly, so without an indexer a
+    /// transaction unknown to algod is never declared expired (it stays pending).
+    /// </summary>
+    public string? IndexerUrl { get; set; }
+
+    /// <summary>Optional indexer API token. Supply it only through env vars or user-secrets.</summary>
+    public string? IndexerToken { get; set; }
 }
 
 public sealed class AlgodOptions

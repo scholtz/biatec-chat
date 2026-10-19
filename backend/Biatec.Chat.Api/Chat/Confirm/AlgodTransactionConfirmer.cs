@@ -51,12 +51,57 @@ public sealed class AlgodTransactionConfirmer(IHttpClientFactory http, IOptions<
             }
             if (DateTimeOffset.UtcNow >= deadline)
             {
-                // Unknown to algod and the network is past LastValid: it never landed and never can.
-                if (notFound && lastValid > 0 && await LastRoundAsync(client, net, ct) is { } round && round > lastValid)
-                    return new TxConfirmation(TxConfirmationState.Expired, Error: "last_valid_passed");
+                // 404 on the pending endpoint proves nothing: algod forgets confirmed transactions. Ask the indexer.
+                if (notFound)
+                {
+                    var found = await IndexerLookupAsync(client, net, txId, ct);
+                    if (found.Round is { } confirmedRound)
+                        return new TxConfirmation(TxConfirmationState.Confirmed, confirmedRound);
+                    // Expired only when the indexer is reachable, has no such transaction, has caught up past
+                    // LastValid, and algod agrees the network is past it too.
+                    if (found.Absent && lastValid > 0 && found.IndexerRound is { } ir && ir > lastValid
+                        && await LastRoundAsync(client, net, ct) is { } round && round > lastValid)
+                        return new TxConfirmation(TxConfirmationState.Expired, Error: "last_valid_passed");
+                }
                 return new TxConfirmation(TxConfirmationState.Pending);
             }
             await Task.Delay(o.PollInterval, ct);
+        }
+    }
+
+    private readonly record struct IndexerResult(ulong? Round, bool Absent, ulong? IndexerRound);
+
+    /// <summary>Looks the transaction up on the indexer. Unreachable or unconfigured is neither found nor absent.</summary>
+    private static async Task<IndexerResult> IndexerLookupAsync(HttpClient client, AlgodNetworkOptions net, string txId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(net.IndexerUrl)) return default;
+        try
+        {
+            var baseUri = new Uri(net.IndexerUrl.TrimEnd('/') + "/");
+            using var req = new HttpRequestMessage(HttpMethod.Get, new Uri(baseUri, $"v2/transactions/{Uri.EscapeDataString(txId)}"));
+            if (!string.IsNullOrEmpty(net.IndexerToken)) req.Headers.TryAddWithoutValidation("X-Indexer-API-Token", net.IndexerToken);
+            using var res = await client.SendAsync(req, ct);
+            if (res.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
+                if (doc.RootElement.TryGetProperty("transaction", out var t) && t.TryGetProperty("confirmed-round", out var cr)
+                    && cr.TryGetUInt64(out var round) && round > 0)
+                    return new IndexerResult(round, false, null);
+                return default;
+            }
+            if (res.StatusCode != System.Net.HttpStatusCode.NotFound) return default;
+
+            using var hreq = new HttpRequestMessage(HttpMethod.Get, new Uri(baseUri, "health"));
+            if (!string.IsNullOrEmpty(net.IndexerToken)) hreq.Headers.TryAddWithoutValidation("X-Indexer-API-Token", net.IndexerToken);
+            using var hres = await client.SendAsync(hreq, ct);
+            if (!hres.IsSuccessStatusCode) return default;
+            using var hdoc = JsonDocument.Parse(await hres.Content.ReadAsStringAsync(ct));
+            var ir = hdoc.RootElement.TryGetProperty("round", out var r) && r.TryGetUInt64(out var rv) ? (ulong?)rv : null;
+            return new IndexerResult(null, true, ir);
+        }
+        catch (Exception ex) when ((ex is HttpRequestException or JsonException or TaskCanceledException or UriFormatException) && !ct.IsCancellationRequested)
+        {
+            return default;
         }
     }
 

@@ -204,8 +204,13 @@ public sealed class ConfirmService(
         }
 
         var txIds = Biatec.Chat.Tools.Algod.AlgorandGroup.Ensure(group).TxIds.ToArray();
-        step.Status = StepStatus.Signed;
-        await db.SaveChangesAsync(ct);
+        // Record "submitted, unconfirmed" BEFORE handing the group to MCP and ignore the request's cancellation: once
+        // the signed bytes leave, the group may be broadcast even if this request is aborted, and Reconcile can only
+        // resolve a Submitted step that has TxIds.
+        step.TxIds = txIds;
+        step.Status = StepStatus.Submitted;
+        preview.Status = ActionPreviewStatus.InProgress;
+        await db.SaveChangesAsync(CancellationToken.None);
 
         var sessionId = session.Id.ToString("N");
         var entry = await vault.GetAsync(sessionId, ct);
@@ -213,31 +218,31 @@ public sealed class ConfirmService(
         McpToolResult? result = null;
         string? unknownError = null;
         try { result = await mcp.SubmitTransactionToBlockchainAsync(ctx, step.Network!, SignedGroupVerifier.ToSubmissionBlob(raw), ct); }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
-            // A timeout or network error after the request left may still have been broadcast: the outcome is unknown.
-            unknownError = ex.GetType().Name;
+            // A timeout, network error or abort after the request left may still have been broadcast: the outcome is
+            // unknown. The step stays Submitted so Reconcile resolves it.
+            unknownError = ex is OperationCanceledException ? "cancelled" : ex.GetType().Name;
         }
         if (unknownError is null && (result is null || result.IsError))
         {
             // An explicit MCP error result: the group was not accepted.
-            await FailAsync(preview, step, ct);
+            step.TxIds = [];
+            await FailAsync(preview, step, CancellationToken.None);
             await RecordAsync(session, "submission_failed", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash }, ct);
             return new ConfirmResult(ConfirmOutcome.Failed, "The signed transactions could not be submitted. Nothing moved; the preview must be rebuilt.", [], ErrorCode: "submit_failed");
         }
 
-        step.TxIds = txIds;
-        step.Status = StepStatus.Submitted;
-        preview.Status = ActionPreviewStatus.InProgress;
-        await db.SaveChangesAsync(ct);
         if (unknownError is not null)
-            await RecordAsync(session, "submission_unknown", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["error"] = unknownError }, ct);
+            await RecordAsync(session, "submission_unknown", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["error"] = unknownError }, CancellationToken.None);
         await RecordAsync(session, "action_submitted", new JsonObject
         {
             ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["seq"] = step.Seq,
             ["groupHash"] = step.SubjectHash, ["txIds"] = new JsonArray(txIds.Select(t => (JsonNode?)JsonValue.Create(t)).ToArray()),
             ["valuedEur"] = signed.ValuedEur,
-        }, ct);
+        }, CancellationToken.None);
+
+        if (unknownError == "cancelled") throw new OperationCanceledException(ct);
 
         return await TrackAsync(session, preview, step, txIds, unknownError is not null, ct);
     }
