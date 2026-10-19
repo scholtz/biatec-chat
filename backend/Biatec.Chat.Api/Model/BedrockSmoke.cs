@@ -1,9 +1,6 @@
-using System.ComponentModel.DataAnnotations;
 using Amazon.BedrockRuntime;
 using Amazon.BedrockRuntime.Model;
 using Biatec.Chat.Api.Config;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 namespace Biatec.Chat.Api.Model;
 
@@ -18,26 +15,18 @@ public static class BedrockSmoke
 
     public static async Task<int> RunAsync(string[] args)
     {
-        var config = new ConfigurationBuilder()
-            .SetBasePath(AppContext.BaseDirectory)
-            .AddJsonFile("appsettings.json", optional: true)
-            .AddEnvironmentVariables()
-            .Build();
-        var section = config.GetSection(BedrockOptions.Section);
-        var o = section.Get<BedrockOptions>() ?? new BedrockOptions();
-        var c = section.Get<BedrockClientOptions>() ?? new BedrockClientOptions();
-        // Same rules the web host enforces at startup (eu-central-1, eu.anthropic.* ids).
-        Validator.ValidateObject(o, new ValidationContext(o), validateAllProperties: true);
-        Validator.ValidateObject(c, new ValidationContext(c), validateAllProperties: true);
-        o.MaxTokens = Math.Min(o.MaxTokens, 200);
+        // The web host's configuration sources (appsettings.{Environment}.json, user secrets, env vars) and the same
+        // registrations and validation, but only the Bedrock part, so no Redis, PostgreSQL or OIDC settings are needed.
+        var builder = WebApplication.CreateBuilder();
+        builder.Services.AddOptions<BedrockOptions>().BindConfiguration(BedrockOptions.Section).ValidateDataAnnotations();
+        builder.Services.PostConfigure<BedrockOptions>(o => o.MaxTokens = Math.Min(o.MaxTokens, 200));
+        builder.Services.AddBedrockModel();
+        await using var services = builder.Services.BuildServiceProvider();
+        var client = services.GetRequiredService<IModelClient>();
 
         var profile = args.Contains("--authenticated") ? ModelProfile.Authenticated : ModelProfile.Anonymous;
         var prompt = string.Join(' ', args.Where(a => a != "--authenticated"));
         if (prompt.Length == 0) prompt = "In two sentences, what can you help me with?";
-
-        var client = new BedrockModelClient(
-            new BedrockConverseStreamSource(ModelRegistration.CreateBedrockRuntime(o)),
-            Options.Create(o), Options.Create(c), NullLogger<BedrockModelClient>.Instance);
         // Longer than the minimum cacheable prefix (1024 tokens on Sonnet 4.5, 4096 on Opus 4.5), so the second call reads the cache.
         var rules = profile == ModelProfile.Authenticated ? 320 : 120;
         var request = new ModelRequest

@@ -9,7 +9,7 @@ public sealed class BedrockClientOptions
     /// <summary>Process-wide cap on concurrent Bedrock calls; the account's Claude rate limit is shared by the team.</summary>
     [Range(1, 256)] public int MaxConcurrency { get; set; } = 8;
 
-    /// <summary>How long a call waits for a free slot before failing with <see cref="ModelBusyException"/>.</summary>
+    /// <summary>How long a call may wait for free slots in total, retries included, before <see cref="ModelBusyException"/>.</summary>
     [Range(1, 600000)] public int QueueTimeoutMs { get; set; } = 30000;
 
     /// <summary>Retries after a throttled or transiently failed call, with exponential backoff and full jitter.</summary>
@@ -20,6 +20,9 @@ public sealed class BedrockClientOptions
     [Range(1, 120000)] public int RetryMaxDelayMs { get; set; } = 20000;
 }
 
-/// <summary>Every concurrency slot stayed taken for the whole queue timeout; the caller should answer "busy, try again".</summary>
-public sealed class ModelBusyException(TimeSpan waited)
-    : Exception($"No Bedrock slot became free within {waited.TotalSeconds:0.#} s.");
+/// <summary>
+/// Every concurrency slot stayed taken for the whole queue budget; the caller should answer "busy, try again".
+/// When the wait was for a retry, the error that caused the retry is the inner exception.
+/// </summary>
+public sealed class ModelBusyException(TimeSpan budget, Exception? retryCause = null)
+    : Exception($"No Bedrock slot became free within {budget.TotalSeconds:0.#} s.", retryCause);

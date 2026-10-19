@@ -29,7 +29,8 @@ public sealed class BedrockConverseStreamSource(IAmazonBedrockRuntime bedrock) :
 /// ConverseStream client: picks the model id for the profile, always sets maxTokens, places a cache point after
 /// each static system block, caps concurrent streams process-wide and retries throttled calls with full jitter.
 /// A call is retried only while nothing has been yielded, so a caller never sees a partial answer twice. A slot
-/// is held while a stream is open (including while the caller reads it) and released during backoff.
+/// is held while the stream is open, including while the caller handles text and tool-use events, and is released
+/// during backoff and before the final stop and usage events, so run tools after the message stop.
 /// </summary>
 public sealed class BedrockModelClient(
     IConverseStreamSource source,
@@ -75,12 +76,22 @@ public sealed class BedrockModelClient(
     public async IAsyncEnumerable<ModelStreamEvent> StreamAsync(ModelRequest request, [EnumeratorCancellation] CancellationToken ct = default)
     {
         var converse = BuildRequest(request);
-        var queueTimeout = TimeSpan.FromMilliseconds(_c.QueueTimeoutMs);
+        // One budget for time spent waiting on a slot, shared by all attempts (backoff doesn't count).
+        var budget = TimeSpan.FromMilliseconds(_c.QueueTimeoutMs);
+        var waited = TimeSpan.Zero;
+        Exception? lastError = null;
         for (var attempt = 0; ; attempt++)
         {
-            if (!await _gate.WaitAsync(queueTimeout, ct))
-                throw new ModelBusyException(queueTimeout);
-            Exception? retryable = null;
+            var queued = Stopwatch.StartNew();
+            var acquired = await _gate.WaitAsync(budget > waited ? budget - waited : TimeSpan.Zero, ct);
+            waited += queued.Elapsed;
+            if (!acquired)
+                throw new ModelBusyException(budget, lastError);
+            lastError = null;
+            // Events from the message stop on (stop and usage) are held back and handed out after the slot is
+            // released, so a caller that works on the finished answer inside its loop doesn't keep a Bedrock slot.
+            var tail = new List<ModelStreamEvent>();
+            var tailStarted = false;
             try
             {
                 var assembler = new StreamAssembler(converse.ModelId);
@@ -94,19 +105,22 @@ public sealed class BedrockModelClient(
                     {
                         more = await events.MoveNextAsync();
                     }
-                    catch (Exception ex) when (!yielded && attempt < _c.MaxRetries && IsRetryable(ex))
+                    catch (Exception ex) when (!yielded && attempt < _c.MaxRetries && IsRetryable(ex, ct))
                     {
-                        retryable = ex;
+                        lastError = ex;
                         break;
                     }
                     if (!more) break;
 
+                    tailStarted |= events.Current is MessageStopEvent;
                     foreach (var output in assembler.Accept(events.Current, sw))
                     {
+                        if (tailStarted)
+                        {
+                            tail.Add(output);
+                            continue;
+                        }
                         yielded = true;
-                        if (output is ModelUsage u)
-                            logger.LogInformation("Bedrock usage {ModelId}: in {In}, out {Out}, cache read {CacheRead}, cache write {CacheWrite}, {LatencyMs} ms",
-                                u.ModelId, u.InputTokens, u.OutputTokens, u.CacheReadInputTokens, u.CacheWriteInputTokens, u.LatencyMs);
                         yield return output;
                     }
                 }
@@ -115,11 +129,22 @@ public sealed class BedrockModelClient(
             {
                 _gate.Release();
             }
-            if (retryable is null) yield break;
+
+            if (lastError is null)
+            {
+                foreach (var output in tail)
+                {
+                    if (output is ModelUsage u)
+                        logger.LogInformation("Bedrock usage {ModelId}: in {In}, out {Out}, cache read {CacheRead}, cache write {CacheWrite}, {LatencyMs} ms",
+                            u.ModelId, u.InputTokens, u.OutputTokens, u.CacheReadInputTokens, u.CacheWriteInputTokens, u.LatencyMs);
+                    yield return output;
+                }
+                yield break;
+            }
 
             var delay = BackoffDelay(attempt);
             logger.LogWarning("Bedrock {ModelId} {Error}; retry {Attempt} of {Max} in {DelayMs} ms",
-                converse.ModelId, retryable.GetType().Name, attempt + 1, _c.MaxRetries, (int)delay.TotalMilliseconds);
+                converse.ModelId, lastError.GetType().Name, attempt + 1, _c.MaxRetries, (int)delay.TotalMilliseconds);
             await Task.Delay(delay, ct);
         }
     }
@@ -132,70 +157,70 @@ public sealed class BedrockModelClient(
     }
 
     /// <summary>
-    /// Transient errors, also when they arrive inside the event stream, where the SDK may wrap them in a
-    /// <see cref="BedrockRuntimeEventStreamException"/>.
+    /// Transient errors: Bedrock's throttling and availability errors (also when they arrive inside the event
+    /// stream, where the SDK may wrap them in a <see cref="BedrockRuntimeEventStreamException"/>), transport
+    /// failures, and SDK timeouts. The SDK's own retries are off, so this is the only retry layer.
     /// </summary>
-    public static bool IsRetryable(Exception ex)
+    public static bool IsRetryable(Exception ex, CancellationToken ct)
     {
         for (Exception? e = ex; e is not null; e = e.InnerException)
-            if (e is ThrottlingException or ServiceUnavailableException or ModelNotReadyException or InternalServerException or ModelStreamErrorException)
-                return true;
+        {
+            switch (e)
+            {
+                case ThrottlingException or ServiceUnavailableException or ModelNotReadyException or InternalServerException or ModelStreamErrorException:
+                case HttpRequestException or IOException or TimeoutException:
+                case OperationCanceledException when !ct.IsCancellationRequested:
+                    return true;
+            }
+        }
         return false;
     }
 
     private static SystemContentBlock CachePoint() => new() { CachePoint = new CachePointBlock { Type = CachePointType.Default } };
 
-    /// <summary>Turns ConverseStream events into text deltas, complete tool calls, the final message and usage.</summary>
+    /// <summary>
+    /// Turns ConverseStream events into text deltas, complete tool calls, the final message and usage. Blocks are
+    /// tracked by their content-block index, so the reconstructed message keeps the model's block order.
+    /// </summary>
     private sealed class StreamAssembler(string modelId)
     {
-        private readonly List<ContentBlock> _content = [];
-        private readonly StringBuilder _text = new();
-        private readonly StringBuilder _toolInput = new();
-        private ToolUseBlockStart? _tool;
-        private string? _stopReason;
+        private sealed class Block
+        {
+            public readonly StringBuilder Text = new();
+            public ToolUseBlockStart? Tool;
+            public string? ToolInput;
+        }
+
+        private readonly SortedDictionary<int, Block> _blocks = [];
+        private readonly Dictionary<int, StringBuilder> _toolInput = [];
 
         public IEnumerable<ModelStreamEvent> Accept(IEventStreamEvent ev, Stopwatch sw)
         {
             switch (ev)
             {
-                case ContentBlockStartEvent { Start.ToolUse: { } start }:
-                    FlushText();
-                    _tool = start;
-                    _toolInput.Clear();
+                case ContentBlockStartEvent { Start.ToolUse: { } start } e:
+                    BlockAt(e.ContentBlockIndex).Tool = start;
+                    _toolInput[e.ContentBlockIndex ?? 0] = new StringBuilder();
                     break;
-                case ContentBlockDeltaEvent { Delta: { } delta }:
+                case ContentBlockDeltaEvent { Delta: { } delta } e:
                     if (delta.Text is { Length: > 0 } text)
                     {
-                        _text.Append(text);
+                        BlockAt(e.ContentBlockIndex).Text.Append(text);
                         yield return new ModelTextDelta(text);
                     }
-                    else if (delta.ToolUse?.Input is { } input)
+                    else if (delta.ToolUse?.Input is { } input && _toolInput.TryGetValue(e.ContentBlockIndex ?? 0, out var sb))
                     {
-                        _toolInput.Append(input);
+                        sb.Append(input);
                     }
                     break;
-                case ContentBlockStopEvent:
-                    if (_tool is { } tool)
-                    {
-                        var json = _toolInput.Length == 0 ? "{}" : _toolInput.ToString();
-                        _content.Add(new ContentBlock
-                        {
-                            ToolUse = new ToolUseBlock { ToolUseId = tool.ToolUseId, Name = tool.Name, Input = ToDocument(json) },
-                        });
-                        _tool = null;
-                        yield return new ModelToolUse(tool.ToolUseId, tool.Name, json);
-                    }
-                    else
-                    {
-                        FlushText();
-                    }
+                case ContentBlockStopEvent e when _blocks.TryGetValue(e.ContentBlockIndex ?? 0, out var block)
+                                                  && block.Tool is { } tool && block.ToolInput is null:
+                    var json = _toolInput.Remove(e.ContentBlockIndex ?? 0, out var raw) && raw.Length > 0 ? raw.ToString() : "{}";
+                    block.ToolInput = json;
+                    yield return new ModelToolUse(tool.ToolUseId, tool.Name, json);
                     break;
                 case MessageStopEvent stop:
-                    FlushText();
-                    _stopReason = stop.StopReason?.Value ?? "";
-                    // Bedrock rejects an assistant message without content, so an empty answer has no message to append.
-                    yield return new ModelMessageStop(_stopReason,
-                        _content.Count == 0 ? null : new Message { Role = ConversationRole.Assistant, Content = [.. _content] });
+                    yield return new ModelMessageStop(stop.StopReason?.Value ?? "", BuildMessage());
                     break;
                 case ConverseStreamMetadataEvent { Usage: { } usage } meta:
                     yield return new ModelUsage(modelId,
@@ -206,18 +231,34 @@ public sealed class BedrockModelClient(
             }
         }
 
-        private void FlushText()
+        private Block BlockAt(int? index)
         {
-            if (_text.Length == 0) return;
-            _content.Add(new ContentBlock { Text = _text.ToString() });
-            _text.Clear();
+            var i = index ?? 0;
+            if (!_blocks.TryGetValue(i, out var b)) _blocks[i] = b = new Block();
+            return b;
         }
 
-        // Malformed tool input still goes back to the model as an empty object; the orchestrator rejects the call.
+        // Bedrock rejects an assistant message without content, so an empty answer has no message to append.
+        // A tool block that never completed is left out: the caller never got a ModelToolUse for it.
+        private Message? BuildMessage()
+        {
+            var content = new List<ContentBlock>();
+            foreach (var b in _blocks.Values)
+            {
+                if (b.Tool is { } tool && b.ToolInput is { } input)
+                    content.Add(new ContentBlock { ToolUse = new ToolUseBlock { ToolUseId = tool.ToolUseId, Name = tool.Name, Input = ToDocument(input) } });
+                else if (b.Tool is null && b.Text.Length > 0)
+                    content.Add(new ContentBlock { Text = b.Text.ToString() });
+            }
+            return content.Count == 0 ? null : new Message { Role = ConversationRole.Assistant, Content = content };
+        }
+
+        // Tool input is model output: anything that doesn't convert (malformed JSON, duplicate keys, a number out of
+        // double range) goes back to the model as an empty object; the orchestrator rejects the call from InputJson.
         private static Amazon.Runtime.Documents.Document ToDocument(string json)
         {
             try { return DocumentJson.FromJson(json); }
-            catch (System.Text.Json.JsonException) { return DocumentJson.FromJson("{}"); }
+            catch (Exception) { return DocumentJson.FromJson("{}"); }
         }
     }
 }

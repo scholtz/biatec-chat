@@ -315,13 +315,115 @@ public class BedrockModelClientTests
         Assert.Throws<ArgumentException>(() => Client(new FakeSource()).BuildRequest(request));
     }
 
-    [Fact]
-    public void Document_json_keeps_integers_beyond_int64_exact()
+    private static object[] ToolCall(string id, string inputJson, int index = 0) =>
+    [
+        new ContentBlockStartEvent { ContentBlockIndex = index, Start = new ContentBlockStart { ToolUse = new ToolUseBlockStart { ToolUseId = id, Name = "wallet_transfer" } } },
+        new ContentBlockDeltaEvent { ContentBlockIndex = index, Delta = new ContentBlockDelta { ToolUse = new ToolUseBlockDelta { Input = inputJson } } },
+        BlockStop(index),
+    ];
+
+    [Theory]
+    [InlineData("""{"amount":1,"amount":2}""")]
+    [InlineData("""{"amount":1e400}""")]
+    [InlineData("""{"amount":""")]
+    public async Task Odd_tool_input_reaches_the_caller_raw_and_never_breaks_the_stream(string input)
     {
-        var d = DocumentJson.FromJson("""{"amount":18446744073709551615,"neg":-9223372036854775809,"f":1.5e300}""").AsDictionary();
-        Assert.Equal("18446744073709551615", d["amount"].AsString());
-        Assert.Equal("-9223372036854775809", d["neg"].AsString());
-        Assert.Equal(1.5e300, d["f"].AsDouble());
+        var events = await Collect(Client(new FakeSource([.. ToolCall("tu-1", input), Stop(StopReason.Tool_use)])).StreamAsync(Request()));
+
+        Assert.Equal(input, Assert.Single(events.OfType<ModelToolUse>()).InputJson);
+        Assert.NotNull(Assert.Single(events.OfType<ModelMessageStop>()).Message!.Content[0].ToolUse);
+    }
+
+    [Fact]
+    public async Task Raw_tool_input_keeps_uint64_digits_the_document_cannot()
+    {
+        const string input = """{"amount":18446744073709551615}""";
+        var events = await Collect(Client(new FakeSource([.. ToolCall("tu-1", input), Stop(StopReason.Tool_use)])).StreamAsync(Request()));
+
+        Assert.Equal(input, Assert.Single(events.OfType<ModelToolUse>()).InputJson);
+        var doc = Assert.Single(events.OfType<ModelMessageStop>()).Message!.Content[0].ToolUse.Input.AsDictionary();
+        Assert.True(doc["amount"].IsDouble());
+    }
+
+    [Fact]
+    public async Task Blocks_are_assembled_by_index()
+    {
+        // A stop for another block (say reasoning) while the tool is open doesn't close the tool early.
+        var source = new FakeSource([
+            new ContentBlockStartEvent { ContentBlockIndex = 1, Start = new ContentBlockStart { ToolUse = new ToolUseBlockStart { ToolUseId = "tu-1", Name = "kb_search" } } },
+            new ContentBlockDeltaEvent { ContentBlockIndex = 1, Delta = new ContentBlockDelta { ToolUse = new ToolUseBlockDelta { Input = """{"q":""" } } },
+            BlockStop(0),
+            new ContentBlockDeltaEvent { ContentBlockIndex = 1, Delta = new ContentBlockDelta { ToolUse = new ToolUseBlockDelta { Input = "\"fees\"}" } } },
+            BlockStop(1),
+            new ContentBlockDeltaEvent { ContentBlockIndex = 2, Delta = new ContentBlockDelta { Text = "Done" } },
+            BlockStop(2),
+            Stop(StopReason.Tool_use),
+        ]);
+
+        var events = await Collect(Client(source).StreamAsync(Request()));
+
+        Assert.Equal("""{"q":"fees"}""", Assert.Single(events.OfType<ModelToolUse>()).InputJson);
+        var content = Assert.Single(events.OfType<ModelMessageStop>()).Message!.Content;
+        Assert.Equal(2, content.Count);
+        Assert.Equal("tu-1", content[0].ToolUse.ToolUseId);
+        Assert.Equal("Done", content[1].Text);
+    }
+
+    [Fact]
+    public async Task Retries_transport_failures_but_not_caller_cancellation()
+    {
+        var source = new FakeSource([new HttpRequestException("connection reset")], [new TaskCanceledException("sdk timeout")], TextAnswer);
+        await Collect(Client(source).StreamAsync(Request()));
+        Assert.Equal(3, source.Calls);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        Assert.False(BedrockModelClient.IsRetryable(new OperationCanceledException(cts.Token), cts.Token));
+    }
+
+    [Fact]
+    public async Task Slot_is_free_while_the_caller_handles_the_message_stop()
+    {
+        var client = Client(new FakeSource(TextAnswer), Opts(maxConcurrency: 1, queueTimeoutMs: 1000));
+        await foreach (var e in client.StreamAsync(Request()))
+        {
+            if (e is not ModelMessageStop) continue;
+            // Still inside the first loop, as a tool executor would be: a second call must get the slot.
+            Assert.NotEmpty(await Collect(client.StreamAsync(Request())));
+        }
+    }
+
+    [Fact]
+    public async Task Busy_after_a_retry_keeps_the_retry_cause()
+    {
+        // The first call is throttled while a second call already queues for the slot; that second call then holds
+        // the slot, so the first call's retry can't get it back.
+        var release = new TaskCompletionSource();
+        var blocker = new FakeSource(TextAnswer) { OnOpen = () => release.Task };
+        BedrockModelClient client = null!;
+        Task? holder = null;
+        var throttled = new FakeSource([new ThrottlingException("slow down")])
+        {
+            OnOpen = async () =>
+            {
+                holder = Task.Run(() => Collect(client.StreamAsync(Request())));
+                await Task.Delay(100);
+            },
+        };
+        client = Client(new SwitchSource(throttled, blocker), Opts(maxConcurrency: 1, queueTimeoutMs: 300, baseDelayMs: 1));
+
+        var busy = await Assert.ThrowsAsync<ModelBusyException>(() => Collect(client.StreamAsync(Request())));
+        Assert.IsType<ThrottlingException>(busy.InnerException);
+        release.SetResult();
+        await holder!;
+    }
+
+    /// <summary>The first call goes to <c>first</c>, every later one to <c>rest</c>.</summary>
+    private sealed class SwitchSource(IConverseStreamSource first, IConverseStreamSource rest) : IConverseStreamSource
+    {
+        private int _calls;
+        public IAsyncEnumerable<IEventStreamEvent> OpenAsync(ConverseStreamRequest request, CancellationToken ct) =>
+            (Interlocked.Increment(ref _calls) == 1 ? first : rest).OpenAsync(request, ct);
     }
 
     [Fact]
