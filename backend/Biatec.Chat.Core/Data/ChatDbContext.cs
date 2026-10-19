@@ -13,6 +13,7 @@ public class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbContext(
     public DbSet<EvidenceEntry> EvidenceEntries => Set<EvidenceEntry>();
     public DbSet<EvidenceAnchor> EvidenceAnchors => Set<EvidenceAnchor>();
     public DbSet<EvidenceAnchorLeaf> EvidenceAnchorLeaves => Set<EvidenceAnchorLeaf>();
+    public DbSet<EvidenceAnchorAttempt> EvidenceAnchorAttempts => Set<EvidenceAnchorAttempt>();
     public DbSet<PublicConversationState> PublicConversationStates => Set<PublicConversationState>();
     public DbSet<PopupAuthRequest> PopupAuthRequests => Set<PopupAuthRequest>();
     public DbSet<PendingRevocation> PendingRevocations => Set<PendingRevocation>();
@@ -88,6 +89,14 @@ public class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbContext(
         {
             e.HasIndex(x => x.SequenceNumber).IsUnique();
             e.HasIndex(x => x.AnchorTxId).IsUnique();
+        });
+
+        b.Entity<EvidenceAnchorAttempt>(e =>
+        {
+            e.HasKey(x => x.SequenceNumber);
+            e.Property(x => x.SequenceNumber).ValueGeneratedNever();
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.Leaves).HasColumnType("jsonb");
         });
 
         b.Entity<EvidenceAnchorLeaf>(e =>
