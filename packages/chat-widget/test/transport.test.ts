@@ -145,6 +145,150 @@ describe("public transport continuity", () => {
   });
 });
 
+describe("review fixes", () => {
+  const pubHeaders = (n: number) => ({ "X-Biatec-Conversation": "cap", "X-Biatec-Continuation": "t" + n });
+
+  it("failed adopt keeps the public conversation and retries later", async () => {
+    vi.useFakeTimers();
+    let adoptOk = false;
+    const bodies: { conversationId: string | null; continuationToken: string | null }[] = [];
+    const f = vi.fn(async (u: string, i?: RequestInit) => {
+      if (u.endsWith("/session/probe")) return json({ cookieReturned: true });
+      if (u.endsWith("/session/adopt")) return adoptOk ? json({}) : new Response("", { status: 409 });
+      if (u.endsWith("/public/chat")) {
+        bodies.push(JSON.parse(String(i!.body)));
+        return sse([frame({ type: "text_delta", text: "a" })], pubHeaders(bodies.length));
+      }
+      throw new Error(u);
+    });
+    const m = new TransportManager(cfg(f as unknown as typeof fetch), { backoffMs: [50] });
+    // Start a public conversation before the probe is allowed to switch: send first, then open.
+    await collect(m.send({ message: "1" }));
+    expect(await m.open()).toBe("failed-registered");
+    expect(m.kind).toBe("public");
+    await collect(m.send({ message: "2" }));
+    expect(bodies[1]).toMatchObject({ conversationId: "cap", continuationToken: "t1" });
+    adoptOk = true;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(m.kind).toBe("cookie");
+    m.dispose();
+  });
+
+  it("concurrent Sign in clicks share one probe and adopt once", async () => {
+    let adopts = 0;
+    const f = vi.fn(async (u: string) => {
+      if (u.endsWith("/session/probe")) return json({ cookieReturned: true });
+      if (u.endsWith("/session/adopt")) {
+        adopts++;
+        return json({});
+      }
+      return sse([frame({ type: "text_delta", text: "a" })], pubHeaders(1));
+    });
+    const m = new TransportManager(cfg(f as unknown as typeof fetch), { backoffMs: [1e9] });
+    await collect(m.send({ message: "1" }));
+    const r = await Promise.all([m.retryOnSignIn(), m.retryOnSignIn(), m.open()]);
+    expect(r).toEqual([true, true, expect.anything()]);
+    expect(adopts).toBe(1);
+    m.dispose();
+  });
+
+  it("a throwing probe reschedules the background retry", async () => {
+    vi.useFakeTimers();
+    let probes = 0;
+    const f = vi.fn(async (u: string) => {
+      if (u.endsWith("/session/probe")) {
+        probes++;
+        return probes <= 2 ? new Response("", { status: 500 }) : json({ cookieReturned: true });
+      }
+      if (u.endsWith("/session/adopt")) throw new Error("boom");
+      return json({ registered: true });
+    });
+    const m = new TransportManager(cfg(f as unknown as typeof fetch), { backoffMs: [10] });
+    await m.open();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(m.kind).toBe("cookie");
+    m.dispose();
+  });
+
+  it("lost reply retries with the same token as the first attempt", async () => {
+    const tokens: (string | null)[] = [];
+    let n = 0;
+    const f = vi.fn(async (u: string, i?: RequestInit) => {
+      if (u.endsWith("/session/probe")) throw new TypeError("x");
+      if (u.endsWith("/public/origin")) return json({ registered: false });
+      n++;
+      tokens.push(JSON.parse(String(i!.body)).continuationToken);
+      if (n === 3) throw new TypeError("network lost");
+      return sse([frame({ type: "text_delta", text: "x" })], pubHeaders(n));
+    });
+    const m = new TransportManager(cfg(f as unknown as typeof fetch), { warn: () => {} });
+    await m.open();
+    await collect(m.send({ message: "1" }));
+    await collect(m.send({ message: "2" }));
+    await collect(m.send({ message: "3" }));
+    expect(tokens).toEqual([null, "t1", "t2", "t2"]);
+  });
+
+  it("a stream that fails before its first event is retried with the same token", async () => {
+    const tokens: (string | null)[] = [];
+    const f = vi.fn(async (u: string, i?: RequestInit) => {
+      if (u.endsWith("/session/probe")) throw new TypeError("x");
+      if (u.endsWith("/public/origin")) return json({ registered: false });
+      tokens.push(JSON.parse(String(i!.body)).continuationToken);
+      if (tokens.length === 2) {
+        const body = new ReadableStream<Uint8Array>({ start: (c) => c.error(new TypeError("reset")) });
+        return new Response(body, { status: 200, headers: pubHeaders(9) });
+      }
+      return sse([frame({ type: "text_delta", text: "x" })], pubHeaders(tokens.length));
+    });
+    const m = new TransportManager(cfg(f as unknown as typeof fetch), { warn: () => {} });
+    await m.open();
+    await collect(m.send({ message: "1" }));
+    const ev = await collect(m.send({ message: "2" }));
+    expect(ev).toHaveLength(1);
+    expect(tokens).toEqual([null, "t1", "t1"]);
+  });
+
+  it("idle-closed conversation is replaced transparently with a one-line note", async () => {
+    const bodies: { conversationId: string | null }[] = [];
+    const notice = vi.fn();
+    const f = vi.fn(async (u: string, i?: RequestInit) => {
+      if (u.endsWith("/session/probe")) throw new TypeError("x");
+      if (u.endsWith("/public/origin")) return json({ registered: false });
+      bodies.push(JSON.parse(String(i!.body)));
+      if (bodies.length === 2) return json({ code: "conversation_idle_closed" }, 410);
+      return sse([frame({ type: "text_delta", text: "x" })], pubHeaders(bodies.length));
+    });
+    const m = new TransportManager({ ...cfg(f as unknown as typeof fetch), onNotice: notice }, { warn: () => {} });
+    await m.open();
+    await collect(m.send({ message: "1" }));
+    const ev = await collect(m.send({ message: "2" }));
+    expect(ev).toHaveLength(1);
+    expect(notice).toHaveBeenCalledTimes(1);
+    expect(bodies[2]).toMatchObject({ conversationId: null, continuationToken: null });
+  });
+
+  it("keepalive pings the cookie endpoint with credentials and the CSRF header", async () => {
+    const calls: [string, RequestInit | undefined][] = [];
+    const f = vi.fn(async (u: string, i?: RequestInit) => {
+      calls.push([u, i]);
+      return json({ cookieReturned: true });
+    });
+    const m = new TransportManager(cfg(f as unknown as typeof fetch));
+    await m.open();
+    m.keepalive.hold("preview");
+    await vi.waitFor(() => undefined);
+    m.keepalive.stop();
+    // Drive the ping directly through the transport the manager owns.
+    const ok = await (m as unknown as { cookie: { keepalive(): Promise<boolean> } }).cookie.keepalive();
+    expect(ok).toBe(true);
+    const ka = calls.find((c) => c[0].endsWith("/session/keepalive"))!;
+    expect(ka[1]!.credentials).toBe("include");
+    expect((ka[1]!.headers as Record<string, string>)["X-Biatec-Chat"]).toBe("1");
+    m.dispose();
+  });
+});
+
 describe("keepalive", () => {
   it("pings while held and stops when released", async () => {
     vi.useFakeTimers();

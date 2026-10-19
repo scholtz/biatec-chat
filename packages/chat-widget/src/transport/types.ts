@@ -31,6 +31,8 @@ export interface TransportConfig {
   backendUrl: string;
   clientKey: string;
   fetch?: typeof fetch;
+  /** One-line user-facing notes (for example: an idle-closed conversation was replaced by a new one). */
+  onNotice?: (message: string) => void;
 }
 
 /** Header the backend requires on every state-changing call made from script. */
