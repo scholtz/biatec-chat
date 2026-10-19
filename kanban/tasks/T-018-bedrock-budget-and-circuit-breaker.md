@@ -1,7 +1,7 @@
 ---
 id: T-018
 title: Bedrock budget and circuit breaker
-status: review
+status: done
 priority: P2
 epic: "Orchestrator"
 blocked_by: [T-014]
@@ -61,6 +61,8 @@ dotnet test --filter Budget
 
 ## Review
 
+- 2026-10-19 23:57 · approve · PR #122 merged into main @ fed4d80 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
@@ -69,3 +71,4 @@ dotnet test --filter Budget
 - 2026-10-19 23:25 · LukassSoukup · taken · status stays backlog
 - 2026-10-19 23:41 · session-20261019-2341 · backlog → in-progress · claimed by /kanban-next
 - 2026-10-19 23:51 · session-20261019-2341 · in-progress → review · PR #122, verification passed
+- 2026-10-19 23:57 · user · review → done · PR #122 merged into main @ fed4d80 (synced by kanban-sync)
