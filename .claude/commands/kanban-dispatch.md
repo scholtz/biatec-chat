@@ -12,7 +12,8 @@ commits on `task/T-###` branches. Never push and never merge; merging happens on
 
 ## Loop
 
-1. **Sync the board.** Run the `/kanban-board` steps. If `git status` shows uncommitted changes outside `kanban/`
+1. **Sync the board.** Run the `/kanban-board` steps (`kanban/scripts/board.py sync`: merged → done, unblock,
+   regenerate). If `git status` shows uncommitted changes outside `kanban/`
    on `main`, stop and ask the user, because worktrees would not include them. Commit any `kanban/` changes:
    `git add kanban && git commit -m "kanban: sync board"`.
 2. **Select tasks.** Run `git pull --rebase origin main` first and get your GitHub username `<me>`
@@ -34,22 +35,28 @@ commits on `task/T-###` branches. Never push and never merge; merging happens on
    don't predict results.
 6. **On each worker result**, update that task on `main`:
    - `STATUS: review`: paste the report into the task's Hand-off section. Tick the acceptance criteria the worker
-     reports as verified. Set `status: review` (keep `owner`) and log
-     `in-progress → review · branch task/T-### @ <commit>`.
+     reports as verified. Run `kanban/scripts/board.py unblocks T-###` and add its result as **Unblocks:**. Set
+     `status: review` (keep `owner`) and log `in-progress → review · branch task/T-### @ <commit>`.
    - `STATUS: blocked`: add `BLOCKED_BY` to `blocked_by`, set `status: blocked`, clear `owner`, and log the progress
      and next steps the worker reported.
    - `STATUS: failed`, or no usable report: set `status: backlog`, clear `owner`, and log the reason. If the same
      task fails twice, leave it in backlog with a `NEEDS USER:` note and don't dispatch it again.
    - `PROPOSED TASKS`: create each from `kanban/templates/task.md` with the next free ID, status `backlog` or
      `blocked`, and the log line `coordinator · (new) → <status> · proposed by T-###`. Set its `parallel` flag and
-     `conflicts_with`, and add it to the `conflicts_with` of the tasks it conflicts with.
+     `conflicts_with`, and add it to the `conflicts_with` of the tasks it conflicts with. Then scan it for
+     blockers (`kanban/README.md` → "Creating a task"): run `kanban/scripts/board.py blockers T-###`, decide each
+     candidate (ordering need → `blocked_by` on the waiting side, file overlap → `conflicts_with` on both sides).
    - Files changed outside the task's area: recompute `parallel` / `conflicts_with` for this task and every
      unfinished task that changes those files, on both sides (rules in `kanban/README.md`, "Parallel work").
 
-   Then regenerate the board, commit `kanban: T-### → <status>`, and go back to step 2 to fill the free slot.
-7. **Stop** when no worker is running and no task is ready. Report: tasks in review (with branches), blocked tasks
-   and their blockers, tasks needing the user, and new tasks created. Remind the user that `/kanban-review` merges
-   approved branches, and that the merges are what unblock the next wave.
+   Then run `kanban/scripts/board.py sync` (it sets new tasks' `blocked`/`backlog` status from `blocked_by`, marks
+   merged tasks done and unblocks their dependants), commit `kanban: T-### → <status>`, and go back to step 2 to fill
+   the free slot. Run the sync at every step-2 pass too: tasks the user approved or merged while workers ran unblock
+   the next wave without waiting for the loop to end.
+7. **Stop** when no worker is running and no task is ready. Report: tasks in review (with branches and what each
+   unblocks), blocked tasks and their blockers, tasks needing the user, and new tasks created. Remind the user that
+   `/kanban-review` (or merging the PR on GitHub) is what unblocks the next wave; the `kanban-sync` Action records
+   GitHub merges automatically.
 
 ## Worker prompt (fill in T-###)
 
