@@ -25,6 +25,9 @@ decoding for limit enforcement.
   An operator adds the static client, puts the secret in the secret store, then calls `POST /onboarding/operator/tenants` (bearer `Onboarding:OperatorKey`)
   with the `oidcClientId` and a `secret://` reference; the DNS proofs are re-checked before the tenant row is written.
 - **Also missing:** a real `ISecretStore` (AWS Secrets Manager or Kubernetes secrets); only the interface and a throwing default exist.
+- **Challenge validity:** the TXT value embeds a 7-day epoch bucket and the current and previous bucket are accepted (a record works for 7 to 14 days). It is not bound to the requester; anyone who reads the public TXT can submit the identical configuration, which yields exactly the tenant the zone owner asked for.
+- **Abuse limits:** `/onboarding/*` is rate limited per remote IP (`Onboarding:RateLimitPermits`, default 20 per `Onboarding:RateLimitWindowSeconds`, default 60) and bodies above `Onboarding:MaxBodyBytes` (32 KiB) get 413. Behind a proxy, forwarded-headers handling is needed so the client IP is partitioned, not the proxy. A per-target-host concurrency limit is deferred.
+- **Secret cleanup:** `ISecretStore.DeleteAsync` removes the stored secret best-effort when the tenant row write fails for a non-conflict reason.
 
 ## Fallback matrix
 

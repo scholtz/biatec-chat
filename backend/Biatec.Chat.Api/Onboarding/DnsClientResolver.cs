@@ -5,7 +5,12 @@ namespace Biatec.Chat.Api.Onboarding;
 /// <summary>System-resolver TXT lookups through DnsClient.</summary>
 public sealed class DnsClientTxtResolver : IDnsTxtResolver
 {
-    private readonly LookupClient client = new(new LookupClientOptions { UseCache = false, Timeout = TimeSpan.FromSeconds(5), Retries = 1 });
+    private readonly ILookupClient client;
+
+    public DnsClientTxtResolver() : this(new LookupClient(new LookupClientOptions { UseCache = false, Timeout = TimeSpan.FromSeconds(5), Retries = 1 })) { }
+
+    /// <summary>Lets tests supply a fake lookup client.</summary>
+    public DnsClientTxtResolver(ILookupClient client) => this.client = client;
 
     public async Task<IReadOnlyList<string>> GetTxtRecordsAsync(string name, CancellationToken ct)
     {

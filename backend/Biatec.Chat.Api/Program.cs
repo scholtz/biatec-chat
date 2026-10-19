@@ -30,6 +30,8 @@ await app.MigrateDevelopmentDatabaseAsync();
 await app.SeedTenantsAsync();
 
 app.UseTenancy();
+app.UseOnboardingBodyLimit();
+app.UseRateLimiter();
 
 // 200 Healthy when Redis and PostgreSQL answer, 503 Unhealthy otherwise. The body is the status only.
 app.MapHealthChecks("/health");

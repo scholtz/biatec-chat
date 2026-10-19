@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
@@ -14,8 +16,40 @@ public static class OnboardingEndpoints
         services.TryAddSingleton<IOidcClientRegistrar, NoDynamicRegistration>();
         services.TryAddSingleton<ISecretStore, UnconfiguredSecretStore>();
         services.TryAddScoped<OnboardingService>();
+        services.AddRateLimiter(o =>
+        {
+            o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            // Per remote IP; behind a proxy this needs forwarded-headers handling so the client IP, not the proxy, is seen.
+            o.AddPolicy(RateLimitPolicy, ctx =>
+            {
+                var opts = ctx.RequestServices.GetRequiredService<IOptions<OnboardingOptions>>().Value;
+                return RateLimitPartition.GetFixedWindowLimiter(ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = Math.Max(1, opts.RateLimitPermits),
+                    Window = TimeSpan.FromSeconds(Math.Max(1, opts.RateLimitWindowSeconds)),
+                    QueueLimit = 0,
+                });
+            });
+        });
         return services;
     }
+
+    public const string RateLimitPolicy = "onboarding";
+
+    /// <summary>Rejects an oversized /onboarding request body (413) before it is parsed. Add before the endpoints.</summary>
+    public static IApplicationBuilder UseOnboardingBodyLimit(this IApplicationBuilder app) =>
+        app.UseWhen(ctx => ctx.Request.Path.StartsWithSegments("/onboarding"), branch => branch.Use(async (ctx, next) =>
+        {
+            var max = ctx.RequestServices.GetRequiredService<IOptions<OnboardingOptions>>().Value.MaxBodyBytes;
+            if (ctx.Request.ContentLength > max)
+            {
+                ctx.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+                return;
+            }
+            var feature = ctx.Features.Get<IHttpMaxRequestBodySizeFeature>();
+            if (feature is { IsReadOnly: false }) feature.MaxRequestBodySize = max; // chunked bodies without a length
+            await next(ctx);
+        }));
 
     private static IResult ToResult(OnboardingResult r) => r.Status switch
     {
@@ -35,7 +69,7 @@ public static class OnboardingEndpoints
     /// </summary>
     public static IEndpointRouteBuilder MapOnboarding(this IEndpointRouteBuilder app)
     {
-        var g = app.MapGroup("/onboarding");
+        var g = app.MapGroup("/onboarding").RequireRateLimiting(RateLimitPolicy);
 
         g.MapPost("/challenges", async (OnboardingRequest? req, OnboardingService svc, CancellationToken ct) =>
             ToResult(await svc.GetChallengesAsync(req, ct)));

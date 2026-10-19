@@ -24,6 +24,9 @@ public interface ISecretStore
 {
     /// <summary>Stores <paramref name="value"/> under <paramref name="path"/> and returns the reference (<c>secret://path</c>).</summary>
     Task<string> PutAsync(string path, string value, CancellationToken ct);
+
+    /// <summary>Best-effort removal of a secret written by <see cref="PutAsync"/> (cleanup after a failed onboarding).</summary>
+    Task DeleteAsync(string path, CancellationToken ct);
 }
 
 /// <summary>Default registrar: Biatec OIDC dynamic confidential-client registration has not shipped (docs/required-changes-biatec-oidc.md).</summary>
@@ -38,4 +41,6 @@ public sealed class UnconfiguredSecretStore : ISecretStore
 {
     public Task<string> PutAsync(string path, string value, CancellationToken ct) =>
         throw new InvalidOperationException("No secret store is configured for tenant onboarding.");
+
+    public Task DeleteAsync(string path, CancellationToken ct) => Task.CompletedTask;
 }

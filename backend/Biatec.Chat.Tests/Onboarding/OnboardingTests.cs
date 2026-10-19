@@ -34,6 +34,7 @@ public sealed class OnboardingTests : IAsyncLifetime
     private const string ChallengeKey = "test-challenge-key-0123456789-abcdefghij";
     private const string OperatorKey = "test-operator-key-0123456789-abcdefghij";
     private const string Secret = "super-secret-client-secret-value";
+    private static long Bucket => Challenge.CurrentBucket(TimeProvider.System);
 
     private sealed class MemoryTenantStore(params Tenant[] tenants) : ITenantStore
     {
@@ -47,7 +48,7 @@ public sealed class OnboardingTests : IAsyncLifetime
         public Task<IReadOnlyList<string>> GetTxtRecordsAsync(string name, CancellationToken ct) =>
             Fail ? throw new DnsLookupException("simulated resolver outage") : Task.FromResult<IReadOnlyList<string>>(Records.TryGetValue(name, out var v) ? v : []);
         public void Prove(string proofHost, string configHost, params string[] origins) =>
-            Records[Challenge.RecordName(proofHost)] = [Challenge.Value(ChallengeKey, proofHost, Challenge.Digest(configHost, origins.FirstOrDefault(), origins.Length == 0 ? ["https://" + configHost] : origins, [configHost]))];
+            Records[Challenge.RecordName(proofHost)] = [Challenge.Value(ChallengeKey, proofHost, Challenge.Digest(configHost, origins.FirstOrDefault(), origins.Length == 0 ? ["https://" + configHost] : origins, [configHost]), Bucket)];
     }
 
     private sealed class FakeRegistrar : IOidcClientRegistrar
@@ -62,6 +63,8 @@ public sealed class OnboardingTests : IAsyncLifetime
     {
         public readonly Dictionary<string, string> Items = new();
         public Task<string> PutAsync(string path, string value, CancellationToken ct) { Items[path] = value; return Task.FromResult("secret://" + path); }
+        public readonly List<string> Deleted = new();
+        public Task DeleteAsync(string path, CancellationToken ct) { Deleted.Add(path); Items.Remove(path); return Task.CompletedTask; }
     }
 
     private static readonly string AdminCs = Environment.GetEnvironmentVariable("Postgres__AdminConnectionString")
@@ -157,7 +160,7 @@ public sealed class OnboardingTests : IAsyncLifetime
         Assert.Equal(new[] { "chat.example-bank.com", "www.example-bank.com" }, hosts.Select(h => h!).ToArray());
         var first = doc.RootElement.GetProperty("challenges")[0];
         Assert.Equal("_biatec-chat-challenge.chat.example-bank.com", first.GetProperty("recordName").GetString());
-        Assert.Equal(Challenge.Value(ChallengeKey, "chat.example-bank.com", Challenge.Digest("chat.example-bank.com", "https://chat.example-bank.com", new[] { "https://chat.example-bank.com", "https://app.chat.example-bank.com", "https://www.example-bank.com" }, ["chat.example-bank.com"])), first.GetProperty("recordValue").GetString());
+        Assert.Equal(Challenge.Value(ChallengeKey, "chat.example-bank.com", Challenge.Digest("chat.example-bank.com", "https://chat.example-bank.com", new[] { "https://chat.example-bank.com", "https://app.chat.example-bank.com", "https://www.example-bank.com" }, ["chat.example-bank.com"]), Bucket), first.GetProperty("recordValue").GetString());
     }
 
     [Fact]
@@ -202,7 +205,7 @@ public sealed class OnboardingTests : IAsyncLifetime
     public async Task TxtForAnotherHost_DoesNotVerify()
     {
         _registrar.Available = true;
-        _dns.Records[Challenge.RecordName("chat.example-bank.com")] = [Challenge.Value(ChallengeKey, "other.example-bank.com", "x")];
+        _dns.Records[Challenge.RecordName("chat.example-bank.com")] = [Challenge.Value(ChallengeKey, "other.example-bank.com", "x", Bucket)];
         var r = await PostAsync("/onboarding/tenants", Req("chat.example-bank.com"));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
         Assert.Null(await TenantAsync("chat.example-bank.com"));
@@ -355,4 +358,141 @@ public sealed class OnboardingTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
         Assert.Null(await TenantAsync("chat.example-bank.com"));
     }
+
+    private HttpClient ClientWith(params (string Key, string? Value)[] config) =>
+        _factory.WithWebHostBuilder(b => b.ConfigureAppConfiguration((_, c) =>
+            c.AddInMemoryCollection(config.Select(x => new KeyValuePair<string, string?>(x.Key, x.Value))))).CreateClient();
+
+    [Fact]
+    public async Task Cors_ChallengesAnswersWildcard_OperatorRouteNever()
+    {
+        using var client = _factory.CreateClient();
+        async Task<HttpResponseMessage> Send(string path)
+        {
+            var m = new HttpRequestMessage(HttpMethod.Post, "http://chat.biatec.io" + path) { Content = JsonContent.Create(Req("localhost")) };
+            m.Headers.TryAddWithoutValidation("Origin", "https://tooling.example");
+            m.Headers.TryAddWithoutValidation("Authorization", "Bearer " + OperatorKey);
+            return await client.SendAsync(m);
+        }
+        var open = await Send("/onboarding/challenges");
+        Assert.Equal("*", Assert.Single(open.Headers.GetValues("Access-Control-Allow-Origin")));
+        var op = await Send("/onboarding/operator/tenants");
+        Assert.False(op.Headers.Contains("Access-Control-Allow-Origin"));
+        Assert.False(op.Headers.Contains("Access-Control-Allow-Credentials"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("too-short")]
+    public async Task OperatorRoute_IsNotFound_WhenKeyUnsetOrTooShort(string? key)
+    {
+        using var client = ClientWith(("Onboarding:OperatorKey", key));
+        var m = new HttpRequestMessage(HttpMethod.Post, "http://chat.biatec.io/onboarding/operator/tenants") { Content = JsonContent.Create(new { }) };
+        m.Headers.TryAddWithoutValidation("Authorization", "Bearer " + (key ?? ""));
+        Assert.Equal(HttpStatusCode.NotFound, (await client.SendAsync(m)).StatusCode);
+    }
+
+    [Fact]
+    public async Task OversizedBody_IsRejectedWith413()
+    {
+        using var client = _factory.CreateClient();
+        var m = new HttpRequestMessage(HttpMethod.Post, "http://chat.biatec.io/onboarding/challenges")
+        {
+            Content = new StringContent("{\"host\":\"" + new string('a', 64 * 1024) + "\"}", System.Text.Encoding.UTF8, "application/json"),
+        };
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, (await client.SendAsync(m)).StatusCode);
+    }
+
+    [Fact]
+    public async Task RateLimit_AppliesToOnboardingOnly()
+    {
+        using var client = ClientWith(("Onboarding:RateLimitPermits", "2"), ("Onboarding:RateLimitWindowSeconds", "600"));
+        async Task<HttpStatusCode> Send()
+        {
+            var m = new HttpRequestMessage(HttpMethod.Post, "http://chat.biatec.io/onboarding/challenges") { Content = JsonContent.Create(Req("localhost")) };
+            return (await client.SendAsync(m)).StatusCode;
+        }
+        Assert.Equal(HttpStatusCode.BadRequest, await Send());
+        Assert.Equal(HttpStatusCode.BadRequest, await Send());
+        Assert.Equal(HttpStatusCode.TooManyRequests, await Send());
+        Assert.NotEqual(HttpStatusCode.TooManyRequests, (await client.GetAsync("http://chat.biatec.io/health")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Challenge_AcceptsCurrentAndPreviousBucket_NotOlder()
+    {
+        var digest = Challenge.Digest("chat.example-bank.com", "https://chat.example-bank.com", ["https://chat.example-bank.com"], ["chat.example-bank.com"]);
+        var name = Challenge.RecordName("chat.example-bank.com");
+        _dns.Records[name] = [Challenge.Value(ChallengeKey, "chat.example-bank.com", digest, Bucket - 1)];
+        Assert.Equal(HttpStatusCode.Accepted, (await PostAsync("/onboarding/tenants", Req("chat.example-bank.com", "https://chat.example-bank.com"))).StatusCode);
+        _dns.Records[name] = [Challenge.Value(ChallengeKey, "chat.example-bank.com", digest, Bucket - 2)];
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await PostAsync("/onboarding/tenants", Req("chat.example-bank.com", "https://chat.example-bank.com"))).StatusCode);
+    }
+
+    [Fact]
+    public async Task FailedRowWrite_RemovesTheOrphanedSecret()
+    {
+        _registrar.Available = true;
+        _dns.Prove("chat.example-bank.com", "chat.example-bank.com");
+        await using (var conn = new NpgsqlConnection(Cs))
+        {
+            await conn.OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                "CREATE FUNCTION fail_insert() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'simulated failure'; END $$ LANGUAGE plpgsql; " +
+                "CREATE TRIGGER t_fail BEFORE INSERT ON \"Tenants\" FOR EACH ROW EXECUTE FUNCTION fail_insert();", conn);
+            await cmd.ExecuteNonQueryAsync();
+        }
+        await Assert.ThrowsAnyAsync<Exception>(() => PostAsync("/onboarding/tenants", Req("chat.example-bank.com")));
+        Assert.Equal("tenants/chat.example-bank.com/oidc-client-secret", Assert.Single(_secrets.Deleted));
+        Assert.Empty(_secrets.Items);
+        Assert.Null(await TenantAsync("chat.example-bank.com"));
+    }
+}
+
+/// <summary>DnsClientTxtResolver against a loopback UDP DNS server that answers with a fixed response code.</summary>
+public sealed class DnsClientTxtResolverTests
+{
+    private static async Task<IReadOnlyList<string>> QueryAsync(int rcode, string? txt)
+    {
+        using var server = new System.Net.Sockets.UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        var port = ((IPEndPoint)server.Client.LocalEndPoint!).Port;
+        var serving = Task.Run(async () =>
+        {
+            while (true)
+            {
+                System.Net.Sockets.UdpReceiveResult rx;
+                try { rx = await server.ReceiveAsync(); } catch (Exception) { return; }
+                var q = rx.Buffer;
+                var end = 12;
+                while (q[end] != 0) end += q[end] + 1;
+                end += 5; // root label, QTYPE, QCLASS
+                var resp = new List<byte>(q.Take(end));
+                resp[2] = 0x81;
+                resp[3] = (byte)(0x80 | rcode);
+                resp[6] = 0; resp[7] = (byte)(txt is null ? 0 : 1); // ANCOUNT
+                resp[10] = 0; resp[11] = 0; // ARCOUNT
+                if (txt is not null)
+                {
+                    var bytes = System.Text.Encoding.ASCII.GetBytes(txt);
+                    resp.AddRange([0xC0, 0x0C, 0, 16, 0, 1, 0, 0, 0, 0, 0, (byte)(bytes.Length + 1), (byte)bytes.Length]);
+                    resp.AddRange(bytes);
+                }
+                await server.SendAsync(resp.ToArray(), resp.Count, rx.RemoteEndPoint);
+            }
+        });
+        var lookup = new DnsClient.LookupClient(new DnsClient.LookupClientOptions(new IPEndPoint(IPAddress.Loopback, port))
+        { UseCache = false, Timeout = TimeSpan.FromSeconds(3), Retries = 0, UseTcpFallback = false });
+        try { return await new DnsClientTxtResolver(lookup).GetTxtRecordsAsync("_biatec-chat-challenge.example.test", CancellationToken.None); }
+        finally { server.Close(); await serving; }
+    }
+
+    [Fact]
+    public async Task NxDomain_MeansNoRecords() => Assert.Empty(await QueryAsync(rcode: 3, txt: null));
+
+    [Fact]
+    public async Task NoError_ReturnsTxt() => Assert.Equal("hello", Assert.Single(await QueryAsync(rcode: 0, txt: "hello")));
+
+    [Fact]
+    public async Task ServFail_IsALookupFailureNotAVerdict() =>
+        await Assert.ThrowsAsync<DnsLookupException>(() => QueryAsync(rcode: 2, txt: null));
 }

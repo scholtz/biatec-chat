@@ -38,6 +38,7 @@ public sealed partial class OnboardingService(
     IOidcClientRegistrar registrar,
     ISecretStore secrets,
     IOptions<OnboardingOptions> options,
+    TimeProvider clock,
     ILogger<OnboardingService> log)
 {
     private sealed record Validated(string Host, string? SignInPageUrl, string[] Origins, string[] ClientKeys)
@@ -130,12 +131,18 @@ public sealed partial class OnboardingService(
         if (Validate(req, out var v) is { } bad) return bad;
         if (await db.Tenants.AnyAsync(t => t.Host == v!.Host, ct)) return HostTaken(v!.Host);
         var key = options.Value.ChallengeKey!;
-        var records = ProofHosts(v!).Select(h => new ChallengeRecord(h, "TXT", Challenge.RecordName(h), Challenge.Value(key, h, v.ConfigDigest))).ToArray();
+        var valid = v!;
+        var digest = valid.ConfigDigest;
+        var bucket = Challenge.CurrentBucket(clock);
+        var records = ProofHosts(valid).Select(h => new ChallengeRecord(h, "TXT", Challenge.RecordName(h), Challenge.Value(key, h, digest, bucket))).ToArray();
         return new(OnboardingStatus.Ok, Body: new { challenges = records });
     }
 
     private static OnboardingResult HostTaken(string host) =>
         new(OnboardingStatus.HostTaken, $"Host {host} already belongs to a tenant.");
+
+    private static OnboardingResult IdTaken(string id) =>
+        new(OnboardingStatus.HostTaken, $"Tenant id {id} is already in use.");
 
     /// <summary>Null when every proof holds; otherwise the 422 (or 502 on a lookup failure) result.</summary>
     private async Task<OnboardingResult?> VerifyProofsAsync(Validated v, CancellationToken ct)
@@ -143,6 +150,7 @@ public sealed partial class OnboardingService(
         var key = options.Value.ChallengeKey!;
         var hosts = ProofHosts(v);
         var digest = v.ConfigDigest;
+        var bucket = Challenge.CurrentBucket(clock);
         IReadOnlyList<string>[] lookups;
         try { lookups = await Task.WhenAll(hosts.Select(h => dns.GetTxtRecordsAsync(Challenge.RecordName(h), ct))); }
         catch (DnsLookupException ex)
@@ -150,7 +158,7 @@ public sealed partial class OnboardingService(
             log.LogWarning(ex, "DNS lookup failed while verifying {Host}", v.Host);
             return new(OnboardingStatus.Failed, "DNS lookup failed; try again later.");
         }
-        var missing = hosts.Where((h, i) => !Challenge.Matches(key, h, digest, lookups[i])).ToArray();
+        var missing = hosts.Where((h, i) => !Challenge.Matches(key, h, digest, lookups[i], bucket)).ToArray();
         return missing.Length == 0
             ? null
             : new(OnboardingStatus.Unverified, "DNS TXT challenge not found for: " + string.Join(", ", missing), new { unverified = missing });
@@ -171,6 +179,7 @@ public sealed partial class OnboardingService(
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await LockAsync(db, "biatec-chat-onboarding:" + v!.Host, ct);
         if (await db.Tenants.AnyAsync(t => t.Host == v.Host, ct)) return HostTaken(v.Host);
+        if (await db.Tenants.AnyAsync(t => t.Id == v.Host, ct)) return IdTaken(v.Host);
 
         var tenantId = v.Host;
         var redirectUri = $"https://{v.Host}/auth/callback";
@@ -191,16 +200,34 @@ public sealed partial class OnboardingService(
                 new { host = v.Host, status = "pending-operator-approval", redirectUri });
         }
 
+        var secretPath = $"tenants/{tenantId}/oidc-client-secret";
         string secretRef;
-        try { secretRef = await secrets.PutAsync($"tenants/{tenantId}/oidc-client-secret", client.ClientSecret, external.Token); }
+        try { secretRef = await secrets.PutAsync(secretPath, client.ClientSecret, external.Token); }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             log.LogWarning(ex, "Storing the client secret failed for {Host}", v.Host);
             return new(OnboardingStatus.Failed, "Could not store the client secret; try again later.");
         }
-        var created = await CreateTenantAsync(v, tenantId, client.ClientId, secretRef, redirectUri, ct);
+        OnboardingResult created;
+        try { created = await CreateTenantAsync(v, tenantId, client.ClientId, secretRef, redirectUri, ct); }
+        catch
+        {
+            await DiscardSecretAsync(secretPath, v.Host); // the row was not written, so nothing references the secret
+            throw;
+        }
         if (created.Status == OnboardingStatus.Created) await tx.CommitAsync(ct);
         return created;
+    }
+
+    /// <summary>Best-effort removal of a secret whose tenant row was not written. Never throws.</summary>
+    private async Task DiscardSecretAsync(string secretPath, string host)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await secrets.DeleteAsync(secretPath, cts.Token);
+        }
+        catch (Exception ex) { log.LogWarning(ex, "Could not remove the orphaned client secret for {Host}", host); }
     }
 
     /// <summary>Operator fallback: the proofs are re-checked, the operator supplies the static client and a secret reference.</summary>
@@ -224,6 +251,7 @@ public sealed partial class OnboardingService(
         await LockAsync(db, "biatec-chat-onboarding:operator", ct);
         await LockAsync(db, "biatec-chat-onboarding:" + v.Host, ct);
         if (await db.Tenants.AnyAsync(t => t.Host == v.Host, ct)) return HostTaken(v.Host);
+        if (await db.Tenants.AnyAsync(t => t.Id == v.Host, ct)) return IdTaken(v.Host);
         if (await db.Tenants.AnyAsync(t => t.ClientSecretRef == req.ClientSecretRef, ct))
             return new(OnboardingStatus.Invalid, "clientSecretRef is already used by another tenant.");
 
@@ -256,7 +284,9 @@ public sealed partial class OnboardingService(
             // The unique index on Host decides races (for example with the operator route). The transaction is already
             // aborted, so no further query runs on it.
             db.Entry(tenant).State = EntityState.Detached;
-            return HostTaken(v.Host);
+            return ((PostgresException)ex.InnerException!).ConstraintName?.Contains("Host", StringComparison.OrdinalIgnoreCase) == true
+                ? HostTaken(v.Host)
+                : IdTaken(tenantId);
         }
         return new(OnboardingStatus.Created, Body: new
         {
