@@ -7,7 +7,7 @@ epic: "Wallet tools"
 blocked_by: [T-022]
 area: ["backend/Biatec.Chat.Tools/Caps/**"]
 parallel: no
-conflicts_with: [T-024, T-035, T-049, T-057]
+conflicts_with: [T-024, T-035, T-049]
 issue: "#26"
 branch: ""
 owner: ""
@@ -34,7 +34,7 @@ Damage limiter against a hostile host page.
 
 ## Parallel work
 
-Parallel work possible: **no**. Don't run it at the same time as T-024, T-035, T-049, T-057: they change the same files, and running them together causes merge conflicts or broken behaviour.
+Parallel work possible: **no**. Don't run it at the same time as T-024, T-035, T-049: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
@@ -55,3 +55,4 @@ dotnet test --filter Caps
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-022
+- 2026-10-19 23:24 · LukassSoukup · backlog · conflicts_with revised: dropped T-057: OTel spans come from HttpClient/AWS SDK instrumentation at registration
