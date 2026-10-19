@@ -139,6 +139,16 @@ public sealed class TenancyTests : IDisposable
     }
 
     [Fact]
+    public async Task PublicChatCors_ExposesCapabilityAndContinuationHeaders()
+    {
+        var r = await SendAsync(Req(HttpMethod.Post, "/public/chat", origin: "https://unregistered.example"));
+        Assert.Equal("*", Header(r, "Access-Control-Allow-Origin"));
+        var exposed = Header(r, "Access-Control-Expose-Headers");
+        Assert.Contains("X-Biatec-Conversation", exposed);
+        Assert.Contains("X-Biatec-Continuation", exposed);
+    }
+
+    [Fact]
     public async Task Preflight_AllowedOrigin_Returns204WithHeaders()
     {
         var r = await SendAsync(Req(HttpMethod.Options, "/chat", origin: "https://dex.biatec.io",

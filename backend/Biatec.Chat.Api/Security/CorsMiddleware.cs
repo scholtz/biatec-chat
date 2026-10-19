@@ -11,6 +11,9 @@ public sealed class CorsMiddleware(RequestDelegate next)
 {
     private const string AllowedHeaders = "Content-Type, " + OriginPolicy.CsrfHeader + ", " + OriginPolicy.ClientKeyHeader + ", Last-Event-ID";
 
+    /// <summary>Response headers cross-origin script must read on /public/chat (the anonymous capability and continuation token).</summary>
+    public const string PublicExposedHeaders = "X-Biatec-Conversation, X-Biatec-Continuation";
+
     public async Task InvokeAsync(HttpContext ctx)
     {
         var req = ctx.Request;
@@ -26,6 +29,7 @@ public sealed class CorsMiddleware(RequestDelegate next)
             if (OriginPolicy.IsPublic(req.Path) && !OriginPolicy.IsOperatorOnboarding(req.Path))
             {
                 res.Headers["Access-Control-Allow-Origin"] = "*";
+                res.Headers["Access-Control-Expose-Headers"] = PublicExposedHeaders;
             }
             else if (OriginPolicy.AllowedOrigin(tenant, req) is { } origin)
             {
