@@ -11,7 +11,7 @@ conflicts_with: []
 issue: "#34"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#safe-capabilities"
 created: 2026-10-19
 updated: 2026-10-20
@@ -56,3 +56,4 @@ dotnet test --filter SafeProposals; testnet demo run
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:00 · coordinator · review · added T-023: safe funding and box top-ups are separate wallet.transfer steps
 - 2026-10-20 01:57 · kanban-board · blocked → backlog · blockers done: T-023, T-030, T-032
+- 2026-10-20 01:58 · LukassSoukup · taken · status stays backlog
