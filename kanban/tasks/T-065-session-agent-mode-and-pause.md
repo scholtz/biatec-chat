@@ -1,7 +1,7 @@
 ---
 id: T-065
 title: Session agent mode (analyze / prepare) and pause, enforced server-side
-status: in-progress
+status: done
 priority: P2
 epic: "Widget UI rework"
 blocked_by: [T-022]
@@ -14,7 +14,7 @@ owner: "session-20261019-agent"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#tier-enforcement"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-065 · Session agent mode (analyze / prepare) and pause, enforced server-side
@@ -70,6 +70,8 @@ Filled in by the agent when it moves the task to `review`.
 
 ## Review
 
+- 2026-10-20 00:55 · approve · PR #116 merged into main @ 85810d1 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 22:40 · coordinator · (new) → blocked · created from the Biatec AI design handoff (docs/design/) for the widget UI rework
@@ -77,3 +79,4 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-022
 - 2026-10-19 22:32 · scholtz · taken · status stays backlog
 - 2026-10-19 22:32 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 00:55 · user · in-progress → done · PR #116 merged into main @ 85810d1 (synced by kanban-sync)
