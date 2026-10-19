@@ -16,21 +16,25 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final config = AppConfig.fromEnvironment();
   final approvals = ApprovalServices.fromConfig(config);
-  final navigator = GlobalKey<NavigatorState>();
   final firebase = FirebasePushConfig.fromEnvironment();
-  final push = firebase == null
-      ? null
-      : PushController(
-          enrollment: approvals.enrollment,
-          client: approvals.client,
-          onOpenRequest: (id) => openApprovalRequest(navigator, approvals, id),
-        );
+  if (firebase == null) {
+    runApp(AuthenticatorApp(config: config, approvals: approvals));
+    return;
+  }
+  final navigator = GlobalKey<NavigatorState>();
+  final messenger = GlobalKey<ScaffoldMessengerState>();
+  final push = PushController(
+    enrollment: approvals.enrollment,
+    client: approvals.client,
+    onOpenRequest: (id) =>
+        navigator.currentState?.push(ApprovalScreen.route(approvals, id)),
+  );
   runApp(AuthenticatorApp(
       config: config,
       approvals: approvals,
       push: push,
-      navigatorKey: navigator));
-  if (push == null || firebase == null) return;
+      navigatorKey: navigator,
+      messengerKey: messenger));
   // Firebase starts after the first frame: the UI never waits for it, and a
   // tapped notification that launched the app finds a mounted navigator.
   await WidgetsBinding.instance.endOfFrame;
@@ -38,16 +42,23 @@ Future<void> main() async {
   if (transport == null) return;
   // Coming back to the app retries a registration that failed earlier.
   AppLifecycleListener(onResume: push.registerIfEnrolled);
+  // The OS shows nothing for a push while the app is open, so say it here.
+  push.requestArrived.listen((_) => showRequestArrived(messenger, navigator));
   await push.start(transport);
 }
 
-/// Opens the approval screen for a tapped notification. The screen fetches
-/// the request from Biatec OIDC itself.
-void openApprovalRequest(GlobalKey<NavigatorState> navigator,
-    ApprovalServices approvals, String authReqId) {
-  navigator.currentState?.push(MaterialPageRoute<void>(
-    builder: (_) => ApprovalScreen(services: approvals, authReqId: authReqId),
-  ));
+/// In-app notice for a push received in the foreground. It names no detail:
+/// the list is fetched from Biatec OIDC when opened.
+void showRequestArrived(GlobalKey<ScaffoldMessengerState> messenger,
+    GlobalKey<NavigatorState> navigator) {
+  messenger.currentState
+    ?..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(
+      content: const Text('New approval request'),
+      action: SnackBarAction(
+          label: 'Open',
+          onPressed: () => navigator.currentState?.pushNamed('/pending')),
+    ));
 }
 
 class AuthenticatorApp extends StatelessWidget {
@@ -56,7 +67,8 @@ class AuthenticatorApp extends StatelessWidget {
       required this.config,
       ApprovalServices? approvals,
       this.push,
-      this.navigatorKey})
+      this.navigatorKey,
+      this.messengerKey})
       : approvals = approvals ?? ApprovalServices.fromConfig(config);
 
   final AppConfig config;
@@ -65,12 +77,14 @@ class AuthenticatorApp extends StatelessWidget {
   /// Null when push is not configured; the pending list then polls only.
   final PushController? push;
   final GlobalKey<NavigatorState>? navigatorKey;
+  final GlobalKey<ScaffoldMessengerState>? messengerKey;
 
   @override
   Widget build(BuildContext context) {
     final push = this.push;
     return MaterialApp(
       navigatorKey: navigatorKey,
+      scaffoldMessengerKey: messengerKey,
       navigatorObservers: [if (push != null) push],
       title: 'Biatec Authenticator',
       theme: buildTheme(Brightness.light),

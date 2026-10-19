@@ -66,6 +66,13 @@ class FakeRegistry {
 EnrollmentRecord record(String token) => EnrollmentRecord(
     kid: 'alice-device', deviceToken: token, activeAt: DateTime.utc(2020));
 
+/// ApprovalScreen redraws its countdown every second, so pumpAndSettle never
+/// settles while one is open; pump a fixed second instead.
+Future<void> settle(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(seconds: 1));
+}
+
 void main() {
   group('payload', () {
     test('only a plausible auth_req_id is taken; everything else is ignored',
@@ -184,6 +191,27 @@ void main() {
       expect(openedIds, ['ciba_launch', 'ciba_tap']);
     });
 
+    test('a request already on screen is not opened again', () async {
+      await push.start(transport);
+      final route = ApprovalScreen.route(
+          ApprovalServices(
+              client: ApprovalClient(baseUrl: 'http://oidc'),
+              keys: SoftwareKeyStore(deviceTestKey()),
+              enrollment: store,
+              gate: _Pass(),
+              history: MemoryHistoryStore()),
+          'ciba_x');
+      push.didPush(route, null);
+      transport.openedC.add({'auth_req_id': 'ciba_x'});
+      transport.openedC.add({'auth_req_id': 'ciba_y'});
+      await pumpEventQueue();
+      expect(openedIds, ['ciba_y']);
+      push.didPop(route, null);
+      transport.openedC.add({'auth_req_id': 'ciba_x'});
+      await pumpEventQueue();
+      expect(openedIds, ['ciba_y', 'ciba_x']);
+    });
+
     test('a foreground push signals the pending list, without opening it',
         () async {
       await push.start(transport);
@@ -237,15 +265,42 @@ void main() {
     testWidgets('a tapped notification opens that request, fetched from OIDC',
         (tester) async {
       final navigator = GlobalKey<NavigatorState>();
+      final transport = FakeTransport()..current = null;
+      final push = PushController(
+        enrollment: services.enrollment,
+        client: services.client,
+        onOpenRequest: (id) =>
+            navigator.currentState?.push(ApprovalScreen.route(services, id)),
+      );
       await tester.pumpWidget(AuthenticatorApp(
           config: AppConfig.resolve(''),
           approvals: services,
+          push: push,
           navigatorKey: navigator));
-      openApprovalRequest(navigator, services, 'ciba_tapped');
-      await tester.pumpAndSettle();
+      await push.start(transport);
+      transport.openedC.add({'auth_req_id': 'ciba_tapped'});
+      await settle(tester);
       final screen = tester.widget<ApprovalScreen>(find.byType(ApprovalScreen));
       expect(screen.authReqId, 'ciba_tapped');
       expect(fetched, contains('/consent/requests/ciba_tapped'));
+    });
+
+    testWidgets('a foreground push shows a notice that opens the list',
+        (tester) async {
+      final navigator = GlobalKey<NavigatorState>();
+      final messenger = GlobalKey<ScaffoldMessengerState>();
+      await tester.pumpWidget(AuthenticatorApp(
+          config: AppConfig.resolve(''),
+          approvals: services,
+          navigatorKey: navigator,
+          messengerKey: messenger));
+      showRequestArrived(messenger, navigator);
+      await tester.pump();
+      expect(find.text('New approval request'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      expect(find.byType(PendingScreen), findsOneWidget);
     });
 
     testWidgets('the pending list refreshes on a push', (tester) async {

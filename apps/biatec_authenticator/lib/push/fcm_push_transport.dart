@@ -72,9 +72,14 @@ class FcmPushTransport implements PushTransport {
   Future<String?> token() async {
     if (_latest != null) return _latest;
     try {
-      final next = _messaging.onRegistered.first;
-      await _messaging.register();
-      return _latest ?? await next.timeout(const Duration(seconds: 20));
+      // One deadline for both steps: a register() that never completes must
+      // not hold up later registrations.
+      return await () async {
+        final next = _messaging.onRegistered.first;
+        await _messaging.register();
+        return _latest ?? await next;
+      }()
+          .timeout(const Duration(seconds: 20));
     } on Object {
       return null;
     }

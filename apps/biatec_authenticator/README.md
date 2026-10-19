@@ -78,8 +78,8 @@ add an HTTP mock of Biatec OIDC. The app makes no network calls today.
 
 - `lib/push/`: `PushController` keeps the push token registered at Biatec OIDC (`PUT /devices/push`,
   `Authorization: Device <token>`) on start, on token rotation, on app resume and on navigation, re-sent at most every 10 minutes; a tapped
-  notification opens the approval screen for its `auth_req_id`, and a push received in the foreground refreshes the
-  pending list. The payload is read only for `auth_req_id` (`push_payload.dart`); the request itself is always
+  notification opens the approval screen for its `auth_req_id` (not a second time if it is already open), and a push
+  received in the foreground refreshes the pending list and shows an in-app "New approval request" notice. The payload is read only for `auth_req_id` (`push_payload.dart`); the request itself is always
   fetched from Biatec OIDC, so a forged or altered push can at most open a request the device's user really has.
 - FCM through `firebase_messaging` (`FcmPushTransport`, token = the Firebase Installation ID from `register()`).
   Push is off unless all four Firebase options are passed, so nothing per deployment is committed:

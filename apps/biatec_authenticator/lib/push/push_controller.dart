@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../approvals/approval_client.dart';
+import '../approvals/approval_screen.dart';
 import '../enrollment/enrollment_store.dart';
 import 'push_payload.dart';
 import 'push_transport.dart';
@@ -63,20 +64,41 @@ class PushController extends NavigatorObserver {
     await registerIfEnrolled();
   }
 
+  /// Approval screens on the navigator stack, by request id.
+  final _openRequests = <String>{};
+
   void _open(Map<String, Object?> data) {
     final id = authReqIdFromPush(data);
-    if (id != null) onOpenRequest(id);
+    // A request already on screen is not opened a second time.
+    if (id != null && !_openRequests.contains(id)) onOpenRequest(id);
   }
 
-  // Every navigation (for example back from enrollment, or into the pending
-  // list) is a chance to register a device that was not enrolled before.
+  String? _requestOf(Route<dynamic> route) {
+    final name = route.settings.name;
+    return name != null && name.startsWith(ApprovalScreen.routePrefix)
+        ? name.substring(ApprovalScreen.routePrefix.length)
+        : null;
+  }
+
+  // Every navigation (for example back from enrollment) is also a chance to
+  // register a device that was not enrolled before; within the resend window
+  // that check is free.
   @override
-  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) =>
-      registerIfEnrolled();
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    final id = _requestOf(route);
+    if (id != null) _openRequests.add(id);
+    registerIfEnrolled();
+  }
 
   @override
-  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
-      registerIfEnrolled();
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _openRequests.remove(_requestOf(route));
+    registerIfEnrolled();
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      _openRequests.remove(_requestOf(route));
 
   /// Registers the push token once this device is enrolled. Safe to call
   /// often; failures are retried on the next call.
@@ -88,18 +110,15 @@ class PushController extends NavigatorObserver {
   Future<void> _register(String? token) async {
     final transport = _transport;
     if (transport == null) return;
+    // Recently registered and no new token: nothing to check, no storage read.
+    if (token == null && _fresh()) return;
     try {
       final record = await enrollment.read();
       if (record == null) return;
       final pushToken = token ?? await transport.token();
       if (pushToken == null || pushToken.isEmpty) return;
       final pair = (record.deviceToken, pushToken);
-      final at = _registeredAt;
-      if (_registered == pair &&
-          at != null &&
-          _clock().difference(at) < resendAfter) {
-        return;
-      }
+      if (_registered == pair && _fresh()) return;
       await client.registerPush(
           record.deviceToken, transport.provider, pushToken);
       _registered = pair;
@@ -107,6 +126,11 @@ class PushController extends NavigatorObserver {
     } on Object {
       // Polling still finds requests; the next call retries.
     }
+  }
+
+  bool _fresh() {
+    final at = _registeredAt;
+    return at != null && _clock().difference(at) < resendAfter;
   }
 
   Future<void> dispose() async {

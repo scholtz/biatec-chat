@@ -126,8 +126,7 @@ class EnrollmentController extends ChangeNotifier {
       // Nothing was enrolled, so the unused key and alias are removed.
       await _discardKey(alias);
       _set(EnrollmentState(EnrollmentPhase.failed,
-          error:
-              e is EnrollmentException ? e.message : 'Enrollment failed: $e'));
+          error: e is EnrollmentException ? e.message : 'Enrollment failed: $e'));
       return;
     }
     // The server now has the device. Never lose it over a storage hiccup: keep
