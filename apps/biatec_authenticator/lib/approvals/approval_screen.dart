@@ -18,6 +18,18 @@ class ApprovalScreen extends StatefulWidget {
   final ApprovalServices services;
   final String authReqId;
 
+  /// Route names carry the request id, so the push handler can tell whether
+  /// a request is already open.
+  static const routePrefix = '/approval/';
+
+  static MaterialPageRoute<void> route(
+          ApprovalServices services, String authReqId) =>
+      MaterialPageRoute<void>(
+        settings: RouteSettings(name: '$routePrefix$authReqId'),
+        builder: (_) =>
+            ApprovalScreen(services: services, authReqId: authReqId),
+      );
+
   @override
   State<ApprovalScreen> createState() => _ApprovalScreenState();
 }
