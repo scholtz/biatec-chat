@@ -84,6 +84,8 @@ infra/aws/teardown.sh
 BIATEC_AWS_APPROVED=yes infra/aws/teardown.sh --apply
 ```
 
+Every delete tolerates resources that are already gone (so teardown can be re-run after a partial failure): volumes removed with the instance and keys already pending deletion are skipped. IAM is global and its tags are not returned by the regional Tagging API, so the role and instance profile are looked up and deleted by the names `create.sh` uses (`biatec-chat-instance-role`, `biatec-chat-instance-profile`); a hand-made tagged IAM resource under another name is not found. `create.sh` waits for the instance profile (`aws iam wait instance-profile-exists`) and retries `run-instances` on `Invalid IAM Instance Profile`; it is not idempotent, and on failure it reminds you to run teardown.
+
 Teardown's discovery step is a read-only call, so even its dry-run needs a logged-in `hackathon` profile. Run it after the demo
 and again in dry-run mode to confirm the tagged list is empty.
 

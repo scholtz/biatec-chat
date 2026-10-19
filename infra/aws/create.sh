@@ -39,7 +39,7 @@ run_aws kms create-alias --alias-name "alias/$NAME_PREFIX-vault" --target-key-id
 
 # 2. IAM role scoped to the eu. Claude 4.5 profiles and that one KMS key.
 POLICY_FILE="$(mktemp)"
-trap 'rm -f "$POLICY_FILE"' EXIT
+trap 'rc=$?; rm -f "$POLICY_FILE"; if [ "$rc" -ne 0 ]; then echo "create.sh failed (exit $rc). Tagged resources may already exist; run infra/aws/teardown.sh to clean up." >&2; fi; exit "$rc"' EXIT
 sed -e "s|\${ACCOUNT_ID}|$ACCOUNT_ID|g" -e "s|\${KMS_KEY_ARN}|$KMS_KEY_ARN|g" "$DIR/bedrock-role-policy.json" > "$POLICY_FILE"
 run_aws iam create-role --role-name "$ROLE" --assume-role-policy-document "file://$DIR/ec2-trust-policy.json" \
   --tags "Key=$TAG_KEY,Value=$TAG_VALUE"
@@ -61,11 +61,26 @@ if [ "$APPLY" = 1 ]; then
 else
   AMI_ID="<al2023-arm64-ami>"; SG_ID="<sg-id>"
 fi
-run_aws ec2 run-instances --image-id "$AMI_ID" --instance-type "$INSTANCE_TYPE" --count 1 \
+# IAM is eventually consistent: wait for the profile, then retry run-instances while it is still "invalid".
+run_aws iam wait instance-profile-exists --instance-profile-name "$PROFILE_NAME"
+if [ "$APPLY" = 1 ]; then sleep 10; fi
+run_instances() {
+  run_aws ec2 run-instances --image-id "$AMI_ID" --instance-type "$INSTANCE_TYPE" --count 1 \
   --iam-instance-profile "Name=$PROFILE_NAME" --security-group-ids "$SG_ID" \
   --metadata-options "HttpTokens=required,HttpPutResponseHopLimit=2" \
   --block-device-mappings "DeviceName=/dev/xvda,Ebs={VolumeSize=$VOLUME_GB,VolumeType=gp3,Encrypted=true,DeleteOnTermination=true}" \
   --user-data "file://$DIR/user-data.sh" \
   --tag-specifications "$(tag_spec instance)" "$(tag_spec volume)"
+}
+for attempt in 1 2 3 4 5; do
+  if [ "$APPLY" != 1 ]; then run_instances; break; fi
+  if OUT="$(run_instances 2>&1)"; then echo "$OUT"; break; fi
+  echo "$OUT" >&2
+  if echo "$OUT" | grep -q "Invalid IAM Instance Profile" && [ "$attempt" -lt 5 ]; then
+    echo "Instance profile not propagated yet, retrying in 10s..." >&2; sleep 10
+  else
+    exit 1
+  fi
+done
 
 echo "Next: see docs/deploy-aws.md (set Kms__KeyId=$KMS_KEY_ID, the Bedrock model ids, then docker compose up -d). Run teardown.sh when done."

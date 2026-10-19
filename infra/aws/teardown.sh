@@ -26,18 +26,37 @@ if [ -n "${IDS// /}" ]; then
   # shellcheck disable=SC2086
   if [ "$APPLY" = 1 ]; then aws_ ec2 wait instance-terminated --instance-ids $IDS; fi
 fi
-for sg in $(ids_of security-group); do run_aws ec2 delete-security-group --group-id "$sg"; done
-for vol in $(ids_of volume); do run_aws ec2 delete-volume --volume-id "$vol"; done
+for sg in $(ids_of security-group); do run_aws_ok ec2 delete-security-group --group-id "$sg"; done
+# DeleteOnTermination=true removes the root volume with the instance, but the Tagging API can still list it for a while:
+# only delete volumes that still exist.
+for vol in $(ids_of volume); do
+  if aws_ ec2 describe-volumes --volume-ids "$vol" >/dev/null 2>&1; then
+    run_aws_ok ec2 delete-volume --volume-id "$vol"
+  else
+    echo "Volume $vol no longer exists, skipping."
+  fi
+done
 
-run_aws iam remove-role-from-instance-profile --instance-profile-name "$PROFILE_NAME" --role-name "$ROLE"
-run_aws iam delete-instance-profile --instance-profile-name "$PROFILE_NAME"
-run_aws iam detach-role-policy --role-name "$ROLE" --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-run_aws iam delete-role-policy --role-name "$ROLE" --policy-name "$NAME_PREFIX-bedrock-kms"
-run_aws iam delete-role --role-name "$ROLE"
+# IAM is global and its tags are NOT returned by the regional Tagging API, so look the role up explicitly (by the name
+# create.sh uses) and report its tag. Every delete tolerates "already gone", so reruns and partial state are fine.
+if aws_ iam list-role-tags --role-name "$ROLE" --query "Tags[?Key=='$TAG_KEY'&&Value=='$TAG_VALUE']" --output text 2>/dev/null | grep -q .; then
+  echo "IAM role $ROLE is tagged $TAG_KEY=$TAG_VALUE."
+else
+  echo "IAM role $ROLE not found or not tagged; the deletes below tolerate NotFound."
+fi
+run_aws_ok iam remove-role-from-instance-profile --instance-profile-name "$PROFILE_NAME" --role-name "$ROLE"
+run_aws_ok iam delete-instance-profile --instance-profile-name "$PROFILE_NAME"
+run_aws_ok iam detach-role-policy --role-name "$ROLE" --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+run_aws_ok iam delete-role-policy --role-name "$ROLE" --policy-name "$NAME_PREFIX-bedrock-kms"
+run_aws_ok iam delete-role --role-name "$ROLE"
 
-run_aws kms delete-alias --alias-name "alias/$NAME_PREFIX-vault"
+run_aws_ok kms delete-alias --alias-name "alias/$NAME_PREFIX-vault"
 for key in $(ids_of key); do
-  run_aws kms schedule-key-deletion --key-id "$key" --pending-window-in-days 7
+  STATE="$(aws_ kms describe-key --key-id "$key" --query KeyMetadata.KeyState --output text 2>/dev/null || echo Missing)"
+  case "$STATE" in
+    PendingDeletion|PendingReplicaDeletion|Missing) echo "KMS key $key is $STATE, skipping." ;;
+    *) run_aws_ok kms schedule-key-deletion --key-id "$key" --pending-window-in-days 7 ;;
+  esac
 done
 
 # Anything else carrying the tag is reported, not ignored.
@@ -50,4 +69,4 @@ if [ -n "$UNHANDLED" ]; then
   echo "WARNING: tagged resources this script does not know how to delete (remove them by hand):" >&2
   printf '%s' "$UNHANDLED" >&2
 fi
-echo "Afterwards re-run in dry-run mode: the tagged list must be empty (KMS keys stay listed as pending deletion for 7 days)."
+echo "Afterwards re-run in dry-run mode: the tagged list must be empty (KMS keys may stay listed as pending deletion for 7 days). IAM is not part of that list; the script checks the role and profile by name."

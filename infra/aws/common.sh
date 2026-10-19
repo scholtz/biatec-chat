@@ -42,6 +42,21 @@ aws_() { aws --profile "$PROFILE" --region "$AWS_REGION" "$@"; }
 # run_aws: dry-run aware aws call (mutating).
 run_aws() { run aws --profile "$PROFILE" --region "$AWS_REGION" "$@"; }
 
+# run_aws_ok: like run_aws, but tolerates "already gone" errors so teardown can be re-run and survive partial state.
+# Any other failure still aborts.
+GONE_REGEX='NoSuchEntity|NotFound|InvalidInstanceID|pending deletion|PendingDeletion|is not in a valid state|KMSInvalidStateException'
+run_aws_ok() {
+  if [ "$APPLY" != 1 ]; then run aws --profile "$PROFILE" --region "$AWS_REGION" "$@"; return 0; fi
+  echo "+ aws $*"
+  local out rc=0
+  out="$(aws --profile "$PROFILE" --region "$AWS_REGION" "$@" 2>&1)" || rc=$?
+  if [ -n "$out" ]; then echo "$out"; fi
+  if [ "$rc" -ne 0 ]; then
+    if echo "$out" | grep -Eq "$GONE_REGEX"; then echo "  (already gone, continuing)"; return 0; fi
+    return "$rc"
+  fi
+}
+
 tag_spec() { echo "ResourceType=$1,Tags=[{Key=$TAG_KEY,Value=$TAG_VALUE},{Key=Name,Value=$NAME_PREFIX}]"; }
 
 mode_banner() {
