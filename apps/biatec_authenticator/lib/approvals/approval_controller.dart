@@ -276,8 +276,9 @@ class ApprovalController extends ChangeNotifier {
       final (token, device) = await _device();
       // The receipt must restate the stored request, so sign what Biatec
       // OIDC holds now.
+      // The card keeps what the user saw; a deny of a changed request is
+      // still a deny.
       final fresh = await client.fetch(token, authReqId);
-      _request = fresh;
       final receipt = await signReceipt(
         keys: keys,
         device: device,

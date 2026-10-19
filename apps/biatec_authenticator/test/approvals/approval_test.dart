@@ -168,6 +168,7 @@ void main() {
     test('rejects lone surrogates and non-finite numbers', () {
       expect(() => canonicalize('\uD800'), throwsArgumentError);
       expect(() => canonicalize(double.nan), throwsArgumentError);
+      expect(() => canonicalize(9007199254740992), throwsArgumentError);
     });
   });
 

@@ -68,7 +68,11 @@ void _string(StringBuffer out, String s) {
 }
 
 String _number(num n) {
-  if (n is int) return n.toString();
+  if (n is int) {
+    // Beyond 2^53 - 1 an ECMAScript verifier would round the value.
+    if (n.abs() > 9007199254740991) throw ArgumentError('integer too large');
+    return n.toString();
+  }
   final d = n.toDouble();
   if (!d.isFinite) throw ArgumentError('non-finite number');
   if (d == 0) return '0'; // also -0
