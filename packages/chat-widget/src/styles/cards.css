@@ -1,0 +1,96 @@
+/* Action preview, consent and receipt cards (T-042). Tokens only. */
+.biatec-chat .bc-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+.biatec-chat .bc-card[data-border="dashed"] { border-style: dashed; border-color: var(--color-border-strong); }
+.biatec-chat .bc-card[data-border="solid"] { border-style: solid; }
+.biatec-chat .bc-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.biatec-chat .bc-card-title { margin: 0; font-size: 16px; font-weight: 600; }
+.biatec-chat .bc-card-meta { display: flex; align-items: center; gap: var(--space-2); }
+.biatec-chat .bc-tag {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.biatec-chat .bc-tag[data-network="mainnet"] { border-color: var(--color-text-secondary); }
+.biatec-chat .bc-muted { color: var(--color-text-secondary); }
+.biatec-chat .bc-num { font-variant-numeric: tabular-nums; }
+.biatec-chat .bc-break { overflow-wrap: anywhere; }
+.biatec-chat .bc-kv { display: grid; grid-template-columns: auto 1fr; gap: var(--space-1) var(--space-4); margin: 0; }
+.biatec-chat .bc-kv dt { color: var(--color-text-secondary); }
+.biatec-chat .bc-kv dd { margin: 0; text-align: right; font-weight: 500; }
+.biatec-chat .bc-steps { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.biatec-chat .bc-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+}
+.biatec-chat .bc-step-n { color: var(--color-text-secondary); }
+.biatec-chat .bc-step-title { font-weight: 500; }
+.biatec-chat .bc-phone,
+.biatec-chat .bc-hint { margin: 0; color: var(--color-text-secondary); }
+.biatec-chat .bc-downside { margin: 0; font-variant-numeric: tabular-nums; }
+.biatec-chat .bc-countdown {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.biatec-chat .bc-note {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+}
+.biatec-chat .bc-note p { margin: 0 0 var(--space-2); }
+.biatec-chat .bc-consent {
+  padding: var(--space-3);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+}
+.biatec-chat .bc-consent-title { margin: 0; font-weight: 600; }
+.biatec-chat .bc-consent-hint { margin: var(--space-1) 0; color: var(--color-text-secondary); }
+.biatec-chat .bc-code {
+  margin: var(--space-2) 0;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+}
+.biatec-chat .bc-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.biatec-chat .bc-confirm { width: 100%; }
+.biatec-chat .bc-linkbtn,
+.biatec-chat .bc-link {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-brand-text);
+  font: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.biatec-chat .bc-linkbtn:focus-visible,
+.biatec-chat .bc-link:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
+.biatec-chat .bc-review { display: flex; flex-direction: column; gap: var(--space-3); }
+.biatec-chat .bc-review-h { margin: 0 0 var(--space-1); font-size: 14px; font-weight: 600; }
+.biatec-chat .bc-review-p { margin: 0; color: var(--color-text-secondary); }
+.biatec-chat .bc-review-steps { margin: 0; padding-left: var(--space-4); }
+.biatec-chat .bc-check { display: flex; align-items: flex-start; gap: var(--space-2); cursor: pointer; }
+.biatec-chat .bc-check input { margin-top: var(--space-1); accent-color: var(--color-brand-primary); }
