@@ -1,7 +1,7 @@
 ---
 id: T-017
 title: Tier policy test suite
-status: in-progress
+status: done
 priority: P1
 epic: "Orchestrator"
 blocked_by: [T-010, T-015]
@@ -14,7 +14,7 @@ owner: "session-20261019-agent"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#tier-enforcement"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-017 · Tier policy test suite
@@ -51,6 +51,8 @@ dotnet test --filter Policy
 
 ## Review
 
+- 2026-10-20 00:53 · approve · PR #113 merged into main @ fac8235 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
@@ -58,3 +60,4 @@ dotnet test --filter Policy
 - 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-010, T-015
 - 2026-10-19 22:32 · scholtz · taken · status stays backlog
 - 2026-10-19 22:32 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 00:53 · user · in-progress → done · PR #113 merged into main @ fac8235 (synced by kanban-sync)

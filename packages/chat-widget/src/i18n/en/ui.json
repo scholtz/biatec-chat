@@ -1,0 +1,21 @@
+{
+  "ui": {
+    "loading": "Loading",
+    "close": "Close",
+    "dismiss": "Dismiss",
+    "logoLabel": "Biatec AI"
+  },
+  "status": {
+    "awaitingConfirmation": "Awaiting your confirmation",
+    "awaitingScope": "Needs signing permission",
+    "awaitingApproval": "Waiting for approval on your phone",
+    "signing": "Approved · signing",
+    "submitted": "Submitted · waiting for confirmation",
+    "completed": "Completed",
+    "rejected": "Rejected on your phone",
+    "failed": "Failed",
+    "timedOut": "Approval timed out · nothing was signed",
+    "cancelled": "Cancelled",
+    "expired": "Expired"
+  }
+}

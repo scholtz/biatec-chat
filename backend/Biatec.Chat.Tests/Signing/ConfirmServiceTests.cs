@@ -192,12 +192,12 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
         return new Built(group, snap.Preview.Id);
     }
 
-    private async Task<ConfirmResult> ConfirmAsync(Guid previewId, string groupHash, IWalletSigningClient? signer = null)
+    private async Task<ConfirmResult> ConfirmAsync(Guid previewId, string groupHash, IWalletSigningClient? signer = null, IEnumerable<ISettlementHandler>? handlers = null)
     {
         await using var db = NewContext();
         var previews = new ActionPreviewService(db, _clock);
         var svc = new ConfirmService(db, previews, new ScopeGuard(_vault, _clock), _vault, signer ?? _oidc, _mcp, _confirmer, _evidence, _clock,
-            NullLogger<ConfirmService>.Instance);
+            NullLogger<ConfirmService>.Instance, handlers);
         return await svc.ConfirmAsync(_tenant, _session, previewId, groupHash, CancellationToken.None);
     }
 
@@ -245,6 +245,146 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
         Assert.Equal("4242", _evidence.Entries[1].Payload["confirmedRound"]!.GetValue<string>());
         // No token ever reaches evidence.
         Assert.DoesNotContain("SECRET", string.Concat(_evidence.Entries.Select(e => e.Payload.ToJsonString())));
+    }
+
+    private const string X402Url = "https://shop.example.com/premium";
+
+    private async Task<Built> BuildX402PreviewAsync()
+    {
+        _tenant.X402Enabled = true;
+        var group = AlgorandGroup.Ensure([Pay(_user.Address, 250_000)]);
+        await using var db = NewContext();
+        var canonical = new JsonObject
+        {
+            ["capability"] = "x402.pay", ["network"] = "testnet", ["resourceUrl"] = X402Url,
+            ["from"] = _user.Address.EncodeAsString(), ["payTo"] = Pay(_user.Address, 1).Receiver.EncodeAsString(),
+            ["assetId"] = "10458941", ["amount"] = "250000", ["groupHash"] = group.GroupHash,
+        }.ToJsonString();
+        var snap = await new ActionPreviewService(db, _clock).CreateAsync(new NewPreviewSpec(_session.ConversationId, "x402.pay", canonical,
+        [
+            new NewStepSpec(ActionStepKind.Sign, group.GroupHash, _clock.Now.AddSeconds(1500), UnsignedGroup: JsonSerializer.Serialize(group.ToBase64()),
+                SenderAddress: _user.Address.EncodeAsString(), Network: Network),
+        ]));
+        return new Built(group, snap.Preview.Id);
+    }
+
+    private static (Biatec.Chat.Api.X402.X402SettlementHandler Handler, Biatec.Chat.Tests.X402.StubResource Resource, Biatec.Chat.Tools.X402.MockX402Facilitator Facilitator) X402Handler(
+        Func<HttpRequestMessage, HttpResponseMessage>? resource = null)
+    {
+        var options = new Biatec.Chat.Tools.X402.X402Options { Enabled = true, AllowedHosts = ["shop.example.com"] };
+        var stub = new Biatec.Chat.Tests.X402.StubResource(resource ?? (r => r.Headers.Contains("X-PAYMENT")
+            ? new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("premium content") }
+            : new HttpResponseMessage(System.Net.HttpStatusCode.PaymentRequired)));
+        var facilitator = new Biatec.Chat.Tools.X402.MockX402Facilitator();
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddTransient(services, _ => new Biatec.Chat.Tools.X402.X402PayService(
+            new Biatec.Chat.Tools.X402.X402HostPolicy(options, new Biatec.Chat.Tests.X402.FakeResolver("93.184.216.34")), new HttpClient(stub), null!, facilitator, options));
+        var sp = Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions.BuildServiceProvider(services);
+        return (new Biatec.Chat.Api.X402.X402SettlementHandler(Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<Microsoft.Extensions.DependencyInjection.IServiceScopeFactory>(sp)), stub, facilitator);
+    }
+
+    [Fact]
+    public async Task X402_confirm_settles_through_the_facilitator_instead_of_the_mcp_broadcast_and_returns_the_resource()
+    {
+        var b = await BuildX402PreviewAsync();
+        var (handler, resource, facilitator) = X402Handler();
+        var r = await ConfirmAsync(b.PreviewId, b.Group.GroupHash, handlers: [handler]);
+
+        Assert.Equal(ConfirmOutcome.Landed, r.Outcome);
+        Assert.Equal("premium content", r.ResourceContent);
+        Assert.Empty(_mcp.Submits);
+        var settled = Assert.Single(facilitator.Settled);
+        Assert.Single(settled.Payment.SignedGroup);
+        Assert.Equal(250000UL, settled.Requirements.MaxAmountRequired);
+        Assert.Equal(10458941UL, settled.Requirements.Asset);
+        Assert.Equal("algorand-testnet", settled.Requirements.Network);
+        Assert.Contains(resource.Seen, q => q.Headers.Contains("X-PAYMENT"));
+
+        var (preview, step) = await LoadAsync(b.PreviewId);
+        Assert.Equal(ActionPreviewStatus.Completed, preview.Status);
+        Assert.Equal(b.Group.TxIds, step.TxIds);
+        Assert.Equal(["action_submitted", "action_receipt"], _evidence.Entries.Select(e => e.Kind));
+        Assert.DoesNotContain("premium content", string.Concat(_evidence.Entries.Select(e => e.Payload.ToJsonString())));
+    }
+
+    [Fact]
+    public async Task X402_confirm_is_refused_before_signing_when_the_tenant_disabled_x402_after_the_preview()
+    {
+        var b = await BuildX402PreviewAsync();
+        var (handler, resource, facilitator) = X402Handler();
+        _tenant.X402Enabled = false;
+        var r = await ConfirmAsync(b.PreviewId, b.Group.GroupHash, handlers: [handler]);
+
+        Assert.Equal(ConfirmOutcome.Failed, r.Outcome);
+        Assert.Equal("feature_disabled", r.ErrorCode);
+        Assert.Empty(_oidc.Calls);
+        Assert.Empty(_mcp.Submits);
+        Assert.Empty(facilitator.Settled);
+        Assert.Empty(resource.Seen);
+        var (preview, step) = await LoadAsync(b.PreviewId);
+        Assert.NotEqual(ActionPreviewStatus.Completed, preview.Status);
+        Assert.NotEqual(ActionPreviewStatus.InProgress, preview.Status);
+        Assert.Empty(step.TxIds ?? []);
+    }
+
+    [Fact]
+    public async Task X402_confirm_fails_closed_when_no_settlement_handler_is_registered()
+    {
+        var b = await BuildX402PreviewAsync();
+        var r = await ConfirmAsync(b.PreviewId, b.Group.GroupHash, handlers: null);
+
+        Assert.Equal(ConfirmOutcome.Failed, r.Outcome);
+        Assert.Equal("settlement_unavailable", r.ErrorCode);
+        Assert.Empty(_oidc.Calls); // refused before anything was signed
+        Assert.Empty(_mcp.Submits);
+        var (preview, step) = await LoadAsync(b.PreviewId);
+        Assert.NotEqual(ActionPreviewStatus.Completed, preview.Status);
+        Assert.NotEqual(ActionPreviewStatus.InProgress, preview.Status);
+        Assert.Empty(step.TxIds ?? []);
+    }
+
+    [Fact]
+    public async Task X402_confirm_fails_cleanly_when_the_facilitator_refuses_to_verify()
+    {
+        var b = await BuildX402PreviewAsync();
+        var (handler, _, facilitator) = X402Handler();
+        facilitator.RejectVerify = true;
+        var r = await ConfirmAsync(b.PreviewId, b.Group.GroupHash, handlers: [handler]);
+
+        Assert.Equal(ConfirmOutcome.Failed, r.Outcome);
+        Assert.Null(r.ResourceContent);
+        Assert.Empty(_mcp.Submits);
+        var (preview, step) = await LoadAsync(b.PreviewId);
+        Assert.Equal(ActionPreviewStatus.Failed, preview.Status);
+        Assert.Empty(step.TxIds);
+    }
+
+    [Fact]
+    public async Task X402_confirm_keeps_the_step_submitted_when_settlement_is_unknown()
+    {
+        _confirmer.Result = new TxConfirmation(TxConfirmationState.Pending);
+        var b = await BuildX402PreviewAsync();
+        var (handler, _, facilitator) = X402Handler();
+        facilitator.RejectSettle = true;
+        var r = await ConfirmAsync(b.PreviewId, b.Group.GroupHash, handlers: [handler]);
+
+        Assert.Equal(ConfirmOutcome.Submitted, r.Outcome);
+        var (_, step) = await LoadAsync(b.PreviewId);
+        Assert.Equal(StepStatus.Submitted, step.Status);
+        Assert.Equal(b.Group.TxIds, step.TxIds);
+    }
+
+    [Fact]
+    public async Task X402_confirm_lands_the_step_when_paid_but_the_resource_returns_no_content()
+    {
+        var b = await BuildX402PreviewAsync();
+        var (handler, _, _) = X402Handler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError));
+        var r = await ConfirmAsync(b.PreviewId, b.Group.GroupHash, handlers: [handler]);
+
+        Assert.Equal(ConfirmOutcome.Landed, r.Outcome);
+        Assert.Null(r.ResourceContent);
+        Assert.Equal("resource_failed", r.ErrorCode);
+        Assert.Equal(ActionPreviewStatus.Completed, (await LoadAsync(b.PreviewId)).Preview.Status);
     }
 
     [Fact]

@@ -11,6 +11,10 @@ data:
   Bedrock__AuthenticatedModelId: eu.anthropic.claude-opus-4-5-20251101-v1:0
   Bedrock__MaxTokens: "4096"
   Kms__Region: eu-central-1
+  # Guardrail from infra/guardrail/create.sh in the AWS account that owns the role (hackathon account: rwa0b0by3y18 v1).
+  Bedrock__Guardrail__Enabled: "true"
+  Bedrock__Guardrail__GuardrailId: rwa0b0by3y18
+  Bedrock__Guardrail__GuardrailVersion: "1"
   Builders__BaseAddress: http://biatec-chat-builders:3100
   # The vault wraps its data keys with KMS (Kms__KeyId below); never the local Dev key.
   Vault__KeyProvider: Kms
@@ -37,7 +41,8 @@ spec:
     metadata:
       labels: {app.kubernetes.io/name: biatec-chat-backend, app.kubernetes.io/part-of: biatec-chat}
     spec:
-      # The IAM role for Bedrock and KMS is bound to this service account by the cluster; no keys anywhere.
+      # AWS access (Bedrock, KMS) without keys: the projected service-account token below is exchanged for the IAM role
+      # (sts:AssumeRoleWithWebIdentity) created by infra/aws/k8s-role.sh. Works on any cluster, EKS or not.
       serviceAccountName: biatec-chat-backend
       securityContext:
         runAsNonRoot: true
@@ -55,6 +60,11 @@ spec:
           env:
             - name: AWS_REGION
               value: eu-central-1
+            # Optional, so a secret without the key (an older deployment, or EKS with IRSA) still starts.
+            - name: AWS_ROLE_ARN
+              valueFrom: {secretKeyRef: {name: biatec-chat-secrets, key: aws-role-arn, optional: true}}
+            - name: AWS_WEB_IDENTITY_TOKEN_FILE
+              value: /var/run/secrets/aws/token
             - name: Postgres__ConnectionString
               valueFrom: {secretKeyRef: {name: biatec-chat-secrets, key: postgres-connection-string}}
             - name: Redis__ConnectionString
@@ -87,9 +97,14 @@ spec:
             capabilities: {drop: [ALL]}
           volumeMounts:
             - {name: tmp, mountPath: /tmp}
+            - {name: aws-token, mountPath: /var/run/secrets/aws, readOnly: true}
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: aws-token
+          projected:
+            sources:
+              - serviceAccountToken: {audience: sts.amazonaws.com, expirationSeconds: 3600, path: token}
 ---
 apiVersion: v1
 kind: Service

@@ -70,6 +70,8 @@ public sealed class ToolGate(CapabilityRegistry registry, IPolicyEventSink sink,
             var msg = why switch
             {
                 "tier_too_low" => $"'{cap.Name}' needs a signed-in user. Call requestSignIn instead and explain in general terms what the action would do.",
+                "agent_paused" => $"'{cap.Name}' is unavailable because the user paused Biatec AI. Explain that the user can resume it in the permissions dialog.",
+                "agent_analyze_only" => $"'{cap.Name}' is unavailable because the user set Biatec AI to analyze only. Explain that the user can allow preparing actions in the permissions dialog.",
                 "scope_missing" => $"'{cap.Name}' needs a permission the session does not hold. Offer the user to re-authorize with the needed scope.",
                 _ => $"Tool '{Sanitize(name)}' does not exist.", // same text as unknown_tool: no capability enumeration
             };

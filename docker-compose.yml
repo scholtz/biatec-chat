@@ -1,4 +1,8 @@
 # Local development dependencies. Dev-only credentials; nothing here is used in AWS.
+# Fixed project name: without it compose names the project after the folder, so a second checkout (worktree, clone)
+# tries to start another Redis/Postgres on the same ports and fails with "port is already allocated".
+name: biatec-chat
+
 services:
   redis:
     image: redis:7

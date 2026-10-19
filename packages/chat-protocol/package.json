@@ -4,11 +4,12 @@
   "description": "Typed JSON contract between the Biatec Chat widget and backend, generated from the backend OpenAPI document.",
   "type": "module",
   "license": "MIT",
-  "files": ["dist", "openapi.json"],
+  "files": ["dist", "src", "openapi.json"],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }

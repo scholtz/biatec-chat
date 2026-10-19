@@ -1,0 +1,65 @@
+---
+id: T-072
+title: Fix failing authenticator enrollment tests
+status: blocked
+priority: P2
+epic: "Authenticator"
+blocked_by: [T-051, T-071]
+area: ["apps/biatec_authenticator/lib/enrollment/**", "apps/biatec_authenticator/test/enrollment/**", ".github/workflows/ci.yml"]
+parallel: yes
+conflicts_with: []
+issue: "#129"
+branch: ""
+owner: ""
+taken_by: ""
+source: "PRODUCT-DESCRIPTION.md#biatec-authenticator"
+created: 2026-10-20
+updated: 2026-10-20
+---
+
+# T-072 · Fix failing authenticator enrollment tests
+
+## Context
+
+Found while building CI (T-071): on `main`, `flutter test` in `apps/biatec_authenticator` fails two tests in
+`test/enrollment/enrollment_test.dart`:
+
+- `screen shows the recovery code after activation` (expects no "AAAA-BBBB-CCCC" text, finds one)
+- `state machine approved by an active device is active at once`
+
+`ci.yml` runs the authenticator job with `continue-on-error: true` until this is fixed.
+
+## Goal
+
+`flutter test` passes, and the authenticator CI job is blocking again.
+
+## Scope
+
+- In: decide whether the tests or the enrollment code are wrong (spec: recovery code is shown only after a device
+  became active, never during enrollment); fix; remove `continue-on-error` from the `authenticator` job in
+  `.github/workflows/ci.yml`.
+- Out: anything else in the authenticator.
+
+## Parallel work
+
+Parallel work possible: **yes**. It edits `ci.yml` that T-071 creates, so it waits for T-071 (blocked_by).
+
+## Acceptance criteria
+
+- [ ] `cd apps/biatec_authenticator && flutter test` passes.
+- [ ] `continue-on-error` is gone from the `authenticator` job.
+
+## Verification
+
+`flutter analyze && flutter test` in `apps/biatec_authenticator`.
+
+## Hand-off
+
+## Review
+
+## Activity log
+
+Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>`
+
+- 2026-10-20 00:47 · session-20261020-claude · (new) → backlog · follow-up from T-071 (pre-existing Flutter test failures on main)
+- 2026-10-20 00:47 · kanban-board · backlog → blocked · waiting on: T-071

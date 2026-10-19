@@ -41,6 +41,11 @@ public sealed class CapabilityRegistry
         if (c.Flag == CapabilityFlag.X402 && !ctx.X402Enabled) return "feature_disabled";
         if (c.Flag == CapabilityFlag.LimitsUpdate && !ctx.LimitsUpdateEnabled) return "feature_disabled";
         if (ctx.Tier < c.MinTier) return "tier_too_low";
+        if (c.IsFundMoving)
+        {
+            if (ctx.Paused) return "agent_paused";
+            if (ctx.Mode == AgentMode.Analyze) return "agent_analyze_only";
+        }
         foreach (var s in c.BuildScopes)
             if (!ctx.Scopes.Contains(s, StringComparer.Ordinal)) return "scope_missing";
         return null;

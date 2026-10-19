@@ -16,5 +16,5 @@ export default defineConfig({
       output: { globals: { vue: "Vue" } },
     },
   },
-  test: { environment: "jsdom", include: ["test/**/*.test.ts"] },
+  test: { environment: "jsdom", include: ["test/**/*.test.ts"], css: { include: [/.+/] } },
 });
