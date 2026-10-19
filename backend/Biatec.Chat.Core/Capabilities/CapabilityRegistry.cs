@@ -22,6 +22,7 @@ public sealed class CapabilityRegistry
         {
             if (!_byName.TryAdd(c.Name, c))
                 throw new ArgumentException($"Duplicate capability '{c.Name}'.");
+            if (c.InputSchema is not null) JsonSchemaValidator.AssertSupported(c.InputSchema, c.Name);
             _ordered.Add(c);
         }
     }
@@ -77,7 +78,9 @@ public sealed class CapabilityRegistry
 
     private static JsonObject Network() => new() { ["type"] = "string", ["enum"] = new JsonArray("mainnet", "testnet") };
     private static JsonObject Address() => Str(max: 64, pattern: @"\A[A-Za-z0-9]+\z");
-    private static JsonObject Amount() => Str(max: 40, pattern: @"\A[0-9]+\z");
+    // Canonical non-negative integer string (no leading zeros); AmountPositive additionally excludes zero.
+    private static JsonObject Amount() => Str(max: 40, pattern: @"\A(0|[1-9][0-9]*)\z");
+    private static JsonObject AmountPositive() => Str(max: 40, pattern: @"\A[1-9][0-9]*\z");
     private static JsonObject Id() => new() { ["type"] = "integer", ["minimum"] = 0, ["maximum"] = 9007199254740991 };
 
     /// <summary>The initial capability set from the product description.</summary>
@@ -91,7 +94,7 @@ public sealed class CapabilityRegistry
             ["from"] = Address(),
             ["to"] = Address(),
             ["assetId"] = Id(),
-            ["amount"] = Amount(),
+            ["amount"] = AmountPositive(),
         }, "network", "from", "to", "assetId", "amount");
         var swapInput = Obj(new JsonObject
         {
@@ -99,7 +102,7 @@ public sealed class CapabilityRegistry
             ["from"] = Address(),
             ["fromAssetId"] = Id(),
             ["toAssetId"] = Id(),
-            ["amount"] = Amount(),
+            ["amount"] = AmountPositive(),
             ["poolAppId"] = Id(),
         }, "network", "from", "fromAssetId", "toAssetId", "amount");
         var liquidityInput = Obj(new JsonObject
@@ -107,8 +110,8 @@ public sealed class CapabilityRegistry
             ["network"] = Network(),
             ["from"] = Address(),
             ["poolAppId"] = Id(),
-            ["amountA"] = Amount(),
-            ["amountB"] = Amount(),
+            ["amountA"] = AmountPositive(),
+            ["amountB"] = AmountPositive(),
         }, "network", "from", "poolAppId", "amountA", "amountB");
         var removeLiquidityInput = Obj(new JsonObject
         {

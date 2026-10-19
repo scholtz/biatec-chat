@@ -85,6 +85,8 @@ public class ToolGateTests
     [InlineData("""{"network":"testnet","from":"A","to":"B","assetId":9007199254740992,"amount":"1"}""")]
     [InlineData("""{"network":"testnet","from":"A","to":"B","assetId":1,"amount":"100\n"}""")]
     [InlineData("""{"network":"testnet","from":"A B","to":"B","assetId":1,"amount":"1"}""")]
+    [InlineData("""{"network":"testnet","from":"A","to":"B","assetId":1,"amount":"0"}""")]
+    [InlineData("""{"network":"testnet","from":"A","to":"B","assetId":1,"amount":"007"}""")]
     [InlineData("""{"network":"testnet","from":"A","to":"B","assetId":-1,"amount":"1"}""")]
     [InlineData("""{"network":"regtest","from":"A","to":"B","assetId":1,"amount":"1"}""")]
     [InlineData("""{"network":"testnet","from":"A","to":"B","assetId":"1","amount":"1"}""")]
@@ -241,5 +243,31 @@ public class ToolGateTests
         var reg = CapabilityRegistry.CreateDefault();
         Assert.Equal("requestSignIn", reg.All.First().Name);
         Assert.NotSame(reg.Find("dex.addLiquidity")!.InputSchema, reg.Find("dex.removeLiquidity")!.InputSchema);
+    }
+
+    [Fact]
+    public void Out_of_range_numbers_fail_closed_without_throwing()
+    {
+        var (gate, sink) = Make();
+        var args = JsonNode.Parse("""{"network":"testnet","from":"A","poolAppId":1,"percent":1e999}""");
+        var d = gate.Check("dex.removeLiquidity", args, Auth("openid"));
+        Assert.False(d.Allowed);
+        Assert.Single(sink.Events);
+    }
+
+    [Fact]
+    public void Registry_rejects_schemas_with_unsupported_keywords()
+    {
+        var bad = new Capability("x.bad", 1, SessionTier.Anonymous, [], null, false, ValuationBasis.None, "d",
+            new JsonObject { ["type"] = "object", ["properties"] = new JsonObject { ["a"] = new JsonObject { ["oneOf"] = new JsonArray() } } });
+        Assert.Throws<ArgumentException>(() => new CapabilityRegistry([bad]));
+    }
+
+    [Fact]
+    public void Tool_names_are_reduced_to_a_safe_alphabet_in_events()
+    {
+        var (gate, sink) = Make();
+        gate.Check("a\u202Eb ignore this", null, Anon());
+        Assert.Equal("abignorethis", sink.Events[0].ToolName);
     }
 }

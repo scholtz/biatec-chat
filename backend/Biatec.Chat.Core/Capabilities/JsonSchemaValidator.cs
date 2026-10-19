@@ -14,6 +14,27 @@ public static class JsonSchemaValidator
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(100);
     private const int MaxDepth = 16;
 
+    private static readonly HashSet<string> Supported = new(StringComparer.Ordinal)
+    {
+        "type", "enum", "required", "properties", "additionalProperties", "items", "minLength", "maxLength",
+        "pattern", "minimum", "maximum", "minItems", "maxItems", "minProperties",
+    };
+
+    /// <summary>Throws if a schema uses a keyword this validator would silently ignore (fail closed at startup).</summary>
+    public static void AssertSupported(JsonObject schema, string path = "$")
+    {
+        foreach (var (k, v) in schema)
+        {
+            if (!Supported.Contains(k)) throw new ArgumentException($"{path}: unsupported schema keyword '{k}'.");
+            if (k == "additionalProperties" && v is not JsonValue) throw new ArgumentException($"{path}: additionalProperties must be boolean.");
+        }
+        if (schema["properties"] is JsonObject props)
+            foreach (var (k, v) in props)
+                if (v is JsonObject o) AssertSupported(o, $"{path}.{k}");
+                else throw new ArgumentException($"{path}.{k}: property schema must be an object.");
+        if (schema["items"] is JsonObject items) AssertSupported(items, path + "[]");
+    }
+
     /// <summary>Returns a list of human-readable violations (JSON-pointer-ish path plus message); empty when valid.</summary>
     public static IReadOnlyList<string> Validate(JsonObject schema, JsonNode? value)
     {
@@ -54,7 +75,7 @@ public static class JsonSchemaValidator
                 break;
 
             case JsonValueKind.Number:
-                var d = Elem(value!).GetDouble();
+                if (!Elem(value!).TryGetDouble(out var d)) { errors.Add($"{path}: number out of range"); break; }
                 if (Num(schema, "minimum") is { } min && d < min) errors.Add($"{path}: below minimum {min}");
                 if (Num(schema, "maximum") is { } max && d > max) errors.Add($"{path}: above maximum {max}");
                 break;

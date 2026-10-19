@@ -24,9 +24,15 @@ public interface IPolicyEventSink
 /// <summary>Collects events in memory; used by tests and as a default sink.</summary>
 public sealed class InMemoryPolicyEventSink : IPolicyEventSink
 {
+    private const int Capacity = 10_000;
     private readonly ConcurrentQueue<PolicyEvent> _events = new();
     public IReadOnlyList<PolicyEvent> Events => _events.ToArray();
-    public void Emit(PolicyEvent policyEvent) => _events.Enqueue(policyEvent);
+
+    public void Emit(PolicyEvent policyEvent)
+    {
+        _events.Enqueue(policyEvent);
+        while (_events.Count > Capacity) _events.TryDequeue(out _);
+    }
 }
 
 /// <summary>Outcome of a gate check. <see cref="ModelError"/> is the text returned to the model as an error tool result.</summary>
@@ -69,7 +75,13 @@ public sealed class ToolGate(CapabilityRegistry registry, IPolicyEventSink sink,
 
         // Models send null/absent arguments for tools without parameters.
         var args = arguments ?? new JsonObject();
-        var violations = JsonSchemaValidator.Validate(cap.InputSchema!, args);
+        IReadOnlyList<string> violations;
+        try { violations = JsonSchemaValidator.Validate(cap.InputSchema!, args); }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Fail closed: a validator fault is a rejection, never an exception that skips the gate.
+            return Reject(name, ctx, "schema_invalid", "Arguments could not be validated against the tool schema.");
+        }
         if (violations.Count > 0)
             return Reject(name, ctx, "schema_invalid",
                 "Arguments do not match the tool schema: " + string.Join("; ", violations.Take(5)) + ".", violations);
@@ -105,7 +117,7 @@ public sealed class ToolGate(CapabilityRegistry registry, IPolicyEventSink sink,
     // Tool names come from the model; keep them short and printable before logging or echoing.
     private static string Sanitize(string s)
     {
-        var t = new string(s.Where(ch => !char.IsControl(ch)).Take(64).ToArray());
-        return t;
+        return new string(s.Where(ch => ch is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '.' or '_' or '-')
+            .Take(64).ToArray());
     }
 }
