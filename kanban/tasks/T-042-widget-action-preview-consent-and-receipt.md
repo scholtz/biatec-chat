@@ -1,7 +1,7 @@
 ---
 id: T-042
 title: Widget action preview, consent and receipt cards
-status: in-progress
+status: done
 priority: P0
 epic: "Widget"
 blocked_by: [T-041, T-062]
@@ -58,6 +58,8 @@ pnpm --filter chat-widget test
 
 ## Review
 
+- 2026-10-20 01:46 · approve · PR #131 merged into main @ 8d962de (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
@@ -67,3 +69,4 @@ pnpm --filter chat-widget test
 - 2026-10-20 01:09 · LukassSoukup · backlog · parallel analysis: added T-064 and T-067: cards render in components/chat/ChatView.vue and their events go through useChat.ts (T-064's area)
 - 2026-10-20 01:16 · scholtz · taken · status stays backlog
 - 2026-10-20 01:16 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 01:46 · user · in-progress → done · PR #131 merged into main @ 8d962de (synced by kanban-sync)
