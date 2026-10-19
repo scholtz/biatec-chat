@@ -72,7 +72,7 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
             throw new PreviewException(PreviewError.Expired, "The group has expired; the preview must be rebuilt.");
         }
 
-        if (!string.Equals(current.SubjectHash, groupHash, StringComparison.Ordinal))
+        if (!string.Equals(current.SubjectHash, groupHash?.Trim().ToLowerInvariant(), StringComparison.Ordinal))
             throw new PreviewException(PreviewError.HashMismatch, "The confirmed hash is not the hash of the pending group.");
 
         var remaining = PreviewPolicy.RemainingSeconds(current.ExpiresAt, now, sessionAbsoluteExpiry);
@@ -236,7 +236,10 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock)
         var now = clock.GetUtcNow();
         var n = await db.ActionPreviews
             .Where(p => p.Id == previewId && p.ConversationId == conversationId && p.ExpiresAt <= now
-                        && (p.Status == ActionPreviewStatus.Proposed || p.Status == ActionPreviewStatus.Confirmed))
+                        && (p.Status == ActionPreviewStatus.Proposed || p.Status == ActionPreviewStatus.Confirmed)
+                        // A step already signing or submitted may still land; its outcome must be recorded, not expired.
+                        && !db.ActionSteps.Any(x => x.PreviewId == p.Id
+                            && (x.Status == StepStatus.Signed || x.Status == StepStatus.Submitted || x.Status == StepStatus.AwaitingConsent)))
             .ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, ActionPreviewStatus.Expired), ct);
         if (n == 0) return false;
         await db.ActionSteps.Where(x => x.PreviewId == previewId && x.Status == StepStatus.Pending)

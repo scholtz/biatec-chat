@@ -356,4 +356,17 @@ public sealed class ActionPreviewServiceTests : IAsyncLifetime
         var empty = await Assert.ThrowsAsync<PreviewException>(() => svc.MarkStepLandedAsync(_conversation, p.Preview.Id, 0, []));
         Assert.Equal(PreviewError.InvalidSpec, empty.Error);
     }
+
+    [Fact]
+    public async Task ExpireIfLapsed_LeavesAnInFlightStepAlone_AndConfirmAcceptsUppercaseHash()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var p = await svc.CreateAsync(Spec(Step("abcdef", 2000)));
+        await svc.ConfirmAsync(_conversation, p.Preview.Id, " ABCDEF ");
+        await db.ActionSteps.Where(x => x.PreviewId == p.Preview.Id).ExecuteUpdateAsync(u => u.SetProperty(x => x.Status, StepStatus.Submitted));
+
+        _clock.Now = _clock.Now.AddSeconds(2001);
+        Assert.False(await svc.ExpireIfLapsedAsync(_conversation, p.Preview.Id));
+    }
 }
