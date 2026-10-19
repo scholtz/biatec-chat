@@ -2,6 +2,7 @@ using Biatec.Chat.Api.Config;
 using Biatec.Chat.Api.Contracts;
 using Biatec.Chat.Api.Data;
 using Biatec.Chat.Api.Health;
+using Biatec.Chat.Api.Sessions;
 using Biatec.Chat.Api.Tenancy;
 using Biatec.Chat.Api.Vault;
 
@@ -13,6 +14,7 @@ builder.Services.AddContractsOpenApi();
 builder.Services.AddBiatecData();
 builder.Services.AddTokenVault(builder.Configuration);
 builder.Services.AddTenancy();
+builder.Services.AddSessions();
 
 var app = builder.Build();
 await app.MigrateDevelopmentDatabaseAsync();
@@ -24,6 +26,7 @@ app.UseTenancy();
 app.MapHealthChecks("/health");
 
 app.MapContractCatalog();
+app.MapSessions();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
