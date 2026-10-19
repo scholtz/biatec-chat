@@ -82,6 +82,20 @@ public sealed class WalletReadTests
     }
 
     [Fact]
+    public async Task Balance_does_not_assume_algo_decimals_for_a_symbol_only_entry()
+    {
+        var mcp = new FakeMcp
+        {
+            Balance = () => FakeMcp.Ok("{\"balances\":[{\"symbol\":\"TOK\",\"amount\":\"1234567\"},{\"symbol\":\"ALGO\",\"amount\":\"1234567\"}]}"),
+        };
+        var r = await new WalletBalanceExecutor(mcp).ExecuteAsync(Ctx("wallet.balance"), Args(), default);
+        var list = JsonNode.Parse(r.Content)!["balances"]!.AsArray();
+        Assert.Null(list[0]!["display"]);
+        Assert.Equal("1234567", (string)list[0]!["amount"]!);
+        Assert.Equal("1.234567", (string)list[1]!["display"]!);
+    }
+
+    [Fact]
     public async Task Balance_uses_the_decimals_of_each_asset()
     {
         var mcp = new FakeMcp

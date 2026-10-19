@@ -155,8 +155,10 @@ public sealed class WalletBalanceExecutor(IBiatecMcpClient mcp) : WalletReadExec
         var decimalsText = Str("decimals", "decimal");
         if (asset is not null) o["assetId"] = asset;
         if (symbol is not null) o["symbol"] = symbol;
-        // Native ALGO (asset 0 or none given) has 6 decimals when the server does not say.
-        if (decimalsText is null && (asset is null || asset == "0")) decimalsText = "6";
+        // Native ALGO has 6 decimals when the server does not say: asset 0, or no id and no symbol / symbol ALGO.
+        // An entry that names another symbol without an id or decimals is passed through raw.
+        var isNative = asset == "0" || (asset is null && (symbol is null || string.Equals(symbol, "ALGO", StringComparison.OrdinalIgnoreCase)));
+        if (decimalsText is null && isNative) decimalsText = "6";
         o["amount"] = amount;
         if (int.TryParse(decimalsText, NumberStyles.None, CultureInfo.InvariantCulture, out var decimals) && decimals is >= 0 and <= 19)
         {
