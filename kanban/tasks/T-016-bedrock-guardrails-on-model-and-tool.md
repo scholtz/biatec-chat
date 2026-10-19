@@ -1,7 +1,7 @@
 ---
 id: T-016
 title: Bedrock Guardrails on model and tool results
-status: in-progress
+status: done
 priority: P2
 epic: "Orchestrator"
 blocked_by: [T-014]
@@ -51,9 +51,12 @@ AWS_PROFILE=hackathon ./infra/guardrail/create.sh; dotnet test --filter Guardrai
 
 ## Review
 
+- 2026-10-19 22:29 · approve · PR #100 merged into main @ 7745e25 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 21:21 · kanban-board · blocked → backlog · blockers done: T-014
 - 2026-10-19 21:24 · scholtz · taken · status stays backlog
 - 2026-10-19 21:24 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-19 22:29 · user · in-progress → done · PR #100 merged into main @ 7745e25 (synced by kanban-sync)
