@@ -96,7 +96,8 @@ public static class ElevationEndpoints
                 oidc.EnsureConfigured(tenant);
                 var entry = await vault.GetAsync(session.Id.ToString("N"), ctx.RequestAborted)
                     ?? throw new OidcException("No tokens are held for this session.");
-                var requested = string.Join(' ', ElevationScopes.Union(entry.Scopes, scope));
+                var requested = string.Join(' ', ElevationScopes.Union(
+                    entry.Scopes.Where(s => ElevationScopes.IsAllowed(s) || AuthEndpoints.LoginScope.Split(' ').Contains(s)), scope));
                 var state = AuthEndpoints.Random64();
                 var oidcNonce = AuthEndpoints.Random64();
                 var verifier = AuthEndpoints.Random64();

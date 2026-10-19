@@ -427,6 +427,36 @@ public sealed class ElevationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Elevation_NeverReRequestsAHeldScopeOutsideTheAllowList()
+    {
+        var cookie = await LoginAsync();
+        var sid = SessionIdOf(cookie);
+        var e = _vault.Items[sid];
+        _vault.Items[sid] = new TokenVaultEntry
+        {
+            AccessToken = e.AccessToken, RefreshToken = e.RefreshToken, AccessExpiresAt = e.AccessExpiresAt,
+            AbsoluteExpiresAt = e.AbsoluteExpiresAt, IdToken = e.IdToken, Scopes = [.. e.Scopes, "rekey"],
+        };
+        var (_, path) = await StartElevationAsync(cookie, "sign");
+        var redirect = await SendAsync(HttpMethod.Get, path, cookie);
+        _oidc.Authorize(redirect.Headers.Location!, "openid profile email sign"); // no rekey in the request
+    }
+
+    [Fact]
+    public async Task Elevation_PopupStartNeedsTheCsrfHeader()
+    {
+        var cookie = await LoginAsync();
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = false });
+        var r = new HttpRequestMessage(HttpMethod.Post, "http://" + Host + "/auth/elevate/popup") { Content = JsonContent.Create(new { scope = "sign" }) };
+        r.Headers.TryAddWithoutValidation("Cookie", $"{SessionPolicy.CookieName}={cookie}");
+        r.Headers.TryAddWithoutValidation("Origin", "https://evil.example");
+        var res = await client.SendAsync(r);
+        Assert.True((int)res.StatusCode is 400 or 401 or 403, res.StatusCode.ToString());
+        await using var db = NewContext();
+        Assert.False(await db.PopupAuthRequests.AnyAsync(p => p.Purpose == PopupAuthPurpose.Elevate));
+    }
+
+    [Fact]
     public async Task Elevation_KeepsTheAbsoluteSessionLifetime()
     {
         var cookie = await LoginAsync();
