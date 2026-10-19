@@ -29,7 +29,15 @@ public static class VaultRegistration
                 throw new InvalidOperationException("Vault:KeyProvider must be 'Dev' or 'Kms'.");
             return new DevKeyProvider(o.DevKey is null ? null : Convert.FromBase64String(o.DevKey));
         });
+        services.TryAddSingleton<ITokenRefresher, UnconfiguredTokenRefresher>();
         services.TryAddSingleton<ITokenVault, TokenVault>();
         return services;
     }
+}
+
+/// <summary>Placeholder until the OIDC refresh grant is registered; refreshing fails clearly rather than silently.</summary>
+public sealed class UnconfiguredTokenRefresher : ITokenRefresher
+{
+    public Task<TokenRefreshResult> RefreshAsync(string refreshToken, CancellationToken ct) =>
+        throw new NotSupportedException("No ITokenRefresher is registered; the OIDC refresh grant is provided by the auth flow.");
 }
