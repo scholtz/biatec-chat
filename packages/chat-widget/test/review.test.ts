@@ -14,11 +14,12 @@ afterEach(() => {
 });
 
 describe("accessibility", () => {
-  it("labels the launcher by state", async () => {
+  it("labels the launcher, which gives way to the panel while it is open", async () => {
     const w = mount(BiatecChatRoot, { props: { options: opts } });
-    expect(w.get(".bc-launcher").attributes("aria-label")).toBe("Open Biatec Chat");
+    expect(w.get(".bc-launcher").attributes("aria-label")).toBe("Ask Biatec AI");
     await w.get(".bc-launcher").trigger("click");
-    expect(w.get(".bc-launcher").attributes("aria-label")).toBe("Close Biatec Chat");
+    expect(w.find(".bc-launcher").exists()).toBe(false);
+    expect(w.find(".bc-panel").exists()).toBe(true);
   });
   it("closes on Escape when focus is outside the panel", async () => {
     const w = mount(BiatecChatRoot, { props: { options: opts }, attachTo: document.body });

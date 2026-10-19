@@ -1,11 +1,11 @@
 ---
 id: T-071
-title: CI/CD pipelines and stage deploy
+title: CI/CD pipelines, stage deploy and production promotion
 status: review
 priority: P1
 epic: "Deployment"
 blocked_by: [T-054]
-area: [".github/workflows/ci.yml", ".github/workflows/deploy-stage.yml", "docs/cicd.md", "k8s/base/backend.yaml", "k8s/base/builders.yaml", "k8s/main/kustomization.yaml", "k8s/stage/kustomization.yaml", "k8s/README.md", "k8s/base/kustomization.yaml", "k8s/base/postgres.yaml", "k8s/base/redis.yaml", "docs/aws-setup.md", "docs/deploy-aws.md", "docs/AWS-AGENTCORE-GUIDE.md", "infra/aws/**", "infra/guardrail/**"]
+area: [".github/workflows/**", "docs/cicd.md", "docs/aws-setup.md", "docs/deploy-aws.md", "docs/AWS-AGENTCORE-GUIDE.md", "runGuide.md", "k8s/**", "infra/aws/**", "infra/guardrail/**", "backend/Biatec.Chat.Api/Vault/**", "backend/Biatec.Chat.Api/Config/Options.cs", "backend/Biatec.Chat.Tests/Vault/**", "backend/Biatec.Chat.Tests/ConfigAndHealthTests.cs"]
 parallel: yes
 conflicts_with: []
 issue: "#128"
@@ -67,25 +67,25 @@ locally; first real run on GitHub once Scholtz has set the secrets.
 
 ## Hand-off
 
-- **Summary:** `ci.yml` (PRs, and called by deploy) tests backend (with Postgres/Redis service containers), JS
-  packages, builders, authenticator (non-blocking until T-072), builds both images, renders both overlays.
-  `deploy-stage.yml` (push to `main`, manual) runs CI, then in the `Stage` environment pushes
-  `scholtz2/biatec-chat-{backend,builders}:1.<date>-<sha7>-beta`, generates `biatec-chat-generated` once (Postgres,
-  Redis, builders passwords), optionally syncs `biatec-chat-secrets`, applies `k8s/stage` with the pinned tag, waits
-  for Postgres/Redis, applies idempotent EF migrations via `psql`, waits for builders/backend. Postgres and Redis run in
-  the namespace (StatefulSets, network policies). Includes #124 (keyless AWS role, ApplyGuardrail, guardrail config).
-  `docs/aws-setup.md` is the single AWS setup guide; `infra/aws/kms-key.sh` added.
-- **Files changed:** `.github/workflows/{ci,deploy-stage}.yml`, `docs/{cicd,aws-setup,deploy-aws,AWS-AGENTCORE-GUIDE}.md`,
-  `infra/aws/kms-key.sh`, `k8s/base/{backend,builders,postgres,redis,kustomization}.yaml`,
-  `k8s/{main,stage}/kustomization.yaml`, `k8s/README.md`.
-- **How it was verified:** actionlint 1.7.7; both overlays render; `bash -n infra/aws/*.sh`; backend 775 passed /
-  1 skipped after merging `main`; all pnpm steps from a clean `dist`; Postgres/Redis containers run with the manifests'
-  security settings and the migration script applies twice; PR #130 CI green except the known authenticator tests.
-  The deploy job is unverified until the `Stage` secrets exist.
+- **Summary:** Target changed by the user: Biatec's own Kubernetes with stage and production, AWS for Bedrock only.
+  `ci.yml` (PRs). `deploy-stage.yml` (push to `main`): CI, build/push `<version>-beta` + moving `stage` tag, deploy to
+  `Stage`. `promote-production.yml` (manual): re-tag the stage images `-beta` → `-main` (same digest, no rebuild) and
+  deploy to `Production`. `deploy.yml` (reusable): generated secrets (DB passwords, builders secret, vault master key),
+  `biatec-chat-secrets` sync, pinned tag, apply, DB waits, idempotent migrations, rollouts. In-cluster Postgres/Redis.
+  Token vault: new `Secret` key provider (no KMS); `Kms:KeyId` required only with the Kms provider. AWS: keyless
+  Bedrock-only role; EC2/KMS path removed.
+- **Files changed:** `.github/workflows/{ci,deploy,deploy-stage,promote-production}.yml`; `backend/.../Vault/{SecretKeyProvider,
+  TokenVault,VaultRegistration}.cs`, `Config/Options.cs` and their tests; `k8s/base/*`, `k8s/{main,stage}/kustomization.yaml`,
+  `k8s/README.md`; `infra/aws/*` (create/user-data/ec2-trust/kms-key removed); `docs/{cicd,aws-setup}.md`
+  (`deploy-aws.md` removed), `runGuide.md`.
+- **How it was verified:** backend 875 passed / 1 skipped; pnpm steps from a clean `dist`; actionlint; both overlays
+  render with pinned tags; `infra/aws/test-scripts.sh` 8/8; promote re-tag flow against a local registry (label read,
+  same digest, missing tag fails); Postgres/Redis with the manifests' security settings; migration script applied twice.
+  A real deploy is unverified until the secrets and the cluster issuer exist.
 - **Follow-up tasks created:** T-072.
 - **Unblocks:** T-072 (ready once this is done).
-- **Open questions:** before the first deploy the KMS key and the k8s role must exist (`docs/aws-setup.md` §3 steps
-  3–4, needs the cluster issuer URL), otherwise the backend pods can't start (`kms-key-id` is a required secret key).
+- **Open questions:** the cluster's service-account issuer URL (for `infra/aws/k8s-role.sh`); whether stage and
+  production share one cluster (the role script trusts one issuer).
 
 ## Review
 
@@ -98,3 +98,4 @@ Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>
 - 2026-10-20 00:44 · session-20261020-claude · backlog → in-progress · claimed by LukassSoukup
 - 2026-10-20 00:49 · session-20261020-claude · in-progress → review · PR #130
 - 2026-10-20 00:57 · session-20261020-claude · review → review · scope extended at the user's request: in-cluster Postgres/Redis with generated passwords, deploy-time migrations, AWS setup guide, merged fix/aws-access (#124)
+- 2026-10-20 01:30 · session-20261020-claude · review → review · rework at the user's request: own k8s stage + prod, promote pipeline, AWS for Bedrock only (Secret vault key provider, EC2/KMS removed)

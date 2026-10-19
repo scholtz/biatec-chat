@@ -1,13 +1,16 @@
 import { createApp, type App, type Plugin } from "vue";
 import BiatecChatRoot from "./components/BiatecChatRoot.vue";
+import BiatecChatInline from "./components/shell/BiatecChatInline.vue";
 import { resolveOptions, type BiatecChatOptions } from "./options";
 // Normal import: emitted as dist/style.css for hosts that mount BiatecChatRoot themselves.
 import "./styles.css";
 // Inline import: the same CSS as a string, injected into the widget's shadow root.
 import widgetCss from "./styles.css?inline";
 
-export type { BiatecChatOptions, ChatTheme } from "./options";
-export { BiatecChatRoot };
+export type { BiatecChatOptions, ChatTheme, ChatMode } from "./options";
+export type { AskResult, BiatecChatApi } from "./api";
+export { useBiatecChat } from "./api";
+export { BiatecChatRoot, BiatecChatInline };
 
 export const BiatecChat: Plugin<[BiatecChatOptions]> = {
   install(app: App, options: BiatecChatOptions) {

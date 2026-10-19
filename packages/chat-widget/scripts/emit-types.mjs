@@ -8,15 +8,21 @@ const tsc = createRequire(import.meta.url).resolve("typescript/bin/tsc");
 mkdirSync("dist", { recursive: true });
 execFileSync(
   process.execPath,
-  [tsc, "src/options.ts", "--declaration", "--emitDeclarationOnly", "--outDir", "dist", "--skipLibCheck", "--target", "es2020", "--moduleResolution", "bundler", "--module", "esnext", "--strict"],
+  [tsc, "src/options.ts", "src/api/types.ts", "--declaration", "--emitDeclarationOnly", "--outDir", "dist", "--skipLibCheck", "--target", "es2020", "--moduleResolution", "bundler", "--module", "esnext", "--strict"],
   { stdio: "inherit" }
 );
 writeFileSync(
   "dist/index.d.ts",
   `import type { Plugin, Component } from "vue";
 import type { BiatecChatOptions } from "./options";
-export type { BiatecChatOptions, ChatTheme } from "./options";
+import type { BiatecChatApi } from "./api/types";
+export type { BiatecChatOptions, ChatTheme, ChatMode } from "./options";
+export type { AskResult, BiatecChatApi } from "./api/types";
 export declare const BiatecChatRoot: Component;
+/** The widget as a panel in the host's layout; shares the floating widget's session, which hides meanwhile. */
+export declare const BiatecChatInline: Component;
 export declare const BiatecChat: Plugin<[BiatecChatOptions]>;
+/** Host API: open, close, ask, setPageContext, setTheme, setLocale. */
+export declare function useBiatecChat(): BiatecChatApi;
 `
 );
