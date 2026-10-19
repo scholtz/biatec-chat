@@ -126,7 +126,9 @@ whose task it is, as a GitHub username (`gh api user -q .login`).
   time.
 - **Not counted as conflicts:** the one-line, append-only additions every feature makes to shared wiring:
   registering services or endpoints in `Program.cs`, a `PackageReference` in a `.csproj`, a dependency in a
-  `package.json`, a new section in `appsettings*.json`. Keep them append-only, put new options classes in your own
+  `package.json`, a new section in `appsettings*.json`, a new top-level section in the widget's i18n catalog
+  (`packages/chat-widget/src/i18n/<locale>/ui.json`; each task adds its strings in its own section, in English and
+  Slovak). Keep them append-only, put new options classes in your own
   area (not in `Config/Options.cs`), and when merging keep both sides. Never hand-merge `pnpm-lock.yaml`: take
   `main`'s version and run `pnpm install`.
 - **Keeping the flag correct.** `/kanban-split` and the coordinator set it when they create a task. When a worker

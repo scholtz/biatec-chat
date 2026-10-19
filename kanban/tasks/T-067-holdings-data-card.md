@@ -7,14 +7,14 @@ epic: "Widget UI rework"
 blocked_by: [T-020, T-064]
 area: ["packages/chat-widget/src/components/data/**", "backend/Biatec.Chat.Api/Chat/DataCards/**"]
 parallel: no
-conflicts_with: [T-065]
+conflicts_with: [T-035, T-042]
 issue: "#108"
 branch: ""
 owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#user-experience"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-067 · Holdings data card from wallet.balance
@@ -39,7 +39,7 @@ Asking for balances shows a structured, accurate holdings card instead of number
 
 ## Parallel work
 
-Parallel work possible: **no**. Don't run it at the same time as T-065: they change the same files, and running them together causes merge conflicts or broken behaviour.
+Parallel work possible: **no**. Don't run it at the same time as T-035, T-042: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
@@ -67,3 +67,4 @@ Filled in by the agent when it moves the task to `review`.
 
 - 2026-10-19 22:40 · coordinator · (new) → blocked · created from the Biatec AI design handoff (docs/design/) for the widget UI rework
 - 2026-10-19 22:40 · coordinator · blocked · conflicts_with T-065: both regenerate packages/chat-protocol
+- 2026-10-20 01:09 · LukassSoukup · blocked · parallel analysis: dropped T-065 (done); added T-042 (cards in ChatView.vue/useChat.ts) and T-035 (orchestrator emits data_card)

@@ -7,14 +7,14 @@ epic: "Evidence"
 blocked_by: [T-035]
 area: ["backend/Biatec.Chat.Api/Evidence/Export/**", "packages/evidence-verifier/**"]
 parallel: no
-conflicts_with: [T-032, T-037, T-038, T-039, T-040, T-041, T-042, T-043, T-066]
+conflicts_with: [T-032, T-042, T-043, T-066]
 issue: "#37"
 branch: ""
 owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#session-recording-and-evidence"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-036 · Evidence export bundle and offline verifier
@@ -34,7 +34,7 @@ Demo step 8 and success criterion 6.
 
 ## Parallel work
 
-Parallel work possible: **no**. Don't run it at the same time as T-032, T-037, T-038, T-039, T-040, T-041, T-042, T-043, T-066: they change the same files, and running them together causes merge conflicts or broken behaviour.
+Parallel work possible: **no**. Don't run it at the same time as T-032, T-042, T-043, T-066: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
@@ -55,3 +55,4 @@ pnpm --filter evidence-verifier test; node cli verify bundle.json
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 22:40 · coordinator · blocked · conflicts_with T-066 added: the evidence download link is wired into the widget activity aside
+- 2026-10-20 01:09 · LukassSoukup · blocked · parallel analysis: dropped T-037, T-038, T-039, T-040, T-041 (done)

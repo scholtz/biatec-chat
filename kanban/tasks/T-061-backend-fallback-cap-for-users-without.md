@@ -6,15 +6,15 @@ priority: P3
 epic: "Consent & authenticator"
 blocked_by: [T-025, T-049]
 area: ["backend/Biatec.Chat.Tools/Caps/NoDevice/**"]
-parallel: yes
-conflicts_with: []
+parallel: no
+conflicts_with: [T-024, T-035]
 issue: "#62"
 branch: ""
 owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#required-changes-to-biatec-oidc"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-061 · Backend fallback cap for users without an active device
@@ -39,7 +39,7 @@ Implement the rule 4 fallback until Biatec OIDC enforces it.
 
 ## Parallel work
 
-Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
+Parallel work possible: **no**. Don't run it at the same time as T-024, T-035: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
@@ -59,3 +59,4 @@ dotnet test --filter NoDevice
 ## Activity log
 
 - 2026-10-19 18:00 · coordinator · (new) → blocked · created in task review: rule 4 fallback had no task
+- 2026-10-20 01:09 · LukassSoukup · blocked · parallel analysis: parallel: no, added T-024 and T-035: the above-threshold refusal goes into ConfirmService.cs
