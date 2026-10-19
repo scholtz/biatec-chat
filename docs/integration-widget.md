@@ -55,7 +55,7 @@ another. Run the playground with `pnpm --filter @biatec/chat-widget dev`.
 | `mode` | no | `floating` | `floating` (launcher bottom-right), `inline` (no launcher; mount `BiatecChatInline` in a host column) or `workspace` (launcher, panel opens full screen). See [Modes and the host API](#modes-and-the-host-api) |
 | `suggestions` | no | `default` | `default` or your own list of sample prompts |
 | `pageContext` | no | none | Opt-in string describing the page (for example the pool being shown). Nothing is read from the host page unless you set it. The assistant treats it as untrusted data |
-| `autoMount` | no | `true` | Set `false` to provide the options only and mount `BiatecChatRoot` yourself |
+| `autoMount` | no | `true` | Set `false` to provide the options only, with no floating widget; mount `BiatecChatInline` where you want the chat |
 
 The plugin throws at install if `backendUrl` or `clientKey` is missing.
 
@@ -89,7 +89,7 @@ own Shadow DOM root, like the floating widget, so host CSS and widget CSS never 
 
 | Prop | Meaning |
 | --- | --- |
-| `options` | `BiatecChatOptions`, used only when the plugin is not installed (see below) |
+| `options` | `BiatecChatOptions`. Options are taken in this order: the options of an already-mounted floating widget, then this prop, then the plugin's options (see below) |
 | `services` | Transport and auth overrides for tests |
 
 ```vue
@@ -113,11 +113,13 @@ createApp(App)
   .mount('#app')
 ```
 
-Options come from the plugin. If the plugin is not installed, pass them as the `options` prop; without either, the component logs a
-warning and renders nothing. The probe for an existing session (`GET /session`) runs when the inline panel mounts.
+Options are resolved in this order: an already-mounted floating widget's options win, then the `options` prop, then the options the
+plugin provides. With none of them, the component logs a warning and renders nothing. The probe for an existing session
+(`GET /session`) runs when the inline panel mounts.
 
-`BiatecChatRoot` is also exported, for a host that sets `autoMount: false` and mounts the floating widget itself with
-`<BiatecChatRoot :options="..." />`. Then import `@biatec/chat-widget/style.css`; the auto-mounted widget needs no stylesheet.
+With `autoMount: false` the plugin only provides options, so `BiatecChatInline` is the only UI. `BiatecChatRoot` is exported but is
+not a supported host mount point: it takes already-resolved internal options, not `BiatecChatOptions`. Mounting the floating
+widget yourself is a possible follow-up.
 
 #### `useBiatecChat()`
 
