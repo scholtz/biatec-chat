@@ -1,7 +1,7 @@
 ---
 id: T-011
 title: Logout, sweeper and pending revocation
-status: backlog
+status: in-progress
 priority: P1
 epic: "Sessions & auth"
 blocked_by: [T-009]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Api/Auth/Logout/**", "backend/Biatec.Chat.Api/Sweepe
 parallel: no
 conflicts_with: [T-056]
 issue: "#12"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-011"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#rules"
 created: 2026-10-19
 updated: 2026-10-19
@@ -55,3 +55,5 @@ dotnet test --filter Sweeper
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:56 · kanban-board · blocked → backlog · blockers done: T-009
+- 2026-10-19 19:42 · scholtz · taken · status stays backlog
+- 2026-10-19 19:42 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

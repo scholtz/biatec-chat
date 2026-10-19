@@ -1,7 +1,7 @@
 ---
 id: T-037
 title: On-chain evidence anchoring
-status: backlog
+status: in-progress
 priority: P2
 epic: "Evidence"
 blocked_by: [T-034]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Api/Evidence/Anchoring/**"]
 parallel: no
 conflicts_with: [T-036]
 issue: "#38"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-037"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#threat-model-highlights"
 created: 2026-10-19
 updated: 2026-10-19
@@ -55,3 +55,5 @@ dotnet test --filter Anchoring; testnet run
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 19:18 · kanban-board · blocked → backlog · blockers done: T-034
+- 2026-10-19 19:42 · scholtz · taken · status stays backlog
+- 2026-10-19 19:42 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

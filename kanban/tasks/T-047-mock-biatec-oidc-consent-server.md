@@ -1,7 +1,7 @@
 ---
 id: T-047
 title: Mock Biatec OIDC consent server
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-046]
@@ -9,9 +9,9 @@ area: ["packages/consent-protocol/mock-oidc/**"]
 parallel: yes
 conflicts_with: []
 issue: "#48"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-047"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#two-entry-points-one-request-model"
 created: 2026-10-19
 updated: 2026-10-19
@@ -56,3 +56,5 @@ pnpm --filter mock-oidc test
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:00 · coordinator · review · P2 → P1: on the critical path of the P1 demo test (T-059)
 - 2026-10-19 19:30 · kanban-board · blocked → backlog · blockers done: T-046
+- 2026-10-19 19:42 · scholtz · taken · status stays backlog
+- 2026-10-19 19:42 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
