@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: biatec-chat-builders
+  labels: {app.kubernetes.io/name: biatec-chat-builders, app.kubernetes.io/part-of: biatec-chat}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app.kubernetes.io/name: biatec-chat-builders}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: biatec-chat-builders, app.kubernetes.io/part-of: biatec-chat}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: builders
+          image: ghcr.io/scholtz/biatec-chat-builders:latest
+          imagePullPolicy: Always
+          ports:
+            - {name: http, containerPort: 3100}
+          env:
+            - name: PORT
+              value: "3100"
+            - name: BUILDERS_INTERNAL_SECRET
+              valueFrom: {secretKeyRef: {name: biatec-chat-secrets, key: builders-internal-secret}}
+            - name: ALGOD_URL_MAINNET
+              value: https://mainnet-api.4160.nodely.dev
+            - name: ALGOD_URL_TESTNET
+              value: https://testnet-api.4160.nodely.dev
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 3
+            failureThreshold: 20
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 20
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 384Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+---
+# Internal only: no ingress. The backend calls it with the shared secret.
+apiVersion: v1
+kind: Service
+metadata:
+  name: biatec-chat-builders
+  labels: {app.kubernetes.io/name: biatec-chat-builders, app.kubernetes.io/part-of: biatec-chat}
+spec:
+  selector: {app.kubernetes.io/name: biatec-chat-builders}
+  ports:
+    - {name: http, port: 3100, targetPort: http}

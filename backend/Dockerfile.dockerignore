@@ -1,0 +1,12 @@
+**/bin
+**/obj
+**/node_modules
+.git
+.claude
+apps
+builders
+e2e
+docs
+kanban
+k8s
+packages

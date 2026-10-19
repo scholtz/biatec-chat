@@ -1,0 +1,23 @@
+# Biatec-owned host. Tenant hostnames are added by onboarding (ACME through cert-manager).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: biatec-chat-backend
+  labels: {app.kubernetes.io/name: biatec-chat-backend, app.kubernetes.io/part-of: biatec-chat}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [chat.stage.biatec.io]
+      secretName: biatec-chat-stage-tls
+  rules:
+    - host: chat.stage.biatec.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: biatec-chat-backend, port: {name: http}}
