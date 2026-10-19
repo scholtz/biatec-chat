@@ -31,6 +31,13 @@ public static class JsonSchemaValidator
             if (k == "required" && !(v is JsonArray ra && ra.All(x => x is JsonValue xv && xv.TryGetValue<string>(out _))))
                 throw new ArgumentException($"{path}: required must be an array of strings.");
             if (k == "enum" && v is not JsonArray) throw new ArgumentException($"{path}: enum must be an array.");
+            if (k == "pattern")
+            {
+                if (!(v is JsonValue pv && pv.TryGetValue<string>(out var pat)))
+                    throw new ArgumentException($"{path}: pattern must be a string.");
+                try { _ = new Regex(pat, RegexOptions.CultureInvariant, RegexTimeout); }
+                catch (ArgumentException ex) { throw new ArgumentException($"{path}: invalid pattern: {ex.Message}"); }
+            }
             if (k == "items" && v is not JsonObject) throw new ArgumentException($"{path}: items must be a schema object.");
         }
         if (schema["type"] is JsonValue tv0 && tv0.TryGetValue<string>(out var t0)

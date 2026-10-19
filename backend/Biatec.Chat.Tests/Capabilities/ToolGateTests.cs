@@ -153,13 +153,84 @@ public class ToolGateTests
     }
 
     [Fact]
-    public void Limits_update_needs_tenant_flag_and_manage_limits_scope()
+    public void Limits_update_needs_tenant_flag_and_is_visible_at_openid()
     {
         var (gate, _) = Make();
         var args = new JsonObject { ["daily"] = "100" };
-        Assert.Equal("feature_disabled", gate.Check("limits.update", args, new GateContext(SessionTier.Authenticated, ["manage-limits"])).Reason);
-        Assert.Equal("scope_missing", gate.Check("limits.update", args, new GateContext(SessionTier.Authenticated, Openid, LimitsUpdateEnabled: true)).Reason);
-        Assert.True(gate.Check("limits.update", args, new GateContext(SessionTier.Authenticated, ["manage-limits"], LimitsUpdateEnabled: true)).Allowed);
+        Assert.Equal("feature_disabled", gate.Check("limits.update", args, new GateContext(SessionTier.Authenticated, ["openid", "manage-limits"])).Reason);
+        var ctx = new GateContext(SessionTier.Authenticated, Openid, LimitsUpdateEnabled: true);
+        Assert.True(gate.Check("limits.update", args, ctx).Allowed);
+        Assert.Contains(gate.ToolsFor(ctx), c => c.Name == "limits.update");
+        Assert.DoesNotContain(gate.ToolsFor(ctx with { LimitsUpdateEnabled = false }), c => c.Name == "limits.update");
+    }
+
+    [Fact]
+    public void Limits_update_signing_scope_asks_to_reauthorize_without_manage_limits()
+    {
+        var (gate, _) = Make();
+        var ctx = new GateContext(SessionTier.Authenticated, Openid, LimitsUpdateEnabled: true);
+        var d = gate.CheckSigningScope("limits.update", ctx);
+        Assert.False(d.Allowed);
+        Assert.Equal("scope_missing", d.Reason);
+        Assert.Contains("re-authorize", d.ModelError);
+        Assert.True(gate.CheckSigningScope("limits.update", ctx with { Scopes = ["openid", "manage-limits"] }).Allowed);
+    }
+
+    [Fact]
+    public void Null_scopes_are_treated_as_empty()
+    {
+        var (gate, sink) = Make();
+        var ctx = new GateContext(SessionTier.Authenticated, null!);
+        Assert.Equal("scope_missing", gate.Check("wallet.listAddresses", new JsonObject { ["network"] = "testnet" }, ctx).Reason);
+        Assert.Equal("scope_missing", gate.CheckSigningScope("wallet.transfer", ctx).Reason);
+        Assert.Equal(2, sink.Events.Count);
+    }
+
+    private sealed class ThrowingSink : IPolicyEventSink
+    {
+        public void Emit(PolicyEvent policyEvent) => throw new InvalidOperationException("sink down");
+    }
+
+    [Fact]
+    public void Throwing_sink_does_not_change_the_decision()
+    {
+        var gate = new ToolGate(CapabilityRegistry.CreateDefault(), new ThrowingSink());
+        var d = gate.Check("nope", null, Auth());
+        Assert.False(d.Allowed);
+        Assert.Equal("unknown_tool", d.Reason);
+    }
+
+    [Fact]
+    public void Elevated_tier_is_at_least_authenticated()
+    {
+        var (gate, _) = Make();
+        var ctx = new GateContext(SessionTier.Elevated, Openid);
+        Assert.True(gate.Check("wallet.listAddresses", new JsonObject { ["network"] = "testnet" }, ctx).Allowed);
+        Assert.True(gate.Check("requestSignIn", null, ctx).Allowed);
+    }
+
+    [Fact]
+    public void Invalid_pattern_fails_at_registration()
+    {
+        var bad = new Capability("x.re", 1, SessionTier.Anonymous, [], null, false, ValuationBasis.None, "d",
+            new JsonObject { ["type"] = "object", ["properties"] = new JsonObject { ["a"] = new JsonObject { ["type"] = "string", ["pattern"] = "([" } } });
+        Assert.Throws<ArgumentException>(() => new CapabilityRegistry([bad]));
+    }
+
+    [Fact]
+    public void Transfer_supports_bitcoin_and_optional_asset()
+    {
+        var (gate, _) = Make();
+        var args = new JsonObject { ["network"] = "bitcoin", ["from"] = "A1", ["to"] = "B2", ["amount"] = "5" };
+        Assert.True(gate.Check("wallet.transfer", args, Auth("openid")).Allowed);
+    }
+
+    [Fact]
+    public void Sink_stays_bounded()
+    {
+        var sink = new InMemoryPolicyEventSink();
+        for (var i = 0; i < 10_050; i++) sink.Emit(new PolicyEvent("k", "t", "r", SessionTier.Anonymous, null, null, DateTimeOffset.UtcNow));
+        Assert.Equal(10_000, sink.Events.Count);
     }
 
     [Fact]

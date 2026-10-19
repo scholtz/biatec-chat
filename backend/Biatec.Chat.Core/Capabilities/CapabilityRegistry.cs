@@ -90,12 +90,13 @@ public sealed class CapabilityRegistry
         var networkOnly = Obj(new JsonObject { ["network"] = Network() }, "network");
         var transferInput = Obj(new JsonObject
         {
-            ["network"] = Network(),
+            // Algorand (createPaymentTransaction) or Bitcoin (createBitcoinTransaction); assetId omitted or 0 = native ALGO.
+            ["network"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("mainnet", "testnet", "bitcoin") },
             ["from"] = Address(),
             ["to"] = Address(),
             ["assetId"] = Id(),
             ["amount"] = AmountPositive(),
-        }, "network", "from", "to", "assetId", "amount");
+        }, "network", "from", "to", "amount");
         var swapInput = Obj(new JsonObject
         {
             ["network"] = Network(),
@@ -157,7 +158,8 @@ public sealed class CapabilityRegistry
             Tool("safe.execute", U, Open, Sign, true, ValuationBasis.ZeroValued, "Execute a safe proposal.", proposalInput),
             Tool("safe.list", U, Open, null, false, ValuationBasis.None, "List the user's safes and pending proposals.", networkOnly),
             Tool("limits.view", U, Open, null, false, ValuationBasis.None, "View spending limits.", empty),
-            Tool("limits.update", U, [ManageLimits], null, false, ValuationBasis.LimitsChange, "Update spending limits.",
+            // Visible at openid so the model can call it; the manage-limits elevation is enforced by CheckSigningScope (re-authorize).
+            Tool("limits.update", U, Open, ManageLimits, false, ValuationBasis.LimitsChange, "Update spending limits.",
                 WithMinProperties(Obj(new JsonObject { ["daily"] = Amount(), ["weekly"] = Amount(), ["monthly"] = Amount() }), 1),
                 CapabilityFlag.LimitsUpdate),
             Tool("x402.pay", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Pay for an x402-protected resource.",

@@ -25,13 +25,15 @@ public interface IPolicyEventSink
 public sealed class InMemoryPolicyEventSink : IPolicyEventSink
 {
     private const int Capacity = 10_000;
+    private int _count;
     private readonly ConcurrentQueue<PolicyEvent> _events = new();
     public IReadOnlyList<PolicyEvent> Events => _events.ToArray();
 
     public void Emit(PolicyEvent policyEvent)
     {
         _events.Enqueue(policyEvent);
-        while (_events.Count > Capacity) _events.TryDequeue(out _);
+        if (Interlocked.Increment(ref _count) <= Capacity) return;
+        if (_events.TryDequeue(out _)) Interlocked.Decrement(ref _count);
     }
 }
 
@@ -57,6 +59,7 @@ public sealed class ToolGate(CapabilityRegistry registry, IPolicyEventSink sink,
     /// <summary>Checks a tool call proposed by the model. Emits a policy event on every rejection.</summary>
     public GateDecision Check(string? toolName, JsonNode? arguments, GateContext ctx)
     {
+        ctx = Normalize(ctx);
         var name = toolName ?? "";
         var cap = registry.Find(name);
         if (cap is null) return Reject(name, ctx, "unknown_tool", $"Tool '{Sanitize(name)}' does not exist.");
@@ -95,6 +98,7 @@ public sealed class ToolGate(CapabilityRegistry registry, IPolicyEventSink sink,
     /// </summary>
     public GateDecision CheckSigningScope(string capabilityName, GateContext ctx)
     {
+        ctx = Normalize(ctx);
         var cap = registry.Find(capabilityName);
         if (cap is null) return Reject(capabilityName, ctx, "unknown_tool", $"Tool '{Sanitize(capabilityName)}' does not exist.");
         if (CapabilityRegistry.Visibility(cap, ctx) is { } why)
@@ -107,10 +111,19 @@ public sealed class ToolGate(CapabilityRegistry registry, IPolicyEventSink sink,
         return GateDecision.Allow(cap);
     }
 
+    private static GateContext Normalize(GateContext ctx) => ctx.Scopes is null ? ctx with { Scopes = [] } : ctx;
+
     private GateDecision Reject(string tool, GateContext ctx, string reason, string modelError, IReadOnlyList<string>? violations = null)
     {
-        sink.Emit(new PolicyEvent("tool_call_rejected", Sanitize(tool), reason, ctx.Tier, ctx.SessionId, ctx.TenantId,
-            _time.GetUtcNow(), violations));
+        try
+        {
+            sink.Emit(new PolicyEvent("tool_call_rejected", Sanitize(tool), reason, ctx.Tier, ctx.SessionId, ctx.TenantId,
+                _time.GetUtcNow(), violations));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // A failing evidence sink must never turn a rejection into an exception.
+        }
         return new GateDecision(false, registry.Find(tool), reason, modelError);
     }
 
