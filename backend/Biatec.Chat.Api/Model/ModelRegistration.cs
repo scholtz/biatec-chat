@@ -34,7 +34,8 @@ public static class ModelRegistration
         RegionEndpoint = RegionEndpoint.GetBySystemName(o.Region),
         RetryMode = RequestRetryMode.Standard,
         MaxErrorRetry = 0,
-        // A long answer (up to Bedrock:MaxTokens) streams for minutes; the SDK default would cut it off mid-answer.
-        Timeout = TimeSpan.FromMinutes(10),
+        // A long answer streams for minutes: allow at least 10 min, or Bedrock:MaxTokens at a slow 20 tokens/s.
+        // Stalls are caught by Bedrock:StreamIdleTimeoutMs, not by this.
+        Timeout = TimeSpan.FromSeconds(Math.Max(600, o.MaxTokens / 20)),
     });
 }

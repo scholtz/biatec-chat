@@ -101,6 +101,30 @@ public class BedrockModelClientTests
     }
 
     [Fact]
+    public async Task A_slow_but_live_stream_is_not_cut_by_the_idle_limit()
+    {
+        // Every gap is under the 1 s idle limit, the whole answer takes well over it.
+        var o = Opts(maxRetries: 0);
+        o.StreamIdleTimeoutMs = 1000;
+        var events = await Collect(Client(new PacedSource(TimeSpan.FromMilliseconds(400)), o).StreamAsync(Request()));
+
+        Assert.Single(events.OfType<ModelMessageStop>());
+        Assert.Single(events.OfType<ModelUsage>());
+    }
+
+    private sealed class PacedSource(TimeSpan gap) : IConverseStreamSource
+    {
+        public async IAsyncEnumerable<IEventStreamEvent> OpenAsync(ConverseStreamRequest request, [EnumeratorCancellation] CancellationToken ct)
+        {
+            foreach (var item in TextAnswer)
+            {
+                await Task.Delay(gap, ct);
+                yield return (IEventStreamEvent)item;
+            }
+        }
+    }
+
+    [Fact]
     public async Task A_stream_that_stalls_before_the_stop_is_retried_then_reported()
     {
         var stall = new FakeSource(TextAnswer) { OnOpen = () => Task.Delay(Timeout.Infinite) };

@@ -25,7 +25,12 @@ public sealed class BedrockConverseStreamSource(IAmazonBedrockRuntime bedrock) :
         using var response = await bedrock.ConverseStreamAsync(request, ct);
         // Disposing the response aborts a read that is already waiting on the network, so cancellation (the
         // caller leaving, or the wait for usage running out) doesn't depend on the read honouring the token.
-        await using var abort = ct.Register(response.Dispose);
+        // The callback may run on a timer or the caller's thread, so it must never throw.
+        await using var abort = ct.Register(() =>
+        {
+            try { response.Dispose(); }
+            catch (Exception) { }
+        });
         await foreach (var ev in response.Stream.WithCancellation(ct))
             yield return ev;
     }
@@ -161,21 +166,30 @@ public sealed class BedrockModelClient(
                 var stopped = false;
                 var sw = Stopwatch.StartNew();
                 var events = source.OpenAsync(converse, attemptCts.Token).GetAsyncEnumerator(attemptCts.Token);
+                Task<bool> read = Task.FromResult(false);
                 try
                 {
                     while (true)
                     {
                         bool more;
-                        // Before the stop every read gets the idle limit; after it the usage wait (set below) applies.
-                        if (!stopped) attemptCts.CancelAfter(_c.StreamIdleTimeoutMs);
+                        // Each read has its own limit: the idle timeout before the stop, the usage wait after it. Only
+                        // a read still pending when the limit passes counts, so a slow but live stream is never cut.
+                        read = events.MoveNextAsync().AsTask();
                         try
                         {
-                            more = await events.MoveNextAsync();
+                            more = await read.WaitAsync(stopped ? UsageWait : TimeSpan.FromMilliseconds(_c.StreamIdleTimeoutMs), ct);
                         }
-                        catch (Exception) when (!stopped && attemptCts.IsCancellationRequested && !ct.IsCancellationRequested)
+                        catch (TimeoutException) when (!read.IsCompleted)
                         {
+                            await SettleAsync(attemptCts, read);
+                            if (stopped)
+                            {
+                                logger.LogWarning("Bedrock {ModelId} sent no usage within {Wait}", converse.ModelId, UsageWait);
+                                return;
+                            }
+                            // A stall is retried once at most: each try costs a whole idle timeout.
                             var stalled = new ModelStreamIncompleteException(converse.ModelId, $"stalled for {_c.StreamIdleTimeoutMs} ms");
-                            if (written || attempt >= _c.MaxRetries) throw stalled;
+                            if (written || attempt >= Math.Min(1, _c.MaxRetries)) throw stalled;
                             lastError = stalled;
                             break;
                         }
@@ -201,11 +215,7 @@ public sealed class BedrockModelClient(
                             break;
                         }
 
-                        if (events.Current is MessageStopEvent)
-                        {
-                            stopped = true;
-                            attemptCts.CancelAfter(UsageWait);
-                        }
+                        stopped |= events.Current is MessageStopEvent;
                         foreach (var output in assembler.Accept(events.Current, sw))
                         {
                             if (output is ModelUsage u)
@@ -220,6 +230,8 @@ public sealed class BedrockModelClient(
                 }
                 finally
                 {
+                    // An enumerator can't be disposed while a read is pending (the caller cancelled mid-read).
+                    await SettleAsync(attemptCts, read);
                     // A failure while closing the response must not turn a delivered answer into an error.
                     try { await events.DisposeAsync(); }
                     catch (Exception ex) { logger.LogWarning(ex, "Closing the Bedrock {ModelId} stream failed", converse.ModelId); }
@@ -230,11 +242,23 @@ public sealed class BedrockModelClient(
                 _gate.Release();
             }
 
+            // Every path out of an attempt without a retry cause returns or throws.
+            var cause = lastError ?? throw new UnreachableException();
             var delay = BackoffDelay(attempt);
             logger.LogWarning("Bedrock {ModelId} {Error}; retry {Attempt} of {Max} in {DelayMs} ms",
-                converse.ModelId, lastError.GetType().Name, attempt + 1, _c.MaxRetries, (int)delay.TotalMilliseconds);
+                converse.ModelId, cause.GetType().Name, attempt + 1, _c.MaxRetries, (int)delay.TotalMilliseconds);
             await Task.Delay(delay, ct);
         }
+    }
+
+    /// <summary>Aborts a read that is still pending (the source disposes the response on cancel) and waits for it.</summary>
+    private static async Task SettleAsync(CancellationTokenSource attemptCts, Task<bool> read)
+    {
+        if (read.IsCompleted) return;
+        try { attemptCts.Cancel(); }
+        catch (AggregateException) { }
+        try { await read; }
+        catch (Exception) { }
     }
 
     /// <summary>
