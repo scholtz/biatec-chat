@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, onBeforeUnmount } from "vue";
+import { ref, nextTick, watch, watchEffect, onMounted, onBeforeUnmount } from "vue";
 import type { ResolvedOptions } from "../options";
 import ChatLauncher from "./ChatLauncher.vue";
 import ChatPanel from "./ChatPanel.vue";
@@ -7,16 +7,33 @@ import ChatView from "./chat/ChatView.vue";
 import { AuthClient } from "./chat/auth";
 import { useChat, type ChatServices } from "./chat/useChat";
 import { TransportManager } from "../transport";
+import { useTheme } from "../theme";
+import { setLocale } from "../i18n";
 
 const props = defineProps<{ options: ResolvedOptions; services?: ChatServices }>();
 // Transport and auth are created here, but nothing touches the network until the panel is first opened.
 const cfg = { backendUrl: props.options.backendUrl, clientKey: props.options.clientKey };
 const chat = useChat(props.services ?? { transport: new TransportManager(cfg), auth: new AuthClient(cfg) });
 let started = false;
+const rootEl = ref<HTMLElement | null>(null);
+const theme = useTheme(props.options);
+setLocale(props.options.locale);
+// Without a shadow root (host mounts BiatecChatRoot itself) the tokens apply to the root element instead of :host.
+const standalone = ref(false);
+function shadowHost(): Element | null {
+  const root = rootEl.value?.getRootNode();
+  return typeof ShadowRoot !== "undefined" && root instanceof ShadowRoot ? root.host : null;
+}
+onMounted(() => {
+  standalone.value = !shadowHost();
+});
+// The :host([data-theme]) rules in the shadow root read the attribute from the host element.
+watchEffect(() => {
+  shadowHost()?.setAttribute("data-theme", theme.value);
+});
 const open = ref(false);
 const modal = ref(false);
 const launcher = ref<InstanceType<typeof ChatLauncher> | null>(null);
-const rootEl = ref<HTMLElement | null>(null);
 const panelId = "biatec-chat-panel";
 
 async function setOpen(v: boolean) {
@@ -71,7 +88,13 @@ onBeforeUnmount(() => document.removeEventListener("keydown", onDocKeydown));
 </script>
 
 <template>
-  <div ref="rootEl" class="biatec-chat" :data-theme="props.options.theme" :lang="props.options.locale">
+  <div
+    ref="rootEl"
+    class="biatec-chat"
+    :data-theme="theme"
+    :data-standalone="standalone ? '' : undefined"
+    :lang="props.options.locale"
+  >
     <ChatPanel
       v-if="open"
       :id="panelId"
