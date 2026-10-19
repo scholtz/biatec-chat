@@ -1,7 +1,7 @@
 ---
 id: T-052
 title: Authenticator approval flow and receipts
-status: review
+status: done
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-051]
@@ -66,6 +66,8 @@ flutter test; manual run with mock + backend
 
 ## Review
 
+- 2026-10-19 21:37 · approve · no need for my approval later if reviews and tests pass; try to fix the failing enrollment tests
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
@@ -73,3 +75,4 @@ flutter test; manual run with mock + backend
 - 2026-10-19 21:11 · LukassSoukup · taken · status stays backlog
 - 2026-10-19 21:11 · session-20261019-2111 · backlog → in-progress · claimed by LukassSoukup
 - 2026-10-19 21:31 · session-20261019-2111 · in-progress → review · PR #96
+- 2026-10-19 21:37 · user · review → done · approved, merged @ 7cb106f

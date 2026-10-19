@@ -1,0 +1,104 @@
+import 'dart:convert';
+
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+/// One decision this device signed and Biatec OIDC accepted, with the full
+/// signed receipt so the user can look at exactly what was signed.
+class HistoryEntry {
+  const HistoryEntry({
+    required this.authReqId,
+    required this.decision,
+    required this.summary,
+    required this.clientLabel,
+    required this.decidedAt,
+    required this.receipt,
+  });
+
+  final String authReqId;
+
+  /// `approve`, `deny` or `code_failed`.
+  final String decision;
+
+  /// One line describing the action, as shown on the card.
+  final String summary;
+  final String clientLabel;
+  final DateTime decidedAt;
+  final Map<String, Object?> receipt;
+
+  Map<String, Object?> toJson() => {
+        'auth_req_id': authReqId,
+        'decision': decision,
+        'summary': summary,
+        'client': clientLabel,
+        'decided_at': decidedAt.toUtc().millisecondsSinceEpoch,
+        'receipt': receipt,
+      };
+
+  factory HistoryEntry.fromJson(Map<String, Object?> json) => HistoryEntry(
+        authReqId: json['auth_req_id'] as String,
+        decision: json['decision'] as String,
+        summary: json['summary'] as String,
+        clientLabel: json['client'] as String,
+        decidedAt: DateTime.fromMillisecondsSinceEpoch(
+            json['decided_at'] as int,
+            isUtc: true),
+        receipt: (json['receipt'] as Map).cast<String, Object?>(),
+      );
+}
+
+/// Local approval history, newest first, capped at [maxEntries].
+abstract class HistoryStore {
+  static const maxEntries = 100;
+
+  Future<List<HistoryEntry>> read();
+  Future<void> add(HistoryEntry entry);
+}
+
+List<HistoryEntry> _prepend(List<HistoryEntry> list, HistoryEntry e) => [
+      e,
+      ...list.where((x) => x.authReqId != e.authReqId),
+    ].take(HistoryStore.maxEntries).toList();
+
+class SecureHistoryStore implements HistoryStore {
+  SecureHistoryStore([FlutterSecureStorage? storage])
+      : _storage = storage ?? const FlutterSecureStorage();
+
+  static const _key = 'biatec.approvals.history';
+  final FlutterSecureStorage _storage;
+
+  @override
+  Future<List<HistoryEntry>> read() async {
+    final raw = await _storage.read(key: _key);
+    if (raw == null) return const [];
+    final out = <HistoryEntry>[];
+    try {
+      for (final item in jsonDecode(raw) as List) {
+        try {
+          out.add(HistoryEntry.fromJson((item as Map).cast<String, Object?>()));
+        } on Object {
+          // Skip a corrupt entry.
+        }
+      }
+    } on Object {
+      return const []; // corrupt history reads as empty
+    }
+    return out;
+  }
+
+  @override
+  Future<void> add(HistoryEntry entry) async {
+    final list = _prepend(await read(), entry);
+    await _storage.write(
+        key: _key, value: jsonEncode([for (final e in list) e.toJson()]));
+  }
+}
+
+class MemoryHistoryStore implements HistoryStore {
+  List<HistoryEntry> _list = const [];
+
+  @override
+  Future<List<HistoryEntry>> read() async => _list;
+
+  @override
+  Future<void> add(HistoryEntry entry) async => _list = _prepend(_list, entry);
+}
