@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const spec = readFileSync(join(root, "spec", "biatec-consent-protocol.md"), "utf8");
+const spec = readFileSync(join(root, "spec", "biatec-consent-protocol.md"), "utf8").replaceAll("\r\n", "\n");
 
 const ajv = new Ajv2020({ allErrors: true, strict: true });
 for (const f of readdirSync(join(root, "schemas"))) ajv.addSchema(JSON.parse(readFileSync(join(root, "schemas", f), "utf8")));
