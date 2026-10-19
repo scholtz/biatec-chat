@@ -186,6 +186,15 @@ public class ToolGateTests
         Assert.Equal(2, sink.Events.Count);
     }
 
+    [Fact]
+    public void ToolsFor_with_null_scopes_lists_no_scoped_tools_instead_of_throwing()
+    {
+        var (gate, _) = Make();
+        var ctx = new GateContext(SessionTier.Authenticated, []) with { Scopes = null! };
+        var names = gate.ToolsFor(ctx).Select(c => c.ToolName).ToArray();
+        Assert.DoesNotContain("wallet.transfer", names);
+    }
+
     private sealed class ThrowingSink : IPolicyEventSink
     {
         public void Emit(PolicyEvent policyEvent) => throw new InvalidOperationException("sink down");

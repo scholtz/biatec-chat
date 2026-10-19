@@ -54,7 +54,7 @@ public sealed class ToolGate(CapabilityRegistry registry, IPolicyEventSink sink,
     public CapabilityRegistry Registry => registry;
 
     /// <summary>The tool list to send to the model for this context.</summary>
-    public IReadOnlyList<Capability> ToolsFor(GateContext ctx) => registry.ToolsFor(ctx);
+    public IReadOnlyList<Capability> ToolsFor(GateContext ctx) => registry.ToolsFor(Normalize(ctx));
 
     /// <summary>Checks a tool call proposed by the model. Emits a policy event on every rejection.</summary>
     public GateDecision Check(string? toolName, JsonNode? arguments, GateContext ctx)
