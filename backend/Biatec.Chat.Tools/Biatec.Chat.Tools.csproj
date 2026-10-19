@@ -4,6 +4,10 @@
     <ProjectReference Include="..\Biatec.Chat.Core\Biatec.Chat.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Algorand4" Version="4.7.4.2026080422" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
