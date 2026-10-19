@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Biatec.Chat.Api/Biatec.Chat.Api.csproj" />
+  <Project Path="Biatec.Chat.Core/Biatec.Chat.Core.csproj" />
+  <Project Path="Biatec.Chat.Tests/Biatec.Chat.Tests.csproj" />
+  <Project Path="Biatec.Chat.Tools/Biatec.Chat.Tools.csproj" />
+</Solution>

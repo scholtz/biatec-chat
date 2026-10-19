@@ -1,0 +1,39 @@
+# Local development dependencies. Dev-only credentials; nothing here is used in AWS.
+services:
+  redis:
+    image: redis:7
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: biatec
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-biatec-dev-only}
+      POSTGRES_DB: biatec_chat
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U biatec -d biatec_chat"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Placeholder for the Node builder sidecar (CLAMM and algo-safe builders), added by T-027.
+  # builder:
+  #   build: ./builders/sidecar
+  #   ports:
+  #     - "3100:3100"
+
+volumes:
+  redis-data:
+  postgres-data:

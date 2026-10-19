@@ -1,0 +1,26 @@
+# .NET
+bin/
+obj/
+*.user
+TestResults/
+
+# Node
+node_modules/
+dist/
+.pnpm-store/
+*.tsbuildinfo
+
+# Flutter
+.dart_tool/
+build/
+
+# Env and secrets (never commit credentials)
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.vs/
+.idea/
+Thumbs.db
+.DS_Store
