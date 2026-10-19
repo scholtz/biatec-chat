@@ -1,7 +1,7 @@
 ---
 id: T-053
 title: Authenticator push notifications
-status: review
+status: done
 priority: P3
 epic: "Consent & authenticator"
 blocked_by: [T-052]
@@ -59,6 +59,8 @@ manual emulator test
 
 ## Review
 
+- 2026-10-19 22:40 · approve · PR #111 merged into main @ ade4b18 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
@@ -66,3 +68,4 @@ manual emulator test
 - 2026-10-19 23:00 · LukassSoukup · taken · status stays backlog
 - 2026-10-19 23:00 · session-20261019-2300 · backlog → in-progress · claimed via /kanban-take + /kanban-next loop
 - 2026-10-20 00:30 · session-20261019-2300 · in-progress → review · PR #111, three review rounds
+- 2026-10-19 22:40 · user · review → done · PR #111 merged into main @ ade4b18 (synced by kanban-sync)
