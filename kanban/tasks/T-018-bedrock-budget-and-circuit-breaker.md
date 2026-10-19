@@ -11,7 +11,7 @@ conflicts_with: [T-057]
 issue: "#19"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#non-functional-requirements"
 created: 2026-10-19
 updated: 2026-10-19
@@ -57,3 +57,4 @@ dotnet test --filter Budget
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 21:21 · kanban-board · blocked → backlog · blockers done: T-014
 - 2026-10-19 23:24 · LukassSoukup · backlog · conflicts_with revised: dropped T-016 (done) and T-035: budget accounting and breaker go in an IModelClient decorator, not the orchestrator
+- 2026-10-19 23:25 · LukassSoukup · taken · status stays backlog

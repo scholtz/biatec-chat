@@ -11,7 +11,7 @@ conflicts_with: [T-018, T-035, T-049]
 issue: "#58"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#non-functional-requirements"
 created: 2026-10-19
 updated: 2026-10-19
@@ -56,3 +56,4 @@ dotnet test; run with console exporter
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 21:21 · kanban-board · blocked → backlog · blockers done: T-014
 - 2026-10-19 23:24 · LukassSoukup · backlog · conflicts_with revised: dropped done T-016, T-019, T-022, T-027 and T-024, T-025: spans come from instrumentation at registration
+- 2026-10-19 23:25 · LukassSoukup · taken · status stays backlog
