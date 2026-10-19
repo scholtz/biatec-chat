@@ -1,7 +1,7 @@
 ---
 id: T-066
 title: Widget permissions dialog, pause/revoke and activity timeline
-status: backlog
+status: in-progress
 priority: P2
 epic: "Widget UI rework"
 blocked_by: [T-063, T-065]
@@ -9,9 +9,9 @@ area: ["packages/chat-widget/src/components/agent/**", "packages/chat-widget/src
 parallel: no
 conflicts_with: [T-036]
 issue: "#107"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-066"
+owner: "session-20261020-0154"
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#user-experience"
 created: 2026-10-19
 updated: 2026-10-20
@@ -74,3 +74,5 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-19 22:40 · coordinator · (new) → blocked · created from the Biatec AI design handoff (docs/design/) for the widget UI rework
 - 2026-10-19 22:40 · coordinator · blocked · conflicts_with T-036: the evidence download link is wired into the activity aside
 - 2026-10-20 01:32 · kanban-board · blocked → backlog · blockers done: T-063, T-065
+- 2026-10-20 01:54 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 01:54 · session-20261020-0154 · backlog → in-progress · claimed by /kanban-next

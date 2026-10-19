@@ -52,8 +52,14 @@ const MAX_PAYLOAD_TXNS = 16;
 
 export type ChainFactory = (ctx: BuildContext) => SafeChain;
 
+/** Clears any grp a simulation left behind: assignGroupID hashes each transaction as it is, so a stale grp would change the new group id. */
+export function regroup(txns: algosdk.Transaction[]): algosdk.Transaction[] {
+  for (const t of txns) t.group = undefined;
+  return txns.length > 1 ? algosdk.assignGroupID(txns) : txns;
+}
+
 function encode(txns: algosdk.Transaction[]): string[] {
-  const grouped = txns.length > 1 ? algosdk.assignGroupID(txns) : txns;
+  const grouped = regroup(txns);
   return grouped.map((t) => Buffer.from(algosdk.encodeUnsignedTransaction(t)).toString("base64"));
 }
 
@@ -205,7 +211,7 @@ export function safeList(makeChain: ChainFactory): Builder {
         const mine: Record<string, unknown>[] = [];
         for (const g of groups) {
           if (g.active && (await safe.isMember(BigInt(g.id), member))) {
-            mine.push({ id: g.id, name: g.name, threshold: g.threshold, memberCount: g.memberCount, allowedActions: actionNames(BigInt(g.allowedActions)), isAdminGroup: g.isAdminGroup });
+            mine.push({ id: g.id, name: g.name, threshold: g.threshold, memberCount: g.memberCount, allowedActions: actionNames(BigInt(g.allowedActions)), isAdminGroup: g.isAdminGroup, membershipEpoch: g.membershipEpoch });
           }
         }
         if (mine.length > 0) safes.push(toJson({ appId, address: safe.appAddress, name: cfg.name, paused: cfg.paused === 1n, groups: mine }));

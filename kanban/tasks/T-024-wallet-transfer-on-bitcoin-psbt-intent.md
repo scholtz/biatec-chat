@@ -1,7 +1,7 @@
 ---
 id: T-024
 title: wallet.transfer on Bitcoin (PSBT intent hash)
-status: backlog
+status: in-progress
 priority: P1
 epic: "Wallet tools"
 blocked_by: [T-020, T-022, T-023]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Tools/Wallet/Bitcoin/**"]
 parallel: no
 conflicts_with: [T-025, T-035, T-049, T-061]
 issue: "#25"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-024"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#action-preview"
 created: 2026-10-19
 updated: 2026-10-20
@@ -58,3 +58,5 @@ dotnet test --filter Bitcoin
 - 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-020, T-022
 - 2026-10-19 23:24 · LukassSoukup · backlog · conflicts_with revised: dropped T-057: OTel spans come from HttpClient/AWS SDK instrumentation at registration
 - 2026-10-20 01:09 · LukassSoukup · backlog · parallel analysis: blocked_by + T-023 (Bitcoin extends T-023's wallet.transfer executor in Api/Wallet/Transfer); added T-061 (ConfirmService)
+- 2026-10-20 01:47 · scholtz · taken · status stays backlog
+- 2026-10-20 01:47 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

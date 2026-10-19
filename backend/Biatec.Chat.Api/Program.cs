@@ -5,6 +5,7 @@ using Biatec.Chat.Api.Auth.Logout;
 using Biatec.Chat.Api.Chat;
 using Biatec.Chat.Api.Chat.Confirm;
 using Biatec.Chat.Api.Config;
+using Biatec.Chat.Api.Consent;
 using Biatec.Chat.Api.Contracts;
 using Biatec.Chat.Api.Data;
 using Biatec.Chat.Api.Evidence.Anchoring;
@@ -40,6 +41,7 @@ Biatec.Chat.Api.Public.ClientAddress.AddClientAddress(builder.Services, builder.
 
 builder.Services.AddScopeElevation();
 builder.Services.AddConfirm();
+builder.Services.AddConsent();
 builder.Services.AddLogoutAndSweeper(builder.Configuration);
 builder.Services.AddEvidence(builder.Configuration);
 builder.Services.AddEvidenceAnchoring(builder.Configuration);
@@ -51,6 +53,7 @@ Biatec.Chat.Api.Wallet.Transfer.WalletTransferRegistration.AddWalletTransferTool
 Biatec.Chat.Api.Limits.LimitsRegistration.AddLimitsTools(builder.Services);
 Biatec.Chat.Api.X402.X402Registration.AddX402Pay(builder.Services, builder.Configuration);
 Biatec.Chat.Api.Dex.Liquidity.DexLiquidityRegistration.AddDexLiquidityTools(builder.Services, builder.Configuration);
+Biatec.Chat.Api.Safe.Create.SafeCreateRegistration.AddSafeCreateTools(builder.Services, builder.Configuration);
 // Last: it decorates services registered above.
 Biatec.Chat.Api.Telemetry.TelemetryRegistration.AddBiatecTelemetry(builder.Services, builder.Configuration);
 
@@ -78,6 +81,7 @@ app.MapOnboarding();
 
 app.MapElevation();
 app.MapConfirm();
+app.MapConsent();
 app.MapLogout();
 app.MapEvidenceJwks();
 if (app.Environment.IsDevelopment())

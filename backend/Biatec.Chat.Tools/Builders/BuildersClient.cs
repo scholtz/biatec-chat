@@ -17,8 +17,11 @@ public sealed record BuildersOptions
     public required string InternalSecret { get; init; }
 }
 
-/// <summary>Unsigned transactions as base64 msgpack, in group order, exactly as the builder returned them.</summary>
-public sealed record BuildResult(IReadOnlyList<string> Transactions, JsonElement? Facts = null);
+/// <summary>
+/// Unsigned transactions as base64 msgpack, in group order, exactly as the builder returned them. <see cref="Preview"/>
+/// and <see cref="Simulation"/> are what builders such as algo-safe report next to the group (untrusted sidecar data).
+/// </summary>
+public sealed record BuildResult(IReadOnlyList<string> Transactions, JsonElement? Facts = null, JsonElement? Preview = null, JsonElement? Simulation = null);
 
 /// <summary>
 /// A builder call failed. <see cref="Exception.Message"/> carries a truncated, control-character-free excerpt of the
@@ -44,6 +47,13 @@ public interface IBuildersClient
     /// <summary>Runs a read-only sidecar query (for example <c>clamm.pools.list</c>) and returns its JSON answer.</summary>
     Task<JsonElement> QueryAsync(string query, string network, object? parameters, CancellationToken ct = default) =>
         throw new NotSupportedException("This builders client does not support queries.");
+
+    /// <summary>
+    /// Runs a read builder that returns data and no transactions (for example <c>safe.list</c>) and returns its
+    /// <c>data</c> object.
+    /// </summary>
+    Task<JsonElement> ReadAsync(string builder, string network, object? parameters, CancellationToken ct = default) =>
+        throw new NotSupportedException("This builders client does not support read builders.");
 }
 
 /// <summary>Typed client for the builder sidecar. The caller supplies an <see cref="HttpClient"/> (typically from IHttpClientFactory).</summary>
@@ -80,7 +90,26 @@ public sealed class BuildersClient(HttpClient http, BuildersOptions options) : I
         var result = await response.Content.ReadFromJsonAsync<BuildBody>(Json, ct);
         if (result?.Transactions is not { Count: > 0 })
             throw new BuilderException($"Builder '{builder}' returned no transactions.", response.StatusCode);
-        return new BuildResult(result.Transactions, result.Facts);
+        return new BuildResult(result.Transactions, result.Facts, result.Preview, result.Simulation);
+    }
+
+    public async Task<JsonElement> ReadAsync(string builder, string network, object? parameters, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(builder)) throw new ArgumentException("Builder name is required.", nameof(builder));
+        using var request = Request(HttpMethod.Post, $"v1/build/{Uri.EscapeDataString(builder)}");
+        request.Content = JsonContent.Create(new { network, @params = parameters }, options: Json);
+        using var response = await http.SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await TryReadError(response, ct);
+            throw new BuilderException($"Builder '{builder}' failed ({(int)response.StatusCode}): {error}", response.StatusCode);
+        }
+        BuildBody? result;
+        try { result = await response.Content.ReadFromJsonAsync<BuildBody>(Json, ct); }
+        catch (JsonException) { throw new BuilderException($"Builder '{builder}' returned invalid JSON.", response.StatusCode); }
+        if (result?.Data is not { ValueKind: JsonValueKind.Object } data)
+            throw new BuilderException($"Builder '{builder}' returned no data.", response.StatusCode);
+        return data;
     }
 
     public async Task<JsonElement> QueryAsync(string query, string network, object? parameters, CancellationToken ct = default)
@@ -133,6 +162,6 @@ public sealed class BuildersClient(HttpClient http, BuildersOptions options) : I
     }
 
     private sealed record HealthBody([property: JsonPropertyName("status")] string? Status);
-    private sealed record BuildBody(List<string>? Transactions, JsonElement? Facts);
+    private sealed record BuildBody(List<string>? Transactions, JsonElement? Facts, JsonElement? Preview = null, JsonElement? Simulation = null, JsonElement? Data = null);
     private sealed record ErrorBody(string? Error, string? Message);
 }
