@@ -1,0 +1,113 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
+
+namespace Biatec.Chat.Core.Capabilities;
+
+/// <summary>
+/// Minimal JSON Schema validator for tool-call arguments. Supports type, enum, required, properties,
+/// additionalProperties (boolean), items, minLength, maxLength, pattern, minimum, maximum, minItems and maxItems.
+/// Unsupported keywords in a schema are ignored, so registry schemas must stick to this subset.
+/// </summary>
+public static class JsonSchemaValidator
+{
+    private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(100);
+    private const int MaxDepth = 16;
+
+    /// <summary>Returns a list of human-readable violations (JSON-pointer-ish path plus message); empty when valid.</summary>
+    public static IReadOnlyList<string> Validate(JsonObject schema, JsonNode? value)
+    {
+        var errors = new List<string>();
+        Check(schema, value, "$", errors, 0);
+        return errors;
+    }
+
+    private static void Check(JsonObject schema, JsonNode? value, string path, List<string> errors, int depth)
+    {
+        if (depth > MaxDepth) { errors.Add($"{path}: nesting too deep"); return; }
+        var kind = value?.GetValueKind() ?? JsonValueKind.Null;
+
+        if (schema["type"] is JsonValue tv && tv.TryGetValue<string>(out var type) && !TypeMatches(type, value, kind))
+        {
+            errors.Add($"{path}: expected {type}");
+            return;
+        }
+
+        if (schema["enum"] is JsonArray en && !en.Any(e => JsonNode.DeepEquals(e, value)))
+            errors.Add($"{path}: not one of the allowed values");
+
+        switch (kind)
+        {
+            case JsonValueKind.String:
+                var s = value!.GetValue<string>();
+                if (Int(schema, "minLength") is { } minL && s.Length < minL) errors.Add($"{path}: shorter than {minL}");
+                if (Int(schema, "maxLength") is { } maxL && s.Length > maxL) errors.Add($"{path}: longer than {maxL}");
+                if (schema["pattern"] is JsonValue pv && pv.TryGetValue<string>(out var pat))
+                {
+                    try
+                    {
+                        if (!Regex.IsMatch(s, pat, RegexOptions.CultureInvariant, RegexTimeout))
+                            errors.Add($"{path}: does not match the required pattern");
+                    }
+                    catch (RegexMatchTimeoutException) { errors.Add($"{path}: pattern check timed out"); }
+                }
+                break;
+
+            case JsonValueKind.Number:
+                var d = Elem(value!).GetDouble();
+                if (Num(schema, "minimum") is { } min && d < min) errors.Add($"{path}: below minimum {min}");
+                if (Num(schema, "maximum") is { } max && d > max) errors.Add($"{path}: above maximum {max}");
+                break;
+
+            case JsonValueKind.Array:
+                var arr = value!.AsArray();
+                if (Int(schema, "minItems") is { } minI && arr.Count < minI) errors.Add($"{path}: fewer than {minI} items");
+                if (Int(schema, "maxItems") is { } maxI && arr.Count > maxI) errors.Add($"{path}: more than {maxI} items");
+                if (schema["items"] is JsonObject itemSchema)
+                    for (var i = 0; i < arr.Count; i++) Check(itemSchema, arr[i], $"{path}[{i}]", errors, depth + 1);
+                break;
+
+            case JsonValueKind.Object:
+                var obj = value!.AsObject();
+                var props = schema["properties"] as JsonObject;
+                if (schema["required"] is JsonArray req)
+                    foreach (var r in req)
+                        if (r?.GetValue<string>() is { } name && !obj.ContainsKey(name))
+                            errors.Add($"{path}.{name}: required");
+                foreach (var (k, v) in obj)
+                {
+                    if (props?[k] is JsonObject propSchema) Check(propSchema, v, $"{path}.{k}", errors, depth + 1);
+                    else if (schema["additionalProperties"] is JsonValue ap && ap.TryGetValue<bool>(out var allowed) && !allowed)
+                        errors.Add($"{path}.{k}: unknown property");
+                }
+                break;
+        }
+    }
+
+    private static bool TypeMatches(string type, JsonNode? value, JsonValueKind kind) => type switch
+    {
+        "object" => kind == JsonValueKind.Object,
+        "array" => kind == JsonValueKind.Array,
+        "string" => kind == JsonValueKind.String,
+        "boolean" => kind is JsonValueKind.True or JsonValueKind.False,
+        "null" => kind == JsonValueKind.Null,
+        "number" => kind == JsonValueKind.Number,
+        "integer" => kind == JsonValueKind.Number && IsInteger(value!),
+        _ => false,
+    };
+
+    private static bool IsInteger(JsonNode value)
+    {
+        var el = Elem(value);
+        if (el.TryGetInt64(out _)) return true;
+        return el.TryGetDouble(out var d) && Math.Abs(d) < 9007199254740992d && d == Math.Floor(d);
+    }
+
+    private static JsonElement Elem(JsonNode n) => JsonSerializer.SerializeToElement(n);
+
+    private static int? Int(JsonObject o, string key) =>
+        o[key] is JsonValue v && Elem(v) is { ValueKind: JsonValueKind.Number } e && e.TryGetInt32(out var i) ? i : null;
+
+    private static double? Num(JsonObject o, string key) =>
+        o[key] is JsonValue v && Elem(v) is { ValueKind: JsonValueKind.Number } e ? e.GetDouble() : null;
+}
