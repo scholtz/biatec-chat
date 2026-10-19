@@ -7,7 +7,7 @@ epic: "Deploy & docs"
 blocked_by: [T-014]
 area: ["backend/Biatec.Chat.Api/Telemetry/**"]
 parallel: no
-conflicts_with: [T-016, T-018, T-019, T-022, T-024, T-025, T-027, T-035, T-049]
+conflicts_with: [T-018, T-035, T-049]
 issue: "#58"
 branch: ""
 owner: ""
@@ -34,7 +34,7 @@ Observability for the backend.
 
 ## Parallel work
 
-Parallel work possible: **no**. Don't run it at the same time as T-016, T-018, T-019, T-022, T-024, T-025, T-027, T-035, T-049: they change the same files, and running them together causes merge conflicts or broken behaviour.
+Parallel work possible: **no**. Don't run it at the same time as T-018, T-035, T-049: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
@@ -55,3 +55,4 @@ dotnet test; run with console exporter
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 21:21 · kanban-board · blocked → backlog · blockers done: T-014
+- 2026-10-19 23:24 · LukassSoukup · backlog · conflicts_with revised: dropped done T-016, T-019, T-022, T-027 and T-024, T-025: spans come from instrumentation at registration
