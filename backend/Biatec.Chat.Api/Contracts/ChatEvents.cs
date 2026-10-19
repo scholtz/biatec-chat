@@ -41,8 +41,12 @@ public enum SignInReason
     ElevateScope,
 }
 
-/// <summary>Offer to sign in (or to authorize an extra scope). The URL opens in a popup.</summary>
-public sealed record SignInCardEvent(string SignInUrl, SignInReason Reason, string? Scope, string? Description) : ChatEvent;
+/// <summary>
+/// Offer to sign in (or to authorize an extra scope). When <paramref name="Unavailable"/> is false, <paramref name="SignInUrl"/>
+/// is the backend endpoint the widget POSTs for the one-time popup URL. When true, sign-in cannot happen on this transport
+/// and <paramref name="SignInUrl"/> is a plain page to open in a new tab (the "sign-in unavailable here" card).
+/// </summary>
+public sealed record SignInCardEvent(string SignInUrl, SignInReason Reason, string? Scope, string? Description, bool Unavailable) : ChatEvent;
 
 /// <summary>Terminal or recoverable error. Messages are safe to show to the user.</summary>
 public sealed record ErrorEvent(string Code, string Message, bool Retryable) : ChatEvent;

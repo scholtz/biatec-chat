@@ -24,7 +24,7 @@ public sealed record ChatTurn(
     IReadOnlyCollection<string> Scopes,
     string Message,
     HostContext? Context,
-    bool SignInAvailable = true);
+    bool SignInAvailable);
 
 /// <summary>
 /// The tool loop: model, then gate, then executor, then the result (wrapped as untrusted data) back to the model,

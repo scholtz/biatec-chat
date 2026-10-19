@@ -70,7 +70,20 @@ public sealed class KbSearchTests
         var card = Assert.IsType<SignInCardEvent>(Assert.Single(r.Events!));
         Assert.Equal("https://chat.biatec.io/auth/popup", card.SignInUrl);
         Assert.Equal(SignInReason.SignIn, card.Reason);
+        Assert.False(card.Unavailable);
         Assert.Equal("Moving funds needs an account.", card.Description);
+    }
+
+    [Fact]
+    public async Task Kb_RequestSignIn_WithoutAbsoluteRedirectUri_FallsBackToUnavailableCard_NotRelativeUrl()
+    {
+        var exec = new RequestSignInExecutor();
+        var tenant = TenantSeed.BiatecChat();
+        tenant.RedirectUri = "";
+        var r = await exec.ExecuteAsync(Ctx("requestSignIn", tenant), new JsonObject(), default);
+        var card = Assert.IsType<SignInCardEvent>(Assert.Single(r.Events!));
+        Assert.True(card.Unavailable);
+        Assert.StartsWith("http", card.SignInUrl);
     }
 
     [Fact]
@@ -81,6 +94,7 @@ public sealed class KbSearchTests
         var card = Assert.IsType<SignInCardEvent>(Assert.Single(r.Events!));
         Assert.Equal("https://web.biatec.io", card.SignInUrl);
         Assert.Contains("not available", card.Description);
+        Assert.True(card.Unavailable);
 
         var noPage = TenantSeed.BiatecChat();
         noPage.SignInPageUrl = null;

@@ -168,6 +168,7 @@ public sealed class KbChatTests : IAsyncLifetime
         Assert.Equal(0, wallet.Calls);
         Assert.Contains("event: sign_in_card", sse);
         Assert.Contains("https://chat.biatec.io/auth/popup", sse);
+        Assert.Contains("\"unavailable\":false", sse);
         // Anonymous requests never even list wallet tools.
         Assert.DoesNotContain(model.Requests[0].Tools, t => t.Name.StartsWith("wallet_"));
     }

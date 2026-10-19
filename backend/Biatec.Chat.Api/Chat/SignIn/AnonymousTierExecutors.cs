@@ -42,12 +42,14 @@ public sealed class RequestSignInExecutor : IToolExecutor
         var reason = arguments["reason"]?.GetValue<string>();
         var pageUrl = context.Tenant?.SignInPageUrl;
 
-        if (context.SignInAvailable)
+        // The widget POSTs this endpoint on the tenant's own backend to get the one-time popup URL. Without an
+        // absolute origin we cannot build it, so we fall through to the unavailable branch.
+        var origin = context.Tenant is { RedirectUri.Length: > 0 } t && Uri.TryCreate(t.RedirectUri, UriKind.Absolute, out var u)
+            ? u.GetLeftPart(UriPartial.Authority) : null;
+
+        if (context.SignInAvailable && origin is not null)
         {
-            // The widget POSTs this endpoint on the tenant's own backend to get the one-time popup URL.
-            var origin = context.Tenant is { RedirectUri.Length: > 0 } t && Uri.TryCreate(t.RedirectUri, UriKind.Absolute, out var u)
-                ? u.GetLeftPart(UriPartial.Authority) : "";
-            var card = new SignInCardEvent(origin + "/auth/popup", SignInReason.SignIn, null, reason);
+            var card = new SignInCardEvent(origin + "/auth/popup", SignInReason.SignIn, null, reason, Unavailable: false);
             return Task.FromResult(new ToolExecutionResult(
                 "A sign-in button is now shown to the user. Nothing has been done yet. Explain that signing in is needed and what the action would do in general terms.",
                 Events: [card]));
@@ -56,7 +58,7 @@ public sealed class RequestSignInExecutor : IToolExecutor
         if (!string.IsNullOrEmpty(pageUrl))
         {
             var card = new SignInCardEvent(pageUrl, SignInReason.SignIn, null,
-                "Sign-in is not available on this page. Open the sign-in page and start again signed in.");
+                "Sign-in is not available on this page. Open the sign-in page and start again signed in.", Unavailable: true);
             return Task.FromResult(new ToolExecutionResult(
                 "Sign-in is unavailable on this page, so a link to the sign-in page is shown instead. Tell the user to continue there; nothing has been done.",
                 Events: [card]));
