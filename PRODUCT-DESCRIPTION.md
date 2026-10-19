@@ -66,7 +66,7 @@ Every chat session is in exactly one tier. The tier determines which tools the m
 | --- | --- | --- |
 | **Anonymous** | Widget loads, no sign-in | Capability discovery only: explain Biatec products, Algorand, DEX concepts, fees, how to get started. No account data, no transaction building, no price-sensitive advice beyond public facts. |
 | **Authenticated** | User completes Biatec OIDC login (PKCE + authorization code) through the backend | Everything above, plus read own addresses and balances, build and preview transactions, sign and submit transactions within the user's own spending limits, create safes and proposals. |
-| **Consent-elevated** | A specific action exceeds a policy threshold and the user approves it in Biatec Authenticator | That one action, with the exact parameters the user approved, for a short validity window. Elevation is per action, never per session. |
+| **Consent-elevated** (per action, not a session state) | A specific action exceeds a policy threshold, or is always-consented, and the user approves it in Biatec Authenticator | That one action, with the exact parameters the user approved, for a short validity window. Elevation is per action, never per session; the session stays Authenticated. |
 
 An anonymous session that receives an action request is not escalated silently. The assistant explains that the request needs sign-in, shows what the action would do in general terms, and offers the sign-in button. The backend enforces this independently of the model: in the anonymous tier the tool list sent to the model contains no wallet tools, and any tool call that slips through is rejected server-side.
 
@@ -80,20 +80,22 @@ Initial capability set:
 | --- | --- | --- | --- | --- |
 | `explain.product`, `explain.blockchain` | Anonymous | none | no | Model knowledge plus a curated knowledge base of Biatec docs |
 | `wallet.listAddresses`, `wallet.balance` | Authenticated | `openid` | no | Biatec MCP `listAlgorandAddresses`, `getCryptoAddress`, `getCryptoBalance` |
-| `wallet.transfer` | Authenticated | `sign` | yes | Biatec MCP `createPaymentTransaction` or `createBitcoinTransaction`, `signTransaction`, `submitTransactionToBlockchain` |
-| `dex.swap` | Authenticated | `sign` | yes | Biatec MCP `createSwapTransaction` (quote aggregation across Biatec Router and other providers) |
-| `dex.addLiquidity`, `dex.removeLiquidity` | Authenticated | `sign` | yes | `biatec-concentrated-liquidity-amm` transaction builders, signed through Biatec OIDC `POST /wallet/{network}/{address}/sign` |
+| `wallet.transfer` | Authenticated | `sign` | yes | Built by Biatec MCP `createPaymentTransaction` or `createBitcoinTransaction`; signed by the backend directly at Biatec OIDC `POST /wallet/{network}/{address}/sign`; broadcast by Biatec MCP `submitTransactionToBlockchain` |
+| `dex.swap` | Authenticated | `sign` | yes | Built by Biatec MCP `createSwapTransaction` (quote aggregation across Biatec Router and other providers, preferring Biatec DEX pools); signed directly at Biatec OIDC; broadcast by Biatec MCP |
+| `dex.addLiquidity`, `dex.removeLiquidity` | Authenticated | `sign` | yes | Built by the backend with `biatec-concentrated-liquidity-amm`; signed directly at Biatec OIDC; broadcast by the backend through algod |
 | `safe.create`, `safe.addSignerGroup` | Authenticated | `sign` | yes (app funding) | `algo-safe` npm library |
 | `safe.propose` | Authenticated | `sign` | no (proposal only, nothing moves) | `algo-safe` proposal builder |
 | `safe.approve` | Authenticated | `sign` | yes (authorizes the safe's spend; value = the proposal payload's value) | `algo-safe` `approveProposal` with `expectedPayloadVersion` |
 | `safe.execute` | Authenticated | `sign` | no (permissionless once the threshold is met; value already consented by approvers) | `algo-safe` `executeProposal` |
 | `limits.view` | Authenticated | `openid` | no | Biatec OIDC `GET /wallet/limits` |
-| `limits.update` | Consent-elevated | `manage-limits` | no, but raises risk | Biatec OIDC `PUT /wallet/limits` |
+| `limits.update` | Authenticated, always consent-elevated | `manage-limits` | no, but raises risk | Biatec OIDC `PUT /wallet/limits`, which issues the same step-up challenge as signing, with a `biatec_limits_change` authorization detail hashed over the canonical request body |
 | `x402.pay` | Authenticated | `sign` | yes (value = the x402 price converted at Biatec OIDC rates) | `algo-safe` x402 client and facilitator; behind a feature flag until after the hackathon |
 
 Capabilities deliberately excluded from chat in version 1: anything requiring the `rekey` scope, asset creation, bridge transactions, and any action on an address the user has not explicitly listed as their own. These can be added later as separate capabilities with their own consent rules.
 
 The value used for the consent threshold is always computed by Biatec OIDC from the transaction group itself, never taken from the chat backend. For a safe approval, Biatec OIDC reads the proposal payload from the safe's on-chain boxes and values that payload, because the approval app call is what authorizes the spend even though the approver's own balance does not move.
+
+Signing is never delegated to Biatec MCP's `signTransaction` tool. Biatec MCP is used to build transactions, read balances and addresses, and broadcast signed bytes; every signature request goes from the backend straight to Biatec OIDC, so the step-up challenge described under the consent protocol always reaches the backend and can be completed.
 
 ### Action Preview
 
@@ -114,7 +116,7 @@ The value that binds every later step is the **group hash**: SHA-256 over the ca
 
 ### Evidence Record
 
-Every session produces an append-only evidence record. Each entry commits to its content through a payload hash, and the chain hashes over those commitments (`entryHash = SHA-256(prevHash, kind, payloadHash)`), so a transcript cannot be edited after the fact without detection, and a payload can later be deleted for privacy while the chain still verifies.
+Every session produces an append-only evidence record. Each entry commits to its content through a salted payload hash (`payloadHash = SHA-256(salt, payload)` with a fresh 32-byte random salt per entry), and the chain hashes over those commitments (`entryHash = SHA-256(prevHash, kind, payloadHash)`). A transcript cannot be edited after the fact without detection, and a payload and its salt can later be deleted together for privacy while the chain still verifies and the retained hash reveals nothing about the deleted content.
 
 Recorded per session:
 
@@ -188,10 +190,10 @@ flowchart TB
 
 **Boundary rules**
 
-- The widget never receives an access token, refresh token, ID token, or authorization code. It only ever holds an opaque, HTTP-only, `Secure`, `SameSite=Strict` session cookie issued by the backend, and that cookie is always first-party to the page the widget runs on (see Embedding Modes).
-- The backend is the only OAuth client. It is registered with Biatec OIDC as a confidential client with PKCE enforced in addition to its client secret.
+- The widget never receives an access token, refresh token, ID token, or authorization code. It only ever holds an opaque, HTTP-only, `Secure`, `SameSite=Lax` session cookie issued by the backend, and that cookie is always first-party to the page the widget runs on (see Embedding Modes).
+- The backend is the only OAuth client. Each tenant host (Biatec's own sites together form one tenant) is registered with Biatec OIDC as its own confidential client with PKCE enforced in addition to its client secret, so the authenticator can tell tenants apart.
 - Model calls go to Amazon Bedrock from the backend only. The widget never talks to Bedrock, and no Bedrock credential leaves the backend's AWS role.
-- Transaction building for Biatec DEX and Algo Safe uses the official libraries (`biatec-concentrated-liquidity-amm`, `algo-safe`). The backend never hand-assembles transaction groups for those products.
+- Transaction building uses the official builders: Biatec MCP tools for payments, Bitcoin transfers, and swaps; `biatec-concentrated-liquidity-amm` for liquidity; `algo-safe` for safes. The backend never hand-assembles transaction groups.
 - Signing always happens inside Biatec OIDC. The backend sends unsigned transaction groups and receives signed bytes; it never sees key material.
 
 ---
@@ -224,12 +226,14 @@ createApp(App)
 
 ### Embedding Modes
 
-The session cookie must be first-party to the page, because the widget uses `SameSite=Strict` and never relies on third-party cookies. Two modes satisfy that:
+The session cookie must be first-party to the page, because the widget never relies on third-party cookies. Two modes satisfy that:
 
-- **Biatec sites.** Biatec Web and Biatec DEX run under `biatec.io` subdomains and the backend runs at `chat.biatec.io`. Browser requests from `web.biatec.io` or `dex.biatec.io` to `chat.biatec.io` are same-site, so the Strict cookie is sent.
+- **Biatec sites.** Biatec Web and Biatec DEX run under `biatec.io` subdomains and the backend runs at `chat.biatec.io`. Browser requests from `web.biatec.io` or `dex.biatec.io` to `chat.biatec.io` are same-site, so the cookie is sent.
 - **Third-party hosts.** A third party exposes the backend under its own site, either by pointing a subdomain such as `chat.example-bank.com` at the Biatec Chat backend (the backend is multi-tenant by `Host` header and scopes the cookie to that host) or by reverse-proxying a path such as `/biatec-chat/` to it. The widget's `backendUrl` is then same-site with the host page. A host that cannot do either cannot run the authenticated tier; the widget detects a cross-site `backendUrl` at startup and stays in the anonymous tier with a console warning.
 
-The sign-in redirect always targets the same-site backend URL, so the authorization-code callback lands on the same site as the cookie. Each tenant host has its own registered redirect URI at Biatec OIDC.
+The cookie is `SameSite=Lax`, not `Strict`, because the authorization-code callback from `oidc.biatec.io` is a cross-site top-level navigation to the tenant's backend and must carry the cookie to find the pending `state` and PKCE verifier. Lax still withholds the cookie on every cross-site request that is not a top-level navigation, and every state-changing endpoint additionally requires the custom header and origin check described under Security Model.
+
+Each tenant is a separate Biatec OIDC client with its own `client_id`, client secret, redirect URI, and (optionally) OpenID Federation entity statement. A tenant is created by a Biatec Chat operator or by the tenant itself through the self-service onboarding endpoint, which registers the client at Biatec OIDC through RFC 7591 Dynamic Client Registration and stores the resulting credentials in the backend's secret store under that tenant. Biatec's own sites share one tenant, "Biatec Chat". Because the OIDC client is the tenant, the consent card on the phone names the tenant, the user's per-client thresholds and pauses apply to that tenant alone, and a hostile host cannot borrow Biatec's name.
 
 ### User Experience
 
@@ -285,17 +289,17 @@ Enforcement is layered so a model mistake cannot become a security incident:
 
 ### Tool Executors
 
-- **MCP client**: a Model Context Protocol client that connects to `https://mcp.biatec.io/tools` with the user's bearer token. Tools are discovered at startup and mapped onto chat capabilities. The chain is always build, then preview, then sign, then submit; the backend never calls `signTransaction` without a confirmed preview.
-- **DEX executor**: uses `biatec-concentrated-liquidity-amm` to resolve `configAppId`, `identityAppId`, and `poolProviderAppId` for the active network, finds the pool for the requested asset pair, builds the add-liquidity, remove-liquidity, or swap group, simulates it, and hands the unsigned group to Biatec OIDC for signing. The user's identity verification class on the Biatec Identity Provider contract is read and surfaced in the preview, because pools can require a minimum verification class.
+- **MCP client**: a Model Context Protocol client that connects to `https://mcp.biatec.io/tools` with the user's bearer token. Tools are discovered at startup and mapped onto chat capabilities. The chain is always build (MCP), then preview, then sign (Biatec OIDC directly), then submit (MCP or algod); the MCP `signTransaction` tool is never called, so the step-up challenge always reaches the backend.
+- **DEX executor**: uses `biatec-concentrated-liquidity-amm` to resolve `configAppId`, `identityAppId`, and `poolProviderAppId` for the active network, finds the pool for the requested asset pair, builds the add-liquidity or remove-liquidity group, simulates it, and hands the unsigned group to Biatec OIDC for signing. Swaps are built through Biatec MCP `createSwapTransaction` so the user gets aggregated routing, and the preview names the pool or router actually used. The user's identity verification class on the Biatec Identity Provider contract is read and surfaced in the preview, because pools can require a minimum verification class.
 - **Safe executor**: uses the `algo-safe` library to create a safe, add signer groups, create proposals with the exact typed payload, submit `approveProposal` app calls signed by the user's address, and call `executeProposal` once the threshold is reached. Proposal payload versions are shown in the preview so an approver always knows what they approve.
 - **Limits executor**: reads and updates spending limits through Biatec OIDC. Updates are always consent-elevated.
 
 ### Session Recording And Evidence
 
-- Transcripts and evidence entries live in PostgreSQL. Each entry stores `payloadHash` (SHA-256 of the canonical payload JSON), `prevHash`, `entryHash`, and a server signature with a rotating key published at a JWKS endpoint, so a user or auditor can verify a bundle offline. A verifier recomputes `payloadHash` for every entry whose payload is present and uses the stored `payloadHash` for entries whose payload was deleted, so deletion never breaks the chain.
+- Transcripts and evidence entries live in PostgreSQL. Each entry stores `salt`, `payloadHash` (SHA-256 over the salt and the canonical payload JSON), `prevHash`, `entryHash`, and a server signature with a rotating key published at a JWKS endpoint, so a user or auditor can verify a bundle offline. A verifier recomputes `payloadHash` for every entry whose payload and salt are present and uses the stored `payloadHash` for entries whose payload was deleted, so deletion never breaks the chain and the hash of a deleted entry cannot be matched against guessed content.
 - Personal data is minimized: email and addresses are stored as the OIDC `sub` plus the address strings needed for evidence. The model's tool results are stored after schema-driven redaction of anything marked `sensitive` in the tool's output schema.
 - Retention is configurable per deployment. Default: full transcripts 90 days, evidence entries 7 years for fund-moving actions, anonymous sessions 30 days.
-- Users can view and export their own sessions from the widget. Deletion requests remove message payloads but keep each entry's `payloadHash`, the chain, consent receipts, and transaction references, because those are needed for dispute resolution and keep the bundle verifiable.
+- Users can view and export their own sessions from the widget. Deletion requests remove message payloads and their salts but keep each entry's `payloadHash`, the chain, consent receipts, and transaction references, because those are needed for dispute resolution and keep the bundle verifiable.
 
 ---
 
@@ -339,21 +343,21 @@ Biatec OIDC issues access tokens whose `aud` contains both the requesting client
 
 - **Authorization Code + PKCE** per RFC 7636 on every login, even though the backend is a confidential client. `state` is bound to the cookie session and single-use; `nonce` is validated on the ID token.
 - **Resource indicator** (RFC 8707) `resource=https://mcp.biatec.io/tools` is sent so the access token's audience matches what Biatec MCP validates locally against the Biatec OIDC JWKS.
-- **No tokens in the browser.** The widget receives only an opaque session cookie: `HttpOnly`, `Secure`, `SameSite=Strict`, `__Host-` prefix, with a short idle timeout (15 minutes of inactivity) and an absolute lifetime (8 hours). Cross-site hosts that embed the widget use a first-party backend domain via a small iframe bridge, never third-party cookies.
-- **Token vault.** Access and refresh tokens are encrypted at rest with a key from the deployment's KMS (AWS KMS in the reference deployment), stored in Redis keyed by session ID, and expire with the session. Refresh tokens are rotated on every use and revoked at logout through the OIDC end-session endpoint. The vault is never written to logs or evidence.
+- **No tokens in the browser.** The widget receives only an opaque session cookie: `HttpOnly`, `Secure`, `SameSite=Lax`, `__Host-` prefix, with a short idle timeout (15 minutes of inactivity) and an absolute lifetime (8 hours). Hosts that cannot serve the backend first-party stay in the anonymous tier (see Embedding Modes); there is no third-party-cookie path.
+- **Token vault.** Access and refresh tokens are encrypted at rest with a key from the deployment's KMS (AWS KMS in the reference deployment), stored in Redis keyed by session ID, and expire with the session. Refresh tokens are rotated on every use. At logout the backend calls the RFC 7009 token revocation endpoint for the refresh token, then performs RP-initiated logout for the browser SSO session; the revocation endpoint is a requirement on Biatec OIDC for this product, and until it exists the vault entry is destroyed and the token simply ages out. The vault is never written to logs or evidence.
 - **Minimal lifetime.** Access tokens live 15 minutes (Biatec OIDC default) and are refreshed only on demand for a tool call, never proactively. If a session is idle past its timeout, the backend revokes the refresh token rather than keeping it warm.
 - **Scope minimization.** Login requests `openid profile email`. The `sign` scope is requested only when the user first confirms an action preview that needs it, through an incremental re-authorization in the same popup mechanism as sign-in. `manage-limits` is requested only for the limits capability. `rekey` is never requested by this product.
-- **Client-level soft cap.** On top of the user's Biatec OIDC spending limits, the backend applies a per-session budget for below-threshold actions (default 500 EUR per rolling hour, configurable per host). This is a damage limiter for the case where the host page itself is hostile; it is enforced by the backend and is additional to, never instead of, the limits Biatec OIDC enforces.
-- **CSRF and origin.** All state-changing endpoints require a custom header plus an origin allow-list derived from the registered host sites. The widget's `clientKey` identifies the host for policy and metrics; it is not a secret and grants nothing.
-- **Logout** clears the cookie, deletes the vault entry, revokes the refresh token, and performs RP-initiated logout at Biatec OIDC.
+- **Tenant-level soft cap.** On top of the user's Biatec OIDC spending limits, the backend applies a budget for below-threshold actions keyed on the user's OIDC `sub` and the tenant, over a rolling window (default 500 EUR per hour, configurable per tenant). Starting a new session does not reset it. This is a damage limiter for the case where the host page itself is hostile; it is enforced by the backend and is additional to, never instead of, the limits Biatec OIDC enforces.
+- **CSRF and origin.** All state-changing endpoints require a custom header plus an origin allow-list derived from the tenant's registered hosts. The widget's `clientKey` selects the tenant for policy and metrics; it is not a secret and grants nothing, because the tenant is also fixed by the `Host` the cookie is scoped to.
+- **Logout** clears the cookie, deletes the vault entry, revokes the refresh token (RFC 7009), and performs RP-initiated logout at Biatec OIDC.
 - **Secrets handling.** The OIDC client secret, Redis credentials, database credentials, and signing keys for evidence are injected from Kubernetes secrets or AWS Secrets Manager, never from `appsettings.json`.
 
 ### Threat Model Highlights
 
 | Threat | Mitigation |
 | --- | --- |
-| XSS on a host page steals tokens | There are no tokens to steal; the cookie is HttpOnly and SameSite=Strict, and fund-moving actions above threshold need the phone |
-| Malicious or compromised host page drives the widget to act | The widget shares the host page's DOM and JavaScript realm, so the Confirm click and the CSRF header are not a boundary against the host itself. The real boundaries are outside the page: Biatec OIDC's per-user spending limits, the consent threshold enforced by Biatec OIDC with number matching on the phone, the backend's per-session soft cap, and the user's option to require phone approval for every action from a given client. The residual exposure is below-threshold spend inside those caps, which is the same exposure as any site the user signs into |
+| XSS on a host page steals tokens | There are no tokens to steal; the cookie is HttpOnly and SameSite=Lax, and fund-moving actions above threshold need the phone |
+| Malicious or compromised host page drives the widget to act | The widget shares the host page's DOM and JavaScript realm, so the Confirm click and the CSRF header are not a boundary against the host itself. The real boundaries are outside the page: Biatec OIDC's per-user spending limits, the consent threshold enforced by Biatec OIDC with number matching on the phone, the backend's tenant-level soft cap, and the user's option to require phone approval for every action from that tenant, which is a distinct OIDC client. The residual exposure is below-threshold spend inside those caps, which is the same exposure as any site the user signs into |
 | Prompt injection via on-chain data or docs | Untrusted content wrapped as data; tier and scope gates enforced server-side |
 | Backend compromise | Tokens are short-lived, scoped, and per session; keys never leave Biatec OIDC; spending limits and the consent threshold are enforced by Biatec OIDC, not by the chat backend; consent receipts are verified by Biatec OIDC against the transaction group it is asked to sign |
 | Replay of a consent | Receipts are bound to the group hash, a nonce, the client ID, and a short expiry, and are consumed by exactly one signing request |
@@ -377,11 +381,11 @@ Rather than invent a new protocol, the Biatec Consent Protocol is a profile over
 
 | Need | Standard | How it is used |
 | --- | --- | --- |
-| Push an approval to a device that did not start the flow | OpenID Connect Client-Initiated Backchannel Authentication (CIBA), push and poll modes | The chat backend (or a third-party client) calls Biatec OIDC's backchannel authentication endpoint; Biatec OIDC notifies the authenticator |
-| Describe exactly what is being approved | OAuth 2.0 Rich Authorization Requests (RFC 9396) `authorization_details` | A typed `biatec_transaction` object with network, group hash, and the fields Biatec OIDC decoded from the group itself (sender, receiver or application, asset, amount, fiat value) |
+| Push an approval to a device that did not start the flow | OpenID Connect Client-Initiated Backchannel Authentication (CIBA), push and poll modes | A CIBA request is opened either by the client at the backchannel authentication endpoint, or by Biatec OIDC itself when a wallet endpoint answers with a step-up challenge; both produce the same request object and the same receipt |
+| Describe exactly what is being approved | OAuth 2.0 Rich Authorization Requests (RFC 9396) `authorization_details` | Typed objects: `biatec_transaction` (network, group hash, and the fields Biatec OIDC decoded from the group itself: sender, receiver or application, asset, amount, fiat value) and `biatec_limits_change` (current and requested limits, hash of the canonical request body) |
 | Make the human-readable message part of the signed contract | CIBA `binding_message` and PSD2 Strong Customer Authentication dynamic linking | The amount and payee are inside the signed receipt, so a changed amount invalidates the consent |
 | Financial-grade hardening | FAPI 2.0 Security Profile and FAPI-CIBA | Sender-constrained tokens, signed requests, `request_expiry` defaults of 300 seconds |
-| Step up only when needed | OAuth 2.0 Step-up Authentication Challenge (RFC 9470) | Biatec OIDC answers a signing request above threshold with `insufficient_user_authentication`, the required `acr`, and a CIBA `auth_req_id` it has already opened for that exact group; the client polls the token endpoint for the elevated token and retries the signing request with it. This is the only path to an above-threshold signature |
+| Step up only when needed | OAuth 2.0 Step-up Authentication Challenge (RFC 9470) | Biatec OIDC answers a signing or limits request that needs consent with `insufficient_user_authentication`, the required `acr`, and a CIBA `auth_req_id` it has already opened for that exact group or request body; the client polls the token endpoint for the elevated token and retries with it. A client may instead open the CIBA request itself first (see Two Entry Points below); either way the wallet endpoint accepts only a consent bound to the hash of what it is asked to do |
 | Device-bound, phishing-resistant user keys | FIDO2 / WebAuthn passkeys and platform keystores (Secure Enclave, Android StrongBox) | The authenticator's receipt signing key is generated in hardware and attested at enrollment |
 | Prove the app is genuine | OAuth 2.0 Attestation-Based Client Authentication (IETF draft) with Apple App Attest and Google Play Integrity | Each authenticator instance presents an attestation when enrolling and when posting receipts |
 | Let third parties register without permission, yet be verifiable | RFC 7591 Dynamic Client Registration plus OpenID Federation 1.0 trust chains | Any client can self-register; display name and logo are shown to the user only if the client's entity statement chains to a trust anchor the user's deployment recognizes |
@@ -424,6 +428,15 @@ sequenceDiagram
 
 For a safe approval the group is the `approveProposal` app call; Biatec OIDC reads the referenced proposal and its payload from the safe's boxes on-chain, values the payload, and shows those fields on the phone, so an approver always consents to the actual spend they authorize.
 
+### Two Entry Points, One Request Model
+
+A CIBA request at Biatec OIDC is always the same object: `authorization_details`, a binding code generated by Biatec OIDC, an optional client-supplied `binding_message` (a short purpose statement shown on the card under the decoded facts), the client's identity, `request_expiry`, and the hash it is bound to. It can be opened in two ways:
+
+- **Step-up entry.** The client calls a wallet endpoint (`/wallet/{network}/{address}/sign` or `PUT /wallet/limits`) with an ordinary token. Biatec OIDC decides consent is needed, opens the request itself, and returns the challenge with `auth_req_id` and the binding code. The chat backend uses this entry for everything, so it never has to guess the threshold.
+- **Direct entry.** The client calls the backchannel authentication endpoint with `authorization_details` and `binding_message`; Biatec OIDC validates the details, opens the request, and returns `auth_req_id` and the binding code. A bank that wants to pre-authorize a transfer before building the final transaction uses this entry, then presents the resulting token to the wallet endpoint, which checks the hash as usual.
+
+The conformance suite exercises both entries and asserts that the receipts they produce are byte-for-byte the same shape.
+
 ### Protocol Rules
 
 1. **What you see is what you sign.** The authenticator renders the card only from the `authorization_details` object it fetches from Biatec OIDC over an authenticated channel, never from the push notification body or from anything the client sends directly. The receipt signs the canonical form of that object.
@@ -452,7 +465,7 @@ A bank, a fintech, or any other service can integrate in three steps without con
 
 1. Publish an OpenID Federation entity configuration at its domain and obtain a subordinate statement from any trust anchor the deployment recognizes (initially Biatec's own anchor and, as they become available, national or EU-level financial trust lists).
 2. Self-register a client with Biatec OIDC through RFC 7591 Dynamic Client Registration, declaring `backchannel_token_delivery_mode` and the `authorization_details_types` it will use.
-3. Call the backchannel authentication endpoint with `authorization_details` and a `binding_message`, display the returned binding code to the user, and poll or receive the token.
+3. Either call the backchannel authentication endpoint with `authorization_details` and a `binding_message` (direct entry), or call the wallet endpoint and handle the step-up challenge (step-up entry); in both cases display the returned binding code to the user, poll or receive the token, and present it to the wallet endpoint.
 
 The `packages/consent-protocol` conformance suite exercises these steps against a mock Biatec OIDC so integrators can validate before going live.
 
@@ -497,13 +510,14 @@ This is the bridge from "a human chats with an agent" to "agents pay agents unde
 
 | Entity | Key fields | Notes |
 | --- | --- | --- |
-| `ChatSession` | id, tier, clientKey, oidcSub (nullable), createdAt, lastActivityAt, absoluteExpiresAt | Cookie maps to this id |
+| `ChatSession` | id, tier, tenantId, oidcSub (nullable), createdAt, lastActivityAt, absoluteExpiresAt | Cookie maps to this id |
 | `Message` | sessionId, seq, role, content, toolCalls, toolResults, modelId, usage | Content stored after redaction |
 | `ActionPreview` | id, sessionId, capability, canonicalJson, groupHash, unsignedGroup, predictedValueEur, predictedNeedsConsent, status | Status: proposed, confirmed, consented, signed, submitted, confirmed-on-chain, failed, cancelled. Predicted fields are UI hints; Biatec OIDC decides |
 | `ConsentRequest` | id, previewId, groupHash, authReqId, bindingCode, expiresAt, status, receipt | Receipt stored verbatim |
-| `EvidenceEntry` | sessionId, seq, kind, payload (nullable after deletion), payloadHash, prevHash, entryHash, signature, signedAt | Append-only |
+| `EvidenceEntry` | sessionId, seq, kind, payload and salt (both nullable after deletion), payloadHash, prevHash, entryHash, signature, signedAt | Append-only |
 | `TokenVaultEntry` | sessionId, encryptedAccessToken, accessExpiresAt, encryptedRefreshToken, scopes | Redis, TTL bound to session |
-| `HostPolicy` | clientKey, allowedOrigins, sessionSoftCapEur, defaultModel, suggestions | Backend-side settings per host site. User thresholds and per-client rules live in Biatec OIDC, not here |
+| `Tenant` | id, hosts, oidcClientId, encryptedClientSecret, redirectUri, allowedOrigins, softCapEurPerHour, defaultModel, suggestions | One Biatec OIDC client per tenant. User thresholds and per-client rules live in Biatec OIDC, not here |
+| `SoftCapUsage` | oidcSub, tenantId, windowStart, spentEur | Rolling-window spend for the tenant-level soft cap; survives session churn |
 
 ---
 
