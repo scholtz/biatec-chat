@@ -4,7 +4,9 @@
   "private": true,
   "description": "Internal Node sidecar that builds unsigned CLAMM and algo-safe transaction groups for the .NET backend.",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
@@ -13,7 +15,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@algorandfoundation/algokit-utils": "^9.2.2",
     "@hono/node-server": "^1.14.0",
+    "algo-safe": "1.1.0-build.39",
+    "algosdk": "^3.9.0",
     "hono": "^4.7.0"
   },
   "devDependencies": {
