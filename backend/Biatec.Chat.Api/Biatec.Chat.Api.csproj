@@ -18,6 +18,8 @@
   <ItemGroup>
     <PackageReference Include="AWSSDK.BedrockRuntime" Version="4.0.101.11" />
     <PackageReference Include="AWSSDK.KeyManagementService" Version="4.0.100.18" />
+    <PackageReference Include="AWSSDK.SSO" Version="4.0.100.20" />
+    <PackageReference Include="AWSSDK.SSOOIDC" Version="4.0.100.19" />
     <PackageReference Include="Npgsql" Version="10.0.3" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.7">

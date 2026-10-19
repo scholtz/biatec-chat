@@ -140,6 +140,7 @@ public class BedrockModelClientTests
     {
         var o = Opts(maxRetries: 3);
         o.StreamIdleTimeoutMs = 1000;
+        o.FirstEventTimeoutMs = 1000;
         var stallOnce = 0;
         var source = new FakeSource([new ThrottlingException("slow down")], TextAnswer)
         {
@@ -159,6 +160,7 @@ public class BedrockModelClientTests
         // Every gap is under the 1 s idle limit, the whole answer takes well over it.
         var o = Opts(maxRetries: 0);
         o.StreamIdleTimeoutMs = 1000;
+        o.FirstEventTimeoutMs = 1000;
         var events = await Collect(Client(new PacedSource(TimeSpan.FromMilliseconds(400)), o).StreamAsync(Request()));
 
         Assert.Single(events.OfType<ModelMessageStop>());
@@ -178,11 +180,36 @@ public class BedrockModelClientTests
     }
 
     [Fact]
+    public async Task A_slow_first_token_gets_the_longer_first_event_limit()
+    {
+        var o = Opts(maxRetries: 0);
+        o.StreamIdleTimeoutMs = 1000;
+        o.FirstEventTimeoutMs = 5000;
+        var source = new FakeSource(TextAnswer) { OnOpen = () => Task.Delay(1500) };
+
+        var events = await Collect(Client(source, o).StreamAsync(Request()));
+
+        Assert.Single(events.OfType<ModelMessageStop>());
+    }
+
+    [Fact]
+    public async Task Closed_tool_calls_stay_out_of_the_message_after_a_max_tokens_stop()
+    {
+        var source = new FakeSource([Text("Sure."), BlockStop(0), .. ToolCall("tu-1", "{}", index: 1), Stop(StopReason.Max_tokens)]);
+
+        var events = await Collect(Client(source).StreamAsync(Request()));
+
+        var content = Assert.Single(events.OfType<ModelMessageStop>()).Message!.Content;
+        Assert.Equal("Sure.", Assert.Single(content).Text);
+    }
+
+    [Fact]
     public async Task A_stream_that_stalls_before_the_stop_is_retried_then_reported()
     {
         var stall = new FakeSource(TextAnswer) { OnOpen = () => Task.Delay(Timeout.Infinite) };
         var o = Opts(maxRetries: 1);
         o.StreamIdleTimeoutMs = 1000;
+        o.FirstEventTimeoutMs = 1000;
         await Assert.ThrowsAsync<ModelStreamIncompleteException>(() => Collect(Client(stall, o).StreamAsync(Request())).WaitAsync(TimeSpan.FromSeconds(20)));
         Assert.Equal(2, stall.Calls);
     }

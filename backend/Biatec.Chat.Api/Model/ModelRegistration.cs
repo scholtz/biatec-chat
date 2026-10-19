@@ -34,7 +34,8 @@ public static class ModelRegistration
         RegionEndpoint = RegionEndpoint.GetBySystemName(o.Region),
         RetryMode = RequestRetryMode.Standard,
         MaxErrorRetry = 0,
-        // Covers connecting and the response headers only; a stalled stream is caught by Bedrock:StreamIdleTimeoutMs.
-        Timeout = TimeSpan.FromMinutes(2),
+        // Covers connecting and the response headers; kept above Bedrock:FirstEventTimeoutMs (default 3 min), which
+        // bounds the same phase, so the client's own stall handling decides.
+        Timeout = TimeSpan.FromMinutes(10),
     });
 }

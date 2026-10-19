@@ -43,7 +43,8 @@ public sealed class BedrockConverseStreamSource(IAmazonBedrockRuntime bedrock) :
 /// never depends on how fast the caller reads, and a caller that stops reading frees it at once. A call is retried
 /// only while nothing has been handed out, so a caller never sees a partial answer twice. Events keep Bedrock's
 /// order: text and tool-use deltas, the message stop, then usage (which the client also logs). A ModelToolUse is
-/// only a proposal until its ModelMessageStop arrives: run tools after the stop, never on the tool-use event.
+/// only a proposal until a ModelMessageStop with stop reason tool_use arrives: run tools after that stop, never on
+/// the tool-use event, and not at all after another stop reason (its message then carries no tool calls).
 /// </summary>
 public sealed class BedrockModelClient(
     IConverseStreamSource source,
@@ -176,7 +177,10 @@ public sealed class BedrockModelClient(
                         // Each read has its own limit: the idle timeout before the stop, the usage wait after it. Only
                         // a read still pending when the limit passes counts, so a slow but live stream is never cut.
                         read = events.MoveNextAsync().AsTask();
-                        if (!await CompletesWithinAsync(read, stopped ? UsageWait : TimeSpan.FromMilliseconds(_c.StreamIdleTimeoutMs), ct))
+                        // The first read includes connecting and the model's time to first token, so it gets longer.
+                        var limit = stopped ? UsageWait
+                            : TimeSpan.FromMilliseconds(written ? _c.StreamIdleTimeoutMs : _c.FirstEventTimeoutMs);
+                        if (!await CompletesWithinAsync(read, limit, ct))
                         {
                             await SettleAsync(attemptCts, read);
                             if (stopped)
@@ -187,7 +191,7 @@ public sealed class BedrockModelClient(
                             }
                             ct.ThrowIfCancellationRequested();
                             // A stall is retried once per call at most: each try costs a whole idle timeout.
-                            var stalled = new ModelStreamIncompleteException(converse.ModelId, $"stalled for {_c.StreamIdleTimeoutMs} ms");
+                            var stalled = new ModelStreamIncompleteException(converse.ModelId, $"stalled for {limit.TotalMilliseconds:0} ms");
                             if (written || stalls > 0 || attempt >= _c.MaxRetries) throw stalled;
                             stalls++;
                             lastError = stalled;
@@ -289,7 +293,7 @@ public sealed class BedrockModelClient(
     /// Transient errors: Bedrock's throttling and availability errors (also when they arrive inside the event
     /// stream, where the SDK may wrap them in a <see cref="BedrockRuntimeEventStreamException"/>), transport
     /// failures, SDK timeouts, a truncated stream, and any other 429, 500, 502, 503 or 504 service response. The SDK's own retries
-    /// are off, so this is the only retry layer.
+    /// are off, so this is the only retry layer. Retrying is only safe while nothing of the answer was handed out.
     /// </summary>
     public static bool IsRetryable(Exception ex, CancellationToken ct)
     {
@@ -396,7 +400,7 @@ public sealed class BedrockModelClient(
                         if (toolUseStop) yield return Close(open);
                         else open.Tool = null;
                     }
-                    yield return new ModelMessageStop(stop.StopReason?.Value ?? "", BuildMessage());
+                    yield return new ModelMessageStop(stop.StopReason?.Value ?? "", BuildMessage(includeTools: toolUseStop));
                     break;
                 case ConverseStreamMetadataEvent { Usage: { } usage } meta:
                     yield return new ModelUsage(modelId,
@@ -423,13 +427,18 @@ public sealed class BedrockModelClient(
 
         // Bedrock rejects an assistant message without content, and a whitespace-only text block, so those are dropped
         // and an empty answer has no message to append.
-        private Message? BuildMessage()
+        // Tool calls belong in the history only on a tool_use stop, where tool results follow; after any other stop
+        // (max_tokens) no results will come, and Bedrock rejects a toolUse without its toolResult.
+        private Message? BuildMessage(bool includeTools)
         {
             var content = new List<ContentBlock>();
             foreach (var b in _blocks.Values)
             {
                 if (b.Tool is { } tool && b.InputJson is { } input)
-                    content.Add(new ContentBlock { ToolUse = new ToolUseBlock { ToolUseId = tool.ToolUseId, Name = tool.Name, Input = ToDocument(tool, input) } });
+                {
+                    if (includeTools)
+                        content.Add(new ContentBlock { ToolUse = new ToolUseBlock { ToolUseId = tool.ToolUseId, Name = tool.Name, Input = ToDocument(tool, input) } });
+                }
                 else if (b.Tool is null && b.Text.ToString() is var text && !string.IsNullOrWhiteSpace(text))
                     content.Add(new ContentBlock { Text = text });
             }

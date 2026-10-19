@@ -12,6 +12,9 @@ public sealed class BedrockClientOptions : IValidatableObject
     /// <summary>How long a call may wait for free slots in total, retries included, before <see cref="ModelBusyException"/>.</summary>
     [Range(1, 600000)] public int QueueTimeoutMs { get; set; } = 30000;
 
+    /// <summary>Longest wait for the first stream event: connecting plus the model's time to first token.</summary>
+    [Range(1000, 600000)] public int FirstEventTimeoutMs { get; set; } = 180000;
+
     /// <summary>Longest gap between two stream events before the message stop; a stalled stream frees its slot.</summary>
     [Range(1000, 600000)] public int StreamIdleTimeoutMs { get; set; } = 60000;
 
