@@ -6,9 +6,21 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["scope", "resource", "login_hint", "origin"],
-  "anyOf": [
-    { "required": ["unsigned_group", "network", "address"], "properties": { "unsigned_group": true, "network": true, "address": true } },
-    { "required": ["limits_request"], "properties": { "limits_request": true } }
+  "allOf": [
+    {
+      "if": { "properties": { "scope": { "const": "sign" } } },
+      "then": {
+        "required": ["unsigned_group", "network", "address"],
+        "properties": { "unsigned_group": true, "network": true, "address": true, "limits_request": false }
+      }
+    },
+    {
+      "if": { "properties": { "scope": { "const": "manage-limits" } } },
+      "then": {
+        "required": ["limits_request"],
+        "properties": { "limits_request": true, "unsigned_group": false }
+      }
+    }
   ],
   "properties": {
     "scope": { "enum": ["sign", "manage-limits"] },

@@ -7,9 +7,9 @@
   "additionalProperties": false,
   "required": ["auth_req_id", "entry", "authorization_details", "client", "binding_message", "requested_expiry", "expiry", "bound_hash", "origin", "sub"],
   "allOf": [
-    { "if": { "properties": { "entry": { "const": "step-up" } } }, "then": { "properties": { "binding_message": { "type": "string", "maxLength": 0 } } } },
+    { "if": { "required": ["entry"], "properties": { "entry": { "const": "step-up" } } }, "then": { "properties": { "binding_message": { "type": "string", "maxLength": 0 } } } },
     {
-      "if": { "properties": { "client": { "type": "object", "properties": { "verified": { "const": false } } } } },
+      "if": { "required": ["client"], "properties": { "client": { "type": "object", "required": ["verified"], "properties": { "verified": { "const": false } } } } },
       "then": { "properties": { "binding_message": { "type": "string", "maxLength": 0 } } }
     }
   ],

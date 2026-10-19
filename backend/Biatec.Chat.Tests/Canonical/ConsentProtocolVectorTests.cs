@@ -83,6 +83,9 @@ public class ConsentProtocolVectorTests
             var header = JsonNode.Parse(B64Url(parts[0]))!;
             var payload = JsonNode.Parse(B64Url(parts[1]))!;
             Assert.Equal("biatec-device-attestation+jwt", (string)header["typ"]!);
+            Assert.Equal("ES256", (string)header["alg"]!);
+            Assert.Equal("https://oidc.biatec.test", (string)payload["iss"]!);
+            Assert.True((long)payload["exp"]! > (long)receipt["issued_at"]!, "attestation outlives the receipt");
             var jwk = jwks.Single(k => (string)k!["kid"]! == (string)header["kid"]!)!;
             using var oidc = ECDsa.Create(new ECParameters
             {

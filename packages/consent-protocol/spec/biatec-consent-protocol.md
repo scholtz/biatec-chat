@@ -189,7 +189,7 @@ Signing procedure:
 
 1. Build the object above from the request fetched in section 6 and the code the user typed.
 2. Canonicalize it with RFC 8785. All amounts are strings; integers MUST be at most 2^53 - 1.
-3. Sign the UTF-8 bytes with ES256 (ECDSA P-256, SHA-256). The signature is the 64-byte IEEE P1363 `r || s` form, base64url without padding.
+3. Sign the UTF-8 bytes with ES256 (ECDSA P-256, SHA-256). The signature is the 64-byte IEEE P1363 `r || s` form, base64url without padding; verifiers MUST reject non-canonical encodings.
 
 The receipt envelope (`schemas/consent-receipt.schema.json`) adds `version`, `alg`, `signature`, `issued_at` (informational, unsigned) and `device`: the key ID, the device public key as a JWK, and the **attestation**, a compact ES256 JWS signed by a Biatec OIDC JWKS key whose payload binds `sub`, `device_kid` and `device_jwk_thumbprint` (RFC 7638 thumbprint of the device public key).
 
@@ -205,11 +205,11 @@ Anyone with the Biatec OIDC JWKS verifies a receipt without further lookups:
 
 1. Validate the receipt against the schema.
 2. Verify the attestation JWS with the JWKS key named by its `kid`.
-3. Check that the attestation header `typ` is `biatec-device-attestation+jwt`, that its `exp` is in the future, and that its `sub` equals `signed.sub`, `device_kid` equals `device.kid` and `device_jwk_thumbprint` equals the thumbprint of `device.public_key`.
+3. Check that the attestation header `typ` is `biatec-device-attestation+jwt`, that its signing key is an EC P-256 signature key of the Biatec OIDC JWKS, that its `iss` is the expected issuer, that its `exp` is in the future (verifiers fail closed on a missing clock input), and that its `sub` equals `signed.sub`, `device_kid` equals `device.kid` and `device_jwk_thumbprint` equals the thumbprint of `device.public_key`.
 4. Canonicalize `signed` (RFC 8785) and verify `signature` over its UTF-8 bytes with `device.public_key`.
-5. For authorization, additionally require `decision` = `approve` with a six digit `binding_code`, compare the `signed.authorization_details` hash fields with the group or body presented, check `expiry`, and consume `auth_req_id` once. A verifier MUST NOT treat a `deny` or `code_failed` receipt, or an expired one, as consent. Verification helpers return a boolean and never throw on malformed input.
+5. For authorization, compare every signed member (`authorization_details`, `auth_req_id`, `client_entity_id`, `binding_message`, `expiry`, `sub`) and the bound hash with the stored request the verifier is waiting on, never with data the receipt supplies. Additionally require `decision` = `approve` with a six digit `binding_code`, compare the `signed.authorization_details` hash fields with the group or body presented, check `expiry`, and consume `auth_req_id` once. A verifier MUST NOT treat a `deny` or `code_failed` receipt, or an expired one, as consent. Verification helpers return a boolean and never throw on malformed input.
 
-Reference implementations: `scripts/lib.mjs` (JavaScript; `verifyReceipt` covers steps 2-4 and `verifyApproval` step 5) and `backend/Biatec.Chat.Tests/Canonical/ConsentProtocolVectorTests.cs` (.NET, using the backend `JsonCanonicalizer`). Both verify every vector signature; the .NET test also verifies the attestation.
+Reference implementations: `scripts/lib.mjs` (JavaScript; `verifyReceipt` covers steps 2-4 and `verifyApproval` step 5, which also matches the receipt against the stored request) and `backend/Biatec.Chat.Tests/Canonical/ConsentProtocolVectorTests.cs` (.NET, using the backend `JsonCanonicalizer`). Both verify every vector signature; the .NET test also verifies the attestation.
 
 ## 9. Test vectors
 

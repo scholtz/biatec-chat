@@ -27,6 +27,10 @@ else {
   };
   write("keys.json", keys);
 }
+if (existsSync(join(dir, "receipts.json")) && !process.argv.includes("--force")) {
+  console.error("vectors/receipts.json exists; ECDSA signatures are randomized so regenerating rewrites every vector. Pass --force to overwrite.");
+  process.exit(1);
+}
 const jwks = { keys: [publicOf(keys.oidc)] };
 write("jwks.json", jwks);
 

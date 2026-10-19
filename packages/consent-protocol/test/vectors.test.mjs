@@ -20,6 +20,7 @@ const schema = (name) => {
 const valid = (name, data) => schema(name)(data);
 
 const jwks = load("vectors", "jwks.json");
+const O = { now: 1792425700, issuer: "https://oidc.biatec.test" };
 const { vectors } = load("vectors", "receipts.json");
 const canon = load("vectors", "canonicalization.json").vectors;
 
@@ -40,8 +41,8 @@ for (const v of vectors) {
     assert.equal(jcs(v.receipt.signed), v.canonical);
     assert.equal(sha256Hex(v.canonical), v.canonical_sha256);
     assert.ok(verifyReceiptSignature(v.receipt), "device signature");
-    assert.ok(verifyAttestation(v.receipt, jwks), "attestation");
-    assert.ok(verifyReceipt(v.receipt, jwks));
+    assert.ok(verifyAttestation(v.receipt, jwks, O), "attestation");
+    assert.ok(verifyReceipt(v.receipt, jwks, O));
   });
 
   test(`vector ${v.name}: receipt matches its request (what you see is what you sign)`, () => {
@@ -84,11 +85,11 @@ test("attestation is bound to sub and device key", () => {
   const v = vectors[0];
   const otherSub = clone(v.receipt);
   otherSub.signed.sub = "pw_other";
-  assert.equal(verifyAttestation(otherSub, jwks), false);
+  assert.equal(verifyAttestation(otherSub, jwks, O), false);
   const otherKid = clone(v.receipt);
   otherKid.device.kid = "device-other";
-  assert.equal(verifyAttestation(otherKid, jwks), false);
-  assert.equal(verifyAttestation(v.receipt, { keys: [] }), false);
+  assert.equal(verifyAttestation(otherKid, jwks, O), false);
+  assert.equal(verifyAttestation(v.receipt, { keys: [] }, O), false);
 });
 
 test("a signature by a different device key is rejected", () => {
@@ -148,29 +149,54 @@ test("schemas reject malformed objects", () => {
   bad("consent-request", (r) => delete r.client.fingerprint, unverified);
 });
 
-test("verifyApproval accepts approve once and rejects deny, code_failed, expiry and replay", () => {
-  const now = vectors[0].receipt.signed.expiry - 100;
+test("verifyApproval accepts the matching approve once and rejects deny, code_failed, expiry, replay and mismatches", () => {
+  const o = { ...O, now: vectors[0].receipt.signed.expiry - 100 };
+  const v = vectors.find((x) => x.receipt.signed.decision === "approve");
   const consumed = new Set();
-  const approve = vectors.find((v) => v.receipt.signed.decision === "approve").receipt;
-  assert.equal(verifyApproval(approve, jwks, now, consumed), true);
-  assert.equal(verifyApproval(approve, jwks, now, consumed), false, "replay");
-  assert.equal(verifyApproval(approve, jwks, approve.signed.expiry, new Set()), false, "expired");
+  assert.equal(verifyApproval(v.receipt, jwks, v.request, consumed, o), true);
+  assert.equal(verifyApproval(v.receipt, jwks, v.request, consumed, o), false, "replay");
+  assert.equal(verifyApproval(v.receipt, jwks, v.request, new Set(), { ...o, now: v.receipt.signed.expiry }), false, "expired");
   for (const d of ["deny", "code_failed"]) {
-    const r = vectors.find((v) => v.receipt.signed.decision === d).receipt;
-    assert.ok(verifyReceipt(r, jwks), d + " signatures are valid");
-    assert.equal(verifyApproval(r, jwks, now, new Set()), false, d);
+    const x = vectors.find((y) => y.receipt.signed.decision === d);
+    assert.ok(verifyReceipt(x.receipt, jwks, o), d + " signatures are valid");
+    assert.equal(verifyApproval(x.receipt, jwks, x.request, new Set(), o), false, d);
   }
-  assert.equal(verifyReceipt(approve, jwks, 4102444800), false, "attestation expired");
+  // A genuine approval for another request must not satisfy this one.
+  const other = vectors.find((x) => x !== v && x.receipt.signed.decision === "approve");
+  assert.equal(verifyApproval(v.receipt, jwks, other.request, new Set(), o), false, "different request");
+  const changed = clone(v.request);
+  changed.bound_hash = other.request.bound_hash;
+  assert.equal(verifyApproval(v.receipt, jwks, changed, new Set(), o), false, "different bound hash");
+});
+
+test("attestation checks fail closed", () => {
+  const r = vectors[0].receipt;
+  assert.equal(verifyReceipt(r, jwks, { ...O, now: 4102444800 }), false, "expired attestation");
+  assert.equal(verifyReceipt(r, jwks, { ...O, issuer: "https://evil.example" }), false, "issuer");
+  assert.equal(verifyReceipt(r, jwks, { issuer: O.issuer }), true, "defaults to the current time, still inside the one year validity until 2027-10");
+  const enc = { keys: [{ ...jwks.keys[0], use: "enc" }] };
+  assert.equal(verifyAttestation(r, enc, O), false, "key must be a signature key");
+});
+
+test("non-canonical base64url signatures are rejected", () => {
+  const r = clone(vectors[0].receipt);
+  const last = r.signature.slice(-1);
+  const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  const alt = A[(A.indexOf(last) & ~15) | ((A.indexOf(last) + 1) & 15)];
+  assert.notEqual(alt, last);
+  r.signature = r.signature.slice(0, -1) + alt;
+  assert.equal(verifyReceiptSignature(r), false);
+  assert.equal(verifyReceiptSignature({ ...vectors[0].receipt, signature: vectors[0].receipt.signature + "=" }), false);
 });
 
 test("verifiers return false instead of throwing on malformed input", () => {
   const r = clone(vectors[0].receipt);
   r.device.attestation = "garbage";
-  assert.equal(verifyAttestation(r, jwks), false);
+  assert.equal(verifyAttestation(r, jwks, O), false);
   r.device.attestation = "a.b.c";
-  assert.equal(verifyReceipt(r, jwks), false);
-  assert.equal(verifyReceipt({}, jwks), false);
-  assert.equal(verifyReceipt(vectors[0].receipt, { keys: [{ kid: "oidc-test-key-1", kty: "oct" }] }), false);
+  assert.equal(verifyReceipt(r, jwks, O), false);
+  assert.equal(verifyReceipt({}, jwks, O), false);
+  assert.equal(verifyReceipt(vectors[0].receipt, { keys: [{ kid: "oidc-test-key-1", kty: "oct" }] }, O), false);
 });
 
 test("schemas enforce cross-field rules", () => {
@@ -191,4 +217,13 @@ test("schemas enforce cross-field rules", () => {
 
 test("jcs rejects lone surrogates", () => {
   assert.throws(() => jcs({ a: "\ud800" }));
+});
+
+test("backchannel request schema ties scope to the request kind and forbids client authorization_details", () => {
+  const ok = { scope: "sign", resource: "https://api.biatec.io", login_hint: "u", origin: "https://bank.example", network: "algorand-mainnet", address: "A", unsigned_group: ["AA"] };
+  assert.ok(valid("backchannel-authentication-request", ok), JSON.stringify(schema("backchannel-authentication-request").errors));
+  assert.ok(valid("backchannel-authentication-request", { scope: "manage-limits", resource: "r", login_hint: "u", origin: "o", limits_request: { a: 1 } }));
+  assert.equal(valid("backchannel-authentication-request", { ...ok, limits_request: {} }), false, "both kinds");
+  assert.equal(valid("backchannel-authentication-request", { scope: "sign", resource: "r", login_hint: "u", origin: "o", limits_request: {} }), false, "sign needs a group");
+  assert.equal(valid("backchannel-authentication-request", { ...ok, authorization_details: [] }), false, "client details");
 });
