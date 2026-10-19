@@ -5,7 +5,7 @@ Biatec Chat runs on Biatec's own Kubernetes cluster in two environments. AWS is 
 
 | Environment | GitHub environment | Overlay | Namespace | Host | Image tag |
 |---|---|---|---|---|---|
-| stage | `Stage` | `k8s/stage` | `biatec-chat-stage` | chat.stage.biatec.io | `1.<yyyy.mm.dd>-<sha7>-beta` |
+| stage | `Stage` | `k8s/stage` | `biatec-chat-stage` | stage.chat.biatec.io | `1.<yyyy.mm.dd>-<sha7>-beta` |
 | production | `Production` | `k8s/main` | `biatec-chat-main` | chat.biatec.io | `1.<yyyy.mm.dd>-<sha7>-main` (same image) |
 
 ## Workflows
@@ -54,6 +54,6 @@ version for the few seconds both run.
 
 1. AWS part: [aws-setup.md](aws-setup.md) §3 (guardrail exists; role for the cluster).
 2. Secrets above, `Stage` first.
-3. Merge to `main` or run `deploy-stage` manually; check https://chat.stage.biatec.io/health.
+3. Merge to `main` or run `deploy-stage` manually; check https://stage.chat.biatec.io/health.
 4. Seed the `biatec-chat` tenant row (k8s/README.md, "Tenants are not seeded outside Development").
 5. When stage is verified: set the `Production` secrets, run `promote-production`, seed the tenant there too.

@@ -21,7 +21,7 @@ updated: 2026-10-20
 
 ## Context
 
-Biatec Chat will run on Biatec's **stage** Kubernetes environment (`chat.stage.biatec.io`, namespace
+Biatec Chat will run on Biatec's **stage** Kubernetes environment (`stage.chat.biatec.io`, namespace
 `biatec-chat-stage`, overlay `k8s/stage` from T-054). There is no CI today: `.github/workflows` only holds
 `kanban-sync.yml`. Scholtz provides the deployment credentials as **GitHub environment secrets** (environment
 `Stage`), the same way BiatecDEX deploys (`BiatecDEX/.github/workflows/deploy-stage.yml`: Docker Hub

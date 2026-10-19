@@ -1,4 +1,4 @@
-# Every push to main: run ci.yml, build and push both images, deploy them to stage (k8s/stage, chat.stage.biatec.io).
+# Every push to main: run ci.yml, build and push both images, deploy them to stage (k8s/stage, stage.chat.biatec.io).
 # Production is never touched here: promote-production.yml re-tags the exact stage images. Follows BiatecDEX
 # deploy-stage.yml (Docker Hub, date-based tag, base64 KUBE_CONFIG), but pins the tag at deploy time instead of
 # committing it back to main. See docs/cicd.md.
@@ -89,7 +89,7 @@ jobs:
     uses: ./.github/workflows/deploy.yml
     with:
       environment: Stage
-      url: https://chat.stage.biatec.io
+      url: https://stage.chat.biatec.io
       overlay: stage
       namespace: biatec-chat-stage
       tag: ${{ needs.build.outputs.tag }}
