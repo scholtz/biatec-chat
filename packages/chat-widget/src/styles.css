@@ -2,6 +2,7 @@
    for hosts that mount BiatecChatRoot themselves. Every rule is scoped to the widget root or :host. */
 @import "./styles/tokens.css";
 @import "./styles/ui.css";
+@import "./styles/cards.css";
 
 :host {
   all: initial;
