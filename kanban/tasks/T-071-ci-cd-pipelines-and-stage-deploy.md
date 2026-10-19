@@ -67,20 +67,25 @@ locally; first real run on GitHub once Scholtz has set the secrets.
 
 ## Hand-off
 
-- **Summary:** `ci.yml` (PRs, and called by deploy) builds and tests backend, JS packages, builders, authenticator
-  (non-blocking until T-072), both Docker images and both kustomize overlays. `deploy-stage.yml` (push to `main`,
-  manual) runs CI, then in the `Stage` environment pushes `scholtz2/biatec-chat-{backend,builders}` with tag
-  `1.<yyyy.mm.dd>-<sha7>-beta`, optionally recreates `biatec-chat-secrets` from environment secrets, applies
-  `k8s/stage` with that tag and waits for both rollouts. Images moved from ghcr to Biatec's Docker Hub convention.
-- **Files changed:** `.github/workflows/ci.yml`, `.github/workflows/deploy-stage.yml`, `docs/cicd.md`,
-  `k8s/base/backend.yaml`, `k8s/base/builders.yaml`, `k8s/main/kustomization.yaml`, `k8s/stage/kustomization.yaml`,
-  `k8s/README.md`.
-- **How it was verified:** actionlint 1.7.7 clean; tag substitution + `kubectl kustomize k8s/stage` renders the
-  pinned images; every CI step run locally from a clean `dist`; PR #130 CI on GitHub. The deploy job itself is
-  unverified until Scholtz sets the `Stage` secrets.
-- **Follow-up tasks created:** T-072 (two pre-existing failing Flutter enrollment tests).
+- **Summary:** `ci.yml` (PRs, and called by deploy) tests backend (with Postgres/Redis service containers), JS
+  packages, builders, authenticator (non-blocking until T-072), builds both images, renders both overlays.
+  `deploy-stage.yml` (push to `main`, manual) runs CI, then in the `Stage` environment pushes
+  `scholtz2/biatec-chat-{backend,builders}:1.<date>-<sha7>-beta`, generates `biatec-chat-generated` once (Postgres,
+  Redis, builders passwords), optionally syncs `biatec-chat-secrets`, applies `k8s/stage` with the pinned tag, waits
+  for Postgres/Redis, applies idempotent EF migrations via `psql`, waits for builders/backend. Postgres and Redis run in
+  the namespace (StatefulSets, network policies). Includes #124 (keyless AWS role, ApplyGuardrail, guardrail config).
+  `docs/aws-setup.md` is the single AWS setup guide; `infra/aws/kms-key.sh` added.
+- **Files changed:** `.github/workflows/{ci,deploy-stage}.yml`, `docs/{cicd,aws-setup,deploy-aws,AWS-AGENTCORE-GUIDE}.md`,
+  `infra/aws/kms-key.sh`, `k8s/base/{backend,builders,postgres,redis,kustomization}.yaml`,
+  `k8s/{main,stage}/kustomization.yaml`, `k8s/README.md`.
+- **How it was verified:** actionlint 1.7.7; both overlays render; `bash -n infra/aws/*.sh`; backend 775 passed /
+  1 skipped after merging `main`; all pnpm steps from a clean `dist`; Postgres/Redis containers run with the manifests'
+  security settings and the migration script applies twice; PR #130 CI green except the known authenticator tests.
+  The deploy job is unverified until the `Stage` secrets exist.
+- **Follow-up tasks created:** T-072.
 - **Unblocks:** T-072 (ready once this is done).
-- **Open questions:** PR #124 (keyless AWS role in the pod, `aws-role-arn`) should be merged before the first deploy.
+- **Open questions:** before the first deploy the KMS key and the k8s role must exist (`docs/aws-setup.md` §3 steps
+  3–4, needs the cluster issuer URL), otherwise the backend pods can't start (`kms-key-id` is a required secret key).
 
 ## Review
 
