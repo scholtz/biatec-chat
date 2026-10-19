@@ -21,7 +21,7 @@ against the mock and cannot be enabled against real Biatec OIDC until the row sh
 | --- | --- | --- |
 | 1 | CIBA backchannel authentication endpoint and token grant | None. Consent flows run only against the mock; above-threshold signing is unavailable against real OIDC until it ships |
 | 2 | `authorization_details` types `biatec_transaction`, `biatec_limits_change` | None. Mock builds them from the group |
-| 3 | Step-up challenge on sign and `PUT /wallet/limits`, `requireConsent` | None. Mock returns the challenge; the backend treats a 401 `insufficient_user_authentication` as the only consent trigger |
+| 3 | Step-up challenge on sign and `PUT /wallet/limits`, `requireConsent` | None. Mock returns the challenge; on the wallet signing and limits endpoints the backend treats a 401 `insufficient_user_authentication` with an `auth_req_id` as the only consent trigger, and retries the same request after the poll |
 | 4 | Device enrollment, attestation, receipts, `GET /consent/receipts/{auth_req_id}` | None. Authenticator and backend develop against the mock |
 | 5 | Algo Safe application-call valuation | Unknown application calls are treated as above threshold (always ask) |
 | 6 | Biatec DEX pool call decoding | Treated as an unknown application call (always ask); card shows decoded transfers and the application ID only |
@@ -39,6 +39,10 @@ against the mock and cannot be enabled against real Biatec OIDC until the row sh
 | 18 | Per-client refresh token lifetime (8 h) with absolute-expiry-preserving rotation | Keep 30-day tokens and rely on revocation; residual exposure at the IdP is 30 days |
 | 19 | Consent-gated loosening of consent settings | Loosening only from an enrolled device's own screen; chat hides raising limits (`limits.update` is lowering-only) |
 | 20 | `GET /consent/settings` | Card says "may need approval on your phone" without predicting |
+
+**Mock status.** Today the mock covers only the authorization-code flow used by `/auth/login`. The CIBA, step-up, receipt and
+settings shapes below are the contract the mock must grow to, as the consent tasks (backend and authenticator) are implemented;
+statements like "the mock returns this" describe that target, not what exists now.
 
 Conventions in the examples: `{network}` is a network name such as `algorand-testnet`; bearer tokens are held only by the backend
 (the browser never sees them); signing always goes from the backend straight to `POST /wallet/{network}/{address}/sign`.
@@ -68,7 +72,7 @@ scope=sign&resource=https%3A%2F%2Fmcp.biatec.io%2Ftools
 { "auth_req_id": "ar_8f2c...", "expires_in": 300, "interval": 2, "binding_code": "4821" }
 ```
 
-- **Token grant** (poll, or ping if the client registers `backchannel_token_delivery_mode: ping`):
+- **Token grant** (poll mode only; ping and push delivery are out of scope and need a separately specified, authenticated callback):
 
 ```http
 POST /connect/token
@@ -102,7 +106,8 @@ expired: `400 {"error":"expired_token"}`. Success:
 
 The signature covers the RFC 8785 canonical JSON of `{authorization_details, auth_req_id, client entity ID, binding code, decision,
 expiry, sub, binding_message}`. A denial returns `access_denied` and the signed denial receipt is available at the endpoint in
-section 4. The elevated token is for the bound group only and expires in 300 s.
+section 4. The elevated token is for the bound group only and expires in 300 s from issue, so the backend retries the wallet call immediately
+after the grant succeeds; if it still gets a 401 it starts a new request instead of reusing the consent.
 
 ## 2. `authorization_details` types
 
@@ -133,10 +138,11 @@ section 4. The elevated token is for the bound group only and expires in 300 s.
 }
 ```
 
-`group_hash` is `sha256:` plus the hex SHA-256 of the canonical form OIDC derives from the group (proposal for the owners to fix
-and publish, with a test vector; the Algorand group ID itself is carried separately by `grp`). For Bitcoin it is the intent hash
-derived from a PSBT carrying prevout data (section 8) and `kind` is `bitcoin_output`. The backend's own recomputation must use the
-published algorithm.
+`group_hash` is the value the wallet endpoint compares with the consented hash. It is `sha256:` plus the hex SHA-256 of the canonical form OIDC derives from the group (proposal for the owners to fix
+and publish with a test vector; the Algorand group ID is a different value, carried by `grp`, and the backend checks `grp` itself
+and treats `group_hash` as opaque, comparing it only for equality with what OIDC returned). For Bitcoin it is the intent hash
+derived from a PSBT carrying prevout data (section 8) and `kind` is `bitcoin_output`. Until the algorithm and test vector are published,
+tests compare `group_hash` for equality only.
 
 ## 3. Step-up challenge on sign and `PUT /wallet/limits`, and `requireConsent`
 
@@ -260,7 +266,7 @@ Here `value_eur` on the entry is the per-call value and the top-level `value_eur
   `Secrets:<path of Tenant.ClientSecretRef>` (for example `Secrets__biatec-chat__oidc-client-secret`), never in the repo.
 - **Status (T-009):** the `biatec-chat` registration is not confirmed to exist on oidc.biatec.io. `/auth/login` has been tested only
   against the in-repo mock OIDC (`backend/Biatec.Chat.Tests/Auth/MockOidc.cs`); the stage run needs the registration first.
-- **Registration request for the Biatec Chat tenant** (RFC 7591; sent by an operator, or accepted by a future confidential
+- **Registration request for the Biatec Chat tenant, once the consent protocol ships** (RFC 7591; sent by an operator, or accepted by a future confidential
   registration endpoint; secret values are never committed):
 
 ```http
@@ -275,7 +281,7 @@ Content-Type: application/json
   "response_types": ["code"],
   "token_endpoint_auth_method": "client_secret_basic",
   "scope": "openid profile offline_access sign",
-  "subject_type": "pairwise",   // omit while section 15 is on its fallback: the backend and mock assume the public `sub`
+  "subject_type": "pairwise",
   "backchannel_token_delivery_mode": "poll",
   "authorization_details_types": ["biatec_transaction", "biatec_limits_change"],
   "post_logout_redirect_uris": ["https://chat.biatec.io/"],
@@ -288,7 +294,12 @@ Content-Type: application/json
   "registration_client_uri": "https://oidc.biatec.io/register/biatec-chat", "registration_access_token": "<store like the secret>" }
 ```
 
-The redirect URI must equal the tenant's `Tenant.RedirectUri` as implemented by `/auth/callback`. Scopes `manage-limits` and
+The redirect URI must equal the tenant's `Tenant.RedirectUri` as implemented by `/auth/callback`. **Registration today** (what an operator enters on the static client list while sections 1, 2 and 15 are on their fallbacks):
+the same request without `urn:openid:params:grant-type:ciba` in `grant_types`, without `subject_type`,
+`backchannel_token_delivery_mode` and `authorization_details_types`, and with `scope` `openid profile offline_access sign`. The
+backend and mock assume a public `sub`; adding the omitted fields later is a registration update, not a code change.
+
+Scopes `manage-limits` and
 `rekey` are added only for operator-allowlisted clients. Domain verification (DNS or federation challenge) is checked by the
 operator before registration. Until the endpoint accepts confidential clients, `POST /register` keeps issuing public clients only and
 this request is processed by hand.
@@ -396,7 +407,8 @@ backend single-flights refreshes so it never fires on legitimate traffic.
   active enrolled device's own screen, not from the web; chat hides raising limits (`limits.update` is lowering-only).
 - Requirement: raising the threshold, removing "always ask", relaxing per-client settings and unpausing a client require a consent
   receipt from an active device (the same CIBA request model with a proposed `biatec_settings_change` type), never a web session
-  alone. Tightening needs no consent. A loosening attempt without it answers:
+  alone. Tightening needs no consent. A loosening attempt without it answers the same challenge, but it is not a retryable wallet call: the backend does not poll for it
+(the settings change is only completed on the device's own screen), and the chat reports "change this on your phone":
 
 ```http
 401 Unauthorized
