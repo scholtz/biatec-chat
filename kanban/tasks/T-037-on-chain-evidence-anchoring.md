@@ -1,0 +1,48 @@
+---
+id: T-037
+title: On-chain evidence anchoring
+status: blocked
+priority: P2
+epic: "Evidence"
+blocked_by: [T-034]
+area: ["backend/Biatec.Chat.Api/Evidence/Anchoring/**"]
+branch: ""
+owner: ""
+source: "PRODUCT-DESCRIPTION.md#threat-model-highlights"
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# T-037 · On-chain evidence anchoring
+
+## Context
+
+Every 10 min anchor heads of open or recently ended conversations in a Merkle root (leaf = SHA-256(0x00||JCS(...)), node = SHA-256(0x01||l||r), unpaired promoted) in a note of a tx from a known evidence account; notes carry root, sequence, previous anchor tx id; gaps recorded.
+
+## Goal
+
+Tamper evidence against the operator.
+
+## Scope
+
+- In: Anchor job, Merkle tree, EvidenceAnchor and leaves, anchorRef on first/resume entries, end markers, resume entries, inclusion proofs in export, verifier support.
+- Out: Mainnet funding decisions (use testnet).
+
+## Acceptance criteria
+
+- [ ] Merkle test vectors pass
+- [ ] Anchor tx lands on testnet with expected note
+- [ ] Bundle includes proofs and verifier checks them
+- [ ] Gap is recorded when a tick is lost
+
+## Verification
+
+dotnet test --filter Anchoring; testnet run
+
+## Hand-off
+
+## Review
+
+## Activity log
+
+- 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
