@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
+using System.Text.Json.Nodes;
 using Biatec.Chat.Core.Data;
+using Biatec.Chat.Core.Evidence;
 using Microsoft.EntityFrameworkCore;
 
 namespace Biatec.Chat.Api.Sessions;
@@ -43,7 +45,7 @@ public interface ISessionService
     Task EndAsync(Tenant tenant, string? cookieToken, CancellationToken ct);
 }
 
-public sealed class SessionService(ChatDbContext db, TimeProvider clock) : ISessionService
+public sealed class SessionService(ChatDbContext db, TimeProvider clock, IEvidenceRecorder? evidence = null) : ISessionService
 {
     public static string NewToken() => Base64Url(RandomNumberGenerator.GetBytes(SessionPolicy.TokenBytes));
 
@@ -95,6 +97,13 @@ public sealed class SessionService(ChatDbContext db, TimeProvider clock) : ISess
         db.Conversations.Add(conversation);
         db.ChatSessions.Add(session);
         await db.SaveChangesAsync(ct);
+        // Session metadata only: tier, tenant and times. No IP address, user agent or geolocation is recorded.
+        if (evidence is not null)
+            await evidence.RecordAsync(conversation.Id, EvidenceKinds.SessionStarted, new JsonObject
+            {
+                ["tenantId"] = tenant.Id, ["tier"] = session.Tier.ToString(), ["startedAt"] = now.ToString("O"),
+                ["absoluteExpiresAt"] = session.AbsoluteExpiresAt.ToString("O"),
+            }, ct);
         return new SessionHandle(session, token, true);
     }
 

@@ -57,7 +57,8 @@ public sealed class ConfirmService(
     ITransactionConfirmer confirmer,
     IEvidenceLog evidence,
     TimeProvider clock,
-    ILogger<ConfirmService> log)
+    ILogger<ConfirmService> log,
+    IEvidenceRecorder? recorder = null)
 {
     public const string OutageMessage = "The sign-in service is unavailable. Your session is unchanged; please try again shortly.";
 
@@ -94,6 +95,11 @@ public sealed class ConfirmService(
         var snapshot = await previews.ConfirmAsync(session.ConversationId, previewId, groupHash, session.AbsoluteExpiresAt, ct);
         var preview = snapshot.Preview;
         var step = snapshot.Steps.First(s => s.Id == pending.Id);
+        await RecordExtraAsync(session, EvidenceKinds.UserConfirmed, new JsonObject
+        {
+            ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["seq"] = step.Seq, ["groupHash"] = step.SubjectHash,
+            ["capability"] = preview.Capability,
+        }, ct);
 
         try
         {
@@ -141,8 +147,16 @@ public sealed class ConfirmService(
 
         var remaining = (int)Math.Max(1, (step.ExpiresAt - clock.GetUtcNow()).TotalSeconds);
         var origin = new Uri(tenant.RedirectUri).GetLeftPart(UriPartial.Authority);
+        await RecordExtraAsync(session, EvidenceKinds.SigningRequested, new JsonObject
+        {
+            ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash,
+            ["network"] = step.Network, ["address"] = address, ["transactionCount"] = step.UnsignedGroupList().Count,
+            ["maxConsentSeconds"] = remaining, ["origin"] = origin,
+        }, ct);
         var outcome = await signer.SignAsync(bearer, new WalletSignRequest(step.Network!, address, step.UnsignedGroupList(), Convert.FromHexString(step.SubjectHash),
             RequireConsent: false, MaxConsentSeconds: remaining, Origin: origin), ct);
+
+        await RecordExtraAsync(session, EvidenceKinds.SigningOutcome, SigningOutcomePayload(previewId, step, outcome), CancellationToken.None);
 
         switch (outcome)
         {
@@ -377,6 +391,32 @@ public sealed class ConfirmService(
             log.LogError("Could not record evidence {Kind}: {ErrorType}", kind, ex.GetType().Name);
         }
     }
+
+    /// <summary>Signing result as Biatec OIDC reported it, including its spending-limit decisions. Signed bytes are not recorded.</summary>
+    private static JsonObject SigningOutcomePayload(Guid previewId, ActionStep step, WalletSignOutcome outcome)
+    {
+        var o = new JsonObject { ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash };
+        switch (outcome)
+        {
+            case WalletSignOutcome.Signed signed:
+                o["result"] = "signed"; o["valuedEur"] = signed.ValuedEur; o["signedCount"] = signed.SignedTransactions.Count;
+                break;
+            case WalletSignOutcome.StepUp s:
+                o["result"] = "consent_required"; o["expiresInSeconds"] = s.ExpiresInSeconds;
+                break;
+            case WalletSignOutcome.Rejected r:
+                o["result"] = "rejected"; o["status"] = r.Status; o["error"] = r.Error;
+                break;
+            default:
+                o["result"] = "unavailable";
+                break;
+        }
+        return o;
+    }
+
+    /// <summary>Hooks added by T-035; separate from <see cref="RecordAsync"/>, which writes the original confirm kinds.</summary>
+    private Task RecordExtraAsync(ChatSession session, string kind, JsonObject payload, CancellationToken ct) =>
+        recorder is null ? Task.CompletedTask : recorder.RecordAsync(session.ConversationId, kind, payload, ct);
 
     private static string RejectionMessage(WalletSignOutcome.Rejected r) => r.Error switch
     {
