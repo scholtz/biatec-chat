@@ -139,6 +139,8 @@ whose task it is, as a GitHub username (`gh api user -q .login`).
 - **GitHub issues.** Each task has a mirror issue in `scholtz/biatec-chat`, recorded in its `issue` field. The
   issue is for visibility only: status lives in the task file, and the task's PR or merge commit references it
   (`Refs #N`). A new task gets its issue when the coordinator creates it.
+  A task that is `in-progress` also carries the `in-progress` label and an assignee on its issue; the label is
+  removed when the task leaves `in-progress` (see `AGENTS.md`).
 - **Commits.** Workers commit their work on their task branch. The coordinator commits board changes on `main`
   (message `kanban: ...`), because worktrees are created from the last commit. Nothing is ever pushed unless the
   user asks, except the board commits of `/kanban-take`, which push `main` so teammates see what is taken, and the
