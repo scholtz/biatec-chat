@@ -41,6 +41,9 @@ void main() {
     tall(tester);
     await tester.pumpWidget(AuthenticatorApp(config: AppConfig.resolve('')));
     for (final route in appRoutes) {
+      // Enrollment is a real screen (covered in test/enrollment) that needs
+      // platform plugins, so it is not opened here.
+      if (route.path == '/enrollment') continue;
       await tester.tap(find.text(route.title));
       await tester.pumpAndSettle();
       expect(find.text(route.description), findsOneWidget,

@@ -207,15 +207,21 @@ exact body so the backend is tested against the real shape.
 
 - **Purpose:** authenticator support and evidence. **Fallback:** none.
 - Enrollment (authenticator to OIDC, user authenticated): device public key (Secure Enclave or StrongBox), platform attestation,
-  push token. Devices become active after an activation delay; a recovery code is issued once.
+  push token. Devices become active after an activation delay; a recovery code is issued once, after activation (not in the enrollment response). `active_at` is epoch seconds and `device_token`
+  authenticates later `Authorization: Device <token>` calls.
 
 ```http
 POST /devices
-{ "public_key": "<jwk>", "attestation": { "format": "apple-appattest", "data": "<b64>" }, "push": { "provider": "fcm", "token": "..." }, "name": "Pixel 9" }
+{ "kid": "biatec-authenticator-ab12", "public_key": "<jwk>", "attestation": { "format": "apple-appattest", "data": "<b64>" }, "push": { "provider": "fcm", "token": "..." }, "name": "Pixel 9" }
 
-201 { "device_id": "dev_1", "status": "pending_activation", "active_at": "2026-10-20T09:00:00Z", "recovery_code": "XXXX-XXXX-XXXX" }
+201 { "kid": "biatec-authenticator-ab12", "active": false, "active_at": 1792486800, "attestation": "<jws>", "device_token": "<opaque>" }
 ```
 
+- Recovery code (protocol rule 7): the enrollment response above must not carry `recovery_code`; whoever enrolls a device
+  could otherwise use the code to skip the delay. The code is issued once the device is active, through
+  `POST /devices/recovery-code` (`Authorization: Device <token>`): `403` with `reason: device_inactive` while inactive, `200 { "recovery_code" }`
+  (the same code until acknowledged), then `POST /devices/recovery-code/ack` after which the endpoint answers `409`. The kid in
+  `POST /devices` is chosen by the device and must be unique (random per install). The mock implements this fallback.
 - Pending request fetch by the device (device-key authenticated, never from the push body): `GET /devices/{id}/requests/{auth_req_id}`
   returns the `authorization_details`, verified client name and `expiry`. The decision is
   `POST /devices/{id}/requests/{auth_req_id}/decision` with the signed receipt (denials are signed too).

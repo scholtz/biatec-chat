@@ -409,6 +409,44 @@ test("limits: tightening applies at once, loosening needs consent bound to the r
   assert.equal((await call("PUT", "/wallet/limits", { auth: bearer("alice-chat-sign"), body: loose })).status, 403, "scope manage-limits required");
 });
 
+test("rule 7: the recovery code is never in the enrollment response, only issued once active, shown once", async () => {
+  const fresh = (await import("node:crypto")).generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" }) as Record<string, string>;
+  const e = await call("POST", "/devices", { auth: bearer("login-bob"), body: { kid: "bob-recovery-phone", public_key: fresh } });
+  assert.equal(e.status, 201);
+  assert.equal("recovery_code" in e.json, false, "no recovery code during enrollment");
+  const dev = "Device " + e.json.device_token;
+  const early = await call("POST", "/devices/recovery-code", { auth: dev });
+  assert.equal(early.status, 403);
+  assert.equal(early.json.reason, "device_inactive");
+  clock += 86400;
+  try {
+    const first = await call("POST", "/devices/recovery-code", { auth: dev });
+    assert.equal(first.status, 200);
+    assert.match(first.json.recovery_code, /^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/);
+    assert.equal((await call("POST", "/devices/recovery-code", { auth: dev })).json.recovery_code, first.json.recovery_code, "re-served until acknowledged");
+    assert.equal((await call("POST", "/devices/recovery-code/ack", { auth: dev })).status, 200);
+    assert.equal((await call("POST", "/devices/recovery-code", { auth: dev })).status, 409, "shown once only");
+  } finally {
+    clock -= 86400;
+  }
+  assert.equal((await call("POST", "/devices/recovery-code", { auth: "Device nope" })).status, 401);
+});
+
+test("contract: distinct installs enroll with distinct kids, the same kid is rejected", async () => {
+  const { randomBytes, generateKeyPairSync } = await import("node:crypto");
+  const pub = () => generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" }) as Record<string, string>;
+  const kid = () => "biatec-authenticator-" + randomBytes(16).toString("hex");
+  const a = kid();
+  const b = kid();
+  assert.notEqual(a, b);
+  assert.equal((await call("POST", "/devices", { auth: bearer("login-alice"), body: { kid: a, public_key: pub() } })).status, 201);
+  assert.equal((await call("POST", "/devices", { auth: bearer("login-bob"), body: { kid: b, public_key: pub() } })).status, 201);
+  const dup = await call("POST", "/devices", { auth: bearer("login-bob"), body: { kid: "biatec-authenticator-device-key", public_key: pub() } });
+  const dup2 = await call("POST", "/devices", { auth: bearer("login-alice"), body: { kid: "biatec-authenticator-device-key", public_key: pub() } });
+  assert.equal(dup.status, 201);
+  assert.equal(dup2.status, 409, "a constant kid only ever works for the first device");
+});
+
 test("rule 7: a first device is inactive for 24 hours unless an active device approves", async () => {
   const fresh = (await import("node:crypto")).generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" }) as Record<string, string>;
   assert.equal((await call("POST", "/devices", { auth: bearer("alice-chat-sign"), body: { kid: "k0", public_key: fresh } })).status, 403, "needs a full login");
