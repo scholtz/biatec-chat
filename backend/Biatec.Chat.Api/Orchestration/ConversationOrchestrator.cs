@@ -195,7 +195,7 @@ public sealed class ConversationOrchestrator(
                 yield return new ToolStatusEvent(call.ToolUseId, label, result.IsError ? ToolRunState.Failed : ToolRunState.Succeeded);
 
                 // Anything the tool's output schema marks sensitive is removed before it is stored or recorded.
-                var storedContent = redactor.Redact(MessageRole.Tool, capName, fromExecutor ? RedactBySchema(capName, result.Content, input: false) : result.Content);
+                var storedContent = redactor.Redact(MessageRole.Tool, capName, RedactBySchema(capName, result.Content, input: false));
                 results.Add(new StoredToolResult(call.ToolUseId, capName, storedContent, result.IsError));
                 await RecordAsync(turn.ConversationId, EvidenceKinds.ToolResult, EvidencePayloads.ToolResult(call.ToolUseId, capName, result.IsError, storedContent), CancellationToken.None);
                 blocks.Add(new ContentBlock

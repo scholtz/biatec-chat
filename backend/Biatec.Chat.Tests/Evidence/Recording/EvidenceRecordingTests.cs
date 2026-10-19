@@ -202,11 +202,11 @@ public sealed class EvidenceRecordingTests : IAsyncLifetime
         await AdminAsync($"DROP DATABASE IF EXISTS \"{_dbName}\" WITH (FORCE)");
     }
 
-    private static PaymentTransaction Pay(Address sender) => new()
+    private static PaymentTransaction Pay(Address sender, ulong amount = 5_000_000) => new()
     {
         Sender = sender,
         Receiver = new Address("KV2XGKMXGYJ6PWYQA5374BYIQBL3ONRMSIARPCFCJEAMAHQEVYPB7PL3KU"),
-        Amount = 5_000_000, Fee = 1000, FirstValid = 710399, LastValid = 711399,
+        Amount = amount, Fee = 1000, FirstValid = 710399, LastValid = 711399,
         GenesisId = "testnet-v1.0",
         GenesisHash = new Digest(Convert.FromBase64String("SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=")),
         Note = Encoding.UTF8.GetBytes("t"),
@@ -302,6 +302,133 @@ public sealed class EvidenceRecordingTests : IAsyncLifetime
         // Concurrent-safe, signed and hash-chained like any other entry.
         Assert.Equal(Enumerable.Range(1, chain.Count).Select(i => (long)i), chain.Select(e => e.Seq));
         Assert.True((await evidenceLog.VerifyAsync(conversationId)).Valid);
+    }
+
+    private sealed class ScriptedOidc(WalletSignOutcome outcome) : IWalletSigningClient
+    {
+        public Task<WalletSignOutcome> SignAsync(string bearer, WalletSignRequest request, CancellationToken ct = default) => Task.FromResult(outcome);
+    }
+
+    private static readonly Regex IpPattern = new(@"(?<![\d.])(\d{1,3}\.){3}\d{1,3}(?![\d.])");
+
+    private async Task<(ChatSession Session, Guid ConversationId)> NewSessionAsync(ChatDbContext db, IEvidenceRecorder recorder)
+    {
+        var handle = await new SessionService(db, _clock, recorder).ResolveOrCreateAsync(_tenant, null, CancellationToken.None);
+        var session = handle.Session;
+        db.ChangeTracker.Clear();
+        await db.ChatSessions.Where(s => s.Id == session.Id).ExecuteUpdateAsync(u => u.SetProperty(s => s.Tier, SessionTier.Authenticated).SetProperty(s => s.OidcSub, "user-1"));
+        session.Tier = SessionTier.Authenticated;
+        return (session, session.ConversationId);
+    }
+
+    private NewStepSpec SignStep(GroupedTransactions group) =>
+        new(ActionStepKind.Sign, group.GroupHash, _clock.GetUtcNow().AddSeconds(1500), UnsignedGroup: JsonSerializer.Serialize(group.ToBase64()),
+            SenderAddress: _user.Address.EncodeAsString(), Network: Network);
+
+    private static async Task<JsonObject> EntryAsync(IEvidenceLog log, Guid conversationId, string kind, bool last = false)
+    {
+        var chain = await log.GetChainAsync(conversationId);
+        var matches = chain.Where(e => e.Kind == kind).ToList();
+        Assert.NotEmpty(matches);
+        var payload = (last ? matches[^1] : matches[0]).Payload!;
+        Assert.DoesNotMatch(IpPattern, payload);
+        return JsonNode.Parse(payload)!.AsObject();
+    }
+
+    [Fact]
+    public async Task EvidenceRecording_AddNextStep_AndRebuild_AreRecorded_WithRebuiltFrom_AndNoIps()
+    {
+        await using var scope = _sp.CreateAsyncScope();
+        var sp = scope.ServiceProvider;
+        var db = sp.GetRequiredService<ChatDbContext>();
+        var recorder = sp.GetRequiredService<IEvidenceRecorder>();
+        var log = sp.GetRequiredService<IEvidenceLog>();
+        var (_, conversationId) = await NewSessionAsync(db, recorder);
+        var previews = new ActionPreviewService(db, _clock, recorder);
+
+        // Multi-step: step 0 lands, then the next step is added.
+        var g0 = AlgorandGroup.Ensure([Pay(_user.Address)]);
+        var snap = await previews.CreateAsync(new NewPreviewSpec(conversationId, "wallet.transfer", "{\"intent\":\"send\"}", [SignStep(g0)]));
+        await previews.ConfirmAsync(conversationId, snap.Preview.Id, g0.GroupHash);
+        await previews.MarkStepLandedAsync(conversationId, snap.Preview.Id, 0, ["TXID0"]);
+        var g1 = AlgorandGroup.Ensure([Pay(_user.Address, 7_000_000)]);
+        await previews.AddNextStepAsync(conversationId, snap.Preview.Id, SignStep(g1));
+        var added = await EntryAsync(log, conversationId, EvidenceKinds.ActionStepAdded);
+        Assert.Equal(snap.Preview.Id.ToString(), added["previewId"]!.GetValue<string>());
+        Assert.Contains(g1.GroupHash, added["step"]!.ToJsonString());
+
+        // Rebuild of a second, still-proposed preview.
+        var g2 = AlgorandGroup.Ensure([Pay(_user.Address, 9_000_000)]);
+        var old = await previews.CreateAsync(new NewPreviewSpec(conversationId, "wallet.transfer", "{\"intent\":\"send2\"}", [SignStep(g2)]));
+        var g3 = AlgorandGroup.Ensure([Pay(_user.Address, 9_500_000)]);
+        var rebuilt = await previews.RebuildAsync(conversationId, old.Preview.Id, "{\"intent\":\"send2\"}", [SignStep(g3)]);
+        var entry = await EntryAsync(log, conversationId, EvidenceKinds.ActionPreview, last: true);
+        Assert.Equal(old.Preview.Id.ToString(), entry["rebuiltFrom"]!.GetValue<string>());
+        Assert.Contains(g3.GroupHash, entry.ToJsonString());
+        Assert.Equal(rebuilt.Preview.Id.ToString(), entry["previewId"]!.GetValue<string>());
+        Assert.True((await log.VerifyAsync(conversationId)).Valid);
+    }
+
+    [Theory]
+    [InlineData("consent_required")]
+    [InlineData("rejected")]
+    [InlineData("invalid_token")]
+    [InlineData("unavailable")]
+    public async Task EvidenceRecording_NonSignedSigningOutcomes_AreRecorded_WithoutIps(string kind)
+    {
+        await using var scope = _sp.CreateAsyncScope();
+        var sp = scope.ServiceProvider;
+        var db = sp.GetRequiredService<ChatDbContext>();
+        var recorder = sp.GetRequiredService<IEvidenceRecorder>();
+        var log = sp.GetRequiredService<IEvidenceLog>();
+        var (session, conversationId) = await NewSessionAsync(db, recorder);
+        var previews = new ActionPreviewService(db, _clock, recorder);
+        var group = AlgorandGroup.Ensure([Pay(_user.Address)]);
+        var snap = await previews.CreateAsync(new NewPreviewSpec(conversationId, "wallet.transfer", "{\"intent\":\"send\"}", [SignStep(group)]));
+        _vault.Items[session.Id.ToString("N")] = new TokenVaultEntry
+        {
+            AccessToken = "ACCESS-TOKEN-SECRET", AccessExpiresAt = _clock.GetUtcNow().AddMinutes(10), RefreshToken = "REFRESH-TOKEN-SECRET",
+            Scopes = ["openid", "sign"], AbsoluteExpiresAt = session.AbsoluteExpiresAt,
+        };
+        WalletSignOutcome outcome = kind switch
+        {
+            "consent_required" => new WalletSignOutcome.StepUp("auth-req-1", "1234", 120, 5),
+            "rejected" => new WalletSignOutcome.Rejected(403, "daily_cap_exceeded"),
+            "invalid_token" => new WalletSignOutcome.Rejected(401, "invalid_token"),
+            _ => new WalletSignOutcome.Unavailable("oidc_down"),
+        };
+        var confirm = new ConfirmService(db, previews, new ScopeGuard(_vault, _clock), _vault, new ScriptedOidc(outcome), new FakeMcp(), new FakeConfirmer(),
+            log, _clock, NullLogger<ConfirmService>.Instance, recorder);
+        await confirm.ConfirmAsync(_tenant, session, snap.Preview.Id, group.GroupHash, CancellationToken.None);
+
+        var o = await EntryAsync(log, conversationId, EvidenceKinds.SigningOutcome);
+        Assert.Equal(snap.Preview.Id.ToString(), o["previewId"]!.GetValue<string>());
+        Assert.Equal(group.GroupHash, o["groupHash"]!.GetValue<string>());
+        switch (kind)
+        {
+            case "consent_required":
+                Assert.Equal("consent_required", o["result"]!.GetValue<string>());
+                Assert.Equal(120, o["expiresInSeconds"]!.GetValue<int>());
+                Assert.DoesNotContain("1234", o.ToJsonString()); // the binding code is not evidence
+                await EntryAsync(log, conversationId, "consent_requested");
+                break;
+            case "rejected":
+                Assert.Equal("rejected", o["result"]!.GetValue<string>());
+                Assert.Equal("daily_cap_exceeded", o["error"]!.GetValue<string>());
+                Assert.Equal(403, o["status"]!.GetValue<int>());
+                break;
+            case "invalid_token":
+                Assert.Equal("rejected", o["result"]!.GetValue<string>());
+                Assert.Equal("invalid_token", o["error"]!.GetValue<string>());
+                break;
+            default:
+                Assert.Equal("unavailable", o["result"]!.GetValue<string>());
+                break;
+        }
+        var all = string.Concat((await log.GetChainAsync(conversationId)).Select(e => e.Payload));
+        Assert.DoesNotContain("TOKEN-SECRET", all);
+        Assert.DoesNotMatch(IpPattern, all);
+        Assert.True((await log.VerifyAsync(conversationId)).Valid);
     }
 
     [Fact]
