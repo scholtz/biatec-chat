@@ -1,7 +1,7 @@
 ---
 id: T-028
 title: Pool discovery and liquidity builders
-status: backlog
+status: in-progress
 priority: P1
 epic: "DEX"
 blocked_by: [T-027]
@@ -9,8 +9,8 @@ area: ["builders/src/clamm/**"]
 parallel: yes
 conflicts_with: []
 issue: "#29"
-branch: ""
-owner: ""
+branch: "task/T-028"
+owner: "session-20261019-2030"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#tool-executors"
 created: 2026-10-19
@@ -56,3 +56,4 @@ pnpm --filter builders test; testnet simulate script
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 20:10 · kanban-board · blocked → backlog · blockers done: T-027
 - 2026-10-19 20:30 · LukassSoukup · taken · status stays backlog
+- 2026-10-19 20:30 · session-20261019-2030 · backlog → in-progress · claimed
