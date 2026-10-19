@@ -20,9 +20,17 @@ public sealed record BuildersOptions
 /// <summary>Unsigned transactions as base64 msgpack, in group order, exactly as the builder returned them.</summary>
 public sealed record BuildResult(IReadOnlyList<string> Transactions);
 
+/// <summary>
+/// A builder call failed. <see cref="Exception.Message"/> carries a truncated, control-character-free excerpt of the
+/// sidecar's error text, which comes from third-party libraries and may echo untrusted request content: treat it as
+/// untrusted data and never forward it to the model or browser. Tools should surface <see cref="PublicMessage"/>.
+/// </summary>
 public sealed class BuilderException(string message, HttpStatusCode? status = null) : Exception(message)
 {
     public HttpStatusCode? Status { get; } = status;
+
+    /// <summary>Generic, safe text for tool results; contains no sidecar text.</summary>
+    public string PublicMessage => "The transaction builder could not build this request.";
 }
 
 public interface IBuildersClient
@@ -83,12 +91,26 @@ public sealed class BuildersClient(HttpClient http, BuildersOptions options) : I
         try
         {
             var e = await response.Content.ReadFromJsonAsync<ErrorBody>(Json, ct);
-            return e?.Message ?? e?.Error ?? "unknown error";
+            return Sanitize(e?.Message ?? e?.Error);
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
             return "unknown error";
         }
+    }
+
+    internal const int MaxErrorLength = 200;
+
+    internal static string Sanitize(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "unknown error";
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in text)
+        {
+            if (sb.Length >= MaxErrorLength) { sb.Append('…'); break; }
+            sb.Append(char.IsControl(c) ? ' ' : c);
+        }
+        return sb.ToString();
     }
 
     private sealed record HealthBody([property: JsonPropertyName("status")] string? Status);

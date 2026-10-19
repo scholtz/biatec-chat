@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 using System.Net;
 using System.Text;
 using Biatec.Chat.Tools.Builders;
@@ -28,6 +30,36 @@ public sealed class BuildersClientTests
         var stub = new Stub(respond);
         var options = new BuildersOptions { BaseAddress = new Uri("http://builders:3100"), InternalSecret = Secret };
         return (new BuildersClient(new HttpClient(stub), options), stub);
+    }
+
+    [Fact]
+    public async Task Build_error_text_is_truncated_and_stripped_of_control_characters()
+    {
+        var long_ = "evil\n\u001b[31m" + new string('x', 5000);
+        var payload = System.Text.Json.JsonSerializer.Serialize(new { error = "build_failed", message = long_ });
+        var (client, _) = Make((_, _) => Json(HttpStatusCode.UnprocessableEntity, payload));
+        var ex = await Assert.ThrowsAsync<BuilderException>(() => client.BuildAsync("clamm", "testnet", null));
+        Assert.True(ex.Message.Length < 400);
+        Assert.DoesNotContain('\n', ex.Message);
+        Assert.DoesNotContain('\u001b', ex.Message);
+        Assert.DoesNotContain("evil", ex.PublicMessage);
+    }
+
+    [Fact]
+    public void AddBuildersClient_registers_client_and_requires_secret()
+    {
+        var good = new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Builders:BaseAddress"] = "http://builders:3100", ["Builders:InternalSecret"] = "s3cret-value",
+        }).Build();
+        var sp = new Microsoft.Extensions.DependencyInjection.ServiceCollection().AddBuildersClient(good).BuildServiceProvider();
+        Assert.NotNull(Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<IBuildersClient>(sp));
+
+        var noSecret = new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Builders:BaseAddress"] = "http://builders:3100",
+        }).Build();
+        Assert.Throws<InvalidOperationException>(() => { new Microsoft.Extensions.DependencyInjection.ServiceCollection().AddBuildersClient(noSecret); });
     }
 
     [Fact]
