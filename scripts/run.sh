@@ -10,7 +10,7 @@ Usage: scripts/run.sh [options]
   --with-builders   also start the builders sidecar on :3100 (CLAMM and algo-safe transaction groups)
   --with-mock-oidc  also start the mock Biatec OIDC on :8089 (consent side; needs Node >= 22.18)
   --backend-only    start dependencies and the backend, not the widget playground
-  --skip-install    skip pnpm install and the chat-protocol build
+  --skip-install    skip pnpm install
   -h, --help        show this help
 EOF
 }
@@ -61,15 +61,11 @@ fi
 
 # --- Dependencies --------------------------------------------------------------------------------------------------
 log "Starting Redis and Postgres (docker compose)..."
-# Fixed project name: compose would otherwise name it after the folder, and a second checkout (worktree, clone) would
-# try to start another Redis/Postgres on the same ports.
-docker compose -p "${COMPOSE_PROJECT_NAME:-biatec-chat}" up -d --wait redis postgres
+docker compose up -d --wait redis postgres
 
 if [ "$INSTALL" = 1 ]; then
   log "Installing Node packages..."
   pnpm install --frozen-lockfile
-  # The widget imports @biatec/chat-protocol from its build output.
-  pnpm -C packages/chat-protocol build
 fi
 
 log "Building the backend..."
