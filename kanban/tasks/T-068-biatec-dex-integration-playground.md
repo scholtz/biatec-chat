@@ -11,7 +11,7 @@ conflicts_with: []
 issue: "#109"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#visual-design"
 created: 2026-10-19
 updated: 2026-10-20
@@ -66,3 +66,4 @@ Filled in by the agent when it moves the task to `review`.
 
 - 2026-10-19 22:40 · coordinator · (new) → blocked · created from the Biatec AI design handoff (docs/design/) for the widget UI rework
 - 2026-10-20 01:32 · kanban-board · blocked → backlog · blockers done: T-063
+- 2026-10-20 01:40 · LukassSoukup · taken · status stays backlog
