@@ -1,7 +1,7 @@
 ---
 id: T-007
 title: Cookie session, probe and keepalive
-status: backlog
+status: done
 priority: P0
 epic: "Sessions & auth"
 blocked_by: [T-006]
@@ -9,7 +9,7 @@ area: ["backend/Biatec.Chat.Api/Sessions/**"]
 parallel: yes
 conflicts_with: []
 issue: "#8"
-branch: ""
+branch: "task/T-007"
 owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#embedding-modes"
@@ -55,3 +55,4 @@ dotnet test --filter Sessions; curl -c/-b sequence documented in hand-off
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:41 · kanban-board · blocked → backlog · blockers done: T-006
+- 2026-10-19 19:00 · user · backlog → done · user asked in conversation to implement, review and merge; PR #70 merged into main @ eeea29c

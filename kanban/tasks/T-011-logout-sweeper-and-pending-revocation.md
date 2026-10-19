@@ -1,7 +1,7 @@
 ---
 id: T-011
 title: Logout, sweeper and pending revocation
-status: blocked
+status: backlog
 priority: P1
 epic: "Sessions & auth"
 blocked_by: [T-009]
@@ -54,3 +54,4 @@ dotnet test --filter Sweeper
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 18:56 · kanban-board · blocked → backlog · blockers done: T-009
