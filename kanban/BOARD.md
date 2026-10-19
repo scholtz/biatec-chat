@@ -39,10 +39,10 @@ Sorted by priority, then ID. The first row is what `/kanban-next` picks.
 |---|---|---|---|---|---|
 | T-042 | Widget action preview, consent and receipt cards | P0 | Widget | no (T-036, T-064, T-067) | free |
 | T-024 | wallet.transfer on Bitcoin (PSBT intent hash) | P1 | Wallet tools | no (T-025, T-035, T-049, T-061) | free |
-| T-032 | safe.create and safe.list capabilities | P1 | Safe | no (T-036, T-060) | free |
+| T-032 | safe.create and safe.list capabilities | P1 | Safe | no (T-036, T-060) | LukassSoukup |
 | T-036 | Evidence export bundle and offline verifier | P1 | Evidence | no (T-032, T-042, T-043, T-066) | free |
 | T-049 | Backend consent orchestrator | P1 | Consent & authenticator | no (T-024, T-025, T-035) | free |
-| T-063 | Widget shell: launcher, panel modes, header and host API | P1 | Widget UI rework | no (T-064) | free |
+| T-063 | Widget shell: launcher, panel modes, header and host API | P1 | Widget UI rework | no (T-064) | LukassSoukup |
 | T-064 | Widget conversation UI to the Biatec AI design | P1 | Widget UI rework | no (T-042, T-063) | free |
 | T-025 | Tenant soft cap and safe approval caps | P2 | Wallet tools | no (T-024, T-035, T-049) | free |
 

@@ -11,7 +11,7 @@ conflicts_with: [T-036, T-060]
 issue: "#33"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#safe-capabilities"
 created: 2026-10-19
 updated: 2026-10-20
@@ -56,3 +56,4 @@ dotnet test --filter SafeCreate
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-022, T-031
 - 2026-10-20 01:09 · LukassSoukup · backlog · parallel analysis: dropped T-038 (done)
+- 2026-10-20 01:12 · LukassSoukup · taken · status stays backlog
