@@ -39,7 +39,7 @@ export interface MockOptions {
   oidcKey?: Record<string, string>;
 }
 
-interface Device { kid: string; sub: string; publicKey: Record<string, string>; token: string; activeAt: number; cancelled: boolean; attestation: string }
+interface Device { kid: string; sub: string; publicKey: Record<string, string>; token: string; activeAt: number; cancelled: boolean; attestation: string; recoveryCode?: string; recoveryAcknowledged?: boolean }
 interface Pending {
   request: Record<string, any>;
   code: string;
@@ -449,6 +449,21 @@ export function createMockOidc(options: MockOptions = {}) {
     if (m === "POST" && (x = path.match(/^\/wallet\/([^/]+)\/([^/]+)\/sign$/))) return sign(req, { network: x[1], address: x[2] }, await readBody(req));
     if (m === "GET" && (x = path.match(/^\/consent\/receipts\/([^/]+)$/))) return getReceipt(req, x[1]);
     if (m === "POST" && path === "/devices") return enroll(req, await readBody(req));
+    // Rule 7: the recovery code exists only after the device is active, never in the enrollment response.
+    if (m === "POST" && path === "/devices/recovery-code") {
+      const d = deviceAuth(req);
+      if (d.activeAt > now()) throw new HttpError(403, "access_denied", "the recovery code is issued only once the device is active (rule 7)", { reason: "device_inactive" });
+      if (d.recoveryAcknowledged) throw new HttpError(409, "conflict", "the recovery code was already shown");
+      d.recoveryCode ??= randomBytes(6).toString("hex").toUpperCase().replace(/(.{4})(?=.)/g, "$1-");
+      return { status: 200, body: { recovery_code: d.recoveryCode } };
+    }
+    if (m === "POST" && path === "/devices/recovery-code/ack") {
+      const d = deviceAuth(req);
+      if (d.activeAt > now() || !d.recoveryCode) throw new HttpError(409, "conflict", "no recovery code is pending");
+      d.recoveryAcknowledged = true;
+      d.recoveryCode = undefined;
+      return { status: 200, body: { acknowledged: true } };
+    }
     if (m === "GET" && path === "/devices/requests") {
       const d = deviceAuth(req);
       return { status: 200, body: { requests: [...pending.values()].filter((p) => p.request.sub === d.sub && p.status === "pending" && !expired(p)).map(deviceView) } };

@@ -1,7 +1,7 @@
 ---
 id: T-051
 title: Authenticator enrollment and device key
-status: in-progress
+status: done
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-047, T-050]
@@ -51,9 +51,12 @@ flutter test; manual emulator run
 
 ## Review
 
+- 2026-10-19 21:07 · approve · PR #88 merged into main @ c6968c1 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 20:38 · kanban-board · blocked → backlog · blockers done: T-047, T-050
 - 2026-10-19 20:38 · scholtz · taken · status stays backlog
 - 2026-10-19 20:38 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-19 21:07 · user · in-progress → done · PR #88 merged into main @ c6968c1 (synced by kanban-sync)
