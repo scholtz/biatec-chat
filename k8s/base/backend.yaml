@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: biatec-chat-backend
+  labels: {app.kubernetes.io/name: biatec-chat-backend, app.kubernetes.io/part-of: biatec-chat}
+data:
+  ASPNETCORE_ENVIRONMENT: Production
+  # Oidc__*, Mcp__Endpoint and Algod__Networks__* are environment specific: set per overlay (k8s/main, k8s/stage).
+  Bedrock__Region: eu-central-1
+  Bedrock__AnonymousModelId: eu.anthropic.claude-sonnet-4-5-20250929-v1:0
+  Bedrock__AuthenticatedModelId: eu.anthropic.claude-opus-4-5-20251101-v1:0
+  Bedrock__MaxTokens: "4096"
+  Kms__Region: eu-central-1
+  Builders__BaseAddress: http://biatec-chat-builders:3100
+  # The vault wraps its data keys with KMS (Kms__KeyId below); never the local Dev key.
+  Vault__KeyProvider: Kms
+  # No production IEvidenceKeyStore exists yet: signing keys are in-memory, lost on restart and differ per replica.
+  # Explicit, documented decision (see k8s/README.md); remove once a KMS-backed key store is registered.
+  Evidence__AllowEphemeralKeys: "true"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: biatec-chat-backend
+  labels: {app.kubernetes.io/name: biatec-chat-backend, app.kubernetes.io/part-of: biatec-chat}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: biatec-chat-backend
+  labels: {app.kubernetes.io/name: biatec-chat-backend, app.kubernetes.io/part-of: biatec-chat}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app.kubernetes.io/name: biatec-chat-backend}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: biatec-chat-backend, app.kubernetes.io/part-of: biatec-chat}
+    spec:
+      # The IAM role for Bedrock and KMS is bound to this service account by the cluster; no keys anywhere.
+      serviceAccountName: biatec-chat-backend
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: backend
+          image: ghcr.io/scholtz/biatec-chat-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - {name: http, containerPort: 8080}
+          envFrom:
+            - configMapRef: {name: biatec-chat-backend}
+          env:
+            - name: AWS_REGION
+              value: eu-central-1
+            - name: Postgres__ConnectionString
+              valueFrom: {secretKeyRef: {name: biatec-chat-secrets, key: postgres-connection-string}}
+            - name: Redis__ConnectionString
+              valueFrom: {secretKeyRef: {name: biatec-chat-secrets, key: redis-connection-string}}
+            - name: Kms__KeyId
+              valueFrom: {secretKeyRef: {name: biatec-chat-secrets, key: kms-key-id}}
+            # Resolves the seeded tenant's ClientSecretRef secret://biatec-chat/oidc-client-secret.
+            - name: Secrets__biatec-chat__oidc-client-secret
+              valueFrom: {secretKeyRef: {name: biatec-chat-secrets, key: oidc-client-secret}}
+            - name: Builders__InternalSecret
+              valueFrom: {secretKeyRef: {name: biatec-chat-secrets, key: builders-internal-secret}}
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 3
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /health/live, port: http}
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {memory: 768Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: biatec-chat-backend
+  labels: {app.kubernetes.io/name: biatec-chat-backend, app.kubernetes.io/part-of: biatec-chat}
+spec:
+  selector: {app.kubernetes.io/name: biatec-chat-backend}
+  ports:
+    - {name: http, port: 80, targetPort: http}

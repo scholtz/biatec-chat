@@ -46,6 +46,8 @@ app.UseRateLimiter();
 
 // 200 Healthy when Redis and PostgreSQL answer, 503 Unhealthy otherwise. The body is the status only.
 app.MapHealthChecks("/health");
+// Liveness only: runs no dependency checks, so a Redis or PostgreSQL outage never restarts the pods.
+app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = _ => false });
 
 app.MapContractCatalog();
 app.MapSessions();

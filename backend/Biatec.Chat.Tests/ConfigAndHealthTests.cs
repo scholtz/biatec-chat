@@ -43,6 +43,18 @@ public class ConfigAndHealthTests
         Assert.Equal("Unhealthy", await response.Content.ReadAsStringAsync());
     }
 
+    [Fact]
+    public async Task HealthLive_IsHealthy_EvenWhenDependenciesAreDown()
+    {
+        using var factory = Factory();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/health/live");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("Healthy", await response.Content.ReadAsStringAsync());
+    }
+
     [Theory]
     [InlineData("Oidc:Issuer")]
     [InlineData("Oidc:McpResource")]
