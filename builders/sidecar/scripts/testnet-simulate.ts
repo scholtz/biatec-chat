@@ -36,7 +36,7 @@ const report = (name: string, r: { facts?: Record<string, unknown>; transactions
   console.log(`${name}: ${r.transactions.length} txs, simulation ${JSON.stringify(r.facts?.simulation)}`);
 
 report("add liquidity", await addLiquidity({ poolAppId: pool.appId, sender: usdcHolder, amountA: "1000000", amountB: "1000000" }, ctx));
-report("swap", await swapOnPool({ poolAppId: pool.appId, sender: usdcHolder, fromAsset: USDC, fromAmount: "100000", minimumToReceive: "0" }, ctx));
+report("swap", await swapOnPool({ poolAppId: pool.appId, sender: usdcHolder, fromAsset: USDC, fromAmount: "100000", minimumToReceive: "1" }, ctx));
 // Removal needs a real LP holder (not a pool's own account, which holds the unissued LP tokens): try every pool.
 let removed = false;
 for (const p of list.pools.filter((x) => BigInt(x.liquidity) > 0n)) {

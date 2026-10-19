@@ -22,10 +22,6 @@ export function uint64(p: Params, name: string, { positive = false } = {}): bigi
   return n;
 }
 
-export function optionalUint64(p: Params, name: string): bigint | undefined {
-  return p[name] === undefined ? undefined : uint64(p, name);
-}
-
 export function address(p: Params, name: string): string {
   const v = p[name];
   if (typeof v !== "string" || !algosdk.isValidAddress(v)) throw new Error(`${name} must be an Algorand address`);

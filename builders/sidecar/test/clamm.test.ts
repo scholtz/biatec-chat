@@ -7,6 +7,7 @@ import type { ClammContext } from "../src/clamm/context.js";
 import { algosdk } from "../src/clamm/lib.js";
 import { address, asParams, uint64 } from "../src/clamm/params.js";
 import { formatScaled, registeredPool, registeredPools, selectPools } from "../src/clamm/pools.js";
+import { swapOnPool } from "../src/clamm/builders.js";
 
 /** The pool provider's pool list as recorded from testnet (all ALGO/USDC and Vote/ALGO pools, class 0). */
 const fixture: FullConfig[] = (JSON.parse(readFileSync(new URL("./fixtures/testnet-pools.json", import.meta.url), "utf8")) as Record<string, string | number>[]).map(
@@ -89,6 +90,13 @@ describe("pools", () => {
     expect(formatScaled(1_000_000n * 100n)).toBe("0.1");
     expect(formatScaled(1_000_000_000n)).toBe("1");
     expect(formatScaled(130_000_000n)).toBe("0.13");
+  });
+});
+
+describe("builders", () => {
+  it("refuse a swap without slippage protection before touching the chain", async () => {
+    const params = { poolAppId: "1", sender: "ALGONAUTSPIUHDCX3SLFXOFDUKOE4VY36XV4JX2JHQTWJNKVBKPEBQACRY", fromAsset: "0", fromAmount: "1", minimumToReceive: "0" };
+    await expect(swapOnPool(params, { network: "testnet", algodUrl: "http://127.0.0.1:1" })).rejects.toThrow(/minimumToReceive must be greater than zero/);
   });
 });
 

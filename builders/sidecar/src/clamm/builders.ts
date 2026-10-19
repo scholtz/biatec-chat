@@ -1,7 +1,7 @@
 import type { Algodv2, Transaction } from "algosdk";
 import type { BiatecClammPoolClient, FullConfig } from "biatec-concentrated-liquidity-amm";
 import type { BuildContext, BuildResult } from "../app.js";
-import { clammContext, unsignedAccount, verificationClassOf, type ClammContext } from "./context.js";
+import { clammContext, identityOf, unsignedAccount, type ClammContext } from "./context.js";
 import { algosdk, clamm } from "./lib.js";
 import { address, asParams, uint64, type Params } from "./params.js";
 import { poolFacts, registeredPool } from "./pools.js";
@@ -18,10 +18,10 @@ async function prepare(p: Params, ctx: BuildContext): Promise<Prepared> {
   const poolAppId = uint64(p, "poolAppId", { positive: true });
   const sender = address(p, "sender");
   const c = await clammContext(ctx);
-  const pool = await registeredPool(c, poolAppId);
-  const senderClass = await verificationClassOf(c, sender);
-  if (senderClass < Number(pool.verificationClass)) {
-    throw new Error(`pool ${poolAppId} needs verification class ${pool.verificationClass}; ${sender} has ${senderClass}`);
+  const [pool, identity] = await Promise.all([registeredPool(c, poolAppId), identityOf(c, sender)]);
+  if (identity.isLocked) throw new Error(`the Biatec identity of ${sender} is locked`);
+  if (identity.verificationClass < Number(pool.verificationClass)) {
+    throw new Error(`pool ${poolAppId} needs verification class ${pool.verificationClass}; ${sender} has ${identity.verificationClass}`);
   }
   return { c, pool, sender, client: new clamm.BiatecClammPoolClient({ algorand: c.algorand, appId: pool.appId }) };
 }
@@ -31,12 +31,14 @@ export interface Simulation {
   failureMessage?: string;
 }
 
-/** Simulates the unsigned group (empty signatures allowed) so a group that would fail never reaches a preview. */
+/**
+ * Simulates the unsigned group with empty signatures and only the resources the group names itself, as the real
+ * submission will; a group that would fail is refused here and never reaches a preview.
+ */
 export async function simulate(algod: Algodv2, txs: Transaction[]): Promise<Simulation> {
   const request = new algosdk.modelsv2.SimulateRequest({
     txnGroups: [new algosdk.modelsv2.SimulateRequestTransactionGroup({ txns: txs.map((txn) => new algosdk.SignedTransaction({ txn })) })],
     allowEmptySignatures: true,
-    allowUnnamedResources: true,
   });
   const result = await algod.simulateTransactions(request).do();
   const failure = result.txnGroups[0]?.failureMessage;
@@ -45,10 +47,22 @@ export async function simulate(algod: Algodv2, txs: Transaction[]): Promise<Simu
 
 async function finish(prep: Prepared, kind: string, txs: Transaction[], action: Record<string, unknown>): Promise<BuildResult> {
   const [pool, simulation] = await Promise.all([poolFacts(prep.c, prep.pool), simulate(prep.c.algod, txs)]);
+  if (!simulation.ok) throw new Error(`the group fails in simulation: ${simulation.failureMessage}`);
   return {
     transactions: txs.map((t) => Buffer.from(algosdk.encodeUnsignedTransaction(t)).toString("base64")),
     facts: { kind, sender: prep.sender, pool, ...action, txIds: txs.map((t) => t.txID()), simulation },
   };
+}
+
+/** Whether the account is opted into the asset (one bounded lookup; 404 means it isn't). */
+async function holdsAsset(c: ClammContext, account: string, assetId: bigint): Promise<boolean> {
+  try {
+    await c.algod.accountAssetInformation(account, assetId).do();
+    return true;
+  } catch (e) {
+    if ((e as { response?: { status?: number } }).response?.status === 404) return false;
+    throw e;
+  }
 }
 
 function common(prep: Prepared) {
@@ -70,8 +84,7 @@ export async function addLiquidity(params: unknown, ctx: BuildContext): Promise<
   const amountB = uint64(p, "amountB");
   if (amountA === 0n && amountB === 0n) throw new Error("amountA or amountB must be greater than zero");
   const prep = await prepare(p, ctx);
-  const info = await prep.c.algod.accountInformation(prep.sender).do();
-  const optinSender = !info.assets?.some((a) => a.assetId === prep.pool.lpTokenId);
+  const optinSender = !(await holdsAsset(prep.c, prep.sender, prep.pool.lpTokenId));
   const txs = await clamm.clammAddLiquidityTxs({
     ...common(prep),
     clientBiatecPoolProvider: new clamm.BiatecPoolProviderClient({ algorand: prep.c.algorand, appId: prep.c.apps.poolProviderAppId }),
@@ -101,7 +114,8 @@ export async function swapOnPool(params: unknown, ctx: BuildContext): Promise<Bu
   const p = asParams(params);
   const fromAsset = uint64(p, "fromAsset");
   const fromAmount = uint64(p, "fromAmount", { positive: true });
-  const minimumToReceive = uint64(p, "minimumToReceive");
+  // Required and positive: a swap that accepts any output has no slippage protection.
+  const minimumToReceive = uint64(p, "minimumToReceive", { positive: true });
   const prep = await prepare(p, ctx);
   if (fromAsset !== prep.pool.assetA && fromAsset !== prep.pool.assetB) {
     throw new Error(`fromAsset ${fromAsset} is not traded in pool ${prep.pool.appId}`);

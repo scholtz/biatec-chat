@@ -1,6 +1,6 @@
 import type { FullConfig } from "biatec-concentrated-liquidity-amm";
 import type { BuildContext } from "../app.js";
-import { clammContext, verificationClassOf, type ClammContext } from "./context.js";
+import { clammContext, identityOf, type ClammContext } from "./context.js";
 import { clamm } from "./lib.js";
 import { asParams, optionalAddress, uint64 } from "./params.js";
 
@@ -86,7 +86,7 @@ export async function listPools(params: unknown, ctx: BuildContext) {
   const account = optionalAddress(p, "account");
   const c = await clammContext(ctx);
 
-  const accountClass = account ? await verificationClassOf(c, account) : undefined;
+  const accountClass = account ? (await identityOf(c, account)).verificationClass : undefined;
   const { eligible, excluded } = selectPools(await registeredPools(c), assetA, assetB, accountClass);
 
   const pools = await Promise.all(eligible.map((x) => poolFacts(c, x)));

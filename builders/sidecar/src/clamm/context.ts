@@ -16,8 +16,13 @@ export interface ClammContext {
 export async function clammContext(ctx: BuildContext): Promise<ClammContext> {
   const algod = new algosdk.Algodv2("", ctx.algodUrl, "");
   const params = await algod.getTransactionParams().do();
-  // The app ids follow from the chain itself (genesis id), so a misnamed network can't pick another chain's apps.
-  const apps = clamm.getConfig(params.genesisID ?? "");
+  // The app ids follow from the chain itself (genesis id), and the chain must be the one the caller named, so a
+  // misconfigured algod URL can't build a group for another chain than the one the user is shown.
+  const genesisId = params.genesisID ?? "";
+  if (genesisId.split("-")[0] !== ctx.network.replaceAll("-", "")) {
+    throw new Error(`algod for ${ctx.network} serves ${genesisId || "an unknown chain"}`);
+  }
+  const apps = clamm.getConfig(genesisId);
   return { algod, algorand: AlgorandClient.fromClients({ algod }), apps, params };
 }
 
@@ -26,8 +31,19 @@ export function unsignedAccount(address: string): TransactionSignerAccount {
   return { addr: algosdk.Address.fromString(address), signer: algosdk.makeEmptyTransactionSigner() };
 }
 
-/** Verification class of an account in the Biatec identity provider; an address without an identity is class 0. */
-export async function verificationClassOf(c: ClammContext, address: string): Promise<number> {
+export interface Identity {
+  verificationClass: number;
+  isLocked: boolean;
+}
+
+/**
+ * The account's identity at the Biatec identity provider; an address without an identity is class 0. The lookup is a
+ * simulated call paid by the account itself, so an account without ALGO for the fee is taken as class 0 (it couldn't
+ * pay for any action either).
+ */
+export async function identityOf(c: ClammContext, address: string): Promise<Identity> {
+  const { amount, minBalance } = await c.algod.accountInformation(address).exclude("all").do();
+  if (amount < minBalance + 10_000n) return { verificationClass: 0, isLocked: false };
   const identity = new clamm.BiatecIdentityProviderClient({ algorand: c.algorand, appId: c.apps.identityAppId });
   // The ABI arg takes the address as a string, the composer's sender needs an Address.
   const result = await identity.send.getUserShort({
@@ -35,5 +51,5 @@ export async function verificationClassOf(c: ClammContext, address: string): Pro
     sender: algosdk.Address.fromString(address),
     signer: algosdk.makeEmptyTransactionSigner(),
   });
-  return Number(result.return?.verificationClass ?? 0n);
+  return { verificationClass: Number(result.return?.verificationClass ?? 0n), isLocked: result.return?.isLocked ?? false };
 }
