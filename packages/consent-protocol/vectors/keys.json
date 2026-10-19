@@ -1,0 +1,23 @@
+{
+  "_warning": "TEST-ONLY keys for reproducing the vectors. Never use them anywhere else.",
+  "oidc": {
+    "kty": "EC",
+    "x": "wxrK6aaHlVFAUToxcZBBrXsGylobBlKjaa6hXg_5RCY",
+    "y": "M-PQI2gbug7WeUG0sICQfk-KB5Vdwa1cYptDwDTnVjM",
+    "crv": "P-256",
+    "d": "rnIzWEwi1G2sfupHyOnTrUtkdjBdgfUGol4Ry7ZtE5g",
+    "kid": "oidc-test-key-1",
+    "alg": "ES256",
+    "use": "sig"
+  },
+  "device": {
+    "kty": "EC",
+    "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
+    "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0",
+    "crv": "P-256",
+    "d": "geOy8C0yVwcCAuvxgNPLJVyG13F-1zGRpXlh-PE2wfY",
+    "kid": "device-test-key-1",
+    "alg": "ES256",
+    "use": "sig"
+  }
+}

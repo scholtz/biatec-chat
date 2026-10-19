@@ -1,4 +1,5 @@
 using Biatec.Chat.Api.Auth;
+using Biatec.Chat.Api.Auth.Elevation;
 using Biatec.Chat.Api.Config;
 using Biatec.Chat.Api.Contracts;
 using Biatec.Chat.Api.Data;
@@ -18,6 +19,7 @@ builder.Services.AddOidcAuth();
 builder.Services.AddTokenVault(builder.Configuration);
 builder.Services.AddTenancy();
 builder.Services.AddSessions();
+builder.Services.AddScopeElevation();
 builder.Services.AddEvidence(builder.Configuration);
 
 var app = builder.Build();
@@ -32,6 +34,7 @@ app.MapHealthChecks("/health");
 app.MapContractCatalog();
 app.MapSessions();
 app.MapAuth();
+app.MapElevation();
 app.MapEvidenceJwks();
 if (app.Environment.IsDevelopment())
 {

@@ -1,0 +1,372 @@
+using Biatec.Chat.Api.Data;
+using Biatec.Chat.Core.Data;
+using Biatec.Chat.Core.Previews;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
+
+namespace Biatec.Chat.Tests.Previews;
+
+/// <summary>Needs the docker-compose postgres. Each run migrates a fresh, uniquely named database.</summary>
+public sealed class ActionPreviewServiceTests : IAsyncLifetime
+{
+    private static readonly string AdminCs = Environment.GetEnvironmentVariable("Postgres__AdminConnectionString")
+        ?? "Host=127.0.0.1;Port=5432;Database=postgres;Username=biatec;Password=biatec-dev-only";
+
+    private sealed class TestClock(DateTimeOffset start) : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = start;
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    private readonly string _dbName = "biatec_test_" + Guid.NewGuid().ToString("N");
+    private readonly TestClock _clock = new(new DateTimeOffset(2026, 10, 19, 12, 0, 0, TimeSpan.Zero));
+    private Guid _conversation;
+
+    private ChatDbContext NewContext()
+    {
+        var cs = new NpgsqlConnectionStringBuilder(AdminCs) { Database = _dbName, Pooling = false }.ConnectionString;
+        return new ChatDbContext(new DbContextOptionsBuilder<ChatDbContext>().ConfigureNpgsql(cs).Options);
+    }
+
+    private async Task AdminAsync(string sql)
+    {
+        await using var conn = new NpgsqlConnection(AdminCs);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task InitializeAsync()
+    {
+        await AdminAsync($"CREATE DATABASE \"{_dbName}\"");
+        await using var db = NewContext();
+        await db.Database.MigrateAsync();
+        _conversation = Guid.NewGuid();
+        db.Conversations.Add(new Conversation { Id = _conversation, TenantId = "t1", CreatedAt = _clock.Now, LastMessageAt = _clock.Now });
+        await db.SaveChangesAsync();
+    }
+
+    public async Task DisposeAsync() => await AdminAsync($"DROP DATABASE IF EXISTS \"{_dbName}\" WITH (FORCE)");
+
+    private NewStepSpec Step(string hash, int expiresInSeconds) =>
+        new(ActionStepKind.Sign, hash, _clock.Now.AddSeconds(expiresInSeconds), UnsignedGroup: "[\"AAAA\"]", Network: "algorand-testnet", SenderAddress: "ADDR");
+
+    private NewPreviewSpec Spec(params NewStepSpec[] steps) =>
+        new(_conversation, "wallet.transfer", "{\"intent\":\"x\"}", steps, 12.5m, true);
+
+    [Fact]
+    public async Task Create_CarriesEarliestExpiry_AndCountdown()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var snap = await svc.CreateAsync(Spec(Step("h1", 2000), Step("h2", 1500)));
+
+        Assert.Equal(_clock.Now.AddSeconds(1500), snap.Preview.ExpiresAt);
+        Assert.Equal(1500, snap.Countdown.RemainingSeconds);
+        Assert.True(snap.Countdown.CanConfirm);
+        Assert.Equal(ActionPreviewStatus.Proposed, snap.Preview.Status);
+        Assert.Equal([0, 1], snap.Steps.Select(s => s.Seq).ToArray());
+    }
+
+    [Fact]
+    public async Task Confirm_IsRefusedUnder600Seconds_AndAllowedAtExactly600()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var snap = await svc.CreateAsync(Spec(Step("h1", 700)));
+
+        _clock.Now = _clock.Now.AddSeconds(101); // 599 s left
+        Assert.False((await svc.GetAsync(_conversation, snap.Preview.Id)).Countdown.CanConfirm);
+        var ex = await Assert.ThrowsAsync<PreviewException>(() => svc.ConfirmAsync(_conversation, snap.Preview.Id, "h1"));
+        Assert.Equal(PreviewError.TooCloseToExpiry, ex.Error);
+        Assert.Equal(ActionPreviewStatus.Proposed, (await svc.GetAsync(_conversation, snap.Preview.Id)).Preview.Status);
+
+        _clock.Now = _clock.Now.AddSeconds(-1); // 600 s left
+        var ok = await svc.ConfirmAsync(_conversation, snap.Preview.Id, "h1");
+        Assert.Equal(ActionPreviewStatus.Confirmed, ok.Preview.Status);
+    }
+
+    [Fact]
+    public async Task Confirm_IsLimitedByTheSessionsAbsoluteLifetime()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var snap = await svc.CreateAsync(Spec(Step("h1", 2000)));
+        var sessionEnds = _clock.Now.AddSeconds(300);
+
+        Assert.False((await svc.GetAsync(_conversation, snap.Preview.Id, sessionEnds)).Countdown.CanConfirm);
+        var ex = await Assert.ThrowsAsync<PreviewException>(() => svc.ConfirmAsync(_conversation, snap.Preview.Id, "h1", sessionEnds));
+        Assert.Equal(PreviewError.TooCloseToExpiry, ex.Error);
+    }
+
+    [Fact]
+    public async Task Confirm_RefusesAWrongHash()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var snap = await svc.CreateAsync(Spec(Step("h1", 2000)));
+        var ex = await Assert.ThrowsAsync<PreviewException>(() => svc.ConfirmAsync(_conversation, snap.Preview.Id, "other"));
+        Assert.Equal(PreviewError.HashMismatch, ex.Error);
+    }
+
+    [Fact]
+    public async Task Confirm_OnAnExpiredGroup_MarksItExpired_AndOnlyRebuildCanReplaceIt()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var snap = await svc.CreateAsync(Spec(Step("h1", 1000)));
+
+        _clock.Now = _clock.Now.AddSeconds(1001);
+        var ex = await Assert.ThrowsAsync<PreviewException>(() => svc.ConfirmAsync(_conversation, snap.Preview.Id, "h1"));
+        Assert.Equal(PreviewError.Expired, ex.Error);
+
+        var read = await svc.GetAsync(_conversation, snap.Preview.Id);
+        Assert.Equal(ActionPreviewStatus.Expired, read.Preview.Status);
+        Assert.All(read.Steps, s => Assert.Equal(StepStatus.Expired, s.Status));
+        Assert.False(read.Countdown.CanConfirm);
+        var again = await Assert.ThrowsAsync<PreviewException>(() => svc.ConfirmAsync(_conversation, snap.Preview.Id, "h1"));
+        Assert.Equal(PreviewError.Expired, again.Error);
+    }
+
+    [Fact]
+    public async Task Rebuild_ProducesANewLinkedPreview_WithANewHash()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var old = await svc.CreateAsync(Spec(Step("h1", 1000)));
+        _clock.Now = _clock.Now.AddSeconds(1001);
+
+        var rebuilt = await svc.RebuildAsync(_conversation, old.Preview.Id, "{\"intent\":\"x2\"}", [Step("h1-new", 2000)]);
+
+        Assert.NotEqual(old.Preview.Id, rebuilt.Preview.Id);
+        Assert.Equal("h1-new", Assert.Single(rebuilt.Steps).SubjectHash);
+        Assert.Equal(ActionPreviewStatus.Proposed, rebuilt.Preview.Status);
+        Assert.True(rebuilt.Countdown.CanConfirm);
+        Assert.Equal("wallet.transfer", rebuilt.Preview.Capability);
+
+        await using var read = NewContext();
+        var oldRow = await read.ActionPreviews.SingleAsync(p => p.Id == old.Preview.Id);
+        Assert.Equal(rebuilt.Preview.Id, oldRow.RebuiltAsPreviewId);
+        Assert.Equal(ActionPreviewStatus.Expired, oldRow.Status);
+    }
+
+    [Fact]
+    public async Task Rebuild_WithTheSameHash_Refused_AndSecondRebuildRefused()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var old = await svc.CreateAsync(Spec(Step("h1", 1000)));
+
+        var same = await Assert.ThrowsAsync<PreviewException>(() => svc.RebuildAsync(_conversation, old.Preview.Id, "{}", [Step("h1", 2000)]));
+        Assert.Equal(PreviewError.RebuildReusedHash, same.Error);
+
+        await svc.RebuildAsync(_conversation, old.Preview.Id, "{}", [Step("h2", 2000)]);
+        var twice = await Assert.ThrowsAsync<PreviewException>(() => svc.RebuildAsync(_conversation, old.Preview.Id, "{}", [Step("h3", 2000)]));
+        Assert.Equal(PreviewError.AlreadyRebuilt, twice.Error);
+        Assert.Single(await NewContext().ActionPreviews.Where(p => p.RebuiltAsPreviewId == null && p.ConversationId == _conversation && p.Status == ActionPreviewStatus.Proposed).ToListAsync());
+    }
+
+    [Fact]
+    public async Task MultiStep_LaterStepIsBuiltOnlyAfterTheEarlierOneLanded()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var first = await svc.CreateAsync(Spec(Step("s0", 1000)));
+
+        var early = await Assert.ThrowsAsync<PreviewException>(() => svc.AddNextStepAsync(_conversation, first.Preview.Id, Step("s1", 3000)));
+        Assert.Equal(PreviewError.PreviousStepNotLanded, early.Error);
+
+        await svc.ConfirmAsync(_conversation, first.Preview.Id, "s0");
+        await svc.MarkStepLandedAsync(_conversation, first.Preview.Id, 0, ["TX0"]);
+        _clock.Now = _clock.Now.AddSeconds(500);
+        var second = await svc.AddNextStepAsync(_conversation, first.Preview.Id, Step("s1", 3000));
+
+        Assert.Equal(2, second.Steps.Count);
+        Assert.Equal(StepStatus.Confirmed, second.Steps[0].Status);
+        Assert.Equal(StepStatus.Pending, second.Steps[1].Status);
+        Assert.Equal(_clock.Now.AddSeconds(3000), second.Preview.ExpiresAt); // fresh window for the new step
+        Assert.Equal(3000, second.Countdown.RemainingSeconds);
+    }
+
+    [Fact]
+    public async Task Rebuild_KeepsLandedStepsAsCompleted_AndRebuildsOnlyTheRest()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var p = await svc.CreateAsync(Spec(Step("s0", 5000)));
+        await svc.ConfirmAsync(_conversation, p.Preview.Id, "s0");
+        await svc.MarkStepLandedAsync(_conversation, p.Preview.Id, 0, ["TX0", "TX0b"]);
+        await svc.AddNextStepAsync(_conversation, p.Preview.Id, Step("s1", 1000));
+        _clock.Now = _clock.Now.AddSeconds(1001);
+
+        var rebuilt = await svc.RebuildAsync(_conversation, p.Preview.Id, "{}", [Step("s1-new", 2000)]);
+
+        Assert.Equal(2, rebuilt.Steps.Count);
+        Assert.Equal("s0", rebuilt.Steps[0].SubjectHash);
+        Assert.Equal(StepStatus.Confirmed, rebuilt.Steps[0].Status);
+        Assert.Equal(["TX0", "TX0b"], rebuilt.Steps[0].TxIds);
+        Assert.Equal("s1-new", rebuilt.Steps[1].SubjectHash);
+        Assert.Equal(StepStatus.Pending, rebuilt.Steps[1].Status);
+        Assert.Equal(_clock.Now.AddSeconds(2000), rebuilt.Preview.ExpiresAt);
+        Assert.NotEqual(rebuilt.Steps[0].Id, (await svc.GetAsync(_conversation, p.Preview.Id)).Steps[0].Id);
+    }
+
+    [Fact]
+    public async Task Cancelled_OrCompleted_CannotBeRebuilt_AndUnknownIsNotFound()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var p = await svc.CreateAsync(Spec(Step("s0", 5000)));
+        await db.ActionPreviews.Where(x => x.Id == p.Preview.Id).ExecuteUpdateAsync(u => u.SetProperty(x => x.Status, ActionPreviewStatus.Cancelled));
+        db.ChangeTracker.Clear();
+
+        var ex = await Assert.ThrowsAsync<PreviewException>(() => svc.RebuildAsync(_conversation, p.Preview.Id, "{}", [Step("n", 100)]));
+        Assert.Equal(PreviewError.InvalidState, ex.Error);
+        var nf = await Assert.ThrowsAsync<PreviewException>(() => svc.GetAsync(_conversation, Guid.NewGuid()));
+        Assert.Equal(PreviewError.NotFound, nf.Error);
+    }
+
+    [Fact]
+    public async Task OtherConversation_CannotSeeOrDriveAPreview()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var p = await svc.CreateAsync(Spec(Step("h1", 2000)));
+        var other = Guid.NewGuid();
+
+        foreach (var call in new Func<Task>[]
+        {
+            () => svc.GetAsync(other, p.Preview.Id),
+            () => svc.ConfirmAsync(other, p.Preview.Id, "h1"),
+            () => svc.RebuildAsync(other, p.Preview.Id, "{}", [Step("n", 100)]),
+            () => svc.AddNextStepAsync(other, p.Preview.Id, Step("n", 100)),
+            () => svc.MarkStepLandedAsync(other, p.Preview.Id, 0, ["T"]),
+        })
+        {
+            var ex = await Assert.ThrowsAsync<PreviewException>(call);
+            Assert.Equal(PreviewError.NotFound, ex.Error);
+        }
+    }
+
+    [Fact]
+    public async Task ConcurrentConfirms_OnlyOneSucceeds()
+    {
+        await using var a = NewContext();
+        await using var b = NewContext();
+        var p = await new ActionPreviewService(a, _clock).CreateAsync(Spec(Step("h1", 2000)));
+
+        var results = await Task.WhenAll(
+            Try(() => new ActionPreviewService(a, _clock).ConfirmAsync(_conversation, p.Preview.Id, "h1")),
+            Try(() => new ActionPreviewService(b, _clock).ConfirmAsync(_conversation, p.Preview.Id, "h1")));
+        Assert.Equal(1, results.Count(r => r));
+
+        static async Task<bool> Try(Func<Task> f)
+        {
+            try { await f(); return true; } catch (PreviewException) { return false; }
+        }
+    }
+
+    [Fact]
+    public async Task MarkStepLanded_NeedsAConfirmedPreview_AndTheFinalStepCompletesIt()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var p = await svc.CreateAsync(Spec(Step("s0", 5000)));
+
+        var early = await Assert.ThrowsAsync<PreviewException>(() => svc.MarkStepLandedAsync(_conversation, p.Preview.Id, 0, ["T"]));
+        Assert.Equal(PreviewError.InvalidState, early.Error);
+
+        await svc.ConfirmAsync(_conversation, p.Preview.Id, "s0");
+        await svc.MarkStepLandedAsync(_conversation, p.Preview.Id, 0, ["T"], isFinalStep: true);
+        Assert.Equal(ActionPreviewStatus.Completed, (await svc.GetAsync(_conversation, p.Preview.Id)).Preview.Status);
+
+        var again = await Assert.ThrowsAsync<PreviewException>(() => svc.MarkStepLandedAsync(_conversation, p.Preview.Id, 0, ["T2"]));
+        Assert.Equal(PreviewError.InvalidState, again.Error);
+    }
+
+    [Fact]
+    public async Task Rebuild_IsRefusedWhileAStepIsInFlight()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var p = await svc.CreateAsync(Spec(Step("s0", 5000)));
+        await db.ActionSteps.Where(x => x.PreviewId == p.Preview.Id).ExecuteUpdateAsync(u => u.SetProperty(x => x.Status, StepStatus.Submitted));
+        db.ChangeTracker.Clear();
+
+        var ex = await Assert.ThrowsAsync<PreviewException>(() => svc.RebuildAsync(_conversation, p.Preview.Id, "{}", [Step("n", 100)]));
+        Assert.Equal(PreviewError.InvalidState, ex.Error);
+    }
+
+    [Fact]
+    public async Task StepsMustExpireInTheFuture()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var ex = await Assert.ThrowsAsync<PreviewException>(() => svc.CreateAsync(Spec(Step("h1", -1))));
+        Assert.Equal(PreviewError.InvalidSpec, ex.Error);
+    }
+
+    [Fact]
+    public async Task FinalStepFlag_IsRefusedWhileOtherStepsAreUnlanded_AndCompletedPreviewIsNotShownExpired()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var p = await svc.CreateAsync(Spec(Step("a", 700), Step("b", 700)));
+        await svc.ConfirmAsync(_conversation, p.Preview.Id, "a");
+
+        var ex = await Assert.ThrowsAsync<PreviewException>(() => svc.MarkStepLandedAsync(_conversation, p.Preview.Id, 0, ["T"], isFinalStep: true));
+        Assert.Equal(PreviewError.InvalidState, ex.Error);
+
+        await svc.MarkStepLandedAsync(_conversation, p.Preview.Id, 0, ["T0"]);
+        await svc.MarkStepLandedAsync(_conversation, p.Preview.Id, 1, ["T1"], isFinalStep: true);
+        _clock.Now = _clock.Now.AddHours(1);
+        var done = await svc.GetAsync(_conversation, p.Preview.Id);
+        Assert.Equal(ActionPreviewStatus.Completed, done.Preview.Status);
+        Assert.Equal("not-awaiting-confirmation", done.Countdown.DisabledReason);
+    }
+
+    [Fact]
+    public async Task ConfirmedPreview_IsNotRebuilt_UntilItIsMarkedExpired()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var p = await svc.CreateAsync(Spec(Step("h1", 2000)));
+        await svc.ConfirmAsync(_conversation, p.Preview.Id, "h1");
+
+        var ex = await Assert.ThrowsAsync<PreviewException>(() => svc.RebuildAsync(_conversation, p.Preview.Id, "{}", [Step("h2", 2000)]));
+        Assert.Equal(PreviewError.InvalidState, ex.Error);
+        Assert.False(await svc.ExpireIfLapsedAsync(_conversation, p.Preview.Id)); // window still open
+
+        _clock.Now = _clock.Now.AddSeconds(2001);
+        Assert.True(await svc.ExpireIfLapsedAsync(_conversation, p.Preview.Id));
+        var rebuilt = await svc.RebuildAsync(_conversation, p.Preview.Id, "{}", [Step("h2", 2000)]);
+        Assert.Equal("h2", Assert.Single(rebuilt.Steps).SubjectHash);
+    }
+
+    [Fact]
+    public async Task MarkStepLanded_RequiresEarlierStepsAndTxIds()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var p = await svc.CreateAsync(Spec(Step("a", 2000), Step("b", 2000)));
+        await svc.ConfirmAsync(_conversation, p.Preview.Id, "a");
+
+        var skip = await Assert.ThrowsAsync<PreviewException>(() => svc.MarkStepLandedAsync(_conversation, p.Preview.Id, 1, ["T"]));
+        Assert.Equal(PreviewError.InvalidState, skip.Error);
+        var empty = await Assert.ThrowsAsync<PreviewException>(() => svc.MarkStepLandedAsync(_conversation, p.Preview.Id, 0, []));
+        Assert.Equal(PreviewError.InvalidSpec, empty.Error);
+    }
+
+    [Fact]
+    public async Task ExpireIfLapsed_LeavesAnInFlightStepAlone_AndConfirmAcceptsUppercaseHash()
+    {
+        await using var db = NewContext();
+        var svc = new ActionPreviewService(db, _clock);
+        var p = await svc.CreateAsync(Spec(Step("abcdef", 2000)));
+        await svc.ConfirmAsync(_conversation, p.Preview.Id, " ABCDEF ");
+        await db.ActionSteps.Where(x => x.PreviewId == p.Preview.Id).ExecuteUpdateAsync(u => u.SetProperty(x => x.Status, StepStatus.Submitted));
+
+        _clock.Now = _clock.Now.AddSeconds(2001);
+        Assert.False(await svc.ExpireIfLapsedAsync(_conversation, p.Preview.Id));
+    }
+}

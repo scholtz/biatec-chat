@@ -1,0 +1,16 @@
+{
+  "name": "@biatec/consent-protocol",
+  "version": "0.0.0",
+  "description": "Biatec Consent Protocol: specification, JSON schemas and signed test vectors.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "files": ["spec", "schemas", "vectors", "scripts/lib.mjs"],
+  "scripts": {
+    "generate:vectors": "node scripts/generate-vectors.mjs",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1"
+  }
+}

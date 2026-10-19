@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/token-response.schema.json",
+  "title": "CIBA token response with consent_receipt",
+  "type": "object",
+  "required": ["access_token", "token_type", "expires_in", "consent_receipt"],
+  "properties": {
+    "access_token": { "type": "string", "minLength": 1 },
+    "token_type": { "const": "Bearer" },
+    "expires_in": { "type": "integer", "minimum": 1, "maximum": 300 },
+    "scope": { "type": "string" },
+    "refresh_token": false,
+    "id_token": false,
+    "consent_receipt": { "$ref": "consent-receipt.schema.json" }
+  }
+}
