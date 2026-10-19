@@ -75,25 +75,25 @@ public sealed class TenancyTests : IDisposable
     [Fact]
     public async Task UnknownHost_Is404()
     {
-        var r = await SendAsync(Req(HttpMethod.Get, "/session", host: "evil.example"));
+        var r = await SendAsync(Req(HttpMethod.Get, "/terminal-probe", host: "evil.example"));
         Assert.Equal(HttpStatusCode.NotFound, r.StatusCode);
     }
 
     [Fact]
     public async Task KnownHost_Resolves_AndHostCaseAndPortAreIgnored()
     {
-        Assert.Equal(HttpStatusCode.OK, (await SendAsync(Req(HttpMethod.Get, "/session", host: "CHAT.Biatec.IO:443"))).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await SendAsync(Req(HttpMethod.Get, "/session", host: "chat.biatec.io"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(Req(HttpMethod.Get, "/terminal-probe", host: "CHAT.Biatec.IO:443"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(Req(HttpMethod.Get, "/terminal-probe", host: "chat.biatec.io"))).StatusCode);
     }
 
     [Fact]
     public async Task ForwardedHost_DoesNotSelectTheTenant()
     {
-        var spoof = await SendAsync(Req(HttpMethod.Get, "/session", host: "evil.example", extra: ("X-Forwarded-Host", "chat.biatec.io")));
+        var spoof = await SendAsync(Req(HttpMethod.Get, "/terminal-probe", host: "evil.example", extra: ("X-Forwarded-Host", "chat.biatec.io")));
         Assert.Equal(HttpStatusCode.NotFound, spoof.StatusCode);
 
         // And the reverse: a forwarded unknown host does not unseat a known Host.
-        var ok = await SendAsync(Req(HttpMethod.Get, "/session", host: "chat.biatec.io", extra: ("X-Forwarded-Host", "evil.example")));
+        var ok = await SendAsync(Req(HttpMethod.Get, "/terminal-probe", host: "chat.biatec.io", extra: ("X-Forwarded-Host", "evil.example")));
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
     }
 
@@ -111,7 +111,7 @@ public sealed class TenancyTests : IDisposable
     [InlineData("https://web.biatec.io:443")]
     public async Task AllowedOrigin_GetsExactAcaoAndCredentials(string origin)
     {
-        var r = await SendAsync(Req(HttpMethod.Get, "/session", origin: origin));
+        var r = await SendAsync(Req(HttpMethod.Get, "/terminal-probe", origin: origin));
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         Assert.Equal(origin.ToLowerInvariant().Replace(":443", ""), Header(r, "Access-Control-Allow-Origin"));
         Assert.Equal("true", Header(r, "Access-Control-Allow-Credentials"));
@@ -133,7 +133,7 @@ public sealed class TenancyTests : IDisposable
     [InlineData("https://web.biatec.io,https://evil.example")]
     public async Task OtherOrigin_GetsNoCorsHeaders(string origin)
     {
-        var r = await SendAsync(Req(HttpMethod.Get, "/session", origin: origin));
+        var r = await SendAsync(Req(HttpMethod.Get, "/terminal-probe", origin: origin));
         Assert.Null(Header(r, "Access-Control-Allow-Origin"));
         Assert.Null(Header(r, "Access-Control-Allow-Credentials"));
     }
@@ -206,7 +206,7 @@ public sealed class TenancyTests : IDisposable
     [Fact]
     public async Task Get_WithUnregisteredClientKey_Is403_ButWithoutKeyPasses()
     {
-        var bad = await SendAsync(Req(HttpMethod.Get, "/session", origin: "https://web.biatec.io", clientKey: "nope"));
+        var bad = await SendAsync(Req(HttpMethod.Get, "/terminal-probe", origin: "https://web.biatec.io", clientKey: "nope"));
         Assert.Equal(HttpStatusCode.Forbidden, bad.StatusCode);
     }
 
