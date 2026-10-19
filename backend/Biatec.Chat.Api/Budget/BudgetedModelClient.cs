@@ -5,6 +5,7 @@ using Amazon.BedrockRuntime;
 using Amazon.BedrockRuntime.Model;
 using Biatec.Chat.Api.Model;
 using Biatec.Chat.Api.Tenancy;
+using SessionTier = Biatec.Chat.Core.Data.SessionTier;
 using Tenant = Biatec.Chat.Core.Data.Tenant;
 using Message = Amazon.BedrockRuntime.Model.Message;
 using Microsoft.Extensions.Options;
@@ -41,8 +42,12 @@ public sealed class BudgetedModelClient(
     IBudgetTenantSource tenants,
     IOptions<BudgetOptions> options,
     TimeProvider clock,
-    ILogger<BudgetedModelClient> log) : IModelClient
+    ILogger<BudgetedModelClient> log,
+    Biatec.Chat.Api.Telemetry.ChatMetrics? metrics = null) : IModelClient
 {
+    /// <summary>The refusal reason in <c>biatec.chat.refusals</c>; a cached answer is not counted.</summary>
+    public const string RefusalReason = "budget_exhausted";
+
     public const string AnonymousRefusal = "Biatec Chat has reached its usage limit for anonymous questions for now. Please try again later.";
     public const string SignInHint = " Signing in keeps the assistant available.";
     private const string NoTenant = "-";
@@ -75,6 +80,7 @@ public sealed class BudgetedModelClient(
             {
                 log.LogWarning("Bedrock budget breaker open for anonymous sessions of tenant {Tenant}", tenantId);
                 var cached = question is null ? null : await TryGetCachedAsync(tenantId, question, ct);
+                if (cached is null) metrics?.Refusal(SessionTier.Anonymous, RefusalReason);
                 foreach (var e in Answer(cached ?? AnonymousRefusal + (fullyUsed ? "" : SignInHint)))
                     yield return e;
                 yield break;
@@ -82,6 +88,7 @@ public sealed class BudgetedModelClient(
             if (fullyUsed)
             {
                 log.LogWarning("Bedrock budget used up for tenant {Tenant}", tenantId);
+                metrics?.Refusal(SessionTier.Authenticated, RefusalReason);
                 throw new BudgetExhaustedException();
             }
         }
