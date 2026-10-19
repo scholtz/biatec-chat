@@ -12,7 +12,8 @@ Move a single task: `$ARGUMENTS` (the task ID, then the target status, then an o
    - **→ blocked**: the note must name the blocking task IDs. Add them to `blocked_by` (each must exist, must not be
      this task, and must not create a cycle). Clear `owner`.
    - **→ backlog** from `blocked`: every `blocked_by` task must be `done`.
-   - **→ in-progress**: set `owner`, and make sure that owner has no other `in-progress` task.
+   - **→ in-progress**: set `owner`, and make sure that owner has no other `in-progress` task and that no task in
+     `conflicts_with` is `in-progress`.
    - **→ review**: every acceptance criterion is ticked, or explained under Hand-off, and every Hand-off field is
      filled in.
 3. If the move isn't allowed, change nothing and explain which rule fails.

@@ -6,6 +6,8 @@ priority: P1
 epic: "Deploy & docs"
 blocked_by: [T-033, T-036, T-042, T-049]
 area: ["e2e/**"]
+parallel: yes
+conflicts_with: []
 issue: "#60"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Confidence the demo works before the freeze.
 
 - In: Playwright (or scripted API) run of demo steps 1-8 with two identities, documented manual phone steps when needed, evidence verification at the end.
 - Out: Authenticator automation.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

@@ -6,6 +6,8 @@ priority: P1
 epic: "Safe"
 blocked_by: [T-022, T-031]
 area: ["backend/Biatec.Chat.Tools/Safe/Create/**"]
+parallel: no
+conflicts_with: [T-036, T-038, T-060]
 issue: "#33"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Step 1 and 3 of the demo script.
 
 - In: Executors, address collection prompts, preview (creation valued zero), safe card data.
 - Out: Proposals (T-033).
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-036, T-038, T-060: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

@@ -6,6 +6,8 @@ priority: P1
 epic: "Evidence"
 blocked_by: [T-003, T-004]
 area: ["backend/Biatec.Chat.Core/Evidence/**", "backend/Biatec.Chat.Api/Evidence/Jwks/**"]
+parallel: yes
+conflicts_with: []
 issue: "#35"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Append-only, verifiable evidence API other components call.
 
 - In: IEvidenceLog.Append(kind, payload), salt generation, chain with concurrency safety, signing key rotation (key in secret store, dev key locally), JWKS endpoint, payload deletion keeping hashes.
 - Out: Wiring into features (T-035), anchoring (T-037).
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

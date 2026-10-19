@@ -6,6 +6,8 @@ priority: P0
 epic: "Widget"
 blocked_by: [T-040]
 area: ["packages/chat-widget/src/components/chat/**"]
+parallel: no
+conflicts_with: [T-036]
 issue: "#42"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Usable chat for anonymous and signed-in users.
 
 - In: Message list, composer, suggestions, sign-in card, popup open and poll, header state, a11y basics.
 - Out: Preview cards (T-042).
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-036: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

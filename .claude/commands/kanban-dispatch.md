@@ -16,8 +16,10 @@ commits on `task/T-###` branches. Never push and never merge; merging happens on
    on `main`, stop and ask the user, because worktrees would not include them. Commit any `kanban/` changes:
    `git add kanban && git commit -m "kanban: sync board"`.
 2. **Select tasks.** Take `backlog` tasks in board order (priority, then ID). Pick each one whose `area` doesn't
-   overlap the `area` of any `in-progress` task or of any task already picked. Stop when the running plus picked
-   workers reach the maximum.
+   overlap the `area` of any `in-progress` task or of any task already picked, and whose `conflicts_with` names no
+   `in-progress` task and no task already picked. A `parallel: yes` task only needs the area check. Skip a
+   conflicting task for now (don't change its status) and take it once the other one leaves `in-progress`. Stop
+   when the running plus picked workers reach the maximum.
 3. **Claim each selected task on `main`.** Set `status: in-progress`, `owner: worker-T-###`, `branch: task/T-###`
    and `updated`, then append `- <now> · coordinator · backlog → in-progress · dispatched to worker`. Regenerate
    the board and commit: `kanban: dispatch T-###, T-###`.
@@ -36,7 +38,10 @@ commits on `task/T-###` branches. Never push and never merge; merging happens on
    - `STATUS: failed`, or no usable report: set `status: backlog`, clear `owner`, and log the reason. If the same
      task fails twice, leave it in backlog with a `NEEDS USER:` note and don't dispatch it again.
    - `PROPOSED TASKS`: create each from `kanban/templates/task.md` with the next free ID, status `backlog` or
-     `blocked`, and the log line `coordinator · (new) → <status> · proposed by T-###`.
+     `blocked`, and the log line `coordinator · (new) → <status> · proposed by T-###`. Set its `parallel` flag and
+     `conflicts_with`, and add it to the `conflicts_with` of the tasks it conflicts with.
+   - Files changed outside the task's area: recompute `parallel` / `conflicts_with` for this task and every
+     unfinished task that changes those files, on both sides (rules in `kanban/README.md`, "Parallel work").
 
    Then regenerate the board, commit `kanban: T-### → <status>`, and go back to step 2 to fill the free slot.
 7. **Stop** when no worker is running and no task is ready. Report: tasks in review (with branches), blocked tasks

@@ -6,6 +6,8 @@ priority: P3
 epic: "Evidence"
 blocked_by: [T-035, T-036]
 area: ["backend/Biatec.Chat.Api/Retention/**"]
+parallel: no
+conflicts_with: [T-032, T-038]
 issue: "#61"
 branch: ""
 owner: ""
@@ -35,6 +37,10 @@ Configurable retention and a user-requested erasure that keep every bundle verif
   background job applying them, an erasure endpoint for the signed-in user (CSRF-guarded), a list of the user's own
   conversations for the widget's export view.
 - Out: Soft-cap and safe-cap row pruning (T-025), payload-deletion primitive (T-034).
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-032, T-038: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

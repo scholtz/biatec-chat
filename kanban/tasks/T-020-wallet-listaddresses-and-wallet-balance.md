@@ -6,6 +6,8 @@ priority: P0
 epic: "Wallet tools"
 blocked_by: [T-014, T-019]
 area: ["backend/Biatec.Chat.Tools/Wallet/Read/**"]
+parallel: yes
+conflicts_with: []
 issue: "#21"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ First authenticated capabilities end to end.
 
 - In: Executors mapping the capability tools to MCP wrappers, result shaping for the model, tool status lines.
 - Out: Transfers.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

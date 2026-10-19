@@ -6,6 +6,8 @@ priority: P3
 epic: "Deploy & docs"
 blocked_by: [T-014]
 area: ["backend/Biatec.Chat.Api/Telemetry/**"]
+parallel: no
+conflicts_with: [T-016, T-018, T-019, T-022, T-024, T-025, T-027, T-035, T-049]
 issue: "#58"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Observability for the backend.
 
 - In: OTel setup with OTLP exporter config, spans around outbound calls, the listed metrics, no PII in attributes.
 - Out: Dashboards.
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-016, T-018, T-019, T-022, T-024, T-025, T-027, T-035, T-049: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

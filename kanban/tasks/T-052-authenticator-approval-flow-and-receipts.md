@@ -6,6 +6,8 @@ priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-051]
 area: ["apps/biatec_authenticator/lib/approvals/**"]
+parallel: yes
+conflicts_with: []
 issue: "#53"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Phone approval that the backend consent flow (T-049) completes with.
 
 - In: Pending list fetch, card, code entry, biometric gate, JCS receipt signing, post to mock, deny, history.
 - Out: Push (T-053).
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

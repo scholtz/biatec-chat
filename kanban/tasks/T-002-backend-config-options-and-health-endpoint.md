@@ -1,13 +1,15 @@
 ---
 id: T-002
 title: Backend config, options and health endpoint
-status: blocked
+status: done
 priority: P0
 epic: "Foundation"
 blocked_by: [T-001]
 area: ["backend/Biatec.Chat.Api/Program.cs", "backend/Biatec.Chat.Api/Config/**", "backend/Biatec.Chat.Api/appsettings*.json", "backend/Biatec.Chat.Api/Health/**"]
+parallel: yes
+conflicts_with: []
 issue: "#3"
-branch: ""
+branch: "task/T-002"
 owner: ""
 source: "PRODUCT-DESCRIPTION.md#chat-backend-biatecchatapi"
 created: 2026-10-19
@@ -29,6 +31,10 @@ Typed options and a /health endpoint the rest of the backend builds on.
 - In: Options classes bound from config: Oidc (issuer, mcpResource), Mcp (endpoint), Bedrock (region eu-central-1, anon/auth model ids, maxTokens), Redis, Postgres, Algod per network, Kms. Validation on start. /health with Redis+Postgres checks. Secrets only via env/user-secrets.
 - Out: Feature endpoints.
 
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
+
 ## Acceptance criteria
 
 - [ ] App starts with appsettings.Development.json against compose services
@@ -47,3 +53,5 @@ dotnet run; curl localhost:<port>/health; stop redis and curl again
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 18:21 · coordinator · blocked → review · PR #66 open on GitHub, waiting for the user's review
+- 2026-10-19 18:23 · user · review → done · PR #66 merged into main @ 7dd7ccc

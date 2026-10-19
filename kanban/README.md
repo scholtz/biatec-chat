@@ -36,7 +36,7 @@ backlog ──claim──▶ in-progress ──hand-off──▶ review ──us
 
 | From → To | Condition |
 |---|---|
-| backlog → in-progress | Every `blocked_by` task is `done`; `owner` is empty; this owner has no other `in-progress` task; `area` doesn't overlap any other `in-progress` task's `area` |
+| backlog → in-progress | Every `blocked_by` task is `done`; `owner` is empty; this owner has no other `in-progress` task; `area` doesn't overlap any other `in-progress` task's `area`; no task in `conflicts_with` is `in-progress` |
 | backlog → blocked | A dependency was found: add its ID to `blocked_by` |
 | in-progress → blocked | The work needs another unfinished task. Add the ID to `blocked_by`, write the progress so far in the log, and clear `owner`. The branch is kept |
 | in-progress → backlog | The worker failed or gave up without a result. The log says why; clear `owner`, keep the branch if it has useful commits |
@@ -58,6 +58,10 @@ in `blocked_by`, or that links it in Context.
 6. `done`: the last Activity log entry records the user's approval and the merge.
 7. The file name `T-###-slug.md` matches the `id`. IDs are never reused.
 8. No two `in-progress` tasks have overlapping `area` globs.
+9. `parallel` is `yes` or `no`. `parallel: no` has a non-empty `conflicts_with`, and `parallel: yes` an empty one.
+   `conflicts_with` is symmetric (if A lists B, B lists A), every ID exists, and it never names a task's own
+   transitive blockers or dependants (those can't run at the same time anyway).
+10. No two `in-progress` tasks list each other in `conflicts_with`.
 
 ## Parallel work: branches, areas, coordinator
 
@@ -66,6 +70,22 @@ in `blocked_by`, or that links it in Context.
   dependent tasks' inputs available.
 - **`area`** lists the paths a task is expected to change (globs). Two tasks with overlapping areas never run at the
   same time, which keeps merges clean. A worker that has to touch files outside its area reports it in the Hand-off.
+- **`parallel` flag.** Every task says whether it can run alongside other tasks: `parallel: yes`, or `parallel: no`
+  plus `conflicts_with`, the tasks it must never run at the same time as. The body repeats it under **Parallel
+  work** ("Parallel work possible: yes / no"). A task is `parallel: no` only when another unfinished task that could
+  be in progress at the same time (neither is a transitive `blocked_by` of the other) changes the same files: an
+  overlapping `area`, or a file outside its area that the task has to edit, such as the shared contracts and the
+  regenerated `packages/chat-protocol`, another task's code it hooks into, or a shared doc. A conflicting task waits
+  until the other is no longer `in-progress`. The order between them doesn't matter, only that they don't overlap in
+  time.
+- **Not counted as conflicts:** the one-line, append-only additions every feature makes to shared wiring:
+  registering services or endpoints in `Program.cs`, a `PackageReference` in a `.csproj`, a dependency in a
+  `package.json`, a new section in `appsettings*.json`. Keep them append-only, put new options classes in your own
+  area (not in `Config/Options.cs`), and when merging keep both sides. Never hand-merge `pnpm-lock.yaml`: take
+  `main`'s version and run `pnpm install`.
+- **Keeping the flag correct.** `/kanban-split` and the coordinator set it when they create a task. When a worker
+  reports files changed outside its area, or a new task is created, the coordinator recomputes the flag for the
+  tasks involved and updates both sides of `conflicts_with`. Flags of `done` tasks are left as they were.
 - **The coordinator owns the board.** `/kanban-dispatch` runs in the main checkout, claims tasks, launches one
   background worker agent per task in its own git worktree, and records each worker's result. Workers **never edit
   anything under `kanban/`**. They report their hand-off, blockers and proposed follow-up tasks back to the

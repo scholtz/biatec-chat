@@ -6,6 +6,8 @@ priority: P3
 epic: "Wallet tools"
 blocked_by: [T-022, T-031]
 area: ["backend/Biatec.Chat.Tools/X402/**", "builders/src/x402/**"]
+parallel: yes
+conflicts_with: []
 issue: "#59"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Groundwork for agent payments.
 
 - In: Sidecar x402 client endpoint, backend capability gated by tenant x402Enabled, preview of the transfer.
 - Out: Seller side.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

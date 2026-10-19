@@ -6,6 +6,8 @@ priority: P1
 epic: "DEX"
 blocked_by: [T-027]
 area: ["builders/src/clamm/**"]
+parallel: yes
+conflicts_with: []
 issue: "#29"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ All CLAMM building behind the sidecar.
 
 - In: Endpoints: pools/list, liquidity/add, liquidity/remove, swap/pool, each returning unsigned group + decoded facts.
 - Out: Backend capabilities.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

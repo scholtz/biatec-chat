@@ -6,6 +6,8 @@ priority: P2
 epic: "Evidence"
 blocked_by: [T-034]
 area: ["backend/Biatec.Chat.Api/Evidence/Anchoring/**"]
+parallel: no
+conflicts_with: [T-036]
 issue: "#38"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Tamper evidence against the operator.
 
 - In: Anchor job, Merkle tree, EvidenceAnchor and leaves, anchorRef on first/resume entries, end markers, resume entries, inclusion proofs in export, verifier support.
 - Out: Mainnet funding decisions (use testnet).
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-036: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

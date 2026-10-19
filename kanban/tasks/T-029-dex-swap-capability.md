@@ -6,6 +6,8 @@ priority: P1
 epic: "DEX"
 blocked_by: [T-022, T-028]
 area: ["backend/Biatec.Chat.Tools/Dex/Swap/**"]
+parallel: yes
+conflicts_with: []
 issue: "#30"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Swaps from chat with preview including slippage.
 
 - In: Executor calling MCP quote/build, fallback to sidecar pool swap with clarifying question, preview fields.
 - Out: Non-Biatec routers.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

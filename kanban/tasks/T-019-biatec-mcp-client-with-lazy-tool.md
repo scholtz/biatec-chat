@@ -6,6 +6,8 @@ priority: P0
 epic: "Wallet tools"
 blocked_by: [T-008]
 area: ["backend/Biatec.Chat.Tools/Mcp/**"]
+parallel: no
+conflicts_with: [T-057]
 issue: "#20"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Typed access to the Biatec MCP tools the capabilities need.
 
 - In: ModelContextProtocol C# client over streamable HTTP, bearer from vault with refresh on demand, cache keyed by tenant+scopes, typed wrappers for listAlgorandAddresses, getCryptoAddress, getCryptoBalance, createPaymentTransaction, createOptInTransaction, createBitcoinTransaction, createSwapTransaction, submitTransactionToBlockchain; signTransaction explicitly blocked.
 - Out: Capabilities using it.
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-057: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

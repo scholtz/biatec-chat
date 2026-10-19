@@ -6,6 +6,8 @@ priority: P1
 epic: "DEX"
 blocked_by: [T-022, T-028]
 area: ["backend/Biatec.Chat.Tools/Dex/Liquidity/**"]
+parallel: yes
+conflicts_with: []
 issue: "#31"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Add liquidity to the EURS/USDC pool from chat.
 
 - In: Executors with clarifying question flow, preview, sign and submit via T-022.
 - Out: Safe-proposed liquidity (T-033).
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

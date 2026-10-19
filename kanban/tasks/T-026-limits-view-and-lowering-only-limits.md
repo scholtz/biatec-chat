@@ -6,6 +6,8 @@ priority: P2
 epic: "Wallet tools"
 blocked_by: [T-022]
 area: ["backend/Biatec.Chat.Tools/Limits/**"]
+parallel: yes
+conflicts_with: []
 issue: "#27"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Users can see and reduce their limits from chat.
 
 - In: Read executor, lowering-only update executor with preview (limits change hash), manage-limits elevation, tenant flag.
 - Out: Raising limits.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
 
 ## Acceptance criteria
 

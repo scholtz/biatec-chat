@@ -6,6 +6,8 @@ priority: P2
 epic: "Orchestrator"
 blocked_by: [T-014]
 area: ["backend/Biatec.Chat.Api/Budget/**"]
+parallel: no
+conflicts_with: [T-016, T-035, T-057]
 issue: "#19"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ A runaway client cannot exhaust the shared budget.
 
 - In: Usage-to-cost accounting from Converse usage, per-tenant and global budgets in config, Redis counters, breaker behaviour for anonymous tier, reserved share for authenticated.
 - Out: Billing APIs.
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-016, T-035, T-057: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

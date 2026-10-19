@@ -6,6 +6,8 @@ priority: P1
 epic: "Wallet tools"
 blocked_by: [T-020, T-022]
 area: ["backend/Biatec.Chat.Tools/Wallet/Bitcoin/**"]
+parallel: no
+conflicts_with: [T-025, T-035, T-049, T-057]
 issue: "#25"
 branch: ""
 owner: ""
@@ -28,6 +30,10 @@ Transfers between the user's Bitcoin addresses.
 
 - In: createBitcoinTransaction wrapper usage, PSBT decoding, intent hash, expiry and invalidation checks, per-address split.
 - Out: Multi-input-address transactions in one signing call.
+
+## Parallel work
+
+Parallel work possible: **no**. Don't run it at the same time as T-025, T-035, T-049, T-057: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
