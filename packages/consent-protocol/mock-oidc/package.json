@@ -1,0 +1,21 @@
+{
+  "name": "mock-oidc",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Local stand-in for the consent side of Biatec OIDC: step-up on sign, CIBA, device enrollment and receipt verification.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "start": "node src/server.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test \"test/*.test.ts\""
+  },
+  "dependencies": {
+    "ajv": "^8.17.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.9.2"
+  }
+}
