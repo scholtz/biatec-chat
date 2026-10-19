@@ -27,6 +27,8 @@ public static class VaultRegistration
                 return new KmsKeyProvider(sp.GetRequiredService<IOptions<KmsOptions>>());
             if (!string.Equals(o.KeyProvider, "Dev", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Vault:KeyProvider must be 'Dev' or 'Kms'.");
+            if (!sp.GetRequiredService<IHostEnvironment>().IsDevelopment())
+                sp.GetRequiredService<ILoggerFactory>().CreateLogger("Vault").LogWarning("Vault uses the local Dev key provider outside Development; set Vault:KeyProvider=Kms.");
             return new DevKeyProvider(o.DevKey is null ? null : Convert.FromBase64String(o.DevKey));
         });
         services.TryAddSingleton<ITokenRefresher, UnconfiguredTokenRefresher>();
