@@ -1,7 +1,7 @@
 ---
 id: T-013
 title: Capability registry and tier gate
-status: backlog
+status: in-progress
 priority: P0
 epic: "Orchestrator"
 blocked_by: [T-001]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Core/Capabilities/**", "backend/Biatec.Chat.Tests/Ca
 parallel: yes
 conflicts_with: []
 issue: "#14"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-013"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#capabilities-and-intents"
 created: 2026-10-19
 updated: 2026-10-19
@@ -55,3 +55,5 @@ dotnet test --filter Capabilities
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:21 · kanban-board · blocked → backlog · blockers done: T-001
+- 2026-10-19 19:05 · scholtz · taken · status stays backlog
+- 2026-10-19 19:05 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

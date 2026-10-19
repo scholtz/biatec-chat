@@ -1,7 +1,7 @@
 ---
 id: T-050
 title: Authenticator Flutter app scaffold
-status: backlog
+status: in-progress
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: []
@@ -9,9 +9,9 @@ area: ["apps/biatec_authenticator/**"]
 parallel: yes
 conflicts_with: []
 issue: "#51"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-050"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-19
 updated: 2026-10-19
@@ -54,3 +54,5 @@ cd apps/biatec_authenticator && flutter analyze && flutter test
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → backlog · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 19:05 · scholtz · taken · status stays backlog
+- 2026-10-19 19:05 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

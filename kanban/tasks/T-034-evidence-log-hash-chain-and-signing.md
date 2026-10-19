@@ -1,7 +1,7 @@
 ---
 id: T-034
 title: Evidence log hash chain and signing keys
-status: backlog
+status: in-progress
 priority: P1
 epic: "Evidence"
 blocked_by: [T-003, T-004]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Core/Evidence/**", "backend/Biatec.Chat.Api/Evidence
 parallel: yes
 conflicts_with: []
 issue: "#35"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-034"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#evidence-record"
 created: 2026-10-19
 updated: 2026-10-19
@@ -55,3 +55,5 @@ dotnet test --filter Evidence
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:41 · kanban-board · blocked → backlog · blockers done: T-003, T-004
+- 2026-10-19 19:05 · scholtz · taken · status stays backlog
+- 2026-10-19 19:05 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
