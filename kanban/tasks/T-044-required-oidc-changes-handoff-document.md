@@ -11,6 +11,7 @@ conflicts_with: []
 issue: "#45"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#required-changes-to-biatec-oidc"
 created: 2026-10-19
 updated: 2026-10-19

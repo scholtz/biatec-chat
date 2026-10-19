@@ -11,6 +11,7 @@ conflicts_with: [T-035]
 issue: "#16"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#session-tiers"
 created: 2026-10-19
 updated: 2026-10-19

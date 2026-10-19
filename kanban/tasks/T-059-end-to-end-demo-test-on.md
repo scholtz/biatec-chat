@@ -11,6 +11,7 @@ conflicts_with: []
 issue: "#60"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#demonstration-script"
 created: 2026-10-19
 updated: 2026-10-19

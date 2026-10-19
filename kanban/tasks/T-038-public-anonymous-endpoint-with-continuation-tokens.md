@@ -11,6 +11,7 @@ conflicts_with: [T-009, T-022, T-032, T-036, T-060]
 issue: "#39"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#embedding-modes"
 created: 2026-10-19
 updated: 2026-10-19

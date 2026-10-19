@@ -11,6 +11,7 @@ conflicts_with: [T-024, T-035, T-049, T-057]
 issue: "#26"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#rules"
 created: 2026-10-19
 updated: 2026-10-19

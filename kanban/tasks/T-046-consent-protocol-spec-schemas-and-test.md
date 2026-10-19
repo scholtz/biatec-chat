@@ -11,6 +11,7 @@ conflicts_with: []
 issue: "#47"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#biatec-authenticator-and-the-biatec-consent-protocol"
 created: 2026-10-19
 updated: 2026-10-19

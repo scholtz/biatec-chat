@@ -1,7 +1,7 @@
 ---
 id: T-008
 title: Encrypted token vault in Redis
-status: backlog
+status: done
 priority: P0
 epic: "Sessions & auth"
 blocked_by: [T-002]
@@ -9,8 +9,9 @@ area: ["backend/Biatec.Chat.Api/Vault/**"]
 parallel: yes
 conflicts_with: []
 issue: "#9"
-branch: ""
+branch: "task/T-008"
 owner: ""
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#rules"
 created: 2026-10-19
 updated: 2026-10-19
@@ -59,3 +60,4 @@ dotnet test --filter Vault
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:00 · coordinator · review · added note: KMS key bills while idle, needs user approval (AGENTS.md rule)
 - 2026-10-19 18:23 · kanban-board · blocked → backlog · blockers done: T-002
+- 2026-10-19 18:27 · user · backlog → done · PR #67 merged into main @ 3589a9a (synced by kanban-board)

@@ -1,7 +1,7 @@
 ---
 id: T-007
 title: Cookie session, probe and keepalive
-status: blocked
+status: backlog
 priority: P0
 epic: "Sessions & auth"
 blocked_by: [T-006]
@@ -11,6 +11,7 @@ conflicts_with: []
 issue: "#8"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#embedding-modes"
 created: 2026-10-19
 updated: 2026-10-19
@@ -53,3 +54,4 @@ dotnet test --filter Sessions; curl -c/-b sequence documented in hand-off
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 18:41 · kanban-board · blocked → backlog · blockers done: T-006

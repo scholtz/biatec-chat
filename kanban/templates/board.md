@@ -12,20 +12,20 @@ Updated: YYYY-MM-DD HH:MM · Tasks: N total · backlog N · in-progress N · blo
 
 ## In progress
 
-| ID | Title | Priority | Owner | Branch | Since |
-|---|---|---|---|---|---|
+| ID | Title | Priority | Taken by | Owner | Branch | Since |
+|---|---|---|---|---|---|---|
 
 ## Blocked
 
-| ID | Title | Priority | Blocked by (not done yet) | Parallel |
-|---|---|---|---|---|
+| ID | Title | Priority | Blocked by (not done yet) | Parallel | Taken by |
+|---|---|---|---|---|---|
 
 ## Backlog
 
 Sorted by priority, then ID. The first row is what `/kanban-next` picks.
 
-| ID | Title | Priority | Epic | Parallel |
-|---|---|---|---|---|
+| ID | Title | Priority | Epic | Parallel | Taken by |
+|---|---|---|---|---|---|
 
 ## Done
 

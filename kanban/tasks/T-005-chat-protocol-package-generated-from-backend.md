@@ -11,6 +11,7 @@ conflicts_with: []
 issue: "#6"
 branch: "task/T-005"
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#products-in-this-monorepo"
 created: 2026-10-19
 updated: 2026-10-19

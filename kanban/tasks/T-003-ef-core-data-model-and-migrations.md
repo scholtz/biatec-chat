@@ -1,7 +1,7 @@
 ---
 id: T-003
 title: EF Core data model and migrations
-status: backlog
+status: done
 priority: P0
 epic: "Foundation"
 blocked_by: [T-002]
@@ -9,8 +9,9 @@ area: ["backend/Biatec.Chat.Core/Data/**", "backend/Biatec.Chat.Api/Migrations/*
 parallel: yes
 conflicts_with: []
 issue: "#4"
-branch: ""
+branch: "task/T-003"
 owner: ""
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#data-model-backend"
 created: 2026-10-19
 updated: 2026-10-19
@@ -54,3 +55,4 @@ dotnet ef database update; dotnet test --filter Data
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:23 · kanban-board · blocked → backlog · blockers done: T-002
+- 2026-10-19 18:28 · user · backlog → done · PR #68 merged into main @ 1e26717 (synced by kanban-board)

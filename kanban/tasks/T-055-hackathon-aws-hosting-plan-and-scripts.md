@@ -11,6 +11,7 @@ conflicts_with: []
 issue: "#56"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#chat-backend-biatecchatapi"
 created: 2026-10-19
 updated: 2026-10-19

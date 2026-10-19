@@ -11,6 +11,7 @@ conflicts_with: []
 issue: "#48"
 branch: ""
 owner: ""
+taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#two-entry-points-one-request-model"
 created: 2026-10-19
 updated: 2026-10-19

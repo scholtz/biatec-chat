@@ -15,12 +15,15 @@ commits on `task/T-###` branches. Never push and never merge; merging happens on
 1. **Sync the board.** Run the `/kanban-board` steps. If `git status` shows uncommitted changes outside `kanban/`
    on `main`, stop and ask the user, because worktrees would not include them. Commit any `kanban/` changes:
    `git add kanban && git commit -m "kanban: sync board"`.
-2. **Select tasks.** Take `backlog` tasks in board order (priority, then ID). Pick each one whose `area` doesn't
+2. **Select tasks.** Run `git pull --rebase origin main` first and get your GitHub username `<me>`
+   (`gh api user -q .login`). Consider only `backlog` tasks whose `taken_by` is empty or `<me>`; never dispatch a
+   teammate's task. Take them in board order (priority, then ID), tasks taken by `<me>` first. Pick each one whose `area` doesn't
    overlap the `area` of any `in-progress` task or of any task already picked, and whose `conflicts_with` names no
    `in-progress` task and no task already picked. A `parallel: yes` task only needs the area check. Skip a
    conflicting task for now (don't change its status) and take it once the other one leaves `in-progress`. Stop
    when the running plus picked workers reach the maximum.
-3. **Claim each selected task on `main`.** Set `status: in-progress`, `owner: worker-T-###`, `branch: task/T-###`
+3. **Claim each selected task on `main`.** Take the untaken ones first with the `/kanban-take` steps (one commit and
+   push for all of them; drop any a teammate got first). Then set `status: in-progress`, `owner: worker-T-###`, `branch: task/T-###`
    and `updated`, then append `- <now> · coordinator · backlog → in-progress · dispatched to worker`. Regenerate
    the board and commit: `kanban: dispatch T-###, T-###`.
 4. **Launch one background worker per task** with the Agent tool: `subagent_type: general-purpose`,
