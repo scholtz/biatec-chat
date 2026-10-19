@@ -6,7 +6,8 @@ createApp({ render: () => h("main", [h("h1", "Host page"), h("p", "The chat laun
     backendUrl: "http://localhost:5000",
     clientKey: "playground",
     locale: "en",
-    theme: "auto",
+    theme: "host", // toggle the p-dark class on <html> in devtools to see it follow
+    hostDarkClass: "p-dark",
     suggestions: "default",
   })
   .mount("#app");

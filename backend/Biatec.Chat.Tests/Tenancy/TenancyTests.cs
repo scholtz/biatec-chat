@@ -234,7 +234,9 @@ public sealed class TenancyTests : IDisposable
     public async Task PublicEndpoint_AllowsAnyOrigin_WithoutCredentialsOrCsrf()
     {
         var r = await SendAsync(Req(HttpMethod.Post, "/public/chat", origin: "https://anywhere.example"));
-        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        // The real endpoint now answers (400 for this empty body); the point is that CSRF/origin checks do not apply.
+        Assert.NotEqual(HttpStatusCode.Forbidden, r.StatusCode);
+        Assert.NotEqual(HttpStatusCode.NotFound, r.StatusCode);
         Assert.Equal("*", Header(r, "Access-Control-Allow-Origin"));
         Assert.Null(Header(r, "Access-Control-Allow-Credentials"));
     }

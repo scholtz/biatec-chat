@@ -265,7 +265,7 @@ public sealed class LimitsFlowTests : IAsyncLifetime
         if (!viaConfirmService) return await limitsConfirm.ConfirmAsync(_tenant, _session, previewId, hash, default);
         // The shared confirm endpoint's service hands a limits step to the limits path.
         var svc = new ConfirmService(db, previews, scopes, _vault, new NoSigner(), new NoMcp(), new NoConfirmer(), _evidence, _clock,
-            NullLogger<ConfirmService>.Instance, limitsConfirm);
+            NullLogger<ConfirmService>.Instance, limits: limitsConfirm);
         return await svc.ConfirmAsync(_tenant, _session, previewId, hash, default);
     }
 

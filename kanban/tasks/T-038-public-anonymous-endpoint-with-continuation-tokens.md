@@ -1,7 +1,7 @@
 ---
 id: T-038
 title: Public anonymous endpoint with continuation tokens
-status: in-progress
+status: done
 priority: P1
 epic: "Sessions & auth"
 blocked_by: [T-015]
@@ -14,7 +14,7 @@ owner: "session-20261019-agent"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#embedding-modes"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-038 · Public anonymous endpoint with continuation tokens
@@ -51,9 +51,12 @@ dotnet test --filter Public
 
 ## Review
 
+- 2026-10-20 00:55 · approve · PR #115 merged into main @ 83e6526 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-015
 - 2026-10-19 22:32 · scholtz · taken · status stays backlog
 - 2026-10-19 22:32 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 00:55 · user · in-progress → done · PR #115 merged into main @ 83e6526 (synced by kanban-sync)

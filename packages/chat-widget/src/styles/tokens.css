@@ -1,0 +1,109 @@
+/* Biatec AI design tokens (ported from docs/design/biatec-ai-widget/tokens/biatec-tokens.css, aligned with Biatec DEX).
+   No font @import: the widget never fetches fonts. Hosts load Inter if they want it.
+   Defaults are declared on :host (the shadow host) and on a standalone .biatec-chat root (mounted without a shadow
+   root). A custom property set on the host element by the embedding page wins over these defaults.
+   Dark is the base; light overrides under [data-theme="light"].
+   --bc-z 1000 stays below PrimeVue overlays (auto z-index from 1100), so host dialogs open above the floating widget. */
+:host,
+.biatec-chat[data-standalone] {
+  --color-bg-primary: #070b14;
+  --color-bg-secondary: #111827;
+  --color-bg-elevated: #161e2e;
+  --color-bg-interactive: #1e293b;
+  --color-text-primary: #e6edf6;
+  --color-text-secondary: #9aa7ba;
+  --color-text-disabled: #6b7a90;
+  --color-border-default: rgba(148, 163, 184, 0.14);
+  --color-border-strong: rgba(148, 163, 184, 0.24);
+  --color-border-focus: #2dd4a7;
+  --color-brand-primary: #2dd4a7;
+  --color-brand-hover: #4be0b8;
+  --color-brand-pressed: #14b88a;
+  --color-brand-subtle: rgba(45, 212, 167, 0.14);
+  --color-brand-text: #2dd4a7;
+  --color-brand-on: #04221a;
+  --color-status-success: #34d399;
+  --color-status-success-subtle: rgba(52, 211, 153, 0.14);
+  --color-status-warning: #fbbf24;
+  --color-status-warning-subtle: rgba(251, 191, 36, 0.13);
+  --color-status-danger: #fb7185;
+  --color-status-danger-subtle: rgba(251, 113, 133, 0.14);
+  --color-status-info: #38bdf8;
+  --color-status-info-subtle: rgba(56, 189, 248, 0.14);
+  --color-status-neutral: #9aa7ba;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 12px 32px -14px rgba(0, 0, 0, 0.7);
+  --shadow-lg: 0 28px 56px -22px rgba(0, 0, 0, 0.8);
+  --color-scrim: rgba(3, 6, 12, 0.72);
+  --ambient: radial-gradient(1100px 620px at 8% -8%, rgba(10, 50, 71, 0.55), transparent 70%),
+    radial-gradient(900px 560px at 92% 4%, rgba(13, 92, 70, 0.5), transparent 70%),
+    radial-gradient(800px 600px at 60% 110%, rgba(22, 38, 74, 0.55), transparent 70%);
+  color-scheme: dark;
+
+  --font-sans: "Inter", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-script: "Pacifico", cursive;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 999px;
+  --size-control-sm: 32px;
+  --size-control-md: 40px;
+  --size-control-lg: 48px;
+  --size-icon-hit: 40px;
+  --size-icon-hit-touch: 44px;
+  --blur: 14px;
+  --motion-fast: 150ms;
+  --motion-base: 200ms;
+  --motion-slow: 220ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --bc-z: 1000;
+  --bc-panel-width: 400px;
+}
+
+:host([data-theme="light"]),
+.biatec-chat[data-standalone][data-theme="light"] {
+  --color-bg-primary: #eef2f6;
+  --color-bg-secondary: #ffffff;
+  --color-bg-elevated: #ffffff;
+  --color-bg-interactive: #e2e8f0;
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-disabled: #94a3b8;
+  --color-border-default: rgba(15, 23, 42, 0.1);
+  --color-border-strong: rgba(15, 23, 42, 0.18);
+  --color-border-focus: #0b8a60;
+  --color-brand-primary: #0ea371;
+  --color-brand-hover: #0b8a60;
+  --color-brand-pressed: #0a774f;
+  --color-brand-subtle: rgba(14, 163, 113, 0.12);
+  --color-brand-text: #087453;
+  --color-brand-on: #04221a;
+  --color-status-success: #0f7a45;
+  --color-status-success-subtle: rgba(21, 160, 90, 0.12);
+  --color-status-warning: #946200;
+  --color-status-warning-subtle: rgba(217, 145, 0, 0.12);
+  --color-status-danger: #e11d48;
+  --color-status-danger-subtle: rgba(225, 29, 72, 0.1);
+  --color-status-info: #0369a1;
+  --color-status-info-subtle: rgba(2, 132, 199, 0.1);
+  --color-status-neutral: #475569;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 8px 24px -12px rgba(15, 23, 42, 0.25);
+  --shadow-lg: 0 24px 48px -20px rgba(15, 23, 42, 0.35);
+  --color-scrim: rgba(15, 23, 42, 0.45);
+  --ambient: radial-gradient(1100px 620px at 8% -8%, rgba(31, 122, 140, 0.22), transparent 70%),
+    radial-gradient(900px 560px at 92% 4%, rgba(35, 182, 132, 0.2), transparent 70%),
+    radial-gradient(800px 600px at 60% 110%, rgba(37, 99, 235, 0.12), transparent 70%);
+  color-scheme: light;
+}

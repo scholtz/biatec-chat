@@ -1,7 +1,7 @@
 ---
 id: T-042
 title: Widget action preview, consent and receipt cards
-status: blocked
+status: backlog
 priority: P0
 epic: "Widget"
 blocked_by: [T-041, T-062]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#action-preview"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-042 · Widget action preview, consent and receipt cards
@@ -63,3 +63,4 @@ pnpm --filter chat-widget test
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:00 · coordinator · review · added session-lifetime countdown and 20-minute warning criterion
 - 2026-10-19 22:40 · coordinator · blocked · widget UI rework: build in the Biatec AI design (docs/design/), blocked_by T-062 for tokens and primitives
+- 2026-10-20 00:55 · kanban-board · blocked → backlog · blockers done: T-041, T-062
