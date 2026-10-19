@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/authorization-details.schema.json",
+  "title": "authorization_details",
+  "description": "The RFC 9396 authorization_details array of a consent request: exactly one typed object.",
+  "type": "array",
+  "minItems": 1,
+  "maxItems": 1,
+  "items": {
+    "oneOf": [
+      { "$ref": "authorization-details-transaction.schema.json" },
+      { "$ref": "authorization-details-limits-change.schema.json" }
+    ]
+  }
+}

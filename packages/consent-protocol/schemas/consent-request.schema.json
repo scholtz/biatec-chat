@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/consent-request.schema.json",
+  "title": "Consent request object",
+  "description": "The one request object produced by both entry points and fetched by the authenticator over its authenticated channel. The binding code is deliberately absent: the authenticator never displays it (rule 2).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["auth_req_id", "entry", "authorization_details", "client", "binding_message", "requested_expiry", "expiry", "bound_hash", "origin", "sub"],
+  "allOf": [
+    { "if": { "required": ["entry"], "properties": { "entry": { "const": "step-up" } } }, "then": { "properties": { "binding_message": { "type": "string", "maxLength": 0 } } } },
+    {
+      "if": { "required": ["client"], "properties": { "client": { "type": "object", "required": ["verified"], "properties": { "verified": { "const": false } } } } },
+      "then": { "properties": { "binding_message": { "type": "string", "maxLength": 0 } } }
+    }
+  ],
+  "properties": {
+    "auth_req_id": { "type": "string", "minLength": 16 },
+    "entry": { "enum": ["step-up", "direct"] },
+    "authorization_details": { "$ref": "authorization-details.schema.json" },
+    "client": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity_id", "verified"],
+      "properties": {
+        "entity_id": { "type": "string", "minLength": 1, "description": "OpenID Federation entity identifier, or client_id when the client has none." },
+        "verified": { "type": "boolean", "description": "True only when the entity statement chains to a recognized trust anchor." },
+        "display_name": { "type": "string" },
+        "logo_uri": { "type": "string" },
+        "domain": { "type": "string" },
+        "fingerprint": { "type": "string", "description": "Short client_id fingerprint shown for unverified clients." }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["verified"], "properties": { "verified": { "const": true } } },
+          "then": { "required": ["display_name", "domain"], "properties": { "display_name": true, "domain": true } }
+        },
+        {
+          "if": { "required": ["verified"], "properties": { "verified": { "const": false } } },
+          "then": {
+            "required": ["fingerprint"],
+            "properties": { "fingerprint": true, "display_name": false, "logo_uri": false, "domain": false }
+          }
+        }
+      ]
+    },
+    "binding_message": { "type": "string", "maxLength": 140, "description": "As it will be rendered and signed: the empty string for step-up entry and for unverified clients." },
+    "requested_expiry": { "type": "integer", "minimum": 1, "maximum": 300 },
+    "expiry": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "Unix time in seconds after which the request is void." },
+    "bound_hash": { "type": "string", "minLength": 1, "description": "group_hash or request_hash the consent is bound to." },
+    "origin": { "type": "string", "minLength": 1 },
+    "sub": { "type": "string", "minLength": 1, "description": "Pairwise subject." }
+  }
+}

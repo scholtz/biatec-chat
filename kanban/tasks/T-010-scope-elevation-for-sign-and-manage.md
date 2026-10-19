@@ -1,7 +1,7 @@
 ---
 id: T-010
 title: Scope elevation for sign and manage-limits
-status: in-progress
+status: done
 priority: P0
 epic: "Sessions & auth"
 blocked_by: [T-009]
@@ -51,9 +51,12 @@ dotnet test --filter Elevation
 
 ## Review
 
+- 2026-10-19 19:24 · approve · PR #78 merged into main @ c5aa6c2 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:56 · kanban-board · blocked → backlog · blockers done: T-009
 - 2026-10-19 19:05 · scholtz · taken · status stays backlog
 - 2026-10-19 19:05 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-19 19:24 · user · in-progress → done · PR #78 merged into main @ c5aa6c2 (synced by kanban-sync)
