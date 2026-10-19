@@ -1,7 +1,7 @@
 ---
 id: T-057
 title: OpenTelemetry traces and metrics
-status: review
+status: done
 priority: P3
 epic: "Deploy & docs"
 blocked_by: [T-014]
@@ -60,6 +60,8 @@ dotnet test; run with console exporter
 
 ## Review
 
+- 2026-10-20 00:20 · approve · PR #123 merged into main @ 0cbdb3a (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
@@ -69,3 +71,4 @@ dotnet test; run with console exporter
 - 2026-10-19 23:59 · LukassSoukup · backlog · conflicts_with revised: dropped T-018 (done), T-035 and T-049: metrics come from decorators on IPolicyEventSink, IEvidenceLog and the requestSignIn executor registered from Telemetry/, so no orchestrator, confirm, consent or evidence code is edited
 - 2026-10-19 23:59 · session-20261019-2359 · backlog → in-progress · claimed by /kanban-next
 - 2026-10-20 00:19 · session-20261019-2359 · in-progress → review · PR #123, tests and review passed
+- 2026-10-20 00:20 · user · review → done · PR #123 merged into main @ 0cbdb3a (synced by kanban-sync)
