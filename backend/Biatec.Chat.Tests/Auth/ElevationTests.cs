@@ -385,6 +385,48 @@ public sealed class ElevationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Elevation_SupersededPopupCannotStillChangeTheVault()
+    {
+        var cookie = await LoginAsync();
+        var sid = SessionIdOf(cookie);
+        var before = _vault.Items[sid];
+        var (firstId, path) = await StartElevationAsync(cookie, "sign");
+        var redirect = await SendAsync(HttpMethod.Get, path, cookie);
+        var (code, state) = _oidc.Authorize(redirect.Headers.Location!, "openid profile email sign");
+        await StartElevationAsync(cookie, "manage-limits"); // retires the first request
+
+        var cb = await SendAsync(HttpMethod.Get, $"/auth/callback?code={Uri.EscapeDataString(code)}&state={Uri.EscapeDataString(state)}", cookie);
+        Assert.Equal(HttpStatusCode.BadRequest, cb.StatusCode);
+        Assert.Equal(PopupAuthStatus.Expired, await StatusAsync(firstId));
+        Assert.Same(before, _vault.Items[sid]);
+    }
+
+    [Fact]
+    public async Task Elevation_ResponseThatDropsAHeldAllowListedScopeIsRefused()
+    {
+        var cookie = await LoginAsync();
+        var sid = SessionIdOf(cookie);
+        await ElevateAsync(cookie, "sign", "openid profile email sign");
+        var before = _vault.Items[sid];
+        _oidc.GrantedScopeOverride = "openid profile email manage-limits"; // sign silently dropped
+
+        var (_, cb) = await ElevateAsync(cookie, "manage-limits", "openid profile email sign manage-limits");
+        Assert.Equal(HttpStatusCode.BadRequest, cb.StatusCode);
+        Assert.Same(before, _vault.Items[sid]);
+        Assert.True((await Guard.CheckAsync(sid, ElevationScopes.Sign)).Allowed);
+    }
+
+    [Fact]
+    public async Task Elevation_StartingOneDoesNotRetireAPendingLoginPopup()
+    {
+        var cookie = await LoginAsync();
+        var login = await SendAsync(HttpMethod.Post, "/auth/popup", cookie);
+        var loginId = Guid.Parse((await login.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("authRequestId").GetString()!);
+        await StartElevationAsync(cookie, "sign");
+        Assert.Equal(PopupAuthStatus.Pending, await StatusAsync(loginId));
+    }
+
+    [Fact]
     public async Task Elevation_KeepsTheAbsoluteSessionLifetime()
     {
         var cookie = await LoginAsync();

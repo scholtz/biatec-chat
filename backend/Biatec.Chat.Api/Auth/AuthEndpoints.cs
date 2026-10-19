@@ -148,11 +148,19 @@ public static class AuthEndpoints
                 return ClosePage(ctx, 400);
             }
 
+            if (pending.Purpose is not ("login" or Elevation.ElevationEndpoints.Purpose))
+            {
+                await SetStatusAsync(db, pending.PopupId, session.ConversationId, PopupAuthStatus.Failed, ctx.RequestAborted);
+                return ClosePage(ctx, 400); // fail closed on an unknown purpose
+            }
             if (pending.Purpose == Elevation.ElevationEndpoints.Purpose)
             {
                 try
                 {
-                    var ok = await Elevation.ElevationCompletion.CompleteAsync(tenant, session, pending, code, clock, oidc, validator, vault, ctx.RequestAborted);
+                    // A superseded or expired popup request must not still change the vault.
+                    var open = await db.PopupAuthRequests.AsNoTracking().AnyAsync(p => p.Id == pending.PopupId && p.ConversationId == session.ConversationId
+                        && p.Purpose == PopupAuthPurpose.Elevate && p.Status == PopupAuthStatus.Pending, ctx.RequestAborted);
+                    var ok = open && await Elevation.ElevationCompletion.CompleteAsync(tenant, session, pending, code, clock, oidc, validator, vault, ctx.RequestAborted);
                     await SetStatusAsync(db, pending.PopupId, session.ConversationId, ok ? PopupAuthStatus.Completed : PopupAuthStatus.Failed, ctx.RequestAborted);
                     return ClosePage(ctx, ok ? 200 : 400);
                 }

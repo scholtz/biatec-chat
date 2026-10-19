@@ -46,7 +46,7 @@ public static class ElevationEndpoints
                 return Results.Unauthorized();
 
             await db.PopupAuthRequests
-                .Where(p => p.ConversationId == session.ConversationId && p.Status == PopupAuthStatus.Pending)
+                .Where(p => p.ConversationId == session.ConversationId && p.Purpose == PopupAuthPurpose.Elevate && p.Status == PopupAuthStatus.Pending)
                 .ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, PopupAuthStatus.Expired), ctx.RequestAborted);
 
             var nonce = AuthEndpoints.Random64();
@@ -161,6 +161,15 @@ public static class ElevationCompletion
         var granted = tokens.Scopes ?? pending.Scope.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         // The new scope must really have been granted (the user may have declined it).
         if (Array.IndexOf(granted, requestedScope!) < 0) return false;
+        // Scopes only grow within a session: a response that drops an allow-listed scope already held is refused,
+        // so signing is never silently lost by a later elevation.
+        foreach (var held in old.Scopes)
+            if (ElevationScopes.IsAllowed(held) && Array.IndexOf(granted, held) < 0) return false;
+
+        // The exchange took a network round trip: the session may have been logged out meanwhile, so re-read the
+        // entry and never re-create tokens for an ended session.
+        old = await vault.GetAsync(sessionId, ct);
+        if (old is null || clock.GetUtcNow() >= old.AbsoluteExpiresAt) return false;
 
         await vault.PutAsync(sessionId, new TokenVaultEntry
         {
