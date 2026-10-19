@@ -16,6 +16,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="..\..\docs\kb\**\*.md" Link="kb\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="AWSSDK.BedrockRuntime" Version="4.0.101.11" />
     <PackageReference Include="AWSSDK.KeyManagementService" Version="4.0.100.18" />
     <PackageReference Include="AWSSDK.SSO" Version="4.0.100.20" />
