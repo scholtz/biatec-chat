@@ -163,13 +163,27 @@ public sealed class CapabilityRegistry
             Tool("dex.swap", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Quote and build a swap.", swapInput),
             Tool("dex.addLiquidity", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Add liquidity to a Biatec DEX pool (amountA/amountB are in base units of the pool's asset A/B). Set poolAppId 0 with assetAId and assetBId when the user has not named a pool: the tool lists the pair's pools and you must ask which one.", liquidityInput),
             Tool("dex.removeLiquidity", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Remove liquidity (percent of the user's LP tokens) from a Biatec DEX pool. Set poolAppId 0 with assetAId and assetBId when the user has not named a pool: the tool lists the pair's pools and you must ask which one.", removeLiquidityInput),
-            Tool("safe.create", U, Open, Sign, false, ValuationBasis.ZeroValued, "Deploy a safe.",
-                Obj(new JsonObject { ["network"] = Network(), ["from"] = Address() }, "network", "from")),
+            Tool("safe.create", U, Open, Sign, false, ValuationBasis.ZeroValued,
+                "Create a Biatec Safe (multi-signature shared account) deployed from one of the user's addresses (from). signers are the OTHER members' Algorand addresses exactly as the user pasted them (never invent or complete one); the creator is included automatically. threshold is how many approvals a proposal needs. Call without name, signers or threshold to learn what to ask. The creation is two confirmations (deploy, then signer-group setup) with a separate wallet.transfer funding the safe in between; call again with the same arguments after each step lands.",
+                Obj(new JsonObject
+                {
+                    ["network"] = Network(),
+                    ["from"] = Address(),
+                    ["name"] = Str(max: 32),
+                    ["signers"] = new JsonObject { ["type"] = "array", ["items"] = Address(), ["minItems"] = 0, ["maxItems"] = 14 },
+                    ["threshold"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 15 },
+                }, "network", "from")),
             Tool("safe.propose", U, Open, Sign, false, ValuationBasis.ZeroValued, "Create a safe proposal.",
                 Obj(new JsonObject { ["network"] = Network(), ["from"] = Address(), ["safeAppId"] = Id(), ["kind"] = Str(max: 64) }, "network", "from", "safeAppId", "kind")),
             Tool("safe.approve", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Approve a safe proposal.", proposalInput),
             Tool("safe.execute", U, Open, Sign, true, ValuationBasis.ZeroValued, "Execute a safe proposal.", proposalInput),
-            Tool("safe.list", U, Open, null, false, ValuationBasis.None, "List the user's safes and pending proposals.", networkOnly),
+            Tool("safe.list", U, Open, null, false, ValuationBasis.None,
+                "List the Biatec Safes the user is a member of, with signer groups, pending proposals, approval progress, payload versions and expiry rounds. safeAppIds: app ids of safes the user named (optional; safes created through this chat are found without them).",
+                Obj(new JsonObject
+                {
+                    ["network"] = Network(),
+                    ["safeAppIds"] = new JsonObject { ["type"] = "array", ["items"] = Id(), ["maxItems"] = 10 },
+                }, "network")),
             Tool("limits.view", U, Open, null, false, ValuationBasis.None, "View spending limits.", empty),
             // Visible at openid so the model can call it; the manage-limits elevation is enforced by CheckSigningScope (re-authorize).
             Tool("limits.update", U, Open, ManageLimits, false, ValuationBasis.LimitsChange, "Update spending limits.",

@@ -1,0 +1,92 @@
+{
+  "alice": "MM7X6YIFGQIFXCOLEALBYA4MGFMGHLDHMXL2YSUAGRNV74A6QCTD2BQYRU",
+  "bob": "YHHGUP5C4E3VSR5KENE2PUF3CU7PKMZ4GGINBAFU7HQNLHJUE6DIN2QOSE",
+  "appId": "778",
+  "deploy": {
+    "transactions": [
+      "i6RhcGFhk8QEvy4eeMQLAAlUZWFtIFNhZmXECAAAAAAAABCSpGFwYXDEBAuBAUOkYXBnc4KjbmJzA6NudWkHpGFwc3XEBAuBAUOjZmVlzQPoomZ2zQPoo2dlbqx0ZXN0bmV0LXYxLjCiZ2jEIAcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHomx2zQPyo3NuZMQgYz9/YQU0EFuJyyAWHAOMMVhjrGdl16xKgDRbX/AegKakdHlwZaRhcHBs"
+    ],
+    "preview": {
+      "kind": "safe.create",
+      "step": "deploy",
+      "intent": "Deploy Biatec Safe \"Team Safe\"",
+      "name": "Team Safe",
+      "validatorAppId": "4242",
+      "network": "testnet",
+      "valueMicroAlgo": "0",
+      "notes": [
+        "The safe's app id is known once this lands. Fund its account with a separate transfer, then run the bootstrap step."
+      ],
+      "transactions": [
+        {
+          "type": "appl",
+          "sender": "MM7X6YIFGQIFXCOLEALBYA4MGFMGHLDHMXL2YSUAGRNV74A6QCTD2BQYRU",
+          "fee": "1000",
+          "appId": "0",
+          "firstValid": "1000",
+          "lastValid": "1010"
+        }
+      ]
+    },
+    "simulation": {
+      "ok": true,
+      "appBudgetConsumed": 1234
+    }
+  },
+  "bootstrap": {
+    "transactions": [
+      "iqRhcGFhlMQEFKj/usRLAEIAAAAAAAAAAgAAAAAAAAADAAAAAAAAAAcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAdTaWduZXJzxF4AAgAEADBjP39hBTQQW4nLIBYcA4wxWGOsZ2XXrEqANFtf8B6ApgAAAAAAAAAAACoAAMHOaj+i4TdZR6ojSafQuxU+9TM8MZDQgLT54NWdNCeGAAAAAAAAAAAAKgAAxAgAAAAAAAAAAKRhcGlkzQMKo2ZlZc0D6KJmds0D6KNnZW6sdGVzdG5ldC12MS4womdoxCAHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHB6NncnDEIDxZ8uiSXb54FZXxL5edJWkObMw43d+O1XEWCzBU97boomx2zQPyo3NuZMQgYz9/YQU0EFuJyyAWHAOMMVhjrGdl16xKgDRbX/AegKakdHlwZaRhcHBs",
+      "iqRhcGFhkcQECyQ8p6RhcGlkzQMKo2ZlZc0D6KJmds0D6KNnZW6sdGVzdG5ldC12MS4womdoxCAHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHB6NncnDEIDxZ8uiSXb54FZXxL5edJWkObMw43d+O1XEWCzBU97boomx2zQPyo3NuZMQgYz9/YQU0EFuJyyAWHAOMMVhjrGdl16xKgDRbX/AegKakdHlwZaRhcHBs"
+    ],
+    "preview": {
+      "kind": "safe.create",
+      "step": "bootstrap",
+      "intent": "Create the signer groups of safe 778",
+      "appId": "778",
+      "safeAddress": "J52XIH7NWSGNPB666UYRD5QKT2JNOYQP5WTQI6XJEKQGCT6APGDT3NQBJM",
+      "groups": [
+        {
+          "name": "Signers",
+          "threshold": "2",
+          "members": [
+            "MM7X6YIFGQIFXCOLEALBYA4MGFMGHLDHMXL2YSUAGRNV74A6QCTD2BQYRU",
+            "YHHGUP5C4E3VSR5KENE2PUF3CU7PKMZ4GGINBAFU7HQNLHJUE6DIN2QOSE"
+          ],
+          "allowedActions": [
+            "payment",
+            "assetTransfer",
+            "appCall"
+          ],
+          "adminPrivileges": "3"
+        }
+      ],
+      "network": "testnet",
+      "valueMicroAlgo": "0",
+      "notes": [
+        "The safe's account must hold enough ALGO for box storage before this group is submitted."
+      ],
+      "transactions": [
+        {
+          "type": "appl",
+          "sender": "MM7X6YIFGQIFXCOLEALBYA4MGFMGHLDHMXL2YSUAGRNV74A6QCTD2BQYRU",
+          "fee": "1000",
+          "appId": "778",
+          "firstValid": "1000",
+          "lastValid": "1010"
+        },
+        {
+          "type": "appl",
+          "sender": "MM7X6YIFGQIFXCOLEALBYA4MGFMGHLDHMXL2YSUAGRNV74A6QCTD2BQYRU",
+          "fee": "1000",
+          "appId": "778",
+          "firstValid": "1000",
+          "lastValid": "1010"
+        }
+      ]
+    },
+    "simulation": {
+      "ok": true,
+      "appBudgetConsumed": 1234
+    }
+  }
+}

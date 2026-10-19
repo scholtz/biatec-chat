@@ -20,6 +20,7 @@ public class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbContext(
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<SafeApprovalCount> SafeApprovalCounts => Set<SafeApprovalCount>();
     public DbSet<SoftCapSpend> SoftCapSpends => Set<SoftCapSpend>();
+    public DbSet<KnownSafe> KnownSafes => Set<KnownSafe>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -148,6 +149,15 @@ public class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbContext(
         {
             e.HasIndex(x => new { x.OidcSub, x.TenantId, x.ReservedAt });
             e.Property(x => x.AmountEur).HasPrecision(28, 8);
+        });
+
+        b.Entity<KnownSafe>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.Network, x.AppId }).IsUnique();
+            e.HasIndex(x => x.DeployTxId);
+            e.Property(x => x.TenantId).HasMaxLength(128);
+            e.Property(x => x.Network).HasMaxLength(32);
+            e.Property(x => x.DeployTxId).HasMaxLength(64);
         });
     }
 }
