@@ -1,7 +1,7 @@
 ---
 id: T-023
 title: wallet.transfer on Algorand with opt-in steps
-status: backlog
+status: in-progress
 priority: P0
 epic: "Wallet tools"
 blocked_by: [T-020, T-022]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Tools/Wallet/Transfer/**"]
 parallel: yes
 conflicts_with: []
 issue: "#24"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-023"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#capabilities-and-intents"
 created: 2026-10-19
 updated: 2026-10-19
@@ -55,3 +55,5 @@ dotnet test --filter Transfer; testnet manual run with stage identity
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-020, T-022
+- 2026-10-19 22:32 · scholtz · taken · status stays backlog
+- 2026-10-19 22:32 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

@@ -1,7 +1,7 @@
 ---
 id: T-038
 title: Public anonymous endpoint with continuation tokens
-status: backlog
+status: in-progress
 priority: P1
 epic: "Sessions & auth"
 blocked_by: [T-015]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Api/Public/**"]
 parallel: no
 conflicts_with: [T-009, T-022, T-032, T-036, T-060]
 issue: "#39"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-038"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#embedding-modes"
 created: 2026-10-19
 updated: 2026-10-19
@@ -55,3 +55,5 @@ dotnet test --filter Public
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-015
+- 2026-10-19 22:32 · scholtz · taken · status stays backlog
+- 2026-10-19 22:32 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
