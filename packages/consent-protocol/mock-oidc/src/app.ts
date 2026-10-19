@@ -248,11 +248,12 @@ export function createMockOidc(options: MockOptions = {}) {
   }
 
   /** Verifies a consent token against the stored request and the presented hash. Spends the consent only after this returns. */
-  function checkConsent(t: Token, boundHash: string, scope: string): Pending {
+  function checkConsent(t: Token, boundHash: string, scope: string, network?: string): Pending {
     const p = t.authReqId ? pending.get(t.authReqId) : undefined;
     if (!p || p.status !== "approved" || !p.receipt) throw new HttpError(401, "invalid_token", "no approved consent for this token");
     if (consumed.has(t.authReqId!)) throw new HttpError(401, "invalid_token", "this consent was already used (rule 5)", { reason: "consent_consumed" });
     if (p.scope !== scope) throw new HttpError(403, "insufficient_scope", "the consent was granted for another action");
+    if (network !== undefined && p.request.authorization_details?.[0]?.network !== network) throw new HttpError(403, "group_hash_mismatch", "the consent was granted for another network");
     if (p.request.bound_hash !== boundHash) throw new HttpError(403, "group_hash_mismatch", "the presented group differs from the one consented to (rule 5)");
     if (!verifyApproval(p.receipt, jwks, p.request, p.code, consumed, { issuer, now: now() })) throw new HttpError(401, "invalid_token", "the consent receipt does not verify (expired, altered or wrong code)");
     return p;
@@ -275,7 +276,7 @@ export function createMockOidc(options: MockOptions = {}) {
     }
     const finish = () => ({ status: 200, body: { signed_group: body.unsigned_group.map((g: string) => "signed:" + g), group_hash: details.group_hash } });
     if (t.kind === "consent") {
-      const p = checkConsent(t, details.group_hash, "sign");
+      const p = checkConsent(t, details.group_hash, "sign", network);
       consumed.add(t.authReqId!);
       userMap.get(t.sub)!.used.add(t.clientId);
       void p;
@@ -374,6 +375,8 @@ export function createMockOidc(options: MockOptions = {}) {
     const decision = s.decision;
     if (p.status === "approved" || p.status === "denied" || (p.status === "code_failed" && p.receipt)) throw new HttpError(409, "conflict", "this request already has a decision");
     if (expired(p)) throw new HttpError(410, "expired_token", "the request expired");
+    // Rule 2: code_failed is terminal; only the code_failed receipt itself is accepted afterwards.
+    if (p.status === "code_failed" && decision !== "code_failed") throw new HttpError(403, "access_denied", "attempts exhausted", { reason: "code_failed" });
     // Rule 9: both signatures, and the device must be the enrolled one.
     if (receipt.device.kid !== d.kid || jcs(receipt.device.public_key) !== jcs(d.publicKey) || !verifyReceipt(receipt, jwks, { issuer, now: now() })) {
       throw new HttpError(400, "invalid_receipt", "receipt signature or attestation does not verify");

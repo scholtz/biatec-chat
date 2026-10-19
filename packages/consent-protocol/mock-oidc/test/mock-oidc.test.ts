@@ -197,6 +197,32 @@ test("rule 5: a different group with the consent token is refused and leaves the
   assert.equal((await sign(t.json.access_token, g)).status, 200, "still unspent after the refused attempts");
 });
 
+test("rule 5: a consent approved for testnet is refused on mainnet (same group hash)", async () => {
+  codes = ["444555"];
+  const g = group(tx("5000"));
+  const c = await challenge(g);
+  const dev = await device(ALICE);
+  const request = await fetchRequest(dev, c.json.auth_req_id);
+  await postReceipt(dev, c.json.auth_req_id, receiptFor(dev, request, "444555"));
+  const t = await tokenReq(c.json.auth_req_id);
+  const main = await call("POST", `/wallet/algorand-mainnet/${ALICE_ADDR}/sign`, { auth: bearer(t.json.access_token), body: { unsigned_group: g } });
+  assert.equal(main.status, 403);
+  assert.equal(main.json.error, "group_hash_mismatch");
+  assert.equal((await sign(t.json.access_token, g)).status, 200, "still unspent on the approved network");
+});
+
+test("rule 2: code_failed is terminal; a later deny or approve receipt is refused", async () => {
+  codes = ["777888"];
+  const c = await challenge();
+  const dev = await device(ALICE);
+  const request = await fetchRequest(dev, c.json.auth_req_id);
+  for (const w of ["111111", "222222", "333333"]) await postReceipt(dev, c.json.auth_req_id, receiptFor(dev, request, w));
+  const deny = await postReceipt(dev, c.json.auth_req_id, receiptFor(dev, request, "333333", "deny"));
+  assert.equal(deny.status, 403);
+  assert.equal(deny.json.reason, "code_failed");
+  assert.equal((await tokenReq(c.json.auth_req_id)).json.reason, "code_failed");
+});
+
 test("rule 5: the consent token and the request expire after 300 seconds", async () => {
   codes = ["444555", "666777"];
   const g = group(tx("5000"));
