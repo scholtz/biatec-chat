@@ -1,7 +1,7 @@
 ---
 id: T-012
 title: Bedrock Converse streaming client
-status: review
+status: done
 priority: P0
 epic: "Orchestrator"
 blocked_by: [T-002]
@@ -71,6 +71,8 @@ dotnet test --filter Model; AWS_PROFILE=hackathon dotnet run smoke command
 
 ## Review
 
+- 2026-10-19 20:29 · approve · PR #72 merged into main @ e819605 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
@@ -78,3 +80,4 @@ dotnet test --filter Model; AWS_PROFILE=hackathon dotnet run smoke command
 - 2026-10-19 18:48 · LukassSoukup · taken · status stays backlog
 - 2026-10-19 18:48 · session-20261019-1848 · backlog → in-progress · claimed
 - 2026-10-19 20:28 · session-20261019-1848 · in-progress → review · PR #72
+- 2026-10-19 20:29 · user · review → done · PR #72 merged into main @ e819605 (synced by kanban-sync)

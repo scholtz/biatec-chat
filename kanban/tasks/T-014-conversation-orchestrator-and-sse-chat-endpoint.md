@@ -1,7 +1,7 @@
 ---
 id: T-014
 title: Conversation orchestrator and SSE chat endpoint
-status: blocked
+status: backlog
 priority: P0
 epic: "Orchestrator"
 blocked_by: [T-003, T-005, T-007, T-012, T-013]
@@ -54,3 +54,4 @@ dotnet test --filter Orchestration; curl -N POST /chat/messages
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
+- 2026-10-19 20:29 · kanban-board · blocked → backlog · blockers done: T-003, T-005, T-007, T-012, T-013
