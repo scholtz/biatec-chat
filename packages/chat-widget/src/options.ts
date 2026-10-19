@@ -1,5 +1,3 @@
-import type { SessionTier } from "@biatec/chat-protocol";
-
 export type ChatTheme = "auto" | "light" | "dark";
 
 export interface BiatecChatOptions {
@@ -30,6 +28,3 @@ export function resolveOptions(o: BiatecChatOptions): ResolvedOptions {
     pageContext: o.pageContext,
   };
 }
-
-/** Tier shown in the header; null until the session state is loaded (T-040). */
-export type TierDisplay = SessionTier | null;

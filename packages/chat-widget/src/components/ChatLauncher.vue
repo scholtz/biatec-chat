@@ -9,7 +9,7 @@ defineEmits<{ toggle: [] }>();
     class="bc-launcher"
     :aria-expanded="open"
     :aria-controls="controls"
-    aria-label="Open Biatec Chat"
+    :aria-label="open ? 'Close Biatec Chat' : 'Open Biatec Chat'"
     @click="$emit('toggle')"
   >
     <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" focusable="false">

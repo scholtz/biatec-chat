@@ -4,7 +4,9 @@
   "description": "Embeddable Biatec Chat widget (Vue 3 plugin).",
   "type": "module",
   "license": "MIT",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "main": "./dist/biatec-chat.umd.cjs",
   "module": "./dist/biatec-chat.js",
   "types": "./dist/index.d.ts",
@@ -16,25 +18,28 @@
     },
     "./style.css": "./dist/style.css"
   },
-  "sideEffects": ["**/*.css"],
+  "sideEffects": [
+    "**/*.css"
+  ],
   "scripts": {
     "dev": "vite --config playground/vite.config.ts",
     "build": "vite build && node scripts/emit-types.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json"
   },
   "peerDependencies": {
     "vue": "^3.4.0"
   },
-  "dependencies": {
-    "@biatec/chat-protocol": "workspace:*"
-  },
   "devDependencies": {
+    "@biatec/chat-protocol": "workspace:*",
+    "@types/node": "^22.20.5",
     "@vitejs/plugin-vue": "^6.0.1",
     "@vue/test-utils": "^2.4.6",
     "jsdom": "^26.1.0",
     "typescript": "^5.9.2",
     "vite": "^7.1.5",
     "vitest": "^3.2.4",
-    "vue": "^3.5.21"
+    "vue": "^3.5.21",
+    "vue-tsc": "^3.0.6"
   }
 }
