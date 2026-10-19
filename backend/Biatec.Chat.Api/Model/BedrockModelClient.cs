@@ -150,6 +150,7 @@ public sealed class BedrockModelClient(
         var budget = TimeSpan.FromMilliseconds(_c.QueueTimeoutMs);
         var waited = TimeSpan.Zero;
         Exception? lastError = null;
+        var stalls = 0;
         for (var attempt = 0; ; attempt++)
         {
             var queued = Stopwatch.StartNew();
@@ -175,23 +176,26 @@ public sealed class BedrockModelClient(
                         // Each read has its own limit: the idle timeout before the stop, the usage wait after it. Only
                         // a read still pending when the limit passes counts, so a slow but live stream is never cut.
                         read = events.MoveNextAsync().AsTask();
-                        try
-                        {
-                            more = await read.WaitAsync(stopped ? UsageWait : TimeSpan.FromMilliseconds(_c.StreamIdleTimeoutMs), ct);
-                        }
-                        catch (TimeoutException) when (!read.IsCompleted)
+                        if (!await CompletesWithinAsync(read, stopped ? UsageWait : TimeSpan.FromMilliseconds(_c.StreamIdleTimeoutMs), ct))
                         {
                             await SettleAsync(attemptCts, read);
                             if (stopped)
                             {
-                                logger.LogWarning("Bedrock {ModelId} sent no usage within {Wait}", converse.ModelId, UsageWait);
+                                if (!ct.IsCancellationRequested)
+                                    logger.LogWarning("Bedrock {ModelId} sent no usage within {Wait}", converse.ModelId, UsageWait);
                                 return;
                             }
-                            // A stall is retried once at most: each try costs a whole idle timeout.
+                            ct.ThrowIfCancellationRequested();
+                            // A stall is retried once per call at most: each try costs a whole idle timeout.
                             var stalled = new ModelStreamIncompleteException(converse.ModelId, $"stalled for {_c.StreamIdleTimeoutMs} ms");
-                            if (written || attempt >= Math.Min(1, _c.MaxRetries)) throw stalled;
+                            if (written || stalls > 0 || attempt >= _c.MaxRetries) throw stalled;
+                            stalls++;
                             lastError = stalled;
                             break;
+                        }
+                        try
+                        {
+                            more = await read;
                         }
                         catch (Exception ex) when (stopped)
                         {
@@ -249,6 +253,16 @@ public sealed class BedrockModelClient(
                 converse.ModelId, cause.GetType().Name, attempt + 1, _c.MaxRetries, (int)delay.TotalMilliseconds);
             await Task.Delay(delay, ct);
         }
+    }
+
+    /// <summary>True when the read finished within the limit; false on timeout or caller cancellation.</summary>
+    private static async Task<bool> CompletesWithinAsync(Task read, TimeSpan limit, CancellationToken ct)
+    {
+        if (read.IsCompleted) return true;
+        using var delayCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var first = await Task.WhenAny(read, Task.Delay(limit, delayCts.Token));
+        delayCts.Cancel();
+        return first == read;
     }
 
     /// <summary>Aborts a read that is still pending (the source disposes the response on cancel) and waits for it.</summary>
@@ -315,8 +329,9 @@ public sealed class BedrockModelClient(
     private static List<Message> WithHistoryCachePoint(IReadOnlyList<Message> messages)
     {
         var copy = messages.ToList();
-        // A cache point can't be a message's only content.
-        if (copy.Count > 0 && copy[^1].Content is { Count: > 0 })
+        // A cache point can't be a message's only content, and a caller that placed its own keeps the 4-point limit.
+        if (copy.Count > 0 && copy[^1].Content is { Count: > 0 }
+            && !copy.Any(m => m.Content?.Any(c => c.CachePoint is not null) == true))
         {
             var last = copy[^1];
             copy[^1] = new Message
@@ -371,12 +386,15 @@ public sealed class BedrockModelClient(
                     yield return Close(block);
                     break;
                 case MessageStopEvent stop:
-                    // A tool block whose stop never came is closed here, so a tool_use stop always has its calls.
+                    // A tool block whose stop never came: on a tool_use stop it is complete and closed here; on any other
+                    // stop (max_tokens mid-input) it is a truncated proposal and is dropped from the answer.
+                    var toolUseStop = stop.StopReason == StopReason.Tool_use;
                     foreach (var (index, open) in _blocks)
                     {
                         if (open is not { Tool: not null, Input: not null }) continue;
-                        logger.LogWarning("Bedrock {ModelId} stopped without closing tool block {Index}", modelId, index);
-                        yield return Close(open);
+                        logger.LogWarning("Bedrock {ModelId} stopped ({Reason}) without closing tool block {Index}", modelId, stop.StopReason?.Value, index);
+                        if (toolUseStop) yield return Close(open);
+                        else open.Tool = null;
                     }
                     yield return new ModelMessageStop(stop.StopReason?.Value ?? "", BuildMessage());
                     break;
@@ -433,7 +451,7 @@ public sealed class BedrockModelClient(
             {
                 logger.LogWarning("Tool input of {Tool} ({ToolUseId}) is not convertible ({Error}); the history carries {{}} instead",
                     tool.Name, tool.ToolUseId, ex.GetType().Name);
-                return DocumentJson.FromJson("{}");
+                return new Amazon.Runtime.Documents.Document(new Dictionary<string, Amazon.Runtime.Documents.Document>());
             }
         }
     }

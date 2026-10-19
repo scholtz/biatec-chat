@@ -101,6 +101,59 @@ public class BedrockModelClientTests
     }
 
     [Fact]
+    public async Task A_tool_block_cut_off_by_max_tokens_is_dropped()
+    {
+        var source = new FakeSource([
+            new ContentBlockStartEvent { ContentBlockIndex = 0, Start = new ContentBlockStart { ToolUse = new ToolUseBlockStart { ToolUseId = "tu-1", Name = "wallet_transfer" } } },
+            new ContentBlockDeltaEvent { ContentBlockIndex = 0, Delta = new ContentBlockDelta { ToolUse = new ToolUseBlockDelta { Input = """{"amount":12""" } } },
+            Stop(StopReason.Max_tokens),
+        ]);
+
+        var events = await Collect(Client(source).StreamAsync(Request()));
+
+        Assert.Empty(events.OfType<ModelToolUse>());
+        Assert.Null(Assert.Single(events.OfType<ModelMessageStop>()).Message);
+    }
+
+    [Fact]
+    public void A_caller_cache_point_in_the_history_is_left_as_the_only_one()
+    {
+        var tool = new ToolSpecification { Name = "kb_search", Description = "d", InputSchema = new ToolInputSchema { Json = DocumentJson.FromJson("""{"type":"object"}""") } };
+        var cached = new ContentBlock { CachePoint = new CachePointBlock { Type = CachePointType.Default } };
+        var request = Request(tools: tool) with
+        {
+            Messages =
+            [
+                new Message { Role = ConversationRole.User, Content = [new ContentBlock { Text = "doc" }, cached] },
+                new Message { Role = ConversationRole.Assistant, Content = [new ContentBlock { Text = "ok" }] },
+                new Message { Role = ConversationRole.User, Content = [new ContentBlock { Text = "next" }] },
+            ],
+        };
+
+        var r = Client(new FakeSource()).BuildRequest(request);
+
+        Assert.Equal(1, r.Messages.Sum(m => m.Content.Count(c => c.CachePoint is not null)));
+    }
+
+    [Fact]
+    public async Task A_stall_after_a_throttled_attempt_still_gets_its_one_retry()
+    {
+        var o = Opts(maxRetries: 3);
+        o.StreamIdleTimeoutMs = 1000;
+        var stallOnce = 0;
+        var source = new FakeSource([new ThrottlingException("slow down")], TextAnswer)
+        {
+            // Second call (attempt 1) stalls, third call (attempt 2) answers.
+            OnOpen = () => Interlocked.Increment(ref stallOnce) == 2 ? Task.Delay(Timeout.Infinite) : Task.CompletedTask,
+        };
+
+        var events = await Collect(Client(source, o).StreamAsync(Request())).WaitAsync(TimeSpan.FromSeconds(20));
+
+        Assert.Equal(3, source.Calls);
+        Assert.Single(events.OfType<ModelMessageStop>());
+    }
+
+    [Fact]
     public async Task A_slow_but_live_stream_is_not_cut_by_the_idle_limit()
     {
         // Every gap is under the 1 s idle limit, the whole answer takes well over it.
@@ -181,7 +234,7 @@ public class BedrockModelClientTests
         Assert.Equal(["Hel", "lo"], events.OfType<ModelTextDelta>().Select(t => t.Text));
         var stop = Assert.Single(events.OfType<ModelMessageStop>());
         Assert.Equal("end_turn", stop.StopReason);
-        Assert.Equal(ConversationRole.Assistant, stop.Message.Role);
+        Assert.Equal(ConversationRole.Assistant, stop.Message!.Role);
         Assert.Equal("Hello", Assert.Single(stop.Message!.Content).Text);
         Assert.IsType<ModelMessageStop>(events[^2]);
         var usage = Assert.IsType<ModelUsage>(events[^1]);
