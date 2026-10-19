@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Runtime.CompilerServices;
@@ -42,7 +43,8 @@ public sealed class BedrockModelClient(
 {
     private readonly BedrockOptions _o = options.Value;
     private readonly BedrockClientOptions _c = clientOptions.Value;
-    private readonly SemaphoreSlim _gate = new(clientOptions.Value.MaxConcurrency, clientOptions.Value.MaxConcurrency);
+    // One gate per model id: Opus and Sonnet have separate quotas, so one model's traffic never starves the other.
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _gates = new();
 
     public ConverseStreamRequest BuildRequest(ModelRequest request)
     {
@@ -78,6 +80,7 @@ public sealed class BedrockModelClient(
     public async IAsyncEnumerable<ModelStreamEvent> StreamAsync(ModelRequest request, [EnumeratorCancellation] CancellationToken ct = default)
     {
         var converse = BuildRequest(request);
+        var gate = _gates.GetOrAdd(converse.ModelId, _ => new SemaphoreSlim(_c.MaxConcurrency, _c.MaxConcurrency));
         // One budget for time spent waiting on a slot, shared by all attempts (backoff doesn't count).
         var budget = TimeSpan.FromMilliseconds(_c.QueueTimeoutMs);
         var waited = TimeSpan.Zero;
@@ -85,7 +88,7 @@ public sealed class BedrockModelClient(
         for (var attempt = 0; ; attempt++)
         {
             var queued = Stopwatch.StartNew();
-            var acquired = await _gate.WaitAsync(budget > waited ? budget - waited : TimeSpan.Zero, ct);
+            var acquired = await gate.WaitAsync(budget > waited ? budget - waited : TimeSpan.Zero, ct);
             waited += queued.Elapsed;
             if (!acquired)
                 throw new ModelBusyException(budget, lastError);
@@ -111,7 +114,8 @@ public sealed class BedrockModelClient(
                     {
                         // The answer is complete; only the usage event can be missing. Neither retry nor fail, even
                         // when the caller cancelled, so the finished assistant turn can still be stored.
-                        logger.LogWarning(ex, "Bedrock {ModelId} stream failed after the message stop; usage may be missing", converse.ModelId);
+                        if (!ct.IsCancellationRequested)
+                            logger.LogWarning(ex, "Bedrock {ModelId} stream failed after the message stop; usage is missing", converse.ModelId);
                         break;
                     }
                     catch (Exception ex) when (!yielded && attempt < _c.MaxRetries && IsRetryable(ex, ct))
@@ -144,12 +148,13 @@ public sealed class BedrockModelClient(
             }
             finally
             {
-                _gate.Release();
+                gate.Release();
             }
 
             if (lastError is null)
             {
-                foreach (var output in tail)
+                // Usage goes out before the message stop, so a caller that stops reading at the stop still gets it.
+                foreach (var output in tail.OrderBy(e => e is ModelUsage ? 0 : 1))
                 {
                     if (output is ModelUsage u)
                         logger.LogInformation("Bedrock usage {ModelId}: in {In}, out {Out}, cache read {CacheRead}, cache write {CacheWrite}, {LatencyMs} ms",
@@ -192,6 +197,10 @@ public sealed class BedrockModelClient(
                 or ModelStreamErrorException or ModelTimeoutException => true,
             AmazonServiceException { StatusCode: HttpStatusCode.TooManyRequests or HttpStatusCode.InternalServerError
                 or HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout } => true,
+            // A generic (not modelled) error without a status code: the SDK wrapped a transport failure (connection
+            // reset, DNS) before any response arrived.
+            AmazonServiceException { StatusCode: 0, InnerException: HttpRequestException or IOException or TimeoutException } generic
+                when generic.GetType() == typeof(AmazonBedrockRuntimeException) || generic.GetType() == typeof(AmazonServiceException) => true,
             AmazonServiceException => false,
             HttpRequestException or IOException or TimeoutException => true,
             OperationCanceledException => !ct.IsCancellationRequested,
@@ -261,7 +270,8 @@ public sealed class BedrockModelClient(
             return b;
         }
 
-        // Bedrock rejects an assistant message without content, so an empty answer has no message to append.
+        // Bedrock rejects an assistant message without content, and a whitespace-only text block, so those are dropped
+        // and an empty answer has no message to append.
         // A tool block that never completed is left out: the caller never got a ModelToolUse for it.
         private Message? BuildMessage()
         {
@@ -270,7 +280,7 @@ public sealed class BedrockModelClient(
             {
                 if (b.Tool is { } tool && b.InputJson is { } input)
                     content.Add(new ContentBlock { ToolUse = new ToolUseBlock { ToolUseId = tool.ToolUseId, Name = tool.Name, Input = ToDocument(tool, input) } });
-                else if (b.Tool is null && b.Text.Length > 0)
+                else if (b.Tool is null && !string.IsNullOrWhiteSpace(b.Text.ToString()))
                     content.Add(new ContentBlock { Text = b.Text.ToString() });
             }
             return content.Count == 0 ? null : new Message { Role = ConversationRole.Assistant, Content = content };

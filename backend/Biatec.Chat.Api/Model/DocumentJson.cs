@@ -26,11 +26,13 @@ public static class DocumentJson
         _ => new Document(),
     };
 
-    // A duplicate key keeps its last value, as JSON.parse does.
+    // A duplicate key is rejected: parsers disagree on which value wins, so the value is ambiguous.
     private static Dictionary<string, Document> FromObject(JsonElement e)
     {
         var d = new Dictionary<string, Document>();
-        foreach (var p in e.EnumerateObject()) d[p.Name] = FromElement(p.Value);
+        foreach (var p in e.EnumerateObject())
+            if (!d.TryAdd(p.Name, FromElement(p.Value)))
+                throw new JsonException($"Duplicate key '{p.Name}'.");
         return d;
     }
 }

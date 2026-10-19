@@ -115,7 +115,8 @@ public class BedrockModelClientTests
         Assert.Equal("end_turn", stop.StopReason);
         Assert.Equal(ConversationRole.Assistant, stop.Message.Role);
         Assert.Equal("Hello", Assert.Single(stop.Message!.Content).Text);
-        var usage = Assert.IsType<ModelUsage>(events[^1]);
+        Assert.IsType<ModelMessageStop>(events[^1]);
+        var usage = Assert.IsType<ModelUsage>(events[^2]);
         Assert.Equal(("eu.anthropic.claude-sonnet-4-5-20250929-v1:0", 10, 2, 900, 0, 42L),
             (usage.ModelId, usage.InputTokens, usage.OutputTokens, usage.CacheReadInputTokens, usage.CacheWriteInputTokens, usage.LatencyMs));
     }
@@ -290,7 +291,9 @@ public class BedrockModelClientTests
         var client = Client(source, Opts(maxConcurrency: 2));
 
         var runs = Enumerable.Range(0, 5).Select(_ => Task.Run(() => Collect(client.StreamAsync(Request())))).ToArray();
-        await Task.Delay(200);
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (source.Calls < 2 && DateTime.UtcNow < deadline) await Task.Delay(5);
+        await Task.Delay(100); // a third call would show up now if the cap leaked
         Assert.Equal(2, source.Calls);
         release.SetResult();
         await Task.WhenAll(runs);
@@ -483,6 +486,59 @@ public class BedrockModelClientTests
         private int _calls;
         public IAsyncEnumerable<IEventStreamEvent> OpenAsync(ConverseStreamRequest request, CancellationToken ct) =>
             (Interlocked.Increment(ref _calls) == 1 ? first : rest).OpenAsync(request, ct);
+    }
+
+    [Fact]
+    public async Task Whitespace_only_text_is_left_out_of_the_message()
+    {
+        var source = new FakeSource([Text("\n\n"), BlockStop(0), .. ToolCall("tu-1", "{}", index: 1), Stop(StopReason.Tool_use)]);
+
+        var events = await Collect(Client(source).StreamAsync(Request()));
+
+        Assert.NotNull(Assert.Single(Assert.Single(events.OfType<ModelMessageStop>()).Message!.Content).ToolUse);
+    }
+
+    [Fact]
+    public async Task Usage_arrives_before_the_stop_so_breaking_at_the_stop_keeps_it()
+    {
+        ModelUsage? usage = null;
+        await foreach (var e in Client(new FakeSource(TextAnswer)).StreamAsync(Request()))
+        {
+            if (e is ModelUsage u) usage = u;
+            if (e is ModelMessageStop) break;
+        }
+        Assert.NotNull(usage);
+    }
+
+    [Fact]
+    public void A_transport_failure_wrapped_without_a_status_code_is_transient()
+    {
+        Assert.True(BedrockModelClient.IsRetryable(new AmazonBedrockRuntimeException("send failed", new HttpRequestException("reset")), default));
+    }
+
+    [Fact]
+    public void Duplicate_keys_are_rejected_as_ambiguous()
+    {
+        Assert.Throws<System.Text.Json.JsonException>(() => DocumentJson.FromJson("""{"amount":"1","amount":"1000000"}"""));
+    }
+
+    [Fact]
+    public async Task Each_model_has_its_own_concurrency_gate()
+    {
+        var release = new TaskCompletionSource();
+        var source = new FakeSource(TextAnswer) { OnOpen = () => release.Task };
+        var client = Client(source, Opts(maxConcurrency: 1, queueTimeoutMs: 2000));
+        var opus = Task.Run(() => Collect(client.StreamAsync(Request(ModelProfile.Authenticated))));
+        while (source.Calls == 0) await Task.Delay(5);
+
+        // Opus holds its only slot; a Sonnet call still gets through.
+        var sonnet = Task.Run(() => Collect(client.StreamAsync(Request(ModelProfile.Anonymous))));
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (source.Calls < 2 && DateTime.UtcNow < deadline) await Task.Delay(5);
+        Assert.Equal(2, source.Calls);
+
+        release.SetResult();
+        await Task.WhenAll(opus, sonnet);
     }
 
     [Fact]
