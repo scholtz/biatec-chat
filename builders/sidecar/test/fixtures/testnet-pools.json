@@ -1,0 +1,192 @@
+[
+  {
+    "appId": "768784709",
+    "assetA": "10458941",
+    "assetB": "0",
+    "fee": "1000000",
+    "max": "160000000",
+    "min": "140000000",
+    "lpTokenId": "768784712",
+    "verificationClass": 0
+  },
+  {
+    "appId": "768787854",
+    "assetA": "0",
+    "assetB": "10458941",
+    "fee": "1000000",
+    "max": "10000000000",
+    "min": "9000000000",
+    "lpTokenId": "768787857",
+    "verificationClass": 0
+  },
+  {
+    "appId": "772650879",
+    "assetA": "48806985",
+    "assetB": "0",
+    "fee": "10000000",
+    "max": "10000000000",
+    "min": "5000000000",
+    "lpTokenId": "772650882",
+    "verificationClass": 0
+  },
+  {
+    "appId": "768602349",
+    "assetA": "10458941",
+    "assetB": "0",
+    "fee": "1000000",
+    "max": "11000000000",
+    "min": "10000000000",
+    "lpTokenId": "768602352",
+    "verificationClass": 0
+  },
+  {
+    "appId": "768784875",
+    "assetA": "10458941",
+    "assetB": "0",
+    "fee": "1000000",
+    "max": "120000000",
+    "min": "110000000",
+    "lpTokenId": "768784878",
+    "verificationClass": 0
+  },
+  {
+    "appId": "772650856",
+    "assetA": "48806985",
+    "assetB": "0",
+    "fee": "10000000",
+    "max": "5000000000",
+    "min": "2000000000",
+    "lpTokenId": "772650859",
+    "verificationClass": 0
+  },
+  {
+    "appId": "772650899",
+    "assetA": "48806985",
+    "assetB": "0",
+    "fee": "10000000",
+    "max": "20000000000",
+    "min": "10000000000",
+    "lpTokenId": "772650902",
+    "verificationClass": 0
+  },
+  {
+    "appId": "768602316",
+    "assetA": "10458941",
+    "assetB": "0",
+    "fee": "1000000",
+    "max": "10000000000",
+    "min": "9000000000",
+    "lpTokenId": "768602319",
+    "verificationClass": 0
+  },
+  {
+    "appId": "768771113",
+    "assetA": "10458941",
+    "assetB": "0",
+    "fee": "1000000",
+    "max": "1000000000",
+    "min": "500000000",
+    "lpTokenId": "768771116",
+    "verificationClass": 0
+  },
+  {
+    "appId": "768784836",
+    "assetA": "10458941",
+    "assetB": "0",
+    "fee": "1000000",
+    "max": "110000000",
+    "min": "100000000",
+    "lpTokenId": "768784839",
+    "verificationClass": 0
+  },
+  {
+    "appId": "768784928",
+    "assetA": "10458941",
+    "assetB": "0",
+    "fee": "1000000",
+    "max": "140000000",
+    "min": "130000000",
+    "lpTokenId": "768784931",
+    "verificationClass": 0
+  },
+  {
+    "appId": "772650764",
+    "assetA": "48806985",
+    "assetB": "0",
+    "fee": "10000000",
+    "max": "100000000",
+    "min": "50000000",
+    "lpTokenId": "772650767",
+    "verificationClass": 0
+  },
+  {
+    "appId": "772650782",
+    "assetA": "48806985",
+    "assetB": "0",
+    "fee": "10000000",
+    "max": "200000000",
+    "min": "100000000",
+    "lpTokenId": "772650785",
+    "verificationClass": 0
+  },
+  {
+    "appId": "772650805",
+    "assetA": "48806985",
+    "assetB": "0",
+    "fee": "10000000",
+    "max": "500000000",
+    "min": "200000000",
+    "lpTokenId": "772650808",
+    "verificationClass": 0
+  },
+  {
+    "appId": "768784894",
+    "assetA": "10458941",
+    "assetB": "0",
+    "fee": "1000000",
+    "max": "130000000",
+    "min": "120000000",
+    "lpTokenId": "768784897",
+    "verificationClass": 0
+  },
+  {
+    "appId": "772650819",
+    "assetA": "48806985",
+    "assetB": "0",
+    "fee": "10000000",
+    "max": "1000000000",
+    "min": "500000000",
+    "lpTokenId": "772650822",
+    "verificationClass": 0
+  },
+  {
+    "appId": "772650842",
+    "assetA": "48806985",
+    "assetB": "0",
+    "fee": "10000000",
+    "max": "2000000000",
+    "min": "1000000000",
+    "lpTokenId": "772650845",
+    "verificationClass": 0
+  },
+  {
+    "appId": "768787561",
+    "assetA": "0",
+    "assetB": "10458941",
+    "fee": "1000000",
+    "max": "9000000000",
+    "min": "8000000000",
+    "lpTokenId": "768787564",
+    "verificationClass": 0
+  },
+  {
+    "appId": "768787834",
+    "assetA": "0",
+    "assetB": "10458941",
+    "fee": "1000000",
+    "max": "8000000000",
+    "min": "7000000000",
+    "lpTokenId": "768787837",
+    "verificationClass": 0
+  }
+]
