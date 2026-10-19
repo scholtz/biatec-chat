@@ -42,11 +42,12 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
     {
         public readonly Dictionary<string, TokenVaultEntry> Items = new();
         public bool RefreshFails;
+        public bool Explodes;
         public Task PutAsync(string id, TokenVaultEntry e, CancellationToken ct = default) { Items[id] = e; return Task.CompletedTask; }
         public Task<TokenVaultEntry?> GetAsync(string id, CancellationToken ct = default) => Task.FromResult(Items.GetValueOrDefault(id));
         public Task DeleteAsync(string id, CancellationToken ct = default) { Items.Remove(id); return Task.CompletedTask; }
         public Task<string?> GetAccessTokenAsync(string id, CancellationToken ct = default) =>
-            RefreshFails ? throw new VaultRefreshException("down") : Task.FromResult(Items.GetValueOrDefault(id)?.AccessToken);
+            Explodes ? throw new InvalidOperationException("boom") : RefreshFails ? throw new VaultRefreshException("down") : Task.FromResult(Items.GetValueOrDefault(id)?.AccessToken);
     }
 
     /// <summary>Biatec OIDC: signs what it is handed with the user's account, unless told otherwise.</summary>
@@ -89,7 +90,8 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
     private sealed class FakeConfirmer : ITransactionConfirmer
     {
         public TxConfirmation Result = new(TxConfirmationState.Confirmed, 4242);
-        public Task<TxConfirmation> WaitAsync(string network, string txId, CancellationToken ct = default) => Task.FromResult(Result);
+        public Task<TxConfirmation> WaitAsync(string network, string txId, ulong lastValid, CancellationToken ct = default) { LastValidSeen = lastValid; return Task.FromResult(Result); }
+        public ulong LastValidSeen;
     }
 
     private sealed class FakeEvidence : IEvidenceLog
@@ -462,6 +464,58 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
         Assert.Equal(StepStatus.Confirmed, step.Status);
         Assert.Equal(ActionPreviewStatus.Completed, preview.Status);
         Assert.Contains(_evidence.Entries, e => e.Kind == "action_receipt" && e.Payload["confirmedRound"]!.GetValue<string>() == "777");
+    }
+
+    [Fact]
+    public async Task SubmittedStepThatNeverLands_ExpiresOnReconcile_AndFailsThePreviewSoItCanBeRebuilt()
+    {
+        _mcp.SubmitThrows = true;
+        _confirmer.Result = new TxConfirmation(TxConfirmationState.Pending);
+        var b = await BuildPreviewAsync();
+        Assert.Equal(ConfirmOutcome.Submitted, (await ConfirmAsync(b.PreviewId, b.Group.GroupHash)).Outcome);
+        Assert.Equal(711399UL, _confirmer.LastValidSeen);
+
+        _confirmer.Result = new TxConfirmation(TxConfirmationState.Expired, Error: "last_valid_passed");
+        await using (var db = NewContext())
+        {
+            var svc = new ConfirmService(db, new ActionPreviewService(db, _clock), new ScopeGuard(_vault, _clock), _vault, _oidc, _mcp, _confirmer, _evidence, _clock, NullLogger<ConfirmService>.Instance);
+            var rec = await svc.ReconcileAsync(_session, b.PreviewId, CancellationToken.None);
+            Assert.Equal(ConfirmOutcome.Failed, rec.Outcome);
+            Assert.Equal("expired", rec.ErrorCode);
+        }
+        var (preview, step) = await LoadAsync(b.PreviewId);
+        Assert.Equal(StepStatus.Failed, step.Status);
+        Assert.Equal(ActionPreviewStatus.Failed, preview.Status);
+        Assert.Contains(_evidence.Entries, e => e.Kind == "submission_failed" && e.Payload["reason"]!.GetValue<string>() == "expired");
+    }
+
+    [Fact]
+    public async Task UnexpectedErrorAfterConfirm_RevertsThePreview_SoItCanBeConfirmedAgain()
+    {
+        var b = await BuildPreviewAsync();
+        _vault.Explodes = true;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ConfirmAsync(b.PreviewId, b.Group.GroupHash));
+        Assert.Equal(ActionPreviewStatus.Proposed, (await LoadAsync(b.PreviewId)).Preview.Status);
+        Assert.Contains(_evidence.Entries, e => e.Kind == "confirm_aborted");
+
+        _vault.Explodes = false;
+        Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(b.PreviewId, b.Group.GroupHash)).Outcome);
+    }
+
+    [Fact]
+    public async Task AbortedRequestDuringSigning_RevertsThePreview_AndRecordsTheAbort()
+    {
+        var b = await BuildPreviewAsync();
+        using var cts = new CancellationTokenSource();
+        var aborting = new FakeOidc(_user) { Override = _ => { cts.Cancel(); throw new OperationCanceledException(cts.Token); } };
+        await using (var db = NewContext())
+        {
+            var svc = new ConfirmService(db, new ActionPreviewService(db, _clock), new ScopeGuard(_vault, _clock), _vault, aborting, _mcp, _confirmer, _evidence, _clock, NullLogger<ConfirmService>.Instance);
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => svc.ConfirmAsync(_tenant, _session, b.PreviewId, b.Group.GroupHash, cts.Token));
+        }
+        Assert.Equal(ActionPreviewStatus.Proposed, (await LoadAsync(b.PreviewId)).Preview.Status);
+        Assert.Contains(_evidence.Entries, e => e.Kind == "confirm_aborted" && e.Payload["reason"]!.GetValue<string>() == "cancelled");
+        Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(b.PreviewId, b.Group.GroupHash)).Outcome);
     }
 
     [Fact]

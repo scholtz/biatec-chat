@@ -20,9 +20,10 @@ public sealed class AlgodTransactionConfirmer(IHttpClientFactory http, IOptions<
 {
     public const string HttpClientName = "algod-confirm";
 
-    public async Task<TxConfirmation> WaitAsync(string network, string txId, CancellationToken ct = default)
+    public async Task<TxConfirmation> WaitAsync(string network, string txId, ulong lastValid, CancellationToken ct = default)
     {
         var o = options.Value;
+        var notFound = false;
         if (!TryResolve(network, out var net)) return new TxConfirmation(TxConfirmationState.Pending, Error: "network_not_configured");
         var client = http.CreateClient(HttpClientName);
         var deadline = DateTimeOffset.UtcNow + o.Timeout;
@@ -33,6 +34,7 @@ public sealed class AlgodTransactionConfirmer(IHttpClientFactory http, IOptions<
                 using var req = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(net.Url.TrimEnd('/') + "/"), $"v2/transactions/pending/{Uri.EscapeDataString(txId)}"));
                 if (!string.IsNullOrEmpty(net.Token)) req.Headers.TryAddWithoutValidation("X-Algo-API-Token", net.Token);
                 using var res = await client.SendAsync(req, ct);
+                notFound = res.StatusCode == System.Net.HttpStatusCode.NotFound;
                 if (res.IsSuccessStatusCode)
                 {
                     using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
@@ -47,8 +49,31 @@ public sealed class AlgodTransactionConfirmer(IHttpClientFactory http, IOptions<
             {
                 // Transient: keep polling until the deadline.
             }
-            if (DateTimeOffset.UtcNow >= deadline) return new TxConfirmation(TxConfirmationState.Pending);
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                // Unknown to algod and the network is past LastValid: it never landed and never can.
+                if (notFound && lastValid > 0 && await LastRoundAsync(client, net, ct) is { } round && round > lastValid)
+                    return new TxConfirmation(TxConfirmationState.Expired, Error: "last_valid_passed");
+                return new TxConfirmation(TxConfirmationState.Pending);
+            }
             await Task.Delay(o.PollInterval, ct);
+        }
+    }
+
+    private static async Task<ulong?> LastRoundAsync(HttpClient client, AlgodNetworkOptions net, CancellationToken ct)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(net.Url.TrimEnd('/') + "/"), "v2/status"));
+            if (!string.IsNullOrEmpty(net.Token)) req.Headers.TryAddWithoutValidation("X-Algo-API-Token", net.Token);
+            using var res = await client.SendAsync(req, ct);
+            if (!res.IsSuccessStatusCode) return null;
+            using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
+            return doc.RootElement.TryGetProperty("last-round", out var lr) && lr.TryGetUInt64(out var r) ? r : null;
+        }
+        catch (Exception ex) when ((ex is HttpRequestException or JsonException or TaskCanceledException) && !ct.IsCancellationRequested)
+        {
+            return null;
         }
     }
 

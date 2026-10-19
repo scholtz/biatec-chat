@@ -95,6 +95,38 @@ public sealed class ConfirmService(
         var preview = snapshot.Preview;
         var step = snapshot.Steps.First(s => s.Id == pending.Id);
 
+        try
+        {
+            return await SignAndSubmitAsync(tenant, session, preview, step, group, address, sessionId, previewId, ct);
+        }
+        catch (Exception ex)
+        {
+            // The preview is Confirmed here. If nothing was handed on yet (the step is still Pending), an unexpected
+            // error or an aborted request must not leave it stuck: put it back to awaiting confirmation. A cancelled
+            // request may already have reached Biatec OIDC, so the abort is recorded and the revert ignores the token.
+            if (step.Status == StepStatus.Pending)
+            {
+                try
+                {
+                    await RevertAsync(preview, CancellationToken.None);
+                    await RecordAsync(session, "confirm_aborted", new JsonObject
+                    {
+                        ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(),
+                        ["reason"] = ex is OperationCanceledException ? "cancelled" : ex.GetType().Name,
+                    }, CancellationToken.None);
+                }
+                catch (Exception revertEx)
+                {
+                    log.LogError("Could not revert preview after a failed confirm: {ErrorType}", revertEx.GetType().Name);
+                }
+            }
+            throw;
+        }
+    }
+
+    private async Task<ConfirmResult> SignAndSubmitAsync(Tenant tenant, ChatSession session, ActionPreview preview, ActionStep step,
+        IReadOnlyList<Algorand.Algod.Model.Transactions.Transaction> group, string address, string sessionId, Guid previewId, CancellationToken ct)
+    {
         string? bearer;
         try { bearer = await vault.GetAccessTokenAsync(sessionId, ct); }
         catch (VaultRefreshException)
@@ -228,9 +260,14 @@ public sealed class ConfirmService(
     private async Task<ConfirmResult> TrackAsync(ChatSession session, ActionPreview preview, ActionStep step, IReadOnlyList<string> txIds, bool unknownSubmit, CancellationToken ct)
     {
         // A group lands atomically, so following its first transaction is enough.
-        var tracked = await confirmer.WaitAsync(step.Network!, txIds[0], ct);
+        var tracked = await confirmer.WaitAsync(step.Network!, txIds[0], LastValidOf(step), ct);
         switch (tracked.State)
         {
+            case TxConfirmationState.Expired:
+                // Not on chain and past LastValid: it can never land, so the preview ends here and can be rebuilt.
+                await FailAsync(preview, step, ct);
+                await RecordAsync(session, "submission_failed", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["reason"] = "expired" }, ct);
+                return new ConfirmResult(ConfirmOutcome.Failed, "The transaction did not land before it expired. Nothing moved; the preview must be rebuilt.", txIds, ErrorCode: "expired");
             case TxConfirmationState.Confirmed:
                 await previews.MarkStepLandedAsync(session.ConversationId, preview.Id, step.Seq, txIds, IsFinalStep(preview, step), ct);
                 await RecordAsync(session, "action_receipt", new JsonObject
@@ -249,6 +286,14 @@ public sealed class ConfirmService(
                     unknownSubmit ? "The submission could not be confirmed either way; the transaction may still land. Check again shortly."
                                   : "The transaction was submitted and is waiting to be confirmed.", txIds);
         }
+    }
+
+    /// <summary>The last round the step's group is valid for: the stored value, else read from the first transaction; 0 if unknown.</summary>
+    private static ulong LastValidOf(ActionStep step)
+    {
+        if (step.LastValid is > 0) return (ulong)step.LastValid.Value;
+        try { return step.UnsignedGroupList().Select(t => Algorand.Algod.Model.Transactions.Transaction.FromBase64String(t).LastValid).FirstOrDefault(); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { return 0; }
     }
 
     /// <summary>
