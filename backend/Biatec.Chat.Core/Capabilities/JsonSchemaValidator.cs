@@ -49,7 +49,7 @@ public static class JsonSchemaValidator
                         if (!Regex.IsMatch(s, pat, RegexOptions.CultureInvariant, RegexTimeout))
                             errors.Add($"{path}: does not match the required pattern");
                     }
-                    catch (RegexMatchTimeoutException) { errors.Add($"{path}: pattern check timed out"); }
+                    catch (Exception ex) when (ex is RegexMatchTimeoutException or ArgumentException) { errors.Add($"{path}: pattern check failed"); }
                 }
                 break;
 
@@ -69,6 +69,7 @@ public static class JsonSchemaValidator
 
             case JsonValueKind.Object:
                 var obj = value!.AsObject();
+                if (Int(schema, "minProperties") is { } minP && obj.Count < minP) errors.Add($"{path}: fewer than {minP} properties");
                 var props = schema["properties"] as JsonObject;
                 if (schema["required"] is JsonArray req)
                     foreach (var r in req)
@@ -78,7 +79,7 @@ public static class JsonSchemaValidator
                 {
                     if (props?[k] is JsonObject propSchema) Check(propSchema, v, $"{path}.{k}", errors, depth + 1);
                     else if (schema["additionalProperties"] is JsonValue ap && ap.TryGetValue<bool>(out var allowed) && !allowed)
-                        errors.Add($"{path}.{k}: unknown property");
+                        errors.Add($"{path}: unexpected property"); // name omitted: it is model-controlled text
                 }
                 break;
         }
@@ -98,9 +99,9 @@ public static class JsonSchemaValidator
 
     private static bool IsInteger(JsonNode value)
     {
-        var el = Elem(value);
-        if (el.TryGetInt64(out _)) return true;
-        return el.TryGetDouble(out var d) && Math.Abs(d) < 9007199254740992d && d == Math.Floor(d);
+        // Strict: only plain integer literals; 1.0 and 5e2 are not integers for tool arguments.
+        return long.TryParse(Elem(value).GetRawText(), System.Globalization.NumberStyles.AllowLeadingSign,
+            System.Globalization.CultureInfo.InvariantCulture, out _);
     }
 
     private static JsonElement Elem(JsonNode n) => JsonSerializer.SerializeToElement(n);

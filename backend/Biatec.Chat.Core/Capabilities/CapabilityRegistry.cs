@@ -13,6 +13,7 @@ public sealed class CapabilityRegistry
     public const string KbSearch = "kb.search";
 
     private readonly Dictionary<string, Capability> _byName;
+    private readonly List<Capability> _ordered = [];
 
     public CapabilityRegistry(IEnumerable<Capability> capabilities)
     {
@@ -21,23 +22,24 @@ public sealed class CapabilityRegistry
         {
             if (!_byName.TryAdd(c.Name, c))
                 throw new ArgumentException($"Duplicate capability '{c.Name}'.");
+            _ordered.Add(c);
         }
     }
 
-    public IReadOnlyCollection<Capability> All => _byName.Values;
+    public IReadOnlyCollection<Capability> All => _ordered;
 
     public Capability? Find(string name) => _byName.GetValueOrDefault(name);
 
     /// <summary>Tool-bearing capabilities visible to this context, in registry order.</summary>
     public IReadOnlyList<Capability> ToolsFor(GateContext ctx) =>
-        _byName.Values.Where(c => c.ToolName is not null && Visibility(c, ctx) is null).ToList();
+        _ordered.Where(c => c.ToolName is not null && Visibility(c, ctx) is null).ToList();
 
     /// <summary>Null when the capability is visible/callable for the context, otherwise a machine-readable reason.</summary>
     internal static string? Visibility(Capability c, GateContext ctx)
     {
         if (c.Flag == CapabilityFlag.X402 && !ctx.X402Enabled) return "feature_disabled";
         if (c.Flag == CapabilityFlag.LimitsUpdate && !ctx.LimitsUpdateEnabled) return "feature_disabled";
-        if (c.MinTier != SessionTier.Anonymous && ctx.Tier == SessionTier.Anonymous) return "tier_too_low";
+        if (ctx.Tier < c.MinTier) return "tier_too_low";
         foreach (var s in c.BuildScopes)
             if (!ctx.Scopes.Contains(s, StringComparer.Ordinal)) return "scope_missing";
         return null;
@@ -56,6 +58,12 @@ public sealed class CapabilityRegistry
         };
     }
 
+    private static JsonObject WithMinProperties(JsonObject o, int n)
+    {
+        o["minProperties"] = n;
+        return o;
+    }
+
     private static JsonObject Str(int? max = null, int min = 1, string? pattern = null)
     {
         var o = new JsonObject { ["type"] = "string", ["minLength"] = min };
@@ -68,9 +76,9 @@ public sealed class CapabilityRegistry
     private static readonly string[] NoScopes = [];
 
     private static JsonObject Network() => new() { ["type"] = "string", ["enum"] = new JsonArray("mainnet", "testnet") };
-    private static JsonObject Address() => Str(max: 64);
-    private static JsonObject Amount() => Str(max: 40, pattern: "^[0-9]+$");
-    private static JsonObject Id() => new() { ["type"] = "integer", ["minimum"] = 0 };
+    private static JsonObject Address() => Str(max: 64, pattern: @"\A[A-Za-z0-9]+\z");
+    private static JsonObject Amount() => Str(max: 40, pattern: @"\A[0-9]+\z");
+    private static JsonObject Id() => new() { ["type"] = "integer", ["minimum"] = 0, ["maximum"] = 9007199254740991 };
 
     /// <summary>The initial capability set from the product description.</summary>
     public static CapabilityRegistry CreateDefault()
@@ -101,7 +109,14 @@ public sealed class CapabilityRegistry
             ["poolAppId"] = Id(),
             ["amountA"] = Amount(),
             ["amountB"] = Amount(),
-        }, "network", "from", "poolAppId");
+        }, "network", "from", "poolAppId", "amountA", "amountB");
+        var removeLiquidityInput = Obj(new JsonObject
+        {
+            ["network"] = Network(),
+            ["from"] = Address(),
+            ["poolAppId"] = Id(),
+            ["percent"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 100 },
+        }, "network", "from", "poolAppId", "percent");
         var proposalInput = Obj(new JsonObject
         {
             ["network"] = Network(),
@@ -112,7 +127,7 @@ public sealed class CapabilityRegistry
 
         static Capability Tool(string name, SessionTier tier, string[] build, string? sign, bool funds, ValuationBasis v,
             string desc, JsonObject? schema, CapabilityFlag flag = CapabilityFlag.None) =>
-            new(name, 1, tier, build, sign, funds, v, desc, schema, flag);
+            new(name, 1, tier, build, sign, funds, v, desc, schema?.DeepClone().AsObject(), flag);
 
         const SessionTier A = SessionTier.Anonymous;
         const SessionTier U = SessionTier.Authenticated;
@@ -130,7 +145,7 @@ public sealed class CapabilityRegistry
             Tool("wallet.transfer", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Build and preview a transfer.", transferInput),
             Tool("dex.swap", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Quote and build a swap.", swapInput),
             Tool("dex.addLiquidity", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Build an add-liquidity group.", liquidityInput),
-            Tool("dex.removeLiquidity", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Build a remove-liquidity group.", liquidityInput),
+            Tool("dex.removeLiquidity", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Build a remove-liquidity group.", removeLiquidityInput),
             Tool("safe.create", U, Open, Sign, false, ValuationBasis.ZeroValued, "Deploy a safe.",
                 Obj(new JsonObject { ["network"] = Network(), ["from"] = Address() }, "network", "from")),
             Tool("safe.propose", U, Open, Sign, false, ValuationBasis.ZeroValued, "Create a safe proposal.",
@@ -140,7 +155,7 @@ public sealed class CapabilityRegistry
             Tool("safe.list", U, Open, null, false, ValuationBasis.None, "List the user's safes and pending proposals.", networkOnly),
             Tool("limits.view", U, Open, null, false, ValuationBasis.None, "View spending limits.", empty),
             Tool("limits.update", U, [ManageLimits], null, false, ValuationBasis.LimitsChange, "Update spending limits.",
-                Obj(new JsonObject { ["daily"] = Amount(), ["weekly"] = Amount(), ["monthly"] = Amount() }),
+                WithMinProperties(Obj(new JsonObject { ["daily"] = Amount(), ["weekly"] = Amount(), ["monthly"] = Amount() }), 1),
                 CapabilityFlag.LimitsUpdate),
             Tool("x402.pay", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Pay for an x402-protected resource.",
                 Obj(new JsonObject { ["network"] = Network(), ["from"] = Address(), ["resourceUrl"] = Str(max: 2048) }, "network", "from", "resourceUrl"),

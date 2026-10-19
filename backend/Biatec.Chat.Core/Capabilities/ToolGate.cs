@@ -87,6 +87,8 @@ public sealed class ToolGate(CapabilityRegistry registry, IPolicyEventSink sink,
         if (cap is null) return Reject(capabilityName, ctx, "unknown_tool", $"Tool '{Sanitize(capabilityName)}' does not exist.");
         if (CapabilityRegistry.Visibility(cap, ctx) is { } why)
             return Reject(capabilityName, ctx, why, $"'{cap.Name}' is not available.");
+        if (cap.ToolName is null || (cap.SignScope is null && cap.Valuation != ValuationBasis.LimitsChange))
+            return Reject(capabilityName, ctx, "not_signing_capability", $"'{cap.Name}' does not sign or change limits.");
         if (cap.SignScope is { } scope && !ctx.Scopes.Contains(scope, StringComparer.Ordinal))
             return Reject(capabilityName, ctx, "scope_missing",
                 $"'{cap.Name}' needs the '{scope}' permission. Offer the user to re-authorize with it.");
