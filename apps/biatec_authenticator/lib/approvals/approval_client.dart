@@ -130,6 +130,20 @@ class ApprovalClient {
     }
   }
 
+  /// `PUT /devices/push`: where Biatec OIDC sends this device's
+  /// notifications (T-053).
+  Future<void> registerPush(
+      String deviceToken, String provider, String pushToken) async {
+    final res = await _send(() => _client.put(
+          Uri.parse('$baseUrl/devices/push'),
+          headers: {..._auth(deviceToken), 'Content-Type': 'application/json'},
+          body: jsonEncode({'provider': provider, 'token': pushToken}),
+        ));
+    if (res.statusCode != 200) {
+      throw ApprovalException('Push registration refused (${res.statusCode}).');
+    }
+  }
+
   /// `POST /consent/requests/{id}/receipt`.
   Future<ReceiptOutcome> postReceipt(String deviceToken, String authReqId,
       Map<String, Object?> receipt) async {
