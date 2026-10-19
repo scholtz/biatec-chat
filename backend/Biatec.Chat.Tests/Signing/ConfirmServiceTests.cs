@@ -69,9 +69,11 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
     {
         public readonly List<(McpCallContext Ctx, string Network, string Blob)> Submits = [];
         public bool SubmitFails;
+        public bool SubmitThrows;
         public Task<McpToolResult> SubmitTransactionToBlockchainAsync(McpCallContext ctx, string network, string signedTransactionBase64, CancellationToken ct = default)
         {
             Submits.Add((ctx, network, signedTransactionBase64));
+            if (SubmitThrows) throw new TimeoutException("submit timed out");
             return Task.FromResult(new McpToolResult(SubmitFails, "", null));
         }
         public Task<IReadOnlyList<McpToolInfo>> GetToolsAsync(McpCallContext ctx, CancellationToken ct = default) => throw new NotSupportedException();
@@ -418,6 +420,78 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
         Assert.Equal("submit_failed", r.ErrorCode);
         Assert.Contains(_evidence.Entries, e => e.Kind == "submission_failed");
         Assert.Equal(ActionPreviewStatus.Failed, (await LoadAsync(b.PreviewId)).Preview.Status);
+    }
+
+    [Fact]
+    public async Task SubmitThatThrows_IsUnknown_StepStaysSubmittedWithTxIds_AndIsTrackedOnChain()
+    {
+        _mcp.SubmitThrows = true;
+        var b = await BuildPreviewAsync();
+        var r = await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+
+        // The group did land even though the submit call timed out.
+        Assert.Equal(ConfirmOutcome.Landed, r.Outcome);
+        Assert.Contains(_evidence.Entries, e => e.Kind == "submission_unknown");
+        Assert.DoesNotContain(_evidence.Entries, e => e.Kind == "submission_failed");
+        Assert.Equal(ActionPreviewStatus.Completed, (await LoadAsync(b.PreviewId)).Preview.Status);
+    }
+
+    [Fact]
+    public async Task SubmitThatThrows_AndNotSeenOnChain_StaysSubmitted_NeverFailed_ThenReconcileLandsIt()
+    {
+        _mcp.SubmitThrows = true;
+        _confirmer.Result = new TxConfirmation(TxConfirmationState.Pending);
+        var b = await BuildPreviewAsync();
+        var r = await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+
+        Assert.Equal(ConfirmOutcome.Submitted, r.Outcome);
+        Assert.DoesNotContain("Nothing moved", r.Message);
+        var (preview, step) = await LoadAsync(b.PreviewId);
+        Assert.Equal(StepStatus.Submitted, step.Status);
+        Assert.Equal(b.Group.TxIds, step.TxIds);
+        Assert.Equal(ActionPreviewStatus.InProgress, preview.Status);
+
+        _confirmer.Result = new TxConfirmation(TxConfirmationState.Confirmed, 777);
+        await using (var db = NewContext())
+        {
+            var svc = new ConfirmService(db, new ActionPreviewService(db, _clock), new ScopeGuard(_vault, _clock), _vault, _oidc, _mcp, _confirmer, _evidence, _clock, NullLogger<ConfirmService>.Instance);
+            var rec = await svc.ReconcileAsync(_session, b.PreviewId, CancellationToken.None);
+            Assert.Equal(ConfirmOutcome.Landed, rec.Outcome);
+        }
+        (preview, step) = await LoadAsync(b.PreviewId);
+        Assert.Equal(StepStatus.Confirmed, step.Status);
+        Assert.Equal(ActionPreviewStatus.Completed, preview.Status);
+        Assert.Contains(_evidence.Entries, e => e.Kind == "action_receipt" && e.Payload["confirmedRound"]!.GetValue<string>() == "777");
+    }
+
+    [Fact]
+    public async Task InvalidToken_RevertsThePreview_SoItCanBeConfirmedAfterReauth()
+    {
+        var b = await BuildPreviewAsync();
+        _oidc.Override = _ => new WalletSignOutcome.Rejected(401, "invalid_token");
+        var r = await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+
+        Assert.Equal(ConfirmOutcome.SignInRequired, r.Outcome);
+        Assert.Equal(ActionPreviewStatus.Proposed, (await LoadAsync(b.PreviewId)).Preview.Status);
+
+        _oidc.Override = null;
+        Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(b.PreviewId, b.Group.GroupHash)).Outcome);
+    }
+
+    [Fact]
+    public async Task ConcurrentConfirms_OfTheSameGroup_SignAndSubmitOnce()
+    {
+        var b = await BuildPreviewAsync();
+        var results = await Task.WhenAll(
+            Enumerable.Range(0, 4).Select(async _ =>
+            {
+                try { return (await ConfirmAsync(b.PreviewId, b.Group.GroupHash)).Outcome.ToString(); }
+                catch (PreviewException) { return "refused"; }
+            }));
+
+        Assert.Equal(1, results.Count(x => x == "Landed"));
+        Assert.Single(_oidc.Calls);
+        Assert.Single(_mcp.Submits);
     }
 
     [Fact]

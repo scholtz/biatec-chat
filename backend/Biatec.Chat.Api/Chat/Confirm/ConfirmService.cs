@@ -120,6 +120,15 @@ public sealed class ConfirmService(
             case WalletSignOutcome.StepUp s:
                 return await ConsentPendingAsync(session, preview, step, s, ct);
 
+            case WalletSignOutcome.Rejected { Error: "invalid_token" }:
+                // An expired or invalid sign-in says nothing about the group: keep the preview confirmable after re-auth.
+                await RevertAsync(preview, ct);
+                await RecordAsync(session, "signing_refused", new JsonObject
+                {
+                    ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["error"] = "invalid_token",
+                }, ct);
+                return new ConfirmResult(ConfirmOutcome.SignInRequired, "Your sign-in is no longer valid. Please sign in again.", [], ErrorCode: "sign_in_required");
+
             case WalletSignOutcome.Rejected r:
                 await FailAsync(preview, step, ct);
                 await RecordAsync(session, "signing_refused", new JsonObject
@@ -170,14 +179,16 @@ public sealed class ConfirmService(
         var entry = await vault.GetAsync(sessionId, ct);
         var ctx = new McpCallContext(tenant.Id, sessionId, entry?.Scopes ?? []);
         McpToolResult? result = null;
-        string? submitError = null;
+        string? unknownError = null;
         try { result = await mcp.SubmitTransactionToBlockchainAsync(ctx, step.Network!, SignedGroupVerifier.ToSubmissionBlob(raw), ct); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            submitError = ex.GetType().Name;
+            // A timeout or network error after the request left may still have been broadcast: the outcome is unknown.
+            unknownError = ex.GetType().Name;
         }
-        if (submitError is not null || result is null || result.IsError)
+        if (unknownError is null && (result is null || result.IsError))
         {
+            // An explicit MCP error result: the group was not accepted.
             await FailAsync(preview, step, ct);
             await RecordAsync(session, "submission_failed", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash }, ct);
             return new ConfirmResult(ConfirmOutcome.Failed, "The signed transactions could not be submitted. Nothing moved; the preview must be rebuilt.", [], ErrorCode: "submit_failed");
@@ -187,6 +198,8 @@ public sealed class ConfirmService(
         step.Status = StepStatus.Submitted;
         preview.Status = ActionPreviewStatus.InProgress;
         await db.SaveChangesAsync(ct);
+        if (unknownError is not null)
+            await RecordAsync(session, "submission_unknown", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["error"] = unknownError }, ct);
         await RecordAsync(session, "action_submitted", new JsonObject
         {
             ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["seq"] = step.Seq,
@@ -194,6 +207,26 @@ public sealed class ConfirmService(
             ["valuedEur"] = signed.ValuedEur,
         }, ct);
 
+        return await TrackAsync(session, preview, step, txIds, unknownError is not null, ct);
+    }
+
+    /// <summary>
+    /// Lazy reconciliation: a step left Submitted (the wait timed out, or the submit outcome was unknown) is checked
+    /// on chain again; it moves to Landed with an <c>action_receipt</c>, or to Failed if the network rejected it.
+    /// </summary>
+    public async Task<ConfirmResult> ReconcileAsync(ChatSession session, Guid previewId, CancellationToken ct)
+    {
+        var snap = await previews.GetAsync(session.ConversationId, previewId, session.AbsoluteExpiresAt, ct);
+        var step = snap.Steps.FirstOrDefault(s => s.Status == StepStatus.Submitted && s.TxIds.Length > 0);
+        if (step is null)
+            return snap.Preview.Status == ActionPreviewStatus.Completed
+                ? new ConfirmResult(ConfirmOutcome.Landed, "The transaction is confirmed on chain.", snap.Steps.SelectMany(s => s.TxIds).ToArray())
+                : throw new PreviewException(PreviewError.InvalidState, "The preview has no submitted step to reconcile.");
+        return await TrackAsync(session, snap.Preview, step, step.TxIds, false, ct);
+    }
+
+    private async Task<ConfirmResult> TrackAsync(ChatSession session, ActionPreview preview, ActionStep step, IReadOnlyList<string> txIds, bool unknownSubmit, CancellationToken ct)
+    {
         // A group lands atomically, so following its first transaction is enough.
         var tracked = await confirmer.WaitAsync(step.Network!, txIds[0], ct);
         switch (tracked.State)
@@ -212,7 +245,9 @@ public sealed class ConfirmService(
                 await RecordAsync(session, "submission_failed", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["reason"] = "network_rejected" }, ct);
                 return new ConfirmResult(ConfirmOutcome.Failed, "The network rejected the transaction.", txIds, ErrorCode: "network_rejected");
             default:
-                return new ConfirmResult(ConfirmOutcome.Submitted, "The transaction was submitted and is waiting to be confirmed.", txIds);
+                return new ConfirmResult(ConfirmOutcome.Submitted,
+                    unknownSubmit ? "The submission could not be confirmed either way; the transaction may still land. Check again shortly."
+                                  : "The transaction was submitted and is waiting to be confirmed.", txIds);
         }
     }
 

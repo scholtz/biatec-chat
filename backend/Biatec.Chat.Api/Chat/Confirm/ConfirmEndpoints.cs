@@ -79,6 +79,30 @@ public static class ConfirmEndpoints
                 return Results.Json(new { error = ex.Error.ToString(), message = ex.Message }, statusCode: status);
             }
 
+            return ToHttp(r);
+        }).WithName("ConfirmPreview");
+
+        // POST /chat/previews/{previewId}/reconcile: re-checks a Submitted step on chain (lazy reconciliation).
+        app.MapPost("/chat/previews/{previewId:guid}/reconcile", async (Guid previewId, HttpContext ctx,
+            Biatec.Chat.Core.Data.ChatDbContext db, ConfirmService confirm, TimeProvider clock) =>
+        {
+            ctx.Response.Headers.CacheControl = "no-store";
+            var tenant = ctx.GetTenant()!;
+            var session = await AuthEndpoints.FindLiveAsync(db, tenant, SessionEndpoints.ReadCookie(ctx.Request), clock.GetUtcNow(), ctx.RequestAborted);
+            if (session is null || session.Tier == SessionTier.Anonymous) return Results.Unauthorized();
+            try { return ToHttp(await confirm.ReconcileAsync(session, previewId, ctx.RequestAborted)); }
+            catch (PreviewException ex)
+            {
+                var status = ex.Error == PreviewError.NotFound ? StatusCodes.Status404NotFound : StatusCodes.Status409Conflict;
+                return Results.Json(new { error = ex.Error.ToString(), message = ex.Message }, statusCode: status);
+            }
+        }).WithName("ReconcilePreview");
+
+        return app;
+    }
+
+    private static IResult ToHttp(ConfirmResult r)
+    {
             var (code, label) = r.Outcome switch
             {
                 ConfirmOutcome.Landed => (StatusCodes.Status200OK, "landed"),
@@ -96,8 +120,5 @@ public static class ConfirmEndpoints
             {
                 Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase) },
             }, statusCode: code);
-        }).WithName("ConfirmPreview");
-
-        return app;
     }
 }
