@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'approvals/approval_services.dart';
+import 'approvals/history_screen.dart';
+import 'approvals/pending_screen.dart';
 import 'config.dart';
 import 'enrollment/enrollment_screen.dart';
 import 'routes.dart';
@@ -11,9 +14,12 @@ void main() {
 }
 
 class AuthenticatorApp extends StatelessWidget {
-  const AuthenticatorApp({super.key, required this.config});
+  AuthenticatorApp(
+      {super.key, required this.config, ApprovalServices? approvals})
+      : approvals = approvals ?? ApprovalServices.fromConfig(config);
 
   final AppConfig config;
+  final ApprovalServices approvals;
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +33,8 @@ class AuthenticatorApp extends StatelessWidget {
         '/': (_) => HomeScreen(config: config),
         for (final route in appRoutes) route.path: (_) => route.build(),
         '/enrollment': (_) => EnrollmentScreen(config: config),
+        '/pending': (_) => PendingScreen(services: approvals),
+        '/history': (_) => HistoryScreen(history: approvals.history),
       },
     );
   }

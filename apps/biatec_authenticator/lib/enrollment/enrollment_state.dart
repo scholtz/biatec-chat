@@ -4,6 +4,7 @@ class EnrollmentRecord {
     required this.kid,
     required this.deviceToken,
     required this.activeAt,
+    this.attestation,
     this.recoveryCodeShown = false,
   });
 
@@ -15,6 +16,12 @@ class EnrollmentRecord {
   /// When the device becomes active (a time in the past means active).
   final DateTime activeAt;
 
+  /// Biatec OIDC's attestation JWS binding this device key, returned at
+  /// enrollment and presented again in every consent receipt (rule 6). Null
+  /// for records saved before it was kept; such a device must re-enroll to
+  /// approve.
+  final String? attestation;
+
   /// Whether the user has confirmed saving the recovery code. The code itself
   /// is never part of the record: the server issues it only once the device is
   /// active (rule 7) and the app holds it in memory while it is on screen.
@@ -24,6 +31,7 @@ class EnrollmentRecord {
         kid: kid,
         deviceToken: deviceToken,
         activeAt: activeAt,
+        attestation: attestation,
         recoveryCodeShown: true,
       );
 
@@ -31,6 +39,7 @@ class EnrollmentRecord {
         'kid': kid,
         'device_token': deviceToken,
         'active_at': activeAt.toUtc().millisecondsSinceEpoch,
+        if (attestation != null) 'attestation': attestation,
         'recovery_code_shown': recoveryCodeShown,
       };
 
@@ -40,6 +49,7 @@ class EnrollmentRecord {
         deviceToken: json['device_token'] as String,
         activeAt: DateTime.fromMillisecondsSinceEpoch(json['active_at'] as int,
             isUtc: true),
+        attestation: json['attestation'] as String?,
         recoveryCodeShown: json['recovery_code_shown'] as bool? ?? false,
       );
 }

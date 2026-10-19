@@ -52,6 +52,28 @@ add an HTTP mock of Biatec OIDC. The app makes no network calls today.
   `flutter test --dart-define=MOCK_OIDC_URL=http://127.0.0.1:8089 test/enrollment/mock_oidc_contract_test.dart`
   (skipped otherwise).
 
+## Approvals and receipts (T-052)
+
+- `lib/approvals/`: `ApprovalClient` (`GET /devices/requests`, `GET /consent/requests/{id}`,
+  `POST /consent/requests/{id}/receipt`, all `Authorization: Device <token>`), `ApprovalController` (one request),
+  the card, the pending list (polls every 5 s until push lands in T-053) and the local history (secure storage, last
+  100 decisions with their full receipts).
+- The card is rendered only from the fetched consent request. The receipt signs `authorization_details` exactly as
+  fetched, canonicalized with `jcs.dart` (RFC 8785, checked against `packages/consent-protocol/vectors`), with ES256
+  by the device key, and carries the enrollment attestation (now kept in the enrollment record; a record saved before
+  this change has none and must re-enroll).
+- Approve: six-digit binding code, biometric check (`local_auth`, biometric only, fails closed), then a fresh fetch
+  of the request. If that fetch fails the device is offline and nothing is signed; if the request differs from the
+  card, the new one is shown and nothing is signed. Biatec OIDC counts the three attempts; after the third wrong
+  code the app signs and posts a `code_failed` receipt.
+- Deny is signed too, needs neither code nor biometric check, and signs the last typed code or the empty string.
+- Unverified clients: warning banner with fingerprint only; their `binding_message` is never rendered or signed.
+- `local_auth` needs `FlutterFragmentActivity` as the Android `MainActivity` and `NSFaceIDUsageDescription` in the
+  iOS `Info.plist` once the platform folders exist.
+- Contract test against the real mock (it verifies signature and attestation with its JWKS): start the mock, then
+  `flutter test --dart-define=MOCK_OIDC_URL=http://127.0.0.1:8089 test/approvals/mock_oidc_approval_contract_test.dart`.
+  On Node older than 22.18 start it with `node --experimental-strip-types src/server.ts`.
+
 ## Checks
 
     flutter analyze && flutter test
