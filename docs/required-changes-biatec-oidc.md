@@ -233,6 +233,14 @@ POST /devices
     `code_failed` receipt, `403 { "error": "access_denied", "reason": "code_failed" }`; already decided `409`; expired `410`;
     inactive device `403`.
   - The attestation JWS returned by `POST /devices` is stored by the device and sent back in every receipt.
+  - `PUT /devices/push` with `{ "provider": "fcm" | "apns", "token": "..." }` → `200`: registers or replaces where
+    the device's notifications go (the same `push` object `POST /devices` accepts). Called on app start, on token
+    rotation and when the pending list is shown (T-053).
+- Push delivery: when a consent request opens, Biatec OIDC notifies every active device of the user that has a push
+  token. The data payload is `{ "auth_req_id": "<id>" }` and nothing else; the visible notification text is a fixed,
+  localizable string with no amount, asset, address or client name. The authenticator reads only `auth_req_id` and
+  fetches the request with its device token. The mock records these messages instead of sending them
+  (`GET /mock/push-outbox`).
 - Receipt retrieval, by the client that opened the request (direct entry) or whose token was challenged (step-up):
 
 ```http

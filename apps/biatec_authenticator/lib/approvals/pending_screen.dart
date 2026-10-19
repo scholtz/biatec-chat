@@ -8,17 +8,25 @@ import 'approval_screen.dart';
 import 'approval_services.dart';
 import 'consent_request.dart';
 
-/// Pending requests for this device's user. Polls while open; push
-/// notifications (T-053) replace the polling.
+/// Pending requests for this device's user. Refreshes when [pushes] fires and
+/// polls while open as the fallback for lost pushes.
 class PendingScreen extends StatefulWidget {
   const PendingScreen({
     super.key,
     required this.services,
     this.pollEvery = const Duration(seconds: 5),
+    this.pushes,
+    this.onShown,
   });
 
   final ApprovalServices services;
   final Duration pollEvery;
+
+  /// Fires when a push announced a new request.
+  final Stream<void>? pushes;
+
+  /// Called once when the list is shown (push registration hooks in here).
+  final VoidCallback? onShown;
 
   @override
   State<PendingScreen> createState() => _PendingScreenState();
@@ -30,12 +38,15 @@ class _PendingScreenState extends State<PendingScreen> {
   bool _offline = false;
   bool _loading = false;
   Timer? _poll;
+  StreamSubscription<void>? _pushSub;
 
   @override
   void initState() {
     super.initState();
     _refresh();
     _startPolling();
+    _pushSub = widget.pushes?.listen((_) => _refresh());
+    widget.onShown?.call();
   }
 
   void _startPolling() {
@@ -46,6 +57,7 @@ class _PendingScreenState extends State<PendingScreen> {
   @override
   void dispose() {
     _poll?.cancel();
+    _pushSub?.cancel();
     super.dispose();
   }
 
