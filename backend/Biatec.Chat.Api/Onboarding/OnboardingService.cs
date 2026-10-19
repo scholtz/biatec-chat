@@ -37,7 +37,11 @@ public sealed partial class OnboardingService(
     IOptions<OnboardingOptions> options,
     ILogger<OnboardingService> log)
 {
-    private sealed record Validated(string Host, string? SignInPageUrl, string[] Origins, string[] ClientKeys);
+    private sealed record Validated(string Host, string? SignInPageUrl, string[] Origins, string[] ClientKeys)
+    {
+        /// <summary>Canonical digest of the requested configuration; the DNS challenge is bound to it.</summary>
+        public string ConfigDigest => Challenge.Digest(Host, SignInPageUrl, Origins, ClientKeys);
+    }
 
     [GeneratedRegex(@"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")]
     private static partial Regex LabelRegex();
@@ -52,7 +56,7 @@ public sealed partial class OnboardingService(
         string ascii;
         try { ascii = new IdnMapping().GetAscii(raw.Trim().TrimEnd('.')).ToLowerInvariant(); }
         catch (ArgumentException) { return null; }
-        if (ascii.Length is 0 or > 253) return null;
+        if (ascii.Length is 0 or > 230) return null; // leaves room for the challenge label within 253
         var labels = ascii.Split('.');
         if (labels.Length < 2 || !labels.All(l => LabelRegex().IsMatch(l))) return null;
         if (labels.All(l => l.All(char.IsAsciiDigit))) return null; // IPv4 literal
@@ -83,14 +87,14 @@ public sealed partial class OnboardingService(
                     "use an origin under the same registrable domain.");
             if (!origins.Contains(o)) origins.Add(o);
         }
-        if (origins.Count > 20) return new(OnboardingStatus.Invalid, "At most 20 allowedOrigins.");
+        if (origins.Count > 10) return new(OnboardingStatus.Invalid, "At most 10 allowedOrigins.");
 
         string? signIn = null;
         if (!string.IsNullOrWhiteSpace(req.SignInPageUrl))
         {
             var s = OriginPolicy.Canonicalize(req.SignInPageUrl.TrimEnd('/'));
             if (s is null || !origins.Contains(s))
-                return new(OnboardingStatus.Invalid, "signInPageUrl must be one of the registered allowedOrigins.");
+                return new(OnboardingStatus.Invalid, "signInPageUrl must be a bare https origin equal to one of the registered allowedOrigins.");
             signIn = s;
         }
 
@@ -120,7 +124,7 @@ public sealed partial class OnboardingService(
         if (Validate(req, out var v) is { } bad) return bad;
         if (await db.Tenants.AnyAsync(t => t.Host == v!.Host, ct)) return HostTaken(v!.Host);
         var key = options.Value.ChallengeKey!;
-        var records = ProofHosts(v!).Select(h => new ChallengeRecord(h, "TXT", Challenge.RecordName(h), Challenge.Value(key, h))).ToArray();
+        var records = ProofHosts(v!).Select(h => new ChallengeRecord(h, "TXT", Challenge.RecordName(h), Challenge.Value(key, h, v.ConfigDigest))).ToArray();
         return new(OnboardingStatus.Ok, Body: new { challenges = records });
     }
 
@@ -130,13 +134,10 @@ public sealed partial class OnboardingService(
     private async Task<string[]> UnverifiedAsync(Validated v, CancellationToken ct)
     {
         var key = options.Value.ChallengeKey!;
-        var missing = new List<string>();
-        foreach (var h in ProofHosts(v))
-        {
-            var txt = await dns.GetTxtRecordsAsync(Challenge.RecordName(h), ct);
-            if (!Challenge.Matches(key, h, txt)) missing.Add(h);
-        }
-        return missing.ToArray();
+        var hosts = ProofHosts(v);
+        var digest = v.ConfigDigest;
+        var lookups = await Task.WhenAll(hosts.Select(h => dns.GetTxtRecordsAsync(Challenge.RecordName(h), ct)));
+        return hosts.Where((h, i) => !Challenge.Matches(key, h, digest, lookups[i])).ToArray();
     }
 
     /// <summary>Self-service: verify the proofs, then register a confidential client or fall back to operator approval.</summary>
@@ -149,7 +150,7 @@ public sealed partial class OnboardingService(
         if (missing.Length > 0)
             return new(OnboardingStatus.Unverified, "DNS TXT challenge not found for: " + string.Join(", ", missing), new { unverified = missing });
 
-        var tenantId = TenantIdFor(v!.Host);
+        var tenantId = v!.Host;
         var redirectUri = $"https://{v.Host}/auth/callback";
         RegisteredClient? client;
         try { client = await registrar.RegisterAsync($"Biatec Chat ({v.Host})", redirectUri, ct); }
@@ -167,7 +168,7 @@ public sealed partial class OnboardingService(
         }
 
         string secretRef;
-        try { secretRef = await secrets.PutAsync($"tenants/{tenantId}/oidc-client-secret", client.ClientSecret, ct); }
+        try { secretRef = await secrets.PutAsync($"tenants/{tenantId}/{Guid.NewGuid():N}/oidc-client-secret", client.ClientSecret, ct); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             log.LogWarning(ex, "Storing the client secret failed for {Host}", v.Host);
@@ -191,10 +192,8 @@ public sealed partial class OnboardingService(
         if (missing.Length > 0)
             return new(OnboardingStatus.Unverified, "DNS TXT challenge not found for: " + string.Join(", ", missing), new { unverified = missing });
 
-        return await CreateTenantAsync(v!, TenantIdFor(v!.Host), clientId, req.ClientSecretRef, $"https://{v.Host}/auth/callback", ct);
+        return await CreateTenantAsync(v!, v!.Host, clientId, req.ClientSecretRef, $"https://{v.Host}/auth/callback", ct);
     }
-
-    private static string TenantIdFor(string host) => host.Replace('.', '-');
 
     private async Task<OnboardingResult> CreateTenantAsync(Validated v, string tenantId, string clientId, string secretRef, string redirectUri, CancellationToken ct)
     {

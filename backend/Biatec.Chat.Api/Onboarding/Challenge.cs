@@ -15,8 +15,9 @@ public sealed class OnboardingOptions
 }
 
 /// <summary>
-/// Stateless DNS challenge: the TXT value is an HMAC of the host under a server key, so nothing is stored for a
-/// pending request and only someone who controls the zone can publish it.
+/// Stateless DNS challenge: the TXT value is an HMAC of the proof host and the requested configuration under a server
+/// key, so nothing is stored for a pending request, only someone who controls the zone can publish it, and a value the
+/// owner published for one configuration cannot be replayed by a third party to register a different one.
 /// </summary>
 public static class Challenge
 {
@@ -25,15 +26,24 @@ public static class Challenge
 
     public static string RecordName(string host) => RecordPrefix + host;
 
-    public static string Value(string key, string host)
+    /// <summary>Digest of the requested tenant configuration.</summary>
+    public static string Digest(string host, string? signIn, IEnumerable<string> origins, IEnumerable<string> clientKeys)
     {
-        var mac = HMACSHA256.HashData(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes("biatec-chat-onboarding-v1\n" + host));
+        var lines = new List<string> { "host=" + host, "signIn=" + signIn };
+        lines.AddRange(origins.OrderBy(o => o, StringComparer.Ordinal).Select(o => "origin=" + o));
+        lines.AddRange(clientKeys.OrderBy(k => k, StringComparer.Ordinal).Select(k => "key=" + k.Length + ":" + k));
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", lines))));
+    }
+
+    public static string Value(string key, string proofHost, string configDigest)
+    {
+        var mac = HMACSHA256.HashData(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes("biatec-chat-onboarding-v2\n" + proofHost + "\n" + configDigest));
         return ValuePrefix + Convert.ToHexString(mac, 0, 20).ToLowerInvariant();
     }
 
-    public static bool Matches(string key, string host, IEnumerable<string> txt)
+    public static bool Matches(string key, string host, string configDigest, IEnumerable<string> txt)
     {
-        var expected = Encoding.UTF8.GetBytes(Value(key, host));
+        var expected = Encoding.UTF8.GetBytes(Value(key, host, configDigest));
         foreach (var t in txt)
         {
             var got = Encoding.UTF8.GetBytes(t.Trim());

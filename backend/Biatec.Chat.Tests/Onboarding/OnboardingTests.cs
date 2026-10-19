@@ -45,7 +45,8 @@ public sealed class OnboardingTests : IAsyncLifetime
         public readonly Dictionary<string, List<string>> Records = new(StringComparer.OrdinalIgnoreCase);
         public Task<IReadOnlyList<string>> GetTxtRecordsAsync(string name, CancellationToken ct) =>
             Task.FromResult<IReadOnlyList<string>>(Records.TryGetValue(name, out var v) ? v : []);
-        public void Prove(string host) => Records[Challenge.RecordName(host)] = [Challenge.Value(ChallengeKey, host)];
+        public void Prove(string proofHost, string configHost, params string[] origins) =>
+            Records[Challenge.RecordName(proofHost)] = [Challenge.Value(ChallengeKey, proofHost, Challenge.Digest(configHost, origins.FirstOrDefault(), origins, [configHost]))];
     }
 
     private sealed class FakeRegistrar : IOidcClientRegistrar
@@ -154,7 +155,7 @@ public sealed class OnboardingTests : IAsyncLifetime
         Assert.Equal(new[] { "chat.example-bank.com", "www.example-bank.com" }, hosts.Select(h => h!).ToArray());
         var first = doc.RootElement.GetProperty("challenges")[0];
         Assert.Equal("_biatec-chat-challenge.chat.example-bank.com", first.GetProperty("recordName").GetString());
-        Assert.Equal(Challenge.Value(ChallengeKey, "chat.example-bank.com"), first.GetProperty("recordValue").GetString());
+        Assert.Equal(Challenge.Value(ChallengeKey, "chat.example-bank.com", Challenge.Digest("chat.example-bank.com", "https://chat.example-bank.com", new[] { "https://chat.example-bank.com", "https://app.chat.example-bank.com", "https://www.example-bank.com" }, ["chat.example-bank.com"])), first.GetProperty("recordValue").GetString());
     }
 
     [Fact]
@@ -189,7 +190,7 @@ public sealed class OnboardingTests : IAsyncLifetime
     public async Task TxtForAnotherHost_DoesNotVerify()
     {
         _registrar.Available = true;
-        _dns.Records[Challenge.RecordName("chat.example-bank.com")] = [Challenge.Value(ChallengeKey, "other.example-bank.com")];
+        _dns.Records[Challenge.RecordName("chat.example-bank.com")] = [Challenge.Value(ChallengeKey, "other.example-bank.com", "x")];
         var r = await PostAsync("/onboarding/tenants", Req("chat.example-bank.com"));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
         Assert.Null(await TenantAsync("chat.example-bank.com"));
@@ -199,7 +200,7 @@ public sealed class OnboardingTests : IAsyncLifetime
     public async Task ForeignOriginWithoutItsOwnProof_DoesNotBind()
     {
         _registrar.Available = true;
-        _dns.Prove("chat.example-bank.com"); // the host proof does not cover the sibling www
+        _dns.Prove("chat.example-bank.com", "chat.example-bank.com", "https://chat.example-bank.com", "https://www.example-bank.com"); // the host proof does not cover the sibling www
         var r = await PostAsync("/onboarding/tenants", Req("chat.example-bank.com", "https://chat.example-bank.com", "https://www.example-bank.com"));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
         Assert.Contains("www.example-bank.com", await r.Content.ReadAsStringAsync());
@@ -210,8 +211,8 @@ public sealed class OnboardingTests : IAsyncLifetime
     public async Task Verified_RegistersClient_SecretGoesToSecretStoreNotDb()
     {
         _registrar.Available = true;
-        _dns.Prove("chat.example-bank.com");
-        _dns.Prove("www.example-bank.com");
+        _dns.Prove("chat.example-bank.com", "chat.example-bank.com", "https://www.example-bank.com", "https://app.chat.example-bank.com");
+        _dns.Prove("www.example-bank.com", "chat.example-bank.com", "https://www.example-bank.com", "https://app.chat.example-bank.com");
         var r = await PostAsync("/onboarding/tenants", Req("chat.example-bank.com", "https://www.example-bank.com", "https://app.chat.example-bank.com"));
         var body = await r.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.Created, r.StatusCode);
@@ -222,7 +223,8 @@ public sealed class OnboardingTests : IAsyncLifetime
         Assert.Equal("client-chat.example-bank.com", t.OidcClientId);
         Assert.Equal("https://chat.example-bank.com/auth/callback", t.RedirectUri);
         Assert.StartsWith("secret://", t.ClientSecretRef);
-        Assert.Equal(Secret, _secrets.Items["tenants/chat-example-bank-com/oidc-client-secret"]);
+        Assert.Equal(Secret, Assert.Single(_secrets.Items).Value);
+        Assert.Equal("secret://" + _secrets.Items.Keys.Single(), t.ClientSecretRef);
         Assert.False(t.TrustAnchorVerified);
 
         // Nothing in the stored row (every column) contains the secret value.
@@ -232,6 +234,17 @@ public sealed class OnboardingTests : IAsyncLifetime
         await using var cmd = new NpgsqlCommand("SELECT t::text FROM \"Tenants\" t", conn);
         await using var rd = await cmd.ExecuteReaderAsync();
         while (await rd.ReadAsync()) Assert.DoesNotContain(Secret, rd.GetString(0));
+    }
+
+    [Fact]
+    public async Task ProofIsBoundToConfiguration_AttackerCannotReuseOwnersTxt()
+    {
+        _registrar.Available = true;
+        _dns.Prove("chat.example-bank.com", "chat.example-bank.com", "https://chat.example-bank.com");
+        // Same host, different requested origins: the published TXT does not verify.
+        var r = await PostAsync("/onboarding/tenants", Req("chat.example-bank.com", "https://attacker.chat.example-bank.com"));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
+        Assert.Null(await TenantAsync("chat.example-bank.com"));
     }
 
     [Fact]
@@ -245,7 +258,7 @@ public sealed class OnboardingTests : IAsyncLifetime
     public async Task HostBelongsToOneTenantOnly()
     {
         _registrar.Available = true;
-        _dns.Prove("chat.example-bank.com");
+        _dns.Prove("chat.example-bank.com", "chat.example-bank.com");
         var first = await PostAsync("/onboarding/tenants", Req("chat.example-bank.com"));
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
         var second = await PostAsync("/onboarding/tenants", Req("Chat.Example-Bank.com."));
@@ -259,7 +272,7 @@ public sealed class OnboardingTests : IAsyncLifetime
     [Fact]
     public async Task NoDynamicRegistration_FallsBackToOperatorApproval_AndStoresNothing()
     {
-        _dns.Prove("chat.example-bank.com");
+        _dns.Prove("chat.example-bank.com", "chat.example-bank.com");
         var r = await PostAsync("/onboarding/tenants", Req("chat.example-bank.com"));
         Assert.Equal(HttpStatusCode.Accepted, r.StatusCode);
         Assert.Contains("pending-operator-approval", await r.Content.ReadAsStringAsync());
@@ -273,11 +286,11 @@ public sealed class OnboardingTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.BadRequest, (await PostAsync("/onboarding/operator/tenants", Approval(Secret), OperatorKey)).StatusCode);
         Assert.Null(await TenantAsync("chat.example-bank.com"));
 
-        var ok = await PostAsync("/onboarding/operator/tenants", Approval("secret://tenants/chat-example-bank-com/oidc-client-secret"), OperatorKey);
+        var ok = await PostAsync("/onboarding/operator/tenants", Approval("secret://tenants/chat.example-bank.com/oidc-client-secret"), OperatorKey);
         Assert.Equal(HttpStatusCode.Created, ok.StatusCode);
         var t = await TenantAsync("chat.example-bank.com");
         Assert.Equal("static-client", t!.OidcClientId);
-        Assert.Equal("secret://tenants/chat-example-bank-com/oidc-client-secret", t.ClientSecretRef);
+        Assert.Equal("secret://tenants/chat.example-bank.com/oidc-client-secret", t.ClientSecretRef);
     }
 
     [Fact]

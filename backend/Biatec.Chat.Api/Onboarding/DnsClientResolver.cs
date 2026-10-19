@@ -12,8 +12,8 @@ public sealed class DnsClientTxtResolver : IDnsTxtResolver
         try
         {
             var answer = await client.QueryAsync(name, QueryType.TXT, cancellationToken: ct);
-            return answer.Answers.TxtRecords().SelectMany(r => r.Text).ToArray();
+            return answer.Answers.TxtRecords().Select(r => string.Concat(r.Text)).ToArray();
         }
-        catch (DnsResponseException) { return []; }
+        catch (Exception ex) when (ex is not OperationCanceledException) { return []; } // any lookup failure means "not proven"
     }
 }
