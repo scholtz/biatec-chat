@@ -1,7 +1,7 @@
 ---
 id: T-028
 title: Pool discovery and liquidity builders
-status: review
+status: done
 priority: P1
 epic: "DEX"
 blocked_by: [T-027]
@@ -74,6 +74,8 @@ pnpm --filter builders test; testnet simulate script
 
 ## Review
 
+- 2026-10-19 20:49 · approve · PR #87 merged into main @ 3777911 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
@@ -81,3 +83,4 @@ pnpm --filter builders test; testnet simulate script
 - 2026-10-19 20:30 · LukassSoukup · taken · status stays backlog
 - 2026-10-19 20:30 · session-20261019-2030 · backlog → in-progress · claimed
 - 2026-10-19 20:49 · session-20261019-2030 · in-progress → review · PR #87
+- 2026-10-19 20:49 · user · review → done · PR #87 merged into main @ 3777911 (synced by kanban-sync)
