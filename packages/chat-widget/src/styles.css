@@ -5,6 +5,9 @@
 
 :host {
   all: initial;
+  /* `all` resets color-scheme, which the tokens declared above; restore the dark default. The light override
+     :host([data-theme="light"]) is more specific and still wins. */
+  color-scheme: dark;
 }
 .biatec-chat {
   position: fixed;

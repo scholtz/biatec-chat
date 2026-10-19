@@ -66,8 +66,9 @@ function onDocKeydown(e: KeyboardEvent) {
   const first = items[0];
   const last = items[items.length - 1];
   if (!first || !last) return;
-  const active = document.activeElement;
-  if (!rootEl.value.contains(active)) {
+  // Inside a shadow root document.activeElement is the host, so resolve focus through the root node.
+  const active = (rootEl.value.getRootNode() as Document | ShadowRoot).activeElement;
+  if (!active || !rootEl.value.contains(active)) {
     e.preventDefault();
     first.focus();
   } else if (e.shiftKey && active === first) {
