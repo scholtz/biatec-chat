@@ -11,7 +11,7 @@ conflicts_with: []
 issue: "#53"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#protocol-rules"
 created: 2026-10-19
 updated: 2026-10-19
@@ -55,3 +55,4 @@ flutter test; manual run with mock + backend
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 21:07 · kanban-board · blocked → backlog · blockers done: T-051
+- 2026-10-19 21:11 · LukassSoukup · taken · status stays backlog
