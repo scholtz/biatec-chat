@@ -32,6 +32,7 @@ builder.Services.AddBedrockModel();
 builder.Services.AddChat();
 Biatec.Chat.Api.Chat.SignIn.AnonymousTierRegistration.AddAnonymousTier(builder.Services, builder.Configuration);
 builder.Services.AddOnboarding(builder.Configuration);
+Biatec.Chat.Api.Public.PublicChatEndpoints.AddPublicChat(builder.Services, builder.Configuration);
 
 builder.Services.AddScopeElevation();
 builder.Services.AddConfirm();
@@ -58,6 +59,7 @@ app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthC
 app.MapContractCatalog();
 app.MapSessions();
 app.MapChat();
+Biatec.Chat.Api.Public.PublicChatEndpoints.MapPublic(app);
 app.MapAuth();
 app.MapOnboarding();
 
