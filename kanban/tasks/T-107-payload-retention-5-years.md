@@ -1,7 +1,7 @@
 ---
 id: T-107
 title: "Keep message payloads 5 years instead of 90 days"
-status: review
+status: done
 priority: P2
 epic: "Evidence"
 blocked_by: []
@@ -64,7 +64,10 @@ Note: a longer window weakens the GDPR storage-limitation story; deployments can
 
 ## Review
 
+- 2026-10-20 09:27 · approve · PR #228 merged into main @ f7f25b2 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 09:21 · LukassSoukup · (new) → in-progress · user request: payload retention up to 5 years; blockers scan: none
 - 2026-10-20 09:35 · LukassSoukup · in-progress → review · retention tests 9/9
+- 2026-10-20 09:27 · user · review → done · PR #228 merged into main @ f7f25b2 (synced by kanban-sync)
