@@ -1,7 +1,7 @@
 ---
 id: T-091
 title: Adopt McpNetworks.Algorand in the remaining hand-built network codes
-status: backlog
+status: in-progress
 priority: P3
 epic: "Wallet tools"
 blocked_by: [T-089]
@@ -9,8 +9,8 @@ area: ["backend/Biatec.Chat.Tools/Safe/Proposals/SafeProposalRequests.cs", "back
 parallel: yes
 conflicts_with: []
 issue: "#174"
-branch: ""
-owner: ""
+branch: "task/T-091"
+owner: "worker-T-091"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#tool-executors"
 created: 2026-10-20
@@ -59,3 +59,4 @@ files.
 - 2026-10-20 06:30 · coordinator · (new) → blocked · proposed by T-089
 - 2026-10-20 04:00 · kanban-board · blocked → backlog · blockers done: T-089
 - 2026-10-20 05:08 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 05:08 · coordinator · backlog → in-progress · dispatched to worker
