@@ -785,6 +785,7 @@ export interface components {
             expiresAt: string;
             agentMode?: components["schemas"]["AgentModeValue"];
             paused?: boolean;
+            suggestions?: null | string[];
         };
         /** @enum {unknown} */
         SessionTier: "Anonymous" | "Authenticated";

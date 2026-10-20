@@ -70,6 +70,9 @@ public sealed class ConversationOrchestrator(
         var catalogue = PromptBuilder.Catalogue(visible);
         var profile = turn.Tier == DataTier.Anonymous ? ModelProfile.Anonymous : ModelProfile.Authenticated;
 
+        // The tenant's model applies to authenticated sessions only; anonymous discovery stays on the cheaper configured model.
+        var modelOverride = TenantModels.For(turn.Tenant.DefaultModel, turn.Tier == DataTier.Anonymous);
+
         var messages = await LoadHistoryAsync(turn.ConversationId, ct);
         var nextSeq = await NextSeqAsync(turn.ConversationId, ct);
 
@@ -89,6 +92,7 @@ public sealed class ConversationOrchestrator(
             var request = new ModelRequest
             {
                 Profile = profile,
+                ModelIdOverride = modelOverride,
                 Persona = PromptBuilder.Persona,
                 Catalogue = catalogue,
                 Messages = messages.ToList(),
