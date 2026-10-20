@@ -276,6 +276,12 @@ public sealed class ConfirmService(
             case WalletSignOutcome.Unavailable u:
                 return await OutageAsync(session, preview, step, u.Reason, ct);
 
+            case WalletSignOutcome.StepUp when noDeviceStatus is not null:
+                // T-061: Biatec OIDC asked for the phone (e.g. cooling-off or first use, before it implements rule 4) and the
+                // user has no active device: no consent request is opened that nobody can approve. The reservation was
+                // released above; the preview goes back to awaiting confirmation.
+                return await NoDeviceRefusalAsync(session, preview, step, Biatec.Chat.Tools.Caps.NoDevice.NoDevicePolicy.NeedsDeviceReason, ct, "oidc_step_up");
+
             case WalletSignOutcome.StepUp s:
                 return await ConsentPendingAsync(session, preview, step, s, origin, ct, capConsent == true ? CapMessage(cap.Reason) : null);
 

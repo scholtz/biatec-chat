@@ -27,9 +27,7 @@ public static class NoDeviceDefaults
 
 /// <summary>A user Biatec OIDC reports as having no active device (enrolled-but-inactive counts as none).</summary>
 /// <param name="ThresholdEur">The user's consent threshold for this client, never above the deployment ceiling.</param>
-/// <param name="CoolingOff">The client is in its cooling-off period: Biatec OIDC asks for the phone.</param>
-/// <param name="FirstUse">The user's first action through this client: Biatec OIDC asks for the phone.</param>
-public sealed record NoDeviceStatus(decimal DailyCapEur, decimal ThresholdEur, bool AlwaysAsk, bool CoolingOff = false, bool FirstUse = false);
+public sealed record NoDeviceStatus(decimal DailyCapEur, decimal ThresholdEur, bool AlwaysAsk);
 
 public interface INoDeviceGate
 {
@@ -103,7 +101,7 @@ public sealed class NoDeviceGate(IConsentSettingsClient settings, Func<Uri?> set
         }
         if (s.DeviceActive) return null;
         var ceiling = CapDefaults.ConsentThresholdCeilingEur;
-        return new NoDeviceStatus(Math.Max(0m, options.DailyCapEur), Math.Min(s.ThresholdEur ?? ceiling, ceiling), s.AlwaysAsk, s.CoolingOff, s.FirstUse);
+        return new NoDeviceStatus(Math.Max(0m, options.DailyCapEur), Math.Min(s.ThresholdEur ?? ceiling, ceiling), s.AlwaysAsk);
     }
 }
 
@@ -119,12 +117,14 @@ public static class NoDevicePolicy
     public const string EnrollHint = "Enroll the Biatec authenticator on your phone to raise this limit and approve larger actions.";
 
     /// <summary>
-    /// Whether the action would need phone approval: above the user's threshold, "always ask", the client's cooling-off
-    /// or the user's first use of it (Biatec OIDC asks the phone then), consent forced by the preview or a cap, or a value
-    /// the backend cannot predict (treated as above threshold, as unknown calls are).
+    /// Whether the action would need phone approval: above the user's threshold, "always ask", consent forced by the
+    /// preview or a cap, or a value the backend cannot predict (treated as above threshold, as unknown calls are).
+    /// Cooling-off and first use are not here: for a user without a device rules 4 and 8 apply the reduced daily cap
+    /// instead. If Biatec OIDC (which does not implement rule 4 yet) still answers with a step-up, the confirm path
+    /// refuses at once rather than wait for a phone the user does not have.
     /// </summary>
     public static bool NeedsPhone(NoDeviceStatus s, decimal? valueEur, bool consentForced) =>
-        consentForced || s.AlwaysAsk || s.CoolingOff || s.FirstUse || valueEur is not { } v || v > s.ThresholdEur;
+        consentForced || s.AlwaysAsk || valueEur is not { } v || v > s.ThresholdEur;
 
     public static string Message(string reason) => reason switch
     {

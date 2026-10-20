@@ -278,15 +278,11 @@ public sealed class NoDeviceCapTests : IAsyncLifetime
     [InlineData("always_ask")]
     [InlineData("preview_flag")]
     [InlineData("inactive_device")]
-    [InlineData("cooling_off")]
-    [InlineData("first_use")]
     [InlineData("threshold_above_ceiling")]
     public async Task NoDevice_above_threshold_action_is_refused_with_an_enrollment_hint(string kind)
     {
         decimal? value = kind switch { "above" or "inactive_device" => 300m, "unknown_value" => null, "threshold_above_ceiling" => 1200m, _ => 10m };
         if (kind == "always_ask") _settings.Value = _settings.Value! with { AlwaysAsk = true };
-        if (kind == "cooling_off") _settings.Value = _settings.Value! with { CoolingOff = true };
-        if (kind == "first_use") _settings.Value = _settings.Value! with { FirstUse = true };
         if (kind == "threshold_above_ceiling") { _settings.Value = _settings.Value! with { ThresholdEur = 5000m }; _noDeviceOptions.DailyCapEur = 5000m; } // clamped to 1000
         if (kind == "inactive_device") _settings.Value = _settings.Value! with { DeviceEnrolled = true }; // enrolled, still in its 24 h delay
         var b = await BuildPreviewAsync(value, canonical: kind == "preview_flag" ? "{\"intent\":\"send\",\"requireConsent\":true}" : "{\"intent\":\"send\"}");
@@ -393,5 +389,45 @@ public sealed class NoDeviceCapTests : IAsyncLifetime
         Assert.Equal(enabled, gate is NoDeviceGate);
         Assert.Null(await gate.CheckAsync("s", "ACCESS"));
         Assert.Equal(0, _settings.Calls);
+    }
+
+    [Theory]
+    [InlineData("first_use")]
+    [InlineData("cooling_off")]
+    public async Task NoDevice_cooling_off_and_first_use_go_through_the_reduced_cap_instead_of_the_phone(string kind)
+    {
+        _settings.Value = kind == "first_use" ? _settings.Value! with { FirstUse = true } : _settings.Value! with { CoolingOff = true };
+        _oidc.ValuedEur = "60";
+        Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(await BuildPreviewAsync(60m))).Outcome); // OIDC signs
+        Assert.False(_oidc.Calls[^1].RequireConsent);
+        var r = await ConfirmAsync(await BuildPreviewAsync(50m)); // 60 + 50 > 100
+        Assert.Equal(NoDevicePolicy.DailyCapReason, r.ErrorCode);
+        Assert.Single(_oidc.Calls);
+    }
+
+    [Fact]
+    public async Task NoDevice_a_step_up_from_oidc_is_refused_at_once_without_a_pending_consent()
+    {
+        _settings.Value = _settings.Value! with { FirstUse = true };
+        _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_nodevice", "12", 300, 2); // OIDC without rule 4
+        var b = await BuildPreviewAsync(10m);
+        var r = await ConfirmAsync(b);
+        Assert.Equal((ConfirmOutcome.Failed, NoDevicePolicy.NeedsDeviceReason), (r.Outcome, r.ErrorCode));
+        Assert.Contains("Enroll the Biatec authenticator", r.Message);
+        Assert.Null(r.Consent);
+        Assert.Single(_oidc.Calls);
+        Assert.Empty(await SpendsAsync()); // the reservation was released
+        Assert.Equal(ActionPreviewStatus.Proposed, await StatusAsync(b.PreviewId));
+        await using (var db = NewContext())
+        {
+            Assert.Empty(await db.ConsentRequests.AsNoTracking().ToListAsync());
+            Assert.Equal(StepStatus.Pending, (await db.ActionSteps.AsNoTracking().SingleAsync(x => x.PreviewId == b.PreviewId)).Status);
+        }
+        Assert.Contains(_recorder.Entries, e => e.Kind == EvidenceKinds.SigningOutcome);
+
+        // With an active device the same step-up opens the consent as before.
+        _settings.Value = _settings.Value! with { DeviceEnrolled = true, DeviceActive = true };
+        _cache = new NoDeviceSettingsCache(_clock);
+        Assert.Equal(ConfirmOutcome.ConsentPending, (await ConfirmAsync(await BuildPreviewAsync(10m))).Outcome);
     }
 }

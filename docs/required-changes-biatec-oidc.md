@@ -367,9 +367,13 @@ this request is processed by hand.
   `GET /consent/settings` (row 20). When it answers `device_active: false` (an enrolled device still in its activation delay
   counts as none):
   - an action that would need the phone (value above `threshold_eur`, clamped to the 1000 EUR ceiling and the ceiling when OIDC
-    omits it; a value the backend cannot predict; `always_ask`; `cooling_off_until` or `first_use`, which OIDC answers with a
-    step-up the user cannot approve; a preview's own `requireConsent`; or a soft or safe cap forcing consent) is refused with
-    `no_active_device` and an enrollment hint, before anything is reserved or signed;
+    omits it; a value the backend cannot predict; `always_ask`; a preview's own `requireConsent`; or a soft or safe cap
+    forcing consent) is refused with `no_active_device` and an enrollment hint, before anything is reserved or signed.
+    Cooling-off (`cooling_off_until`) and `first_use` do not block such a user: per rules 4 and 8 the reduced daily cap applies
+    instead;
+  - if Biatec OIDC (which does not implement rule 4 yet) answers such a user's signing request with a step-up challenge, no
+    consent request is opened: the reservation is released, the preview goes back to awaiting confirmation, `signing_refused`
+    is recorded and the user gets `no_active_device` with the enrollment hint at once;
   - otherwise the action's value is reserved in the T-025 store (`SoftCapSpends`, same advisory lock as the soft cap) against a
     rolling 24-hour own-funds total per user `sub` and tenant; over `Caps:NoDevice:DailyCapEur` (default 100) it is refused with
     `no_device_daily_cap` and the enrollment hint. Safe approvals and executions add nothing, as in the soft cap, and a
