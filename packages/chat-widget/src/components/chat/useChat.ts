@@ -1,5 +1,6 @@
 import { reactive, ref, computed, onBeforeUnmount } from "vue";
 import type { ChatEvent, SessionState, SessionTier, Suggestion } from "@biatec/chat-protocol";
+import { t } from "../../i18n";
 import type { TransportManager } from "../../transport";
 import type { AuthClient } from "./auth";
 
@@ -90,7 +91,7 @@ export function useChat(svc: ChatServices) {
     try {
       for await (const e of svc.transport.send({ message, signal: ctl.signal, ...(opts.includeContext === false ? { context: null } : {}) })) apply(reply, e);
     } catch {
-      if (!ctl.signal.aborted) reply.error = "Something went wrong. Please try again.";
+      if (!ctl.signal.aborted) reply.error = t("chat.errorGeneric");
     } finally {
       reply.streaming = false;
       busy.value = false;
@@ -182,7 +183,7 @@ export function useChat(svc: ChatServices) {
         }
         await refreshSession();
         phase.value = "idle";
-        announce(session.value?.email ? `Signed in as ${session.value.email}` : "Signed in");
+        announce(session.value?.email ? t("chat.signedInAs", { email: session.value.email }) : t("chat.signedIn"));
         return true;
       }
       if (status === "Failed") return fail();
@@ -226,7 +227,7 @@ export function useChat(svc: ChatServices) {
         closePopup();
         messages.splice(0, messages.length);
         phase.value = "idle";
-        announce("Signed out");
+        announce(t("chat.signedOut"));
         return true;
       }
       if (popup.closed) {

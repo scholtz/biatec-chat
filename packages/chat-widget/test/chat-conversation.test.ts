@@ -295,6 +295,13 @@ describe("i18n", () => {
     expect(text.replace(/\s+/g, "")).toBe("");
   });
 
+  it("suggestions.ts and useChat.ts hold no user-facing string literal", () => {
+    const sug = readFileSync(resolve(process.cwd(), "src/components/chat/suggestions.ts"), "utf8");
+    expect(sug).not.toMatch(/(?:label|prompt):\s*"/);
+    const chat = readFileSync(resolve(process.cwd(), "src/components/chat/useChat.ts"), "utf8");
+    expect(chat).not.toMatch(/Something went wrong|Signed (?:in|out)/);
+  });
+
   it("every t() key used by the chat view exists in the English catalog", () => {
     const keys = [...source.matchAll(/"(chat\.[A-Za-z]+)"/g)].map((m) => m[1]!);
     expect(keys.length).toBeGreaterThan(15);

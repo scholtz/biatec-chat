@@ -34,6 +34,26 @@
     "phaseBlocked": "Your browser blocked the sign-in window. Allow popups for this site and try again.",
     "phaseFailed": "Sign-in did not complete. Try again.",
     "phaseNoCookies": "Sign-in needs cookies for this chat. Your browser may be blocking third-party cookies, or this website's origin is not registered.",
-    "phaseSignoutFailed": "Sign-out did not complete. You are still signed in; try again."
+    "phaseSignoutFailed": "Sign-out did not complete. You are still signed in; try again.",
+    "promptBlockchainLabel": "What is the blockchain?",
+    "promptBlockchainText": "Explain to me what the blockchain is and why Biatec uses Algorand.",
+    "promptDexLabel": "How does Biatec DEX work?",
+    "promptDexText": "Explain how the Biatec DEX and its concentrated liquidity pools work.",
+    "promptSafeLabel": "What is a Biatec Safe?",
+    "promptSafeText": "What is a Biatec Safe and how do its approvals work?",
+    "promptCapabilitiesLabel": "What can Biatec AI do?",
+    "promptCapabilitiesText": "What can you help me with, and what needs me to sign in first?",
+    "promptTransferLabel": "Move Bitcoin between my addresses",
+    "promptTransferText": "Transfer funds from my primary Bitcoin address to my secondary Bitcoin address.",
+    "promptLiquidityLabel": "Add liquidity",
+    "promptLiquidityText": "Add liquidity to the Biatec DEX EURS/USDC pool.",
+    "promptSwapLabel": "Swap USDC to ALGO",
+    "promptSwapText": "Swap 50 USDC to ALGO.",
+    "promptLimitsLabel": "My spending limits",
+    "promptLimitsText": "What are my current spending limits?",
+    "errorGeneric": "Something went wrong. Please try again.",
+    "signedInAs": "Signed in as {email}",
+    "signedIn": "Signed in",
+    "signedOut": "Signed out"
   }
 }

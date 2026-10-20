@@ -144,6 +144,16 @@ describe("sample prompts by tier", () => {
     expect(promptsFor("Authenticated", "default")).toHaveLength(4);
     expect(promptsFor("Anonymous", ["a", "b"]).map((p) => p.prompt)).toEqual(["a", "b"]);
   });
+  it("caps a host-supplied list at four cards", () => {
+    const six = ["a", "b", "c", "d", "e", "f"];
+    expect(promptsFor("Anonymous", six).map((p) => p.prompt)).toEqual(["a", "b", "c", "d"]);
+    expect(promptsFor("Authenticated", six)).toHaveLength(4);
+  });
+  it("resolves default labels from the catalog", () => {
+    const labels = promptsFor("Anonymous", "default").map((p) => p.label);
+    expect(labels).toContain("What is the blockchain?");
+    for (const l of labels) expect(l).not.toMatch(/^chat\./);
+  });
   it("renders per tier and sends the prompt on click", async () => {
     const svc = services({ sessions: [authed] });
     const w = await open(svc);
