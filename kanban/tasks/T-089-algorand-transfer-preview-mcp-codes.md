@@ -1,7 +1,7 @@
 ---
 id: T-089
 title: "Bug: Algorand transfer preview must use MCP network codes and the error field"
-status: in-progress
+status: done
 priority: P1
 epic: "Wallet tools"
 blocked_by: [T-082]
@@ -46,9 +46,9 @@ files.
 
 ## Acceptance criteria
 
-- [ ] getCryptoBalance is called with `algorand-mainnet` / `algorand-testnet` (test)
-- [ ] An MCP `error` payload yields "the balance could not be read", never a shaped balance (test)
-- [ ] Native ALGO and ASA balances in the preview match the real MCP response shape (test)
+- [x] getCryptoBalance is called with `algorand-mainnet` / `algorand-testnet` (test)
+- [x] An MCP `error` payload yields "the balance could not be read", never a shaped balance (test)
+- [x] Native ALGO and ASA balances in the preview match the real MCP response shape (test)
 
 ## Verification
 
@@ -56,7 +56,17 @@ files.
 
 ## Hand-off
 
+- **Summary:** wallet.transfer preview and builder calls use the MCP network codes (`algorand-mainnet` / `algorand-testnet`) through one helper, `McpNetworks.Algorand` (Tools/Mcp), now also used by liquidity, safe.create, wallet.read and the transfer executor. `McpToolResult.Failed` fails on any non-empty `error` (string, object, array, number). Balances read the real MCP shape (native ALGO from `nativeBalanceBaseUnits`, ASAs from `assets`); a malformed native balance is a failed read. `Verify` checks the genesis hash as well as the genesis id. The DEX liquidity balance read had the same network/error bug and is fixed.
+- **Branch:** `task/T-089` @ `67e2000` (merged with main), PR #169 (`Closes #168`).
+- **Files outside the area:** `Tools/Mcp/McpTypes.cs`, `Api/Dex/Liquidity/LiquidityExecutors.cs`, `Api/Wallet/Transfer/WalletTransferExecutor.cs`, `Api/Safe/Create/SafeCreateExecutors.cs`, `Api/Wallet/Read/WalletReadExecutors.cs`, `Tests/Dex/Liquidity/LiquidityTests.cs`.
+- **Verification:** Transfer + Liquidity 109 passed; full backend 1060 passed, 1 skipped, 0 failed. Review (medium): all realistic findings fixed.
+- **Known limitations:** two parsers of the MCP balance payload (wallet.balance's model JSON vs the typed transfer reader); `"algorand-" + network` still hand-built in SafeProposalRequests, SafeCreateRequest, X402PayService, SwapExecutor and one algod-options key (follow-up T-091).
+- **Follow-up tasks created:** T-091 (adopt `McpNetworks.Algorand` in the remaining sites). T-090 (ASA decimals lookup, issue #170) becomes ready once this is done.
+- **Unblocks:** T-090.
+
 ## Review
+
+- 2026-10-20 04:00 · approve · PR #169 merged into main @ f948c28 (recorded by kanban-sync)
 
 ## Activity log
 
@@ -65,3 +75,5 @@ files.
 - 2026-10-20 03:33 · kanban-board · blocked → backlog · blockers done: T-082
 - 2026-10-20 03:34 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 03:34 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 03:59 · coordinator · in-progress → review · branch task/T-089 @ 67e2000, PR #169
+- 2026-10-20 04:00 · user · review → done · PR #169 merged into main @ f948c28 (synced by kanban-sync)
