@@ -448,6 +448,37 @@ namespace Biatec.Chat.Api.Migrations
                     b.ToTable("EvidenceSigningKeys");
                 });
 
+            modelBuilder.Entity("Biatec.Chat.Core.Data.KbStoredPage", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("SizeBytes")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("KbPages", (string)null);
+                });
+
             modelBuilder.Entity("Biatec.Chat.Core.Data.KnownSafe", b =>
                 {
                     b.Property<Guid>("Id")
