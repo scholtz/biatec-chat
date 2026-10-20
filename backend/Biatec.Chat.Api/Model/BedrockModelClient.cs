@@ -87,7 +87,7 @@ public sealed class BedrockModelClient(
             ModelId = TenantModels.IsAllowed(request.ModelIdOverride) ? request.ModelIdOverride! : request.Profile == ModelProfile.Authenticated ? _o.AuthenticatedModelId : _o.AnonymousModelId,
             System = system,
             // With tools a follow-up call (the tool result) is likely to reuse the history; without, it would be a paid write nobody reads.
-            Messages = request.Tools.Count > 0 ? WithHistoryCachePoint(request.Messages) : [.. request.Messages],
+            Messages = request.Tools.Count > 0 ? WithHistoryCachePoint(Guarded(request.Messages)) : Guarded(request.Messages),
             InferenceConfig = new InferenceConfiguration { MaxTokens = maxTokens },
             // Sync mode screens each chunk before it is streamed, so blocked text never reaches the browser.
             GuardrailConfig = !_g.Enabled ? null : new GuardrailStreamConfiguration
@@ -95,6 +95,8 @@ public sealed class BedrockModelClient(
                 GuardrailIdentifier = _g.GuardrailId,
                 GuardrailVersion = _g.GuardrailVersion,
                 StreamProcessingMode = GuardrailStreamProcessingMode.Sync,
+                // The trace names the policy that blocked, for the log; it never reaches the browser.
+                Trace = GuardrailTrace.Enabled,
             },
             ToolConfig = request.Tools.Count == 0
                 ? null
@@ -347,6 +349,29 @@ public sealed class BedrockModelClient(
         ex is HttpRequestException or IOException or TimeoutException or OperationCanceledException;
 
     /// <summary>
+    /// With the guardrail on, the turn's user message (the latest one with text: the user's words and the host page
+    /// context) becomes the only <c>guardContent</c>, so Converse screens that input and not the whole history. Earlier
+    /// turns were screened when they were sent and tool results by the tool-result guard; without this, one earlier
+    /// answer matching a denied topic blocks every later turn. The output is always screened.
+    /// </summary>
+    private List<Message> Guarded(IReadOnlyList<Message> messages)
+    {
+        var copy = messages.ToList();
+        if (!_g.Enabled) return copy;
+        // Tool-result messages carry no text, so during a tool loop this still finds the turn's own message.
+        var i = copy.FindLastIndex(m => m.Role == ConversationRole.User && m.Content?.Any(c => c.Text is { Length: > 0 }) == true);
+        if (i < 0) return copy;
+        copy[i] = new Message
+        {
+            Role = copy[i].Role,
+            Content = [.. copy[i].Content.Select(c => c.Text is { Length: > 0 } text
+                ? new ContentBlock { GuardContent = new GuardrailConverseContentBlock { Text = new GuardrailConverseTextBlock { Text = text } } }
+                : c)],
+        };
+        return copy;
+    }
+
+    /// <summary>
     /// Adds a cache point after the last message (the third of Bedrock's four), so a tool loop that resends the
     /// growing history reads it from the cache. The caller's messages are copied, never changed.
     /// </summary>
@@ -422,7 +447,10 @@ public sealed class BedrockModelClient(
                     }
                     yield return new ModelMessageStop(stop.StopReason?.Value ?? "", BuildMessage(includeTools: toolUseStop));
                     break;
-                case ConverseStreamMetadataEvent { Usage: { } usage } meta:
+                case ConverseStreamMetadataEvent meta:
+                    if (meta.Trace?.Guardrail is { } trace && GuardrailBlocks(trace) is { Count: > 0 } blocks)
+                        logger.LogWarning("Bedrock guardrail blocked {ModelId}: {Blocks}", modelId, string.Join(", ", blocks));
+                    if (meta.Usage is not { } usage) break;
                     yield return new ModelUsage(modelId,
                         usage.InputTokens ?? 0, usage.OutputTokens ?? 0,
                         usage.CacheReadInputTokens ?? 0, usage.CacheWriteInputTokens ?? 0,
@@ -484,4 +512,11 @@ public sealed class BedrockModelClient(
             }
         }
     }
+
+    /// <summary>"input:topic:InvestmentAdvice", "output:content:PROMPT_ATTACK/HIGH", … for the blocking findings in a Converse trace.</summary>
+    internal static List<string> GuardrailBlocks(GuardrailTraceAssessment trace) =>
+    [
+        .. Guardrails.BedrockToolResultGuard.Reasons([.. trace.InputAssessment?.Values ?? Enumerable.Empty<GuardrailAssessment>()]).Select(r => "input:" + r),
+        .. Guardrails.BedrockToolResultGuard.Reasons([.. trace.OutputAssessments?.Values.SelectMany(x => x) ?? Enumerable.Empty<GuardrailAssessment>()]).Select(r => "output:" + r),
+    ];
 }
