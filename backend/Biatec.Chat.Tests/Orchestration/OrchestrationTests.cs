@@ -48,6 +48,15 @@ public sealed class OrchestrationTests : IAsyncLifetime
         }
     }
 
+    /// <summary>No tokens: the chat endpoint reads scopes from the vault for non-anonymous sessions, and Redis isn't running here.</summary>
+    private sealed class EmptyVault : Biatec.Chat.Api.Vault.ITokenVault
+    {
+        public Task PutAsync(string sessionId, Biatec.Chat.Api.Vault.TokenVaultEntry entry, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<Biatec.Chat.Api.Vault.TokenVaultEntry?> GetAsync(string sessionId, CancellationToken ct = default) => Task.FromResult<Biatec.Chat.Api.Vault.TokenVaultEntry?>(null);
+        public Task DeleteAsync(string sessionId, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<string?> GetAccessTokenAsync(string sessionId, CancellationToken ct = default) => Task.FromResult<string?>(null);
+    }
+
     private sealed class FakeExecutor(string name, Func<JsonElement?, ToolExecutionResult> run) : IToolExecutor
     {
         public int Calls;
@@ -87,7 +96,9 @@ public sealed class OrchestrationTests : IAsyncLifetime
 
     private ChatDbContext NewContext() => new(new DbContextOptionsBuilder<ChatDbContext>().ConfigureNpgsql(Cs).Options);
 
-    private WebApplicationFactory<Program> Factory(IModelClient modelClient, params IToolExecutor[] executors) =>
+    private WebApplicationFactory<Program> Factory(IModelClient modelClient, params IToolExecutor[] executors) => Factory(modelClient, TenantSeed.BiatecChat(), executors);
+
+    private WebApplicationFactory<Program> Factory(IModelClient modelClient, Tenant tenant, params IToolExecutor[] executors) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Testing");
@@ -104,7 +115,9 @@ public sealed class OrchestrationTests : IAsyncLifetime
             b.ConfigureServices(s =>
             {
                 s.RemoveAll<ITenantStore>();
-                s.AddSingleton<ITenantStore>(new MemoryTenantStore(TenantSeed.BiatecChat()));
+                s.AddSingleton<ITenantStore>(new MemoryTenantStore(tenant));
+                s.RemoveAll<Biatec.Chat.Api.Vault.ITokenVault>();
+                s.AddSingleton<Biatec.Chat.Api.Vault.ITokenVault>(new EmptyVault());
                 s.RemoveAll<IModelClient>();
                 s.AddSingleton(modelClient);
                 s.RemoveAll<IPolicyEventSink>();
@@ -162,6 +175,100 @@ public sealed class OrchestrationTests : IAsyncLifetime
     private static IEnumerable<string> ToolResultTexts(ModelRequest r) =>
         r.Messages.SelectMany(m => m.Content).Where(c => c.ToolResult is not null).SelectMany(c => c.ToolResult.Content).Select(c => c.Text);
 
+    [Theory]
+    [InlineData("eu.anthropic.claude-opus-4-5-20251101-v1:0", true)]
+    [InlineData("eu.anthropic.claude-sonnet-4-5-20250929-v1:0", true)]
+    [InlineData("eu.anthropic.claude-haiku-4-5-20251001-v1:0", true)]
+    [InlineData("eu.anthropic.claude-opus-5-0-20270101-v1:0", false)]
+    [InlineData("anthropic.claude-sonnet-4-5-20250929-v1:0", false)]
+    [InlineData("us.anthropic.claude-sonnet-4-5-20250929-v1:0", false)]
+    [InlineData("amazon.nova-pro-v1:0", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void TenantModels_AllowsOnlyEuClaude4(string? id, bool ok) => Assert.Equal(ok, TenantModels.IsAllowed(id));
+
+    [Fact]
+    public void TenantModels_For_AppliesToAuthenticatedOnly_AndIgnoresInvalidStoredIds()
+    {
+        const string opus = "eu.anthropic.claude-opus-4-5-20251101-v1:0";
+        Assert.Equal(opus, TenantModels.For(opus, anonymous: false));
+        Assert.Null(TenantModels.For(opus, anonymous: true));
+        Assert.Null(TenantModels.For("eu.anthropic.claude-opus-5-0-x", anonymous: false));
+        Assert.Null(TenantModels.For(null, anonymous: false));
+    }
+
+    [Fact]
+    public void TenantSuggestions_ParsesUsablePrompts_AndFallsBackToNull()
+    {
+        Assert.Null(TenantSuggestions.Parse(null));
+        Assert.Null(TenantSuggestions.Parse("[]"));
+        Assert.Null(TenantSuggestions.Parse("not json"));
+        Assert.Null(TenantSuggestions.Parse("{\"a\":1}"));
+        Assert.Equal(["One", "Two"], TenantSuggestions.Parse("[\" One \", \"\", null, \"Two\", \"bad\\u0001\"]"));
+        Assert.Equal(4, TenantSuggestions.Parse("[\"1\",\"2\",\"3\",\"4\",\"5\"]")!.Count);
+    }
+
+    [Fact]
+    public async Task Orchestration_AnonymousSessionKeepsConfiguredModel_EvenWhenTenantHasDefaultModel()
+    {
+        var tenant = TenantSeed.BiatecChat();
+        tenant.DefaultModel = "eu.anthropic.claude-opus-4-5-20251101-v1:0";
+        var model = new ScriptedModel(_ => Text("ok"));
+        using var f = Factory(model, tenant);
+        await (await PostChatAsync(f, new { message = "hi" })).Content.ReadAsStringAsync();
+        Assert.Null(model.Requests[0].ModelIdOverride);
+    }
+
+    [Theory]
+    [InlineData("eu.anthropic.claude-opus-4-5-20251101-v1:0", "eu.anthropic.claude-opus-4-5-20251101-v1:0")]
+    [InlineData("eu.anthropic.claude-opus-5-0-20270101-v1:0", null)]
+    public async Task Orchestration_AuthenticatedSessionUsesTheTenantsModel_AndIgnoresAnInvalidStoredId(string stored, string? expected)
+    {
+        var tenant = TenantSeed.BiatecChat();
+        tenant.DefaultModel = stored;
+        var model = new ScriptedModel(_ => Text("ok"));
+        using var f = Factory(model, tenant);
+
+        var first = await PostChatAsync(f, new { message = "hi" });
+        var cookie = CookieOf(first);
+        await first.Content.ReadAsStringAsync();
+        Assert.Null(model.Requests[0].ModelIdOverride);
+
+        await using (var db = NewContext())
+        {
+            var s = await db.ChatSessions.SingleAsync();
+            s.Tier = Biatec.Chat.Core.Data.SessionTier.Authenticated;
+            s.OidcSub = "user-1";
+            await db.SaveChangesAsync();
+        }
+        await (await PostChatAsync(f, new { message = "again" }, cookie)).Content.ReadAsStringAsync();
+
+        Assert.Equal(2, model.Requests.Count);
+        Assert.Equal(ModelProfile.Authenticated, model.Requests[1].Profile);
+        Assert.Equal(expected, model.Requests[1].ModelIdOverride);
+    }
+
+    [Fact]
+    public async Task GetSession_ReturnsTheTenantsSuggestions_OrNullWhenNotSet()
+    {
+        async Task<JsonElement> Get(Tenant t)
+        {
+            using var f = Factory(new ScriptedModel(_ => Text("ok")), t);
+            using var client = f.CreateClient();
+            var r = new HttpRequestMessage(HttpMethod.Get, "http://chat.biatec.io/session");
+            r.Headers.TryAddWithoutValidation("Origin", Origin);
+            r.Headers.TryAddWithoutValidation("X-Biatec-Chat", "1");
+            r.Headers.TryAddWithoutValidation("X-Biatec-Client-Key", "biatec-web");
+            return await (await client.SendAsync(r)).Content.ReadFromJsonAsync<JsonElement>();
+        }
+        var custom = TenantSeed.BiatecChat();
+        custom.Suggestions = "[\"What does Acme offer?\",\"How do I stake?\"]";
+        var s = await Get(custom);
+        Assert.Equal(["What does Acme offer?", "How do I stake?"], s.GetProperty("suggestions").EnumerateArray().Select(x => x.GetString()));
+        var none = await Get(TenantSeed.BiatecChat());
+        Assert.True(!none.TryGetProperty("suggestions", out var v) || v.ValueKind == JsonValueKind.Null);
+    }
+
     [Fact]
     public async Task Orchestration_TextStreamsAsSseDeltaEvents_AndIsPersisted()
     {
@@ -180,7 +287,7 @@ public sealed class OrchestrationTests : IAsyncLifetime
         Assert.Equal([MessageRole.User, MessageRole.Assistant], rows.Select(x => x.Role));
         Assert.Equal("Hello there", rows[1].Content);
         // Anonymous: only the two anonymous tools reach the model, with Bedrock-safe names.
-        Assert.Equal(["requestSignIn", "kb_search"], model.Requests[0].Tools.Select(t => t.Name));
+        Assert.Equal(["requestSignIn", "kb_search", "market_snapshot"], model.Requests[0].Tools.Select(t => t.Name));
         Assert.Equal(ModelProfile.Anonymous, model.Requests[0].Profile);
         Assert.Contains("untrusted_data", model.Requests[0].Persona);
     }

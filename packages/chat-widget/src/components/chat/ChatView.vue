@@ -25,6 +25,7 @@ import { AGENT_MODE_LABEL, type AgentModeDisplay } from "../shell/agentMode";
 import { BaiSymbol } from "../../ui";
 import SafeCard from "../cards/SafeCard.vue";
 import HoldingsCard from "../data/HoldingsCard.vue";
+import MarketCard from "../data/MarketCard.vue";
 import ActionPreviewCard from "../cards/ActionPreviewCard.vue";
 import ReceiptCard from "../cards/ReceiptCard.vue";
 import { RECEIPT_STATUSES } from "./previews";
@@ -35,6 +36,8 @@ const props = withDefaults(
     messages: ChatMessage[];
     tier: SessionTier;
     suggestions: "default" | string[];
+    /** The tenant's own sample prompts from the session; used when `suggestions` is 'default'. */
+    tenantSuggestions?: readonly string[] | null;
     busy: boolean;
     phase: SignInPhase;
     announcement: string;
@@ -44,7 +47,7 @@ const props = withDefaults(
     /** The host page context, when the host set one. The chip only exists while this is set. */
     contextLabel?: string | null;
   }>(),
-  { agentMode: "analyze", contextLabel: null, sessionExpiresAt: null },
+  { agentMode: "analyze", contextLabel: null, sessionExpiresAt: null, tenantSuggestions: null },
 );
 const emit = defineEmits<{
   send: [text: string, opts?: { includeContext?: boolean }];
@@ -57,7 +60,7 @@ const emit = defineEmits<{
 const draft = ref("");
 const input = ref<HTMLTextAreaElement | null>(null);
 const list = ref<HTMLElement | null>(null);
-const prompts = computed(() => promptsFor(props.tier, props.suggestions));
+const prompts = computed(() => promptsFor(props.tier, props.suggestions, props.tenantSuggestions));
 const includeContext = ref(true);
 const copiedId = ref<number | null>(null);
 let copiedTimer: ReturnType<typeof setTimeout> | undefined;
@@ -200,7 +203,10 @@ const showThinking = (m: ChatMessage) => m.role === "assistant" && m.streaming &
             <!-- Safe cards come only from safe_card events (structured tool results), never from model text. -->
             <SafeCard v-for="(sc, si) in m.safeCards ?? []" :key="si" :card="sc" />
             <!-- Data cards come only from data_card events (structured tool results), never from model text. -->
-            <HoldingsCard v-for="(dc, di) in m.dataCards ?? []" :key="di" :card="dc" />
+            <template v-for="(dc, di) in m.dataCards ?? []" :key="di">
+              <MarketCard v-if="dc.kind === 'market'" :card="dc" />
+              <HoldingsCard v-else :card="dc" />
+            </template>
             <!-- Preview cards come only from preview_card events (structured backend data), never from model text. -->
             <template v-for="pv in m.previews ?? []" :key="pv.preview.previewId">
               <ReceiptCard v-if="RECEIPT_STATUSES.includes(pv.preview.status)" :preview="pv.preview" />

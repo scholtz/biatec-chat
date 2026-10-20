@@ -16,6 +16,9 @@ public enum ModelProfile
 public sealed record ModelRequest
 {
     public required ModelProfile Profile { get; init; }
+
+    /// <summary>A tenant's validated model id (<see cref="TenantModels"/>); replaces the profile's configured model.</summary>
+    public string? ModelIdOverride { get; init; }
     public required string Persona { get; init; }
     public required string Catalogue { get; init; }
     public required IReadOnlyList<Message> Messages { get; init; }

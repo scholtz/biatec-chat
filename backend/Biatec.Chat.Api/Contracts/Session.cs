@@ -40,6 +40,8 @@ public sealed record SessionState
     public Biatec.Chat.Api.Agent.AgentModeValue AgentMode { get; init; } = Biatec.Chat.Api.Agent.AgentModeValue.Analyze;
     /// <summary>True while the user has paused Biatec AI.</summary>
     public bool Paused { get; init; }
+    /// <summary>The tenant's own sample prompts, shown when the widget option is 'default'. Null or empty: the built-in ones.</summary>
+    public IReadOnlyList<string>? Suggestions { get; init; }
 }
 
 /// <summary>A clickable prompt suggested for an empty or ongoing session.</summary>

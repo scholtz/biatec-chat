@@ -24,11 +24,11 @@ public class ToolGateTests
     };
 
     [Fact]
-    public void Anonymous_tool_list_is_exactly_requestSignIn_and_kb_search()
+    public void Anonymous_tool_list_is_exactly_requestSignIn_kb_search_and_market_snapshot()
     {
         var (gate, _) = Make();
         var names = gate.ToolsFor(Anon()).Select(c => c.ToolName).OrderBy(x => x).ToArray();
-        Assert.Equal(["kb.search", "requestSignIn"], names);
+        Assert.Equal(["kb.search", "market.snapshot", "requestSignIn"], names);
     }
 
     [Fact]
@@ -36,7 +36,7 @@ public class ToolGateTests
     {
         var (gate, _) = Make();
         var ctx = new GateContext(SessionTier.Anonymous, ["openid", "sign", "manage-limits"], true, true);
-        Assert.Equal(["kb.search", "requestSignIn"], gate.ToolsFor(ctx).Select(c => c.ToolName).OrderBy(x => x).ToArray());
+        Assert.Equal(["kb.search", "market.snapshot", "requestSignIn"], gate.ToolsFor(ctx).Select(c => c.ToolName).OrderBy(x => x).ToArray());
         foreach (var cap in gate.Registry.All.Where(c => c.MinTier != SessionTier.Anonymous))
         {
             var d = gate.Check(cap.Name, new JsonObject(), ctx);
@@ -131,7 +131,7 @@ public class ToolGateTests
     public void Authenticated_tool_list_requires_openid_and_hides_flagged_capabilities()
     {
         var (gate, _) = Make();
-        Assert.Equal(["kb.search", "requestSignIn"], gate.ToolsFor(Auth()).Select(c => c.ToolName).OrderBy(x => x).ToArray());
+        Assert.Equal(["kb.search", "market.snapshot", "requestSignIn"], gate.ToolsFor(Auth()).Select(c => c.ToolName).OrderBy(x => x).ToArray());
         var names = gate.ToolsFor(Auth("openid", "sign")).Select(c => c.ToolName).ToHashSet();
         Assert.Contains("wallet.transfer", names);
         Assert.DoesNotContain("x402.pay", names);

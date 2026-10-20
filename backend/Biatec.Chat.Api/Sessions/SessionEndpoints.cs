@@ -1,3 +1,4 @@
+using Biatec.Chat.Api.Model;
 using System.Collections.Concurrent;
 using Biatec.Chat.Api.Contracts;
 using Biatec.Chat.Api.Tenancy;
@@ -57,7 +58,7 @@ public static class SessionEndpoints
             var handle = await sessions.ResolveOrCreateAsync(ctx.GetTenant()!, ReadCookie(ctx.Request), ctx.RequestAborted);
             if (handle.NewToken is not null) WriteCookie(ctx.Response, handle.NewToken, handle.Session.AbsoluteExpiresAt, clock.GetUtcNow());
             var (email, primaryAddress) = await profile.GetAsync(handle.Session, ctx.RequestAborted);
-            return Results.Ok(await BuildStateAsync(db, handle.Session, email, primaryAddress, ctx.RequestAborted));
+            return Results.Ok(await BuildStateAsync(db, handle.Session, email, primaryAddress, ctx.RequestAborted, TenantSuggestions.Parse(ctx.GetTenant()?.Suggestions)));
         }).WithName("GetSession").Produces<SessionState>().RegisteredOriginsOnly();
 
         // Cookie probe. Without a live cookie: creates the session, sets the cookie, reports false. With it: true.
@@ -99,7 +100,7 @@ public static class SessionEndpoints
 
     /// <param name="email">From <see cref="ISessionProfile"/>, which already returns null for guests.</param>
     /// <param name="primaryAddress">From <see cref="ISessionProfile"/>, which already returns null for guests.</param>
-    internal static async Task<SessionState> BuildStateAsync(ChatDbContext db, ChatSession s, string? email, string? primaryAddress, CancellationToken ct)
+    internal static async Task<SessionState> BuildStateAsync(ChatDbContext db, ChatSession s, string? email, string? primaryAddress, CancellationToken ct, IReadOnlyList<string>? suggestions = null)
     {
         var popup = await db.PopupAuthRequests.AsNoTracking()
             .Where(p => p.ConversationId == s.ConversationId)
@@ -124,6 +125,7 @@ public static class SessionEndpoints
             ExpiresAt = s.AbsoluteExpiresAt,
             AgentMode = Agent.AgentModePolicy.ToWire(Agent.AgentModePolicy.Effective(s)),
             Paused = s.Paused && s.Tier != Core.Data.SessionTier.Anonymous,
+            Suggestions = suggestions,
         };
     }
 }

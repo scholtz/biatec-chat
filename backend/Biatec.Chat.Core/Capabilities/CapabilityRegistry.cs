@@ -11,6 +11,7 @@ public sealed class CapabilityRegistry
     public const string ManageLimits = "manage-limits";
     public const string RequestSignIn = "requestSignIn";
     public const string KbSearch = "kb.search";
+    public const string MarketSnapshot = "market.snapshot";
 
     private readonly Dictionary<string, Capability> _byName;
     private readonly List<Capability> _ordered = [];
@@ -191,6 +192,8 @@ public sealed class CapabilityRegistry
                 Obj(new JsonObject { ["reason"] = Str(max: 500, min: 0) })),
             Tool(KbSearch, A, NoScopes, null, false, ValuationBasis.None, "Search the curated Biatec knowledge base.",
                 Obj(new JsonObject { ["query"] = Str(max: 500) }, "query")),
+            Tool(MarketSnapshot, A, NoScopes, null, false, ValuationBasis.None, "Public Biatec DEX market snapshot of asset A priced in asset B over 24 hours (asset id 0 is ALGO): shows a market card. Facts only; never give forecasts or advice, and never state a number the card does not show.",
+                Obj(new JsonObject { ["assetAId"] = Id(), ["assetBId"] = Id() }, "assetAId", "assetBId")),
             Tool("explain.product", A, NoScopes, null, false, ValuationBasis.None, "Explain Biatec products (no tool of its own).", null),
             Tool("explain.blockchain", A, NoScopes, null, false, ValuationBasis.None, "Explain Algorand and DEX concepts (no tool of its own).", null),
             Tool("wallet.listAddresses", U, Open, null, false, ValuationBasis.None, "List the user's own addresses: Algorand on mainnet/testnet, Bitcoin on bitcoin (Bitcoin mainnet only; each Bitcoin address is labelled primary or secondary).", networkOnly),
