@@ -18,7 +18,7 @@ public static class EvidenceExportEndpoints
     /// </summary>
     public static IEndpointRouteBuilder MapEvidenceExport(this IEndpointRouteBuilder app)
     {
-        app.MapGet(Path, async (HttpContext ctx, ChatDbContext db, IEvidenceLog log, IEvidenceKeyStore keys, TimeProvider clock) =>
+        app.MapGet(Path, async (HttpContext ctx, ChatDbContext db, IEvidenceLog log, IEvidenceKeyStore keys, TimeProvider clock, IConfiguration config) =>
         {
             ctx.Response.Headers.CacheControl = "no-store";
             ctx.Response.Headers.Append("Vary", "Cookie");
@@ -37,7 +37,9 @@ public static class EvidenceExportEndpoints
             var chain = await log.GetChainAsync(session.ConversationId, ctx.RequestAborted);
             if (chain.Count == 0) return Results.Problem("This conversation has no evidence yet.", statusCode: StatusCodes.Status404NotFound);
 
-            var jwksUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}{EvidenceJwks.JwksPath}";
+            // Prefer the configured public base URL: behind a proxy the request scheme and host can be internal.
+            var publicBase = config["Evidence:PublicBaseUrl"]?.Trim().TrimEnd('/');
+            var jwksUrl = (string.IsNullOrEmpty(publicBase) ? $"{ctx.Request.Scheme}://{ctx.Request.Host}" : publicBase) + EvidenceJwks.JwksPath;
             var bundle = await EvidenceBundleBuilder.BuildAsync(session.ConversationId, chain, keys, jwksUrl, now, ctx.RequestAborted);
             ctx.Response.Headers.ContentDisposition = $"attachment; filename=\"biatec-evidence-{session.ConversationId:N}.json\"";
             return Results.Content(bundle.ToJsonString(), "application/json");

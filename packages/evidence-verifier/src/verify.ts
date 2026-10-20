@@ -180,6 +180,8 @@ export function verifyBundle(input: unknown, options: VerifyOptions = {}): Verif
     if (!HEX64.test(String(e.payloadHash)) || !HEX64.test(String(e.entryHash)) || !HEX64.test(String(e.prevHash))) { fail(`${at}: hash is not lowercase hex SHA-256.`); break; }
     if (e.anchorRef !== null && typeof e.anchorRef !== "string") { fail(`${at}: anchorRef must be a string or null.`); break; }
 
+    // Convention: payloads are never the JSON literal null (the log always records an object), so null/absent means
+    // "deleted", and a deleted entry has a null salt too. A bundle cannot represent a payload that is JSON null.
     const hasPayload = e.payload !== null && e.payload !== undefined;
     const hasSalt = e.salt !== null && e.salt !== undefined;
     if (hasPayload !== hasSalt) { fail(`${at}: payload and salt must be present or deleted together.`); break; }

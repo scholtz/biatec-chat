@@ -15,6 +15,8 @@ const props = defineProps<{
   docked: boolean;
   /** Test hook for "today" (epoch ms). */
   nowMs?: number;
+  /** The signed evidence export endpoint (evidenceDownloadUrl). */
+  evidenceUrl?: string;
 }>();
 const emit = defineEmits<{ close: [] }>();
 
@@ -103,5 +105,8 @@ const agentLine = computed(() => {
       </ol>
     </section>
     <p class="bc-activity-footer">{{ t("activity.footer") }}</p>
+    <a v-if="evidenceUrl" class="bc-link" data-testid="activity-evidence" :href="evidenceUrl" download>
+      {{ t("activity.downloadEvidence") }}
+    </a>
   </div>
 </template>

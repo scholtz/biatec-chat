@@ -7,6 +7,7 @@ import MinimizedBar from "./shell/MinimizedBar.vue";
 import ChatView from "./chat/ChatView.vue";
 import PermissionsDialog from "./agent/PermissionsDialog.vue";
 import AgentNotices from "./agent/AgentNotices.vue";
+import { evidenceDownloadUrl } from "../transport/types";
 import ActivityTimeline from "./activity/ActivityTimeline.vue";
 import { agentModeOf, AGENT_MODE_LABEL } from "./shell/agentMode";
 import { createCore, pageContext, type WidgetCore, type WidgetServices } from "../api/core";
@@ -264,6 +265,7 @@ onBeforeUnmount(() => {
           :agent="agent"
           :mode="agentMode"
           :docked="asideDocked"
+          :evidence-url="evidenceDownloadUrl(options.backendUrl)"
           @close="ui.activity = false"
         />
       </template>

@@ -58,7 +58,7 @@ public sealed class EvidenceExportTests : IAsyncLifetime
             Task.FromResult<Tenant?>(host == "chat.biatec.io" ? TenantSeed.BiatecChat() : null);
     }
 
-    private WebApplicationFactory<Program> NewFactory(DevEvidenceKeyStore keys) => new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+    private WebApplicationFactory<Program> NewFactory(DevEvidenceKeyStore keys, string? publicBaseUrl = null) => new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
     {
         b.UseEnvironment("Testing");
         b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?>
@@ -70,6 +70,7 @@ public sealed class EvidenceExportTests : IAsyncLifetime
             ["Postgres:ConnectionString"] = Cs,
             ["Algod:Networks:testnet:Url"] = "https://algod.example.test",
             ["Kms:KeyId"] = "alias/test",
+            ["Evidence:PublicBaseUrl"] = publicBaseUrl,
         }));
         b.ConfigureServices(s =>
         {
@@ -125,6 +126,34 @@ public sealed class EvidenceExportTests : IAsyncLifetime
         });
         Assert.True(ec.VerifyData(JsonCanonicalizer.CanonicalizeToUtf8(copy), EvidenceVerifier.FromBase64Url(sig),
             System.Security.Cryptography.HashAlgorithmName.SHA256, System.Security.Cryptography.DSASignatureFormat.IeeeP1363FixedFieldConcatenation));
+    }
+
+    [Fact]
+    public async Task Export_JwksUrl_UsesTheConfiguredPublicBaseUrl()
+    {
+        var keys = new DevEvidenceKeyStore();
+        await using var factory = NewFactory(keys, "https://public.example.test/");
+        var tenant = TenantSeed.BiatecChat();
+        var token = SessionService.NewToken();
+        var conv = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ChatDbContext>();
+            db.Conversations.Add(new Conversation { Id = conv, TenantId = tenant.Id, CreatedAt = now, LastMessageAt = now });
+            db.ChatSessions.Add(new ChatSession
+            {
+                Id = SessionService.IdFromToken(token), ConversationId = conv, Tier = Core.Data.SessionTier.Anonymous, TenantId = tenant.Id,
+                CreatedAt = now, LastActivityAt = now, AbsoluteExpiresAt = now.AddHours(1),
+            });
+            await db.SaveChangesAsync();
+            await scope.ServiceProvider.GetRequiredService<IEvidenceLog>().AppendAsync(conv, "message", new JsonObject { ["text"] = "hi" });
+        }
+        using var client = factory.CreateClient();
+        var res = await GetAsync(client, EvidenceExportEndpoints.Path, token);
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var bundle = JsonNode.Parse(await res.Content.ReadAsStringAsync())!;
+        Assert.Equal("https://public.example.test" + EvidenceJwks.JwksPath, (string)bundle["jwksUrl"]!);
     }
 
     [Fact]
