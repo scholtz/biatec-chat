@@ -89,7 +89,7 @@ public sealed class WalletReadTests
         Assert.Equal("1234567", (string)b["amount"]!);
         Assert.Equal(6, (int)b["decimals"]!);
         Assert.Equal("1.234567", (string)b["display"]!);
-        Assert.Contains($"getCryptoBalance:testnet:{Mine}", mcp.Calls);
+        Assert.Contains($"getCryptoBalance:algorand-testnet:{Mine}", mcp.Calls);
     }
 
     [Fact]
@@ -181,11 +181,10 @@ public sealed class WalletReadTests
         }
     }
 
-    [Theory]
-    [InlineData("bitcoin")]
-    [InlineData("bitcoin-testnet")]
-    public async Task ListAddresses_on_bitcoin_returns_labelled_primary_and_secondary_addresses_via_getCryptoAddress(string network)
+    [Fact]
+    public async Task ListAddresses_on_bitcoin_returns_labelled_primary_and_secondary_addresses_via_getCryptoAddress()
     {
+        const string network = "bitcoin";
         var mcp = new FakeMcp();
         var r = await new WalletListAddressesExecutor(mcp).ExecuteAsync(Ctx("wallet.listAddresses"), new JsonObject { ["network"] = network }, default);
         Assert.False(r.IsError);
@@ -278,11 +277,61 @@ public sealed class WalletReadTests
         var transferNetworks = registry.Find("wallet.transfer")!.InputSchema!["properties"]!["network"]!["enum"]!.AsArray().Select(n => (string)n!).ToArray();
         foreach (var name in new[] { "wallet.listAddresses", "wallet.balance" })
             Assert.Equal(transferNetworks, registry.Find(name)!.InputSchema!["properties"]!["network"]!["enum"]!.AsArray().Select(n => (string)n!).ToArray());
-        foreach (var network in new[] { "bitcoin", "bitcoin-testnet" })
+        Assert.True(gate.Check("wallet.listAddresses", new JsonObject { ["network"] = "bitcoin" }, auth).Allowed);
+        Assert.True(gate.Check("wallet.balance", new JsonObject { ["network"] = "bitcoin", ["address"] = BtcPrimary }, auth).Allowed);
+        Assert.False(gate.Check("wallet.balance", new JsonObject { ["network"] = "bitcoin", ["address"] = BtcPrimary }, new GateContext(SessionTier.Anonymous, ["openid"])).Allowed);
+        // Biatec MCP serves no Bitcoin testnet, so none is offered (read tools or wallet.transfer).
+        Assert.DoesNotContain("bitcoin-testnet", transferNetworks);
+        Assert.False(gate.Check("wallet.listAddresses", new JsonObject { ["network"] = "bitcoin-testnet" }, auth).Allowed);
+    }
+
+    [Fact]
+    public async Task ListAddresses_on_bitcoin_leaves_out_a_secondary_the_client_cannot_read()
+    {
+        var mcp = new FakeMcp { BtcAddress = slot => slot == 0 ? FakeMcp.Ok($"{{\"address\":\"{BtcPrimary}\"}}") : throw new NotSupportedException() };
+        var r = await new WalletListAddressesExecutor(mcp).ExecuteAsync(Ctx("wallet.listAddresses"), new JsonObject { ["network"] = "bitcoin" }, default);
+        Assert.False(r.IsError);
+        Assert.Equal(1, (int)JsonNode.Parse(r.Content)!["count"]!);
+    }
+
+    [Fact]
+    public async Task Balance_on_bitcoin_matches_bech32_addresses_case_insensitively()
+    {
+        var mcp = new FakeMcp { Balance = () => FakeMcp.Ok("{\"nativeBalanceBaseUnits\":\"1\"}") };
+        var r = await new WalletBalanceExecutor(mcp).ExecuteAsync(Ctx("wallet.balance"), new JsonObject { ["network"] = "bitcoin", ["address"] = BtcSecondary.ToUpperInvariant() }, default);
+        Assert.False(r.IsError, r.Content);
+        Assert.Equal(BtcSecondary, (string)JsonNode.Parse(r.Content)!["address"]!);
+        Assert.Contains($"getCryptoBalance:bitcoin:{BtcSecondary}", mcp.Calls);
+    }
+
+    [Fact]
+    public async Task Balance_on_algorand_shapes_the_real_mcp_response_native_algo_and_asas()
+    {
+        var mcp = new FakeMcp
         {
-            Assert.True(gate.Check("wallet.listAddresses", new JsonObject { ["network"] = network }, auth).Allowed);
-            Assert.True(gate.Check("wallet.balance", new JsonObject { ["network"] = network, ["address"] = BtcPrimary }, auth).Allowed);
-            Assert.False(gate.Check("wallet.balance", new JsonObject { ["network"] = network, ["address"] = BtcPrimary }, new GateContext(SessionTier.Anonymous, ["openid"])).Allowed);
-        }
+            Balance = () => FakeMcp.Ok($"{{\"network\":\"Algorand Testnet\",\"family\":\"Avm\",\"address\":\"{Mine}\",\"nativeCurrencySymbol\":\"ALGO\",\"nativeBalance\":1.234567,\"nativeBalanceBaseUnits\":\"1234567\",\"assets\":[{{\"assetId\":31566704,\"amount\":18446744073709551615}}],\"assetsTruncated\":true,\"error\":\"\",\"errorType\":\"\"}}"),
+        };
+        var r = await new WalletBalanceExecutor(mcp).ExecuteAsync(Ctx("wallet.balance"), Args(), default);
+        Assert.False(r.IsError, r.Content);
+        var o = JsonNode.Parse(r.Content)!;
+        Assert.Equal("testnet", (string)o["network"]!);
+        Assert.True((bool)o["assetsTruncated"]!);
+        var list = o["balances"]!.AsArray();
+        Assert.Equal(2, list.Count);
+        Assert.Equal("ALGO", (string)list[0]!["symbol"]!);
+        Assert.Equal("1234567", (string)list[0]!["amount"]!);
+        Assert.Equal("1.234567", (string)list[0]!["display"]!);
+        Assert.Equal("31566704", (string)list[1]!["assetId"]!);
+        Assert.Equal(JsonValueKind.String, list[1]!["amount"]!.GetValueKind());
+        Assert.Equal("18446744073709551615", (string)list[1]!["amount"]!);
+    }
+
+    [Fact]
+    public async Task Balance_on_algorand_treats_a_non_empty_error_field_as_a_failed_read()
+    {
+        var mcp = new FakeMcp { Balance = () => FakeMcp.Ok("{\"network\":\"algorand-testnet\",\"error\":\"account not found secret\"}") };
+        var r = await new WalletBalanceExecutor(mcp).ExecuteAsync(Ctx("wallet.balance"), Args(), default);
+        Assert.True(r.IsError);
+        Assert.DoesNotContain("secret", r.Content);
     }
 }
