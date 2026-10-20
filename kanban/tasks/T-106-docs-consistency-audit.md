@@ -1,7 +1,7 @@
 ---
 id: T-106
 title: "Docs consistency audit: make every doc match the code on main"
-status: review
+status: done
 priority: P1
 epic: "Deploy & docs"
 blocked_by: []
@@ -70,7 +70,10 @@ authenticator default mock URL, conformance suite in CI, k8s/main storage.yaml, 
 
 ## Review
 
+- 2026-10-20 09:19 · approve · PR #223 merged into main @ c5efedf (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 08:47 · coordinator · (new) → in-progress · user request: check docs for inconsistencies across the repo
 - 2026-10-20 09:04 · coordinator · in-progress → review · PR #223
+- 2026-10-20 09:19 · user · review → done · PR #223 merged into main @ c5efedf (synced by kanban-sync)
