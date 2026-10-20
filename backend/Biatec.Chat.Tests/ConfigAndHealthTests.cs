@@ -69,7 +69,7 @@ public class ConfigAndHealthTests
         var ex = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
 
         var validation = Flatten(ex).OfType<OptionsValidationException>().FirstOrDefault();
-        Assert.NotNull(validation);
+        Assert.True(validation is not null, ex.ToString());
         Assert.Contains(validation!.Failures, f => f.Contains(key.Split(':')[^1], StringComparison.OrdinalIgnoreCase)
                                                     || f.Contains(key.Split(':')[0], StringComparison.OrdinalIgnoreCase));
     }
@@ -143,6 +143,10 @@ public class ConfigAndHealthTests
 
     private static IEnumerable<Exception> Flatten(Exception? ex)
     {
-        for (; ex is not null; ex = ex.InnerException) yield return ex;
+        if (ex is null) yield break;
+        yield return ex;
+        var children = ex is AggregateException agg ? agg.InnerExceptions : (IReadOnlyCollection<Exception>)(ex.InnerException is null ? [] : [ex.InnerException]);
+        foreach (var child in children)
+            foreach (var e in Flatten(child)) yield return e;
     }
 }
