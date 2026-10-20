@@ -82,8 +82,8 @@ public abstract class LiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpC
         if (r.PoolAppId == 0)
         {
             if (r.AssetA is null || r.AssetB is null)
-                return (null, new ToolExecutionResult(
-                    "No pool was named. Ask the user which two assets the pool is for (wallet.balance shows asset ids), then call this tool again with poolAppId 0, assetAId and assetBId. Do not guess a pool.", true), null);
+                return (null, new ToolExecutionResult("No pool was named and no asset pair was given.", true,
+                    Guidance: "Ask the user which two assets the pool is for (wallet.balance shows asset ids), then call this tool again with poolAppId 0, assetAId and assetBId. Do not guess a pool."), null);
             var listing = await liquidity.ListPoolsAsync(r.Network, r.AssetA, r.AssetB, null, r.From, ct);
             var guidance = listing.Pools.Count == 0
                 ? "No pool of this pair is open to the address. Say so, and if notAvailableToThisAddress is present explain that the address must be verified with Biatec to use those pools."
@@ -95,9 +95,9 @@ public abstract class LiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpC
         if (one.Pools.Count == 1) return (one.Pools[0], null, one.AccountVerificationClass);
         if (one.Excluded.Count > 0)
             return (null, new ToolExecutionResult(
-                $"Pool {r.PoolAppId} is not open to this address: it needs Biatec verification class {one.Excluded[0].RequiredVerificationClass} and the address has class {one.AccountVerificationClass?.ToString(CultureInfo.InvariantCulture) ?? "none"}. " +
-                "Explain that the address must be verified with Biatec to use this pool, and offer to look at other pools instead.", true), one.AccountVerificationClass);
-        return (null, new ToolExecutionResult($"{r.PoolAppId} is not a Biatec DEX pool on {r.Network}. Ask the user which pool they mean.", true), one.AccountVerificationClass);
+                $"Pool {r.PoolAppId} is not open to this address: it needs Biatec verification class {one.Excluded[0].RequiredVerificationClass} and the address has class {one.AccountVerificationClass?.ToString(CultureInfo.InvariantCulture) ?? "none"}.", true,
+                Guidance: "Explain that the address must be verified with Biatec to use this pool, and offer to look at other pools instead."), one.AccountVerificationClass);
+        return (null, new ToolExecutionResult($"{r.PoolAppId} is not a Biatec DEX pool on {r.Network}.", true, Guidance: "Ask the user which pool they mean."), one.AccountVerificationClass);
     }
 
     /// <summary>The pair's pools as data only; what to do with them is the result's Guidance.</summary>

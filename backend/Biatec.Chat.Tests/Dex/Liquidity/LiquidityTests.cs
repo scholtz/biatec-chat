@@ -363,7 +363,7 @@ public sealed class LiquidityTests : IAsyncLifetime
     {
         var r = await _add.ExecuteAsync(Ctx("dex.addLiquidity"), AddArgs(0, _builderSender), default);
         Assert.True(r.IsError);
-        Assert.Contains("Do not guess", r.Content);
+        Assert.Contains("Do not guess", r.Guidance);
         Assert.Empty(_builders.Queries);
     }
 

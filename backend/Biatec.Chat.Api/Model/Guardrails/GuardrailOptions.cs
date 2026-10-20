@@ -23,6 +23,12 @@ public sealed class GuardrailOptions : IValidatableObject
     /// <summary>Tool results are screened in blocks of this many characters (one ApplyGuardrail text unit is 1000).</summary>
     [Range(1000, 100000)] public int ScreenBlockChars { get; set; } = 20000;
 
+    /// <summary>
+    /// Denied topics that don't withhold a tool result when they are its only finding: they describe what the assistant
+    /// may say, and tool data (prices, pools) matches them. Names as in <c>infra/guardrail/guardrail.json</c>.
+    /// </summary>
+    public string[] ToolResultIgnoredTopics { get; set; } = ["InvestmentAdvice"];
+
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
         if (!Enabled) yield break;

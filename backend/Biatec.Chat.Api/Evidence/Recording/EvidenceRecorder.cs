@@ -66,10 +66,12 @@ public static class EvidencePayloads
         ["toolUseId"] = toolUseId, ["name"] = name, ["input"] = redactedInput,
     };
 
-    public static JsonObject ToolResult(string toolUseId, string name, bool isError, string redactedContent) => new()
+    public static JsonObject ToolResult(string toolUseId, string name, bool isError, string redactedContent, string? guidance = null)
     {
-        ["toolUseId"] = toolUseId, ["name"] = name, ["isError"] = isError, ["content"] = redactedContent,
-    };
+        var o = new JsonObject { ["toolUseId"] = toolUseId, ["name"] = name, ["isError"] = isError, ["content"] = redactedContent };
+        if (guidance is not null) o["guidance"] = guidance;
+        return o;
+    }
 
     /// <summary>
     /// Builder for the authenticator's consent receipt (recorded by the consent completion path, T-049). The receipt

@@ -27,16 +27,16 @@ public static class GuardrailMessages
 {
     public const string ToolResultWithheld = "Tool output withheld: a safety check found instructions or unsafe content in it. Tell the user a safety check stopped this result; do not describe it as a data or connection problem, and do not retry the same call.";
 
-    public const string ToolResultUnchecked = "Tool output withheld: the safety check for tool output is unavailable right now. Tell the user to try again in a moment.";
+    public const string ToolResultUnchecked = "Tool output withheld: the safety check for tool output could not run, so this result was not used. Tell the user the result could not be checked and to try again later, and that the Biatec team should be told if it keeps happening.";
 }
 
 /// <summary>
 /// Applies the configured guardrail to a tool result with the standalone ApplyGuardrail API (source INPUT, since the
 /// text is input to the model). Fails closed: if the guardrail can't be reached the result is withheld, because the
 /// content is untrusted. A no-op when the feature is disabled.
-/// Denied topics (InvestmentAdvice) are about what the assistant says, not about data: prices, pools and balances
-/// match them, so an intervention whose only reasons are denied topics lets the result through. Prompt attacks,
-/// harmful content and sensitive information (recovery phrases) still withhold it.
+/// Some denied topics (InvestmentAdvice) are about what the assistant says, not about data: prices, pools and balances
+/// match them. An intervention whose only reasons are topics listed in <see cref="GuardrailOptions.ToolResultIgnoredTopics"/>
+/// lets the result through; any other finding (prompt attack, harmful content, recovery phrase, other topics) withholds it.
 /// </summary>
 public sealed class BedrockToolResultGuard(
     IAmazonBedrockRuntime bedrock,
@@ -65,9 +65,9 @@ public sealed class BedrockToolResultGuard(
             if (response.Action != GuardrailAction.GUARDRAIL_INTERVENED) return GuardrailVerdict.Allowed;
 
             var reasons = Reasons(response.Assessments);
-            if (reasons.Count > 0 && reasons.All(r => r.StartsWith("topic:", StringComparison.Ordinal)))
+            if (reasons.Count > 0 && reasons.All(r => _o.ToolResultIgnoredTopics.Any(t => r == "topic:" + t)))
             {
-                log.LogInformation("Guardrail matched only denied topics on {Source} ({Reasons}); data is not advice, so the result is kept", source, string.Join(", ", reasons));
+                log.LogInformation("Guardrail matched only ignored topics on {Source} ({Reasons}); data is not advice, so the result is kept", source, string.Join(", ", reasons));
                 return GuardrailVerdict.Allowed;
             }
             log.LogWarning("Guardrail withheld a result of {Source} ({Chars} chars): {Reasons}", source, text.Length,

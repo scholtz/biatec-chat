@@ -169,7 +169,7 @@ public sealed class GuardrailsTests : IAsyncLifetime
         Assert.Equal(GuardrailMessages.ToolResultUnchecked, verdict.ModelMessage);
     }
 
-    private static ApplyGuardrailResponse Intervened(bool topic, string? contentFilter = null) => new()
+    private static ApplyGuardrailResponse Intervened(bool topic, string? contentFilter = null, string topicName = "InvestmentAdvice") => new()
     {
         Action = GuardrailAction.GUARDRAIL_INTERVENED,
         Assessments =
@@ -178,7 +178,7 @@ public sealed class GuardrailsTests : IAsyncLifetime
             {
                 TopicPolicy = !topic ? null : new GuardrailTopicPolicyAssessment
                 {
-                    Topics = [new GuardrailTopic { Name = "InvestmentAdvice", Type = GuardrailTopicType.DENY, Action = GuardrailTopicPolicyAction.BLOCKED }],
+                    Topics = [new GuardrailTopic { Name = topicName, Type = GuardrailTopicType.DENY, Action = GuardrailTopicPolicyAction.BLOCKED }],
                 },
                 ContentPolicy = contentFilter is null ? null : new GuardrailContentPolicyAssessment
                 {
@@ -195,6 +195,14 @@ public sealed class GuardrailsTests : IAsyncLifetime
         var (rt, fake) = NewRuntime();
         fake.Response = Intervened(topic: true);
         Assert.False((await Guard(rt, On()).ScreenAsync("tool.dex.addLiquidity", "{\"pools\":[]}", default)).Withheld);
+    }
+
+    [Fact]
+    public async Task ToolResultGuard_DeniedTopicNotOnTheIgnoreList_IsWithheld()
+    {
+        var (rt, fake) = NewRuntime();
+        fake.Response = Intervened(topic: true, topicName: "CredentialSolicitation");
+        Assert.True((await Guard(rt, On()).ScreenAsync("t", "x", default)).Withheld);
     }
 
     [Fact]
