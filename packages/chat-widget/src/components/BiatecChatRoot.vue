@@ -36,7 +36,7 @@ const rootEl = ref<HTMLElement | null>(null);
 
 // Theme: the plugin option, or what the host set through setTheme(), applied without remount.
 const themeChoice = computed(() => hostSettings.theme ?? options.theme);
-const theme = ref<ResolvedTheme>(resolveTheme({ theme: themeChoice.value, hostDarkClass: options.hostDarkClass }));
+const theme = ref<ResolvedTheme>(resolveTheme({ theme: themeChoice.value, hostDarkClass: options.hostDarkClass, hostDarkAttribute: options.hostDarkAttribute }));
 let stopTheme = () => {};
 // Locale: the plugin option, or setLocale(); vue-i18n re-renders every string in place.
 const lang = computed(() => hostSettings.locale ?? options.locale);
@@ -121,7 +121,7 @@ onMounted(() => {
     themeChoice,
     (c) => {
       stopTheme();
-      stopTheme = watchTheme({ theme: c, hostDarkClass: options.hostDarkClass }, (v) => (theme.value = v));
+      stopTheme = watchTheme({ theme: c, hostDarkClass: options.hostDarkClass, hostDarkAttribute: options.hostDarkAttribute }, (v) => (theme.value = v));
     },
     { immediate: true },
   );
