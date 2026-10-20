@@ -75,8 +75,30 @@ public static class OnboardingEndpoints
         g.MapPost("/tenants", async (OnboardingRequest? req, OnboardingService svc, CancellationToken ct) =>
             ToResult(await svc.OnboardAsync(req, ct)));
 
-        g.MapPost("/operator/tenants", async (HttpContext ctx, OperatorApprovalRequest? req, OnboardingService svc, CancellationToken ct) =>
-            OperatorAuth.Check(ctx) ?? ToResult(await svc.ApproveAsync(req, ct)));
+        // The body is bound by hand after authentication, so an unauthenticated request never reaches the JSON parser
+        // (401, or 404 while no operator key is set; never 400).
+        g.MapPost("/operator/tenants", async (HttpContext ctx, OnboardingService svc, ILogger<OnboardingService> log, CancellationToken ct) =>
+        {
+            if (OperatorAuth.Check(ctx) is { } denied) return denied;
+            var op = OperatorAuth.Current(ctx);
+            if (!ctx.Request.HasJsonContentType())
+                return Results.Json(new { error = "Content-Type must be application/json." }, statusCode: 415);
+            OperatorApprovalRequest? req;
+            try { req = await ctx.Request.ReadFromJsonAsync<OperatorApprovalRequest>(ct); }
+            catch (Exception ex) when (ex is System.Text.Json.JsonException or BadHttpRequestException)
+            {
+                log.LogWarning("Onboarding: refused tenant approval by operator {Operator} from {RemoteIp}: unreadable body", op.Name, OperatorAuth.Remote(ctx));
+                return Results.Json(new { error = "The body must be a JSON operator approval." }, statusCode: 400);
+            }
+            // Resolved here, after authentication, so the public onboarding routes never depend on the evidence key store.
+            var evidence = ctx.RequestServices.GetRequiredService<Biatec.Chat.Core.Evidence.IEvidenceLog>();
+            var r = await svc.ApproveAsync(req, op, evidence, ct);
+            // Audit line: the host and reason only, never clientSecretRef. The approval is also in the admin evidence chain.
+            if (r.Status == OnboardingStatus.Created)
+                log.LogInformation("Onboarding: operator {Operator} from {RemoteIp} approved tenant {Host}. Reason: {Reason}",
+                    op.Name, OperatorAuth.Remote(ctx), OperatorAuth.Clean(req?.Request?.Host), OperatorAuth.Clean(req?.Reason));
+            return ToResult(r);
+        });
 
         return app;
     }

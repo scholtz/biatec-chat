@@ -3,9 +3,11 @@
 PRODUCT-DESCRIPTION.md, Chat Backend Responsibilities: *"Expose health, metrics, and an admin API for policy and
 knowledge-base management."* This page documents the tenant policy part (T-086) and knowledge-base management
 (T-096, [Knowledge base](#knowledge-base)), operator identities and the admin evidence chain (T-097,
-[Admin evidence chain](#admin-evidence-chain)).
+[Admin evidence chain](#admin-evidence-chain)), and how operator tenant approval is authenticated and recorded (T-098,
+[Operator tenant approval](#post-onboardingoperatortenants-operator-tenant-approval)).
 
-Code: `backend/Biatec.Chat.Api/Admin/`. Tests: `backend/Biatec.Chat.Tests/Admin/`.
+Code: `backend/Biatec.Chat.Api/Admin/`. Tests: `backend/Biatec.Chat.Tests/Admin/`. Operator tenant approval:
+`backend/Biatec.Chat.Api/Onboarding/`, tests in `backend/Biatec.Chat.Tests/Onboarding/`.
 
 ## Authentication
 
@@ -36,7 +38,8 @@ Code: `backend/Biatec.Chat.Api/Admin/`. Tests: `backend/Biatec.Chat.Tests/Admin/
   no early exit. Authentication runs before the request body is read, so an unauthenticated request never reaches the
   JSON parser (it gets `401`, or `404` without a key, never `400`).
 - The check is shared with the operator onboarding route (`OperatorAuth` in `backend/Biatec.Chat.Api/Onboarding/`),
-  which therefore accepts the named keys too.
+  which therefore accepts the named keys too, also authenticates before reading its body, and records each approval in
+  the admin evidence chain.
 - Biatec OIDC has no operator claim or group yet; named keys are the fallback. The intended OIDC-based alternative is
   recorded in [required-changes-biatec-oidc.md, row 23](required-changes-biatec-oidc.md#23-operator-identity-claim-for-the-admin-api-t-097).
 - Requests go to any registered tenant host (the tenant middleware resolves every request by `Host`), for example
@@ -134,6 +137,31 @@ Request handling reads tenant policy (including the gates `x402Enabled`, `limits
 safe caps) from the cached tenant row in `DbTenantStore`. A successful change evicts that row on the replica that
 handled it, so it applies there at once. Other replicas pick it up when their entry expires: the cache TTL is 10
 seconds, so a gate switched off is off everywhere within 10 seconds.
+
+### `POST /onboarding/operator/tenants` (operator tenant approval)
+
+The operator fallback of tenant onboarding (T-045; flow in [integration-widget.md](integration-widget.md) and
+[required-changes-biatec-oidc.md](required-changes-biatec-oidc.md)): after the self-service route answered
+`202 pending-operator-approval`, an operator adds the static OIDC client, stores its secret and approves the tenant.
+It uses the onboarding rate-limit policy, not `operator`.
+
+- Authentication runs before the body is read, exactly as on the admin routes: no or a wrong bearer gets `401` (with
+  the `Operator: rejected unauthenticated ...` log line), `404` while no operator key is configured, whatever the body.
+  Only then must the body be `application/json` (else `415`) and parseable (else `400`).
+- Body: `{ "request": { host, signInPageUrl, allowedOrigins, clientKeys }, "oidcClientId", "clientSecretRef": "secret://…",
+  "reason"? }`. `reason` is optional; when sent it must be 1-200 characters without control characters (else `400`).
+  The DNS proofs are re-checked; answers are as before (`201`, `400`, `409`, `422`, `502`).
+- A created tenant commits together with its admin chain entry `tenant_approve`, or not at all (a failing append rolls
+  the tenant back and the request fails with `500`). Refused approvals are not recorded.
+- Log line on success (category `Biatec.Chat.Api.Onboarding.OnboardingService`): `Onboarding: operator {Operator} from
+  {RemoteIp} approved tenant {Host}. Reason: {Reason}`.
+
+```bash
+curl -sS -X POST https://chat.biatec.io/onboarding/operator/tenants \
+  -H "Authorization: Bearer $OPERATOR_KEY" -H 'Content-Type: application/json' \
+  -d '{"request": {"host": "chat.example-bank.com"}, "oidcClientId": "static-client",
+       "clientSecretRef": "secret://tenants/chat.example-bank.com/oidc-client-secret", "reason": "ticket 7"}'
+```
 
 ## Knowledge base
 
@@ -246,13 +274,14 @@ random version-4 GUIDs, and no conversation row has this id, so no chat session 
 | `kb_page_upload` | A created or replaced page (not an unchanged one), in the same transaction | `kb-page:<id>` | `{contentType, sizeBytes, sha256}`; `before` is `null` for a new page |
 | `kb_page_delete` | A deleted page, in the same transaction | `kb-page:<id>` | `before` the page's `{contentType, sizeBytes, sha256}`, `after` `null` |
 | `kb_reload` | After the reload ran (it stores nothing) | `kb` | `after` `{served, partial}` |
+| `tenant_approve` | An operator tenant approval that created the tenant, in the same transaction | `tenant:<id>` | `before` `null`; `after` `{host, oidcClientId, redirectUri, signInPageUrl, allowedOrigins, consentThresholdCeilingEur, softCapEurPerHour, trustAnchorVerified}` (amounts as invariant text); never `clientSecretRef` |
 
 Each entry has kind `admin_change` and the payload
 `{ "operator", "operatorAuth": "named-key"|"legacy-shared-key", "action", "target", "reason", "before", "after" }`. It
 never holds a key, a key hash, a secret or page content (a page is recorded by its SHA-256, size and type). Refused
 requests and no-op changes are not recorded (they are in the log).
 
-Policy and knowledge-base changes commit together with their entry or not at all: if the entry cannot be appended
+Tenant approvals, policy and knowledge-base changes commit together with their entry or not at all: if the entry cannot be appended
 (for example the signing key store fails) the change is rolled back and the request fails with `500`. A reload has
 already taken effect when it is recorded, so its entry is best-effort: if it cannot be appended, the request still
 answers as described and an error line `the kb reload by operator ... is not in the admin evidence chain` is logged.
@@ -316,6 +345,4 @@ curl -sS -X PATCH https://chat.biatec.io/onboarding/operator/tenants/chat.exampl
 - A knowledge-base editor UI, hiding a seed page, and page version history (an upload overwrites).
 - A dedicated `/admin` prefix, and operator sign-in through Biatec OIDC (an operator claim or group; row 23 of
   required-changes-biatec-oidc.md). Named keys are the fallback until then.
-- Evidence for the operator onboarding approval route (`POST /onboarding/operator/tenants`); it accepts the named
-  keys but is not recorded in the admin chain.
 - A UI.
