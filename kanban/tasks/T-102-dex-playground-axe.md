@@ -47,6 +47,10 @@ Playwright/axe or jsdom axe on the built demo /dex.html.
 
 ## Hand-off
 
+- **Fixes:** (1) light-mode contrast: `playground/dex/dex.css` overrides Aura's light button tokens (primary emerald-700/800/900, success green-700/800/900, danger red-600/700/800 under white labels; link buttons emerald-700) and the SelectButton label (surface-600 on surface-100), each as a `light-dark()` pair whose dark half is Aura's own; (2) the "Ask Biatec AI" link: the `BiatecAiChip` moved out of the button's `#icon` slot to sit beside it, `aria-hidden`, because its SVG "AI" text was visible but not in the button's name (`label-content-name-mismatch`). `docs/integration-biatec-dex.md` step 4 updated to match (its snippet test requires it).
+- **Test:** `test/dex-host-a11y.test.ts` mounts DexApp in jsdom (dark, light): axe without contrast, button visible text ⊂ accessible name (fails on the old markup), and the light-mode overrides reach 4.5:1 against Aura's palette. `@/` alias added to the vitest config and tsconfig paths.
+- **Verification:** Chromium + axe-core 4.14 on the built playground dex.html and the built demo /dex.html: dark and light, 1280 and 375 px, plain, settings dialog open, and Sell side: 0 serious/critical (was 1 dark / 2 light). Remaining axe "incomplete" contrast items are translucent/backdrop-filter surfaces axe cannot measure. Widget 363 tests, typecheck, typecheck:playground, demo build and tests pass.
+
 ## Review
 
 ## Activity log

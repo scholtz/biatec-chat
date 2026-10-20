@@ -105,10 +105,13 @@ promise of what happened, which the DEX can turn into a toast:
 
 The design puts the Biatec AI chip (16 px) next to the label. The package exports it as `BiatecAiChip`; it works
 outside the widget root (its colours fall back to the Biatec green and ink), and the DEX can override them with
-`--color-brand-primary`, `--color-brand-on` and `--color-text-secondary` on an ancestor:
+`--color-brand-primary`, `--color-brand-on` and `--color-text-secondary` on an ancestor. Put it beside the link
+button, hidden from assistive technology, rather than in the button's `#icon` slot: the chip draws "AI" as visible
+SVG text, and inside the button that text is missing from the button's accessible name, which axe reports as a
+serious `label-content-name-mismatch` (WCAG 2.5.3):
 
 ```vue
-<template #icon><BiatecAiChip :size="16" /></template>
+<span class="inline-flex" aria-hidden="true"><BiatecAiChip :size="16" /></span>
 ```
 
 ### 5. Optional inline mode

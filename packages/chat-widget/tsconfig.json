@@ -8,7 +8,8 @@
     "noEmit": true,
     "skipLibCheck": true,
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
-    "types": ["node"]
+    "types": ["node"],
+    "paths": { "@/*": ["./playground/dex/host/*"] }
   },
   "include": ["src/**/*.ts", "src/**/*.vue", "test/**/*.ts"]
 }

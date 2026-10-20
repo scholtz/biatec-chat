@@ -189,16 +189,13 @@ onBeforeUnmount(clearTradingContext);
               <span class="tabular-nums font-semibold">{{ fmt(receive) }} {{ receiveSymbol }}</span>
             </div>
             <Button :label="t('order.submit')" :severity="side === 'buy' ? 'success' : 'danger'" fluid />
-            <Button
-              :label="t('order.ask')"
-              link
-              size="small"
-              class="self-start"
-              data-testid="dex-ask"
-              @click="ask"
-            >
-              <template #icon><BiatecAiChip :size="16" /></template>
-            </Button>
+            <!-- The chip sits next to the button, not in its #icon slot: it draws the letters "AI" as visible SVG text,
+                 and inside the button that text would not be part of the button's name (WCAG 2.5.3, axe
+                 label-content-name-mismatch). Out here it is decorative and the name is exactly the visible label. -->
+            <div class="flex items-center self-start">
+              <span class="inline-flex" aria-hidden="true"><BiatecAiChip :size="16" /></span>
+              <Button :label="t('order.ask')" link size="small" data-testid="dex-ask" @click="ask" />
+            </div>
           </form>
         </template>
       </Card>
