@@ -1,7 +1,7 @@
 ---
 id: T-099
 title: Publish @biatec/chat-widget to npm and embed it in BiatecCLAMM
-status: backlog
+status: in-progress
 priority: P1
 epic: "Deployment"
 blocked_by: []
@@ -9,8 +9,8 @@ area: ["packages/chat-widget/package.json", "packages/chat-widget/vite.config.ts
 parallel: yes
 conflicts_with: []
 issue: "#203"
-branch: ""
-owner: ""
+branch: "task/T-099"
+owner: "worker-T-099"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#components"
 created: 2026-10-20
@@ -101,3 +101,4 @@ tarball in scratch Vite-Vue, Vite-React and Docusaurus apps; `actionlint .github
 
 - 2026-10-20 07:10 · coordinator · (new) → backlog · created on the user's request (npm publish + BiatecCLAMM embed); no existing task covered it (T-068, T-071 list npm publishing as out of scope)
 - 2026-10-20 07:17 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 07:17 · coordinator · backlog → in-progress · dispatched to worker
