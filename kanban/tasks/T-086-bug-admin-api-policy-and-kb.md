@@ -1,7 +1,7 @@
 ---
 id: T-086
 title: "Bug: admin API for policy and knowledge-base management"
-status: review
+status: done
 priority: P3
 epic: "Orchestrator"
 blocked_by: []
@@ -122,9 +122,12 @@ Never return `clientSecretRef` targets or secrets.
 
 ## Review
 
+- 2026-10-20 05:30 · approve · PR #188 merged into main @ 0c48f10 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #9)
 - 2026-10-20 04:44 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 04:44 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 05:30 · coordinator · in-progress → review · branch task/T-086 @ c598562, PR #188; analysis verdict PARTIAL recorded
+- 2026-10-20 05:30 · user · review → done · PR #188 merged into main @ 0c48f10 (synced by kanban-sync)
