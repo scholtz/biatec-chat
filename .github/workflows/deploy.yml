@@ -123,6 +123,21 @@ jobs:
           kubectl rollout status statefulset/biatec-chat-postgres -n "$NAMESPACE" --timeout=5m
           kubectl rollout status statefulset/biatec-chat-redis -n "$NAMESPACE" --timeout=5m
 
+      # Why a database did not come up (claim not bound, volume permissions, crash loop), in the job log.
+      - name: Database diagnostics
+        if: failure()
+        continue-on-error: true
+        run: |
+          kubectl get pods,pvc -n "$NAMESPACE" -o wide || true
+          kubectl get pv -o wide | grep -E "NAME|chat" || true
+          for p in biatec-chat-postgres-0 biatec-chat-redis-0; do
+            echo "=== $p"
+            kubectl describe pod "$p" -n "$NAMESPACE" | sed -n '/^Events:/,$p;/^Status:/p;/Reason:/p;/Exit Code:/p' || true
+            kubectl logs "$p" -n "$NAMESPACE" --tail=30 || true
+            kubectl logs "$p" -n "$NAMESPACE" --previous --tail=30 || true
+          done
+          kubectl get events -n "$NAMESPACE" --sort-by=.lastTimestamp | tail -15 || true
+
       # The backend migrates only in Development; elsewhere the schema is a deploy step. The idempotent script applies
       # just the migrations missing from __EFMigrationsHistory, so it is safe on every deploy.
       - uses: actions/setup-dotnet@v4
