@@ -1,0 +1,20 @@
+/* The strip above the reused DEX page saying what is real on it. Uses the DEX page's own variables (dex.css). */
+.demo-dex-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--surface-border);
+  background: var(--surface-panel);
+  color: var(--text);
+  font: 400 14px/1.4 "Inter", -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+.demo-dex-banner a {
+  color: var(--brand-strong);
+  font-weight: 500;
+}
+.p-dark .demo-dex-banner a {
+  color: var(--brand);
+}

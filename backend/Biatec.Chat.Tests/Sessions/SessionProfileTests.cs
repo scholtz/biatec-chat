@@ -117,6 +117,50 @@ public sealed class SessionProfileTests : IAsyncLifetime
         }
     }
 
+    private void SetScopes(string id, params string[] scopes)
+    {
+        var e = _vault.Items[id];
+        _vault.Items[id] = new TokenVaultEntry
+        {
+            AccessToken = e.AccessToken, AccessExpiresAt = e.AccessExpiresAt, RefreshToken = e.RefreshToken, IdToken = e.IdToken,
+            Scopes = scopes, AbsoluteExpiresAt = e.AbsoluteExpiresAt,
+        };
+    }
+
+    [Fact]
+    public async Task Scopes_Guest_AreEmpty()
+    {
+        var s = new ChatSession { Id = Guid.NewGuid(), Tier = SessionTier.Anonymous, TenantId = "biatec-chat" };
+        Assert.Empty((await NewProfile().GetProfileAsync(s, default)).Scopes);
+        Assert.Equal(0, _vault.Reads);
+    }
+
+    [Fact]
+    public async Task Scopes_SignedIn_AreReturned_WithoutExtraVaultReadPerPoll()
+    {
+        var s = SignedIn();
+        var id = s.Id.ToString("N");
+        SetScopes(id, "openid", "sign");
+        var p = NewProfile();
+        for (var i = 0; i < 5; i++) Assert.Equal(["openid", "sign"], (await p.GetProfileAsync(s, default)).Scopes);
+        await PollAsync(p, s); // address fill done, entry refreshed in the cache
+        for (var i = 0; i < 5; i++) Assert.Equal(["openid", "sign"], (await p.GetProfileAsync(s, default)).Scopes);
+        Assert.Equal(1, _vault.Reads);
+    }
+
+    [Fact]
+    public async Task Invalidate_RereadsScopes()
+    {
+        var s = SignedIn();
+        var id = s.Id.ToString("N");
+        var p = NewProfile();
+        Assert.Equal(["openid"], (await p.GetProfileAsync(s, default)).Scopes);
+        SetScopes(id, "openid", "sign");
+        Assert.Equal(["openid"], (await p.GetProfileAsync(s, default)).Scopes); // cached
+        p.Invalidate(id);
+        Assert.Equal(["openid", "sign"], (await p.GetProfileAsync(s, default)).Scopes);
+    }
+
     [Fact]
     public async Task Guest_GetsNulls_WithoutVaultOrMcpCalls()
     {
@@ -355,6 +399,10 @@ public sealed class SessionProfileTests : IAsyncLifetime
         Assert.Equal("Authenticated", j.GetProperty("tier").GetString());
         Assert.Equal(Email, j.GetProperty("email").GetString());
         Assert.Equal(Primary, j.GetProperty("primaryAddress").GetString());
+        Assert.Equal(["openid"], j.GetProperty("scopes").EnumerateArray().Select(x => x.GetString()).ToArray());
+        var reads = _vault.Reads;
+        for (var i = 0; i < 3; i++) await GetAsync("/session", cookie);
+        Assert.Equal(reads, _vault.Reads); // polls are served from the cached profile: no vault read
         foreach (var secret in new[] { "eyJ", "ACCESS-TOKEN-SECRET", "REFRESH-TOKEN-SECRET" })
             Assert.DoesNotContain(secret, body);
     }
@@ -368,6 +416,8 @@ public sealed class SessionProfileTests : IAsyncLifetime
         Assert.Equal("Anonymous", j.GetProperty("tier").GetString());
         Assert.True(!j.TryGetProperty("email", out var e) || e.ValueKind == JsonValueKind.Null);
         Assert.True(!j.TryGetProperty("primaryAddress", out var a) || a.ValueKind == JsonValueKind.Null);
+        Assert.Equal(JsonValueKind.Array, j.GetProperty("scopes").ValueKind);
+        Assert.Equal(0, j.GetProperty("scopes").GetArrayLength());
         Assert.Equal(0, _mcp.Calls);
     }
 

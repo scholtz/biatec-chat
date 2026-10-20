@@ -251,6 +251,19 @@ public sealed class ElevationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Elevation_CallbackInvalidatesTheCachedSessionProfile()
+    {
+        var cookie = await LoginAsync();
+        async Task<string[]> ScopesAsync() =>
+            [.. (await (await SendAsync(HttpMethod.Get, "/session", cookie)).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("scopes").EnumerateArray().Select(x => x.GetString()!)];
+
+        Assert.DoesNotContain("sign", await ScopesAsync()); // primes the profile cache
+        var (_, cb) = await ElevateAsync(cookie, "sign", "openid profile email sign");
+        Assert.Equal(HttpStatusCode.OK, cb.StatusCode);
+        Assert.Contains("sign", await ScopesAsync()); // not the stale cached scopes
+    }
+
+    [Fact]
     public async Task Elevation_ReElevatingTheSameScopeKeepsTheUnionStable()
     {
         var cookie = await LoginAsync();
