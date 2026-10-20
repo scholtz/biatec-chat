@@ -277,7 +277,7 @@ public sealed class SwapExecutor(
     private IAlgodSimulateClient? ClientFor(string network)
     {
         if (algod is null) return null;
-        foreach (var name in new[] { network, "algorand-" + network })
+        foreach (var name in new[] { network, McpNetworks.Algorand(network) })
         {
             try { return algod.For(name); }
             catch (ArgumentException) { }

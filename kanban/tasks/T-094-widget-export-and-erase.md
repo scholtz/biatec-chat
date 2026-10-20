@@ -6,8 +6,8 @@ priority: P2
 epic: "Widget"
 blocked_by: [T-060]
 area: ["packages/chat-protocol/**", "packages/chat-widget/src/components/export/**", "packages/chat-widget/test/**"]
-parallel: yes
-conflicts_with: []
+parallel: no
+conflicts_with: [T-095]
 issue: "#187"
 branch: "task/T-094"
 owner: "worker-T-094"
@@ -41,8 +41,7 @@ A signed-in user can list, export (download the evidence bundle) and erase their
 
 ## Parallel work
 
-Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same
-files.
+Parallel work possible: **no**. Don't run it at the same time as T-095: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
@@ -64,3 +63,4 @@ files.
 - 2026-10-20 04:59 · kanban-board · blocked → backlog · blockers done: T-060
 - 2026-10-20 05:08 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 05:08 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 05:31 · coordinator · in-progress · conflicts_with + T-095 (blockers scan: shared files)
