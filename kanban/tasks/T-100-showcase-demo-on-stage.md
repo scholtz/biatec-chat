@@ -1,7 +1,7 @@
 ---
 id: T-100
 title: Showcase demo site deployed to stage
-status: review
+status: done
 priority: P1
 epic: "Deployment"
 blocked_by: []
@@ -101,9 +101,12 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
 
 ## Review
 
+- 2026-10-20 07:57 · approve · PR #209 merged into main @ ca43d63 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 07:10 · coordinator · (new) → backlog · created on the user's request (showcase demo on stage); no existing task covered it (T-059 is a test, T-068 a dev-only playground)
 - 2026-10-20 07:17 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 07:17 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 07:57 · coordinator · in-progress → review · branch task/T-100 @ 2a8a1d4, PR #209
+- 2026-10-20 07:57 · user · review → done · PR #209 merged into main @ ca43d63 (synced by kanban-sync)
