@@ -14,37 +14,90 @@ public static class SessionPolicy
     public static readonly TimeSpan AbsoluteLifetime = TimeSpan.FromHours(8);
     /// <summary>Bytes of CSPRNG output in the cookie secret (256 bits).</summary>
     internal const int TokenBytes = 32;
+
+    private static TimeSpan _inFlightGrace = TimeSpan.FromSeconds(30);
+    /// <summary>Slack past a consent or step deadline during which the session still counts as in flight (several
+    /// 2-second consent poll intervals plus margin). Set from <c>Sessions:InFlightGrace</c>, clamped to 0..5 minutes.
+    /// It never extends the absolute lifetime.</summary>
+    public static TimeSpan InFlightGrace
+    {
+        get => _inFlightGrace;
+        set => _inFlightGrace = value < TimeSpan.Zero ? TimeSpan.Zero : value > TimeSpan.FromMinutes(5) ? TimeSpan.FromMinutes(5) : value;
+    }
 }
 
 /// <summary>
-/// The one "is this session live" test (T-080), shared by the request path (resolve, keepalive, rotation, the auth
-/// and consent endpoints) and the sweeper, so they can never disagree. The absolute lifetime always applies; the idle
-/// timeout applies unless the session's conversation has an open, unexpired ConsentRequest (spec, Action Preview and
-/// Minimal lifetime). Both are EF Core expressions, translated to one SQL predicate with a subquery.
+/// The one "is this session live" test (T-080), shared by the request path (resolve, keepalive, rotation, the auth,
+/// consent and evidence export endpoints) and the sweeper, so they can never disagree. The absolute lifetime always
+/// applies; the idle timeout applies unless an action of the session's conversation is in flight (an open
+/// ConsentRequest, or a confirmed action mid-signing; spec, Action Preview and Minimal lifetime). EF Core expressions,
+/// translated to one SQL predicate with a correlated EXISTS.
 /// </summary>
 public static class SessionLiveness
 {
-    /// <summary>Conversations with a consent request still waiting for the user's phone.</summary>
-    public static IQueryable<Guid> AwaitingConsent(ChatDbContext db, DateTimeOffset now) =>
-        from c in db.ConsentRequests
-        where c.Status == ConsentStatus.Pending && c.ExpiresAt > now
-        join st in db.ActionSteps on c.StepId equals st.Id
-        join p in db.ActionPreviews on st.PreviewId equals p.Id
-        select p.ConversationId;
+    private static readonly ActionPreviewStatus[] InFlightPreview = [ActionPreviewStatus.Confirmed, ActionPreviewStatus.InProgress];
+    // AwaitingConsent is left out on purpose: that step is in flight exactly as long as its ConsentRequest is open.
+    private static readonly StepStatus[] InFlightStep = [StepStatus.Pending, StepStatus.Signed, StepStatus.Submitted];
 
+    /// <summary>
+    /// Correlated EXISTS on the session's own conversation: an open ConsentRequest, or a confirmed action with a step
+    /// still to sign, signed or submitted (covers the gap between one step's approval and the next step's request). Both are bounded by their own expiry plus <see cref="SessionPolicy.InFlightGrace"/>, so the poll
+    /// right after a deadline still reaches the session and can record the timeout or collect a last-second approval.
+    /// Uses ActionPreviews (ConversationId, Status), ActionSteps (PreviewId, Seq) and ConsentRequests (StepId, Status, ExpiresAt).
+    /// </summary>
+    private static Expression<Func<ChatSession, bool>> InFlight(ChatDbContext db, DateTimeOffset now)
+    {
+        var cutoff = now - SessionPolicy.InFlightGrace;
+        return s => db.ActionPreviews.Any(p => p.ConversationId == s.ConversationId && db.ActionSteps.Any(st => st.PreviewId == p.Id && (
+            (InFlightPreview.Contains(p.Status) && InFlightStep.Contains(st.Status) && st.ExpiresAt > cutoff)
+            || db.ConsentRequests.Any(c => c.StepId == st.Id && c.Status == ConsentStatus.Pending && c.ExpiresAt > cutoff))));
+    }
+
+    /// <summary>
+    /// Live: inside the absolute lifetime, and inside the idle timeout or with an action in flight. The cheap idle
+    /// comparison comes first in the OR, so the EXISTS only runs for a session that is already idle.
+    /// </summary>
     public static Expression<Func<ChatSession, bool>> IsLive(ChatDbContext db, DateTimeOffset now)
     {
         var idleCutoff = now - SessionPolicy.IdleTimeout;
-        var awaiting = AwaitingConsent(db, now);
-        return s => s.AbsoluteExpiresAt > now && (s.LastActivityAt > idleCutoff || awaiting.Contains(s.ConversationId));
+        var inFlight = InFlight(db, now);
+        var s = inFlight.Parameters[0];
+        Expression<Func<ChatSession, bool>> absolute = x => x.AbsoluteExpiresAt > now;
+        Expression<Func<ChatSession, bool>> active = x => x.LastActivityAt > idleCutoff;
+        return Expression.Lambda<Func<ChatSession, bool>>(
+            Expression.AndAlso(Rebind(absolute, s), Expression.OrElse(Rebind(active, s), inFlight.Body)), s);
     }
 
-    /// <summary>The exact complement of <see cref="IsLive"/>: what the sweeper ends.</summary>
+    /// <summary>
+    /// The exact complement of <see cref="IsLive"/> in De Morgan form, so it stays index friendly: past the absolute
+    /// lifetime, or idle with nothing in flight. What the sweeper ends.
+    /// </summary>
     public static Expression<Func<ChatSession, bool>> IsDue(ChatDbContext db, DateTimeOffset now)
     {
-        var live = IsLive(db, now);
-        return Expression.Lambda<Func<ChatSession, bool>>(Expression.Not(live.Body), live.Parameters);
+        var idleCutoff = now - SessionPolicy.IdleTimeout;
+        var inFlight = InFlight(db, now);
+        var s = inFlight.Parameters[0];
+        Expression<Func<ChatSession, bool>> expired = x => x.AbsoluteExpiresAt <= now;
+        Expression<Func<ChatSession, bool>> idle = x => x.LastActivityAt <= idleCutoff;
+        return Expression.Lambda<Func<ChatSession, bool>>(
+            Expression.OrElse(Rebind(expired, s), Expression.AndAlso(Rebind(idle, s), Expression.Not(inFlight.Body))), s);
     }
+
+    private static Expression Rebind(Expression<Func<ChatSession, bool>> e, ParameterExpression s) =>
+        new Rebinder(e.Parameters[0], s).Visit(e.Body);
+
+    private sealed class Rebinder(ParameterExpression from, ParameterExpression to) : ExpressionVisitor
+    {
+        protected override Expression VisitParameter(ParameterExpression node) => node == from ? to : node;
+    }
+
+    /// <summary>
+    /// Records activity on a session after a consent resolves or a step signs, so the idle window restarts where the
+    /// in-flight exemption ends. Only LastActivityAt moves (never backwards); the absolute expiry is untouched.
+    /// </summary>
+    public static Task TouchByIdAsync(ChatDbContext db, Guid sessionId, DateTimeOffset now, CancellationToken ct) =>
+        db.ChatSessions.Where(x => x.Id == sessionId && x.AbsoluteExpiresAt > now)
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.LastActivityAt, x => x.LastActivityAt > now ? x.LastActivityAt : now), ct);
 }
 
 /// <summary>A resolved, live session. <see cref="NewToken"/> is set only when the caller must (re)issue the cookie.</summary>

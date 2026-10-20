@@ -253,23 +253,71 @@ public sealed class SessionTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
+    /// <summary>A multi-step preview (T-080) with no ConsentRequest: each step's status and expiry are given.</summary>
+    private async Task AddPreviewAsync(string token, ActionPreviewStatus status, params (StepStatus Status, TimeSpan ExpiresIn)[] steps)
+    {
+        var now = _time.Now;
+        await using var db = NewContext();
+        var id = SessionService.IdFromToken(token);
+        var conv = (await db.ChatSessions.AsNoTracking().SingleAsync(x => x.Id == id)).ConversationId;
+        var preview = Guid.NewGuid();
+        db.ActionPreviews.Add(new ActionPreview { Id = preview, ConversationId = conv, Capability = "dex.liquidity", CanonicalJson = "{}", ExpiresAt = now + steps[0].ExpiresIn, Status = status });
+        for (var i = 0; i < steps.Length; i++)
+            db.ActionSteps.Add(new ActionStep { Id = Guid.NewGuid(), PreviewId = preview, Seq = i, Kind = ActionStepKind.Sign, SubjectHash = "h" + i, ExpiresAt = now + steps[i].ExpiresIn, Status = steps[i].Status });
+        await db.SaveChangesAsync();
+    }
+
     private async Task<bool> ProbeAsync(string token) =>
         (await (await SendAsync(HttpMethod.Get, "/session/probe", token)).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("cookieReturned").GetBoolean();
 
     [Fact]
     public async Task IdleSessionWithOpenConsent_StaysLivePastIdleTimeout()
     {
-        var token = await NewSessionAsync();
-        await AddConsentAsync(token, TimeSpan.FromMinutes(20));
+        // A fresh idle session per call: each call touches its session, which would mask the exemption for the next.
+        var forState = await NewSessionAsync();
+        var forProbe = await NewSessionAsync();
+        var forKeepalive = await NewSessionAsync();
+        foreach (var t in new[] { forState, forProbe, forKeepalive }) await AddConsentAsync(t, TimeSpan.FromMinutes(20));
         _time.Now += TimeSpan.FromMinutes(16); // a throttled tab: no keepalive for 16 minutes
 
-        var r = await SendAsync(HttpMethod.Get, "/session", token);
+        var r = await SendAsync(HttpMethod.Get, "/session", forState);
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         Assert.Null(SetCookie(r)); // the same session, not a new anonymous one
+        Assert.True(await ProbeAsync(forProbe));
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(HttpMethod.Post, "/session/keepalive", forKeepalive)).StatusCode);
         await using var db = NewContext();
-        Assert.Equal(1, await db.ChatSessions.CountAsync());
-        Assert.True(await ProbeAsync(token));
-        Assert.Equal(HttpStatusCode.OK, (await SendAsync(HttpMethod.Post, "/session/keepalive", token)).StatusCode);
+        Assert.Equal(3, await db.ChatSessions.CountAsync());
+    }
+
+    [Fact]
+    public async Task ConsentDeadline_HasAGracePeriod_ThenTheIdleTimeoutApplies()
+    {
+        var justPast = await NewSessionAsync();
+        await AddConsentAsync(justPast, TimeSpan.FromMinutes(16));
+        var pastGrace = await NewSessionAsync();
+        await AddConsentAsync(pastGrace, TimeSpan.FromMinutes(16) - SessionPolicy.InFlightGrace - TimeSpan.FromSeconds(1));
+        _time.Now += TimeSpan.FromMinutes(16) + TimeSpan.FromSeconds(1);
+
+        // The poll right after the deadline still reaches the session, so it can record the timeout.
+        Assert.True(await ProbeAsync(justPast));
+        Assert.False(await ProbeAsync(pastGrace));
+    }
+
+    [Fact]
+    public async Task MultiStepActionBetweenSteps_StaysLivePastIdleTimeout()
+    {
+        // Step 0 landed, step 1 not yet asked for consent: no ConsentRequest is Pending, but the action is in flight.
+        var inFlight = await NewSessionAsync();
+        await AddPreviewAsync(inFlight, ActionPreviewStatus.InProgress, (StepStatus.Confirmed, TimeSpan.FromMinutes(10)), (StepStatus.Pending, TimeSpan.FromMinutes(40)));
+        var proposedOnly = await NewSessionAsync();
+        await AddPreviewAsync(proposedOnly, ActionPreviewStatus.Proposed, (StepStatus.Pending, TimeSpan.FromMinutes(40)));
+        var stepExpired = await NewSessionAsync();
+        await AddPreviewAsync(stepExpired, ActionPreviewStatus.InProgress, (StepStatus.Confirmed, TimeSpan.FromMinutes(5)), (StepStatus.Pending, TimeSpan.FromMinutes(10)));
+        _time.Now += TimeSpan.FromMinutes(16);
+
+        Assert.True(await ProbeAsync(inFlight));
+        Assert.False(await ProbeAsync(proposedOnly)); // a preview the user never confirmed does not keep a session alive
+        Assert.False(await ProbeAsync(stepExpired));
     }
 
     [Fact]
