@@ -16,6 +16,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Npgsql;
 
 namespace Biatec.Chat.Tests.Sessions;
@@ -34,10 +35,10 @@ public sealed class SessionProfileTests : IAsyncLifetime
         return $"{B64("{\"alg\":\"RS256\",\"typ\":\"JWT\"}")}.{B64(payload)}.c2ln";
     }
 
-    private static TokenVaultEntry Entry(string? idToken) => new()
+    private static TokenVaultEntry Entry(string? idToken, TimeSpan? accessLeft = null) => new()
     {
         AccessToken = "ACCESS-TOKEN-SECRET",
-        AccessExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5),
+        AccessExpiresAt = DateTimeOffset.UtcNow + (accessLeft ?? TimeSpan.FromMinutes(5)),
         RefreshToken = "REFRESH-TOKEN-SECRET",
         IdToken = idToken,
         Scopes = ["openid"],
@@ -62,16 +63,19 @@ public sealed class SessionProfileTests : IAsyncLifetime
 
     private sealed class FakeMcp : IBiatecMcpClient
     {
-        public int Calls;
+        private int _calls;
+        public int Calls => Volatile.Read(ref _calls);
         public McpCallContext? LastCtx;
+        public CancellationToken LastToken;
         public Func<CancellationToken, Task<McpToolResult>> Addresses = _ => Task.FromResult(Ok($"[\"{Primary}\",\"SECONDADDRESS\"]"));
 
         public static McpToolResult Ok(string json) => new(false, json, JsonDocument.Parse(json).RootElement.Clone());
 
         public Task<McpToolResult> ListAlgorandAddressesAsync(McpCallContext ctx, CancellationToken ct = default)
         {
-            Calls++;
+            Interlocked.Increment(ref _calls);
             LastCtx = ctx;
+            LastToken = ct;
             return Addresses(ct);
         }
 
@@ -90,14 +94,27 @@ public sealed class SessionProfileTests : IAsyncLifetime
     private readonly MemoryVault _vault = new();
     private readonly FakeMcp _mcp = new();
 
-    private SessionProfile NewProfile(IMemoryCache? cache = null) =>
-        new(_vault, _mcp, cache ?? new MemoryCache(new MemoryCacheOptions()), NullLogger<SessionProfile>.Instance);
+    private SessionProfile NewProfile(SessionProfileOptions? o = null) =>
+        new(_vault, _mcp, new MemoryCache(new MemoryCacheOptions()), Options.Create(o ?? new SessionProfileOptions()),
+            Options.Create(new VaultOptions()), TimeProvider.System, NullLogger<SessionProfile>.Instance);
 
-    private ChatSession SignedIn(string? idToken = null)
+    private ChatSession SignedIn(string? idToken = null, TimeSpan? accessLeft = null)
     {
         var s = new ChatSession { Id = Guid.NewGuid(), Tier = SessionTier.Authenticated, TenantId = "biatec-chat", OidcSub = "alice-sub" };
-        _vault.Items[s.Id.ToString("N")] = Entry(idToken ?? IdToken(Email));
+        _vault.Items[s.Id.ToString("N")] = Entry(idToken ?? IdToken(Email), accessLeft);
         return s;
+    }
+
+    /// <summary>Polls like the widget until the background fill has published an address (or the deadline passes).</summary>
+    private static async Task<(string? Email, string? Address)> PollAsync(SessionProfile p, ChatSession s, TimeSpan? within = null)
+    {
+        var deadline = DateTime.UtcNow + (within ?? TimeSpan.FromSeconds(5));
+        while (true)
+        {
+            var r = await p.GetAsync(s, default);
+            if (r.PrimaryAddress is not null || DateTime.UtcNow > deadline) return r;
+            await Task.Delay(20);
+        }
     }
 
     [Fact]
@@ -113,23 +130,63 @@ public sealed class SessionProfileTests : IAsyncLifetime
     public async Task SignedIn_GetsEmailFromIdTokenAndFirstMcpAddress()
     {
         var s = SignedIn();
-        var (email, address) = await NewProfile().GetAsync(s, default);
+        var p = NewProfile();
+        Assert.Equal((Email, null), await p.GetAsync(s, default)); // never waits for Biatec MCP
+        var (email, address) = await PollAsync(p, s);
         Assert.Equal(Email, email);
         Assert.Equal(Primary, address);
-        Assert.Equal(new McpCallContext("biatec-chat", s.Id.ToString("N"), ["openid"]).ScopeKey, _mcp.LastCtx!.ScopeKey);
-        Assert.Equal(s.Id.ToString("N"), _mcp.LastCtx.SessionId);
+        Assert.Equal(s.Id.ToString("N"), _mcp.LastCtx!.SessionId);
         Assert.Equal("biatec-chat", _mcp.LastCtx.TenantId);
+        Assert.Equal("openid", _mcp.LastCtx.ScopeKey);
     }
 
     [Fact]
-    public async Task Address_IsCachedPerSession()
+    public async Task McpCall_GetsNoCancellableToken_SoAVaultRefreshIsNeverCut()
     {
-        var cache = new MemoryCache(new MemoryCacheOptions());
         var s = SignedIn();
-        var p = NewProfile(cache);
-        await p.GetAsync(s, default);
-        var (_, again) = await p.GetAsync(s, default);
-        Assert.Equal(Primary, again);
+        var p = NewProfile();
+        using var cts = new CancellationTokenSource();
+        await p.GetAsync(s, cts.Token);
+        await PollAsync(p, s);
+        Assert.False(_mcp.LastToken.CanBeCanceled);
+    }
+
+    [Fact]
+    public async Task AccessTokenNeedingRefresh_SkipsTheMcpLookup()
+    {
+        var s = SignedIn(accessLeft: TimeSpan.FromSeconds(40)); // inside RefreshSkew (30 s) + TokenMargin (1 min)
+        var p = NewProfile();
+        Assert.Equal((Email, null), await p.GetAsync(s, default));
+        await Task.Delay(100);
+        Assert.Equal(0, _mcp.Calls);
+    }
+
+    [Fact]
+    public async Task Profile_IsCachedPerSession_NoVaultReadOrMcpCallOnLaterPolls()
+    {
+        var s = SignedIn();
+        var p = NewProfile();
+        await PollAsync(p, s);
+        var reads = _vault.Reads;
+        Assert.Equal((Email, Primary), await p.GetAsync(s, default));
+        Assert.Equal((Email, Primary), await p.GetAsync(s, default));
+        Assert.Equal(reads, _vault.Reads);
+        Assert.Equal(1, _mcp.Calls);
+    }
+
+    [Fact]
+    public async Task Fill_IsSingleFlightedPerSession()
+    {
+        var gate = new TaskCompletionSource<McpToolResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _mcp.Addresses = _ => gate.Task;
+        var s = SignedIn();
+        // A tiny failure TTL makes every poll a cache miss while the first call is still running.
+        var p = NewProfile(new SessionProfileOptions { FailureTtl = TimeSpan.FromMilliseconds(1), McpTimeout = TimeSpan.FromSeconds(30) });
+        await Task.WhenAll(Enumerable.Range(0, 10).Select(async _ => { await Task.Delay(5); await p.GetAsync(s, default); }));
+        await Task.Delay(50);
+        Assert.Equal(1, _mcp.Calls);
+        gate.SetResult(FakeMcp.Ok($"[\"{Primary}\"]"));
+        Assert.Equal(Primary, (await PollAsync(p, s)).Address);
         Assert.Equal(1, _mcp.Calls);
     }
 
@@ -139,7 +196,7 @@ public sealed class SessionProfileTests : IAsyncLifetime
         _mcp.Addresses = _ => throw new HttpRequestException("down");
         var s = SignedIn();
         var p = NewProfile();
-        Assert.Equal((Email, null), await p.GetAsync(s, default));
+        Assert.Equal((Email, null), await PollAsync(p, s, TimeSpan.FromMilliseconds(300)));
         Assert.Equal((Email, null), await p.GetAsync(s, default));
         Assert.Equal(1, _mcp.Calls);
     }
@@ -148,16 +205,22 @@ public sealed class SessionProfileTests : IAsyncLifetime
     public async Task McpToolError_AddressNull()
     {
         _mcp.Addresses = _ => Task.FromResult(FakeMcp.Ok("{\"error\":\"no wallet\"}"));
-        Assert.Equal((Email, null), await NewProfile().GetAsync(SignedIn(), default));
+        var s = SignedIn();
+        Assert.Equal((Email, null), await PollAsync(NewProfile(), s, TimeSpan.FromMilliseconds(300)));
+        Assert.Equal(1, _mcp.Calls);
     }
 
     [Fact]
-    public async Task McpHang_TimesOut_AddressNull()
+    public async Task McpHang_TimesOut_AddressNull_HoldsTheSlot()
     {
-        _mcp.Addresses = async ct => { await Task.Delay(Timeout.Infinite, ct); return FakeMcp.Ok("[]"); };
-        var started = DateTime.UtcNow;
-        Assert.Equal((Email, null), await NewProfile().GetAsync(SignedIn(), default));
-        Assert.True(DateTime.UtcNow - started < SessionProfile.McpTimeout + TimeSpan.FromSeconds(5));
+        var hang = new TaskCompletionSource<McpToolResult>();
+        _mcp.Addresses = _ => hang.Task;
+        var s = SignedIn();
+        var p = NewProfile(new SessionProfileOptions { McpTimeout = TimeSpan.FromMilliseconds(50), FailureTtl = TimeSpan.FromMilliseconds(1) });
+        Assert.Equal((Email, null), await PollAsync(p, s, TimeSpan.FromMilliseconds(300)));
+        // Timed out, but the hung call still owns the slot: no second call per poll.
+        Assert.Equal(1, _mcp.Calls);
+        hang.SetResult(FakeMcp.Ok("[]"));
     }
 
     [Fact]
@@ -272,10 +335,19 @@ public sealed class SessionProfileTests : IAsyncLifetime
     public async Task GetSession_SignedIn_ReturnsEmailAndPrimaryAddress_NoTokens()
     {
         var cookie = await SignedInCookieAsync();
-        var r = await GetAsync("/session", cookie);
-        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
-        var body = await r.Content.ReadAsStringAsync();
-        var j = JsonDocument.Parse(body).RootElement;
+        HttpResponseMessage r;
+        string body;
+        JsonElement j;
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        do // the first poll answers before Biatec MCP; the address arrives on a later one
+        {
+            r = await GetAsync("/session", cookie);
+            Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+            body = await r.Content.ReadAsStringAsync();
+            j = JsonDocument.Parse(body).RootElement;
+            if (j.TryGetProperty("primaryAddress", out var pa) && pa.ValueKind == JsonValueKind.String) break;
+            await Task.Delay(20);
+        } while (DateTime.UtcNow < deadline);
         Assert.Equal("Authenticated", j.GetProperty("tier").GetString());
         Assert.Equal(Email, j.GetProperty("email").GetString());
         Assert.Equal(Primary, j.GetProperty("primaryAddress").GetString());
@@ -302,6 +374,9 @@ public sealed class SessionProfileTests : IAsyncLifetime
         var cookie = await SignedInCookieAsync();
         var r = await GetAsync("/session", cookie);
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        await Task.Delay(200);
+        r = await GetAsync("/session", cookie);
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         var j = await r.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(Email, j.GetProperty("email").GetString());
         Assert.True(!j.TryGetProperty("primaryAddress", out var a) || a.ValueKind == JsonValueKind.Null);
@@ -311,6 +386,8 @@ public sealed class SessionProfileTests : IAsyncLifetime
     public async Task GetSession_PersistsNeitherEmailNorAddress()
     {
         var cookie = await SignedInCookieAsync();
+        Assert.Equal(HttpStatusCode.OK, (await GetAsync("/session", cookie)).StatusCode);
+        await Task.Delay(200);
         Assert.Equal(HttpStatusCode.OK, (await GetAsync("/session", cookie)).StatusCode);
         await using var conn = new NpgsqlConnection(Cs);
         await conn.OpenAsync();
