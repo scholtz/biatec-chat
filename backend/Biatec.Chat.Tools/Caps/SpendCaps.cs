@@ -12,7 +12,8 @@ public enum CapKind { None, SoftCap, SafeApproval, SafeExecution }
 /// (<c>requireConsent</c>); when it is true nothing was reserved, because a phone-approved action is never counted
 /// against the soft cap. <see cref="Reason"/> names the cap that forced it (soft_cap, safe_approval_cap, safe_execution_cap).
 /// </summary>
-public sealed record CapDecision(bool RequireConsent, CapKind Reserved, string? Reason)
+/// <param name="Refused">T-061: refused outright (the reduced cap for a user without an active device); nothing was reserved.</param>
+public sealed record CapDecision(bool RequireConsent, CapKind Reserved, string? Reason, bool Refused = false)
 {
     public static CapDecision None { get; } = new(false, CapKind.None, null);
 }
@@ -20,7 +21,8 @@ public sealed record CapDecision(bool RequireConsent, CapKind Reserved, string? 
 /// <summary>One signing request as the caps see it. Only the OIDC <c>sub</c> identifies the user.</summary>
 /// <param name="StepId">The action step being signed; it is also the id of the reservation row.</param>
 /// <param name="ValueEur">The backend's predicted value of the user's own funds (for safe.approve: the payload's value).</param>
-public sealed record CapRequest(Tenant Tenant, string OidcSub, Guid StepId, string Capability, decimal? ValueEur);
+/// <param name="NoDeviceDailyCapEur">T-061: set for a user without an active device; the day's own-funds total must stay within it.</param>
+public sealed record CapRequest(Tenant Tenant, string OidcSub, Guid StepId, string Capability, decimal? ValueEur, decimal? NoDeviceDailyCapEur = null);
 
 public sealed class CapsOptions
 {
@@ -110,6 +112,13 @@ public sealed class SpendCaps(ChatDbContext db, TimeProvider clock, CapsOptions?
                         && (x.Status == SoftCapStatus.Reserved || (x.SpentAt != null && x.SpentAt > cutoff)))
             .SumAsync(x => (decimal?)x.AmountEur, ct) ?? 0m;
         var softValue = kind == CapKind.SoftCap ? value : 0m;
+        // T-061: reduced daily cap for a user without an active device, checked under the same lock.
+        if (request.NoDeviceDailyCapEur is { } dailyCap
+            && (await NoDevice.NoDevicePolicy.CountedToday(mine, now).SumAsync(x => (decimal?)x.AmountEur, ct) ?? 0m) + softValue > dailyCap)
+        {
+            await tx.CommitAsync(ct);
+            return new CapDecision(false, CapKind.None, NoDevice.NoDevicePolicy.DailyCapReason, Refused: true);
+        }
         if (spent + softValue > SoftCapPolicy.EffectiveCapEur(request.Tenant))
         {
             await tx.CommitAsync(ct);
@@ -197,7 +206,9 @@ public sealed class SpendCaps(ChatDbContext db, TimeProvider clock, CapsOptions?
             .Where(x => x.Status == SoftCapStatus.Reserved
                         && (x.ReservedAt < old || !db.ActionSteps.Any(s => s.Id == x.Id && s.ExpiresAt > now)))
             .ExecuteDeleteAsync(ct);
-        var finals = await db.SoftCapSpends.Where(x => x.Status == SoftCapStatus.Final && x.SpentAt < old).ExecuteDeleteAsync(ct);
+        // T-061: final own-funds rows stay for the no-device daily window plus one hour.
+        var oldFinal = now - CapDefaults.FinalRetention;
+        var finals = await db.SoftCapSpends.Where(x => x.Status == SoftCapStatus.Final && x.SpentAt < oldFinal).ExecuteDeleteAsync(ct);
         var safes = await db.SafeApprovalCounts.Where(x => x.ApprovedAt < old).ExecuteDeleteAsync(ct);
         return released + finals + safes;
     }

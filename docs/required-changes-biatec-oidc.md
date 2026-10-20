@@ -46,7 +46,7 @@ against the mock and cannot be enabled against real Biatec OIDC until the row sh
 | 7 | Test-network valuation from a static price table | Demo identities set to "always ask" for the Biatec Chat client with no spending limits |
 | 8 | Group-hash binding in the signing endpoint | None. The backend also recomputes the group ID before calling, as defence in depth, not a substitute |
 | 9 | Confidential-client registration for tenants | Operator adds the tenant client to the static client list (section 9) |
-| 10 | Reduced per-client daily cap without an active device | Backend enforces the 100 EUR per-client daily cap and blocks above-threshold signing for users with no active device. "No active device" is known only through the backend's own enrollment record or row 20; where neither exists, the backend cannot tell and relies on OIDC's step-up challenge |
+| 10 | Reduced per-client daily cap without an active device | Backend enforces the 100 EUR per-client daily cap and blocks above-threshold signing for users with no active device (T-061, `Caps:NoDevice`). "No active device" is known only through the backend's own enrollment record or row 20; where neither exists, the backend cannot tell and relies on OIDC's step-up challenge. Set `Caps:NoDevice:Enabled` to false once Biatec OIDC enforces the rule itself |
 | 11 | `valuedEur` in every signing response | Backend counts its own predicted value in the soft cap; only as good as its price feed |
 | 12 | OpenID Federation trust-chain evaluation for client display names | Biatec's own clients pinned as verified by configuration; all others shown unverified |
 | 13 | Forced fresh consent on scope elevation | Not needed: every authorization shows the consent screen |
@@ -363,6 +363,22 @@ this request is processed by hand.
   and blocks above-threshold signing for them (weaker, because backend-side).
 - OIDC side: if the user has no active device (`device_active: false` in section 20), the signing endpoint applies the reduced cap
   and refuses with HTTP 403 `{ "error": "daily_cap_exceeded", "cap_eur": "100", "reason": "no_active_device" }`.
+- Backend fallback (T-061, `backend/Biatec.Chat.Tools/Caps/NoDevice/`): before every signing request the confirm path reads
+  `GET /consent/settings` (row 20). When it answers `device_active: false` (an enrolled device still in its activation delay
+  counts as none):
+  - an action that would need the phone (value above `threshold_eur`, or above the 1000 EUR ceiling when OIDC omits it; a value
+    the backend cannot predict; `always_ask`; a preview's own `requireConsent`; or a soft or safe cap forcing consent) is refused
+    with `no_active_device` and an enrollment hint, before anything is reserved or signed;
+  - otherwise the action's value is reserved in the T-025 store (`SoftCapSpends`, same advisory lock as the soft cap) against a
+    rolling 24-hour own-funds total per user `sub` and tenant; over `Caps:NoDevice:DailyCapEur` (default 100) it is refused with
+    `no_device_daily_cap` and the enrollment hint. Safe approvals and executions add nothing, as in the soft cap. Final rows are
+    kept 25 hours for this window.
+  - The backend applies the reduced cap every day, not only during the client's first 24 hours and the user's first day with the
+    client as rule 4 says for OIDC: it has no record of those dates, so it takes the stricter reading.
+  - If `GET /consent/settings` is missing or fails, nothing changes (OIDC's step-up is relied on).
+  - Config: `Caps:NoDevice:Enabled` (default true) and `Caps:NoDevice:DailyCapEur` (default 100). Turn `Enabled` off once Biatec
+    OIDC ships the 403 `daily_cap_exceeded` / `no_active_device` rule above; the backend already passes such a refusal through as a
+    rejected signing request.
 
 ## 11. `valuedEur` in every signing response
 

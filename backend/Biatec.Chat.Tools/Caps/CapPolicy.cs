@@ -18,6 +18,8 @@ public static class CapDefaults
     public static readonly TimeSpan Window = TimeSpan.FromHours(1);
     /// <summary>Rows are pruned once older than the longest window plus one hour.</summary>
     public static readonly TimeSpan Retention = Window + TimeSpan.FromHours(1);
+    /// <summary>T-061: final soft cap rows are also counted by the no-device daily cap, so they are kept for a day plus one hour.</summary>
+    public static readonly TimeSpan FinalRetention = NoDevice.NoDeviceDefaults.Window + TimeSpan.FromHours(1);
 }
 
 /// <summary>The tenant's <c>safeApprovalCaps</c> JSON; a missing or unreadable field falls back to the platform default.</summary>

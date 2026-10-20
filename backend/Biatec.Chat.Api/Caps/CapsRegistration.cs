@@ -14,6 +14,12 @@ public static class CapsRegistration
         services.AddOptions<CapsOptions>().BindConfiguration(CapsOptions.Section);
         services.TryAddScoped<ISpendCaps>(sp => new SpendCaps(sp.GetRequiredService<Biatec.Chat.Core.Data.ChatDbContext>(),
             sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<IOptions<CapsOptions>>().Value));
+        // T-061: reduced daily cap for users without an active device; Caps:NoDevice:Enabled = false once Biatec OIDC enforces rule 4 (required-changes row 10).
+        services.AddOptions<Biatec.Chat.Tools.Caps.NoDevice.NoDeviceCapOptions>().BindConfiguration(Biatec.Chat.Tools.Caps.NoDevice.NoDeviceCapOptions.Section);
+        services.TryAddScoped<Biatec.Chat.Tools.Caps.NoDevice.INoDeviceGate>(sp => new Biatec.Chat.Tools.Caps.NoDevice.NoDeviceGate(
+            sp.GetRequiredService<Biatec.Chat.Tools.Consent.IConsentSettingsClient>(),
+            new Uri(sp.GetRequiredService<IOptions<Biatec.Chat.Api.Config.OidcOptions>>().Value.Issuer.TrimEnd('/') + "/consent/settings"),
+            sp.GetRequiredService<IOptions<Biatec.Chat.Tools.Caps.NoDevice.NoDeviceCapOptions>>().Value));
         services.AddHostedService<CapsPruneHostedService>();
         return services;
     }

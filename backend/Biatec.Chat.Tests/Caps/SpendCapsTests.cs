@@ -273,8 +273,12 @@ public sealed class SpendCapsTests : IAsyncLifetime
 
         _clock.Now = _clock.Now.AddHours(2).AddMinutes(1);
         await WithCapsAsync(c => c.PruneAsync());
-        Assert.Empty(await SpendsAsync());
+        Assert.Equal(new[] { finalStep }, (await SpendsAsync()).Select(r => r.Id)); // T-061: final rows feed the no-device daily cap
         Assert.Empty(await SafesAsync());
+
+        _clock.Now = _clock.Now.AddHours(23);
+        await WithCapsAsync(c => c.PruneAsync());
+        Assert.Empty(await SpendsAsync());
     }
 
     [Fact]
