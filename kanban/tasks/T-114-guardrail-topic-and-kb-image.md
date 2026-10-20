@@ -5,7 +5,7 @@ status: review
 priority: P0
 epic: "Orchestrator"
 blocked_by: []
-area: ["infra/guardrail/**", "k8s/base/backend.yaml", "docs/aws-setup.md", "backend/Dockerfile"]
+area: ["infra/guardrail/**", "k8s/base/backend.yaml", "docs/aws-setup.md", "backend/Dockerfile", "backend/Dockerfile.dockerignore"]
 parallel: yes
 conflicts_with: []
 issue: "#241"

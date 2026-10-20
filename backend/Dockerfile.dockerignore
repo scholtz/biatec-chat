@@ -7,6 +7,7 @@ apps
 builders
 e2e
 docs
+!docs/kb
 kanban
 k8s
 packages
