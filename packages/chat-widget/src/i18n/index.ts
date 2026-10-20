@@ -5,17 +5,19 @@ import chat from "./en/chat.json";
 import agent from "./en/agent.json";
 import activity from "./en/activity.json";
 import safe from "./en/safe.json";
+import data from "./en/data.json";
 import skUi from "./sk/ui.json";
 import skCards from "./sk/cards.json";
 import skChat from "./sk/chat.json";
 import skAgent from "./sk/agent.json";
 import skActivity from "./sk/activity.json";
 import skSafe from "./sk/safe.json";
+import skData from "./sk/data.json";
 
 /** One catalog file per feature (ui, shell, chat, cards, agent, data) so parallel UI tasks never edit the same file. */
-export const en = { ...ui, ...cards, ...chat, ...agent, ...activity, ...safe };
+export const en = { ...ui, ...cards, ...chat, ...agent, ...activity, ...safe, ...data };
 /** Slovak catalog with exactly the keys of `en` (a test enforces the parity). */
-export const sk = { ...skUi, ...skCards, ...skChat, ...skAgent, ...skActivity, ...skSafe };
+export const sk = { ...skUi, ...skCards, ...skChat, ...skAgent, ...skActivity, ...skSafe, ...skData };
 
 export const i18n = createI18n({
   legacy: false,

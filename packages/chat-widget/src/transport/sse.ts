@@ -7,6 +7,7 @@ export const CHAT_EVENT_TYPES = [
   "consent_status",
   "sign_in_card",
   "safe_card",
+  "data_card",
   "error",
 ] as const;
 
@@ -41,6 +42,19 @@ const isSafe = (s: unknown): boolean =>
 const isSafeCard = (c: unknown): boolean =>
   isObj(c) && isStr(c.source) && isStr(c.network) && Array.isArray(c.safes) && c.safes.every(isSafe) && optArray(c.couldNotRead, isStr);
 
+/** Every field HoldingsCard.vue reads. Amounts must be strings so a number never loses digits above 2^53. */
+const isHoldingsAsset = (a: unknown): boolean =>
+  isObj(a) && isStr(a.assetId) && isStr(a.unitName) && isStr(a.amount) && isInt(a.decimals) && (a.fiatValue == null || isStr(a.fiatValue));
+const isDataCard = (v: Record<string, unknown>): boolean =>
+  v.kind === "holdings" &&
+  isStr(v.network) &&
+  isStr(v.asOf) &&
+  Array.isArray(v.addresses) &&
+  v.addresses.every(isStr) &&
+  Array.isArray(v.assets) &&
+  v.assets.every(isHoldingsAsset) &&
+  (v.fiatCurrency == null || isStr(v.fiatCurrency));
+
 /** Narrow an unknown JSON value to a ChatEvent: the discriminator and the required fields of that event type. */
 export function isChatEvent(v: unknown): v is ChatEvent {
   if (!isObj(v) || !isStr(v.type)) return false;
@@ -57,6 +71,8 @@ export function isChatEvent(v: unknown): v is ChatEvent {
       return isStr(v.signInUrl) && isStr(v.reason) && typeof v.unavailable === "boolean";
     case "safe_card":
       return isSafeCard(v.card);
+    case "data_card":
+      return isDataCard(v);
     case "error":
       return isStr(v.code) && isStr(v.message) && typeof v.retryable === "boolean";
     default:

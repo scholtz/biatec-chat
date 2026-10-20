@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Amazon.BedrockRuntime;
 using Amazon.BedrockRuntime.Model;
+using Biatec.Chat.Api.Chat.DataCards;
 using Biatec.Chat.Api.Contracts;
 using Biatec.Chat.Api.Model;
 using Biatec.Chat.Api.Model.Guardrails;
@@ -194,6 +195,10 @@ public sealed class ConversationOrchestrator(
                     result = new ToolExecutionResult(GuardrailMessages.ToolResultWithheld, true);
 
                 foreach (var ev in result.Events ?? []) yield return ev;
+                // Holdings card: built from the (screened) wallet.balance result, never from model text, and only for signed-in users.
+                if (fromExecutor && !result.IsError && turn.Tier == DataTier.Authenticated && capName == HoldingsCardBuilder.Capability
+                    && HoldingsCardBuilder.TryBuild(result.Content, clock.GetUtcNow()) is { } holdings)
+                    yield return holdings;
                 yield return new ToolStatusEvent(call.ToolUseId, label, result.IsError ? ToolRunState.Failed : ToolRunState.Succeeded);
 
                 // Anything the tool's output schema marks sensitive is removed before it is stored or recorded.

@@ -1,5 +1,5 @@
 import { reactive, ref, computed, onBeforeUnmount } from "vue";
-import type { ActionPreview, ChatEvent, ConsentStatus, SafeCard, SessionState, SessionTier, Suggestion } from "@biatec/chat-protocol";
+import type { ActionPreview, ChatEvent, ConsentStatus, DataCardEvent, SafeCard, SessionState, SessionTier, Suggestion } from "@biatec/chat-protocol";
 import { t } from "../../i18n";
 import type { TransportManager } from "../../transport";
 import type { AuthClient } from "./auth";
@@ -26,6 +26,8 @@ export interface ChatMessage {
   signIn?: SignInCard;
   /** Safe cards from safe.list / safe.create results (safe_card events), in arrival order. */
   safeCards?: SafeCard[];
+  /** Holdings cards from wallet.balance results (data_card events), in arrival order. */
+  dataCards?: DataCardEvent[];
   /** Preview cards (latest per previewId) from preview_card events, with consent state. */
   previews?: PreviewEntry[];
   /** Follow-up questions the backend suggested for this reply, if any. */
@@ -113,7 +115,7 @@ export function useChat(svc: ChatServices) {
       reply.streaming = false;
       busy.value = false;
       abort = null;
-      announce(reply.error ?? (reply.text || reply.signIn?.description || safeSummary(reply) || previewSummary(reply)));
+      announce(reply.error ?? (reply.text || reply.signIn?.description || safeSummary(reply) || dataSummary(reply) || previewSummary(reply)));
     }
   }
 
@@ -123,6 +125,12 @@ export function useChat(svc: ChatServices) {
     if (!m.safeCards?.length) return "";
     const proposals = safes.reduce((n, s) => n + (s.pendingProposals?.length ?? 0), 0);
     return t("safe.announce", { safes: safes.length, proposals });
+  }
+
+  /** A reply that is only a data card still gets announced. */
+  function dataSummary(m: ChatMessage): string {
+    const n = (m.dataCards ?? []).reduce((sum, c) => sum + c.assets.length, 0);
+    return n ? t("holdings.announce", { count: n }) : "";
   }
 
   function apply(m: ChatMessage, e: ChatEvent): void {
@@ -150,6 +158,9 @@ export function useChat(svc: ChatServices) {
         break;
       case "safe_card":
         (m.safeCards ??= []).push(e.card);
+        break;
+      case "data_card":
+        (m.dataCards ??= []).push(e);
         break;
       case "preview_card":
         applyPreview(m, e.preview);

@@ -36,7 +36,9 @@ export type PreviewCardEvent = Schemas["ChatEventPreviewCardEvent"];
 export type ConsentStatusEvent = Schemas["ChatEventConsentStatusEvent"];
 export type SignInCardEvent = Schemas["ChatEventSignInCardEvent"];
 export type SafeCardEvent = Schemas["ChatEventSafeCardEvent"];
-export type ErrorEvent = Schemas["ChatEventErrorEvent"];
+export type DataCardEvent = Schemas["ChatEventDataCardEvent"];
+export type DataCardAsset = Schemas["DataCardAsset"];
+export type ErrorEvent =Schemas["ChatEventErrorEvent"];
 
 /** Server-sent event of a chat reply, discriminated by `type`. */
 export type ChatEvent =
@@ -46,6 +48,7 @@ export type ChatEvent =
   | ConsentStatusEvent
   | SignInCardEvent
   | SafeCardEvent
+  | DataCardEvent
   | ErrorEvent;
 
 export type ChatEventType = ChatEvent["type"];

@@ -12,6 +12,7 @@ namespace Biatec.Chat.Api.Contracts;
 [JsonDerivedType(typeof(ConsentStatusEvent), "consent_status")]
 [JsonDerivedType(typeof(SignInCardEvent), "sign_in_card")]
 [JsonDerivedType(typeof(SafeCardEvent), "safe_card")]
+[JsonDerivedType(typeof(DataCardEvent), "data_card")]
 [JsonDerivedType(typeof(ErrorEvent), "error")]
 public abstract record ChatEvent;
 
@@ -34,6 +35,22 @@ public sealed record PreviewCardEvent(ActionPreview Preview) : ChatEvent;
 
 /// <summary>A Biatec Safe card (safes, signer groups, proposal queue) to render, from safe.list or safe.create.</summary>
 public sealed record SafeCardEvent(SafeCard Card) : ChatEvent;
+
+/// <summary>
+/// A structured data card (T-067: kind "holdings", from <c>wallet.balance</c>). Built from the tool result, never from
+/// model text. Amounts are decimal strings.
+/// </summary>
+public sealed record DataCardEvent : ChatEvent
+{
+    /// <summary>Card kind; "holdings".</summary>
+    public required string Kind { get; init; }
+    public required string Network { get; init; }
+    public required IReadOnlyList<string> Addresses { get; init; }
+    public required IReadOnlyList<Biatec.Chat.Api.Chat.DataCards.DataCardAsset> Assets { get; init; }
+    /// <summary>ISO 4217 code of the fiat values, when the assets carry them.</summary>
+    public string? FiatCurrency { get; init; }
+    public required DateTimeOffset AsOf { get; init; }
+}
 
 /// <summary>Authenticator approval progress.</summary>
 public sealed record ConsentStatusEvent(ConsentStatus Consent) : ChatEvent;

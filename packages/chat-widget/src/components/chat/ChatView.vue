@@ -24,6 +24,7 @@ import { parseBlocks, safeHttpUrl } from "./format";
 import { AGENT_MODE_LABEL, type AgentModeDisplay } from "../shell/agentMode";
 import { BaiSymbol } from "../../ui";
 import SafeCard from "../cards/SafeCard.vue";
+import HoldingsCard from "../data/HoldingsCard.vue";
 import ActionPreviewCard from "../cards/ActionPreviewCard.vue";
 import ReceiptCard from "../cards/ReceiptCard.vue";
 import { RECEIPT_STATUSES } from "./previews";
@@ -120,7 +121,7 @@ onBeforeUnmount(() => clearTimeout(copiedTimer));
 
 // Keep the newest text in view while it streams.
 watch(
-  () => props.messages.map((m) => m.text.length + m.tools.length + (m.safeCards?.length ?? 0) + (m.previews?.length ?? 0)).join(","),
+  () => props.messages.map((m) => m.text.length + m.tools.length + (m.safeCards?.length ?? 0) + (m.dataCards?.length ?? 0) + (m.previews?.length ?? 0)).join(","),
   async () => {
     await nextTick();
     if (list.value) list.value.scrollTop = list.value.scrollHeight;
@@ -198,6 +199,8 @@ const showThinking = (m: ChatMessage) => m.role === "assistant" && m.streaming &
             </div>
             <!-- Safe cards come only from safe_card events (structured tool results), never from model text. -->
             <SafeCard v-for="(sc, si) in m.safeCards ?? []" :key="si" :card="sc" />
+            <!-- Data cards come only from data_card events (structured tool results), never from model text. -->
+            <HoldingsCard v-for="(dc, di) in m.dataCards ?? []" :key="di" :card="dc" />
             <!-- Preview cards come only from preview_card events (structured backend data), never from model text. -->
             <template v-for="pv in m.previews ?? []" :key="pv.preview.previewId">
               <ReceiptCard v-if="RECEIPT_STATUSES.includes(pv.preview.status)" :preview="pv.preview" />

@@ -1,0 +1,41 @@
+/* Holdings data card (T-067). Tokens only. The allocation bar never uses red or green for gains and losses: the largest
+   asset takes the brand colour, the rest neutral tones. */
+.biatec-chat .bc-holdings-total { display: flex; flex-direction: column; margin: 0; }
+.biatec-chat .bc-holdings-total strong { font-size: 20px; font-weight: 600; }
+.biatec-chat .bc-holdings-bar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--color-bg-interactive);
+}
+.biatec-chat .bc-holdings-seg { flex-basis: 0; min-width: 2px; }
+.biatec-chat .bc-holdings-seg[data-rank="0"],
+.biatec-chat .bc-holdings-swatch[data-rank="0"] { background: var(--color-brand-primary); }
+.biatec-chat .bc-holdings-seg[data-rank="1"],
+.biatec-chat .bc-holdings-swatch[data-rank="1"] { background: var(--color-text-secondary); }
+.biatec-chat .bc-holdings-seg[data-rank="2"],
+.biatec-chat .bc-holdings-swatch[data-rank="2"] { background: var(--color-text-disabled); }
+.biatec-chat .bc-holdings-seg[data-rank="3"],
+.biatec-chat .bc-holdings-swatch[data-rank="3"] { background: var(--color-border-strong); }
+.biatec-chat .bc-holdings-seg[data-rank="4"],
+.biatec-chat .bc-holdings-swatch[data-rank="4"] { background: var(--color-bg-interactive); border: 1px solid var(--color-border-strong); }
+.biatec-chat .bc-holdings-rows { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.biatec-chat .bc-holdings-row { display: flex; align-items: baseline; gap: var(--space-3); }
+.biatec-chat .bc-holdings-swatch { flex: none; width: 10px; height: 10px; border-radius: var(--radius-sm); background: var(--color-border-strong); }
+.biatec-chat .bc-holdings-unit { flex: 1; min-width: 0; font-weight: 500; }
+.biatec-chat .bc-holdings-amount { font-weight: 600; text-align: right; }
+.biatec-chat .bc-holdings-share { min-width: 52px; text-align: right; color: var(--color-text-secondary); }
+.biatec-chat .bc-holdings-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+}
+.biatec-chat .bc-holdings-note svg { flex: none; margin-top: 2px; }
+.biatec-chat .bc-holdings-asof { margin: 0; font-size: 12px; }

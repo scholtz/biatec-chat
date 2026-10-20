@@ -959,6 +959,40 @@
           }
         }
       },
+      "DataCardAsset": {
+        "required": [
+          "assetId",
+          "unitName",
+          "amount",
+          "decimals"
+        ],
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string"
+          },
+          "unitName": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "string"
+          },
+          "decimals": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "fiatValue": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "ElevatePopupRequest": {
         "type": "object",
         "properties": {
@@ -1018,6 +1052,9 @@
             "$ref": "#/components/schemas/ChatEventSafeCardEvent"
           },
           {
+            "$ref": "#/components/schemas/ChatEventDataCardEvent"
+          },
+          {
             "$ref": "#/components/schemas/ChatEventErrorEvent"
           }
         ],
@@ -1030,6 +1067,7 @@
             "consent_status": "#/components/schemas/ChatEventConsentStatusEvent",
             "sign_in_card": "#/components/schemas/ChatEventSignInCardEvent",
             "safe_card": "#/components/schemas/ChatEventSafeCardEvent",
+            "data_card": "#/components/schemas/ChatEventDataCardEvent",
             "error": "#/components/schemas/ChatEventErrorEvent"
           }
         }
@@ -1048,6 +1086,52 @@
           },
           "consent": {
             "$ref": "#/components/schemas/ConsentStatus"
+          }
+        }
+      },
+      "ChatEventDataCardEvent": {
+        "required": [
+          "kind",
+          "network",
+          "addresses",
+          "assets",
+          "asOf",
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "data_card"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "network": {
+            "type": "string"
+          },
+          "addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DataCardAsset"
+            }
+          },
+          "fiatCurrency": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
