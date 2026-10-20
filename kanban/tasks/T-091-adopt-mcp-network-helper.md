@@ -1,7 +1,7 @@
 ---
 id: T-091
 title: Adopt McpNetworks.Algorand in the remaining hand-built network codes
-status: blocked
+status: backlog
 priority: P3
 epic: "Wallet tools"
 blocked_by: [T-089]
@@ -57,3 +57,4 @@ files.
 ## Activity log
 
 - 2026-10-20 06:30 · coordinator · (new) → blocked · proposed by T-089
+- 2026-10-20 04:00 · kanban-board · blocked → backlog · blockers done: T-089

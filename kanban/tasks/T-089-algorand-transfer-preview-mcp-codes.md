@@ -1,7 +1,7 @@
 ---
 id: T-089
 title: "Bug: Algorand transfer preview must use MCP network codes and the error field"
-status: review
+status: done
 priority: P1
 epic: "Wallet tools"
 blocked_by: [T-082]
@@ -66,6 +66,8 @@ files.
 
 ## Review
 
+- 2026-10-20 04:00 · approve · PR #169 merged into main @ f948c28 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 05:10 · coordinator · (new) → blocked · proposed by T-082
@@ -74,3 +76,4 @@ files.
 - 2026-10-20 03:34 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 03:34 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 03:59 · coordinator · in-progress → review · branch task/T-089 @ 67e2000, PR #169
+- 2026-10-20 04:00 · user · review → done · PR #169 merged into main @ f948c28 (synced by kanban-sync)
