@@ -24,3 +24,6 @@ build/
 .idea/
 Thumbs.db
 .DS_Store
+
+# IAM Roles Anywhere CA and client keys (infra/aws/rolesanywhere.sh)
+rolesanywhere-out/

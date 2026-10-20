@@ -91,8 +91,12 @@ public sealed class LiquidityTests : IAsyncLifetime
         public readonly List<string> Submits = [];
         public Task<McpToolResult> ListAlgorandAddressesAsync(McpCallContext ctx, CancellationToken ct = default) =>
             Task.FromResult(new McpToolResult(false, "", JsonDocument.Parse($"[\"{address}\"]").RootElement));
-        public Task<McpToolResult> GetCryptoBalanceAsync(McpCallContext ctx, string network, string a, CancellationToken ct = default) =>
-            Task.FromResult(BalancesFail ? new McpToolResult(true, "", null) : new McpToolResult(false, "", JsonDocument.Parse(BalancesJson).RootElement));
+        public readonly List<string> BalanceNetworks = [];
+        public Task<McpToolResult> GetCryptoBalanceAsync(McpCallContext ctx, string network, string a, CancellationToken ct = default)
+        {
+            BalanceNetworks.Add(network);
+            return Task.FromResult(BalancesFail ? new McpToolResult(true, "", null) : new McpToolResult(false, "", JsonDocument.Parse(BalancesJson).RootElement));
+        }
         public Task<McpToolResult> SubmitTransactionToBlockchainAsync(McpCallContext ctx, string network, string blob, CancellationToken ct = default)
         {
             Submits.Add(blob);
@@ -572,6 +576,18 @@ public sealed class LiquidityTests : IAsyncLifetime
         Assert.Contains("could not be read", failed.Content);
         Assert.DoesNotContain("no liquidity tokens", failed.Content);
         Assert.Empty(_builders.Builds);
+    }
+
+    [Fact]
+    public async Task Liquidity_balances_are_read_with_the_mcp_network_code_and_an_error_field_is_unreadable()
+    {
+        // The real MCP shape with a non-empty error field: no LP position can be proven.
+        _mcp.BalancesJson = """{"nativeBalanceBaseUnits":"0","assets":[{"assetId":900,"amount":1000}],"error":"Unknown network 'testnet'."}""";
+        var r = await _remove.ExecuteAsync(Ctx("dex.removeLiquidity"), RemoveArgs(1001, _builderSender, 100), default);
+        Assert.True(r.IsError);
+        Assert.Contains("could not be read", r.Content);
+        Assert.Empty(_builders.Builds);
+        Assert.Equal("algorand-testnet", Assert.Single(_mcp.BalanceNetworks));
     }
 
     [Fact]

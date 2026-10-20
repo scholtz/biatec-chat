@@ -1,6 +1,6 @@
 # Kubernetes manifests
 
-Kustomize overlays: `base/` (backend + builders sidecar), `main/` (chat.biatec.io) and `stage/` (chat.stage.biatec.io).
+Kustomize overlays: `base/` (backend + builders sidecar), `main/` (chat.biatec.io) and `stage/` (stage.chat.biatec.io).
 Not applied by this repository.
 
 Validate offline: `kubectl kustomize k8s/stage` and `kubectl kustomize k8s/main` must render. `kubectl apply --dry-run=client`
@@ -21,43 +21,39 @@ owner should run `kubectl kustomize k8s/stage | kubectl apply --dry-run=client -
 
 ## Secrets (never in git)
 
-Create `biatec-chat-secrets` in each namespace out of band (sealed-secrets, external-secrets or `kubectl create secret`) with keys:
-`postgres-connection-string`, `redis-connection-string`, `kms-key-id`, `oidc-client-secret`, `builders-internal-secret`,
-`aws-role-arn`, `evidence-master-key` (base64 of at least 32 random bytes, e.g. `kubectl create secret generic
-biatec-chat-secrets --from-literal=evidence-master-key="$(openssl rand -base64 32)" ...`; the pods stay in
-`CreateContainerConfigError` without it).
+Every secret is a GitHub environment secret; `deploy.yml` writes them into three cluster secrets on each deploy
+(docs/cicd.md): `biatec-chat-secrets` (`oidc-client-secret`), `biatec-chat-generated` (`postgres-password`,
+`redis-password`, `builders-internal-secret`, `vault-master-key`; the name is from an earlier design when they were
+generated in the cluster) and `biatec-chat-aws` (Roles Anywhere client certificate, key and AWS config file, see "AWS
+access"). Postgres and Redis run in the namespace (`base/postgres.yaml`, `base/redis.yaml`, reachable only from the
+backend through network policies); the backend's connection strings are built from those passwords. Schema
+migrations are a deploy step (docs/cicd.md).
 
-## AWS access (no keys)
+## AWS access (Bedrock only, no keys)
 
-The pod gets a projected service-account token (audience `sts.amazonaws.com`) at `/var/run/secrets/aws/token`; the AWS SDK
-exchanges it for the role in `AWS_ROLE_ARN` (`sts:AssumeRoleWithWebIdentity`, `AWSSDK.SecurityToken`). One-time setup per
-cluster and AWS account, with `infra/aws/k8s-role.sh` (dry-run by default):
-
-1. The cluster's service-account issuer must be reachable over HTTPS from AWS: `<issuer>/.well-known/openid-configuration`
-   and its `jwks_uri` (`kubectl get --raw /.well-known/openid-configuration` shows the issuer). On a self-managed cluster
-   that usually means setting `--service-account-issuer` to a public URL and serving those two documents there.
-2. `ISSUER_URL=<issuer> KMS_KEY_ARN=<vault key arn> infra/aws/k8s-role.sh --apply` creates the IAM OIDC provider and the
-   role `biatec-chat-k8s-role`, trusted only for `system:serviceaccount:biatec-chat-main:biatec-chat-backend` and
-   `...-stage:...`, with the same inline policy as the EC2 role (Claude 4.5 `eu.` profiles, the guardrail, the vault key).
-3. Put the printed role ARN in the `aws-role-arn` key of `biatec-chat-secrets`.
-
-The hackathon AWS account turns read-only after the event; for a lasting deployment run the guardrail script and this one
-in Biatec's own account and update `Bedrock__Guardrail__GuardrailId` in the base config map.
+AWS is used for Bedrock (model and guardrail) and nothing else. The backend authenticates with an environment-specific
+client certificate through IAM Roles Anywhere: `AWS_CONFIG_FILE` points at the `config` of the `biatec-chat-aws` secret
+(mounted at `/var/run/secrets/aws-rolesanywhere`), whose `credential_process` runs the `aws_signing_helper` shipped in
+the backend image. This needs nothing from the cluster (no public service-account issuer, no API-server flag). One-time
+setup with `infra/aws/rolesanywhere.sh`; the full walk-through is [docs/aws-setup.md](../docs/aws-setup.md).
 
 ## Images
 
-`ghcr.io/scholtz/biatec-chat-backend` (`backend/Dockerfile`) and `ghcr.io/scholtz/biatec-chat-builders`
+`scholtz2/biatec-chat-backend` (`backend/Dockerfile`) and `scholtz2/biatec-chat-builders`
 (`builders/sidecar/Dockerfile`); both build with the repository root as context. Startup and readiness probes use `/health` (Redis and PostgreSQL checks); liveness uses `/health/live`, which runs no dependency checks, so a dependency outage removes pods from service without restarting them.
 
 ## Deployment prerequisites
 
-- **Image tags.** `main` pins `newTag: REPLACE-WITH-RELEASE-SHA` on purpose: release automation must set an immutable tag
-  (`kustomize edit set image ghcr.io/scholtz/biatec-chat-backend=...:<sha>`) before applying, so a deploy never floats on `latest`.
-  `stage` follows the moving `stage` tag.
-- **Tenants are not seeded outside Development.** After the first deploy, create the `biatec-chat` tenant row (host
-  `chat.biatec.io`, `ClientSecretRef=secret://biatec-chat/oidc-client-secret`) via the onboarding API or SQL.
+- **Image tags.** The `newTag` values in the overlays are placeholders. `.github/workflows/deploy.yml` replaces both with
+  the immutable tag it deploys: `1.<date>-<sha7>-beta` on stage (deploy-stage.yml), `1.<date>-<sha7>-main` on production
+  (promote-production.yml, the same images re-tagged). Applying an overlay by hand without pinning fails on purpose
+  (`REPLACE-WITH-RELEASE-SHA` doesn't exist). See `docs/cicd.md`.
+- **Tenants are not seeded by the backend outside Development.** `deploy.yml` upserts the `biatec-chat` tenant row after
+  the migration: host from the environment URL, client id from the `OIDC_CLIENT_ID` secret,
+  `ClientSecretRef=secret://biatec-chat/oidc-client-secret`.
   The secret itself is the `oidc-client-secret` key above, exposed as `Secrets__biatec-chat__oidc-client-secret`.
-- **Vault** uses KMS (`Vault__KeyProvider=Kms`, `Kms__KeyId`); the pod's IAM role needs `kms:GenerateDataKey` and `kms:Decrypt` on that key.
+- **Vault** uses the `Secret` key provider: `Vault__MasterKey` from `biatec-chat-generated` wraps the per-entry data keys
+  (AES-GCM). Losing that key only forces users to sign in again.
 - **Evidence signing keys** (`Evidence__KeyStore=Secret`). Add `evidence-master-key` to `biatec-chat-secrets`: base64 of
   at least 32 random bytes (`openssl rand -base64 32`). Every replica derives the same ES256 keys from it (HKDF), and the
   key metadata (kid, public point, created/retired dates, which key is active) lives in the PostgreSQL table

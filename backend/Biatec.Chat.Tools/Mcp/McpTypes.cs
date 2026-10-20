@@ -27,6 +27,13 @@ public static class McpToolNames
     public static bool IsBlocked(string name) => string.Equals(name?.Trim(), SignTransaction, StringComparison.OrdinalIgnoreCase);
 }
 
+/// <summary>Biatec MCP network codes.</summary>
+public static class McpNetworks
+{
+    /// <summary>The Biatec MCP code for a chat Algorand network name: <c>testnet</c> is <c>algorand-testnet</c>.</summary>
+    public static string Algorand(string network) => "algorand-" + network;
+}
+
 public sealed class McpOptions
 {
     public const string Section = "Mcp";
@@ -49,7 +56,10 @@ public sealed record McpToolInfo(string Name, string? Description);
 /// <summary>Result of one tool call. <see cref="Json"/> is the structured content, or the text content parsed as JSON when possible.</summary>
 public sealed record McpToolResult(bool IsError, string Text, JsonElement? Json)
 {
-    /// <summary>A tool error, or a non-empty <c>error</c> field: Biatec MCP reports most failures that way rather than as a tool error.</summary>
+    /// <summary>
+    /// A tool error, or a non-empty <c>error</c> field (a string, object or array; anything but null, false, "", {} or []):
+    /// Biatec MCP reports most failures that way rather than as a tool error.
+    /// </summary>
     public bool Failed
     {
         get
@@ -58,7 +68,14 @@ public sealed record McpToolResult(bool IsError, string Text, JsonElement? Json)
             if (Json is not { ValueKind: JsonValueKind.Object } o) return false;
             foreach (var p in o.EnumerateObject())
                 if (string.Equals(p.Name, "error", StringComparison.OrdinalIgnoreCase))
-                    return p.Value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(p.Value.GetString());
+                    return p.Value.ValueKind switch
+                    {
+                        JsonValueKind.Null or JsonValueKind.Undefined or JsonValueKind.False => false,
+                        JsonValueKind.String => !string.IsNullOrWhiteSpace(p.Value.GetString()),
+                        JsonValueKind.Object => p.Value.EnumerateObject().Any(),
+                        JsonValueKind.Array => p.Value.GetArrayLength() > 0,
+                        _ => true,
+                    };
             return false;
         }
     }
