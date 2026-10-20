@@ -1,7 +1,7 @@
 ---
 id: T-092
 title: "Session endpoint: return the session's OIDC scope names"
-status: in-progress
+status: done
 priority: P3
 epic: "Sessions & auth"
 blocked_by: [T-083]
@@ -49,9 +49,12 @@ Parallel work possible: **no**. Don't run it at the same time as T-095: they cha
 
 ## Review
 
+- 2026-10-20 07:50 · approve · PR #199 merged into main @ 2e6174c (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 04:16 · coordinator · (new) → backlog · proposed by a worker
 - 2026-10-20 05:31 · coordinator · backlog · conflicts_with + T-095 (blockers scan: shared files)
 - 2026-10-20 06:19 · scholtz · taken · status stays backlog
 - 2026-10-20 06:19 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 07:50 · user · in-progress → done · PR #199 merged into main @ 2e6174c (synced by kanban-sync)
