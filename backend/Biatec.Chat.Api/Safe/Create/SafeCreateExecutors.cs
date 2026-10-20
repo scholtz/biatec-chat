@@ -296,7 +296,7 @@ public static class SafeListJson
                 ["appId"] = s.AppId.ToString(CultureInfo.InvariantCulture),
                 ["address"] = s.Address,
                 ["name"] = s.Name,
-                ["network"] = "algorand-" + s.Network,
+                ["network"] = McpNetworks.Algorand(s.Network),
                 ["paused"] = s.Paused,
                 ["yourAddresses"] = new JsonArray(s.YourAddresses.Select(a => (JsonNode?)JsonValue.Create(a)).ToArray()),
                 ["signerGroups"] = new JsonArray(s.Groups.Select(g => (JsonNode?)new JsonObject
@@ -355,13 +355,13 @@ public static class SafeCardMap
         return new SafeCard
         {
             Source = SafeCardSource.List,
-            Network = "algorand-" + network,
+            Network = McpNetworks.Algorand(network),
             Safes = outcome.Safes.Select(s => new SafeCardSafe
             {
                 AppId = s.AppId.ToString(CultureInfo.InvariantCulture),
                 Address = s.Address,
                 Name = s.Name,
-                Network = "algorand-" + s.Network,
+                Network = McpNetworks.Algorand(s.Network),
                 Paused = s.Paused,
                 YourAddresses = s.YourAddresses,
                 SignerGroups = s.Groups.Select(g => new SafeCardSignerGroup
