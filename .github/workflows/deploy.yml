@@ -39,27 +39,33 @@ jobs:
           echo "$KUBE_CONFIG" | base64 -d > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
 
-      # Postgres, Redis and builders passwords and the token-vault master key come from the environment's GitHub secrets
-      # (docs/cicd.md has the one-liners that generate them). Postgres only reads its password when its volume is first
-      # initialised, so never change POSTGRES_PASSWORD afterwards; losing VAULT_MASTER_KEY signs every user out.
+      # Postgres, Redis and builders passwords and the token-vault and evidence master keys come from the environment's
+      # GitHub secrets (docs/cicd.md has the one-liners that generate them). Postgres only reads its password when its
+      # volume is first initialised, so never change POSTGRES_PASSWORD afterwards; losing VAULT_MASTER_KEY signs every
+      # user out, and changing EVIDENCE_MASTER_KEY changes the evidence signing keys.
       - name: Sync biatec-chat-generated
         env:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
           BUILDERS_INTERNAL_SECRET: ${{ secrets.BUILDERS_INTERNAL_SECRET }}
           VAULT_MASTER_KEY: ${{ secrets.VAULT_MASTER_KEY }}
+          EVIDENCE_MASTER_KEY: ${{ secrets.EVIDENCE_MASTER_KEY }}
         run: |
-          for v in POSTGRES_PASSWORD REDIS_PASSWORD BUILDERS_INTERNAL_SECRET VAULT_MASTER_KEY; do
+          for v in POSTGRES_PASSWORD REDIS_PASSWORD BUILDERS_INTERNAL_SECRET VAULT_MASTER_KEY EVIDENCE_MASTER_KEY; do
             if [ -z "${!v}" ]; then echo "::error::$v is not set on the ${{ inputs.environment }} environment (docs/cicd.md)."; exit 1; fi
           done
           # The vault key is base64 of 32 bytes (Vault:MasterKey).
           [ "$(printf '%s' "$VAULT_MASTER_KEY" | base64 -d 2>/dev/null | wc -c)" = 32 ] \
             || { echo "::error::VAULT_MASTER_KEY must be base64 of 32 bytes (openssl rand -base64 32)."; exit 1; }
+          # The evidence key is base64 of at least 32 bytes (Evidence:Secret:MasterKey).
+          [ "$(printf '%s' "$EVIDENCE_MASTER_KEY" | base64 -d 2>/dev/null | wc -c)" -ge 32 ] \
+            || { echo "::error::EVIDENCE_MASTER_KEY must be base64 of at least 32 bytes (openssl rand -base64 32)."; exit 1; }
           kubectl create secret generic biatec-chat-generated -n "$NAMESPACE" \
             --from-literal=postgres-password="$POSTGRES_PASSWORD" \
             --from-literal=redis-password="$REDIS_PASSWORD" \
             --from-literal=builders-internal-secret="$BUILDERS_INTERNAL_SECRET" \
             --from-literal=vault-master-key="$VAULT_MASTER_KEY" \
+            --from-literal=evidence-master-key="$EVIDENCE_MASTER_KEY" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       # The tenant's Biatec OIDC client secret, from the environment's GitHub secrets.
