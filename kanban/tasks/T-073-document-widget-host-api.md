@@ -1,7 +1,7 @@
 ---
 id: T-073
 title: Document the widget host API in the integration docs
-status: in-progress
+status: done
 priority: P3
 epic: "Deploy & docs"
 blocked_by: [T-063]
@@ -54,9 +54,12 @@ Read the docs against `packages/chat-widget/src/api/types.ts` and `src/index.ts`
 
 ## Review
 
+- 2026-10-20 02:18 · approve · PR #136 merged into main @ d1d4f0a (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 01:40 · coordinator · (new) → blocked · proposed by T-063; blockers scan: T-068 owns docs/integration-biatec-dex.md, so that doc stays out of this task's area
 - 2026-10-20 01:32 · kanban-board · blocked → backlog · blockers done: T-063
 - 2026-10-20 01:47 · scholtz · taken · status stays backlog
 - 2026-10-20 01:47 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 02:18 · user · in-progress → done · PR #136 merged into main @ d1d4f0a (synced by kanban-sync)

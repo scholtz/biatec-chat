@@ -1,7 +1,7 @@
 ---
 id: T-068
 title: BiatecDEX integration playground and hand-off doc
-status: in-progress
+status: done
 priority: P2
 epic: "Widget UI rework"
 blocked_by: [T-063]
@@ -42,10 +42,10 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
 
 ## Acceptance criteria
 
-- [ ] `pnpm --filter @biatec/chat-widget dev` serves `/dex.html`; toggling dark/light and the language updates the widget live
-- [ ] "Ask Biatec AI about this order" opens the panel with the prompt and nothing executes without Confirm
-- [ ] A PrimeVue Dialog opened while the widget is open renders above it
-- [ ] Every code snippet in `docs/integration-biatec-dex.md` compiles against the built package (copied into the playground)
+- [x] `pnpm --filter @biatec/chat-widget dev` serves `/dex.html`; toggling dark/light and the language updates the widget live
+- [x] "Ask Biatec AI about this order" opens the panel with the prompt and nothing executes without Confirm
+- [x] A PrimeVue Dialog opened while the widget is open renders above it
+- [x] Every code snippet in `docs/integration-biatec-dex.md` compiles against the built package (copied into the playground)
 
 ## Implementation notes
 
@@ -58,9 +58,20 @@ pnpm --filter @biatec/chat-widget dev → open /dex.html; pnpm --filter @biatec/
 
 ## Hand-off
 
+- **Summary:** `playground/dex.html` built like BiatecDEX (PrimeVue 5 Aura with `.p-dark`, Tailwind 4 + tailwindcss-primeui, the DEX token values, vue-i18n en/sk/de, theme and language switches, pair header, order card with "Ask Biatec AI about this order", PrimeVue Dialog and Toast, wide layout with `BiatecChatInline`), running the hand-off doc's snippets as written; `test/dex-integration.test.ts`; `docs/integration-biatec-dex.md` rewritten to the shipped API.
+- **Branch:** `task/T-068` @ `350a16f` (merged with main), PR #140 (`Closes #109`).
+- **Files outside the area:** widget `package.json` (6 devDependencies, `typecheck:playground` script), `pnpm-lock.yaml`, `test/dex-integration.test.ts`, a comment in `src/styles/tokens.css`.
+- **Verification:** widget typecheck clean, tests 172/172, build OK, `typecheck:playground` OK, frozen-lockfile install OK; headless Chromium checks (dark/light, en/de, ask, dialog above the widget on desktop and at 375 px, inline, requests go to localhost:5000 with client key `dev`).
+- **Review (medium):** fixed client key not accepted by the local dev tenant, `?theme=` persisted, empty backend URL falling through to production, wrong z-index comment, leaking test apps. Known limitations: the doc-snippet guard is line-substring based; `typecheck:playground` isn't in CI and needs a build first; the z-index check only scans `position: fixed` rules; unused host keys and helpers.
+- **Open questions:** PrimeVue 5 shows an "Invalid PrimeUI License" banner over part of the launcher unless `PRIMEVUE_LICENSE` is set; doc step 1 uses `backendUrl: import.meta.env.VITE_BIATEC_CHAT_URL || 'https://chat.biatec.io'` (DEX maintainers to confirm).
+- **Follow-up tasks created:** T-077 (widget fixes for coexisting with host dialogs).
+- **Unblocks:** no task is blocked by T-068.
+
 Filled in by the agent when it moves the task to `review`.
 
 ## Review
+
+- 2026-10-20 02:09 · approve · PR #140 merged into main @ 8288579 (recorded by kanban-sync)
 
 ## Activity log
 
@@ -68,3 +79,5 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-20 01:32 · kanban-board · blocked → backlog · blockers done: T-063
 - 2026-10-20 01:40 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 01:40 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 02:09 · coordinator · in-progress → review · branch task/T-068 @ 350a16f, PR #140
+- 2026-10-20 02:09 · user · review → done · PR #140 merged into main @ 8288579 (synced by kanban-sync)

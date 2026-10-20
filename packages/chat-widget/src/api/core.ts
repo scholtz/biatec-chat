@@ -1,9 +1,12 @@
 import { computed, onBeforeUnmount, reactive, watch } from "vue";
-import type { HostContext } from "@biatec/chat-protocol";
+import type { ChatEvent, HostContext } from "@biatec/chat-protocol";
 import type { ResolvedOptions } from "../options";
 import { AuthClient } from "../components/chat/auth";
 import { useChat, type ChatServices } from "../components/chat/useChat";
 import { TransportManager } from "../transport";
+import { AgentClient, type AgentApi } from "../components/agent/api";
+import { useAgent } from "../components/agent/useAgent";
+import { useActivity } from "../components/activity/model";
 import { t } from "../i18n";
 import { currentCore, hostSettings, registerCore, type CoreHandle } from "./controller";
 import type { AskResult } from "./types";
@@ -30,6 +33,9 @@ export interface ShellState {
 
 export type WidgetCore = ReturnType<typeof createCore>;
 
+/** Chat services plus the agent-mode and preview-decision calls (T-066); each is a test seam. */
+export type WidgetServices = ChatServices & { agent?: AgentApi };
+
 /** Page context as the chat request's HostContext. Nothing is read from the host page: only what the host passed. */
 export function pageContext(options: ResolvedOptions): HostContext | null {
   const ctx = hostSettings.pageContextSet ? hostSettings.pageContext : options.pageContext;
@@ -42,19 +48,40 @@ export function pageContext(options: ResolvedOptions): HostContext | null {
  * component's setup; it is released when that component unmounts. The floating root owns it, and a
  * `BiatecChatInline` mounted next to it shares it, so both show the same conversation.
  */
-export function createCore(options: ResolvedOptions, services?: ChatServices) {
+export function createCore(options: ResolvedOptions, services?: WidgetServices) {
   const cfg = { backendUrl: options.backendUrl, clientKey: options.clientKey };
   const svc: ChatServices = services ?? { transport: new TransportManager(cfg), auth: new AuthClient(cfg) };
   const base = svc.transport;
+  const activity = useActivity();
   // The page context is attached to each message at send time (so a later setPageContext applies without remount).
   // Messages are only sent from an open panel, so the context never leaves the page before the user opened it.
   const transport: ChatServices["transport"] = {
     open: () => base.open(),
     retryOnSignIn: () => base.retryOnSignIn(),
-    send: (o) => base.send({ ...o, context: o.context ?? pageContext(options) }),
+    send: (o) => tap(base.send({ ...o, context: o.context !== undefined ? o.context : pageContext(options) }), o.message),
     dispose: () => base.dispose(),
   };
   const chat = useChat({ ...svc, transport });
+
+  /** Every stream event also feeds the Activity timeline and the agent's typed refusals. */
+  async function* tap(events: AsyncGenerator<ChatEvent>, question: string): AsyncGenerator<ChatEvent> {
+    let ok = true;
+    try {
+      for await (const e of events) {
+        activity.record(e);
+        if (e.type === "error") {
+          ok = false;
+          agent.reportRefusal(e);
+        }
+        yield e;
+      }
+    } catch (err) {
+      ok = false;
+      throw err;
+    } finally {
+      if (ok) activity.recordReply(question);
+    }
+  }
 
   const ui = reactive<ShellState>({
     open: false,
@@ -67,6 +94,7 @@ export function createCore(options: ResolvedOptions, services?: ChatServices) {
     inline: 0,
     focusTick: 0,
   });
+  const agent = useAgent(chat, services?.agent ?? new AgentClient(cfg), activity, ui);
 
   /** Whether a panel can be shown at all: `mode: 'inline'` has no floating panel, only BiatecChatInline. */
   const canShow = computed(() => ui.inline > 0 || options.mode !== "inline");
@@ -152,7 +180,7 @@ export function createCore(options: ResolvedOptions, services?: ChatServices) {
     if (v) ui.unread = 0;
   });
 
-  const core = { options, chat, ui, canShow, visible, start, openPanel, closePanel, minimize, toggleExpand, ask };
+  const core = { options, chat, ui, agent, activity, canShow, visible, start, openPanel, closePanel, minimize, toggleExpand, ask };
   const unregister = registerCore(core satisfies CoreHandle);
   onBeforeUnmount(unregister);
   if (hostSettings.pendingOpen) {

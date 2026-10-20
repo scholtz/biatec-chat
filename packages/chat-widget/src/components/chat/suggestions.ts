@@ -1,27 +1,45 @@
 import type { SessionTier } from "@biatec/chat-protocol";
+import { t } from "../../i18n";
+
+export type PromptIcon = "book" | "layers" | "shield" | "sparkles" | "swap" | "droplets" | "wallet" | "gauge";
 
 export interface SamplePrompt {
   label: string;
   prompt: string;
   minTier: SessionTier;
+  icon: PromptIcon;
 }
 
-/** The spec's sample prompts. Anonymous users get what works without an account; the rest need sign-in. */
-export const DEFAULT_PROMPTS: SamplePrompt[] = [
-  { label: "What is the blockchain?", prompt: "Explain to me what the blockchain is and why Biatec uses Algorand.", minTier: "Anonymous" },
-  {
-    label: "Move Bitcoin between my addresses",
-    prompt: "Transfer funds from my primary Bitcoin address to my secondary Bitcoin address.",
-    minTier: "Authenticated",
-  },
-  { label: "Add liquidity", prompt: "Add liquidity to the Biatec DEX EURS/USDC pool.", minTier: "Authenticated" },
-  { label: "Swap USDC to ALGO", prompt: "Swap 50 USDC to ALGO.", minTier: "Authenticated" },
-  { label: "Create a Biatec Safe", prompt: "Create a Biatec Safe for my team with 2-of-3 approvals.", minTier: "Authenticated" },
-  { label: "My spending limits", prompt: "What are my current spending limits?", minTier: "Authenticated" },
+/** The 2 x 2 grid shows at most four cards. */
+export const MAX_PROMPTS = 4;
+
+const DEFAULTS: { key: string; minTier: SessionTier; icon: PromptIcon }[] = [
+  { key: "Blockchain", minTier: "Anonymous", icon: "book" },
+  { key: "Dex", minTier: "Anonymous", icon: "layers" },
+  { key: "Safe", minTier: "Anonymous", icon: "shield" },
+  { key: "Capabilities", minTier: "Anonymous", icon: "sparkles" },
+  { key: "Transfer", minTier: "Authenticated", icon: "wallet" },
+  { key: "Liquidity", minTier: "Authenticated", icon: "droplets" },
+  { key: "Swap", minTier: "Authenticated", icon: "swap" },
+  { key: "Limits", minTier: "Authenticated", icon: "gauge" },
 ];
 
-/** Prompts for the tier. A host-supplied list replaces the defaults and is shown to every tier. */
+/**
+ * The spec's sample prompts, four per audience for the 2 x 2 grid. Guests see what works without an account;
+ * a signed-in session sees the wallet prompts. Texts live in the English catalog (chat.prompt<Key>Label/Text).
+ */
+export function defaultPrompts(): SamplePrompt[] {
+  return DEFAULTS.map((d) => ({
+    label: t(`chat.prompt${d.key}Label`),
+    prompt: t(`chat.prompt${d.key}Text`),
+    minTier: d.minTier,
+    icon: d.icon,
+  }));
+}
+
+/** Prompts for the tier. A host-supplied list replaces the defaults, is shown to every tier and is capped at four. */
 export function promptsFor(tier: SessionTier, option: "default" | string[]): SamplePrompt[] {
-  if (Array.isArray(option)) return option.map((p) => ({ label: p, prompt: p, minTier: "Anonymous" as const }));
-  return DEFAULT_PROMPTS.filter((p) => p.minTier === "Anonymous" || tier === "Authenticated");
+  if (Array.isArray(option)) return option.slice(0, MAX_PROMPTS).map((p) => ({ label: p, prompt: p, minTier: "Anonymous" as const, icon: "sparkles" as const }));
+  const want: SessionTier = tier === "Authenticated" ? "Authenticated" : "Anonymous";
+  return defaultPrompts().filter((p) => p.minTier === want);
 }

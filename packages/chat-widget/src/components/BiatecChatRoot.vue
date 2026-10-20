@@ -5,16 +5,18 @@ import ChatLauncher from "./ChatLauncher.vue";
 import ChatPanel, { type PanelMode } from "./ChatPanel.vue";
 import MinimizedBar from "./shell/MinimizedBar.vue";
 import ChatView from "./chat/ChatView.vue";
-import type { ChatServices } from "./chat/useChat";
+import PermissionsDialog from "./agent/PermissionsDialog.vue";
+import AgentNotices from "./agent/AgentNotices.vue";
+import ActivityTimeline from "./activity/ActivityTimeline.vue";
 import { agentModeOf, AGENT_MODE_LABEL } from "./shell/agentMode";
-import { createCore, type WidgetCore } from "../api/core";
+import { createCore, pageContext, type WidgetCore, type WidgetServices } from "../api/core";
 import { hostSettings } from "../api/controller";
 import { resolveTheme, watchTheme, type ResolvedTheme } from "../theme";
 import { setLocale, t } from "../i18n";
 
 const props = defineProps<{
   options: ResolvedOptions;
-  services?: ChatServices;
+  services?: WidgetServices;
   shadow?: boolean;
   /** Share an existing widget's session and shell state (BiatecChatInline next to the floating widget). */
   core?: WidgetCore;
@@ -24,7 +26,7 @@ const props = defineProps<{
 
 // Transport and auth are created here, but nothing touches the network until the panel is first shown.
 const core = props.core ?? createCore(props.options, props.services);
-const { chat, ui } = core;
+const { chat, ui, agent, activity } = core;
 const options = core.options;
 const inline = !!props.inline;
 
@@ -137,15 +139,28 @@ function inWidget(e: Event): boolean {
   return !!rootEl.value && e.composedPath().includes(rootEl.value);
 }
 
-/** Esc order: permissions dialog, then the Activity sheet, then (floating and workspace only) the panel itself. */
+// Closing the permissions dialog returns focus to the status pill when its opener is gone (a banner that hid).
+watch(
+  () => ui.permissions,
+  async (open) => {
+    if (open || !rootEl.value) return;
+    await nextTick();
+    const active = (rootEl.value.getRootNode() as Document | ShadowRoot).activeElement;
+    if (!active || !rootEl.value.contains(active)) rootEl.value.querySelector<HTMLElement>("[data-testid=status-pill]")?.focus();
+  },
+);
+/** The aside sits beside the conversation only in a workspace wider than 640 px; otherwise it is a sheet. */
+const asideDocked = computed(() => panelMode.value === "workspace" && !small.value);
+
+/** Esc order: permissions confirm step, the dialog, then the Activity sheet, then (floating and workspace only) the panel itself. */
 function onEscape(e: KeyboardEvent) {
   if (e.defaultPrevented) return;
   if (inline && !inWidget(e)) return;
   if (ui.permissions) {
-    ui.permissions = false;
+    agent.escape();
     return;
   }
-  if (ui.activity && (panelMode.value !== "workspace" || small.value)) {
+  if (ui.activity && !asideDocked.value) {
     ui.activity = false;
     return;
   }
@@ -225,7 +240,7 @@ onBeforeUnmount(() => {
       @toggle-expand="core.toggleExpand()"
       @sign-in="chat.signIn()"
       @sign-out="chat.signOut()"
-      @open-permissions="ui.permissions = !ui.permissions"
+      @open-permissions="ui.permissions ? agent.close() : agent.open()"
       @toggle-activity="ui.activity = !ui.activity"
     >
       <ChatView
@@ -235,10 +250,31 @@ onBeforeUnmount(() => {
         :busy="chat.busy.value"
         :phase="chat.phase.value"
         :announcement="chat.announcement.value"
-        @send="chat.send($event)"
+        :agent-mode="agentMode"
+        :context-label="pageContext(options)?.product ?? null"
+        @send="(text, opts) => chat.send(text, opts)"
         @sign-in="chat.signIn({ scope: $event })"
       />
-      <!-- T-066 mounts the Activity timeline (#aside) and the permissions dialog (#dialog) here. -->
+      <template #banner>
+        <AgentNotices :agent="agent" />
+      </template>
+      <template #aside>
+        <ActivityTimeline
+          :entries="activity.entries"
+          :agent="agent"
+          :mode="agentMode"
+          :docked="asideDocked"
+          @close="ui.activity = false"
+        />
+      </template>
+      <template #dialog>
+        <PermissionsDialog
+          :agent="agent"
+          :open="ui.permissions"
+          :open-previews="activity.openPreviews.value.length"
+          @sign-in="agent.close(); chat.signIn()"
+        />
+      </template>
     </ChatPanel>
     <MinimizedBar v-if="showMinBar" ref="minbar" :status-line="statusLine" :controls="panelId" @restore="core.openPanel()" />
     <ChatLauncher v-if="showLauncher" ref="launcher" :controls="panelId" :unread="ui.unread" @open="core.openPanel()" />

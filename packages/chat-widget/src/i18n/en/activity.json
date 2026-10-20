@@ -1,0 +1,47 @@
+{
+  "activity": {
+    "title": "Activity",
+    "back": "Back to chat",
+    "hide": "Hide",
+    "agent": "Agent",
+    "agentGuest": "Guest · answers and analysis only",
+    "agentAnalyze": "Agent active · answers and analysis, no previews",
+    "agentPrepare": "Agent active · prepares previews for your approval",
+    "agentPaused": "Agent paused · previews and confirmations are on hold",
+    "manage": "Manage permissions",
+    "pauseAgent": "Pause agent",
+    "resumeAgent": "Resume agent",
+    "filtersLabel": "Filter activity",
+    "filter": {
+      "all": "All",
+      "analysis": "Analysis",
+      "preview": "Previews",
+      "execution": "Executions",
+      "permission": "Permissions"
+    },
+    "empty": "Nothing yet. Analyses, previews, confirmations and permission changes of this session appear here.",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "byYou": "by You",
+    "byAi": "by Biatec AI",
+    "footer": "This session only. Download evidence for the full signed record.",
+    "event": {
+      "analysis": "Analysis",
+      "previewPrepared": "Preview prepared",
+      "previewCancelled": "Preview cancelled",
+      "previewExpired": "Preview expired",
+      "confirmed": "Confirmed",
+      "submitted": "Submitted to the network",
+      "receipt": "Completed · receipt",
+      "failed": "Action failed",
+      "consentApproved": "Approved on phone",
+      "consentDenied": "Rejected on phone",
+      "consentTimedOut": "Phone approval timed out",
+      "modeRaised": "Mode changed to Prepare for approval",
+      "modeLowered": "Mode changed to Analyze only",
+      "paused": "Agent paused",
+      "resumed": "Agent resumed",
+      "revoked": "Access revoked"
+    }
+  }
+}

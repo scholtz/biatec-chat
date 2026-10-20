@@ -1,0 +1,149 @@
+/* Host styles of the BiatecDEX-like page. Token values are copied from scholtz/BiatecDEX src/assets/app.css (main,
+   2026-10-20): light on :root, dark on .p-dark. Only what this page uses is kept. None of it may reach the widget,
+   which renders in a shadow root; the Tailwind preflight below is the usual thing that would otherwise restyle it. */
+@import "tailwindcss";
+@import "tailwindcss-primeui";
+@custom-variant dark (&:where(.p-dark, .p-dark *));
+
+:root {
+  color-scheme: light;
+  --brand: #0ea371;
+  --brand-strong: #0b8a60;
+  --brand-soft: rgba(14, 163, 113, 0.12);
+  --page-bg: #eef2f6;
+  --ambient-1: #1f7a8c;
+  --ambient-2: #0f595e;
+  --ambient-3: #23b684;
+  --ambient-4: #2563eb;
+  --ambient-opacity: 0.45;
+  --surface-card: rgba(255, 255, 255, 0.82);
+  --surface-panel: rgba(255, 255, 255, 0.66);
+  --surface-inset: rgba(255, 255, 255, 0.5);
+  --surface-hover: rgba(15, 23, 42, 0.04);
+  --surface-border: rgba(15, 23, 42, 0.1);
+  --surface-border-strong: rgba(15, 23, 42, 0.16);
+  --text: #0f172a;
+  --text-muted: #475569;
+  --text-subtle: #64748b;
+  --pos: #15a05a;
+  --neg: #e11d48;
+  --radius-sm: 0.5rem;
+  --radius: 0.85rem;
+  --radius-lg: 1.15rem;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow: 0 8px 24px -12px rgba(15, 23, 42, 0.25);
+  --shadow-lg: 0 24px 48px -20px rgba(15, 23, 42, 0.35);
+  --blur: 14px;
+}
+
+.p-dark {
+  color-scheme: dark;
+  --brand: #2dd4a7;
+  --brand-strong: #14b88a;
+  --brand-soft: rgba(45, 212, 167, 0.14);
+  --page-bg: #070b14;
+  --ambient-1: #0a3247;
+  --ambient-2: #07242c;
+  --ambient-3: #0d5c46;
+  --ambient-4: #16264a;
+  --ambient-opacity: 0.55;
+  --surface-card: rgba(17, 24, 39, 0.72);
+  --surface-panel: rgba(22, 30, 46, 0.6);
+  --surface-inset: rgba(15, 21, 34, 0.55);
+  --surface-hover: rgba(255, 255, 255, 0.05);
+  --surface-border: rgba(148, 163, 184, 0.14);
+  --surface-border-strong: rgba(148, 163, 184, 0.24);
+  --text: #e6edf6;
+  --text-muted: #9aa7ba;
+  --text-subtle: #6b7a90;
+  --pos: #34d399;
+  --neg: #fb7185;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 12px 32px -14px rgba(0, 0, 0, 0.7);
+  --shadow-lg: 0 28px 56px -22px rgba(0, 0, 0, 0.8);
+}
+
+.surface-card {
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(var(--blur));
+}
+.surface-inset {
+  background: var(--surface-inset);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+}
+.text-strong {
+  color: var(--text);
+}
+.text-muted {
+  color: var(--text-muted);
+}
+.text-subtle {
+  color: var(--text-subtle);
+}
+.eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The DEX's ambient background layer (App.vue draws it with these tokens). */
+.dex-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--ambient-opacity);
+  background:
+    radial-gradient(900px 520px at 8% -8%, var(--ambient-1), transparent 70%),
+    radial-gradient(800px 480px at 92% 4%, var(--ambient-3), transparent 70%),
+    radial-gradient(700px 560px at 60% 110%, var(--ambient-4), transparent 70%);
+}
+
+body {
+  min-height: 100vh;
+  color: var(--text);
+  background: var(--page-bg);
+  line-height: 1.6;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans",
+    "Droid Sans", "Helvetica Neue", sans-serif;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.p-card {
+  background: var(--surface-card) !important;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow) !important;
+  backdrop-filter: blur(var(--blur));
+}
+.p-card-body {
+  padding: 0 !important;
+}
+.p-button {
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+}
+.p-inputtext,
+.p-inputnumber-input,
+.p-select {
+  border-radius: var(--radius-sm);
+}
