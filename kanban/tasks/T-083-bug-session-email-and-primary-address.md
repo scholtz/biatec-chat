@@ -1,7 +1,7 @@
 ---
 id: T-083
 title: "Bug: session endpoint must return the signed-in email and primary address"
-status: in-progress
+status: review
 priority: P2
 epic: "Sessions & auth"
 blocked_by: []
@@ -68,7 +68,12 @@ or `PARTIAL`.**
 
 ## Analysis verdict
 
-_pending: filled in by the agent that runs the Analysis prompt (verdict, date, evidence, approved items)._
+APPROVED, 2026-10-20 (worker, recorded by the coordinator). Evidence: `Sessions/SessionEndpoints.cs:102-104` hard-coded
+`Email = null, PrimaryAddress = null` (waiting on T-009, done); the widget renders both (`ShellHeader.vue:11-12,30-37`,
+`BiatecChatRoot.vue:275`); the contract has both (`Contracts/Session.cs:29-31`); sources: the ID token's `email` claim
+in the vault entry (`AuthEndpoints.cs:190-197`, `IdTokenValidator.cs:38`) and the first `listAlgorandAddresses`
+entry. Spec `PRODUCT-DESCRIPTION.md:254` ("the signed-in email with the active primary address") and `:332` (data
+minimization).
 
 ## Goal
 
@@ -86,11 +91,11 @@ running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
-- [ ] The Analysis verdict is recorded (APPROVED / PARTIAL / REJECTED) with evidence
-- [ ] GET /session for a signed-in session returns the ID token's email and the primary address
-- [ ] Guests get nulls
-- [ ] No new column or table stores email or address
-- [ ] An MCP outage still returns the session (address null), never a 5xx
+- [x] The Analysis verdict is recorded (APPROVED / PARTIAL / REJECTED) with evidence
+- [x] GET /session for a signed-in session returns the ID token's email and the primary address
+- [x] Guests get nulls
+- [x] No new column or table stores email or address
+- [x] An MCP outage still returns the session (address null), never a 5xx
 
 ## Implementation notes
 
@@ -102,14 +107,14 @@ If the vault entry needs a new field, T-071 (review) owns `Vault/**`: coordinate
 
 ## Hand-off
 
-Filled in by the agent when it moves the task to `review`.
-
-- **Summary:** what was done.
-- **Files changed:** ...
-- **How it was verified:** commands run and their results.
-- **Follow-up tasks created:** IDs, or "none".
-- **Unblocks:** output of `kanban/scripts/board.py unblocks T-083`: tasks that become ready once this is approved.
-- **Open questions:** for the user, or "none".
+- **Summary:** GET /session fills Email (ID token `email` claim from the vault) and PrimaryAddress (first `listAlgorandAddresses` entry) for signed-in sessions through a singleton `SessionProfile`: cached per session (email + address together; 10 min, failures 30 s), filled in the background single-flight, never blocking the request, never triggering or cancelling a token refresh (only runs while the stored access token is valid beyond the refresh skew + 1 min; the MCP call gets no cancellable token). Guests get nulls; nothing is persisted; no token text in the body. `Sessions:Profile` options.
+- **Branch:** `task/T-083` @ `528d0d0` (merged with main), PR #172 (`Closes #152`).
+- **Files changed:** `Sessions/SessionEndpoints.cs`, `Tests/Sessions/SessionProfileTests.cs`.
+- **How it was verified:** Session 89 passed; full backend on current main 1110 passed, 1 skipped, 0 failed. Review (medium): all realistic findings fixed (refresh cancellation, blocking request, per-poll vault decrypt, single-flight, required parameters, injectable timeout).
+- **Known limitations:** per-process cache (not Redis across pods); no invalidation when the wallet changes; the address appears on the poll after sign-in; skipped near token expiry until the chat path refreshes.
+- **Follow-up tasks created:** none (proposed: return the session's scope names, `Scopes = []` today).
+- **Unblocks:** no task is blocked by T-083.
+- **Open questions:** is the "active primary address" the first listAlgorandAddresses entry, or per selected network?
 
 ## Review
 
@@ -118,3 +123,4 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #6)
 - 2026-10-20 03:39 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 03:39 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 04:12 · coordinator · in-progress → review · branch task/T-083 @ 528d0d0, PR #172; analysis verdict APPROVED recorded
