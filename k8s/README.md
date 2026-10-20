@@ -1,7 +1,9 @@
 # Kubernetes manifests
 
-Kustomize overlays: `base/` (backend + builders sidecar), `main/` (chat.biatec.io) and `stage/` (stage.chat.biatec.io).
-Not applied by this repository.
+Kustomize overlays: `base/` (backend, builders sidecar, demo site, in-namespace Postgres and Redis), `main/`
+(chat.biatec.io; deletes the demo Deployment and Service) and `stage/` (stage.chat.biatec.io, plus `storage.yaml` and the
+demo site's `demo-ingress.yaml` on demo.stage.chat.biatec.io). `.github/workflows/deploy.yml` renders and applies them
+(docs/cicd.md).
 
 Validate offline: `kubectl kustomize k8s/stage` and `kubectl kustomize k8s/main` must render. `kubectl apply --dry-run=client`
 still needs a reachable API server for discovery (even with `--validate=false`), so run it against a kind cluster.
@@ -23,8 +25,8 @@ owner should run `kubectl kustomize k8s/stage | kubectl apply --dry-run=client -
 
 Every secret is a GitHub environment secret; `deploy.yml` writes them into three cluster secrets on each deploy
 (docs/cicd.md): `biatec-chat-secrets` (`oidc-client-secret`), `biatec-chat-generated` (`postgres-password`,
-`redis-password`, `builders-internal-secret`, `vault-master-key`; the name is from an earlier design when they were
-generated in the cluster) and `biatec-chat-aws` (Roles Anywhere client certificate, key and AWS config file, see "AWS
+`redis-password`, `builders-internal-secret`, `vault-master-key`, `evidence-master-key`; the name is from an earlier
+design when they were generated in the cluster) and `biatec-chat-aws` (Roles Anywhere client certificate, key and AWS config file, see "AWS
 access"). Postgres and Redis run in the namespace (`base/postgres.yaml`, `base/redis.yaml`, reachable only from the
 backend through network policies); the backend's connection strings are built from those passwords. Schema
 migrations are a deploy step (docs/cicd.md).
@@ -39,12 +41,13 @@ setup with `infra/aws/rolesanywhere.sh`; the full walk-through is [docs/aws-setu
 
 ## Images
 
-`scholtz2/biatec-chat-backend` (`backend/Dockerfile`) and `scholtz2/biatec-chat-builders`
-(`builders/sidecar/Dockerfile`); both build with the repository root as context. Startup and readiness probes use `/health` (Redis and PostgreSQL checks); liveness uses `/health/live`, which runs no dependency checks, so a dependency outage removes pods from service without restarting them.
+`scholtz2/biatec-chat-backend` (`backend/Dockerfile`), `scholtz2/biatec-chat-builders`
+(`builders/sidecar/Dockerfile`) and, stage only, `scholtz2/biatec-chat-demo` (`apps/demo/Dockerfile`, readiness on
+`/healthz`); all build with the repository root as context. Startup and readiness probes use `/health` (Redis and PostgreSQL checks); liveness uses `/health/live`, which runs no dependency checks, so a dependency outage removes pods from service without restarting them.
 
 ## Deployment prerequisites
 
-- **Image tags.** The `newTag` values in the overlays are placeholders. `.github/workflows/deploy.yml` replaces both with
+- **Image tags.** The `newTag` values in the overlays are placeholders. `.github/workflows/deploy.yml` replaces them with
   the immutable tag it deploys: `1.<date>-<sha7>-beta` on stage (deploy-stage.yml), `1.<date>-<sha7>-main` on production
   (promote-production.yml, the same images re-tagged). Applying an overlay by hand without pinning fails on purpose
   (`REPLACE-WITH-RELEASE-SHA` doesn't exist). See `docs/cicd.md`.
@@ -54,8 +57,10 @@ setup with `infra/aws/rolesanywhere.sh`; the full walk-through is [docs/aws-setu
   The secret itself is the `oidc-client-secret` key above, exposed as `Secrets__biatec-chat__oidc-client-secret`.
 - **Vault** uses the `Secret` key provider: `Vault__MasterKey` from `biatec-chat-generated` wraps the per-entry data keys
   (AES-GCM). Losing that key only forces users to sign in again.
-- **Evidence signing keys** (`Evidence__KeyStore=Secret`). Add `evidence-master-key` to `biatec-chat-secrets`: base64 of
-  at least 32 random bytes (`openssl rand -base64 32`). Every replica derives the same ES256 keys from it (HKDF), and the
+- **Evidence signing keys** (`Evidence__KeyStore=Secret`). `base/backend.yaml` reads `Evidence__Secret__MasterKey` from
+  the key `evidence-master-key` of `biatec-chat-generated`, which `deploy.yml` writes from the GitHub environment secret
+  `EVIDENCE_MASTER_KEY` like `VAULT_MASTER_KEY`: base64 of at least 32 random bytes (`openssl rand -base64 32`). The
+  reference is not optional, so the pods stay in `CreateContainerConfigError` without it. Every replica derives the same ES256 keys from it (HKDF), and the
   key metadata (kid, public point, created/retired dates, which key is active) lives in the PostgreSQL table
   `EvidenceSigningKeys`, so all replicas publish an identical JWKS and retired keys stay published across restarts and
   rollouts. Rotation is automatic: every replica checks hourly and, when the active key is older than

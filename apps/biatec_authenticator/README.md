@@ -1,7 +1,9 @@
 # biatec_authenticator
 
-Flutter shell for Biatec Authenticator. Navigation and empty screens only; enrollment and approval logic are
-separate tasks.
+Biatec Authenticator (Flutter): device enrollment with a hardware key, consent approvals with signed receipts, push
+notifications, and device, trusted-client and security settings screens. It runs against the mock Biatec OIDC
+(`packages/consent-protocol/mock-oidc`); real Biatec OIDC has no consent or device APIs yet
+([docs/required-changes-biatec-oidc.md](../../docs/required-changes-biatec-oidc.md)).
 
 ## Platform folders
 
@@ -18,8 +20,11 @@ The Biatec OIDC base URL comes from `--dart-define=OIDC_BASE_URL=...` and defaul
 
     flutter run --dart-define=OIDC_BASE_URL=https://oidc.example
 
-Nothing serves the default mock URL yet; it is a placeholder until the authenticator enrollment and approval tasks
-add an HTTP mock of Biatec OIDC. The app makes no network calls today.
+The default does not match where the mock actually listens: `pnpm --filter mock-oidc start` serves
+`http://127.0.0.1:8089` (`PORT`, `HOST` override it) with no `/mock-oidc` path. From the Android emulator pass
+`--dart-define=OIDC_BASE_URL=http://10.0.2.2:8089` (start the mock with `HOST=0.0.0.0`). An explicit URL that is not the
+default counts as a real Biatec OIDC, so the settings screens are off unless `--dart-define=CONSENT_SETTINGS_API=true`
+(see T-084 below).
 
 ## Enrollment and device key (T-051)
 
@@ -97,6 +102,9 @@ add an HTTP mock of Biatec OIDC. The app makes no network calls today.
 
     flutter analyze && flutter test
 
+CI runs both (`ci.yml`, job `authenticator`) on every pull request. The `mock_oidc_*_contract_test.dart` files are
+skipped there, because CI starts no mock.
+
 ## Devices, trusted clients and security settings (T-084)
 
 - `lib/devices/`, `lib/clients/`, `lib/security/`: the three screens, one `SettingsController` (`lib/security/settings_controller.dart`)
@@ -109,4 +117,4 @@ add an HTTP mock of Biatec OIDC. The app makes no network calls today.
   for the mock URL and off otherwise; override with `--dart-define=CONSENT_SETTINGS_API=true`. When off, the screens say "Not available yet".
 - Tests: `flutter test test/settings` (scripted OIDC); `test/settings/mock_oidc_settings_contract_test.dart` runs against a started mock
   (`MOCK_OIDC_URL`, fresh mock). The mock's side is tested by `pnpm --filter mock-oidc test`.
-- Not verified: `flutter analyze` and `flutter test` have not been run (Flutter was not installed where this was written).
+- `flutter analyze` and `flutter test` run in CI (see "Checks"); the contract test needs a started mock and is skipped there.
