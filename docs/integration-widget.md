@@ -3,11 +3,10 @@
 How a host site embeds `@biatec/chat-widget`. The specification is [PRODUCT-DESCRIPTION.md](../PRODUCT-DESCRIPTION.md) and
 wins on any conflict. What works today is marked; see [architecture.md](architecture.md) for the full status.
 
-**Status of the widget on `main`:** the package, plugin install, launcher, panel, theme tokens and options are built and tested.
-The cookie probe, public fallback transport, streaming chat UI, sign-in popup handling, action preview and consent cards, and
-the Slovak translation are planned (tasks T-040 to T-043). The rework to the **Biatec AI** design system (Shadow DOM isolation,
-`theme: 'host'`, `mode`, `useBiatecChat()`, permissions and activity) is planned in tasks T-062 to T-069; `theme: 'host'`, `mode`, `BiatecChatInline`
-and `useBiatecChat()` are built (T-062, T-063); options marked *planned* below are not. For Biatec DEX specifically, see [integration-biatec-dex.md](integration-biatec-dex.md);
+**Status of the widget on `main`:** built and tested: the plugin and standalone build, the Biatec AI design system in a
+Shadow DOM root, `theme: 'host'`, the three modes, `BiatecChatInline` and `useBiatecChat()`, the cookie probe with the public
+fallback transport, the streaming chat UI with the sign-in popup, action preview, consent, receipt and data cards, the
+permissions dialog and activity timeline, the export view, and English and Slovak. For Biatec DEX specifically, see [integration-biatec-dex.md](integration-biatec-dex.md);
 for the BiatecCLAMM Docusaurus site (a React host), see [integration-biatec-clamm.md](integration-biatec-clamm.md). The package
 is `@biatec/chat-widget`, published on npm since 0.1.0 (see [Publishing to npm](#publishing-to-npm)).
 
@@ -22,12 +21,12 @@ npm i @biatec/chat-widget
 pnpm add @biatec/chat-widget@workspace:*
 ```
 
-Register it with one `use` call and import the stylesheet:
+Register it with one `use` call. The widget injects its own CSS into its shadow root, so no stylesheet import is needed
+(`@biatec/chat-widget/style.css` is exported only for hosts that mount `BiatecChatRoot` themselves):
 
 ```ts
 import { createApp } from 'vue'
 import { BiatecChat } from '@biatec/chat-widget'
-import '@biatec/chat-widget/style.css'
 
 createApp(App)
   .use(BiatecChat, {
@@ -50,7 +49,7 @@ another. Run the playground with `pnpm --filter @biatec/chat-widget dev`.
 | --- | --- | --- | --- |
 | `backendUrl` | yes | | Base URL of your chat backend. Trailing slashes are removed. Must be same-site with the host page to get the authenticated tier |
 | `clientKey` | yes | | A label for the host, not a secret. The backend checks it against the tenant's registered keys on the cookie transport |
-| `locale` | no | `en` | Message language. English now; Slovak is planned |
+| `locale` | no | `en` | Message language: `en` or `sk`; other values fall back to English |
 | `theme` | no | `auto` | `auto`, `light`, `dark` or `host` (follows the host's dark class on `<html>`) |
 | `hostDarkClass` | no | `p-dark` | The class `theme: 'host'` watches (PrimeVue's `darkModeSelector`, as in Biatec DEX and Biatec Web) |
 | `hostDarkAttribute` | no | none | An attribute on `<html>` meaning dark for `theme: 'host'`: `name=value` (`data-theme=dark`, Docusaurus/Infima) or a bare `name` (present means dark). When set it replaces `hostDarkClass`. The standalone build defaults to `data-theme=dark` |
@@ -63,10 +62,9 @@ The plugin throws at install if `backendUrl` or `clientKey` is missing.
 
 ### Styling
 
-The widget's look is the Biatec AI design system ([design/README.md](design/README.md)); dark is the default. Today styles are
-scoped under a `biatec-chat` root with CSS custom properties (`packages/chat-widget/src/styles.css`). *Planned (T-062):* the
-widget renders into a Shadow DOM root on its host element, so host CSS such as Tailwind preflight or a PrimeVue theme cannot reach
-it, and the styles are injected there (no stylesheet import needed). Restyle it only through CSS custom properties on the host
+The widget's look is the Biatec AI design system ([design/README.md](design/README.md)); dark is the default. The widget
+renders into a Shadow DOM root on its host element, so host CSS such as Tailwind preflight or a PrimeVue theme cannot reach it,
+and its styles (`packages/chat-widget/src/styles.css`) are injected there. Restyle it only through CSS custom properties on the host
 element: `--color-*`, `--font-*`, `--radius-*`, `--space-*`, `--shadow-*`, and `--bc-z` for the stacking order (default 1000,
 below PrimeVue overlays). The widget never loads web fonts; it uses Inter when the host provides it.
 
@@ -153,7 +151,7 @@ widget is mounted. It always returns the same object. The calls go to the most r
 | `ask(prompt): Promise<AskResult>` | Opens the panel and sends `prompt` as a normal, visible user message. Resolves to an `AskResult` |
 | `setPageContext(text?)` | Sets the opt-in page context sent with later messages. `undefined`, `null` or a blank string clears it, and also overrides the `pageContext` plugin option |
 | `setTheme(theme)` | `'auto' \| 'light' \| 'dark' \| 'host'`, applied without remounting. An unknown value logs a warning and is ignored |
-| `setLocale(locale)` | Switches the widget language without remounting. Unknown locales fall back to English (only English ships today). An empty or non-string value is ignored |
+| `setLocale(locale)` | Switches the widget language without remounting (`en`, `sk`). Unknown locales fall back to English. An empty or non-string value is ignored |
 
 `ask` resolves to one of:
 
@@ -181,7 +179,7 @@ if (result === 'busy') {
 }
 
 chat.setTheme('host')   // follow the host's dark class on <html> (see hostDarkClass)
-chat.setLocale('sk')    // falls back to English until the Slovak catalog ships
+chat.setLocale('sk')    // Slovak; unknown locales fall back to English
 chat.open()
 chat.close()
 ```
@@ -195,7 +193,7 @@ chat.close()
 - An early `open()` in `mode: 'inline'` (before a `BiatecChatInline` is mounted) is dropped; the inline panel is always shown while mounted.
 - When a floating widget already exists, the `options` prop of `BiatecChatInline` is ignored in favour of the floating widget's options.
 - An `ask` made during the first session probe still sends if the user closes the panel meanwhile.
-- Esc closes the Activity aside even when the aside has no content yet (the Activity timeline arrives with T-066).
+- Esc closes the Activity aside even when the aside has no content yet.
 - Theme and viewport-size watching is duplicated between the floating and the inline root (a small cost, no visible effect).
 - `ask` is not queued: while a reply streams it returns `busy`.
 - `setPageContext` takes a plain string and is sent as the product field of the chat request's host context; there is no structured form yet.
@@ -254,8 +252,9 @@ does not carry it (see the Docusaurus client module in [integration-biatec-clamm
 ### Accessibility
 
 The launcher is a keyboard-accessible button, the stylesheet honours `prefers-reduced-motion`, and the panel is a labelled dialog that
-moves focus into the panel on open. Full WCAG 2.1 AA coverage (focus trap, live region for streamed messages) arrives with the chat
-UI task.
+moves focus into the panel on open. Dialogs trap focus and return it on close, and streamed messages are announced through a live
+region. Automated checks: `packages/chat-widget/test/i18n-a11y.test.ts`, `test/dex-host-a11y.test.ts` and axe on the demo site
+(`apps/demo/test/demo.test.ts`); no manual screen-reader audit is recorded.
 
 ## 2. Choose how the backend is hosted
 
@@ -266,7 +265,7 @@ never relies on third-party cookies. That gives three modes:
 | --- | --- | --- | --- |
 | Biatec sites | `chat.biatec.io`, pages on `web.biatec.io` and `dex.biatec.io` | Authenticated | Same-site but cross-origin: credentialed CORS with the exact origin echoed. The apex `biatec.io` is not an allowed origin |
 | Third party | Your own subdomain, for example `chat.example-bank.com`, pointed at the Biatec Chat backend | Authenticated | The backend is multi-tenant by `Host` header. `backendUrl` must be same-site with your page. Path-based reverse proxying is not supported |
-| Unregistered or cross-site host | Any backend's public endpoint | Anonymous only | Planned: `POST {backendUrl}/public/chat` does not exist yet |
+| Unregistered or cross-site host | Any backend's public endpoint | Anonymous only | `POST {backendUrl}/public/chat` with continuation tokens ([public-chat-contract.md](public-chat-contract.md)); the widget falls back to it when the cookie does not come back |
 
 ## 3. Register your host as a tenant (third-party mode)
 
@@ -298,7 +297,8 @@ IP and capped at 32 KiB bodies.
    store and calls `POST /onboarding/operator/tenants` (bearer operator key). The DNS proofs are re-checked first. Details and the
    fallback table are in [required-changes-biatec-oidc.md](required-changes-biatec-oidc.md).
 
-TLS for tenant hostnames (ACME with cert-manager on Kubernetes) belongs to the deployment tasks and is not in the repo yet.
+TLS for tenant hostnames is not automated: the ingresses in `k8s/` cover only Biatec's own hosts (cert-manager, `letsencrypt-dns`), and
+onboarding does not add a tenant host to them, so an operator adds the host and its certificate.
 
 ## 4. What the backend enforces for you
 
