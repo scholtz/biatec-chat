@@ -74,6 +74,9 @@ class FakeSettingsOidc {
 
   bool offline = false;
 
+  /// Makes GET /devices fail with a 503 (a refresh that fails after a cancel).
+  bool failDevicesList = false;
+
   /// Answers every change with "consent required" unless it is signed, even
   /// a tightening, to model a server that judges differently.
   bool alwaysRequireConsent = false;
@@ -100,6 +103,7 @@ class FakeSettingsOidc {
         }
         final path = req.url.path;
         if (req.method == 'GET' && path == '/devices') {
+          if (failDevicesList) return _json(503, {'error': 'unavailable'});
           return _json(200, {'devices': devices});
         }
         if (req.method == 'POST' && path.endsWith('/cancel')) {

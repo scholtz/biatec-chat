@@ -135,6 +135,19 @@ void main() {
       expect(rig.gate.asked, 0);
     });
 
+    test('a failed refresh after a successful cancel still reports success',
+        () async {
+      final rig = SettingsRig();
+      final c = rig.controller();
+      await c.load();
+      rig.oidc.failDevicesList = true;
+      await c.cancelDevice('dev-2');
+      expect(rig.oidc.cancelled, ['dev-2']);
+      expect(c.devices.map((d) => d.kid), ['dev-1']);
+      expect(c.notice, 'Enrollment cancelled.');
+      expect(c.error, isNull);
+    });
+
     test('cancelling an active device is refused and explained', () async {
       final rig = SettingsRig();
       final c = rig.controller();

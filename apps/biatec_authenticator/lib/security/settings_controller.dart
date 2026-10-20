@@ -245,8 +245,13 @@ class SettingsController extends ChangeNotifier {
         _error = 'This enrollment was cancelled. Enroll this device again '
             'to use it.';
       } else {
-        _devices = await client.devices(record.deviceToken);
+        _devices = _devices.where((d) => d.kid != kid).toList();
         _notice = 'Enrollment cancelled.';
+        try {
+          _devices = await client.devices(record.deviceToken);
+        } on Object {
+          // Best effort: the cancel went through; keep the local list.
+        }
       }
     } on Object catch (e) {
       _fail(e);
