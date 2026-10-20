@@ -2,8 +2,7 @@
 import { inject, onMounted, shallowRef } from "vue";
 import BiatecChatRoot from "../BiatecChatRoot.vue";
 import { resolveOptions, type BiatecChatOptions, type ResolvedOptions } from "../../options";
-import type { ChatServices } from "../chat/useChat";
-import { sharedCore } from "../../api/core";
+import { sharedCore, type WidgetServices } from "../../api/core";
 import widgetCss from "../../styles.css?inline";
 
 /**
@@ -12,7 +11,7 @@ import widgetCss from "../../styles.css?inline";
  * here. Rendered into its own shadow root, like the floating widget, so host CSS and widget CSS never mix.
  * Options come from the `BiatecChat` plugin, or from the `options` prop when the plugin is not installed.
  */
-const props = defineProps<{ options?: BiatecChatOptions; services?: ChatServices }>();
+const props = defineProps<{ options?: BiatecChatOptions; services?: WidgetServices }>();
 const injected = inject<ResolvedOptions | null>("biatec-chat-options", null);
 const core = sharedCore();
 const resolved: ResolvedOptions | null = core?.options ?? (props.options ? resolveOptions(props.options) : injected);

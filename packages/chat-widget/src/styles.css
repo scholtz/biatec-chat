@@ -5,6 +5,8 @@
 @import "./styles/cards.css";
 @import "./components/shell/shell.css";
 @import "./components/chat/chat.css";
+@import "./components/agent/agent.css";
+@import "./components/activity/activity.css";
 
 :host {
   all: initial;

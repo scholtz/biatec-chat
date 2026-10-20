@@ -7,7 +7,7 @@ epic: "Safe"
 blocked_by: [T-032, T-042]
 area: ["packages/chat-widget/src/components/cards/SafeCard.vue", "backend/Biatec.Chat.Api/Contracts/**", "packages/chat-protocol/**"]
 parallel: no
-conflicts_with: [T-064, T-067]
+conflicts_with: [T-064, T-067, T-076]
 issue: "#138"
 branch: ""
 owner: ""
@@ -39,7 +39,7 @@ safe.list and safe.create results show as a safe card in the widget, from struct
 
 ## Parallel work
 
-Parallel work possible: **no**. Don't run it at the same time as T-064, T-067: they change the same files, and running them together causes merge conflicts or broken behaviour.
+Parallel work possible: **no**. Don't run it at the same time as T-064, T-067, T-076: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
