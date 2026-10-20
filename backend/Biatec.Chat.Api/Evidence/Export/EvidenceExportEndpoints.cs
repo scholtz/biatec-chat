@@ -30,8 +30,8 @@ public static class EvidenceExportEndpoints
             if (!SessionService.WellFormed(token)) return Results.Unauthorized();
             var id = SessionService.IdFromToken(token!);
             var now = clock.GetUtcNow();
-            var session = await db.ChatSessions.AsNoTracking()
-                .FirstOrDefaultAsync(s => s.Id == id && s.TenantId == tenant.Id && s.AbsoluteExpiresAt > now, ctx.RequestAborted);
+            var session = await db.ChatSessions.AsNoTracking().Where(Sessions.SessionLiveness.IsLive(db, now))
+                .FirstOrDefaultAsync(s => s.Id == id && s.TenantId == tenant.Id, ctx.RequestAborted);
             if (session is null) return Results.Unauthorized();
 
             var chain = await log.GetChainAsync(session.ConversationId, ctx.RequestAborted);
