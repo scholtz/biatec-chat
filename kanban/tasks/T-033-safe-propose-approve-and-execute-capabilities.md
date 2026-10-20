@@ -1,7 +1,7 @@
 ---
 id: T-033
 title: safe.propose, approve and execute capabilities
-status: review
+status: done
 priority: P1
 epic: "Safe"
 blocked_by: [T-023, T-030, T-032]
@@ -61,6 +61,8 @@ dotnet test --filter SafeProposals; testnet demo run
 
 ## Review
 
+- 2026-10-20 02:55 · approve · PR #159 merged into main @ 2a43bf9 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
@@ -69,3 +71,4 @@ dotnet test --filter SafeProposals; testnet demo run
 - 2026-10-20 01:58 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 01:58 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 02:55 · coordinator · in-progress → review · branch task/T-033 @ 8efb326, PR #159
+- 2026-10-20 02:55 · user · review → done · PR #159 merged into main @ 2a43bf9 (synced by kanban-sync)
