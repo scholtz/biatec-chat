@@ -101,37 +101,53 @@ public sealed class CibaTokenClient(HttpClient http) : ICibaTokenClient
 /// <summary>What the backend knows about whether the phone will be asked, from <c>GET /consent/settings</c>.</summary>
 public sealed record ConsentSettings(decimal? ThresholdEur, bool DeviceEnrolled, bool DeviceActive, bool AlwaysAsk, bool CoolingOff, bool FirstUse);
 
+/// <summary>T-061: the settings, or null, and whether Biatec OIDC answered that the endpoint does not exist (404 / 501).</summary>
+public sealed record ConsentSettingsFetch(ConsentSettings? Settings, bool EndpointMissing);
+
 public interface IConsentSettingsClient
 {
     /// <summary>Null when the endpoint is missing, fails or answers something unparseable: the caller uses the fallback text.</summary>
     Task<ConsentSettings?> GetAsync(Uri settingsEndpoint, string bearer, CancellationToken ct = default);
+
+    /// <summary>T-061: as <see cref="GetAsync"/>, also telling a missing endpoint from a failing one.</summary>
+    async Task<ConsentSettingsFetch> FetchAsync(Uri settingsEndpoint, string bearer, CancellationToken ct = default) =>
+        new(await GetAsync(settingsEndpoint, bearer, ct), false);
 }
 
 public sealed class ConsentSettingsClient(HttpClient http) : IConsentSettingsClient
 {
-    public async Task<ConsentSettings?> GetAsync(Uri settingsEndpoint, string bearer, CancellationToken ct = default)
+    public async Task<ConsentSettings?> GetAsync(Uri settingsEndpoint, string bearer, CancellationToken ct = default) =>
+        (await FetchAsync(settingsEndpoint, bearer, ct)).Settings;
+
+    public async Task<ConsentSettingsFetch> FetchAsync(Uri settingsEndpoint, string bearer, CancellationToken ct = default)
     {
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, settingsEndpoint);
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
             using var res = await http.SendAsync(req, ct);
-            if (!res.IsSuccessStatusCode) return null;
-            using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
-            var r = doc.RootElement;
-            if (r.ValueKind != JsonValueKind.Object) return null;
-            decimal? threshold = null;
-            if (r.TryGetProperty("threshold_eur", out var t) && t.ValueKind == JsonValueKind.String
-                && decimal.TryParse(t.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var d)) threshold = d;
-            if (!r.TryGetProperty("device_enrolled", out var enrolled) || enrolled.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return null;
-            r.TryGetProperty("client", out var client);
-            return new ConsentSettings(threshold, enrolled.GetBoolean(), Flag(r, "device_active"),
-                Flag(client, "always_ask"), IsSet(client, "cooling_off_until"), Flag(client, "first_use"));
+            if (res.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.NotImplemented) return new(null, true);
+            if (!res.IsSuccessStatusCode) return new(null, false);
+            return new(await ParseAsync(res, ct), false);
         }
         catch (Exception ex) when ((ex is HttpRequestException or TaskCanceledException or IOException or JsonException) && !ct.IsCancellationRequested)
         {
-            return null;
+            return new(null, false);
         }
+    }
+
+    private static async Task<ConsentSettings?> ParseAsync(HttpResponseMessage res, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
+        var r = doc.RootElement;
+        if (r.ValueKind != JsonValueKind.Object) return null;
+        decimal? threshold = null;
+        if (r.TryGetProperty("threshold_eur", out var t) && t.ValueKind == JsonValueKind.String
+            && decimal.TryParse(t.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var d)) threshold = d;
+        if (!r.TryGetProperty("device_enrolled", out var enrolled) || enrolled.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return null;
+        r.TryGetProperty("client", out var client);
+        return new ConsentSettings(threshold, enrolled.GetBoolean(), Flag(r, "device_active"),
+            Flag(client, "always_ask"), IsSet(client, "cooling_off_until"), Flag(client, "first_use"));
     }
 
     private static bool Flag(JsonElement o, string name) =>
