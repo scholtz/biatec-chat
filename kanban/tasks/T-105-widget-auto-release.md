@@ -1,7 +1,7 @@
 ---
 id: T-105
 title: "npm pipeline: release @biatec/chat-widget automatically on a version bump"
-status: in-progress
+status: review
 priority: P2
 epic: "Deploy & docs"
 blocked_by: []
@@ -50,11 +50,11 @@ files.
 
 ## Acceptance criteria
 
-- [ ] A push to main with a new version publishes and tags it (verified by workflow logic review + actionlint; a dry
+- [x] A push to main with a new version publishes and tags it (verified by workflow logic review + actionlint; a dry
       run path that prints what it would do)
-- [ ] A push to main without a version change, or with an already published version, publishes nothing
-- [ ] The tag created by the workflow does not publish twice
-- [ ] README "Publishing" and docs/cicd.md describe the automatic release, the secret and the environment
+- [x] A push to main without a version change, or with an already published version, publishes nothing
+- [x] The tag created by the workflow does not publish twice
+- [x] README "Publishing" and docs/cicd.md describe the automatic release, the secret and the environment
 
 ## Verification
 
@@ -62,8 +62,15 @@ actionlint; `act` or a dry-run walkthrough of each path; read the docs against t
 
 ## Hand-off
 
+- **Summary:** `publish-widget.yml` is the widget's own release pipeline: check (version, changed?, on npm?, semver gate: only versions above the highest published release), pack (build, typecheck, test, pack; publish dry run only when the version isn't on npm), publish (environment `npm`, trusted publishing + provenance, `NPM_TOKEN` environment-secret fallback, main-only guard, npm re-check right before publishing, "already published" treated as a skip; prereleases go to their own dist-tag, never `latest`), release (tag `chat-widget-v<version>` + GitHub release from the CHANGELOG, prerelease-marked). Bump the version + CHANGELOG in a PR to main → merge → published, tagged, released. Tag and manual paths kept.
+- **Branch:** `task/T-105` @ `5ea1d70`, PR #219 (`Closes #217`).
+- **Verification:** actionlint clean; PR #219's own publish-widget run green (check + pack; publish/release skipped as expected); CI green; decide and publish steps simulated for every path with the real npm state (0.0.0-stage, 0.1.0). Review (medium): all findings fixed.
+- **State:** scholtz published 0.1.0 (and 0.0.0-stage) by a manual run of the earlier workflow; 0.1.0 has no git tag or GitHub release (optional, by hand).
+- **Unblocks:** no task is blocked by T-105.
+
 ## Review
 
 ## Activity log
 
 - 2026-10-20 08:10 · coordinator · (new) → in-progress · user request: npm package needs its own CI/CD pipeline that uploads to npm
+- 2026-10-20 08:33 · coordinator · in-progress → review · PR #219
