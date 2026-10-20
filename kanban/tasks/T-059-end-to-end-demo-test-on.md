@@ -1,7 +1,7 @@
 ---
 id: T-059
 title: End-to-end demo test on testnet
-status: blocked
+status: backlog
 priority: P1
 epic: "Deploy & docs"
 blocked_by: [T-033, T-036, T-042, T-049]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#demonstration-script"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-059 · End-to-end demo test on testnet
@@ -55,3 +55,4 @@ pnpm --filter e2e test
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:00 · coordinator · review · added T-049: demo phone approvals need the consent orchestrator
+- 2026-10-20 03:14 · kanban-board · blocked → backlog · blockers done: T-033, T-036, T-042, T-049
