@@ -1,7 +1,7 @@
 ---
 id: T-066
 title: Widget permissions dialog, pause/revoke and activity timeline
-status: in-progress
+status: done
 priority: P2
 epic: "Widget UI rework"
 blocked_by: [T-063, T-065]
@@ -69,6 +69,8 @@ Filled in by the agent when it moves the task to `review`.
 
 ## Review
 
+- 2026-10-20 02:04 · approve · PR #141 merged into main @ 825f5a9 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 22:40 · coordinator · (new) → blocked · created from the Biatec AI design handoff (docs/design/) for the widget UI rework
@@ -76,3 +78,4 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-20 01:32 · kanban-board · blocked → backlog · blockers done: T-063, T-065
 - 2026-10-20 01:54 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 01:54 · session-20261020-0154 · backlog → in-progress · claimed by /kanban-next
+- 2026-10-20 02:04 · user · in-progress → done · PR #141 merged into main @ 825f5a9 (synced by kanban-sync)
