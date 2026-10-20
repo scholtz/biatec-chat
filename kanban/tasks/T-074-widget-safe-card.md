@@ -1,7 +1,7 @@
 ---
 id: T-074
 title: Widget safe card for safe.list and safe.create
-status: review
+status: done
 priority: P2
 epic: "Safe"
 blocked_by: [T-032, T-042]
@@ -63,6 +63,8 @@ Parallel work possible: **no**. Don't run it at the same time as T-064, T-067, T
 
 ## Review
 
+- 2026-10-20 03:00 · approve · PR #160 merged into main @ c04925d (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 02:30 · coordinator · (new) → blocked · proposed by T-032; blocked by T-042 (card set and message-list rendering); conflicts with T-064 and T-067 (ChatView.vue/useChat.ts, contracts)
@@ -70,3 +72,4 @@ Parallel work possible: **no**. Don't run it at the same time as T-064, T-067, T
 - 2026-10-20 02:26 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 02:26 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 03:00 · coordinator · in-progress → review · branch task/T-074 @ aef95e6, PR #160
+- 2026-10-20 03:00 · user · review → done · PR #160 merged into main @ c04925d (synced by kanban-sync)
