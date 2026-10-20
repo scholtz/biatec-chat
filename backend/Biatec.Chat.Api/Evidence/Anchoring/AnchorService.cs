@@ -72,7 +72,8 @@ public interface IAnchorBroadcaster
     Task<AnchorResolution> ResolveAsync(byte[] note, CancellationToken ct) => Task.FromResult(new AnchorResolution(AnchorResolutionKind.Expired));
 }
 
-public sealed record AnchorTickResult(EvidenceAnchor? Anchor, int Leaves, bool Lost);
+/// <param name="Skipped">True when another replica held the anchoring lock, so this tick did nothing.</param>
+public sealed record AnchorTickResult(EvidenceAnchor? Anchor, int Leaves, bool Lost, bool Skipped = false);
 
 /// <summary>
 /// One anchor tick: snapshot the head of every conversation that is open or ended since its last anchor, build the
@@ -95,7 +96,61 @@ public sealed class AnchorService(
 
     private sealed record Head(Guid ConversationId, long Seq, string EntryHash, string Kind, DateTimeOffset SignedAt);
 
+    /// <summary>Key of the PostgreSQL session advisory lock that serialises anchoring across replicas ("BIATCANC").</summary>
+    public const long AdvisoryLockKey = 0x4249415443414E43;
+
+    /// <summary>
+    /// One tick, serialised across replicas: a PostgreSQL session advisory lock is taken on the context's own connection and
+    /// held until the tick, including the broadcast, is over. A replica that does not get the lock skips this tick (the lock
+    /// holder anchors; the skipped replica tries again on its next interval). The lock is released when the connection closes,
+    /// so a crashed holder cannot block anchoring.
+    /// </summary>
     public async Task<AnchorTickResult> TickAsync(CancellationToken ct = default)
+    {
+        if (!db.Database.IsNpgsql()) return await TickCoreAsync(ct);
+        var conn = db.Database.GetDbConnection();
+        var opened = conn.State != System.Data.ConnectionState.Open;
+        if (opened) await db.Database.OpenConnectionAsync(ct); // EF keeps this one connection for the whole tick
+        var locked = false;
+        try
+        {
+            await using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT pg_try_advisory_lock(@k)";
+                var prm = cmd.CreateParameter();
+                prm.ParameterName = "k";
+                prm.Value = AdvisoryLockKey;
+                cmd.Parameters.Add(prm);
+                locked = (bool)(await cmd.ExecuteScalarAsync(ct))!;
+            }
+            if (!locked)
+            {
+                log.LogInformation("Another replica is anchoring; skipping this tick.");
+                return new AnchorTickResult(null, 0, false, Skipped: true);
+            }
+            return await TickCoreAsync(ct);
+        }
+        finally
+        {
+            if (locked)
+            {
+                try
+                {
+                    await using var cmd = conn.CreateCommand();
+                    cmd.CommandText = "SELECT pg_advisory_unlock(@k)";
+                    var prm = cmd.CreateParameter();
+                    prm.ParameterName = "k";
+                    prm.Value = AdvisoryLockKey;
+                    cmd.Parameters.Add(prm);
+                    await cmd.ExecuteScalarAsync(CancellationToken.None);
+                }
+                catch (Exception e) { log.LogWarning(e, "Could not release the anchoring lock; it is released when the connection closes."); }
+            }
+            if (opened) await db.Database.CloseConnectionAsync();
+        }
+    }
+
+    private async Task<AnchorTickResult> TickCoreAsync(CancellationToken ct)
     {
         var now = _time.GetUtcNow();
         if (await RecoverAsync(ct)) return new AnchorTickResult(null, 0, false); // an earlier transaction may still confirm: do not fork the chain

@@ -21,6 +21,12 @@ data:
   # Evidence signing keys: private keys are derived from Evidence__Secret__MasterKey (biatec-chat-generated), public key
   # metadata (active/retired, dates) is shared by all replicas in PostgreSQL. See k8s/README.md.
   Evidence__KeyStore: Secret
+  # Evidence anchoring (spec: Threat Model Highlights): every 10 minutes the head hashes are batched into one Merkle root in
+  # a note of an Algorand transaction from the evidence account. Testnet; the mnemonic is the biatec-chat-evidence-anchor
+  # secret below (never in this file). With 2 replicas only one anchors per interval (PostgreSQL advisory lock). See k8s/README.md.
+  Evidence__Anchoring__Enabled: "true"
+  Evidence__Anchoring__Network: testnet
+  Evidence__Anchoring__IndexerUrl: https://testnet-idx.4160.nodely.dev
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -82,6 +88,10 @@ spec:
               valueFrom: {secretKeyRef: {name: biatec-chat-secrets, key: oidc-client-secret}}
             - name: Evidence__Secret__MasterKey
               valueFrom: {secretKeyRef: {name: biatec-chat-generated, key: evidence-master-key}}
+            # Mnemonic of the evidence account (25 words). optional: the pods start without it, but anchoring then fails
+            # (and logs) every interval until the secret exists.
+            - name: Evidence__Anchoring__AccountMnemonic
+              valueFrom: {secretKeyRef: {name: biatec-chat-evidence-anchor, key: account-mnemonic, optional: true}}
             - name: Builders__InternalSecret
               valueFrom: {secretKeyRef: {name: biatec-chat-generated, key: builders-internal-secret}}
           startupProbe:
