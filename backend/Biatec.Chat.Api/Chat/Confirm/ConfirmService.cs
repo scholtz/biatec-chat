@@ -348,6 +348,7 @@ public sealed class ConfirmService(
         step.Status = StepStatus.Submitted;
         preview.Status = ActionPreviewStatus.InProgress;
         await db.SaveChangesAsync(CancellationToken.None);
+        await Biatec.Chat.Api.Sessions.SessionLiveness.TouchByIdAsync(db, session.Id, clock.GetUtcNow(), CancellationToken.None); // signed: restart the idle window (T-080)
 
         var sessionId = session.Id.ToString("N");
         var handler = settlementHandlers?.FirstOrDefault(h => string.Equals(h.Capability, preview.Capability, StringComparison.Ordinal));

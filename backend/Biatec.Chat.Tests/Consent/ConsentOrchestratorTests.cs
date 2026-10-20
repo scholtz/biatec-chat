@@ -399,6 +399,34 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
         Assert.Equal(ActionPreviewStatus.Proposed, rebuilt.Preview.Status);
     }
 
+    private async Task<DateTimeOffset> SessionActivityAsync()
+    {
+        await using var db = NewContext();
+        return (await db.ChatSessions.AsNoTracking().SingleAsync(s => s.Id == _session.Id)).LastActivityAt;
+    }
+
+    [Fact]
+    public async Task Approval_RestartsTheSessionIdleWindow()
+    {
+        // T-080: the open-consent exemption ends at approval; signing must not run on a session that is already due.
+        var b = await BuildPreviewAsync();
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        _clock.Now = _clock.Now.AddSeconds(240);
+        _server.State = "approved";
+        Assert.Equal(ConsentState.Approved, (await AdvanceAsync(b.PreviewId)).Status.State);
+        Assert.Equal(_clock.Now, await SessionActivityAsync());
+    }
+
+    [Fact]
+    public async Task TimeOut_RestartsTheSessionIdleWindow()
+    {
+        var b = await BuildPreviewAsync();
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        _clock.Now = _clock.Now.AddSeconds(301);
+        Assert.Equal(ConsentState.TimedOut, (await AdvanceAsync(b.PreviewId)).Status.State);
+        Assert.Equal(_clock.Now, await SessionActivityAsync());
+    }
+
     [Fact]
     public async Task ConsentWindowElapsed_ExpiresWithoutAskingOidc()
     {

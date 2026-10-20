@@ -36,19 +36,9 @@ public sealed class SessionSweeper(
     public async Task<SweepResult> SweepAsync(CancellationToken ct)
     {
         var now = clock.GetUtcNow();
-        var idleCutoff = now - SessionPolicy.IdleTimeout;
-
-        // Conversations with a consent request still waiting for the user's phone.
-        var awaitingConsent =
-            from c in db.ConsentRequests
-            where c.Status == ConsentStatus.Pending && c.ExpiresAt > now
-            join st in db.ActionSteps on c.StepId equals st.Id
-            join p in db.ActionPreviews on st.PreviewId equals p.Id
-            select p.ConversationId;
-
-        // The complement of SessionService's "live" test: expired absolutely, or idle without an open consent.
+        // The exact complement of the request path's live test: expired absolutely, or idle without an open consent.
         var due = await db.ChatSessions.AsNoTracking()
-            .Where(s => s.AbsoluteExpiresAt <= now || (s.LastActivityAt <= idleCutoff && !awaitingConsent.Contains(s.ConversationId)))
+            .Where(SessionLiveness.IsDue(db, now))
             .OrderBy(s => s.AbsoluteExpiresAt)
             .Take(options.Value.BatchSize)
             .ToListAsync(ct);

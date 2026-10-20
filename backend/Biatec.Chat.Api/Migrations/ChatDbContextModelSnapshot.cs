@@ -210,7 +210,7 @@ namespace Biatec.Chat.Api.Migrations
                     b.HasIndex("AuthReqId")
                         .IsUnique();
 
-                    b.HasIndex("StepId");
+                    b.HasIndex("StepId", "Status", "ExpiresAt");
 
                     b.ToTable("ConsentRequests");
                 });
