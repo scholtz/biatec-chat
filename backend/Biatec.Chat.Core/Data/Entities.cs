@@ -54,7 +54,7 @@ public class Message
     public string? ToolResults { get; set; }
     public string? ModelId { get; set; }
     public string? Usage { get; set; }
-    /// <summary>When the row was written; the 90-day payload retention clears each message by its own age (T-060).</summary>
+    /// <summary>When the row was written; the payload retention window (5 years by default) clears each message by its own age (T-060).</summary>
     public DateTimeOffset CreatedAt { get; set; }
 }
 

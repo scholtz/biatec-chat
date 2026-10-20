@@ -23,7 +23,7 @@ specification. See also [presentation_pitch_prep.md](presentation_pitch_prep.md)
 |---|---|
 | Are you a CASP under MiCA? Who does KYC/AML on these transfers? | Self-custody interface: we hold no keys and no funds. Licensing analysis is roadmap; don't claim compliance. |
 | How do you stop the AI being used for laundering or sanctions evasion? | Limits, phone approval and an evidence trail. Sanctions screening isn't in scope yet; say so. |
-| GDPR, retention, right to erasure? | Data is minimised to the OIDC `sub` plus addresses. Transcripts are kept 90 days, and the evidence for fund-moving actions 7 years. Erasure removes the message payloads, and the hash chain still verifies (spec, Data handling). |
+| GDPR, retention, right to erasure? | Data is minimised to the OIDC `sub` plus addresses. Transcripts are kept 5 years (configurable per deployment), and the evidence for fund-moving actions 7 years. Erasure removes the message payloads, and the hash chain still verifies (spec, Data handling). |
 | How does this map to DORA ICT risk? | Bedrock stays in an EU region (`eu-central-1`), a circuit breaker caps AI spend, and keys sit outside the chat backend. Be honest that there's no formal DORA mapping. |
 
 ### Mastercard, Ondřej Kováč (cyber security)
