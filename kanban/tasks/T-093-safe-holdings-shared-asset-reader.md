@@ -1,7 +1,7 @@
 ---
 id: T-093
 title: "Safe proposal card: use the shared algod asset reader"
-status: blocked
+status: backlog
 priority: P3
 epic: "Safe"
 blocked_by: [T-090]
@@ -54,3 +54,4 @@ files.
 
 - 2026-10-20 04:16 · coordinator · (new) → backlog · proposed by a worker
 - 2026-10-20 04:17 · kanban-board · backlog → blocked · waiting on: T-090
+- 2026-10-20 04:31 · kanban-board · blocked → backlog · blockers done: T-090

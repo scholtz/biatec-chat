@@ -1,7 +1,7 @@
 ---
 id: T-090
 title: "Bug: transfer preview must look up ASA decimals and unit name (real MCP balances carry none)"
-status: review
+status: done
 priority: P1
 epic: "Wallet tools"
 blocked_by: [T-089]
@@ -66,6 +66,8 @@ files.
 
 ## Review
 
+- 2026-10-20 04:31 · approve · PR #177 merged into main @ 7a276a2 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 05:50 · coordinator · (new) → blocked · proposed by T-089
@@ -73,3 +75,4 @@ files.
 - 2026-10-20 04:00 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 04:00 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 04:31 · coordinator · in-progress → review · branch task/T-090 @ 1299a26, PR #177
+- 2026-10-20 04:31 · user · review → done · PR #177 merged into main @ 7a276a2 (synced by kanban-sync)
