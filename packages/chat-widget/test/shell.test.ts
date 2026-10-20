@@ -309,7 +309,8 @@ describe("useBiatecChat()", () => {
     expect(el.getAttribute("data-theme")).toBe("light");
     useBiatecChat().setLocale("sk-SK");
     await nextTick();
-    expect(el.getAttribute("lang")).toBe("sk-SK");
+    // lang announces the catalog that is shown, not the requested locale.
+    expect(el.getAttribute("lang")).toBe("en");
     // No Slovak catalog yet: strings fall back to English.
     expect(w.get(".bc-launcher").attributes("aria-label")).toBe("Ask Biatec AI");
     w.unmount();

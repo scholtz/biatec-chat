@@ -85,6 +85,7 @@ app.MapConfirm();
 app.MapConsent();
 app.MapLogout();
 app.MapEvidenceJwks();
+Biatec.Chat.Api.Evidence.Export.EvidenceExportEndpoints.MapEvidenceExport(app);
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();

@@ -25,3 +25,9 @@ export const t = (key: string, named?: Record<string, unknown>): string =>
 export function setLocale(locale: string): void {
   i18n.global.locale.value = locale.split("-")[0]! as never;
 }
+
+/** The catalog locale that resolves for a requested one: the language itself when it has messages, else English. */
+export function resolvedLocale(locale: string): string {
+  const base = locale.split("-")[0]!;
+  return (i18n.global.availableLocales as string[]).includes(base) ? base : "en";
+}

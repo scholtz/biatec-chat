@@ -1,7 +1,7 @@
 ---
 id: T-036
 title: Evidence export bundle and offline verifier
-status: in-progress
+status: done
 priority: P1
 epic: "Evidence"
 blocked_by: [T-035]
@@ -51,6 +51,8 @@ pnpm --filter evidence-verifier test; node cli verify bundle.json
 
 ## Review
 
+- 2026-10-20 03:14 · approve · PR #146 merged into main @ 1da2606 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
@@ -59,3 +61,4 @@ pnpm --filter evidence-verifier test; node cli verify bundle.json
 - 2026-10-20 01:12 · kanban-board · blocked → backlog · blockers done: T-035
 - 2026-10-20 02:19 · scholtz · taken · status stays backlog
 - 2026-10-20 02:19 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 03:14 · user · in-progress → done · PR #146 merged into main @ 1da2606 (synced by kanban-sync)

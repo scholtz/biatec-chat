@@ -13,7 +13,7 @@ import Tag from "primevue/tag";
 import Toast from "primevue/toast";
 import ToggleSwitch from "primevue/toggleswitch";
 import { useToast } from "primevue/usetoast";
-import { BiatecChatInline, useBiatecChat, type AskResult } from '@biatec/chat-widget'
+import { BiatecAiChip, BiatecChatInline, useBiatecChat, type AskResult } from '@biatec/chat-widget'
 import { SUPPORTED_LOCALES, getCurrentLocale, setLocale, type SupportedLocale } from "@/i18n";
 import { useTheme } from "@/theme";
 import { askAboutOrder, clearTradingContext, setTradingContext } from "@/biatecChat";
@@ -191,13 +191,14 @@ onBeforeUnmount(clearTradingContext);
             <Button :label="t('order.submit')" :severity="side === 'buy' ? 'success' : 'danger'" fluid />
             <Button
               :label="t('order.ask')"
-              icon="pi pi-comments"
               link
               size="small"
               class="self-start"
               data-testid="dex-ask"
               @click="ask"
-            />
+            >
+              <template #icon><BiatecAiChip :size="16" /></template>
+            </Button>
           </form>
         </template>
       </Card>
