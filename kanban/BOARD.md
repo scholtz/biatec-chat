@@ -34,8 +34,8 @@ Sorted by priority, then ID. The first row is what `/kanban-next` picks.
 |---|---|---|---|---|---|
 | T-087 | Bug: agent-mode gate consistency (preview tools, limit lowering, no Elevated tier) | P2 | Orchestrator | no (T-025, T-079, T-081, T-082) | free |
 | T-088 | Bug: evidence anchoring with two replicas and in the k8s deployment | P2 | Evidence | no (T-071, T-081, T-078) | free |
-| T-060 | Retention jobs and user erasure | P3 | Evidence | no (T-032) | free |
-| T-061 | Backend fallback cap for users without an active device | P3 | Consent & authenticator | no (T-024, T-035) | free |
+| T-060 | Retention jobs and user erasure | P3 | Evidence | no (T-032) | LukassSoukup |
+| T-061 | Backend fallback cap for users without an active device | P3 | Consent & authenticator | no (T-024, T-035) | LukassSoukup |
 | T-067 | Holdings data card from wallet.balance | P3 | Widget UI rework | no (T-035, T-042, T-074, T-076, T-082) | free |
 | T-085 | Bug: apply the tenant's defaultModel and suggestions | P3 | Orchestrator | no (T-076) | free |
 | T-086 | Bug: admin API for policy and knowledge-base management | P3 | Orchestrator | yes | free |
