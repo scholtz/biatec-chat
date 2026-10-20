@@ -376,6 +376,23 @@ public sealed class AgentModeTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Forbidden, r.StatusCode);
         Assert.Equal(error, (await r.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
     }
+
+    [Theory]
+    [InlineData("analyze", false)]
+    [InlineData("prepare", true)]
+    public async Task Elevation_OfManageLimits_IsAllowedWhileAnalyzeOrPaused(string mode, bool paused)
+    {
+        var (cookie, _) = await NewSessionAsync(true);
+        await PutAgentAsync(cookie, mode, paused);
+        var r = await SendAsync(Req(HttpMethod.Post, "/auth/elevate/popup", cookie, body: new { scope = "manage-limits" }));
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var url = (await r.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("loginUrl").GetString()!;
+        var nav = Req(HttpMethod.Get, new Uri(url).PathAndQuery, cookie);
+        nav.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "navigate");
+        nav.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "document");
+        var g = await SendAsync(nav);
+        Assert.NotEqual(HttpStatusCode.Forbidden, g.StatusCode);
+    }
 }
 
 public class AgentGatePolicyTests
@@ -409,5 +426,31 @@ public class AgentGatePolicyTests
             Assert.Equal(reason, gate.CheckSigningScope(cap.Name, ctx).Reason);
         }
         Assert.Contains(gate.ToolsFor(ctx), c => c.Name == "wallet.balance");
+    }
+
+    public static IEnumerable<object[]> PreviewBuilders() =>
+        CapabilityRegistry.CreateDefault().All.Where(c => c.ToolName is not null && c.BuildsPreview).Select(c => new object[] { c.Name });
+
+    [Theory]
+    [MemberData(nameof(PreviewBuilders))]
+    public void EveryPreviewBuildingCapability_IsOutOfTheToolList_InAnalyzeAndPaused(string name)
+    {
+        var gate = Gate();
+        foreach (var ctx in new[]
+        {
+            new GateContext(SessionTier.Authenticated, Scopes, true, true, Mode: AgentMode.Analyze),
+            new GateContext(SessionTier.Authenticated, Scopes, true, true, Mode: AgentMode.Prepare, Paused: true),
+        })
+            Assert.DoesNotContain(gate.ToolsFor(ctx), c => c.Name == name);
+        // and visible in Prepare, so the test is not vacuous
+        Assert.Contains(gate.ToolsFor(new GateContext(SessionTier.Authenticated, Scopes, true, true)), c => c.Name == name);
+    }
+
+    [Fact]
+    public void PreviewBuilders_IncludeSafeCreateSafeProposeAndLimitsUpdate_AndNoReads()
+    {
+        var names = CapabilityRegistry.CreateDefault().All.Where(c => c.BuildsPreview).Select(c => c.Name).ToHashSet();
+        foreach (var n in new[] { "safe.create", "safe.propose", "limits.update" }) Assert.Contains(n, names);
+        foreach (var n in new[] { "safe.list", "limits.view", "wallet.balance" }) Assert.DoesNotContain(n, names);
     }
 }
