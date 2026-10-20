@@ -1,7 +1,7 @@
 ---
 id: T-102
 title: "DEX playground page: fix serious axe violations"
-status: in-progress
+status: review
 priority: P3
 epic: "Widget"
 blocked_by: []
@@ -39,13 +39,19 @@ files.
 
 ## Acceptance criteria
 
-- [ ] axe reports no serious violations on /dex.html in dark and light (test)
+- [x] axe reports no serious violations on /dex.html in dark and light (test)
 
 ## Verification
 
 Playwright/axe or jsdom axe on the built demo /dex.html.
 
 ## Hand-off
+
+- **Summary:** light-mode button/toggle contrast fixed with `light-dark()` shades (dark unchanged); the Biatec AI chip moved beside the link button so its name equals its label; integration-biatec-dex.md updated; new jsdom a11y test.
+- **Branch:** `task/T-102`, PR #218 (`Closes #211`).
+- **Verification:** Chromium + axe on playground and demo /dex.html (dark/light, 1280/375): 0 serious/critical; widget tests 364/364; demo build + tests.
+- **Note:** the real BiatecDEX needs the same chip placement and light shades (the hand-off doc says so).
+- **Unblocks:** no task is blocked by T-102.
 
 ## Review
 
@@ -54,3 +60,4 @@ Playwright/axe or jsdom axe on the built demo /dex.html.
 - 2026-10-20 07:59 · coordinator · (new) → backlog · proposed by a worker
 - 2026-10-20 07:59 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 07:59 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 08:16 · coordinator · in-progress → review · PR #218
