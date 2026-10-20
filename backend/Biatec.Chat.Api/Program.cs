@@ -39,7 +39,7 @@ Biatec.Chat.Api.Budget.BudgetRegistration.AddBedrockBudget(builder.Services);
 builder.Services.AddChat();
 Biatec.Chat.Api.Chat.SignIn.AnonymousTierRegistration.AddAnonymousTier(builder.Services, builder.Configuration);
 builder.Services.AddOnboarding(builder.Configuration);
-Biatec.Chat.Api.Admin.AdminEndpoints.AddAdmin(builder.Services);
+Biatec.Chat.Api.Admin.AdminEndpoints.AddAdmin(builder.Services, builder.Configuration);
 Biatec.Chat.Api.Public.PublicChatEndpoints.AddPublicChat(builder.Services, builder.Configuration);
 Biatec.Chat.Api.Public.ClientAddress.AddClientAddress(builder.Services, builder.Configuration);
 

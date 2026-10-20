@@ -21,6 +21,7 @@ public sealed class AdminTenantPolicyTests : IAsyncLifetime
 {
     private const string OperatorKey = "test-operator-key-0123456789-abcdefghij";
     private const string BankId = "chat.example-bank.com";
+    private const string LegacyId = "chat.legacy-bank.com";
 
     private sealed class MemoryTenantStore(params Tenant[] tenants) : ITenantStore
     {
@@ -79,7 +80,16 @@ public sealed class AdminTenantPolicyTests : IAsyncLifetime
         await AdminAsync($"CREATE DATABASE \"{_dbName}\"");
         await using var db = NewContext();
         await db.Database.MigrateAsync();
-        db.Tenants.AddRange(TenantSeed.BiatecChat(), Bank());
+        var legacy = Bank();
+        legacy.Id = legacy.Host = LegacyId;
+        legacy.ClientSecretRef = "secret://tenants/chat.legacy-bank.com/oidc-client-secret";
+        // A row written before the T-025 save rule: cap below the floor, legacy safe-cap key, budget with trailing zeros.
+        legacy.SoftCapEurPerHour = 500;
+        legacy.X402Enabled = true;
+        legacy.LimitsUpdateEnabled = true;
+        legacy.SafeApprovalCaps = "{\"perHour\":5}";
+        legacy.BedrockBudgets = "{\"usdPerWindow\":10.00}";
+        db.Tenants.AddRange(TenantSeed.BiatecChat(), Bank(), legacy);
         await db.SaveChangesAsync();
     }
 
@@ -89,7 +99,9 @@ public sealed class AdminTenantPolicyTests : IAsyncLifetime
         await AdminAsync($"DROP DATABASE IF EXISTS \"{_dbName}\" WITH (FORCE)");
     }
 
-    private HttpClient Client(string? operatorKey = OperatorKey)
+    private HttpClient Client(string? operatorKey = OperatorKey) => Factory(operatorKey).CreateClient();
+
+    private WebApplicationFactory<Program> Factory(string? operatorKey = OperatorKey, Dictionary<string, string?>? extra = null, bool realTenantStore = false)
     {
         var f = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
@@ -104,16 +116,19 @@ public sealed class AdminTenantPolicyTests : IAsyncLifetime
                 ["Algod:Networks:testnet:Url"] = "https://algod.example.test",
                 ["Kms:KeyId"] = "alias/test",
                 ["Onboarding:OperatorKey"] = operatorKey,
-            }));
+            }.Concat(extra ?? []).ToDictionary()));
             b.ConfigureServices(s =>
             {
-                s.RemoveAll<ITenantStore>();
-                s.AddSingleton<ITenantStore>(new MemoryTenantStore(TenantSeed.BiatecChat()));
+                if (!realTenantStore)
+                {
+                    s.RemoveAll<ITenantStore>();
+                    s.AddSingleton<ITenantStore>(new MemoryTenantStore(TenantSeed.BiatecChat()));
+                }
                 s.AddSingleton<ILoggerProvider>(_logs);
             });
         });
         _factories.Add(f);
-        return f.CreateClient();
+        return f;
     }
 
     private static async Task<HttpResponseMessage> SendAsync(HttpClient client, HttpMethod method, string path, object? body = null, string? bearer = OperatorKey, string? origin = null)
@@ -125,13 +140,23 @@ public sealed class AdminTenantPolicyTests : IAsyncLifetime
         return await client.SendAsync(r);
     }
 
-    private static Task<HttpResponseMessage> PatchAsync(HttpClient c, object body, string? bearer = OperatorKey) =>
-        SendAsync(c, HttpMethod.Patch, $"/onboarding/operator/tenants/{BankId}/policy", body, bearer);
+    private static Task<HttpResponseMessage> PatchAsync(HttpClient c, object body, string? bearer = OperatorKey, string id = BankId) =>
+        SendAsync(c, HttpMethod.Patch, $"/onboarding/operator/tenants/{id}/policy", body, bearer);
 
-    private async Task<Tenant> BankAsync()
+    private async Task<Tenant> BankAsync(string id = BankId)
     {
         await using var db = NewContext();
-        return await db.Tenants.AsNoTracking().SingleAsync(t => t.Id == BankId);
+        return await db.Tenants.AsNoTracking().SingleAsync(t => t.Id == id);
+    }
+
+    private static async Task<HttpResponseMessage> RawPatchAsync(HttpClient c, string id, string json, string? bearer = OperatorKey)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Patch, $"http://chat.biatec.io/onboarding/operator/tenants/{id}/policy")
+        {
+            Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
+        };
+        if (bearer is not null) req.Headers.TryAddWithoutValidation("Authorization", "Bearer " + bearer);
+        return await c.SendAsync(req);
     }
 
     [Theory]
@@ -264,5 +289,67 @@ public sealed class AdminTenantPolicyTests : IAsyncLifetime
         var caps = Biatec.Chat.Tools.Caps.SafeCaps.Parse(t.SafeApprovalCaps);
         Assert.Equal(3, caps.ApprovalsPerHour);
         Assert.Equal(Biatec.Chat.Tools.Caps.CapDefaults.SafeExecutionsPerHour, caps.ExecutionsPerHour);
+    }
+
+    [Fact]
+    public async Task UnauthenticatedPatch_IsRejectedBeforeTheBodyIsRead()
+    {
+        // An unparseable body and unknown fields would be a 400 if binding ran first.
+        var c = Client();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await RawPatchAsync(c, BankId, "{not json", bearer: null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await RawPatchAsync(c, BankId, "{\"clientSecretRef\":1}", bearer: "nope")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await RawPatchAsync(Client(operatorKey: null), BankId, "{not json", bearer: null)).StatusCode);
+        Assert.Contains(_logs.Lines, l => l.Contains("rejected unauthenticated PATCH"));
+    }
+
+    [Fact]
+    public async Task LegacyRow_CanStillBePatched_FeaturesSwitchOff()
+    {
+        var c = Client();
+        var r = await PatchAsync(c, new { x402Enabled = false, limitsUpdateEnabled = false, reason = "kill switch" }, id: LegacyId);
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var t = await BankAsync(LegacyId);
+        Assert.False(t.X402Enabled);
+        Assert.False(t.LimitsUpdateEnabled);
+        Assert.Equal(500m, t.SoftCapEurPerHour);
+        // Touching the cap applies the rule: the floor still holds.
+        Assert.Equal(HttpStatusCode.BadRequest, (await PatchAsync(c, new { softCapEurPerHour = 600, reason = "r" }, id: LegacyId)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await PatchAsync(c, new { softCapEurPerHour = 1200, reason = "r" }, id: LegacyId)).StatusCode);
+    }
+
+    [Fact]
+    public async Task NumericValues_CompareAsDecimals_AndAuditUsesEffectiveOldValues()
+    {
+        var c = Client();
+        var same = await PatchAsync(c, new { bedrockUsdPerWindow = 10, safeApprovalCaps = new { approvalsPerHour = 5 }, reason = "noop" }, id: LegacyId);
+        Assert.Equal(HttpStatusCode.OK, same.StatusCode);
+        Assert.Equal(0, JsonDocument.Parse(await same.Content.ReadAsStringAsync()).RootElement.GetProperty("changes").GetArrayLength());
+
+        var r = await PatchAsync(c, new { bedrockUsdPerWindow = 7.5m, safeApprovalCaps = new { approvalsPerHour = 3 }, reason = "tighten" }, id: LegacyId);
+        var changes = JsonDocument.Parse(await r.Content.ReadAsStringAsync()).RootElement.GetProperty("changes").EnumerateArray().Select(e => e.GetString()).ToArray();
+        Assert.Contains("bedrockBudgets.usdPerWindow: 10 -> 7.5", changes);
+        Assert.Contains("safeApprovalCaps.approvalsPerHour: 5 -> 3", changes);
+        Assert.Equal(3, Biatec.Chat.Tools.Caps.SafeCaps.Parse((await BankAsync(LegacyId)).SafeApprovalCaps).ApprovalsPerHour);
+    }
+
+    [Fact]
+    public async Task Change_EvictsTheTenantCache_OnThisReplica()
+    {
+        var f = Factory(realTenantStore: true);
+        var store = f.Services.GetRequiredService<ITenantStore>();
+        Assert.False((await store.FindByHostAsync(BankId, default))!.X402Enabled); // now cached
+        Assert.Equal(HttpStatusCode.OK, (await PatchAsync(f.CreateClient(), new { x402Enabled = true, reason = "on" })).StatusCode);
+        Assert.True((await store.FindByHostAsync(BankId, default))!.X402Enabled);
+    }
+
+    [Fact]
+    public async Task AdminRoutes_HaveTheirOwnRateLimitPartition()
+    {
+        var c = Factory(extra: new() { ["Admin:RateLimitPermits"] = "2", ["Onboarding:RateLimitPermits"] = "1" }).CreateClient();
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(c, HttpMethod.Get, "/onboarding/operator/tenants")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(c, HttpMethod.Get, "/onboarding/operator/tenants")).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await SendAsync(c, HttpMethod.Get, "/onboarding/operator/tenants")).StatusCode);
+        // Public onboarding still has its own (unused) permit: its answer is not a 429.
+        Assert.NotEqual(HttpStatusCode.TooManyRequests, (await SendAsync(c, HttpMethod.Post, "/onboarding/challenges", new { host = "x.example.com" }, bearer: null)).StatusCode);
     }
 }

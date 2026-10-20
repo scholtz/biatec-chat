@@ -15,7 +15,9 @@ Code: `backend/Biatec.Chat.Api/Admin/`. Tests: `backend/Biatec.Chat.Tests/Admin/
   key is involved.
 - While the key is unset (or shorter than 32 characters) every admin route answers `404`: the API does not exist.
 - A missing or wrong `Authorization: Bearer <key>` gets `401` and a warning log line with method, path and remote IP
-  (never the presented value). The comparison is constant-time.
+  (never the presented value). The comparison is constant-time. Authentication runs before the request body is read,
+  so an unauthenticated request never reaches the JSON parser (it gets `401`, or `404` without a key, never `400`).
+- The check is shared with the operator onboarding route (`OperatorAuth` in `backend/Biatec.Chat.Api/Onboarding/`).
 - Requests go to any registered tenant host (the tenant middleware resolves every request by `Host`), for example
   `https://chat.biatec.io`. The operator acts on any tenant by id; the host used for the call does not scope it.
 
@@ -27,8 +29,9 @@ The routes sit under `/onboarding/operator/`, which already is the operator surf
   guard is not needed and does not apply (`OriginPolicy.IsPublic`).
 - `Authorization` is not in the CORS allowed headers, and the operator prefix never gets the `/public` wildcard, so a
   page in a browser cannot send the bearer cross-origin.
-- The onboarding rate limit (per remote IP, `Onboarding:RateLimitPermits` per `Onboarding:RateLimitWindowSeconds`)
-  and body limit (`Onboarding:MaxBodyBytes`) apply.
+- The admin routes have their own rate-limit policy `operator` (per remote IP, `Admin:RateLimitPermits`, default 60,
+  per `Admin:RateLimitWindowSeconds`, default 60), counted apart from public onboarding. The onboarding body limit
+  (`Onboarding:MaxBodyBytes`) applies. A PATCH body must be `application/json` (else `415`).
 
 ## Endpoints
 
@@ -93,13 +96,23 @@ Rules, enforced server-side:
 | `limitsUpdateEnabled`, `x402Enabled` | Booleans. `x402Enabled` still needs the deployment switch `X402:Enabled`. |
 | `bedrockUsdPerWindow` | 0 to 10 000; written to `bedrockBudgets.usdPerWindow`, other keys of that JSON are kept. |
 | `safeApprovalCaps.*` | Counts 0 to 10 000, EUR 0 to 1 000 000; merged into the stored JSON. |
-| `defaultModel` | An `eu.anthropic.claude-(haiku\|sonnet\|opus)-4-*` inference profile id (Claude 5 isn't available on this account); `""` clears it. |
+| `defaultModel` | An `eu.anthropic.claude-(haiku\|sonnet\|opus)-4-*` inference profile id (Claude 5 isn't available on this account); `""` clears it. Stored now; takes effect once T-085 ships (the runtime does not read it yet). |
 | `consentThresholdCeilingEur` | Read-only here: it is the deployment's ceiling, not a per-tenant knob. |
+
+The soft-cap save rule runs when the patch changes `softCapEurPerHour` or `trustAnchorVerified`. A patch of other
+fields is never blocked by a stored row that predates the rule, so switching a feature off (for example
+`x402Enabled: false`) always works.
+
+Numeric fields are compared as numbers: a value equal to the current effective one (stored value, legacy
+`safeApprovalCaps.perHour`, or default) is no change and is not written. The audit line shows the effective old value.
 
 Concurrent changes to one tenant are serialized (a PostgreSQL advisory lock), so two operators never overwrite each
 other's read-modify-write.
 
-Changes reach request handling within the tenant cache TTL (60 seconds, `DbTenantStore`).
+Request handling reads tenant policy (including the gates `x402Enabled`, `limitsUpdateEnabled`, the soft cap and the
+safe caps) from the cached tenant row in `DbTenantStore`. A successful change evicts that row on the replica that
+handled it, so it applies there at once. Other replicas pick it up when their entry expires: the cache TTL is 10
+seconds, so a gate switched off is off everywhere within 10 seconds.
 
 ## Audit
 
@@ -109,7 +122,7 @@ Every call writes a structured log line (category `Biatec.Chat.Api.Admin.TenantP
 - change: `Admin: operator from {RemoteIp} changed tenant policy {TenantId}: {Changes}. Reason: {Reason}`, with each
   changed field as `name: old -> new`;
 - refusal: `Admin: refused tenant policy change {TenantId} from {RemoteIp}: {Error}. Reason: {Reason}`;
-- rejected authentication: `Admin: rejected unauthenticated {Method} {Path} from {RemoteIp}`.
+- rejected authentication (category `Biatec.Chat.Api.Operator`, shared with operator onboarding): `Operator: rejected unauthenticated {Method} {Path} from {RemoteIp}`.
 
 Lines carry policy values only, never the bearer key, `clientSecretRef` or another secret. Caller-supplied text
 (tenant id in a path, reason) has control characters removed or refused, so a request cannot forge log lines. The

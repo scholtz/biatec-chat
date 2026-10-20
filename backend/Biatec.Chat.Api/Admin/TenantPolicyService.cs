@@ -57,7 +57,8 @@ public sealed record TenantPolicyView(
         t.Id, t.Host, t.SoftCapEurPerHour, SoftCapPolicy.EffectiveCapEur(t), t.ConsentThresholdCeilingEur,
         t.TrustAnchorVerified, t.LimitsUpdateEnabled, t.X402Enabled, StoredBudget(t.BedrockBudgets), SafeCaps.Parse(t.SafeApprovalCaps), t.DefaultModel);
 
-    private static decimal? StoredBudget(string? json)
+    /// <summary>The stored <c>bedrockBudgets.usdPerWindow</c>, or null when the deployment default applies.</summary>
+    public static decimal? StoredBudget(string? json)
     {
         try
         {
@@ -76,7 +77,7 @@ public sealed record PolicyResult(PolicyStatus Status, TenantPolicyView? View = 
 /// (<see cref="SoftCapPolicy.ValidateOnSave"/>, here with <c>byOperator: true</c>): the soft cap never drops below the
 /// consent threshold ceiling, and it rises above the platform default only for a trust-anchored tenant.
 /// </summary>
-public sealed partial class TenantPolicyService(ChatDbContext db)
+public sealed partial class TenantPolicyService(ChatDbContext db, Biatec.Chat.Api.Tenancy.ITenantStore tenants)
 {
     public const decimal MaxEur = 1_000_000m;
     public const decimal MaxUsdPerWindow = 10_000m;
@@ -112,23 +113,31 @@ public sealed partial class TenantPolicyService(ChatDbContext db)
         if (tenant is null) return new(PolicyStatus.NotFound, Error: "Unknown tenant.");
 
         var changes = new List<string>();
-        void Set<T>(string name, T? value, Func<T> get, Action<T> set) where T : struct
+        var capRuleInputsChanged = false;
+        void Set<T>(string name, T? value, Func<T> get, Action<T> set, bool capRule = false) where T : struct
         {
             if (value is not { } v || EqualityComparer<T>.Default.Equals(v, get())) return;
             changes.Add($"{name}: {Show(get())} -> {Show(v)}");
             set(v);
+            capRuleInputsChanged |= capRule;
         }
 
-        Set("softCapEurPerHour", patch.SoftCapEurPerHour, () => tenant.SoftCapEurPerHour, v => tenant.SoftCapEurPerHour = v);
-        Set("trustAnchorVerified", patch.TrustAnchorVerified, () => tenant.TrustAnchorVerified, v => tenant.TrustAnchorVerified = v);
+        Set("softCapEurPerHour", patch.SoftCapEurPerHour, () => tenant.SoftCapEurPerHour, v => tenant.SoftCapEurPerHour = v, capRule: true);
+        Set("trustAnchorVerified", patch.TrustAnchorVerified, () => tenant.TrustAnchorVerified, v => tenant.TrustAnchorVerified = v, capRule: true);
         Set("limitsUpdateEnabled", patch.LimitsUpdateEnabled, () => tenant.LimitsUpdateEnabled, v => tenant.LimitsUpdateEnabled = v);
         Set("x402Enabled", patch.X402Enabled, () => tenant.X402Enabled, v => tenant.X402Enabled = v);
 
         if (patch.BedrockUsdPerWindow is { } usd)
-            tenant.BedrockBudgets = Merge(tenant.BedrockBudgets, changes, "bedrockBudgets", ("usdPerWindow", usd));
+            tenant.BedrockBudgets = Merge(tenant.BedrockBudgets, changes, "bedrockBudgets", ("usdPerWindow", usd, TenantPolicyView.StoredBudget(tenant.BedrockBudgets)));
         if (patch.SafeApprovalCaps is { } caps)
+        {
+            // Old values are the effective ones (SafeCaps.Parse, which also reads the legacy "perHour" key).
+            var current = SafeCaps.Parse(tenant.SafeApprovalCaps);
             tenant.SafeApprovalCaps = Merge(tenant.SafeApprovalCaps, changes, "safeApprovalCaps",
-                ("approvalsPerHour", caps.ApprovalsPerHour), ("approvalEurPerHour", caps.ApprovalEurPerHour), ("executionsPerHour", caps.ExecutionsPerHour));
+                ("approvalsPerHour", caps.ApprovalsPerHour, current.ApprovalsPerHour),
+                ("approvalEurPerHour", caps.ApprovalEurPerHour, current.ApprovalEurPerHour),
+                ("executionsPerHour", caps.ExecutionsPerHour, current.ExecutionsPerHour));
+        }
 
         if (patch.DefaultModel is { } model)
         {
@@ -140,14 +149,18 @@ public sealed partial class TenantPolicyService(ChatDbContext db)
             }
         }
 
-        // The same save rule as onboarding; only the byOperator flag differs.
-        if (SoftCapPolicy.ValidateOnSave(tenant, byOperator: true) is { } capError)
+        // The same save rule as onboarding (only the byOperator flag differs), applied when the patch changes one of
+        // its inputs. A patch of other fields, such as switching a feature off, is never blocked by a stored row that
+        // predates the rule.
+        if (capRuleInputsChanged && SoftCapPolicy.ValidateOnSave(tenant, byOperator: true) is { } capError)
             return new(PolicyStatus.Invalid, Error: capError);
 
         if (changes.Count > 0)
         {
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
+            // This replica sees the change at once; other replicas within the tenant cache TTL.
+            tenants.Invalidate(tenant.Host);
         }
         return new(PolicyStatus.Ok, TenantPolicyView.Of(tenant), Changes: changes);
     }
@@ -175,20 +188,20 @@ public sealed partial class TenantPolicyService(ChatDbContext db)
         return null;
     }
 
-    /// <summary>Sets the given keys on a stored JSON object (other keys kept; an unreadable value starts over).</summary>
-    private static string Merge(string? json, List<string> changes, string name, params (string Key, object? Value)[] values)
+    /// <summary>
+    /// Sets the given keys on a stored JSON object (other keys kept; an unreadable value starts over). A key is written
+    /// only when its new value differs numerically from the current one (<c>null</c>: the default applies).
+    /// </summary>
+    private static string Merge(string? json, List<string> changes, string name, params (string Key, decimal? New, decimal? Old)[] values)
     {
         JsonObject obj;
         try { obj = JsonNode.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json) as JsonObject ?? []; }
         catch (JsonException) { obj = []; }
-        foreach (var (key, value) in values)
+        foreach (var (key, value, old) in values)
         {
-            if (value is null) continue;
-            var node = value switch { int i => JsonValue.Create(i), decimal d => JsonValue.Create(d), _ => throw new ArgumentOutOfRangeException(nameof(values)) };
-            var old = obj[key]?.ToJsonString();
-            if (old == node.ToJsonString()) continue;
-            changes.Add($"{name}.{key}: {old ?? "(default)"} -> {node.ToJsonString()}");
-            obj[key] = node;
+            if (value is not { } v || old == v) continue;
+            changes.Add($"{name}.{key}: {(old is { } o ? Show(o) : "(default)")} -> {Show(v)}");
+            obj[key] = JsonValue.Create(v);
         }
         return obj.ToJsonString();
     }
