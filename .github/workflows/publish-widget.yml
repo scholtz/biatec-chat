@@ -1,19 +1,39 @@
-# Publishes @biatec/chat-widget to npm. Publishing happens only on a `chat-widget-v<version>` tag push (the tag must
-# equal the version in packages/chat-widget/package.json) or a manual run (Actions → publish-widget → Run workflow)
-# with dry_run unticked, and in both cases only for a commit on main (a manual run must be started on main, a tag must
-# point at a commit main contains; otherwise the publish job fails). Pull requests that touch the package, and dry
-# runs on any branch, only pack, list the files and run `npm publish --dry-run`.
+# Publishes @biatec/chat-widget to npm.
+# Releasing: bump `version` in packages/chat-widget/package.json and add its CHANGELOG.md section in a pull request
+# (the PR runs a dry run; for a PR into main its notice says whether merging would publish). Merging it to main
+# publishes that version, then creates the tag `chat-widget-v<version>` on the merged commit and a GitHub release with
+# the CHANGELOG section. A push to main whose version is already on npm publishes nothing (`::notice`); one whose
+# version did not change publishes nothing either (`::notice`, or a `::warning` when that version is not on npm, so a
+# failed earlier release is noticed; publish it with the tag or a manual run).
+# Other ways to publish, only for a commit on main: push a `chat-widget-v<version>` tag (it must equal the version in
+# package.json and point at a commit main contains), or a manual run (Actions → publish-widget → Run workflow on main)
+# with dry_run unticked.
+# Every path checks npm first, and the publish job checks again right before `npm publish` (and treats npm's "cannot
+# publish over a previously published version" as already published), so a version is never published twice; the tag
+# this workflow creates doesn't start a workflow (pushed with GITHUB_TOKEN), and would be skipped if it did.
+# Only a version greater than the highest published release (semver) is published; a lower or equal one fails the
+# check, so a revert can never become `latest`. Prereleases (x.y.z-<id>…) go to the npm dist-tag <id> (`next` if <id>
+# isn't a word), never `latest`, and get a GitHub prerelease.
+# Dry runs (pull requests, manual runs with dry_run ticked, on any branch) only build, test, pack, list the files and
+# run `npm publish --dry-run` (that last step is skipped, with a notice, for a version already on npm, which npm rejects).
 # Authentication: npm trusted publishing (GitHub OIDC, `id-token: write`, no secret) is the primary path. Fallback
-# only, while no trusted publisher is configured on npmjs.com: the environment secret `NPM_TOKEN` of the GitHub
-# environment `npm` (repo scholtz/biatec-chat → Settings → Environments → npm; added by a repo admin), an npmjs.com
-# granular token with read/write on @biatec packages and a short expiry. Unset, it is empty and unused.
-# One-time setup (npm org `biatec`, first manual publish, trusted publisher for repo scholtz/biatec-chat, workflow
+# only, while no trusted publisher is configured on npmjs.com (always for the very first publish of the package): the
+# environment secret `NPM_TOKEN` of the GitHub environment `npm` (repo scholtz/biatec-chat → Settings → Environments →
+# npm; added by a repo admin), an npmjs.com granular token with read/write on @biatec packages and a short expiry.
+# A first publish without that secret fails with an error instead of skipping.
+# Only the `release` job (tag + GitHub release, after a successful publish) gets `contents: write`.
+# One-time setup (npm org `biatec`, first publish, trusted publisher for repo scholtz/biatec-chat, workflow
 # publish-widget.yml, environment npm) and releasing: packages/chat-widget/README.md, "Publishing".
 name: publish-widget
 
 on:
   push:
+    branches: [main]
     tags: ["chat-widget-v*"]
+    paths:
+      - "packages/chat-widget/**"
+      - "packages/chat-protocol/**"
+      - ".github/workflows/publish-widget.yml"
   pull_request:
     paths:
       - "packages/chat-widget/**"
@@ -29,17 +49,197 @@ on:
 permissions:
   contents: read
 
+# Pull requests cancel their older runs. Every other run gets its own group, so no run ever cancels or replaces
+# another one that carries a version bump (runs for different versions may publish in parallel; two runs for the same
+# version are handled by the re-check in the publish job).
 concurrency:
-  group: publish-widget-${{ github.ref }}
+  group: publish-widget-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  PACKAGE: "@biatec/chat-widget"
+  CHANGELOG: packages/chat-widget/CHANGELOG.md
+  # The one CHANGELOG matcher (check-job warning and release notes): the lines after the "## <version>" heading, up
+  # to the next "## " heading. Use: awk -v v="$version" "$CHANGELOG_AWK" "$CHANGELOG"
+  CHANGELOG_AWK: '/^## / { if (found) exit; if ($2 == v) { found = 1; next } } found { print }'
+
 jobs:
-  pack:
+  # Decides what this run does. Reads only package.json, git history and the public npm registry (no auth).
+  check:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.meta.outputs.version }}
+      version: ${{ steps.decide.outputs.version }}
+      build: ${{ steps.decide.outputs.build }}
+      publish: ${{ steps.decide.outputs.publish }}
+      first_publish: ${{ steps.decide.outputs.first_publish }}
+      on_npm: ${{ steps.decide.outputs.on_npm }}
+      prerelease: ${{ steps.decide.outputs.prerelease }}
+      dist_tag: ${{ steps.decide.outputs.dist_tag }}
+    steps:
+      # Default credentials (read-only token) so the step below can fetch the base commit.
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Decide (version, changed?, on npm?, newer?, publish?)
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          # Version to compare against: the previous main head for a push, the base branch for a pull request.
+          BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.base_ref }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          pkg_json=packages/chat-widget/package.json
+          version="$(node -p "require('./$pkg_json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          tag="chat-widget-v$version"
+
+          if [ "$REF_TYPE" = "tag" ] && [ "$REF_NAME" != "$tag" ]; then
+            echo "::error::Tag $REF_NAME does not match package.json version $version (expected $tag)"
+            exit 1
+          fi
+
+          # What kind of run: "auto" (push to main), "explicit" (tag or manual publish), "preview" (PR or dry run).
+          if [ "$EVENT" = "push" ] && [ "$REF_TYPE" = "branch" ]; then mode=auto; base="$BEFORE"
+          elif [ "$EVENT" = "push" ]; then mode=explicit; base=""
+          elif [ "$EVENT" = "workflow_dispatch" ] && [ "$DRY_RUN" != "true" ]; then mode=explicit; base=""
+          elif [ "$EVENT" = "pull_request" ]; then mode=preview; base="$PR_BASE"
+          else mode=preview; base=""
+          fi
+
+          # Did the version change against the base? No base (tag, manual run) means "asked for explicitly".
+          # A base that can't be read (new branch, force push, package added) counts as changed; npm decides then.
+          changed=true
+          if [ -n "$base" ] && [ "$base" != "0000000000000000000000000000000000000000" ]; then
+            if git fetch --no-tags --depth=1 origin "$base" 2>/dev/null &&
+               old_json="$(git show "$base:$pkg_json" 2>/dev/null)"; then
+              old_version="$(printf '%s' "$old_json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).version))')"
+              if [ "$old_version" = "$version" ]; then changed=false; fi
+              echo "Version before: $old_version, now: $version"
+            else
+              echo "::notice::Could not read $pkg_json at $base; treating the version as changed."
+            fi
+          fi
+
+          # Published versions. E404 for the whole package means it was never published (first publish).
+          first_publish=false
+          versions="[]"
+          if out="$(npm view "$PACKAGE" versions --json 2>"$RUNNER_TEMP/npm-err.txt")"; then
+            versions="$out"
+          elif grep -q "E404" "$RUNNER_TEMP/npm-err.txt"; then
+            first_publish=true
+          else
+            cat "$RUNNER_TEMP/npm-err.txt"
+            if [ "$mode" = "preview" ]; then
+              echo "::warning::Could not read $PACKAGE from the npm registry; the dry run continues."
+            else
+              echo "::error::Could not read $PACKAGE from the npm registry, so it is unknown whether $version is already published. Re-run the workflow."
+              exit 1
+            fi
+          fi
+          echo "first_publish=$first_publish" >> "$GITHUB_OUTPUT"
+
+          # Semver facts: on npm?, highest published release (no prerelease), newer than it?, prerelease and dist-tag.
+          # Prints "valid on_npm highest newer prerelease dist_tag".
+          read -r valid on_npm highest newer prerelease dist_tag < <(V="$version" VERSIONS="$versions" node -e '
+            const parse = (s) => {
+              const m = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(s);
+              return m && { core: [+m[1], +m[2], +m[3]], pre: m[4] || "" };
+            };
+            const cmp = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+            const list = [].concat(JSON.parse(process.env.VERSIONS));
+            const v = parse(process.env.V);
+            let hi = null;
+            for (const s of list) {
+              const p = parse(s);
+              if (p && !p.pre && (!hi || cmp(p.core, hi.core) > 0)) hi = { ...p, s };
+            }
+            if (!v) { console.log("false false none false false none"); process.exit(0); }
+            // A release or prerelease is newer only if its x.y.z is above the highest release: 1.0.0-rc.1 < 1.0.0.
+            const newer = !hi || cmp(v.core, hi.core) > 0;
+            const id = v.pre.split(".")[0];
+            const distTag = !v.pre ? "latest" : /^[A-Za-z][0-9A-Za-z-]*$/.test(id) && id.toLowerCase() !== "latest" ? id.toLowerCase() : "next";
+            console.log(["true", list.includes(process.env.V), hi ? hi.s : "none", newer, !!v.pre, distTag].join(" "));
+          ')
+          if [ "$valid" != "true" ]; then
+            echo "::error file=$pkg_json::Version $version is not a valid semver version (x.y.z or x.y.z-<prerelease>)."
+            exit 1
+          fi
+          {
+            echo "on_npm=$on_npm"
+            echo "prerelease=$prerelease"
+            echo "dist_tag=$dist_tag"
+          } >> "$GITHUB_OUTPUT"
+
+          level=notice
+          if [ "$on_npm" = "true" ]; then
+            candidate=false; reason="$PACKAGE@$version is already on npm; nothing to publish."
+          elif [ "$changed" = "false" ]; then
+            candidate=false
+            reason="The version ($version) did not change; nothing to publish."
+            if [ "$mode" = "auto" ]; then
+              level=warning
+              reason="$reason But $PACKAGE@$version is NOT on npm (an earlier release failed or was never made). Publish it by pushing the tag $tag or with a manual run on main with dry_run unticked."
+            fi
+          elif [ "$newer" != "true" ]; then
+            echo "::error file=$pkg_json::$PACKAGE@$version is not greater than the highest published version $highest. Publishing it would move or confuse the latest release; bump the version above $highest."
+            exit 1
+          else
+            candidate=true
+            if [ "$first_publish" = "true" ]; then reason="$PACKAGE is not on npm yet: $version would be its first publish (needs the NPM_TOKEN secret of environment npm)."
+            else reason="$PACKAGE@$version is not on npm yet (highest published: $highest)."; fi
+            reason="$reason npm dist-tag: $dist_tag."
+          fi
+
+          publish=false
+          build=true
+          case "$mode" in
+            auto|explicit)
+              if [ "$candidate" = "true" ]; then publish=true; else build=false; fi
+              echo "::$level::$reason"
+              ;;
+            preview)
+              if [ "$candidate" = "true" ]; then
+                if [ "$EVENT" = "pull_request" ] && [ "$BASE_REF" = "main" ]; then
+                  echo "::notice::$reason Merging this PR would publish it, tag $tag and create a GitHub release."
+                elif [ "$EVENT" = "pull_request" ]; then
+                  echo "::notice::Dry run. $reason This PR targets $BASE_REF, not main; merging it publishes nothing."
+                else
+                  echo "::notice::$reason A run on main with dry_run unticked would publish it."
+                fi
+              else
+                echo "::notice::Dry run. $reason"
+              fi
+              ;;
+          esac
+          {
+            echo "build=$build"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### $PACKAGE $version"
+            echo ""
+            echo "- event: $EVENT ($mode), version changed: $changed, on npm: $on_npm, highest published: $highest, first publish: $first_publish, dist-tag: $dist_tag"
+            echo "- publish: $publish. $reason"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -z "$(awk -v v="$version" "$CHANGELOG_AWK" "$CHANGELOG" | tr -d '[:space:]')" ]; then
+            echo "::warning file=$CHANGELOG::No '## $version' section (or it is empty); the GitHub release would get a generic text."
+          fi
+
+  # Build, test, pack and dry-run. The tarball it uploads is what the publish job publishes, byte for byte.
+  pack:
+    needs: check
+    if: needs.check.outputs.build == 'true'
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -55,28 +255,24 @@ jobs:
           pnpm run typecheck
           pnpm run typecheck:playground
           pnpm run test
-      - name: Read the version and check the tag
-        id: meta
-        working-directory: packages/chat-widget
-        env:
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          version="$(node -p "require('./package.json').version")"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          if [ "$REF_TYPE" = "tag" ] && [ "$REF_NAME" != "chat-widget-v$version" ]; then
-            echo "::error::Tag $REF_NAME does not match package.json version $version (expected chat-widget-v$version)"
-            exit 1
-          fi
-      # pnpm pack rewrites workspace: ranges; the tarball is what gets published, byte for byte.
+      # pnpm pack rewrites workspace: ranges.
       - name: Pack
         working-directory: packages/chat-widget
         run: |
           mkdir -p ../../artifacts
           pnpm pack --pack-destination ../../artifacts
           tar -tzf ../../artifacts/*.tgz | sort
+      # npm rejects a dry run of a version it already has, so it runs only for a version not yet on npm.
       - name: Dry run
-        run: npm publish ./artifacts/*.tgz --dry-run --access public
+        if: needs.check.outputs.on_npm != 'true'
+        env:
+          DIST_TAG: ${{ needs.check.outputs.dist_tag }}
+        run: npm publish ./artifacts/*.tgz --dry-run --access public --tag "$DIST_TAG"
+      - name: Dry run skipped (version already on npm)
+        if: needs.check.outputs.on_npm == 'true'
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: echo "::notice::$VERSION is already on npm; the npm publish dry run is skipped (build, tests and pack ran)."
       - uses: actions/upload-artifact@v4
         with:
           name: chat-widget-tarball
@@ -84,10 +280,8 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: pack
-    if: >-
-      (github.event_name == 'push' && github.ref_type == 'tag') ||
-      (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
+    needs: [check, pack]
+    if: needs.check.outputs.publish == 'true'
     runs-on: ubuntu-latest
     # Holds the optional NPM_TOKEN fallback secret, and is the environment named in the npm trusted publisher
     # settings. Add required reviewers to it to gate every publish.
@@ -131,8 +325,69 @@ jobs:
           # Empty unless the fallback secret is set. With a trusted publisher configured, npm uses the OIDC token
           # first and this is never read.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish ./artifacts/*.tgz --provenance --access public
-      - name: Summary
+          FIRST_PUBLISH: ${{ needs.check.outputs.first_publish }}
+          VERSION: ${{ needs.check.outputs.version }}
+          DIST_TAG: ${{ needs.check.outputs.dist_tag }}
+        run: |
+          # Another run (a tag and a merge for the same version) may have published it since the check job.
+          if npm view "$PACKAGE@$VERSION" version 2>/dev/null | grep -qxF "$VERSION"; then
+            echo "::notice::$PACKAGE@$VERSION is already on npm (published by another run); not publishing again."
+            exit 0
+          fi
+          # A trusted publisher can only be configured on a package that exists, so the first publish needs the token.
+          if [ "$FIRST_PUBLISH" = "true" ] && [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::$PACKAGE is not on npm yet and the NPM_TOKEN secret of environment npm is not set, so $VERSION can't be published. Do the one-time setup in packages/chat-widget/README.md (\"Publishing\"): add NPM_TOKEN, or publish the first version by hand, then re-run this workflow."
+            exit 1
+          fi
+          log="$RUNNER_TEMP/npm-publish.log"
+          if npm publish ./artifacts/*.tgz --provenance --access public --tag "$DIST_TAG" 2>&1 | tee "$log"; then
+            echo "Published $PACKAGE@$VERSION (dist-tag $DIST_TAG)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Lost a race with another run publishing the same version: that is "already published", not an auth problem.
+          if grep -Eqi "EPUBLISHCONFLICT|cannot publish over (the )?previously published version" "$log"; then
+            echo "::notice::$PACKAGE@$VERSION was published by another run in the meantime; not publishing again."
+            exit 0
+          fi
+          echo "::error::npm publish of $PACKAGE@$VERSION failed. If the log shows ENEEDAUTH, E401, E403 or E404, npm auth is not set up: configure the trusted publisher (repo scholtz/biatec-chat, workflow publish-widget.yml, environment npm) or set the NPM_TOKEN secret of environment npm, see packages/chat-widget/README.md (\"Publishing\"), then re-run."
+          exit 1
+
+  # Tag and GitHub release for the published version. Idempotent: an existing tag or release is kept.
+  release:
+    needs: [check, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the tag and the release; the only job with write access
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Tag and GitHub release
         env:
-          VERSION: ${{ needs.pack.outputs.version }}
-        run: echo "Published @biatec/chat-widget@$VERSION" >> "$GITHUB_STEP_SUMMARY"
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+          PRERELEASE: ${{ needs.check.outputs.prerelease }}
+          SHA: ${{ github.sha }}
+        run: |
+          tag="chat-widget-v$VERSION"
+          awk -v v="$VERSION" "$CHANGELOG_AWK" "$CHANGELOG" > notes.md
+          if [ -z "$(tr -d '[:space:]' < notes.md)" ]; then
+            echo "Release of $PACKAGE $VERSION. See packages/chat-widget/CHANGELOG.md." > notes.md
+          fi
+          printf '\nnpm: https://www.npmjs.com/package/%s/v/%s\n' "$PACKAGE" "$VERSION" >> notes.md
+
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --silent 2>/dev/null; then
+            echo "::notice::Tag $tag already exists; keeping it."
+          else
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$SHA" --silent
+            echo "Created tag $tag at $SHA"
+          fi
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::notice::GitHub release $tag already exists; keeping it."
+          else
+            pre=()
+            if [ "$PRERELEASE" = "true" ]; then pre=(--prerelease --latest=false); fi
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag "${pre[@]}" \
+              --title "$PACKAGE $VERSION" --notes-file notes.md
+          fi
+          echo "Tagged $tag and released $PACKAGE $VERSION" >> "$GITHUB_STEP_SUMMARY"
