@@ -11,7 +11,7 @@ conflicts_with: []
 issue: "#202"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#rules"
 created: 2026-10-20
 updated: 2026-10-20
@@ -58,3 +58,4 @@ files.
 
 - 2026-10-20 09:20 · coordinator · (new) → blocked · proposed by T-097
 - 2026-10-20 06:59 · kanban-board · blocked → backlog · blockers done: T-097
+- 2026-10-20 07:00 · LukassSoukup · taken · status stays backlog
