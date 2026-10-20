@@ -70,7 +70,13 @@ public sealed class ConfirmService(
 {
     public const string OutageMessage = "The sign-in service is unavailable. Your session is unchanged; please try again shortly.";
 
-    public async Task<ConfirmResult> ConfirmAsync(Tenant tenant, ChatSession session, Guid previewId, string groupHash, CancellationToken ct)
+    /// <param name="pageOrigin">
+    /// The page origin the user confirmed from: the request's Origin as <see cref="Security.OriginPolicy.AllowedOrigin"/>
+    /// validated it against the tenant's registered origins. It is checked against that list again here and reported to
+    /// Biatec OIDC with the signing request (per-origin pending slots, rate limits and pauses). Null only for internal
+    /// callers without a page pass <see cref="BackendOrigin"/>; anything not registered is reported as the backend origin.
+    /// </param>
+    public async Task<ConfirmResult> ConfirmAsync(Tenant tenant, ChatSession session, Guid previewId, string groupHash, string pageOrigin, CancellationToken ct)
     {
         var sessionId = session.Id.ToString("N");
 
@@ -123,7 +129,7 @@ public sealed class ConfirmService(
 
         try
         {
-            return await SignAndSubmitAsync(tenant, session, preview, step, group, address, sessionId, previewId, ct);
+            return await SignAndSubmitAsync(tenant, session, preview, step, group, address, sessionId, previewId, ReportedOrigin(tenant, pageOrigin), ct);
         }
         catch (Exception ex)
         {
@@ -151,7 +157,7 @@ public sealed class ConfirmService(
     }
 
     private async Task<ConfirmResult> SignAndSubmitAsync(Tenant tenant, ChatSession session, ActionPreview preview, ActionStep step,
-        IReadOnlyList<Algorand.Algod.Model.Transactions.Transaction> group, string address, string sessionId, Guid previewId, CancellationToken ct)
+        IReadOnlyList<Algorand.Algod.Model.Transactions.Transaction> group, string address, string sessionId, Guid previewId, string origin, CancellationToken ct)
     {
         // Fail closed BEFORE anything is signed: x402.pay needs the tenant flag (it may have been turned off after the
         // preview was made) and its settlement handler (platform flag); the MCP broadcast would pay for nothing.
@@ -182,7 +188,6 @@ public sealed class ConfirmService(
         }
 
         var remaining = (int)Math.Max(1, (step.ExpiresAt - clock.GetUtcNow()).TotalSeconds);
-        var origin = new Uri(tenant.RedirectUri).GetLeftPart(UriPartial.Authority);
         // T-025: reserve against the tenant soft cap / safe caps before signing; over a cap, ask Biatec OIDC for consent.
         var capRequest = CapRequestFor(tenant, session, preview, step);
         var cap = capRequest is null || caps is null ? Biatec.Chat.Tools.Caps.CapDecision.None : await caps.ReserveAsync(capRequest, ct);
@@ -245,7 +250,7 @@ public sealed class ConfirmService(
                 return await OutageAsync(session, preview, step, u.Reason, ct);
 
             case WalletSignOutcome.StepUp s:
-                return await ConsentPendingAsync(session, preview, step, s, ct, cap.RequireConsent ? CapMessage(cap.Reason) : null);
+                return await ConsentPendingAsync(session, preview, step, s, origin, ct, cap.RequireConsent ? CapMessage(cap.Reason) : null);
 
             case WalletSignOutcome.Rejected { Error: "invalid_token" }:
                 // An expired or invalid sign-in says nothing about the group: keep the preview confirmable after re-auth.
@@ -471,7 +476,8 @@ public sealed class ConfirmService(
         }
 
         var remaining = (int)Math.Max(1, (step.ExpiresAt - clock.GetUtcNow()).TotalSeconds);
-        var origin = new Uri(tenant.RedirectUri).GetLeftPart(UriPartial.Authority);
+        // The approval completes the request the user confirmed, so it reports the origin that consent was requested under.
+        var origin = await ConsentOriginAsync(tenant, step, ct);
         var outcome = await signer.SignAsync(elevatedBearer, new WalletSignRequest(step.Network!, address, step.UnsignedGroupList(), Convert.FromHexString(step.SubjectHash),
             RequireConsent: false, MaxConsentSeconds: remaining, Origin: origin), ct);
         await RecordExtraAsync(session, EvidenceKinds.SigningOutcome, SigningOutcomePayload(previewId, step, outcome), CancellationToken.None);
@@ -610,14 +616,14 @@ public sealed class ConfirmService(
         return true;
     }
 
-    private async Task<ConfirmResult> ConsentPendingAsync(ChatSession session, ActionPreview preview, ActionStep step, WalletSignOutcome.StepUp s, CancellationToken ct, string? capNote = null)
+    private async Task<ConfirmResult> ConsentPendingAsync(ChatSession session, ActionPreview preview, ActionStep step, WalletSignOutcome.StepUp s, string origin, CancellationToken ct, string? capNote = null)
     {
         var expires = clock.GetUtcNow().AddSeconds(s.ExpiresInSeconds);
         step.Status = StepStatus.AwaitingConsent;
         db.ConsentRequests.Add(new ConsentRequest
         {
             Id = Guid.NewGuid(), StepId = step.Id, SubjectHash = step.SubjectHash, AuthReqId = s.AuthReqId,
-            BindingCode = s.BindingCode, ExpiresAt = expires, Status = Biatec.Chat.Core.Data.ConsentStatus.Pending,
+            BindingCode = s.BindingCode, ExpiresAt = expires, Status = Biatec.Chat.Core.Data.ConsentStatus.Pending, Origin = origin,
         });
         await db.SaveChangesAsync(ct);
         await RecordAsync(session, "consent_requested", new JsonObject
@@ -691,6 +697,28 @@ public sealed class ConfirmService(
                 break;
         }
         return o;
+    }
+
+    /// <summary>The tenant's backend origin (from its registered redirect URI): what is reported when no page origin is known.</summary>
+    public static string BackendOrigin(Tenant tenant) => new Uri(tenant.RedirectUri).GetLeftPart(UriPartial.Authority);
+
+    /// <summary>
+    /// The origin reported to Biatec OIDC: the page origin when it canonicalizes to one of the tenant's registered
+    /// origins (never free text from the page or the model), otherwise the tenant's backend origin.
+    /// </summary>
+    private static string ReportedOrigin(Tenant tenant, string? pageOrigin) =>
+        Security.OriginPolicy.AllowedOrigin(tenant, pageOrigin) ?? BackendOrigin(tenant);
+
+    /// <summary>
+    /// The origin stored on the step's consent request when consent was asked for, re-validated against the tenant's
+    /// registered origins. Rows written before the column existed have none: the backend origin is reported then.
+    /// </summary>
+    private async Task<string> ConsentOriginAsync(Tenant tenant, ActionStep step, CancellationToken ct)
+    {
+        var stored = await db.ConsentRequests.AsNoTracking()
+            .Where(c => c.StepId == step.Id && c.SubjectHash == step.SubjectHash)
+            .OrderByDescending(c => c.ExpiresAt).Select(c => c.Origin).FirstOrDefaultAsync(ct);
+        return ReportedOrigin(tenant, stored);
     }
 
     /// <summary>Hooks added by T-035; separate from <see cref="RecordAsync"/>, which writes the original confirm kinds.</summary>

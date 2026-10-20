@@ -260,7 +260,7 @@ public sealed class EvidenceRecordingTests : IAsyncLifetime
         };
         var confirm = new ConfirmService(db, previews, new ScopeGuard(_vault, _clock), _vault, new FakeOidc(_user), new FakeMcp(), new FakeConfirmer(),
             evidenceLog, _clock, NullLogger<ConfirmService>.Instance, recorder: recorder);
-        var result = await confirm.ConfirmAsync(_tenant, session, snap.Preview.Id, group.GroupHash, CancellationToken.None);
+        var result = await confirm.ConfirmAsync(_tenant, session, snap.Preview.Id, group.GroupHash, Biatec.Chat.Api.Chat.Confirm.ConfirmService.BackendOrigin(_tenant), CancellationToken.None);
         Assert.Equal(ConfirmOutcome.Landed, result.Outcome);
 
         // Every listed kind is there.
@@ -399,7 +399,7 @@ public sealed class EvidenceRecordingTests : IAsyncLifetime
         };
         var confirm = new ConfirmService(db, previews, new ScopeGuard(_vault, _clock), _vault, new ScriptedOidc(outcome), new FakeMcp(), new FakeConfirmer(),
             log, _clock, NullLogger<ConfirmService>.Instance, recorder: recorder);
-        await confirm.ConfirmAsync(_tenant, session, snap.Preview.Id, group.GroupHash, CancellationToken.None);
+        await confirm.ConfirmAsync(_tenant, session, snap.Preview.Id, group.GroupHash, Biatec.Chat.Api.Chat.Confirm.ConfirmService.BackendOrigin(_tenant), CancellationToken.None);
 
         var o = await EntryAsync(log, conversationId, EvidenceKinds.SigningOutcome);
         Assert.Equal(snap.Preview.Id.ToString(), o["previewId"]!.GetValue<string>());

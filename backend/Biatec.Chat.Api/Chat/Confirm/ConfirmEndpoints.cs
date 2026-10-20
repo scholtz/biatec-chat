@@ -55,7 +55,8 @@ public static class ConfirmEndpoints
 {
     /// <summary>
     /// POST /chat/previews/{previewId}/confirm. The global CSRF guard applies (custom header, registered Origin, client
-    /// key). Only an authenticated session of the preview's own conversation can confirm.
+    /// key). Only an authenticated session of the preview's own conversation can confirm. The validated page Origin is
+    /// reported to Biatec OIDC with the signing request.
     /// </summary>
     public static IEndpointRouteBuilder MapConfirm(this IEndpointRouteBuilder app)
     {
@@ -64,12 +65,16 @@ public static class ConfirmEndpoints
         {
             ctx.Response.Headers.CacheControl = "no-store";
             var tenant = ctx.GetTenant()!;
+            // The page origin reported to Biatec OIDC with the signing request: the canonical, registered Origin the CSRF
+            // guard already required, never the raw header. Checked again here so it can never be missing downstream.
+            var pageOrigin = Security.OriginPolicy.AllowedOrigin(tenant, ctx.Request);
+            if (pageOrigin is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
             var session = await AuthEndpoints.FindLiveAsync(db, tenant, SessionEndpoints.ReadCookie(ctx.Request), clock.GetUtcNow(), ctx.RequestAborted);
             if (session is null || session.Tier == SessionTier.Anonymous) return Results.Unauthorized();
             if (string.IsNullOrWhiteSpace(body?.GroupHash)) return Results.Problem("groupHash is required.", statusCode: StatusCodes.Status400BadRequest);
 
             ConfirmResult r;
-            try { r = await confirm.ConfirmAsync(tenant, session, previewId, body.GroupHash, ctx.RequestAborted); }
+            try { r = await confirm.ConfirmAsync(tenant, session, previewId, body.GroupHash, pageOrigin, ctx.RequestAborted); }
             catch (PreviewException ex)
             {
                 var status = ex.Error switch
