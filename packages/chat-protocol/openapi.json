@@ -144,6 +144,65 @@
         }
       }
     },
+    "/public/origin": {
+      "get": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "GetPublicOrigin",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/public/chat": {
+      "post": {
+        "tags": [
+          "PublicChatEndpoints"
+        ],
+        "operationId": "PostPublicChat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/session/adopt": {
+      "post": {
+        "tags": [
+          "PublicChatEndpoints"
+        ],
+        "operationId": "AdoptPublicConversation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdoptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/auth/popup": {
       "post": {
         "tags": [
@@ -324,6 +383,90 @@
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/chat/previews/{previewId}/consent": {
+      "post": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "PollConsent",
+        "parameters": [
+          {
+            "name": "previewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/chat/previews/{previewId}/consent/stream": {
+      "post": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "StreamConsent",
+        "parameters": [
+          {
+            "name": "previewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/chat/previews/{previewId}/consent/prediction": {
+      "get": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "ConsentPrediction",
+        "parameters": [
+          {
+            "name": "previewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "valueEur",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+              "type": [
+                "number",
+                "string"
+              ],
+              "format": "double"
             }
           }
         ],
@@ -600,6 +743,27 @@
           }
         }
       },
+      "AdoptRequest": {
+        "required": [
+          "conversationId",
+          "continuationToken"
+        ],
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "continuationToken": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "AgentModeValue": {
         "enum": [
           "analyze",
@@ -817,6 +981,9 @@
             "$ref": "#/components/schemas/ChatEventSignInCardEvent"
           },
           {
+            "$ref": "#/components/schemas/ChatEventSafeCardEvent"
+          },
+          {
             "$ref": "#/components/schemas/ChatEventErrorEvent"
           }
         ],
@@ -828,6 +995,7 @@
             "preview_card": "#/components/schemas/ChatEventPreviewCardEvent",
             "consent_status": "#/components/schemas/ChatEventConsentStatusEvent",
             "sign_in_card": "#/components/schemas/ChatEventSignInCardEvent",
+            "safe_card": "#/components/schemas/ChatEventSafeCardEvent",
             "error": "#/components/schemas/ChatEventErrorEvent"
           }
         }
@@ -888,6 +1056,23 @@
           },
           "preview": {
             "$ref": "#/components/schemas/ActionPreview"
+          }
+        }
+      },
+      "ChatEventSafeCardEvent": {
+        "required": [
+          "card",
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "safe_card"
+            ],
+            "type": "string"
+          },
+          "card": {
+            "$ref": "#/components/schemas/SafeCard"
           }
         }
       },
@@ -1139,6 +1324,265 @@
           }
         }
       },
+      "PublicChatRequest": {
+        "required": [
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "conversationId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "continuationToken": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "context": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HostContext"
+              }
+            ]
+          },
+          "widgetVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SafeCard": {
+        "required": [
+          "source",
+          "network",
+          "safes"
+        ],
+        "type": "object",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SafeCardSource"
+          },
+          "network": {
+            "type": "string"
+          },
+          "safes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SafeCardSafe"
+            }
+          },
+          "couldNotRead": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SafeCardCreationState": {
+        "enum": [
+          "SetupPending",
+          "NeedsFunding",
+          "Created",
+          null
+        ]
+      },
+      "SafeCardProposal": {
+        "required": [
+          "proposalId",
+          "groupId",
+          "kind",
+          "status",
+          "approvals",
+          "threshold",
+          "proposer",
+          "payloadVersion",
+          "expiryRound"
+        ],
+        "type": "object",
+        "properties": {
+          "proposalId": {
+            "type": "string"
+          },
+          "groupId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SafeCardProposalState"
+          },
+          "approvals": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "threshold": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "approvedByYou": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "proposer": {
+            "type": "string"
+          },
+          "payloadVersion": {
+            "type": "string"
+          },
+          "expiryRound": {
+            "type": "string"
+          }
+        }
+      },
+      "SafeCardProposalState": {
+        "enum": [
+          "AwaitingApprovals",
+          "ReadyToExecute"
+        ]
+      },
+      "SafeCardSafe": {
+        "required": [
+          "appId",
+          "address",
+          "name",
+          "network"
+        ],
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "network": {
+            "type": "string"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "yourAddresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "signerGroups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SafeCardSignerGroup"
+            }
+          },
+          "pendingProposals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SafeCardProposal"
+            }
+          },
+          "proposalsTruncated": {
+            "type": "boolean"
+          },
+          "proposalsCouldNotBeRead": {
+            "type": "boolean"
+          },
+          "creation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SafeCardCreationState"
+              }
+            ]
+          }
+        }
+      },
+      "SafeCardSignerGroup": {
+        "required": [
+          "name",
+          "threshold",
+          "memberCount"
+        ],
+        "type": "object",
+        "properties": {
+          "groupId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "threshold": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "memberCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "membershipEpoch": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "allowedActions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "isAdminGroup": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SafeCardSource": {
+        "enum": [
+          "List",
+          "Create"
+        ]
+      },
       "SessionState": {
         "required": [
           "sessionId",
@@ -1261,6 +1705,9 @@
   "tags": [
     {
       "name": "Biatec.Chat.Api"
+    },
+    {
+      "name": "PublicChatEndpoints"
     }
   ]
 }
