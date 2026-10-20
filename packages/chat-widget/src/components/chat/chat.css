@@ -1,0 +1,399 @@
+/* Conversation: empty state, messages, thinking indicator, tool lines, sign-in card, composer.
+   Every rule is scoped to the widget root; colours, radii and spacing come from the tokens. */
+.biatec-chat .bc-chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.biatec-chat .bc-messages {
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-5) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* Empty state */
+.biatec-chat .bc-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.biatec-chat .bc-empty-title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+}
+.biatec-chat .bc-empty-intro {
+  margin: 0;
+  max-width: 520px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+.biatec-chat .bc-suggestions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--color-border-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.biatec-chat .bc-suggestions li {
+  display: flex;
+}
+.biatec-chat .bc-suggest {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-height: 96px;
+  padding: 14px;
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-bg-secondary);
+}
+.biatec-chat .bc-suggest:hover:not(:disabled) {
+  background: var(--color-bg-elevated);
+}
+.biatec-chat .bc-suggest-icon {
+  color: var(--color-brand-text);
+}
+.biatec-chat .bc-suggest-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+.biatec-chat .bc-shield-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-default);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+/* Messages */
+.biatec-chat .bc-msg {
+  overflow-wrap: anywhere;
+}
+.biatec-chat .bc-msg-user {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-default);
+  box-shadow: var(--shadow-sm);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.biatec-chat .bc-msg-user p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.biatec-chat .bc-msg-assistant {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: var(--space-3);
+}
+.biatec-chat .bc-avatar {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+}
+.biatec-chat .bc-msg-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.biatec-chat .bc-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.biatec-chat .bc-para {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.biatec-chat .bc-bullets {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.biatec-chat .bc-bullets li {
+  position: relative;
+  padding-left: var(--space-4);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.biatec-chat .bc-bullets li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 6px;
+  height: 6px;
+  background: var(--color-brand-primary);
+}
+
+/* Tool progress: compact secondary rows */
+.biatec-chat .bc-tools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.biatec-chat .bc-tool {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.biatec-chat .bc-tool[data-state="Failed"] {
+  color: var(--color-status-danger);
+}
+.biatec-chat .bc-tool[data-state="Started"] .bc-tool-icon {
+  animation: bc-spin var(--motion-slow) linear infinite;
+}
+
+/* Thinking indicator */
+.biatec-chat .bc-thinking {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  min-height: 28px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.biatec-chat .bc-pulse {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+.biatec-chat .bc-pulse i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  background: var(--color-brand-primary);
+  animation: bc-pulse 1.1s var(--ease) infinite;
+}
+.biatec-chat .bc-pulse i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.biatec-chat .bc-pulse i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes bc-pulse {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: none;
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .biatec-chat .bc-pulse i {
+    animation: none;
+    opacity: 0.6;
+  }
+  .biatec-chat .bc-tool[data-state="Started"] .bc-tool-icon {
+    animation: none;
+  }
+}
+
+/* Follow-ups, actions, shared chip/focus */
+.biatec-chat .bc-followups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.biatec-chat .bc-chip {
+  font: inherit;
+  cursor: pointer;
+  color: inherit;
+  border: 1px solid var(--color-border-default);
+  background: var(--color-bg-secondary);
+}
+.biatec-chat .bc-followup {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+}
+.biatec-chat .bc-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+.biatec-chat .bc-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+}
+.biatec-chat .bc-action:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  background: var(--color-bg-interactive);
+}
+.biatec-chat .bc-chat button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.biatec-chat .bc-chip:focus-visible,
+.biatec-chat .bc-action:focus-visible,
+.biatec-chat .bc-context:focus-visible,
+.biatec-chat .bc-send:focus-visible,
+.biatec-chat .bc-signin-link:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+/* Sign-in card and status */
+.biatec-chat .bc-signin-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+}
+.biatec-chat .bc-signin-card p {
+  margin: 0;
+}
+.biatec-chat .bc-signin-note {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.biatec-chat .bc-signin-link {
+  text-decoration: none;
+}
+.biatec-chat .bc-signin-status {
+  margin: 0;
+  padding: 6px var(--space-4);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.biatec-chat .bc-signin-status.bc-bad,
+.biatec-chat .bc-error {
+  color: var(--color-status-danger);
+}
+.biatec-chat .bc-error {
+  margin: 0;
+}
+
+/* Composer */
+.biatec-chat .bc-composer {
+  padding: 10px var(--space-3) var(--space-2);
+  border-top: 1px solid var(--color-border-default);
+}
+.biatec-chat .bc-composer-box {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+}
+.biatec-chat .bc-composer-box:focus-within {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: -1px;
+}
+.biatec-chat .bc-composer textarea {
+  resize: none;
+  min-height: 52px;
+  max-height: 140px;
+  padding: 10px var(--space-3) 0;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.45;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  outline: 0;
+}
+.biatec-chat .bc-composer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: 6px;
+}
+.biatec-chat .bc-context {
+  margin-right: auto;
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+}
+.biatec-chat .bc-context[aria-pressed="true"] {
+  color: var(--color-brand-text);
+  background: var(--color-brand-subtle);
+  border-color: var(--color-brand-primary);
+}
+.biatec-chat .bc-context[aria-pressed="false"] {
+  text-decoration: line-through;
+}
+.biatec-chat .bc-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  cursor: pointer;
+  color: var(--color-brand-on);
+  background: var(--color-brand-primary);
+  border: 0;
+  border-radius: var(--radius-md);
+}
+.biatec-chat .bc-send:hover:not(:disabled) {
+  background: var(--color-brand-hover);
+}
+.biatec-chat .bc-composer-footer {
+  margin: var(--space-2) 0 0;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}

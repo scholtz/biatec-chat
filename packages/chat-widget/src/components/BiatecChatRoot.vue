@@ -9,7 +9,7 @@ import PermissionsDialog from "./agent/PermissionsDialog.vue";
 import AgentNotices from "./agent/AgentNotices.vue";
 import ActivityTimeline from "./activity/ActivityTimeline.vue";
 import { agentModeOf, AGENT_MODE_LABEL } from "./shell/agentMode";
-import { createCore, type WidgetCore, type WidgetServices } from "../api/core";
+import { createCore, pageContext, type WidgetCore, type WidgetServices } from "../api/core";
 import { hostSettings } from "../api/controller";
 import { resolveTheme, watchTheme, type ResolvedTheme } from "../theme";
 import { setLocale, t } from "../i18n";
@@ -250,7 +250,9 @@ onBeforeUnmount(() => {
         :busy="chat.busy.value"
         :phase="chat.phase.value"
         :announcement="chat.announcement.value"
-        @send="chat.send($event)"
+        :agent-mode="agentMode"
+        :context-label="pageContext(options)?.product ?? null"
+        @send="(text, opts) => chat.send(text, opts)"
         @sign-in="chat.signIn({ scope: $event })"
       />
       <template #banner>
