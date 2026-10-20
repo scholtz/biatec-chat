@@ -221,13 +221,15 @@ chat.unmount()
 
 | Export | Does |
 | --- | --- |
-| `mountBiatecChat(options)` / `mountBiatecChat(container, options)` | Mounts the floating widget and returns a `BiatecChatHandle`: the host API of `useBiatecChat()` plus `host` (the `<div data-biatec-chat-host>`) and `unmount()`. A second call while mounted returns the same widget. Throws on a missing `backendUrl` or `clientKey` or an unknown container selector. Without a DOM (server rendering) it does nothing and returns a handle with `host: null` |
+| `mountBiatecChat(options)` / `mountBiatecChat(container, options)` | Mounts the floating widget and returns a `BiatecChatHandle`: the host API of `useBiatecChat()` plus `host` (the `<div data-biatec-chat-host>`) and `unmount()`. One widget per page: a second call while a widget is mounted (by this build, the script tag or the Vue plugin) returns that widget, and different options or a different container are ignored with a console warning (`unmount()` first to change them). Throws on a missing `backendUrl` or `clientKey`, an unknown container selector, or a stray `[data-biatec-chat-host]` element no copy of the package mounted. Without a DOM (server rendering) it does nothing and returns a handle with `host: null` |
 | `unmount()` | Removes the widget; a later `mountBiatecChat` mounts a fresh one |
 | `useBiatecChat()` | The same host API object as the Vue entry |
 | `autoMount(script)` | What the IIFE runs on its own tag; exported for tests and custom loaders |
 
-Defaults differ from the plugin for non-Vue sites: `theme: 'host'` with `hostDarkAttribute: 'data-theme=dark'` (unless
-`hostDarkClass` or `hostDarkAttribute` is given), and `locale` from `<html lang>`. Importing the module has no side
+Defaults differ from the plugin for non-Vue sites: `theme: 'host'` when `<html>` has a `data-theme` attribute
+(Docusaurus), otherwise `auto` (prefers-color-scheme); a `host` theme without `hostDarkClass` or `hostDarkAttribute`
+watches `data-theme=dark`; and `locale` comes from `<html lang>`. The widget is shared through a global symbol, so the
+Vue plugin, the standalone module and a second copy of the script tag never mount two widgets. Importing the module has no side
 effect without a DOM, so it is SSR-safe; still load it with a dynamic `import()` in the browser so the server bundle
 does not carry it (see the Docusaurus client module in [integration-biatec-clamm.md](integration-biatec-clamm.md)).
 `mode: 'inline'` has no use here (there is no `BiatecChatInline` outside Vue).
@@ -306,7 +308,7 @@ Integrators do not need to implement these, but should know them:
 ## Publishing to npm
 
 `.github/workflows/publish-widget.yml` publishes the package on a `chat-widget-v<version>` tag or a manual run with
-`dry_run` unticked, and dry-runs it on pull requests. It uses npm trusted publishing (GitHub OIDC, no secret); the
+`dry_run` unticked, only for a commit on `main` (other refs fail), and dry-runs it on pull requests. It uses npm trusted publishing (GitHub OIDC, no secret); the
 GitHub secret **`NPM_TOKEN`**, an environment secret of the **`npm`** environment of scholtz/biatec-chat, is only a
 fallback until the trusted publisher is configured. The secret, who adds it, how to create the token, the one-time
 setup (npm org `biatec`, first manual publish, trusted publisher) and how to cut a release are in

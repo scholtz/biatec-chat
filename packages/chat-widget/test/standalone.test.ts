@@ -9,6 +9,11 @@ import { createRequire } from "node:module";
 import { autoMount, mountBiatecChat, unmount, useBiatecChat } from "../src/standalone";
 import { resolveTheme, watchTheme } from "../src/theme";
 import { resetHostApi } from "../src/api";
+import { BiatecChat } from "../src/index";
+import { createApp } from "vue";
+import { currentWidget } from "../src/standalone/mount";
+// @ts-expect-error plain .mjs build script without declarations
+import { foreignSpecifiers } from "../scripts/check-dts.mjs";
 
 // jsdom ships no types and @types/jsdom is not a dependency: a fresh page is all this file needs from it.
 const { JSDOM } = createRequire(import.meta.url)("jsdom") as {
@@ -163,11 +168,11 @@ describe("mountBiatecChat", () => {
     expect(document.querySelectorAll("[data-biatec-chat-host]")).toHaveLength(1);
     await tick();
     for (const k of ["open", "close", "ask", "setPageContext", "setTheme", "setLocale"] as const) expect(a[k]).toBe(useBiatecChat()[k]);
-    // Without data-theme on <html> the standalone default (theme 'host', data-theme=dark) is light.
-    expect(a.host!.getAttribute("data-theme")).toBe("light");
-    a.setTheme("dark");
-    await tick();
+    // Without data-theme on <html> the standalone default is `auto` (no matchMedia in jsdom: dark).
     expect(a.host!.getAttribute("data-theme")).toBe("dark");
+    a.setTheme("light");
+    await tick();
+    expect(a.host!.getAttribute("data-theme")).toBe("light");
     a.unmount();
     expect(document.querySelector("[data-biatec-chat-host]")).toBeNull();
     const c = mountBiatecChat({ backendUrl: BACKEND, clientKey: "k", theme: "dark" });
@@ -178,6 +183,119 @@ describe("mountBiatecChat", () => {
   it("throws like the plugin on missing options and on an unknown container", () => {
     expect(() => mountBiatecChat({ backendUrl: "", clientKey: "k" })).toThrow(/backendUrl/);
     expect(() => mountBiatecChat("#nope", { backendUrl: BACKEND, clientKey: "k" })).toThrow(/container/);
+  });
+});
+
+describe("one widget per page", () => {
+  const base = { backendUrl: BACKEND, clientKey: "k" };
+
+  it("unmounts a widget whose host element was removed without unmount() before mounting a new one", () => {
+    mountBiatecChat(base);
+    const old = currentWidget()!;
+    const spy = vi.spyOn(old.app, "unmount");
+    old.host.remove(); // a host page wiping <body> (or a SPA re-render) without calling unmount()
+    const h = mountBiatecChat(base);
+    expect(spy).toHaveBeenCalledOnce();
+    expect(h.host).not.toBe(old.host);
+    expect(document.querySelectorAll("[data-biatec-chat-host]")).toHaveLength(1);
+  });
+
+  it("refuses a [data-biatec-chat-host] element no copy registered, instead of returning a dead handle", () => {
+    const stray = document.createElement("div");
+    stray.setAttribute("data-biatec-chat-host", "");
+    document.body.appendChild(stray);
+    expect(() => mountBiatecChat(base)).toThrow(/already in the page/);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    createApp({ render: () => null }).use(BiatecChat, base);
+    expect(err).toHaveBeenCalledWith(expect.stringContaining("already in the page"));
+    expect(document.querySelectorAll("[data-biatec-chat-host]")).toHaveLength(1);
+  });
+
+  it("reuses the Vue plugin's widget: the handle talks to it (ask is not 'unavailable')", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 503 })));
+    createApp({ render: () => null }).use(BiatecChat, base);
+    const pluginHost = document.querySelector("[data-biatec-chat-host]");
+    const h = mountBiatecChat(base);
+    expect(h.host).toBe(pluginHost);
+    expect(await h.ask("hello")).toBe("sent");
+  });
+
+  it("answers through the API of the copy that mounted the widget (plugin + standalone bundles, script twice)", async () => {
+    mountBiatecChat(base);
+    const w = currentWidget()!;
+    const otherCopy = { ...w.api, ask: vi.fn(async () => "sent" as const) };
+    w.api = otherCopy; // what a second bundle's registry entry looks like from this copy
+    const h = mountBiatecChat(base);
+    await h.ask("hi");
+    expect(otherCopy.ask).toHaveBeenCalledWith("hi");
+  });
+
+  it("warns when a second call brings different options or a container, and keeps the mounted widget", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const a = mountBiatecChat(base);
+    mountBiatecChat(base);
+    expect(warn).not.toHaveBeenCalled();
+    const b = mountBiatecChat({ ...base, locale: "sk" });
+    expect(b.host).toBe(a.host);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("ignored"));
+    warn.mockClear();
+    const slot = document.createElement("section");
+    document.body.appendChild(slot);
+    mountBiatecChat(slot, base);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(a.host!.parentElement).toBe(document.body);
+  });
+});
+
+describe("standalone theme default", () => {
+  const base = { backendUrl: BACKEND, clientKey: "k" };
+  const stubScheme = (light: boolean) =>
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("light") ? light : false, media: q, addEventListener() {}, removeEventListener() {} }));
+
+  it("a page without <html data-theme> follows prefers-color-scheme", async () => {
+    stubScheme(true);
+    const h = mountBiatecChat(base);
+    await tick();
+    expect(h.host!.getAttribute("data-theme")).toBe("light");
+    h.unmount();
+    stubScheme(false);
+    const d = mountBiatecChat(base);
+    await tick();
+    expect(d.host!.getAttribute("data-theme")).toBe("dark");
+  });
+
+  it("a page with <html data-theme> follows the attribute, not the OS", async () => {
+    stubScheme(true);
+    document.documentElement.setAttribute("data-theme", "dark");
+    const h = mountBiatecChat(base);
+    await tick();
+    expect(h.host!.getAttribute("data-theme")).toBe("dark");
+  });
+
+  it("explicit theme 'host' without a class or attribute watches data-theme=dark", async () => {
+    stubScheme(false);
+    const h = mountBiatecChat({ ...base, theme: "host" });
+    await tick();
+    expect(h.host!.getAttribute("data-theme")).toBe("light");
+    document.documentElement.setAttribute("data-theme", "dark");
+    await tick();
+    expect(h.host!.getAttribute("data-theme")).toBe("dark");
+  });
+});
+
+describe("self-contained declaration check (scripts/check-dts.mjs)", () => {
+  it("catches every form of reference to a package other than vue", () => {
+    const text = [
+      'import type { A } from "@biatec/chat-protocol";',
+      'export * from "lodash";',
+      'type B = import("zod").Z;',
+      'import "side-effect-pkg";',
+      '/// <reference types="node" />',
+      'import type { Ref } from "vue";',
+      'export type { X } from "./options";',
+      '/// <reference path="./local.d.ts" />',
+    ].join("\n");
+    expect(foreignSpecifiers(text)).toEqual(["@biatec/chat-protocol", "lodash", "zod", "side-effect-pkg", "node"]);
   });
 });
 
@@ -234,6 +352,13 @@ describe.skipIf(!existsSync(IIFE))("built standalone bundle (dist)", () => {
 });
 
 describe.skipIf(!existsSync(resolve(__dirname, "../dist/index.d.ts")))("published types", () => {
+  it("dist/standalone/index.d.ts matches the source entry (tsc -p test-types)", async () => {
+    const { execFileSync } = await import("node:child_process");
+    const vueTsc = createRequire(import.meta.url).resolve("vue-tsc/bin/vue-tsc.js");
+    // Throws with the compiler output when an export's name or type differs.
+    execFileSync(process.execPath, [vueTsc, "--noEmit", "-p", resolve(__dirname, "../test-types")], { encoding: "utf8" });
+  }, 120_000);
+
   it("never reference @biatec/chat-protocol", () => {
     for (const f of ["index.d.ts", "options.d.ts", "api/types.d.ts", "standalone/index.d.ts", "standalone/types.d.ts"]) {
       expect(readFileSync(resolve(__dirname, "../dist", f), "utf8")).not.toContain("@biatec/");

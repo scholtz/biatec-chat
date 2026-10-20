@@ -20,7 +20,9 @@ export const BiatecChat: Plugin<[BiatecChatOptions]> = {
     const resolved = resolveOptions(options);
     app.provide("biatec-chat-options", resolved);
     if (!resolved.autoMount) return;
-    // Separate Vue app in its own shadow root; a second install (HMR, two apps) reuses the existing widget.
-    mountWidget(resolved);
+    // Separate Vue app in its own shadow root; a second install (HMR, two apps, the standalone build too) reuses the
+    // existing widget.
+    if (mountWidget(resolved).status === "foreign")
+      console.error("[biatec-chat] a [data-biatec-chat-host] element is already in the page but no widget is registered on it; not mounting.");
   },
 };

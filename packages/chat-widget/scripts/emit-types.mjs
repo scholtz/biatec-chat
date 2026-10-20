@@ -2,10 +2,10 @@
 // source via tsc, so the public types cannot drift. index.d.ts and standalone/index.d.ts only re-export them and
 // declare the plugin, components and functions. The published types must be self-contained: nothing may import
 // @biatec/chat-protocol (or any other workspace package), which is not published; the check at the end enforces it.
-import { writeFileSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { writeFileSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
+import { foreignImports } from "./check-dts.mjs";
 
 const tsc = createRequire(import.meta.url).resolve("typescript/bin/tsc");
 mkdirSync("dist/standalone", { recursive: true });
@@ -64,7 +64,9 @@ export type { BiatecChatHandle, MountBiatecChatOptions } from "./types";
 export declare const DEFAULT_HOST_DARK_ATTRIBUTE = "data-theme=dark";
 /**
  * Mounts the floating widget and returns the host API plus \`unmount()\`. Browser only; without a DOM it does nothing.
- * Defaults differ from the plugin: \`theme: 'host'\` following \`<html data-theme="dark">\`, and \`locale\` from \`<html lang>\`.
+ * Defaults differ from the plugin: \`theme: 'host'\` following \`<html data-theme="dark">\` when \`<html>\` has a
+ * \`data-theme\` attribute (else \`auto\`), and \`locale\` from \`<html lang>\`. A second call returns the mounted
+ * widget and warns when its options differ.
  */
 export declare function mountBiatecChat(options: MountBiatecChatOptions): BiatecChatHandle;
 export declare function mountBiatecChat(container: Element | string, options: MountBiatecChatOptions): BiatecChatHandle;
@@ -78,20 +80,7 @@ export declare function useBiatecChat(): BiatecChatApi;
 );
 
 // Self-contained check: every import in the published declarations is relative or "vue".
-const bad = [];
-const walk = (dir) => {
-  for (const e of readdirSync(dir, { withFileTypes: true })) {
-    const p = join(dir, e.name);
-    if (e.isDirectory()) walk(p);
-    else if (p.endsWith(".d.ts")) {
-      for (const m of readFileSync(p, "utf8").matchAll(/from\s+["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)/g)) {
-        const spec = m[1] ?? m[2];
-        if (!spec.startsWith(".") && spec !== "vue") bad.push(`${p}: ${spec}`);
-      }
-    }
-  }
-};
-walk("dist");
+const bad = foreignImports("dist");
 if (bad.length) {
   console.error("emit-types: published declarations import packages that are not dependencies:\n  " + bad.join("\n  "));
   process.exit(1);

@@ -2,7 +2,7 @@
 // bundled into this build. It renders the same root as the Vue plugin (mountWidget), and the host API is the same
 // object `useBiatecChat()` returns. Importing it has no side effect without a DOM, so it is SSR-safe; in the IIFE
 // build a `<script data-backend-url data-client-key>` tag mounts the widget by itself.
-import { resolveOptions, type BiatecChatOptions } from "../options";
+import { resolveOptions, type BiatecChatOptions, type ResolvedOptions } from "../options";
 import { useBiatecChat } from "../api";
 import { mountWidget, unmountWidget } from "./mount";
 import type { BiatecChatHandle, MountBiatecChatOptions } from "./types";
@@ -17,16 +17,27 @@ export const DEFAULT_HOST_DARK_ATTRIBUTE = "data-theme=dark";
 
 function standaloneDefaults(o: MountBiatecChatOptions): BiatecChatOptions {
   const { container: _container, ...rest } = o;
-  const htmlLang = typeof document !== "undefined" ? document.documentElement.lang : "";
+  const html = typeof document !== "undefined" ? document.documentElement : null;
+  // Non-Vue hosts have no PrimeVue `.p-dark` class. A page that marks its theme with `<html data-theme>` (Docusaurus)
+  // is followed; any other page follows prefers-color-scheme, unless the options say otherwise.
+  const theme = rest.theme ?? (html?.hasAttribute("data-theme") ? "host" : "auto");
   return {
     ...rest,
-    // Non-Vue hosts have no PrimeVue `.p-dark` class: follow `<html data-theme>` unless told otherwise.
-    theme: rest.theme ?? "host",
-    hostDarkAttribute: rest.hostDarkAttribute ?? (rest.hostDarkClass ? undefined : DEFAULT_HOST_DARK_ATTRIBUTE),
-    locale: rest.locale ?? (htmlLang || undefined),
+    theme,
+    hostDarkAttribute:
+      rest.hostDarkAttribute ?? (theme === "host" && !rest.hostDarkClass ? DEFAULT_HOST_DARK_ATTRIBUTE : undefined),
+    locale: rest.locale ?? (html?.lang || undefined),
     autoMount: true,
   };
 }
+
+const COMPARED = ["backendUrl", "clientKey", "locale", "theme", "hostDarkClass", "hostDarkAttribute", "suggestions", "mode", "pageContext"] as const;
+
+function sameOptions(a: ResolvedOptions, b: ResolvedOptions): boolean {
+  return COMPARED.every((k) => JSON.stringify(a[k]) === JSON.stringify(b[k]));
+}
+
+const noDomHandle = (): BiatecChatHandle => ({ ...useBiatecChat(), host: null, unmount });
 
 function resolveContainer(c: Element | string | undefined): Element | undefined {
   if (c === undefined) return undefined;
@@ -39,8 +50,12 @@ function resolveContainer(c: Element | string | undefined): Element | undefined 
 /**
  * Mounts the floating widget into the page and returns the host API. Call it in the browser only (in Docusaurus from
  * a client module or behind `ExecutionEnvironment.canUseDOM`); without a DOM it does nothing and returns a handle
- * whose calls are safe no-ops. Calling it again while a widget is mounted returns the same widget.
- * Throws when `backendUrl` or `clientKey` is missing, like the plugin.
+ * whose calls are safe no-ops.
+ * Calling it again while a widget is mounted (by this call, the script tag, the Vue plugin or another copy of the
+ * package) returns that widget; when the new options or container differ, they are ignored with a console warning:
+ * call `unmount()` first to change them.
+ * Throws when `backendUrl` or `clientKey` is missing, like the plugin, and when a `[data-biatec-chat-host]` element
+ * that no copy of the package registered is already in the page.
  *
  *     mountBiatecChat({ backendUrl: 'https://chat.biatec.io', clientKey: 'biatec-clamm-docs' })
  *     mountBiatecChat('#chat-slot', { backendUrl, clientKey })
@@ -50,13 +65,17 @@ export function mountBiatecChat(container: Element | string, options: MountBiate
 export function mountBiatecChat(a: Element | string | MountBiatecChatOptions, b?: MountBiatecChatOptions): BiatecChatHandle {
   const o: MountBiatecChatOptions = typeof a === "string" || isElement(a) ? { ...(b as MountBiatecChatOptions), container: a } : a;
   const resolved = resolveOptions(standaloneDefaults(o));
-  const mounted = typeof document === "undefined" ? null : mountWidget(resolved, resolveContainer(o.container));
-  const api = useBiatecChat();
-  return {
-    ...api,
-    host: mounted?.host ?? null,
-    unmount,
-  };
+  if (typeof document === "undefined") return noDomHandle();
+  const container = resolveContainer(o.container);
+  const r = mountWidget(resolved, container);
+  if (r.status === "no-dom") return noDomHandle();
+  if (r.status === "foreign")
+    throw new Error("BiatecChat: a [data-biatec-chat-host] element is already in the page but no widget is registered on it");
+  const w = r.widget;
+  if (r.status === "existing" && (!sameOptions(w.options, resolved) || (container && container !== w.container)))
+    console.warn("[biatec-chat] mountBiatecChat: a widget is already mounted; the new options and container were ignored. Call unmount() first to change them.");
+  // The API of the copy that mounted the widget: a plugin or second script's widget answers this handle too.
+  return { ...w.api, host: w.host, unmount };
 }
 
 function isElement(v: unknown): v is Element {

@@ -74,7 +74,8 @@ import siteConfig from '@generated/docusaurus.config';
 
 let chat = null;
 
-function widget() {
+/** The mounted widget's handle, as a promise: mounts on first use. Also used by AskBiatecAi (step 5). */
+export function widget() {
   if (!chat) {
     const { backendUrl, clientKey } = siteConfig.customFields.biatecChat;
     chat = import('@biatec/chat-widget/standalone').then(({ mountBiatecChat }) =>
@@ -121,19 +122,22 @@ it.
 
 ### 5. Optional "Ask Biatec AI" links in docs pages
 
-MDX can call the same host API, for example under the liquidity docs. The component loads the standalone entry
-lazily too; webpack gives it the same module instance as the client module, so `useBiatecChat()` talks to the mounted
-widget (the scratch site builds this component into a docs page):
+MDX can call the same host API, for example under the liquidity docs. The component waits for the same mount promise
+as the client module (`widget()` from step 3), so a click that comes before the lazy chunk has loaded still reaches a
+mounted widget instead of getting `'unavailable'` (the scratch site builds this component into a docs page):
 
 ```jsx
 // docusaurus/src/components/AskBiatecAi.js
 import React from 'react';
 import ExecutionEnvironment from '@docusaurus/ExecutionEnvironment';
+import { widget } from '@site/src/clientModules/biatecChat';
 
 export default function AskBiatecAi({ prompt, children }) {
   const ask = () => {
     if (!ExecutionEnvironment.canUseDOM) return;
-    import('@biatec/chat-widget/standalone').then(({ useBiatecChat }) => useBiatecChat().ask(prompt));
+    widget()
+      .then((chat) => chat.ask(prompt))
+      .catch((e) => console.error('[biatec-chat]', e));
   };
   return <button type="button" className="button button--secondary button--sm" onClick={ask}>{children}</button>;
 }

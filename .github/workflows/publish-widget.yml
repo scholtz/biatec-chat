@@ -1,7 +1,8 @@
 # Publishes @biatec/chat-widget to npm. Publishing happens only on a `chat-widget-v<version>` tag push (the tag must
 # equal the version in packages/chat-widget/package.json) or a manual run (Actions → publish-widget → Run workflow)
-# with dry_run unticked; pull requests that touch the package get a dry run (pack, list the files, `npm publish
-# --dry-run`).
+# with dry_run unticked, and in both cases only for a commit on main (a manual run must be started on main, a tag must
+# point at a commit main contains; otherwise the publish job fails). Pull requests that touch the package, and dry
+# runs on any branch, only pack, list the files and run `npm publish --dry-run`.
 # Authentication: npm trusted publishing (GitHub OIDC, `id-token: write`, no secret) is the primary path. Fallback
 # only, while no trusted publisher is configured on npmjs.com: the environment secret `NPM_TOKEN` of the GitHub
 # environment `npm` (repo scholtz/biatec-chat → Settings → Environments → npm; added by a repo admin), an npmjs.com
@@ -95,6 +96,27 @@ jobs:
       contents: read
       id-token: write # npm trusted publishing and provenance
     steps:
+      # Only code that is on main is ever published: a manual run must be started on main, and a tag must point at a
+      # commit main contains. A tag or run on any other branch fails here (dry runs in the pack job stay allowed).
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require a commit on main
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::Publishing by hand runs only on main (this run is on $REF). Start it from main, or leave dry_run ticked."
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "::error::Commit $SHA ($REF) is not on main; only commits merged into main are published."
+            exit 1
+          fi
       - uses: actions/setup-node@v4
         with:
           # npm >= 11.5.1 is needed for trusted publishing; Node 24 ships it.

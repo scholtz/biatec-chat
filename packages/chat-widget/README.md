@@ -68,15 +68,18 @@ chat.unmount()
 ```
 
 `mountBiatecChat(options)` or `mountBiatecChat(container, options)` returns the same host API as `useBiatecChat()`
-plus `host` and `unmount()`. A second call while the widget is mounted returns the same widget. Without a DOM
+plus `host` and `unmount()`. One widget per page: a second call while a widget is mounted (by this build, the
+script tag or the Vue plugin) returns that widget, and if its options or container differ they are ignored with a
+console warning (call `unmount()` first to change them). A stray `[data-biatec-chat-host]` element that no copy of
+the package mounted makes it throw. Without a DOM
 (server rendering) importing the module has no side effect and `mountBiatecChat` does nothing.
 
-Standalone defaults differ from the plugin in two ways, to fit non-Vue sites:
+Standalone defaults differ from the plugin, to fit non-Vue sites:
 
 | Option | Plugin default | Standalone default |
 | --- | --- | --- |
-| `theme` | `auto` | `host` |
-| `hostDarkAttribute` | none (`hostDarkClass: 'p-dark'`) | `data-theme=dark` (Docusaurus, many static sites) |
+| `theme` | `auto` | `host` when `<html>` has a `data-theme` attribute (Docusaurus, many static sites), else `auto` (prefers-color-scheme) |
+| `hostDarkAttribute` | none (`hostDarkClass: 'p-dark'`) | `data-theme=dark` whenever the theme is `host` and neither `hostDarkClass` nor `hostDarkAttribute` is given |
 | `locale` | `en` | `<html lang>`, else `en` |
 
 Size: the IIFE is about 300 kB minified, under **110 kB gzip** (budget enforced by `test/standalone.test.ts`), with
@@ -159,8 +162,10 @@ publish waits for approval.
    git push origin chat-widget-v0.1.0
    ```
 
-   The workflow fails if the tag and `package.json` differ. Or run it by hand: Actions → **publish-widget** → Run
-   workflow on `main`, untick **dry_run** (ticked by default, so an accidental run only packs).
+   The workflow fails if the tag and `package.json` differ, or if the tagged commit is not on `main`. Or run it by
+   hand: Actions → **publish-widget** → Run workflow on `main`, untick **dry_run** (ticked by default, so an
+   accidental run only packs). A non-dry manual run on any other branch fails; only code merged into `main` is
+   ever published.
 3. npm never accepts the same version twice: once a version is published, a fix needs a new version and tag. A run that failed before publishing can simply be re-run.
 
 ## Licence
