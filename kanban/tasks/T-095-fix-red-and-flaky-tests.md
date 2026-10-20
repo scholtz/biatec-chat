@@ -6,8 +6,8 @@ priority: P1
 epic: "Deploy & docs"
 blocked_by: []
 area: ["packages/chat-widget/src/components/chat/ChatView.vue", "packages/chat-widget/test/chat-conversation.test.ts", "packages/chat-widget/test/dex-integration.test.ts", "backend/Biatec.Chat.Tests/Sessions/SessionProfileTests.cs"]
-parallel: yes
-conflicts_with: []
+parallel: no
+conflicts_with: [T-092, T-094]
 issue: "#190"
 branch: ""
 owner: ""
@@ -34,8 +34,7 @@ The widget and backend test suites are green on a fresh checkout, without timing
 
 ## Parallel work
 
-Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same
-files.
+Parallel work possible: **no**. Don't run it at the same time as T-092, T-094: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
@@ -54,3 +53,4 @@ Fresh worktree: `pnpm install && pnpm -C packages/chat-widget test`; `dotnet tes
 ## Activity log
 
 - 2026-10-20 05:31 · coordinator · (new) → backlog · proposed by a worker / found during verification
+- 2026-10-20 05:31 · coordinator · backlog · conflicts_with + T-092, T-094 (blockers scan: shared files)

@@ -31,12 +31,12 @@ Sorted by priority, then ID. The first row is what `/kanban-next` picks.
 
 | ID | Title | Priority | Epic | Parallel | Taken by |
 |---|---|---|---|---|---|
-| T-095 | Fix the red widget i18n test and the flaky session-profile test on main | P1 | Deploy & docs | yes | free |
+| T-095 | Fix the red widget i18n test and the flaky session-profile test on main | P1 | Deploy & docs | no (T-092, T-094) | free |
 | T-085 | Bug: apply the tenant's defaultModel and suggestions | P3 | Orchestrator | no (T-076) | free |
-| T-092 | Session endpoint: return the session's OIDC scope names | P3 | Sessions & auth | yes | free |
+| T-092 | Session endpoint: return the session's OIDC scope names | P3 | Sessions & auth | no (T-095) | free |
 | T-093 | Safe proposal card: use the shared algod asset reader | P3 | Safe | yes | free |
-| T-096 | Admin: knowledge-base reload and upload | P3 | Orchestrator | yes | free |
-| T-097 | Admin: per-operator identity and evidence for admin changes | P3 | Sessions & auth | yes | free |
+| T-096 | Admin: knowledge-base reload and upload | P3 | Orchestrator | no (T-097) | free |
+| T-097 | Admin: per-operator identity and evidence for admin changes | P3 | Sessions & auth | no (T-096) | free |
 
 ## Done
 

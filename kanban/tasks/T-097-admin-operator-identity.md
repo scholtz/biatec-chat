@@ -6,8 +6,8 @@ priority: P3
 epic: "Sessions & auth"
 blocked_by: [T-086]
 area: ["backend/Biatec.Chat.Api/Admin/**", "backend/Biatec.Chat.Api/Onboarding/OperatorAuth.cs", "docs/required-changes-biatec-oidc.md"]
-parallel: yes
-conflicts_with: []
+parallel: no
+conflicts_with: [T-096]
 issue: "#192"
 branch: ""
 owner: ""
@@ -34,8 +34,7 @@ Each admin change is attributable to a named operator and recorded verifiably.
 
 ## Parallel work
 
-Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same
-files.
+Parallel work possible: **no**. Don't run it at the same time as T-096: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
@@ -53,3 +52,4 @@ files.
 ## Activity log
 
 - 2026-10-20 05:31 · coordinator · (new) → backlog · proposed by a worker / found during verification
+- 2026-10-20 05:31 · coordinator · backlog · conflicts_with + T-096 (blockers scan: shared files)

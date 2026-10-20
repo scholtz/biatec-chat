@@ -6,8 +6,8 @@ priority: P3
 epic: "Orchestrator"
 blocked_by: [T-086]
 area: ["backend/Biatec.Chat.Tools/Kb/**", "backend/Biatec.Chat.Api/Chat/SignIn/**", "backend/Biatec.Chat.Api/Admin/**", "backend/Biatec.Chat.Tests/Kb/**"]
-parallel: yes
-conflicts_with: []
+parallel: no
+conflicts_with: [T-097]
 issue: "#191"
 branch: ""
 owner: ""
@@ -34,8 +34,7 @@ Operators can reload and upload knowledge-base pages, and every replica serves t
 
 ## Parallel work
 
-Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same
-files.
+Parallel work possible: **no**. Don't run it at the same time as T-097: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
@@ -53,3 +52,4 @@ files.
 ## Activity log
 
 - 2026-10-20 05:31 · coordinator · (new) → backlog · proposed by a worker / found during verification
+- 2026-10-20 05:31 · coordinator · backlog · conflicts_with + T-097 (blockers scan: shared files)
