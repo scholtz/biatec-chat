@@ -11,8 +11,8 @@ the BiatecDEX repository by its maintainers, against the widget API this repo pr
 **Status:** the host API used below is built: `theme: 'host'`, `mode`, `useBiatecChat()` and `BiatecChatInline`
 (T-062, T-063), Shadow DOM isolation and the Biatec AI tokens (T-062). Every snippet in this file is copied into the
 BiatecDEX-like playground page (`packages/chat-widget/playground/dex.html`, T-068), which compiles it against the built
-package and runs it. Still in progress elsewhere, and not needed for these host changes: the Slovak catalog (T-043),
-the restyled conversation and action cards (T-064, T-042) and the Activity timeline and permissions dialog (T-066).
+package and runs it. The Slovak catalog, the conversation and action cards, the Activity timeline and the permissions
+dialog are built as well; none of them needs a host change.
 
 ## What BiatecDEX looks like to the widget
 
@@ -24,7 +24,7 @@ Read from `scholtz/BiatecDEX` `main` on 2026-10-20:
 | Dark mode | `useTheme()` toggles the class `p-dark` on `<html>`; dark is the default; stored in `localStorage['biatec-theme']` | `theme: 'host'` watches that class with a `MutationObserver` and switches `data-theme` live |
 | Tokens | `src/assets/app.css`: `--brand #2DD4A7` (dark) / `#0EA371` (light), `--page-bg #070B14`, frosted `--surface-card`, `--radius .85rem`, `--radius-lg 1.15rem` | The Biatec AI tokens were derived from these values, so no override is needed. Widget tokens live inside the shadow root and never collide with the DEX's `--radius-lg` or `--shadow-lg` |
 | Font | Stack starting with `Inter` (Inter not loaded; Roboto loaded from Google Fonts) | Declares the same stack; never loads fonts itself |
-| i18n | `vue-i18n`, locales en, sk, pl, hu, it, ru, zh, ko, de, es; `getCurrentLocale()` and `setLocale()` in `src/i18n` | Ships English today; the Slovak catalog is T-043. Every locale without a catalog falls back to English. `setLocale()` follows the DEX language switch |
+| i18n | `vue-i18n`, locales en, sk, pl, hu, it, ru, zh, ko, de, es; `getCurrentLocale()` and `setLocale()` in `src/i18n` | Ships English and Slovak. Every other locale falls back to English. `setLocale()` follows the DEX language switch |
 | Wallet | `@txnlab/use-wallet-vue` and the ARC-76 `algorand-authentication-component-vue` session | **Not used by the widget.** Biatec AI signs in with Biatec OIDC in its own popup and signs through the backend. The two sessions are independent; the widget never reads the DEX wallet |
 | Overlays | PrimeVue automatic z-index: overlays (Select, menus, popovers) from 1001, dialogs and toasts from 1101 | Every fixed widget layer uses `z-index: var(--bc-z)`, default `1000`, so all PrimeVue layers open above the floating widget |
 | Licence | PrimeVue 5 needs `license: import.meta.env.PRIMEVUE_LICENSE`, otherwise it shows a fixed "Invalid PrimeUI License" banner at the bottom right | Not affected; without the key the banner covers part of the launcher (the playground shows it unless `PRIMEVUE_LICENSE` is set) |
@@ -139,14 +139,11 @@ mounted.
 
 ## Known limitations
 
-Found with the playground; the fixes belong to the widget, not to the DEX:
-
-- Esc pressed inside a PrimeVue dialog also closes the floating Biatec AI panel underneath (the widget listens on
-  `document` and does not know the key was meant for the dialog).
-- While the widget is full screen (below 640 px, or the workspace view), its Tab trap pulls focus out of a PrimeVue
-  dialog opened on top of it. The dialog still renders above the widget.
-- With a locale that has no widget catalog (German, and Slovak until T-043), the widget's root still carries
-  `lang="de"` although its text is English.
+The three found with the playground are fixed in the widget (T-077): Esc pressed in or while a host modal dialog
+(`[role=dialog][aria-modal=true]` or an open modal `<dialog>`) is open is left to that dialog, the full-screen Tab trap
+yields while such a dialog is open, and the widget root's `lang` is the language actually shown (English for German),
+not the requested one (`packages/chat-widget/src/components/BiatecChatRoot.vue`). A host dialog that is not marked
+modal in one of those ways is not recognised.
 
 ## Trying it without the DEX
 
@@ -166,8 +163,8 @@ against PrimeVue in jsdom and fails when a snippet line here is missing from the
 ## Checks before shipping in BiatecDEX
 
 - [ ] Toggle light/dark in the DEX header: the widget follows without reload.
-- [ ] Switch the DEX language to Slovak, then to German: the widget shows Slovak (English until T-043 ships), then English.
-- [ ] Open a PrimeVue dialog while the widget is open: the dialog is on top (see Known limitations for Esc and Tab).
+- [ ] Switch the DEX language to Slovak, then to German: the widget shows Slovak, then English.
+- [ ] Open a PrimeVue dialog while the widget is open: the dialog is on top, and Esc and Tab stay with the dialog.
 - [ ] Mobile width (< 640 px): the open widget is full screen, the launcher does not cover the DEX bottom controls.
 - [ ] "Ask Biatec AI" on the order card opens the panel with the prompt, and no action runs without Confirm.
 - [ ] Network tab: no OAuth token or code reaches DEX scripts; the DEX wallet session is untouched by Biatec AI sign-in.

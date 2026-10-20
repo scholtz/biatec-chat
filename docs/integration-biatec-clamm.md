@@ -16,10 +16,10 @@ succeeds for all three locales, the server-rendered HTML contains no widget code
 `docusaurus start` logs a hydration warning or page error, and the navbar light/dark switch flips the widget both
 ways (screenshots at the end).
 
-**Prerequisite:** `@biatec/chat-widget@0.1.0` is on npm. Until the first publish (see `packages/chat-widget/README.md`,
-"Publishing"), install the tarball from this repo instead:
+**Prerequisite:** `@biatec/chat-widget@0.1.0` is on npm (published 2026-10-20, see `packages/chat-widget/README.md`,
+"Publishing"). To try an unreleased change, install a tarball from this repo instead:
 `pnpm --filter @biatec/chat-widget build && cd packages/chat-widget && pnpm pack`, then
-`yarn add file:/path/to/biatec-chat-widget-0.1.0.tgz`.
+`yarn add file:/path/to/biatec-chat-widget-<version>.tgz`.
 
 ## What the BiatecCLAMM site looks like to the widget
 
@@ -167,10 +167,12 @@ uses third-party cookies (spec, Embedding Modes).
 | `https://beta.dex.biatec.io` (the configured `url`) | `https://chat.biatec.io` (production) or `https://stage.chat.biatec.io` (stage) | Authenticated: `beta.dex.biatec.io` and `chat.biatec.io` are same-site (`biatec.io`), so this is the "Biatec sites" mode, credentialed CORS with the exact origin | Add `https://beta.dex.biatec.io` to the Biatec tenant's `allowedOrigins` (with its own DNS TXT proof `_biatec-chat-challenge.beta.dex.biatec.io`; a sibling name is never inferred) and `biatec-clamm-docs` to its `clientKeys`. No new backend host is needed |
 | Any other `*.biatec.io` name | same | Authenticated | The same, for that exact origin |
 | A host outside `biatec.io` (for example GitHub Pages) | same | Anonymous only (public endpoint): the cookie could never be first-party | None; the widget logs one console warning and answers questions without sign-in |
-| `http://localhost:3000` (`yarn start`) | a local backend `http://localhost:5000`, `BIATEC_CHAT_CLIENT_KEY=dev` | Anonymous unless the local dev tenant lists `http://localhost:3000` (it lists `http://localhost:5173`) | Optional: add the origin to the dev tenant seed |
+| `http://localhost:3000` (`yarn start`) | a local backend `http://localhost:5000`, `BIATEC_CHAT_CLIENT_KEY=dev` | Authenticated: the local dev tenant (`Tenancy/TenantSeed.cs`) lists `http://localhost:5173` and `http://localhost:3000`, with client key `dev` | None |
 
 Until the origin is registered, the site still works in the anonymous tier against the same backend; registration is
-an operator step and is not done by this repository.
+an operator step and is not done by this repository. Note that no API adds an origin or client key to an existing tenant:
+onboarding creates tenants, and the admin policy `PATCH` refuses `allowedOrigins` and `clientKeys` ([admin-api.md](admin-api.md)),
+so today it is a change to the `Tenants` row, as `deploy.yml` does for the demo site's origin on stage ([cicd.md](cicd.md#demo-site)).
 
 ### Content Security Policy
 

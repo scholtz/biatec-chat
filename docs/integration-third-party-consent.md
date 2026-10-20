@@ -13,7 +13,7 @@ changes and the fallback for each is in [required-changes-biatec-oidc.md](requir
 | --- | --- |
 | Specification, JSON Schemas, signed test vectors | Built: `packages/consent-protocol/{spec,schemas,vectors}` |
 | Mock Biatec OIDC covering both entry points, receipts and enrollment | Built: `packages/consent-protocol/mock-oidc` |
-| Conformance test suite that runs against a mock or a real endpoint | In progress (T-048). The package's own spec and vector tests run now |
+| Conformance test suite that runs against a mock or a real endpoint | Built: `packages/consent-protocol/conformance` ([README](../packages/consent-protocol/conformance/README.md)); not run in CI |
 | Real Biatec OIDC consent endpoints | Not available. Above-threshold signing cannot be enabled against real OIDC until they ship |
 | Dynamic registration of confidential clients | Not available. An operator reviews and registers your client |
 | Authenticator app | Scaffold only |
@@ -73,12 +73,15 @@ pnpm install
 pnpm --filter mock-oidc start                 # http://127.0.0.1:8089
 pnpm --filter mock-oidc test                  # the mock's own tests
 pnpm --filter @biatec/consent-protocol test   # schema and vector tests
+pnpm --filter @biatec/consent-protocol conformance   # the conformance suite against the bundled mock
 ```
 
 The mock seeds public test data (clients `biatec-chat`, `bank-example`, `unverified-app`; users `alice@example.com`,
 `carol@example.com` who always asks, and `bob@example.com` who has no device) and is documented in
 [`mock-oidc/README.md`](../packages/consent-protocol/mock-oidc/README.md). Its simplifications matter: transaction groups are
-`base64(JSON)` rather than msgpack, push is replaced by polling, and the per-origin pending-request limits are not modelled.
+`base64(JSON)` rather than msgpack, push is only recorded in an outbox (never sent), and the per-origin pending-request limits
+are not modelled.
 
-When the conformance suite lands it will take the base URL of an implementation and exercise both entries, asserting that their
-receipts validate against the same schema, use the same canonical form and signing rules, and differ only in field values.
+The conformance suite takes the base URL of an implementation (`CONFORMANCE_BASE_URL`; without it, it starts the mock) and
+exercises both entries, asserting that their receipts validate against the same schema, use the same canonical form and signing
+rules, and differ only in field values.
