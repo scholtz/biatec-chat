@@ -11,7 +11,7 @@ conflicts_with: []
 issue: "#187"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#session-recording-and-evidence"
 created: 2026-10-20
 updated: 2026-10-20
@@ -62,3 +62,4 @@ files.
 
 - 2026-10-20 07:40 · coordinator · (new) → blocked · proposed by T-060
 - 2026-10-20 04:59 · kanban-board · blocked → backlog · blockers done: T-060
+- 2026-10-20 05:08 · LukassSoukup · taken · status stays backlog
