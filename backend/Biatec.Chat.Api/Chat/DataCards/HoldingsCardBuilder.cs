@@ -15,6 +15,10 @@ public static class HoldingsCardBuilder
     public const string Kind = "holdings";
     public const string Capability = "wallet.balance";
 
+    /// <summary>A card is built only from an executor-produced, successful wallet.balance result of a signed-in session.</summary>
+    public static bool ShouldBuild(Biatec.Chat.Core.Data.SessionTier tier, string capability, bool fromExecutor, bool isError) =>
+        fromExecutor && !isError && tier == Biatec.Chat.Core.Data.SessionTier.Authenticated && capability == Capability;
+
     public static DataCardEvent? TryBuild(string toolResultJson, DateTimeOffset asOf)
     {
         JsonElement root;

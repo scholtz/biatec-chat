@@ -50,7 +50,7 @@ const segments = computed(() => model.value.rows.filter((r) => r.tenths !== null
 
     <ul class="bc-holdings-rows">
       <li v-for="r in model.rows" :key="r.assetId" class="bc-holdings-row" data-test="holdings-row">
-        <span class="bc-holdings-swatch" :data-rank="Math.min(r.rank, 4)" aria-hidden="true"></span>
+        <span v-if="model.hasShares" class="bc-holdings-swatch" :data-rank="Math.min(r.rank, 4)" aria-hidden="true"></span>
         <span class="bc-holdings-unit bc-break" data-test="holdings-unit">{{ r.unitName }}</span>
         <span class="bc-holdings-amount bc-num" data-test="holdings-amount">{{ r.amount }}</span>
         <span v-if="r.tenths !== null" class="bc-holdings-share bc-num" data-test="holdings-share">{{ percentText(r.tenths) }}%</span>

@@ -168,6 +168,15 @@ public sealed class DataCardTests : IAsyncLifetime
         Assert.Empty(events.OfType<DataCardEvent>());
     }
 
+    [Theory]
+    [InlineData(SessionTier.Authenticated, "wallet.balance", true, false, true)]
+    [InlineData(SessionTier.Anonymous, "wallet.balance", true, false, false)]
+    [InlineData(SessionTier.Authenticated, "wallet.balance", false, false, false)]
+    [InlineData(SessionTier.Authenticated, "wallet.balance", true, true, false)]
+    [InlineData(SessionTier.Authenticated, "market.price", true, false, false)]
+    public void ShouldBuild_RequiresSignedInExecutorSuccessOfWalletBalance(SessionTier tier, string cap, bool fromExecutor, bool isError, bool expected) =>
+        Assert.Equal(expected, HoldingsCardBuilder.ShouldBuild(tier, cap, fromExecutor, isError));
+
     private static IEnumerable<ModelStreamEvent> Text(string text)
     {
         yield return new ModelTextDelta(text);

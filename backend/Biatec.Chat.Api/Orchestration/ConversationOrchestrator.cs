@@ -196,7 +196,7 @@ public sealed class ConversationOrchestrator(
 
                 foreach (var ev in result.Events ?? []) yield return ev;
                 // Holdings card: built from the (screened) wallet.balance result, never from model text, and only for signed-in users.
-                if (fromExecutor && !result.IsError && turn.Tier == DataTier.Authenticated && capName == HoldingsCardBuilder.Capability
+                if (HoldingsCardBuilder.ShouldBuild(turn.Tier, capName, fromExecutor, result.IsError)
                     && HoldingsCardBuilder.TryBuild(result.Content, clock.GetUtcNow()) is { } holdings)
                     yield return holdings;
                 yield return new ToolStatusEvent(call.ToolUseId, label, result.IsError ? ToolRunState.Failed : ToolRunState.Succeeded);

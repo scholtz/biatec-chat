@@ -55,6 +55,7 @@ describe("HoldingsCard", () => {
   it("makes the largest asset the brand swatch and never draws a red or green gain/loss scheme", () => {
     const w = mount(HoldingsCard, { props: { card: card() } });
     expect(w.findAll("[data-test=holdings-seg]").map((s) => s.attributes("data-rank"))).toEqual(["0", "1", "2"]);
+    expect(w.findAll(".bc-holdings-swatch").map((s) => s.attributes("data-rank"))).toEqual(["0", "1", "2"]);
     const css = readFileSync(resolve(process.cwd(), "src/components/data/data.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
     expect(css).not.toMatch(/red|danger|success|#[0-9a-f]{3,8}\b/i);
   });
@@ -75,6 +76,7 @@ describe("HoldingsCard", () => {
     const w = mount(HoldingsCard, { props: { card: card({ fiatCurrency: undefined }, [undefined, undefined, undefined]) } });
     expect(w.find("[data-test=holdings-total]").exists()).toBe(false);
     expect(w.find("[data-test=holdings-bar]").exists()).toBe(false);
+    expect(w.find(".bc-holdings-swatch").exists()).toBe(false);
     expect(w.find("[data-test=holdings-share]").exists()).toBe(false);
     expect(w.find("[data-test=holdings-concentration]").exists()).toBe(false);
     expect(w.findAll("[data-test=holdings-amount]").map((a) => a.text())).toEqual(["1,500", "300", "0.5"]);
