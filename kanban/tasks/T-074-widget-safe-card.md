@@ -1,17 +1,17 @@
 ---
 id: T-074
 title: Widget safe card for safe.list and safe.create
-status: backlog
+status: in-progress
 priority: P2
 epic: "Safe"
 blocked_by: [T-032, T-042]
 area: ["packages/chat-widget/src/components/cards/SafeCard.vue", "backend/Biatec.Chat.Api/Contracts/**", "packages/chat-protocol/**"]
 parallel: no
-conflicts_with: [T-064, T-067, T-076]
+conflicts_with: [T-064, T-067, T-076, T-083]
 issue: "#138"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-074"
+owner: "worker-T-074"
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#safe-capabilities"
 created: 2026-10-20
 updated: 2026-10-20
@@ -59,3 +59,5 @@ Parallel work possible: **no**. Don't run it at the same time as T-064, T-067, T
 
 - 2026-10-20 02:30 · coordinator · (new) → blocked · proposed by T-032; blocked by T-042 (card set and message-list rendering); conflicts with T-064 and T-067 (ChatView.vue/useChat.ts, contracts)
 - 2026-10-20 01:57 · kanban-board · blocked → backlog · blockers done: T-032, T-042
+- 2026-10-20 02:26 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 02:26 · coordinator · backlog → in-progress · dispatched to worker
