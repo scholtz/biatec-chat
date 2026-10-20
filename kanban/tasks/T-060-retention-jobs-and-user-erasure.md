@@ -1,7 +1,7 @@
 ---
 id: T-060
 title: Retention jobs and user erasure
-status: backlog
+status: in-progress
 priority: P3
 epic: "Evidence"
 blocked_by: [T-035, T-036]
@@ -9,8 +9,8 @@ area: ["backend/Biatec.Chat.Api/Retention/**"]
 parallel: no
 conflicts_with: [T-032]
 issue: "#61"
-branch: ""
-owner: ""
+branch: "task/T-060"
+owner: "worker-T-060"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#session-recording-and-evidence"
 created: 2026-10-19
@@ -64,3 +64,4 @@ dotnet test --filter Retention
 - 2026-10-20 01:09 · LukassSoukup · blocked · parallel analysis: dropped T-038 (done)
 - 2026-10-20 03:14 · kanban-board · blocked → backlog · blockers done: T-035, T-036
 - 2026-10-20 04:17 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 04:17 · coordinator · backlog → in-progress · dispatched to worker
