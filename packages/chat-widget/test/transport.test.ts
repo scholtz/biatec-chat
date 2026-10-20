@@ -61,7 +61,7 @@ describe("probe and fallback", () => {
     expect(m.kind).toBe("cookie");
     const ev = await collect(m.send({ message: "yo" }));
     expect(ev[0]).toEqual({ type: "text_delta", text: "hi" });
-    const chat = calls.find((c) => c[0].endsWith("/chat"))!;
+    const chat = calls.find((c) => c[0].endsWith("/chat/messages"))!;
     expect(chat[1]!.credentials).toBe("include");
     expect((chat[1]!.headers as Record<string, string>)["X-Biatec-Chat"]).toBe("1");
     expect(JSON.stringify(calls)).not.toMatch(/authorization|bearer|access_token/i);
