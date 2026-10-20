@@ -46,7 +46,7 @@ export const CLIENT_KEY_HEADER = "X-Biatec-Client-Key";
 export const PATHS = {
   probe: "/session/probe",
   keepalive: "/session/keepalive",
-  cookieChat: "/chat",
+  cookieChat: "/chat/messages",
   publicChat: "/public/chat",
   /** Public endpoint that says whether the calling Origin is registered for the tenant: { registered: boolean }. */
   publicOrigin: "/public/origin",
