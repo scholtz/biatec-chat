@@ -21,7 +21,8 @@ owner should run `kubectl kustomize k8s/stage | kubectl apply --dry-run=client -
 
 ## Secrets (never in git)
 
-`biatec-chat-secrets` holds `oidc-client-secret`, `aws-role-arn`: synced by
+`biatec-chat-secrets` holds `oidc-client-secret`; `biatec-chat-aws` holds the Roles Anywhere client certificate, key and
+AWS config file (see "AWS access"). Both are synced by
 `.github/workflows/deploy-stage.yml` from the GitHub `Stage` environment, or created out of band. `biatec-chat-generated`
 holds `postgres-password`, `redis-password`, `builders-internal-secret`, `vault-master-key`: generated once by the deploy, never leaves the
 cluster. Postgres and Redis run in the namespace (`base/postgres.yaml`, `base/redis.yaml`, reachable only from the
@@ -30,10 +31,11 @@ migrations are a deploy step (docs/cicd.md).
 
 ## AWS access (Bedrock only, no keys)
 
-AWS is used for Bedrock (model and guardrail) and nothing else. The pod gets a projected service-account token
-(audience `sts.amazonaws.com`) at `/var/run/secrets/aws/token`; the AWS SDK exchanges it for the role in `AWS_ROLE_ARN`
-(`sts:AssumeRoleWithWebIdentity`, `AWSSDK.SecurityToken`). One-time setup per cluster with `infra/aws/k8s-role.sh`; the
-full walk-through is [docs/aws-setup.md](../docs/aws-setup.md).
+AWS is used for Bedrock (model and guardrail) and nothing else. The backend authenticates with an environment-specific
+client certificate through IAM Roles Anywhere: `AWS_CONFIG_FILE` points at the `config` of the `biatec-chat-aws` secret
+(mounted at `/var/run/secrets/aws-rolesanywhere`), whose `credential_process` runs the `aws_signing_helper` shipped in
+the backend image. This needs nothing from the cluster (no public service-account issuer, no API-server flag). One-time
+setup with `infra/aws/rolesanywhere.sh`; the full walk-through is [docs/aws-setup.md](../docs/aws-setup.md).
 
 ## Images
 

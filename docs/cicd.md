@@ -30,11 +30,15 @@ Settings → Secrets and variables → Actions:
 | `DOCKERHUB_TOKEN` | repository | Docker Hub access token (read/write) for that user |
 | `KUBE_CONFIG` | `Stage` and `Production` environments, each its own | `base64 -w0` of a kubeconfig allowed to manage that environment's namespace: deployments, statefulsets, services, ingresses, network policies, config maps, secrets, service accounts, persistent volume claims, `pods/exec` (migration), and create the namespace on the first run |
 | `OIDC_CLIENT_SECRET` | `Stage` and `Production` | Biatec OIDC client secret of the `biatec-chat` tenant at that environment's OIDC (stage.oidc.biatec.io / oidc.biatec.io) |
-| `AWS_ROLE_ARN` | `Stage` and `Production` | Bedrock role from `infra/aws/k8s-role.sh` (aws-setup.md §3), e.g. `arn:aws:iam::<account>:role/biatec-chat-k8s-role` |
+| `AWS_ROLE_ARN` | `Stage` and `Production` | Bedrock role from `infra/aws/rolesanywhere.sh` (aws-setup.md §3), e.g. `arn:aws:iam::<account>:role/biatec-chat-bedrock-role` |
+| `AWS_TRUST_ANCHOR_ARN`, `AWS_PROFILE_ARN` | `Stage` and `Production` | IAM Roles Anywhere trust anchor and profile ARNs, printed by the same script |
+| `AWS_CLIENT_CERT`, `AWS_CLIENT_KEY` | `Stage` and `Production`, each its own | PEM client certificate and private key for that environment (`rolesanywhere-out/stage/…` for `Stage`, `…/main/…` for `Production`); expire after 365 days, see aws-setup.md "Renewing" |
 
-`OIDC_CLIENT_SECRET` and `AWS_ROLE_ARN` go together: when `OIDC_CLIENT_SECRET` is set, every deploy recreates
-`biatec-chat-secrets` from both and fails if `AWS_ROLE_ARN` is missing; when it isn't set, the cluster's
-`biatec-chat-secrets` is left alone (managed out of band).
+When `OIDC_CLIENT_SECRET` is set, every deploy recreates `biatec-chat-secrets` from it; when it isn't set, the cluster's
+`biatec-chat-secrets` is left alone (managed out of band). The five `AWS_*` secrets are handled the same way for the
+cluster secret `biatec-chat-aws` (certificate, key and the AWS config file): all five must be set, they are validated
+(certificate matches key, expiry warning), and if none is set an existing cluster secret is kept; without either the
+deploy stops with a pointer to aws-setup.md.
 
 **Generated in the cluster, never in GitHub.** On the first deploy to a namespace, `deploy.yml` creates
 `biatec-chat-generated` with random `postgres-password`, `redis-password`, `builders-internal-secret` and
@@ -52,7 +56,7 @@ version for the few seconds both run.
 
 ## First deploy
 
-1. AWS part: [aws-setup.md](aws-setup.md) §3 (guardrail exists; role for the cluster).
+1. AWS part: [aws-setup.md](aws-setup.md) §3 (guardrail exists; Roles Anywhere role, certificates and the five `AWS_*` secrets).
 2. Secrets above, `Stage` first.
 3. Merge to `main` or run `deploy-stage` manually; check https://stage.chat.biatec.io/health.
 4. Seed the `biatec-chat` tenant row (k8s/README.md, "Tenants are not seeded outside Development").

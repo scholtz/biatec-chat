@@ -1,6 +1,6 @@
 # Reusable deploy of already-pushed images to one Kubernetes environment. Called by deploy-stage.yml (Stage, k8s/stage)
 # and promote-production.yml (Production, k8s/main); it never builds anything. Credentials come only from the GitHub
-# environment's secrets (KUBE_CONFIG, OIDC_CLIENT_SECRET, AWS_ROLE_ARN); see docs/cicd.md.
+# environment's secrets (KUBE_CONFIG, OIDC_CLIENT_SECRET, AWS_ROLE_ARN, AWS_TRUST_ANCHOR_ARN, AWS_PROFILE_ARN, AWS_CLIENT_CERT, AWS_CLIENT_KEY); see docs/cicd.md.
 name: deploy
 
 on:
@@ -68,22 +68,58 @@ jobs:
             fi
           done
 
-      # Optional: when OIDC_CLIENT_SECRET is set, biatec-chat-secrets is (re)created from the environment secrets and
-      # AWS_ROLE_ARN must be set too. Otherwise the cluster secret is managed out of band and left untouched.
+      # Optional: when OIDC_CLIENT_SECRET is set, biatec-chat-secrets is (re)created from the environment secrets.
+      # Otherwise the cluster secret is managed out of band and left untouched.
       - name: Sync biatec-chat-secrets
         env:
           OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
-          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
         run: |
           if [ -z "$OIDC_CLIENT_SECRET" ]; then
             echo "OIDC_CLIENT_SECRET not set: leaving biatec-chat-secrets as it is in the cluster."
             exit 0
           fi
-          if [ -z "$AWS_ROLE_ARN" ]; then echo "::error::AWS_ROLE_ARN is missing (see docs/aws-setup.md)."; exit 1; fi
           kubectl create secret generic biatec-chat-secrets -n "$NAMESPACE" \
             --from-literal=oidc-client-secret="$OIDC_CLIENT_SECRET" \
-            --from-literal=aws-role-arn="$AWS_ROLE_ARN" \
             --dry-run=client -o yaml | kubectl apply -f -
+
+      # Bedrock access through IAM Roles Anywhere (docs/aws-setup.md): the environment's client certificate and key, and
+      # the config file the AWS SDK reads (credential_process runs the aws_signing_helper in the backend image).
+      # When the AWS_* secrets are not set, an existing cluster secret is left alone; without either the deploy stops.
+      - name: Sync biatec-chat-aws
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+          AWS_TRUST_ANCHOR_ARN: ${{ secrets.AWS_TRUST_ANCHOR_ARN }}
+          AWS_PROFILE_ARN: ${{ secrets.AWS_PROFILE_ARN }}
+          AWS_CLIENT_CERT: ${{ secrets.AWS_CLIENT_CERT }}
+          AWS_CLIENT_KEY: ${{ secrets.AWS_CLIENT_KEY }}
+        run: |
+          if [ -z "$AWS_CLIENT_CERT$AWS_CLIENT_KEY$AWS_ROLE_ARN$AWS_TRUST_ANCHOR_ARN$AWS_PROFILE_ARN" ]; then
+            if kubectl get secret biatec-chat-aws -n "$NAMESPACE" >/dev/null 2>&1; then
+              echo "AWS_* secrets not set: leaving biatec-chat-aws as it is in the cluster."; exit 0
+            fi
+            echo "::error::The AWS_ROLE_ARN, AWS_TRUST_ANCHOR_ARN, AWS_PROFILE_ARN, AWS_CLIENT_CERT and AWS_CLIENT_KEY secrets are missing (see docs/aws-setup.md)."; exit 1
+          fi
+          for v in AWS_ROLE_ARN AWS_TRUST_ANCHOR_ARN AWS_PROFILE_ARN AWS_CLIENT_CERT AWS_CLIENT_KEY; do
+            if [ -z "${!v}" ]; then echo "::error::$v is missing (see docs/aws-setup.md)."; exit 1; fi
+          done
+          # The client certificate must match the key, or the SDK would fail only at the first chat message.
+          cert_pub="$(printf '%s\n' "$AWS_CLIENT_CERT" | openssl x509 -pubkey -noout)"
+          key_pub="$(printf '%s\n' "$AWS_CLIENT_KEY" | openssl pkey -pubout)"
+          [ "$cert_pub" = "$key_pub" ] || { echo "::error::AWS_CLIENT_CERT and AWS_CLIENT_KEY do not match."; exit 1; }
+          printf '%s\n' "$AWS_CLIENT_CERT" | openssl x509 -noout -checkend 1209600 \
+            || echo "::warning::The AWS client certificate expires within 14 days; renew it (docs/aws-setup.md, RENEW=1)."
+          d=/var/run/secrets/aws-rolesanywhere
+          cat > "$RUNNER_TEMP/aws-config" <<CONFIG
+          [default]
+          region = eu-central-1
+          credential_process = /usr/local/bin/aws_signing_helper credential-process --certificate $d/certificate.pem --private-key $d/private-key.pem --trust-anchor-arn $AWS_TRUST_ANCHOR_ARN --profile-arn $AWS_PROFILE_ARN --role-arn $AWS_ROLE_ARN --region eu-central-1
+          CONFIG
+          kubectl create secret generic biatec-chat-aws -n "$NAMESPACE" \
+            --from-file=config="$RUNNER_TEMP/aws-config" \
+            --from-literal=certificate.pem="$AWS_CLIENT_CERT" \
+            --from-literal=private-key.pem="$AWS_CLIENT_KEY" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          rm -f "$RUNNER_TEMP/aws-config"
 
       # Both images carry the same tag; pin it in the overlay (not committed) and apply.
       - name: Apply ${{ inputs.overlay }} with tag ${{ inputs.tag }}

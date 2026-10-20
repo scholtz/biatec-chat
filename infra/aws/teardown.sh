@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Deletes what Biatec Chat creates on AWS (Bedrock access only): the k8s web-identity role from k8s-role.sh, the
-# guardrail from infra/guardrail/create.sh, and any KMS key tagged Project=biatec (left from the earlier KMS vault).
+# Deletes what Biatec Chat creates on AWS (Bedrock access only): the Roles Anywhere profile, trust anchor and role from
+# rolesanywhere.sh, the guardrail from infra/guardrail/create.sh, and any KMS key tagged Project=biatec (left from the
+# earlier KMS vault). The local CA and client certificates (rolesanywhere-out/) are not touched.
 # Discovery uses the Resource Groups Tagging API (read-only); tagged resources of other types are reported, never
-# silently skipped. The cluster's IAM OIDC provider is only listed: other workloads may use it.
+# silently skipped. The role of the earlier cluster-issuer design (biatec-chat-k8s-role) is removed too.
 # DEFAULT IS DRY-RUN:  BIATEC_AWS_APPROVED=yes ./teardown.sh --apply
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,18 +13,25 @@ mode_banner
 
 ARNS="$(aws_ resourcegroupstaggingapi get-resources --tag-filters "Key=$TAG_KEY,Values=$TAG_VALUE" \
   --query 'ResourceTagMappingList[].ResourceARN' --output text | tr '\t' '\n' | sed '/^$/d')"
-ROLE="$NAME_PREFIX-k8s-role"
+ROLE="$NAME_PREFIX-bedrock-role"
+OLD_ROLE="$NAME_PREFIX-k8s-role"
 
 echo "Tagged resources found:"; echo "${ARNS:-<none>}"
 
 ids_of() { echo "$ARNS" | grep ":$1/" | sed 's|.*/||' || true; }
 
-# IAM is global and its tags are NOT returned by the regional Tagging API, so the role is deleted by name. Both policy
-# names are tried (biatec-chat-bedrock-kms from before the vault moved off KMS). Deletes tolerate "already gone".
-run_aws_ok iam delete-role-policy --role-name "$ROLE" --policy-name "$NAME_PREFIX-bedrock"
-run_aws_ok iam delete-role-policy --role-name "$ROLE" --policy-name "$NAME_PREFIX-bedrock-kms"
-run_aws_ok iam delete-role --role-name "$ROLE"
-echo "IAM OIDC providers (delete the cluster's by hand once nothing else uses it):"
+# Roles Anywhere profile and trust anchor first (they reference the role), found through their Project tag.
+for p in $(ids_of profile); do run_aws_ok rolesanywhere delete-profile --profile-id "$p"; done
+for t in $(ids_of trust-anchor); do run_aws_ok rolesanywhere delete-trust-anchor --trust-anchor-id "$t"; done
+
+# IAM is global and its tags are NOT returned by the regional Tagging API, so roles are deleted by name. Older policy
+# names and the earlier web-identity role (biatec-chat-k8s-role) are tried too. Deletes tolerate "already gone".
+for r in "$ROLE" "$OLD_ROLE"; do
+  run_aws_ok iam delete-role-policy --role-name "$r" --policy-name "$NAME_PREFIX-bedrock"
+  run_aws_ok iam delete-role-policy --role-name "$r" --policy-name "$NAME_PREFIX-bedrock-kms"
+  run_aws_ok iam delete-role --role-name "$r"
+done
+echo "IAM OIDC providers (left from the earlier cluster-issuer design; delete by hand if nothing else uses them):"
 aws_ iam list-open-id-connect-providers --query 'OpenIDConnectProviderList[].Arn' --output text 2>/dev/null || true
 
 # The Bedrock guardrail (pay per use, not idle-billing).
@@ -43,7 +51,7 @@ done
 UNHANDLED=""
 while read -r arn; do
   [ -z "$arn" ] && continue
-  case "$arn" in *:guardrail/*|*:key/*) ;; *) UNHANDLED="$UNHANDLED$arn"$'\n' ;; esac
+  case "$arn" in *:guardrail/*|*:key/*|*:profile/*|*:trust-anchor/*) ;; *) UNHANDLED="$UNHANDLED$arn"$'\n' ;; esac
 done <<< "$ARNS"
 if [ -n "$UNHANDLED" ]; then
   echo "WARNING: tagged resources this script does not know how to delete (remove them by hand):" >&2

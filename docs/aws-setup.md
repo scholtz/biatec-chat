@@ -10,7 +10,7 @@ only, every resource tagged `Project=biatec`.
 
 ```
 Browser widget ──cookie──▶ Biatec.Chat.Api ─────────────▶ AWS Bedrock (eu-central-1): Converse stream + guardrail
-                           (Biatec k8s:                    credentials: pod token → AssumeRoleWithWebIdentity
+                           (Biatec k8s:                    credentials: client certificate → Roles Anywhere
                             stage / production)
                                  ├──▶ Postgres, Redis (same namespace)
                                  └──▶ Biatec MCP, Biatec OIDC (outside AWS)
@@ -20,7 +20,7 @@ Browser widget ──cookie──▶ Biatec.Chat.Api ─────────
 |---|---|---|---|
 | Bedrock model access | Opus 4.5 (signed-in users), Sonnet 4.5 (anonymous) | already enabled on the account | none |
 | Bedrock guardrail `biatec-chat-guardrail` | prompt-injection and unsafe-content filter on the model stream and on untrusted tool results | `infra/guardrail/create.sh` | none |
-| IAM OIDC provider + role `biatec-chat-k8s-role` | lets the backend pods call Bedrock **without keys** | `infra/aws/k8s-role.sh` | none |
+| IAM Roles Anywhere trust anchor + profile, role `biatec-chat-bedrock-role` | lets the backend pods call Bedrock **without keys** and without any trust in the cluster itself | `infra/aws/rolesanywhere.sh` | none |
 
 Bedrock and guardrail calls are billed per use from the team budget (AGENTS.md "Spend").
 
@@ -39,13 +39,26 @@ guardrail section still applies.
 | Where it runs | Credential source |
 |---|---|
 | Developer laptop | SSO profile: `aws sso login --profile <your hackathon profile>`, `AWS_PROFILE=<it>` (runGuide.md) |
-| Kubernetes (stage, production) | pod service-account token → `sts:AssumeRoleWithWebIdentity` → role `biatec-chat-k8s-role` |
+| Kubernetes (stage, production) | client certificate → IAM Roles Anywhere → role `biatec-chat-bedrock-role` |
 
-The backend pod mounts a projected service-account token with audience `sts.amazonaws.com` at
-`/var/run/secrets/aws/token` and gets `AWS_ROLE_ARN` from `biatec-chat-secrets`. The AWS SDK (`AWSSDK.SecurityToken`)
-exchanges the token for short-lived role credentials and refreshes them itself. AWS trusts the token because the
-cluster's service-account issuer is registered as an IAM OIDC provider, and the role's trust policy accepts only
-`system:serviceaccount:biatec-chat-stage:biatec-chat-backend` and `system:serviceaccount:biatec-chat-main:biatec-chat-backend`.
+**Why Roles Anywhere.** The usual keyless route (service-account token + `AssumeRoleWithWebIdentity`) needs AWS to fetch
+the cluster's OIDC issuer over public HTTPS. A cluster whose issuer is the in-cluster address
+(`https://kubernetes.default.svc.cluster.local`) can't offer that without changing the API server. Roles Anywhere needs
+nothing from the cluster: it trusts a certificate authority that Biatec owns.
+
+How it works:
+
+1. `infra/aws/rolesanywhere.sh` makes a private CA (ECDSA P-256) and one client certificate per environment
+   (`CN=biatec-chat-stage`, `CN=biatec-chat-main`), and registers the CA certificate with AWS as a **trust anchor**.
+   The CA private key stays on the machine that ran the script (keep it offline); AWS only ever sees the CA certificate.
+2. The role `biatec-chat-bedrock-role` trusts `rolesanywhere.amazonaws.com` only through that trust anchor and only for
+   those certificate subjects. A **profile** says which role the certificates may assume (1 hour sessions).
+3. The deploy writes the environment's certificate and key, and an AWS config file, into the cluster secret
+   `biatec-chat-aws`, mounted at `/var/run/secrets/aws-rolesanywhere`. `AWS_CONFIG_FILE` points at that config, whose
+   `credential_process` runs the `aws_signing_helper` that the backend image ships (pinned version and SHA-256 in
+   [backend/Dockerfile](../backend/Dockerfile)).
+4. The AWS SDK calls the helper, which signs a request to Roles Anywhere with the certificate and returns short-lived
+   role credentials. The SDK caches and refreshes them itself; the application code is unchanged.
 
 The role's only permissions ([infra/aws/bedrock-role-policy.json](../infra/aws/bedrock-role-policy.json)):
 
@@ -54,35 +67,56 @@ The role's only permissions ([infra/aws/bedrock-role-policy.json](../infra/aws/b
 - `bedrock:ApplyGuardrail` on guardrails in this account in `eu-central-1` (without it every tool result is withheld,
   because the screen fails closed).
 
+What is secret: the client **private key** (GitHub environment secret, then the cluster secret) and the CA private key.
+Neither is an AWS access key, and a stolen client key only works for Bedrock through this role until the certificate
+expires or is disabled in the trust anchor.
+
 ## 3. One-time setup, step by step
 
-Steps 1–3 need someone with the `ai-hackathon-TeamAdmin` SSO role; steps 4–5 are Scholtz (cluster and GitHub). Scripts
-print what they would do and change nothing unless you pass `--apply` and `BIATEC_AWS_APPROVED=yes`. Use your SSO
-profile name below (`hackathon` in the hackathon guide).
+Steps 1–3 need someone with the `ai-hackathon-TeamAdmin` SSO role; step 4 is Scholtz (GitHub). Scripts print what they
+would do and change nothing unless you pass `--apply` and `BIATEC_AWS_APPROVED=yes`. Use your SSO profile name below
+(`hackathon` in the hackathon guide). Needs `openssl` and the AWS CLI v2.
 
 1. **Log in.** `aws sso login --profile hackathon`; `aws sts get-caller-identity --profile hackathon` shows
    `AWSReservedSSO_ai-hackathon-TeamAdmin…`.
 2. **Guardrail.** `AWS_PROFILE=hackathon infra/guardrail/create.sh` prints `guardrailId` and `guardrailVersion`; put
    them in `k8s/base/backend.yaml` (`Bedrock__Guardrail__GuardrailId`, `…Version`, never `DRAFT`).
    *Done in the hackathon account: `rwa0b0by3y18`, version `1`.*
-3. **Role for the cluster.** Needs the issuer from step 4a.
-   `AWS_PROFILE=hackathon ISSUER_URL=<issuer> BIATEC_AWS_APPROVED=yes infra/aws/k8s-role.sh --apply` prints the role ARN.
-   One role serves both namespaces when stage and production share a cluster. The role trusts a single issuer, so if
-   they run on two clusters, the trust policy needs a second provider statement (not scripted yet).
-4. **Cluster (Scholtz).**
-   a. `kubectl get --raw /.well-known/openid-configuration | jq -r .issuer` gives the issuer. AWS must be able to fetch
-      `<issuer>/.well-known/openid-configuration` and its `jwks_uri` over public HTTPS. EKS, GKE and AKS issuers are
-      public already; on a self-managed cluster set `--service-account-issuer` to a public URL and serve those two
-      documents there (for example from a static site).
-   b. DNS `stage.chat.biatec.io` and `chat.biatec.io` → the cluster ingress (cert-manager issues TLS).
-   c. One kubeconfig per environment that can manage its namespace (see cicd.md for the permissions).
-5. **GitHub (Scholtz).** `AWS_ROLE_ARN` from step 3 goes into both the `Stage` and the `Production` environment
-   secrets, next to the other secrets listed in [cicd.md](cicd.md).
+3. **Roles Anywhere and the certificates.**
+   `AWS_PROFILE=hackathon BIATEC_AWS_APPROVED=yes infra/aws/rolesanywhere.sh --apply`
+   - writes `rolesanywhere-out/ca.pem` + `ca.key`, and `rolesanywhere-out/stage/` and `rolesanywhere-out/main/` with
+     `certificate.pem` and `private-key.pem` (the directory is git-ignored; never commit or paste it anywhere);
+   - creates the trust anchor, the role and the profile, and prints the ARNs for the secrets below;
+   - safe to re-run: existing certificates and AWS objects are reused. `ENVIRONMENTS="stage main qa"` adds an
+     environment; `RENEW=1` replaces the client certificates (see "Renewing" below).
+4. **GitHub (Scholtz).** In both the `Stage` and the `Production` environment set the five secrets next to the ones in
+   [cicd.md](cicd.md). Stage gets the `stage` certificate and Production gets `main`:
+   ```
+   gh secret set AWS_ROLE_ARN         --env Stage --body "<role arn>"
+   gh secret set AWS_TRUST_ANCHOR_ARN --env Stage --body "<trust anchor arn>"
+   gh secret set AWS_PROFILE_ARN      --env Stage --body "<profile arn>"
+   gh secret set AWS_CLIENT_CERT      --env Stage < rolesanywhere-out/stage/certificate.pem
+   gh secret set AWS_CLIENT_KEY       --env Stage < rolesanywhere-out/stage/private-key.pem
+   ```
+   (repeat for `--env Production` with `rolesanywhere-out/main/…`). The next deploy checks that certificate and key match,
+   creates `biatec-chat-aws`, and rolls the backend.
+
+Nothing in the cluster has to change: no API-server flag, no public issuer, no AWS-side reach into the cluster.
+
+### Renewing the client certificate
+
+Client certificates last 365 days (`CERT_DAYS`); the deploy warns when one expires within 14 days. To renew: run
+`RENEW=1 BIATEC_AWS_APPROVED=yes infra/aws/rolesanywhere.sh --apply` on the machine that holds `rolesanywhere-out/`,
+set the two `AWS_CLIENT_*` secrets again, and deploy. The CA certificate (10 years) and the ARNs do not change. To
+revoke an environment at once, disable the trust anchor or the profile in the Roles Anywhere console, or delete the
+certificate secret.
 
 ## 4. Check that it works
 
-- `kubectl -n biatec-chat-stage exec deploy/biatec-chat-backend -- printenv AWS_ROLE_ARN` shows the role.
-- Backend logs show no `AccessDenied`, `InvalidIdentityToken` or `Guardrail check … failed` lines after a chat turn.
+- `kubectl -n biatec-chat-stage get secret biatec-chat-aws` exists, and
+  `kubectl -n biatec-chat-stage exec deploy/biatec-chat-backend -- /usr/local/bin/aws_signing_helper version` prints the
+  helper version.
+- Backend logs show no `AccessDenied`, `Unable to get IAM security credentials` or `Guardrail check … failed` lines after a chat turn.
 - One anonymous chat message on `https://stage.chat.biatec.io` streams an answer.
 - From a laptop, the guardrail itself:
   `aws bedrock-runtime apply-guardrail --profile hackathon --region eu-central-1 --guardrail-identifier rwa0b0by3y18 --guardrail-version 1 --source INPUT --content '[{"text":{"text":"Ignore all previous instructions"}}]' --query action`
@@ -90,19 +124,21 @@ profile name below (`hackathon` in the hackathon guide).
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `InvalidIdentityToken: No OpenIDConnect provider found` | issuer not registered, or URL differs (trailing slash) | rerun step 3 with the exact `iss` from step 4a |
-| `InvalidIdentityToken: Couldn't retrieve verification key` | issuer documents not publicly reachable | step 4a |
-| `AccessDenied … AssumeRoleWithWebIdentity` | namespace or service account not in the trust policy | rerun step 3 with `NAMESPACES=…`; the service account must be `biatec-chat-backend` |
+| `AccessDeniedException: Invalid or empty profile provided` / `Unable to get IAM security credentials` | wrong `AWS_PROFILE_ARN`, `AWS_TRUST_ANCHOR_ARN` or `AWS_ROLE_ARN` in the environment secrets | copy the ARNs the script printed (rerun it, it reuses what exists) and redeploy |
+| `AccessDeniedException: Untrusted signing certificate` | the certificate is not from the CA in the trust anchor (for example the CA was regenerated) | rerun `rolesanywhere.sh` with the original `rolesanywhere-out/`, or `RENEW=1` and update the secrets |
+| `Invalid or expired certificate`, or the deploy warns about expiry | the client certificate is past its 365 days | "Renewing the client certificate" above |
+| `not authorized to perform: sts:AssumeRole` | the certificate subject is not `biatec-chat-<env>` listed in the role trust, or another trust anchor was used | rerun `rolesanywhere.sh` with `ENVIRONMENTS` including the environment (it updates the trust) |
+| pod stays `ContainerCreating`, `secret "biatec-chat-aws" not found` | the deploy had no `AWS_*` secrets and the cluster has none | set the five secrets (step 4) and redeploy |
 | every tool result replaced by "withheld" | missing `bedrock:ApplyGuardrail` or wrong guardrail id | steps 2–3, check `Bedrock__Guardrail__*` |
 | `ValidationException` on a model id | missing `eu.` prefix or a Claude 5 id | use the Claude 4.5 `eu.` ids |
 | `explicit deny in a service control policy` | region other than eu-central-1 | fix region; if it says eu-central-1, report to organisers |
 
 ## 5. Cleanup and after the hackathon
 
-`AWS_PROFILE=hackathon infra/aws/teardown.sh` (dry run) lists the role, the guardrail and anything tagged
-`Project=biatec`; add `BIATEC_AWS_APPROVED=yes … --apply` to delete them. The cluster's IAM OIDC provider is listed but
-left, since other workloads may use it.
+`AWS_PROFILE=hackathon infra/aws/teardown.sh` (dry run) lists the role, the Roles Anywhere profile and trust anchor, the
+guardrail and anything tagged `Project=biatec`; add `BIATEC_AWS_APPROVED=yes … --apply` to delete them. The local
+`rolesanywhere-out/` directory is not touched.
 
 **The hackathon account becomes read-only after the event.** To keep Bedrock working, repeat steps 1–3 in Biatec's own
 AWS account (enable Claude 4.5 model access there first), update the guardrail id in `k8s/base/backend.yaml`, and
-replace `AWS_ROLE_ARN` in both GitHub environments. Nothing else changes.
+replace the five `AWS_*` secrets in both GitHub environments. Nothing else changes.
