@@ -1,0 +1,22 @@
+{
+  "name": "evidence-verifier",
+  "version": "0.0.0",
+  "description": "Offline verifier for Biatec Chat signed evidence bundles. Needs only the bundle and a JWKS; no backend.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "files": ["dist", "src", "cli.mjs"],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": { "biatec-evidence-verify": "./cli.mjs" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.json && vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
