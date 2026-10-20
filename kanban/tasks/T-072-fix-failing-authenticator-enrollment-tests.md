@@ -11,7 +11,7 @@ conflicts_with: []
 issue: "#129"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#biatec-authenticator"
 created: 2026-10-20
 updated: 2026-10-20
@@ -64,3 +64,4 @@ Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>
 - 2026-10-20 00:47 · session-20261020-claude · (new) → backlog · follow-up from T-071 (pre-existing Flutter test failures on main)
 - 2026-10-20 00:47 · kanban-board · backlog → blocked · waiting on: T-071
 - 2026-10-20 03:49 · kanban-board · blocked → backlog · blockers done: T-051, T-071
+- 2026-10-20 04:06 · LukassSoukup · taken · status stays backlog
