@@ -376,6 +376,23 @@ public sealed class AgentModeTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Forbidden, r.StatusCode);
         Assert.Equal(error, (await r.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
     }
+
+    [Theory]
+    [InlineData("analyze", false)]
+    [InlineData("prepare", true)]
+    public async Task Elevation_OfManageLimits_IsAllowedWhileAnalyzeOrPaused(string mode, bool paused)
+    {
+        var (cookie, _) = await NewSessionAsync(true);
+        await PutAgentAsync(cookie, mode, paused);
+        var r = await SendAsync(Req(HttpMethod.Post, "/auth/elevate/popup", cookie, body: new { scope = "manage-limits" }));
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var url = (await r.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("loginUrl").GetString()!;
+        var nav = Req(HttpMethod.Get, new Uri(url).PathAndQuery, cookie);
+        nav.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "navigate");
+        nav.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "document");
+        var g = await SendAsync(nav);
+        Assert.NotEqual(HttpStatusCode.Forbidden, g.StatusCode);
+    }
 }
 
 public class AgentGatePolicyTests
