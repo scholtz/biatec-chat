@@ -453,6 +453,8 @@ public sealed class ConfirmService(
         var preview = snap.Preview;
         var step = snap.Steps.FirstOrDefault(s => s.Status == StepStatus.AwaitingConsent)
             ?? throw new PreviewException(PreviewError.InvalidState, "The preview has no step awaiting consent.");
+        if (preview.Status != ActionPreviewStatus.Confirmed)
+            throw new PreviewException(PreviewError.InvalidState, "The preview is no longer awaiting consent.");
         // The consent window starts after the confirm gate, so an approval can arrive after the preview has expired.
         // The simulation and policy check are stale then: nothing is signed and the preview is rebuilt.
         if (clock.GetUtcNow() >= step.ExpiresAt || clock.GetUtcNow() >= preview.ExpiresAt)

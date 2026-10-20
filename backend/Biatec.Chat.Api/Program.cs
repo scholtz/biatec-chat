@@ -3,6 +3,7 @@ using Biatec.Chat.Api.Auth;
 using Biatec.Chat.Api.Auth.Elevation;
 using Biatec.Chat.Api.Auth.Logout;
 using Biatec.Chat.Api.Chat;
+using Biatec.Chat.Api.Chat.Cancel;
 using Biatec.Chat.Api.Chat.Confirm;
 using Biatec.Chat.Api.Config;
 using Biatec.Chat.Api.Consent;
@@ -42,6 +43,7 @@ Biatec.Chat.Api.Public.ClientAddress.AddClientAddress(builder.Services, builder.
 builder.Services.AddScopeElevation();
 builder.Services.AddConfirm();
 Biatec.Chat.Api.Caps.CapsRegistration.AddSpendCaps(builder.Services);
+builder.Services.AddCancel();
 builder.Services.AddConsent();
 builder.Services.AddLogoutAndSweeper(builder.Configuration);
 builder.Services.AddEvidence(builder.Configuration);
@@ -83,6 +85,7 @@ app.MapOnboarding();
 
 app.MapElevation();
 app.MapConfirm();
+app.MapCancel();
 app.MapConsent();
 app.MapLogout();
 app.MapEvidenceJwks();
