@@ -4,7 +4,7 @@ title: Widget fixes for coexisting with host dialogs (Esc, focus trap, lang, chi
 status: backlog
 priority: P2
 epic: "Widget"
-blocked_by: [T-063]
+blocked_by: [T-063, T-068]
 area: ["packages/chat-widget/src/components/BiatecChatRoot.vue", "packages/chat-widget/src/index.ts", "packages/chat-widget/scripts/emit-types.mjs"]
 parallel: no
 conflicts_with: [T-043]
@@ -67,3 +67,4 @@ Parallel work possible: **no**. Don't run it at the same time as T-043: they cha
 ## Activity log
 
 - 2026-10-20 03:20 · coordinator · (new) → backlog · proposed by T-068; conflicts with T-043 (lang / i18n resolution)
+- 2026-10-20 02:09 · coordinator · backlog · blocked_by + T-068 (its acceptance checks run in the DEX playground)
