@@ -1,0 +1,48 @@
+{
+  "activity": {
+    "title": "Aktivita",
+    "back": "Späť na chat",
+    "hide": "Skryť",
+    "agent": "Agent",
+    "agentGuest": "Hosť · iba odpovede a analýza",
+    "agentAnalyze": "Agent je aktívny · odpovede a analýza, bez náhľadov",
+    "agentPrepare": "Agent je aktívny · pripravuje náhľady na vaše schválenie",
+    "agentPaused": "Agent je pozastavený · náhľady a potvrdenia čakajú",
+    "manage": "Spravovať oprávnenia",
+    "pauseAgent": "Pozastaviť agenta",
+    "resumeAgent": "Obnoviť agenta",
+    "filtersLabel": "Filtrovať aktivitu",
+    "filter": {
+      "all": "Všetko",
+      "analysis": "Analýzy",
+      "preview": "Náhľady",
+      "execution": "Vykonania",
+      "permission": "Oprávnenia"
+    },
+    "empty": "Zatiaľ nič. Tu sa zobrazia analýzy, náhľady, potvrdenia a zmeny oprávnení z tejto relácie.",
+    "today": "Dnes",
+    "yesterday": "Včera",
+    "byYou": "od vás",
+    "byAi": "od Biatec AI",
+    "footer": "Iba táto relácia. Úplný podpísaný záznam získate stiahnutím dôkazu.",
+    "downloadEvidence": "Stiahnuť dôkaz",
+    "event": {
+      "analysis": "Analýza",
+      "previewPrepared": "Náhľad pripravený",
+      "previewCancelled": "Náhľad zrušený",
+      "previewExpired": "Platnosť náhľadu vypršala",
+      "confirmed": "Potvrdené",
+      "submitted": "Odoslané do siete",
+      "receipt": "Dokončené · potvrdenka",
+      "failed": "Akcia zlyhala",
+      "consentApproved": "Schválené v telefóne",
+      "consentDenied": "Zamietnuté v telefóne",
+      "consentTimedOut": "Schválenie v telefóne vypršalo",
+      "modeRaised": "Režim zmenený na Pripraviť na schválenie",
+      "modeLowered": "Režim zmenený na Iba analýza",
+      "paused": "Agent pozastavený",
+      "resumed": "Agent obnovený",
+      "revoked": "Prístup odvolaný"
+    }
+  }
+}

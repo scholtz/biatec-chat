@@ -310,8 +310,12 @@ describe("useBiatecChat()", () => {
     useBiatecChat().setLocale("sk-SK");
     await nextTick();
     // lang announces the catalog that is shown, not the requested locale.
+    expect(el.getAttribute("lang")).toBe("sk");
+    expect(w.get(".bc-launcher").attributes("aria-label")).toBe("Opýtať sa Biatec AI");
+    useBiatecChat().setLocale("de");
+    await nextTick();
+    // Unsupported locale: English strings and lang="en".
     expect(el.getAttribute("lang")).toBe("en");
-    // No Slovak catalog yet: strings fall back to English.
     expect(w.get(".bc-launcher").attributes("aria-label")).toBe("Ask Biatec AI");
     w.unmount();
   });
