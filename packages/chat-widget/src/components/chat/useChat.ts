@@ -217,16 +217,30 @@ export function useChat(svc: ChatServices) {
     } else if (held.delete(reason)) svc.keepalive?.release(reason);
   }
 
-  function setStatus(e: PreviewEntry, status: ActionPreview["status"], txIds: string[] = []): void {
+  const OPEN_STEP: ActionPreview["status"][] = ["AwaitingConfirmation", "AwaitingScope", "AwaitingApproval"];
+
+  /** Cancel applies to the whole preview: every step still open becomes Cancelled. */
+  function setStatus(e: PreviewEntry, status: ActionPreview["status"]): void {
     e.preview = {
       ...e.preview,
       status,
-      steps: e.preview.steps.map((s, i) => ({
-        ...s,
-        status,
-        transactionId: txIds[i] ?? s.transactionId,
-      })),
+      steps: e.preview.steps.map((s) => ({ ...s, status })),
     };
+  }
+
+  /**
+   * A confirm settles only the step whose group hash was sent, and the txIds belong to that step. The preview turns
+   * into a receipt only when no step is still waiting for the user; otherwise the card stays open for the next step.
+   */
+  function settleStep(e: PreviewEntry, groupHash: string, status: ActionPreview["status"], txIds: string[]): void {
+    let hit = false;
+    const steps = e.preview.steps.map((s) => {
+      if (hit || s.groupHash !== groupHash) return s;
+      hit = true;
+      return { ...s, status, transactionId: txIds[0] ?? s.transactionId };
+    });
+    const stillOpen = steps.some((s) => OPEN_STEP.includes(s.status));
+    e.preview = { ...e.preview, steps, status: stillOpen ? "AwaitingConfirmation" : status };
   }
 
   /** Confirm posts the group hash the card showed; every ConfirmResponse.status has its own outcome. */
@@ -250,11 +264,11 @@ export function useChat(svc: ChatServices) {
       svc.onConfirmResponse?.(r.raw);
       switch (r.status) {
         case "landed":
-          setStatus(entry, "Completed", r.txIds);
+          settleStep(entry, hash, "Completed", r.txIds);
           svc.onConfirmed?.(previewId);
           break;
         case "submitted":
-          setStatus(entry, "Submitted", r.txIds);
+          settleStep(entry, hash, "Submitted", r.txIds);
           svc.onConfirmed?.(previewId);
           break;
         case "consent_pending":
@@ -299,19 +313,27 @@ export function useChat(svc: ChatServices) {
 
   async function cancelPreview(previewId: string): Promise<void> {
     const entry = findPreview(previewId);
-    if (!entry || !svc.cancelPreview) return;
-    let ok = false;
-    try {
-      ok = await svc.cancelPreview(previewId, decisionHash(entry.preview));
-    } catch {
-      ok = false;
-    }
-    if (ok) {
-      setStatus(entry, "Cancelled");
-      entry.note = "";
-      svc.onCancelled?.(previewId);
-    } else entry.note = t("chat.previewCancelFailed");
+    if (!entry || !svc.cancelPreview || entry.submitting) return;
+    if (entry.preview.status === "Cancelled") return;
+    // `submitting` also locks Confirm and Cancel while the cancel call is in flight.
+    entry.submitting = true;
     syncKeepalive(entry);
+    try {
+      let ok = false;
+      try {
+        ok = await svc.cancelPreview(previewId, decisionHash(entry.preview));
+      } catch {
+        ok = false;
+      }
+      if (ok) {
+        setStatus(entry, "Cancelled");
+        entry.note = "";
+        svc.onCancelled?.(previewId);
+      } else if (entry.preview.status !== "Cancelled") entry.note = t("chat.previewCancelFailed");
+    } finally {
+      entry.submitting = false;
+      syncKeepalive(entry);
+    }
   }
 
   function previewSummary(m: ChatMessage): string {

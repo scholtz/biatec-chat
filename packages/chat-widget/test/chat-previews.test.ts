@@ -145,6 +145,42 @@ describe("preview cards in the conversation", () => {
     expect(sharedCore()!.activity.entries.some((e) => e.title === "confirmed")).toBe(true);
   });
 
+  it("confirming one step of a multi-step preview settles only that step and keeps the card open", async () => {
+    const two = preview("AwaitingConfirmation", {
+      steps: [
+        { ...preview().steps[0]!, stepId: "s1", index: 0, groupHash: "H1" },
+        { ...preview().steps[0]!, stepId: "s2", index: 1, groupHash: "H2" },
+      ],
+    });
+    const { svc, confirm } = setup([card(two)], [result("landed", { txIds: ["TX1"] }), result("landed", { txIds: ["TX2"] })]);
+    const w = await chat(svc);
+    await confirmClick(w);
+    expect(confirm).toHaveBeenLastCalledWith("p1", "H1");
+    expect(w.get("article.bc-card").attributes("data-status")).toBe("awaitingConfirmation");
+    expect(w.find("[data-test=review]").exists()).toBe(true);
+    expect(w.text()).not.toContain("TX2");
+    await confirmClick(w);
+    expect(confirm).toHaveBeenLastCalledWith("p1", "H2");
+    expect(w.get("article.bc-card").attributes("aria-label")).toBe("Receipt");
+    expect(w.text()).toContain("TX1");
+    expect(w.text()).toContain("TX2");
+  });
+
+  it("a double click on Cancel posts one cancel", async () => {
+    const { svc, cancelPreview } = setup([card(preview())], []);
+    let release!: (v: boolean) => void;
+    cancelPreview.mockImplementationOnce(() => new Promise<boolean>((r) => (release = r)));
+    const w = await chat(svc);
+    const cancel = w.findAll("button").find((b) => b.text() === "Cancel")!;
+    await cancel.trigger("click");
+    await cancel.trigger("click");
+    release(true);
+    await flushPromises();
+    expect(cancelPreview).toHaveBeenCalledTimes(1);
+    expect(w.find(".bc-preview-note").exists()).toBe(false);
+    expect(w.get("article.bc-card").attributes("data-status")).toBe("cancelled");
+  });
+
   it("submitted also shows the receipt", async () => {
     const { svc } = setup([card(preview())], [result("submitted", { txIds: ["TX9"] })]);
     const w = await chat(svc);
