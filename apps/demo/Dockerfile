@@ -17,7 +17,7 @@ COPY packages/chat-protocol/tsconfig.json packages/chat-protocol/
 COPY packages/chat-widget/src packages/chat-widget/src
 COPY packages/chat-widget/scripts packages/chat-widget/scripts
 COPY packages/chat-widget/playground packages/chat-widget/playground
-COPY packages/chat-widget/vite.config.ts packages/chat-widget/tsconfig.json packages/chat-widget/
+COPY packages/chat-widget/vite.config.ts packages/chat-widget/vite.standalone.config.ts packages/chat-widget/tsconfig.json packages/chat-widget/
 COPY apps/demo/src apps/demo/src
 COPY apps/demo/public apps/demo/public
 COPY apps/demo/index.html apps/demo/dex.html apps/demo/vite.config.ts apps/demo/tsconfig.json apps/demo/nginx.conf apps/demo/security-headers.conf apps/demo/
