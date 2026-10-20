@@ -1,6 +1,6 @@
 # Biatec Chat: likely jury questions
 
-Prepared from the [hackers guide](../../hackersGuide.md) (judging criteria, jury list) and
+Prepared from the hackers guide (`hackersGuide.md` in the event workspace, outside this repository; judging criteria, jury list) and
 https://thefintechers.com/partners. Framing for the pitch only; [PRODUCT-DESCRIPTION.md](PRODUCT-DESCRIPTION.md) is the
 specification. See also [presentation_pitch_prep.md](presentation_pitch_prep.md).
 
@@ -49,7 +49,7 @@ specification. See also [presentation_pitch_prep.md](presentation_pitch_prep.md)
 
 | Question | Answer |
 |---|---|
-| Could my bank plug in tomorrow? What does integration cost? | White-label per tenant, using standards banks already know (CIBA, FAPI 2.0, RAR). A conformance suite is planned. |
+| Could my bank plug in tomorrow? What does integration cost? | White-label per tenant, using standards banks already know (CIBA, FAPI 2.0, RAR). A conformance suite exists (`packages/consent-protocol/conformance`), run against our mock. |
 | Why your authenticator and not our own app? | A shared trusted device, OpenID Federation so brands can't be impersonated, and network effects. Expect pushback; banks guard their app real estate. |
 | Fiat or only crypto? | Today it's Algorand assets and stablecoins. The consent protocol itself doesn't care which rail it runs on. |
 | What data do you keep? Can it be exported to our audit systems? | Evidence export plus offline-verifiable receipts. |
@@ -68,7 +68,7 @@ specification. See also [presentation_pitch_prep.md](presentation_pitch_prep.md)
 | Question | Answer |
 |---|---|
 | Is that a real phone approval or a mock? | The consent side runs against **mock OIDC** until the real endpoints ship (`docs/hackathon-demo.md`). Say so out loud in the demo. |
-| Can I see x402 working? | No. It's behind a feature flag and on the roadmap, built on Algo Safe's facilitator, which already exists. |
+| Can I see x402 working? | Not live. `x402.pay` is built but off behind a feature flag, and tested only against a mock facilitator; no testnet payment has been recorded (`docs/x402-pay.md`). |
 | Is this just a GPT wrapper? | No. The model only proposes. Hash binding, approval enforced outside the chat, and an evidence chain anchored on-chain are all deterministic code. |
 | Show me the tampered transaction being refused. | If you'll demo it, rehearse it. The group-hash mismatch refusal against the mock is buildable today. |
 
@@ -76,6 +76,5 @@ specification. See also [presentation_pitch_prep.md](presentation_pitch_prep.md)
 
 - **Which track did we pick?** Judges will ask "how does this fit your track?". Likely Track 1 (agentic payments) or
   Track 3 (securing the agentic bank).
-- **Status:** the status table in `docs/hackathon-demo.md` may be out of date; check the board before presenting.
-  Several steps in the full script (confirm-and-sign, Safe executors, the authenticator UI) were still "planned" when it
-  was written.
+- **Status:** every board task is merged; the status table in `docs/hackathon-demo.md` says what each script step runs
+  against. The phone approval works against the mock OIDC only, and the authenticator has not run on a device.

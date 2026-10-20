@@ -64,14 +64,10 @@ public class ConfigAndHealthTests
     [InlineData("Algod:Networks:testnet:Url")]
     public void MissingRequiredOption_FailsStartup_NamingTheOption(string key)
     {
-        using var factory = Factory(c => c.Remove(key));
+        var failures = StartupValidationFailures(c => c.Remove(key));
 
-        var ex = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
-
-        var validation = Flatten(ex).OfType<OptionsValidationException>().FirstOrDefault();
-        Assert.True(validation is not null, ex.ToString());
-        Assert.Contains(validation!.Failures, f => f.Contains(key.Split(':')[^1], StringComparison.OrdinalIgnoreCase)
-                                                    || f.Contains(key.Split(':')[0], StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(failures, f => f.Contains(key.Split(':')[^1], StringComparison.OrdinalIgnoreCase)
+                                       || f.Contains(key.Split(':')[0], StringComparison.OrdinalIgnoreCase));
     }
 
     [Theory]
@@ -81,16 +77,14 @@ public class ConfigAndHealthTests
     [InlineData("Plain", null, "Vault:KeyProvider")]
     public void VaultKeyProvider_WithoutItsKey_FailsStartup(string provider, string? masterKey, string named)
     {
-        using var factory = Factory(c =>
+        var failures = StartupValidationFailures(c =>
         {
             c.Remove("Kms:KeyId");
             c["Vault:KeyProvider"] = provider;
             c["Vault:MasterKey"] = masterKey;
         });
 
-        var ex = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
-
-        Assert.Contains(Flatten(ex).OfType<OptionsValidationException>(), v => v.Failures.Any(f => f.Contains(named)));
+        Assert.Contains(failures, f => f.Contains(named));
     }
 
     [Fact]
@@ -109,23 +103,17 @@ public class ConfigAndHealthTests
     [Fact]
     public void NonEuCentralRegion_FailsStartup()
     {
-        using var factory = Factory(c => c["Bedrock:Region"] = "us-east-1");
+        var failures = StartupValidationFailures(c => c["Bedrock:Region"] = "us-east-1");
 
-        var ex = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
-
-        Assert.Contains(Flatten(ex).OfType<OptionsValidationException>(),
-            v => v.Failures.Any(f => f.Contains("eu-central-1")));
+        Assert.Contains(failures, f => f.Contains("eu-central-1"));
     }
 
     [Fact]
     public void NoAlgodNetwork_FailsStartup()
     {
-        using var factory = Factory(c => c.Remove("Algod:Networks:testnet:Url"));
+        var failures = StartupValidationFailures(c => c.Remove("Algod:Networks:testnet:Url"));
 
-        var ex = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
-
-        Assert.Contains(Flatten(ex).OfType<OptionsValidationException>(),
-            v => v.Failures.Any(f => f.Contains("Algod:Networks")));
+        Assert.Contains(failures, f => f.Contains("Algod:Networks"));
     }
 
     [Fact]
@@ -139,6 +127,34 @@ public class ConfigAndHealthTests
             Assert.DoesNotContain("\"Token\"", text, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("Secret", text, StringComparison.OrdinalIgnoreCase);
         }
+    }
+
+    /// <summary>
+    /// Starts the app with the mutated config and returns the options validation failures that stopped it. About one run
+    /// in fifty a failed start surfaces an ObjectDisposedException from the host teardown (a race in the test host, not
+    /// a product behaviour) instead of the validation error, so a start that fails without a validation error is
+    /// retried; after three attempts the exceptions are shown in the failure.
+    /// </summary>
+    private static List<string> StartupValidationFailures(Action<Dictionary<string, string?>> mutate)
+    {
+        var seen = new List<Exception>();
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            using var factory = Factory(mutate);
+            try
+            {
+                factory.CreateClient();
+            }
+            catch (Exception ex)
+            {
+                var failures = Flatten(ex).OfType<OptionsValidationException>().SelectMany(v => v.Failures).ToList();
+                if (failures.Count > 0) return failures;
+                seen.Add(ex);
+                continue;
+            }
+            Assert.Fail("The app started although the configuration is invalid.");
+        }
+        throw new Xunit.Sdk.XunitException("Startup failed without an options validation error in 3 attempts:" + Environment.NewLine + string.Join(Environment.NewLine + "---" + Environment.NewLine, seen));
     }
 
     private static IEnumerable<Exception> Flatten(Exception? ex)

@@ -65,5 +65,5 @@ agree with the run; a tampered payload, a dropped entry and a foreign JWKS are a
 3. For step 8, export both sessions (`GET /session/evidence`), fetch the JWKS the bundle names, and check:
    `node packages/evidence-verifier/cli.mjs verify <bundle.json> --jwks <jwks.json>`; then compare the receipt group hashes and the
    transaction ids with the explorer. `src/demo.ts` `crossCheck` is the same comparison in code.
-4. To automate it, replace `MockOidcHarness` (`src/oidc.ts`) by calls to the chat backend's `/chat/messages`, `/chat/confirm` and
+4. To automate it, replace `MockOidcHarness` (`src/oidc.ts`) by calls to the chat backend's `/chat/messages`, `/chat/previews/{previewId}/confirm` and
    `/session/evidence` with a signed-in cookie per identity; the assertions in `test/demo.test.ts` stay valid.
