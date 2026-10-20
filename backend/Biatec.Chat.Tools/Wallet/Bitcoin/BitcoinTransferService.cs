@@ -64,10 +64,8 @@ public sealed class BitcoinTransferService(
         {
             var snap = await previews.GetAsync(conversationId, existing.Id, null, ct);
             var step = snap.Steps.OrderBy(s => s.Seq).Last();
-            if (snap.Steps.Any(s => s.Status is StepStatus.Submitted or StepStatus.AwaitingConsent or StepStatus.Signed) || existing.Status == ActionPreviewStatus.Confirmed)
+            if (InFlight(snap.Steps))
                 return new BitcoinOutcome(snap, request, Decode(step, request), "This transfer is being signed or is waiting to land. Wait for it before asking again.");
-            if (snap.Steps.All(s => s.Status == StepStatus.Confirmed))
-                return new BitcoinOutcome(snap, request, Decode(step, request), "This transfer is complete.");
 
             var reason = existing.Status == ActionPreviewStatus.Proposed ? await CheckAsync(conversationId, existing.Id, ct) : BitcoinInvalidation.TimeExpired;
             if (reason == BitcoinInvalidation.None)
@@ -127,11 +125,20 @@ public sealed class BitcoinTransferService(
         foreach (var e in db.ChangeTracker.Entries<ActionStep>().Where(e => e.Entity.PreviewId == previewId).ToList()) e.State = EntityState.Detached;
     }
 
+    private static bool InFlight(IEnumerable<ActionStep> steps) =>
+        steps.Any(s => s.Status is StepStatus.Submitted or StepStatus.AwaitingConsent or StepStatus.Signed);
+
+    /// <summary>
+    /// The preview a repeated request reuses: a Proposed or Expired one, or one that is still in flight (so it is not
+    /// started twice). Completed, failed and cancelled previews never match, so an identical transfer can be repeated.
+    /// </summary>
     private async Task<ActionPreview?> FindExistingAsync(Guid conversationId, BitcoinTransferRequest request, CancellationToken ct)
     {
         var candidates = await db.ActionPreviews
             .Where(p => p.ConversationId == conversationId && p.Capability == "wallet.transfer" && p.RebuiltAsPreviewId == null
-                        && (p.Status == ActionPreviewStatus.Proposed || p.Status == ActionPreviewStatus.Expired || p.Status == ActionPreviewStatus.Confirmed))
+                        && (p.Status == ActionPreviewStatus.Proposed || p.Status == ActionPreviewStatus.Expired
+                            || ((p.Status == ActionPreviewStatus.Confirmed || p.Status == ActionPreviewStatus.InProgress)
+                                && db.ActionSteps.Any(x => x.PreviewId == p.Id && (x.Status == StepStatus.Submitted || x.Status == StepStatus.AwaitingConsent || x.Status == StepStatus.Signed)))))
             .ToListAsync(ct);
         return candidates.Where(p => FromJson(p.CanonicalJson) is { } r && r.SameAs(request)).OrderByDescending(p => p.ExpiresAt).FirstOrDefault();
     }
@@ -183,9 +190,12 @@ public sealed class BitcoinTransferService(
         var others = intent.Outputs.Where(o => o.Address != r.To).ToList();
         if (r.To == r.From)
         {
-            // A transfer to itself: the first output of the requested amount is the payment, the rest is change.
+            // A transfer to itself: one output of the requested amount is the payment, the rest is change, and every
+            // output must go back to the source address.
             var pay = intent.Outputs.FirstOrDefault(o => o.Address == r.To && o.Sats == r.Sats);
             if (pay is null || intent.Outputs.Count > 2) throw new BitcoinTransferException("The transaction does not pay the requested amount.");
+            if (intent.Outputs.Any(o => o.Address != r.From))
+                throw new BitcoinTransferException("The transaction has outputs other than the payment and change back to the source address.");
         }
         else
         {

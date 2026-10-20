@@ -394,6 +394,99 @@ public sealed class BitcoinTransferTests : IClassFixture<BitcoinTransferTests.Db
     }
 
     [Fact]
+    public async Task A_self_transfer_refuses_a_second_output_to_a_third_party()
+    {
+        var self = new BitcoinTransferRequest("bitcoin", PsbtFixture.A1, PsbtFixture.A1, 100000);
+        var (svc, db) = NewService();
+        _mcp.Psbt = () => PsbtFixture.Build([new PsbtFixture.In(Utxo1, 1, 150000, PsbtFixture.P2wpkh(PsbtFixture.H1))],
+            [(PsbtFixture.P2wpkh(PsbtFixture.H1), 100000), (PsbtFixture.P2wpkh(PsbtFixture.H3), 49000)]);
+        var bad = await svc.StartAsync(Ctx, _conversation, self, default);
+        Assert.True(bad.IsError);
+        Assert.Contains("other than the payment and change", bad.Message);
+        Assert.Empty(await db.ActionPreviews.Where(p => p.ConversationId == _conversation).ToListAsync());
+
+        _mcp.Psbt = () => PsbtFixture.Build([new PsbtFixture.In(Utxo1, 1, 150000, PsbtFixture.P2wpkh(PsbtFixture.H1))],
+            [(PsbtFixture.P2wpkh(PsbtFixture.H1), 100000), (PsbtFixture.P2wpkh(PsbtFixture.H1), 49000)]);
+        Assert.False((await svc.StartAsync(Ctx, _conversation, self, default)).IsError);
+    }
+
+    [Fact]
+    public async Task A_completed_transfer_can_be_repeated_with_a_new_preview()
+    {
+        var (svc, _) = NewService();
+        var first = await svc.StartAsync(Ctx, _conversation, Req, default);
+        var id = first.Snapshot!.Preview.Id;
+        await using (var db = NewContext())
+        {
+            await db.ActionSteps.Where(s => s.PreviewId == id).ExecuteUpdateAsync(u => u.SetProperty(s => s.Status, StepStatus.Confirmed));
+            await db.ActionPreviews.Where(p => p.Id == id).ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, ActionPreviewStatus.Completed));
+        }
+        _mcp.Psbt = () => PsbtFixture.Standard(txid: Utxo2);
+        var (svc2, _) = NewService();
+        var again = await svc2.StartAsync(Ctx, _conversation, Req, default);
+        Assert.False(again.IsError, again.Message);
+        Assert.NotEqual(id, again.Snapshot!.Preview.Id);
+        Assert.Equal(ActionPreviewStatus.Proposed, again.Snapshot.Preview.Status);
+    }
+
+    [Fact]
+    public async Task A_transfer_in_flight_is_not_started_twice()
+    {
+        var (svc, _) = NewService();
+        var first = await svc.StartAsync(Ctx, _conversation, Req, default);
+        var id = first.Snapshot!.Preview.Id;
+        await using (var db = NewContext())
+        {
+            await db.ActionSteps.Where(s => s.PreviewId == id).ExecuteUpdateAsync(u => u.SetProperty(s => s.Status, StepStatus.Submitted));
+            await db.ActionPreviews.Where(p => p.Id == id).ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, ActionPreviewStatus.InProgress));
+        }
+        var (svc2, _) = NewService();
+        var again = await svc2.StartAsync(Ctx, _conversation, Req, default);
+        Assert.Equal(id, again.Snapshot!.Preview.Id);
+        Assert.Contains("being signed", again.Message);
+    }
+
+    [Fact]
+    public async Task The_confirm_gate_refuses_a_preview_whose_input_was_spent()
+    {
+        var (svc, _) = NewService();
+        var first = await svc.StartAsync(Ctx, _conversation, Req, default);
+        var id = first.Snapshot!.Preview.Id;
+        var gate = new BitcoinPreviewFreshnessGate(svc);
+        await using var db = NewContext();
+        var preview = await db.ActionPreviews.AsNoTracking().SingleAsync(p => p.Id == id);
+        var step = await db.ActionSteps.AsNoTracking().SingleAsync(s => s.PreviewId == id);
+
+        Assert.Null(await gate.CheckAsync(preview, step, default));
+        _watcher.Spent.Add($"{Utxo1}:1");
+        Assert.Contains("has been spent", await gate.CheckAsync(preview, step, default));
+        Assert.Equal(ActionPreviewStatus.Expired, (await NewContext().ActionPreviews.SingleAsync(p => p.Id == id)).Status);
+    }
+
+    [Fact]
+    public async Task The_esplora_watcher_reads_spent_state_and_fee_rate()
+    {
+        var handler = new StubHandler(req => req.RequestUri!.AbsolutePath switch
+        {
+            var p when p.EndsWith("/outspend/1") => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{\"spent\":true}") },
+            var p when p.EndsWith("/outspend/0") => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{\"spent\":false}") },
+            var p when p.EndsWith("/fees/recommended") => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{\"fastestFee\":20,\"halfHourFee\":12.5}") },
+            _ => new HttpResponseMessage(System.Net.HttpStatusCode.NotFound),
+        });
+        var watcher = new EsploraBitcoinChainWatcher(new HttpClient(handler), Microsoft.Extensions.Options.Options.Create(new BitcoinOptions()));
+        Assert.True(await watcher.IsSpentAsync("bitcoin", Utxo1, 1, default));
+        Assert.False(await watcher.IsSpentAsync("bitcoin", Utxo1, 0, default));
+        Assert.True(await watcher.IsSpentAsync("bitcoin", Utxo1, 7, default)); // unknown
+        Assert.Equal(12.5m, await watcher.GetFeeRateAsync("bitcoin-testnet", default));
+        Assert.Null(await watcher.GetFeeRateAsync("litecoin", default));
+    }
+
+    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) => Task.FromResult(respond(request));
+    }
+
+    [Fact]
     public async Task Refuses_a_source_address_that_is_not_the_users()
     {
         _mcp.Own = [PsbtFixture.A2];
