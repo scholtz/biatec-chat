@@ -41,7 +41,7 @@ it as requirements.
 | Downside scenario "If BTC falls 10%…" | Shown when the preview carries a fiat value; otherwise omitted |
 | Confirmation card with receipt id | Receipt card: transaction IDs with explorer links and "Download evidence" |
 | Activity aside | Client-side timeline of this session's events (analysis, previews, confirmations, consent, receipts, mode changes). The evidence export stays the durable record |
-| MarketInsightCard, Portfolio card | Data cards: balances from `wallet.balance`; market snapshot from public Biatec DEX data (planned, needs a new anonymous capability) |
+| MarketInsightCard, Portfolio card | Data cards: balances from `wallet.balance`; market snapshot from public Biatec DEX data through the anonymous `market.snapshot` capability |
 | "Ask Biatec AI about this order →" on the host page | Programmatic host API (`useBiatecChat().ask(...)`) plus `pageContext`; host-side changes for BiatecDEX are in [integration-biatec-dex.md](../integration-biatec-dex.md) |
 | Signing "stays in the host's wallet flow" | **Not adopted.** Signing always goes from the backend to Biatec OIDC; the widget never uses the host's wallet (BiatecDEX's use-wallet / ARC-76 session is unrelated) |
 | "Demo · simulated" labels | Replaced by a network label at the point of action ("Testnet" or "Mainnet"); no simulated data is shown as real |
