@@ -1,7 +1,7 @@
 ---
 id: T-088
 title: "Bug: evidence anchoring with two replicas and in the k8s deployment"
-status: backlog
+status: in-progress
 priority: P2
 epic: "Evidence"
 blocked_by: []
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Api/Evidence/Anchoring/AnchoringRegistration.cs", "b
 parallel: no
 conflicts_with: [T-071, T-081, T-078]
 issue: "#157"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-088"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#threat-model-highlights"
 created: 2026-10-20
 updated: 2026-10-20
@@ -118,3 +118,5 @@ Filled in by the agent when it moves the task to `review`.
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #13)
+- 2026-10-20 04:35 · scholtz · taken · status stays backlog
+- 2026-10-20 04:35 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

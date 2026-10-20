@@ -1,7 +1,7 @@
 ---
 id: T-087
 title: "Bug: agent-mode gate consistency (preview tools, limit lowering, no Elevated tier)"
-status: backlog
+status: in-progress
 priority: P2
 epic: "Orchestrator"
 blocked_by: []
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Core/Capabilities/**", "backend/Biatec.Chat.Api/Agen
 parallel: no
 conflicts_with: [T-025, T-079, T-081, T-082]
 issue: "#156"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-087"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#tier-enforcement"
 created: 2026-10-20
 updated: 2026-10-20
@@ -125,3 +125,5 @@ Filled in by the agent when it moves the task to `review`.
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #10, #11, #12)
+- 2026-10-20 04:35 · scholtz · taken · status stays backlog
+- 2026-10-20 04:35 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

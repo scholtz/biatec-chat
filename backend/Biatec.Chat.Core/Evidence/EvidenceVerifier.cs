@@ -48,7 +48,7 @@ public static class EvidenceVerifier
                     return EvidenceVerification.Fail(e.Seq, "payloadHash does not match the payload.");
             }
 
-            var anchorRef = e.AnchorRef?.ToString("D");
+            var anchorRef = e.AnchorRef;
             if (EvidenceHasher.EntryHash(e.ConversationId, e.Seq, e.PrevHash, e.Kind, e.PayloadHash, anchorRef) != e.EntryHash)
                 return EvidenceVerification.Fail(e.Seq, "entryHash does not match the entry.");
 

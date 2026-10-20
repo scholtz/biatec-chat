@@ -1,0 +1,44 @@
+/* Accessibility pass (WCAG 2.1 AA). Imported last so it wins over the component sheets at equal specificity.
+   Tokens only: no hex colour and no px value a token carries. */
+
+/* Touch: every control has a hit area of at least 44 px on a coarse pointer (WCAG 2.5.5, 44 px). */
+@media (pointer: coarse) {
+  .biatec-chat .bc-btn,
+  .biatec-chat .bc-btn[data-size="sm"],
+  .biatec-chat .bc-ui-chip[data-interactive="true"],
+  .biatec-chat .bc-chip,
+  .biatec-chat .bc-action,
+  .biatec-chat .bc-status-pill,
+  .biatec-chat .bc-status-toggle,
+  .biatec-chat .bc-linkbtn,
+  .biatec-chat .bc-close {
+    min-height: var(--size-icon-hit-touch);
+    min-width: var(--size-icon-hit-touch);
+  }
+  .biatec-chat .bc-send {
+    width: var(--size-icon-hit-touch);
+    height: var(--size-icon-hit-touch);
+  }
+  .biatec-chat .bc-check {
+    align-items: center;
+    min-height: var(--size-icon-hit-touch);
+  }
+  .biatec-chat .bc-check input {
+    width: var(--space-6);
+    height: var(--space-6);
+    margin: 0;
+  }
+}
+
+/* Reduced motion: no animation and no transition anywhere in the widget. The state stays visible without motion
+   (the spinner is a static arc next to its text, the thinking dots are static). */
+@media (prefers-reduced-motion: reduce) {
+  .biatec-chat,
+  .biatec-chat *,
+  .biatec-chat *::before,
+  .biatec-chat *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

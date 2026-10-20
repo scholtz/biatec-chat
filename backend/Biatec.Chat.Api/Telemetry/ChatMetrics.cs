@@ -66,7 +66,7 @@ public sealed class MeteringPolicyEventSink(IPolicyEventSink inner, ChatMetrics 
 /// <summary>Counts consent entries (<c>consent_*</c> kinds) as they are appended to the evidence chain.</summary>
 public sealed class MeteringEvidenceLog(IEvidenceLog inner, ChatMetrics metrics) : IEvidenceLog
 {
-    public async Task<EvidenceEntry> AppendAsync(Guid conversationId, string kind, JsonObject payload, Guid? anchorRef = null, CancellationToken ct = default)
+    public async Task<EvidenceEntry> AppendAsync(Guid conversationId, string kind, JsonObject payload, string? anchorRef = null, CancellationToken ct = default)
     {
         var entry = await inner.AppendAsync(conversationId, kind, payload, anchorRef, ct);
         if (kind.StartsWith("consent_", StringComparison.Ordinal))
