@@ -1,7 +1,7 @@
 ---
 id: T-094
 title: "Widget: export view and erase button for the user's own conversations"
-status: blocked
+status: backlog
 priority: P2
 epic: "Widget"
 blocked_by: [T-060]
@@ -61,3 +61,4 @@ files.
 ## Activity log
 
 - 2026-10-20 07:40 · coordinator · (new) → blocked · proposed by T-060
+- 2026-10-20 04:59 · kanban-board · blocked → backlog · blockers done: T-060

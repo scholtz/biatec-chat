@@ -1,7 +1,7 @@
 ---
 id: T-060
 title: Retention jobs and user erasure
-status: review
+status: done
 priority: P3
 epic: "Evidence"
 blocked_by: [T-035, T-036]
@@ -66,6 +66,8 @@ dotnet test --filter Retention
 
 ## Review
 
+- 2026-10-20 04:59 · approve · PR #185 merged into main @ a6fe3ec (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 18:00 · coordinator · (new) → blocked · created in task review: retention and erasure had no task
@@ -74,3 +76,4 @@ dotnet test --filter Retention
 - 2026-10-20 04:17 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 04:17 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 04:59 · coordinator · in-progress → review · branch task/T-060 @ 93ce615, PR #185
+- 2026-10-20 04:59 · user · review → done · PR #185 merged into main @ a6fe3ec (synced by kanban-sync)
