@@ -1,7 +1,7 @@
 ---
 id: T-080
 title: "Bug: a session awaiting phone consent must stay live past the idle timeout"
-status: in-progress
+status: review
 priority: P1
 epic: "Sessions & auth"
 blocked_by: []
@@ -72,7 +72,11 @@ or `PARTIAL`.**
 
 ## Analysis verdict
 
-_pending: filled in by the agent that runs the Analysis prompt (verdict, date, evidence, approved items)._
+APPROVED, 2026-10-20 (worker, recorded by the coordinator). Evidence on main: `Sweeper/SessionSweeper.cs:39-51`
+exempted sessions with an open consent, but `SessionService.TouchAsync` (`SessionService.cs:64-66`, resolve and
+keepalive), `RotateAsync` (`:121`) and `AuthEndpoints.FindLiveAsync` (`AuthEndpoints.cs:303-305`) had no exemption;
+spec Action Preview ("the sweeper itself skips the idle timeout for a session with an open ConsentRequest … The
+absolute lifetime always applies") and Minimal lifetime ("exempt from the idle timeout only").
 
 ## Goal
 
@@ -89,11 +93,11 @@ Parallel work possible: **no**. Don't run it at the same time as T-083: they cha
 
 ## Acceptance criteria
 
-- [ ] The Analysis verdict is recorded (APPROVED / PARTIAL / REJECTED) with evidence
-- [ ] A session idle 16 minutes with a pending, unexpired ConsentRequest resolves to the same session (no new anonymous session)
-- [ ] The same session past its absolute lifetime is dead even with an open consent
-- [ ] Without an open consent, 15 minutes idle still ends it
-- [ ] Sweeper and request-path liveness come from one shared predicate
+- [x] The Analysis verdict is recorded (APPROVED / PARTIAL / REJECTED) with evidence
+- [x] A session idle 16 minutes with a pending, unexpired ConsentRequest resolves to the same session (no new anonymous session)
+- [x] The same session past its absolute lifetime is dead even with an open consent
+- [x] Without an open consent, 15 minutes idle still ends it
+- [x] Sweeper and request-path liveness come from one shared predicate
 
 ## Implementation notes
 
@@ -105,14 +109,13 @@ Keep the query translatable by EF Core (the sweeper's `awaitingConsent` subquery
 
 ## Hand-off
 
-Filled in by the agent when it moves the task to `review`.
-
-- **Summary:** what was done.
-- **Files changed:** ...
-- **How it was verified:** commands run and their results.
-- **Follow-up tasks created:** IDs, or "none".
-- **Unblocks:** output of `kanban/scripts/board.py unblocks T-080`: tasks that become ready once this is approved.
-- **Open questions:** for the user, or "none".
+- **Summary:** one shared `SessionLiveness.IsLive` (inside the absolute lifetime, and inside the idle timeout or with an action in flight: a Pending ConsentRequest, or a Confirmed/InProgress preview with a step Pending, Signed or Submitted, each bounded by its own ExpiresAt plus `Sessions:InFlightGrace`, default 30 s, max 5 min) used by the sweeper (as `IsDue`, De Morgan form), TouchAsync, RotateAsync, FindLiveAsync and the evidence export. Resolving a consent or signing a step moves LastActivityAt forward (`TouchByIdAsync`). Correlated EXISTS on the session's conversation, only evaluated for idle sessions, with a (StepId, Status, ExpiresAt) index on ConsentRequests.
+- **Branch:** `task/T-080` @ `10b8f78` (merged with main), PR #164 (`Closes #149`).
+- **Files changed:** `Sessions/SessionService.cs`, `Auth/AuthEndpoints.cs`, tests; outside the area: `Sweeper/SessionSweeper.cs`, `Consent/ConsentOrchestrator.cs`, `Chat/Confirm/ConfirmService.cs` (one touch call each), `Evidence/Export/EvidenceExportEndpoints.cs` (one line), `Program.cs`, `ChatDbContext.cs` + migration `ConsentRequestLivenessIndex`.
+- **How it was verified:** tests written first (3 failed on main); Session/Sweeper/Consent/Evidence 175 passed; full backend on current main 1030 passed, 1 skipped, 0 failed. Review (medium): all realistic findings fixed.
+- **Follow-up tasks created:** none.
+- **Unblocks:** T-083 (conflict) can start once this leaves in-progress.
+- **Open questions:** a Confirmed preview whose step went back to Pending after a signer outage stays in flight until that step's expiry plus the grace; acceptable?
 
 ## Review
 
@@ -121,3 +124,4 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #3)
 - 2026-10-20 03:01 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 03:01 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 03:38 · coordinator · in-progress → review · branch task/T-080 @ 10b8f78, PR #164; analysis verdict APPROVED recorded
