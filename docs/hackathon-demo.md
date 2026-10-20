@@ -48,7 +48,7 @@ The two-phone script below needs the consent side; against stage it stops at the
 2. Start dependencies and the backend:
 
    ```sh
-   docker compose up -d                                   # Redis 7, PostgreSQL 16
+   docker compose up -d                                   # Redis 7, PostgreSQL 16, builders sidecar (:3100)
    dotnet run --project backend/Biatec.Chat.Api           # Development seeds the Biatec Chat and localhost tenants
    pnpm --filter mock-oidc start                          # consent side, http://127.0.0.1:8089
    pnpm --filter @biatec/chat-widget dev                  # widget playground; /dex.html shows it in a Biatec DEX-like page
@@ -93,7 +93,7 @@ Prompt counts assume "always ask". Under the later testnet-valuation mode the **
    group atomically; the chat shows the pool position and the LP tokens held by the safe.
 8. The presenter opens the evidence export for both sessions and shows that the hash chain, the consent receipt and the on-chain
    transaction ids line up, and verifies the signatures against `/.well-known/evidence-jwks.json` with
-   `node packages/evidence-verifier/cli.mjs verify <bundle.json> --jwks <jwks.json>`. Each user downloads the bundle from a receipt
+   `pnpm --filter evidence-verifier build` (once), then `node packages/evidence-verifier/cli.mjs verify <bundle.json> --jwks <jwks.json>`. Each user downloads the bundle from a receipt
    or the Activity panel (`GET /session/evidence`).
 
 ## Showcase site on stage

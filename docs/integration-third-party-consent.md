@@ -16,7 +16,7 @@ changes and the fallback for each is in [required-changes-biatec-oidc.md](requir
 | Conformance test suite that runs against a mock or a real endpoint | Built: `packages/consent-protocol/conformance` ([README](../packages/consent-protocol/conformance/README.md)); not run in CI |
 | Real Biatec OIDC consent endpoints | Not available. Above-threshold signing cannot be enabled against real OIDC until they ship |
 | Dynamic registration of confidential clients | Not available. An operator reviews and registers your client |
-| Authenticator app | Scaffold only |
+| Authenticator app | Built against the mock (enrollment, approvals, receipts, push, settings); never run on a device |
 
 Build and test against the mock; switch the base URL when Biatec OIDC ships.
 

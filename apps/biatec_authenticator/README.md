@@ -102,8 +102,8 @@ default counts as a real Biatec OIDC, so the settings screens are off unless `--
 
     flutter analyze && flutter test
 
-CI runs both (`ci.yml`, job `authenticator`) on every pull request. The `mock_oidc_*_contract_test.dart` files are
-skipped there, because CI starts no mock.
+CI runs both (`ci.yml`, job `authenticator`) on every pull request. The `mock_oidc*_contract_test.dart` files (enrollment, approvals, push,
+settings) are skipped there, because CI starts no mock.
 
 ## Devices, trusted clients and security settings (T-084)
 

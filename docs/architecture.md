@@ -41,7 +41,7 @@ flowchart TB
         PREV["Action preview service<br/>group hash, expiry"]
         MODEL["Bedrock Converse client<br/>streaming, caching, backoff"]
         MCPC["MCP client + tool cache<br/>Tools"]
-        VAULT["Token vault<br/>AES-GCM, KMS envelope"]
+        VAULT["Token vault<br/>AES-GCM, master key from a Kubernetes secret"]
         EVID["Evidence log + JWKS<br/>hash chain, ES256"]
         ANCH["Anchoring job<br/>Merkle root every 10 min"]
         ONB["Tenant onboarding<br/>DNS TXT proof"]
@@ -54,7 +54,7 @@ flowchart TB
     PG[("PostgreSQL")]
     RD[("Redis")]
     BR["Amazon Bedrock<br/>eu-central-1, Claude 4.5"]
-    KMS["AWS KMS<br/>eu-central-1"]
+    KMS["AWS KMS<br/>eu-central-1, optional, not deployed"]
     OIDC["Biatec OIDC"]
     MCP["Biatec MCP"]
     SIDE["Builder sidecar<br/>CLAMM, algo-safe"]
@@ -67,7 +67,7 @@ flowchart TB
     BFF -- "code + PKCE, resource indicator" --> OIDC
     BFF --> VAULT
     VAULT --> RD
-    VAULT -- "wrap data keys" --> KMS
+    VAULT -. "wrap data keys (Vault:KeyProvider=Kms only)" .-> KMS
     SES --> PG
     MODEL --> BR
     GATE --> MODEL
