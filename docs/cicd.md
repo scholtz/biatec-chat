@@ -29,6 +29,7 @@ Settings → Secrets and variables → Actions:
 | `DOCKERHUB_USER` | repository | Docker Hub user that can push `scholtz2/biatec-chat-*` |
 | `DOCKERHUB_TOKEN` | repository | Docker Hub access token (read/write) for that user |
 | `KUBE_CONFIG` | `Stage` and `Production` environments, each its own | `base64 -w0` of a kubeconfig allowed to manage that environment's namespace: deployments, statefulsets, services, ingresses, network policies, config maps, secrets, service accounts, persistent volume claims, `pods/exec` (migration), and create the namespace on the first run |
+| `OIDC_CLIENT_ID` | `Stage` and `Production` | Client id of the `biatec-chat` client at that environment's Biatec OIDC, e.g. `biatec-chat-stage` on stage.oidc.biatec.io. Its allowed redirect URI there must include `https://<host>/auth/callback` (`stage.chat.biatec.io` / `chat.biatec.io`) |
 | `OIDC_CLIENT_SECRET` | `Stage` and `Production` | Biatec OIDC client secret of the `biatec-chat` tenant at that environment's OIDC (stage.oidc.biatec.io / oidc.biatec.io) |
 | `AWS_ROLE_ARN` | `Stage` and `Production` | Bedrock role from `infra/aws/rolesanywhere.sh` (aws-setup.md §3), e.g. `arn:aws:iam::<account>:role/biatec-chat-bedrock-role` |
 | `AWS_TRUST_ANCHOR_ARN`, `AWS_PROFILE_ARN` | `Stage` and `Production` | IAM Roles Anywhere trust anchor and profile ARNs, printed by the same script |
@@ -41,9 +42,17 @@ Settings → Secrets and variables → Actions:
 **Every secret lives in GitHub, none is generated in the cluster.** Each deploy writes the environment's secrets into
 three cluster secrets and fails with a clear message if one is missing: `biatec-chat-generated` (the four random values
 above, name kept from the earlier design; the backend builds its connection strings from them and the in-cluster service
-names), `biatec-chat-secrets` (`OIDC_CLIENT_SECRET`) and `biatec-chat-aws` (certificate, key and the AWS config file;
+names), `biatec-chat-secrets` (`OIDC_CLIENT_SECRET`; `OIDC_CLIENT_ID` goes into the tenant row, see "Tenant") and `biatec-chat-aws` (certificate, key and the AWS config file;
 the five `AWS_*` secrets are validated: certificate matches key, expiry warning). To rotate a value, set the GitHub
 secret and deploy; Postgres is the exception above.
+
+## Tenant
+
+The backend finds its OIDC client through the `Tenants` table, which it seeds only in Development. After the migration,
+each deploy upserts the tenant `biatec-chat`: host from the environment URL, `OidcClientId` from `OIDC_CLIENT_ID`,
+`ClientSecretRef` `secret://biatec-chat/oidc-client-secret` (the `OIDC_CLIENT_SECRET` secret) and `RedirectUri`
+`https://<host>/auth/callback`. On later deploys only those four columns are updated; limits, origins and other settings
+changed through onboarding stay. Changing `OIDC_CLIENT_ID` and deploying switches the client.
 
 ## Database migrations
 
@@ -57,5 +66,5 @@ version for the few seconds both run.
 1. AWS part: [aws-setup.md](aws-setup.md) §3 (guardrail exists; Roles Anywhere role, certificates and the five `AWS_*` secrets).
 2. Secrets above, `Stage` first.
 3. Merge to `main` or run `deploy-stage` manually; check https://stage.chat.biatec.io/health.
-4. Seed the `biatec-chat` tenant row (k8s/README.md, "Tenants are not seeded outside Development").
-5. When stage is verified: set the `Production` secrets, run `promote-production`, seed the tenant there too.
+4. Check the tenant: the deploy created the `biatec-chat` row for the host with `OIDC_CLIENT_ID` (see "Tenant").
+5. When stage is verified: set the `Production` secrets and run `promote-production`.

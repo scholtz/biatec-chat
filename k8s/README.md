@@ -48,8 +48,9 @@ setup with `infra/aws/rolesanywhere.sh`; the full walk-through is [docs/aws-setu
   the immutable tag it deploys: `1.<date>-<sha7>-beta` on stage (deploy-stage.yml), `1.<date>-<sha7>-main` on production
   (promote-production.yml, the same images re-tagged). Applying an overlay by hand without pinning fails on purpose
   (`REPLACE-WITH-RELEASE-SHA` doesn't exist). See `docs/cicd.md`.
-- **Tenants are not seeded outside Development.** After the first deploy, create the `biatec-chat` tenant row (host
-  `chat.biatec.io`, `ClientSecretRef=secret://biatec-chat/oidc-client-secret`) via the onboarding API or SQL.
+- **Tenants are not seeded by the backend outside Development.** `deploy.yml` upserts the `biatec-chat` tenant row after
+  the migration: host from the environment URL, client id from the `OIDC_CLIENT_ID` secret,
+  `ClientSecretRef=secret://biatec-chat/oidc-client-secret`.
   The secret itself is the `oidc-client-secret` key above, exposed as `Secrets__biatec-chat__oidc-client-secret`.
 - **Vault** uses the `Secret` key provider: `Vault__MasterKey` from `biatec-chat-generated` wraps the per-entry data keys
   (AES-GCM). Losing that key only forces users to sign in again.

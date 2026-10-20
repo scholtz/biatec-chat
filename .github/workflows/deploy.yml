@@ -1,6 +1,6 @@
 # Reusable deploy of already-pushed images to one Kubernetes environment. Called by deploy-stage.yml (Stage, k8s/stage)
 # and promote-production.yml (Production, k8s/main); it never builds anything. Credentials come only from the GitHub
-# environment's secrets (KUBE_CONFIG, OIDC_CLIENT_SECRET, AWS_ROLE_ARN, AWS_TRUST_ANCHOR_ARN, AWS_PROFILE_ARN, AWS_CLIENT_CERT, AWS_CLIENT_KEY); see docs/cicd.md.
+# environment's secrets (KUBE_CONFIG, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET,AWS_ROLE_ARN, AWS_TRUST_ANCHOR_ARN, AWS_PROFILE_ARN, AWS_CLIENT_CERT, AWS_CLIENT_KEY); see docs/cicd.md.
 name: deploy
 
 on:
@@ -132,6 +132,30 @@ jobs:
           sed -i '1s/^\xEF\xBB\xBF//' migrate.sql
           kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
             psql -q -v ON_ERROR_STOP=1 -U biatec -d biatec_chat < migrate.sql
+
+      # The backend resolves the tenant (host, OIDC client id, redirect URI) from the Tenants table and seeds it only in
+      # Development. This creates the biatec-chat tenant for the environment's host from OIDC_CLIENT_ID, or updates just
+      # those four columns on later deploys (everything else on the row is owned by onboarding and left alone). The
+      # client secret itself stays a pointer (ClientSecretRef) to the biatec-chat-secrets key.
+      - name: Seed tenant biatec-chat
+        env:
+          OIDC_CLIENT_ID: ${{ secrets.OIDC_CLIENT_ID }}
+          SITE_URL: ${{ inputs.url }}
+        run: |
+          if [ -z "$OIDC_CLIENT_ID" ]; then echo "::error::OIDC_CLIENT_ID is not set on the ${{ inputs.environment }} environment (docs/cicd.md)."; exit 1; fi
+          host="${SITE_URL#https://}"; host="${host%/}"
+          kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
+            psql -q -v ON_ERROR_STOP=1 -U biatec -d biatec_chat \
+              -v host="$host" -v client_id="$OIDC_CLIENT_ID" -v redirect="https://$host/auth/callback" <<'SQL'
+          INSERT INTO "Tenants" ("Id", "Host", "SignInPageUrl", "BedrockBudgets", "SafeApprovalCaps", "ConsentThresholdCeilingEur",
+                                 "LimitsUpdateEnabled", "X402Enabled", "OidcClientId", "ClientSecretRef", "RedirectUri",
+                                 "AllowedOrigins", "ClientKeys", "SoftCapEurPerHour", "TrustAnchorVerified", "Suggestions")
+          VALUES ('biatec-chat', :'host', 'https://web.biatec.io', '{}', '{}', 1000, false, false, :'client_id',
+                  'secret://biatec-chat/oidc-client-secret', :'redirect',
+                  ARRAY['https://web.biatec.io', 'https://dex.biatec.io'], '["biatec-web","biatec-dex"]', 1500, true, '[]')
+          ON CONFLICT ("Id") DO UPDATE SET "Host" = EXCLUDED."Host", "OidcClientId" = EXCLUDED."OidcClientId",
+                                           "ClientSecretRef" = EXCLUDED."ClientSecretRef", "RedirectUri" = EXCLUDED."RedirectUri";
+          SQL
 
       - name: Wait for rollout
         run: |
