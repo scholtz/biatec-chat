@@ -12,7 +12,7 @@ import { agentModeOf, AGENT_MODE_LABEL } from "./shell/agentMode";
 import { createCore, pageContext, type WidgetCore, type WidgetServices } from "../api/core";
 import { hostSettings } from "../api/controller";
 import { resolveTheme, watchTheme, type ResolvedTheme } from "../theme";
-import { setLocale, t } from "../i18n";
+import { resolvedLocale, setLocale, t } from "../i18n";
 
 const props = defineProps<{
   options: ResolvedOptions;
@@ -39,6 +39,8 @@ let stopTheme = () => {};
 // Locale: the plugin option, or setLocale(); vue-i18n re-renders every string in place.
 const lang = computed(() => hostSettings.locale ?? options.locale);
 setLocale(lang.value);
+/** The locale the catalog actually shows (de falls back to en): what screen readers must announce. */
+const shownLang = computed(() => resolvedLocale(lang.value));
 
 // Without a shadow root (host mounts BiatecChatRoot itself) the tokens apply to the root element instead of :host.
 // Known synchronously from the `shadow` prop so the first render already has its tokens; onMounted confirms it.
@@ -139,6 +141,18 @@ function inWidget(e: Event): boolean {
   return !!rootEl.value && e.composedPath().includes(rootEl.value);
 }
 
+const HOST_MODAL = "[role=dialog][aria-modal=true], dialog[open]:modal";
+/** A modal dialog of the host page (not ours) is open: it owns Esc and Tab. */
+function hostModalOpen(): boolean {
+  if (typeof document === "undefined") return false;
+  return [...document.querySelectorAll<HTMLElement>("[role=dialog][aria-modal=true]")].some(
+    (el) => !rootEl.value?.contains(el) && !el.closest("[data-biatec-chat-host]") && el.getClientRects().length > 0,
+  );
+}
+function fromHostDialog(e: Event): boolean {
+  return e.composedPath().some((n) => n instanceof Element && !!rootEl.value && !rootEl.value.contains(n) && n.matches(HOST_MODAL));
+}
+
 // Closing the permissions dialog returns focus to the status pill when its opener is gone (a banner that hid).
 watch(
   () => ui.permissions,
@@ -156,6 +170,8 @@ const asideDocked = computed(() => panelMode.value === "workspace" && !small.val
 function onEscape(e: KeyboardEvent) {
   if (e.defaultPrevented) return;
   if (inline && !inWidget(e)) return;
+  // Esc meant for a host dialog (pressed inside it, or while it is open and focus is outside the widget).
+  if (fromHostDialog(e) || (!inWidget(e) && hostModalOpen())) return;
   if (ui.permissions) {
     agent.escape();
     return;
@@ -176,6 +192,8 @@ function onDocKeydown(e: KeyboardEvent) {
     return;
   }
   if (e.key !== "Tab" || !modal.value || !rootEl.value) return;
+  // The full-screen trap yields while a host modal dialog is open over it.
+  if (fromHostDialog(e) || hostModalOpen()) return;
   const items = [...rootEl.value.querySelectorAll<HTMLElement>(FOCUSABLE)];
   const first = items[0];
   const last = items[items.length - 1];
@@ -218,7 +236,7 @@ onBeforeUnmount(() => {
     :data-theme="theme"
     :data-standalone="standalone ? '' : undefined"
     :data-inline="inline ? '' : undefined"
-    :lang="lang"
+    :lang="shownLang"
   >
     <ChatPanel
       v-if="showPanel"

@@ -87,7 +87,7 @@ describe("BiatecDEX host: language", () => {
     expect(launcherLabel()).toBe("Ask Biatec AI");
     await setDexLocale("de");
     await nextTick();
-    expect(shadow().querySelector(".biatec-chat")!.getAttribute("lang")).toBe("de");
+    expect(shadow().querySelector(".biatec-chat")!.getAttribute("lang")).toBe("en");
     expect(launcherLabel()).toBe("Ask Biatec AI");
     await setDexLocale("en");
     await nextTick();
