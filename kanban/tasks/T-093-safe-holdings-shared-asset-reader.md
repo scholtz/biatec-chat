@@ -1,7 +1,7 @@
 ---
 id: T-093
 title: "Safe proposal card: use the shared algod asset reader"
-status: review
+status: done
 priority: P3
 epic: "Safe"
 blocked_by: [T-090]
@@ -55,6 +55,8 @@ files.
 
 ## Review
 
+- 2026-10-20 05:47 · approve · PR #194 merged into main @ f7deaa1 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 04:16 · coordinator · (new) → backlog · proposed by a worker
@@ -63,3 +65,4 @@ files.
 - 2026-10-20 05:32 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 05:32 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 05:47 · coordinator · in-progress → review · PR #194
+- 2026-10-20 05:47 · user · review → done · PR #194 merged into main @ f7deaa1 (synced by kanban-sync)
