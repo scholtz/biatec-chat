@@ -188,7 +188,7 @@ public sealed class ConfirmCapsTests : IAsyncLifetime
     private async Task<ConfirmResult> ConfirmAsync(Built b)
     {
         await using var db = NewContext();
-        return await NewService(db).ConfirmAsync(_tenant, _session, b.PreviewId, b.Group.GroupHash, CancellationToken.None);
+        return await NewService(db).ConfirmAsync(_tenant, _session, b.PreviewId, b.Group.GroupHash, Biatec.Chat.Api.Chat.Confirm.ConfirmService.BackendOrigin(_tenant), CancellationToken.None);
     }
 
     private async Task<List<SoftCapSpend>> SpendsAsync()

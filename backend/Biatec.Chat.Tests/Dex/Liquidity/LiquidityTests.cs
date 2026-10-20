@@ -415,7 +415,7 @@ public sealed class LiquidityTests : IAsyncLifetime
         await using var db = NewContext();
         var previews = new ActionPreviewService(db, _clock);
         var confirm = new ConfirmService(db, previews, new ScopeGuard(_vault, _clock), _vault, _oidc, _mcp, new FakeConfirmer(), new FakeEvidence(), _clock, NullLogger<ConfirmService>.Instance);
-        var result = await confirm.ConfirmAsync(_tenant, _session, Guid.Parse(card.PreviewId), hash, default);
+        var result = await confirm.ConfirmAsync(_tenant, _session, Guid.Parse(card.PreviewId), hash, Biatec.Chat.Api.Chat.Confirm.ConfirmService.BackendOrigin(_tenant), default);
 
         Assert.Equal(ConfirmOutcome.Landed, result.Outcome);
         // Biatec OIDC got the previewed group (the only signing path), the hash matches the card, and the sender is the user.
@@ -550,7 +550,7 @@ public sealed class LiquidityTests : IAsyncLifetime
         // And it lands through the same confirm path.
         await using var db = NewContext();
         var confirm = new ConfirmService(db, new ActionPreviewService(db, _clock), new ScopeGuard(_vault, _clock), _vault, _oidc, _mcp, new FakeConfirmer(), new FakeEvidence(), _clock, NullLogger<ConfirmService>.Instance);
-        Assert.Equal(ConfirmOutcome.Landed, (await confirm.ConfirmAsync(_tenant, _session, Guid.Parse(card.PreviewId), step.GroupHash, default)).Outcome);
+        Assert.Equal(ConfirmOutcome.Landed, (await confirm.ConfirmAsync(_tenant, _session, Guid.Parse(card.PreviewId), step.GroupHash, Biatec.Chat.Api.Chat.Confirm.ConfirmService.BackendOrigin(_tenant), default)).Outcome);
     }
 
     [Fact]

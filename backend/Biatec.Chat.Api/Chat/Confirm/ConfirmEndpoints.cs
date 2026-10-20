@@ -74,7 +74,7 @@ public static class ConfirmEndpoints
             if (string.IsNullOrWhiteSpace(body?.GroupHash)) return Results.Problem("groupHash is required.", statusCode: StatusCodes.Status400BadRequest);
 
             ConfirmResult r;
-            try { r = await confirm.ConfirmAsync(tenant, session, previewId, body.GroupHash, ctx.RequestAborted, pageOrigin); }
+            try { r = await confirm.ConfirmAsync(tenant, session, previewId, body.GroupHash, pageOrigin, ctx.RequestAborted); }
             catch (PreviewException ex)
             {
                 var status = ex.Error switch

@@ -197,23 +197,20 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
     {
         await using var db = NewContext();
         var svc = NewService(db, signer, handlers, recorder);
-        return await svc.ConfirmAsync(_tenant, _session, previewId, groupHash, CancellationToken.None, pageOrigin);
+        return await svc.ConfirmAsync(_tenant, _session, previewId, groupHash, pageOrigin ?? ConfirmService.BackendOrigin(_tenant), CancellationToken.None);
     }
 
     private ConfirmService NewService(ChatDbContext db, IWalletSigningClient? signer = null, IEnumerable<ISettlementHandler>? handlers = null, IEvidenceRecorder? recorder = null) =>
         new(db, new ActionPreviewService(db, _clock), new ScopeGuard(_vault, _clock), _vault, signer ?? _oidc, _mcp, _confirmer, _evidence, _clock,
             NullLogger<ConfirmService>.Instance, handlers, recorder: recorder);
 
-    /// <summary>Records into the real evidence table (payload in clear, no chain), so the service can read its own entries back.</summary>
-    private sealed class DbRecorder(Func<ChatDbContext> newContext) : IEvidenceRecorder
+    private sealed class CapturingRecorder : IEvidenceRecorder
     {
         public readonly List<(string Kind, JsonObject Payload)> Entries = [];
-        public async Task RecordAsync(Guid conversationId, string kind, JsonObject payload, CancellationToken ct = default)
+        public Task RecordAsync(Guid conversationId, string kind, JsonObject payload, CancellationToken ct = default)
         {
             Entries.Add((kind, payload));
-            await using var db = newContext();
-            db.EvidenceEntries.Add(new EvidenceEntry { ConversationId = conversationId, Seq = Entries.Count, Kind = kind, Payload = payload.ToJsonString() });
-            await db.SaveChangesAsync(ct);
+            return Task.CompletedTask;
         }
     }
 
@@ -510,7 +507,7 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
     [InlineData("https://web.biatec.io")]
     public async Task PageOrigin_IsReportedToOidc_AndRecordedInSigningRequested(string pageOrigin)
     {
-        var recorder = new DbRecorder(NewContext);
+        var recorder = new CapturingRecorder();
         var b = await BuildPreviewAsync();
         Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(b.PreviewId, b.Group.GroupHash, pageOrigin: pageOrigin, recorder: recorder)).Outcome);
 
@@ -541,27 +538,34 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ResumeAfterConsent_ReportsThePageOriginOfTheConfirmThatAskedForIt()
+    public async Task ResumeAfterConsent_ReportsTheOriginStoredOnTheConsentRequest()
     {
-        var recorder = new DbRecorder(NewContext);
         var b = await BuildPreviewAsync();
         _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_dex", "4821", 300, 2);
-        Assert.Equal(ConfirmOutcome.ConsentPending, (await ConfirmAsync(b.PreviewId, b.Group.GroupHash, pageOrigin: "https://dex.biatec.io", recorder: recorder)).Outcome);
+        Assert.Equal(ConfirmOutcome.ConsentPending, (await ConfirmAsync(b.PreviewId, b.Group.GroupHash, pageOrigin: "https://dex.biatec.io")).Outcome);
         _oidc.Override = null;
-
         await using (var db = NewContext())
-            Assert.Equal(ConfirmOutcome.Landed, (await NewService(db, recorder: recorder).ResumeAfterConsentAsync(_tenant, _session, b.PreviewId, "ELEVATED", CancellationToken.None)).Outcome);
+            Assert.Equal("https://dex.biatec.io", (await db.ConsentRequests.AsNoTracking().SingleAsync()).Origin);
+
+        // Evidence is not consulted: an empty or erased log does not change what the resume reports.
+        await using (var db = NewContext())
+            Assert.Equal(ConfirmOutcome.Landed, (await NewService(db).ResumeAfterConsentAsync(_tenant, _session, b.PreviewId, "ELEVATED", CancellationToken.None)).Outcome);
         Assert.Equal(2, _oidc.Calls.Count);
         Assert.All(_oidc.Calls, c => Assert.Equal("https://dex.biatec.io", c.Request.Origin));
     }
 
-    [Fact]
-    public async Task ResumeAfterConsent_WithoutARecordedOrigin_ReportsTheBackendOrigin()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("https://evil.example")]
+    public async Task ResumeAfterConsent_WithoutAValidStoredOrigin_ReportsTheBackendOrigin(string? stored)
     {
         var b = await BuildPreviewAsync();
         _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_x", "4821", 300, 2);
         await ConfirmAsync(b.PreviewId, b.Group.GroupHash, pageOrigin: "https://dex.biatec.io");
         _oidc.Override = null;
+        // A row written before the column existed (null), or one that no longer matches the tenant's registered origins.
+        await using (var db = NewContext())
+            await db.ConsentRequests.ExecuteUpdateAsync(u => u.SetProperty(c => c.Origin, stored));
 
         await using (var db = NewContext())
             await NewService(db).ResumeAfterConsentAsync(_tenant, _session, b.PreviewId, "ELEVATED", CancellationToken.None);
@@ -755,7 +759,7 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
         await using (var db = NewContext())
         {
             var svc = new ConfirmService(db, new ActionPreviewService(db, _clock), new ScopeGuard(_vault, _clock), _vault, aborting, _mcp, _confirmer, _evidence, _clock, NullLogger<ConfirmService>.Instance);
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => svc.ConfirmAsync(_tenant, _session, b.PreviewId, b.Group.GroupHash, cts.Token));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => svc.ConfirmAsync(_tenant, _session, b.PreviewId, b.Group.GroupHash, Biatec.Chat.Api.Chat.Confirm.ConfirmService.BackendOrigin(_tenant), cts.Token));
         }
         Assert.Equal(ActionPreviewStatus.Proposed, (await LoadAsync(b.PreviewId)).Preview.Status);
         Assert.Contains(_evidence.Entries, e => e.Kind == "confirm_aborted" && e.Payload["reason"]!.GetValue<string>() == "cancelled");

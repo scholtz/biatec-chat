@@ -74,9 +74,9 @@ public sealed class ConfirmService(
     /// The page origin the user confirmed from: the request's Origin as <see cref="Security.OriginPolicy.AllowedOrigin"/>
     /// validated it against the tenant's registered origins. It is checked against that list again here and reported to
     /// Biatec OIDC with the signing request (per-origin pending slots, rate limits and pauses). Null only for internal
-    /// callers; the backend origin is reported then.
+    /// callers without a page pass <see cref="BackendOrigin"/>; anything not registered is reported as the backend origin.
     /// </param>
-    public async Task<ConfirmResult> ConfirmAsync(Tenant tenant, ChatSession session, Guid previewId, string groupHash, CancellationToken ct, string? pageOrigin = null)
+    public async Task<ConfirmResult> ConfirmAsync(Tenant tenant, ChatSession session, Guid previewId, string groupHash, string pageOrigin, CancellationToken ct)
     {
         var sessionId = session.Id.ToString("N");
 
@@ -250,7 +250,7 @@ public sealed class ConfirmService(
                 return await OutageAsync(session, preview, step, u.Reason, ct);
 
             case WalletSignOutcome.StepUp s:
-                return await ConsentPendingAsync(session, preview, step, s, ct, cap.RequireConsent ? CapMessage(cap.Reason) : null);
+                return await ConsentPendingAsync(session, preview, step, s, origin, ct, cap.RequireConsent ? CapMessage(cap.Reason) : null);
 
             case WalletSignOutcome.Rejected { Error: "invalid_token" }:
                 // An expired or invalid sign-in says nothing about the group: keep the preview confirmable after re-auth.
@@ -476,8 +476,8 @@ public sealed class ConfirmService(
         }
 
         var remaining = (int)Math.Max(1, (step.ExpiresAt - clock.GetUtcNow()).TotalSeconds);
-        // The approval completes the request the user confirmed, so it reports the same page origin as that request.
-        var origin = await ConfirmedOriginAsync(tenant, session, step, ct);
+        // The approval completes the request the user confirmed, so it reports the origin that consent was requested under.
+        var origin = await ConsentOriginAsync(tenant, step, ct);
         var outcome = await signer.SignAsync(elevatedBearer, new WalletSignRequest(step.Network!, address, step.UnsignedGroupList(), Convert.FromHexString(step.SubjectHash),
             RequireConsent: false, MaxConsentSeconds: remaining, Origin: origin), ct);
         await RecordExtraAsync(session, EvidenceKinds.SigningOutcome, SigningOutcomePayload(previewId, step, outcome), CancellationToken.None);
@@ -616,14 +616,14 @@ public sealed class ConfirmService(
         return true;
     }
 
-    private async Task<ConfirmResult> ConsentPendingAsync(ChatSession session, ActionPreview preview, ActionStep step, WalletSignOutcome.StepUp s, CancellationToken ct, string? capNote = null)
+    private async Task<ConfirmResult> ConsentPendingAsync(ChatSession session, ActionPreview preview, ActionStep step, WalletSignOutcome.StepUp s, string origin, CancellationToken ct, string? capNote = null)
     {
         var expires = clock.GetUtcNow().AddSeconds(s.ExpiresInSeconds);
         step.Status = StepStatus.AwaitingConsent;
         db.ConsentRequests.Add(new ConsentRequest
         {
             Id = Guid.NewGuid(), StepId = step.Id, SubjectHash = step.SubjectHash, AuthReqId = s.AuthReqId,
-            BindingCode = s.BindingCode, ExpiresAt = expires, Status = Biatec.Chat.Core.Data.ConsentStatus.Pending,
+            BindingCode = s.BindingCode, ExpiresAt = expires, Status = Biatec.Chat.Core.Data.ConsentStatus.Pending, Origin = origin,
         });
         await db.SaveChangesAsync(ct);
         await RecordAsync(session, "consent_requested", new JsonObject
@@ -699,46 +699,29 @@ public sealed class ConfirmService(
         return o;
     }
 
-    /// <summary>Hooks added by T-035; separate from <see cref="RecordAsync"/>, which writes the original confirm kinds.</summary>
     /// <summary>The tenant's backend origin (from its registered redirect URI): what is reported when no page origin is known.</summary>
-    private static string BackendOrigin(Tenant tenant) => new Uri(tenant.RedirectUri).GetLeftPart(UriPartial.Authority);
+    public static string BackendOrigin(Tenant tenant) => new Uri(tenant.RedirectUri).GetLeftPart(UriPartial.Authority);
 
     /// <summary>
     /// The origin reported to Biatec OIDC: the page origin when it canonicalizes to one of the tenant's registered
     /// origins (never free text from the page or the model), otherwise the tenant's backend origin.
     /// </summary>
-    private static string ReportedOrigin(Tenant tenant, string? pageOrigin)
-    {
-        var canonical = Security.OriginPolicy.Canonicalize(pageOrigin);
-        if (canonical is null) return BackendOrigin(tenant);
-        foreach (var allowed in tenant.AllowedOrigins)
-            if (string.Equals(Security.OriginPolicy.Canonicalize(allowed), canonical, StringComparison.Ordinal)) return canonical;
-        return BackendOrigin(tenant);
-    }
+    private static string ReportedOrigin(Tenant tenant, string? pageOrigin) =>
+        Security.OriginPolicy.AllowedOrigin(tenant, pageOrigin) ?? BackendOrigin(tenant);
 
     /// <summary>
-    /// The page origin recorded in this step's latest <c>signing_requested</c> evidence entry (written by the confirm that
-    /// asked for consent), re-validated against the tenant's registered origins. Falls back to the backend origin when the
-    /// entry is missing, erased or unparseable.
+    /// The origin stored on the step's consent request when consent was asked for, re-validated against the tenant's
+    /// registered origins. Rows written before the column existed have none: the backend origin is reported then.
     /// </summary>
-    private async Task<string> ConfirmedOriginAsync(Tenant tenant, ChatSession session, ActionStep step, CancellationToken ct)
+    private async Task<string> ConsentOriginAsync(Tenant tenant, ActionStep step, CancellationToken ct)
     {
-        var stepId = step.Id.ToString();
-        var payloads = await db.EvidenceEntries.AsNoTracking()
-            .Where(e => e.ConversationId == session.ConversationId && e.Kind == EvidenceKinds.SigningRequested && e.Payload != null)
-            .OrderByDescending(e => e.Seq).Select(e => e.Payload!).Take(50).ToListAsync(ct);
-        foreach (var text in payloads)
-        {
-            try
-            {
-                if (JsonNode.Parse(text) is JsonObject o && o["stepId"]?.GetValue<string>() == stepId)
-                    return ReportedOrigin(tenant, o["origin"]?.GetValue<string>());
-            }
-            catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException) { }
-        }
-        return BackendOrigin(tenant);
+        var stored = await db.ConsentRequests.AsNoTracking()
+            .Where(c => c.StepId == step.Id && c.SubjectHash == step.SubjectHash)
+            .OrderByDescending(c => c.ExpiresAt).Select(c => c.Origin).FirstOrDefaultAsync(ct);
+        return ReportedOrigin(tenant, stored);
     }
 
+    /// <summary>Hooks added by T-035; separate from <see cref="RecordAsync"/>, which writes the original confirm kinds.</summary>
     private Task RecordExtraAsync(ChatSession session, string kind, JsonObject payload, CancellationToken ct) =>
         recorder is null ? Task.CompletedTask : recorder.RecordAsync(session.ConversationId, kind, payload, ct);
 

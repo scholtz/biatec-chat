@@ -36,14 +36,17 @@ public static class OriginPolicy
     }
 
     /// <summary>The canonical request Origin when it is exactly one value on the tenant allow-list (no wildcard, no suffix match).</summary>
-    public static string? AllowedOrigin(Tenant tenant, HttpRequest request)
+    public static string? AllowedOrigin(Tenant tenant, HttpRequest request) =>
+        request.Headers.TryGetValue("Origin", out var values) && values.Count == 1 ? AllowedOrigin(tenant, values[0]) : null;
+
+    /// <summary>The canonical form of <paramref name="origin"/> when it is on the tenant allow-list (no wildcard, no suffix match), else null.</summary>
+    public static string? AllowedOrigin(Tenant tenant, string? origin)
     {
-        if (!request.Headers.TryGetValue("Origin", out var values) || values.Count != 1) return null;
-        var origin = Canonicalize(values[0]);
-        if (origin is null) return null;
+        var canonical = Canonicalize(origin);
+        if (canonical is null) return null;
         foreach (var allowed in tenant.AllowedOrigins)
         {
-            if (string.Equals(Canonicalize(allowed), origin, StringComparison.Ordinal)) return origin;
+            if (string.Equals(Canonicalize(allowed), canonical, StringComparison.Ordinal)) return canonical;
         }
         return null;
     }

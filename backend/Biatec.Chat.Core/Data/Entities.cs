@@ -99,6 +99,11 @@ public class ConsentRequest
     public ConsentStatus Status { get; set; }
     /// <summary>Stored verbatim.</summary>
     public string? Receipt { get; set; }
+    /// <summary>
+    /// The canonical, registered page origin the consent was requested under (reported to Biatec OIDC again on the resume).
+    /// Null on rows written before T-079: the resume reports the tenant's backend origin then.
+    /// </summary>
+    public string? Origin { get; set; }
 }
 
 /// <summary>Append-only. Payload and Salt become null after deletion; the hashes and signature stay.</summary>
