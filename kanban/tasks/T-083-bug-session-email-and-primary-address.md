@@ -1,7 +1,7 @@
 ---
 id: T-083
 title: "Bug: session endpoint must return the signed-in email and primary address"
-status: backlog
+status: in-progress
 priority: P2
 epic: "Sessions & auth"
 blocked_by: []
@@ -9,8 +9,8 @@ area: ["backend/Biatec.Chat.Api/Sessions/SessionEndpoints.cs", "backend/Biatec.C
 parallel: no
 conflicts_with: [T-074, T-080]
 issue: "#152"
-branch: ""
-owner: ""
+branch: "task/T-083"
+owner: "worker-T-083"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#user-experience"
 created: 2026-10-20
@@ -117,3 +117,4 @@ Filled in by the agent when it moves the task to `review`.
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #6)
 - 2026-10-20 03:39 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 03:39 · coordinator · backlog → in-progress · dispatched to worker
