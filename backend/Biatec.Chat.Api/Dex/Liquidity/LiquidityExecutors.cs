@@ -134,8 +134,8 @@ public abstract class LiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpC
     {
         try
         {
-            var r = await mcp.GetCryptoBalanceAsync(ctx, network, address, ct);
-            return r.IsError ? AssetBook.Unreadable : AssetBook.From(WalletBalanceExecutor.Shape(r.Json, r.Text));
+            var r = await mcp.GetCryptoBalanceAsync(ctx, McpNetworks.Algorand(network), address, ct);
+            return r.Failed ? AssetBook.Unreadable : AssetBook.From(WalletBalanceExecutor.Shape(r.Json, r.Text));
         }
         catch (Exception e) when (e is McpToolUnavailableException)
         {
@@ -149,7 +149,7 @@ public abstract class LiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpC
     {
         var now = clock.GetUtcNow();
         var expiresAt = Biatec.Chat.Core.Previews.PreviewPolicy.ExpiryFromLastValid(b.LastValid, b.BuiltAtRound, now);
-        var stepNetwork = "algorand-" + r.Network;
+        var stepNetwork = McpNetworks.Algorand(r.Network);
         var fee = b.Group.Transactions.Aggregate(BigInteger.Zero, (s, t) => s + t.Fee);
         var accountClass = accountVerificationClass?.ToString(CultureInfo.InvariantCulture) ?? "none";
         var summary = $"Biatec DEX pool {b.Pool.AppId} · fee tier {b.Pool.FeePercent}% · price range {b.Pool.PriceRange} · pool minimum verification class {b.Pool.VerificationClass} · your verification class {accountClass} · simulation passed";

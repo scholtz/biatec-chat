@@ -179,7 +179,7 @@ public static class TransferCard
             }
         }
 
-        var network = "algorand-" + r.Network;
+        var network = McpNetworks.Algorand(r.Network);
         var amountText = TransferPlanner.FormatAmount(r.Amount, o.Decimals);
         var genesis = r.Network == "mainnet" ? "mainnet-v1.0" : "testnet-v1.0";
         return new Contracts.ActionPreview
