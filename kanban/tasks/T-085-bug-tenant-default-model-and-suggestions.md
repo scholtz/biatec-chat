@@ -7,7 +7,7 @@ epic: "Orchestrator"
 blocked_by: []
 area: ["backend/Biatec.Chat.Api/Orchestration/ConversationOrchestrator.cs", "backend/Biatec.Chat.Api/Model/ModelRegistration.cs", "backend/Biatec.Chat.Tests/Orchestration/**", "packages/chat-widget/src/components/chat/suggestions.ts"]
 parallel: no
-conflicts_with: [T-076]
+conflicts_with: [T-067, T-076]
 issue: "#154"
 branch: ""
 owner: ""
@@ -83,8 +83,7 @@ A tenant's configured model and sample prompts are used instead of the global de
 
 ## Parallel work
 
-Parallel work possible: **no**. Don't run it at the same time as T-076: they change the same files, and
-running them together causes merge conflicts or broken behaviour.
+Parallel work possible: **no**. Don't run it at the same time as T-067, T-076: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
@@ -117,3 +116,4 @@ Filled in by the agent when it moves the task to `review`.
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #8)
+- 2026-10-20 05:53 · coordinator · backlog · conflicts_with + T-067 (both edit ConversationOrchestrator.cs; seen on task/T-067)
