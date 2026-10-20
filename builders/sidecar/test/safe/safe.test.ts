@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto";
 import algosdk from "algosdk";
-import { ACT_ALL, ACT_PAY, PRIV_GROUP, PRIV_POLICY, PT_ADMIN, PT_TRANSACTION_GROUP, ZERO_ADDR, createAssetSafeTxn, createPaymentSafeTxn, toSafeTxnGroup } from "algo-safe";
+import { ACT_ALL, ACT_PAY, PRIV_GROUP, PRIV_POLICY, PT_ADMIN, PT_TRANSACTION_GROUP, ZERO_ADDR, createAppCallSafeTxn, createAssetSafeTxn, createPaymentSafeTxn, toSafeTxnGroup } from "algo-safe";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp, type BuildContext } from "../../src/app.js";
 import { loadConfig } from "../../src/config.js";
@@ -356,4 +357,123 @@ describe.skipIf(!process.env.TESTNET_ALGOD_URL || !process.env.TESTNET_SAFE_SEND
     expect(r.transactions).toHaveLength(1);
     expect(r.simulation).toMatchObject({ ok: expect.any(Boolean) });
   }, 60_000);
+});
+
+// ---- T-033: liquidity payloads, payload hashes, execution fees ----
+
+const POOL = 600;
+const PROVIDER = 500;
+const ASSET_A = 31566704;
+const ASSET_B = 10458941;
+const LP = 900;
+const poolAddress = algosdk.getApplicationAddress(POOL).toString();
+
+/** A stand-in for biatec-concentrated-liquidity-amm: the group shape clammAddLiquidityTxs builds, for the given sender. */
+const fakeLiquidity = (optIn: boolean) => async (params: unknown, _ctx?: BuildContext) => {
+  const p = params as { sender: string; poolAppId: string; amountA: string; amountB: string };
+  const sp: algosdk.SuggestedParams = { fee: 1000n, minFee: 1000n, flatFee: true, firstValid: 1000n, lastValid: 2000n, genesisID: "testnet-v1.0", genesisHash: Buffer.alloc(32, 7) };
+  const txs: algosdk.Transaction[] = [];
+  if (optIn) txs.push(algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({ sender: p.sender, receiver: p.sender, amount: 0n, assetIndex: LP, suggestedParams: sp }));
+  txs.push(algosdk.makeApplicationNoOpTxnFromObject({ sender: p.sender, appIndex: PROVIDER, appArgs: [new Uint8Array([1, 2, 3, 4])], suggestedParams: sp }));
+  txs.push(algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({ sender: p.sender, receiver: poolAddress, amount: BigInt(p.amountA), assetIndex: ASSET_A, suggestedParams: sp }));
+  txs.push(algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({ sender: p.sender, receiver: poolAddress, amount: BigInt(p.amountB), assetIndex: ASSET_B, suggestedParams: sp }));
+  txs.push(algosdk.makeApplicationNoOpTxnFromObject({ sender: p.sender, appIndex: Number(p.poolAppId), appArgs: [new Uint8Array([9, 9, 9, 9])], foreignApps: [PROVIDER], foreignAssets: [ASSET_A, ASSET_B, LP], suggestedParams: { ...sp, fee: 8000n } }));
+  algosdk.assignGroupID(txs);
+  return { transactions: txs.map((t) => algosdk.encodeUnsignedTransaction(t)), facts: { pool: { appId: p.poolAppId, lpTokenId: String(LP) }, poolProviderAppId: String(PROVIDER), amountA: p.amountA, amountB: p.amountB, lpOptIn: optIn } };
+};
+const lb = (optIn = true) => safeBuilders(chainFactory, fakeLiquidity(optIn));
+const payloadArg = (b64: string) => decode(b64).applicationCall!.appArgs![2]!;
+const sha = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+
+describe("proposal.create with a liquidity payload", () => {
+  it("converts the CLAMM group for the safe into the payload, LP opt-in first, safe sends as the zero address", async () => {
+    const r = await lb()["proposal.create"]!({ appId: APP, sender: alice, groupId: 1, liquidity: { poolAppId: POOL, amountA: "2000000", amountB: "2000000" } }, ctx());
+    const preview = r.preview as { payload: Record<string, unknown>[]; payloadHash: string; liquidity: { poolProviderAppId: string } };
+    expect(preview.payload.map((e) => e.type)).toEqual(["assetTransfer", "appCall", "assetTransfer", "assetTransfer", "appCall"]);
+    const appAddr = algosdk.getApplicationAddress(APP).toString();
+    expect(preview.payload[0]).toMatchObject({ from: "safe", assetId: String(LP), receiver: appAddr, amount: "0" });
+    expect(preview.payload[2]).toMatchObject({ from: "safe", assetId: String(ASSET_A), receiver: poolAddress, amount: "2000000" });
+    expect(preview.payload[4]).toMatchObject({ appId: String(POOL) });
+    expect(preview.liquidity.poolProviderAppId).toBe(String(PROVIDER));
+    // The hash is over the payload argument exactly as the propose call carries it.
+    expect(preview.payloadHash).toBe(sha(payloadArg(r.transactions[0]!)));
+  });
+
+  it("omits the opt-in when the safe already holds the LP token", async () => {
+    const r = await lb(false)["proposal.create"]!({ appId: APP, sender: alice, groupId: 1, liquidity: { poolAppId: POOL, amountA: 5, amountB: 6 } }, ctx());
+    expect((r.preview as { payload: { type: string }[] }).payload.map((e) => e.type)).toEqual(["appCall", "assetTransfer", "assetTransfer", "appCall"]);
+  });
+
+  it("refuses a liquidity group sent by anyone but the safe, and a second payload source", async () => {
+    const other = async (params: unknown, c: BuildContext) => fakeLiquidity(true)({ ...(params as object), sender: bob }, c);
+    await expect(safeBuilders(chainFactory, other)["proposal.create"]!({ appId: APP, sender: alice, groupId: 1, liquidity: { poolAppId: POOL, amountA: 1, amountB: 1 } }, ctx())).rejects.toThrow(/does not send/);
+    await expect(lb()["proposal.create"]!({ appId: APP, sender: alice, groupId: 1, liquidity: { poolAppId: POOL, amountA: 1, amountB: 1 }, payload: [{ type: "payment", receiver, amount: 1 }] }, ctx())).rejects.toThrow(/exactly one/);
+  });
+});
+
+describe("payload hashes", () => {
+  it("are the same for the propose argument and the stored proposal", async () => {
+    const r = await b()["proposal.create"]!({ appId: APP, sender: alice, groupId: 1, payload: [{ type: "payment", receiver, amount: "2500000", note: "rent" }] }, ctx());
+    // proposal 1 stores the same payment payload
+    const read = await b()["safe.proposals"]!({ appId: APP }, ctx());
+    const one = (read.data as { proposals: { proposalId: string; payloadHash: string }[] }).proposals.find((x) => x.proposalId === "1")!;
+    expect(one.payloadHash).toBe((r.preview as { payloadHash: string }).payloadHash);
+    expect(one.payloadHash).toBe(sha(payloadArg(r.transactions[0]!)));
+  });
+
+  it("cover admin changes as their stored tuple", async () => {
+    const r = await b()["proposal.create"]!({ appId: APP, sender: alice, groupId: 1, change: { type: "addMember", groupId: 1, member: carol, label: "Carol" } }, ctx());
+    const arg = payloadArg(r.transactions[0]!);
+    expect((r.preview as { payloadHash: string }).payloadHash).toBe(sha(arg));
+    // What the chain stores for it: the change tuple, read back through algo-safe's typed box reader.
+    put(APP, boxName("proposals", "uint64", 40n), proposal({ payloadType: PT_ADMIN, version: 1n, numPayloads: 0n }));
+    put(APP, boxName("adminPayloads", "uint64", 40n), arg);
+    fake.safes.get(APP)!.globals.nextProposalId = 41n;
+    try {
+      const read = await b()["safe.proposals"]!({ appId: APP, limit: 1 }, ctx());
+      const admin = (read.data as { proposals: { proposalId: string; payloadHash: string }[] }).proposals[0]!;
+      expect(admin.proposalId).toBe("40");
+      expect(admin.payloadHash).toBe(sha(arg));
+    } finally {
+      fake.safes.get(APP)!.globals.nextProposalId = 5n;
+    }
+  });
+});
+
+describe("proposal.execute fees", () => {
+  it("adds the inner-transaction allowance for each app call", async () => {
+    const appGroup = toSafeTxnGroup([createAppCallSafeTxn({ appId: BigInt(POOL), onCompletion: 0n, appArgs: [], accounts: [], foreignApps: [], foreignAssets: [], note: "" })]);
+    put(APP, boxName("proposals", "uint64", 30n), proposal({ status: 2n, approvals: 2n }));
+    put(APP, boxName("transactionGroups", "uint64", 30n * 7n + 1n), txGroupType.encode(appGroup));
+    const r = await b()["proposal.execute"]!({ appId: APP, sender: carol, proposalId: 30 }, ctx());
+    const t = decode(r.transactions[0]!);
+    const budget = 3400n + 700n + 1500n;
+    expect(uintArg(t, 2)).toBe(budget);
+    // 1 outer + 1 payload + 0 validator calls + opups, plus 7 for the app's own inner transactions
+    expect(t.fee).toBe(1000n * (2n + (budget + 699n) / 700n) + 7000n);
+  });
+});
+
+/**
+ * Writes the propose / approve / execute output the backend tests check against (real algo-safe bytes):
+ * WRITE_BACKEND_FIXTURES=1 pnpm exec vitest run test/safe/safe.test.ts
+ */
+describe.skipIf(!process.env.WRITE_BACKEND_FIXTURES)("backend fixture", () => {
+  it("writes sidecar-safe-proposals.json", async () => {
+    const out = (r: { transactions: string[]; preview?: unknown }) => ({ transactions: r.transactions, preview: r.preview });
+    const safeAddress = algosdk.getApplicationAddress(APP).toString();
+    const fx = {
+      alice, bob, carol, receiver, appId: String(APP), pool: String(POOL), provider: String(PROVIDER), assetA: String(ASSET_A), assetB: String(ASSET_B), lp: String(LP),
+      payment: out(await b()["proposal.create"]!({ appId: APP, sender: alice, groupId: 1, payload: [{ type: "payment", receiver, amount: "2500000" }] }, ctx())),
+      optIn: out(await b()["proposal.create"]!({ appId: APP, sender: alice, groupId: 1, payload: [ASSET_A, ASSET_B].map((a) => ({ type: "assetTransfer", assetId: a, receiver: safeAddress, amount: 0 })) }, ctx())),
+      liquidity: out(await lb()["proposal.create"]!({ appId: APP, sender: alice, groupId: 1, liquidity: { poolAppId: POOL, amountA: "2000000", amountB: "2000000" } }, ctx())),
+      admin: out(await b()["proposal.create"]!({ appId: APP, sender: alice, groupId: 1, change: { type: "addMember", groupId: 1, member: carol } }, ctx())),
+      approve: out(await b()["proposal.approve"]!({ appId: APP, sender: bob, proposalId: 1, expectedPayloadVersion: 3 }, ctx())),
+      execute: out(await b()["proposal.execute"]!({ appId: APP, sender: carol, proposalId: 2 }, ctx())),
+    };
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    const dir = new URL("../../../../backend/Biatec.Chat.Tests/Safe/Proposals/Fixtures/", import.meta.url);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(new URL("sidecar-safe-proposals.json", dir), JSON.stringify(fx, null, 2) + "\n");
+  });
 });

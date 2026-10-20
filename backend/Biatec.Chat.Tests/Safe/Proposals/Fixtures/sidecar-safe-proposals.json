@@ -1,0 +1,332 @@
+{
+  "alice": "IV5YC5OB56L6IEMEF4ANKSHUASVAIYAPKL2TMONFNT5JNEMXACCIOCHLBE",
+  "bob": "QLEK7ZFEAF5Q54WTNR6CGDPHPZCR6VLI5BUVRJGLSJKREXLW2QD4NTD6NY",
+  "carol": "4T4VNUMZJ4X3HFTANQHBIPZQMUFQHY6LHNIWPUZFH3UOYYDNZCLPR3KO2E",
+  "receiver": "CATGIIQ56I4UXZNW2RCRGAA25XZCNKBIPJP5VMZH4GDMD6PL7HIYBAZLHU",
+  "appId": "777",
+  "pool": "600",
+  "provider": "500",
+  "assetA": "31566704",
+  "assetB": "10458941",
+  "lp": "900",
+  "payment": {
+    "transactions": [
+      "iaRhcGFhlsQErDqaMsQIAAAAAAAAAAHEhAABAAIAAAAAAAAAAQAKAHQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAmZCId8jlL5bbURRMAGu3yJqgoel/asyfhhsH56/nRAAAAAAAmJaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHIAAMQIAAAAAAADT6jEAQDECAAAAAAAAAAApGFwaWTNAwmjZmVlzQPoomZ2zQPoo2dlbqx0ZXN0bmV0LXYxLjCiZ2jEIAcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHomx2zQPyo3NuZMQgRXuBdcHvl+QRhC8A1Uj0BKoEYA9S9TY5pWz6lpGXAISkdHlwZaRhcHBs"
+    ],
+    "preview": {
+      "kind": "safe.propose",
+      "intent": "Propose a transaction group on safe 777",
+      "appId": "777",
+      "safeAddress": "H7RKIWZUS27C7HPYID3FIPVBTHFOG6PP2FKX5BAJGPPEZVDRB75FZCVZBI",
+      "groupId": "1",
+      "expiryRound": "217000",
+      "network": "testnet",
+      "valueMicroAlgo": "0",
+      "payload": [
+        {
+          "type": "payment",
+          "from": "safe",
+          "receiver": "CATGIIQ56I4UXZNW2RCRGAA25XZCNKBIPJP5VMZH4GDMD6PL7HIYBAZLHU",
+          "amount": "2500000",
+          "closesAccountTo": null,
+          "note": ""
+        }
+      ],
+      "payloadHash": "192131f99756e4b8224aa040f889101fa6b235c9a87ebf5df28e0c0cc6378cb9",
+      "notes": [
+        "Proposing moves nothing. The proposer's own approval is recorded with the proposal; other members approve, then anyone executes once the threshold is met."
+      ],
+      "transactions": [
+        {
+          "type": "appl",
+          "sender": "IV5YC5OB56L6IEMEF4ANKSHUASVAIYAPKL2TMONFNT5JNEMXACCIOCHLBE",
+          "fee": "1000",
+          "appId": "777",
+          "firstValid": "1000",
+          "lastValid": "1010"
+        }
+      ]
+    }
+  },
+  "optIn": {
+    "transactions": [
+      "iaRhcGFhlsQErDqaMsQIAAAAAAAAAAHFARYAAgAEAIwAAAAAAAAAAgAKAHwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4atwP+KkWzSWvi+d+ED2VD6hmcrjee/RVX6ECTPeTNRxD/oAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAegAAAAAAAAAAAAIACgB8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJ+XPT/ipFs0lr4vnfhA9lQ+oZnK43nv0VV+hAkz3kzUcQ/6AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHoAAMQIAAAAAAADT6jEAQDECAAAAAAAAAAApGFwaWTNAwmjZmVlzQPoomZ2zQPoo2dlbqx0ZXN0bmV0LXYxLjCiZ2jEIAcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHomx2zQPyo3NuZMQgRXuBdcHvl+QRhC8A1Uj0BKoEYA9S9TY5pWz6lpGXAISkdHlwZaRhcHBs"
+    ],
+    "preview": {
+      "kind": "safe.propose",
+      "intent": "Propose a transaction group on safe 777",
+      "appId": "777",
+      "safeAddress": "H7RKIWZUS27C7HPYID3FIPVBTHFOG6PP2FKX5BAJGPPEZVDRB75FZCVZBI",
+      "groupId": "1",
+      "expiryRound": "217000",
+      "network": "testnet",
+      "valueMicroAlgo": "0",
+      "payload": [
+        {
+          "type": "assetTransfer",
+          "from": "safe",
+          "assetId": "31566704",
+          "receiver": "H7RKIWZUS27C7HPYID3FIPVBTHFOG6PP2FKX5BAJGPPEZVDRB75FZCVZBI",
+          "amount": "0",
+          "closesAssetTo": null,
+          "note": ""
+        },
+        {
+          "type": "assetTransfer",
+          "from": "safe",
+          "assetId": "10458941",
+          "receiver": "H7RKIWZUS27C7HPYID3FIPVBTHFOG6PP2FKX5BAJGPPEZVDRB75FZCVZBI",
+          "amount": "0",
+          "closesAssetTo": null,
+          "note": ""
+        }
+      ],
+      "payloadHash": "ef9fa036ca06dd5879e0e79fda183c2a28a92143b5dc1376eb83649e3dda995d",
+      "notes": [
+        "Proposing moves nothing. The proposer's own approval is recorded with the proposal; other members approve, then anyone executes once the threshold is met."
+      ],
+      "transactions": [
+        {
+          "type": "appl",
+          "sender": "IV5YC5OB56L6IEMEF4ANKSHUASVAIYAPKL2TMONFNT5JNEMXACCIOCHLBE",
+          "fee": "1000",
+          "appId": "777",
+          "firstValid": "1000",
+          "lastValid": "1010"
+        }
+      ]
+    }
+  },
+  "liquidity": {
+    "transactions": [
+      "iaRhcGFhlsQErDqaMsQIAAAAAAAAAAHFAjQABQAKAJIAygFSAdoAAAAAAAAAAgAKAHwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOEP+KkWzSWvi+d+ED2VD6hmcrjee/RVX6ECTPeTNRxD/oAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAegAAAAAAAAAAAAMACgAsAAAAAAAAAfQAAAAAAAAAAAAaACQAJgAoACoAAQACAAQBAgMEAAAAAAAAAAAAAAAAAAAAAgAKAHwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4atwhpcxiMvgUFf0DUSuCiTsLseA6gYetiqRT2K8/tbOLgkAAAAAAB6EgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAegAAAAAAAAAAAAIACgB8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJ+XPYaXMYjL4FBX9A1Ergok7C7HgOoGHrYqkU9ivP7Wzi4JAAAAAAAehIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHoAAAAAAAAAAAADAAoATAAAAAAAAAJYAAAAAAAAAAAAGgAkACYAMABKAAEAAgAECQkJCQAAAAEAAAAAAAAB9AADAAAAAAHhq3AAAAAAAJ+XPQAAAAAAAAOEAADECAAAAAAAA0+oxAEAxAgAAAAAAAAAAKRhcGlkzQMJo2ZlZc0D6KJmds0D6KNnZW6sdGVzdG5ldC12MS4womdoxCAHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHB6Jsds0D8qNzbmTEIEV7gXXB75fkEYQvANVI9ASqBGAPUvU2OaVs+paRlwCEpHR5cGWkYXBwbA=="
+    ],
+    "preview": {
+      "kind": "safe.propose",
+      "intent": "Propose a transaction group on safe 777",
+      "appId": "777",
+      "safeAddress": "H7RKIWZUS27C7HPYID3FIPVBTHFOG6PP2FKX5BAJGPPEZVDRB75FZCVZBI",
+      "groupId": "1",
+      "expiryRound": "217000",
+      "network": "testnet",
+      "valueMicroAlgo": "0",
+      "payload": [
+        {
+          "type": "assetTransfer",
+          "from": "safe",
+          "assetId": "900",
+          "receiver": "H7RKIWZUS27C7HPYID3FIPVBTHFOG6PP2FKX5BAJGPPEZVDRB75FZCVZBI",
+          "amount": "0",
+          "closesAssetTo": null,
+          "note": ""
+        },
+        {
+          "type": "appCall",
+          "appId": "500",
+          "onCompletion": "0",
+          "appArgs": [
+            "AQIDBA=="
+          ],
+          "accounts": [],
+          "foreignApps": [],
+          "foreignAssets": [],
+          "note": ""
+        },
+        {
+          "type": "assetTransfer",
+          "from": "safe",
+          "assetId": "31566704",
+          "receiver": "Q2LTDCGL4BIFP5ANISXAUJHMF3DYB2QGD23CVEKPMK6P5VWOFYE5NPJ7QY",
+          "amount": "2000000",
+          "closesAssetTo": null,
+          "note": ""
+        },
+        {
+          "type": "assetTransfer",
+          "from": "safe",
+          "assetId": "10458941",
+          "receiver": "Q2LTDCGL4BIFP5ANISXAUJHMF3DYB2QGD23CVEKPMK6P5VWOFYE5NPJ7QY",
+          "amount": "2000000",
+          "closesAssetTo": null,
+          "note": ""
+        },
+        {
+          "type": "appCall",
+          "appId": "600",
+          "onCompletion": "0",
+          "appArgs": [
+            "CQkJCQ=="
+          ],
+          "accounts": [],
+          "foreignApps": [
+            "500"
+          ],
+          "foreignAssets": [
+            "31566704",
+            "10458941",
+            "900"
+          ],
+          "note": ""
+        }
+      ],
+      "payloadHash": "c69161a4b99ee7036f99db4343a9a2b387fe884f854d5858f3400664fe126ad5",
+      "liquidity": {
+        "pool": {
+          "appId": "600",
+          "lpTokenId": "900"
+        },
+        "poolProviderAppId": "500",
+        "amountA": "2000000",
+        "amountB": "2000000",
+        "lpOptIn": true
+      },
+      "notes": [
+        "Proposing moves nothing. The proposer's own approval is recorded with the proposal; other members approve, then anyone executes once the threshold is met."
+      ],
+      "transactions": [
+        {
+          "type": "appl",
+          "sender": "IV5YC5OB56L6IEMEF4ANKSHUASVAIYAPKL2TMONFNT5JNEMXACCIOCHLBE",
+          "fee": "1000",
+          "appId": "777",
+          "firstValid": "1000",
+          "lastValid": "1010"
+        }
+      ]
+    }
+  },
+  "admin": {
+    "transactions": [
+      "iaRhcGFhlcQEP5uKMMQIAAAAAAAAAAHEiAAAAAAAAAACAAAAAAAAAAEAhOT5VtGZTy+zlmBsDhQ/MGULA+PLO1Fn0yU+6OxgbciWAAAAAAAAAAEAhgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADECAAAAAAAA0+oxAgAAAAAAAAAAKRhcGlkzQMJo2ZlZc0D6KJmds0D6KNnZW6sdGVzdG5ldC12MS4womdoxCAHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHB6Jsds0D8qNzbmTEIEV7gXXB75fkEYQvANVI9ASqBGAPUvU2OaVs+paRlwCEpHR5cGWkYXBwbA=="
+    ],
+    "preview": {
+      "kind": "safe.propose",
+      "intent": "Propose an administrative change on safe 777",
+      "appId": "777",
+      "safeAddress": "H7RKIWZUS27C7HPYID3FIPVBTHFOG6PP2FKX5BAJGPPEZVDRB75FZCVZBI",
+      "groupId": "1",
+      "expiryRound": "217000",
+      "network": "testnet",
+      "valueMicroAlgo": "0",
+      "change": {
+        "type": "addMember",
+        "targetGroupId": "1",
+        "groupName": "",
+        "member": "4T4VNUMZJ4X3HFTANQHBIPZQMUFQHY6LHNIWPUZFH3UOYYDNZCLPR3KO2E",
+        "threshold": "0",
+        "allowedActions": [],
+        "adminPrivileges": "0",
+        "dailyLimit": "0",
+        "monthlyLimit": "0",
+        "active": false
+      },
+      "payloadHash": "8c182e59fdf49d8ddd99f2802191d809243daaa98278b87c69a9215dd27f075d",
+      "transactions": [
+        {
+          "type": "appl",
+          "sender": "IV5YC5OB56L6IEMEF4ANKSHUASVAIYAPKL2TMONFNT5JNEMXACCIOCHLBE",
+          "fee": "1000",
+          "appId": "777",
+          "firstValid": "1000",
+          "lastValid": "1010"
+        }
+      ]
+    }
+  },
+  "approve": {
+    "transactions": [
+      "iaRhcGFhlMQE9LSG7sQIAAAAAAAAAAHECAAAAAAAAAADxAgAAAAAAAAAAKRhcGlkzQMJo2ZlZc0D6KJmds0D6KNnZW6sdGVzdG5ldC12MS4womdoxCAHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHB6Jsds0D8qNzbmTEIILIr+SkAXsO8tNsfCMN535FH1Vo6GlYpMuSVRJddtQHpHR5cGWkYXBwbA=="
+    ],
+    "preview": {
+      "kind": "safe.approve",
+      "intent": "Approve proposal 1 on safe 777",
+      "appId": "777",
+      "safeAddress": "H7RKIWZUS27C7HPYID3FIPVBTHFOG6PP2FKX5BAJGPPEZVDRB75FZCVZBI",
+      "proposalId": "1",
+      "expectedPayloadVersion": "3",
+      "approvalsAfter": "2",
+      "threshold": "2",
+      "network": "testnet",
+      "proposal": {
+        "proposalId": "1",
+        "groupId": "1",
+        "kind": "transactionGroup",
+        "status": "active",
+        "approvals": "1",
+        "threshold": "2",
+        "proposer": "IV5YC5OB56L6IEMEF4ANKSHUASVAIYAPKL2TMONFNT5JNEMXACCIOCHLBE",
+        "expiryRound": "9999999",
+        "payloadVersion": "3",
+        "payloadHash": "7746f30589412a0e45cd3f7d0a6ea612781d8b9df106d28c3fd13bac83718bc5",
+        "payload": [
+          {
+            "type": "payment",
+            "from": "safe",
+            "receiver": "CATGIIQ56I4UXZNW2RCRGAA25XZCNKBIPJP5VMZH4GDMD6PL7HIYBAZLHU",
+            "amount": "2500000",
+            "closesAccountTo": null,
+            "note": "rent"
+          }
+        ],
+        "approvedByMember": false
+      },
+      "transactions": [
+        {
+          "type": "appl",
+          "sender": "QLEK7ZFEAF5Q54WTNR6CGDPHPZCR6VLI5BUVRJGLSJKREXLW2QD4NTD6NY",
+          "fee": "1000",
+          "appId": "777",
+          "firstValid": "1000",
+          "lastValid": "1010"
+        }
+      ]
+    }
+  },
+  "execute": {
+    "transactions": [
+      "iaRhcGFhk8QE+3CI6MQIAAAAAAAAAALECAAAAAAAABMkpGFwaWTNAwmjZmVlzScQomZ2zQPoo2dlbqx0ZXN0bmV0LXYxLjCiZ2jEIAcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHomx2zQPyo3NuZMQg5PlW0ZlPL7OWYGwOFD8wZQsD48s7UWfTJT7o7GBtyJakdHlwZaRhcHBs"
+    ],
+    "preview": {
+      "kind": "safe.execute",
+      "intent": "Execute proposal 2 on safe 777",
+      "appId": "777",
+      "safeAddress": "H7RKIWZUS27C7HPYID3FIPVBTHFOG6PP2FKX5BAJGPPEZVDRB75FZCVZBI",
+      "proposalId": "2",
+      "ensureBudgetValue": "4900",
+      "feeMicroAlgo": "10000",
+      "network": "testnet",
+      "proposal": {
+        "proposalId": "2",
+        "groupId": "1",
+        "kind": "transactionGroup",
+        "status": "ready",
+        "approvals": "2",
+        "threshold": "2",
+        "proposer": "IV5YC5OB56L6IEMEF4ANKSHUASVAIYAPKL2TMONFNT5JNEMXACCIOCHLBE",
+        "expiryRound": "9999999",
+        "payloadVersion": "3",
+        "payloadHash": "7746f30589412a0e45cd3f7d0a6ea612781d8b9df106d28c3fd13bac83718bc5",
+        "payload": [
+          {
+            "type": "payment",
+            "from": "safe",
+            "receiver": "CATGIIQ56I4UXZNW2RCRGAA25XZCNKBIPJP5VMZH4GDMD6PL7HIYBAZLHU",
+            "amount": "2500000",
+            "closesAccountTo": null,
+            "note": "rent"
+          }
+        ]
+      },
+      "transactions": [
+        {
+          "type": "appl",
+          "sender": "4T4VNUMZJ4X3HFTANQHBIPZQMUFQHY6LHNIWPUZFH3UOYYDNZCLPR3KO2E",
+          "fee": "10000",
+          "appId": "777",
+          "firstValid": "1000",
+          "lastValid": "1010"
+        }
+      ]
+    }
+  }
+}
