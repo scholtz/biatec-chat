@@ -1,6 +1,7 @@
 # AWS setup for Biatec Chat
 
-**AWS is used for Amazon Bedrock only**: the Claude model calls and the Bedrock guardrail. Everything else runs on
+**AWS is used for Amazon Bedrock only**: the Claude model calls, the Bedrock guardrail and the Bedrock Knowledge Base
+behind `kb.search`. Everything else runs on
 Biatec's own Kubernetes cluster (stage and production, see [cicd.md](cicd.md)): the backend, the builders, Postgres,
 Redis and the token-vault key. This page explains what that Bedrock access consists of and how to set it up. Hackathon
 rules ([AGENTS.md](../AGENTS.md)) apply: region `eu-central-1`, no IAM users or access keys, Claude 4.5 `eu.` model IDs
@@ -10,6 +11,7 @@ only, every resource tagged `Project=biatec`.
 
 ```
 Browser widget ──cookie──▶ Biatec.Chat.Api ─────────────▶ AWS Bedrock (eu-central-1): Converse stream + guardrail
+                                                           + Knowledge Base Retrieve (kb.search)
                            (Biatec k8s:                    credentials: client certificate → Roles Anywhere
                             stage / production)
                                  ├──▶ Postgres, Redis (same namespace)
@@ -20,6 +22,7 @@ Browser widget ──cookie──▶ Biatec.Chat.Api ─────────
 |---|---|---|---|
 | Bedrock model access | Opus 4.5 (signed-in users), Sonnet 4.5 (anonymous) | already enabled on the account | none |
 | Bedrock guardrail `biatec-chat-guardrail` | prompt-injection and unsafe-content filter on the model stream and on untrusted tool results | `infra/guardrail/create.sh` | none |
+| Bedrock Knowledge Base `DZZGQITEAS` (data source `XYLE4VEJV6`, S3 bucket `biantec-chatbot-knowladgebase`, prefix `biatec-chat-kb/`) | `kb.search` retrieves chunks of `docs/kb` from it (section 6) | created by the team in the console; content from `infra/kb/sync.sh` | managed KB, check the KB's pricing before keeping it after the event |
 | IAM Roles Anywhere trust anchor + profile, role `biatec-chat-bedrock-role` | lets the backend pods call Bedrock **without keys** and without any trust in the cluster itself | `infra/aws/rolesanywhere.sh` | none |
 
 Bedrock and guardrail calls are billed per use from the team budget (AGENTS.md "Spend").
@@ -66,7 +69,9 @@ The role's only permissions ([infra/aws/bedrock-role-policy.json](../infra/aws/b
 - `bedrock:InvokeModel`, `bedrock:InvokeModelWithResponseStream` on the three Claude 4.5 `eu.` inference profiles and
   their EU foundation models;
 - `bedrock:ApplyGuardrail` on guardrails in this account in `eu-central-1` (without it every tool result is withheld,
-  because the screen fails closed).
+  because the screen fails closed);
+- `bedrock:Retrieve` on knowledge base `DZZGQITEAS` (without it `kb.search` logs `Kb: Bedrock retrieve failed` and
+  falls back to the local keyword search).
 
 What is secret: the client **private key** (GitHub environment secret, then the cluster secret) and the CA private key.
 Neither is an AWS access key, and a stolen client key only works for Bedrock through this role until the certificate
@@ -134,6 +139,7 @@ certificate secret.
 | pod stays `ContainerCreating`, `secret "biatec-chat-aws" not found` | the deploy had no `AWS_*` secrets and the cluster has none | set the five secrets (step 4) and redeploy |
 | every tool result replaced by "withheld" | missing `bedrock:ApplyGuardrail` or wrong guardrail id | steps 2–3, check `Bedrock__Guardrail__*` |
 | answers are "I can't help with that request." / "I can't share that response." | the Converse guardrail blocked the input / the output | the backend logs `Bedrock guardrail blocked <model>: input:topic:…` (or `output:content:…`) naming the policy; adjust `infra/guardrail/guardrail.json`, publish a version, update `Bedrock__Guardrail__GuardrailVersion` |
+| log `Kb: Bedrock retrieve failed, using the local search: AmazonBedrockAgentRuntimeException: … not authorized to perform: bedrock:Retrieve` | role policy without the `RetrieveBiatecKnowledgeBase` statement | rerun `rolesanywhere.sh` (it puts the policy) |
 | `ValidationException` on a model id | missing `eu.` prefix or a Claude 5 id | use the Claude 4.5 `eu.` ids |
 | `explicit deny in a service control policy` | region other than eu-central-1 | fix region; if it says eu-central-1, report to organisers |
 
@@ -146,3 +152,38 @@ guardrail and anything tagged `Project=biatec`; add `BIATEC_AWS_APPROVED=yes …
 **The hackathon account becomes read-only after the event.** To keep Bedrock working, repeat steps 1–3 in Biatec's own
 AWS account (enable Claude 4.5 model access there first), update the guardrail id in `k8s/base/backend.yaml`, and
 replace the five `AWS_*` secrets in both GitHub environments. Nothing else changes.
+
+## 6. Knowledge base (kb.search)
+
+`docs/kb/*.md` is the curated, user-facing knowledge base (the spec's "curated knowledge base of Biatec docs"). It is held
+in two places:
+
+- **Bedrock Knowledge Base `DZZGQITEAS`** (managed embeddings). With `Kb__Bedrock__KnowledgeBaseId` set (k8s base, and
+  `appsettings.Development.json`), `kb.search` calls `bedrock-agent-runtime` `Retrieve` and passes the chunks to the
+  model as untrusted tool data, cited by page id (the file name). It never uses `RetrieveAndGenerate` or
+  `AgenticRetrieveStream` with a generated answer: those would answer with their own model, outside our system
+  prompt, tier gate and guardrail. Other settings: `Kb__Bedrock__MaxResults` (4), `Kb__Bedrock__TimeoutSeconds` (5),
+  `Kb__Bedrock__Region` (eu-central-1).
+- **The local index** (the same files copied next to the binary, plus pages operators upload through the admin API).
+  It answers when the knowledge base id is unset, Retrieve fails or times out, or it returns nothing; with Retrieve
+  on, the best matching uploaded page is added to the Bedrock chunks, since only the local index holds uploads.
+
+After changing `docs/kb`, re-sync and re-index (uploads only under the `biatec-chat-kb/` prefix, so `--delete` never
+touches other files in the bucket):
+
+```sh
+AWS_PROFILE=hackathon infra/kb/sync.sh      # prints the ingestion job's statistics; exit 1 unless COMPLETE
+```
+
+Check it from a laptop (a managed KB rejects `vectorSearchConfiguration`; use the default or `managedSearchConfiguration`):
+
+```sh
+aws bedrock-agent-runtime retrieve --profile hackathon --region eu-central-1 --knowledge-base-id DZZGQITEAS \
+  --retrieval-query text="What happens if I lose my phone?" --query 'retrievalResults[].location.s3Location.uri'
+```
+
+or run the opt-in test: `BIATEC_TEST_KB_ID=DZZGQITEAS dotnet test backend/Biatec.Chat.Tests --filter Live_retrieve`.
+
+Writing the pages: user-facing, one topic per page, a `# Title` first line (the citation title), sections that each make
+sense on their own (Retrieve returns chunks, not pages), facts consistent with PRODUCT-DESCRIPTION.md, and nothing on
+the roadmap presented as live (`product-status.md` says what is live).
