@@ -198,6 +198,19 @@ public sealed class GuardrailsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ToolResultGuard_IgnoredTopicWithAnotherPolicyFinding_IsWithheld()
+    {
+        var (rt, fake) = NewRuntime();
+        var response = Intervened(topic: true);
+        response.Assessments[0].ContextualGroundingPolicy = new GuardrailContextualGroundingPolicyAssessment
+        {
+            Filters = [new GuardrailContextualGroundingFilter { Type = GuardrailContextualGroundingFilterType.GROUNDING, Action = GuardrailContextualGroundingPolicyAction.BLOCKED }],
+        };
+        fake.Response = response;
+        Assert.True((await Guard(rt, On()).ScreenAsync("t", "x", default)).Withheld);
+    }
+
+    [Fact]
     public async Task ToolResultGuard_DeniedTopicNotOnTheIgnoreList_IsWithheld()
     {
         var (rt, fake) = NewRuntime();

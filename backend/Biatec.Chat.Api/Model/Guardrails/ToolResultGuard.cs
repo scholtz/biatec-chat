@@ -65,7 +65,7 @@ public sealed class BedrockToolResultGuard(
             if (response.Action != GuardrailAction.GUARDRAIL_INTERVENED) return GuardrailVerdict.Allowed;
 
             var reasons = Reasons(response.Assessments);
-            if (reasons.Count > 0 && reasons.All(r => _o.ToolResultIgnoredTopics.Any(t => r == "topic:" + t)))
+            if (OnlyTopicFindings(response.Assessments) && reasons.Count > 0 && reasons.All(r => _o.ToolResultIgnoredTopics.Any(t => r == "topic:" + t)))
             {
                 log.LogInformation("Guardrail matched only ignored topics on {Source} ({Reasons}); data is not advice, so the result is kept", source, string.Join(", ", reasons));
                 return GuardrailVerdict.Allowed;
@@ -82,6 +82,20 @@ public sealed class BedrockToolResultGuard(
             return GuardrailVerdict.Unavailable;
         }
     }
+
+    /// <summary>
+    /// True when no assessment reports anything but topics. Fails closed: a policy <see cref="Reasons"/> doesn't read
+    /// (contextual grounding, automated reasoning, a masked PII entity) means the result is not a topic-only match.
+    /// </summary>
+    public static bool OnlyTopicFindings(List<GuardrailAssessment>? assessments) =>
+        (assessments ?? []).All(a =>
+            a.ContentPolicy?.Filters is null or [] &&
+            a.SensitiveInformationPolicy?.PiiEntities is null or [] &&
+            a.SensitiveInformationPolicy?.Regexes is null or [] &&
+            a.WordPolicy?.CustomWords is null or [] &&
+            a.WordPolicy?.ManagedWordLists is null or [] &&
+            a.ContextualGroundingPolicy?.Filters is null or [] &&
+            a.AutomatedReasoningPolicy?.Findings is null or []);
 
     /// <summary>The blocking findings, as "content:PROMPT_ATTACK/LOW", "topic:InvestmentAdvice", "pii:…", "regex:…" or "word:…".</summary>
     public static List<string> Reasons(List<GuardrailAssessment>? assessments)
