@@ -182,8 +182,12 @@ public sealed class SessionProfileTests : IAsyncLifetime
         var s = SignedIn();
         // A tiny failure TTL makes every poll a cache miss while the first call is still running.
         var p = NewProfile(new SessionProfileOptions { FailureTtl = TimeSpan.FromMilliseconds(1), McpTimeout = TimeSpan.FromSeconds(30) });
+        await p.GetAsync(s, default); // starts the background fill
+        // Wait for the first call to really be in flight (it is started on the thread pool, which can lag under load).
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (_mcp.Calls < 1 && DateTime.UtcNow < deadline) await Task.Yield();
+        Assert.Equal(1, _mcp.Calls);
         await Task.WhenAll(Enumerable.Range(0, 10).Select(async _ => { await Task.Delay(5); await p.GetAsync(s, default); }));
-        await Task.Delay(50);
         Assert.Equal(1, _mcp.Calls);
         gate.SetResult(FakeMcp.Ok($"[\"{Primary}\"]"));
         Assert.Equal(Primary, (await PollAsync(p, s)).Address);
