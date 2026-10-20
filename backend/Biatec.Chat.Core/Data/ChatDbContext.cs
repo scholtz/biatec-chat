@@ -11,6 +11,7 @@ public class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbContext(
     public DbSet<ActionStep> ActionSteps => Set<ActionStep>();
     public DbSet<ConsentRequest> ConsentRequests => Set<ConsentRequest>();
     public DbSet<EvidenceEntry> EvidenceEntries => Set<EvidenceEntry>();
+    public DbSet<EvidenceSigningKey> EvidenceSigningKeys => Set<EvidenceSigningKey>();
     public DbSet<EvidenceAnchor> EvidenceAnchors => Set<EvidenceAnchor>();
     public DbSet<EvidenceAnchorLeaf> EvidenceAnchorLeaves => Set<EvidenceAnchorLeaf>();
     public DbSet<EvidenceAnchorAttempt> EvidenceAnchorAttempts => Set<EvidenceAnchorAttempt>();
@@ -85,6 +86,13 @@ public class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbContext(
             e.HasIndex(x => new { x.ConversationId, x.Seq }).IsUnique();
             e.HasIndex(x => x.AnchorRef);
             e.Property(x => x.Payload).HasColumnType("jsonb");
+        });
+
+        b.Entity<EvidenceSigningKey>(e =>
+        {
+            e.HasKey(x => x.Kid);
+            e.Property(x => x.Kid).HasMaxLength(64);
+            e.HasIndex(x => x.IsActive).IsUnique().HasFilter("\"IsActive\"");
         });
 
         b.Entity<EvidenceAnchor>(e =>

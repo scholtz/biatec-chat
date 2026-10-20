@@ -6,6 +6,7 @@ declare module "*/scripts/lib.mjs" {
   export function thumbprint(jwk: { crv: string; kty: string; x: string; y: string }): string;
   export function signEs256(privateJwk: object, bytes: Uint8Array): string;
   export function signCompactJws(privateJwk: object, header: object, payload: object): string;
+  export function verifyEs256(publicJwk: object, bytes: Uint8Array, signatureB64u: string): boolean;
   export function verifyReceipt(receipt: any, jwks: { keys: any[] }, opts: { issuer: string; now?: number }): boolean;
   export function verifyApproval(
     receipt: any,

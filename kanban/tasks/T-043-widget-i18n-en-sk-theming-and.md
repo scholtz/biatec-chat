@@ -1,7 +1,7 @@
 ---
 id: T-043
 title: Widget Slovak translation and accessibility pass
-status: backlog
+status: in-progress
 priority: P2
 epic: "Widget"
 blocked_by: [T-042, T-064, T-066]
@@ -9,9 +9,9 @@ area: ["packages/chat-widget/src/i18n/**", "packages/chat-widget/src/styles/**"]
 parallel: no
 conflicts_with: [T-036, T-077]
 issue: "#44"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-043"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#accessibility-and-localization"
 created: 2026-10-19
 updated: 2026-10-20
@@ -60,3 +60,5 @@ pnpm --filter chat-widget test
 - 2026-10-19 22:40 · coordinator · blocked · widget UI rework: theming moved to T-062; now Slovak catalog + a11y audit of the reworked UI, blocked_by T-064, T-066
 - 2026-10-20 03:20 · coordinator · blocked · added T-077 to conflicts_with (new task)
 - 2026-10-20 02:18 · kanban-board · blocked → backlog · blockers done: T-042, T-064, T-066
+- 2026-10-20 04:05 · scholtz · taken · status stays backlog
+- 2026-10-20 04:05 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

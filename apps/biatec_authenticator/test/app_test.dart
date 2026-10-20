@@ -1,6 +1,5 @@
 import 'package:biatec_authenticator/config.dart';
 import 'package:biatec_authenticator/main.dart';
-import 'package:biatec_authenticator/routes.dart';
 import 'package:flutter/widgets.dart' show Size;
 import 'package:flutter_test/flutter_test.dart';
 
@@ -35,22 +34,5 @@ void main() {
     expect(find.text('Biatec Authenticator'), findsOneWidget);
     expect(find.text(AppConfig.mockOidcBaseUrl), findsOneWidget);
     expect(find.text('Biatec OIDC (mock)'), findsOneWidget);
-  });
-
-  testWidgets('every screen is reachable from home', (tester) async {
-    tall(tester);
-    await tester.pumpWidget(AuthenticatorApp(config: AppConfig.resolve('')));
-    for (final route in appRoutes) {
-      // Enrollment is a real screen (covered in test/enrollment) that needs
-      // platform plugins, so it is not opened here.
-      if (route.path == '/enrollment') continue;
-      // Pending and history are real screens too (test/approvals).
-      if (route.path == '/pending' || route.path == '/history') continue;
-      await tester.tap(find.text(route.title));
-      await tester.pumpAndSettle();
-      expect(find.text(route.description), findsOneWidget, reason: route.title);
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-    }
   });
 }

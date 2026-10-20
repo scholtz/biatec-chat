@@ -38,6 +38,7 @@ Settings → Secrets and variables → Actions:
 | `POSTGRES_PASSWORD`, `REDIS_PASSWORD` | `Stage` and `Production`, each its own | Passwords of the in-cluster Postgres and Redis: `openssl rand -hex 24`. **Never change `POSTGRES_PASSWORD` after the first deploy** (Postgres reads it only when its volume is first created) |
 | `BUILDERS_INTERNAL_SECRET` | `Stage` and `Production`, each its own | Shared secret between backend and builders: `openssl rand -hex 32` |
 | `VAULT_MASTER_KEY` | `Stage` and `Production`, each its own | Token-vault master key, base64 of 32 bytes: `openssl rand -base64 32`. Losing it signs every user out; GitHub never shows a secret again, so keep a copy in the team password manager |
+| `EVIDENCE_MASTER_KEY` | `Stage` and `Production`, each its own | Evidence-signing master key, base64 of at least 32 bytes: `openssl rand -base64 32`. All replicas derive the same ES256 keys from it; back it up and never change it |
 
 **Every secret lives in GitHub, none is generated in the cluster.** Each deploy writes the environment's secrets into
 three cluster secrets and fails with a clear message if one is missing: `biatec-chat-generated` (the four random values

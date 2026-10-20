@@ -1,7 +1,7 @@
 ---
 id: T-081
 title: "Bug: anchorRef in the entry hash must be the anchor transaction ID"
-status: backlog
+status: in-progress
 priority: P2
 epic: "Evidence"
 blocked_by: []
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Core/Evidence/**", "backend/Biatec.Chat.Core/Data/En
 parallel: no
 conflicts_with: [T-036, T-078, T-087, T-088]
 issue: "#150"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-081"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#evidence-record"
 created: 2026-10-20
 updated: 2026-10-20
@@ -118,3 +118,5 @@ Filled in by the agent when it moves the task to `review`.
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #4)
+- 2026-10-20 04:05 · scholtz · taken · status stays backlog
+- 2026-10-20 04:05 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

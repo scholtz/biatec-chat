@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'screens/placeholder_screen.dart';
-
 class AppRoute {
   const AppRoute({
     required this.path,
@@ -14,11 +12,10 @@ class AppRoute {
   final String title;
   final String description;
   final IconData icon;
-
-  Widget build() => PlaceholderScreen(title: title, description: description);
 }
 
-/// All screens named in the product spec, reachable from the home list.
+/// All screens named in the product spec, reachable from the home list. The
+/// screens themselves are wired to their services in `main.dart`.
 const List<AppRoute> appRoutes = [
   AppRoute(
     path: '/enrollment',

@@ -496,7 +496,7 @@ public sealed class SafeProposalFlowTests : IAsyncLifetime
     private async Task<ConfirmResult> ConfirmAsync(User u, ActionPreview card)
     {
         await using var db = NewContext();
-        return await Confirm(db).ConfirmAsync(_tenant, u.Session, Guid.Parse(card.PreviewId), card.Steps[0].GroupHash, default);
+        return await Confirm(db).ConfirmAsync(_tenant, u.Session, Guid.Parse(card.PreviewId), card.Steps[0].GroupHash, Biatec.Chat.Api.Chat.Confirm.ConfirmService.BackendOrigin(_tenant), default);
     }
 
     private static ActionPreview Card(ToolExecutionResult r) => Assert.IsType<PreviewCardEvent>(Assert.Single(r.Events!)).Preview;

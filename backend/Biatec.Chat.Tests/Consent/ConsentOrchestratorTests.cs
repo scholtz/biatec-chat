@@ -255,7 +255,7 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
     private async Task<ConfirmResult> ConfirmAsync(Guid previewId, string groupHash)
     {
         await using var db = NewContext();
-        return await NewConfirm(db).ConfirmAsync(_tenant, _session, previewId, groupHash, CancellationToken.None);
+        return await NewConfirm(db).ConfirmAsync(_tenant, _session, previewId, groupHash, Biatec.Chat.Api.Chat.Confirm.ConfirmService.BackendOrigin(_tenant), CancellationToken.None);
     }
 
     private async Task<ConsentAdvance> AdvanceAsync(Guid previewId)

@@ -1,7 +1,7 @@
 ---
 id: T-084
 title: "Bug: authenticator device management, trusted clients and security settings screens"
-status: in-progress
+status: done
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: []
@@ -120,8 +120,11 @@ Filled in by the agent when it moves the task to `review`.
 
 ## Review
 
+- 2026-10-20 04:05 · approve · PR #166 merged into main @ db1ac0e (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #7)
 - 2026-10-20 03:21 · scholtz · taken · status stays backlog
 - 2026-10-20 03:21 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 04:05 · user · in-progress → done · PR #166 merged into main @ db1ac0e (synced by kanban-sync)

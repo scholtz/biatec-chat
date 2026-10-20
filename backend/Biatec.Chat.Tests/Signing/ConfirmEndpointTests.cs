@@ -41,7 +41,7 @@ public sealed class ConfirmEndpointTests : IDisposable
 
     public void Dispose() => _factory.Dispose();
 
-    private Task<HttpResponseMessage> PostAsync(bool csrf, string? cookie = null)
+    private Task<HttpResponseMessage> PostAsync(bool csrf, string? cookie = null, string? origin = "https://web.biatec.io")
     {
         var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = false });
         var r = new HttpRequestMessage(HttpMethod.Post, $"http://chat.biatec.io/chat/previews/{Guid.NewGuid()}/confirm")
@@ -50,7 +50,7 @@ public sealed class ConfirmEndpointTests : IDisposable
         };
         if (csrf)
         {
-            r.Headers.TryAddWithoutValidation("Origin", "https://web.biatec.io");
+            if (origin is not null) r.Headers.TryAddWithoutValidation("Origin", origin);
             r.Headers.TryAddWithoutValidation("X-Biatec-Chat", "1");
             r.Headers.TryAddWithoutValidation("X-Biatec-Client-Key", "biatec-web");
         }
@@ -65,4 +65,19 @@ public sealed class ConfirmEndpointTests : IDisposable
     [Fact]
     public async Task Confirm_WithoutASession_IsUnauthorized() =>
         Assert.Equal(HttpStatusCode.Unauthorized, (await PostAsync(csrf: true)).StatusCode);
+
+    // T-079: the reported page origin comes only from a registered Origin; without one the request never reaches signing.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("https://evil.example")]
+    [InlineData("https://dex.biatec.io.evil.example")]
+    [InlineData("null")]
+    public async Task Confirm_WithoutARegisteredOrigin_IsForbidden(string? origin) =>
+        Assert.Equal(HttpStatusCode.Forbidden, (await PostAsync(csrf: true, origin: origin)).StatusCode);
+
+    [Theory]
+    [InlineData("https://web.biatec.io")]
+    [InlineData("https://dex.biatec.io")]
+    public async Task Confirm_FromEitherRegisteredOrigin_PassesTheGuard(string origin) =>
+        Assert.Equal(HttpStatusCode.Unauthorized, (await PostAsync(csrf: true, origin: origin)).StatusCode);
 }
