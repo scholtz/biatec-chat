@@ -232,6 +232,8 @@ public sealed class SessionProfile(
         var key = CacheKey(sessionId);
         if (cache.TryGetValue<Cached>(key, out var hit) && hit is not null) return (hit.Email, hit.Address, hit.Scopes);
 
+        // Read before the vault: an elevation that completes after this point bumps it, and the stale read is then not cached.
+        var generation = _generations.GetValueOrDefault(key);
         TokenVaultEntry? entry;
         try { entry = await vault.GetAsync(sessionId, ct); }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
@@ -243,7 +245,7 @@ public sealed class SessionProfile(
 
         var email = EmailOf(entry.IdToken);
         var scopes = (IReadOnlyList<string>)[.. entry.Scopes];
-        var generation = _generations.GetValueOrDefault(key);
+        if (_generations.GetValueOrDefault(key) != generation) return (email, null, scopes);
         cache.Set(key, new Cached(email, null, scopes), _o.FailureTtl);
         StartFill(key, new McpCallContext(session.TenantId, sessionId, entry.Scopes), entry.AccessExpiresAt, email, scopes, generation);
         return (email, null, scopes);
