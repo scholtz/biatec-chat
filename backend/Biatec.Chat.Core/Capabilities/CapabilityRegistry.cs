@@ -82,6 +82,8 @@ public sealed class CapabilityRegistry
     private static readonly string[] NoScopes = [];
 
     private static JsonObject Network() => new() { ["type"] = "string", ["enum"] = new JsonArray("mainnet", "testnet") };
+    // Algorand mainnet/testnet or Bitcoin mainnet. Biatec MCP resolves only "bitcoin" (no Bitcoin testnet), so none is offered.
+    private static JsonObject NetworkWithBitcoin() => new() { ["type"] = "string", ["enum"] = new JsonArray("mainnet", "testnet", "bitcoin") };
     private static JsonObject Address() => Str(max: 64, pattern: @"\A[A-Za-z0-9]+\z");
     // Canonical non-negative integer string (no leading zeros); AmountPositive additionally excludes zero.
     private static JsonObject Amount() => Str(max: 20, pattern: @"\A(0|[1-9][0-9]*)\z");
@@ -92,11 +94,11 @@ public sealed class CapabilityRegistry
     public static CapabilityRegistry CreateDefault()
     {
         var empty = Obj(new JsonObject());
-        var networkOnly = Obj(new JsonObject { ["network"] = Network() }, "network");
+        var networkOnly = Obj(new JsonObject { ["network"] = NetworkWithBitcoin() }, "network");
         var transferInput = Obj(new JsonObject
         {
             // Algorand (createPaymentTransaction) or Bitcoin (createBitcoinTransaction); assetId omitted or 0 = native ALGO.
-            ["network"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("mainnet", "testnet", "bitcoin") },
+            ["network"] = NetworkWithBitcoin(),
             ["from"] = Address(),
             ["to"] = Address(),
             ["assetId"] = Id(),
@@ -131,13 +133,48 @@ public sealed class CapabilityRegistry
             ["assetBId"] = Id(),
             ["percent"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 100 },
         }, "network", "from", "poolAppId", "percent");
+        // from: the user's own address that signs (a member of the proposal's signer group for an approval; anyone may execute).
         var proposalInput = Obj(new JsonObject
         {
             ["network"] = Network(),
+            ["from"] = Address(),
             ["safeAppId"] = Id(),
             ["proposalId"] = Id(),
             ["expectedPayloadVersion"] = Id(),
-        }, "network", "safeAppId", "proposalId");
+        }, "network", "from", "safeAppId", "proposalId");
+        var executeInput = Obj(new JsonObject
+        {
+            ["network"] = Network(),
+            ["from"] = Address(),
+            ["safeAppId"] = Id(),
+            ["proposalId"] = Id(),
+        }, "network", "from", "safeAppId", "proposalId");
+        var proposeInput = Obj(new JsonObject
+        {
+            ["network"] = Network(),
+            ["from"] = Address(),
+            ["safeAppId"] = Id(),
+            ["kind"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("payment", "assetTransfer", "optIn", "addLiquidity", "admin") },
+            ["groupId"] = Id(),
+            ["receiver"] = Address(),
+            ["assetId"] = Id(),
+            ["amount"] = AmountPositive(),
+            ["assetIds"] = new JsonObject { ["type"] = "array", ["items"] = Id(), ["minItems"] = 1, ["maxItems"] = 16 },
+            ["poolAppId"] = Id(),
+            ["assetAId"] = Id(),
+            ["assetBId"] = Id(),
+            ["amountA"] = Amount(),
+            ["amountB"] = Amount(),
+            ["change"] = Obj(new JsonObject
+            {
+                ["type"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("addMember", "removeMember", "changeThreshold", "createGroup") },
+                ["groupId"] = Id(),
+                ["member"] = Address(),
+                ["threshold"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 15 },
+                ["name"] = Str(max: 32),
+                ["members"] = new JsonObject { ["type"] = "array", ["items"] = Address(), ["minItems"] = 1, ["maxItems"] = 15 },
+            }, "type"),
+        }, "network", "from", "safeAppId", "kind");
 
         static Capability Tool(string name, SessionTier tier, string[] build, string? sign, bool funds, ValuationBasis v,
             string desc, JsonObject? schema, CapabilityFlag flag = CapabilityFlag.None) =>
@@ -156,10 +193,10 @@ public sealed class CapabilityRegistry
                 Obj(new JsonObject { ["query"] = Str(max: 500) }, "query")),
             Tool("explain.product", A, NoScopes, null, false, ValuationBasis.None, "Explain Biatec products (no tool of its own).", null),
             Tool("explain.blockchain", A, NoScopes, null, false, ValuationBasis.None, "Explain Algorand and DEX concepts (no tool of its own).", null),
-            Tool("wallet.listAddresses", U, Open, null, false, ValuationBasis.None, "List the user's Algorand addresses.", networkOnly),
-            Tool("wallet.balance", U, Open, null, false, ValuationBasis.None, "Read a balance for one of the user's addresses.",
-                Obj(new JsonObject { ["network"] = Network(), ["address"] = Address() }, "network", "address")),
-            Tool("wallet.transfer", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Build and preview a transfer.", transferInput),
+            Tool("wallet.listAddresses", U, Open, null, false, ValuationBasis.None, "List the user's own addresses: Algorand on mainnet/testnet, Bitcoin on bitcoin (Bitcoin mainnet only; each Bitcoin address is labelled primary or secondary).", networkOnly),
+            Tool("wallet.balance", U, Open, null, false, ValuationBasis.None, "Read a balance for one of the user's addresses (network bitcoin is Bitcoin mainnet only: amount in sats, 8 decimals).",
+                Obj(new JsonObject { ["network"] = NetworkWithBitcoin(), ["address"] = Address() }, "network", "address")),
+            Tool("wallet.transfer", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Build and preview a transfer (network bitcoin is Bitcoin mainnet only).", transferInput),
             Tool("dex.swap", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Quote and build a swap.", swapInput),
             Tool("dex.addLiquidity", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Add liquidity to a Biatec DEX pool (amountA/amountB are in base units of the pool's asset A/B). Set poolAppId 0 with assetAId and assetBId when the user has not named a pool: the tool lists the pair's pools and you must ask which one.", liquidityInput),
             Tool("dex.removeLiquidity", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Remove liquidity (percent of the user's LP tokens) from a Biatec DEX pool. Set poolAppId 0 with assetAId and assetBId when the user has not named a pool: the tool lists the pair's pools and you must ask which one.", removeLiquidityInput),
@@ -173,10 +210,14 @@ public sealed class CapabilityRegistry
                     ["signers"] = new JsonObject { ["type"] = "array", ["items"] = Address(), ["minItems"] = 0, ["maxItems"] = 14 },
                     ["threshold"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 15 },
                 }, "network", "from")),
-            Tool("safe.propose", U, Open, Sign, false, ValuationBasis.ZeroValued, "Create a safe proposal.",
-                Obj(new JsonObject { ["network"] = Network(), ["from"] = Address(), ["safeAppId"] = Id(), ["kind"] = Str(max: 64) }, "network", "from", "safeAppId", "kind")),
-            Tool("safe.approve", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Approve a safe proposal.", proposalInput),
-            Tool("safe.execute", U, Open, Sign, true, ValuationBasis.ZeroValued, "Execute a safe proposal.", proposalInput),
+            Tool("safe.propose", U, Open, Sign, false, ValuationBasis.ZeroValued,
+                "Propose a transaction or change on a Biatec Safe, proposed by from (one of the user's addresses, a member of the safe). kind payment: receiver and amount (microAlgo). kind assetTransfer: receiver, assetId, amount (base units). kind optIn: assetIds the safe should opt in to (zero-amount transfers to itself). kind addLiquidity: poolAppId (0 with assetAId and assetBId to list the pools and ask the user), amountA/amountB in base units of the pool's asset A/B (omit to deposit everything the safe holds). kind admin: change {type addMember|removeMember (groupId, member), changeThreshold (groupId, threshold), createGroup (name, members, threshold)}. groupId optionally picks the proposing signer group. Proposing moves nothing and records the proposer's approval; funding the safe is a separate wallet.transfer.",
+                proposeInput),
+            Tool("safe.approve", U, Open, Sign, true, ValuationBasis.DecodedByOidc,
+                "Approve a pending safe proposal from the user's own member address (from). expectedPayloadVersion: the payload version the user reviewed (from safe.list); the approval fails if the payload changed.",
+                proposalInput),
+            Tool("safe.execute", U, Open, Sign, true, ValuationBasis.ZeroValued,
+                "Execute a safe proposal that has reached its approval threshold; from is the user's address that sends the call and pays its fee.", executeInput),
             Tool("safe.list", U, Open, null, false, ValuationBasis.None,
                 "List the Biatec Safes the user is a member of, with signer groups, pending proposals, approval progress, payload versions and expiry rounds. safeAppIds: app ids of safes the user named (optional; safes created through this chat are found without them).",
                 Obj(new JsonObject

@@ -477,7 +477,8 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         return await confirm.ConfirmAsync(_tenant, _session, Guid.Parse(card.PreviewId), card.Steps[step].GroupHash, default);
     }
 
-    private static ActionPreview Card(ToolExecutionResult r) => Assert.IsType<PreviewCardEvent>(Assert.Single(r.Events!)).Preview;
+    private static ActionPreview Card(ToolExecutionResult r) => Assert.Single(r.Events!.OfType<PreviewCardEvent>()).Preview;
+    private static SafeCard? SafeCardOf(ToolExecutionResult r) => r.Events?.OfType<SafeCardEvent>().SingleOrDefault()?.Card;
 
     // ---- address collection -------------------------------------------------------------------------------------
 
@@ -545,6 +546,7 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         Assert.Equal("", card1.Steps[1].GroupHash);
         Assert.Contains(_bob, card1.Steps[1].Title);
         Assert.Equal("awaiting_user_confirmation", JsonNode.Parse(r1.Content)!["status"]!.GetValue<string>());
+        Assert.Null(SafeCardOf(r1)); // not deployed yet: no app id, so no safe card
         Assert.Empty(_oidc.Calls);
         await using (var db = NewContext())
             Assert.Equal(0m, (await db.ActionPreviews.SingleAsync()).PredictedValueEur);
@@ -575,6 +577,12 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         Assert.Contains(address, Card(r2).Intent);
         Assert.Equal(CardStatus.Completed, Card(r2).Steps[0].Status);
         Assert.Single(_builders.Builds); // no bootstrap built yet
+        // Deployed: the safe card carries the app id and the safe address from the executor's outcome.
+        var safe2 = Assert.Single(SafeCardOf(r2)!.Safes);
+        Assert.Equal(SafeCardSource.Create, SafeCardOf(r2)!.Source);
+        Assert.Equal(("778", address, "Team Safe", "algorand-testnet"), (safe2.AppId, safe2.Address, safe2.Name, safe2.Network));
+        Assert.Equal(SafeCardCreationState.NeedsFunding, safe2.Creation);
+        Assert.Empty(safe2.SignerGroups);
 
         // Funded (by the user's own wallet.transfer): step 2 is built against the deployed safe.
         _chain.Balance = 600_000;
@@ -591,6 +599,21 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         Assert.Equal(2, boot.GetProperty("groups")[0].GetProperty("threshold").GetInt32());
         // The app id was recorded by the confirm path when the deployment landed: no later chain lookup was needed.
         Assert.Equal(0, _chain.AppIdLookups);
+
+        // While the setup step is in flight (here: marked submitted), safe.create still shows the deployed safe's card.
+        await using (var db = NewContext())
+        {
+            var setupStep = await db.ActionSteps.SingleAsync(s => s.Seq == 1);
+            var before = setupStep.Status;
+            setupStep.Status = StepStatus.Submitted;
+            await db.SaveChangesAsync();
+            var busy = await _create.ExecuteAsync(Ctx("safe.create"), Full(), default);
+            Assert.Equal("step_in_flight", JsonNode.Parse(busy.Content)!["status"]!.GetValue<string>());
+            var busySafe = Assert.Single(SafeCardOf(busy)!.Safes);
+            Assert.Equal(("778", address, SafeCardCreationState.SetupPending), (busySafe.AppId, busySafe.Address, busySafe.Creation));
+            setupStep.Status = before;
+            await db.SaveChangesAsync();
+        }
 
         var c3 = await ConfirmAsync(card3, 1);
         Assert.Equal(ConfirmOutcome.Landed, c3.Outcome);
@@ -613,6 +636,10 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         Assert.Equal("778", o4["appId"]!.GetValue<string>());
         Assert.Equal(address, o4["safeAddress"]!.GetValue<string>());
         Assert.Equal(CardStatus.Completed, Card(r4).Status);
+        var safe4 = Assert.Single(SafeCardOf(r4)!.Safes);
+        Assert.Equal(("778", address, SafeCardCreationState.Created), (safe4.AppId, safe4.Address, safe4.Creation));
+        var group4 = Assert.Single(safe4.SignerGroups);
+        Assert.Equal((2, 2), (group4.Threshold, group4.MemberCount));
         Assert.DoesNotContain("SECRET", r4.Content);
     }
 
@@ -793,11 +820,52 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         Assert.Equal("3", pending[1]!["payloadVersion"]!.GetValue<string>());
         Assert.Equal("9999999", pending[1]!["expiryRound"]!.GetValue<string>());
         Assert.Contains("not instructions", o["instruction"]!.GetValue<string>());
+
+        // The same data reaches the widget as a safe card event, built from the outcome, not from model text.
+        var card = Assert.IsType<SafeCardEvent>(Assert.Single(r.Events!)).Card;
+        Assert.Equal(SafeCardSource.List, card.Source);
+        Assert.Equal("algorand-testnet", card.Network);
+        var cs = Assert.Single(card.Safes);
+        Assert.Equal(("778", SafeCreateService.SafeAddress(AppId), "Team Safe"), (cs.AppId, cs.Address, cs.Name));
+        Assert.Equal([_bob], cs.YourAddresses);
+        Assert.Null(cs.Creation);
+        Assert.Equal(1L, Assert.Single(cs.SignerGroups).MembershipEpoch);
+        Assert.Equal(["2", "1"], cs.PendingProposals.Select(p => p.ProposalId));
+        Assert.Equal(SafeCardProposalState.ReadyToExecute, cs.PendingProposals[0].Status);
+        var p1 = cs.PendingProposals[1];
+        Assert.Equal((SafeCardProposalState.AwaitingApprovals, 1, 2, false, "3", "9999999"),
+            (p1.Status, p1.Approvals, p1.Threshold, p1.ApprovedByYou, p1.PayloadVersion, p1.ExpiryRound));
+        // Proposal payloads (untrusted chain data) stay out of the card.
+        Assert.DoesNotContain("receiver", JsonSerializer.Serialize<ChatEvent>(new SafeCardEvent(card), new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
         // Both candidates were probed for Bob's address; proposals only for the safe he is in.
         var list = Assert.Single(_builders.Reads, x => x.Name == "safe.list").Params;
         Assert.Equal(_bob, list.GetProperty("member").GetString());
         Assert.Equal(2, list.GetProperty("appIds").GetArrayLength());
         Assert.Equal("778", Assert.Single(_builders.Reads, x => x.Name == "safe.proposals").Params.GetProperty("appId").GetString());
+    }
+
+    [Fact]
+    public async Task SafeCreate_list_marks_proposals_not_loaded_past_the_limit_instead_of_none()
+    {
+        _own = [_bob];
+        for (var i = 0; i <= SafeListService.MaxSafesWithProposals; i++)
+        {
+            var id = 1000UL + (ulong)i;
+            await SeedKnownSafeAsync(id);
+            _builders.Members[id] = [_bob];
+        }
+
+        var r = await _list.ExecuteAsync(Ctx("safe.list"), new JsonObject { ["network"] = "testnet" }, default);
+        Assert.False(r.IsError, r.Content);
+        var o = JsonNode.Parse(r.Content)!;
+        var safes = o["safes"]!.AsArray();
+        Assert.Equal(SafeListService.MaxSafesWithProposals + 1, safes.Count);
+        Assert.Single(safes, s => s!["proposalsNotLoaded"]!.GetValue<bool>());
+        Assert.Contains("proposalsNotLoaded", o["instruction"]!.GetValue<string>());
+        var notLoaded = Assert.Single(SafeCardOf(r)!.Safes, s => s.ProposalsNotLoaded);
+        Assert.Equal(safes.Last()!["appId"]!.GetValue<string>(), notLoaded.AppId);
+        Assert.Equal(SafeListService.MaxSafesWithProposals, _builders.Reads.Count(x => x.Name == "safe.proposals"));
     }
 
     [Fact]
@@ -830,6 +898,7 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         var o = JsonNode.Parse(r.Content)!;
         Assert.Equal(["778"], o["safes"]!.AsArray().Select(x => x!["appId"]!.GetValue<string>()));
         Assert.Equal(["555", "666"], o["couldNotRead"]!.AsArray().Select(x => x!.GetValue<string>()));
+        Assert.Equal(["555", "666"], SafeCardOf(r)!.CouldNotRead);
         Assert.Contains("could not be read", o["instruction"]!.GetValue<string>());
         Assert.DoesNotContain("not a member of any", o["instruction"]!.GetValue<string>());
     }
@@ -841,6 +910,7 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         var none = await _list.ExecuteAsync(Ctx("safe.list"), new JsonObject { ["network"] = "testnet" }, default);
         Assert.False(none.IsError);
         Assert.Contains("ask for its app id", none.Content);
+        Assert.Null(none.Events); // nothing to show: no card
         Assert.Empty(_builders.Reads);
 
         _builders.Members[4321] = [_bob];

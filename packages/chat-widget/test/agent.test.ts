@@ -298,6 +298,12 @@ describe("typed agent refusals", () => {
 });
 
 describe("Activity timeline", () => {
+  it("links to the evidence export endpoint", async () => {
+    const w = await openPanel(backend(authed("prepare")).svc);
+    await w.get("[data-testid=activity-toggle]").trigger("click");
+    expect(w.get("[data-testid=activity-evidence]").attributes("href")).toBe("https://chat.biatec.io/session/evidence");
+  });
+
   const stream: ChatEvent[] = [
     { type: "preview_card", preview: preview("p1", "AwaitingConfirmation", "Swap 100 USDC for ALGO") },
     { type: "preview_card", preview: preview("p1", "Signing", "Swap 100 USDC for ALGO") },

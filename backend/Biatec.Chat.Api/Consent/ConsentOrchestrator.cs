@@ -102,6 +102,8 @@ public sealed class ConsentOrchestrator(
             return new ConsentAdvance(StatusOf(previewId, step.Id, ConsentState.Pending, request.BindingCode, request.ExpiresAt), null);
         request.Status = ConsentRequestStatus.Approved;
         request.Receipt = approved.Receipt;
+        // The open-consent exemption ends here: restart the idle window so signing is not swept mid-flow (T-080).
+        await Sessions.SessionLiveness.TouchByIdAsync(db, session.Id, clock.GetUtcNow(), CancellationToken.None);
 
         var payload = EvidencePayloads.ConsentReceipt(previewId, step.Id, request.AuthReqId, step.SubjectHash, approved.Receipt);
         try
@@ -133,6 +135,7 @@ public sealed class ConsentOrchestrator(
             .ExecuteUpdateAsync(u => u.SetProperty(c => c.Status, status), CancellationToken.None);
         request.Status = status;
         db.Entry(request).State = EntityState.Unchanged;
+        await Sessions.SessionLiveness.TouchByIdAsync(db, session.Id, clock.GetUtcNow(), CancellationToken.None);
         var result = await confirm.EndConsentAsync(session, previewId, denied, reason, ct, errorCode);
         return new ConsentAdvance(StatusOf(previewId, request.StepId, denied ? ConsentState.Denied : ConsentState.TimedOut, null, request.ExpiresAt), result);
     }

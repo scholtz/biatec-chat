@@ -1,7 +1,7 @@
 ---
 id: T-024
 title: wallet.transfer on Bitcoin (PSBT intent hash)
-status: in-progress
+status: done
 priority: P1
 epic: "Wallet tools"
 blocked_by: [T-020, T-022, T-023]
@@ -51,6 +51,8 @@ dotnet test --filter Bitcoin
 
 ## Review
 
+- 2026-10-20 02:18 · approve · PR #139 merged into main @ 748ee89 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
@@ -60,3 +62,4 @@ dotnet test --filter Bitcoin
 - 2026-10-20 01:09 · LukassSoukup · backlog · parallel analysis: blocked_by + T-023 (Bitcoin extends T-023's wallet.transfer executor in Api/Wallet/Transfer); added T-061 (ConfirmService)
 - 2026-10-20 01:47 · scholtz · taken · status stays backlog
 - 2026-10-20 01:47 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 02:18 · user · in-progress → done · PR #139 merged into main @ 748ee89 (synced by kanban-sync)

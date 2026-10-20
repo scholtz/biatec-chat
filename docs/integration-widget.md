@@ -6,8 +6,8 @@ wins on any conflict. What works today is marked; see [architecture.md](architec
 **Status of the widget on `main`:** the package, plugin install, launcher, panel, theme tokens and options are built and tested.
 The cookie probe, public fallback transport, streaming chat UI, sign-in popup handling, action preview and consent cards, and
 the Slovak translation are planned (tasks T-040 to T-043). The rework to the **Biatec AI** design system (Shadow DOM isolation,
-`theme: 'host'`, `mode`, `useBiatecChat()`, permissions and activity) is planned in tasks T-062 to T-069; the options and APIs
-marked *planned* below arrive with it. For Biatec DEX specifically, see [integration-biatec-dex.md](integration-biatec-dex.md). The package version is `0.0.0` and is not published to npm yet, so
+`theme: 'host'`, `mode`, `useBiatecChat()`, permissions and activity) is planned in tasks T-062 to T-069; `theme: 'host'`, `mode`, `BiatecChatInline`
+and `useBiatecChat()` are built (T-062, T-063); options marked *planned* below are not. For Biatec DEX specifically, see [integration-biatec-dex.md](integration-biatec-dex.md). The package version is `0.0.0` and is not published to npm yet, so
 install it from the workspace until it is.
 
 ## 1. Install the plugin
@@ -50,12 +50,12 @@ another. Run the playground with `pnpm --filter @biatec/chat-widget dev`.
 | `backendUrl` | yes | | Base URL of your chat backend. Trailing slashes are removed. Must be same-site with the host page to get the authenticated tier |
 | `clientKey` | yes | | A label for the host, not a secret. The backend checks it against the tenant's registered keys on the cookie transport |
 | `locale` | no | `en` | Message language. English now; Slovak is planned |
-| `theme` | no | `auto` | `auto`, `light` or `dark`; *planned:* `host` follows the host's dark class on `<html>` |
-| `hostDarkClass` | no | `p-dark` | *Planned.* The class `theme: 'host'` watches (PrimeVue's `darkModeSelector`, as in Biatec DEX and Biatec Web) |
-| `mode` | no | `floating` | *Planned.* `floating` (launcher bottom-right), `inline` (fills a host column; or mount `BiatecChatInline`) or `workspace` (full screen) |
+| `theme` | no | `auto` | `auto`, `light`, `dark` or `host` (follows the host's dark class on `<html>`) |
+| `hostDarkClass` | no | `p-dark` | The class `theme: 'host'` watches (PrimeVue's `darkModeSelector`, as in Biatec DEX and Biatec Web) |
+| `mode` | no | `floating` | `floating` (launcher bottom-right), `inline` (no launcher; mount `BiatecChatInline` in a host column) or `workspace` (launcher, panel opens full screen). See [Modes and the host API](#modes-and-the-host-api) |
 | `suggestions` | no | `default` | `default` or your own list of sample prompts |
 | `pageContext` | no | none | Opt-in string describing the page (for example the pool being shown). Nothing is read from the host page unless you set it. The assistant treats it as untrusted data |
-| `autoMount` | no | `true` | Set `false` to provide the options only and mount `BiatecChatRoot` yourself |
+| `autoMount` | no | `true` | Set `false` to provide the options only, with no floating widget; mount `BiatecChatInline` where you want the chat |
 
 The plugin throws at install if `backendUrl` or `clientKey` is missing.
 
@@ -68,18 +68,117 @@ it, and the styles are injected there (no stylesheet import needed). Restyle it 
 element: `--color-*`, `--font-*`, `--radius-*`, `--space-*`, `--shadow-*`, and `--bc-z` for the stacking order (default 1000,
 below PrimeVue overlays). The widget never loads web fonts; it uses Inter when the host provides it.
 
-### Driving the widget from the host (planned, T-063)
+### Modes and the host API
+
+The widget has three modes, chosen with the `mode` option (`'floating' | 'inline' | 'workspace'`; any other value falls back to
+`floating`). `ChatMode`, `ChatTheme`, `BiatecChatOptions`, `BiatecChatApi` and `AskResult` are exported as types.
+
+| Mode | What the user sees | Notes |
+| --- | --- | --- |
+| `floating` (default) | Launcher bottom-right; it opens a floating panel that can be minimized to a bar, expanded to the workspace frame and closed | Below 640 px wide an open panel is full screen |
+| `workspace` | The same launcher, but the panel opens full screen with the Activity aside shown | Closing returns to the launcher |
+| `inline` | No launcher and no floating panel. A panel appears only where you mount `BiatecChatInline` | Never goes full screen and does not close on Esc; its header has no Expand |
+
+While a `BiatecChatInline` is mounted, the floating launcher and panel hide in every mode, and the inline panel shares the floating
+widget's conversation and session. Unmounting it brings the launcher back (not in `mode: 'inline'`).
+
+#### `BiatecChatInline`
+
+A component that renders the widget as a panel in your layout, for example a column next to an order form. It is rendered into its
+own Shadow DOM root, like the floating widget, so host CSS and widget CSS never mix. It takes two optional props:
+
+| Prop | Meaning |
+| --- | --- |
+| `options` | `BiatecChatOptions`. Options are taken in this order: the options of an already-mounted floating widget, then this prop, then the plugin's options (see below) |
+| `services` | Transport and auth overrides for tests |
+
+```vue
+<script setup lang="ts">
+import { BiatecChatInline } from '@biatec/chat-widget'
+</script>
+
+<template>
+  <div class="trade-page" style="display:grid;grid-template-columns:1fr minmax(360px,420px);gap:24px">
+    <OrderForm />
+    <BiatecChatInline />   <!-- height and width come from your column -->
+  </div>
+</template>
+```
+
+Install the plugin with `mode: 'inline'` so that nothing floats and the inline panel is the only UI:
+
+```ts
+createApp(App)
+  .use(BiatecChat, { backendUrl: 'https://chat.biatec.io', clientKey: 'biatec-dex', mode: 'inline' })
+  .mount('#app')
+```
+
+Options are resolved in this order: an already-mounted floating widget's options win, then the `options` prop, then the options the
+plugin provides. With none of them, the component logs a warning and renders nothing. The probe for an existing session
+(`GET /session`) runs when the inline panel mounts.
+
+With `autoMount: false` the plugin only provides options, so `BiatecChatInline` is the only UI. `BiatecChatRoot` is exported but is
+not a supported host mount point: it takes already-resolved internal options, not `BiatecChatOptions`. Mounting the floating
+widget yourself is a possible follow-up.
+
+#### `useBiatecChat()`
+
+`useBiatecChat()` returns the host API. It is not bound to a component, so call it from any module or handler, including before the
+widget is mounted. It always returns the same object. The calls go to the most recently mounted widget.
+
+| Call | Does |
+| --- | --- |
+| `open()` | Opens (or restores from the minimized bar) the panel and moves focus to the composer. The first open starts the session probe; nothing touches the network on page load. If called before a widget is mounted, the first widget opens as soon as it mounts |
+| `close()` | Closes the panel back to the launcher and cancels an early `open()` |
+| `ask(prompt): Promise<AskResult>` | Opens the panel and sends `prompt` as a normal, visible user message. Resolves to an `AskResult` |
+| `setPageContext(text?)` | Sets the opt-in page context sent with later messages. `undefined`, `null` or a blank string clears it, and also overrides the `pageContext` plugin option |
+| `setTheme(theme)` | `'auto' \| 'light' \| 'dark' \| 'host'`, applied without remounting. An unknown value logs a warning and is ignored |
+| `setLocale(locale)` | Switches the widget language without remounting. Unknown locales fall back to English (only English ships today). An empty or non-string value is ignored |
+
+`ask` resolves to one of:
+
+| Result | Meaning |
+| --- | --- |
+| `sent` | The prompt is now a visible user message in the conversation. Only this result means something was sent |
+| `busy` | A reply is still streaming, or another `ask` is starting. Nothing was sent and the panel shows a short notice |
+| `empty` | The prompt was blank or not a string |
+| `unavailable` | No widget is mounted, or `mode: 'inline'` and no `BiatecChatInline` is mounted. The prompt could not be shown, so it was not sent (a console warning is logged) |
 
 ```ts
 import { useBiatecChat } from '@biatec/chat-widget'
 
 const chat = useBiatecChat()
-chat.ask('Add liquidity to the Biatec DEX EURS/USDC pool') // opens the panel and sends a visible user message
-chat.setPageContext('Biatec DEX · testnet · pair EURS/USDC') // untrusted data, sent only after the panel is opened
-chat.setTheme('host'); chat.setLocale('sk'); chat.open(); chat.close()
+
+// Page context is untrusted data; it is attached to each message at send time, so it never leaves the page before
+// the user has opened the panel and a message is sent.
+chat.setPageContext('Biatec DEX · testnet · pair EURS/USDC')
+
+const result = await chat.ask('Add liquidity to the Biatec DEX EURS/USDC pool')
+if (result === 'busy') {
+  // The assistant is still answering the previous question; offer a retry instead of queueing.
+} else if (result === 'unavailable') {
+  // Mount BiatecChatInline (inline mode) or install the plugin first.
+}
+
+chat.setTheme('host')   // follow the host's dark class on <html> (see hostDarkClass)
+chat.setLocale('sk')    // falls back to English until the Slovak catalog ships
+chat.open()
+chat.close()
 ```
 
-`ask` never executes anything: actions still end in a preview the user reviews and confirms.
+`ask` never executes anything: actions still end in a preview the user reviews and confirms. The playground
+(`packages/chat-widget/playground/main.ts`) drives every call from buttons; run it with `pnpm --filter @biatec/chat-widget dev`.
+
+#### Known limitations
+
+- An inline panel mounted before the floating root has its own session, not a shared one.
+- An early `open()` in `mode: 'inline'` (before a `BiatecChatInline` is mounted) is dropped; the inline panel is always shown while mounted.
+- When a floating widget already exists, the `options` prop of `BiatecChatInline` is ignored in favour of the floating widget's options.
+- An `ask` made during the first session probe still sends if the user closes the panel meanwhile.
+- Esc closes the Activity aside even when the aside has no content yet (the Activity timeline arrives with T-066).
+- Theme and viewport-size watching is duplicated between the floating and the inline root (a small cost, no visible effect).
+- `ask` is not queued: while a reply streams it returns `busy`.
+- `setPageContext` takes a plain string and is sent as the product field of the chat request's host context; there is no structured form yet.
 
 ### Accessibility
 

@@ -7,6 +7,7 @@ using Biatec.Chat.Api.Orchestration;
 using Biatec.Chat.Core.Previews;
 using Biatec.Chat.Tools.Mcp;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Biatec.Chat.Tools.Wallet.Bitcoin;
 using Biatec.Chat.Tools.Wallet.Transfer;
 using CoreStatus = Biatec.Chat.Core.Data.ActionPreviewStatus;
 using CoreStep = Biatec.Chat.Core.Data.ActionStep;
@@ -29,6 +30,9 @@ public sealed class WalletTransferExecutor(IServiceScopeFactory scopes) : IToolE
         if (context.Tier != Biatec.Chat.Core.Data.SessionTier.Authenticated)
             return new ToolExecutionResult("This needs a signed-in user. Call requestSignIn instead.", true);
 
+        if ((string?)arguments["network"] is "bitcoin" or "bitcoin-testnet")
+            return await ExecuteBitcoinAsync(context, arguments, ct);
+
         var request = ParseRequest(arguments, out var problem);
         if (request is null) return new ToolExecutionResult(problem!, true);
 
@@ -45,6 +49,37 @@ public sealed class WalletTransferExecutor(IServiceScopeFactory scopes) : IToolE
                 ["previewId"] = outcome.Snapshot.Preview.Id.ToString(),
                 ["status"] = "awaiting_user_confirmation",
                 ["totalSteps"] = outcome.Plan.Count,
+                ["note"] = outcome.Message + " The preview card is shown to the user; do not repeat or invent its details.",
+            };
+            return new ToolExecutionResult(content.ToJsonString(), Events: [card]);
+        }
+        catch (McpAuthenticationException)
+        {
+            return new ToolExecutionResult("The sign-in has expired. Ask the user to sign in again.", true);
+        }
+        catch (McpToolUnavailableException)
+        {
+            return new ToolExecutionResult("The wallet service is temporarily unavailable. Tell the user to try again later.", true);
+        }
+    }
+
+    private async Task<ToolExecutionResult> ExecuteBitcoinAsync(ToolExecutionContext context, JsonNode arguments, CancellationToken ct)
+    {
+        var request = BitcoinTransferCard.ParseRequest(arguments, out var problem);
+        if (request is null) return new ToolExecutionResult(problem!, true);
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            var service = scope.ServiceProvider.GetRequiredService<BitcoinTransferService>();
+            var outcome = await service.StartAsync(new McpCallContext(context.TenantId, context.SessionId, context.Scopes), context.ConversationId, request, ct);
+            if (outcome.IsError || outcome.Snapshot is null || outcome.Intent is null) return new ToolExecutionResult(outcome.Message, true);
+
+            var card = new PreviewCardEvent(BitcoinTransferCard.Map(outcome));
+            var content = new JsonObject
+            {
+                ["previewId"] = outcome.Snapshot.Preview.Id.ToString(),
+                ["status"] = "awaiting_user_confirmation",
+                ["totalSteps"] = 1,
                 ["note"] = outcome.Message + " The preview card is shown to the user; do not repeat or invent its details.",
             };
             return new ToolExecutionResult(content.ToJsonString(), Events: [card]);
@@ -211,6 +246,10 @@ public static class WalletTransferRegistration
             return new Biatec.Chat.Tools.Algod.AlgodClientFactory(nets);
         });
         services.AddScoped<TransferPreviewService>();
+        services.AddScoped<BitcoinTransferService>();
+        services.AddOptions<BitcoinOptions>().BindConfiguration(BitcoinOptions.Section);
+        services.AddHttpClient<IBitcoinChainWatcher, EsploraBitcoinChainWatcher>(c => c.Timeout = TimeSpan.FromSeconds(5));
+        services.AddScoped<Biatec.Chat.Api.Chat.Confirm.IPreviewFreshnessGate, BitcoinPreviewFreshnessGate>();
         services.AddSingleton<IToolExecutor, WalletTransferExecutor>();
         return services;
     }

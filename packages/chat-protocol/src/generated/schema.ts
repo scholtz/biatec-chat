@@ -100,6 +100,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/public/origin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GetPublicOrigin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/public/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["PostPublicChat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/session/adopt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AdoptPublicConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/popup": {
         parameters: {
             query?: never;
@@ -222,6 +270,70 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["ReconcilePreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/previews/{previewId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CancelPreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/previews/{previewId}/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["PollConsent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/previews/{previewId}/consent/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["StreamConsent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/previews/{previewId}/consent/prediction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ConsentPrediction"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -394,6 +506,10 @@ export interface components {
             transactionId?: null | string;
             explorerUrl?: null | string;
         };
+        AdoptRequest: {
+            conversationId: null | string;
+            continuationToken: null | string;
+        };
         /** @enum {unknown} */
         AgentModeValue: "analyze" | "prepare";
         AgentSettings: {
@@ -441,7 +557,7 @@ export interface components {
             product?: null | string;
             locale?: null | string;
         };
-        ChatEvent: components["schemas"]["ChatEventTextDeltaEvent"] | components["schemas"]["ChatEventToolStatusEvent"] | components["schemas"]["ChatEventPreviewCardEvent"] | components["schemas"]["ChatEventConsentStatusEvent"] | components["schemas"]["ChatEventSignInCardEvent"] | components["schemas"]["ChatEventErrorEvent"];
+        ChatEvent: components["schemas"]["ChatEventTextDeltaEvent"] | components["schemas"]["ChatEventToolStatusEvent"] | components["schemas"]["ChatEventPreviewCardEvent"] | components["schemas"]["ChatEventConsentStatusEvent"] | components["schemas"]["ChatEventSignInCardEvent"] | components["schemas"]["ChatEventSafeCardEvent"] | components["schemas"]["ChatEventErrorEvent"];
         ChatEventConsentStatusEvent: {
             /** @enum {string} */
             type: "consent_status";
@@ -458,6 +574,11 @@ export interface components {
             /** @enum {string} */
             type: "preview_card";
             preview: components["schemas"]["ActionPreview"];
+        };
+        ChatEventSafeCardEvent: {
+            /** @enum {string} */
+            type: "safe_card";
+            card: components["schemas"]["SafeCard"];
         };
         ChatEventSignInCardEvent: {
             /** @enum {string} */
@@ -517,6 +638,65 @@ export interface components {
         ProbeResponse: {
             cookieReturned: boolean;
         };
+        PublicChatRequest: {
+            message: string;
+            conversationId?: null | string;
+            continuationToken?: null | string;
+            context?: null | components["schemas"]["HostContext"];
+            widgetVersion?: null | string;
+        };
+        SafeCard: {
+            source: components["schemas"]["SafeCardSource"];
+            network: string;
+            safes: components["schemas"]["SafeCardSafe"][];
+            couldNotRead?: string[];
+        };
+        /** @enum {unknown} */
+        SafeCardCreationState: "SetupPending" | "NeedsFunding" | "Created" | null;
+        SafeCardProposal: {
+            proposalId: string;
+            groupId: string;
+            kind: string;
+            status: components["schemas"]["SafeCardProposalState"];
+            /** Format: int32 */
+            approvals: number | string;
+            /** Format: int32 */
+            threshold: number | string;
+            approvedByYou?: null | boolean;
+            proposer: string;
+            payloadVersion: string;
+            expiryRound: string;
+        };
+        /** @enum {unknown} */
+        SafeCardProposalState: "AwaitingApprovals" | "ReadyToExecute";
+        SafeCardSafe: {
+            appId: string;
+            address: string;
+            name: string;
+            network: string;
+            paused?: boolean;
+            yourAddresses?: string[];
+            signerGroups?: components["schemas"]["SafeCardSignerGroup"][];
+            pendingProposals?: components["schemas"]["SafeCardProposal"][];
+            proposalsTruncated?: boolean;
+            proposalsCouldNotBeRead?: boolean;
+            proposalsNotLoaded?: boolean;
+            creation?: null | components["schemas"]["SafeCardCreationState"];
+        };
+        SafeCardSignerGroup: {
+            groupId?: null | string;
+            name: string;
+            /** Format: int32 */
+            threshold: number | string;
+            /** Format: int32 */
+            memberCount: number | string;
+            /** Format: int64 */
+            membershipEpoch?: null | number | string;
+            allowedActions?: string[];
+            isAdminGroup?: boolean;
+        };
+        /** @enum {unknown} */
+        SafeCardSource: "List" | "Create";
         SessionState: {
             sessionId: string;
             tier: components["schemas"]["SessionTier"];
@@ -682,6 +862,68 @@ export interface operations {
             };
         };
     };
+    GetPublicOrigin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PostPublicChat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicChatRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdoptPublicConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdoptRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     StartAuthPopup: {
         parameters: {
             query?: never;
@@ -829,6 +1071,92 @@ export interface operations {
     ReconcilePreview: {
         parameters: {
             query?: never;
+            header?: never;
+            path: {
+                previewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CancelPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                previewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActionDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PollConsent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                previewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StreamConsent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                previewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ConsentPrediction: {
+        parameters: {
+            query?: {
+                valueEur?: number | string;
+            };
             header?: never;
             path: {
                 previewId: string;

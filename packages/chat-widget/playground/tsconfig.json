@@ -1,0 +1,20 @@
+{
+  // `pnpm typecheck:playground` (after `pnpm build`): the BiatecDEX-like page and the hand-off snippets it contains
+  // compile against the built package (dist/index.d.ts), the way the DEX consumes it from npm.
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@biatec/chat-widget": ["../dist/index.d.ts"],
+      "@/*": ["./dex/host/*"]
+    }
+  },
+  "include": ["env.d.ts", "dex/**/*.ts", "dex/**/*.vue"]
+}

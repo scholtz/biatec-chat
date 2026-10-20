@@ -1,17 +1,17 @@
 ---
 id: T-036
 title: Evidence export bundle and offline verifier
-status: backlog
+status: done
 priority: P1
 epic: "Evidence"
 blocked_by: [T-035]
 area: ["backend/Biatec.Chat.Api/Evidence/Export/**", "packages/evidence-verifier/**"]
 parallel: no
-conflicts_with: [T-032, T-042, T-043, T-066]
+conflicts_with: [T-032, T-042, T-043, T-066, T-081]
 issue: "#37"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-036"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#session-recording-and-evidence"
 created: 2026-10-19
 updated: 2026-10-20
@@ -51,9 +51,14 @@ pnpm --filter evidence-verifier test; node cli verify bundle.json
 
 ## Review
 
+- 2026-10-20 03:14 · approve · PR #146 merged into main @ 1da2606 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 22:40 · coordinator · blocked · conflicts_with T-066 added: the evidence download link is wired into the widget activity aside
 - 2026-10-20 01:09 · LukassSoukup · blocked · parallel analysis: dropped T-037, T-038, T-039, T-040, T-041 (done)
 - 2026-10-20 01:12 · kanban-board · blocked → backlog · blockers done: T-035
+- 2026-10-20 02:19 · scholtz · taken · status stays backlog
+- 2026-10-20 02:19 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 03:14 · user · in-progress → done · PR #146 merged into main @ 1da2606 (synced by kanban-sync)

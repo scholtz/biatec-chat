@@ -13,8 +13,8 @@ owns the implementation; the widget owns the expectations.
 - `GET /public/origin` answers `{ "registered": true|false }`. Only a 200 with `registered:false` marks the origin unregistered;
   any error, timeout or non-2xx is treated as transient and the widget keeps retrying so an outage never hides sign-in.
 - Closed idle conversations answer `{ "code": "conversation_idle_closed" }`.
-- SSE frames are `data: <json>` with a `type` of `text_delta`, `tool_status`, `preview_card`, `consent_status`, `sign_in_card`
-  or `error`, carrying that type's required fields. Incomplete final frames are discarded by the widget.
+- SSE frames are `data: <json>` with a `type` of `text_delta`, `tool_status`, `preview_card`, `consent_status`, `sign_in_card`,
+  `safe_card` or `error`, carrying that type's required fields. Incomplete final frames are discarded by the widget.
 
 ## Backend behaviour (T-038, `backend/Biatec.Chat.Api/Public/`)
 

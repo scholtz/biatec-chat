@@ -227,12 +227,12 @@ public class TelemetryTests
         }
 
         // Activity sources are process-wide: only spans to this test's stub (its own port) are ours.
-        var mine = exported.Where(a => (a.GetTagItem("url.full") as string)?.StartsWith(baseUrl, StringComparison.Ordinal) == true).ToList();
+        var mine = Snapshot(exported).Where(a => (a.GetTagItem("url.full") as string)?.StartsWith(baseUrl, StringComparison.Ordinal) == true).ToList();
         var httpSpan = Assert.Single(mine, a => a.Kind == ActivityKind.Client && ((string)a.GetTagItem("url.full")!).Contains("/connect/token"));
         Assert.DoesNotContain("secret-code", (string)httpSpan.GetTagItem("url.full")!);
         Assert.Contains(mine, a => ((string)a.GetTagItem("url.full")!).EndsWith("/wallet/testnet/{id}/sign"));
-        Assert.Contains(exported, a => a.Source.Name.Contains("AWS", StringComparison.OrdinalIgnoreCase) && a.DisplayName.Contains("Converse", StringComparison.Ordinal));
-        Assert.All(exported, a =>
+        Assert.Contains(Snapshot(exported), a => a.Source.Name.Contains("AWS", StringComparison.OrdinalIgnoreCase) && a.DisplayName.Contains("Converse", StringComparison.Ordinal));
+        Assert.All(Snapshot(exported), a =>
         {
             foreach (var key in TelemetryScrubber.Dropped) Assert.Null(a.GetTagItem(key));
             Assert.DoesNotContain(a.TagObjects, t => t.Value?.ToString()?.Contains("secret-code") == true);
@@ -275,9 +275,28 @@ public class TelemetryTests
         var response = await client.GetAsync(probe + "?x=secret-q");
         Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
         Assert.IsType<MeteringPolicyEventSink>(factory.Services.GetRequiredService<IPolicyEventSink>());
-        factory.Services.GetRequiredService<TracerProvider>().ForceFlush();
-        var server = Assert.Single(exported, a => a.Kind == ActivityKind.Server && a.GetTagItem("url.path") as string == probe);
+        // The server span ends just after the response is sent, and other tests' hosts export into the same list from
+        // their own threads, so wait for our span and read snapshots.
+        var tracer = factory.Services.GetRequiredService<TracerProvider>();
+        Activity[] mine = [];
+        for (var i = 0; i < 50 && mine.Length == 0; i++)
+        {
+            tracer.ForceFlush();
+            mine = Snapshot(exported).Where(a => a.Kind == ActivityKind.Server && a.GetTagItem("url.path") as string == probe).ToArray();
+            if (mine.Length == 0) await Task.Delay(100);
+        }
+        var server = Assert.Single(mine);
         Assert.Null(server.GetTagItem("client.address"));
         Assert.DoesNotContain(server.TagObjects, t => t.Value?.ToString()?.Contains("secret-q") == true);
+    }
+
+    /// <summary>A copy of the exporter's list, retried while another thread appends to it.</summary>
+    private static Activity[] Snapshot(List<Activity> list)
+    {
+        for (var i = 0; ; i++)
+        {
+            try { return list.ToArray(); }
+            catch (ArgumentException) when (i < 10) { }
+        }
     }
 }
