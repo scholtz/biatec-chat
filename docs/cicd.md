@@ -8,15 +8,18 @@ Biatec Chat runs on Biatec's own Kubernetes cluster in two environments. AWS is 
 | stage | `Stage` | `k8s/stage` | `biatec-chat-stage` | stage.chat.biatec.io | `1.<yyyy.mm.dd>-<sha7>-beta` |
 | production | `Production` | `k8s/main` | `biatec-chat-main` | chat.biatec.io | `1.<yyyy.mm.dd>-<sha7>-main` (same image) |
 
+Stage also runs the demo site on demo.stage.chat.biatec.io (`scholtz2/biatec-chat-demo`, same `<version>-beta` tag);
+production has none. See "Demo site" below and [demo-site.md](demo-site.md).
+
 ## Workflows
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| [`ci.yml`](../.github/workflows/ci.yml) | every pull request; called by `deploy-stage.yml` | backend `dotnet test` (with Postgres and Redis containers); typecheck, test and build of `chat-protocol`, `chat-widget`, `builders`, `consent-protocol`, `mock-oidc`; Flutter analyze + test of the authenticator; Docker builds of both images; `kubectl kustomize` of both overlays |
-| [`deploy-stage.yml`](../.github/workflows/deploy-stage.yml) | push to `main` (except `kanban/**`, `docs/**`, `*.md`) and manual run | runs `ci.yml`, builds and pushes `scholtz2/biatec-chat-backend` and `scholtz2/biatec-chat-builders` as `<version>-beta` and the moving `stage` tag, then `deploy.yml` to `Stage` |
-| [`promote-production.yml`](../.github/workflows/promote-production.yml) | manual only (Actions → promote-production → Run workflow) | takes a stage version (empty = what `stage` runs now), re-tags both images `<version>-beta` → `<version>-main` without rebuilding (same digest, checked), then `deploy.yml` to `Production` |
+| [`ci.yml`](../.github/workflows/ci.yml) | every pull request; called by `deploy-stage.yml` | backend `dotnet test` (with Postgres and Redis containers); typecheck, test and build of `chat-protocol`, `chat-widget`, `builders`, `consent-protocol`, `mock-oidc`; the demo site (`pnpm --filter demo build`, `pnpm --filter demo test`); Flutter analyze + test of the authenticator; Docker builds (no push) of the backend, builders and demo images, the demo with `BACKEND_URL=https://backend.invalid`; `kubectl kustomize` of both overlays |
+| [`deploy-stage.yml`](../.github/workflows/deploy-stage.yml) | push to `main` (except `kanban/**`, `docs/**`, `*.md`) and manual run | runs `ci.yml`, builds and pushes `scholtz2/biatec-chat-backend`, `scholtz2/biatec-chat-builders` and `scholtz2/biatec-chat-demo` (built with `BACKEND_URL` from `STAGE_URL`) as `<version>-beta` and the moving `stage` tag, then `deploy.yml` to `Stage` with `url` = `STAGE_URL` |
+| [`promote-production.yml`](../.github/workflows/promote-production.yml) | manual only (Actions → promote-production → Run workflow) | takes a stage version (empty = what `stage` runs now), re-tags the backend and builders images `<version>-beta` → `<version>-main` without rebuilding (same digest, checked; the demo image is not re-tagged), then `deploy.yml` to `Production` with `url` `https://chat.biatec.io` |
 | [`publish-widget.yml`](../.github/workflows/publish-widget.yml) | `chat-widget-v<version>` tag push, manual run (publishes only with "dry_run" unticked), and pull requests touching the widget (dry run only) | builds, typechecks and tests `@biatec/chat-widget`, packs it, `npm publish --dry-run`; on a tag or a manual non-dry run, and only for a commit on `main` (other refs fail), publishes the tarball to npm with provenance in the `npm` environment. See [packages/chat-widget/README.md, "Publishing"](../packages/chat-widget/README.md#publishing) |
-| [`deploy.yml`](../.github/workflows/deploy.yml) | called by the two above | in the given environment: ensures the namespace and the generated secrets, syncs `biatec-chat-secrets`, pins the tag in the overlay, `kubectl apply -k`, waits for Postgres and Redis, applies database migrations, waits for builders and backend |
+| [`deploy.yml`](../.github/workflows/deploy.yml) | called by the two above | in the given environment (namespace must already exist): syncs `biatec-chat-generated`, `biatec-chat-secrets` and `biatec-chat-aws`, pins the tag in the overlay, renders it with `kubectl kustomize` and applies the result, waits for Postgres and Redis, applies database migrations, upserts the tenant, registers the demo origin when the overlay has the demo (see "Demo site"), waits for builders, backend and, when present, the demo |
 
 Production is never deployed by a push. To approve production deploys, add required reviewers to the `Production`
 environment (Settings → Environments → Production → Required reviewers); the deploy job then waits for approval.
@@ -35,7 +38,6 @@ Settings → Secrets and variables → Actions:
 | `AWS_ROLE_ARN` | `Stage` and `Production` | Bedrock role from `infra/aws/rolesanywhere.sh` (aws-setup.md §3), e.g. `arn:aws:iam::<account>:role/biatec-chat-bedrock-role` |
 | `AWS_TRUST_ANCHOR_ARN`, `AWS_PROFILE_ARN` | `Stage` and `Production` | IAM Roles Anywhere trust anchor and profile ARNs, printed by the same script |
 | `AWS_CLIENT_CERT`, `AWS_CLIENT_KEY` | `Stage` and `Production`, each its own | PEM client certificate and private key for that environment (`rolesanywhere-out/stage/…` for `Stage`, `…/main/…` for `Production`); expire after 365 days, see aws-setup.md "Renewing" |
-
 | `POSTGRES_PASSWORD`, `REDIS_PASSWORD` | `Stage` and `Production`, each its own | Passwords of the in-cluster Postgres and Redis: `openssl rand -hex 24`. **Never change `POSTGRES_PASSWORD` after the first deploy** (Postgres reads it only when its volume is first created) |
 | `BUILDERS_INTERNAL_SECRET` | `Stage` and `Production`, each its own | Shared secret between backend and builders: `openssl rand -hex 32` |
 | `VAULT_MASTER_KEY` | `Stage` and `Production`, each its own | Token-vault master key, base64 of 32 bytes: `openssl rand -base64 32`. Losing it signs every user out; GitHub never shows a secret again, so keep a copy in the team password manager |
@@ -55,7 +57,41 @@ The backend finds its OIDC client through the `Tenants` table, which it seeds on
 each deploy upserts the tenant `biatec-chat`: host from the environment URL, `OidcClientId` from `OIDC_CLIENT_ID`,
 `ClientSecretRef` `secret://biatec-chat/oidc-client-secret` (the `OIDC_CLIENT_SECRET` secret) and `RedirectUri`
 `https://<host>/auth/callback`. On later deploys only those four columns are updated; limits, origins and other settings
-changed through onboarding stay. Changing `OIDC_CLIENT_ID` and deploying switches the client.
+changed through onboarding stay. Changing `OIDC_CLIENT_ID` and deploying switches the client. On stage a further step
+adds the demo site's origin and client key to the same row (see "Demo site").
+
+## Demo site
+
+The demo site ([demo-site.md](demo-site.md), source in `apps/demo`) runs on stage only.
+
+**`STAGE_URL` is the single source of the stage backend URL.** `deploy-stage.yml` sets it once as a workflow `env`
+(`STAGE_URL: https://stage.chat.biatec.io`) and uses it for the demo image's `BACKEND_URL` build argument and, through
+the build job's `url` output, as the `url` input of `deploy.yml` (the `Stage` environment URL and the tenant host).
+To move the stage backend, change `STAGE_URL` only.
+
+**Image.** `apps/demo/Dockerfile` is built per environment: `BACKEND_URL` has no default and the build fails without
+it. It is baked into the bundle (`VITE_BIATEC_CHAT_URL`) and into the CSP (`connect-src` set to the backend's origin in
+`apps/demo/security-headers.conf`); the build checks that both hold it, and fails if `dist/` contains anything that
+looks like a token, client secret, private key or AWS key. `CLIENT_KEY` defaults to `biatec-demo` (a label, not a
+secret). The runtime image is `nginxinc/nginx-unprivileged:1.27-alpine`, user 101, port 8080. `ci.yml` builds it
+without pushing with `BACKEND_URL=https://backend.invalid`; `deploy-stage.yml` pushes it as
+`scholtz2/biatec-chat-demo:<version>-beta` and `:stage`.
+
+**Detection in `deploy.yml`.** The step "Apply ${{ inputs.overlay }} with tag ${{ inputs.tag }}" (id `apply`) renders
+the overlay to a file and looks in it for an Ingress named `biatec-chat-demo` (only `k8s/stage/demo-ingress.yaml` provides one); its host becomes the step output `demo_host`.
+Nothing else tells `deploy.yml` about the demo. When `demo_host` is set:
+
+- "Register demo origin on tenant biatec-chat" runs after "Seed tenant biatec-chat". It accepts only a host of
+  `[a-z0-9.-]`, requires it to sit under the `url` host minus its first label (`*.chat.biatec.io` for
+  `stage.chat.biatec.io`, so same site: the session cookie is `SameSite=Lax`), and appends `https://<demo_host>`
+  to `AllowedOrigins` and `biatec-demo` to `ClientKeys` of tenant `biatec-chat` when missing. NULL columns count as
+  empty, onboarding's caps apply (10 origins, 20 client keys) and nothing else on the row changes. A final `SELECT`
+  must find both on the row, otherwise the step fails (tenant missing, or caps reached).
+- "Wait for rollout" also waits for `deployment/biatec-chat-demo`.
+
+**Production.** `k8s/main` deletes the `biatec-chat-demo` Deployment and Service from the base and has no demo
+Ingress, so `demo_host` is empty: the production tenant is not touched and no demo rollout is awaited.
+`promote-production.yml` does not re-tag the demo image.
 
 ## Database migrations
 
