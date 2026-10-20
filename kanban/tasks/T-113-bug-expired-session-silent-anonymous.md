@@ -1,7 +1,7 @@
 ---
 id: T-113
 title: "Bug: an expired session silently turns a signed-in chat anonymous"
-status: in-progress
+status: review
 priority: P1
 epic: "Auth"
 blocked_by: []
@@ -58,12 +58,12 @@ widget transport.
 
 ## Acceptance criteria
 
-- [ ] `/chat/messages` with an expired/unknown well-formed cookie returns 401 `session_expired`, sets a new cookie and
+- [x] `/chat/messages` with an expired/unknown well-formed cookie returns 401 `session_expired`, sets a new cookie and
       runs no model turn; a request without a cookie still starts a session and answers (tests).
-- [ ] The widget, on `session_expired` while signed in, refreshes the session (header shows anonymous) and shows the
+- [x] The widget, on `session_expired` while signed in, refreshes the session (header shows anonymous) and shows the
       expiry note with the sign-in card; while anonymous it retries once transparently (tests).
-- [ ] en and sk strings for the note.
-- [ ] `dotnet test` (chat tests) and the widget tests pass.
+- [x] en and sk strings for the note.
+- [x] `dotnet test` (chat tests) and the widget tests pass.
 
 ## Verification
 
@@ -73,12 +73,24 @@ header anonymous.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** cause is the 15-minute idle timeout of the cookie session (spec), not the access token (the vault
+  refreshes that on demand). An ended session made `/chat/messages` start a new anonymous session silently and the
+  widget never re-read `/session`. Now `/chat/messages` answers 401 problem `code: session_expired` (new anonymous
+  cookie set, no model turn) when the request carried a well-formed cookie that doesn't resolve to a live session.
+  The cookie transport puts the problem code on `TransportError`; `useChat.send` refreshes the session and, if the
+  user was signed in, shows "Your session ended … sign in again; your message was not sent" with the sign-in card
+  (header drops to Guest); a guest's message is retried once on the new session without a note.
+- **Files changed:** `backend/Biatec.Chat.Api/Chat/ChatEndpoints.cs`; `packages/chat-widget/src/transport/{cookie,types}.ts`,
+  `src/components/chat/useChat.ts`, `src/i18n/{en,sk}/chat.json`. Tests: `backend/Biatec.Chat.Tests/Orchestration/OrchestrationTests.cs`
+  (outside the listed `Tests/Chat/**` area, which doesn't exist; the chat endpoint tests live there),
+  `packages/chat-widget/test/{chat-conversation,transport}.test.ts`.
+- **How it was verified:** `dotnet test backend/Biatec.Chat.slnx` 1326 passed, 1 skipped; widget `vitest run` 380
+  passed, 5 skipped; `vue-tsc` shows only the 3 playground errors that `main` already has. Pod logs weren't read (no
+  cluster context here). Manual stage check pending the deploy.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** none. Note: the idle timeout itself still applies while the panel is open and the user is
+  only reading; that's the spec's 15 minutes, now reported instead of hidden.
 
 ## Review
 
@@ -87,3 +99,4 @@ header anonymous.
 - 2026-10-20 11:50 · session-20261020-1150 · (new) → backlog · created from demo testing (signed-in chat asked to sign in)
 - 2026-10-20 11:50 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 11:50 · session-20261020-1150 · backlog → in-progress · claimed in session
+- 2026-10-20 12:05 · session-20261020-1150 · in-progress → review · tests green, PR opened

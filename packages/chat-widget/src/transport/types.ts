@@ -39,6 +39,9 @@ export interface TransportConfig {
 export const CSRF_HEADER = "X-Biatec-Chat";
 export const CLIENT_KEY_HEADER = "X-Biatec-Client-Key";
 
+/** Problem code of a cookie chat call whose session has ended; the response already set a fresh anonymous cookie. */
+export const SESSION_EXPIRED = "session_expired";
+
 /**
  * Backend paths. /session/probe and /session/keepalive exist today. The chat, public and adoption endpoints are
  * owned by later backend tasks; these paths are the widget's assumption and live in one place so they are easy to fix.

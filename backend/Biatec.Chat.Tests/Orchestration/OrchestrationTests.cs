@@ -219,6 +219,35 @@ public sealed class OrchestrationTests : IAsyncLifetime
         Assert.Null(model.Requests[0].ModelIdOverride);
     }
 
+    [Fact]
+    public async Task Chat_EndedSessionCookie_Returns401SessionExpired_SetsNewCookie_AndRunsNoTurn()
+    {
+        var model = new ScriptedModel(_ => Text("ok"));
+        using var f = Factory(model);
+
+        var first = await PostChatAsync(f, new { message = "hi" });
+        var cookie = CookieOf(first);
+        await first.Content.ReadAsStringAsync();
+        await using (var db = NewContext())
+            await db.ChatSessions.ExecuteDeleteAsync(); // what the sweeper does after the idle timeout
+
+        foreach (var stale in new[] { cookie, SessionService.NewToken() })
+        {
+            var r = await PostChatAsync(f, new { message = "add liquidity" }, stale);
+            Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode);
+            var problem = await r.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("session_expired", problem.GetProperty("code").GetString());
+            var fresh = CookieOf(r);
+            Assert.NotEqual(stale, fresh);
+
+            // The new cookie is a live anonymous session, so the retry is answered.
+            var retry = await PostChatAsync(f, new { message = "add liquidity" }, fresh);
+            Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+            await retry.Content.ReadAsStringAsync();
+        }
+        Assert.Equal(3, model.Requests.Count); // hi + the two retries; the refused requests reached no model
+    }
+
     [Theory]
     [InlineData("eu.anthropic.claude-opus-4-5-20251101-v1:0", "eu.anthropic.claude-opus-4-5-20251101-v1:0")]
     [InlineData("eu.anthropic.claude-opus-5-0-20270101-v1:0", null)]

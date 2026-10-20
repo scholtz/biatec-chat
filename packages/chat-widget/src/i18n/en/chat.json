@@ -52,6 +52,7 @@
     "promptLimitsLabel": "My spending limits",
     "promptLimitsText": "What are my current spending limits?",
     "errorGeneric": "Something went wrong. Please try again.",
+    "sessionExpired": "Your session ended after a period of inactivity, so you are signed out. Sign in again to continue; your message was not sent.",
     "signedInAs": "Signed in as {email}",
     "signedIn": "Signed in",
     "signedOut": "Signed out",

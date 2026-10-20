@@ -1,7 +1,7 @@
 import { reactive, ref, computed, onBeforeUnmount } from "vue";
 import type { ActionPreview, ChatEvent, ConsentStatus, DataCardEvent, SafeCard, SessionState, SessionTier, Suggestion } from "@biatec/chat-protocol";
 import { t } from "../../i18n";
-import type { TransportManager } from "../../transport";
+import { SESSION_EXPIRED, TransportError, type TransportManager } from "../../transport";
 import type { AuthClient } from "./auth";
 import { PENDING_STATUSES, decisionHash, type PreviewApi, type PreviewEntry } from "./previews";
 
@@ -112,8 +112,20 @@ export function useChat(svc: ChatServices) {
     busy.value = true;
     const ctl = (abort = new AbortController());
     const gen = generation;
+    const wasSignedIn = tier.value === "Authenticated";
+    const stream = () => svc.transport.send({ message, signal: ctl.signal, ...(opts.includeContext === false ? { context: null } : {}) });
     try {
-      for await (const e of svc.transport.send({ message, signal: ctl.signal, ...(opts.includeContext === false ? { context: null } : {}) })) apply(reply, e);
+      try {
+        for await (const e of stream()) apply(reply, e);
+      } catch (err) {
+        if (!(err instanceof TransportError && err.code === SESSION_EXPIRED) || ctl.signal.aborted) throw err;
+        // The session ended (idle timeout or absolute lifetime) and the backend already set a fresh anonymous one.
+        await refreshSession().catch(() => {});
+        if (wasSignedIn) {
+          reply.text = t("chat.sessionExpired");
+          reply.signIn = { reason: "SignIn", scope: null, description: null, unavailable: false, url: null };
+        } else for await (const e of stream()) apply(reply, e);
+      }
     } catch {
       if (!ctl.signal.aborted) reply.error = t("chat.errorGeneric");
     } finally {
