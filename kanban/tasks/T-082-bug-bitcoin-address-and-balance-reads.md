@@ -1,7 +1,7 @@
 ---
 id: T-082
 title: "Bug: wallet.listAddresses and wallet.balance must cover Bitcoin"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Wallet tools"
 blocked_by: []
@@ -9,8 +9,8 @@ area: ["backend/Biatec.Chat.Api/Wallet/Read/**", "backend/Biatec.Chat.Tests/Wall
 parallel: no
 conflicts_with: [T-087, T-067]
 issue: "#151"
-branch: ""
-owner: ""
+branch: "task/T-082"
+owner: "worker-T-082"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#capabilities-and-intents"
 created: 2026-10-20
@@ -119,3 +119,4 @@ Filled in by the agent when it moves the task to `review`.
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #5)
 - 2026-10-20 03:01 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 03:01 · coordinator · backlog → in-progress · dispatched to worker
