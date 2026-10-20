@@ -1,7 +1,7 @@
 ---
 id: T-096
 title: "Admin: knowledge-base reload and upload"
-status: backlog
+status: in-progress
 priority: P3
 epic: "Orchestrator"
 blocked_by: [T-086]
@@ -9,8 +9,8 @@ area: ["backend/Biatec.Chat.Tools/Kb/**", "backend/Biatec.Chat.Api/Chat/SignIn/*
 parallel: no
 conflicts_with: [T-097]
 issue: "#191"
-branch: ""
-owner: ""
+branch: "task/T-096"
+owner: "worker-T-096"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md"
 created: 2026-10-20
@@ -54,3 +54,4 @@ Parallel work possible: **no**. Don't run it at the same time as T-097: they cha
 - 2026-10-20 05:31 · coordinator · (new) → backlog · proposed by a worker / found during verification
 - 2026-10-20 05:31 · coordinator · backlog · conflicts_with + T-097 (blockers scan: shared files)
 - 2026-10-20 05:32 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 05:32 · coordinator · backlog → in-progress · dispatched to worker
