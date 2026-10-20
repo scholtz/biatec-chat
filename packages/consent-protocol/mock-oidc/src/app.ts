@@ -8,6 +8,8 @@
 //   PUT  /devices/push                        register or replace the device's FCM/APNs token
 //   GET  /devices/requests, GET /consent/requests/:id, POST /consent/requests/:id/receipt   authenticator side
 //   GET  /.well-known/jwks.json, /.well-known/openid-configuration
+//   GET /devices, POST /devices/:kid/cancel   device list; cancelling a pending enrollment (rule 7, T-084)
+//   GET/PUT /devices/settings                 consent settings; loosening needs a device-signed biatec_settings_change (T-084)
 //   GET/POST /mock/...                        test helpers (activate a device, inspect state, push outbox)
 // Push: opening a request queues one message per active device with a push token; its data is only the
 // auth_req_id (GET /mock/push-outbox shows what would be sent). Nothing is sent to FCM or APNs.
@@ -19,7 +21,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020Module from "ajv/dist/2020.js";
-import { jcs, sha256Hex, signCompactJws, thumbprint, verifyApproval, verifyReceipt, ATTESTATION_TYP } from "../../scripts/lib.mjs";
+import { jcs, sha256Hex, signCompactJws, thumbprint, verifyApproval, verifyEs256, verifyReceipt, ATTESTATION_TYP } from "../../scripts/lib.mjs";
 import { GroupError, decodeGroup, transactionDetails } from "./group.ts";
 import { clients, staticTokens, users, type SeedClient, type SeedUser } from "./seed.ts";
 
@@ -117,6 +119,10 @@ export function createMockOidc(options: MockOptions = {}) {
   const pending = new Map<string, Pending>();
   const consumed = new Set<string>();
   const pushOutbox: PushMessage[] = [];
+  // Consent settings beyond what the seed holds (T-084). Keys: sub, or sub|clientId.
+  const accountSettings = new Map<string, { biometricRequired: boolean; blockUnverified: boolean }>();
+  const clientSettings = new Map<string, { perClientThresholdEur?: number; pausedUntil?: number }>();
+  const settingsNonces = new Set<string>();
 
   const attest = (sub: string, kid: string, pub: Record<string, string>) =>
     signCompactJws(oidcKey, { alg: "ES256", kid: oidcKey.kid, typ: ATTESTATION_TYP }, {
@@ -293,7 +299,7 @@ export function createMockOidc(options: MockOptions = {}) {
     }
     const user = userMap.get(t.sub)!;
     const fiat = Number(details.fiat_value.amount);
-    const needs = body.requireConsent === true || fiat > user.thresholdEur || user.alwaysAsk.includes(t.clientId) || !user.used.has(t.clientId);
+    const needs = body.requireConsent === true || fiat > (clientSettings.get(t.sub + "|" + t.clientId)?.perClientThresholdEur ?? user.thresholdEur) || user.alwaysAsk.includes(t.clientId) || !user.used.has(t.clientId);
     if (!needs) return finish();
     throw challenge(t, details, "sign", String(req.headers.origin ?? "https://" + (clientMap.get(t.clientId)?.domain ?? "client.invalid")));
   }
@@ -435,6 +441,139 @@ export function createMockOidc(options: MockOptions = {}) {
     return { status: 200, body: { status: "approved" } };
   }
 
+  // --- Device list and consent settings (T-084) ------------------------------------------------------------------
+
+  const acct = (sub: string) => {
+    let a = accountSettings.get(sub);
+    if (!a) accountSettings.set(sub, (a = { biometricRequired: true, blockUnverified: false }));
+    return a;
+  };
+  const cs = (sub: string, clientId: string) => {
+    let c = clientSettings.get(sub + "|" + clientId);
+    if (!c) clientSettings.set(sub + "|" + clientId, (c = {}));
+    return c;
+  };
+  const money = (v: number) => v.toFixed(2);
+
+  function settingsView(sub: string) {
+    const user = userMap.get(sub)!;
+    return {
+      sub,
+      biometric_required: acct(sub).biometricRequired,
+      threshold_eur: money(user.thresholdEur),
+      block_unverified_clients: acct(sub).blockUnverified,
+      clients: clients.map((c) => {
+        const s = cs(sub, c.id);
+        const paused = s.pausedUntil !== undefined && s.pausedUntil > now();
+        return {
+          client_id: c.id,
+          verified: c.verified,
+          label: c.verified ? c.displayName : "Unverified application " + c.fingerprint,
+          always_ask: user.alwaysAsk.includes(c.id),
+          per_client_threshold_eur: s.perClientThresholdEur === undefined ? null : money(s.perClientThresholdEur),
+          paused_until: paused ? s.pausedUntil : null,
+        };
+      }),
+    };
+  }
+
+  const isDecimal = (v: unknown) => typeof v === "string" && /^(0|[1-9][0-9]*)(\.[0-9]+)?$/.test(v);
+
+  /** Validates the change shape and reports whether it loosens anything (raise a threshold, drop a requirement, lift a pause). */
+  function classifyChange(sub: string, change: any): { loosening: boolean } {
+    const user = userMap.get(sub)!;
+    const bad = (m: string) => new HttpError(400, "invalid_request", m);
+    if (!change || typeof change !== "object" || Array.isArray(change)) throw bad("change must be an object");
+    const allowed = new Set(["threshold_eur", "biometric_required", "block_unverified_clients", "clients"]);
+    for (const k of Object.keys(change)) if (!allowed.has(k)) throw bad("unknown setting " + k);
+    if (Object.keys(change).length === 0) throw bad("change is empty");
+    let loosening = false;
+    if ("threshold_eur" in change) {
+      if (!isDecimal(change.threshold_eur)) throw bad("threshold_eur must be a decimal string");
+      if (Number(change.threshold_eur) > user.thresholdEur) loosening = true;
+    }
+    for (const k of ["biometric_required", "block_unverified_clients"]) {
+      if (k in change && typeof change[k] !== "boolean") throw bad(k + " must be a boolean");
+    }
+    if (change.biometric_required === false && acct(sub).biometricRequired) loosening = true;
+    if (change.block_unverified_clients === false && acct(sub).blockUnverified) loosening = true;
+    if ("clients" in change) {
+      if (!change.clients || typeof change.clients !== "object" || Array.isArray(change.clients)) throw bad("clients must be an object");
+      for (const [id, c] of Object.entries<any>(change.clients)) {
+        if (!clientMap.has(id)) throw bad("unknown client " + id);
+        if (!c || typeof c !== "object" || Object.keys(c).length === 0) throw bad("empty change for " + id);
+        for (const k of Object.keys(c)) if (!["always_ask", "per_client_threshold_eur", "paused"].includes(k)) throw bad("unknown client setting " + k);
+        if ("always_ask" in c && typeof c.always_ask !== "boolean") throw bad("always_ask must be a boolean");
+        if ("paused" in c && c.paused !== false) throw bad("a client can only be unpaused here");
+        if ("per_client_threshold_eur" in c && c.per_client_threshold_eur !== null && !isDecimal(c.per_client_threshold_eur)) throw bad("per_client_threshold_eur must be a decimal string or null");
+        const s = cs(sub, id);
+        if (c.always_ask === false && user.alwaysAsk.includes(id)) loosening = true;
+        if (c.paused === false && s.pausedUntil !== undefined && s.pausedUntil > now()) loosening = true;
+        if ("per_client_threshold_eur" in c) {
+          const next = c.per_client_threshold_eur === null ? user.thresholdEur : Number(c.per_client_threshold_eur);
+          if (next > (s.perClientThresholdEur ?? user.thresholdEur)) loosening = true;
+        }
+      }
+    }
+    return { loosening };
+  }
+
+  function applyChange(sub: string, change: any) {
+    const user = userMap.get(sub)!;
+    if ("threshold_eur" in change) user.thresholdEur = Number(change.threshold_eur);
+    if ("biometric_required" in change) acct(sub).biometricRequired = change.biometric_required;
+    if ("block_unverified_clients" in change) acct(sub).blockUnverified = change.block_unverified_clients;
+    for (const [id, c] of Object.entries<any>(change.clients ?? {})) {
+      const s = cs(sub, id);
+      if ("always_ask" in c) user.alwaysAsk = c.always_ask ? [...new Set([...user.alwaysAsk, id])] : user.alwaysAsk.filter((x) => x !== id);
+      if ("per_client_threshold_eur" in c) s.perClientThresholdEur = c.per_client_threshold_eur === null ? undefined : Number(c.per_client_threshold_eur);
+      if (c.paused === false) s.pausedUntil = undefined;
+    }
+  }
+
+  function putSettings(req: IncomingMessage, body: Record<string, any>) {
+    const d = deviceAuth(req);
+    const { loosening } = classifyChange(d.sub, body.change);
+    if (loosening) {
+      // Loosening is a consent from an active device: a signed biatec_settings_change (required changes, section 19).
+      if (d.activeAt > now()) throw new HttpError(403, "access_denied", "this device is not active yet (rule 7)");
+      const c = body.consent;
+      const refuse = (m: string) => new HttpError(403, "insufficient_user_authentication", m, { acr_values: "biatec:consent", reason: "consent_required" });
+      if (!c || typeof c !== "object" || !c.signed || typeof c.signature !== "string") throw refuse("loosening needs a device-signed biatec_settings_change");
+      const s = c.signed;
+      if (s.type !== "biatec_settings_change" || s.sub !== d.sub || s.kid !== d.kid || typeof s.nonce !== "string" || !s.nonce || typeof s.issued_at !== "number") throw refuse("the signed change is malformed");
+      if (jcs(s.change) !== jcs(body.change)) throw refuse("the signed change differs from the requested one");
+      if (Math.abs(now() - s.issued_at) > CONSENT_VALIDITY_SECONDS) throw refuse("the signed change expired");
+      let ok = false;
+      try {
+        ok = verifyEs256(d.publicKey, Buffer.from(jcs(s), "utf8"), c.signature);
+      } catch {
+        ok = false;
+      }
+      if (!ok) throw refuse("the signature does not verify");
+      if (settingsNonces.has(d.kid + "|" + s.nonce)) throw refuse("this signed change was already used");
+      settingsNonces.add(d.kid + "|" + s.nonce);
+    }
+    applyChange(d.sub, body.change);
+    return { status: 200, body: { applied: true, loosened: loosening, settings: settingsView(d.sub) } };
+  }
+
+  function listDevices(req: IncomingMessage) {
+    const me = deviceAuth(req);
+    const list = [...devices.values()].filter((x) => x.sub === me.sub && !x.cancelled).map((x) => ({ kid: x.kid, current: x.kid === me.kid, active: x.activeAt <= now(), active_at: x.activeAt }));
+    return { status: 200, body: { devices: list } };
+  }
+
+  function cancelDevice(req: IncomingMessage, kid: string) {
+    const me = deviceAuth(req);
+    const target = devices.get(kid);
+    if (!target || target.sub !== me.sub || target.cancelled) throw new HttpError(404, "not_found");
+    if (target.activeAt <= now()) throw new HttpError(409, "conflict", "only a pending enrollment can be cancelled");
+    target.cancelled = true;
+    target.push = undefined;
+    return { status: 200, body: { kid, cancelled: true } };
+  }
+
   // --- Routing --------------------------------------------------------------------------------------------------
 
   async function readBody(req: IncomingMessage): Promise<Record<string, any>> {
@@ -492,6 +631,10 @@ export function createMockOidc(options: MockOptions = {}) {
       setPush(d, pushTarget(await readBody(req)));
       return { status: 200, body: { kid: d.kid, provider: d.push!.provider } };
     }
+    if (m === "GET" && path === "/devices") return listDevices(req);
+    if (m === "POST" && (x = path.match(/^\/devices\/([^/]+)\/cancel$/))) return cancelDevice(req, decodeURIComponent(x[1]));
+    if (m === "GET" && path === "/devices/settings") return { status: 200, body: settingsView(deviceAuth(req).sub) };
+    if (m === "PUT" && path === "/devices/settings") return putSettings(req, await readBody(req));
     if (m === "GET" && path === "/devices/requests") {
       const d = deviceAuth(req);
       return { status: 200, body: { requests: [...pending.values()].filter((p) => p.request.sub === d.sub && p.status === "pending" && !expired(p)).map(deviceView) } };
@@ -506,6 +649,13 @@ export function createMockOidc(options: MockOptions = {}) {
       const d = devices.get(x[1]);
       if (!d) throw new HttpError(404, "not_found");
       return { status: 200, body: { kid: d.kid, sub: d.sub, active: d.activeAt <= now(), active_at: d.activeAt, attestation: d.attestation, device_token: d.token, public_key: d.publicKey } };
+    }
+    // Test helper: the 24 hour client pause (rule 10) that the user lifts from the trusted-clients screen.
+    if (m === "POST" && (x = path.match(/^\/mock\/users\/([^/]+)\/clients\/([^/]+)\/pause$/))) {
+      if (!userMap.has(x[1]) || !clientMap.has(x[2])) throw new HttpError(404, "not_found");
+      const s = cs(x[1], x[2]);
+      s.pausedUntil = now() + 24 * 3600;
+      return { status: 200, body: { paused_until: s.pausedUntil } };
     }
     if (m === "GET" && path === "/mock/push-outbox") {
       const kid = url.searchParams.get("kid");

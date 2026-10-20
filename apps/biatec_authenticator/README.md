@@ -96,3 +96,17 @@ add an HTTP mock of Biatec OIDC. The app makes no network calls today.
 ## Checks
 
     flutter analyze && flutter test
+
+## Devices, trusted clients and security settings (T-084)
+
+- `lib/devices/`, `lib/clients/`, `lib/security/`: the three screens, one `SettingsController` (`lib/security/settings_controller.dart`)
+  and `SettingsClient` (`GET /devices`, `POST /devices/{kid}/cancel`, `GET` and `PUT /devices/settings`, all with
+  `Authorization: Device <token>`).
+- Tightening (lower a threshold, turn a requirement on) applies at once. Loosening (raise a threshold, turn biometric, blocking or
+  always-ask off, lift a client pause) first passes the biometric check, then the device key signs a `biatec_settings_change`
+  (`isLoosening` decides). Biatec OIDC verifies it; an inactive device cannot loosen.
+- Biatec OIDC has none of these APIs yet (`docs/required-changes-biatec-oidc.md` rows 21 and 22, fallback none). `AppConfig.settingsApi` is on
+  for the mock URL and off otherwise; override with `--dart-define=CONSENT_SETTINGS_API=true`. When off, the screens say "Not available yet".
+- Tests: `flutter test test/settings` (scripted OIDC); `test/settings/mock_oidc_settings_contract_test.dart` runs against a started mock
+  (`MOCK_OIDC_URL`, fresh mock). The mock's side is tested by `pnpm --filter mock-oidc test`.
+- Not verified: `flutter analyze` and `flutter test` have not been run (Flutter was not installed where this was written).
