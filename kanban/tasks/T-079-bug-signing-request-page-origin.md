@@ -1,7 +1,7 @@
 ---
 id: T-079
 title: "Bug: report the page origin, not the backend host, on signing requests"
-status: review
+status: done
 priority: P1
 epic: "Wallet tools"
 blocked_by: []
@@ -121,9 +121,12 @@ Use the canonical origin from `OriginPolicy.AllowedOrigin(tenant, request)`, nev
 
 ## Review
 
+- 2026-10-20 04:06 · approve · PR #171 merged into main @ b906ef9 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #2)
 - 2026-10-20 03:34 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 03:34 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 04:05 · coordinator · in-progress → review · branch task/T-079 @ 3ef52ef, PR #171; analysis verdict APPROVED recorded
+- 2026-10-20 04:06 · user · review → done · PR #171 merged into main @ b906ef9 (synced by kanban-sync)
