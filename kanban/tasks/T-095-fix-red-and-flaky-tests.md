@@ -1,7 +1,7 @@
 ---
 id: T-095
 title: "Fix the red widget i18n test and the flaky session-profile test on main"
-status: review
+status: done
 priority: P1
 epic: "Deploy & docs"
 blocked_by: []
@@ -63,9 +63,12 @@ Fresh worktree: `pnpm install && pnpm -C packages/chat-widget test`; `dotnet tes
 
 ## Review
 
+- 2026-10-20 06:16 · approve · PR #195 merged into main @ 7a1744a (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 05:31 · coordinator · (new) → backlog · proposed by a worker / found during verification
 - 2026-10-20 05:31 · coordinator · backlog · conflicts_with + T-092, T-094 (blockers scan: shared files)
 - 2026-10-20 05:45 · scholtz · backlog → in-progress · claimed with session-20261020-claude on branch task/T-095 (main CI is red on the i18n test, which blocks the stage deploy)
 - 2026-10-20 06:05 · session-20261020-claude · in-progress → review · PR for T-095
+- 2026-10-20 06:16 · user · review → done · PR #195 merged into main @ 7a1744a (synced by kanban-sync)
