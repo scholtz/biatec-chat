@@ -1,0 +1,73 @@
+{
+  "format": "biatec-evidence-bundle",
+  "version": 1,
+  "conversationId": "c6252b08-8bb1-4d58-8851-3c133d460178",
+  "exportedAt": "2026-10-20T00:23:42.533Z",
+  "kid": "ev-7d729eb6ebbb515b",
+  "jwksUrl": "http://chat.biatec.io/.well-known/evidence-jwks.json",
+  "keys": [
+    {
+      "kty": "EC",
+      "crv": "P-256",
+      "use": "sig",
+      "alg": "ES256",
+      "kid": "ev-a68987837be1ab34",
+      "x": "BMKwWnIkm5eZjeI1U_QcNwXKAHoT3Izq5T5Zt5UTei4",
+      "y": "djr7s7vInJSm5_Btbd-Ih8ccSHS2Fe3z7FeC3IRBzPo",
+      "created_at": "2026-10-20T00:23:39.672Z",
+      "retired_at": "2026-10-20T00:23:41.801Z"
+    },
+    {
+      "kty": "EC",
+      "crv": "P-256",
+      "use": "sig",
+      "alg": "ES256",
+      "kid": "ev-7d729eb6ebbb515b",
+      "x": "L9eRpmfG5qxKAzWv5J2GSs_LYjlT6_8sZWLG9yfUIcw",
+      "y": "NKgVVIKBplnbPhsg-esFtK37XLJJDuq2vSqPWgJQP-Q",
+      "created_at": "2026-10-20T00:23:41.801Z"
+    }
+  ],
+  "entries": [
+    {
+      "seq": 1,
+      "kind": "message",
+      "anchorRef": null,
+      "payload": null,
+      "salt": null,
+      "payloadHash": "5dbd4dc1884b27a4c88a8496b2c9ab7f27e85962c1c0485dfc8c8f35dac1a355",
+      "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entryHash": "a853b52a948c251a39c27019bce4c7a0476e5df756fb63c7ac8544669495e6c5",
+      "kid": "ev-a68987837be1ab34",
+      "signedAt": "2026-10-20T00:23:41.667Z",
+      "signature": "qPMhRd7oQ5N90mVfbbUScvwV8LJF8V64p_insiE5C_Fs-5I-_jTdBf9GJKSukrJi-eqe7PQxPrJk5Gm0Uysg8w"
+    },
+    {
+      "seq": 2,
+      "kind": "message",
+      "anchorRef": null,
+      "payload": null,
+      "salt": null,
+      "payloadHash": "968ce108e5d09b3104614ea3aa358bf5279041ca5ec09ccb9a3c46c9704c75ec",
+      "prevHash": "a853b52a948c251a39c27019bce4c7a0476e5df756fb63c7ac8544669495e6c5",
+      "entryHash": "5efffe2943e7bf8a7d526d2bbfd1712a1df497da4a0eea83fe518d30c25e5a00",
+      "kid": "ev-a68987837be1ab34",
+      "signedAt": "2026-10-20T00:23:41.785Z",
+      "signature": "x7b6xS0r0RrpIyakBZBJu53-Qj3bDn6IMA62vk8xPUpspPxzHW7WvgZLCfcPzWKNMYvSBYCxnfP5aBZsNjIXfw"
+    },
+    {
+      "seq": 3,
+      "kind": "end",
+      "anchorRef": null,
+      "payload": null,
+      "salt": null,
+      "payloadHash": "d968f239392b7e6407ed8205c5d0fe490696196068d966833e878aefcf59b565",
+      "prevHash": "5efffe2943e7bf8a7d526d2bbfd1712a1df497da4a0eea83fe518d30c25e5a00",
+      "entryHash": "8759cea2fb91e2abf56e5aea30b4e23539ece3c99a3ef78826ea1e72fee03649",
+      "kid": "ev-7d729eb6ebbb515b",
+      "signedAt": "2026-10-20T00:23:41.811Z",
+      "signature": "D2L0GQlSxeYq5w1cK8GTQJ5GpHIs8LzaW0sQw-VsiSy4nFwsHhPHUlHInorkyV0NPgwQyg7TjV35NFyQC-O9rw"
+    }
+  ],
+  "signature": "aTr7jz61_gHtfbE7TDeiBB4lHY2FaG43bvRdq7hqgNETwFUORE5h89O2ueTIGe8fJMSDW8VvTfRr0xcMKYFxjg"
+}
