@@ -1,7 +1,7 @@
 ---
 id: T-110
 title: "Safe executors: move instruction text out of guardrail-screened results"
-status: in-progress
+status: done
 priority: P2
 epic: "Safe"
 blocked_by: [T-109]
@@ -72,8 +72,11 @@ apply-guardrail` (eu-central-1, guardrail `rwa0b0by3y18` v1) on a recorded `safe
 
 ## Review
 
+- 2026-10-20 10:55 · approve · PR #234 merged into main @ 4b2282d (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 10:28 · coordinator · (new) → blocked · follow-up from T-109 (instruction text trips the tool-result guardrail)
 - 2026-10-20 10:43 · kanban-board · blocked → backlog · blockers done: T-109
 - 2026-10-20 10:48 · session-20261020-1048 · backlog → in-progress · taken by LukassSoukup, claimed (T-109 merged in PR #233)
+- 2026-10-20 10:55 · user · in-progress → done · PR #234 merged into main @ 4b2282d (synced by kanban-sync)
