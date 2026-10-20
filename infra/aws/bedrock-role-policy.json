@@ -24,20 +24,6 @@
         "bedrock:ApplyGuardrail"
       ],
       "Resource": "arn:aws:bedrock:eu-central-1:${ACCOUNT_ID}:guardrail/*"
-    },
-    {
-      "Sid": "TokenVaultKmsKeyOnly",
-      "Effect": "Allow",
-      "Action": [
-        "kms:GenerateDataKey",
-        "kms:Decrypt"
-      ],
-      "Resource": "${KMS_KEY_ARN}",
-      "Condition": {
-        "StringEquals": {
-          "kms:EncryptionContext:purpose": "biatec-chat-token-vault"
-        }
-      }
     }
   ]
 }

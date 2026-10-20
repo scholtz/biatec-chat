@@ -1,0 +1,79 @@
+# Manual only. Promotes images that are already on stage to production (k8s/main, chat.biatec.io): it re-tags the exact
+# stage images <version>-beta as <version>-main and deploys those, never a rebuild, so production runs byte for byte
+# what was verified on stage. Same pattern as BiatecDEX promote-production.yml. Approval is the "Production"
+# environment's required reviewers. See docs/cicd.md.
+name: promote-production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Stage version to promote, e.g. 1.2026.10.20-abc1234 (no -beta). Empty = what stage runs now (the `stage` tag)."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promote-production
+  cancel-in-progress: false
+
+env:
+  BACKEND_IMAGE: scholtz2/biatec-chat-backend
+  BUILDERS_IMAGE: scholtz2/biatec-chat-builders
+
+jobs:
+  retag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Resolve version
+        id: resolve
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version="$INPUT_VERSION"
+          if [ -z "$version" ]; then
+            version="$(docker buildx imagetools inspect "$BACKEND_IMAGE:stage" \
+              --format '{{ index .Image.Config.Labels "org.opencontainers.image.version" }}')"
+            echo "No version given; stage runs $version."
+          fi
+          if [[ ! "$version" =~ ^1\.[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[0-9a-f]{7}$ ]]; then
+            echo "::error::'$version' is not a version from deploy-stage.yml (expected e.g. 1.2026.10.20-abc1234)."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$version-main" >> "$GITHUB_OUTPUT"
+
+      # Copies the manifest inside the registry (--prefer-index=false keeps it a plain manifest, so -main has the
+      # same digest as -beta) and checks that it did; fails if the stage tag doesn't exist.
+      - name: Re-tag stage images for production
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          digest() { docker buildx imagetools inspect "$1" --format '{{json .Manifest.Digest}}'; }
+          for image in "$BACKEND_IMAGE" "$BUILDERS_IMAGE"; do
+            docker buildx imagetools create --prefer-index=false --tag "$image:$VERSION-main" "$image:$VERSION-beta"
+            [ "$(digest "$image:$VERSION-main")" = "$(digest "$image:$VERSION-beta")" ]
+          done
+          echo "Promoting \`$VERSION\` (\`-beta\` → \`-main\`)." >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: retag
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: Production
+      url: https://chat.biatec.io
+      overlay: main
+      namespace: biatec-chat-main
+      tag: ${{ needs.retag.outputs.tag }}
+    secrets: inherit

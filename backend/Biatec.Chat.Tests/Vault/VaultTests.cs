@@ -102,6 +102,17 @@ public class VaultTests
         await Assert.ThrowsAnyAsync<CryptographicException>(() => new DevKeyProvider().UnwrapDataKeyAsync(dk.Wrapped, default));
     }
 
+    [Fact]
+    public async Task Vault_secret_provider_round_trips_and_rejects_other_keys()
+    {
+        var keys = new SecretKeyProvider(RandomNumberGenerator.GetBytes(32));
+        var dk = await keys.GenerateDataKeyAsync(default);
+        Assert.Equal(dk.Plaintext, await keys.UnwrapDataKeyAsync(dk.Wrapped, default));
+        await Assert.ThrowsAnyAsync<CryptographicException>(() =>
+            new SecretKeyProvider(RandomNumberGenerator.GetBytes(32)).UnwrapDataKeyAsync(dk.Wrapped, default));
+        Assert.Throws<ArgumentException>(() => new SecretKeyProvider(new byte[16]));
+    }
+
     [RedisFact]
     public async Task Vault_stores_ciphertext_with_ttl_absolute_plus_one_hour()
     {
