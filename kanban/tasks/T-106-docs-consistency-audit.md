@@ -1,7 +1,7 @@
 ---
 id: T-106
 title: "Docs consistency audit: make every doc match the code on main"
-status: in-progress
+status: review
 priority: P1
 epic: "Deploy & docs"
 blocked_by: []
@@ -48,11 +48,11 @@ files.
 
 ## Acceptance criteria
 
-- [ ] docs/architecture.md's build status reflects main (nothing listed as not built that is built, and vice versa)
-- [ ] Every endpoint, config key, workflow and path named in the docs exists as described (spot-checked list in the hand-off)
-- [ ] No doc refers to a done task as future work
-- [ ] All relative links resolve
-- [ ] Spec-vs-implementation differences listed in the hand-off
+- [x] docs/architecture.md's build status reflects main (nothing listed as not built that is built, and vice versa)
+- [x] Every endpoint, config key, workflow and path named in the docs exists as described (spot-checked list in the hand-off)
+- [x] No doc refers to a done task as future work
+- [x] All relative links resolve
+- [x] Spec-vs-implementation differences listed in the hand-off
 
 ## Verification
 
@@ -60,8 +60,17 @@ A link checker over the changed docs; grep checks for every endpoint / config ke
 
 ## Hand-off
 
+task/T-106 @ 32dc459, PR #223. Docs only: 23 Markdown files corrected against main (architecture build status, secrets,
+ci contents, threat model, demo status, endpoints, links). Link check: 0 broken across 46 docs; 58 config keys and all
+named endpoints/paths grep-verified. EVIDENCE_MASTER_KEY is documented as deploy-synced, which depends on PR #222.
+Spec-vs-implementation differences are listed in the PR body. Follow-ups: anchoring resume/end + bundle proofs,
+authenticator default mock URL, conformance suite in CI, k8s/main storage.yaml, fiat price source.
+
+**Unblocks:** none.
+
 ## Review
 
 ## Activity log
 
 - 2026-10-20 08:47 · coordinator · (new) → in-progress · user request: check docs for inconsistencies across the repo
+- 2026-10-20 09:04 · coordinator · in-progress → review · PR #223
