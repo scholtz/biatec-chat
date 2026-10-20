@@ -1,0 +1,55 @@
+# Demo site (apps/demo, docs/demo-site.md): static nginx, no secrets, no state. Stage only for now: k8s/main deletes
+# it, and its ingress is k8s/stage/demo-ingress.yaml. The backend URL is baked into the image (bundle and CSP).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: biatec-chat-demo
+  labels: {app.kubernetes.io/name: biatec-chat-demo, app.kubernetes.io/part-of: biatec-chat}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: biatec-chat-demo}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: biatec-chat-demo, app.kubernetes.io/part-of: biatec-chat}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: demo
+          image: scholtz2/biatec-chat-demo:latest
+          imagePullPolicy: Always
+          ports:
+            - {name: http, containerPort: 8080}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 64Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {sizeLimit: 16Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: biatec-chat-demo
+  labels: {app.kubernetes.io/name: biatec-chat-demo, app.kubernetes.io/part-of: biatec-chat}
+spec:
+  selector: {app.kubernetes.io/name: biatec-chat-demo}
+  ports:
+    - {name: http, port: 80, targetPort: http}

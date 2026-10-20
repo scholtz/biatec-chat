@@ -1,0 +1,4 @@
+/* The reused DEX page's stylesheet (Tailwind 4 + tailwindcss-primeui). Its templates live outside this Vite root, so
+   Tailwind's automatic source detection does not see them: point it at the playground folder explicitly. */
+@import "../../../packages/chat-widget/playground/dex/dex.css";
+@source "../../../packages/chat-widget/playground/dex";

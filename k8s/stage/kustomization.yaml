@@ -5,6 +5,7 @@ resources:
   - ../base
   - storage.yaml
   - ingress.yaml
+  - demo-ingress.yaml
 patches:
   - path: backend-config.patch.yaml
   - path: builders-env.patch.yaml
@@ -12,4 +13,6 @@ images:
   - name: scholtz2/biatec-chat-backend
     newTag: stage
   - name: scholtz2/biatec-chat-builders
+    newTag: stage
+  - name: scholtz2/biatec-chat-demo
     newTag: stage

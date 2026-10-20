@@ -75,6 +75,11 @@ jobs:
           pnpm --filter mock-oidc test
       - name: Build builders
         run: pnpm --filter builders build
+      # The demo site (apps/demo) typechecks and builds against the widget's dist; its tests run axe on the page.
+      - name: Demo site
+        run: |
+          pnpm --filter demo build
+          pnpm --filter demo test
 
   authenticator:
     runs-on: ubuntu-latest
@@ -112,6 +117,17 @@ jobs:
           push: false
           cache-from: type=gha,scope=builders
           cache-to: type=gha,scope=builders,mode=max
+      - name: Build demo image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/demo/Dockerfile
+          push: false
+          # Build check only; the stage image is built for the stage backend in deploy-stage.yml.
+          build-args: |
+            BACKEND_URL=https://backend.invalid
+          cache-from: type=gha,scope=demo
+          cache-to: type=gha,scope=demo,mode=max
       - name: Render k8s overlays
         run: |
           kubectl kustomize k8s/stage > /dev/null

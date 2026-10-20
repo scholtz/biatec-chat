@@ -7,6 +7,17 @@ resources:
 patches:
   - path: backend-config.patch.yaml
   - path: builders-env.patch.yaml
+  # The demo site (k8s/base/demo.yaml) runs on stage only; promote-production.yml has no demo image to deploy.
+  - patch: |-
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata: {name: biatec-chat-demo}
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Service
+      metadata: {name: biatec-chat-demo}
 images:
   - name: scholtz2/biatec-chat-backend
     newTag: REPLACE-WITH-RELEASE-SHA
