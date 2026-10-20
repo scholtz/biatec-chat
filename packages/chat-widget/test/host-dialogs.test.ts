@@ -110,3 +110,18 @@ describe("coexisting with host dialogs", () => {
     expect(m.BiatecAiChip).toBeTruthy();
   });
 });
+
+describe("BiatecAiChip outside the widget root", () => {
+  it("renders with literal colour fallbacks, not black", async () => {
+    const { BiatecAiChip } = await import("../src/index");
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    createApp(BiatecAiChip, { size: 16 }).mount(host);
+    const html = host.innerHTML;
+    expect(html).toMatch(/var\(--color-brand-primary, #2dd4a7\)/);
+    expect(html).toMatch(/var\(--color-brand-on, #04130e\)/);
+    const mono = document.createElement("div");
+    createApp(BiatecAiChip, { size: 40, variant: "default" }).mount(mono);
+    expect(mono.innerHTML).toMatch(/var\(--color-text-secondary, #9aa7ba\)/);
+  });
+});
