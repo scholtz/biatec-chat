@@ -160,11 +160,13 @@ public sealed class SafeCreateService(
         var snap = await previews.GetAsync(conversationId, preview.Id, null, ct);
         var steps = snap.Steps;
 
-        if (steps.Any(s => s.Status is StepStatus.Submitted or StepStatus.AwaitingConsent or StepStatus.Signed) || preview.Status == ActionPreviewStatus.Confirmed)
-            return new SafeCreateOutcome(SafeCreateState.Busy, "A step of this safe creation is being signed or is waiting to land. Wait for it before asking again.", snap, request);
-
         var progress = Read(preview, steps);
         ulong? appId = progress.DeployTxId is { } tx ? await ResolveAppIdAsync(tenantId, request.Network, tx, ct) : null;
+
+        // While a step is in flight the safe may already be deployed: its app id and address go along when known.
+        if (steps.Any(s => s.Status is StepStatus.Submitted or StepStatus.AwaitingConsent or StepStatus.Signed) || preview.Status == ActionPreviewStatus.Confirmed)
+            return new SafeCreateOutcome(SafeCreateState.Busy, "A step of this safe creation is being signed or is waiting to land. Wait for it before asking again.", snap, request,
+                appId, appId is { } busyId ? SafeAddress(busyId) : null, ResumedDeployTxId: progress.Resume ? progress.DeployTxId : null);
         if (progress.DeployTxId is not null && appId is null)
             return SafeCreateOutcome.Error("The safe was deployed, but its app id could not be read from the chain yet. Tell the user to try again in a moment.");
         var address = appId is { } id ? SafeAddress(id) : null;

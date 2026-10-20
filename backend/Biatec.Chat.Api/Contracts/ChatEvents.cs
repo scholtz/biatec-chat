@@ -11,6 +11,7 @@ namespace Biatec.Chat.Api.Contracts;
 [JsonDerivedType(typeof(PreviewCardEvent), "preview_card")]
 [JsonDerivedType(typeof(ConsentStatusEvent), "consent_status")]
 [JsonDerivedType(typeof(SignInCardEvent), "sign_in_card")]
+[JsonDerivedType(typeof(SafeCardEvent), "safe_card")]
 [JsonDerivedType(typeof(ErrorEvent), "error")]
 public abstract record ChatEvent;
 
@@ -30,6 +31,9 @@ public sealed record ToolStatusEvent(string ToolCallId, string Label, ToolRunSta
 
 /// <summary>An action preview card to render.</summary>
 public sealed record PreviewCardEvent(ActionPreview Preview) : ChatEvent;
+
+/// <summary>A Biatec Safe card (safes, signer groups, proposal queue) to render, from safe.list or safe.create.</summary>
+public sealed record SafeCardEvent(SafeCard Card) : ChatEvent;
 
 /// <summary>Authenticator approval progress.</summary>
 public sealed record ConsentStatusEvent(ConsentStatus Consent) : ChatEvent;
