@@ -1,5 +1,7 @@
 # biatec-chat on AWS: AgentCore, Identity, Gateway, Policy, Guardrails
 
+> **How AWS is actually set up today: [aws-setup.md](aws-setup.md).**
+>
 > **Superseded in part by `PRODUCT-DESCRIPTION.md` (2026-10-19).** The product puts an ASP.NET Core 10 **BFF** in
 > charge. The browser never holds a token; the backend is a *confidential* OIDC client; the backend calls Bedrock
 > Converse itself; signing goes to Biatec OIDC directly, never through MCP `signTransaction`. Sections 1, 3.1–3.3,
