@@ -91,9 +91,13 @@ public sealed class AlgodClientFactory
     private readonly IReadOnlyDictionary<string, AlgodNetworkOptions> _networks;
     private readonly object _lock = new();
 
+    /// <summary>Asset params and holdings over the same networks; null when none was configured (test seam).</summary>
+    public IAlgodAssetReader? Assets { get; }
+
     public AlgodClientFactory(IReadOnlyDictionary<string, AlgodNetworkOptions> networks, Func<AlgodNetworkOptions, HttpClient>? httpClient = null)
     {
         _networks = new Dictionary<string, AlgodNetworkOptions>(networks, StringComparer.OrdinalIgnoreCase);
+        Assets = new AlgodAssetReader(_networks, httpClient);
         _create = name =>
         {
             var o = _networks[name];
@@ -108,8 +112,9 @@ public sealed class AlgodClientFactory
     }
 
     /// <summary>Test seam: supply the client directly.</summary>
-    public AlgodClientFactory(IReadOnlyDictionary<string, IAlgodSimulateClient> clients)
+    public AlgodClientFactory(IReadOnlyDictionary<string, IAlgodSimulateClient> clients, IAlgodAssetReader? assets = null)
     {
+        Assets = assets;
         var ci = new Dictionary<string, IAlgodSimulateClient>(clients, StringComparer.OrdinalIgnoreCase);
         _networks = ci.ToDictionary(c => c.Key, _ => new AlgodNetworkOptions(""), StringComparer.OrdinalIgnoreCase);
         _create = name => ci[name];
