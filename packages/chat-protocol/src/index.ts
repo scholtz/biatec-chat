@@ -29,6 +29,9 @@ export type SafeCardProposal = Schemas["SafeCardProposal"];
 export type SafeCardProposalState = Schemas["SafeCardProposalState"];
 export type SafeCardSource = Schemas["SafeCardSource"];
 export type SafeCardCreationState = Schemas["SafeCardCreationState"];
+export type ConversationSummary = Schemas["ConversationSummary"];
+export type ConversationList = Schemas["ConversationList"];
+export type ErasureResponse = Schemas["ErasureResponse"];
 
 export type TextDeltaEvent = Schemas["ChatEventTextDeltaEvent"];
 export type ToolStatusEvent = Schemas["ChatEventToolStatusEvent"];

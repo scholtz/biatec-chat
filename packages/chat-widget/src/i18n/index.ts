@@ -11,11 +11,13 @@ import skChat from "./sk/chat.json";
 import skAgent from "./sk/agent.json";
 import skActivity from "./sk/activity.json";
 import skSafe from "./sk/safe.json";
+import exportView from "./en/export.json";
+import skExportView from "./sk/export.json";
 
 /** One catalog file per feature (ui, shell, chat, cards, agent, data) so parallel UI tasks never edit the same file. */
-export const en = { ...ui, ...cards, ...chat, ...agent, ...activity, ...safe };
+export const en = { ...ui, ...cards, ...chat, ...agent, ...activity, ...safe, ...exportView };
 /** Slovak catalog with exactly the keys of `en` (a test enforces the parity). */
-export const sk = { ...skUi, ...skCards, ...skChat, ...skAgent, ...skActivity, ...skSafe };
+export const sk = { ...skUi, ...skCards, ...skChat, ...skAgent, ...skActivity, ...skSafe, ...skExportView };
 
 export const i18n = createI18n({
   legacy: false,

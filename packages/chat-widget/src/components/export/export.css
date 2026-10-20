@@ -1,0 +1,99 @@
+/* Export view and erasure (T-094). Tokens only. */
+.biatec-chat .bc-export {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-top: 1px solid var(--color-border-default);
+}
+.biatec-chat .bc-export p,
+.biatec-chat .bc-export-confirm p {
+  margin: 0;
+}
+.biatec-chat .bc-export-h {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.biatec-chat .bc-export-sub,
+.biatec-chat .bc-export-meta {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+.biatec-chat .bc-export-sub:empty {
+  display: none;
+}
+.biatec-chat .bc-export-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.biatec-chat .bc-export-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-secondary);
+}
+.biatec-chat .bc-export-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+.biatec-chat .bc-export-num {
+  font-variant-numeric: tabular-nums;
+}
+.biatec-chat .bc-export-current {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+.biatec-chat .bc-export-note {
+  padding: var(--space-3);
+  border: 1px solid var(--color-status-info);
+  border-radius: var(--radius-lg);
+  background: var(--color-status-info-subtle);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.biatec-chat .bc-export-error {
+  color: var(--color-status-danger);
+  font-size: 13px;
+}
+.biatec-chat .bc-export-failed {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  font-variant-numeric: tabular-nums;
+}
+.biatec-chat .bc-export-row-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.biatec-chat .bc-export-confirm {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.biatec-chat .bc-export-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  align-self: stretch;
+}
