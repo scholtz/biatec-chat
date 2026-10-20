@@ -13,6 +13,10 @@ This scaffold was written by hand without the Flutter SDK. Generate the platform
 
 `flutter create .` keeps the existing `lib/`, `test/` and `pubspec.yaml`.
 
+The `windows/` folder is checked in. Build it with `flutter build windows` (needs Visual Studio with the "Desktop
+development with C++" workload and Windows Developer Mode for plugin symlinks). `windows/CMakeLists.txt` defines
+`_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS` because `local_auth_windows` fails on MSVC 14.51+ without it.
+
 ## Config
 
 The Biatec OIDC base URL comes from `--dart-define=OIDC_BASE_URL=...` and defaults to the mock OIDC
