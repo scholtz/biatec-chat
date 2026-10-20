@@ -25,6 +25,7 @@ import { AGENT_MODE_LABEL, type AgentModeDisplay } from "../shell/agentMode";
 import { BaiSymbol } from "../../ui";
 import SafeCard from "../cards/SafeCard.vue";
 import HoldingsCard from "../data/HoldingsCard.vue";
+import MarketCard from "../data/MarketCard.vue";
 import ActionPreviewCard from "../cards/ActionPreviewCard.vue";
 import ReceiptCard from "../cards/ReceiptCard.vue";
 import { RECEIPT_STATUSES } from "./previews";
@@ -200,7 +201,10 @@ const showThinking = (m: ChatMessage) => m.role === "assistant" && m.streaming &
             <!-- Safe cards come only from safe_card events (structured tool results), never from model text. -->
             <SafeCard v-for="(sc, si) in m.safeCards ?? []" :key="si" :card="sc" />
             <!-- Data cards come only from data_card events (structured tool results), never from model text. -->
-            <HoldingsCard v-for="(dc, di) in m.dataCards ?? []" :key="di" :card="dc" />
+            <template v-for="(dc, di) in m.dataCards ?? []" :key="di">
+              <MarketCard v-if="dc.kind === 'market'" :card="dc" />
+              <HoldingsCard v-else :card="dc" />
+            </template>
             <!-- Preview cards come only from preview_card events (structured backend data), never from model text. -->
             <template v-for="pv in m.previews ?? []" :key="pv.preview.previewId">
               <ReceiptCard v-if="RECEIPT_STATUSES.includes(pv.preview.status)" :preview="pv.preview" />

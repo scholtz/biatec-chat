@@ -638,6 +638,14 @@ export interface components {
             /** Format: date-time */
             asOf: string;
             partial?: boolean;
+            pair?: null | string;
+            price?: null | string;
+            change24hPct?: null | string;
+            high24h?: null | string;
+            low24h?: null | string;
+            volume24h?: null | string;
+            series?: null | string[];
+            source?: null | string;
         };
         ChatEventErrorEvent: {
             /** @enum {string} */
