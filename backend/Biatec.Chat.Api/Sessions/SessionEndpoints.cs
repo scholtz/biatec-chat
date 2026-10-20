@@ -1,7 +1,12 @@
 using Biatec.Chat.Api.Contracts;
 using Biatec.Chat.Api.Tenancy;
+using Biatec.Chat.Api.Vault;
+using Biatec.Chat.Api.Wallet.Read;
 using Biatec.Chat.Core.Data;
+using Biatec.Chat.Tools.Mcp;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.IdentityModel.JsonWebTokens;
 using ApiTier = Biatec.Chat.Api.Contracts.SessionTier;
 
 namespace Biatec.Chat.Api.Sessions;
@@ -44,12 +49,13 @@ public static class SessionEndpoints
     public static IEndpointRouteBuilder MapSessions(this IEndpointRouteBuilder app)
     {
         // Session state. The first call (no live cookie) creates the session and sets the cookie.
-        app.MapGet("/session", async (HttpContext ctx, ISessionService sessions, ChatDbContext db, TimeProvider clock) =>
+        app.MapGet("/session", async (HttpContext ctx, ISessionService sessions, ISessionProfile profile, ChatDbContext db, TimeProvider clock) =>
         {
             NoStore(ctx);
             var handle = await sessions.ResolveOrCreateAsync(ctx.GetTenant()!, ReadCookie(ctx.Request), ctx.RequestAborted);
             if (handle.NewToken is not null) WriteCookie(ctx.Response, handle.NewToken, handle.Session.AbsoluteExpiresAt, clock.GetUtcNow());
-            return Results.Ok(await BuildStateAsync(db, handle.Session, ctx.RequestAborted));
+            var (email, primaryAddress) = await profile.GetAsync(handle.Session, ctx.RequestAborted);
+            return Results.Ok(await BuildStateAsync(db, handle.Session, ctx.RequestAborted, email, primaryAddress));
         }).WithName("GetSession").Produces<SessionState>().RegisteredOriginsOnly();
 
         // Cookie probe. Without a live cookie: creates the session, sets the cookie, reports false. With it: true.
@@ -89,7 +95,8 @@ public static class SessionEndpoints
         ctx.Response.Headers.Append("Vary", "Cookie");
     }
 
-    internal static async Task<SessionState> BuildStateAsync(ChatDbContext db, ChatSession s, CancellationToken ct)
+    internal static async Task<SessionState> BuildStateAsync(ChatDbContext db, ChatSession s, CancellationToken ct,
+        string? email = null, string? primaryAddress = null)
     {
         var popup = await db.PopupAuthRequests.AsNoTracking()
             .Where(p => p.ConversationId == s.ConversationId)
@@ -99,9 +106,9 @@ public static class SessionEndpoints
         {
             SessionId = s.Id.ToString("N"),
             Tier = s.Tier == Core.Data.SessionTier.Anonymous ? ApiTier.Anonymous : ApiTier.Authenticated,
-            // Email, primary address and scopes come from the vault/OIDC profile once T-009 signs a user in.
-            Email = null,
-            PrimaryAddress = null,
+            // Derived strings only (T-083): never token material. Guests always get nulls.
+            Email = s.Tier == Core.Data.SessionTier.Anonymous ? null : email,
+            PrimaryAddress = s.Tier == Core.Data.SessionTier.Anonymous ? null : primaryAddress,
             Scopes = [],
             AuthRequestId = popup?.Id.ToString(),
             SignInStatus = popup?.Status switch
@@ -124,6 +131,80 @@ public static class SessionRegistration
     {
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<ISessionService, SessionService>();
+        services.AddMemoryCache();
+        services.AddScoped<ISessionProfile, SessionProfile>();
         return services;
+    }
+}
+
+/// <summary>What the header shows for a signed-in session: the email and the active primary address.</summary>
+public interface ISessionProfile
+{
+    /// <summary>Both null for guests. Never throws for a vault or Biatec MCP outage: the missing value is just null.</summary>
+    Task<(string? Email, string? PrimaryAddress)> GetAsync(ChatSession session, CancellationToken ct);
+}
+
+/// <summary>
+/// Reads the profile without persisting it (spec, personal data is minimized: PostgreSQL keeps only the OIDC sub).
+/// The email is the <c>email</c> claim of the ID token held encrypted in the vault (validated at sign-in, decoded
+/// here, never sent to the browser). The primary address is the first entry of Biatec MCP <c>listAlgorandAddresses</c>,
+/// cached in this process's memory per session id so the widget's polling does not call Biatec MCP every time; a
+/// failed read is cached briefly so an outage is not hammered, and it leaves the address null rather than failing the
+/// session request.
+/// </summary>
+public sealed class SessionProfile(ITokenVault vault, IBiatecMcpClient mcp, IMemoryCache cache, ILogger<SessionProfile> log) : ISessionProfile
+{
+    public static readonly TimeSpan AddressTtl = TimeSpan.FromMinutes(10);
+    public static readonly TimeSpan FailureTtl = TimeSpan.FromSeconds(30);
+    public static readonly TimeSpan McpTimeout = TimeSpan.FromSeconds(3);
+
+    private sealed record CachedAddress(string? Address);
+
+    private static string CacheKey(string sessionId) => "biatec:session:primary:" + sessionId;
+
+    public async Task<(string? Email, string? PrimaryAddress)> GetAsync(ChatSession session, CancellationToken ct)
+    {
+        if (session.Tier == Core.Data.SessionTier.Anonymous) return (null, null);
+        var sessionId = session.Id.ToString("N");
+        TokenVaultEntry? entry;
+        try { entry = await vault.GetAsync(sessionId, ct); }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            log.LogWarning("Session profile: vault read failed: {ErrorType}", ex.GetType().Name);
+            return (null, null);
+        }
+        if (entry is null) return (null, null);
+        return (EmailOf(entry.IdToken), await PrimaryAddressAsync(session.TenantId, sessionId, entry.Scopes, ct));
+    }
+
+    /// <summary>The <c>email</c> claim, or null. The token was validated when it entered the vault; only the claim leaves this method.</summary>
+    public static string? EmailOf(string? idToken)
+    {
+        if (string.IsNullOrEmpty(idToken)) return null;
+        try
+        {
+            return new JsonWebToken(idToken).TryGetPayloadValue<string>("email", out var email) && !string.IsNullOrWhiteSpace(email) ? email : null;
+        }
+        catch (Exception) { return null; } // malformed: never echo it
+    }
+
+    private async Task<string?> PrimaryAddressAsync(string tenantId, string sessionId, string[] scopes, CancellationToken ct)
+    {
+        var key = CacheKey(sessionId);
+        if (cache.TryGetValue<CachedAddress>(key, out var hit) && hit is not null) return hit.Address;
+        string? address = null;
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(McpTimeout);
+            var r = await mcp.ListAlgorandAddressesAsync(new McpCallContext(tenantId, sessionId, scopes), timeout.Token);
+            if (!r.Failed) address = WalletReadExecutor.ParseAddresses(r.Json).FirstOrDefault();
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            log.LogWarning("Session profile: Biatec MCP address read failed: {ErrorType}", ex.GetType().Name);
+        }
+        cache.Set(key, new CachedAddress(address), address is null ? FailureTtl : AddressTtl);
+        return address;
     }
 }

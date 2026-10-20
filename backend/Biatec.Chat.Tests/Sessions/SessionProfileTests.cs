@@ -1,0 +1,329 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
+using Biatec.Chat.Api.Data;
+using Biatec.Chat.Api.Sessions;
+using Biatec.Chat.Api.Tenancy;
+using Biatec.Chat.Api.Vault;
+using Biatec.Chat.Core.Data;
+using Biatec.Chat.Tools.Mcp;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging.Abstractions;
+using Npgsql;
+
+namespace Biatec.Chat.Tests.Sessions;
+
+/// <summary>T-083: GET /session carries the signed-in email (ID token claim) and primary address (Biatec MCP), never persisted.</summary>
+public sealed class SessionProfileTests : IAsyncLifetime
+{
+    private const string Email = "alice@example.test";
+    private const string Primary = "PRIMARYADDRESS234567";
+    private const string Origin = "https://web.biatec.io";
+
+    internal static string IdToken(string? email)
+    {
+        static string B64(string s) => Convert.ToBase64String(Encoding.UTF8.GetBytes(s)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var payload = email is null ? "{\"sub\":\"alice-sub\"}" : $"{{\"sub\":\"alice-sub\",\"email\":\"{email}\"}}";
+        return $"{B64("{\"alg\":\"RS256\",\"typ\":\"JWT\"}")}.{B64(payload)}.c2ln";
+    }
+
+    private static TokenVaultEntry Entry(string? idToken) => new()
+    {
+        AccessToken = "ACCESS-TOKEN-SECRET",
+        AccessExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5),
+        RefreshToken = "REFRESH-TOKEN-SECRET",
+        IdToken = idToken,
+        Scopes = ["openid"],
+        AbsoluteExpiresAt = DateTimeOffset.UtcNow.AddHours(8),
+    };
+
+    private sealed class MemoryVault : ITokenVault
+    {
+        public readonly Dictionary<string, TokenVaultEntry> Items = new();
+        public Exception? Throw;
+        public int Reads;
+        public Task PutAsync(string id, TokenVaultEntry e, CancellationToken ct = default) { Items[id] = e; return Task.CompletedTask; }
+        public Task<TokenVaultEntry?> GetAsync(string id, CancellationToken ct = default)
+        {
+            Reads++;
+            if (Throw is not null) throw Throw;
+            return Task.FromResult(Items.GetValueOrDefault(id));
+        }
+        public Task DeleteAsync(string id, CancellationToken ct = default) { Items.Remove(id); return Task.CompletedTask; }
+        public Task<string?> GetAccessTokenAsync(string id, CancellationToken ct = default) => Task.FromResult(Items.GetValueOrDefault(id)?.AccessToken);
+    }
+
+    private sealed class FakeMcp : IBiatecMcpClient
+    {
+        public int Calls;
+        public McpCallContext? LastCtx;
+        public Func<CancellationToken, Task<McpToolResult>> Addresses = _ => Task.FromResult(Ok($"[\"{Primary}\",\"SECONDADDRESS\"]"));
+
+        public static McpToolResult Ok(string json) => new(false, json, JsonDocument.Parse(json).RootElement.Clone());
+
+        public Task<McpToolResult> ListAlgorandAddressesAsync(McpCallContext ctx, CancellationToken ct = default)
+        {
+            Calls++;
+            LastCtx = ctx;
+            return Addresses(ct);
+        }
+
+        public Task<IReadOnlyList<McpToolInfo>> GetToolsAsync(McpCallContext ctx, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<McpToolResult> GetCryptoAddressAsync(McpCallContext ctx, string network, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<McpToolResult> GetCryptoBalanceAsync(McpCallContext ctx, string network, string address, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<McpToolResult> CreatePaymentTransactionAsync(McpCallContext ctx, string network, string sender, string receiver, string amount, ulong? assetId = null, string? note = null, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<McpToolResult> CreateOptInTransactionAsync(McpCallContext ctx, string network, string address, ulong assetId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<McpToolResult> CreateBitcoinTransactionAsync(McpCallContext ctx, string network, string sender, string receiver, string amountBtc, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<McpToolResult> CreateSwapTransactionAsync(McpCallContext ctx, string network, string address, ulong fromAssetId, ulong toAssetId, string amount, string? slippage = null, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<McpToolResult> SubmitTransactionToBlockchainAsync(McpCallContext ctx, string network, string signedTransactionBase64, CancellationToken ct = default) => throw new NotSupportedException();
+    }
+
+    // ---- SessionProfile unit tests ----
+
+    private readonly MemoryVault _vault = new();
+    private readonly FakeMcp _mcp = new();
+
+    private SessionProfile NewProfile(IMemoryCache? cache = null) =>
+        new(_vault, _mcp, cache ?? new MemoryCache(new MemoryCacheOptions()), NullLogger<SessionProfile>.Instance);
+
+    private ChatSession SignedIn(string? idToken = null)
+    {
+        var s = new ChatSession { Id = Guid.NewGuid(), Tier = SessionTier.Authenticated, TenantId = "biatec-chat", OidcSub = "alice-sub" };
+        _vault.Items[s.Id.ToString("N")] = Entry(idToken ?? IdToken(Email));
+        return s;
+    }
+
+    [Fact]
+    public async Task Guest_GetsNulls_WithoutVaultOrMcpCalls()
+    {
+        var s = new ChatSession { Id = Guid.NewGuid(), Tier = SessionTier.Anonymous, TenantId = "biatec-chat" };
+        Assert.Equal((null, null), await NewProfile().GetAsync(s, default));
+        Assert.Equal(0, _vault.Reads);
+        Assert.Equal(0, _mcp.Calls);
+    }
+
+    [Fact]
+    public async Task SignedIn_GetsEmailFromIdTokenAndFirstMcpAddress()
+    {
+        var s = SignedIn();
+        var (email, address) = await NewProfile().GetAsync(s, default);
+        Assert.Equal(Email, email);
+        Assert.Equal(Primary, address);
+        Assert.Equal(new McpCallContext("biatec-chat", s.Id.ToString("N"), ["openid"]).ScopeKey, _mcp.LastCtx!.ScopeKey);
+        Assert.Equal(s.Id.ToString("N"), _mcp.LastCtx.SessionId);
+        Assert.Equal("biatec-chat", _mcp.LastCtx.TenantId);
+    }
+
+    [Fact]
+    public async Task Address_IsCachedPerSession()
+    {
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var s = SignedIn();
+        var p = NewProfile(cache);
+        await p.GetAsync(s, default);
+        var (_, again) = await p.GetAsync(s, default);
+        Assert.Equal(Primary, again);
+        Assert.Equal(1, _mcp.Calls);
+    }
+
+    [Fact]
+    public async Task McpOutage_KeepsEmail_AddressNull_AndIsNotRetriedOnEveryPoll()
+    {
+        _mcp.Addresses = _ => throw new HttpRequestException("down");
+        var s = SignedIn();
+        var p = NewProfile();
+        Assert.Equal((Email, null), await p.GetAsync(s, default));
+        Assert.Equal((Email, null), await p.GetAsync(s, default));
+        Assert.Equal(1, _mcp.Calls);
+    }
+
+    [Fact]
+    public async Task McpToolError_AddressNull()
+    {
+        _mcp.Addresses = _ => Task.FromResult(FakeMcp.Ok("{\"error\":\"no wallet\"}"));
+        Assert.Equal((Email, null), await NewProfile().GetAsync(SignedIn(), default));
+    }
+
+    [Fact]
+    public async Task McpHang_TimesOut_AddressNull()
+    {
+        _mcp.Addresses = async ct => { await Task.Delay(Timeout.Infinite, ct); return FakeMcp.Ok("[]"); };
+        var started = DateTime.UtcNow;
+        Assert.Equal((Email, null), await NewProfile().GetAsync(SignedIn(), default));
+        Assert.True(DateTime.UtcNow - started < SessionProfile.McpTimeout + TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task VaultOutage_GivesNulls()
+    {
+        var s = SignedIn();
+        _vault.Throw = new InvalidOperationException("redis down");
+        Assert.Equal((null, null), await NewProfile().GetAsync(s, default));
+        Assert.Equal(0, _mcp.Calls);
+    }
+
+    [Fact]
+    public async Task NoVaultEntry_GivesNulls()
+    {
+        var s = new ChatSession { Id = Guid.NewGuid(), Tier = SessionTier.Authenticated, TenantId = "biatec-chat" };
+        Assert.Equal((null, null), await NewProfile().GetAsync(s, default));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not-a-jwt")]
+    public void EmailOf_MissingOrMalformedToken_IsNull(string? token) => Assert.Null(SessionProfile.EmailOf(token));
+
+    [Fact]
+    public void EmailOf_TokenWithoutEmailClaim_IsNull() => Assert.Null(SessionProfile.EmailOf(IdToken(null)));
+
+    // ---- GET /session end to end (docker-compose postgres) ----
+
+    private sealed class MemoryTenantStore(params Tenant[] tenants) : ITenantStore
+    {
+        public Task<Tenant?> FindByHostAsync(string host, CancellationToken ct) => Task.FromResult(tenants.FirstOrDefault(t => t.Host == host));
+    }
+
+    private static readonly string AdminCs = Environment.GetEnvironmentVariable("Postgres__AdminConnectionString")
+        ?? "Host=127.0.0.1;Port=5432;Database=postgres;Username=biatec;Password=biatec-dev-only";
+
+    private readonly string _dbName = "biatec_test_" + Guid.NewGuid().ToString("N");
+    private WebApplicationFactory<Program> _factory = null!;
+    private string Cs => new NpgsqlConnectionStringBuilder(AdminCs) { Database = _dbName, Pooling = false }.ConnectionString;
+
+    private async Task AdminAsync(string sql)
+    {
+        await using var conn = new NpgsqlConnection(AdminCs);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    private ChatDbContext NewContext() => new(new DbContextOptionsBuilder<ChatDbContext>().ConfigureNpgsql(Cs).Options);
+
+    public async Task InitializeAsync()
+    {
+        await AdminAsync($"CREATE DATABASE \"{_dbName}\"");
+        await using (var db = NewContext()) await db.Database.MigrateAsync();
+        _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+        {
+            b.UseEnvironment("Testing");
+            b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Oidc:Issuer"] = "https://oidc.example.test",
+                ["Oidc:McpResource"] = "https://mcp.example.test",
+                ["Mcp:Endpoint"] = "https://mcp.example.test/mcp",
+                ["Redis:ConnectionString"] = "127.0.0.1:1",
+                ["Postgres:ConnectionString"] = Cs,
+                ["Algod:Networks:testnet:Url"] = "https://algod.example.test",
+                ["Kms:KeyId"] = "alias/test",
+                ["Evidence:AllowEphemeralKeys"] = "true",
+            }));
+            b.ConfigureServices(s =>
+            {
+                s.RemoveAll<ITenantStore>();
+                s.AddSingleton<ITenantStore>(new MemoryTenantStore(TenantSeed.BiatecChat(), TenantSeed.LocalhostDev()));
+                s.RemoveAll<ITokenVault>();
+                s.AddSingleton<ITokenVault>(_vault);
+                s.RemoveAll<IBiatecMcpClient>();
+                s.AddSingleton<IBiatecMcpClient>(_mcp);
+            });
+        });
+    }
+
+    public async Task DisposeAsync()
+    {
+        _factory.Dispose();
+        await AdminAsync($"DROP DATABASE IF EXISTS \"{_dbName}\" WITH (FORCE)");
+    }
+
+    private async Task<HttpResponseMessage> GetAsync(string path, string? cookie = null)
+    {
+        using var client = _factory.CreateClient();
+        var r = new HttpRequestMessage(HttpMethod.Get, "http://chat.biatec.io" + path);
+        r.Headers.TryAddWithoutValidation("Origin", Origin);
+        if (cookie is not null) r.Headers.TryAddWithoutValidation("Cookie", $"{SessionPolicy.CookieName}={cookie}");
+        return await client.SendAsync(r);
+    }
+
+    /// <summary>A session signed in the way the callback leaves it: Authenticated tier, OIDC sub, vault entry.</summary>
+    private async Task<string> SignedInCookieAsync()
+    {
+        var r = await GetAsync("/session/probe");
+        var setCookie = r.Headers.GetValues("Set-Cookie").Single(x => x.StartsWith(SessionPolicy.CookieName + "="));
+        var token = setCookie[(SessionPolicy.CookieName.Length + 1)..].Split(';')[0];
+        var id = SessionService.IdFromToken(token);
+        await using var db = NewContext();
+        await db.ChatSessions.Where(s => s.Id == id)
+            .ExecuteUpdateAsync(u => u.SetProperty(s => s.Tier, SessionTier.Authenticated).SetProperty(s => s.OidcSub, "alice-sub"));
+        _vault.Items[id.ToString("N")] = Entry(IdToken(Email));
+        return token;
+    }
+
+    [Fact]
+    public async Task GetSession_SignedIn_ReturnsEmailAndPrimaryAddress_NoTokens()
+    {
+        var cookie = await SignedInCookieAsync();
+        var r = await GetAsync("/session", cookie);
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var body = await r.Content.ReadAsStringAsync();
+        var j = JsonDocument.Parse(body).RootElement;
+        Assert.Equal("Authenticated", j.GetProperty("tier").GetString());
+        Assert.Equal(Email, j.GetProperty("email").GetString());
+        Assert.Equal(Primary, j.GetProperty("primaryAddress").GetString());
+        foreach (var secret in new[] { "eyJ", "ACCESS-TOKEN-SECRET", "REFRESH-TOKEN-SECRET" })
+            Assert.DoesNotContain(secret, body);
+    }
+
+    [Fact]
+    public async Task GetSession_Guest_ReturnsNulls()
+    {
+        var r = await GetAsync("/session");
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var j = await r.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Anonymous", j.GetProperty("tier").GetString());
+        Assert.True(!j.TryGetProperty("email", out var e) || e.ValueKind == JsonValueKind.Null);
+        Assert.True(!j.TryGetProperty("primaryAddress", out var a) || a.ValueKind == JsonValueKind.Null);
+        Assert.Equal(0, _mcp.Calls);
+    }
+
+    [Fact]
+    public async Task GetSession_McpOutage_StillReturnsTheSession_AddressNull()
+    {
+        _mcp.Addresses = _ => throw new McpToolUnavailableException("listAlgorandAddresses");
+        var cookie = await SignedInCookieAsync();
+        var r = await GetAsync("/session", cookie);
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var j = await r.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(Email, j.GetProperty("email").GetString());
+        Assert.True(!j.TryGetProperty("primaryAddress", out var a) || a.ValueKind == JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task GetSession_PersistsNeitherEmailNorAddress()
+    {
+        var cookie = await SignedInCookieAsync();
+        Assert.Equal(HttpStatusCode.OK, (await GetAsync("/session", cookie)).StatusCode);
+        await using var conn = new NpgsqlConnection(Cs);
+        await conn.OpenAsync();
+        await using (var cmd = new NpgsqlCommand(
+            "SELECT count(*) FROM information_schema.columns WHERE table_schema NOT IN ('pg_catalog','information_schema') AND column_name ILIKE '%email%'", conn))
+            Assert.Equal(0L, (long)(await cmd.ExecuteScalarAsync())!);
+        // The session row holds the sub only: no column of it contains the email or the address.
+        await using (var cmd = new NpgsqlCommand("SELECT row_to_json(s)::text FROM \"ChatSessions\" s", conn))
+        await using (var rd = await cmd.ExecuteReaderAsync())
+            while (await rd.ReadAsync())
+            {
+                Assert.DoesNotContain(Email, rd.GetString(0));
+                Assert.DoesNotContain(Primary, rd.GetString(0));
+            }
+    }
+}
