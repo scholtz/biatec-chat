@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using Biatec.Chat.Core.Data;
@@ -13,6 +14,37 @@ public static class SessionPolicy
     public static readonly TimeSpan AbsoluteLifetime = TimeSpan.FromHours(8);
     /// <summary>Bytes of CSPRNG output in the cookie secret (256 bits).</summary>
     internal const int TokenBytes = 32;
+}
+
+/// <summary>
+/// The one "is this session live" test (T-080), shared by the request path (resolve, keepalive, rotation, the auth
+/// and consent endpoints) and the sweeper, so they can never disagree. The absolute lifetime always applies; the idle
+/// timeout applies unless the session's conversation has an open, unexpired ConsentRequest (spec, Action Preview and
+/// Minimal lifetime). Both are EF Core expressions, translated to one SQL predicate with a subquery.
+/// </summary>
+public static class SessionLiveness
+{
+    /// <summary>Conversations with a consent request still waiting for the user's phone.</summary>
+    public static IQueryable<Guid> AwaitingConsent(ChatDbContext db, DateTimeOffset now) =>
+        from c in db.ConsentRequests
+        where c.Status == ConsentStatus.Pending && c.ExpiresAt > now
+        join st in db.ActionSteps on c.StepId equals st.Id
+        join p in db.ActionPreviews on st.PreviewId equals p.Id
+        select p.ConversationId;
+
+    public static Expression<Func<ChatSession, bool>> IsLive(ChatDbContext db, DateTimeOffset now)
+    {
+        var idleCutoff = now - SessionPolicy.IdleTimeout;
+        var awaiting = AwaitingConsent(db, now);
+        return s => s.AbsoluteExpiresAt > now && (s.LastActivityAt > idleCutoff || awaiting.Contains(s.ConversationId));
+    }
+
+    /// <summary>The exact complement of <see cref="IsLive"/>: what the sweeper ends.</summary>
+    public static Expression<Func<ChatSession, bool>> IsDue(ChatDbContext db, DateTimeOffset now)
+    {
+        var live = IsLive(db, now);
+        return Expression.Lambda<Func<ChatSession, bool>>(Expression.Not(live.Body), live.Parameters);
+    }
 }
 
 /// <summary>A resolved, live session. <see cref="NewToken"/> is set only when the caller must (re)issue the cookie.</summary>
@@ -56,14 +88,14 @@ public sealed class SessionService(ChatDbContext db, TimeProvider clock, IEviden
 
     private static string Base64Url(byte[] b) => Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
-    /// <summary>Touches LastActivityAt of a session still inside both windows. Never writes AbsoluteExpiresAt, never revives an expired row.</summary>
+    /// <summary>Touches LastActivityAt of a live session (<see cref="SessionLiveness.IsLive"/>). Never writes AbsoluteExpiresAt, never revives an expired row.</summary>
     private async Task<bool> TouchAsync(Tenant tenant, string? token, DateTimeOffset now, CancellationToken ct)
     {
         if (!WellFormed(token)) return false;
         var id = IdFromToken(token!);
-        var idleCutoff = now - SessionPolicy.IdleTimeout;
         var n = await db.ChatSessions
-            .Where(x => x.Id == id && x.TenantId == tenant.Id && x.AbsoluteExpiresAt > now && x.LastActivityAt > idleCutoff)
+            .Where(x => x.Id == id && x.TenantId == tenant.Id)
+            .Where(SessionLiveness.IsLive(db, now))
             .ExecuteUpdateAsync(u => u.SetProperty(x => x.LastActivityAt, x => x.LastActivityAt > now ? x.LastActivityAt : now), ct);
         return n == 1;
     }
@@ -117,8 +149,10 @@ public sealed class SessionService(ChatDbContext db, TimeProvider clock, IEviden
         var oldId = IdFromToken(cookieToken!);
         var token = NewToken();
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        var old = await db.ChatSessions.AsNoTracking().FirstOrDefaultAsync(x => x.Id == oldId && x.TenantId == tenant.Id, ct);
-        if (old is null || now >= old.AbsoluteExpiresAt || now - old.LastActivityAt >= SessionPolicy.IdleTimeout) return null;
+        var old = await db.ChatSessions.AsNoTracking()
+            .Where(SessionLiveness.IsLive(db, now))
+            .FirstOrDefaultAsync(x => x.Id == oldId && x.TenantId == tenant.Id, ct);
+        if (old is null) return null;
         var next = new ChatSession
         {
             Id = IdFromToken(token),
