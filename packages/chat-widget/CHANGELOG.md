@@ -13,6 +13,8 @@ version may change the public API. Releases are tagged `chat-widget-v<version>`.
   `autoMount()`, `useBiatecChat()`.
 - New option `hostDarkAttribute` (for example `data-theme=dark`) for `theme: 'host'` on sites that mark dark mode with
   an attribute instead of a class; the standalone build uses it by default.
+- New host CSS variable `--bc-offset-top` (default `0px`): the open floating panel stays below a fixed top navbar on
+  short viewports (its height is capped at `100vh - offset-top - offset-bottom - 24px`).
 - Published types are self-contained (no dependency on the unpublished `@biatec/chat-protocol`).
 - `vue-i18n` and `lucide-vue-next` are bundled and are no longer runtime dependencies; `vue` is an optional peer
   (needed by the Vue plugin, not by the standalone build).

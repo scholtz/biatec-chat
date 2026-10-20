@@ -71,6 +71,24 @@ it, and the styles are injected there (no stylesheet import needed). Restyle it 
 element: `--color-*`, `--font-*`, `--radius-*`, `--space-*`, `--shadow-*`, and `--bc-z` for the stacking order (default 1000,
 below PrimeVue overlays). The widget never loads web fonts; it uses Inter when the host provides it.
 
+Position the floating widget with three more custom properties on the host element:
+
+| Property | Default | Effect |
+| --- | --- | --- |
+| `--bc-offset-right` | `24px` | Distance of the launcher, minimized bar and floating panel from the right edge |
+| `--bc-offset-bottom` | `24px` | Distance from the bottom edge, for example to clear a "Back to top" button |
+| `--bc-offset-top` | `0px` | Height of a fixed top navbar. The open floating panel is at most `100vh - offset-top - offset-bottom - 24px` tall (and never taller than 700 px), so its top stays 24 px below the navbar on short viewports |
+
+```css
+[data-biatec-chat-host] {
+  --bc-offset-top: 60px;     /* the host's fixed navbar */
+  --bc-offset-bottom: 4.5rem;
+}
+```
+
+With the defaults the floating panel is `min(700px, 100vh - 48px)`, as before. The offsets do not apply below 640 px wide (the
+open panel is full screen there) or to the `workspace` and `inline` frames.
+
 ### Modes and the host API
 
 The widget has three modes, chosen with the `mode` option (`'floating' | 'inline' | 'workspace'`; any other value falls back to

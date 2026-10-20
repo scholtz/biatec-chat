@@ -108,13 +108,18 @@ a `Root.js` wrapper can call the same `widget()` from a `useEffect`; never at mo
 
 ### 4. Position (`docusaurus/src/css/custom.css`)
 
-Lift the launcher above the "Back to top" button:
+Lift the launcher above the "Back to top" button, and keep the open panel below Infima's fixed navbar
+(`--ifm-navbar-height`, 3.75rem) on short windows:
 
 ```css
 [data-biatec-chat-host] {
   --bc-offset-bottom: 4.5rem;
+  --bc-offset-top: var(--ifm-navbar-height, 3.75rem);
 }
 ```
+
+`--bc-offset-top` caps the floating panel's height at `100vh - offset-top - offset-bottom - 24px`; see
+[integration-widget.md → Styling](integration-widget.md#styling).
 
 `--bc-offset-right` and `--bc-z` (default 1000, above Infima's navbar at 200 and the mobile sidebar) can be set the
 same way. No stylesheet import is needed: the widget injects its CSS into its own shadow root, and Infima cannot reach
@@ -185,6 +190,7 @@ already needs).
 - [ ] Navigating between docs pages keeps the open conversation; a question asked after navigating is about the new
       page.
 - [ ] The launcher does not cover the "Back to top" button (scroll down a long page).
+- [ ] At 800 px window height the open panel stays below the navbar (the theme toggle stays clickable).
 - [ ] Network tab: no OAuth token or code reaches the page; with the origin registered, Sign in opens the Biatec OIDC
       popup and the header then shows the signed-in email.
 
@@ -192,9 +198,9 @@ already needs).
 
 Found with the scratch site; the fixes belong to the widget, not to the site:
 
-- On a short desktop window (800 px high) the open floating panel is up to 700 px tall and, lifted by
-  `--bc-offset-bottom`, covers the right end of the navbar (the theme toggle on a site without a GitHub link).
-  Closing or minimizing the panel uncovers it.
+- Fixed in T-104: on a short desktop window (800 px high) the open floating panel, up to 700 px tall and lifted by
+  `--bc-offset-bottom`, covered the right end of the navbar. Set `--bc-offset-top` as in step 4 and the panel stays
+  below it.
 - `document.title` includes the site title suffix (`Tutorial Intro | Biatec DEX`), so the page context repeats it.
   Harmless; trim it in `onRouteDidUpdate` if wanted.
 - Unrelated to the widget: a fresh `npm install` of Docusaurus 3.9.2 resolves webpack 5.112, whose ProgressPlugin
