@@ -166,6 +166,8 @@ export function createAlgodChain(algodUrl: string, token = ""): SafeChain {
   };
 
   async function simulateGroup(txns: algosdk.Transaction[]) {
+    // A grp from an earlier simulate would be hashed into the new group id; clear it first.
+    for (const t of txns) t.group = undefined;
     const grouped = txns.length > 1 ? algosdk.assignGroupID(txns) : txns;
     const request = new algosdk.modelsv2.SimulateRequest({
       txnGroups: [new algosdk.modelsv2.SimulateRequestTransactionGroup({ txns: grouped.map((txn) => new algosdk.SignedTransaction({ txn })) })],

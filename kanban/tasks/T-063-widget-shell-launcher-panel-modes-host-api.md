@@ -1,7 +1,7 @@
 ---
 id: T-063
 title: Widget shell: launcher, panel modes, header and host API
-status: in-progress
+status: done
 priority: P1
 epic: "Widget UI rework"
 blocked_by: [T-062]
@@ -46,13 +46,13 @@ Parallel work possible: **no**. Don't run it at the same time as T-064: they cha
 
 ## Acceptance criteria
 
-- [ ] Playground shows launcher → panel → minimized bar → restore → workspace → exit, matching the design geometry (component test asserts classes/styles per mode)
-- [ ] At a 375 px viewport an open panel is full screen; at 1280 px floating is 420 px wide
-- [ ] Header shows "Guest" before sign-in and the email and short primary address after (fixture session)
-- [ ] Status pill and Activity toggle are buttons with `aria-expanded` / `aria-pressed`; all icon buttons have `aria-label` and a tooltip on focus
-- [ ] `useBiatecChat().ask('Swap 50 USDC to ALGO')` opens the panel and the prompt appears as a user message and is sent once; calling it twice quickly while a reply streams queues or refuses visibly, never sends hidden text
-- [ ] `setTheme`, `setLocale` and `setPageContext` take effect without remount; the page context is sent only after the panel has been opened
-- [ ] Inline mode: `BiatecChatInline` renders in a `minmax(360px, 420px)` column without shadow, and the floating launcher hides
+- [x] Playground shows launcher → panel → minimized bar → restore → workspace → exit, matching the design geometry (component test asserts classes/styles per mode)
+- [x] At a 375 px viewport an open panel is full screen; at 1280 px floating is 420 px wide
+- [x] Header shows "Guest" before sign-in and the email and short primary address after (fixture session)
+- [x] Status pill and Activity toggle are buttons with `aria-expanded` / `aria-pressed`; all icon buttons have `aria-label` and a tooltip on focus
+- [x] `useBiatecChat().ask('Swap 50 USDC to ALGO')` opens the panel and the prompt appears as a user message and is sent once; calling it twice quickly while a reply streams queues or refuses visibly, never sends hidden text
+- [x] `setTheme`, `setLocale` and `setPageContext` take effect without remount; the page context is sent only after the panel has been opened
+- [x] Inline mode: `BiatecChatInline` renders in a `minmax(360px, 420px)` column without shadow, and the floating launcher hides
 
 ## Implementation notes
 
@@ -66,9 +66,20 @@ pnpm --filter @biatec/chat-widget test; pnpm --filter @biatec/chat-widget dev an
 
 ## Hand-off
 
+- **Summary:** launcher (60×60, chip, tooltip, unread badge), minimized bar, panel modes floating / inline / workspace with full screen below 640 px and reduced-motion-aware transitions; header (tier, sign in/out, expand/minimize/close) and status bar (agent-mode pill, Activity toggle; `aside` and `dialog` slots for T-066); host API: `mode` option, `BiatecChatInline`, `useBiatecChat()` (open, close, ask → sent/busy/empty/unavailable, setPageContext, setTheme, setLocale). `components/chat/**` untouched.
+- **Branch:** `task/T-063` @ `a5185b1`, PR #132 (`Closes #104`). Worker in its own worktree; coordinator verified typecheck, tests 115/115 and build.
+- **Files outside the area:** `src/options.ts`, `src/index.ts`, `scripts/emit-types.mjs`, `src/styles.css` (old shell rules removed, `@import` of shell.css; T-064 restyles it next), `src/i18n/en/ui.json` (new `shell` section), `playground/main.ts`, tests.
+- **Review (medium):** fixed inline panel turning into a full-viewport workspace, the busy notice never clearing, focus lost when closing from the minimized bar. Known limitations left: inline mounted before the floating root gets its own session; early `open()` in inline mode is dropped; Esc clears Activity even without an aside (T-066 adds it); an `ask` during the first probe still sends after a close; duplicated theme/matchMedia watching; inline `options` ignored when a floating core exists.
+- **Assumptions:** page context goes into `HostContext.product`; inline panels never go full screen or close on Esc; `ask` returns 'unavailable' in inline mode until a `BiatecChatInline` mounts; workspace turns Activity on.
+- **Follow-up tasks created:** T-073 (document the host API in the integration docs).
+- **Unblocks:** T-066 and T-068 become ready once this is done.
+- **Open questions:** none.
+
 Filled in by the agent when it moves the task to `review`.
 
 ## Review
+
+- 2026-10-20 01:32 · approve · PR #132 merged into main @ f6385d0 (recorded by kanban-sync)
 
 ## Activity log
 
@@ -77,3 +88,5 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-20 00:55 · kanban-board · blocked → backlog · blockers done: T-062
 - 2026-10-20 01:12 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 01:13 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 01:32 · coordinator · in-progress → review · branch task/T-063 @ a5185b1, PR #132
+- 2026-10-20 01:32 · user · review → done · PR #132 merged into main @ f6385d0 (synced by kanban-sync)

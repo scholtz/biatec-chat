@@ -203,6 +203,8 @@ describe("safe.list and safe.proposals", () => {
     const data = r.data as { safes: { appId: string; name: string; groups: { id: string }[] }[]; skipped: { appId: string }[] };
     expect(data.safes.map((s) => [s.appId, s.name, s.groups.map((g) => g.id)])).toEqual([[String(APP), "Treasury", ["1"]]]);
     expect(data.skipped.map((s) => s.appId)).toEqual(["31337"]);
+    // The membership epoch is passed through for the safe card.
+    expect(Object.keys((data.safes[0]!.groups[0] as Record<string, unknown>))).toContain("membershipEpoch");
     expect(r.transactions).toEqual([]);
     const none = await b()["safe.list"]!({ member: carol, appIds: [APP] }, ctx());
     expect((none.data as { safes: unknown[] }).safes).toEqual([]);
@@ -255,6 +257,9 @@ describe("safe.create", () => {
     const gid = txns[0]!.group;
     expect(gid).toBeDefined();
     expect(txns.every((t) => t.group && Buffer.from(t.group).equals(Buffer.from(gid!)))).toBe(true);
+    // The grp is the id of the group as encoded (the network recomputes it with grp cleared), not one hashed over a stale grp.
+    for (const t of txns) t.group = undefined;
+    expect(Buffer.from(algosdk.computeGroupID(txns)).equals(Buffer.from(gid!))).toBe(true);
     expect(txns.every((t) => t.applicationCall!.appIndex === BigInt(BOOT_APP))).toBe(true);
     expect((multi.preview as { groups: { name: string; threshold: string }[] }).groups.map((g) => [g.name, g.threshold])).toEqual([["Admins", "2"], ["Spenders", "1"]]);
   });

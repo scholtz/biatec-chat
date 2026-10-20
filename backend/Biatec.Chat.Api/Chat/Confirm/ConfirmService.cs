@@ -63,7 +63,8 @@ public sealed class ConfirmService(
     ILogger<ConfirmService> log,
     IEnumerable<ISettlementHandler>? settlementHandlers = null,
     Biatec.Chat.Api.Limits.LimitsConfirmService? limits = null,
-    IEvidenceRecorder? recorder = null)
+    IEvidenceRecorder? recorder = null,
+    IEnumerable<IStepLandedObserver>? landedObservers = null)
 {
     public const string OutageMessage = "The sign-in service is unavailable. Your session is unchanged; please try again shortly.";
 
@@ -350,6 +351,83 @@ public sealed class ConfirmService(
         return await TrackAsync(session, snap.Preview, step, step.TxIds, false, ct);
     }
 
+    /// <summary>
+    /// Consent orchestrator hook (T-049): the user approved on the phone, so the same previewed group goes back to
+    /// Biatec OIDC with the elevated token (held in memory only, never vaulted or sent to the browser), then follows
+    /// the normal submit path. Biatec OIDC checks the receipt and the group again.
+    /// </summary>
+    public async Task<ConfirmResult> ResumeAfterConsentAsync(Tenant tenant, ChatSession session, Guid previewId, string elevatedBearer, CancellationToken ct)
+    {
+        var snap = await previews.GetAsync(session.ConversationId, previewId, session.AbsoluteExpiresAt, ct);
+        var preview = snap.Preview;
+        var step = snap.Steps.FirstOrDefault(s => s.Status == StepStatus.AwaitingConsent)
+            ?? throw new PreviewException(PreviewError.InvalidState, "The preview has no step awaiting consent.");
+        // The consent window starts after the confirm gate, so an approval can arrive after the preview has expired.
+        // The simulation and policy check are stale then: nothing is signed and the preview is rebuilt.
+        if (clock.GetUtcNow() >= step.ExpiresAt || clock.GetUtcNow() >= preview.ExpiresAt)
+            return await EndConsentAsync(session, previewId, denied: false, "preview_expired", ct, "preview_expired");
+        IReadOnlyList<Algorand.Algod.Model.Transactions.Transaction> group;
+        string address;
+        try { (group, address) = PrepareGroup(step); }
+        catch (SigningVerificationException ex)
+        {
+            await FailAsync(preview, step, ct);
+            await RecordAsync(session, "signing_refused", new JsonObject { ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["reason"] = "group_mismatch" }, ct);
+            return new ConfirmResult(ConfirmOutcome.Failed, ex.Message + " Nothing was signed; the preview must be rebuilt.", [], ErrorCode: "group_mismatch");
+        }
+
+        var remaining = (int)Math.Max(1, (step.ExpiresAt - clock.GetUtcNow()).TotalSeconds);
+        var origin = new Uri(tenant.RedirectUri).GetLeftPart(UriPartial.Authority);
+        var outcome = await signer.SignAsync(elevatedBearer, new WalletSignRequest(step.Network!, address, step.UnsignedGroupList(), Convert.FromHexString(step.SubjectHash),
+            RequireConsent: false, MaxConsentSeconds: remaining, Origin: origin), ct);
+        await RecordExtraAsync(session, EvidenceKinds.SigningOutcome, SigningOutcomePayload(previewId, step, outcome), CancellationToken.None);
+
+        switch (outcome)
+        {
+            case WalletSignOutcome.Signed signed:
+                return await SubmitAsync(tenant, session, preview, step, group, signed, ct);
+            case WalletSignOutcome.Unavailable u:
+                // The consent token is not kept: the user confirms again, which asks for fresh consent.
+                step.Status = StepStatus.Pending;
+                preview.Status = ActionPreviewStatus.Confirmed;
+                return await OutageAsync(session, preview, step, u.Reason, ct);
+            default:
+                // A second challenge, or a refusal after approval, ends this preview; it is rebuilt.
+                var error = outcome is WalletSignOutcome.Rejected r ? r.Error : "consent_not_accepted";
+                await FailAsync(preview, step, ct);
+                await RecordAsync(session, "signing_refused", new JsonObject
+                {
+                    ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["error"] = error,
+                }, ct);
+                return new ConfirmResult(ConfirmOutcome.Failed, "Biatec OIDC did not accept the approval. Nothing was signed; the preview must be rebuilt.", [], ErrorCode: error);
+        }
+    }
+
+    /// <summary>
+    /// Consent orchestrator hook (T-049): the consent ended without approval. A denial cancels the action; an expired
+    /// or lapsed consent expires it so the widget asks the assistant to rebuild the preview. Nothing was signed.
+    /// </summary>
+    public async Task<ConfirmResult> EndConsentAsync(ChatSession session, Guid previewId, bool denied, string? reason, CancellationToken ct, string? errorCode = null)
+    {
+        var snap = await previews.GetAsync(session.ConversationId, previewId, session.AbsoluteExpiresAt, ct);
+        var step = snap.Steps.FirstOrDefault(s => s.Status == StepStatus.AwaitingConsent)
+            ?? throw new PreviewException(PreviewError.InvalidState, "The preview has no step awaiting consent.");
+        step.Status = denied ? StepStatus.Cancelled : StepStatus.Expired;
+        snap.Preview.Status = denied ? ActionPreviewStatus.Cancelled : ActionPreviewStatus.Expired;
+        await db.SaveChangesAsync(ct);
+        await RecordAsync(session, denied ? "consent_denied" : "consent_expired", new JsonObject
+        {
+            ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["reason"] = reason,
+        }, ct);
+        return denied
+            ? new ConfirmResult(ConfirmOutcome.Failed, "You declined the action on your phone. Nothing was signed.", [], ErrorCode: "consent_denied")
+            : new ConfirmResult(ConfirmOutcome.Failed, errorCode == "preview_expired"
+                ? "The preview expired before the approval arrived. Nothing was signed; the preview must be rebuilt."
+                : errorCode == "receipt_missing"
+                    ? "The approval came back without its signed receipt. Nothing was signed; the preview must be rebuilt."
+                    : "The approval request expired. Nothing was signed; the preview must be rebuilt.", [], ErrorCode: errorCode ?? "consent_expired");
+    }
+
     private async Task<ConfirmResult> TrackAsync(ChatSession session, ActionPreview preview, ActionStep step, IReadOnlyList<string> txIds, bool unknownSubmit, CancellationToken ct)
     {
         // A group lands atomically, so following its first transaction is enough.
@@ -363,6 +441,7 @@ public sealed class ConfirmService(
                 return new ConfirmResult(ConfirmOutcome.Failed, "The transaction did not land before it expired. Nothing moved; the preview must be rebuilt.", txIds, ErrorCode: "expired");
             case TxConfirmationState.Confirmed:
                 await previews.MarkStepLandedAsync(session.ConversationId, preview.Id, step.Seq, txIds, IsFinalStep(preview, step), ct);
+                await NotifyLandedAsync(session, preview, step, tracked);
                 await RecordAsync(session, "action_receipt", new JsonObject
                 {
                     ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["seq"] = step.Seq,
@@ -378,6 +457,16 @@ public sealed class ConfirmService(
                 return new ConfirmResult(ConfirmOutcome.Submitted,
                     unknownSubmit ? "The submission could not be confirmed either way; the transaction may still land. Check again shortly."
                                   : "The transaction was submitted and is waiting to be confirmed.", txIds);
+        }
+    }
+
+    /// <summary>Observers (safe.create records the deployed app id) never turn a landed step into an error.</summary>
+    private async Task NotifyLandedAsync(ChatSession session, ActionPreview preview, ActionStep step, TxConfirmation tracked)
+    {
+        foreach (var o in landedObservers ?? [])
+        {
+            try { await o.OnLandedAsync(session.TenantId, preview, step, tracked, CancellationToken.None); }
+            catch (Exception ex) { log.LogError("A landed-step observer failed: {ErrorType}", ex.GetType().Name); }
         }
     }
 

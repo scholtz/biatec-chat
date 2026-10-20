@@ -1,7 +1,7 @@
 ---
 id: T-049
 title: Backend consent orchestrator
-status: in-progress
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-022, T-047]
@@ -51,6 +51,8 @@ dotnet test --filter Consent
 
 ## Review
 
+- 2026-10-20 01:46 · approve · PR #133 merged into main @ 20285d4 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
@@ -60,3 +62,4 @@ dotnet test --filter Consent
 - 2026-10-19 23:59 · LukassSoukup · backlog · conflicts_with revised: dropped T-057 (consent metrics come from an IEvidenceLog decorator in Telemetry/)
 - 2026-10-20 01:16 · scholtz · taken · status stays backlog
 - 2026-10-20 01:16 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 01:46 · user · in-progress → done · PR #133 merged into main @ 20285d4 (synced by kanban-sync)

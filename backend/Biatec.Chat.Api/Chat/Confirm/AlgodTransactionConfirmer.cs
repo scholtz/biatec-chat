@@ -40,7 +40,8 @@ public sealed class AlgodTransactionConfirmer(IHttpClientFactory http, IOptions<
                     using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
                     var r = doc.RootElement;
                     if (r.TryGetProperty("confirmed-round", out var cr) && cr.TryGetUInt64(out var round) && round > 0)
-                        return new TxConfirmation(TxConfirmationState.Confirmed, round);
+                        return new TxConfirmation(TxConfirmationState.Confirmed, round,
+                            CreatedAppId: r.TryGetProperty("application-index", out var ai) && ai.TryGetUInt64(out var app) && app > 0 ? app : null);
                     if (r.TryGetProperty("pool-error", out var pe) && pe.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(pe.GetString()))
                         return new TxConfirmation(TxConfirmationState.Rejected, Error: "pool_error");
                 }
@@ -56,7 +57,7 @@ public sealed class AlgodTransactionConfirmer(IHttpClientFactory http, IOptions<
                 {
                     var found = await IndexerLookupAsync(client, net, txId, ct);
                     if (found.Round is { } confirmedRound)
-                        return new TxConfirmation(TxConfirmationState.Confirmed, confirmedRound);
+                        return new TxConfirmation(TxConfirmationState.Confirmed, confirmedRound, CreatedAppId: found.CreatedAppId);
                     // Expired only when the indexer is reachable, has no such transaction, has caught up past
                     // LastValid, and algod agrees the network is past it too.
                     if (found.Absent && lastValid > 0 && found.IndexerRound is { } ir && ir > lastValid
@@ -69,7 +70,7 @@ public sealed class AlgodTransactionConfirmer(IHttpClientFactory http, IOptions<
         }
     }
 
-    private readonly record struct IndexerResult(ulong? Round, bool Absent, ulong? IndexerRound);
+    private readonly record struct IndexerResult(ulong? Round, bool Absent, ulong? IndexerRound, ulong? CreatedAppId = null);
 
     /// <summary>Looks the transaction up on the indexer. Unreachable or unconfigured is neither found nor absent.</summary>
     private static async Task<IndexerResult> IndexerLookupAsync(HttpClient client, AlgodNetworkOptions net, string txId, CancellationToken ct)
@@ -86,7 +87,8 @@ public sealed class AlgodTransactionConfirmer(IHttpClientFactory http, IOptions<
                 using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
                 if (doc.RootElement.TryGetProperty("transaction", out var t) && t.TryGetProperty("confirmed-round", out var cr)
                     && cr.TryGetUInt64(out var round) && round > 0)
-                    return new IndexerResult(round, false, null);
+                    return new IndexerResult(round, false, null,
+                        t.TryGetProperty("created-application-index", out var ca) && ca.TryGetUInt64(out var app) && app > 0 ? app : null);
                 return default;
             }
             if (res.StatusCode != System.Net.HttpStatusCode.NotFound) return default;
