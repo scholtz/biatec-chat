@@ -138,13 +138,13 @@
   flex-direction: column;
   gap: var(--space-2);
 }
-.biatec-chat .bc-bullets li {
+.biatec-chat .bc-bullets > li {
   position: relative;
   padding-left: var(--space-4);
   font-size: 14px;
   line-height: 1.55;
 }
-.biatec-chat .bc-bullets li::before {
+.biatec-chat .bc-bullets > li::before {
   content: "";
   position: absolute;
   left: 0;
@@ -152,6 +152,89 @@
   width: 6px;
   height: 6px;
   background: var(--color-brand-primary);
+}
+
+.biatec-chat .bc-bullets ul,
+.biatec-chat .bc-bullets ol,
+.biatec-chat .bc-numbered ul,
+.biatec-chat .bc-numbered ol {
+  margin-top: var(--space-2);
+}
+.biatec-chat .bc-numbered {
+  margin: 0;
+  padding-left: 1.6em;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.biatec-chat .bc-numbered > li {
+  padding-left: var(--space-1);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.biatec-chat .bc-numbered > li::marker {
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.biatec-chat .bc-bullets li,
+.biatec-chat .bc-numbered > li {
+  white-space: pre-wrap;
+}
+.biatec-chat .bc-heading {
+  margin: var(--space-1) 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.biatec-chat h4.bc-heading {
+  font-size: 14px;
+}
+.biatec-chat .bc-text strong {
+  font-weight: 600;
+}
+.biatec-chat .bc-inline-code,
+.biatec-chat .bc-code-block {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-sm);
+}
+.biatec-chat .bc-inline-code {
+  padding: 0 4px;
+  overflow-wrap: anywhere;
+}
+.biatec-chat .bc-code-block {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  overflow-x: auto;
+  white-space: pre;
+  line-height: 1.5;
+}
+.biatec-chat .bc-quote {
+  margin: 0;
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--color-border-default);
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.biatec-chat .bc-rule {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--color-border-default);
+}
+.biatec-chat .bc-link {
+  color: var(--color-brand-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+.biatec-chat .bc-link:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }
 
 /* Tool progress: compact secondary rows */

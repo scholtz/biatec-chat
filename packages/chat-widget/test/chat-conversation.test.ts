@@ -83,10 +83,11 @@ describe("empty state", () => {
 
 describe("message rendering", () => {
   it("splits paragraphs and bullets as plain text", () => {
+    const text = (s: string) => [{ kind: "text", text: s }];
     expect(parseBlocks("Intro line\n\n- one\n- two\n\nOutro")).toEqual([
-      { kind: "p", text: "Intro line" },
-      { kind: "ul", items: ["one", "two"] },
-      { kind: "p", text: "Outro" },
+      { kind: "p", content: text("Intro line") },
+      { kind: "ul", items: [{ content: text("one") }, { content: text("two") }] },
+      { kind: "p", content: text("Outro") },
     ]);
     expect(safeHttpUrl("javascript:alert(1)")).toBeNull();
     expect(safeHttpUrl("https://web.biatec.io/signin")).toBe("https://web.biatec.io/signin");

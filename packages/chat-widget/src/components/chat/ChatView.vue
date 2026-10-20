@@ -20,7 +20,8 @@ import {
 } from "lucide-vue-next";
 import type { ChatMessage, SignInPhase } from "./useChat";
 import { promptsFor, type PromptIcon } from "./suggestions";
-import { parseBlocks, safeHttpUrl } from "./format";
+import { safeHttpUrl } from "./format";
+import MarkdownText from "./MarkdownText";
 import { AGENT_MODE_LABEL, type AgentModeDisplay } from "../shell/agentMode";
 import { BaiSymbol } from "../../ui";
 import SafeCard from "../cards/SafeCard.vue";
@@ -191,15 +192,8 @@ const showThinking = (m: ChatMessage) => m.role === "assistant" && m.streaming &
                 <span class="bc-sr-only">{{ toolState(tl.state) }}</span>
               </li>
             </ul>
-            <!-- Text only: model output is never interpreted as HTML. -->
-            <div v-if="m.text" class="bc-text">
-              <template v-for="(b, bi) in parseBlocks(m.text)" :key="bi">
-                <p v-if="b.kind === 'p'" class="bc-para">{{ b.text }}</p>
-                <ul v-else class="bc-bullets">
-                  <li v-for="(item, ii) in b.items" :key="ii">{{ item }}</li>
-                </ul>
-              </template>
-            </div>
+            <!-- Safe Markdown subset rendered as text nodes: model output is never interpreted as HTML. -->
+            <MarkdownText v-if="m.text" :text="m.text" />
             <!-- Safe cards come only from safe_card events (structured tool results), never from model text. -->
             <SafeCard v-for="(sc, si) in m.safeCards ?? []" :key="si" :card="sc" />
             <!-- Data cards come only from data_card events (structured tool results), never from model text. -->
