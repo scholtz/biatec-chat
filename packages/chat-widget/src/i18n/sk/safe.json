@@ -1,0 +1,40 @@
+{
+  "safe": {
+    "label": "Biatec Safe",
+    "listTitle": "Vaše sejfy",
+    "createTitle": "Váš nový sejf",
+    "appId": "ID aplikácie",
+    "address": "Adresa sejfu",
+    "yourAddresses": "Vaše adresy člena",
+    "paused": "Pozastavený",
+    "active": "Aktívny",
+    "creation": {
+      "SetupPending": "Nasadené · čaká sa na nastavenie skupín podpisovateľov",
+      "NeedsFunding": "Nasadené · potrebuje ALGO na úložisko",
+      "Created": "Vytvorené"
+    },
+    "groups": "Skupiny podpisovateľov",
+    "group": "{name} · {threshold} z {members}",
+    "admin": "Správca",
+    "epoch": "Epocha členstva {epoch}",
+    "epochUnknown": "Epocha členstva zatiaľ nebola načítaná",
+    "proposals": "Čakajúce návrhy",
+    "noProposals": "Žiadne čakajúce návrhy",
+    "proposalsUnreadable": "Návrhy sa nepodarilo načítať, preto je front neznámy.",
+    "proposalsTruncated": "Existuje viac návrhov, než je zobrazených.",
+    "proposalsNotLoaded": "Návrhy tohto sejfu nie sú načítané. Opýtajte sa naň podľa ID aplikácie a zobrazia sa.",
+    "announce": "Karta sejfu: sejfy {safes}, čakajúce návrhy {proposals}.",
+    "proposal": "Návrh {id} · {kind}",
+    "state": {
+      "AwaitingApprovals": "Čaká na schválenia",
+      "ReadyToExecute": "Pripravený na vykonanie"
+    },
+    "progress": "{approvals} z {threshold} schválení",
+    "approvedByYou": "Schválili ste",
+    "notApprovedByYou": "Neschválili ste",
+    "payloadVersion": "Verzia obsahu",
+    "expiry": "Platí do kola",
+    "proposer": "Navrhovateľ",
+    "couldNotRead": "Nepodarilo sa načítať: {ids}. Členstvo je neznáme, nie vylúčené."
+  }
+}

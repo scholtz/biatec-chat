@@ -1,0 +1,44 @@
+{
+  "ui": {
+    "loading": "Načítava sa",
+    "close": "Zavrieť",
+    "dismiss": "Zavrieť",
+    "logoLabel": "Biatec AI"
+  },
+  "status": {
+    "awaitingConfirmation": "Čaká na vaše potvrdenie",
+    "awaitingScope": "Vyžaduje povolenie na podpisovanie",
+    "awaitingApproval": "Čaká na schválenie v telefóne",
+    "signing": "Schválené · podpisuje sa",
+    "submitted": "Odoslané · čaká na potvrdenie",
+    "completed": "Dokončené",
+    "rejected": "Zamietnuté vo vašom telefóne",
+    "failed": "Zlyhalo",
+    "timedOut": "Schválenie vypršalo · nič sa nepodpísalo",
+    "cancelled": "Zrušené",
+    "expired": "Platnosť vypršala"
+  },
+  "shell": {
+    "launcher": "Opýtať sa Biatec AI",
+    "unread": "{count} nových",
+    "title": "Biatec AI",
+    "panelLabel": "Chat Biatec AI",
+    "guest": "Hosť",
+    "signedIn": "Prihlásený",
+    "signIn": "Prihlásiť sa",
+    "signOut": "Odhlásiť sa",
+    "expand": "Zväčšiť na celú obrazovku",
+    "exitFullScreen": "Ukončiť celú obrazovku",
+    "minimize": "Minimalizovať",
+    "close": "Zavrieť",
+    "restore": "Obnoviť",
+    "statusPrefix": "Stav:",
+    "statusAria": "Stav agenta: {mode}. Zmeniť oprávnenia",
+    "modeAnalyze": "Iba analýza",
+    "modePrepare": "Pripraviť na schválenie",
+    "modePaused": "Pozastavené",
+    "activity": "Aktivita",
+    "replying": "Odpovedá sa…",
+    "askBusy": "Biatec AI ešte odpovedá. Vaša otázka sa neodoslala; opýtajte sa znova, keď odpoveď skončí."
+  }
+}

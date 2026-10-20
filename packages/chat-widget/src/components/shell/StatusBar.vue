@@ -31,7 +31,7 @@ const label = computed(() => t(AGENT_MODE_LABEL[props.mode]));
       class="bc-status-toggle"
       data-testid="activity-toggle"
       :aria-pressed="activityOpen"
-      :aria-controls="controlsAside"
+      :aria-controls="activityOpen ? controlsAside : undefined"
       @click="emit('toggleActivity')"
     >
       <History :size="16" aria-hidden="true" />
