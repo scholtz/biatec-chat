@@ -32,6 +32,8 @@ public sealed record ErasureResponse
     public required string Status { get; init; }
     public required int Conversations { get; init; }
     public required int PayloadsDeleted { get; init; }
+    /// <summary>The session's fresh conversation: later turns are written there, so they can be erased again.</summary>
+    public string? ConversationId { get; init; }
 }
 
 public static class RetentionRegistration
@@ -55,7 +57,8 @@ public static class RetentionEndpoints
     /// cookie. GET /session/conversations lists the caller's own conversations: every conversation of the signed-in
     /// user in this tenant, or only the session's own for a guest. GET /session/conversations/{id}/evidence downloads
     /// the bundle of one of those. POST /session/erase (signed-in only; the global CSRF guard applies: custom header,
-    /// registered Origin, client key) removes payloads and salts immediately and blanks the fields the spec lists.
+    /// registered Origin, client key) removes payloads and salts immediately, blanks the fields the spec lists, and moves the
+    /// session to a fresh conversation whose id the response returns.
     /// </summary>
     public static IEndpointRouteBuilder MapRetention(this IEndpointRouteBuilder app)
     {
@@ -112,10 +115,11 @@ public static class RetentionEndpoints
             // Anonymous conversations cannot be tied to a requester: they are removed only by the 30-day retention.
             if (session is null || session.Tier == SessionTier.Anonymous || string.IsNullOrEmpty(session.OidcSub)) return Results.Unauthorized();
 
-            var r = await retention.EraseAsync(tenant.Id, session.OidcSub, ctx.RequestAborted);
+            var r = await retention.EraseAsync(tenant.Id, session.OidcSub, session.Id, ctx.RequestAborted);
             return r.Outcome == ErasureOutcome.ActionInFlight
                 ? Results.Json(new { error = "ActionInFlight", message = "Cancel or finish the open action first, then erase your data." }, statusCode: StatusCodes.Status409Conflict)
-                : Results.Ok(new ErasureResponse { Status = "erased", Conversations = r.Conversations, PayloadsDeleted = r.PayloadsDeleted });
+                : Results.Ok(new ErasureResponse { Status = "erased", Conversations = r.Conversations, PayloadsDeleted = r.PayloadsDeleted,
+                    ConversationId = r.NewConversationId?.ToString() });
         }).WithName("EraseOwnData").Produces<ErasureResponse>();
 
         return app;
@@ -139,16 +143,20 @@ public static class RetentionEndpoints
     }
 }
 
-/// <summary>Runs the retention rules every <see cref="RetentionOptions.Interval"/>. A failure is logged by type and the loop goes on.</summary>
+/// <summary>
+/// Runs the retention rules once <see cref="RetentionOptions.StartupDelay"/> after startup, then every
+/// <see cref="RetentionOptions.Interval"/>. A failure is logged by type and the loop goes on.
+/// </summary>
 public sealed class RetentionHostedService(IServiceScopeFactory scopes, IOptions<RetentionOptions> options, TimeProvider clock, ILogger<RetentionHostedService> log) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!options.Value.Enabled) return;
-        using var timer = new PeriodicTimer(options.Value.Interval, clock);
         try
         {
-            while (await timer.WaitForNextTickAsync(stoppingToken))
+            await Task.Delay(options.Value.StartupDelay, clock, stoppingToken);
+            using var timer = new PeriodicTimer(options.Value.Interval, clock);
+            do
             {
                 try
                 {
@@ -162,7 +170,7 @@ public sealed class RetentionHostedService(IServiceScopeFactory scopes, IOptions
                 {
                     log.LogError("Retention run failed: {ErrorType}", ex.GetType().Name);
                 }
-            }
+            } while (await timer.WaitForNextTickAsync(stoppingToken));
         }
         catch (OperationCanceledException) { }
     }

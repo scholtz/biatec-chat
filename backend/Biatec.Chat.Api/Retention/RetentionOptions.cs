@@ -12,8 +12,12 @@ public sealed class RetentionOptions
     /// <summary>Switches the background job off; erasure on request always works.</summary>
     public bool Enabled { get; set; } = true;
     public TimeSpan Interval { get; set; } = TimeSpan.FromHours(1);
-    /// <summary>Conversations removed per run and rule, so one run never holds a long transaction.</summary>
+    /// <summary>The first run starts this long after startup, then one run every <see cref="Interval"/>.</summary>
+    public TimeSpan StartupDelay { get; set; } = TimeSpan.FromMinutes(1);
+    /// <summary>Rows or conversations per statement, so no statement holds long locks.</summary>
     public int BatchSize { get; set; } = 500;
+    /// <summary>Each rule keeps draining batches until nothing is left or this much time has passed in the run.</summary>
+    public TimeSpan RunBudget { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>Evidence payloads and salts, message content and the preview and step payload columns.</summary>
     public TimeSpan Payloads { get; set; } = TimeSpan.FromDays(90);

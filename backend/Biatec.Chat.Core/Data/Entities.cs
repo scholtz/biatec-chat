@@ -24,6 +24,8 @@ public class Conversation
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset LastMessageAt { get; set; }
     public DateTimeOffset? EndedAt { get; set; }
+    /// <summary>Set by the user's erasure request (T-060). An erased conversation is never treated as anonymous.</summary>
+    public DateTimeOffset? ErasedAt { get; set; }
 }
 
 public class ChatSession
@@ -52,6 +54,8 @@ public class Message
     public string? ToolResults { get; set; }
     public string? ModelId { get; set; }
     public string? Usage { get; set; }
+    /// <summary>When the row was written; the 90-day payload retention clears each message by its own age (T-060).</summary>
+    public DateTimeOffset CreatedAt { get; set; }
 }
 
 public class ActionPreview

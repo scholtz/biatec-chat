@@ -364,6 +364,7 @@ public sealed class ConversationOrchestrator(
         string? modelId, string? usage, CancellationToken ct)
     {
         // Saved with CancellationToken.None: a disconnected browser must not lose the transcript.
+        var now = clock.GetUtcNow();
         db.Messages.Add(new DataMessage
         {
             ConversationId = conversationId,
@@ -374,8 +375,8 @@ public sealed class ConversationOrchestrator(
             ToolResults = toolResults,
             ModelId = modelId,
             Usage = usage,
+            CreatedAt = now,
         });
-        var now = clock.GetUtcNow();
         await db.Conversations.Where(c => c.Id == conversationId)
             .ExecuteUpdateAsync(u => u.SetProperty(c => c.LastMessageAt, now), CancellationToken.None);
         await db.SaveChangesAsync(CancellationToken.None);
