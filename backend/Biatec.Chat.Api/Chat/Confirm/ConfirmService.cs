@@ -84,13 +84,16 @@ public sealed class ConfirmService(
         // step: LimitsConfirmService refuses any raise, so lowering stays possible in every mode ("a user without a
         // device can always reduce their own exposure"). The peek is read-only.
         var restriction = Biatec.Chat.Api.Agent.AgentModePolicy.ConfirmRefusal(session);
-        PreviewSnapshot peek;
+        // While restricted, a missing or expired preview is refused as restricted too (uniform refusal, existing contract);
+        // otherwise it surfaces as itself (preview_not_found / expired).
+        PreviewSnapshot? peek = null;
+        PreviewException? peekError = null;
         try { peek = await previews.GetAsync(session.ConversationId, previewId, session.AbsoluteExpiresAt, ct); }
-        catch (PreviewException) when (restriction is not null) { peek = null!; }
+        catch (PreviewException ex) { peekError = ex; }
         var pending = peek?.Steps.FirstOrDefault(s => s.Status == StepStatus.Pending);
         if (restriction is not null && pending is not { Kind: ActionStepKind.Limits })
             return new ConfirmResult(ConfirmOutcome.AgentRestricted, restriction.Message, [], ErrorCode: restriction.Code);
-        if (peek is null) throw new PreviewException(PreviewError.InvalidState, "The preview has no signing step awaiting confirmation.");
+        if (peek is null) throw peekError!;
         // A limits step (lowering only) goes to Biatec OIDC PUT /wallet/limits, not to the signing endpoint.
         if (pending is { Kind: ActionStepKind.Limits } && limits is not null && peek.Preview.Status == ActionPreviewStatus.Proposed)
             return await limits.ConfirmAsync(tenant, session, previewId, groupHash, ct);

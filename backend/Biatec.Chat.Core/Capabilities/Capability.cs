@@ -50,6 +50,9 @@ public sealed record Capability(
     /// True when the capability moves funds or builds a signable group or a limits raise (safe.create, safe.propose,
     /// limits.update included). These are withheld while the session is in analyze mode or paused.
     /// </summary>
+    /// <summary>True when the tool can build an action preview; exactly the set hidden in analyze mode and while paused (reads stay visible).</summary>
+    public bool BuildsPreview => IsFundMoving;
+
     public bool IsFundMoving => MovesFunds || SignScope is not null || Valuation == ValuationBasis.LimitsChange;
 }
 

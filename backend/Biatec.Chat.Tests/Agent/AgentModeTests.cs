@@ -410,4 +410,30 @@ public class AgentGatePolicyTests
         }
         Assert.Contains(gate.ToolsFor(ctx), c => c.Name == "wallet.balance");
     }
+
+    public static IEnumerable<object[]> PreviewBuilders() =>
+        CapabilityRegistry.CreateDefault().All.Where(c => c.ToolName is not null && c.BuildsPreview).Select(c => new object[] { c.Name });
+
+    [Theory]
+    [MemberData(nameof(PreviewBuilders))]
+    public void EveryPreviewBuildingCapability_IsOutOfTheToolList_InAnalyzeAndPaused(string name)
+    {
+        var gate = Gate();
+        foreach (var ctx in new[]
+        {
+            new GateContext(SessionTier.Authenticated, Scopes, true, true, Mode: AgentMode.Analyze),
+            new GateContext(SessionTier.Authenticated, Scopes, true, true, Mode: AgentMode.Prepare, Paused: true),
+        })
+            Assert.DoesNotContain(gate.ToolsFor(ctx), c => c.Name == name);
+        // and visible in Prepare, so the test is not vacuous
+        Assert.Contains(gate.ToolsFor(new GateContext(SessionTier.Authenticated, Scopes, true, true)), c => c.Name == name);
+    }
+
+    [Fact]
+    public void PreviewBuilders_IncludeSafeCreateSafeProposeAndLimitsUpdate_AndNoReads()
+    {
+        var names = CapabilityRegistry.CreateDefault().All.Where(c => c.BuildsPreview).Select(c => c.Name).ToHashSet();
+        foreach (var n in new[] { "safe.create", "safe.propose", "limits.update" }) Assert.Contains(n, names);
+        foreach (var n in new[] { "safe.list", "limits.view", "wallet.balance" }) Assert.DoesNotContain(n, names);
+    }
 }

@@ -309,6 +309,41 @@ public sealed class LimitsFlowTests : IAsyncLifetime
         Assert.Single(_oidc.Puts);
     }
 
+    [Theory]
+    [InlineData(true, Biatec.Chat.Core.Data.AgentMode.Prepare)]
+    [InlineData(false, Biatec.Chat.Core.Data.AgentMode.Analyze)]
+    public async Task Restricted_confirm_of_a_sign_preview_stays_refused_and_flips_nothing(bool paused, Biatec.Chat.Core.Data.AgentMode mode)
+    {
+        Guid id;
+        string hash = new('a', 64);
+        await using (var db = NewContext())
+        {
+            var snap = await new ActionPreviewService(db, _clock).CreateAsync(new NewPreviewSpec(_session.ConversationId, "wallet.transfer", "{\"k\":1}",
+                [new NewStepSpec(ActionStepKind.Sign, hash, _clock.Now.AddMinutes(10), UnsignedGroup: "[]", SenderAddress: "ADDR", Network: "testnet")]));
+            id = snap.Preview.Id;
+        }
+        _session.Paused = paused;
+        _session.AgentMode = mode;
+        var r = await ConfirmAsync(id, hash);
+
+        Assert.Equal(ConfirmOutcome.AgentRestricted, r.Outcome);
+        var (preview, step) = await LoadAsync(id);
+        Assert.Equal(Biatec.Chat.Core.Data.ActionPreviewStatus.Proposed, preview.Status);
+        Assert.Equal(StepStatus.Pending, step.Status);
+        Assert.Empty(_oidc.Puts);
+    }
+
+    [Fact]
+    public async Task Restricted_confirm_of_an_unknown_preview_is_refused_as_restricted_and_unrestricted_reports_it_missing()
+    {
+        _session.Paused = true;
+        var r = await ConfirmAsync(Guid.NewGuid(), new string('a', 64));
+        Assert.Equal(ConfirmOutcome.AgentRestricted, r.Outcome);
+
+        _session.Paused = false;
+        await Assert.ThrowsAsync<PreviewException>(() => ConfirmAsync(Guid.NewGuid(), new string('a', 64)));
+    }
+
     [Fact]
     public async Task Confirm_of_a_raise_is_still_refused_while_paused()
     {
