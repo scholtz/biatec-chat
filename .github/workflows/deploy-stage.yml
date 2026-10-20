@@ -23,6 +23,9 @@ env:
   BACKEND_IMAGE: scholtz2/biatec-chat-backend
   BUILDERS_IMAGE: scholtz2/biatec-chat-builders
   DEMO_IMAGE: scholtz2/biatec-chat-demo
+  # The stage backend: the deploy's environment URL and tenant host, and the backend the demo image is built for
+  # (bundle and CSP connect-src). One value, passed to the deploy job through the build job's outputs.
+  STAGE_URL: https://stage.chat.biatec.io
 
 jobs:
   ci:
@@ -33,6 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.version.outputs.tag }}
+      url: ${{ env.STAGE_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -86,7 +90,7 @@ jobs:
           cache-from: type=gha,scope=builders
           cache-to: type=gha,scope=builders,mode=max
 
-      # The demo site (apps/demo, docs/demo-site.md), built for the stage backend (the Dockerfile default). Stage only:
+      # The demo site (apps/demo, docs/demo-site.md), built for the stage backend. Stage only:
       # promote-production.yml does not re-tag it.
       - name: Build and push demo
         uses: docker/build-push-action@v6
@@ -96,7 +100,7 @@ jobs:
           push: true
           provenance: false
           build-args: |
-            BACKEND_URL=https://stage.chat.biatec.io
+            BACKEND_URL=${{ env.STAGE_URL }}
           tags: |
             ${{ env.DEMO_IMAGE }}:${{ steps.version.outputs.tag }}
             ${{ env.DEMO_IMAGE }}:stage
@@ -111,9 +115,8 @@ jobs:
     uses: ./.github/workflows/deploy.yml
     with:
       environment: Stage
-      url: https://stage.chat.biatec.io
+      url: ${{ needs.build.outputs.url }}
       overlay: stage
       namespace: biatec-chat-stage
       tag: ${{ needs.build.outputs.tag }}
-      demo_url: https://demo.stage.chat.biatec.io
     secrets: inherit

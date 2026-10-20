@@ -1,6 +1,6 @@
 // The BiatecDEX-like host page from the widget playground (packages/chat-widget/playground/dex, T-068), reused as is,
 // mounted the way its own main.ts does it, with this site's backend and client key.
-import "../../../packages/chat-widget/playground/dex/dex.css";
+import "./dex.css";
 import "primeicons/primeicons.css";
 import "./dex-banner.css";
 import { createApp } from "vue";

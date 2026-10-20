@@ -87,15 +87,17 @@ export const SECTIONS: Section[] = [
     id: "data",
     title: "Data cards",
     seeing:
-      "Read-only answers come back as cards instead of prose: balances from wallet.balance through Biatec MCP, and your " +
-      "Biatec Safes from safe.list. Amounts are tabular and every card names its network.",
+      "Read-only answers come back as cards instead of prose: a 24 hour market snapshot from public Biatec DEX data, " +
+      "balances from wallet.balance through Biatec MCP, and your Biatec Safes from safe.list. Amounts are tabular and " +
+      "every card names its network.",
     items: [
       { label: "Holdings card", status: "signed-in", prompt: "Show my holdings on Algorand testnet." },
       { label: "Safe card", status: "signed-in", prompt: "List my Biatec Safes on testnet." },
       {
         label: "Market snapshot card",
-        status: "next",
-        note: "market.snapshot from public Biatec DEX data is still in progress (T-069).",
+        status: "live",
+        prompt: "Show me the ALGO/USDC market on Biatec DEX.",
+        note: "Public Biatec DEX data, no sign-in needed. Facts only: no forecast or signal.",
       },
     ],
   },

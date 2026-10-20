@@ -10,15 +10,6 @@ backend, Algorand **testnet** only. Source in [`apps/demo`](../apps/demo), deplo
 | Image | `scholtz2/biatec-chat-demo:<version>-beta` and the moving `stage` tag, same version as the backend |
 | Kubernetes | `k8s/base/demo.yaml` (Deployment + Service), `k8s/stage/demo-ingress.yaml`; deleted again in `k8s/main` |
 
-## Known blocker at the time of writing
-
-The widget's cookie transport posts chat messages to `/chat` (`packages/chat-widget/src/transport/types.ts`,
-`PATHS.cookieChat`), but the backend serves `POST /chat/messages` (`backend/Biatec.Chat.Api/Chat/ChatEndpoints.cs`).
-Every host where the session cookie works, this site included, therefore gets `404` and "Something went wrong" on the
-first message. Verified locally: with the path changed to `/chat/messages` the same request returns `200` and streams.
-The fix belongs to the widget package and is tracked as its own task; until it is on stage, every chat prompt on this
-site fails, and the post-deploy checks below will show it.
-
 ## What each section shows
 
 Every one-click prompt is sent with `useBiatecChat().ask()` as an ordinary, visible user message to the real backend.
@@ -32,7 +23,7 @@ Nothing on the page is simulated; what does not run on stage yet is labelled **C
 | 2 | Sign in (popup at stage Biatec OIDC, BFF, no token in the browser), session tier, agent modes Analyze only / Prepare for approval / Pause | Works, sign in first | Needs the stage OIDC client (`OIDC_CLIENT_ID`) to allow `https://stage.chat.biatec.io/auth/callback` |
 | 2 | Rule-based automation | Coming next | Shown disabled by the widget itself: the spec requires a confirmation per action |
 | 3 | Holdings card, Safe card | Works, sign in first | `wallet.balance`, `safe.list` |
-| 3 | Market snapshot card | Coming next | `market.snapshot` (T-069) was still in progress at build time |
+| 3 | Market snapshot card | Works | `market.snapshot` (T-069), anonymous, from public Biatec DEX data |
 | 4 | Transfer, swap, add/remove liquidity, Safe create / proposals / approve / execute: preview → review → Confirm → receipt | Works, sign in first | Testnet only; the account needs testnet ALGO (and the assets of the pool) |
 | 4 | Phone approval in Biatec Authenticator above the threshold | Coming next | Biatec OIDC has no consent endpoints yet ([required-changes-biatec-oidc.md](required-changes-biatec-oidc.md)); shown against the mock OIDC in [hackathon-demo.md](hackathon-demo.md), not on stage |
 | 5 | Download evidence from a receipt, export / erase own conversations (Activity panel), offline verification | Works, sign in first | Verification uses `packages/evidence-verifier` and the stage JWKS |
@@ -48,16 +39,21 @@ saying why, and no `prompt`) and this table with it, rather than leaving a butto
   `biatec.io`, so the backend's `__Host-` session cookie (`SameSite=Lax`, no `Domain`) is sent on the widget's
   credentialed requests and the cookie probe gives the authenticated transport. No proxy: the page calls the backend
   directly with CORS. `*.stage.chat.biatec.io` already resolves to the cluster ingress and cert-manager issues the
-  certificate, so the host needed no new DNS record or cloud resource.
-- **Tenant registration.** `deploy-stage.yml` passes `demo_url: https://demo.stage.chat.biatec.io` to `deploy.yml`,
-  which after the tenant upsert appends that origin to `AllowedOrigins` and `biatec-demo` to `ClientKeys` of tenant
-  `biatec-chat` when they are missing (idempotent; nothing else on the row changes, and it refuses an origin that is
-  not under the backend's parent domain). Production gets no `demo_url`, so its tenant is untouched.
+  certificate with the cluster's `letsencrypt-dns` issuer (as for the backend ingress), so the host needed no new DNS
+  record or cloud resource.
+- **Tenant registration.** `deploy.yml` renders the overlay once; when it contains the Ingress `biatec-chat-demo`
+  (only `k8s/stage` does), it takes that host and, after the tenant upsert, appends `https://<host>` to
+  `AllowedOrigins` and `biatec-demo` to `ClientKeys` of tenant `biatec-chat` when they are missing. Idempotent, NULL
+  columns count as empty, onboarding's limits apply (10 origins, 20 client keys, same site as the backend host), nothing
+  else on the row changes, and the step fails unless a SELECT afterwards finds both on the row. The same rendered
+  overlay decides whether the deploy waits on the demo rollout. Production renders no demo, so its tenant is untouched.
 - **CSP.** nginx sends `connect-src https://stage.chat.biatec.io` and nothing else for network access,
   `script-src 'self'` (no inline script), `style-src 'self' 'unsafe-inline'` (the widget injects its stylesheet into
   its shadow root as a `<style>` element, PrimeVue does the same on the DEX page), `frame-ancestors 'none'`,
-  `base-uri 'none'`, `form-action 'none'`. The backend origin is baked in at image build time (`BACKEND_URL` build
-  argument, default stage), together with the bundle's backend URL.
+  `base-uri 'none'`, `form-action 'none'`. The headers live in `apps/demo/security-headers.conf`, included by every
+  nginx location (an `add_header` in a location would otherwise drop the server-level ones). The backend origin is
+  baked in at image build time from the required `BACKEND_URL` build argument (`deploy-stage.yml` passes its
+  `STAGE_URL`, the same value it deploys to), together with the bundle's backend URL.
 - **No secrets.** The bundle holds the backend URL and the client key, which is a label, not a secret. The image build
   fails if `dist/` contains anything that looks like a token, client secret, private key or AWS key.
 - **Container.** `nginxinc/nginx-unprivileged`, uid 101, port 8080, read-only root filesystem with `/tmp` as an
@@ -71,7 +67,7 @@ saying why, and no `prompt`) and this table with it, rather than leaving a butto
 
 ```sh
 docker compose up -d redis postgres
-ASPNETCORE_ENVIRONMENT=Development ASPNETCORE_URLS=http://localhost:5000 dotnet run --project backend/Biatec.Chat.Api
+ASPNETCORE_ENVIRONMENT=Development ASPNETCORE_URLS=http://localhost:5000 dotnet run --no-launch-profile --project backend/Biatec.Chat.Api
 pnpm install
 pnpm --filter @biatec/chat-protocol build && pnpm --filter @biatec/chat-widget build   # the demo uses the widget's dist
 pnpm --filter demo dev            # http://localhost:5173, dev tenant "localhost", client key "dev"
@@ -79,7 +75,7 @@ pnpm --filter demo dev            # http://localhost:5173, dev tenant "localhost
 
 Port 5173 is fixed because the dev tenant only allows that origin (stop the widget playground first). Other targets:
 `VITE_BIATEC_CHAT_URL=... VITE_BIATEC_CHAT_CLIENT_KEY=... pnpm --filter demo build`. The container:
-`docker build -f apps/demo/Dockerfile -t biatec-chat-demo .` then
+`docker build -f apps/demo/Dockerfile --build-arg BACKEND_URL=https://stage.chat.biatec.io -t biatec-chat-demo .` then
 `docker run --rm --read-only --tmpfs /tmp -p 8080:8080 biatec-chat-demo`.
 
 ## Demo identities and testnet

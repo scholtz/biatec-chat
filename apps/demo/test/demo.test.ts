@@ -10,6 +10,7 @@ afterEach(() => {
   wrapper?.unmount();
   wrapper = null;
   document.body.innerHTML = "";
+  vi.restoreAllMocks();
 });
 
 function render(theme: "dark" | "light") {
@@ -53,6 +54,15 @@ describe("sections", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(spy).toHaveBeenCalledWith(SECTIONS[0].items[0].prompt);
     expect(w.find("#guest .notice").text()).toContain("Sent to Biatec AI");
+  });
+
+  it("shows the not-ready notice when ask() rejects (backend unreachable)", async () => {
+    const api = await import("@biatec/chat-widget");
+    vi.spyOn(api.useBiatecChat(), "ask").mockRejectedValue(new TypeError("Failed to fetch"));
+    const w = render("dark");
+    await w.find("#guest button.prompt").trigger("click");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(w.find("#guest .notice").text()).toContain("The chat is not ready yet");
   });
 });
 

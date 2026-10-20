@@ -1,13 +1,14 @@
 # Demo site on its own host. *.stage.chat.biatec.io already resolves to the cluster ingress, so this needs no DNS
 # change; cert-manager issues the certificate. Same site as the backend (stage.chat.biatec.io, both under biatec.io),
-# so the SameSite=Lax session cookie works; the origin is registered on the tenant by deploy.yml (demo_url).
+# so the SameSite=Lax session cookie works; deploy.yml registers https://<this host> on the tenant
+# because the rendered overlay contains this Ingress.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: biatec-chat-demo
   labels: {app.kubernetes.io/name: biatec-chat-demo, app.kubernetes.io/part-of: biatec-chat}
   annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
+    cert-manager.io/cluster-issuer: letsencrypt-dns
 spec:
   ingressClassName: nginx
   tls:

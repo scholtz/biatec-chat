@@ -123,6 +123,9 @@ jobs:
           context: .
           file: apps/demo/Dockerfile
           push: false
+          # Build check only; the stage image is built for the stage backend in deploy-stage.yml.
+          build-args: |
+            BACKEND_URL=https://backend.invalid
           cache-from: type=gha,scope=demo
           cache-to: type=gha,scope=demo,mode=max
       - name: Render k8s overlays

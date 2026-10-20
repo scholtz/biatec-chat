@@ -11,11 +11,6 @@ on:
       overlay: {type: string, required: true, description: "k8s/<overlay>: stage or main"}
       namespace: {type: string, required: true}
       tag: {type: string, required: true, description: "Image tag of all images in the overlay, already in the registry"}
-      demo_url:
-        type: string
-        required: false
-        default: ""
-        description: "Demo site URL (apps/demo) when the overlay deploys it (stage only): its origin is registered on the tenant and its rollout awaited"
 
 permissions:
   contents: read
@@ -110,12 +105,18 @@ jobs:
           rm -f "$RUNNER_TEMP/aws-config"
 
       # Every image of the overlay carries the same tag; pin it in the overlay (not committed) and apply.
+      # The demo site (apps/demo) is in the overlay when it renders an Ingress named biatec-chat-demo (k8s/stage); its
+      # host is what the tenant step registers and the rollout step waits on. k8s/main deletes it, so production skips both.
       - name: Apply ${{ inputs.overlay }} with tag ${{ inputs.tag }}
+        id: apply
         run: |
           sed -i "s/^\(\s*newTag:\).*/\1 $TAG/" "$OVERLAY/kustomization.yaml"
           total="$(grep -c "newTag:" "$OVERLAY/kustomization.yaml")"
           [ "$total" -ge 2 ] && [ "$(grep -c "newTag: $TAG$" "$OVERLAY/kustomization.yaml")" = "$total" ]
-          kubectl apply -k "$OVERLAY"
+          kubectl kustomize "$OVERLAY" > "$RUNNER_TEMP/rendered.yaml"
+          demo_host="$(yq -r 'select(.kind == "Ingress" and .metadata.name == "biatec-chat-demo") | .spec.rules[0].host' "$RUNNER_TEMP/rendered.yaml")"
+          echo "demo_host=$demo_host" >> "$GITHUB_OUTPUT"
+          kubectl apply -f "$RUNNER_TEMP/rendered.yaml"
 
       - name: Wait for databases
         run: |
@@ -161,33 +162,42 @@ jobs:
           SQL
 
       # The demo site (docs/demo-site.md) calls the backend from its own origin with client key biatec-demo. Adds just
-      # that origin and key to the tenant when missing; everything else on the row stays owned by onboarding. Same
-      # site as the backend host (the session cookie is SameSite=Lax), checked here so a typo cannot open CORS wider.
+      # that origin and key to the tenant when missing; everything else on the row stays owned by onboarding. Same limits
+      # as onboarding (10 origins, 20 client keys, same site as the backend host: the session cookie is SameSite=Lax),
+      # and the step fails unless the row afterwards holds both.
       - name: Register demo origin on tenant biatec-chat
-        if: inputs.demo_url != ''
+        if: steps.apply.outputs.demo_host != ''
         env:
-          DEMO_URL: ${{ inputs.demo_url }}
+          DEMO_HOST: ${{ steps.apply.outputs.demo_host }}
           SITE_URL: ${{ inputs.url }}
         run: |
-          origin="${DEMO_URL%/}"
-          [[ "$origin" =~ ^https://[a-z0-9.-]+$ ]] || { echo "::error::demo_url must be https://<host>, got '$DEMO_URL'."; exit 1; }
+          [[ "$DEMO_HOST" =~ ^[a-z0-9.-]+$ ]] || { echo "::error::Unexpected demo ingress host '$DEMO_HOST'."; exit 1; }
+          origin="https://$DEMO_HOST"
           site="${SITE_URL#https://}"; site="${site%/}"
-          [[ "${origin#https://}" == *."${site#*.}" ]] || { echo "::error::$origin is not under ${site#*.} (same site as $site)."; exit 1; }
-          kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
-            psql -q -v ON_ERROR_STOP=1 -U biatec -d biatec_chat -v origin="$origin" -v client_key=biatec-demo <<'SQL'
-          UPDATE "Tenants" SET "AllowedOrigins" = array_append("AllowedOrigins", :'origin')
-           WHERE "Id" = 'biatec-chat' AND NOT (:'origin' = ANY ("AllowedOrigins"));
-          UPDATE "Tenants" SET "ClientKeys" = "ClientKeys" || jsonb_build_array(:'client_key'::text)
-           WHERE "Id" = 'biatec-chat' AND NOT ("ClientKeys" @> jsonb_build_array(:'client_key'::text));
+          [[ "$DEMO_HOST" == *."${site#*.}" ]] || { echo "::error::$origin is not under ${site#*.} (same site as $site)."; exit 1; }
+          ok="$(kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
+            psql -qtA -v ON_ERROR_STOP=1 -U biatec -d biatec_chat -v origin="$origin" -v client_key=biatec-demo <<'SQL'
+          UPDATE "Tenants" SET "AllowedOrigins" = array_append(COALESCE("AllowedOrigins", '{}'), :'origin')
+           WHERE "Id" = 'biatec-chat' AND NOT (:'origin' = ANY (COALESCE("AllowedOrigins", '{}')))
+             AND cardinality(COALESCE("AllowedOrigins", '{}')) < 10;
+          UPDATE "Tenants" SET "ClientKeys" = COALESCE("ClientKeys", '[]'::jsonb) || jsonb_build_array(:'client_key'::text)
+           WHERE "Id" = 'biatec-chat' AND NOT (COALESCE("ClientKeys", '[]'::jsonb) @> jsonb_build_array(:'client_key'::text))
+             AND jsonb_array_length(COALESCE("ClientKeys", '[]'::jsonb)) < 20;
+          SELECT (:'origin' = ANY (COALESCE("AllowedOrigins", '{}')))
+                 AND COALESCE("ClientKeys", '[]'::jsonb) @> jsonb_build_array(:'client_key'::text)
+            FROM "Tenants" WHERE "Id" = 'biatec-chat';
           SQL
+          )"
+          [ "$ok" = t ] || { echo "::error::Tenant biatec-chat is missing, or already has 10 origins / 20 client keys: $origin and biatec-demo were not registered (got '$ok')."; exit 1; }
+          echo "Tenant biatec-chat allows $origin with client key biatec-demo."
 
       - name: Wait for rollout
         env:
-          DEMO_URL: ${{ inputs.demo_url }}
+          DEMO_HOST: ${{ steps.apply.outputs.demo_host }}
         run: |
           kubectl rollout status deployment/biatec-chat-builders -n "$NAMESPACE" --timeout=5m
           kubectl rollout status deployment/biatec-chat-backend -n "$NAMESPACE" --timeout=5m
-          if [ -n "$DEMO_URL" ]; then kubectl rollout status deployment/biatec-chat-demo -n "$NAMESPACE" --timeout=5m; fi
+          if [ -n "$DEMO_HOST" ]; then kubectl rollout status deployment/biatec-chat-demo -n "$NAMESPACE" --timeout=5m; fi
 
       - name: Summary
         run: echo "Deployed \`$TAG\` to ${{ inputs.environment }} (\`$NAMESPACE\`)." >> "$GITHUB_STEP_SUMMARY"

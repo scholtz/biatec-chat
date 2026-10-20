@@ -35,7 +35,12 @@ const ASK_NOTICE: Record<AskResult, string> = {
 async function ask(sectionId: string, item: Item) {
   if (!item.prompt) return;
   notices.value[sectionId] = "";
-  notices.value[sectionId] = ASK_NOTICE[await chat.ask(item.prompt)];
+  try {
+    notices.value[sectionId] = ASK_NOTICE[await chat.ask(item.prompt)];
+  } catch {
+    // ask() rejects when the widget cannot reach the backend at all.
+    notices.value[sectionId] = ASK_NOTICE.unavailable;
+  }
 }
 
 const widgetTheme = ref<ChatTheme>("host");
