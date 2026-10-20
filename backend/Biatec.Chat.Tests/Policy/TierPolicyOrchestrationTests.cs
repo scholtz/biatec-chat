@@ -170,7 +170,7 @@ public sealed class TierPolicyOrchestrationTests : IAsyncLifetime
         Assert.All(spies, s => Assert.Equal(0, s.Calls));
         // Anonymous requests never even advertise a wallet tool to the model.
         Assert.Equal(["requestSignIn", "kb_search", "market_snapshot"], model.Requests[0].Tools.Select(t => t.Name));
-// Every forged call is logged as a rejection and answered with an error result.
+        // Every forged call is logged as a rejection and answered with an error result.
         foreach (var s in spies)
             Assert.Contains(_sink.Events, e => e.Kind == "tool_call_rejected" && e.ToolName == s.CapabilityName
                 && e.Reason is "tier_too_low" or "feature_disabled" // feature-flagged tools (x402, limits.update) are off for this tenant
@@ -246,7 +246,7 @@ public sealed class TierPolicyOrchestrationTests : IAsyncLifetime
         })).Content.ReadAsStringAsync();
 
         Assert.Equal(["requestSignIn", "kb_search", "market_snapshot"], model.Requests[0].Tools.Select(t => t.Name));
-Assert.Equal(ModelProfile.Anonymous, model.Requests[0].Profile);
+        Assert.Equal(ModelProfile.Anonymous, model.Requests[0].Profile);
     }
 
     [Fact]
