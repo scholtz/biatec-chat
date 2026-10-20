@@ -189,6 +189,29 @@ public sealed class SweeperTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Sweeper_SkipsIdleSessionBetweenStepsOfAMultiStepAction_UntilTheStepExpires()
+    {
+        var (sweeper, _, _) = Build(true);
+        var s = await AddSessionAsync(TimeSpan.FromMinutes(20), TimeSpan.FromHours(5));
+        await using (var db = NewContext())
+        {
+            var conv = (await db.ChatSessions.SingleAsync(x => x.Id == s)).ConversationId;
+            var preview = Guid.NewGuid();
+            db.ActionPreviews.Add(new ActionPreview { Id = preview, ConversationId = conv, Capability = "dex.liquidity", CanonicalJson = "{}", ExpiresAt = _time.Now.AddMinutes(5), Status = ActionPreviewStatus.InProgress });
+            db.ActionSteps.Add(new ActionStep { Id = Guid.NewGuid(), PreviewId = preview, Seq = 0, Kind = ActionStepKind.Sign, SubjectHash = "h0", ExpiresAt = _time.Now.AddMinutes(5), Status = StepStatus.Confirmed });
+            db.ActionSteps.Add(new ActionStep { Id = Guid.NewGuid(), PreviewId = preview, Seq = 1, Kind = ActionStepKind.Sign, SubjectHash = "h1", ExpiresAt = _time.Now.AddMinutes(10), Status = StepStatus.Pending });
+            await db.SaveChangesAsync();
+        }
+
+        Assert.Equal(0, (await sweeper.SweepAsync(default)).Ended);
+        Assert.True(await SessionExistsAsync(s));
+
+        _time.Now += TimeSpan.FromMinutes(10) + SessionPolicy.InFlightGrace; // step 1's window and the grace are over
+        await sweeper.SweepAsync(default);
+        Assert.False(await SessionExistsAsync(s));
+    }
+
+    [Fact]
     public async Task Sweeper_AbsoluteLifetimeAlwaysEndsSession_EvenWithOpenConsentAndActivity()
     {
         var (sweeper, _, _) = Build(true);
