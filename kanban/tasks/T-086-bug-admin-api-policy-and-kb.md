@@ -11,7 +11,7 @@ conflicts_with: []
 issue: "#155"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#responsibilities"
 created: 2026-10-20
 updated: 2026-10-20
@@ -119,3 +119,4 @@ Filled in by the agent when it moves the task to `review`.
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #9)
+- 2026-10-20 04:44 · LukassSoukup · taken · status stays backlog
