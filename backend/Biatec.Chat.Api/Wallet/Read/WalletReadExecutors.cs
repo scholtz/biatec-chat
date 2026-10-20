@@ -38,6 +38,43 @@ public abstract class WalletReadExecutor(IBiatecMcpClient mcp) : IToolExecutor
 
     protected static string? Network(JsonNode arguments) => arguments["network"]?.GetValue<string>();
 
+    /// <summary>The Bitcoin network names, the same ones <c>wallet.transfer</c> takes.</summary>
+    internal static bool IsBitcoin(string? network) => network is "bitcoin" or "bitcoin-testnet";
+
+    /// <summary>getCryptoAddress derivation slots of the primary seed read as the user's Bitcoin addresses.</summary>
+    private static readonly (int Slot, string Label)[] BitcoinSlots = [(0, "primary"), (1, "secondary")];
+
+    internal sealed record BitcoinAddress(int Slot, string Label, string Address);
+
+    /// <summary>
+    /// The user's primary (slot 0) and secondary (slot 1) Bitcoin addresses via Biatec MCP <c>getCryptoAddress</c>, which
+    /// returns one <c>{network, family, address, error}</c> per call. Null when the primary cannot be read; a secondary that
+    /// cannot be read, or that equals the primary (a server ignoring the slot), is left out.
+    /// </summary>
+    private protected async Task<List<BitcoinAddress>?> BitcoinAddressesAsync(McpCallContext ctx, string network, CancellationToken ct)
+    {
+        var result = new List<BitcoinAddress>();
+        foreach (var (slot, label) in BitcoinSlots)
+        {
+            var r = await Mcp.GetCryptoAddressAsync(ctx, network, slot, ct);
+            var address = r.IsError || HasError(r.Json) || r.Json is not { } json || !TryGet(json, "address", out var v) || v.ValueKind != JsonValueKind.String
+                ? null
+                : v.GetString();
+            if (string.IsNullOrWhiteSpace(address))
+            {
+                if (slot == 0) return null;
+                continue;
+            }
+            if (result.Any(a => a.Address == address)) continue;
+            result.Add(new BitcoinAddress(slot, label, address));
+        }
+        return result;
+    }
+
+    /// <summary>Biatec MCP reports most failures as a non-empty <c>error</c> field rather than as a tool error.</summary>
+    internal static bool HasError(JsonElement? json) =>
+        json is { } j && TryGet(j, "error", out var e) && e.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(e.GetString());
+
     /// <summary>Addresses from <c>listAlgorandAddresses</c>: tolerates a bare array, an object with an array, strings or objects.</summary>
     internal static List<string> ParseAddresses(JsonElement? json)
     {
@@ -69,7 +106,7 @@ public abstract class WalletReadExecutor(IBiatecMcpClient mcp) : IToolExecutor
     }
 }
 
-/// <summary><c>wallet.listAddresses</c>: the user's own Algorand addresses via Biatec MCP <c>listAlgorandAddresses</c>.</summary>
+/// <summary><c>wallet.listAddresses</c>: the user's own Algorand addresses via Biatec MCP <c>listAlgorandAddresses</c>, or their labelled Bitcoin addresses via <c>getCryptoAddress</c>.</summary>
 public sealed class WalletListAddressesExecutor(IBiatecMcpClient mcp) : WalletReadExecutor(mcp)
 {
     public override string CapabilityName => "wallet.listAddresses";
@@ -77,6 +114,20 @@ public sealed class WalletListAddressesExecutor(IBiatecMcpClient mcp) : WalletRe
 
     protected override async Task<ToolExecutionResult> RunAsync(McpCallContext mcpCtx, JsonNode arguments, CancellationToken ct)
     {
+        if (IsBitcoin(Network(arguments)))
+        {
+            var network = Network(arguments)!;
+            var btc = await BitcoinAddressesAsync(mcpCtx, network, ct);
+            if (btc is null) return new ToolExecutionResult("The Bitcoin addresses could not be read. Tell the user to try again.", true);
+            var b = new JsonObject
+            {
+                ["network"] = network,
+                ["count"] = btc.Count,
+                ["addresses"] = new JsonArray(btc.Select(a => (JsonNode?)new JsonObject { ["address"] = a.Address, ["label"] = a.Label, ["slot"] = a.Slot }).ToArray()),
+            };
+            return new ToolExecutionResult(b.ToJsonString());
+        }
+
         var r = await Mcp.ListAlgorandAddressesAsync(mcpCtx, ct);
         if (r.IsError) return new ToolExecutionResult("The addresses could not be read. Tell the user to try again.", true);
         var addresses = ParseAddresses(r.Json);
@@ -100,6 +151,7 @@ public sealed class WalletBalanceExecutor(IBiatecMcpClient mcp) : WalletReadExec
     {
         var network = Network(arguments)!;
         var address = arguments["address"]!.GetValue<string>();
+        if (IsBitcoin(network)) return await BitcoinBalanceAsync(mcpCtx, network, address, ct);
 
         // Only the user's own addresses may be read through this tool.
         var own = await Mcp.ListAlgorandAddressesAsync(mcpCtx, ct);
@@ -111,6 +163,32 @@ public sealed class WalletBalanceExecutor(IBiatecMcpClient mcp) : WalletReadExec
         if (r.IsError) return new ToolExecutionResult("The balance could not be read. Tell the user to try again.", true);
 
         var o = new JsonObject { ["network"] = network, ["address"] = address, ["balances"] = Shape(r.Json, r.Text) };
+        return new ToolExecutionResult(o.ToJsonString());
+    }
+
+    /// <summary>
+    /// Bitcoin: the address must be the user's primary or secondary one; Biatec MCP <c>getCryptoBalance</c> reports the
+    /// confirmed balance in sats as <c>nativeBalanceBaseUnits</c> (a decimal string). The amount stays a string so no
+    /// integer above 2^53 loses precision.
+    /// </summary>
+    private async Task<ToolExecutionResult> BitcoinBalanceAsync(McpCallContext mcpCtx, string network, string address, CancellationToken ct)
+    {
+        var own = await BitcoinAddressesAsync(mcpCtx, network, ct);
+        if (own is null) return new ToolExecutionResult("The Bitcoin addresses could not be read. Tell the user to try again.", true);
+        var mine = own.FirstOrDefault(a => a.Address == address);
+        if (mine is null)
+            return new ToolExecutionResult("That address does not belong to the signed-in user. Use wallet.listAddresses to see the user's addresses.", true);
+
+        var r = await Mcp.GetCryptoBalanceAsync(mcpCtx, network, address, ct);
+        string? sats = null;
+        if (!r.IsError && !WalletReadExecutor.HasError(r.Json) && r.Json is { } json
+            && WalletReadExecutor.TryGet(json, "nativeBalanceBaseUnits", out var v) && v.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+            sats = v.ToString();
+        if (sats is null || Format(sats, 8) is not { } display)
+            return new ToolExecutionResult("The balance could not be read. Tell the user to try again.", true);
+
+        var entry = new JsonObject { ["symbol"] = "BTC", ["unit"] = "sats", ["amount"] = sats, ["decimals"] = 8, ["display"] = display };
+        var o = new JsonObject { ["network"] = network, ["address"] = address, ["label"] = mine.Label, ["balances"] = new JsonArray(entry) };
         return new ToolExecutionResult(o.ToJsonString());
     }
 

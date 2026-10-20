@@ -11,6 +11,8 @@ namespace Biatec.Chat.Tests.Wallet;
 public sealed class WalletReadTests
 {
     private const string Mine = "MYADDRESS234567";
+    private const string BtcPrimary = "bc1qprimary0000000000000000000000000000000";
+    private const string BtcSecondary = "bc1qsecondary00000000000000000000000000000";
 
     private sealed class FakeMcp : IBiatecMcpClient
     {
@@ -36,6 +38,15 @@ public sealed class WalletReadTests
 
         public Task<IReadOnlyList<McpToolInfo>> GetToolsAsync(McpCallContext ctx, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<McpToolResult> GetCryptoAddressAsync(McpCallContext ctx, string network, CancellationToken ct = default) => throw new NotSupportedException();
+
+        // Real getCryptoAddress shape: one {network, family, address, error} per slot.
+        public Func<int, McpToolResult> BtcAddress { get; set; } = slot => Ok($"{{\"network\":\"Bitcoin\",\"family\":\"Btc\",\"address\":\"{(slot == 0 ? BtcPrimary : BtcSecondary)}\",\"error\":\"\"}}");
+
+        public Task<McpToolResult> GetCryptoAddressAsync(McpCallContext ctx, string network, int slot, CancellationToken ct = default)
+        {
+            Calls.Add($"getCryptoAddress:{network}:{slot}");
+            return Task.FromResult(BtcAddress(slot));
+        }
         public Task<McpToolResult> CreatePaymentTransactionAsync(McpCallContext ctx, string network, string sender, string receiver, string amount, ulong? assetId = null, string? note = null, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<McpToolResult> CreateOptInTransactionAsync(McpCallContext ctx, string network, string address, ulong assetId, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<McpToolResult> CreateBitcoinTransactionAsync(McpCallContext ctx, string network, string sender, string receiver, string amountBtc, CancellationToken ct = default) => throw new NotSupportedException();
@@ -167,6 +178,111 @@ public sealed class WalletReadTests
         {
             Assert.NotNull(registry.Find(e.CapabilityName));
             Assert.False(string.IsNullOrWhiteSpace(e.StatusLabel(new JsonObject())));
+        }
+    }
+
+    [Theory]
+    [InlineData("bitcoin")]
+    [InlineData("bitcoin-testnet")]
+    public async Task ListAddresses_on_bitcoin_returns_labelled_primary_and_secondary_addresses_via_getCryptoAddress(string network)
+    {
+        var mcp = new FakeMcp();
+        var r = await new WalletListAddressesExecutor(mcp).ExecuteAsync(Ctx("wallet.listAddresses"), new JsonObject { ["network"] = network }, default);
+        Assert.False(r.IsError);
+        var o = JsonNode.Parse(r.Content)!;
+        Assert.Equal(network, (string)o["network"]!);
+        Assert.Equal(2, (int)o["count"]!);
+        Assert.Equal(BtcPrimary, (string)o["addresses"]![0]!["address"]!);
+        Assert.Equal("primary", (string)o["addresses"]![0]!["label"]!);
+        Assert.Equal(BtcSecondary, (string)o["addresses"]![1]!["address"]!);
+        Assert.Equal("secondary", (string)o["addresses"]![1]!["label"]!);
+        Assert.Equal([$"getCryptoAddress:{network}:0", $"getCryptoAddress:{network}:1"], mcp.Calls);
+    }
+
+    [Fact]
+    public async Task ListAddresses_on_bitcoin_drops_a_secondary_that_repeats_the_primary_or_fails()
+    {
+        var same = new FakeMcp { BtcAddress = _ => FakeMcp.Ok($"{{\"address\":\"{BtcPrimary}\"}}") };
+        var r1 = await new WalletListAddressesExecutor(same).ExecuteAsync(Ctx("wallet.listAddresses"), new JsonObject { ["network"] = "bitcoin" }, default);
+        Assert.Equal(1, (int)JsonNode.Parse(r1.Content)!["count"]!);
+
+        var failing = new FakeMcp { BtcAddress = slot => slot == 0 ? FakeMcp.Ok($"{{\"address\":\"{BtcPrimary}\"}}") : FakeMcp.Ok("{\"address\":\"\",\"error\":\"boom\"}") };
+        var r2 = await new WalletListAddressesExecutor(failing).ExecuteAsync(Ctx("wallet.listAddresses"), new JsonObject { ["network"] = "bitcoin" }, default);
+        Assert.Equal(1, (int)JsonNode.Parse(r2.Content)!["count"]!);
+    }
+
+    [Fact]
+    public async Task ListAddresses_on_bitcoin_is_an_error_when_the_primary_cannot_be_read()
+    {
+        var mcp = new FakeMcp { BtcAddress = _ => FakeMcp.Ok("{\"network\":\"bitcoin\",\"address\":\"\",\"error\":\"secret detail\"}") };
+        var r = await new WalletListAddressesExecutor(mcp).ExecuteAsync(Ctx("wallet.listAddresses"), new JsonObject { ["network"] = "bitcoin" }, default);
+        Assert.True(r.IsError);
+        Assert.DoesNotContain("secret", r.Content);
+    }
+
+    [Fact]
+    public async Task Balance_on_bitcoin_returns_sats_with_8_decimals_and_the_address_label()
+    {
+        var mcp = new FakeMcp
+        {
+            Balance = () => FakeMcp.Ok($"{{\"network\":\"Bitcoin\",\"family\":\"Btc\",\"address\":\"{BtcSecondary}\",\"nativeCurrencySymbol\":\"BTC\",\"nativeBalance\":0.00012345,\"nativeBalanceBaseUnits\":\"12345\",\"error\":\"\"}}"),
+        };
+        var r = await new WalletBalanceExecutor(mcp).ExecuteAsync(Ctx("wallet.balance"), new JsonObject { ["network"] = "bitcoin", ["address"] = BtcSecondary }, default);
+        Assert.False(r.IsError);
+        var o = JsonNode.Parse(r.Content)!;
+        Assert.Equal("secondary", (string)o["label"]!);
+        var b = o["balances"]![0]!;
+        Assert.Equal("BTC", (string)b["symbol"]!);
+        Assert.Equal("sats", (string)b["unit"]!);
+        Assert.Equal("12345", (string)b["amount"]!);
+        Assert.Equal(8, (int)b["decimals"]!);
+        Assert.Equal("0.00012345", (string)b["display"]!);
+        Assert.Contains($"getCryptoBalance:bitcoin:{BtcSecondary}", mcp.Calls);
+        Assert.DoesNotContain("listAlgorandAddresses", mcp.Calls);
+    }
+
+    [Fact]
+    public async Task Balance_on_bitcoin_keeps_amounts_above_2_pow_53_exact_as_strings()
+    {
+        var mcp = new FakeMcp { Balance = () => FakeMcp.Ok("{\"nativeBalanceBaseUnits\":\"9007199254740993\"}") };
+        var r = await new WalletBalanceExecutor(mcp).ExecuteAsync(Ctx("wallet.balance"), new JsonObject { ["network"] = "bitcoin", ["address"] = BtcPrimary }, default);
+        var b = JsonNode.Parse(r.Content)!["balances"]![0]!;
+        Assert.Equal(JsonValueKind.String, b["amount"]!.GetValueKind());
+        Assert.Equal("9007199254740993", (string)b["amount"]!);
+        Assert.Equal("90071992.54740993", (string)b["display"]!);
+    }
+
+    [Fact]
+    public async Task Balance_on_bitcoin_refuses_an_address_the_user_does_not_own_without_reading_it()
+    {
+        var mcp = new FakeMcp();
+        var r = await new WalletBalanceExecutor(mcp).ExecuteAsync(Ctx("wallet.balance"), new JsonObject { ["network"] = "bitcoin", ["address"] = "bc1qstranger" }, default);
+        Assert.True(r.IsError);
+        Assert.DoesNotContain(mcp.Calls, c => c.StartsWith("getCryptoBalance"));
+    }
+
+    [Fact]
+    public async Task Balance_on_bitcoin_reports_an_mcp_error_field_as_a_tool_error()
+    {
+        var mcp = new FakeMcp { Balance = () => FakeMcp.Ok("{\"error\":\"Could not reach the block explorer\",\"errorType\":\"DataSourceUnavailable\"}") };
+        var r = await new WalletBalanceExecutor(mcp).ExecuteAsync(Ctx("wallet.balance"), new JsonObject { ["network"] = "bitcoin", ["address"] = BtcPrimary }, default);
+        Assert.True(r.IsError);
+    }
+
+    [Fact]
+    public void Gate_accepts_the_wallet_transfer_bitcoin_network_names_for_the_read_tools()
+    {
+        var registry = CapabilityRegistry.CreateDefault();
+        var gate = new ToolGate(registry, new InMemoryPolicyEventSink());
+        var auth = new GateContext(SessionTier.Authenticated, ["openid"]);
+        var transferNetworks = registry.Find("wallet.transfer")!.InputSchema!["properties"]!["network"]!["enum"]!.AsArray().Select(n => (string)n!).ToArray();
+        foreach (var name in new[] { "wallet.listAddresses", "wallet.balance" })
+            Assert.Equal(transferNetworks, registry.Find(name)!.InputSchema!["properties"]!["network"]!["enum"]!.AsArray().Select(n => (string)n!).ToArray());
+        foreach (var network in new[] { "bitcoin", "bitcoin-testnet" })
+        {
+            Assert.True(gate.Check("wallet.listAddresses", new JsonObject { ["network"] = network }, auth).Allowed);
+            Assert.True(gate.Check("wallet.balance", new JsonObject { ["network"] = network, ["address"] = BtcPrimary }, auth).Allowed);
+            Assert.False(gate.Check("wallet.balance", new JsonObject { ["network"] = network, ["address"] = BtcPrimary }, new GateContext(SessionTier.Anonymous, ["openid"])).Allowed);
         }
     }
 }
