@@ -66,7 +66,8 @@ public sealed class ConfirmService(
     IEvidenceRecorder? recorder = null,
     IEnumerable<IStepLandedObserver>? landedObservers = null,
     IEnumerable<IPreviewFreshnessGate>? freshnessGates = null,
-    Biatec.Chat.Tools.Caps.ISpendCaps? caps = null)
+    Biatec.Chat.Tools.Caps.ISpendCaps? caps = null,
+    Biatec.Chat.Tools.Caps.NoDevice.INoDeviceGate? noDevice = null)
 {
     public const string OutageMessage = "The sign-in service is unavailable. Your session is unchanged; please try again shortly.";
 
@@ -190,8 +191,34 @@ public sealed class ConfirmService(
         var remaining = (int)Math.Max(1, (step.ExpiresAt - clock.GetUtcNow()).TotalSeconds);
         // T-025: reserve against the tenant soft cap / safe caps before signing; over a cap, ask Biatec OIDC for consent.
         var capRequest = CapRequestFor(tenant, session, preview, step);
+        // T-061: a user without an active device (rule 4 / rule 8 fallback, required-changes row 10) gets the reduced
+        // daily cap and cannot sign anything that needs the phone. Checked before anything is reserved or signed.
+        var noDeviceStatus = noDevice is null ? null : await noDevice.CheckAsync(sessionId, bearer, ct);
+        if (noDeviceStatus is not null)
+        {
+            string? noDeviceRefusal = null;
+            if (Biatec.Chat.Tools.Caps.NoDevice.NoDevicePolicy.NeedsPhone(noDeviceStatus, capRequest?.ValueEur ?? preview.PredictedValueEur, PreviewRequiresConsent(preview)))
+                noDeviceRefusal = Biatec.Chat.Tools.Caps.NoDevice.NoDevicePolicy.NeedsDeviceReason;
+            else if (capRequest is null || caps is null)
+                noDeviceRefusal = Biatec.Chat.Tools.Caps.NoDevice.NoDevicePolicy.UncheckedReason; // the reduced cap cannot be checked: fail closed
+            else
+                capRequest = capRequest with { NoDeviceDailyCapEur = noDeviceStatus.DailyCapEur };
+            if (noDeviceRefusal is not null) return await NoDeviceRefusalAsync(session, preview, step, noDeviceRefusal, ct);
+        }
         var cap = capRequest is null || caps is null ? Biatec.Chat.Tools.Caps.CapDecision.None : await caps.ReserveAsync(capRequest, ct);
-        if (cap.RequireConsent && caps is { OidcHonoursRequireConsent: false })
+        var capConsent = cap.Outcome switch
+        {
+            Biatec.Chat.Tools.Caps.CapOutcome.Allowed => false,
+            Biatec.Chat.Tools.Caps.CapOutcome.RequireConsent => true,
+            // T-061: over the reduced cap for a user without an active device. Any other refusal fails closed the same way.
+            _ => (bool?)null,
+        };
+        if (capConsent is null)
+            return await NoDeviceRefusalAsync(session, preview, step, cap.Reason ?? Biatec.Chat.Tools.Caps.NoDevice.NoDevicePolicy.DailyCapReason, ct, cap.Reason);
+        // T-061: a cap would send it to a phone the user does not have.
+        if (capConsent == true && noDeviceStatus is not null)
+            return await NoDeviceRefusalAsync(session, preview, step, Biatec.Chat.Tools.Caps.NoDevice.NoDevicePolicy.NeedsDeviceReason, ct, cap.Reason);
+        if (capConsent == true && caps is { OidcHonoursRequireConsent: false })
         {
             // Biatec OIDC does not honour requireConsent yet (required-changes row 3): the cap is a hard stop instead.
             await RevertAsync(preview, ct);
@@ -202,7 +229,7 @@ public sealed class ConfirmService(
             return new ConfirmResult(ConfirmOutcome.Failed, CapMessage(cap.Reason) + " This can't be signed until the hour's window frees up. Nothing was signed.", [], ErrorCode: cap.Reason);
         }
         // More consent only: the cap's decision and the preview's own flag are OR-ed, never subtracted.
-        var requireConsent = cap.RequireConsent || PreviewRequiresConsent(preview);
+        var requireConsent = capConsent == true || PreviewRequiresConsent(preview);
         await RecordExtraAsync(session, EvidenceKinds.SigningRequested, new JsonObject
         {
             ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash,
@@ -249,8 +276,14 @@ public sealed class ConfirmService(
             case WalletSignOutcome.Unavailable u:
                 return await OutageAsync(session, preview, step, u.Reason, ct);
 
+            case WalletSignOutcome.StepUp when noDeviceStatus is not null:
+                // T-061: Biatec OIDC asked for the phone (e.g. cooling-off or first use, before it implements rule 4) and the
+                // user has no active device: no consent request is opened that nobody can approve. The reservation was
+                // released above; the preview goes back to awaiting confirmation.
+                return await NoDeviceRefusalAsync(session, preview, step, Biatec.Chat.Tools.Caps.NoDevice.NoDevicePolicy.NeedsDeviceReason, ct, "oidc_step_up");
+
             case WalletSignOutcome.StepUp s:
-                return await ConsentPendingAsync(session, preview, step, s, origin, ct, cap.RequireConsent ? CapMessage(cap.Reason) : null);
+                return await ConsentPendingAsync(session, preview, step, s, origin, ct, capConsent == true ? CapMessage(cap.Reason) : null);
 
             case WalletSignOutcome.Rejected { Error: "invalid_token" }:
                 // An expired or invalid sign-in says nothing about the group: keep the preview confirmable after re-auth.
@@ -303,6 +336,17 @@ public sealed class ConfirmService(
         if (caps is null) return;
         try { await caps.RevokeAsync(step.Id, CancellationToken.None); }
         catch (Exception ex) { log.LogError("Could not revoke a soft cap row: {ErrorType}", ex.GetType().Name); }
+    }
+
+    /// <summary>T-061: refused for a user without an active device. Nothing was reserved or signed; the preview stays confirmable.</summary>
+    private async Task<ConfirmResult> NoDeviceRefusalAsync(ChatSession session, ActionPreview preview, ActionStep step, string reason, CancellationToken ct, string? capReason = null)
+    {
+        await RevertAsync(preview, ct);
+        await RecordAsync(session, "signing_refused", new JsonObject
+        {
+            ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["reason"] = reason, ["capReason"] = capReason, ["noActiveDevice"] = true,
+        }, ct);
+        return new ConfirmResult(ConfirmOutcome.Failed, Biatec.Chat.Tools.Caps.NoDevice.NoDevicePolicy.Message(reason), [], ErrorCode: reason);
     }
 
     /// <summary>What the user is told when a cap forces phone approval or, against real Biatec OIDC, refuses.</summary>

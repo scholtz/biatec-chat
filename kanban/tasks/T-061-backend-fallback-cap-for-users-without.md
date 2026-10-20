@@ -1,7 +1,7 @@
 ---
 id: T-061
 title: Backend fallback cap for users without an active device
-status: in-progress
+status: done
 priority: P3
 epic: "Consent & authenticator"
 blocked_by: [T-025, T-049]
@@ -43,10 +43,10 @@ Parallel work possible: **no**. Don't run it at the same time as T-024, T-035: t
 
 ## Acceptance criteria
 
-- [ ] No-device user is refused once the day's total would exceed the cap
-- [ ] Above-threshold action for a no-device user is refused with an enrollment hint
-- [ ] Users with an active device are unaffected
-- [ ] Tests with fake consent settings
+- [x] No-device user is refused once the day's total would exceed the cap
+- [x] Above-threshold action for a no-device user is refused with an enrollment hint
+- [x] Users with an active device are unaffected
+- [x] Tests with fake consent settings
 
 ## Verification
 
@@ -54,7 +54,16 @@ dotnet test --filter NoDevice
 
 ## Hand-off
 
+- **Summary:** backend fallback for rules 4 and 8 (required-changes row 10). Before signing, the confirm path reads `GET /consent/settings` (cached per session 60 s; a missing endpoint is remembered 10 min and skipped). For a user with no active device: above-threshold (threshold clamped to the 1000 EUR ceiling), unpredictable value, `always_ask`, preview `requireConsent` or cap-forced consent → refused with `no_active_device` and an enrollment hint; cooling-off and first use go through the reduced cap (rule 4); otherwise the value is reserved in the T-025 store against a rolling 24 h total (`Caps:NoDevice:DailyCapEur`, default 100), zero-value actions never refused. If OIDC still answers StepUp for a no-device user, no ConsentRequest is opened: reservation released, preview reverted, `no_active_device` returned at once. `CapOutcome { Allowed, RequireConsent, Refused }` replaces the bool pair (unknown outcomes refused). `Caps:NoDevice:Enabled` (default true) off switch; disabled resolves nothing.
+- **Branch:** `task/T-061` @ `e321468` (merged with main), PR #184 (`Closes #62`).
+- **Files outside the area:** `Tools/Caps/{SpendCaps,CapPolicy}.cs`, `Tools/Consent/CibaTokenClient.cs` (`FetchAsync`), `Api/Chat/Confirm/ConfirmService.cs`, `Api/Caps/CapsRegistration.cs`, `Tests/Caps/SpendCapsTests.cs`, docs/required-changes-biatec-oidc.md (row 10).
+- **Verification:** Caps 53 passed; full backend on current main 1172 passed, 1 skipped, 0 failed. Review (medium): all realistic findings fixed; the coordinator's first instruction for cooling-off/first use contradicted rule 4 and was corrected.
+- **Known limitations:** the 100 EUR/day applies every day for no-device users (the backend doesn't know the client's first 24 h / user's first day); the settings cache is per pod (60 s); an OIDC-side CIBA request opened on StepUp for a no-device user is left to expire.
+- **Unblocks:** no task is blocked by T-061.
+
 ## Review
+
+- 2026-10-20 05:07 · approve · PR #184 merged into main @ 827b3f5 (recorded by kanban-sync)
 
 ## Activity log
 
@@ -63,3 +72,5 @@ dotnet test --filter NoDevice
 - 2026-10-20 03:29 · kanban-board · blocked → backlog · blockers done: T-025, T-049
 - 2026-10-20 04:17 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 04:17 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 05:07 · coordinator · in-progress → review · branch task/T-061 @ e321468, PR #184
+- 2026-10-20 05:07 · user · review → done · PR #184 merged into main @ 827b3f5 (synced by kanban-sync)
