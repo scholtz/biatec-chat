@@ -17,7 +17,7 @@ keep running in docker).
 | Node | 22+ (22.18+ for `--with-mock-oidc`) | |
 | pnpm | 10 | `corepack enable` |
 | Docker | with `docker compose` | Redis 7 and Postgres 16 |
-| AWS CLI | v2 | Only for Bedrock (chat answers) and KMS |
+| AWS CLI | v2 | Only for Bedrock (chat answers) |
 
 AWS: sign in to the hackathon SSO profile before starting, or chat answers fail (everything else still works):
 
@@ -81,5 +81,5 @@ pnpm -C packages/consent-protocol test && pnpm -C packages/consent-protocol conf
 | `Port 5173 is in use` | Stop the other Vite server; the port must stay 5173 for CORS |
 | Mock OIDC fails to start | Needs Node 22.18 or later (runs TypeScript directly) |
 
-Not covered here: the Flutter authenticator (`apps/biatec_authenticator`, needs the Flutter SDK) and AWS deployment
-([docs/deploy-aws.md](docs/deploy-aws.md)).
+Not covered here: the Flutter authenticator (`apps/biatec_authenticator`, needs the Flutter SDK) and deployment to
+Kubernetes ([docs/cicd.md](docs/cicd.md), AWS part in [docs/aws-setup.md](docs/aws-setup.md)).

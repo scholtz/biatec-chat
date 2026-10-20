@@ -1,0 +1,118 @@
+# Builds and tests everything on every pull request. On main it runs as the first stage of deploy-stage.yml
+# (workflow_call), so a push to main is tested once and deployed only when this passes. Needs no secrets. See docs/cicd.md.
+name: ci
+
+on:
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    # Integration tests use the docker-compose dev databases (throwaway CI containers, dev-only password).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: biatec
+          POSTGRES_PASSWORD: biatec-dev-only
+          POSTGRES_DB: biatec_chat
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U biatec -d biatec_chat" --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Test
+        run: dotnet test backend/Biatec.Chat.slnx -c Release --logger "trx;LogFileName=results.trx" --results-directory test-results
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: test-results
+
+  js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The widget and builders import @biatec/chat-protocol from its dist, so it is built first.
+      - name: Build chat-protocol
+        run: pnpm --filter @biatec/chat-protocol build
+      # The widget typecheck also covers playground/dex, which imports @biatec/chat-widget from its dist.
+      - name: Build chat-widget
+        run: pnpm --filter @biatec/chat-widget build
+      - name: Typecheck
+        run: |
+          pnpm --filter @biatec/chat-widget typecheck
+          pnpm --filter builders typecheck
+      - name: Test
+        run: |
+          pnpm --filter @biatec/chat-widget test
+          pnpm --filter builders test
+          pnpm --filter @biatec/consent-protocol test
+          pnpm --filter mock-oidc test
+      - name: Build builders
+        run: pnpm --filter builders build
+
+  authenticator:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/biatec_authenticator
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: false
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+      - name: Build builders image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: builders/sidecar/Dockerfile
+          push: false
+          cache-from: type=gha,scope=builders
+          cache-to: type=gha,scope=builders,mode=max
+      - name: Render k8s overlays
+        run: |
+          kubectl kustomize k8s/stage > /dev/null
+          kubectl kustomize k8s/main > /dev/null

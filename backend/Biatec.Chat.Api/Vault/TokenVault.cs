@@ -10,11 +10,17 @@ public sealed class VaultOptions
 {
     public const string Section = "Vault";
 
-    /// <summary>"Dev" (default, no AWS) or "Kms" (AWS KMS envelope encryption using the Kms section).</summary>
+    /// <summary>
+    /// "Dev" (default, no AWS), "Secret" (master key from <see cref="MasterKey"/>, the Kubernetes deployment) or "Kms"
+    /// (AWS KMS envelope encryption using the Kms section).
+    /// </summary>
     public string KeyProvider { get; set; } = "Dev";
 
     /// <summary>Base64 of 32 bytes for the Dev provider. Omit it and a random per-process key is used.</summary>
     public string? DevKey { get; set; }
+
+    /// <summary>Base64 of 32 bytes for the Secret provider; comes from a Kubernetes secret, never from appsettings.</summary>
+    public string? MasterKey { get; set; }
 
     /// <summary>Grace period added to the absolute session lifetime for the Redis TTL (backstop for a sweeper outage).</summary>
     public TimeSpan TtlGrace { get; set; } = TimeSpan.FromHours(1);
