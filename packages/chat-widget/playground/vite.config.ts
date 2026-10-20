@@ -6,8 +6,12 @@ import { fileURLToPath } from "node:url";
 const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 // The DEX page reads the backend URL like Biatec DEX would (docs/integration-biatec-dex.md, step 1). Locally it is
-// the backend from docker-compose unless the shell sets VITE_BIATEC_CHAT_URL.
-process.env.VITE_BIATEC_CHAT_URL ??= "http://localhost:5000";
+// the backend from docker-compose unless the shell sets VITE_BIATEC_CHAT_URL; an empty value counts as unset, so dev
+// traffic never falls through to the production URL in the snippet.
+if (!process.env.VITE_BIATEC_CHAT_URL?.trim()) process.env.VITE_BIATEC_CHAT_URL = "http://localhost:5000";
+// The local dev tenant (backend TenantSeed, host localhost, origin http://localhost:5173) accepts the client key
+// "dev"; the production key 'biatec-dex' would only get the anonymous public transport there.
+if (!process.env.VITE_BIATEC_CHAT_CLIENT_KEY?.trim()) process.env.VITE_BIATEC_CHAT_CLIENT_KEY = "dev";
 
 export default defineConfig({
   root: here("."),

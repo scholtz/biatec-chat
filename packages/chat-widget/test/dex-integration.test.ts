@@ -1,7 +1,7 @@
 // The widget inside a BiatecDEX-shaped host (playground/dex.html, docs/integration-biatec-dex.md): PrimeVue 5 Aura
 // with `.p-dark`, the host's own vue-i18n, and the host code from the hand-off doc, run against the widget source.
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
-import { createApp, defineComponent, h, nextTick, ref } from "vue";
+import { createApp, defineComponent, h, nextTick, ref, type App } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -26,11 +26,14 @@ const frame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
 const widgetHost = () => document.querySelector<HTMLElement>("[data-biatec-chat-host]")!;
 const shadow = () => widgetHost().shadowRoot!;
 
+const apps: App[] = [];
+
 /** A host app shaped like BiatecDEX src/main.ts: PrimeVue Aura with `.p-dark`, then the widget (step 1). */
 function mountDex(root = defineComponent({ render: () => null })) {
   const el = document.createElement("div");
   document.body.appendChild(el);
   const app = createApp(root);
+  apps.push(app);
   app.use(PrimeVue, { theme: { preset: Aura, options: { prefix: "p", darkModeSelector: ".p-dark" } } });
   // Step 1 as in playground/dex/main.ts (which the browser runs); only the backend URL differs.
   app.use(BiatecChat, { backendUrl: "https://chat.biatec.io", clientKey: "biatec-dex", locale: getCurrentLocale(), theme: "host", mode: "floating" });
@@ -44,7 +47,18 @@ beforeEach(() => {
   document.documentElement.className = "p-dark";
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // Unmount the host apps and the widget app the plugin created, so their MutationObservers and document listeners
+  // stop before the next test; then restore what the DEX setLocale changed.
+  for (const app of apps.splice(0)) app.unmount();
+  const widgetMount = document.querySelector("[data-biatec-chat-host]")?.shadowRoot?.querySelector("div") as
+    | (Element & { __vue_app__?: App })
+    | null
+    | undefined;
+  widgetMount?.__vue_app__?.unmount();
+  await setDexLocale("en");
+  localStorage.clear();
+  document.documentElement.removeAttribute("lang");
   document.body.innerHTML = "";
   document.documentElement.className = "";
   resetHostApi();
@@ -188,6 +202,8 @@ describe("docs/integration-biatec-dex.md", () => {
       .map(norm)
       .filter((l) => l && !l.startsWith("//"))
       .filter((l) => !playground.some((p) => p.includes(l)));
-    expect(missing).toEqual([]);
+    // Lines the playground deliberately replaces (the doc says so next to the snippet).
+    const differs = ["clientKey: 'biatec-dex', // must be listed on the Biatec tenant"];
+    expect(missing).toEqual(differs);
   });
 });

@@ -5,9 +5,15 @@ import { ref } from "vue";
 const STORAGE_KEY = "biatec-theme";
 type Mode = "light" | "dark";
 
-function initial(): Mode {
+/** `?theme=` is for screenshots: it applies to this load only and is never written to storage. */
+function fromQuery(): Mode | null {
   const fromUrl = new URLSearchParams(globalThis.location?.search ?? "").get("theme");
-  if (fromUrl === "light" || fromUrl === "dark") return fromUrl;
+  return fromUrl === "light" || fromUrl === "dark" ? fromUrl : null;
+}
+
+function initial(): Mode {
+  const q = fromQuery();
+  if (q) return q;
   try {
     const stored = globalThis.localStorage?.getItem(STORAGE_KEY);
     if (stored === "light" || stored === "dark") return stored;
@@ -19,8 +25,9 @@ function initial(): Mode {
 
 const mode = ref<Mode>(initial());
 
-function apply(m: Mode) {
+function apply(m: Mode, persist: boolean) {
   document.documentElement.classList.toggle("p-dark", m === "dark");
+  if (!persist) return;
   try {
     localStorage.setItem(STORAGE_KEY, m);
   } catch {
@@ -29,13 +36,13 @@ function apply(m: Mode) {
 }
 
 export function useTheme() {
-  apply(mode.value);
+  apply(mode.value, false);
   return {
     isDark: () => mode.value === "dark",
     mode,
     toggle() {
       mode.value = mode.value === "dark" ? "light" : "dark";
-      apply(mode.value);
+      apply(mode.value, true); // an explicit toggle is the user's choice
     },
   };
 }

@@ -49,7 +49,9 @@ app.use(BiatecChat, {
 ```
 
 No stylesheet import is needed: the styles are injected into the shadow root. `VITE_BIATEC_CHAT_URL` lets staging
-builds point at a staging backend; add it to the DEX's `env.d.ts` as an optional string.
+builds point at a staging backend; add it to the DEX's `env.d.ts` as an optional string. `'biatec-dex'` is the
+production key of the Biatec tenant; a local backend's dev tenant accepts only `dev`, which is what the playground
+uses (the one line where it differs from this snippet).
 
 ### 2. Keep language in sync (`src/i18n/index.ts`)
 
@@ -143,9 +145,11 @@ Found with the playground; the fixes belong to the widget, not to the DEX:
 `pnpm --filter @biatec/chat-widget dev`, then open `/dex.html`. The page has the DEX's PrimeVue Aura setup, Tailwind 4,
 the `app.css` token values, a theme toggle that flips `.p-dark`, a language switch (en, sk, de), a pair header, an order
 card with "Ask Biatec AI about this order", a PrimeVue Dialog (cog button) and Toast, and a "Wide layout" switch that
-mounts `BiatecChatInline`. The backend is `http://localhost:5000` unless `VITE_BIATEC_CHAT_URL` is set; without a
-backend the panel shows the prompt and an error reply. Query parameters for screenshots: `?theme=light|dark`,
-`?lang=en|sk|de`, `?wide`, `?open`, `?dialog`.
+mounts `BiatecChatInline`. The backend is `http://localhost:5000` unless `VITE_BIATEC_CHAT_URL` is set (empty counts
+as unset), and the client key is the dev tenant's `dev` unless `VITE_BIATEC_CHAT_CLIENT_KEY` is set. The dev tenant
+allows the origin `http://localhost:5173`, so keep Vite's default port to test sign-in and previews; without a backend
+the panel shows the prompt and an error reply. Query parameters for screenshots: `?theme=light|dark`,
+`?lang=en|sk|de`, `?wide`, `?open`, `?dialog`; `?theme` and `?lang` apply to that load only and are not stored.
 
 `pnpm --filter @biatec/chat-widget build && pnpm --filter @biatec/chat-widget typecheck:playground` compiles the page,
 and so every snippet above, against the built `dist/index.d.ts`. `test/dex-integration.test.ts` runs the same host code

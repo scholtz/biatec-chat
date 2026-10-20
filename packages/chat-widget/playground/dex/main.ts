@@ -25,7 +25,8 @@ app.use(i18n);
 
 app.use(BiatecChat, {
   backendUrl: import.meta.env.VITE_BIATEC_CHAT_URL || 'https://chat.biatec.io',
-  clientKey: 'biatec-dex',     // must be listed on the Biatec tenant
+  // The doc's production key is 'biatec-dex'; the local dev tenant accepts "dev" (default from playground/vite.config.ts).
+  clientKey: import.meta.env.VITE_BIATEC_CHAT_CLIENT_KEY || 'biatec-dex',
   locale: getCurrentLocale(),
   theme: 'host',               // follows .p-dark on <html>
   mode: 'floating',
