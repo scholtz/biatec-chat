@@ -41,6 +41,7 @@ Biatec.Chat.Api.Public.ClientAddress.AddClientAddress(builder.Services, builder.
 
 builder.Services.AddScopeElevation();
 builder.Services.AddConfirm();
+Biatec.Chat.Api.Caps.CapsRegistration.AddSpendCaps(builder.Services);
 builder.Services.AddConsent();
 builder.Services.AddLogoutAndSweeper(builder.Configuration);
 builder.Services.AddEvidence(builder.Configuration);

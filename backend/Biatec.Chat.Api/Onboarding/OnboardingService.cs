@@ -277,6 +277,9 @@ public sealed partial class OnboardingService(
             SoftCapEurPerHour = 1500,
             TrustAnchorVerified = false,
         };
+        // T-025: the soft cap floor (consent threshold ceiling) and the operator-only raise are enforced on save.
+        if (Biatec.Chat.Tools.Caps.SoftCapPolicy.ValidateOnSave(tenant, byOperator: false) is { } capError)
+            return new(OnboardingStatus.Invalid, capError);
         db.Tenants.Add(tenant);
         try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })

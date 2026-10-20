@@ -65,7 +65,8 @@ public sealed class ConfirmService(
     Biatec.Chat.Api.Limits.LimitsConfirmService? limits = null,
     IEvidenceRecorder? recorder = null,
     IEnumerable<IStepLandedObserver>? landedObservers = null,
-    IEnumerable<IPreviewFreshnessGate>? freshnessGates = null)
+    IEnumerable<IPreviewFreshnessGate>? freshnessGates = null,
+    Biatec.Chat.Tools.Caps.ISpendCaps? caps = null)
 {
     public const string OutageMessage = "The sign-in service is unavailable. Your session is unchanged; please try again shortly.";
 
@@ -188,8 +189,30 @@ public sealed class ConfirmService(
             ["network"] = step.Network, ["address"] = address, ["transactionCount"] = step.UnsignedGroupList().Count,
             ["maxConsentSeconds"] = remaining, ["origin"] = origin,
         }, ct);
-        var outcome = await signer.SignAsync(bearer, new WalletSignRequest(step.Network!, address, step.UnsignedGroupList(), Convert.FromHexString(step.SubjectHash),
-            RequireConsent: false, MaxConsentSeconds: remaining, Origin: origin), ct);
+        // T-025: reserve against the tenant soft cap / safe caps before signing; over a cap, ask Biatec OIDC for consent.
+        var capRequest = CapRequestFor(tenant, session, preview, step);
+        var cap = capRequest is null || caps is null ? Biatec.Chat.Tools.Caps.CapDecision.None : await caps.ReserveAsync(capRequest, ct);
+        // More consent only: any other backend trigger (for example a per-preview flag) is OR-ed in here, never subtracted.
+        var requireConsent = cap.RequireConsent;
+        WalletSignOutcome outcome;
+        try
+        {
+            outcome = await signer.SignAsync(bearer, new WalletSignRequest(step.Network!, address, step.UnsignedGroupList(), Convert.FromHexString(step.SubjectHash),
+                RequireConsent: requireConsent, MaxConsentSeconds: remaining, Origin: origin), ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // A failed signing call releases the reservation. An aborted one may have reached Biatec OIDC: it stays
+            // reserved until the step expires (the pruner frees it) or the step is confirmed again.
+            await ReleaseCapAsync(cap, step);
+            throw;
+        }
+        if (cap.Reserved != Biatec.Chat.Tools.Caps.CapKind.None)
+        {
+            // Only a signature without a challenge counts; a step-up is signed under consent and never counted.
+            if (outcome is WalletSignOutcome.Signed counted) await FinalizeCapAsync(step, counted);
+            else await ReleaseCapAsync(cap, step);
+        }
 
         await RecordExtraAsync(session, EvidenceKinds.SigningOutcome, SigningOutcomePayload(previewId, step, outcome), CancellationToken.None);
 
@@ -224,6 +247,26 @@ public sealed class ConfirmService(
             default:
                 throw new InvalidOperationException("Unknown signing outcome.");
         }
+    }
+
+    /// <summary>T-025: what the caps need from a signing request. No caps without a signed-in user.</summary>
+    private static Biatec.Chat.Tools.Caps.CapRequest? CapRequestFor(Tenant tenant, ChatSession session, ActionPreview preview, ActionStep step) =>
+        string.IsNullOrEmpty(session.OidcSub) ? null
+            : new Biatec.Chat.Tools.Caps.CapRequest(tenant, session.OidcSub, step.Id, preview.Capability,
+                Biatec.Chat.Tools.Caps.SpendCaps.KindOf(preview.Capability) == Biatec.Chat.Tools.Caps.CapKind.SafeExecution ? 0m : preview.PredictedValueEur);
+
+    /// <summary>A cap bookkeeping failure after Biatec OIDC answered never turns the outcome into an error; it is logged by type.</summary>
+    private async Task FinalizeCapAsync(ActionStep step, WalletSignOutcome.Signed signed)
+    {
+        try { await caps!.FinalizeAsync(step.Id, signed.ValuedEur, CancellationToken.None); }
+        catch (Exception ex) { log.LogError("Could not finalize a soft cap reservation: {ErrorType}", ex.GetType().Name); }
+    }
+
+    private async Task ReleaseCapAsync(Biatec.Chat.Tools.Caps.CapDecision cap, ActionStep step)
+    {
+        if (cap.Reserved == Biatec.Chat.Tools.Caps.CapKind.None) return;
+        try { await caps!.ReleaseAsync(step.Id, CancellationToken.None); }
+        catch (Exception ex) { log.LogError("Could not release a soft cap reservation: {ErrorType}", ex.GetType().Name); }
     }
 
     private (IReadOnlyList<Algorand.Algod.Model.Transactions.Transaction> Group, string Address) PrepareGroup(ActionStep step)
@@ -387,6 +430,12 @@ public sealed class ConfirmService(
         var outcome = await signer.SignAsync(elevatedBearer, new WalletSignRequest(step.Network!, address, step.UnsignedGroupList(), Convert.FromHexString(step.SubjectHash),
             RequireConsent: false, MaxConsentSeconds: remaining, Origin: origin), ct);
         await RecordExtraAsync(session, EvidenceKinds.SigningOutcome, SigningOutcomePayload(previewId, step, outcome), CancellationToken.None);
+        // T-025: signed under phone consent, so not counted in the soft cap; a safe approval or execution still counts.
+        if (outcome is WalletSignOutcome.Signed && caps is not null && CapRequestFor(tenant, session, preview, step) is { } consented)
+        {
+            try { await caps.RecordConsentedAsync(consented, CancellationToken.None); }
+            catch (Exception ex) { log.LogError("Could not record a consented safe action: {ErrorType}", ex.GetType().Name); }
+        }
 
         switch (outcome)
         {
