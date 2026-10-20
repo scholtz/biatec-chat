@@ -1,7 +1,7 @@
 ---
 id: T-091
 title: Adopt McpNetworks.Algorand in the remaining hand-built network codes
-status: in-progress
+status: review
 priority: P3
 epic: "Wallet tools"
 blocked_by: [T-089]
@@ -43,14 +43,19 @@ files.
 
 ## Acceptance criteria
 
-- [ ] `grep '"algorand-" +'` finds no MCP network code outside the helper
-- [ ] Full backend suite green
+- [x] `grep '"algorand-" +'` finds no MCP network code outside the helper
+- [x] Full backend suite green
 
 ## Verification
 
 `grep -rn '"algorand-" +' backend --include=*.cs`, then the full backend suite.
 
 ## Hand-off
+
+- **Summary:** the four listed sites build MCP network codes with `McpNetworks.Algorand`; no behaviour change. Left: algod option keys (WalletTransferExecutor.cs:245) and the prefix parser (AlgodTransactionConfirmer.cs:130).
+- **Branch:** `task/T-091`, PR #189 (`Closes #174`).
+- **Verification:** grep clean; full backend 1172 passed, 1 skipped, 0 failed (with `DOTNET_USE_POLLING_FILE_WATCHER=1` while parallel suites exhausted the machine's inotify limit).
+- **Unblocks:** no task is blocked by T-091.
 
 ## Review
 
@@ -60,3 +65,4 @@ files.
 - 2026-10-20 04:00 · kanban-board · blocked → backlog · blockers done: T-089
 - 2026-10-20 05:08 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 05:08 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 05:24 · coordinator · in-progress → review · PR #189
