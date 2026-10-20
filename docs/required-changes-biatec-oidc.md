@@ -270,6 +270,14 @@ Receipts verify offline against the device public key and attestation. The backe
 
 Here `value_eur` on the entry is the per-call value and the top-level `value_eur` of section 2 is the sum over the group.
 
+- **Proposer's approval (found in T-033):** the deployed algo-safe contract records the proposer's own approval inside
+  `proposeTransactionGroup`, so the proposer never sends a separate `approveProposal` (it would be refused as "already approved").
+  The spec's "propose, then approve as a second call" does not exist on chain. **Needed:** value `proposeTransactionGroup` at its
+  payload (decoded from the call's own `payload` argument, which is the exact `(uint64,byte[])[]` the safe stores) instead of at
+  zero, so the proposer's consent lands where the authorization happens. `proposeAdminChange` stays at zero.
+  **Fallback in use:** the chat card says that proposing records the proposer's approval; under "always ask" (the demo fallback)
+  the phone still asks for the propose call, but it shows no payload value; under testnet valuation it would not ask at all.
+
 ## 6. Biatec DEX pool call decoding
 
 - **Purpose:** pool facts on the phone card. **Fallback:** treat as an unknown application call (always ask), showing decoded

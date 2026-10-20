@@ -6,7 +6,7 @@ import { algosdk, clamm } from "./lib.js";
 import { address, asParams, uint64, type Params } from "./params.js";
 import { poolFacts, registeredPool } from "./pools.js";
 
-interface Prepared {
+export interface Prepared {
   c: ClammContext;
   pool: FullConfig;
   sender: string;
@@ -90,8 +90,8 @@ function common(prep: Prepared) {
   };
 }
 
-/** `clamm.liquidity.add`: deposit `amountA` and `amountB` (base units) into a pool; opts the sender into the LP token if needed. */
-export async function addLiquidity(params: unknown, ctx: BuildContext): Promise<BuildResult> {
+/** The pool, sender and add-liquidity group (built by the CLAMM library, not simulated); opts the sender into the LP token if needed. */
+export async function addLiquidityGroup(params: unknown, ctx: BuildContext): Promise<{ prep: Prepared; txs: Transaction[]; amountA: bigint; amountB: bigint; lpOptIn: boolean }> {
   const p = asParams(params);
   const amountA = uint64(p, "amountA");
   const amountB = uint64(p, "amountB");
@@ -110,7 +110,27 @@ export async function addLiquidity(params: unknown, ctx: BuildContext): Promise<
     max: prep.pool.max,
     optinSender,
   });
-  return finish(prep, "clamm.liquidity.add", txs, { amountA: amountA.toString(), amountB: amountB.toString(), lpOptIn: optinSender });
+  return { prep, txs, amountA, amountB, lpOptIn: optinSender };
+}
+
+/**
+ * The add-liquidity group for a safe proposal: built for `sender` (the safe's application account), never simulated
+ * here because the safe emits it later as inner transactions. Returns the group as encoded unsigned transactions so
+ * callers on another algosdk copy can decode it, and the pool facts for the preview.
+ */
+export async function addLiquidityForProposal(params: unknown, ctx: BuildContext): Promise<{ transactions: Uint8Array[]; facts: Record<string, unknown> }> {
+  const { prep, txs, amountA, amountB, lpOptIn } = await addLiquidityGroup(params, ctx);
+  const pool = await poolFacts(prep.c, prep.pool);
+  return {
+    transactions: txs.map((t) => algosdk.encodeUnsignedTransaction(t)),
+    facts: { pool, poolProviderAppId: prep.c.apps.poolProviderAppId.toString(), amountA: amountA.toString(), amountB: amountB.toString(), lpOptIn },
+  };
+}
+
+/** `clamm.liquidity.add`: deposit `amountA` and `amountB` (base units) into a pool; opts the sender into the LP token if needed. */
+export async function addLiquidity(params: unknown, ctx: BuildContext): Promise<BuildResult> {
+  const { prep, txs, amountA, amountB, lpOptIn } = await addLiquidityGroup(params, ctx);
+  return finish(prep, "clamm.liquidity.add", txs, { amountA: amountA.toString(), amountB: amountB.toString(), lpOptIn });
 }
 
 /** `clamm.liquidity.remove`: return `lpAmount` LP tokens (base units) to the pool for its share of both assets. */
