@@ -13,6 +13,8 @@ namespace Biatec.Chat.Api.Chat;
 public static class ChatEndpoints
 {
     public const int MaxMessageLength = 4000;
+    /// <summary>Problem <c>code</c> when the request's session cookie no longer names a live session (T-113).</summary>
+    public const string SessionExpiredCode = "session_expired";
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     // One turn at a time per conversation (per process): concurrent turns would race on Seq and interleave history.
@@ -32,9 +34,16 @@ public static class ChatEndpoints
                 return Results.Problem("The message must be between 1 and 4000 characters.", statusCode: StatusCodes.Status400BadRequest);
 
             var tenant = ctx.GetTenant()!;
-            var handle = await sessions.ResolveOrCreateAsync(tenant, SessionEndpoints.ReadCookie(ctx.Request), ctx.RequestAborted);
+            var cookie = SessionEndpoints.ReadCookie(ctx.Request);
+            var handle = await sessions.ResolveOrCreateAsync(tenant, cookie, ctx.RequestAborted);
             var session = handle.Session;
             if (handle.NewToken is not null) SessionEndpoints.WriteCookie(ctx.Response, handle.NewToken, session.AbsoluteExpiresAt, clock.GetUtcNow());
+
+            // The cookie named a session that has ended (idle or absolute lifetime). Running the turn on the fresh
+            // anonymous session would answer a signed-in user as a guest; the widget refreshes its state and decides.
+            if (handle.Created && SessionService.WellFormed(cookie))
+                return Results.Problem("The session has ended. Start again.", statusCode: StatusCodes.Status401Unauthorized,
+                    extensions: new Dictionary<string, object?> { ["code"] = SessionExpiredCode });
 
             // A client-supplied conversation id only ever selects the session's own conversation; any other value is refused.
             if (body.ConversationId is not null && !string.Equals(body.ConversationId, session.ConversationId.ToString(), StringComparison.OrdinalIgnoreCase)

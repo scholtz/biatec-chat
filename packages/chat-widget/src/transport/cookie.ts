@@ -2,6 +2,16 @@ import type { ChatEvent } from "@biatec/chat-protocol";
 import { readChatEvents } from "./sse";
 import { CLIENT_KEY_HEADER, CSRF_HEADER, PATHS, TransportError, type ChatTransport, type SendOptions, type TransportConfig } from "./types";
 
+/** The `code` extension of a problem response, if there is one. */
+async function problemCode(res: Response): Promise<string | undefined> {
+  try {
+    const p: unknown = await res.json();
+    return p && typeof p === "object" && typeof (p as { code?: unknown }).code === "string" ? (p as { code: string }).code : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Cookie transport: the session cookie is HttpOnly, so JS only sets `credentials: include` and the CSRF header. */
 export class CookieTransport implements ChatTransport {
   readonly kind = "cookie" as const;
@@ -23,7 +33,7 @@ export class CookieTransport implements ChatTransport {
       body: JSON.stringify({ message: opts.message, context: opts.context ?? null, widgetVersion: opts.widgetVersion ?? null }),
       signal: opts.signal,
     });
-    if (!res.ok || !res.body) throw new TransportError(`chat failed: ${res.status}`, res.status);
+    if (!res.ok || !res.body) throw new TransportError(`chat failed: ${res.status}`, res.status, await problemCode(res));
     yield* readChatEvents(res.body);
   }
 

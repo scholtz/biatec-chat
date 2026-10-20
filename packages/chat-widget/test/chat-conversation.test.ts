@@ -9,6 +9,7 @@ import { parseBlocks, safeHttpUrl } from "../src/components/chat/format";
 import { resolveOptions } from "../src/options";
 import type { ChatServices } from "../src/components/chat/useChat";
 import { en } from "../src/i18n";
+import { SESSION_EXPIRED, TransportError } from "../src/transport";
 
 const base = { backendUrl: "https://chat.biatec.io", clientKey: "k" };
 
@@ -281,6 +282,46 @@ describe("sign-in cards", () => {
     await flushPromises();
     expect(w2.find(".bc-signin-card a").exists()).toBe(false);
     w2.unmount();
+  });
+});
+
+describe("ended session", () => {
+  const expired = () => new TransportError("chat failed: 401", 401, SESSION_EXPIRED);
+
+  it("a signed-in user whose session ended is told so, drops to guest and gets the sign-in card", async () => {
+    const svc = services(authed);
+    const w = await open(svc);
+    expect(w.get("[data-testid=tier]").text()).toContain("alice@example.com");
+    svc.auth.session = vi.fn(async () => anon);
+    svc.transport.send = vi.fn(async function* () {
+      throw expired();
+    });
+    await w.get("textarea").setValue("Add liquidity to the Biatec DEX EURS/USDC pool.");
+    await w.get("form").trigger("submit");
+    await flushPromises();
+    expect(svc.transport.send).toHaveBeenCalledTimes(1);
+    expect(w.text()).toContain(en.chat.sessionExpired);
+    expect(w.get(".bc-signin-card button").text()).toBe("Sign in with Biatec");
+    expect(w.get("[data-testid=tier]").text()).toBe("Guest");
+    expect(w.find(".bc-error").exists()).toBe(false);
+    w.unmount();
+  });
+
+  it("a guest whose session ended gets the answer from one transparent retry", async () => {
+    const svc = services(anon);
+    let calls = 0;
+    svc.transport.send = vi.fn(async function* () {
+      if (calls++ === 0) throw expired();
+      yield { type: "text_delta", text: "Biatec is a DEX." } as ChatEvent;
+    });
+    const w = await open(svc);
+    await w.get("textarea").setValue("What is Biatec?");
+    await w.get("form").trigger("submit");
+    await flushPromises();
+    expect(svc.transport.send).toHaveBeenCalledTimes(2);
+    expect(w.text()).toContain("Biatec is a DEX.");
+    expect(w.text()).not.toContain(en.chat.sessionExpired);
+    w.unmount();
   });
 });
 

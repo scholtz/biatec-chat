@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import type { ChatEvent } from "@biatec/chat-protocol";
-import { Keepalive, SseParser, TransportManager, readChatEvents } from "../src/transport";
+import { CookieTransport, Keepalive, SESSION_EXPIRED, SseParser, TransportError, TransportManager, readChatEvents } from "../src/transport";
 
 const enc = new TextEncoder();
 function sse(chunks: string[], headers: Record<string, string> = {}): Response {
@@ -44,6 +44,23 @@ describe("SSE", () => {
 
   it("joins multi-line data", () => {
     expect(new SseParser().push("data: a\ndata: b\n\n")).toEqual(["a\nb"]);
+  });
+});
+
+describe("cookie chat errors", () => {
+  it("carries the problem code of a refused chat call", async () => {
+    const f = vi.fn(async () => json({ status: 401, code: "session_expired" }, 401));
+    const err = await collect(new CookieTransport(cfg(f as unknown as typeof fetch)).send({ message: "x" })).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TransportError);
+    expect((err as TransportError).status).toBe(401);
+    expect((err as TransportError).code).toBe(SESSION_EXPIRED);
+  });
+
+  it("leaves the code empty when the body is not a problem", async () => {
+    const f = vi.fn(async () => new Response("nope", { status: 500 }));
+    const err = (await collect(new CookieTransport(cfg(f as unknown as typeof fetch)).send({ message: "x" })).catch((e: unknown) => e)) as TransportError;
+    expect(err.status).toBe(500);
+    expect(err.code).toBeUndefined();
   });
 });
 
