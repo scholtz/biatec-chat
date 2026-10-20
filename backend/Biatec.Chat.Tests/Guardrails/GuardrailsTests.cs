@@ -109,6 +109,59 @@ public sealed class GuardrailsTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Converse_OnlyTheLatestUserTextIsGuardContent_SoHistoryCannotPoisonLaterTurns()
+    {
+        // Demo 2026-10-20: without guardContent Converse screened the whole history, and one DEX answer that matched a
+        // denied topic blocked every later turn ("I can't help with that request").
+        var req = ModelReq() with
+        {
+            Messages =
+        [
+            new ModelMessage { Role = ConversationRole.User, Content = [new ContentBlock { Text = "explain pools" }] },
+            new ModelMessage { Role = ConversationRole.Assistant, Content = [new ContentBlock { Text = "Pools hold two assets." }] },
+            new ModelMessage
+            {
+                Role = ConversationRole.User,
+                Content = [new ContentBlock { Text = "<untrusted_data source=\"host_page_context\">\nEURS/USDC\n</untrusted_data>" }, new ContentBlock { Text = "what can you help me with" }],
+            },
+        ],
+        };
+
+        var sent = Client(On()).BuildRequest(req).Messages;
+
+        var guarded = sent.SelectMany(m => m.Content).Where(c => c.GuardContent is not null).Select(c => c.GuardContent.Text.Text);
+        Assert.Equal(["what can you help me with"], guarded);
+        Assert.Equal("explain pools", sent[0].Content[0].Text);
+        Assert.StartsWith("<untrusted_data", sent[2].Content[0].Text);
+        Assert.Equal("what can you help me with", req.Messages[2].Content[1].Text); // the caller's history is not mutated
+        Assert.Equal(GuardrailTrace.Enabled, Client(On()).BuildRequest(req).GuardrailConfig.Trace);
+    }
+
+    [Fact]
+    public void Converse_DuringTheToolLoop_TheTurnsUserTextStaysTheGuardContent()
+    {
+        var req = ModelReq() with
+        {
+            Messages =
+        [
+            new ModelMessage { Role = ConversationRole.User, Content = [new ContentBlock { Text = "explain pools" }] },
+            new ModelMessage { Role = ConversationRole.Assistant, Content = [new ContentBlock { ToolUse = new ToolUseBlock { ToolUseId = "t", Name = "kb_search", Input = Amazon.Runtime.Documents.Document.FromObject(new { }) } }] },
+            new ModelMessage { Role = ConversationRole.User, Content = [new ContentBlock { ToolResult = new ToolResultBlock { ToolUseId = "t", Content = [new ToolResultContentBlock { Text = "page" }] } }] },
+        ],
+            Tools = [new ToolSpecification { Name = "kb_search", InputSchema = new ToolInputSchema { Json = Amazon.Runtime.Documents.Document.FromObject(new { type = "object" }) } }],
+        };
+
+        var sent = Client(On()).BuildRequest(req).Messages;
+
+        Assert.Equal("explain pools", Assert.Single(sent.SelectMany(m => m.Content), c => c.GuardContent is not null).GuardContent.Text.Text);
+        Assert.Null(sent[2].Content[0].GuardContent);
+    }
+
+    [Fact]
+    public void Converse_WithTheGuardrailOff_SendsNoGuardContent() =>
+        Assert.DoesNotContain(Client(new GuardrailOptions()).BuildRequest(ModelReq()).Messages.SelectMany(m => m.Content), c => c.GuardContent is not null);
+
+    [Fact]
     public void Converse_DisabledOrUnconfiguredSendsNoGuardrailConfig()
     {
         Assert.Null(Client(new GuardrailOptions { Enabled = false, GuardrailId = "gr-123", GuardrailVersion = "3" }).BuildRequest(ModelReq()).GuardrailConfig);
