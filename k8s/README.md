@@ -67,4 +67,21 @@ setup with `infra/aws/rolesanywhere.sh`; the full walk-through is [docs/aws-setu
   pre-create ECC_NIST_P256 `SIGN_VERIFY` keys in eu-central-1 tagged `Project=biatec` (about 1 USD/month each plus
   per-sign requests; ask the user first), and the pod role needs `kms:Sign` and `kms:GetPublicKey` on them. The backend
   never creates KMS keys. Outside Development the app refuses to start without a configured store.
+- **Evidence anchoring** (`Evidence__Anchoring__Enabled=true`, network `testnet`, set in `base/backend.yaml`, so stage and
+  main both anchor). Every 10 minutes the backend writes a Merkle root of the conversation heads into the note of a 0 ALGO
+  self-payment from the *evidence account*, a dedicated account whose address is public (publish it so anyone can read
+  the anchor chain from the indexer). Create it once per environment and put its 25-word mnemonic in the secret
+  `biatec-chat-evidence-anchor`, key `account-mnemonic` (never in the repository or a manifest; the env var is
+  `Evidence__Anchoring__AccountMnemonic`):
+  `kubectl -n biatec-chat-stage create secret generic biatec-chat-evidence-anchor --from-literal=account-mnemonic="word1 ... word25"`
+  (`deploy.yml` does not manage this secret yet; the reference is `optional`, so a missing secret does not stop the pods,
+  and the anchoring job then logs one warning at startup and stays inactive, writing no attempt or gap rows, until the secret exists and the pods restart). **Fund it** from the testnet dispenser (https://bank.testnet.algorand.network/)
+  with the address of that mnemonic: each anchor costs 0.001 ALGO, about 144 per day (roughly 0.15 ALGO/day), so 10 testnet
+  ALGO lasts months; top up when the balance falls below 1 ALGO. Mainnet is an operator decision (change
+  `Evidence__Anchoring__Network` and fund with real ALGO).
+  **Two replicas:** every tick takes a PostgreSQL session advisory lock (`pg_try_advisory_lock`) held across the broadcast.
+  The replica that gets it anchors; the other skips that tick and logs "Another replica is anchoring". The lock is dropped
+  when the connection closes, so a crashed pod never blocks anchoring. Residual risk: if that connection drops mid-broadcast (a Postgres failover) the lock is lost
+  while the tick continues; the unique sequence number and the idempotent broadcaster still protect the data, but a duplicate
+  broadcast is possible in that rare case.
 - The backend runs as numeric UID 1654 (`runAsUser` plus `USER 1654` in the Dockerfile).
