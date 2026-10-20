@@ -15,6 +15,11 @@ export interface BiatecChatOptions {
   theme?: ChatTheme;
   /** Class on <html> meaning dark when theme is `host` (default `p-dark`, PrimeVue). */
   hostDarkClass?: string;
+  /**
+   * Attribute on <html> meaning dark when theme is `host`, as `name=value` (for example `data-theme=dark`, Docusaurus)
+   * or a bare `name` (present means dark). When set it replaces `hostDarkClass`.
+   */
+  hostDarkAttribute?: string;
   suggestions?: "default" | string[];
   /** Opt-in page context string. Nothing is read from the host page unless this is set. */
   pageContext?: string;
@@ -35,6 +40,7 @@ export function resolveOptions(o: BiatecChatOptions): ResolvedOptions {
     locale: o.locale ?? "en",
     theme: o.theme ?? "auto",
     hostDarkClass: o.hostDarkClass ?? "p-dark",
+    hostDarkAttribute: o.hostDarkAttribute?.trim() ?? "",
     suggestions: o.suggestions ?? "default",
     autoMount: o.autoMount ?? true,
     mode: o.mode && MODES.includes(o.mode) ? o.mode : "floating",

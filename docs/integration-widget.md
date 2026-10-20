@@ -7,17 +7,19 @@ wins on any conflict. What works today is marked; see [architecture.md](architec
 The cookie probe, public fallback transport, streaming chat UI, sign-in popup handling, action preview and consent cards, and
 the Slovak translation are planned (tasks T-040 to T-043). The rework to the **Biatec AI** design system (Shadow DOM isolation,
 `theme: 'host'`, `mode`, `useBiatecChat()`, permissions and activity) is planned in tasks T-062 to T-069; `theme: 'host'`, `mode`, `BiatecChatInline`
-and `useBiatecChat()` are built (T-062, T-063); options marked *planned* below are not. For Biatec DEX specifically, see [integration-biatec-dex.md](integration-biatec-dex.md). The package version is `0.0.0` and is not published to npm yet, so
-install it from the workspace until it is.
+and `useBiatecChat()` are built (T-062, T-063); options marked *planned* below are not. For Biatec DEX specifically, see [integration-biatec-dex.md](integration-biatec-dex.md);
+for the BiatecCLAMM Docusaurus site (a React host), see [integration-biatec-clamm.md](integration-biatec-clamm.md). The package
+is `@biatec/chat-widget@0.1.0`, npm-ready (T-099); its first npm publish is pending the `@biatec` scope owner (see
+[Publishing to npm](#publishing-to-npm)).
 
 ## 1. Install the plugin
 
-Vue 3 is a peer dependency (`^3.4.0`).
+Vue 3 is a peer dependency of the plugin (`^3.4.0`, marked optional because the standalone build bundles its own Vue).
+Hosts that are not Vue apps use the [standalone build](#standalone-build-react-docusaurus-plain-html) instead.
 
 ```sh
-# once published
-pnpm add @biatec/chat-widget
-# today, inside this monorepo
+npm i @biatec/chat-widget
+# inside this monorepo
 pnpm add @biatec/chat-widget@workspace:*
 ```
 
@@ -52,6 +54,7 @@ another. Run the playground with `pnpm --filter @biatec/chat-widget dev`.
 | `locale` | no | `en` | Message language. English now; Slovak is planned |
 | `theme` | no | `auto` | `auto`, `light`, `dark` or `host` (follows the host's dark class on `<html>`) |
 | `hostDarkClass` | no | `p-dark` | The class `theme: 'host'` watches (PrimeVue's `darkModeSelector`, as in Biatec DEX and Biatec Web) |
+| `hostDarkAttribute` | no | none | An attribute on `<html>` meaning dark for `theme: 'host'`: `name=value` (`data-theme=dark`, Docusaurus/Infima) or a bare `name` (present means dark). When set it replaces `hostDarkClass`. The standalone build defaults to `data-theme=dark` |
 | `mode` | no | `floating` | `floating` (launcher bottom-right), `inline` (no launcher; mount `BiatecChatInline` in a host column) or `workspace` (launcher, panel opens full screen). See [Modes and the host API](#modes-and-the-host-api) |
 | `suggestions` | no | `default` | `default` or your own list of sample prompts |
 | `pageContext` | no | none | Opt-in string describing the page (for example the pool being shown). Nothing is read from the host page unless you set it. The assistant treats it as untrusted data |
@@ -180,6 +183,57 @@ chat.close()
 - `ask` is not queued: while a reply streams it returns `busy`.
 - `setPageContext` takes a plain string and is sent as the product field of the chat request's host context; there is no structured form yet.
 
+### Standalone build (React, Docusaurus, plain HTML)
+
+A host that is not a Vue app cannot `app.use()` the plugin. `@biatec/chat-widget/standalone` bundles Vue and mounts the
+same widget root (no second copy of the component code) with one call or one script tag. It is an ES module
+(`dist/standalone/biatec-chat.standalone.js`, for bundlers) and a minified IIFE
+(`dist/standalone/biatec-chat.standalone.iife.js`, global `window.BiatecChat`, also the package's `unpkg`/`jsdelivr`
+file). The IIFE is about 300 kB minified, under a 110 kB gzip budget enforced by `test/standalone.test.ts`.
+
+One script tag (it mounts on `DOMContentLoaded`, or at once if the page has loaded):
+
+```html
+<script
+  src="https://cdn.jsdelivr.net/npm/@biatec/chat-widget@0.1.0/dist/standalone/biatec-chat.standalone.iife.js"
+  data-backend-url="https://chat.biatec.io"
+  data-client-key="example-web"
+  defer
+></script>
+```
+
+The options are `data-*` attributes: `data-backend-url` and `data-client-key` (required), `data-locale`,
+`data-chat-theme` (not `data-theme`, which many sites style), `data-mode`, `data-host-dark-class`,
+`data-host-dark-attribute`, `data-page-context`. Without `data-backend-url` the tag only defines `window.BiatecChat`.
+A missing `data-client-key` is reported on the console, never thrown into the page.
+
+From a bundler, in the browser only:
+
+```ts
+import { mountBiatecChat, useBiatecChat } from '@biatec/chat-widget/standalone'
+
+const chat = mountBiatecChat({ backendUrl: 'https://chat.biatec.io', clientKey: 'example-web' })
+// or mountBiatecChat('#chat-slot', options): the host element is appended to that element instead of <body>
+chat.setPageContext('Docs · Getting started')
+await chat.ask('What is Algorand?')
+chat.unmount()
+```
+
+| Export | Does |
+| --- | --- |
+| `mountBiatecChat(options)` / `mountBiatecChat(container, options)` | Mounts the floating widget and returns a `BiatecChatHandle`: the host API of `useBiatecChat()` plus `host` (the `<div data-biatec-chat-host>`) and `unmount()`. One widget per page: a second call while a widget is mounted (by this build, the script tag or the Vue plugin) returns that widget, and different options or a different container are ignored with a console warning (`unmount()` first to change them). Throws on a missing `backendUrl` or `clientKey`, an unknown container selector, or a stray `[data-biatec-chat-host]` element no copy of the package mounted. Without a DOM (server rendering) it does nothing and returns a handle with `host: null` |
+| `unmount()` | Removes the widget; a later `mountBiatecChat` mounts a fresh one |
+| `useBiatecChat()` | The same host API object as the Vue entry |
+| `autoMount(script)` | What the IIFE runs on its own tag; exported for tests and custom loaders |
+
+Defaults differ from the plugin for non-Vue sites: `theme: 'host'` when `<html>` has a `data-theme` attribute
+(Docusaurus), otherwise `auto` (prefers-color-scheme); a `host` theme without `hostDarkClass` or `hostDarkAttribute`
+watches `data-theme=dark`; and `locale` comes from `<html lang>`. The widget is shared through a global symbol, so the
+Vue plugin, the standalone module and a second copy of the script tag never mount two widgets. Importing the module has no side
+effect without a DOM, so it is SSR-safe; still load it with a dynamic `import()` in the browser so the server bundle
+does not carry it (see the Docusaurus client module in [integration-biatec-clamm.md](integration-biatec-clamm.md)).
+`mode: 'inline'` has no use here (there is no `BiatecChatInline` outside Vue).
+
 ### Accessibility
 
 The launcher is a keyboard-accessible button, the stylesheet honours `prefers-reduced-motion`, and the panel is a labelled dialog that
@@ -250,3 +304,13 @@ Integrators do not need to implement these, but should know them:
 - [ ] `clientKey` listed on the tenant and passed in the plugin options.
 - [ ] Your Content Security Policy allows `connect-src` and popup navigation to the backend host.
 - [ ] You pass `pageContext` only with data you are happy to send to the backend and the model.
+
+## Publishing to npm
+
+`.github/workflows/publish-widget.yml` publishes the package on a `chat-widget-v<version>` tag or a manual run with
+`dry_run` unticked, only for a commit on `main` (other refs fail), and dry-runs it on pull requests. It uses npm trusted publishing (GitHub OIDC, no secret); the
+GitHub secret **`NPM_TOKEN`**, an environment secret of the **`npm`** environment of scholtz/biatec-chat, is only a
+fallback until the trusted publisher is configured. The secret, who adds it, how to create the token, the one-time
+setup (npm org `biatec`, first manual publish, trusted publisher) and how to cut a release are in
+[packages/chat-widget/README.md, "Publishing"](../packages/chat-widget/README.md#publishing); the secret is also listed
+in [cicd.md](cicd.md#secrets).

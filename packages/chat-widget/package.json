@@ -1,35 +1,73 @@
 {
   "name": "@biatec/chat-widget",
-  "version": "0.0.0",
-  "description": "Embeddable Biatec Chat widget (Vue 3 plugin).",
+  "version": "0.1.0",
+  "description": "Embeddable Biatec AI chat widget: a Vue 3 plugin, plus a standalone build with Vue bundled for React, Docusaurus and plain HTML hosts.",
   "type": "module",
   "license": "MIT",
+  "author": "Biatec Group",
+  "homepage": "https://github.com/scholtz/biatec-chat/tree/main/packages/chat-widget#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scholtz/biatec-chat.git",
+    "directory": "packages/chat-widget"
+  },
+  "bugs": {
+    "url": "https://github.com/scholtz/biatec-chat/issues"
+  },
+  "keywords": [
+    "biatec",
+    "chat",
+    "widget",
+    "vue",
+    "vue3",
+    "algorand",
+    "assistant",
+    "docusaurus"
+  ],
   "files": [
     "dist"
   ],
   "main": "./dist/biatec-chat.umd.cjs",
   "module": "./dist/biatec-chat.js",
   "types": "./dist/index.d.ts",
+  "unpkg": "./dist/standalone/biatec-chat.standalone.iife.js",
+  "jsdelivr": "./dist/standalone/biatec-chat.standalone.iife.js",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/biatec-chat.js",
       "require": "./dist/biatec-chat.umd.cjs"
     },
-    "./style.css": "./dist/style.css"
+    "./standalone": {
+      "types": "./dist/standalone/index.d.ts",
+      "default": "./dist/standalone/biatec-chat.standalone.js"
+    },
+    "./standalone/iife": "./dist/standalone/biatec-chat.standalone.iife.js",
+    "./style.css": "./dist/style.css",
+    "./package.json": "./package.json"
   },
   "sideEffects": [
-    "**/*.css"
+    "**/*.css",
+    "./dist/standalone/*.js"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "vite --config playground/vite.config.ts",
-    "build": "vite build && node scripts/emit-types.mjs",
+    "build": "vite build && vite build -c vite.standalone.config.ts && node scripts/emit-types.mjs",
     "test": "vitest run",
     "typecheck": "vue-tsc --noEmit -p tsconfig.json",
-    "typecheck:playground": "vue-tsc --noEmit -p playground/tsconfig.json"
+    "typecheck:playground": "vue-tsc --noEmit -p playground/tsconfig.json",
+    "prepublishOnly": "pnpm run build && pnpm run test"
   },
   "peerDependencies": {
     "vue": "^3.4.0"
+  },
+  "peerDependenciesMeta": {
+    "vue": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@biatec/chat-protocol": "workspace:*",
@@ -40,6 +78,7 @@
     "@vue/test-utils": "^2.4.6",
     "axe-core": "^4.14.0",
     "jsdom": "^26.1.0",
+    "lucide-vue-next": "^1.0.0",
     "primeicons": "^8.0.2",
     "primevue": "^5.0.2",
     "tailwindcss": "^4.3.3",
@@ -48,10 +87,7 @@
     "vite": "^7.1.5",
     "vitest": "^3.2.4",
     "vue": "^3.5.21",
+    "vue-i18n": "^11.4.16",
     "vue-tsc": "^3.0.6"
-  },
-  "dependencies": {
-    "lucide-vue-next": "^1.0.0",
-    "vue-i18n": "^11.4.16"
   }
 }

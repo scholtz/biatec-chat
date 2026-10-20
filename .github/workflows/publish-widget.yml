@@ -1,0 +1,138 @@
+# Publishes @biatec/chat-widget to npm. Publishing happens only on a `chat-widget-v<version>` tag push (the tag must
+# equal the version in packages/chat-widget/package.json) or a manual run (Actions → publish-widget → Run workflow)
+# with dry_run unticked, and in both cases only for a commit on main (a manual run must be started on main, a tag must
+# point at a commit main contains; otherwise the publish job fails). Pull requests that touch the package, and dry
+# runs on any branch, only pack, list the files and run `npm publish --dry-run`.
+# Authentication: npm trusted publishing (GitHub OIDC, `id-token: write`, no secret) is the primary path. Fallback
+# only, while no trusted publisher is configured on npmjs.com: the environment secret `NPM_TOKEN` of the GitHub
+# environment `npm` (repo scholtz/biatec-chat → Settings → Environments → npm; added by a repo admin), an npmjs.com
+# granular token with read/write on @biatec packages and a short expiry. Unset, it is empty and unused.
+# One-time setup (npm org `biatec`, first manual publish, trusted publisher for repo scholtz/biatec-chat, workflow
+# publish-widget.yml, environment npm) and releasing: packages/chat-widget/README.md, "Publishing".
+name: publish-widget
+
+on:
+  push:
+    tags: ["chat-widget-v*"]
+  pull_request:
+    paths:
+      - "packages/chat-widget/**"
+      - "packages/chat-protocol/**"
+      - ".github/workflows/publish-widget.yml"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only pack and run npm publish --dry-run (untick to publish the version in package.json)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-widget-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build chat-protocol (types the widget compiles against)
+        run: pnpm --filter @biatec/chat-protocol build
+      - name: Build, typecheck and test the widget
+        working-directory: packages/chat-widget
+        run: |
+          pnpm run build
+          pnpm run typecheck
+          pnpm run typecheck:playground
+          pnpm run test
+      - name: Read the version and check the tag
+        id: meta
+        working-directory: packages/chat-widget
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$REF_TYPE" = "tag" ] && [ "$REF_NAME" != "chat-widget-v$version" ]; then
+            echo "::error::Tag $REF_NAME does not match package.json version $version (expected chat-widget-v$version)"
+            exit 1
+          fi
+      # pnpm pack rewrites workspace: ranges; the tarball is what gets published, byte for byte.
+      - name: Pack
+        working-directory: packages/chat-widget
+        run: |
+          mkdir -p ../../artifacts
+          pnpm pack --pack-destination ../../artifacts
+          tar -tzf ../../artifacts/*.tgz | sort
+      - name: Dry run
+        run: npm publish ./artifacts/*.tgz --dry-run --access public
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chat-widget-tarball
+          path: artifacts/*.tgz
+          if-no-files-found: error
+
+  publish:
+    needs: pack
+    if: >-
+      (github.event_name == 'push' && github.ref_type == 'tag') ||
+      (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
+    runs-on: ubuntu-latest
+    # Holds the optional NPM_TOKEN fallback secret, and is the environment named in the npm trusted publisher
+    # settings. Add required reviewers to it to gate every publish.
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing and provenance
+    steps:
+      # Only code that is on main is ever published: a manual run must be started on main, and a tag must point at a
+      # commit main contains. A tag or run on any other branch fails here (dry runs in the pack job stay allowed).
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require a commit on main
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::Publishing by hand runs only on main (this run is on $REF). Start it from main, or leave dry_run ticked."
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "::error::Commit $SHA ($REF) is not on main; only commits merged into main are published."
+            exit 1
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          # npm >= 11.5.1 is needed for trusted publishing; Node 24 ships it.
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v4
+        with:
+          name: chat-widget-tarball
+          path: artifacts
+      - name: Publish
+        env:
+          # Empty unless the fallback secret is set. With a trusted publisher configured, npm uses the OIDC token
+          # first and this is never read.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish ./artifacts/*.tgz --provenance --access public
+      - name: Summary
+        env:
+          VERSION: ${{ needs.pack.outputs.version }}
+        run: echo "Published @biatec/chat-widget@$VERSION" >> "$GITHUB_STEP_SUMMARY"

@@ -1,14 +1,38 @@
-// Generates declarations from the source: options.d.ts comes from src/options.ts via tsc, so the public option
-// types cannot drift. index.d.ts only re-exports them and declares the plugin and root component.
+// Generates declarations from the source: options.d.ts, api/types.d.ts and standalone/types.d.ts come from the
+// source via tsc, so the public types cannot drift. index.d.ts and standalone/index.d.ts only re-export them and
+// declare the plugin, components and functions. The published types must be self-contained: nothing may import
+// @biatec/chat-protocol (or any other workspace package), which is not published; the check at the end enforces it.
 import { writeFileSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
+import { foreignImports } from "./check-dts.mjs";
 
 const tsc = createRequire(import.meta.url).resolve("typescript/bin/tsc");
-mkdirSync("dist", { recursive: true });
+mkdirSync("dist/standalone", { recursive: true });
 execFileSync(
   process.execPath,
-  [tsc, "src/options.ts", "src/api/types.ts", "--declaration", "--emitDeclarationOnly", "--outDir", "dist", "--skipLibCheck", "--target", "es2020", "--moduleResolution", "bundler", "--module", "esnext", "--strict"],
+  [
+    tsc,
+    "src/options.ts",
+    "src/api/types.ts",
+    "src/standalone/types.ts",
+    "--declaration",
+    "--emitDeclarationOnly",
+    "--rootDir",
+    "src",
+    "--outDir",
+    "dist",
+    "--skipLibCheck",
+    "--target",
+    "es2020",
+    "--lib",
+    "es2020,dom",
+    "--moduleResolution",
+    "bundler",
+    "--module",
+    "esnext",
+    "--strict",
+  ],
   { stdio: "inherit" }
 );
 writeFileSync(
@@ -28,3 +52,36 @@ export declare const BiatecChat: Plugin<[BiatecChatOptions]>;
 export declare function useBiatecChat(): BiatecChatApi;
 `
 );
+// No Vue types here: the standalone entry bundles Vue, so React and plain-JS hosts type-check without it.
+writeFileSync(
+  "dist/standalone/index.d.ts",
+  `import type { BiatecChatApi } from "../api/types";
+import type { BiatecChatHandle, MountBiatecChatOptions } from "./types";
+export type { BiatecChatOptions, ChatTheme, ChatMode } from "../options";
+export type { AskResult, BiatecChatApi } from "../api/types";
+export type { BiatecChatHandle, MountBiatecChatOptions } from "./types";
+/** \`<html>\` attribute the standalone build treats as dark by default (\`theme: 'host'\`). */
+export declare const DEFAULT_HOST_DARK_ATTRIBUTE = "data-theme=dark";
+/**
+ * Mounts the floating widget and returns the host API plus \`unmount()\`. Browser only; without a DOM it does nothing.
+ * Defaults differ from the plugin: \`theme: 'host'\` following \`<html data-theme="dark">\` when \`<html>\` has a
+ * \`data-theme\` attribute (else \`auto\`), and \`locale\` from \`<html lang>\`. A second call returns the mounted
+ * widget and warns when its options differ.
+ */
+export declare function mountBiatecChat(options: MountBiatecChatOptions): BiatecChatHandle;
+export declare function mountBiatecChat(container: Element | string, options: MountBiatecChatOptions): BiatecChatHandle;
+/** Removes the widget mounted by \`mountBiatecChat\` or by the script-tag auto-mount. */
+export declare function unmount(): void;
+/** Mounts from a script tag's \`data-*\` attributes (what the IIFE build does with its own tag). */
+export declare function autoMount(script: HTMLOrSVGScriptElement | null | undefined): void;
+/** Host API: open, close, ask, setPageContext, setTheme, setLocale. */
+export declare function useBiatecChat(): BiatecChatApi;
+`
+);
+
+// Self-contained check: every import in the published declarations is relative or "vue".
+const bad = foreignImports("dist");
+if (bad.length) {
+  console.error("emit-types: published declarations import packages that are not dependencies:\n  " + bad.join("\n  "));
+  process.exit(1);
+}
