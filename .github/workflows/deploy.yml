@@ -39,9 +39,6 @@ jobs:
           echo "$KUBE_CONFIG" | base64 -d > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
 
-      - name: Ensure namespace
-        run: kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$NAMESPACE"
-
       # Postgres, Redis and builders passwords and the token-vault master key come from the environment's GitHub secrets
       # (docs/cicd.md has the one-liners that generate them). Postgres only reads its password when its volume is first
       # initialised, so never change POSTGRES_PASSWORD afterwards; losing VAULT_MASTER_KEY signs every user out.
