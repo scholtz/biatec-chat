@@ -63,6 +63,35 @@
   --shadow-lg: 0 28px 56px -22px rgba(0, 0, 0, 0.8);
 }
 
+/* WCAG AA contrast (T-102). Aura's light values put white on green-500/red-500/emerald-500 (2.3-3.8:1) and
+   surface-500 on surface-100 in the SelectButton (4.3:1); light mode uses a darker shade instead. Each value is a
+   light-dark() pair whose dark half is Aura's own, so dark mode is unchanged. `:root:root` outranks PrimeVue's
+   runtime `:root,:host` token sheet, which is injected after this stylesheet. */
+:root:root {
+  --p-togglebutton-color: light-dark(var(--p-surface-600), var(--p-surface-400));
+  --p-button-primary-background: light-dark(var(--p-emerald-700), var(--p-primary-color));
+  --p-button-primary-hover-background: light-dark(var(--p-emerald-800), var(--p-primary-hover-color));
+  --p-button-primary-active-background: light-dark(var(--p-emerald-900), var(--p-primary-active-color));
+  --p-button-primary-border-color: var(--p-button-primary-background);
+  --p-button-primary-hover-border-color: var(--p-button-primary-hover-background);
+  --p-button-primary-active-border-color: var(--p-button-primary-active-background);
+  --p-button-success-background: light-dark(var(--p-green-700), var(--p-green-400));
+  --p-button-success-hover-background: light-dark(var(--p-green-800), var(--p-green-300));
+  --p-button-success-active-background: light-dark(var(--p-green-900), var(--p-green-200));
+  --p-button-success-border-color: var(--p-button-success-background);
+  --p-button-success-hover-border-color: var(--p-button-success-hover-background);
+  --p-button-success-active-border-color: var(--p-button-success-active-background);
+  --p-button-danger-background: light-dark(var(--p-red-600), var(--p-red-400));
+  --p-button-danger-hover-background: light-dark(var(--p-red-700), var(--p-red-300));
+  --p-button-danger-active-background: light-dark(var(--p-red-800), var(--p-red-200));
+  --p-button-danger-border-color: var(--p-button-danger-background);
+  --p-button-danger-hover-border-color: var(--p-button-danger-hover-background);
+  --p-button-danger-active-border-color: var(--p-button-danger-active-background);
+  --p-button-link-color: light-dark(var(--p-emerald-700), var(--p-primary-color));
+  --p-button-link-hover-color: var(--p-button-link-color);
+  --p-button-link-active-color: var(--p-button-link-color);
+}
+
 .surface-card {
   background: var(--surface-card);
   border: 1px solid var(--surface-border);

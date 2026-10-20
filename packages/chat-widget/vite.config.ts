@@ -18,6 +18,6 @@ export default defineConfig({
     },
   },
   // Tests (and the playground host modules they import) resolve the package by name to the source, so they run on a
-  // fresh checkout without a prior build.
-  test: { alias: { "@biatec/chat-widget": fileURLToPath(new URL("./src/index.ts", import.meta.url)) }, environment: "jsdom", include: ["test/**/*.test.ts"], css: { include: [/.+/] } },
+  // fresh checkout without a prior build. `@/` is the DEX page's host modules, as in playground/vite.config.ts.
+  test: { alias: { "@biatec/chat-widget": fileURLToPath(new URL("./src/index.ts", import.meta.url)), "@/": fileURLToPath(new URL("./playground/dex/host/", import.meta.url)) }, environment: "jsdom", include: ["test/**/*.test.ts"], css: { include: [/.+/] } },
 });
