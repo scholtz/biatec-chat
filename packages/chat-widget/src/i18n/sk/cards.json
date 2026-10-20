@@ -1,0 +1,66 @@
+{
+  "cards": {
+    "preview": {
+      "label": "Náhľad akcie",
+      "testnet": "Testnet",
+      "mainnet": "Mainnet",
+      "from": "Od",
+      "to": "Komu",
+      "fee": "Poplatok",
+      "slippage": "Sklz ceny",
+      "simulation": "Simulácia",
+      "limit": "Limitný kôš",
+      "limitRemaining": "{bucket}: zostáva {remaining} {currency}",
+      "phoneYes": "Očakáva sa schválenie vo vašom telefóne",
+      "phoneNo": "Schválenie v telefóne sa neočakáva",
+      "validFor": "Platí ešte",
+      "expired": "Platnosť tohto náhľadu vypršala. Požiadajte o nový.",
+      "details": "Podrobnosti",
+      "hideDetails": "Skryť podrobnosti",
+      "steps": "Kroky",
+      "step": "Krok {n}",
+      "txId": "Transakcia",
+      "downside": "Ak by hodnota klesla o 10 percent, stratili by ste približne {amount} {currency}.",
+      "review": "Skontrolovať",
+      "cancel": "Zrušiť",
+      "confirmAction": "Potvrdiť {action} · {amount}",
+      "confirmActionOnly": "Potvrdiť {action}",
+      "confirmPlain": "Potvrdiť",
+      "needReview": "Otvorte Skontrolovať a začiarknite políčko, aby sa Potvrdiť povolilo.",
+      "tooLittleTime": "Zostáva menej ako 10 minút platnosti, preto je Potvrdiť vypnuté. Požiadajte o nový náhľad.",
+      "authorize": "Povoliť podpisovanie",
+      "authorizeHint": "Podpisovanie potrebuje ešte jedno povolenie. Otvorí sa okno prihlásenia.",
+      "sessionWarn": "Vaša relácia skončí o {time}. Dokončite túto akciu teraz alebo ju uložte a prihláste sa znova.",
+      "finishNow": "Dokončiť teraz",
+      "saveAction": "Uložiť na neskôr",
+      "signInAgain": "Relácia skončí skôr, než tento náhľad. Prihláste sa znova a získajte nový náhľad."
+    },
+    "review": {
+      "title": "Skontrolujte pred potvrdením",
+      "what": "Čo sa stane",
+      "permissions": "Dotknuté oprávnenia",
+      "permissionsText": "Podpisovanie v sieti {network} cez Biatec OIDC. {phone}.",
+      "details": "Presné podrobnosti",
+      "financial": "Finančné dôsledky",
+      "noFiat": "Pre tieto aktíva nie je známa hodnota v eurách ani dolároch. Poplatky a sklz ceny sú uvedené v podrobnostiach.",
+      "stop": "Ako to zastaviť",
+      "stopText": "Stlačte Zrušiť na karte kedykoľvek pred podpisom, zamietnite žiadosť vo svojom telefóne alebo pozastavte agenta v hlavičke.",
+      "ack": "Prečítal som si podrobnosti a chcem pokračovať",
+      "done": "Hotovo"
+    },
+    "consent": {
+      "waiting": "Čaká sa na schválenie vo vašom telefóne",
+      "code": "Väzobný kód",
+      "codeHint": "Zadajte tento kód do autentifikátora.",
+      "timeLeft": "Zostávajúci čas na schválenie",
+      "cancel": "Zrušiť"
+    },
+    "receipt": {
+      "title": "Potvrdenka",
+      "txId": "ID transakcie",
+      "viewTx": "Zobraziť transakciu",
+      "evidence": "Stiahnuť dôkaz",
+      "none": "Zatiaľ nie je v blockchaine"
+    }
+  }
+}

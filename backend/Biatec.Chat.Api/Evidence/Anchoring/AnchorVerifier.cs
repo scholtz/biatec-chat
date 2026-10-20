@@ -26,9 +26,9 @@ public static class AnchorExporter
     {
         var leaves = await db.EvidenceAnchorLeaves.AsNoTracking().Where(l => l.ConversationId == conversationId).ToListAsync(ct);
         var refs = await db.EvidenceEntries.AsNoTracking().Where(e => e.ConversationId == conversationId && e.AnchorRef != null)
-            .Select(e => e.AnchorRef!.Value).ToListAsync(ct);
-        var ids = leaves.Select(l => l.AnchorId).Concat(refs).Distinct().ToList();
-        var anchors = await db.EvidenceAnchors.AsNoTracking().Where(a => ids.Contains(a.Id)).OrderBy(a => a.SequenceNumber).ToListAsync(ct);
+            .Select(e => e.AnchorRef!).ToListAsync(ct);
+        var ids = leaves.Select(l => l.AnchorId).Distinct().ToList();
+        var anchors = await db.EvidenceAnchors.AsNoTracking().Where(a => ids.Contains(a.Id) || refs.Contains(a.AnchorTxId)).OrderBy(a => a.SequenceNumber).ToListAsync(ct);
         var byId = anchors.ToDictionary(a => a.Id);
         var proofs = leaves.OrderBy(l => byId[l.AnchorId].SequenceNumber).Select(l => new AnchorProof(
             byId[l.AnchorId].AnchorTxId, byId[l.AnchorId].SequenceNumber, l.ConversationId, l.AnchoredSeq, l.HeadHash, l.LeafIndex,
@@ -111,13 +111,11 @@ public static class AnchorVerifier
             if (b.Seq != c.Seq || b.Root != c.Root || b.PrevTxId != c.PrevTxId || b.GapFrom != c.GapFrom)
                 errors.Add($"Bundle anchor {c.Seq} differs from the chain (sequence, root, previous transaction or gap).");
         }
-        var indexOfId = new Dictionary<Guid, int>();
-        for (var i = 0; i < chainSorted.Count; i++) indexOfId.TryAdd(AnchorIds.FromTxId(chainSorted[i].TxId), i);
         int RefIndex(EvidenceEntry e, out bool ok)
         {
             ok = true;
-            if (e.AnchorRef is not { } id) return -1;
-            if (indexOfId.TryGetValue(id, out var i)) return i;
+            if (e.AnchorRef is not { } txId) return -1;
+            if (indexOfTx.TryGetValue(txId, out var i)) return i;
             ok = false;
             return -1;
         }

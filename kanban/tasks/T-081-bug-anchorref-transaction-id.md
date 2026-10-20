@@ -1,7 +1,7 @@
 ---
 id: T-081
 title: "Bug: anchorRef in the entry hash must be the anchor transaction ID"
-status: in-progress
+status: done
 priority: P2
 epic: "Evidence"
 blocked_by: []
@@ -115,8 +115,11 @@ Filled in by the agent when it moves the task to `review`.
 
 ## Review
 
+- 2026-10-20 04:35 · approve · PR #176 merged into main @ bbb69d6 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #4)
 - 2026-10-20 04:05 · scholtz · taken · status stays backlog
 - 2026-10-20 04:05 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 04:35 · user · in-progress → done · PR #176 merged into main @ bbb69d6 (synced by kanban-sync)

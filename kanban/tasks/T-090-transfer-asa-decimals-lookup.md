@@ -1,7 +1,7 @@
 ---
 id: T-090
 title: "Bug: transfer preview must look up ASA decimals and unit name (real MCP balances carry none)"
-status: in-progress
+status: done
 priority: P1
 epic: "Wallet tools"
 blocked_by: [T-089]
@@ -46,9 +46,9 @@ files.
 
 ## Acceptance criteria
 
-- [ ] An ASA transfer preview against a real-shape MCP fake shows the algod decimals and unit name (test)
-- [ ] An algod lookup failure refuses with a clear message, never a guessed amount (test)
-- [ ] With `assetsTruncated`, holding and opt-in are confirmed per asset via algod (test)
+- [x] An ASA transfer preview against a real-shape MCP fake shows the algod decimals and unit name (test)
+- [x] An algod lookup failure refuses with a clear message, never a guessed amount (test)
+- [x] With `assetsTruncated`, holding and opt-in are confirmed per asset via algod (test)
 
 ## Verification
 
@@ -56,7 +56,17 @@ files.
 
 ## Hand-off
 
+- **Summary:** shared `IAlgodAssetReader` / `AlgodAssetReader` (Tools/Algod): ASA decimals and unit name from algod `/v2/assets/{id}` (10 min cache, case-insensitive network key, failures not cached) and per-asset holding from `/v2/accounts/{addr}/assets/{id}` (only algod's "account asset info not found" 404 means not opted in; any other 404 is a failed read). The transfer preview takes ASA decimals and symbol only from algod; failures refuse, never guess; an unconfigured reader gets its own refusal and an error log. With `assetsTruncated`, holding and opt-in are confirmed per asset. ASAs are always labelled with their id ("USDC (ASA 10458941)"), so a scam ASA named "ALGO" can't pass as ALGO. One untrusted-text cleaner `UntrustedText.Clean` (strips Cc, Cf incl. bidi overrides and zero-width, separators, private-use, lone surrogates, quotes, backticks, `<>\\`) used for unit names and safe proposal text.
+- **Branch:** `task/T-090` @ `1299a26` (merged with main), PR #177 (`Closes #170`).
+- **Files outside the area:** `Tools/Safe/Proposals/SafeProposalService.cs` (`Sanitize` delegates to `UntrustedText.Clean`).
+- **Verification:** Transfer + SafeProposal 134 passed; full backend 1144 passed, 1 skipped, 0 failed. Review (medium): all realistic findings fixed.
+- **Known limitations:** serial algod calls in the preview; raw HttpClient per network instead of IHttpClientFactory; `AlgodSafeHoldingsReader` still separate (T-093).
+- **Open questions:** asset rows carry the full label in `AssetAmount.Symbol` next to `AssetId`; if the widget prints the id beside the symbol, it shows twice (cosmetic).
+- **Unblocks:** T-093.
+
 ## Review
+
+- 2026-10-20 04:31 · approve · PR #177 merged into main @ 7a276a2 (recorded by kanban-sync)
 
 ## Activity log
 
@@ -64,3 +74,5 @@ files.
 - 2026-10-20 04:00 · kanban-board · blocked → backlog · blockers done: T-089
 - 2026-10-20 04:00 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 04:00 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 04:31 · coordinator · in-progress → review · branch task/T-090 @ 1299a26, PR #177
+- 2026-10-20 04:31 · user · review → done · PR #177 merged into main @ 7a276a2 (synced by kanban-sync)

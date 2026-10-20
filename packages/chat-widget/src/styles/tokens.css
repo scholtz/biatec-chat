@@ -85,8 +85,8 @@
   --color-border-strong: rgba(15, 23, 42, 0.18);
   --color-border-focus: #0b8a60;
   --color-brand-primary: #0ea371;
-  --color-brand-hover: #0b8a60;
-  --color-brand-pressed: #0a774f;
+  --color-brand-hover: #12b57e;
+  --color-brand-pressed: #0f9d6e;
   --color-brand-subtle: rgba(14, 163, 113, 0.12);
   --color-brand-text: #087453;
   --color-brand-on: #04221a;
@@ -94,8 +94,8 @@
   --color-status-success-subtle: rgba(21, 160, 90, 0.12);
   --color-status-warning: #946200;
   --color-status-warning-subtle: rgba(217, 145, 0, 0.12);
-  --color-status-danger: #e11d48;
-  --color-status-danger-subtle: rgba(225, 29, 72, 0.1);
+  --color-status-danger: #be123c;
+  --color-status-danger-subtle: rgba(190, 18, 60, 0.1);
   --color-status-info: #0369a1;
   --color-status-info-subtle: rgba(2, 132, 199, 0.1);
   --color-status-neutral: #475569;

@@ -85,6 +85,7 @@ public class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbContext(
         {
             e.HasIndex(x => new { x.ConversationId, x.Seq }).IsUnique();
             e.HasIndex(x => x.AnchorRef);
+            e.Property(x => x.AnchorRef).HasMaxLength(64);
             e.Property(x => x.Payload).HasColumnType("jsonb");
         });
 

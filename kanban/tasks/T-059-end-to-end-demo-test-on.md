@@ -1,7 +1,7 @@
 ---
 id: T-059
 title: End-to-end demo test on testnet
-status: in-progress
+status: done
 priority: P1
 epic: "Deploy & docs"
 blocked_by: [T-033, T-036, T-042, T-049]
@@ -51,6 +51,8 @@ pnpm --filter e2e test
 
 ## Review
 
+- 2026-10-20 04:34 · approve · PR #175 merged into main @ 3d1c46f (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
@@ -58,3 +60,4 @@ pnpm --filter e2e test
 - 2026-10-20 03:14 · kanban-board · blocked → backlog · blockers done: T-033, T-036, T-042, T-049
 - 2026-10-20 04:05 · scholtz · taken · status stays backlog
 - 2026-10-20 04:05 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 04:34 · user · in-progress → done · PR #175 merged into main @ 3d1c46f (synced by kanban-sync)
