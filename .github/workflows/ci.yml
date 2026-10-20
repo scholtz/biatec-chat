@@ -60,6 +60,9 @@ jobs:
       # The widget and builders import @biatec/chat-protocol from its dist, so it is built first.
       - name: Build chat-protocol
         run: pnpm --filter @biatec/chat-protocol build
+      # The widget typecheck also covers playground/dex, which imports @biatec/chat-widget from its dist.
+      - name: Build chat-widget
+        run: pnpm --filter @biatec/chat-widget build
       - name: Typecheck
         run: |
           pnpm --filter @biatec/chat-widget typecheck
@@ -70,10 +73,8 @@ jobs:
           pnpm --filter builders test
           pnpm --filter @biatec/consent-protocol test
           pnpm --filter mock-oidc test
-      - name: Build
-        run: |
-          pnpm --filter @biatec/chat-widget build
-          pnpm --filter builders build
+      - name: Build builders
+        run: pnpm --filter builders build
 
   authenticator:
     runs-on: ubuntu-latest
