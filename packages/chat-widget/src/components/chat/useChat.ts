@@ -58,6 +58,8 @@ export interface ChatServices {
   onCancelled?: (previewId: string) => void;
   /** Every confirm response body, so typed agent refusals can be shown (core.agent.reportRefusal). */
   onConfirmResponse?: (body: unknown) => void;
+  /** The visible conversation was reset (sign-out, erase): clear what was derived from it (Activity, refusals). */
+  onReset?: () => void;
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -72,6 +74,8 @@ export function useChat(svc: ChatServices) {
   let nextId = 1;
   let disposed = false;
   let abort: AbortController | null = null;
+  /** Bumped by resetConversation, so a reply still finishing from the old conversation is not announced. */
+  let generation = 0;
 
   /**
    * A live region only speaks when its text changes, so clear it first and set the text on the next tick: two
@@ -107,6 +111,7 @@ export function useChat(svc: ChatServices) {
     const reply = messages[messages.length - 1]!;
     busy.value = true;
     const ctl = (abort = new AbortController());
+    const gen = generation;
     try {
       for await (const e of svc.transport.send({ message, signal: ctl.signal, ...(opts.includeContext === false ? { context: null } : {}) })) apply(reply, e);
     } catch {
@@ -114,8 +119,9 @@ export function useChat(svc: ChatServices) {
     } finally {
       reply.streaming = false;
       busy.value = false;
-      abort = null;
-      announce(reply.error ?? (reply.text || reply.signIn?.description || safeSummary(reply) || dataSummary(reply) || previewSummary(reply)));
+      if (abort === ctl) abort = null;
+      if (gen === generation) announce(reply.error ?? (reply.text || reply.signIn?.description || safeSummary(reply) || dataSummary(reply) || previewSummary(reply)));
+
     }
   }
 
@@ -448,7 +454,7 @@ export function useChat(svc: ChatServices) {
       if (s && s.tier === "Anonymous") {
         session.value = s;
         closePopup();
-        messages.splice(0, messages.length);
+        resetConversation();
         phase.value = "idle";
         announce(t("chat.signedOut"));
         return true;
@@ -466,6 +472,22 @@ export function useChat(svc: ChatServices) {
     return false;
   }
 
+  /**
+   * Drop everything shown for the current conversation: the transcript, a reply still streaming, the keepalive holds
+   * of its previews, the live-region text, and (through onReset) the Activity derived from it. Sign-out and erasure
+   * use it; the backend has already moved the session on.
+   */
+  function resetConversation(): void {
+    generation++;
+    abort?.abort();
+    abort = null;
+    messages.splice(0, messages.length);
+    for (const reason of held) svc.keepalive?.release(reason);
+    held.clear();
+    announcement.value = "";
+    svc.onReset?.();
+  }
+
   onBeforeUnmount(() => {
     disposed = true;
     abort?.abort();
@@ -473,5 +495,5 @@ export function useChat(svc: ChatServices) {
     held.clear();
   });
 
-  return { confirmPreview, authorizePreview, cancelPreview, messages, session, tier, busy, phase, announcement, start, send, signIn, signOut, refreshSession };
+  return { confirmPreview, authorizePreview, cancelPreview, messages, session, tier, busy, phase, announcement, start, send, signIn, signOut, refreshSession, resetConversation };
 }

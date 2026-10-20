@@ -116,6 +116,17 @@ describe("holdings math", () => {
   });
 });
 
+describe("partial holdings", () => {
+  it("shows a note only when the card is partial", () => {
+    expect(mount(HoldingsCard, { props: { card: card({ partial: true }) } }).get("[data-test=holdings-partial]").text()).toBe("Some assets are not listed.");
+    expect(mount(HoldingsCard, { props: { card: card() } }).find("[data-test=holdings-partial]").exists()).toBe(false);
+  });
+  it("validates the partial flag as a boolean", () => {
+    expect(isChatEvent(card({ partial: true }))).toBe(true);
+    expect(isChatEvent({ ...card(), partial: "yes" })).toBe(false);
+  });
+});
+
 describe("data_card event validation", () => {
   it("accepts a well-formed holdings card and drops malformed ones", () => {
     expect(isChatEvent(card())).toBe(true);

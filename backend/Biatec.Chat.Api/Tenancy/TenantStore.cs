@@ -9,12 +9,17 @@ public interface ITenantStore
 {
     /// <summary>Finds the tenant whose registered host equals <paramref name="host"/> (already normalized).</summary>
     Task<Tenant?> FindByHostAsync(string host, CancellationToken ct);
+
+    /// <summary>Drops a cached entry for <paramref name="host"/> (already normalized) after the tenant row changed.</summary>
+    void Invalidate(string host) { }
 }
 
 /// <summary>Tenant lookup backed by PostgreSQL with a short cache (misses included).</summary>
 public sealed class DbTenantStore(IServiceScopeFactory scopes) : ITenantStore
 {
-    private static readonly TimeSpan Ttl = TimeSpan.FromSeconds(60);
+    // Short, because tenant policy gates (x402Enabled, limitsUpdateEnabled, caps) are read from this cached row: an
+    // operator switching one off reaches every replica within this TTL (the writing replica evicts at once).
+    private static readonly TimeSpan Ttl = TimeSpan.FromSeconds(10);
 
     // Private and size-bounded: the key is attacker-controlled (any Host header), so misses must not grow memory.
     private readonly MemoryCache cache = new(new MemoryCacheOptions { SizeLimit = 5000 });
@@ -28,6 +33,8 @@ public sealed class DbTenantStore(IServiceScopeFactory scopes) : ITenantStore
         cache.Set(host, tenant, new MemoryCacheEntryOptions { Size = 1, AbsoluteExpirationRelativeToNow = Ttl });
         return tenant;
     }
+
+    public void Invalidate(string host) => cache.Remove(host);
 }
 
 public static class TenantHost

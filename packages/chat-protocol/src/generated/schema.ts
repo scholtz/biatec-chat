@@ -356,6 +356,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/session/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ListOwnConversations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/session/erase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["EraseOwnData"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/onboarding/challenges": {
         parameters: {
             query?: never;
@@ -557,8 +589,32 @@ export interface components {
             decimals: number | string;
             fiatValue?: null | string;
         };
+        ConversationList: {
+            conversations: components["schemas"]["ConversationSummary"][];
+        };
+        ConversationSummary: {
+            /** Format: uuid */
+            conversationId: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastMessageAt: string;
+            /** Format: date-time */
+            endedAt?: null | string;
+            current: boolean;
+            /** Format: int32 */
+            evidenceEntries: number | string;
+        };
         ElevatePopupRequest: {
             scope?: null | string;
+        };
+        ErasureResponse: {
+            status: string;
+            /** Format: int32 */
+            conversations: number | string;
+            /** Format: int32 */
+            payloadsDeleted: number | string;
+            conversationId?: null | string;
         };
         HostContext: {
             route?: null | string;
@@ -581,6 +637,7 @@ export interface components {
             fiatCurrency?: null | string;
             /** Format: date-time */
             asOf: string;
+            partial?: boolean;
         };
         ChatEventErrorEvent: {
             /** @enum {string} */
@@ -1208,6 +1265,46 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    ListOwnConversations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationList"];
+                };
+            };
+        };
+    };
+    EraseOwnData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErasureResponse"];
+                };
             };
         };
     };

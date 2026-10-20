@@ -8,6 +8,7 @@
 @import "./components/data/data.css";
 @import "./components/agent/agent.css";
 @import "./components/activity/activity.css";
+@import "./components/export/export.css";
 @import "./styles/a11y.css";
 
 :host {

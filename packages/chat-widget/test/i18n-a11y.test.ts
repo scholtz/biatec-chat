@@ -53,7 +53,7 @@ describe("i18n catalogs", () => {
   });
 
   it("the catalog files on disk are all registered (no catalog is left out of an index)", () => {
-    for (const file of ["ui", "cards", "chat", "agent", "activity", "safe"]) {
+    for (const file of ["ui", "cards", "chat", "agent", "activity", "safe", "export"]) {
       expect(Object.keys(JSON.parse(read(`src/i18n/sk/${file}.json`))), file).toEqual(Object.keys(JSON.parse(read(`src/i18n/en/${file}.json`))));
     }
   });
@@ -66,6 +66,7 @@ describe("i18n catalogs", () => {
       "src/components/ChatPanel.vue",
       "src/components/activity/ActivityTimeline.vue",
       "src/components/agent/AgentNotices.vue",
+      "src/components/export/ExportView.vue",
       "src/components/agent/PermissionsDialog.vue",
       "src/components/agent/useAgent.ts",
       "src/components/cards/ActionPreviewCard.vue",
@@ -171,6 +172,14 @@ function services(session: SessionState, events: ChatEvent[] = []): WidgetServic
       setAgent: vi.fn(async (mode: AgentMode, paused: boolean) => ({ agentMode: mode, paused })),
       cancelPreview: vi.fn(async () => true),
     },
+    // The export view (T-094) in the Activity sheet: one conversation with evidence.
+    retention: {
+      list: vi.fn(async () => [
+        { conversationId: "c1", createdAt: "2026-10-19T08:30:00Z", lastMessageAt: "2026-10-19T09:00:00Z", current: true, evidenceEntries: 2 },
+      ]),
+      evidence: vi.fn(async () => ({ name: "b.json", text: "{}" })),
+      erase: vi.fn(async () => ({ status: "erased", conversations: 1, payloadsDeleted: 1, conversationId: "c2" })),
+    },
     pollMs: 1,
     timeoutMs: 50,
   } as WidgetServices;
@@ -246,6 +255,16 @@ const views: View[] = [
     run: async (w) => {
       await ask(w);
       await w.get("[data-testid=activity-toggle]").trigger("click");
+      await flushPromises();
+    },
+  },
+  {
+    name: "erase confirm step",
+    session: authed(),
+    run: async (w) => {
+      await w.get("[data-testid=activity-toggle]").trigger("click");
+      await flushPromises();
+      await w.get("[data-testid=export-erase]").trigger("click");
       await flushPromises();
     },
   },

@@ -62,6 +62,11 @@ const segments = computed(() => model.value.rows.filter((r) => r.tenths !== null
       <span>{{ t("holdings.concentration", { asset: model.concentrated.unitName, percent: percentText(model.concentrated.tenths), threshold: 40 }) }}</span>
     </p>
 
+    <p v-if="card.partial" class="bc-holdings-note" data-test="holdings-partial">
+      <Info :size="16" :stroke-width="2" aria-hidden="true" />
+      <span>{{ t("holdings.partial") }}</span>
+    </p>
+
     <p v-if="time" class="bc-holdings-asof bc-muted bc-num" data-test="holdings-asof">
       {{ t("holdings.asOf", { time, network: t(`cards.preview.${net}`) }) }}
     </p>

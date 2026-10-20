@@ -1,7 +1,7 @@
 ---
 id: T-086
 title: "Bug: admin API for policy and knowledge-base management"
-status: in-progress
+status: done
 priority: P3
 epic: "Orchestrator"
 blocked_by: []
@@ -70,7 +70,13 @@ or `PARTIAL`.**
 
 ## Analysis verdict
 
-_pending: filled in by the agent that runs the Analysis prompt (verdict, date, evidence, approved items)._
+PARTIAL, 2026-10-20 (worker, recorded by the coordinator). Approved and done: operator authentication, tenant policy
+read and validated update (soft-cap floor, operator-only raise for trust-anchored tenants), audit logging, docs.
+Deferred: knowledge-base reload/upload (needs a reloadable KbSearchService and shared storage across replicas).
+Evidence: no admin endpoints on main; the only operator route was `POST /onboarding/operator/tenants`
+(`Onboarding/OnboardingEndpoints.cs:80-89`, bearer `Onboarding:OperatorKey`); `SoftCapPolicy.ValidateOnSave` was only
+called with `byOperator:false` (`OnboardingService.cs:281`); `KbSearchService` is an immutable singleton
+(`Tools/Kb/KbSearchService.cs:24-26`). Spec `PRODUCT-DESCRIPTION.md:302` and `:387`.
 
 ## Goal
 
@@ -89,11 +95,11 @@ files.
 
 ## Acceptance criteria
 
-- [ ] The Analysis verdict is recorded (APPROVED / PARTIAL / REJECTED) with evidence
-- [ ] Admin endpoints reject non-operators
-- [ ] Raising a soft cap is refused for a tenant without `trustAnchorVerified`
-- [ ] Every change is logged without secrets
-- [ ] docs/admin-api.md documents the endpoints
+- [x] The Analysis verdict is recorded (APPROVED / PARTIAL / REJECTED) with evidence
+- [x] Admin endpoints reject non-operators
+- [x] Raising a soft cap is refused for a tenant without `trustAnchorVerified`
+- [x] Every change is logged without secrets
+- [x] docs/admin-api.md documents the endpoints
 
 ## Implementation notes
 
@@ -105,19 +111,23 @@ Never return `clientSecretRef` targets or secrets.
 
 ## Hand-off
 
-Filled in by the agent when it moves the task to `review`.
-
-- **Summary:** what was done.
-- **Files changed:** ...
-- **How it was verified:** commands run and their results.
-- **Follow-up tasks created:** IDs, or "none".
-- **Unblocks:** output of `kanban/scripts/board.py unblocks T-086`: tasks that become ready once this is approved.
-- **Open questions:** for the user, or "none".
+- **Summary:** operator admin API under `/onboarding/operator/tenants`: list, read, `PATCH …/{id}/policy` (softCapEurPerHour, trustAnchorVerified, limitsUpdateEnabled, x402Enabled, bedrockUsdPerWindow, safeApprovalCaps, defaultModel; reason required). Auth (shared `OperatorAuth`: bearer `Onboarding:OperatorKey` from a secret, constant-time, 404 when unset) runs before the body is read; own `operator` rate-limit partition. Updates validate only the changed rules (soft-cap floor and operator-only raise for trust-anchored tenants) under an advisory lock, refuse unknown/identity/secret fields, evict the tenant cache (TTL now 10 s on other pods), and write a sanitized audit log line; responses never contain secrets.
+- **Branch:** `task/T-086` @ `c598562` (merged with main), PR #188 (`Closes #155`).
+- **Files changed:** `Admin/**`, `Tests/Admin/**`, `docs/admin-api.md`; outside the area: `Program.cs`, `Onboarding/OperatorAuth.cs` (new) + `OnboardingEndpoints.cs`, `Tenancy/TenantStore.cs` (Invalidate, TTL 10 s).
+- **How it was verified:** Admin + Onboarding + Tenancy 95 passed; full backend on current main 1191 passed, 1 skipped, 1 flaky (`SessionProfileTests.Fill_IsSingleFlightedPerSession`, timing-based, passes 3/3 alone; follow-up T-095). Review (medium): all realistic findings fixed.
+- **Known limitations:** `trustAnchorVerified` is the operator's attestation (no federation chain check); one shared operator key (no per-person identity); `consentThresholdCeilingEur` read-only; `defaultModel` takes effect once T-085 ships; the operator onboarding route still binds its body before auth.
+- **Follow-up tasks proposed:** knowledge-base reload/upload; per-operator identity and evidence for admin changes.
+- **Unblocks:** no task is blocked by T-086.
+- **Open questions:** see known limitations (trust anchor attestation, shared key).
 
 ## Review
+
+- 2026-10-20 05:30 · approve · PR #188 merged into main @ 0c48f10 (recorded by kanban-sync)
 
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #9)
 - 2026-10-20 04:44 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 04:44 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 05:30 · coordinator · in-progress → review · branch task/T-086 @ c598562, PR #188; analysis verdict PARTIAL recorded
+- 2026-10-20 05:30 · user · review → done · PR #188 merged into main @ 0c48f10 (synced by kanban-sync)

@@ -53,7 +53,8 @@ const isDataCard = (v: Record<string, unknown>): boolean =>
   v.addresses.every(isStr) &&
   Array.isArray(v.assets) &&
   v.assets.every(isHoldingsAsset) &&
-  (v.fiatCurrency == null || isStr(v.fiatCurrency));
+  (v.fiatCurrency == null || isStr(v.fiatCurrency)) &&
+  (v.partial == null || typeof v.partial === "boolean");
 
 /** Narrow an unknown JSON value to a ChatEvent: the discriminator and the required fields of that event type. */
 export function isChatEvent(v: unknown): v is ChatEvent {
