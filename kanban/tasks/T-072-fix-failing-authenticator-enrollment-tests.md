@@ -1,7 +1,7 @@
 ---
 id: T-072
 title: Fix failing authenticator enrollment tests
-status: backlog
+status: in-progress
 priority: P2
 epic: "Authenticator"
 blocked_by: [T-051, T-071]
@@ -9,8 +9,8 @@ area: ["apps/biatec_authenticator/lib/enrollment/**", "apps/biatec_authenticator
 parallel: yes
 conflicts_with: []
 issue: "#129"
-branch: ""
-owner: ""
+branch: "task/T-072"
+owner: "worker-T-072"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#biatec-authenticator"
 created: 2026-10-20
@@ -65,3 +65,4 @@ Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>
 - 2026-10-20 00:47 · kanban-board · backlog → blocked · waiting on: T-071
 - 2026-10-20 03:49 · kanban-board · blocked → backlog · blockers done: T-051, T-071
 - 2026-10-20 04:06 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 04:06 · coordinator · backlog → in-progress · dispatched to worker
