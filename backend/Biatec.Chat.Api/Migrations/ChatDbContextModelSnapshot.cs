@@ -407,6 +407,38 @@ namespace Biatec.Chat.Api.Migrations
                     b.ToTable("EvidenceEntries");
                 });
 
+            modelBuilder.Entity("Biatec.Chat.Core.Data.EvidenceSigningKey", b =>
+                {
+                    b.Property<string>("Kid")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("RetiredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("X")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<byte[]>("Y")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.HasKey("Kid");
+
+                    b.HasIndex("IsActive")
+                        .IsUnique()
+                        .HasFilter("\"IsActive\"");
+
+                    b.ToTable("EvidenceSigningKeys");
+                });
+
             modelBuilder.Entity("Biatec.Chat.Core.Data.KnownSafe", b =>
                 {
                     b.Property<Guid>("Id")

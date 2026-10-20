@@ -18,9 +18,9 @@ data:
   # The vault wraps its data keys with the master key in biatec-chat-generated (Vault__MasterKey below), generated
   # once by the deploy; never the local Dev key. AWS is used for Bedrock only.
   Vault__KeyProvider: Secret
-  # No production IEvidenceKeyStore exists yet: signing keys are in-memory, lost on restart and differ per replica.
-  # Explicit, documented decision (see k8s/README.md); remove once a persistent key store is registered.
-  Evidence__AllowEphemeralKeys: "true"
+  # Evidence signing keys: private keys are derived from Evidence__Secret__MasterKey (biatec-chat-generated), public key
+  # metadata (active/retired, dates) is shared by all replicas in PostgreSQL. See k8s/README.md.
+  Evidence__KeyStore: Secret
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -80,6 +80,8 @@ spec:
             # Resolves the seeded tenant's ClientSecretRef secret://biatec-chat/oidc-client-secret.
             - name: Secrets__biatec-chat__oidc-client-secret
               valueFrom: {secretKeyRef: {name: biatec-chat-secrets, key: oidc-client-secret}}
+            - name: Evidence__Secret__MasterKey
+              valueFrom: {secretKeyRef: {name: biatec-chat-generated, key: evidence-master-key}}
             - name: Builders__InternalSecret
               valueFrom: {secretKeyRef: {name: biatec-chat-generated, key: builders-internal-secret}}
           startupProbe:

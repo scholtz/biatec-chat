@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Biatec.Chat.Api.Evidence.Keys;
 using Biatec.Chat.Core.Data;
 using Biatec.Chat.Core.Evidence;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -11,6 +12,26 @@ public sealed class EvidenceOptions
 
     /// <summary>Optional file for the local dev signing keys (so they survive restarts). Never a production setting.</summary>
     public string? DevKeyFile { get; set; }
+
+    /// <summary>Key store: <c>Secret</c> (HKDF-derived from a master secret, metadata in PostgreSQL), <c>Kms</c> (pre-created KMS keys) or <c>Dev</c> (in-memory/file, Development only). Required outside Development.</summary>
+    public string? KeyStore { get; set; }
+
+    /// <summary>Base64 master secret (at least 32 bytes) for KeyStore=Secret; comes from a Kubernetes secret, never from appsettings.</summary>
+    public SecretOptions Secret { get; set; } = new();
+
+    public KmsStoreOptions Kms { get; set; } = new();
+
+    /// <summary>Automatic rotation: when the active key is older than this many days it is retired and a new one activated (checked hourly by every replica). 0 disables it; the default is 90.</summary>
+    public int RotationDays { get; set; } = 90;
+
+    public sealed class SecretOptions { public string? MasterKey { get; set; } }
+
+    public sealed class KmsStoreOptions
+    {
+        public string Region { get; set; } = "eu-central-1";
+        /// <summary>Pre-created ECC_NIST_P256 SIGN_VERIFY keys, oldest first; rotation activates the next unused one.</summary>
+        public List<string> KeyIds { get; set; } = [];
+    }
 
     /// <summary>Outside Development the in-memory dev key store is refused unless this is true (keys are lost on restart).</summary>
     public bool AllowEphemeralKeys { get; set; }
@@ -28,15 +49,29 @@ public static class EvidenceJwks
         {
             var o = config.GetSection(EvidenceOptions.Section).Get<EvidenceOptions>() ?? new EvidenceOptions();
             var dev = sp.GetRequiredService<IHostEnvironment>().IsDevelopment();
+            switch ((o.KeyStore ?? "").Trim().ToLowerInvariant())
+            {
+                case "secret":
+                    return new DbEvidenceKeyStore(sp.GetRequiredService<IServiceScopeFactory>(), SecretEvidenceKeyMaterial.FromBase64(o.Secret.MasterKey));
+                case "kms":
+                    if (!string.Equals(o.Kms.Region, "eu-central-1", StringComparison.Ordinal))
+                        throw new InvalidOperationException("Evidence:Kms:Region must be eu-central-1.");
+                    return new DbEvidenceKeyStore(sp.GetRequiredService<IServiceScopeFactory>(), KmsEvidenceKeyMaterial.Create(o.Kms.Region, o.Kms.KeyIds));
+                case "" or "dev":
+                    break;
+                default:
+                    throw new InvalidOperationException("Evidence:KeyStore must be 'Secret', 'Kms' or 'Dev'.");
+            }
             if (!dev && !string.IsNullOrWhiteSpace(o.DevKeyFile))
                 throw new InvalidOperationException("Evidence:DevKeyFile is only allowed in Development; register a production IEvidenceKeyStore.");
             if (!dev && !o.AllowEphemeralKeys)
-                throw new InvalidOperationException("No production IEvidenceKeyStore is registered. Register one, or set Evidence:AllowEphemeralKeys=true to accept signing keys that are lost on restart.");
+                throw new InvalidOperationException("No evidence key store is configured. Set Evidence:KeyStore=Secret (or Kms), or set Evidence:AllowEphemeralKeys=true to accept signing keys that are lost on restart.");
             if (!dev)
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger("Evidence").LogWarning("Evidence signing uses the local Dev key store; register a production IEvidenceKeyStore.");
             return new DevEvidenceKeyStore(o.DevKeyFile);
         });
         services.TryAddScoped<IEvidenceLog>(sp => new EvidenceLog(sp.GetRequiredService<ChatDbContext>(), sp.GetRequiredService<IEvidenceKeyStore>()));
+        services.AddHostedService<EvidenceKeyRotationService>();
         return services;
     }
 

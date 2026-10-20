@@ -54,7 +54,17 @@ setup with `infra/aws/rolesanywhere.sh`; the full walk-through is [docs/aws-setu
   The secret itself is the `oidc-client-secret` key above, exposed as `Secrets__biatec-chat__oidc-client-secret`.
 - **Vault** uses the `Secret` key provider: `Vault__MasterKey` from `biatec-chat-generated` wraps the per-entry data keys
   (AES-GCM). Losing that key only forces users to sign in again.
-- **Evidence signing keys** have no production store yet. `Evidence__AllowEphemeralKeys=true` is set knowingly: keys are
-  in-memory, lost on restart and differ between replicas (so the JWKS may be inconsistent across the 2 replicas) until a persistent
-  `IEvidenceKeyStore` is registered.
+- **Evidence signing keys** (`Evidence__KeyStore=Secret`). Add `evidence-master-key` to `biatec-chat-secrets`: base64 of
+  at least 32 random bytes (`openssl rand -base64 32`). Every replica derives the same ES256 keys from it (HKDF), and the
+  key metadata (kid, public point, created/retired dates, which key is active) lives in the PostgreSQL table
+  `EvidenceSigningKeys`, so all replicas publish an identical JWKS and retired keys stay published across restarts and
+  rollouts. Rotation is automatic: every replica checks hourly and, when the active key is older than
+  `Evidence__RotationDays` (default 90, `0` disables), retires it and activates a new kid (one replica wins; others
+  follow within 30 s, signing meanwhile with the retired kid, which still verifies). To rotate sooner, lower
+  `Evidence__RotationDays` (for example `1`) and roll out; there is no HTTP endpoint for it. Back the master key up and never change it: a new master cannot sign for the existing kids. Rotation
+  retires the active key and activates a new kid; the database holds no private key material.
+  Alternative `Evidence__KeyStore=Kms` with `Evidence__Kms__KeyIds__0=<key id>`, `...__1=...` (oldest first): operators
+  pre-create ECC_NIST_P256 `SIGN_VERIFY` keys in eu-central-1 tagged `Project=biatec` (about 1 USD/month each plus
+  per-sign requests; ask the user first), and the pod role needs `kms:Sign` and `kms:GetPublicKey` on them. The backend
+  never creates KMS keys. Outside Development the app refuses to start without a configured store.
 - The backend runs as numeric UID 1654 (`runAsUser` plus `USER 1654` in the Dockerfile).
