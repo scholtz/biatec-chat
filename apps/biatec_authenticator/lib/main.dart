@@ -4,12 +4,16 @@ import 'approvals/approval_screen.dart';
 import 'approvals/approval_services.dart';
 import 'approvals/history_screen.dart';
 import 'approvals/pending_screen.dart';
+import 'clients/clients_screen.dart';
 import 'config.dart';
+import 'devices/devices_screen.dart';
 import 'enrollment/enrollment_screen.dart';
 import 'push/fcm_push_transport.dart';
 import 'push/push_controller.dart';
 import 'routes.dart';
 import 'screens/home_screen.dart';
+import 'security/security_screen.dart';
+import 'security/settings_controller.dart';
 import 'theme.dart';
 
 Future<void> main() async {
@@ -70,17 +74,38 @@ void showRequestArrived(GlobalKey<ScaffoldMessengerState> messenger,
 }
 
 class AuthenticatorApp extends StatelessWidget {
-  AuthenticatorApp(
-      {super.key,
-      required this.config,
-      ApprovalServices? approvals,
-      this.push,
-      this.navigatorKey,
-      this.messengerKey})
-      : approvals = approvals ?? ApprovalServices.fromConfig(config);
+  AuthenticatorApp({
+    Key? key,
+    required AppConfig config,
+    ApprovalServices? approvals,
+    SettingsServices? settings,
+    PushController? push,
+    GlobalKey<NavigatorState>? navigatorKey,
+    GlobalKey<ScaffoldMessengerState>? messengerKey,
+  }) : this._(
+          key,
+          config,
+          approvals ?? ApprovalServices.fromConfig(config),
+          settings,
+          push,
+          navigatorKey,
+          messengerKey,
+        );
+
+  AuthenticatorApp._(
+    Key? key,
+    this.config,
+    this.approvals,
+    SettingsServices? settings,
+    this.push,
+    this.navigatorKey,
+    this.messengerKey,
+  )   : settings = settings ?? SettingsServices.fromConfig(config, approvals),
+        super(key: key);
 
   final AppConfig config;
   final ApprovalServices approvals;
+  final SettingsServices settings;
 
   /// Null when push is not configured; the pending list then polls only.
   final PushController? push;
@@ -101,13 +126,15 @@ class AuthenticatorApp extends StatelessWidget {
       initialRoute: '/',
       routes: {
         '/': (_) => HomeScreen(config: config),
-        for (final route in appRoutes) route.path: (_) => route.build(),
         '/enrollment': (_) => EnrollmentScreen(config: config),
         '/pending': (_) => PendingScreen(
               services: approvals,
               pushes: push?.requestArrived,
             ),
         '/history': (_) => HistoryScreen(history: approvals.history),
+        '/devices': (_) => DevicesScreen(services: settings),
+        '/clients': (_) => ClientsScreen(services: settings),
+        '/security': (_) => SecurityScreen(services: settings),
       },
     );
   }
