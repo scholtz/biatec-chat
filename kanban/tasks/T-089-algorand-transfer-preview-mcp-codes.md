@@ -11,7 +11,7 @@ conflicts_with: []
 issue: "#168"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#capabilities-and-intents"
 created: 2026-10-20
 updated: 2026-10-20
@@ -63,3 +63,4 @@ files.
 - 2026-10-20 05:10 · coordinator · (new) → blocked · proposed by T-082
 - 2026-10-20 03:33 · kanban-board · backlog → blocked · waiting on: T-082
 - 2026-10-20 03:33 · kanban-board · blocked → backlog · blockers done: T-082
+- 2026-10-20 03:34 · LukassSoukup · taken · status stays backlog
