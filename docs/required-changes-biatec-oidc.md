@@ -22,7 +22,7 @@ decoding for limit enforcement.
 
 - **Needed:** the same confidential-client dynamic registration (RFC 7591) as above, called by `POST /onboarding/tenants` once the DNS TXT proofs pass.
 - **Fallback in use:** `IOidcClientRegistrar` defaults to `NoDynamicRegistration`, so the endpoint answers `202 pending-operator-approval` and stores nothing.
-  An operator adds the static client, puts the secret in the secret store, then calls `POST /onboarding/operator/tenants` (bearer `Onboarding:OperatorKey`)
+  An operator adds the static client, puts the secret in the secret store, then calls `POST /onboarding/operator/tenants` (bearer: a named `Admin:Operators` key, or the deprecated `Onboarding:OperatorKey`; the approval is recorded in the signed admin evidence chain, see docs/admin-api.md)
   with the `oidcClientId` and a `secret://` reference; the DNS proofs are re-checked before the tenant row is written.
 - **Also missing:** a real `ISecretStore` (AWS Secrets Manager or Kubernetes secrets); only the interface and a throwing default exist.
 - **Challenge validity:** the TXT value embeds a 7-day epoch bucket and the current and previous bucket are accepted (a record works for 7 to 14 days). It is not bound to the requester; anyone who reads the public TXT can submit the identical configuration, which yields exactly the tenant the zone owner asked for.
@@ -59,6 +59,7 @@ against the mock and cannot be enabled against real Biatec OIDC until the row sh
 | 20 | `GET /consent/settings` | Card says "may need approval on your phone" without predicting |
 | 21 | Device list and cancelling a pending enrollment from a device (`GET /devices`, `POST /devices/{kid}/cancel`) | None. The authenticator's device screen runs only against the mock; `CONSENT_SETTINGS_API` is off for any other Biatec OIDC and the screen then says "not available yet" (T-084) |
 | 22 | Device-side consent settings (`GET` / `PUT /devices/settings`) with device-signed loosening | None. The security and trusted-clients screens run only against the mock, behind the same `CONSENT_SETTINGS_API` flag (T-084) |
+| 23 | Operator identity claim (`biatec_operator` group) for the admin API | Named operator bearer keys: `Admin:Operators:<name>:KeyHash` holds only the SHA-256 of each operator's key, and every admin change records the operator name in the signed admin evidence chain (T-097, docs/admin-api.md). The shared `Onboarding:OperatorKey` is still accepted as the deprecated operator `legacy` |
 
 **Mock status.** Today the mock covers only the authorization-code flow used by `/auth/login`. The CIBA, step-up, receipt and
 settings shapes below are the contract the mock must grow to, as the consent tasks (backend and authenticator) are implemented;
@@ -590,3 +591,33 @@ Content-Type: application/json
 - `200 {"applied": true, "loosened": bool, "settings": <GET body>}`.
 - The device classifies a change itself to decide whether to ask for the biometric check and sign; if Biatec OIDC answers
   `consent_required` for a change the device judged tightening, the device signs and retries once.
+
+## 23. Operator identity claim for the admin API (T-097)
+
+- **Purpose:** every admin API change (tenant policy, knowledge-base pages) is attributed to a named person, with the
+  identity proven by Biatec OIDC instead of a bearer key the backend has to manage, and revocable centrally (an
+  operator who leaves loses access when the IdP removes the group).
+- **Needed:** an operator group or claim that Biatec OIDC asserts only for Biatec staff, for example in the ID token and
+  token introspection of a dedicated confidential client `biatec-chat-admin`:
+
+```json
+{
+  "sub": "op_7f3a…",
+  "preferred_username": "alice",
+  "groups": ["biatec_operator"],
+  "acr": "biatec:mfa",
+  "auth_time": 1792425600
+}
+```
+
+  The admin API would accept an access token for `resource` `https://chat.biatec.io/admin` (audience-bound, short-lived,
+  at most 15 minutes) whose subject is in `biatec_operator` and whose `acr` shows MFA, and record `sub` and
+  `preferred_username` as the operator. Names (`biatec_operator`, `biatec:mfa`, the client and resource) are proposals
+  for the OIDC owners to confirm. Tokens stay with the operator's CLI; the browser widget is not involved.
+- **Fallback in use:** named operator keys. Each operator has an own random bearer key (at least 32 characters); the
+  backend is configured with only its SHA-256 as `Admin:Operators:<name>:KeyHash` (from the secret store), compares in
+  constant time, and records `<name>` with `operatorAuth: "named-key"` in the signed admin evidence chain
+  (`docs/admin-api.md`, Admin evidence chain). The former single shared key `Onboarding:OperatorKey` is still accepted
+  as the deprecated operator `legacy`. Revoking an operator means removing their entry and redeploying.
+- **Mock:** none needed; the fallback does not call Biatec OIDC. When the claim ships, the mock OIDC grows the
+  `groups` claim and the admin API gains a token check next to the key check.

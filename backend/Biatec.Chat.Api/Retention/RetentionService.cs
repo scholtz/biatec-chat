@@ -69,11 +69,14 @@ public sealed class RetentionService(ChatDbContext db, IOptions<RetentionOptions
         var started = Stopwatch.GetTimestamp();
         bool Spent() => Stopwatch.GetElapsedTime(started) >= O.RunBudget;
 
-        // 1. Payloads and salts of entries older than the payload window. Hashes, chain and signatures stay.
+        // 1. Payloads and salts of entries older than the payload window. Hashes, chain and signatures stay. The admin
+        //    chain is exempt: it holds operator names, reasons and tenant policy values, not end-user personal data, and
+        //    is kept whole for the record window (rule 4 removes it as an orphan chain once its newest entry is past it).
         var payloadCutoff = now - O.Payloads;
+        var adminChain = Biatec.Chat.Api.Admin.AdminEvidence.ChainId;
         var payloads = await DrainAsync(async () =>
         {
-            var ids = await db.EvidenceEntries.Where(e => e.SignedAt < payloadCutoff && (e.Payload != null || e.Salt != null))
+            var ids = await db.EvidenceEntries.Where(e => e.SignedAt < payloadCutoff && (e.Payload != null || e.Salt != null) && e.ConversationId != adminChain)
                 .OrderBy(e => e.Id).Select(e => e.Id).Take(Batch).ToListAsync(ct);
             if (ids.Count > 0)
                 await db.EvidenceEntries.Where(e => ids.Contains(e.Id))

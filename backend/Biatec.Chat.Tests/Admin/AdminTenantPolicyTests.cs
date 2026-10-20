@@ -115,6 +115,7 @@ public sealed class AdminTenantPolicyTests : IAsyncLifetime
                 ["Postgres:ConnectionString"] = Cs,
                 ["Algod:Networks:testnet:Url"] = "https://algod.example.test",
                 ["Kms:KeyId"] = "alias/test",
+                ["Evidence:AllowEphemeralKeys"] = "true",
                 ["Onboarding:OperatorKey"] = operatorKey,
             }.Concat(extra ?? []).ToDictionary()));
             b.ConfigureServices(s =>
