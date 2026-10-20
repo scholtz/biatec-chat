@@ -21,6 +21,8 @@ export type { AskResult, BiatecChatApi } from "./api/types";
 export declare const BiatecChatRoot: Component;
 /** The widget as a panel in the host's layout; shares the floating widget's session, which hides meanwhile. */
 export declare const BiatecChatInline: Component;
+/** The 16 px Biatec AI chip symbol; props: size (default 32), variant ("default" | "small" | "mono-dark"). */
+export declare const BiatecAiChip: Component;
 export declare const BiatecChat: Plugin<[BiatecChatOptions]>;
 /** Host API: open, close, ask, setPageContext, setTheme, setLocale. */
 export declare function useBiatecChat(): BiatecChatApi;
