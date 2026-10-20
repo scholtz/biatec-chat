@@ -1,7 +1,7 @@
 ---
 id: T-061
 title: Backend fallback cap for users without an active device
-status: review
+status: done
 priority: P3
 epic: "Consent & authenticator"
 blocked_by: [T-025, T-049]
@@ -63,6 +63,8 @@ dotnet test --filter NoDevice
 
 ## Review
 
+- 2026-10-20 05:07 · approve · PR #184 merged into main @ 827b3f5 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 18:00 · coordinator · (new) → blocked · created in task review: rule 4 fallback had no task
@@ -71,3 +73,4 @@ dotnet test --filter NoDevice
 - 2026-10-20 04:17 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 04:17 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 05:07 · coordinator · in-progress → review · branch task/T-061 @ e321468, PR #184
+- 2026-10-20 05:07 · user · review → done · PR #184 merged into main @ 827b3f5 (synced by kanban-sync)
