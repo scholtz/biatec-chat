@@ -14,7 +14,7 @@ public interface IEvidenceLog
     /// first entry after a resume (T-037 supplies it).
     /// </summary>
     /// <exception cref="CanonicalJsonException">The payload carries an integer above 2^53-1; encode it as a decimal string.</exception>
-    Task<EvidenceEntry> AppendAsync(Guid conversationId, string kind, JsonObject payload, Guid? anchorRef = null, CancellationToken ct = default);
+    Task<EvidenceEntry> AppendAsync(Guid conversationId, string kind, JsonObject payload, string? anchorRef = null, CancellationToken ct = default);
 
     /// <summary>Deletes payload and salt of one entry for privacy. Hashes and signature stay, so the chain still verifies.</summary>
     Task<bool> DeletePayloadAsync(Guid conversationId, long seq, CancellationToken ct = default);
@@ -34,7 +34,7 @@ public sealed class EvidenceLog(ChatDbContext db, IEvidenceKeyStore keys, TimePr
     private const int MaxAttempts = 8;
     private readonly TimeProvider _time = time ?? TimeProvider.System;
 
-    public async Task<EvidenceEntry> AppendAsync(Guid conversationId, string kind, JsonObject payload, Guid? anchorRef = null, CancellationToken ct = default)
+    public async Task<EvidenceEntry> AppendAsync(Guid conversationId, string kind, JsonObject payload, string? anchorRef = null, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(kind);
         ArgumentNullException.ThrowIfNull(payload);
@@ -63,7 +63,7 @@ public sealed class EvidenceLog(ChatDbContext db, IEvidenceKeyStore keys, TimePr
                 var prevHash = last?.EntryHash ?? EvidenceHasher.GenesisPrevHash;
                 var salt = EvidenceHasher.NewSalt();
                 var payloadHash = EvidenceHasher.PayloadHash(salt, payloadNode);
-                var entryHash = EvidenceHasher.EntryHash(conversationId, seq, prevHash, kind, payloadHash, anchorRef?.ToString("D"));
+                var entryHash = EvidenceHasher.EntryHash(conversationId, seq, prevHash, kind, payloadHash, anchorRef);
                 var kid = await keys.GetActiveKidAsync(ct);
                 var signedAt = EvidenceHasher.TruncateToMillis(_time.GetUtcNow());
                 var signature = await keys.SignAsync(kid, EvidenceHasher.SigningInput(entryHash, kid, signedAt), ct);

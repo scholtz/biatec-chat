@@ -11,9 +11,7 @@
 - `AnchorExporter` gives T-036 the anchors and inclusion proofs for the bundle; `AnchorVerifier.Verify` checks them
   against the anchors read from the chain (indexer) and parsed with `AnchorNote.TryParse`.
 
-Deviation: `EvidenceEntry.AnchorRef` is a `Guid?` column from T-034, so it holds the `EvidenceAnchor.Id`, not the
-transaction ID. The bundle's `anchors` list maps that id to the transaction ID, and the verifier resolves it against the
-chain. Changing the column to the transaction ID string needs a migration and a change in the evidence log.
+`EvidenceEntry.AnchorRef` holds the transaction ID of the latest confirmed anchor (see "anchorRef" below).
 
 ## Reliability (review round 1)
 
@@ -52,12 +50,9 @@ A testnet run is not recorded: it needs a funded evidence account, which this en
 covered against a fake Algod (transaction shape, idempotent retry, expiry). To run on testnet: set
 `Evidence__Anchoring__Enabled=true`, `Evidence__Anchoring__AccountMnemonic` (secret store), and fund the account from the testnet dispenser.
 
-## anchorRef deviation (needs user sign-off)
+## anchorRef (T-081)
 
-The spec defines `anchorRef` as the transaction ID. `EvidenceEntry.AnchorRef` is a `Guid?` from T-034, so it holds the
-`EvidenceAnchor.Id`, and that id is part of `entryHash`. Switching to the tx id string changes the T-034 column, the
-entry hash input and `EvidenceVerifier`, which other tasks build on, so it is left for the user to approve. Until then a
-verifier must not trust the bundle's id-to-tx mapping: `EvidenceAnchor.Id` is `AnchorIds.FromTxId(txId)` (first 16 bytes of
-SHA-256 of the tx id), `AnchorVerifier` resolves every `anchorRef` by recomputing that id from the chain's anchors, and it
-rejects any bundle anchor record whose id, sequence, root, prev or gap differs from the chain. The operator therefore cannot
-re-label which on-chain anchor an entry points to. Anchor rows created before this change keep random ids.
+`EvidenceEntry.AnchorRef` is the anchor's Algorand transaction ID (string), stored, hashed (`entryHash`), exported and
+resolved by `AnchorVerifier` directly against the chain. Migration `EvidenceAnchorRefTxId` converts the column from `uuid` to
+text; rows written before it keep their GUID text (the hash they were written with, so the chain stays valid) and are
+legacy: their anchorRef is not a transaction ID and the anchor verifier does not resolve it.

@@ -64,7 +64,7 @@ public sealed class DataModelTests : IAsyncLifetime
                 new ActionPreview { Id = preview, ConversationId = conv, Capability = "dex.swap", CanonicalJson = "{\"a\":1}", PredictedValueEur = 12.34m, PredictedNeedsConsent = true, ExpiresAt = now.AddMinutes(5), Status = ActionPreviewStatus.InProgress, RebuiltAsPreviewId = Guid.NewGuid() },
                 new ActionStep { Id = step, PreviewId = preview, Seq = 0, Kind = ActionStepKind.Sign, SubjectHash = "abc", UnsignedGroup = "[\"AAA\"]", SenderAddress = "ADDR", Network = "testnet", FirstValid = 1, LastValid = 1001, ExpiresAt = now.AddMinutes(5), Status = StepStatus.AwaitingConsent, TxIds = ["TX1", "TX2"] },
                 new ConsentRequest { Id = Guid.NewGuid(), StepId = step, SubjectHash = "abc", AuthReqId = "auth-req-1", BindingCode = "1234", ExpiresAt = now.AddMinutes(2), Status = ConsentStatus.Pending, Receipt = "{\"r\":true}" },
-                new EvidenceEntry { ConversationId = conv, Seq = 1, Kind = "message", AnchorRef = anchor, Payload = "{\"p\":1}", Salt = "salt", PayloadHash = "ph", PrevHash = "prev", EntryHash = "eh", Kid = "k1", SignedAt = now, Signature = "sig" },
+                new EvidenceEntry { ConversationId = conv, Seq = 1, Kind = "message", AnchorRef = "TXA", Payload = "{\"p\":1}", Salt = "salt", PayloadHash = "ph", PrevHash = "prev", EntryHash = "eh", Kid = "k1", SignedAt = now, Signature = "sig" },
                 new EvidenceAnchor { Id = anchor, SequenceNumber = 7, PreviousAnchorTxId = "PREV", AnchorTxId = "TXA", MerkleRoot = "root", AnchoredAt = now, GapFrom = "3" },
                 new EvidenceAnchorLeaf { AnchorId = anchor, ConversationId = conv, AnchoredSeq = 1, HeadHash = "eh", LeafIndex = 0, SiblingHashes = "[{\"hash\":\"h\",\"side\":\"left\"}]" },
                 new PublicConversationState { ConversationId = conv, CapabilityHash = "cap", ContinuationTokenHash = "tok", PreviousTokenHash = "old", LastReplyRef = "reply", AdoptedAt = now },
@@ -88,7 +88,7 @@ public sealed class DataModelTests : IAsyncLifetime
         Assert.Equal(["TX1", "TX2"], (await read.ActionSteps.SingleAsync()).TxIds);
         Assert.Equal("auth-req-1", (await read.ConsentRequests.SingleAsync()).AuthReqId);
         var e = await read.EvidenceEntries.SingleAsync();
-        Assert.Equal(("eh", anchor), (e.EntryHash, e.AnchorRef));
+        Assert.Equal(("eh", "TXA"), (e.EntryHash, e.AnchorRef));
         Assert.Equal(7, (await read.EvidenceAnchors.SingleAsync()).SequenceNumber);
         Assert.Equal(0, (await read.EvidenceAnchorLeaves.SingleAsync()).LeafIndex);
         Assert.Equal("tok", (await read.PublicConversationStates.SingleAsync()).ContinuationTokenHash);

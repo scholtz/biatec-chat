@@ -101,7 +101,7 @@ public sealed class EvidenceExportTests : IAsyncLifetime
             ConversationId = conv,
             Seq = (long)e!["seq"]!,
             Kind = (string)e["kind"]!,
-            AnchorRef = e["anchorRef"] is null ? null : Guid.Parse((string)e["anchorRef"]!),
+            AnchorRef = e["anchorRef"] is null ? null : (string)e["anchorRef"]!,
             Payload = e["payload"] is null ? null : JsonCanonicalizer.Canonicalize(e["payload"]),
             Salt = (string?)e["salt"],
             PayloadHash = (string)e["payloadHash"]!,
