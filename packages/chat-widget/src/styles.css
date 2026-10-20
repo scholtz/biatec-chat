@@ -5,6 +5,7 @@
 @import "./styles/cards.css";
 @import "./components/shell/shell.css";
 @import "./components/chat/chat.css";
+@import "./components/data/data.css";
 @import "./components/agent/agent.css";
 @import "./components/activity/activity.css";
 @import "./components/export/export.css";

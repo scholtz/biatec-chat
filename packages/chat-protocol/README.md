@@ -13,7 +13,7 @@ document; do not edit `openapi.json` or `src/generated/` by hand.
   `src/index.ts`
 
 `ChatEvent` is a discriminated union on `type` (`text_delta`, `tool_status`, `preview_card`, `consent_status`,
-`sign_in_card`, `safe_card`, `error`):
+`sign_in_card`, `safe_card`, `data_card`, `error`):
 
 ```ts
 import type { ChatEvent } from "@biatec/chat-protocol";

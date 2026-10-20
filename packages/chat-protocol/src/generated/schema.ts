@@ -581,6 +581,14 @@ export interface components {
             actionDecision: components["schemas"]["ActionDecisionRequest"];
             event: components["schemas"]["ChatEvent"];
         };
+        DataCardAsset: {
+            assetId: string;
+            unitName: string;
+            amount: string;
+            /** Format: int32 */
+            decimals: number | string;
+            fiatValue?: null | string;
+        };
         ConversationList: {
             conversations: components["schemas"]["ConversationSummary"][];
         };
@@ -613,11 +621,23 @@ export interface components {
             product?: null | string;
             locale?: null | string;
         };
-        ChatEvent: components["schemas"]["ChatEventTextDeltaEvent"] | components["schemas"]["ChatEventToolStatusEvent"] | components["schemas"]["ChatEventPreviewCardEvent"] | components["schemas"]["ChatEventConsentStatusEvent"] | components["schemas"]["ChatEventSignInCardEvent"] | components["schemas"]["ChatEventSafeCardEvent"] | components["schemas"]["ChatEventErrorEvent"];
+        ChatEvent: components["schemas"]["ChatEventTextDeltaEvent"] | components["schemas"]["ChatEventToolStatusEvent"] | components["schemas"]["ChatEventPreviewCardEvent"] | components["schemas"]["ChatEventConsentStatusEvent"] | components["schemas"]["ChatEventSignInCardEvent"] | components["schemas"]["ChatEventSafeCardEvent"] | components["schemas"]["ChatEventDataCardEvent"] | components["schemas"]["ChatEventErrorEvent"];
         ChatEventConsentStatusEvent: {
             /** @enum {string} */
             type: "consent_status";
             consent: components["schemas"]["ConsentStatus"];
+        };
+        ChatEventDataCardEvent: {
+            /** @enum {string} */
+            type: "data_card";
+            kind: string;
+            network: string;
+            addresses: string[];
+            assets: components["schemas"]["DataCardAsset"][];
+            fiatCurrency?: null | string;
+            /** Format: date-time */
+            asOf: string;
+            partial?: boolean;
         };
         ChatEventErrorEvent: {
             /** @enum {string} */

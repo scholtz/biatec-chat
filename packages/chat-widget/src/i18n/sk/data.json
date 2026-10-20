@@ -1,0 +1,12 @@
+{
+  "holdings": {
+    "label": "Aktíva",
+    "title": "Vaše aktíva",
+    "total": "Celková hodnota",
+    "allocation": "Rozloženie podľa hodnoty",
+    "partial": "Niektoré aktíva nie sú uvedené.",
+    "concentration": "{asset} tvorí {percent} % tejto peňaženky, nad {threshold} %. Väčšina hodnoty je v jednom aktíve.",
+    "asOf": "Zostatky k {time} UTC · {network}",
+    "announce": "Karta aktív: {count} aktív."
+  }
+}
