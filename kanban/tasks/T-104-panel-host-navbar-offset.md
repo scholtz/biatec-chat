@@ -1,7 +1,7 @@
 ---
 id: T-104
 title: "Floating panel must not cover the host navbar on short viewports"
-status: backlog
+status: in-progress
 priority: P3
 epic: "Widget"
 blocked_by: []
@@ -9,8 +9,8 @@ area: ["packages/chat-widget/src/components/ChatPanel.vue", "packages/chat-widge
 parallel: yes
 conflicts_with: []
 issue: "#213"
-branch: ""
-owner: ""
+branch: "task/T-104"
+owner: "worker-T-104"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md"
 created: 2026-10-20
@@ -53,3 +53,4 @@ files.
 
 - 2026-10-20 07:59 · coordinator · (new) → backlog · proposed by a worker
 - 2026-10-20 07:59 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 07:59 · coordinator · backlog → in-progress · dispatched to worker

@@ -1,7 +1,7 @@
 ---
 id: T-102
 title: "DEX playground page: fix serious axe violations"
-status: backlog
+status: in-progress
 priority: P3
 epic: "Widget"
 blocked_by: []
@@ -9,8 +9,8 @@ area: ["packages/chat-widget/playground/dex/**"]
 parallel: yes
 conflicts_with: []
 issue: "#211"
-branch: ""
-owner: ""
+branch: "task/T-102"
+owner: "worker-T-102"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md"
 created: 2026-10-20
@@ -53,3 +53,4 @@ Playwright/axe or jsdom axe on the built demo /dex.html.
 
 - 2026-10-20 07:59 · coordinator · (new) → backlog · proposed by a worker
 - 2026-10-20 07:59 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 07:59 · coordinator · backlog → in-progress · dispatched to worker

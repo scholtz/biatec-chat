@@ -1,7 +1,7 @@
 ---
 id: T-103
 title: "docs/cicd.md: document the demo image and pipeline"
-status: backlog
+status: in-progress
 priority: P3
 epic: "Deploy & docs"
 blocked_by: []
@@ -9,8 +9,8 @@ area: ["docs/cicd.md"]
 parallel: yes
 conflicts_with: []
 issue: "#212"
-branch: ""
-owner: ""
+branch: "task/T-103"
+owner: "worker-T-103"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md"
 created: 2026-10-20
@@ -52,3 +52,4 @@ Read against .github/workflows/deploy-stage.yml and deploy.yml.
 
 - 2026-10-20 07:59 · coordinator · (new) → backlog · proposed by a worker
 - 2026-10-20 07:59 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 07:59 · coordinator · backlog → in-progress · dispatched to worker
