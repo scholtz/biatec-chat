@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Biatec.Chat.Tools.Wallet.Bitcoin;
 
-/// <summary>What the user asked for. <see cref="Sats"/> is whole satoshis; <see cref="Network"/> is <c>bitcoin</c> or <c>bitcoin-testnet</c>.</summary>
+/// <summary>What the user asked for. <see cref="Sats"/> is whole satoshis; <see cref="Network"/> is <c>bitcoin</c> (Biatec MCP serves no Bitcoin testnet).</summary>
 public sealed record BitcoinTransferRequest(string Network, string From, string To, long Sats)
 {
     public bool Testnet => BitcoinAddresses.IsTestnet(Network);
@@ -76,9 +76,9 @@ public sealed class BitcoinTransferService(
             return await BuildAndCreateAsync(ctx, conversationId, request, rebuildOf: existing.Id, ct);
         }
 
-        var own = await mcp.GetCryptoAddressAsync(ctx, request.Network, ct);
-        if (own.IsError) return BitcoinOutcome.Error("The addresses could not be read. Tell the user to try again.");
-        if (!OwnAddresses(own).Contains(request.From, StringComparer.Ordinal))
+        var own = await BitcoinOwnAddresses.ReadAsync(mcp, ctx, request.Network, ct);
+        if (own is null) return BitcoinOutcome.Error("The addresses could not be read. Tell the user to try again.");
+        if (BitcoinOwnAddresses.Find(own, request.From) is null)
             return BitcoinOutcome.Error("The source address does not belong to the signed-in user. Use wallet.listAddresses to see the user's addresses.");
         return await BuildAndCreateAsync(ctx, conversationId, request, rebuildOf: null, ct);
     }

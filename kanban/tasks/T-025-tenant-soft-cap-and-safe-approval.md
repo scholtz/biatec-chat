@@ -1,7 +1,7 @@
 ---
 id: T-025
 title: Tenant soft cap and safe approval caps
-status: review
+status: done
 priority: P2
 epic: "Wallet tools"
 blocked_by: [T-022]
@@ -59,6 +59,8 @@ dotnet test --filter Caps
 
 ## Review
 
+- 2026-10-20 03:29 · approve · PR #161 merged into main @ 7b00fc0 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
@@ -67,3 +69,4 @@ dotnet test --filter Caps
 - 2026-10-20 02:26 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 02:26 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 03:25 · coordinator · in-progress → review · branch task/T-025 @ c2a2a6f, PR #161
+- 2026-10-20 03:29 · user · review → done · PR #161 merged into main @ 7b00fc0 (synced by kanban-sync)

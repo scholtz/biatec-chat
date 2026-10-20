@@ -188,6 +188,17 @@ public sealed class BitcoinTransferTests : IClassFixture<BitcoinTransferTests.Db
             return Task.FromResult(Ok(JsonSerializer.Serialize(new { addresses = Own })));
         }
 
+        /// <summary>The slot-1 (secondary) address; null behaves like a client that cannot pass a slot.</summary>
+        public string? Secondary { get; set; }
+
+        public Task<McpToolResult> GetCryptoAddressAsync(McpCallContext ctx, string network, int slot, CancellationToken ct = default)
+        {
+            if (slot == 0) return GetCryptoAddressAsync(ctx, network, ct);
+            if (Secondary is null) throw new NotSupportedException();
+            Calls.Add($"getCryptoAddress:{network}:{slot}");
+            return Task.FromResult(Ok(JsonSerializer.Serialize(new { network, family = "Btc", address = Secondary, error = "" })));
+        }
+
         public Task<McpToolResult> CreateBitcoinTransactionAsync(McpCallContext ctx, string network, string sender, string receiver, string amountBtc, CancellationToken ct = default)
         {
             Calls.Add($"createBitcoinTransaction:{network}:{sender[..6]}>{receiver[..6]}:{amountBtc}");
@@ -494,6 +505,18 @@ public sealed class BitcoinTransferTests : IClassFixture<BitcoinTransferTests.Db
         var outcome = await svc.StartAsync(Ctx, _conversation, Req, default);
         Assert.True(outcome.IsError);
         Assert.DoesNotContain(_mcp.Calls, c => c.StartsWith("createBitcoinTransaction"));
+    }
+
+    [Fact]
+    public async Task Accepts_the_users_secondary_address_as_the_source()
+    {
+        _mcp.Own = [PsbtFixture.A2];
+        _mcp.Secondary = PsbtFixture.A1;
+        var (svc, _) = NewService();
+        var outcome = await svc.StartAsync(Ctx, _conversation, Req, default);
+        Assert.False(outcome.IsError, outcome.Message);
+        Assert.Contains("getCryptoAddress:bitcoin:1", _mcp.Calls);
+        Assert.Contains(_mcp.Calls, c => c.StartsWith("createBitcoinTransaction"));
     }
 
     [Fact]
