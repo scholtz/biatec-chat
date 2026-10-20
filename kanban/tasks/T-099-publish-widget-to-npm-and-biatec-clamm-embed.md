@@ -1,7 +1,7 @@
 ---
 id: T-099
 title: Publish @biatec/chat-widget to npm and embed it in BiatecCLAMM
-status: in-progress
+status: review
 priority: P1
 epic: "Deployment"
 blocked_by: []
@@ -66,16 +66,16 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
 
 ## Acceptance criteria
 
-- [ ] `pnpm --filter @biatec/chat-widget build` emits ESM, UMD and the standalone bundle; `npm pack --dry-run` lists only
+- [x] `pnpm --filter @biatec/chat-widget build` emits ESM, UMD and the standalone bundle; `npm pack --dry-run` lists only
       `dist/`, `README.md`, `LICENSE`, `package.json`, and the packed tarball installs into an empty Vite + Vue app and
       an empty React app and both type-check.
-- [ ] The published types don't reference `@biatec/chat-protocol` unless that package is published as well.
-- [ ] A plain HTML page with one `<script>` tag of the standalone build shows the launcher, signs in, and follows a
+- [x] The published types don't reference `@biatec/chat-protocol` unless that package is published as well.
+- [x] A plain HTML page with one `<script>` tag of the standalone build shows the launcher, signs in, and follows a
       `data-theme` toggle on `<html>`; covered by a vitest/jsdom test.
-- [ ] A local Docusaurus 3 scratch site following `docs/integration-biatec-clamm.md` step by step renders the widget on
+- [x] A local Docusaurus 3 scratch site following `docs/integration-biatec-clamm.md` step by step renders the widget on
       every page without hydration errors and with no SSR access to `window` (screenshot dark + light in the hand-off).
-- [ ] `publish-widget.yml` passes `actionlint`; no token in the repo; publishing needs the tag or a manual run.
-- [ ] Existing widget tests and `typecheck:playground` still pass.
+- [x] `publish-widget.yml` passes `actionlint`; no token in the repo; publishing needs the tag or a manual run.
+- [x] Existing widget tests and `typecheck:playground` still pass.
 
 ## Implementation notes
 
@@ -95,6 +95,14 @@ tarball in scratch Vite-Vue, Vite-React and Docusaurus apps; `actionlint .github
 
 ## Hand-off
 
+- **Summary:** `@biatec/chat-widget` 0.1.0 npm-ready with self-contained types; new `@biatec/chat-widget/standalone` (ESM + IIFE `window.BiatecChat`, Vue bundled, 98.7 kB gzip): `mountBiatecChat()`, `unmount()`, one-script-tag auto-mount, one widget per page shared via `Symbol.for("biatec-chat.widget")`, theme `auto` unless `<html data-theme>` exists. `publish-widget.yml`: npm trusted publishing (OIDC + provenance) first, `NPM_TOKEN` fallback as an **environment secret of environment `npm`**; publishes only commits on main, tag `chat-widget-v<version>` or manual run (dry run by default). Publishing documented in packages/chat-widget/README.md and docs/cicd.md (secret name, location, who adds it, how to create it, one-time setup, releasing). docs/integration-biatec-clamm.md (Docusaurus 3 hand-off, screenshots).
+- **Branch:** `task/T-099` @ `cd45995` (merged with main), PR #210 (`Closes #203`).
+- **Verification:** widget build/typecheck/typecheck:playground/tests 356/356; demo still builds and tests green; npm pack 13 files; tarball installs into empty Vue and React apps; Docusaurus 3.9.2 scratch site (3 locales, no hydration errors); actionlint clean. Review (medium): all realistic findings fixed.
+- **Remaining outward steps (scholtz):** create the `biatec` npm org; first publish (by hand, or set `NPM_TOKEN` on environment `npm` and push tag `chat-widget-v0.1.0`); configure the trusted publisher, then remove the token; register https://beta.dex.biatec.io and client key `biatec-clamm-docs` on the Biatec tenant; BiatecCLAMM maintainers apply the hand-off doc.
+- **Decisions:** the published package.json keeps its devDependencies (harmless to consumers).
+- **Follow-up tasks created:** T-104 (floating panel must not cover the host navbar on short viewports).
+- **Unblocks:** no task is blocked by T-099.
+
 ## Review
 
 ## Activity log
@@ -102,3 +110,4 @@ tarball in scratch Vite-Vue, Vite-React and Docusaurus apps; `actionlint .github
 - 2026-10-20 07:10 · coordinator · (new) → backlog · created on the user's request (npm publish + BiatecCLAMM embed); no existing task covered it (T-068, T-071 list npm publishing as out of scope)
 - 2026-10-20 07:17 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 07:17 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 07:59 · coordinator · in-progress → review · branch task/T-099 @ cd45995, PR #210
