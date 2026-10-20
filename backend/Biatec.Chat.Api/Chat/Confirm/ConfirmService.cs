@@ -189,7 +189,7 @@ public sealed class ConfirmService(
             ["maxConsentSeconds"] = remaining, ["origin"] = origin,
         }, ct);
         var outcome = await signer.SignAsync(bearer, new WalletSignRequest(step.Network!, address, step.UnsignedGroupList(), Convert.FromHexString(step.SubjectHash),
-            RequireConsent: false, MaxConsentSeconds: remaining, Origin: origin), ct);
+            RequireConsent: PreviewRequiresConsent(preview), MaxConsentSeconds: remaining, Origin: origin), ct);
 
         await RecordExtraAsync(session, EvidenceKinds.SigningOutcome, SigningOutcomePayload(previewId, step, outcome), CancellationToken.None);
 
@@ -490,6 +490,20 @@ public sealed class ConfirmService(
     /// A step is the last one unless the preview's canonical JSON announces more in an integer <c>totalSteps</c>
     /// (multi-step actions build later steps only after the earlier one landed).
     /// </summary>
+    /// <summary>
+    /// A preview whose canonical JSON carries <c>"requireConsent": true</c> asks Biatec OIDC for consent whatever the value
+    /// (T-033: a threshold-1 safe proposal, whose propose call is the only approval). More consent only, never less.
+    /// </summary>
+    private static bool PreviewRequiresConsent(ActionPreview preview)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(preview.CanonicalJson);
+            return doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("requireConsent", out var r) && r.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException) { return false; }
+    }
+
     private static bool IsFinalStep(ActionPreview preview, ActionStep step)
     {
         try

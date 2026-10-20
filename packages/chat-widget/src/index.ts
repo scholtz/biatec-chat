@@ -1,5 +1,6 @@
 import { createApp, type App, type Plugin } from "vue";
 import BiatecChatRoot from "./components/BiatecChatRoot.vue";
+import BaiSymbol from "./ui/BaiSymbol.vue";
 import BiatecChatInline from "./components/shell/BiatecChatInline.vue";
 import { resolveOptions, type BiatecChatOptions } from "./options";
 // Normal import: emitted as dist/style.css for hosts that mount BiatecChatRoot themselves.
@@ -10,6 +11,8 @@ import widgetCss from "./styles.css?inline";
 export type { BiatecChatOptions, ChatTheme, ChatMode } from "./options";
 export type { AskResult, BiatecChatApi } from "./api";
 export { useBiatecChat } from "./api";
+/** The 16 px Biatec AI chip symbol, for "Ask Biatec AI" links on host pages. */
+export const BiatecAiChip = BaiSymbol;
 export { BiatecChatRoot, BiatecChatInline };
 
 export const BiatecChat: Plugin<[BiatecChatOptions]> = {

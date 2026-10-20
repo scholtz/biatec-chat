@@ -1,7 +1,7 @@
 ---
 id: T-080
 title: "Bug: a session awaiting phone consent must stay live past the idle timeout"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Sessions & auth"
 blocked_by: []
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Api/Sessions/SessionService.cs", "backend/Biatec.Cha
 parallel: no
 conflicts_with: [T-083]
 issue: "#149"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-080"
+owner: "worker-T-080"
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#action-preview"
 created: 2026-10-20
 updated: 2026-10-20
@@ -119,3 +119,5 @@ Filled in by the agent when it moves the task to `review`.
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #3)
+- 2026-10-20 03:01 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 03:01 · coordinator · backlog → in-progress · dispatched to worker

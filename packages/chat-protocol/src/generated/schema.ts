@@ -557,7 +557,7 @@ export interface components {
             product?: null | string;
             locale?: null | string;
         };
-        ChatEvent: components["schemas"]["ChatEventTextDeltaEvent"] | components["schemas"]["ChatEventToolStatusEvent"] | components["schemas"]["ChatEventPreviewCardEvent"] | components["schemas"]["ChatEventConsentStatusEvent"] | components["schemas"]["ChatEventSignInCardEvent"] | components["schemas"]["ChatEventErrorEvent"];
+        ChatEvent: components["schemas"]["ChatEventTextDeltaEvent"] | components["schemas"]["ChatEventToolStatusEvent"] | components["schemas"]["ChatEventPreviewCardEvent"] | components["schemas"]["ChatEventConsentStatusEvent"] | components["schemas"]["ChatEventSignInCardEvent"] | components["schemas"]["ChatEventSafeCardEvent"] | components["schemas"]["ChatEventErrorEvent"];
         ChatEventConsentStatusEvent: {
             /** @enum {string} */
             type: "consent_status";
@@ -574,6 +574,11 @@ export interface components {
             /** @enum {string} */
             type: "preview_card";
             preview: components["schemas"]["ActionPreview"];
+        };
+        ChatEventSafeCardEvent: {
+            /** @enum {string} */
+            type: "safe_card";
+            card: components["schemas"]["SafeCard"];
         };
         ChatEventSignInCardEvent: {
             /** @enum {string} */
@@ -640,6 +645,58 @@ export interface components {
             context?: null | components["schemas"]["HostContext"];
             widgetVersion?: null | string;
         };
+        SafeCard: {
+            source: components["schemas"]["SafeCardSource"];
+            network: string;
+            safes: components["schemas"]["SafeCardSafe"][];
+            couldNotRead?: string[];
+        };
+        /** @enum {unknown} */
+        SafeCardCreationState: "SetupPending" | "NeedsFunding" | "Created" | null;
+        SafeCardProposal: {
+            proposalId: string;
+            groupId: string;
+            kind: string;
+            status: components["schemas"]["SafeCardProposalState"];
+            /** Format: int32 */
+            approvals: number | string;
+            /** Format: int32 */
+            threshold: number | string;
+            approvedByYou?: null | boolean;
+            proposer: string;
+            payloadVersion: string;
+            expiryRound: string;
+        };
+        /** @enum {unknown} */
+        SafeCardProposalState: "AwaitingApprovals" | "ReadyToExecute";
+        SafeCardSafe: {
+            appId: string;
+            address: string;
+            name: string;
+            network: string;
+            paused?: boolean;
+            yourAddresses?: string[];
+            signerGroups?: components["schemas"]["SafeCardSignerGroup"][];
+            pendingProposals?: components["schemas"]["SafeCardProposal"][];
+            proposalsTruncated?: boolean;
+            proposalsCouldNotBeRead?: boolean;
+            proposalsNotLoaded?: boolean;
+            creation?: null | components["schemas"]["SafeCardCreationState"];
+        };
+        SafeCardSignerGroup: {
+            groupId?: null | string;
+            name: string;
+            /** Format: int32 */
+            threshold: number | string;
+            /** Format: int32 */
+            memberCount: number | string;
+            /** Format: int64 */
+            membershipEpoch?: null | number | string;
+            allowedActions?: string[];
+            isAdminGroup?: boolean;
+        };
+        /** @enum {unknown} */
+        SafeCardSource: "List" | "Create";
         SessionState: {
             sessionId: string;
             tier: components["schemas"]["SessionTier"];

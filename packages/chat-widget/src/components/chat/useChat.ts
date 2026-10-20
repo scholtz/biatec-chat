@@ -1,5 +1,5 @@
 import { reactive, ref, computed, onBeforeUnmount } from "vue";
-import type { ChatEvent, SessionState, SessionTier, Suggestion } from "@biatec/chat-protocol";
+import type { ChatEvent, SafeCard, SessionState, SessionTier, Suggestion } from "@biatec/chat-protocol";
 import { t } from "../../i18n";
 import type { TransportManager } from "../../transport";
 import type { AuthClient } from "./auth";
@@ -23,6 +23,8 @@ export interface ChatMessage {
   text: string;
   tools: ToolLine[];
   signIn?: SignInCard;
+  /** Safe cards from safe.list / safe.create results (safe_card events), in arrival order. */
+  safeCards?: SafeCard[];
   /** Follow-up questions the backend suggested for this reply, if any. */
   followUps?: Suggestion[];
   error?: string;
@@ -96,8 +98,16 @@ export function useChat(svc: ChatServices) {
       reply.streaming = false;
       busy.value = false;
       abort = null;
-      announce(reply.error ?? (reply.text || reply.signIn?.description || ""));
+      announce(reply.error ?? (reply.text || reply.signIn?.description || safeSummary(reply)));
     }
+  }
+
+  /** A reply that is only a safe card still gets announced: a short summary of what the card shows. */
+  function safeSummary(m: ChatMessage): string {
+    const safes = (m.safeCards ?? []).flatMap((c) => c.safes);
+    if (!m.safeCards?.length) return "";
+    const proposals = safes.reduce((n, s) => n + (s.pendingProposals?.length ?? 0), 0);
+    return t("safe.announce", { safes: safes.length, proposals });
   }
 
   function apply(m: ChatMessage, e: ChatEvent): void {
@@ -122,6 +132,9 @@ export function useChat(svc: ChatServices) {
           unavailable: e.unavailable === true,
           url: e.unavailable === true ? e.signInUrl : null,
         };
+        break;
+      case "safe_card":
+        (m.safeCards ??= []).push(e.card);
         break;
       case "error":
         m.error = e.message;

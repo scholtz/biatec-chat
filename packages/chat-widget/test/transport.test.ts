@@ -332,3 +332,11 @@ describe("keepalive", () => {
     expect(ping).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("evidence download link", () => {
+  it("points at the backend export endpoint", async () => {
+    const { evidenceDownloadUrl } = await import("../src/transport");
+    expect(evidenceDownloadUrl("https://chat.biatec.io/")).toBe("https://chat.biatec.io/session/evidence");
+    expect(evidenceDownloadUrl("https://chat.biatec.io")).toBe("https://chat.biatec.io/session/evidence");
+  });
+});

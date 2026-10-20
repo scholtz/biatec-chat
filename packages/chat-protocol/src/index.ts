@@ -22,12 +22,20 @@ export type AssetAmount = Schemas["AssetAmount"];
 export type LimitHeadroom = Schemas["LimitHeadroom"];
 export type ConsentStatus = Schemas["ConsentStatus"];
 export type ConsentState = Schemas["ConsentState"];
+export type SafeCard = Schemas["SafeCard"];
+export type SafeCardSafe = Schemas["SafeCardSafe"];
+export type SafeCardSignerGroup = Schemas["SafeCardSignerGroup"];
+export type SafeCardProposal = Schemas["SafeCardProposal"];
+export type SafeCardProposalState = Schemas["SafeCardProposalState"];
+export type SafeCardSource = Schemas["SafeCardSource"];
+export type SafeCardCreationState = Schemas["SafeCardCreationState"];
 
 export type TextDeltaEvent = Schemas["ChatEventTextDeltaEvent"];
 export type ToolStatusEvent = Schemas["ChatEventToolStatusEvent"];
 export type PreviewCardEvent = Schemas["ChatEventPreviewCardEvent"];
 export type ConsentStatusEvent = Schemas["ChatEventConsentStatusEvent"];
 export type SignInCardEvent = Schemas["ChatEventSignInCardEvent"];
+export type SafeCardEvent = Schemas["ChatEventSafeCardEvent"];
 export type ErrorEvent = Schemas["ChatEventErrorEvent"];
 
 /** Server-sent event of a chat reply, discriminated by `type`. */
@@ -37,6 +45,7 @@ export type ChatEvent =
   | PreviewCardEvent
   | ConsentStatusEvent
   | SignInCardEvent
+  | SafeCardEvent
   | ErrorEvent;
 
 export type ChatEventType = ChatEvent["type"];

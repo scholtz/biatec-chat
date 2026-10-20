@@ -4,9 +4,10 @@ import cards from "./en/cards.json";
 import chat from "./en/chat.json";
 import agent from "./en/agent.json";
 import activity from "./en/activity.json";
+import safe from "./en/safe.json";
 
 /** One catalog file per feature (ui, shell, chat, cards, agent, data) so parallel UI tasks never edit the same file. */
-export const en = { ...ui, ...cards, ...chat, ...agent, ...activity };
+export const en = { ...ui, ...cards, ...chat, ...agent, ...activity, ...safe };
 
 export const i18n = createI18n({
   legacy: false,
@@ -23,4 +24,10 @@ export const t = (key: string, named?: Record<string, unknown>): string =>
 /** Switches the widget language; unknown locales keep falling back to English. */
 export function setLocale(locale: string): void {
   i18n.global.locale.value = locale.split("-")[0]! as never;
+}
+
+/** The catalog locale that resolves for a requested one: the language itself when it has messages, else English. */
+export function resolvedLocale(locale: string): string {
+  const base = locale.split("-")[0]!;
+  return (i18n.global.availableLocales as string[]).includes(base) ? base : "en";
 }
