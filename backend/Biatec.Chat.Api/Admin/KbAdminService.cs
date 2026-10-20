@@ -1,8 +1,11 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Biatec.Chat.Api.Chat.SignIn;
+using Biatec.Chat.Api.Onboarding;
 using Biatec.Chat.Core.Data;
+using Biatec.Chat.Core.Evidence;
 using Biatec.Chat.Tools.Kb;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -29,7 +32,7 @@ public sealed record KbServedPageView(string Id, string Title, string Source);
 /// reloads at once and the others within <c>Kb:RefreshSeconds</c>. Only UTF-8 markdown or plain text within the size
 /// limit is accepted; the content stays untrusted data that reaches the model only as a <c>kb.search</c> result.
 /// </summary>
-public sealed partial class KbAdminService(ChatDbContext db, KbLibrary library, KbSearchService kb, IOptions<KbOptions> options)
+public sealed partial class KbAdminService(ChatDbContext db, KbLibrary library, KbSearchService kb, IOptions<KbOptions> options, IEvidenceLog evidence)
 {
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
@@ -67,7 +70,12 @@ public sealed partial class KbAdminService(ChatDbContext db, KbLibrary library, 
         return (rows, served);
     }
 
-    public async Task<KbWriteResult> UploadAsync(string id, string? contentType, byte[] body, CancellationToken ct)
+    /// <summary>The page as the admin evidence chain records it: type, size and hash, never the content.</summary>
+    private static JsonObject Fingerprint(string contentType, int sizeBytes, string sha256) =>
+        new() { ["contentType"] = contentType, ["sizeBytes"] = sizeBytes, ["sha256"] = sha256 };
+
+    /// <summary>Creates or replaces a page. A change commits together with its <see cref="AdminEvidence"/> entry, or not at all.</summary>
+    public async Task<KbWriteResult> UploadAsync(string id, string? contentType, byte[] body, OperatorIdentity op, string reason, CancellationToken ct)
     {
         if (!ValidId(id)) return new(KbChange.Invalid, "The page id must be 1-64 characters: lower-case letters, digits and inner hyphens.");
         if (AcceptedType(contentType) is not { } type)
@@ -109,12 +117,14 @@ public sealed partial class KbAdminService(ChatDbContext db, KbLibrary library, 
 
             if (change != KbChange.Unchanged)
             {
+                var before = existing is null ? null : Fingerprint(existing.ContentType, existing.SizeBytes, existing.Sha256);
                 page.ContentType = type;
                 page.Body = text;
                 page.SizeBytes = bytes;
                 page.Sha256 = sha;
                 page.UpdatedAt = DateTimeOffset.UtcNow;
                 await db.SaveChangesAsync(ct);
+                await AdminEvidence.AppendAsync(evidence, op, AdminEvidence.KbPageUpload, "kb-page:" + id, reason, before, Fingerprint(type, bytes, sha), ct);
             }
             await tx.CommitAsync(ct);
         }
@@ -124,18 +134,22 @@ public sealed partial class KbAdminService(ChatDbContext db, KbLibrary library, 
         return new(change, Page: KbStoredPageView.Of(page), Served: reload.Served, ReloadError: reload.Error);
     }
 
-    public async Task<KbWriteResult> DeleteAsync(string id, CancellationToken ct)
+    /// <summary>Removes an uploaded page. The delete commits together with its <see cref="AdminEvidence"/> entry, or not at all.</summary>
+    public async Task<KbWriteResult> DeleteAsync(string id, OperatorIdentity op, string reason, CancellationToken ct)
     {
         if (!ValidId(id)) return new(KbChange.NotFound, "Unknown page.");
-        int n;
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
             // The same lock as uploads, so a delete never races a replace of the same page.
             await db.Database.ExecuteSqlRawAsync(LockSql, ct);
-            n = await db.KbPages.Where(p => p.Id == id).ExecuteDeleteAsync(ct);
+            var existing = await db.KbPages.AsNoTracking().Where(p => p.Id == id)
+                .Select(p => new { p.ContentType, p.SizeBytes, p.Sha256 }).FirstOrDefaultAsync(ct);
+            if (existing is null) return new(KbChange.NotFound, "Unknown page.");
+            await db.KbPages.Where(p => p.Id == id).ExecuteDeleteAsync(ct);
+            await AdminEvidence.AppendAsync(evidence, op, AdminEvidence.KbPageDelete, "kb-page:" + id, reason,
+                Fingerprint(existing.ContentType, existing.SizeBytes, existing.Sha256), null, ct);
             await tx.CommitAsync(ct);
         }
-        if (n == 0) return new(KbChange.NotFound, "Unknown page.");
         var reload = await library.ReloadAsync(reseed: false, ct);
         return new(KbChange.Deleted, Served: reload.Served, ReloadError: reload.Error);
     }

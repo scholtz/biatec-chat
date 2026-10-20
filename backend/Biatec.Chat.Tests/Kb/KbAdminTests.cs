@@ -115,6 +115,7 @@ public sealed class KbAdminTests : IAsyncLifetime
                 ["Postgres:ConnectionString"] = Cs,
                 ["Algod:Networks:testnet:Url"] = "https://algod.example.test",
                 ["Kms:KeyId"] = "alias/test",
+                ["Evidence:AllowEphemeralKeys"] = "true",
                 ["Onboarding:OperatorKey"] = operatorKey,
                 ["Kb:Path"] = SeedDir(),
                 // Polling off unless a test turns it on, so "after reload" is what the test controls.
