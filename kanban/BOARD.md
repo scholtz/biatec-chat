@@ -33,7 +33,7 @@ Sorted by priority, then ID. The first row is what `/kanban-next` picks.
 | ID | Title | Priority | Epic | Parallel | Taken by |
 |---|---|---|---|---|---|
 | T-059 | End-to-end demo test on testnet | P1 | Deploy & docs | yes | free |
-| T-090 | Bug: transfer preview must look up ASA decimals and unit name (real MCP balances carry none) | P1 | Wallet tools | yes | free |
+| T-090 | Bug: transfer preview must look up ASA decimals and unit name (real MCP balances carry none) | P1 | Wallet tools | yes | LukassSoukup |
 | T-043 | Widget Slovak translation and accessibility pass | P2 | Widget | no (T-036, T-077) | free |
 | T-072 | Fix failing authenticator enrollment tests | P2 | Authenticator | yes | free |
 | T-081 | Bug: anchorRef in the entry hash must be the anchor transaction ID | P2 | Evidence | no (T-036, T-078, T-087, T-088) | free |
