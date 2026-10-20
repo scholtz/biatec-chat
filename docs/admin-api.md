@@ -324,7 +324,7 @@ verifier expects a chain from seq 1, so for later pages concatenate the entries 
 costs a read of the whole prefix; admin changes are rare, so that is accepted rather than caching a verdict.
 
 **Retention.** The admin chain holds operator names, reasons and tenant policy values, not end-user personal data, so
-it is exempt from the payload window (`Retention:Payloads`, 90 days): its payloads and salts are kept, so who did what
+it is exempt from the payload window (`Retention:Payloads`, 5 years): its payloads and salts are kept, so who did what
 stays readable. It keeps the record window (`Retention:Records`, 7 years): once its newest entry is past it, the
 retention job deletes the chain like any orphan chain. The anchoring job anchors this chain's head like any other.
 

@@ -65,6 +65,17 @@ public sealed class RetentionTests : IAsyncLifetime
 
     private ChatDbContext NewContext() => new(new DbContextOptionsBuilder<ChatDbContext>().ConfigureNpgsql(Cs).Options);
 
+    /// <summary>The default payload window, so the tests follow the configured default.</summary>
+    private static readonly TimeSpan PayloadWindow = new RetentionOptions().Payloads;
+
+    [Fact]
+    public void Defaults_KeepPayloadsFiveYears_InsideTheRecordWindow()
+    {
+        var o = new RetentionOptions();
+        Assert.Equal(TimeSpan.FromDays(1826), o.Payloads);
+        Assert.True(o.Payloads < o.Records);
+    }
+
     private RetentionService Retention(ChatDbContext db, int batchSize = 500) => new(db, Options.Create(new RetentionOptions { BatchSize = batchSize }), _time);
 
     private async Task<Guid> SeedConversationAsync(ChatDbContext db, string? sub, bool withPreview = false, bool withSession = false, bool erased = false)
@@ -112,17 +123,17 @@ public sealed class RetentionTests : IAsyncLifetime
         await log.AppendAsync(conv, "preview", new JsonObject { ["canonicalJson"] = "{}" });
         await log.AppendAsync(conv, "message", new JsonObject { ["text"] = "old too" });
 
-        // The conversation stays active: a newer message on day 89 must not shield the day-0 rows.
-        _time.Now += TimeSpan.FromDays(89);
+        // The conversation stays active: a newer message a day before the window ends must not shield the day-0 rows.
+        _time.Now += PayloadWindow - TimeSpan.FromDays(1);
         await log.AppendAsync(conv, "message", new JsonObject { ["text"] = "newer" });
         db.Messages.Add(new Message { ConversationId = conv, Seq = 2, Role = MessageRole.User, Content = "recent", CreatedAt = _time.Now });
         await db.SaveChangesAsync();
         await db.Conversations.Where(c => c.Id == conv).ExecuteUpdateAsync(u => u.SetProperty(c => c.LastMessageAt, _time.Now));
 
-        // Day 89: nothing is past the window yet.
+        // A day before the window ends: nothing is past it yet.
         Assert.Equal(new RetentionResult(0, 0, 0, 0), await Retention(db, batchSize: 1).ApplyAsync(default));
 
-        // Day 91, batch size 1: one run still drains all three old entries.
+        // A day past the window, batch size 1: one run still drains all three old entries.
         _time.Now += TimeSpan.FromDays(2);
         var r = await Retention(db, batchSize: 1).ApplyAsync(default);
         Assert.Equal(3, r.PayloadsDeleted);
@@ -269,14 +280,14 @@ public sealed class RetentionTests : IAsyncLifetime
         await log.AppendAsync(admin, Biatec.Chat.Api.Admin.AdminEvidence.Kind, new JsonObject { ["operator"] = "alice" });
         await log.AppendAsync(conv, "message", new JsonObject { ["text"] = "x" });
 
-        _time.Now += TimeSpan.FromDays(91);
+        _time.Now += PayloadWindow + TimeSpan.FromDays(1);
         Assert.Equal(1, (await Retention(db).ApplyAsync(default)).PayloadsDeleted); // the conversation's entry only
         var kept = (await log.GetChainAsync(admin)).Single();
         Assert.Contains("alice", kept.Payload);
         Assert.NotNull(kept.Salt);
         Assert.True((await log.VerifyAsync(admin)).Valid);
 
-        _time.Now += TimeSpan.FromDays(2556 - 91);
+        _time.Now += TimeSpan.FromDays(2556) - (PayloadWindow + TimeSpan.FromDays(1));
         await Retention(db).ApplyAsync(default);
         Assert.Single(await log.GetChainAsync(admin)); // inside the record window
 
@@ -297,7 +308,7 @@ public sealed class RetentionTests : IAsyncLifetime
         var conv = Guid.NewGuid();
         using var keys = new DevEvidenceKeyStore(time: _time);
         await using (var db = NewContext()) await new EvidenceLog(db, keys, _time).AppendAsync(conv, "message", new JsonObject { ["text"] = "x" });
-        _time.Now += TimeSpan.FromDays(91);
+        _time.Now += PayloadWindow + TimeSpan.FromDays(1);
 
         var hosted = new RetentionHostedService(sp.GetRequiredService<IServiceScopeFactory>(), sp.GetRequiredService<IOptions<RetentionOptions>>(),
             TimeProvider.System, Microsoft.Extensions.Logging.Abstractions.NullLogger<RetentionHostedService>.Instance);

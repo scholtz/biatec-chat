@@ -2,7 +2,7 @@ namespace Biatec.Chat.Api.Retention;
 
 /// <summary>
 /// Retention windows, configurable per deployment (PRODUCT-DESCRIPTION.md, Session Recording And Evidence). Defaults:
-/// message payloads and their salts 90 days, anonymous conversations 30 days, the chain, receipts and transaction
+/// message payloads and their salts 5 years, anonymous conversations 30 days, the chain, receipts and transaction
 /// references of fund-moving actions 7 years.
 /// </summary>
 public sealed class RetentionOptions
@@ -23,7 +23,8 @@ public sealed class RetentionOptions
     /// Evidence payloads and salts, message content and the preview and step payload columns. Not the admin evidence
     /// chain (operator names, reasons, policy values; no end-user data): it keeps its payloads for <see cref="Records"/>.
     /// </summary>
-    public TimeSpan Payloads { get; set; } = TimeSpan.FromDays(90);
+    /// <remarks>5 years of 365.25 days.</remarks>
+    public TimeSpan Payloads { get; set; } = TimeSpan.FromDays(1826);
     /// <summary>Anonymous conversations (no oidcSub and no action previews) are removed after this.</summary>
     public TimeSpan AnonymousConversations { get; set; } = TimeSpan.FromDays(30);
     /// <summary>The chain (entry hashes), receipts and transaction references: 7 years of 365.25 days.</summary>

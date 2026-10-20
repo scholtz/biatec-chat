@@ -104,7 +104,7 @@ public sealed class RetentionService(ChatDbContext db, IOptions<RetentionOptions
         }, Spent);
         await DrainAsync(async () =>
         {
-            // A step past its own expiry (by 90 days) can no longer be signed, whatever its preview's other steps do.
+            // A step past its own expiry (by the payload window) can no longer be signed, whatever its preview's other steps do.
             var ids = await db.ActionSteps.Where(st => st.ExpiresAt < payloadCutoff && (st.UnsignedGroup != null || st.LimitsRequest != null || st.SenderAddress != null))
                 .OrderBy(st => st.Id).Select(st => st.Id).Take(Batch).ToListAsync(ct);
             if (ids.Count > 0) await BlankStepsAsync(db.ActionSteps.Where(st => ids.Contains(st.Id)), ct);

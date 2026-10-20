@@ -1,7 +1,7 @@
 ---
 id: T-107
 title: "Keep message payloads 5 years instead of 90 days"
-status: in-progress
+status: review
 priority: P2
 epic: "Evidence"
 blocked_by: []
@@ -43,9 +43,9 @@ Parallel work possible: **yes**. No other unfinished task touches retention.
 
 ## Acceptance criteria
 
-- [ ] Default payload window is 5 years in code and appsettings, and stays below `Records` (7 years)
-- [ ] Spec and docs say 5 years wherever they said 90 days for payloads/transcripts
-- [ ] Retention tests pass
+- [x] Default payload window is 5 years in code and appsettings, and stays below `Records` (7 years)
+- [x] Spec and docs say 5 years wherever they said 90 days for payloads/transcripts
+- [x] Retention tests pass
 
 ## Verification
 
@@ -53,8 +53,18 @@ Parallel work possible: **yes**. No other unfinished task touches retention.
 
 ## Hand-off
 
+task/T-107. `Retention:Payloads` default 90 days → 1826 days (5 × 365.25) in `RetentionOptions.cs` and
+`appsettings.json`; still below `Records` (2557 days). Spec (Session Recording And Evidence, two bullets), architecture,
+threat model, admin API and juryQnA say 5 years. RetentionTests now derive their day offsets from the default window,
+plus a defaults test. Verified: `dotnet test --filter Retention` 9/9 passed; no "90 days" payload statement left
+(remaining 90-day hits are evidence key rotation). Unchanged: anonymous 30 days, records 7 years, erasure on request.
+Note: a longer window weakens the GDPR storage-limitation story; deployments can still set a shorter window.
+
+**Unblocks:** none.
+
 ## Review
 
 ## Activity log
 
 - 2026-10-20 09:21 · LukassSoukup · (new) → in-progress · user request: payload retention up to 5 years; blockers scan: none
+- 2026-10-20 09:35 · LukassSoukup · in-progress → review · retention tests 9/9
