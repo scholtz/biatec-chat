@@ -1,7 +1,7 @@
 ---
 id: T-083
 title: "Bug: session endpoint must return the signed-in email and primary address"
-status: review
+status: done
 priority: P2
 epic: "Sessions & auth"
 blocked_by: []
@@ -118,9 +118,12 @@ If the vault entry needs a new field, T-071 (review) owns `Vault/**`: coordinate
 
 ## Review
 
+- 2026-10-20 04:12 · approve · PR #172 merged into main @ b5af07d (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #6)
 - 2026-10-20 03:39 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 03:39 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 04:12 · coordinator · in-progress → review · branch task/T-083 @ 528d0d0, PR #172; analysis verdict APPROVED recorded
+- 2026-10-20 04:12 · user · review → done · PR #172 merged into main @ b5af07d (synced by kanban-sync)
