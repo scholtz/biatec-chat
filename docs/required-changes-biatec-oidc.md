@@ -351,7 +351,7 @@ Content-Type: application/json
 
 The redirect URI must equal the tenant's `Tenant.RedirectUri` as implemented by `/auth/callback`. **Registration today** (what an operator enters on the static client list while sections 1, 2 and 15 are on their fallbacks):
 the same request without `urn:openid:params:grant-type:ciba` in `grant_types`, without `subject_type`,
-`backchannel_token_delivery_mode` and `authorization_details_types`, and with `scope` `openid profile email offline_access sign` (the client may request `sign` only at elevation; the registration allows it). The
+`backchannel_token_delivery_mode` and `authorization_details_types`, and with `scope` `openid profile email offline_access sign` (the client requests `sign` at login and, if it was not granted, at elevation; the registration must allow it). The
 backend and mock assume a public `sub`; adding the omitted fields later is a registration update, not a code change.
 
 Scopes `manage-limits` and

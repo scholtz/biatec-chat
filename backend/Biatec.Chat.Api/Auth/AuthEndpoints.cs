@@ -28,7 +28,7 @@ public sealed record PopupStatusResponse
 
 public static class AuthEndpoints
 {
-    public const string LoginScope = "openid profile email";
+    public const string LoginScope = "openid profile email sign";
     private static readonly TimeSpan PopupLifetime = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan StateLifetime = TimeSpan.FromMinutes(10);
     private const string ConsumedMarker = "consumed";

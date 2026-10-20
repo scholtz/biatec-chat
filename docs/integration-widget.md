@@ -309,8 +309,8 @@ Integrators do not need to implement these, but should know them:
   `X-Biatec-Client-Key` (the `clientKey`). Credentialed CORS echoes the exact origin and never uses a wildcard.
 - **Sessions.** 15 minutes idle, 8 hours absolute. The widget calls `GET /session` when the panel first opens and
   `POST /session/keepalive` while an action is pending.
-- **Scopes.** Sign-in asks for `openid profile email`. The `sign` scope is requested only when an action first needs it, through a
-  second popup. Only `sign` and `manage-limits` can ever be requested that way.
+- **Scopes.** Sign-in asks for `openid profile email sign`, because Biatec OIDC's sign endpoint needs the token's `email` and `sign`
+  claims. If Biatec OIDC does not grant `sign`, it is requested when an action first needs it, through a second popup. Only `sign` and `manage-limits` can ever be requested that way.
 - **Tier.** Anonymous visitors can learn about Biatec and Algorand but get no wallet tools. The backend rejects any wallet call from
   them, whatever the model says.
 
