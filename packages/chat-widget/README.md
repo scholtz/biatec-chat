@@ -112,15 +112,28 @@ For maintainers of [scholtz/biatec-chat](https://github.com/scholtz/biatec-chat)
 
 1. In a pull request: bump `version` in `packages/chat-widget/package.json` (semver; before 1.0 a minor may break the
    API) and add a `## <version>` section to [CHANGELOG.md](https://github.com/scholtz/biatec-chat/blob/main/packages/chat-widget/CHANGELOG.md). The PR runs the workflow as a dry run
-   (build, typecheck, test, pack, list the tarball's files, `npm publish --dry-run`); its notice says whether merging
-   would publish.
+   (build, typecheck, test, pack, list the tarball's files, `npm publish --dry-run`); for a PR into `main` its notice
+   says whether merging would publish.
 2. Merge the PR. The push to `main` publishes the new version to npm (with provenance, in the `npm` environment), then
    creates the tag **`chat-widget-v<version>`** on the merged commit and a GitHub release whose text is that version's
    CHANGELOG section. Nothing else to do.
 
-A push to `main` that touches the widget, `chat-protocol` or the workflow publishes nothing, with a notice saying why,
-when the version in `package.json` did not change in that push or is already on npm. Every path checks npm before
-publishing, so no version is published twice: the tag the workflow creates is skipped (and, pushed with
+**The version must be greater than the highest published release** (semver, prereleases not counted). A lower or
+equal version that is not on npm fails the check with an error, already in the PR, so a revert or a typo can never
+become `latest`. (A version that is already on npm is simply skipped.)
+
+**Prereleases** (`x.y.z-<id>…`, for example `0.2.0-beta.1` or `1.0.0-rc.1`) publish to the npm dist-tag `<id>`
+(`beta`, `rc`; `next` when `<id>` is not a word, as in `0.2.0-1`), never to `latest`, so `npm install
+@biatec/chat-widget` keeps installing the last release; install one with `npm install @biatec/chat-widget@beta`. Its
+GitHub release is marked as a prerelease. A prerelease of an already released `x.y.z` (`0.1.0-rc.1` after `0.1.0`)
+fails the check like a downgrade.
+
+A push to `main` that touches the widget, `chat-protocol` or the workflow publishes nothing when the version in
+`package.json` is already on npm (notice) or did not change in that push (notice; a **warning** if that version is
+not on npm, meaning an earlier release failed or was never made: publish it with the tag or a manual run below). Every
+path checks npm before publishing, and the publish job checks again right before `npm publish` (npm's "cannot publish
+over the previously published version" also counts as already published), so no version is published twice, even
+when a tag and a merge for the same version run at once: the tag the workflow creates is skipped (and, pushed with
 `GITHUB_TOKEN`, it does not even start a workflow), and so is a tag or manual run for a published version. npm never
 accepts the same version twice, so a fix needs a new version. A run that failed before publishing (for example
 because auth is not set up yet) can be re-run; if only the tag and release failed, re-run the failed jobs (an existing
@@ -128,7 +141,8 @@ tag or release is kept).
 
 ### Other ways to publish
 
-Both only for a commit on `main`, and both skip a version that is already on npm:
+Both only for a commit on `main`, both skip a version that is already on npm, and both follow the same version and
+prerelease rules as above:
 
 - **Tag:** push `chat-widget-v<version>`, exactly the version in `package.json`, pointing at a commit `main` contains:
 
