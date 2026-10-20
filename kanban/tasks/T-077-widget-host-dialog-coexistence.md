@@ -1,7 +1,7 @@
 ---
 id: T-077
 title: Widget fixes for coexisting with host dialogs (Esc, focus trap, lang, chip export)
-status: in-progress
+status: done
 priority: P2
 epic: "Widget"
 blocked_by: [T-063, T-068]
@@ -64,9 +64,12 @@ Parallel work possible: **no**. Don't run it at the same time as T-043: they cha
 
 ## Review
 
+- 2026-10-20 03:13 · approve · PR #145 merged into main @ 2806543 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 03:20 · coordinator · (new) → backlog · proposed by T-068; conflicts with T-043 (lang / i18n resolution)
 - 2026-10-20 02:09 · coordinator · backlog · blocked_by + T-068 (its acceptance checks run in the DEX playground)
 - 2026-10-20 02:19 · scholtz · taken · status stays backlog
 - 2026-10-20 02:19 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 03:13 · user · in-progress → done · PR #145 merged into main @ 2806543 (synced by kanban-sync)
