@@ -1,7 +1,7 @@
 ---
 id: T-067
 title: Holdings data card from wallet.balance
-status: backlog
+status: in-progress
 priority: P3
 epic: "Widget UI rework"
 blocked_by: [T-020, T-064]
@@ -9,9 +9,9 @@ area: ["packages/chat-widget/src/components/data/**", "backend/Biatec.Chat.Api/C
 parallel: no
 conflicts_with: [T-035, T-042, T-074, T-076, T-082]
 issue: "#108"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-067"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#user-experience"
 created: 2026-10-19
 updated: 2026-10-20
@@ -70,3 +70,5 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-20 01:09 · LukassSoukup · blocked · parallel analysis: dropped T-065 (done); added T-042 (cards in ChatView.vue/useChat.ts) and T-035 (orchestrator emits data_card)
 - 2026-10-20 02:30 · coordinator · blocked · added T-074 to conflicts_with (new task)
 - 2026-10-20 02:18 · kanban-board · blocked → backlog · blockers done: T-020, T-064
+- 2026-10-20 04:35 · scholtz · taken · status stays backlog
+- 2026-10-20 04:35 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
