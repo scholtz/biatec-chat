@@ -24,8 +24,24 @@ export class RetentionError extends Error {
 export interface EvidenceFile {
   /** File name from Content-Disposition, or the backend's naming scheme. */
   name: string;
-  /** The signed bundle exactly as the backend sent it. */
-  blob: Blob;
+  /** The signed bundle (JSON) exactly as the backend sent it. */
+  text: string;
+}
+
+/** Format tag of the combined "export first" file: one object holding every per-conversation bundle unchanged. */
+export const COMBINED_FORMAT = "biatec-evidence-bundles";
+
+/**
+ * One file for several conversations, so the confirm step saves a single download. Each element of `bundles` is a
+ * backend bundle as parsed from its JSON and verifies on its own (the signatures cover the canonical JSON form).
+ */
+export function combineBundles(files: readonly EvidenceFile[], now: Date = new Date()): EvidenceFile {
+  const bundles = files.map((f) => JSON.parse(f.text) as unknown);
+  const stamp = now.toISOString().slice(0, 19).replace(/[-:T]/g, "");
+  return {
+    name: `biatec-evidence-all-${stamp}.json`,
+    text: JSON.stringify({ format: COMBINED_FORMAT, version: 1, exportedAt: now.toISOString(), bundles }, null, 2),
+  };
 }
 
 export interface RetentionApi {
@@ -81,7 +97,7 @@ export class RetentionClient implements RetentionApi {
 
   async evidence(conversationId: string): Promise<EvidenceFile> {
     const res = await this.call(RETENTION_PATHS.evidence(conversationId), { method: "GET", headers: { Accept: "application/json" } });
-    return { name: fileName(res.headers.get("Content-Disposition"), conversationId), blob: await res.blob() };
+    return { name: fileName(res.headers.get("Content-Disposition"), conversationId), text: await res.text() };
   }
 
   async erase(): Promise<ErasureResponse> {
@@ -96,12 +112,25 @@ export class RetentionClient implements RetentionApi {
   }
 }
 
+/** How long a saved file's object URL stays valid: the browser may still be reading it well after the click. */
+export const REVOKE_AFTER_MS = 60_000;
+let lastUrl: { href: string; timer: ReturnType<typeof setTimeout> } | null = null;
+function releaseLast(): void {
+  if (!lastUrl) return;
+  clearTimeout(lastUrl.timer);
+  URL.revokeObjectURL(lastUrl.href);
+  lastUrl = null;
+}
+
 /**
  * Hands a downloaded file to the browser's save flow. The anchor lives in the widget root (inside the shadow root
- * when there is one) for the moment of the click, then the object URL is released.
+ * when there is one) for the moment of the click. The object URL is released on the next save or after
+ * REVOKE_AFTER_MS, whichever comes first.
  */
 export function saveFile(file: EvidenceFile, parent: Node | null): void {
-  const href = URL.createObjectURL(file.blob);
+  releaseLast();
+  const href = URL.createObjectURL(new Blob([file.text], { type: "application/json" }));
+  lastUrl = { href, timer: setTimeout(releaseLast, REVOKE_AFTER_MS) };
   const a = document.createElement("a");
   a.href = href;
   a.download = file.name;
@@ -112,6 +141,5 @@ export function saveFile(file: EvidenceFile, parent: Node | null): void {
     a.click();
   } finally {
     a.remove();
-    setTimeout(() => URL.revokeObjectURL(href), 0);
   }
 }

@@ -6,30 +6,39 @@ import { fileURLToPath } from "node:url";
 import type { ConversationSummary, ErasureResponse, SessionState } from "@biatec/chat-protocol";
 import ExportView from "../src/components/export/ExportView.vue";
 import BiatecChatRoot from "../src/components/BiatecChatRoot.vue";
-import { RetentionClient, RetentionError, RETENTION_PATHS, type RetentionApi } from "../src/components/export/api";
+import {
+  COMBINED_FORMAT,
+  REVOKE_AFTER_MS,
+  RetentionClient,
+  RetentionError,
+  RETENTION_PATHS,
+  saveFile,
+  type RetentionApi,
+} from "../src/components/export/api";
 import { resolveOptions } from "../src/options";
 import { resetHostApi } from "../src/api";
 import type { WidgetServices } from "../src/api/core";
 import { CLIENT_KEY_HEADER, CSRF_HEADER } from "../src/transport/types";
 
-const fixtures = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "evidence-verifier", "test", "fixtures");
+const here = dirname(fileURLToPath(import.meta.url));
+const fixtures = join(here, "..", "..", "evidence-verifier", "test", "fixtures");
 const bundleText = readFileSync(join(fixtures, "bundle.json"), "utf8");
 const jwks: unknown = JSON.parse(readFileSync(join(fixtures, "jwks.json"), "utf8"));
 
 // The offline verifier and the bundle the real backend exported (EvidenceExportTests), both from evidence-verifier.
 // Loaded at run time so the widget's typecheck (ES2022 lib) does not compile the verifier's sources.
 type Verify = (bundle: unknown, options: { jwks: unknown }) => { valid: boolean; errors: string[]; entries: number };
-const verifierUrl = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "evidence-verifier", "src", "verify.ts");
-const { verifyBundle } = (await import(/* @vite-ignore */ verifierUrl)) as { verifyBundle: Verify };
-const bundleId = (JSON.parse(bundleText) as { conversationId: string }).conversationId;
+const verifierPath = join(here, "..", "..", "evidence-verifier", "src", "verify.ts");
+const { verifyBundle } = (await import(/* @vite-ignore */ verifierPath)) as { verifyBundle: Verify };
 
-const OLD = bundleId;
+const OLD = (JSON.parse(bundleText) as { conversationId: string }).conversationId;
 const OTHER = "0b8f8a43-6f6a-4c61-9d36-3f3f7c0d2a11";
+const EMPTY = "5c7e9a10-2222-4333-8444-955566667777";
 const NEW = "8a1d2c3e-1111-4222-8333-944455556666";
 
-const conv = (id: string, current: boolean, evidenceEntries: number | string = 3): ConversationSummary => ({
+const conv = (id: string, current: boolean, evidenceEntries: number | string = 3, createdAt = "2026-10-19T08:30:00Z"): ConversationSummary => ({
   conversationId: id,
-  createdAt: "2026-10-19T08:30:00Z",
+  createdAt,
   lastMessageAt: "2026-10-19T09:00:00Z",
   current,
   evidenceEntries,
@@ -37,7 +46,7 @@ const conv = (id: string, current: boolean, evidenceEntries: number | string = 3
 
 /** Fake backend for the export view: GET list, GET evidence (the fixture bundle) and POST erase, with a call log. */
 function fakeApi(opts: { erase?: () => Promise<ErasureResponse> } = {}) {
-  let list = [conv(OLD, true), conv(OTHER, false, "0")];
+  let list = [conv(OLD, true), conv(OTHER, false, 2, "2026-10-18T07:00:00Z"), conv(EMPTY, false, "0")];
   const calls: string[] = [];
   const api: RetentionApi = {
     list: vi.fn(async () => {
@@ -46,13 +55,13 @@ function fakeApi(opts: { erase?: () => Promise<ErasureResponse> } = {}) {
     }),
     evidence: vi.fn(async (id: string) => {
       calls.push(`evidence:${id}`);
-      return { name: `biatec-evidence-${id.replace(/-/g, "")}.json`, blob: new Blob([bundleText], { type: "application/json" }) };
+      return { name: `biatec-evidence-${id.replace(/-/g, "")}.json`, text: bundleText };
     }),
     erase: vi.fn(async () => {
       calls.push("erase");
       const r = opts.erase ? await opts.erase() : { status: "erased", conversations: 2, payloadsDeleted: 5, conversationId: NEW };
       // The backend lists the fresh conversation as the session's own; the erased ones stay (blanked).
-      list = [conv(NEW, true, 0), conv(OLD, false), conv(OTHER, false, 0)];
+      list = [conv(NEW, true, 0), conv(OLD, false), conv(OTHER, false, 2), conv(EMPTY, false, 0)];
       return r;
     }),
   };
@@ -69,45 +78,50 @@ const readBlob = (b: Blob) =>
   });
 
 /** Captures what the widget hands to the browser's save flow. */
-let saved: { name: string; blob: Blob }[] = [];
+let saved: { name: string; href: string; blob: Blob }[] = [];
 beforeEach(() => {
   saved = [];
   const blobs = new Map<string, Blob>();
   let n = 0;
-  vi.stubGlobal("URL", Object.assign(URL, {
-    createObjectURL: vi.fn((b: Blob) => {
-      const u = `blob:test/${++n}`;
-      blobs.set(u, b);
-      return u;
+  vi.stubGlobal(
+    "URL",
+    Object.assign(URL, {
+      createObjectURL: vi.fn((b: Blob) => {
+        const u = `blob:test/${++n}`;
+        blobs.set(u, b);
+        return u;
+      }),
+      revokeObjectURL: vi.fn(),
     }),
-    revokeObjectURL: vi.fn(),
-  }));
+  );
   vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
-    saved.push({ name: this.download, blob: blobs.get(this.getAttribute("href")!)! });
+    const href = this.getAttribute("href")!;
+    saved.push({ name: this.download, href, blob: blobs.get(href)! });
   });
 });
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   document.body.innerHTML = "";
   resetHostApi();
 });
 
-const mountView = (api: RetentionApi, signedIn = true) => mount(ExportView, { props: { api, signedIn }, attachTo: document.body });
+const mountView = (api: RetentionApi, signedIn = true) => mount(ExportView, { props: { api, signedIn, revision: 0 }, attachTo: document.body });
+const ids = (w: ReturnType<typeof mountView>) => w.findAll("[data-testid=export-conversation]").map((i) => i.attributes("data-id"));
 
 describe("export view", () => {
-  it("lists the user's conversations, marks the current one and states the receipts carve-out", async () => {
+  it("lists the user's conversations, marks the backend's current one and states the receipts carve-out", async () => {
     const { api } = fakeApi();
     const w = mountView(api);
     await flushPromises();
     const items = w.findAll("[data-testid=export-conversation]");
-    expect(items.map((i) => i.attributes("data-id"))).toEqual([OLD, OTHER]);
-    expect(items[0]!.attributes("data-current")).toBe("");
-    expect(items[1]!.attributes("data-current")).toBeUndefined();
+    expect(ids(w)).toEqual([OLD, OTHER, EMPTY]);
+    expect(items.map((i) => i.attributes("data-current"))).toEqual(["", undefined, undefined]);
     expect(items[0]!.text()).toContain("Evidence entries: 3");
     // No evidence yet: no download button for that one.
-    expect(items[1]!.find("[data-testid=export-download]").exists()).toBe(false);
-    expect(items[1]!.text()).toContain("No evidence yet");
+    expect(items[2]!.find("[data-testid=export-download]").exists()).toBe(false);
+    expect(items[2]!.text()).toContain("No evidence yet");
     expect(w.get("[data-testid=export-carve-out]").text()).toMatch(/Receipts and transaction references are kept.*financial record-keeping/);
   });
 
@@ -124,9 +138,18 @@ describe("export view", () => {
     expect(r.errors).toEqual([]);
     expect(r.valid).toBe(true);
     expect(r.entries).toBe(3);
-    // The object URL is released after the save.
-    await new Promise((res) => setTimeout(res, 0));
-    expect(URL.revokeObjectURL).toHaveBeenCalled();
+  });
+
+  it("a failed row download says so on that row only", async () => {
+    const { api } = fakeApi();
+    vi.mocked(api.evidence).mockRejectedValueOnce(new RetentionError("failed", 500));
+    const w = mountView(api);
+    await flushPromises();
+    await w.get("[data-testid=export-download]").trigger("click");
+    await flushPromises();
+    const failed = w.findAll("[data-testid=export-download-failed]");
+    expect(failed).toHaveLength(1);
+    expect(w.findAll("[data-testid=export-conversation]")[0]!.find("[data-testid=export-download-failed]").exists()).toBe(true);
   });
 
   it("shows a retry when the list cannot be loaded", async () => {
@@ -137,7 +160,32 @@ describe("export view", () => {
     expect(w.get("[data-testid=export-load-failed]").attributes("role")).toBe("alert");
     await w.get("[data-testid=export-retry]").trigger("click");
     await flushPromises();
-    expect(w.findAll("[data-testid=export-conversation]")).toHaveLength(2);
+    expect(ids(w)).toHaveLength(3);
+  });
+
+  it("a failed reload hides the stale list instead of showing it", async () => {
+    const { api } = fakeApi();
+    const w = mountView(api);
+    await flushPromises();
+    expect(ids(w)).toHaveLength(3);
+    vi.mocked(api.list).mockRejectedValueOnce(new RetentionError("failed", 500));
+    await w.setProps({ revision: 1 });
+    await flushPromises();
+    expect(ids(w)).toEqual([]);
+    expect(w.find("[data-testid=export-load-failed]").exists()).toBe(true);
+  });
+
+  it("re-reads the list when the conversation moves on (revision) or the sign-in state changes", async () => {
+    const { api } = fakeApi();
+    const w = mountView(api);
+    await flushPromises();
+    expect(api.list).toHaveBeenCalledTimes(1);
+    await w.setProps({ revision: 2 });
+    await flushPromises();
+    expect(api.list).toHaveBeenCalledTimes(2);
+    await w.setProps({ signedIn: false });
+    await flushPromises();
+    expect(api.list).toHaveBeenCalledTimes(3);
   });
 
   it("renders backend values as text, never as markup", async () => {
@@ -150,6 +198,22 @@ describe("export view", () => {
   });
 });
 
+describe("saveFile", () => {
+  it("keeps the object URL for a while, and releases it on the next save or after REVOKE_AFTER_MS", () => {
+    vi.useFakeTimers();
+    saveFile({ name: "a.json", text: "{}" }, null);
+    // (That save released whatever an earlier test left behind.)
+    vi.mocked(URL.revokeObjectURL).mockClear();
+    vi.advanceTimersByTime(1000);
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    saveFile({ name: "b.json", text: "{}" }, null);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith(saved[0]!.href);
+    vi.advanceTimersByTime(REVOKE_AFTER_MS);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith(saved[1]!.href);
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("erase", () => {
   it("a guest gets the 30-day note instead of the erase button", async () => {
     const { api } = fakeApi();
@@ -159,7 +223,7 @@ describe("erase", () => {
     expect(w.get("[data-testid=export-erase-guest]").text()).toContain("30 days");
   });
 
-  it("asks for confirmation, offers the export first, then switches to the new conversation id", async () => {
+  it("asks for confirmation, offers the export first as ONE file, then switches to the new conversation id", async () => {
     const { api, calls } = fakeApi();
     const w = mountView(api);
     await flushPromises();
@@ -171,21 +235,56 @@ describe("erase", () => {
     expect(dialog.textContent).toContain("Erase your conversations?");
     expect(dialog.textContent).toContain("financial record-keeping");
 
-    // Export first: every conversation that has evidence, one file each.
+    // Export first: every conversation that has evidence, in a single saved file.
     await w.get("[data-testid=erase-export-first]").trigger("click");
     await flushPromises();
-    expect(calls).toEqual(["list", `evidence:${OLD}`]);
+    expect(calls).toEqual(["list", `evidence:${OLD}`, `evidence:${OTHER}`]);
     expect(saved).toHaveLength(1);
+    const combined = JSON.parse(await readBlob(saved[0]!.blob)) as { format: string; bundles: unknown[] };
+    expect(combined.format).toBe(COMBINED_FORMAT);
+    expect(combined.bundles).toHaveLength(2);
+    // Each bundle in the combined file verifies on its own.
+    for (const b of combined.bundles) {
+      const r = verifyBundle(b, { jwks });
+      expect(r.errors).toEqual([]);
+      expect(r.valid).toBe(true);
+    }
     expect(w.get("[data-testid=erase-export-first]").text()).toContain("Evidence downloaded");
+    expect(w.find("[data-testid=erase-export-failed]").exists()).toBe(false);
 
     await w.get("[data-testid=erase-confirm-button]").trigger("click");
     await flushPromises();
-    expect(calls).toEqual(["list", `evidence:${OLD}`, "erase", "list"]);
+    expect(calls.slice(3)).toEqual(["erase", "list"]);
     expect(w.emitted("erased")).toEqual([[NEW]]);
     expect(document.body.querySelector("[role=dialog]")).toBeNull();
     const current = w.findAll("[data-testid=export-conversation]").filter((i) => i.attributes("data-current") === "");
     expect(current.map((i) => i.attributes("data-id"))).toEqual([NEW]);
     expect(w.get("[data-testid=export-status]").text()).toContain("A new conversation has started");
+  });
+
+  it("export first with a failed bundle: never 'Evidence downloaded', and names the conversation that is missing", async () => {
+    const { api } = fakeApi();
+    // The first bundle fails, the later one succeeds: the failure must not be wiped by the success.
+    vi.mocked(api.evidence).mockRejectedValueOnce(new RetentionError("failed", 500));
+    const w = mountView(api);
+    await flushPromises();
+    await w.get("[data-testid=export-erase]").trigger("click");
+    await w.get("[data-testid=erase-export-first]").trigger("click");
+    await flushPromises();
+    expect(w.get("[data-testid=erase-export-first]").text()).not.toContain("Evidence downloaded");
+    const failed = w.get("[data-testid=erase-export-failed]");
+    expect(failed.attributes("role")).toBe("alert");
+    expect(failed.text()).toContain("Not downloaded: 1");
+    expect(failed.findAll("li").map((l) => l.attributes("data-id"))).toEqual([OLD]);
+    // What did arrive is still saved, in one file.
+    expect(saved).toHaveLength(1);
+    expect((JSON.parse(await readBlob(saved[0]!.blob)) as { bundles: unknown[] }).bundles).toHaveLength(1);
+
+    // Trying again clears the failure once every bundle made it.
+    await w.get("[data-testid=erase-export-first]").trigger("click");
+    await flushPromises();
+    expect(w.find("[data-testid=erase-export-failed]").exists()).toBe(false);
+    expect(w.get("[data-testid=erase-export-first]").text()).toContain("Evidence downloaded");
   });
 
   it("Cancel closes the confirm step without erasing", async () => {
@@ -256,7 +355,7 @@ describe("RetentionClient", () => {
       })) as unknown as typeof fetch;
     const file = await new RetentionClient(cfg(f)).evidence(OLD);
     expect(file.name).toBe("biatec-evidence-abc.json");
-    expect(await file.blob.text()).toBe(bundleText);
+    expect(file.text).toBe(bundleText);
   });
 });
 
@@ -270,9 +369,10 @@ describe("mounted in the widget", () => {
     agentMode: "prepare",
     paused: false,
   };
+  const anon: SessionState = { sessionId: "s2", tier: "Anonymous", scopes: [], expiresAt: "2030-01-01T00:00:00Z" };
 
-  it("lives in the Activity sheet, and an erase clears the visible conversation", async () => {
-    const { api } = fakeApi();
+  function services(api: RetentionApi) {
+    let session = authed;
     const svc: WidgetServices = {
       transport: {
         open: vi.fn(async () => "success" as const),
@@ -283,33 +383,66 @@ describe("mounted in the widget", () => {
         dispose: vi.fn(),
       },
       auth: {
-        session: vi.fn(async () => authed),
+        session: vi.fn(async () => session),
         startLogin: vi.fn(async () => null),
         startElevate: vi.fn(async () => null),
         status: vi.fn(async () => "Complete" as const),
         logoutUrl: vi.fn(() => "https://chat.biatec.io/auth/logout"),
       },
+      openPopup: () => {
+        session = anon;
+        return { closed: false, close: vi.fn(), location: { href: "" } } as unknown as Window;
+      },
+      pollMs: 1,
+      timeoutMs: 100,
       retention: api,
     };
+    return svc;
+  }
+
+  async function chatted(svc: WidgetServices) {
     const w = mount(BiatecChatRoot, {
       props: { options: resolveOptions({ backendUrl: "https://chat.biatec.io", clientKey: "k" }), services: svc },
       attachTo: document.body,
     });
     await w.get(".bc-launcher").trigger("click");
     await flushPromises();
-    await w.get(".bc-panel textarea").setValue("hi");
+    await w.get(".bc-panel textarea").setValue("what is my secret question");
     await w.get("form").trigger("submit");
     await flushPromises();
     expect(w.findAll(".bc-msg")).toHaveLength(2);
-
     await w.get("[data-testid=activity-toggle]").trigger("click");
     await flushPromises();
+    expect(w.findAll("[data-testid=activity-entry]")).toHaveLength(1);
+    return w;
+  }
+
+  it("lives in the Activity sheet (loaded when it opens); an erase clears the transcript and the Activity, and re-reads the session", async () => {
+    const { api } = fakeApi();
+    const svc = services(api);
+    const w = await chatted(svc);
     expect(w.find(".bc-shell-aside [data-testid=export]").exists()).toBe(true);
+    expect(api.list).toHaveBeenCalled();
+    const sessionReads = vi.mocked(svc.auth.session).mock.calls.length;
+
     await w.get("[data-testid=export-erase]").trigger("click");
     await w.get("[data-testid=erase-confirm-button]").trigger("click");
     await flushPromises();
     expect(api.erase).toHaveBeenCalledTimes(1);
     expect(w.findAll(".bc-msg")).toHaveLength(0);
+    expect(w.findAll("[data-testid=activity-entry]")).toHaveLength(0);
+    expect(w.text()).not.toContain("what is my secret question");
+    expect(vi.mocked(svc.auth.session).mock.calls.length).toBeGreaterThan(sessionReads);
+    w.unmount();
+  });
+
+  it("sign-out uses the same reset: transcript and Activity are cleared", async () => {
+    const { api } = fakeApi();
+    const w = await chatted(services(api));
+    await w.get("[data-testid=sign-out]").trigger("click");
+    await vi.waitFor(() => expect(w.findAll(".bc-msg")).toHaveLength(0));
+    await flushPromises();
+    expect(w.findAll("[data-testid=activity-entry]")).toHaveLength(0);
     w.unmount();
   });
 });

@@ -177,7 +177,7 @@ function services(session: SessionState, events: ChatEvent[] = []): WidgetServic
       list: vi.fn(async () => [
         { conversationId: "c1", createdAt: "2026-10-19T08:30:00Z", lastMessageAt: "2026-10-19T09:00:00Z", current: true, evidenceEntries: 2 },
       ]),
-      evidence: vi.fn(async () => ({ name: "b.json", blob: new Blob(["{}"]) })),
+      evidence: vi.fn(async () => ({ name: "b.json", text: "{}" })),
       erase: vi.fn(async () => ({ status: "erased", conversations: 1, payloadsDeleted: 1, conversationId: "c2" })),
     },
     pollMs: 1,

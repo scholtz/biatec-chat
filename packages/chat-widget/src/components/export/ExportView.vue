@@ -5,7 +5,7 @@ import { Download, Trash2 } from "lucide-vue-next";
 import { Button, Dialog } from "../../ui";
 import { nextUid } from "../../ui/uid";
 import { i18n, t } from "../../i18n";
-import { RetentionError, saveFile, type RetentionApi, type RetentionErrorCode } from "./api";
+import { RetentionError, combineBundles, saveFile, type EvidenceFile, type RetentionApi, type RetentionErrorCode } from "./api";
 
 /**
  * "Your conversations": the user's own conversations with a per-conversation evidence download, the receipts
@@ -16,6 +16,11 @@ const props = defineProps<{
   api: RetentionApi;
   /** Erasure is signed-in only; a guest gets the 30-day retention note instead. */
   signedIn: boolean;
+  /**
+   * Changes whenever the conversation moved on (a finished turn, a preview or receipt update, a reset): the list is
+   * then re-read so the current conversation's evidence count is up to date. The view also loads when it is shown.
+   */
+  revision?: number;
 }>();
 const emit = defineEmits<{
   /** The backend moved the session to a fresh conversation (its id, when the backend returned one). */
@@ -28,19 +33,19 @@ const conversations = ref<ConversationSummary[]>([]);
 const loading = ref(false);
 const loadFailed = ref(false);
 const downloading = ref<string | null>(null);
-const downloadFailed = ref(false);
-/** The session's conversation as the widget knows it: the backend's `current` flag, or the id erase returned. */
-const currentId = ref<string | null>(null);
+/** The row whose own download failed last. */
+const rowFailed = ref<string | null>(null);
 const status = ref("");
 
 const confirmOpen = ref(false);
 const erasing = ref(false);
 const exporting = ref(false);
 const exported = ref(false);
+/** Conversations "export first" could not fetch; the combined file then lacks them and the user is told which. */
+const exportFailed = ref<ConversationSummary[]>([]);
 const eraseError = ref<RetentionErrorCode | null>(null);
 
 const entries = (c: ConversationSummary) => Number(c.evidenceEntries) || 0;
-const isCurrent = (c: ConversationSummary) => (currentId.value ? c.conversationId === currentId.value : c.current);
 const withEvidence = computed(() => conversations.value.filter((c) => entries(c) > 0));
 
 function when(iso: string): string {
@@ -56,28 +61,27 @@ async function load(): Promise<void> {
   loadFailed.value = false;
   try {
     const list = await props.api.list();
-    if (seq !== loadSeq) return;
-    conversations.value = list;
-    if (currentId.value && !list.some((c) => c.conversationId === currentId.value)) currentId.value = null;
+    if (seq === loadSeq) conversations.value = list;
   } catch {
-    if (seq === loadSeq) loadFailed.value = true;
+    if (seq !== loadSeq) return;
+    // A stale list (for example the one from before an erase) is worse than none.
+    conversations.value = [];
+    loadFailed.value = true;
   } finally {
     if (seq === loadSeq) loading.value = false;
   }
 }
 onMounted(load);
-// Signing in adds the user's other conversations in this tenant; signing out leaves only the session's own.
-watch(() => props.signedIn, load);
+// Signing in adds the user's other conversations in this tenant; a new turn or receipt adds evidence entries.
+watch(() => [props.signedIn, props.revision], load);
 
-async function download(c: ConversationSummary): Promise<boolean> {
+async function download(c: ConversationSummary): Promise<void> {
   downloading.value = c.conversationId;
-  downloadFailed.value = false;
+  rowFailed.value = null;
   try {
     saveFile(await props.api.evidence(c.conversationId), root.value);
-    return true;
   } catch {
-    downloadFailed.value = true;
-    return false;
+    rowFailed.value = c.conversationId;
   } finally {
     downloading.value = null;
   }
@@ -86,6 +90,7 @@ async function download(c: ConversationSummary): Promise<boolean> {
 function openConfirm(): void {
   eraseError.value = null;
   exported.value = false;
+  exportFailed.value = [];
   status.value = "";
   confirmOpen.value = true;
 }
@@ -94,13 +99,29 @@ function closeConfirm(): void {
   confirmOpen.value = false;
 }
 
-/** The confirm step's "export first": every conversation that has evidence, one file each. */
+/**
+ * The confirm step's "export first": every conversation that has evidence, saved as ONE file (browsers block a
+ * second programmatic download). "Evidence downloaded" only when every bundle made it into that file.
+ */
 async function exportAll(): Promise<void> {
   exporting.value = true;
+  exported.value = false;
+  exportFailed.value = [];
   try {
-    let ok = true;
-    for (const c of withEvidence.value) ok = (await download(c)) && ok;
-    exported.value = ok;
+    const targets = withEvidence.value;
+    const results = await Promise.allSettled(targets.map((c) => props.api.evidence(c.conversationId)));
+    const files: EvidenceFile[] = [];
+    const failed: ConversationSummary[] = [];
+    results.forEach((r, i) => (r.status === "fulfilled" ? files.push(r.value) : failed.push(targets[i]!)));
+    if (files.length) {
+      try {
+        saveFile(combineBundles(files), root.value);
+      } catch {
+        failed.splice(0, failed.length, ...targets);
+      }
+    }
+    exportFailed.value = failed;
+    exported.value = failed.length === 0;
   } finally {
     exporting.value = false;
   }
@@ -111,7 +132,6 @@ async function erase(): Promise<void> {
   eraseError.value = null;
   try {
     const r = await props.api.erase();
-    currentId.value = r.conversationId ?? null;
     confirmOpen.value = false;
     status.value = t("export.erased");
     emit("erased", r.conversationId ?? null);
@@ -156,11 +176,11 @@ const eraseErrorText = computed(() => {
         class="bc-export-item"
         data-testid="export-conversation"
         :data-id="c.conversationId"
-        :data-current="isCurrent(c) ? '' : undefined"
+        :data-current="c.current ? '' : undefined"
       >
         <p class="bc-export-title">
           <span class="bc-export-num">{{ t("export.started", { date: when(c.createdAt) }) }}</span>
-          <span v-if="isCurrent(c)" class="bc-export-current" data-testid="export-current">{{ t("export.current") }}</span>
+          <span v-if="c.current" class="bc-export-current" data-testid="export-current">{{ t("export.current") }}</span>
         </p>
         <p class="bc-export-meta bc-export-num">{{ t("export.entries", { count: entries(c) }) }}</p>
         <Button
@@ -176,11 +196,11 @@ const eraseErrorText = computed(() => {
           {{ t("export.download") }}
         </Button>
         <p v-else class="bc-export-meta">{{ t("export.noEvidence") }}</p>
+        <p v-if="rowFailed === c.conversationId" class="bc-export-error" role="alert" data-testid="export-download-failed">
+          {{ t("export.downloadFailed") }}
+        </p>
       </li>
     </ul>
-    <p v-if="downloadFailed && !confirmOpen" class="bc-export-error" role="alert" data-testid="export-download-failed">
-      {{ t("export.downloadFailed") }}
-    </p>
 
     <p class="bc-export-note" data-testid="export-carve-out">{{ t("export.carveOut") }}</p>
 
@@ -208,7 +228,14 @@ const eraseErrorText = computed(() => {
           <Download :size="16" aria-hidden="true" />
           {{ exported ? t("export.exportFirstDone") : t("export.exportFirst") }}
         </Button>
-        <p v-if="downloadFailed" class="bc-export-error" role="alert">{{ t("export.downloadFailed") }}</p>
+        <div v-if="exportFailed.length" class="bc-export-error" role="alert" data-testid="erase-export-failed">
+          <p>{{ t("export.exportPartial", { count: exportFailed.length }) }}</p>
+          <ul class="bc-export-failed">
+            <li v-for="c in exportFailed" :key="c.conversationId" :data-id="c.conversationId">
+              {{ t("export.started", { date: when(c.createdAt) }) }}
+            </li>
+          </ul>
+        </div>
         <p v-if="eraseErrorText" class="bc-export-error" role="alert" data-testid="erase-error" :data-code="eraseError">
           {{ eraseErrorText }}
         </p>

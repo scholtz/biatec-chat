@@ -76,6 +76,10 @@ export function createCore(options: ResolvedOptions, services?: WidgetServices) 
     onConfirmed: (id) => activity.recordConfirm(id),
     onCancelled: (id) => activity.markCancelled(id),
     onConfirmResponse: (body) => void agent.reportRefusal(body),
+    onReset: () => {
+      activity.reset();
+      agent.refusal.value = null;
+    },
   });
 
   /** Every stream event also feeds the Activity timeline and the agent's typed refusals. */
@@ -154,6 +158,13 @@ export function createCore(options: ResolvedOptions, services?: WidgetServices) 
     ui.activity = ui.expanded;
   }
 
+  /** After an erase: the cookie session is already on the fresh conversation; clear the old one and re-read the session. */
+  async function resetConversation(): Promise<void> {
+    chat.resetConversation();
+    ui.notice = "";
+    await chat.refreshSession().catch(() => {});
+  }
+
   let asking = false;
   async function ask(prompt: string): Promise<AskResult> {
     const text = prompt.trim();
@@ -195,7 +206,7 @@ export function createCore(options: ResolvedOptions, services?: WidgetServices) 
     if (v) ui.unread = 0;
   });
 
-  const core = { options, chat, ui, agent, activity, retention, canShow, visible, start, openPanel, closePanel, minimize, toggleExpand, ask };
+  const core = { options, chat, ui, agent, activity, retention, canShow, visible, start, openPanel, closePanel, minimize, toggleExpand, ask, resetConversation };
   const unregister = registerCore(core satisfies CoreHandle);
   onBeforeUnmount(unregister);
   if (hostSettings.pendingOpen) {

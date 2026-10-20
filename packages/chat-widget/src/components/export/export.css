@@ -73,6 +73,11 @@
   color: var(--color-status-danger);
   font-size: 13px;
 }
+.biatec-chat .bc-export-failed {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  font-variant-numeric: tabular-nums;
+}
 .biatec-chat .bc-export-row-actions {
   display: flex;
   flex-direction: column;

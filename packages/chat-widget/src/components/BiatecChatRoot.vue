@@ -320,7 +320,8 @@ onBeforeUnmount(() => {
           v-if="core.retention && chat.session.value"
           :api="core.retention"
           :signed-in="chat.session.value.tier === 'Authenticated'"
-          @erased="chat.messages.splice(0, chat.messages.length)"
+          :revision="activity.entries.length"
+          @erased="core.resetConversation()"
         />
       </template>
       <template #dialog>
