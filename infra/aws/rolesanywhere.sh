@@ -91,6 +91,8 @@ fi
 # Role: only Roles Anywhere through THIS trust anchor, and only for certificates whose subject CN is one of ours.
 CNS="$(for e in $ENVIRONMENTS; do printf '"%s-%s",' "$NAME_PREFIX" "$e"; done)"
 TRUST_FILE="$(mktemp)"; POLICY_FILE="$(mktemp)"; trap 'rm -f "$TRUST_FILE" "$POLICY_FILE"' EXIT
+# A native Windows AWS CLI (Git Bash) cannot read /tmp paths: hand it the Windows form of the temp files.
+fileuri() { if command -v cygpath >/dev/null 2>&1; then echo "file://$(cygpath -m "$1")"; else echo "file://$1"; fi; }
 cat > "$TRUST_FILE" <<JSON
 {
   "Version": "2012-10-17",
@@ -107,12 +109,12 @@ cat > "$TRUST_FILE" <<JSON
 JSON
 sed -e "s|\${ACCOUNT_ID}|$ACCOUNT_ID|g" "$DIR/bedrock-role-policy.json" > "$POLICY_FILE"
 if [ "$APPLY" = 1 ] && aws_ iam get-role --role-name "$ROLE" >/dev/null 2>&1; then
-  run_aws iam update-assume-role-policy --role-name "$ROLE" --policy-document "file://$TRUST_FILE"
+  run_aws iam update-assume-role-policy --role-name "$ROLE" --policy-document "$(fileuri "$TRUST_FILE")"
 else
-  run_aws iam create-role --role-name "$ROLE" --assume-role-policy-document "file://$TRUST_FILE" \
+  run_aws iam create-role --role-name "$ROLE" --assume-role-policy-document "$(fileuri "$TRUST_FILE")" \
     --max-session-duration 3600 --tags "Key=$TAG_KEY,Value=$TAG_VALUE"
 fi
-run_aws iam put-role-policy --role-name "$ROLE" --policy-name "$NAME_PREFIX-bedrock" --policy-document "file://$POLICY_FILE"
+run_aws iam put-role-policy --role-name "$ROLE" --policy-name "$NAME_PREFIX-bedrock" --policy-document "$(fileuri "$POLICY_FILE")"
 ROLE_ARN="arn:aws:iam::$ACCOUNT_ID:role/$ROLE"
 
 # Profile: which role a certificate may assume, and for how long.
