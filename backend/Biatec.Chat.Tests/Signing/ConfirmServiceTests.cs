@@ -192,13 +192,29 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
         return new Built(group, snap.Preview.Id);
     }
 
-    private async Task<ConfirmResult> ConfirmAsync(Guid previewId, string groupHash, IWalletSigningClient? signer = null, IEnumerable<ISettlementHandler>? handlers = null)
+    private async Task<ConfirmResult> ConfirmAsync(Guid previewId, string groupHash, IWalletSigningClient? signer = null, IEnumerable<ISettlementHandler>? handlers = null,
+        string? pageOrigin = null, IEvidenceRecorder? recorder = null)
     {
         await using var db = NewContext();
-        var previews = new ActionPreviewService(db, _clock);
-        var svc = new ConfirmService(db, previews, new ScopeGuard(_vault, _clock), _vault, signer ?? _oidc, _mcp, _confirmer, _evidence, _clock,
-            NullLogger<ConfirmService>.Instance, handlers);
-        return await svc.ConfirmAsync(_tenant, _session, previewId, groupHash, CancellationToken.None);
+        var svc = NewService(db, signer, handlers, recorder);
+        return await svc.ConfirmAsync(_tenant, _session, previewId, groupHash, CancellationToken.None, pageOrigin);
+    }
+
+    private ConfirmService NewService(ChatDbContext db, IWalletSigningClient? signer = null, IEnumerable<ISettlementHandler>? handlers = null, IEvidenceRecorder? recorder = null) =>
+        new(db, new ActionPreviewService(db, _clock), new ScopeGuard(_vault, _clock), _vault, signer ?? _oidc, _mcp, _confirmer, _evidence, _clock,
+            NullLogger<ConfirmService>.Instance, handlers, recorder: recorder);
+
+    /// <summary>Records into the real evidence table (payload in clear, no chain), so the service can read its own entries back.</summary>
+    private sealed class DbRecorder(Func<ChatDbContext> newContext) : IEvidenceRecorder
+    {
+        public readonly List<(string Kind, JsonObject Payload)> Entries = [];
+        public async Task RecordAsync(Guid conversationId, string kind, JsonObject payload, CancellationToken ct = default)
+        {
+            Entries.Add((kind, payload));
+            await using var db = newContext();
+            db.EvidenceEntries.Add(new EvidenceEntry { ConversationId = conversationId, Seq = Entries.Count, Kind = kind, Payload = payload.ToJsonString() });
+            await db.SaveChangesAsync(ct);
+        }
     }
 
     private async Task<(ActionPreview Preview, ActionStep Step)> LoadAsync(Guid previewId)
@@ -486,6 +502,70 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
         Assert.Equal(PreviewError.HashMismatch, ex.Error);
         Assert.Empty(_oidc.Calls);
         Assert.Equal(ActionPreviewStatus.Proposed, (await LoadAsync(b.PreviewId)).Preview.Status);
+    }
+
+    // T-079: the page origin (web vs dex on one backend host) is what Biatec OIDC scopes pending slots and pauses by.
+    [Theory]
+    [InlineData("https://dex.biatec.io")]
+    [InlineData("https://web.biatec.io")]
+    public async Task PageOrigin_IsReportedToOidc_AndRecordedInSigningRequested(string pageOrigin)
+    {
+        var recorder = new DbRecorder(NewContext);
+        var b = await BuildPreviewAsync();
+        Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(b.PreviewId, b.Group.GroupHash, pageOrigin: pageOrigin, recorder: recorder)).Outcome);
+
+        Assert.Equal(pageOrigin, Assert.Single(_oidc.Calls).Request.Origin);
+        var requested = Assert.Single(recorder.Entries, e => e.Kind == EvidenceKinds.SigningRequested).Payload;
+        Assert.Equal(pageOrigin, requested["origin"]!.GetValue<string>());
+    }
+
+    [Theory]
+    [InlineData("https://evil.example")]
+    [InlineData("https://dex.biatec.io.evil.example")]
+    [InlineData("https://dex.biatec.io/path")]
+    [InlineData("null")]
+    [InlineData(null)]
+    public async Task PageOrigin_NotRegisteredForTheTenant_IsNeverReported(string? pageOrigin)
+    {
+        var b = await BuildPreviewAsync();
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash, pageOrigin: pageOrigin);
+        Assert.Equal("https://chat.biatec.io", Assert.Single(_oidc.Calls).Request.Origin);
+    }
+
+    [Fact]
+    public async Task PageOrigin_IsCanonicalized_BeforeItIsReported()
+    {
+        var b = await BuildPreviewAsync();
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash, pageOrigin: "https://DEX.biatec.io:443");
+        Assert.Equal("https://dex.biatec.io", Assert.Single(_oidc.Calls).Request.Origin);
+    }
+
+    [Fact]
+    public async Task ResumeAfterConsent_ReportsThePageOriginOfTheConfirmThatAskedForIt()
+    {
+        var recorder = new DbRecorder(NewContext);
+        var b = await BuildPreviewAsync();
+        _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_dex", "4821", 300, 2);
+        Assert.Equal(ConfirmOutcome.ConsentPending, (await ConfirmAsync(b.PreviewId, b.Group.GroupHash, pageOrigin: "https://dex.biatec.io", recorder: recorder)).Outcome);
+        _oidc.Override = null;
+
+        await using (var db = NewContext())
+            Assert.Equal(ConfirmOutcome.Landed, (await NewService(db, recorder: recorder).ResumeAfterConsentAsync(_tenant, _session, b.PreviewId, "ELEVATED", CancellationToken.None)).Outcome);
+        Assert.Equal(2, _oidc.Calls.Count);
+        Assert.All(_oidc.Calls, c => Assert.Equal("https://dex.biatec.io", c.Request.Origin));
+    }
+
+    [Fact]
+    public async Task ResumeAfterConsent_WithoutARecordedOrigin_ReportsTheBackendOrigin()
+    {
+        var b = await BuildPreviewAsync();
+        _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_x", "4821", 300, 2);
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash, pageOrigin: "https://dex.biatec.io");
+        _oidc.Override = null;
+
+        await using (var db = NewContext())
+            await NewService(db).ResumeAfterConsentAsync(_tenant, _session, b.PreviewId, "ELEVATED", CancellationToken.None);
+        Assert.Equal("https://chat.biatec.io", _oidc.Calls[^1].Request.Origin);
     }
 
     [Fact]
