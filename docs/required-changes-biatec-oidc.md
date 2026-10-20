@@ -22,7 +22,7 @@ decoding for limit enforcement.
 
 - **Needed:** the same confidential-client dynamic registration (RFC 7591) as above, called by `POST /onboarding/tenants` once the DNS TXT proofs pass.
 - **Fallback in use:** `IOidcClientRegistrar` defaults to `NoDynamicRegistration`, so the endpoint answers `202 pending-operator-approval` and stores nothing.
-  An operator adds the static client, puts the secret in the secret store, then calls `POST /onboarding/operator/tenants` (bearer `Onboarding:OperatorKey`)
+  An operator adds the static client, puts the secret in the secret store, then calls `POST /onboarding/operator/tenants` (bearer: a named `Admin:Operators` key, or the deprecated `Onboarding:OperatorKey`; the approval is recorded in the signed admin evidence chain, see docs/admin-api.md)
   with the `oidcClientId` and a `secret://` reference; the DNS proofs are re-checked before the tenant row is written.
 - **Also missing:** a real `ISecretStore` (AWS Secrets Manager or Kubernetes secrets); only the interface and a throwing default exist.
 - **Challenge validity:** the TXT value embeds a 7-day epoch bucket and the current and previous bucket are accepted (a record works for 7 to 14 days). It is not bound to the requester; anyone who reads the public TXT can submit the identical configuration, which yields exactly the tenant the zone owner asked for.

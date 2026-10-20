@@ -6,7 +6,7 @@ using Biatec.Chat.Core.Evidence;
 namespace Biatec.Chat.Api.Admin;
 
 /// <summary>
-/// The admin evidence chain: every committed admin change (tenant policy, knowledge-base upload, delete and reload) is
+/// The admin evidence chain: every committed admin change (operator tenant approval, tenant policy, knowledge-base upload, delete and reload) is
 /// appended to one signed, hash-chained evidence chain with the fixed id <see cref="ChainId"/>, using the same
 /// <see cref="IEvidenceLog"/>, encodings and signing keys (JWKS) as conversation chains. The id is not a conversation:
 /// no conversation row has it, so no session can read it; operators read it at <c>GET /onboarding/operator/evidence</c>.
@@ -24,6 +24,7 @@ public static class AdminEvidence
     public const string KbPageUpload = "kb_page_upload";
     public const string KbPageDelete = "kb_page_delete";
     public const string KbReload = "kb_reload";
+    public const string TenantApprove = "tenant_approve";
 
     /// <summary>
     /// Appends one admin change. Call it inside the change's own transaction where there is one, so the change commits

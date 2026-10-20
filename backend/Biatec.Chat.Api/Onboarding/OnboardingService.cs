@@ -1,7 +1,10 @@
 using System.Globalization;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Biatec.Chat.Api.Admin;
 using Biatec.Chat.Api.Security;
 using Biatec.Chat.Core.Data;
+using Biatec.Chat.Core.Evidence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -22,6 +25,8 @@ public sealed record OperatorApprovalRequest
     public string? OidcClientId { get; init; }
     /// <summary>A <c>secret://</c> pointer into the secret store; never the secret.</summary>
     public string? ClientSecretRef { get; init; }
+    /// <summary>Optional reason (1-200 characters, no control characters), recorded in the admin evidence chain.</summary>
+    public string? Reason { get; init; }
 }
 
 public sealed record ChallengeRecord(string Host, string RecordType, string RecordName, string RecordValue);
@@ -230,11 +235,19 @@ public sealed partial class OnboardingService(
         catch (Exception ex) { log.LogWarning(ex, "Could not remove the orphaned client secret for {Host}", host); }
     }
 
-    /// <summary>Operator fallback: the proofs are re-checked, the operator supplies the static client and a secret reference.</summary>
-    public async Task<OnboardingResult> ApproveAsync(OperatorApprovalRequest? req, CancellationToken ct)
+    /// <summary>
+    /// Operator fallback: the proofs are re-checked, the operator supplies the static client and a secret reference. The
+    /// created tenant commits together with its <see cref="AdminEvidence"/> entry (operator, reason, created values; never
+    /// the secret reference), or not at all. <paramref name="evidence"/> must use this service's <see cref="ChatDbContext"/>
+    /// (the request scope), so the append joins the transaction.
+    /// </summary>
+    public async Task<OnboardingResult> ApproveAsync(OperatorApprovalRequest? req, OperatorIdentity op, IEvidenceLog evidence, CancellationToken ct)
     {
         if (Validate(req?.Request, out var v) is { } bad) return bad;
-        var clientId = req!.OidcClientId?.Trim();
+        string? reason = null;
+        if (req!.Reason is not null && (reason = TenantPolicyService.CleanReason(req.Reason)) is null)
+            return new(OnboardingStatus.Invalid, "reason, when sent, must be 1-200 characters, no control characters.");
+        var clientId = req.OidcClientId?.Trim();
         if (string.IsNullOrEmpty(clientId) || clientId.Length > 128 || clientId.Any(char.IsControl))
             return new(OnboardingStatus.Invalid, "oidcClientId is required.");
         if (req.ClientSecretRef is null || !SecretRefRegex().IsMatch(req.ClientSecretRef) || req.ClientSecretRef["secret://".Length..].Split('/').Any(seg => seg is "" or "." or ".."))
@@ -256,9 +269,26 @@ public sealed partial class OnboardingService(
             return new(OnboardingStatus.Invalid, "clientSecretRef is already used by another tenant.");
 
         var created = await CreateTenantAsync(v, v.Host, clientId, req.ClientSecretRef, $"https://{v.Host}/auth/callback", ct);
-        if (created.Status == OnboardingStatus.Created) await tx.CommitAsync(ct);
+        if (created.Status != OnboardingStatus.Created) return created;
+        // Inside the transaction: a failing append disposes it uncommitted, so the tenant is not created either.
+        var tenant = db.Tenants.Local.First(t => t.Id == v.Host);
+        await AdminEvidence.AppendAsync(evidence, op, AdminEvidence.TenantApprove, "tenant:" + tenant.Id, reason, null, ApprovedValues(tenant), ct);
+        await tx.CommitAsync(ct);
         return created;
     }
+
+    /// <summary>The created tenant's configuration and policy values for the evidence entry; never <c>ClientSecretRef</c>.</summary>
+    private static JsonObject ApprovedValues(Tenant t) => new()
+    {
+        ["host"] = t.Host,
+        ["oidcClientId"] = t.OidcClientId,
+        ["redirectUri"] = t.RedirectUri,
+        ["signInPageUrl"] = t.SignInPageUrl,
+        ["allowedOrigins"] = new JsonArray(t.AllowedOrigins.Select(o => (JsonNode?)JsonValue.Create(o)).ToArray()),
+        ["consentThresholdCeilingEur"] = t.ConsentThresholdCeilingEur.ToString("0.############", CultureInfo.InvariantCulture),
+        ["softCapEurPerHour"] = t.SoftCapEurPerHour.ToString("0.############", CultureInfo.InvariantCulture),
+        ["trustAnchorVerified"] = t.TrustAnchorVerified,
+    };
 
     private async Task<OnboardingResult> CreateTenantAsync(Validated v, string tenantId, string clientId, string secretRef, string redirectUri, CancellationToken ct)
     {
