@@ -40,7 +40,7 @@ public sealed class MockOidc : HttpMessageHandler
     public List<Dictionary<string, string>> TokenRequests { get; } = [];
 
     /// <summary>What the browser does at Biatec OIDC: validates the authorize request and returns (code, state) for the callback.</summary>
-    public (string Code, string State) Authorize(Uri location, string expectedScope = "openid profile email")
+    public (string Code, string State) Authorize(Uri location, string expectedScope = "openid profile email sign")
     {
         Assert.Equal(Issuer, location.GetLeftPart(UriPartial.Authority));
         Assert.Equal("/authorize", location.AbsolutePath);

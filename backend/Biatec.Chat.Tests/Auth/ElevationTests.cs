@@ -137,7 +137,10 @@ public sealed class ElevationTests : IAsyncLifetime
 
     private static string TokenOf(string setCookie) => setCookie[(SessionPolicy.CookieName.Length + 1)..].Split(';')[0];
 
-    /// <summary>Signs in through the real login flow and returns the authenticated session's cookie.</summary>
+    /// <summary>
+    /// Signs in through the real login flow and returns the authenticated session's cookie. Login asks for `sign`, but here
+    /// the server narrows it away (a client not allow-listed for `sign`), which is the case elevation exists for.
+    /// </summary>
     private async Task<string> LoginAsync()
     {
         var anon = TokenOf(SetCookie(await SendAsync(HttpMethod.Get, "/session/probe"))!);
@@ -145,7 +148,9 @@ public sealed class ElevationTests : IAsyncLifetime
         var path = new Uri((await start.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("loginUrl").GetString()!).PathAndQuery;
         var redirect = await SendAsync(HttpMethod.Get, path, anon);
         var (code, state) = _oidc.Authorize(redirect.Headers.Location!);
+        _oidc.GrantedScopeOverride = "openid profile email";
         var cb = await SendAsync(HttpMethod.Get, $"/auth/callback?code={Uri.EscapeDataString(code)}&state={Uri.EscapeDataString(state)}", anon);
+        _oidc.GrantedScopeOverride = null;
         Assert.Equal(HttpStatusCode.OK, cb.StatusCode);
         return TokenOf(SetCookie(cb)!);
     }
