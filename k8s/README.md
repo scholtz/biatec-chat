@@ -56,7 +56,14 @@ in Biatec's own account and update `Bedrock__Guardrail__GuardrailId` in the base
   `chat.biatec.io`, `ClientSecretRef=secret://biatec-chat/oidc-client-secret`) via the onboarding API or SQL.
   The secret itself is the `oidc-client-secret` key above, exposed as `Secrets__biatec-chat__oidc-client-secret`.
 - **Vault** uses KMS (`Vault__KeyProvider=Kms`, `Kms__KeyId`); the pod's IAM role needs `kms:GenerateDataKey` and `kms:Decrypt` on that key.
-- **Evidence signing keys** have no production store yet. `Evidence__AllowEphemeralKeys=true` is set knowingly: keys are
-  in-memory, lost on restart and differ between replicas (so the JWKS may be inconsistent across the 2 replicas) until a KMS-backed
-  `IEvidenceKeyStore` is registered.
+- **Evidence signing keys** (`Evidence__KeyStore=Secret`). Add `evidence-master-key` to `biatec-chat-secrets`: base64 of
+  at least 32 random bytes (`openssl rand -base64 32`). Every replica derives the same ES256 keys from it (HKDF), and the
+  key metadata (kid, public point, created/retired dates, which key is active) lives in the PostgreSQL table
+  `EvidenceSigningKeys`, so all replicas publish an identical JWKS and retired keys stay published across restarts and
+  rollouts. Back the master key up and never change it: a new master cannot sign for the existing kids. Rotation
+  retires the active key and activates a new kid; the database holds no private key material.
+  Alternative `Evidence__KeyStore=Kms` with `Evidence__Kms__KeyIds__0=<key id>`, `...__1=...` (oldest first): operators
+  pre-create ECC_NIST_P256 `SIGN_VERIFY` keys in eu-central-1 tagged `Project=biatec` (about 1 USD/month each plus
+  per-sign requests; ask the user first), and the pod role needs `kms:Sign` and `kms:GetPublicKey` on them. The backend
+  never creates KMS keys. Outside Development the app refuses to start without a configured store.
 - The backend runs as numeric UID 1654 (`runAsUser` plus `USER 1654` in the Dockerfile).
