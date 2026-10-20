@@ -34,18 +34,16 @@ Settings → Secrets and variables → Actions:
 | `AWS_TRUST_ANCHOR_ARN`, `AWS_PROFILE_ARN` | `Stage` and `Production` | IAM Roles Anywhere trust anchor and profile ARNs, printed by the same script |
 | `AWS_CLIENT_CERT`, `AWS_CLIENT_KEY` | `Stage` and `Production`, each its own | PEM client certificate and private key for that environment (`rolesanywhere-out/stage/…` for `Stage`, `…/main/…` for `Production`); expire after 365 days, see aws-setup.md "Renewing" |
 
-When `OIDC_CLIENT_SECRET` is set, every deploy recreates `biatec-chat-secrets` from it; when it isn't set, the cluster's
-`biatec-chat-secrets` is left alone (managed out of band). The five `AWS_*` secrets are handled the same way for the
-cluster secret `biatec-chat-aws` (certificate, key and the AWS config file): all five must be set, they are validated
-(certificate matches key, expiry warning), and if none is set an existing cluster secret is kept; without either the
-deploy stops with a pointer to aws-setup.md.
+| `POSTGRES_PASSWORD`, `REDIS_PASSWORD` | `Stage` and `Production`, each its own | Passwords of the in-cluster Postgres and Redis: `openssl rand -hex 24`. **Never change `POSTGRES_PASSWORD` after the first deploy** (Postgres reads it only when its volume is first created) |
+| `BUILDERS_INTERNAL_SECRET` | `Stage` and `Production`, each its own | Shared secret between backend and builders: `openssl rand -hex 32` |
+| `VAULT_MASTER_KEY` | `Stage` and `Production`, each its own | Token-vault master key, base64 of 32 bytes: `openssl rand -base64 32`. Losing it signs every user out; GitHub never shows a secret again, so keep a copy in the team password manager |
 
-**Generated in the cluster, never in GitHub.** On the first deploy to a namespace, `deploy.yml` creates
-`biatec-chat-generated` with random `postgres-password`, `redis-password`, `builders-internal-secret` and
-`vault-master-key` (the token-vault key, `Vault__KeyProvider=Secret`); later deploys keep it and only add keys that
-are missing. The backend builds its connection strings from those passwords and the in-cluster service names, so they
-are configuration. Deleting `biatec-chat-generated` without the Postgres volume locks the backend out (Postgres keeps
-the password it was initialised with); losing `vault-master-key` signs every user out.
+**Every secret lives in GitHub, none is generated in the cluster.** Each deploy writes the environment's secrets into
+three cluster secrets and fails with a clear message if one is missing: `biatec-chat-generated` (the four random values
+above, name kept from the earlier design; the backend builds its connection strings from them and the in-cluster service
+names), `biatec-chat-secrets` (`OIDC_CLIENT_SECRET`) and `biatec-chat-aws` (certificate, key and the AWS config file;
+the five `AWS_*` secrets are validated: certificate matches key, expiry warning). To rotate a value, set the GitHub
+secret and deploy; Postgres is the exception above.
 
 ## Database migrations
 

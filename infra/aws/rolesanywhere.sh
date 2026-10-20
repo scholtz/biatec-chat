@@ -10,7 +10,7 @@
 # role trust and policy are updated (use it to add an environment, or RENEW=1 to replace client certificates).
 # DEFAULT IS DRY-RUN:
 #   BIATEC_AWS_APPROVED=yes ./rolesanywhere.sh --apply
-# Environment: ENVIRONMENTS="stage main" (certificate names), OUT_DIR=./rolesanywhere-out, CERT_DAYS=365, RENEW=1.
+# Environment: CERTS_ONLY=1 (local files only, no AWS), ENVIRONMENTS="stage main" (certificate names), OUT_DIR=./rolesanywhere-out, CERT_DAYS=365, RENEW=1.
 set -euo pipefail
 export MSYS2_ARG_CONV_EXCL="/CN="  # Git Bash on Windows would rewrite the /CN= subject as a path
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -59,6 +59,10 @@ if [ "$APPLY" = 1 ]; then
 else
   echo "[dry-run] would create a CA and a client certificate per environment ($ENVIRONMENTS) in $OUT_DIR"
 fi
+
+# CERTS_ONLY=1: stop after the local files (no AWS access needed), e.g. to put AWS_CLIENT_CERT/AWS_CLIENT_KEY into the
+# GitHub secrets first. A later full run reuses the same CA and certificates from $OUT_DIR.
+if [ "${CERTS_ONLY:-0}" = 1 ]; then echo "CERTS_ONLY=1: stopping before any AWS call."; exit 0; fi
 
 # ---- 2. AWS -----------------------------------------------------------------------------------------------------
 if [ "$APPLY" = 1 ]; then ACCOUNT_ID="$(aws_ sts get-caller-identity --query Account --output text)"; else ACCOUNT_ID="${ACCOUNT_ID:-111111111111}"; fi

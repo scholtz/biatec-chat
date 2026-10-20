@@ -42,49 +42,41 @@ jobs:
       - name: Ensure namespace
         run: kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$NAMESPACE"
 
-      # Postgres, Redis and builders passwords and the token-vault master key. Generated in the cluster, never leave it,
-      # never rotated by a deploy (Postgres only reads its password when its volume is first initialised); keys missing
-      # from an older secret are added. Delete the secret only together with the database volumes.
-      - name: Ensure generated secrets
+      # Postgres, Redis and builders passwords and the token-vault master key come from the environment's GitHub secrets
+      # (docs/cicd.md has the one-liners that generate them). Postgres only reads its password when its volume is first
+      # initialised, so never change POSTGRES_PASSWORD afterwards; losing VAULT_MASTER_KEY signs every user out.
+      - name: Sync biatec-chat-generated
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          BUILDERS_INTERNAL_SECRET: ${{ secrets.BUILDERS_INTERNAL_SECRET }}
+          VAULT_MASTER_KEY: ${{ secrets.VAULT_MASTER_KEY }}
         run: |
-          gen() {
-            case "$1" in
-              vault-master-key) openssl rand -base64 32 ;;
-              builders-internal-secret) openssl rand -hex 32 ;;
-              *) openssl rand -hex 24 ;;
-            esac
-          }
-          keys="postgres-password redis-password builders-internal-secret vault-master-key"
-          if ! kubectl get secret biatec-chat-generated -n "$NAMESPACE" >/dev/null 2>&1; then
-            args=(); for k in $keys; do args+=("--from-literal=$k=$(gen "$k")"); done
-            kubectl create secret generic biatec-chat-generated -n "$NAMESPACE" "${args[@]}"
-            exit 0
-          fi
-          for k in $keys; do
-            if [ -z "$(kubectl get secret biatec-chat-generated -n "$NAMESPACE" -o "jsonpath={.data.$k}")" ]; then
-              echo "Adding missing key $k."
-              v="$(gen "$k" | base64 -w0)"
-              kubectl patch secret biatec-chat-generated -n "$NAMESPACE" --type merge -p "{\"data\":{\"$k\":\"$v\"}}"
-            fi
+          for v in POSTGRES_PASSWORD REDIS_PASSWORD BUILDERS_INTERNAL_SECRET VAULT_MASTER_KEY; do
+            if [ -z "${!v}" ]; then echo "::error::$v is not set on the ${{ inputs.environment }} environment (docs/cicd.md)."; exit 1; fi
           done
+          # The vault key is base64 of 32 bytes (Vault:MasterKey).
+          [ "$(printf '%s' "$VAULT_MASTER_KEY" | base64 -d 2>/dev/null | wc -c)" = 32 ] \
+            || { echo "::error::VAULT_MASTER_KEY must be base64 of 32 bytes (openssl rand -base64 32)."; exit 1; }
+          kubectl create secret generic biatec-chat-generated -n "$NAMESPACE" \
+            --from-literal=postgres-password="$POSTGRES_PASSWORD" \
+            --from-literal=redis-password="$REDIS_PASSWORD" \
+            --from-literal=builders-internal-secret="$BUILDERS_INTERNAL_SECRET" \
+            --from-literal=vault-master-key="$VAULT_MASTER_KEY" \
+            --dry-run=client -o yaml | kubectl apply -f -
 
-      # Optional: when OIDC_CLIENT_SECRET is set, biatec-chat-secrets is (re)created from the environment secrets.
-      # Otherwise the cluster secret is managed out of band and left untouched.
+      # The tenant's Biatec OIDC client secret, from the environment's GitHub secrets.
       - name: Sync biatec-chat-secrets
         env:
           OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
         run: |
-          if [ -z "$OIDC_CLIENT_SECRET" ]; then
-            echo "OIDC_CLIENT_SECRET not set: leaving biatec-chat-secrets as it is in the cluster."
-            exit 0
-          fi
+          if [ -z "$OIDC_CLIENT_SECRET" ]; then echo "::error::OIDC_CLIENT_SECRET is not set on the ${{ inputs.environment }} environment (docs/cicd.md)."; exit 1; fi
           kubectl create secret generic biatec-chat-secrets -n "$NAMESPACE" \
             --from-literal=oidc-client-secret="$OIDC_CLIENT_SECRET" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       # Bedrock access through IAM Roles Anywhere (docs/aws-setup.md): the environment's client certificate and key, and
       # the config file the AWS SDK reads (credential_process runs the aws_signing_helper in the backend image).
-      # When the AWS_* secrets are not set, an existing cluster secret is left alone; without either the deploy stops.
       - name: Sync biatec-chat-aws
         env:
           AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
@@ -93,12 +85,6 @@ jobs:
           AWS_CLIENT_CERT: ${{ secrets.AWS_CLIENT_CERT }}
           AWS_CLIENT_KEY: ${{ secrets.AWS_CLIENT_KEY }}
         run: |
-          if [ -z "$AWS_CLIENT_CERT$AWS_CLIENT_KEY$AWS_ROLE_ARN$AWS_TRUST_ANCHOR_ARN$AWS_PROFILE_ARN" ]; then
-            if kubectl get secret biatec-chat-aws -n "$NAMESPACE" >/dev/null 2>&1; then
-              echo "AWS_* secrets not set: leaving biatec-chat-aws as it is in the cluster."; exit 0
-            fi
-            echo "::error::The AWS_ROLE_ARN, AWS_TRUST_ANCHOR_ARN, AWS_PROFILE_ARN, AWS_CLIENT_CERT and AWS_CLIENT_KEY secrets are missing (see docs/aws-setup.md)."; exit 1
-          fi
           for v in AWS_ROLE_ARN AWS_TRUST_ANCHOR_ARN AWS_PROFILE_ARN AWS_CLIENT_CERT AWS_CLIENT_KEY; do
             if [ -z "${!v}" ]; then echo "::error::$v is missing (see docs/aws-setup.md)."; exit 1; fi
           done

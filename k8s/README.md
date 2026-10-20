@@ -21,12 +21,12 @@ owner should run `kubectl kustomize k8s/stage | kubectl apply --dry-run=client -
 
 ## Secrets (never in git)
 
-`biatec-chat-secrets` holds `oidc-client-secret`; `biatec-chat-aws` holds the Roles Anywhere client certificate, key and
-AWS config file (see "AWS access"). Both are synced by
-`.github/workflows/deploy-stage.yml` from the GitHub `Stage` environment, or created out of band. `biatec-chat-generated`
-holds `postgres-password`, `redis-password`, `builders-internal-secret`, `vault-master-key`: generated once by the deploy, never leaves the
-cluster. Postgres and Redis run in the namespace (`base/postgres.yaml`, `base/redis.yaml`, reachable only from the
-backend through network policies); the backend's connection strings are built from the generated passwords. Schema
+Every secret is a GitHub environment secret; `deploy.yml` writes them into three cluster secrets on each deploy
+(docs/cicd.md): `biatec-chat-secrets` (`oidc-client-secret`), `biatec-chat-generated` (`postgres-password`,
+`redis-password`, `builders-internal-secret`, `vault-master-key`; the name is from an earlier design when they were
+generated in the cluster) and `biatec-chat-aws` (Roles Anywhere client certificate, key and AWS config file, see "AWS
+access"). Postgres and Redis run in the namespace (`base/postgres.yaml`, `base/redis.yaml`, reachable only from the
+backend through network policies); the backend's connection strings are built from those passwords. Schema
 migrations are a deploy step (docs/cicd.md).
 
 ## AWS access (Bedrock only, no keys)

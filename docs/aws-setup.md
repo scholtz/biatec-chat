@@ -89,17 +89,19 @@ would do and change nothing unless you pass `--apply` and `BIATEC_AWS_APPROVED=y
    - creates the trust anchor, the role and the profile, and prints the ARNs for the secrets below;
    - safe to re-run: existing certificates and AWS objects are reused. `ENVIRONMENTS="stage main qa"` adds an
      environment; `RENEW=1` replaces the client certificates (see "Renewing" below).
-4. **GitHub (Scholtz).** In both the `Stage` and the `Production` environment set the five secrets next to the ones in
-   [cicd.md](cicd.md). Stage gets the `stage` certificate and Production gets `main`:
+4. **GitHub.** `AWS_CLIENT_CERT` and `AWS_CLIENT_KEY` are already set on both environments (generated with
+   `CERTS_ONLY=1 BIATEC_AWS_APPROVED=yes infra/aws/rolesanywhere.sh --apply`, which creates the local files without any
+   AWS call; step 3 reuses them, so the CA registered with AWS is the one those certificates came from). What is left are
+   the three ARNs the script prints; set them on both `Stage` and `Production`:
    ```
    gh secret set AWS_ROLE_ARN         --env Stage --body "<role arn>"
    gh secret set AWS_TRUST_ANCHOR_ARN --env Stage --body "<trust anchor arn>"
    gh secret set AWS_PROFILE_ARN      --env Stage --body "<profile arn>"
-   gh secret set AWS_CLIENT_CERT      --env Stage < rolesanywhere-out/stage/certificate.pem
-   gh secret set AWS_CLIENT_KEY       --env Stage < rolesanywhere-out/stage/private-key.pem
    ```
-   (repeat for `--env Production` with `rolesanywhere-out/main/…`). The next deploy checks that certificate and key match,
-   creates `biatec-chat-aws`, and rolls the backend.
+   (and the same with `--env Production`). To set the certificates by hand instead, Stage gets `rolesanywhere-out/stage/`
+   and Production gets `rolesanywhere-out/main/`: `gh secret set AWS_CLIENT_CERT --env Stage < …/certificate.pem`, same for
+   `AWS_CLIENT_KEY` with `private-key.pem`. The next deploy checks that certificate and key match, creates
+   `biatec-chat-aws`, and rolls the backend.
 
 Nothing in the cluster has to change: no API-server flag, no public issuer, no AWS-side reach into the cluster.
 
