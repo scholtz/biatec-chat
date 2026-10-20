@@ -104,6 +104,9 @@ public sealed class AnchorService(
     /// held until the tick, including the broadcast, is over. A replica that does not get the lock skips this tick (the lock
     /// holder anchors; the skipped replica tries again on its next interval). The lock is released when the connection closes,
     /// so a crashed holder cannot block anchoring.
+    /// Residual risk: if the connection drops mid-broadcast (for example a Postgres failover) the lock is lost while the tick
+    /// continues, so another replica could tick concurrently. Persistence stays safe (unique sequence number, attempts table),
+    /// and the broadcaster is idempotent per note, but a duplicate broadcast is then possible in that rare case.
     /// </summary>
     public async Task<AnchorTickResult> TickAsync(CancellationToken ct = default)
     {

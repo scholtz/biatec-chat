@@ -75,11 +75,13 @@ setup with `infra/aws/rolesanywhere.sh`; the full walk-through is [docs/aws-setu
   `Evidence__Anchoring__AccountMnemonic`):
   `kubectl -n biatec-chat-stage create secret generic biatec-chat-evidence-anchor --from-literal=account-mnemonic="word1 ... word25"`
   (`deploy.yml` does not manage this secret yet; the reference is `optional`, so a missing secret does not stop the pods,
-  but anchoring logs an error each interval). **Fund it** from the testnet dispenser (https://bank.testnet.algorand.network/)
+  and the anchoring job then logs one warning at startup and stays inactive, writing no attempt or gap rows, until the secret exists and the pods restart). **Fund it** from the testnet dispenser (https://bank.testnet.algorand.network/)
   with the address of that mnemonic: each anchor costs 0.001 ALGO, about 144 per day (roughly 0.15 ALGO/day), so 10 testnet
   ALGO lasts months; top up when the balance falls below 1 ALGO. Mainnet is an operator decision (change
   `Evidence__Anchoring__Network` and fund with real ALGO).
   **Two replicas:** every tick takes a PostgreSQL session advisory lock (`pg_try_advisory_lock`) held across the broadcast.
   The replica that gets it anchors; the other skips that tick and logs "Another replica is anchoring". The lock is dropped
-  when the connection closes, so a crashed pod never blocks anchoring.
+  when the connection closes, so a crashed pod never blocks anchoring. Residual risk: if that connection drops mid-broadcast (a Postgres failover) the lock is lost
+  while the tick continues; the unique sequence number and the idempotent broadcaster still protect the data, but a duplicate
+  broadcast is possible in that rare case.
 - The backend runs as numeric UID 1654 (`runAsUser` plus `USER 1654` in the Dockerfile).
