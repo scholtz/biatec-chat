@@ -1,7 +1,7 @@
 ---
 id: T-069
 title: market.snapshot capability and market card from Biatec DEX data
-status: blocked
+status: backlog
 priority: P3
 epic: "Widget UI rework"
 blocked_by: [T-067]
@@ -69,3 +69,4 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-19 22:40 · coordinator · (new) → blocked · created from the Biatec AI design handoff (docs/design/) for the widget UI rework
 - 2026-10-19 22:40 · coordinator · blocked · conflicts_with T-065: both regenerate packages/chat-protocol and change the capability registry
 - 2026-10-20 01:09 · LukassSoukup · blocked · parallel analysis: dropped T-065 (done); no remaining overlap, parallel: yes
+- 2026-10-20 06:18 · kanban-board · blocked → backlog · blockers done: T-067
