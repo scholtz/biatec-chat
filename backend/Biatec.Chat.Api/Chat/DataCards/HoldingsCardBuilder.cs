@@ -7,8 +7,9 @@ namespace Biatec.Chat.Api.Chat.DataCards;
 
 /// <summary>
 /// Builds the holdings <see cref="DataCardEvent"/> from the structured <c>wallet.balance</c> tool result. Never from model
-/// text. All or nothing: when any entry cannot be shown exactly (no decimals, bad amount) or the asset list was truncated,
-/// there is no card and the model's prose answers alone, so a card is never partial or approximate.
+/// text. Entries that cannot be shown exactly (the real Biatec MCP ASA shape is <c>[{assetId, amount}]</c> with no decimals or
+/// display) are dropped and the card is marked <c>Partial</c>, so it never shows an approximate amount. With no showable
+/// entry, or when the asset list was truncated, there is no card and the model's prose answers alone.
 /// </summary>
 public static class HoldingsCardBuilder
 {
@@ -33,16 +34,17 @@ public static class HoldingsCardBuilder
         if (!root.TryGetProperty("balances", out var balances) || balances.ValueKind != JsonValueKind.Array) return null;
 
         var assets = new List<DataCardAsset>();
+        var partial = false;
         foreach (var e in balances.EnumerateArray())
         {
-            if (e.ValueKind != JsonValueKind.Object) return null;
+            if (e.ValueKind != JsonValueKind.Object) { partial = true; continue; }
             var amount = Str(e, "display");
             var raw = Str(e, "amount");
-            if (amount is null || raw is null || !BigInteger.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out _)) return null;
-            if (!e.TryGetProperty("decimals", out var d) || d.ValueKind != JsonValueKind.Number || !d.TryGetInt32(out var decimals) || decimals is < 0 or > 19) return null;
+            if (amount is null || raw is null || !BigInteger.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out _)) { partial = true; continue; }
+            if (!e.TryGetProperty("decimals", out var d) || d.ValueKind != JsonValueKind.Number || !d.TryGetInt32(out var decimals) || decimals is < 0 or > 19) { partial = true; continue; }
             var symbol = Str(e, "symbol");
             var id = Str(e, "assetId") ?? symbol;
-            if (id is null) return null;
+            if (id is null) { partial = true; continue; }
             assets.Add(new DataCardAsset { AssetId = id, UnitName = symbol ?? "#" + id, Amount = amount, Decimals = decimals });
         }
         if (assets.Count == 0) return null;
@@ -54,6 +56,7 @@ public static class HoldingsCardBuilder
             Addresses = [address],
             Assets = assets,
             AsOf = asOf,
+            Partial = partial,
         };
     }
 

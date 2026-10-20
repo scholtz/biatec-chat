@@ -50,6 +50,8 @@ public sealed record DataCardEvent : ChatEvent
     /// <summary>ISO 4217 code of the fiat values, when the assets carry them.</summary>
     public string? FiatCurrency { get; init; }
     public required DateTimeOffset AsOf { get; init; }
+    /// <summary>True when some holdings (for example ASAs without resolved decimals) are not listed on the card.</summary>
+    public bool Partial { get; init; }
 }
 
 /// <summary>Authenticator approval progress.</summary>

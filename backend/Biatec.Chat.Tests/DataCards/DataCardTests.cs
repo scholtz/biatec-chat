@@ -53,6 +53,20 @@ public sealed class DataCardTests : IAsyncLifetime
         Assert.Contains("\"amount\":\"9007199254740.993123\"", json);
     }
 
+    [Fact]
+    public void DataCard_Builder_RealMcpAsaShape_DropsUnresolvableRows_AndMarksCardPartial()
+    {
+        const string json = """
+            {"network":"testnet","address":"A","balances":[
+              {"assetId":"0","symbol":"ALGO","amount":"1500000","decimals":6,"display":"1.500000"},
+              {"assetId":"31566704","amount":"2500000"}]}
+            """;
+        var card = HoldingsCardBuilder.TryBuild(json, Now)!;
+        Assert.True(card.Partial);
+        Assert.Equal(["ALGO"], card.Assets.Select(a => a.UnitName));
+        Assert.False(HoldingsCardBuilder.TryBuild(Balance, Now)!.Partial);
+    }
+
     [Theory]
     [InlineData("not json")]
     [InlineData("""{"network":"testnet","address":"A","balances":[]}""")]
