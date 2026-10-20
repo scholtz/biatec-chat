@@ -1,7 +1,7 @@
 ---
 id: T-102
 title: "DEX playground page: fix serious axe violations"
-status: review
+status: done
 priority: P3
 epic: "Widget"
 blocked_by: []
@@ -55,9 +55,12 @@ Playwright/axe or jsdom axe on the built demo /dex.html.
 
 ## Review
 
+- 2026-10-20 08:16 · approve · PR #218 merged into main @ 493c12a (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 07:59 · coordinator · (new) → backlog · proposed by a worker
 - 2026-10-20 07:59 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 07:59 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 08:16 · coordinator · in-progress → review · PR #218
+- 2026-10-20 08:16 · user · review → done · PR #218 merged into main @ 493c12a (synced by kanban-sync)
