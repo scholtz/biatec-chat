@@ -7,7 +7,7 @@ epic: "Wallet tools"
 blocked_by: [T-022]
 area: ["backend/Biatec.Chat.Tools/Caps/**"]
 parallel: no
-conflicts_with: [T-024, T-035, T-049]
+conflicts_with: [T-024, T-035, T-049, T-079, T-087]
 issue: "#26"
 branch: "task/T-025"
 owner: "worker-T-025"

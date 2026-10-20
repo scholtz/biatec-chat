@@ -7,7 +7,7 @@ epic: "Evidence"
 blocked_by: [T-035]
 area: ["backend/Biatec.Chat.Api/Evidence/Export/**", "packages/evidence-verifier/**"]
 parallel: no
-conflicts_with: [T-032, T-042, T-043, T-066]
+conflicts_with: [T-032, T-042, T-043, T-066, T-081]
 issue: "#37"
 branch: "task/T-036"
 owner: "session-20261019-agent"

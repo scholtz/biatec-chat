@@ -7,7 +7,7 @@ epic: "Widget UI rework"
 blocked_by: [T-064, T-075]
 area: ["packages/chat-widget/src/components/chat/**", "packages/chat-widget/src/components/cards/**"]
 parallel: no
-conflicts_with: [T-067, T-074]
+conflicts_with: [T-067, T-074, T-085]
 issue: "#143"
 branch: ""
 owner: ""
