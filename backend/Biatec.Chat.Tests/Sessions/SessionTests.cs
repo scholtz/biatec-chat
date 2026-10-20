@@ -63,6 +63,7 @@ public sealed class SessionTests : IAsyncLifetime
                 ["Postgres:ConnectionString"] = Cs,
                 ["Algod:Networks:testnet:Url"] = "https://algod.example.test",
                 ["Kms:KeyId"] = "alias/test",
+                ["Evidence:AllowEphemeralKeys"] = "true",
             }));
             b.ConfigureServices(s =>
             {
@@ -235,6 +236,141 @@ public sealed class SessionTests : IAsyncLifetime
         _time.Now += TimeSpan.FromMinutes(15) - TimeSpan.FromSeconds(1);
         var r = await SendAsync(HttpMethod.Get, "/session/probe", token);
         Assert.True((await r.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("cookieReturned").GetBoolean());
+    }
+
+    /// <summary>Opens a consent request on the session's conversation (T-080). Status and expiry are the knobs.</summary>
+    private async Task AddConsentAsync(string token, TimeSpan expiresIn, Core.Data.ConsentStatus status = Core.Data.ConsentStatus.Pending)
+    {
+        var now = _time.Now;
+        await using var db = NewContext();
+        var id = SessionService.IdFromToken(token);
+        var conv = (await db.ChatSessions.AsNoTracking().SingleAsync(x => x.Id == id)).ConversationId;
+        var preview = Guid.NewGuid();
+        var step = Guid.NewGuid();
+        db.ActionPreviews.Add(new ActionPreview { Id = preview, ConversationId = conv, Capability = "dex.swap", CanonicalJson = "{}", ExpiresAt = now.AddMinutes(30), Status = ActionPreviewStatus.Confirmed });
+        db.ActionSteps.Add(new ActionStep { Id = step, PreviewId = preview, Seq = 0, Kind = ActionStepKind.Sign, SubjectHash = "h", ExpiresAt = now.AddMinutes(30), Status = StepStatus.AwaitingConsent });
+        db.ConsentRequests.Add(new ConsentRequest { Id = Guid.NewGuid(), StepId = step, SubjectHash = "h", AuthReqId = "ar-" + Guid.NewGuid(), ExpiresAt = now + expiresIn, Status = status });
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>A multi-step preview (T-080) with no ConsentRequest: each step's status and expiry are given.</summary>
+    private async Task AddPreviewAsync(string token, ActionPreviewStatus status, params (StepStatus Status, TimeSpan ExpiresIn)[] steps)
+    {
+        var now = _time.Now;
+        await using var db = NewContext();
+        var id = SessionService.IdFromToken(token);
+        var conv = (await db.ChatSessions.AsNoTracking().SingleAsync(x => x.Id == id)).ConversationId;
+        var preview = Guid.NewGuid();
+        db.ActionPreviews.Add(new ActionPreview { Id = preview, ConversationId = conv, Capability = "dex.liquidity", CanonicalJson = "{}", ExpiresAt = now + steps[0].ExpiresIn, Status = status });
+        for (var i = 0; i < steps.Length; i++)
+            db.ActionSteps.Add(new ActionStep { Id = Guid.NewGuid(), PreviewId = preview, Seq = i, Kind = ActionStepKind.Sign, SubjectHash = "h" + i, ExpiresAt = now + steps[i].ExpiresIn, Status = steps[i].Status });
+        await db.SaveChangesAsync();
+    }
+
+    private async Task<bool> ProbeAsync(string token) =>
+        (await (await SendAsync(HttpMethod.Get, "/session/probe", token)).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("cookieReturned").GetBoolean();
+
+    [Fact]
+    public async Task IdleSessionWithOpenConsent_StaysLivePastIdleTimeout()
+    {
+        // A fresh idle session per call: each call touches its session, which would mask the exemption for the next.
+        var forState = await NewSessionAsync();
+        var forProbe = await NewSessionAsync();
+        var forKeepalive = await NewSessionAsync();
+        foreach (var t in new[] { forState, forProbe, forKeepalive }) await AddConsentAsync(t, TimeSpan.FromMinutes(20));
+        _time.Now += TimeSpan.FromMinutes(16); // a throttled tab: no keepalive for 16 minutes
+
+        var r = await SendAsync(HttpMethod.Get, "/session", forState);
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        Assert.Null(SetCookie(r)); // the same session, not a new anonymous one
+        Assert.True(await ProbeAsync(forProbe));
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(HttpMethod.Post, "/session/keepalive", forKeepalive)).StatusCode);
+        await using var db = NewContext();
+        Assert.Equal(3, await db.ChatSessions.CountAsync());
+    }
+
+    [Fact]
+    public async Task ConsentDeadline_HasAGracePeriod_ThenTheIdleTimeoutApplies()
+    {
+        var justPast = await NewSessionAsync();
+        await AddConsentAsync(justPast, TimeSpan.FromMinutes(16));
+        var pastGrace = await NewSessionAsync();
+        await AddConsentAsync(pastGrace, TimeSpan.FromMinutes(16) - SessionPolicy.InFlightGrace - TimeSpan.FromSeconds(1));
+        _time.Now += TimeSpan.FromMinutes(16) + TimeSpan.FromSeconds(1);
+
+        // The poll right after the deadline still reaches the session, so it can record the timeout.
+        Assert.True(await ProbeAsync(justPast));
+        Assert.False(await ProbeAsync(pastGrace));
+    }
+
+    [Fact]
+    public async Task MultiStepActionBetweenSteps_StaysLivePastIdleTimeout()
+    {
+        // Step 0 landed, step 1 not yet asked for consent: no ConsentRequest is Pending, but the action is in flight.
+        var inFlight = await NewSessionAsync();
+        await AddPreviewAsync(inFlight, ActionPreviewStatus.InProgress, (StepStatus.Confirmed, TimeSpan.FromMinutes(10)), (StepStatus.Pending, TimeSpan.FromMinutes(40)));
+        var proposedOnly = await NewSessionAsync();
+        await AddPreviewAsync(proposedOnly, ActionPreviewStatus.Proposed, (StepStatus.Pending, TimeSpan.FromMinutes(40)));
+        var stepExpired = await NewSessionAsync();
+        await AddPreviewAsync(stepExpired, ActionPreviewStatus.InProgress, (StepStatus.Confirmed, TimeSpan.FromMinutes(5)), (StepStatus.Pending, TimeSpan.FromMinutes(10)));
+        _time.Now += TimeSpan.FromMinutes(16);
+
+        Assert.True(await ProbeAsync(inFlight));
+        Assert.False(await ProbeAsync(proposedOnly)); // a preview the user never confirmed does not keep a session alive
+        Assert.False(await ProbeAsync(stepExpired));
+    }
+
+    [Fact]
+    public async Task IdleSessionWithOpenConsent_ReachesConsentEndpoint()
+    {
+        var token = await NewSessionAsync();
+        await using (var db = NewContext())
+            await db.ChatSessions.ExecuteUpdateAsync(u => u.SetProperty(x => x.Tier, Core.Data.SessionTier.Authenticated));
+        await AddConsentAsync(token, TimeSpan.FromMinutes(20));
+        _time.Now += TimeSpan.FromMinutes(16);
+
+        // FindLiveAsync accepts the session: whatever the poll answers for an unknown preview, it is not 401.
+        var r = await SendAsync(HttpMethod.Post, $"/chat/previews/{Guid.NewGuid()}/consent", token);
+        Assert.NotEqual(HttpStatusCode.Unauthorized, r.StatusCode);
+    }
+
+    [Fact]
+    public async Task IdleSessionWithOpenConsent_CanRotate()
+    {
+        var token = await NewSessionAsync();
+        await AddConsentAsync(token, TimeSpan.FromMinutes(20));
+        _time.Now += TimeSpan.FromMinutes(16);
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var svc = scope.ServiceProvider.GetRequiredService<ISessionService>();
+        Assert.NotNull(await svc.RotateAsync(TenantSeed.BiatecChat(), token, default));
+    }
+
+    [Fact]
+    public async Task OpenConsent_NeverExtendsAbsoluteLifetime()
+    {
+        var token = await NewSessionAsync();
+        await using (var db = NewContext())
+            await db.ChatSessions.ExecuteUpdateAsync(u => u.SetProperty(x => x.AbsoluteExpiresAt, _time.Now.AddMinutes(10)));
+        await AddConsentAsync(token, TimeSpan.FromMinutes(30));
+        _time.Now += TimeSpan.FromMinutes(10);
+
+        Assert.False(await ProbeAsync(token));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await SendAsync(HttpMethod.Post, "/session/keepalive", token)).StatusCode);
+        await using var scope = _factory.Services.CreateAsyncScope();
+        Assert.Null(await scope.ServiceProvider.GetRequiredService<ISessionService>().RotateAsync(TenantSeed.BiatecChat(), token, default));
+    }
+
+    [Fact]
+    public async Task ClosedOrExpiredConsent_DoesNotExemptFromIdleTimeout()
+    {
+        var expired = await NewSessionAsync();
+        await AddConsentAsync(expired, TimeSpan.FromMinutes(5));
+        var approved = await NewSessionAsync();
+        await AddConsentAsync(approved, TimeSpan.FromMinutes(20), Core.Data.ConsentStatus.Approved);
+        _time.Now += TimeSpan.FromMinutes(15);
+
+        Assert.False(await ProbeAsync(expired));
+        Assert.False(await ProbeAsync(approved));
     }
 
     [Fact]

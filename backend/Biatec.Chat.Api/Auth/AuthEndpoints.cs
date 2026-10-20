@@ -300,9 +300,9 @@ public static class AuthEndpoints
     {
         if (!SessionService.WellFormed(token)) return null;
         var id = SessionService.IdFromToken(token!);
-        var idleCutoff = now - SessionPolicy.IdleTimeout;
-        return await db.ChatSessions.AsNoTracking().FirstOrDefaultAsync(
-            s => s.Id == id && s.TenantId == tenant.Id && s.AbsoluteExpiresAt > now && s.LastActivityAt > idleCutoff, ct);
+        return await db.ChatSessions.AsNoTracking()
+            .Where(SessionLiveness.IsLive(db, now))
+            .FirstOrDefaultAsync(s => s.Id == id && s.TenantId == tenant.Id, ct);
     }
 
     internal static Task SetStatusAsync(ChatDbContext db, Guid id, Guid conversationId, PopupAuthStatus status, CancellationToken ct) =>
