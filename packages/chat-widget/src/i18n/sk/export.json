@@ -1,0 +1,31 @@
+{
+  "export": {
+    "title": "Vaše konverzácie",
+    "intro": "Stiahnite si podpísaný záznam dôkazov ktorejkoľvek z vašich konverzácií. Overiť ho možno offline voči zverejneným kľúčom.",
+    "loading": "Načítavajú sa vaše konverzácie",
+    "empty": "Zatiaľ žiadne konverzácie.",
+    "loadFailed": "Vaše konverzácie sa nepodarilo načítať.",
+    "retry": "Skúsiť znova",
+    "current": "Aktuálna",
+    "started": "Začatá {date}",
+    "entries": "Záznamy dôkazov: {count}",
+    "download": "Stiahnuť dôkazy",
+    "downloadLabel": "Stiahnuť dôkazy konverzácie začatej {date}",
+    "noEvidence": "Zatiaľ bez dôkazov",
+    "downloadFailed": "Dôkazy sa nepodarilo stiahnuť. Skúste to znova.",
+    "carveOut": "Potvrdenky a odkazy na transakcie sa uchovávajú 7 rokov na základe povinnosti viesť finančné záznamy, aj po vymazaní vašich údajov. Obsahujú on-chain adresy a sumy schválených transakcií, ktoré sú v ledgeri verejné.",
+    "erase": "Vymazať moje údaje",
+    "eraseGuest": "Na vymazanie údajov sa prihláste. Konverzácie hostí sa automaticky odstránia po 30 dňoch.",
+    "eraseTitle": "Vymazať vaše konverzácie?",
+    "eraseText": "Text správ, výsledky nástrojov a nepodpísané údaje transakcií zo všetkých vašich konverzácií sa teraz odstránia. Túto akciu nemožno vrátiť späť.",
+    "eraseKept": "Zostáva: hashe dôkazov, podpísané potvrdenky a ID transakcií, takže exportovaný balík sa dá stále overiť.",
+    "exportFirst": "Najprv si stiahnite dôkazy",
+    "exportFirstDone": "Dôkazy stiahnuté",
+    "cancel": "Zrušiť",
+    "eraseConfirm": "Vymazať moje údaje",
+    "actionInFlight": "Najprv dokončite alebo zrušte akciu, potom vymažte svoje údaje.",
+    "unauthorized": "Vaša relácia skončila. Na vymazanie údajov sa znova prihláste.",
+    "eraseFailed": "Vaše údaje sa nepodarilo vymazať. Skúste to znova.",
+    "erased": "Vaše údaje boli vymazané. Začala sa nová konverzácia."
+  }
+}

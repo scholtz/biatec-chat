@@ -9,6 +9,7 @@ import PermissionsDialog from "./agent/PermissionsDialog.vue";
 import AgentNotices from "./agent/AgentNotices.vue";
 import { evidenceDownloadUrl } from "../transport/types";
 import ActivityTimeline from "./activity/ActivityTimeline.vue";
+import ExportView from "./export/ExportView.vue";
 import { agentModeOf, AGENT_MODE_LABEL } from "./shell/agentMode";
 import { createCore, pageContext, type WidgetCore, type WidgetServices } from "../api/core";
 import { hostSettings } from "../api/controller";
@@ -313,6 +314,13 @@ onBeforeUnmount(() => {
           :docked="asideDocked"
           :evidence-url="evidenceDownloadUrl(options.backendUrl)"
           @close="ui.activity = false"
+        />
+        <!-- T-094: the export view and erasure. After an erase the cookie session is on the returned conversation. -->
+        <ExportView
+          v-if="core.retention && chat.session.value"
+          :api="core.retention"
+          :signed-in="chat.session.value.tier === 'Authenticated'"
+          @erased="chat.messages.splice(0, chat.messages.length)"
         />
       </template>
       <template #dialog>
