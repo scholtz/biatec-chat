@@ -113,7 +113,7 @@ public class EvidenceEntry
     public Guid ConversationId { get; set; }
     public long Seq { get; set; }
     public string Kind { get; set; } = "";
-    public Guid? AnchorRef { get; set; }
+    public string? AnchorRef { get; set; }
     public string? Payload { get; set; }
     public string? Salt { get; set; }
     public string PayloadHash { get; set; } = "";

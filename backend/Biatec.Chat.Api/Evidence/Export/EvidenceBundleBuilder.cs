@@ -46,7 +46,7 @@ public static class EvidenceBundleBuilder
     {
         ["seq"] = e.Seq,
         ["kind"] = e.Kind,
-        ["anchorRef"] = e.AnchorRef?.ToString("D"),
+        ["anchorRef"] = e.AnchorRef,
         ["payload"] = e.Payload is null ? null : JsonNode.Parse(e.Payload),
         ["salt"] = e.Salt,
         ["payloadHash"] = e.PayloadHash,

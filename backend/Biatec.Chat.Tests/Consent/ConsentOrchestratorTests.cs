@@ -160,7 +160,7 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
     private sealed class FakeEvidence : IEvidenceLog
     {
         public readonly List<(string Kind, JsonObject Payload)> Entries = [];
-        public Task<EvidenceEntry> AppendAsync(Guid conversationId, string kind, JsonObject payload, Guid? anchorRef = null, CancellationToken ct = default)
+        public Task<EvidenceEntry> AppendAsync(Guid conversationId, string kind, JsonObject payload, string? anchorRef = null, CancellationToken ct = default)
         {
             Entries.Add((kind, payload));
             return Task.FromResult(new EvidenceEntry());

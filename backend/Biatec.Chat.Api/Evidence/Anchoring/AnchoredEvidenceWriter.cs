@@ -9,17 +9,17 @@ namespace Biatec.Chat.Api.Evidence.Anchoring;
 /// <summary>
 /// Writes the entries whose <c>anchorRef</c> matters: a conversation's first entry, the <c>resume</c> entry after a
 /// conversation was dropped from the ticks for being idle, and the <c>end</c> marker the next tick anchors. The
-/// anchorRef is the id of the latest anchor row that was confirmed on chain (never one pending or lost); the export
-/// resolves it to the transaction ID.
+/// anchorRef is the transaction ID of the latest anchor that was confirmed on chain (never one pending or lost); the export
+/// carries it as is.
 /// </summary>
 public sealed class AnchoredEvidenceWriter(IEvidenceLog log, ChatDbContext db, IOptions<AnchoringOptions> options, TimeProvider? time = null)
 {
     public const string ResumeKind = "resume";
     private readonly TimeProvider _time = time ?? TimeProvider.System;
 
-    /// <summary>Id of the latest confirmed anchor, or null when none exists yet.</summary>
-    public async Task<Guid?> LatestConfirmedAnchorAsync(CancellationToken ct = default) =>
-        await db.EvidenceAnchors.AsNoTracking().OrderByDescending(a => a.SequenceNumber).Select(a => (Guid?)a.Id).FirstOrDefaultAsync(ct);
+    /// <summary>Transaction ID of the latest confirmed anchor, or null when none exists yet.</summary>
+    public async Task<string?> LatestConfirmedAnchorAsync(CancellationToken ct = default) =>
+        await db.EvidenceAnchors.AsNoTracking().OrderByDescending(a => a.SequenceNumber).Select(a => a.AnchorTxId).FirstOrDefaultAsync(ct);
 
     /// <summary>Appends the conversation's first entry, recording the latest confirmed anchor.</summary>
     public async Task<EvidenceEntry> AppendFirstAsync(Guid conversationId, string kind, JsonObject payload, CancellationToken ct = default) =>

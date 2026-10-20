@@ -71,7 +71,7 @@ public sealed class LimitsFlowTests : IAsyncLifetime
     private sealed class FakeEvidence : IEvidenceLog
     {
         public readonly List<string> Kinds = [];
-        public Task<EvidenceEntry> AppendAsync(Guid conversationId, string kind, JsonObject payload, Guid? anchorRef = null, CancellationToken ct = default)
+        public Task<EvidenceEntry> AppendAsync(Guid conversationId, string kind, JsonObject payload, string? anchorRef = null, CancellationToken ct = default)
         { Kinds.Add(kind); return Task.FromResult(new EvidenceEntry()); }
         public Task<bool> DeletePayloadAsync(Guid conversationId, long seq, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<int> DeleteAllPayloadsAsync(Guid conversationId, CancellationToken ct = default) => throw new NotSupportedException();

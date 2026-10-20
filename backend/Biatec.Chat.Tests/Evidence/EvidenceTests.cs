@@ -238,10 +238,24 @@ public sealed class EvidenceLogTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task FirstEntryHash_MatchesAnIndependentJcsOfTheTransactionId()
+    {
+        var conv = Guid.NewGuid();
+        const string txId = "J6WXQZ5IYJ4VZ5VQ4FQ6ZTLEBHZ2HUGGJBP7ZX4P7XK2PTNZ2YDQ";
+        await using var db = NewContext();
+        var e = await NewLog(db).AppendAsync(conv, "start", Payload(1), txId);
+        Assert.Equal(txId, e.AnchorRef);
+        // Independent of EvidenceHasher: hand-written JCS (keys sorted, seq numeric) per the spec.
+        var jcs = "{\"anchorRef\":\"" + txId + "\",\"conversationId\":\"" + conv.ToString("D") + "\",\"kind\":\"start\",\"payloadHash\":\""
+            + e.PayloadHash + "\",\"prevHash\":\"" + e.PrevHash + "\",\"seq\":1}";
+        Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(jcs))), e.EntryHash);
+    }
+
+    [Fact]
     public async Task AnchorRef_IsPartOfTheEntryHash()
     {
         var conv = Guid.NewGuid();
-        var anchor = Guid.NewGuid();
+        var anchor = "J6WXQZ5IYJ4VZ5VQ4FQ6ZTLEBHZ2HUGGJBP7ZX4P7XK2PTNZ2YDQ"; // an Algorand transaction ID
         await using var db = NewContext();
         var log = NewLog(db);
         await log.AppendAsync(conv, "start", Payload(1), anchor);

@@ -308,7 +308,7 @@ public sealed class AnchoringServiceTests : IAsyncLifetime
         var resume = await w.ResumeIfDroppedAsync(a);
         Assert.NotNull(resume);
         Assert.Equal(AnchoredEvidenceWriter.ResumeKind, resume!.Kind);
-        Assert.Equal(dropped.Anchor!.Id, resume.AnchorRef);
+        Assert.Equal(dropped.Anchor!.AnchorTxId, resume.AnchorRef);
         Assert.Null(await w.ResumeIfDroppedAsync(a)); // no second resume while it is active again
 
         _time.Advance(TimeSpan.FromMinutes(10));
@@ -355,7 +355,7 @@ public sealed class AnchoringServiceTests : IAsyncLifetime
         _time.Advance(TimeSpan.FromMinutes(10));
         Assert.True((await Service(db).TickAsync()).Lost);
         var first = await w.AppendFirstAsync(b, "message", P("b1"));
-        Assert.Equal(t1.Anchor!.Id, first.AnchorRef);
+        Assert.Equal(t1.Anchor!.AnchorTxId, first.AnchorRef);
     }
 
     [Fact]

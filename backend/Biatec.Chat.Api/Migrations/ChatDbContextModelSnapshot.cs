@@ -358,8 +358,9 @@ namespace Biatec.Chat.Api.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
-                    b.Property<Guid?>("AnchorRef")
-                        .HasColumnType("uuid");
+                    b.Property<string>("AnchorRef")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<Guid>("ConversationId")
                         .HasColumnType("uuid");
