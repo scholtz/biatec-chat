@@ -314,9 +314,31 @@ public sealed class LiquidityTests : IAsyncLifetime
         Assert.Equal("1 to 1.2", pools[0]!["priceRangeOfAInB"]!.GetValue<string>());
         Assert.Equal("5000000", pools[0]!["liquidity"]!.GetValue<string>());
         Assert.Equal("0.5", pools[1]!["feePercent"]!.GetValue<string>());
-        Assert.Contains("do not choose for them", o["instruction"]!.GetValue<string>());
+        // The instruction is trusted guidance outside the screened data (the guardrail's prompt-attack filter flags it).
+        Assert.Null(o["instruction"]);
+        Assert.Contains("do not choose for them", r.Guidance);
         // The account is passed so pools it cannot use are filtered by the sidecar.
         Assert.Equal(_builderSender, _builders.Queries.Single().GetProperty("account").GetString());
+    }
+
+    [Fact]
+    public async Task Liquidity_add_with_one_amount_missing_asks_for_it_and_builds_nothing()
+    {
+        var args = AddArgs(1001, _builderSender);
+        args.AsObject().Remove("amountB");
+
+        var r = await _add.ExecuteAsync(Ctx("dex.addLiquidity"), args, default);
+
+        Assert.False(r.IsError);
+        Assert.Null(r.Events);
+        Assert.Empty(_builders.Builds);
+        Assert.Equal(0, await PreviewCountAsync());
+        var o = JsonNode.Parse(r.Content)!;
+        Assert.Equal("1001", o["poolAppId"]!.GetValue<string>());
+        Assert.Equal("100000000", o["amountA"]!.GetValue<string>());
+        Assert.Null(o["amountB"]);
+        Assert.Equal("1 to 1.2", o["priceRangeOfAInB"]!.GetValue<string>());
+        Assert.Contains("Ask the user for the missing amount", r.Guidance);
     }
 
     [Fact]
@@ -341,7 +363,7 @@ public sealed class LiquidityTests : IAsyncLifetime
     {
         var r = await _add.ExecuteAsync(Ctx("dex.addLiquidity"), AddArgs(0, _builderSender), default);
         Assert.True(r.IsError);
-        Assert.Contains("Do not guess", r.Content);
+        Assert.Contains("Do not guess", r.Guidance);
         Assert.Empty(_builders.Queries);
     }
 
@@ -602,13 +624,15 @@ public sealed class LiquidityTests : IAsyncLifetime
     // ---- registry and client -------------------------------------------------------------------------------------
 
     [Fact]
-    public void Liquidity_tool_schemas_accept_the_unnamed_pool_form_and_still_require_amounts_and_percent()
+    public void Liquidity_tool_schemas_accept_the_unnamed_pool_form_and_missing_amounts_but_require_positive_amounts_and_percent()
     {
         var gate = new ToolGate(_registry, new InMemoryPolicyEventSink());
         var ctx = new GateContext(SessionTier.Authenticated, ["openid"]);
         Assert.True(gate.Check("dex.addLiquidity", AddArgs(0, "ADDR", assetA: Eurs, assetB: Usdc), ctx).Allowed);
         Assert.True(gate.Check("dex.removeLiquidity", RemoveArgs(0, "ADDR", 100, Eurs, Usdc), ctx).Allowed);
-        Assert.False(gate.Check("dex.addLiquidity", new JsonObject { ["network"] = "testnet", ["from"] = "A", ["poolAppId"] = 1 }, ctx).Allowed);
+        // Amounts are optional (a missing one is asked for), but a given one must be positive.
+        Assert.True(gate.Check("dex.addLiquidity", new JsonObject { ["network"] = "testnet", ["from"] = "A", ["poolAppId"] = 1 }, ctx).Allowed);
+        Assert.False(gate.Check("dex.addLiquidity", AddArgs(1, "ADDR", a: "0"), ctx).Allowed);
         Assert.False(gate.Check("dex.removeLiquidity", RemoveArgs(1, "ADDR", 101), ctx).Allowed);
     }
 

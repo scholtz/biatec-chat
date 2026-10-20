@@ -82,22 +82,26 @@ public abstract class LiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpC
         if (r.PoolAppId == 0)
         {
             if (r.AssetA is null || r.AssetB is null)
-                return (null, new ToolExecutionResult(
-                    "No pool was named. Ask the user which two assets the pool is for (wallet.balance shows asset ids), then call this tool again with poolAppId 0, assetAId and assetBId. Do not guess a pool.", true), null);
+                return (null, new ToolExecutionResult("No pool was named and no asset pair was given.", true,
+                    Guidance: "Ask the user which two assets the pool is for (wallet.balance shows asset ids), then call this tool again with poolAppId 0, assetAId and assetBId. Do not guess a pool."), null);
             var listing = await liquidity.ListPoolsAsync(r.Network, r.AssetA, r.AssetB, null, r.From, ct);
-            return (null, new ToolExecutionResult(DescribePools(r, listing, callAgain)), listing.AccountVerificationClass);
+            var guidance = listing.Pools.Count == 0
+                ? "No pool of this pair is open to the address. Say so, and if notAvailableToThisAddress is present explain that the address must be verified with Biatec to use those pools."
+                : "Nothing has been built. Ask the user which pool they want, listing each pool's id, fee, price range and liquidity, and do not choose for them, even if only one is listed. " + callAgain;
+            return (null, new ToolExecutionResult(DescribePools(r, listing), Guidance: guidance), listing.AccountVerificationClass);
         }
 
         var one = await liquidity.ListPoolsAsync(r.Network, null, null, r.PoolAppId, r.From, ct);
         if (one.Pools.Count == 1) return (one.Pools[0], null, one.AccountVerificationClass);
         if (one.Excluded.Count > 0)
             return (null, new ToolExecutionResult(
-                $"Pool {r.PoolAppId} is not open to this address: it needs Biatec verification class {one.Excluded[0].RequiredVerificationClass} and the address has class {one.AccountVerificationClass?.ToString(CultureInfo.InvariantCulture) ?? "none"}. " +
-                "Explain that the address must be verified with Biatec to use this pool, and offer to look at other pools instead.", true), one.AccountVerificationClass);
-        return (null, new ToolExecutionResult($"{r.PoolAppId} is not a Biatec DEX pool on {r.Network}. Ask the user which pool they mean.", true), one.AccountVerificationClass);
+                $"Pool {r.PoolAppId} is not open to this address: it needs Biatec verification class {one.Excluded[0].RequiredVerificationClass} and the address has class {one.AccountVerificationClass?.ToString(CultureInfo.InvariantCulture) ?? "none"}.", true,
+                Guidance: "Explain that the address must be verified with Biatec to use this pool, and offer to look at other pools instead."), one.AccountVerificationClass);
+        return (null, new ToolExecutionResult($"{r.PoolAppId} is not a Biatec DEX pool on {r.Network}.", true, Guidance: "Ask the user which pool they mean."), one.AccountVerificationClass);
     }
 
-    private static string DescribePools(LiquidityRequest r, PoolListing listing, string callAgain)
+    /// <summary>The pair's pools as data only; what to do with them is the result's Guidance.</summary>
+    private static string DescribePools(LiquidityRequest r, PoolListing listing)
     {
         var o = new JsonObject
         {
@@ -123,9 +127,6 @@ public abstract class LiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpC
             }).ToArray());
             o["addressVerificationClass"] = listing.AccountVerificationClass;
         }
-        o["instruction"] = listing.Pools.Count == 0
-            ? "No pool of this pair is open to the address. Say so, and if notAvailableToThisAddress is present explain that the address must be verified with Biatec to use those pools."
-            : "Nothing has been built. Ask the user which pool they want, listing each pool's id, fee, price range and liquidity, and do not choose for them, even if only one is listed. " + callAgain;
         return o.ToJsonString();
     }
 
@@ -280,11 +281,27 @@ public sealed class DexAddLiquidityExecutor(ILiquidityBuilder liquidity, IBiatec
 
     protected override async Task<ToolExecutionResult> RunAsync(ToolExecutionContext context, McpCallContext mcpCtx, LiquidityRequest r, JsonNode arguments, CancellationToken ct)
     {
-        var (pool, refusal, accountClass) = await ResolvePoolAsync(r, "After the user chooses, call dex.addLiquidity again with that poolAppId and amountA/amountB in base units of that pool's assetA and assetB.", ct);
+        var (pool, refusal, accountClass) = await ResolvePoolAsync(r, "After the user chooses, ask for the amount of both assets if they have not given both, then call dex.addLiquidity again with that poolAppId and amountA/amountB in base units of that pool's assetA and assetB.", ct);
         if (refusal is not null) return refusal;
 
-        var amountA = arguments["amountA"]!.GetValue<string>();
-        var amountB = arguments["amountB"]!.GetValue<string>();
+        var amountA = arguments["amountA"]?.GetValue<string>();
+        var amountB = arguments["amountB"]?.GetValue<string>();
+        if (amountA is null || amountB is null)
+        {
+            // A deposit always takes both assets; an amount the user didn't give is never invented.
+            var facts = new JsonObject
+            {
+                ["poolAppId"] = pool!.AppId.ToString(CultureInfo.InvariantCulture),
+                ["assetA"] = pool.AssetA.ToString(CultureInfo.InvariantCulture),
+                ["assetB"] = pool.AssetB.ToString(CultureInfo.InvariantCulture),
+                ["priceRangeOfAInB"] = pool.PriceRange,
+                ["currentPriceOfAInB"] = LiquidityFormat.Scaled(pool.CurrentPrice),
+                ["amountA"] = amountA,
+                ["amountB"] = amountB,
+            };
+            return new ToolExecutionResult(facts.ToJsonString(), Guidance:
+                "Nothing has been built. A deposit needs an amount of both assets. Ask the user for the missing amount (currentPriceOfAInB can help them pick a matching one, but do not choose for them), then call dex.addLiquidity again with both amounts in base units.");
+        }
         var build = await Liquidity.BuildAddAsync(r.Network, r.From, pool!.AppId, amountA, amountB, ct);
 
         var book = await ReadAssetsAsync(mcpCtx, r.Network, r.From, ct);

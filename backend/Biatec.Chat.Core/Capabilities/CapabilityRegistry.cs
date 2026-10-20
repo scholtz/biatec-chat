@@ -122,9 +122,10 @@ public sealed class CapabilityRegistry
             ["poolAppId"] = Id(),
             ["assetAId"] = Id(),
             ["assetBId"] = Id(),
+            // Optional: listing the pools needs no amounts, and a missing one is asked for, never invented.
             ["amountA"] = AmountPositive(),
             ["amountB"] = AmountPositive(),
-        }, "network", "from", "poolAppId", "amountA", "amountB");
+        }, "network", "from", "poolAppId");
         var removeLiquidityInput = Obj(new JsonObject
         {
             ["network"] = Network(),
@@ -201,7 +202,7 @@ public sealed class CapabilityRegistry
                 Obj(new JsonObject { ["network"] = NetworkWithBitcoin(), ["address"] = Address() }, "network", "address")),
             Tool("wallet.transfer", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Build and preview a transfer (network bitcoin is Bitcoin mainnet only).", transferInput),
             Tool("dex.swap", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Quote and build a swap.", swapInput),
-            Tool("dex.addLiquidity", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Add liquidity to a Biatec DEX pool (amountA/amountB are in base units of the pool's asset A/B). Set poolAppId 0 with assetAId and assetBId when the user has not named a pool: the tool lists the pair's pools and you must ask which one.", liquidityInput),
+            Tool("dex.addLiquidity", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Add liquidity to a Biatec DEX pool (amountA/amountB are in base units of the pool's asset A/B; omit any amount the user has not given and the tool asks for it; omitting never means the whole balance here). Set poolAppId 0 with assetAId and assetBId when the user has not named a pool: the tool lists the pair's pools and you must ask which one.", liquidityInput),
             Tool("dex.removeLiquidity", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Remove liquidity (percent of the user's LP tokens) from a Biatec DEX pool. Set poolAppId 0 with assetAId and assetBId when the user has not named a pool: the tool lists the pair's pools and you must ask which one.", removeLiquidityInput),
             Tool("safe.create", U, Open, Sign, false, ValuationBasis.ZeroValued,
                 "Create a Biatec Safe (multi-signature shared account) deployed from one of the user's addresses (from). signers are the OTHER members' Algorand addresses exactly as the user pasted them (never invent or complete one); the creator is included automatically. threshold is how many approvals a proposal needs. Call without name, signers or threshold to learn what to ask. The creation is two confirmations (deploy, then signer-group setup) with a separate wallet.transfer funding the safe in between; call again with the same arguments after each step lands.",
