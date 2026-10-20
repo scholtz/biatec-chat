@@ -3,7 +3,9 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using Biatec.Chat.Api.Onboarding;
 using Biatec.Chat.Core.Data;
+using Biatec.Chat.Core.Evidence;
 using Biatec.Chat.Tools.Caps;
 using Microsoft.EntityFrameworkCore;
 
@@ -77,7 +79,7 @@ public sealed record PolicyResult(PolicyStatus Status, TenantPolicyView? View = 
 /// (<see cref="SoftCapPolicy.ValidateOnSave"/>, here with <c>byOperator: true</c>): the soft cap never drops below the
 /// consent threshold ceiling, and it rises above the platform default only for a trust-anchored tenant.
 /// </summary>
-public sealed partial class TenantPolicyService(ChatDbContext db, Biatec.Chat.Api.Tenancy.ITenantStore tenants)
+public sealed partial class TenantPolicyService(ChatDbContext db, Biatec.Chat.Api.Tenancy.ITenantStore tenants, IEvidenceLog evidence)
 {
     public const decimal MaxEur = 1_000_000m;
     public const decimal MaxUsdPerWindow = 10_000m;
@@ -100,7 +102,11 @@ public sealed partial class TenantPolicyService(ChatDbContext db, Biatec.Chat.Ap
         return r;
     }
 
-    public async Task<PolicyResult> UpdateAsync(string tenantId, TenantPolicyPatch? patch, CancellationToken ct)
+    /// <summary>
+    /// Applies the patch. A change commits together with its <see cref="AdminEvidence"/> entry (operator, reason, before
+    /// and after value of each changed field), or not at all.
+    /// </summary>
+    public async Task<PolicyResult> UpdateAsync(string tenantId, TenantPolicyPatch? patch, OperatorIdentity op, CancellationToken ct)
     {
         if (patch is null) return new(PolicyStatus.Invalid, Error: "A JSON body is required.");
         if (CleanReason(patch.Reason) is null) return new(PolicyStatus.Invalid, Error: "reason is required: 1-200 characters, no control characters.");
@@ -112,12 +118,12 @@ public sealed partial class TenantPolicyService(ChatDbContext db, Biatec.Chat.Ap
         var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantId, ct);
         if (tenant is null) return new(PolicyStatus.NotFound, Error: "Unknown tenant.");
 
-        var changes = new List<string>();
+        var changes = new Diff();
         var capRuleInputsChanged = false;
         void Set<T>(string name, T? value, Func<T> get, Action<T> set, bool capRule = false) where T : struct
         {
             if (value is not { } v || EqualityComparer<T>.Default.Equals(v, get())) return;
-            changes.Add($"{name}: {Show(get())} -> {Show(v)}");
+            changes.Add(name, Show(get()), Show(v));
             set(v);
             capRuleInputsChanged |= capRule;
         }
@@ -144,7 +150,7 @@ public sealed partial class TenantPolicyService(ChatDbContext db, Biatec.Chat.Ap
             var next = model.Length == 0 ? null : model;
             if (next != tenant.DefaultModel)
             {
-                changes.Add($"defaultModel: {tenant.DefaultModel ?? "(none)"} -> {next ?? "(none)"}");
+                changes.Add("defaultModel", tenant.DefaultModel ?? "(none)", next ?? "(none)");
                 tenant.DefaultModel = next;
             }
         }
@@ -158,11 +164,13 @@ public sealed partial class TenantPolicyService(ChatDbContext db, Biatec.Chat.Ap
         if (changes.Count > 0)
         {
             await db.SaveChangesAsync(ct);
+            await AdminEvidence.AppendAsync(evidence, op, AdminEvidence.TenantPolicyUpdate, "tenant:" + tenant.Id, CleanReason(patch.Reason),
+                changes.Before, changes.After, ct);
             await tx.CommitAsync(ct);
             // This replica sees the change at once; other replicas within the tenant cache TTL.
             tenants.Invalidate(tenant.Host);
         }
-        return new(PolicyStatus.Ok, TenantPolicyView.Of(tenant), Changes: changes);
+        return new(PolicyStatus.Ok, TenantPolicyView.Of(tenant), Changes: changes.Lines);
     }
 
     /// <summary>Invariant text for the audit line; decimals without the database's trailing zeros (1500.00 is 1500).</summary>
@@ -192,7 +200,7 @@ public sealed partial class TenantPolicyService(ChatDbContext db, Biatec.Chat.Ap
     /// Sets the given keys on a stored JSON object (other keys kept; an unreadable value starts over). A key is written
     /// only when its new value differs numerically from the current one (<c>null</c>: the default applies).
     /// </summary>
-    private static string Merge(string? json, List<string> changes, string name, params (string Key, decimal? New, decimal? Old)[] values)
+    private static string Merge(string? json, Diff changes, string name, params (string Key, decimal? New, decimal? Old)[] values)
     {
         JsonObject obj;
         try { obj = JsonNode.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json) as JsonObject ?? []; }
@@ -200,9 +208,25 @@ public sealed partial class TenantPolicyService(ChatDbContext db, Biatec.Chat.Ap
         foreach (var (key, value, old) in values)
         {
             if (value is not { } v || old == v) continue;
-            changes.Add($"{name}.{key}: {(old is { } o ? Show(o) : "(default)")} -> {Show(v)}");
+            changes.Add($"{name}.{key}", old is { } o ? Show(o) : "(default)", Show(v));
             obj[key] = JsonValue.Create(v);
         }
         return obj.ToJsonString();
+    }
+
+    /// <summary>The changed fields: audit lines (<c>name: old -> new</c>) and the before/after objects of the evidence entry.</summary>
+    private sealed class Diff
+    {
+        public List<string> Lines { get; } = [];
+        public JsonObject Before { get; } = [];
+        public JsonObject After { get; } = [];
+        public int Count => Lines.Count;
+
+        public void Add(string name, string before, string after)
+        {
+            Lines.Add($"{name}: {before} -> {after}");
+            Before[name] = before;
+            After[name] = after;
+        }
     }
 }
