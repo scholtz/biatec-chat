@@ -78,8 +78,6 @@ jobs:
 
   authenticator:
     runs-on: ubuntu-latest
-    # Two enrollment tests already fail on main (T-072). Remove this line once they are fixed.
-    continue-on-error: true
     defaults:
       run:
         working-directory: apps/biatec_authenticator
