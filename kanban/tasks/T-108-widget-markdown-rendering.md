@@ -1,7 +1,7 @@
 ---
 id: T-108
 title: "Widget: render assistant replies as safe Markdown"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Widget"
 blocked_by: []
@@ -9,9 +9,9 @@ area: ["packages/chat-widget/src/components/chat/format.ts", "packages/chat-widg
 parallel: yes
 conflicts_with: []
 issue: "#229"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-108"
+owner: "session-20261020-1007"
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#chat-widget-biatecchat-widget"
 created: 2026-10-20
 updated: 2026-10-20
@@ -79,3 +79,5 @@ Parallel work possible: **yes**. No other unfinished task changes the widget's c
 ## Activity log
 
 - 2026-10-20 12:00 · coordinator · (new) → backlog · created from demo testing (raw Markdown in replies)
+- 2026-10-20 10:07 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 10:07 · session-20261020-1007 · backlog → in-progress · claimed in session

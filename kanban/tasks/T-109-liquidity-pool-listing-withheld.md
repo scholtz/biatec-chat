@@ -11,7 +11,7 @@ conflicts_with: []
 issue: "#230"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md"
 created: 2026-10-20
 updated: 2026-10-20
@@ -119,3 +119,4 @@ above with logs showing no `Guardrail withheld` line.
 ## Activity log
 
 - 2026-10-20 12:00 · coordinator · (new) → backlog · created from demo testing (add-liquidity result withheld)
+- 2026-10-20 10:07 · LukassSoukup · taken · status stays backlog
