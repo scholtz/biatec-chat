@@ -1,7 +1,7 @@
 ---
 id: T-098
 title: "Onboarding: record operator tenant approvals in the admin evidence chain"
-status: backlog
+status: in-progress
 priority: P3
 epic: "Sessions & auth"
 blocked_by: [T-097]
@@ -9,8 +9,8 @@ area: ["backend/Biatec.Chat.Api/Onboarding/OnboardingEndpoints.cs", "backend/Bia
 parallel: yes
 conflicts_with: []
 issue: "#202"
-branch: ""
-owner: ""
+branch: "task/T-098"
+owner: "worker-T-098"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#rules"
 created: 2026-10-20
@@ -59,3 +59,4 @@ files.
 - 2026-10-20 09:20 · coordinator · (new) → blocked · proposed by T-097
 - 2026-10-20 06:59 · kanban-board · blocked → backlog · blockers done: T-097
 - 2026-10-20 07:00 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 07:00 · coordinator · backlog → in-progress · dispatched to worker
