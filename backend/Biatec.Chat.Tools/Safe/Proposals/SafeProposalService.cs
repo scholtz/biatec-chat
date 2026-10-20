@@ -751,13 +751,8 @@ public sealed partial class SafeProposalService(
     [GeneratedRegex("balance|overspend|insufficient", RegexOptions.IgnoreCase)]
     private static partial Regex BalanceFailure();
 
-    /// <summary>Sidecar, algod and chain text is untrusted: control characters and quotes removed, length bounded.</summary>
-    internal static string Sanitize(string? text, int max = 200)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return "";
-        var clean = new string(text.Select(c => char.IsControl(c) || c is '\'' or '"' or '`' ? ' ' : c).ToArray()).Trim();
-        return clean.Length <= max ? clean : clean[..max] + "...";
-    }
+    /// <summary>Sidecar, algod and chain text is untrusted: cleaned by the shared <see cref="UntrustedText.Clean"/>, length bounded.</summary>
+    internal static string Sanitize(string? text, int max = 200) => UntrustedText.Clean(text, max);
 
     private static string Id(ulong v) => v.ToString(CultureInfo.InvariantCulture);
 
