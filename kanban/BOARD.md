@@ -26,9 +26,9 @@ Sorted by priority, then ID. The first row is what `/kanban-next` picks.
 
 | ID | Title | Priority | Epic | Parallel | Taken by |
 |---|---|---|---|---|---|
-| T-102 | DEX playground page: fix serious axe violations | P3 | Widget | yes | free |
-| T-103 | docs/cicd.md: document the demo image and pipeline | P3 | Deploy & docs | yes | free |
-| T-104 | Floating panel must not cover the host navbar on short viewports | P3 | Widget | yes | free |
+| T-102 | DEX playground page: fix serious axe violations | P3 | Widget | yes | LukassSoukup |
+| T-103 | docs/cicd.md: document the demo image and pipeline | P3 | Deploy & docs | yes | LukassSoukup |
+| T-104 | Floating panel must not cover the host navbar on short viewports | P3 | Widget | yes | LukassSoukup |
 
 ## Done
 

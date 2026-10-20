@@ -11,7 +11,7 @@ conflicts_with: []
 issue: "#211"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md"
 created: 2026-10-20
 updated: 2026-10-20
@@ -52,3 +52,4 @@ Playwright/axe or jsdom axe on the built demo /dex.html.
 ## Activity log
 
 - 2026-10-20 07:59 · coordinator · (new) → backlog · proposed by a worker
+- 2026-10-20 07:59 · LukassSoukup · taken · status stays backlog

@@ -11,7 +11,7 @@ conflicts_with: []
 issue: "#212"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md"
 created: 2026-10-20
 updated: 2026-10-20
@@ -51,3 +51,4 @@ Read against .github/workflows/deploy-stage.yml and deploy.yml.
 ## Activity log
 
 - 2026-10-20 07:59 · coordinator · (new) → backlog · proposed by a worker
+- 2026-10-20 07:59 · LukassSoukup · taken · status stays backlog
