@@ -1,7 +1,7 @@
 ---
 id: T-109
 title: "Fix add-liquidity flow: pool listing withheld by the guardrail"
-status: backlog
+status: in-progress
 priority: P1
 epic: "DEX"
 blocked_by: []
@@ -9,8 +9,8 @@ area: ["backend/Biatec.Chat.Api/Dex/Liquidity/**", "backend/Biatec.Chat.Api/Mode
 parallel: yes
 conflicts_with: []
 issue: "#230"
-branch: ""
-owner: ""
+branch: "task/T-109"
+owner: "session-20261020-1007"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md"
 created: 2026-10-20
@@ -120,3 +120,4 @@ above with logs showing no `Guardrail withheld` line.
 
 - 2026-10-20 12:00 · coordinator · (new) → backlog · created from demo testing (add-liquidity result withheld)
 - 2026-10-20 10:07 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 10:20 · session-20261020-1007 · backlog → in-progress · claimed in session
