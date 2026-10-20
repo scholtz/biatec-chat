@@ -16,6 +16,51 @@ public sealed class OperatorKeyOptions
 /// <summary>Who made an admin request. <see cref="Legacy"/>: the shared, deprecated <c>Onboarding:OperatorKey</c>.</summary>
 public sealed record OperatorIdentity(string Name, bool Legacy);
 
+/// <summary>Startup validation of <c>Admin:Operators</c>: each error names the entry and the rule it breaks.</summary>
+public sealed class AdminOptionsValidator : IValidateOptions<AdminOptions>
+{
+    public ValidateOptionsResult Validate(string? name, AdminOptions options) =>
+        OperatorAuth.Validate(options.Operators) is { Count: > 0 } errors ? ValidateOptionsResult.Fail(errors) : ValidateOptionsResult.Success;
+}
+
+/// <summary>
+/// The configured operator keys, decoded once (singleton): each named operator's SHA-256, and the legacy shared key's
+/// SHA-256 when <c>Onboarding:OperatorKey</c> is set. Options are validated at start, so every entry here is valid.
+/// </summary>
+public sealed class OperatorKeyring
+{
+    private readonly (string Name, byte[] Hash)[] _named;
+    private readonly byte[]? _legacy;
+
+    public OperatorKeyring(IOptions<AdminOptions> admin, IOptions<OnboardingOptions> onboarding)
+    {
+        _named = admin.Value.Operators.Select(kv => (kv.Key, Convert.FromHexString(kv.Value.KeyHash!.Trim()))).ToArray();
+        var legacyKey = onboarding.Value.OperatorKey;
+        _legacy = legacyKey is { Length: >= OnboardingOptions.MinKeyLength } ? SHA256.HashData(Encoding.UTF8.GetBytes(legacyKey)) : null;
+    }
+
+    /// <summary>False while no operator key of any kind is configured: the operator API does not exist.</summary>
+    public bool Enabled => _named.Length > 0 || _legacy is not null;
+
+    /// <summary>
+    /// Compares the presented key's SHA-256 with every configured hash in constant time (no early exit, so timing does
+    /// not tell which operator matched). A named key wins over the legacy one. A key shorter than
+    /// <see cref="OnboardingOptions.MinKeyLength"/> never matches.
+    /// </summary>
+    public OperatorIdentity? Match(string presented)
+    {
+        if (presented.Length < OnboardingOptions.MinKeyLength) return null;
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(presented));
+        OperatorIdentity? found = null;
+        foreach (var (name, h) in _named)
+            if (CryptographicOperations.FixedTimeEquals(hash, h))
+                found ??= new OperatorIdentity(name, Legacy: false);
+        if (_legacy is not null && CryptographicOperations.FixedTimeEquals(hash, _legacy))
+            found ??= new OperatorIdentity(OperatorAuth.LegacyName, Legacy: true);
+        return found;
+    }
+}
+
 /// <summary>
 /// The operator bearer check shared by the operator onboarding route and the admin API. Each operator has a named key
 /// (<c>Admin:Operators:&lt;name&gt;:KeyHash</c>, only its SHA-256 is configured), so every admin request is attributed
@@ -42,7 +87,7 @@ public static partial class OperatorAuth
 
     public static bool ValidName(string name) => NameRegex().IsMatch(name) && !string.Equals(name, LegacyName, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Configuration errors in <c>Admin:Operators</c> (checked at start), or an empty list.</summary>
+    /// <summary>Configuration errors in <c>Admin:Operators</c> (checked at start), each naming the entry and the rule, or an empty list.</summary>
     public static IReadOnlyList<string> Validate(IReadOnlyDictionary<string, OperatorKeyOptions> operators)
     {
         var errors = new List<string>();
@@ -50,11 +95,11 @@ public static partial class OperatorAuth
         foreach (var (name, o) in operators)
         {
             if (!ValidName(name))
-                errors.Add($"Admin:Operators:{Clean(name)}: the name must be 1-64 letters, digits, '.', '_' or '-' and not '{LegacyName}'.");
+                errors.Add($"Admin:Operators:{Clean(name)}: the name must be 1-64 letters, digits, '.', '_' or '-' (starting and ending with a letter or digit) and not '{LegacyName}'.");
             if (o.KeyHash is not { } h || !HashRegex().IsMatch(h.Trim()))
                 errors.Add($"Admin:Operators:{Clean(name)}:KeyHash must be the 64-character hex SHA-256 of the operator key.");
             else if (seen.TryGetValue(h.Trim(), out var other))
-                errors.Add($"Admin:Operators:{Clean(name)} has the same key as {other}: every operator needs an own key.");
+                errors.Add($"Admin:Operators:{Clean(name)}:KeyHash is the same as Admin:Operators:{other}:KeyHash: every operator needs an own key.");
             else seen[h.Trim()] = Clean(name);
         }
         return errors;
@@ -66,14 +111,12 @@ public static partial class OperatorAuth
     /// </summary>
     public static IResult? Check(HttpContext ctx)
     {
-        var legacyKey = ctx.RequestServices.GetRequiredService<IOptions<OnboardingOptions>>().Value.OperatorKey;
-        var operators = ctx.RequestServices.GetRequiredService<IOptions<AdminOptions>>().Value.Operators;
-        var legacyOn = legacyKey is { Length: >= OnboardingOptions.MinKeyLength };
-        if (!legacyOn && operators.Count == 0) return Results.NotFound();
+        var keyring = ctx.RequestServices.GetRequiredService<OperatorKeyring>();
+        if (!keyring.Enabled) return Results.NotFound();
 
         var values = ctx.Request.Headers.Authorization;
         var auth = values.Count == 1 ? values[0] ?? "" : "";
-        if (auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) && Match(auth["Bearer ".Length..].Trim(), operators, legacyOn ? legacyKey : null) is { } who)
+        if (auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) && keyring.Match(auth["Bearer ".Length..].Trim()) is { } who)
         {
             ctx.Items[ItemKey] = who;
             // Warned once per host (logger factory), so the deprecation is visible without a line per request.
@@ -92,25 +135,6 @@ public static partial class OperatorAuth
     /// <summary>The operator <see cref="Check"/> authenticated on this request.</summary>
     public static OperatorIdentity Current(HttpContext ctx) =>
         ctx.Items[ItemKey] as OperatorIdentity ?? throw new InvalidOperationException("OperatorAuth.Check must pass before the operator is read.");
-
-    /// <summary>
-    /// Compares the presented key's SHA-256 with every configured hash in constant time (no early exit, so timing does
-    /// not tell which operator matched). A named key wins over the legacy one. Invalid entries never match.
-    /// </summary>
-    private static OperatorIdentity? Match(string presented, IReadOnlyDictionary<string, OperatorKeyOptions> operators, string? legacyKey)
-    {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(presented));
-        OperatorIdentity? found = null;
-        foreach (var (name, o) in operators)
-        {
-            if (!ValidName(name) || o.KeyHash is not { } h || !HashRegex().IsMatch(h.Trim())) continue;
-            if (CryptographicOperations.FixedTimeEquals(hash, Convert.FromHexString(h.Trim())))
-                found ??= new OperatorIdentity(name, Legacy: false);
-        }
-        if (legacyKey is not null && CryptographicOperations.FixedTimeEquals(hash, SHA256.HashData(Encoding.UTF8.GetBytes(legacyKey))))
-            found ??= new OperatorIdentity(LegacyName, Legacy: true);
-        return found;
-    }
 
     public static string Remote(HttpContext ctx) => ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 

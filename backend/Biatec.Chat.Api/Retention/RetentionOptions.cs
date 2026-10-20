@@ -19,7 +19,10 @@ public sealed class RetentionOptions
     /// <summary>Each rule keeps draining batches until nothing is left or this much time has passed in the run.</summary>
     public TimeSpan RunBudget { get; set; } = TimeSpan.FromSeconds(30);
 
-    /// <summary>Evidence payloads and salts, message content and the preview and step payload columns.</summary>
+    /// <summary>
+    /// Evidence payloads and salts, message content and the preview and step payload columns. Not the admin evidence
+    /// chain (operator names, reasons, policy values; no end-user data): it keeps its payloads for <see cref="Records"/>.
+    /// </summary>
     public TimeSpan Payloads { get; set; } = TimeSpan.FromDays(90);
     /// <summary>Anonymous conversations (no oidcSub and no action previews) are removed after this.</summary>
     public TimeSpan AnonymousConversations { get; set; } = TimeSpan.FromDays(30);

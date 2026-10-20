@@ -22,8 +22,10 @@ Code: `backend/Biatec.Chat.Api/Admin/`. Tests: `backend/Biatec.Chat.Tests/Admin/
   random, not a password. The hash is not a secret in the strict sense, but treat it like one and inject it from the
   secret store too. No IAM user or access key is involved.
 - `<name>`: 1-64 letters, digits, `.`, `_` or `-` (starting and ending with a letter or digit), case-insensitive, and
-  not `legacy`. Two operators may not share a key. A malformed entry stops the start (options validation), so an
-  operator is never silently locked out.
+  not `legacy`. Two operators may not share a key. A malformed entry stops the start (options validation), with one
+  error per broken entry naming it and the rule (for example `Admin:Operators:carol:KeyHash is the same as
+  Admin:Operators:alice:KeyHash`), so an operator is never silently locked out. The hashes are decoded once at start.
+- A presented key shorter than 32 characters is never accepted, for named and legacy keys alike.
 - **Legacy shared key (deprecated).** The single `Onboarding:OperatorKey` (at least 32 characters, env
   `Onboarding__OperatorKey`, from a secret) is still accepted, so existing scripts keep working. Requests with it are
   attributed to the operator `legacy` (evidence `operatorAuth: "legacy-shared-key"`), and the first use per process
@@ -254,27 +256,48 @@ Policy and knowledge-base changes commit together with their entry or not at all
 (for example the signing key store fails) the change is rolled back and the request fails with `500`. A reload has
 already taken effect when it is recorded, so its entry is best-effort: if it cannot be appended, the request still
 answers as described and an error line `the kb reload by operator ... is not in the admin evidence chain` is logged.
+It is appended without the request's cancellation token, so a client that disconnects after the reload ran still
+leaves its record.
 
 ### `GET /onboarding/operator/evidence`
 
-Operator bearer required. Returns the whole chain with the server's verification result, for an auditor to re-check
-offline against the JWKS:
+Operator bearer required; `Cache-Control: no-store`. Query `fromSeq` (default 1) and `limit` (default 200, clamped to
+1-1000); a non-integer value is `400` (checked after authentication). Returns one page of the chain as a signed
+**evidence bundle in the conversation export format** (`biatec-evidence-bundle` v1, built by `EvidenceBundleBuilder`,
+with `jwksUrl` from `Evidence:PublicBaseUrl` or the request host; its `conversationId` is the chain id), plus the
+server's verdict:
 
 ```json
 {
   "chainId": "00000000-0000-0000-0000-00000000ad01",
-  "verification": { "valid": true, "failedSeq": null, "error": null },
-  "entries": [ { "seq": 1, "kind": "admin_change", "payload": { "operator": "alice", "operatorAuth": "named-key",
-    "action": "tenant_policy_update", "target": "tenant:chat.example-bank.com", "reason": "ticket 42",
-    "before": { "x402Enabled": "false" }, "after": { "x402Enabled": "true" } },
-    "salt": "…", "payloadHash": "…", "prevHash": "000…0", "entryHash": "…", "anchorRef": null, "kid": "…",
-    "signedAt": "2026-10-20T10:00:00.000Z", "signature": "…" } ]
+  "fromSeq": 1,
+  "limit": 200,
+  "nextFromSeq": null,
+  "verification": { "valid": true, "throughSeq": 2, "failedSeq": null, "error": null },
+  "bundle": { "format": "biatec-evidence-bundle", "version": 1, "conversationId": "00000000-0000-0000-0000-00000000ad01",
+    "exportedAt": "…", "kid": "…", "jwksUrl": "https://chat.biatec.io/.well-known/evidence-jwks.json", "keys": [ … ],
+    "entries": [ { "seq": 1, "kind": "admin_change", "payload": { "operator": "alice", "operatorAuth": "named-key",
+      "action": "tenant_policy_update", "target": "tenant:chat.example-bank.com", "reason": "ticket 42",
+      "before": { "x402Enabled": "false" }, "after": { "x402Enabled": "true" } },
+      "salt": "…", "payloadHash": "…", "prevHash": "000…0", "entryHash": "…", "anchorRef": null, "kid": "…",
+      "signedAt": "2026-10-20T10:00:00.000Z", "signature": "…" } ],
+    "signature": "…" }
 }
 ```
 
-Retention applies to this chain like to any other (`Retention:*`): payloads and salts are cleared after the payload
-window (hashes and signatures stay, so the chain still verifies, but who did what is then gone), and the chain is
-deleted once its newest entry is past the record window. The anchoring job anchors this chain's head like any other.
+How paging stays verifiable (the simplest correct option): the server reads, in one query, every entry from seq 1 to
+the end of the requested page and verifies that snapshot from genesis, so `verification` covers seq 1 to
+`throughSeq` and matches exactly the entries returned (no second read). The page itself is the entries from `fromSeq`;
+`nextFromSeq` is the next page's start, or `null` at the end. A page's first `prevHash` equals the previous page's last
+`entryHash`, so pages concatenate into the full chain. A bundle starting at seq 1 (the default, or every page when the
+chain fits in 1000 entries) is checked by the offline verifier as is (`jq .bundle > admin-evidence.json`); the offline
+verifier expects a chain from seq 1, so for later pages concatenate the entries first. A request for a late page
+costs a read of the whole prefix; admin changes are rare, so that is accepted rather than caching a verdict.
+
+**Retention.** The admin chain holds operator names, reasons and tenant policy values, not end-user personal data, so
+it is exempt from the payload window (`Retention:Payloads`, 90 days): its payloads and salts are kept, so who did what
+stays readable. It keeps the record window (`Retention:Records`, 7 years): once its newest entry is past it, the
+retention job deletes the chain like any orphan chain. The anchoring job anchors this chain's head like any other.
 
 ## Example
 
@@ -293,7 +316,6 @@ curl -sS -X PATCH https://chat.biatec.io/onboarding/operator/tenants/chat.exampl
 - A knowledge-base editor UI, hiding a seed page, and page version history (an upload overwrites).
 - A dedicated `/admin` prefix, and operator sign-in through Biatec OIDC (an operator claim or group; row 23 of
   required-changes-biatec-oidc.md). Named keys are the fallback until then.
-- Exempting the admin chain from retention (it follows the same `Retention:*` windows as conversation chains).
 - Evidence for the operator onboarding approval route (`POST /onboarding/operator/tenants`); it accepts the named
   keys but is not recorded in the admin chain.
 - A UI.

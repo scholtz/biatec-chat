@@ -2,8 +2,12 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.RateLimiting;
 using Biatec.Chat.Api.Chat.SignIn;
+using Biatec.Chat.Api.Evidence.Export;
+using Biatec.Chat.Api.Evidence.Jwks;
 using Biatec.Chat.Api.Onboarding;
+using Biatec.Chat.Core.Data;
 using Biatec.Chat.Core.Evidence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace Biatec.Chat.Api.Admin;
@@ -41,13 +45,17 @@ public static class AdminEndpoints
 {
     public const string RateLimitPolicy = "operator";
 
+    public const string EvidencePath = "/onboarding/operator/evidence";
+    public const int DefaultEvidenceLimit = 200;
+    public const int MaxEvidenceLimit = 1000;
+
     public static IServiceCollection AddAdmin(this IServiceCollection services, IConfiguration config)
     {
-        // A malformed or shared operator key hash stops the start instead of silently locking an operator out.
-        services.AddOptions<AdminOptions>().Bind(config.GetSection(AdminOptions.Section))
-            .Validate(o => OperatorAuth.Validate(o.Operators).Count == 0,
-                "Admin:Operators is invalid: every entry needs a name (1-64 letters, digits, '.', '_', '-', not 'legacy') and its own 64-character hex KeyHash.")
-            .ValidateOnStart();
+        // A malformed or shared operator key hash stops the start (naming the entry and rule) instead of silently
+        // locking an operator out. The keyring decodes the hashes once.
+        services.AddOptions<AdminOptions>().Bind(config.GetSection(AdminOptions.Section)).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<AdminOptions>, AdminOptionsValidator>();
+        services.AddSingleton<OperatorKeyring>();
         services.AddScoped<TenantPolicyService>();
         services.AddScoped<KbAdminService>();
         services.AddRateLimiter(o => o.AddPolicy(RateLimitPolicy, ctx =>
@@ -119,33 +127,56 @@ public static class AdminEndpoints
             }
         });
 
-        // The admin evidence chain with its verification result, for an operator or auditor to check offline against the JWKS.
-        app.MapGet("/onboarding/operator/evidence", async (HttpContext ctx, IEvidenceLog evidence, ILogger<TenantPolicyService> log, CancellationToken ct) =>
+        // One page of the admin evidence chain as a signed evidence bundle (the conversation export format, so the offline
+        // verifier checks it), with the server's verdict over the same snapshot.
+        app.MapGet(EvidencePath, async (HttpContext ctx, ChatDbContext db, IEvidenceKeyStore keys, TimeProvider clock, IConfiguration config,
+            ILogger<TenantPolicyService> log, CancellationToken ct) =>
         {
+            ctx.Response.Headers.CacheControl = "no-store";
             if (OperatorAuth.Check(ctx) is { } denied) return denied;
-            var chain = await evidence.GetChainAsync(AdminEvidence.ChainId, ct);
-            var v = await evidence.VerifyAsync(AdminEvidence.ChainId, ct);
-            log.LogInformation("Admin: operator {Operator} from {RemoteIp} read the admin evidence chain ({Count} entries, valid: {Valid})",
-                OperatorAuth.Current(ctx).Name, OperatorAuth.Remote(ctx), chain.Count, v.Valid);
-            return Results.Json(new
+            // Query read by hand after authentication, so a malformed one never answers before the auth check.
+            long from = 1;
+            int take = DefaultEvidenceLimit;
+            if ((ctx.Request.Query.TryGetValue("fromSeq", out var f) && !long.TryParse(f, out from)) ||
+                (ctx.Request.Query.TryGetValue("limit", out var l) && !int.TryParse(l, out take)))
+                return Results.Json(new { error = "fromSeq and limit must be integers." }, statusCode: 400);
+            from = Math.Clamp(from, 1, long.MaxValue / 2);
+            take = Math.Clamp(take, 1, MaxEvidenceLimit);
+            var last = from + take - 1;
+
+            // One read: every entry from seq 1 to the end of the page, plus one more to tell whether a next page exists.
+            // The verdict covers seq 1..throughSeq of this snapshot, so it matches the entries returned.
+            var prefix = await db.EvidenceEntries.AsNoTracking()
+                .Where(e => e.ConversationId == AdminEvidence.ChainId && e.Seq <= last + 1)
+                .OrderBy(e => e.Seq).ToListAsync(ct);
+            var hasMore = prefix.Count > 0 && prefix[^1].Seq > last;
+            if (hasMore) prefix.RemoveAt(prefix.Count - 1);
+            var map = (await keys.GetPublicKeysAsync(ct)).ToDictionary(k => k.Kid);
+            var v = prefix.Count == 0 ? EvidenceVerification.Ok : EvidenceVerifier.Verify(prefix, map);
+            var page = prefix.Where(e => e.Seq >= from).ToList();
+
+            var publicBase = config["Evidence:PublicBaseUrl"]?.Trim().TrimEnd('/');
+            var jwksUrl = (string.IsNullOrEmpty(publicBase) ? $"{ctx.Request.Scheme}://{ctx.Request.Host}" : publicBase) + EvidenceJwks.JwksPath;
+            var bundle = await EvidenceBundleBuilder.BuildAsync(AdminEvidence.ChainId, page, keys, jwksUrl, clock.GetUtcNow(), ct);
+
+            log.LogInformation("Admin: operator {Operator} from {RemoteIp} read the admin evidence chain (seq {From}, {Count} entries, valid: {Valid})",
+                OperatorAuth.Current(ctx).Name, OperatorAuth.Remote(ctx), from, page.Count, v.Valid);
+            var body = new JsonObject
             {
-                chainId = AdminEvidence.ChainId,
-                verification = new { valid = v.Valid, failedSeq = v.FailedSeq, error = v.Error },
-                entries = chain.Select(e => new
+                ["chainId"] = AdminEvidence.ChainId.ToString("D"),
+                ["fromSeq"] = from,
+                ["limit"] = take,
+                ["nextFromSeq"] = hasMore ? last + 1 : null,
+                ["verification"] = new JsonObject
                 {
-                    seq = e.Seq,
-                    kind = e.Kind,
-                    payload = e.Payload is null ? null : JsonNode.Parse(e.Payload),
-                    salt = e.Salt,
-                    payloadHash = e.PayloadHash,
-                    prevHash = e.PrevHash,
-                    entryHash = e.EntryHash,
-                    anchorRef = e.AnchorRef,
-                    kid = e.Kid,
-                    signedAt = EvidenceHasher.FormatSignedAt(e.SignedAt),
-                    signature = e.Signature,
-                }),
-            });
+                    ["valid"] = v.Valid,
+                    ["throughSeq"] = prefix.Count == 0 ? 0 : prefix[^1].Seq,
+                    ["failedSeq"] = v.FailedSeq,
+                    ["error"] = v.Error,
+                },
+                ["bundle"] = bundle,
+            };
+            return Results.Content(body.ToJsonString(), "application/json");
         }).RequireRateLimiting(RateLimitPolicy);
 
         MapKb(app);
@@ -236,8 +267,9 @@ public static class AdminEndpoints
             // down the operator still gets the diagnosable 503 below, and the missing entry is logged as an error.
             try
             {
+                // Not the request token: a client that disconnects after the reload ran must not skip its record.
                 await AdminEvidence.AppendAsync(evidence, op, AdminEvidence.KbReload, "kb", reason, null,
-                    new JsonObject { ["served"] = r.Served, ["partial"] = !r.Ok }, ct);
+                    new JsonObject { ["served"] = r.Served, ["partial"] = !r.Ok }, CancellationToken.None);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

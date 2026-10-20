@@ -4,8 +4,12 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Biatec.Chat.Api.Admin;
 using Biatec.Chat.Api.Data;
+using Biatec.Chat.Api.Evidence.Export;
+using Biatec.Chat.Api.Evidence.Jwks;
+using Biatec.Chat.Core.Canonical;
 using Biatec.Chat.Api.Tenancy;
 using Biatec.Chat.Core.Data;
 using Biatec.Chat.Core.Evidence;
@@ -194,11 +198,20 @@ public sealed class AdminOperatorIdentityTests : IAsyncLifetime
 
         var r = await SendAsync(f, HttpMethod.Get, "/evidence", AliceKey);
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
-        var body = JsonDocument.Parse(await r.Content.ReadAsStringAsync()).RootElement;
-        Assert.True(body.GetProperty("verification").GetProperty("valid").GetBoolean());
-        var entries = body.GetProperty("entries").EnumerateArray().ToList();
-        Assert.Equal(2, entries.Count);
-        Assert.Equal(entries[0].GetProperty("entryHash").GetString(), entries[1].GetProperty("prevHash").GetString());
+        Assert.True(r.Headers.CacheControl?.NoStore);
+        var body = JsonNode.Parse(await r.Content.ReadAsStringAsync())!;
+        Assert.True((bool)body["verification"]!["valid"]!);
+        Assert.Equal(2, (long)body["verification"]!["throughSeq"]!);
+        Assert.Null(body["nextFromSeq"]);
+
+        // The bundle is the conversation export format, so it verifies offline against the published JWKS.
+        var bundle = body["bundle"]!;
+        Assert.Equal(EvidenceBundleBuilder.Format, (string)bundle["format"]!);
+        Assert.Equal(AdminEvidence.ChainId.ToString("D"), (string)bundle["conversationId"]!);
+        Assert.EndsWith(EvidenceJwks.JwksPath, (string)bundle["jwksUrl"]!);
+        Assert.Equal(2, bundle["entries"]!.AsArray().Count);
+        using (var client = f.CreateClient())
+            VerifyBundle(bundle, JsonNode.Parse(await client.GetStringAsync("http://chat.biatec.io" + EvidenceJwks.JwksPath))!);
 
         // Independent check: the same chain verifies against the published keys.
         using (var scope = f.Services.CreateScope())
@@ -214,6 +227,76 @@ public sealed class AdminOperatorIdentityTests : IAsyncLifetime
         var tampered = JsonDocument.Parse(await (await SendAsync(f, HttpMethod.Get, "/evidence", AliceKey)).Content.ReadAsStringAsync()).RootElement;
         Assert.False(tampered.GetProperty("verification").GetProperty("valid").GetBoolean());
         Assert.Equal(1, tampered.GetProperty("verification").GetProperty("failedSeq").GetInt64());
+    }
+
+    /// <summary>What the offline verifier checks: the chain from seq 1 against the JWKS, and the bundle signature.</summary>
+    private static void VerifyBundle(JsonNode bundle, JsonNode jwks)
+    {
+        var map = jwks["keys"]!.AsArray().ToDictionary(j => (string)j!["kid"]!, j => new EvidencePublicKey(
+            (string)j!["kid"]!, EvidenceVerifier.FromBase64Url((string)j["x"]!), EvidenceVerifier.FromBase64Url((string)j["y"]!),
+            DateTimeOffset.Parse((string)j["created_at"]!), j["retired_at"] is null ? null : DateTimeOffset.Parse((string)j["retired_at"]!)));
+        var conv = Guid.Parse((string)bundle["conversationId"]!);
+        var entries = bundle["entries"]!.AsArray().Select(e => new EvidenceEntry
+        {
+            ConversationId = conv,
+            Seq = (long)e!["seq"]!,
+            Kind = (string)e["kind"]!,
+            AnchorRef = (string?)e["anchorRef"],
+            Payload = e["payload"] is null ? null : JsonCanonicalizer.Canonicalize(e["payload"]),
+            Salt = (string?)e["salt"],
+            PayloadHash = (string)e["payloadHash"]!,
+            PrevHash = (string)e["prevHash"]!,
+            EntryHash = (string)e["entryHash"]!,
+            Kid = (string)e["kid"]!,
+            SignedAt = DateTimeOffset.Parse((string)e["signedAt"]!),
+            Signature = (string)e["signature"]!,
+        }).ToList();
+        var v = EvidenceVerifier.Verify(entries, map);
+        Assert.True(v.Valid, v.Error);
+
+        var copy = (JsonObject)bundle.DeepClone();
+        var sig = (string)copy["signature"]!;
+        copy.Remove("signature");
+        var k = map[(string)bundle["kid"]!];
+        using var ec = ECDsa.Create(new ECParameters { Curve = ECCurve.NamedCurves.nistP256, Q = new ECPoint { X = k.X, Y = k.Y } });
+        Assert.True(ec.VerifyData(JsonCanonicalizer.CanonicalizeToUtf8(copy), EvidenceVerifier.FromBase64Url(sig),
+            HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation));
+    }
+
+    [Fact]
+    public async Task EvidencePages_LinkUp_AndEachVerdictCoversTheChainUpToThePage()
+    {
+        var f = Factory();
+        foreach (var (on, reason) in new[] { (true, "one"), (false, "two"), (true, "three") })
+            Assert.Equal(HttpStatusCode.OK, (await PatchAsync(f, AliceKey, new { x402Enabled = on, reason })).StatusCode);
+
+        var p1 = JsonNode.Parse(await (await SendAsync(f, HttpMethod.Get, "/evidence?limit=2", AliceKey)).Content.ReadAsStringAsync())!;
+        Assert.Equal(3, (long)p1["nextFromSeq"]!);
+        Assert.Equal(2, (long)p1["verification"]!["throughSeq"]!);
+        var e1 = p1["bundle"]!["entries"]!.AsArray();
+        Assert.Equal([1L, 2L], e1.Select(e => (long)e!["seq"]!));
+
+        var p2 = JsonNode.Parse(await (await SendAsync(f, HttpMethod.Get, "/evidence?fromSeq=3&limit=2", AliceKey)).Content.ReadAsStringAsync())!;
+        Assert.Null(p2["nextFromSeq"]);
+        Assert.True((bool)p2["verification"]!["valid"]!);
+        Assert.Equal(3, (long)p2["verification"]!["throughSeq"]!);
+        var e2 = p2["bundle"]!["entries"]!.AsArray();
+        Assert.Equal(3, (long)e2.Single()!["seq"]!);
+        Assert.Equal((string)e1[1]!["entryHash"]!, (string)e2[0]!["prevHash"]!);
+
+        // Limits are clamped; a malformed query is refused only after authentication.
+        var big = JsonNode.Parse(await (await SendAsync(f, HttpMethod.Get, "/evidence?limit=999999", AliceKey)).Content.ReadAsStringAsync())!;
+        Assert.Equal(AdminEndpoints.MaxEvidenceLimit, (int)big["limit"]!);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await SendAsync(f, HttpMethod.Get, "/evidence?limit=abc", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await SendAsync(f, HttpMethod.Get, "/evidence?limit=abc", AliceKey)).StatusCode);
+    }
+
+    [Fact]
+    public async Task NamedKey_ShorterThanTheMinimum_IsNeverAccepted()
+    {
+        const string shortKey = "short-key";
+        var f = Factory(legacyKey: null, operators: new() { ["Admin:Operators:dave:KeyHash"] = Hash(shortKey) });
+        Assert.Equal(HttpStatusCode.Unauthorized, (await SendAsync(f, HttpMethod.Get, "/tenants", shortKey)).StatusCode);
     }
 
     [Fact]
@@ -293,11 +376,11 @@ public sealed class AdminOperatorIdentityTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("alice", "not-a-hash")]
-    [InlineData("legacy", null)]
-    [InlineData("bad name", null)]
-    [InlineData("carol", "same-as-alice")]
-    public void InvalidOperatorConfig_StopsTheStart(string name, string? hash)
+    [InlineData("alice", "not-a-hash", "Admin:Operators:alice:KeyHash must be the 64-character hex SHA-256")]
+    [InlineData("legacy", null, "Admin:Operators:legacy: the name must be")]
+    [InlineData("bad name", null, "Admin:Operators:bad name: the name must be")]
+    [InlineData("carol", "same-as-alice", "Admin:Operators:carol:KeyHash is the same as Admin:Operators:alice:KeyHash")]
+    public void InvalidOperatorConfig_StopsTheStart_NamingTheEntryAndRule(string name, string? hash, string expected)
     {
         var operators = new Dictionary<string, string?>
         {
@@ -306,6 +389,6 @@ public sealed class AdminOperatorIdentityTests : IAsyncLifetime
         };
         var f = Factory(operators: operators);
         var ex = Assert.ThrowsAny<Exception>(() => f.CreateClient());
-        Assert.Contains("Admin:Operators", ex.ToString());
+        Assert.Contains(expected, ex.ToString());
     }
 }
