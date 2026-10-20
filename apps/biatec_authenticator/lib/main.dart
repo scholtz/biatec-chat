@@ -10,7 +10,6 @@ import 'devices/devices_screen.dart';
 import 'enrollment/enrollment_screen.dart';
 import 'push/fcm_push_transport.dart';
 import 'push/push_controller.dart';
-import 'routes.dart';
 import 'screens/home_screen.dart';
 import 'security/security_screen.dart';
 import 'security/settings_controller.dart';
