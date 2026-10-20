@@ -1,7 +1,7 @@
 ---
 id: T-110
 title: "Safe executors: move instruction text out of guardrail-screened results"
-status: backlog
+status: in-progress
 priority: P2
 epic: "Safe"
 blocked_by: [T-109]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Api/Safe/**", "backend/Biatec.Chat.Tests/Safe/**"]
 parallel: yes
 conflicts_with: []
 issue: "#232"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-110"
+owner: "session-20261020-1048"
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md"
 created: 2026-10-20
 updated: 2026-10-20
@@ -76,3 +76,4 @@ apply-guardrail` (eu-central-1, guardrail `rwa0b0by3y18` v1) on a recorded `safe
 
 - 2026-10-20 10:28 · coordinator · (new) → blocked · follow-up from T-109 (instruction text trips the tool-result guardrail)
 - 2026-10-20 10:43 · kanban-board · blocked → backlog · blockers done: T-109
+- 2026-10-20 10:48 · session-20261020-1048 · backlog → in-progress · taken by LukassSoukup, claimed (T-109 merged in PR #233)
