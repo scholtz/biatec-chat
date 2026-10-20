@@ -1,7 +1,7 @@
 ---
 id: T-098
 title: "Onboarding: record operator tenant approvals in the admin evidence chain"
-status: in-progress
+status: review
 priority: P3
 epic: "Sessions & auth"
 blocked_by: [T-097]
@@ -43,14 +43,20 @@ files.
 
 ## Acceptance criteria
 
-- [ ] An unauthenticated POST with an unparseable body gets 401 (404 without keys), never 400 (test)
-- [ ] An approved tenant appears in the admin chain with the operator name (test)
+- [x] An unauthenticated POST with an unparseable body gets 401 (404 without keys), never 400 (test)
+- [x] An approved tenant appears in the admin chain with the operator name (test)
 
 ## Verification
 
 `dotnet test --filter Onboarding|Admin`, then the full backend suite.
 
 ## Hand-off
+
+- **Summary:** `POST /onboarding/operator/tenants` authenticates (`OperatorAuth.Check`) before reading the body; a successful approval appends an `admin_change` (`tenant_approve`, snake_case like the other actions) with the named operator, target, optional reason and the created configuration/policy values (never clientSecretRef or clientKeys) in the same transaction as the tenant insert, so a failed append rolls it back. IEvidenceLog is resolved only after auth, so public onboarding routes don't depend on the evidence key store.
+- **Branch:** `task/T-098`, PR #205 (`Closes #202`).
+- **Files outside the area:** `Admin/AdminEvidence.cs` (one constant), `docs/admin-api.md`, `docs/required-changes-biatec-oidc.md` (operator approval wording).
+- **Verification:** Onboarding + Admin 98 passed; full backend 1276 passed, 1 skipped, 0 failed.
+- **Unblocks:** no task is blocked by T-098.
 
 ## Review
 
@@ -60,3 +66,4 @@ files.
 - 2026-10-20 06:59 · kanban-board · blocked → backlog · blockers done: T-097
 - 2026-10-20 07:00 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 07:00 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 07:15 · coordinator · in-progress → review · PR #205
