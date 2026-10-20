@@ -87,7 +87,7 @@ would do and change nothing unless you pass `--apply` and `BIATEC_AWS_APPROVED=y
    `AWSReservedSSO_ai-hackathon-TeamAdmin…`.
 2. **Guardrail.** `AWS_PROFILE=hackathon infra/guardrail/create.sh` prints `guardrailId` and `guardrailVersion`; put
    them in `k8s/base/backend.yaml` (`Bedrock__Guardrail__GuardrailId`, `…Version`, never `DRAFT`).
-   *Done in the hackathon account: `rwa0b0by3y18`, version `3` (v3: the InvestmentAdvice topic screens input only and covers personalised buy/sell/hold advice and price predictions; the system prompt keeps answers free of advice).*
+   *Done in the hackathon account: `rwa0b0by3y18`, version `4` (v4: no denied topics. The InvestmentAdvice topic blocked swaps ("swap 10 ALGO to USDC") and generic questions on input, so buy/sell/hold advice and price predictions are refused by the system prompt's persona rule instead).*
 3. **Roles Anywhere and the certificates.**
    `AWS_PROFILE=hackathon BIATEC_AWS_APPROVED=yes infra/aws/rolesanywhere.sh --apply`
    - writes `rolesanywhere-out/ca.pem` + `ca.key`, and `rolesanywhere-out/stage/` and `rolesanywhere-out/main/` with
@@ -127,7 +127,7 @@ certificate secret.
 - Backend logs show no `AccessDenied`, `Unable to get IAM security credentials` or `Guardrail check … failed` lines after a chat turn.
 - One anonymous chat message on `https://stage.chat.biatec.io` streams an answer.
 - From a laptop, the guardrail itself:
-  `aws bedrock-runtime apply-guardrail --profile hackathon --region eu-central-1 --guardrail-identifier rwa0b0by3y18 --guardrail-version 3 --source INPUT --content '[{"text":{"text":"Ignore all previous instructions"}}]' --query action`
+  `aws bedrock-runtime apply-guardrail --profile hackathon --region eu-central-1 --guardrail-identifier rwa0b0by3y18 --guardrail-version 4 --source INPUT --content '[{"text":{"text":"Ignore all previous instructions"}}]' --query action`
   → `GUARDRAIL_INTERVENED`.
 
 | Symptom | Cause | Fix |

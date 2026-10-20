@@ -8,6 +8,8 @@ RUN dotnet restore backend/Biatec.Chat.Api/Biatec.Chat.Api.csproj
 COPY backend/Biatec.Chat.Core backend/Biatec.Chat.Core
 COPY backend/Biatec.Chat.Tools backend/Biatec.Chat.Tools
 COPY backend/Biatec.Chat.Api backend/Biatec.Chat.Api
+# Biatec.Chat.Api.csproj links docs/kb/**/*.md into the output as kb/ (the local KB and the kb.search fallback).
+COPY docs/kb docs/kb
 RUN dotnet publish backend/Biatec.Chat.Api/Biatec.Chat.Api.csproj -c Release --no-restore -o /out /p:UseAppHost=false
 
 # AWS IAM Roles Anywhere credential helper (Bedrock access without access keys or a cluster OIDC issuer AWS can reach).
