@@ -11,7 +11,7 @@ conflicts_with: [T-097]
 issue: "#191"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md"
 created: 2026-10-20
 updated: 2026-10-20
@@ -53,3 +53,4 @@ Parallel work possible: **no**. Don't run it at the same time as T-097: they cha
 
 - 2026-10-20 05:31 · coordinator · (new) → backlog · proposed by a worker / found during verification
 - 2026-10-20 05:31 · coordinator · backlog · conflicts_with + T-097 (blockers scan: shared files)
+- 2026-10-20 05:32 · LukassSoukup · taken · status stays backlog
