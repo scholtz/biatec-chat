@@ -52,6 +52,9 @@ public class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbContext(
             e.Property(x => x.ToolCalls).HasColumnType("jsonb");
             e.Property(x => x.ToolResults).HasColumnType("jsonb");
             e.Property(x => x.Usage).HasColumnType("jsonb");
+            // A writer that leaves CreatedAt unset gets the database clock, never year 1 (which retention would clear at once).
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
+            e.HasIndex(x => x.CreatedAt);
         });
 
         b.Entity<ActionPreview>(e =>
@@ -85,6 +88,7 @@ public class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbContext(
         {
             e.HasIndex(x => new { x.ConversationId, x.Seq }).IsUnique();
             e.HasIndex(x => x.AnchorRef);
+            e.HasIndex(x => x.SignedAt);
             e.Property(x => x.AnchorRef).HasMaxLength(64);
             e.Property(x => x.Payload).HasColumnType("jsonb");
         });
