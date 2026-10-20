@@ -1,7 +1,7 @@
 ---
 id: T-064
 title: Widget conversation UI to the Biatec AI design
-status: in-progress
+status: done
 priority: P1
 epic: "Widget UI rework"
 blocked_by: [T-041, T-062]
@@ -67,6 +67,8 @@ Filled in by the agent when it moves the task to `review`.
 
 ## Review
 
+- 2026-10-20 02:18 · approve · PR #137 merged into main @ ea8c0b6 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 22:40 · coordinator · (new) → blocked · created from the Biatec AI design handoff (docs/design/) for the widget UI rework
@@ -76,3 +78,4 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-20 01:47 · scholtz · taken · status stays backlog
 - 2026-10-20 01:47 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
 - 2026-10-20 02:30 · coordinator · in-progress · added T-074 to conflicts_with (new task)
+- 2026-10-20 02:18 · user · in-progress → done · PR #137 merged into main @ ea8c0b6 (synced by kanban-sync)

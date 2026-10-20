@@ -1,7 +1,7 @@
 ---
 id: T-043
 title: Widget Slovak translation and accessibility pass
-status: blocked
+status: backlog
 priority: P2
 epic: "Widget"
 blocked_by: [T-042, T-064, T-066]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#accessibility-and-localization"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-043 · Widget Slovak translation and accessibility pass
@@ -59,3 +59,4 @@ pnpm --filter chat-widget test
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 22:40 · coordinator · blocked · widget UI rework: theming moved to T-062; now Slovak catalog + a11y audit of the reworked UI, blocked_by T-064, T-066
 - 2026-10-20 03:20 · coordinator · blocked · added T-077 to conflicts_with (new task)
+- 2026-10-20 02:18 · kanban-board · blocked → backlog · blockers done: T-042, T-064, T-066

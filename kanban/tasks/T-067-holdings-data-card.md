@@ -1,7 +1,7 @@
 ---
 id: T-067
 title: Holdings data card from wallet.balance
-status: blocked
+status: backlog
 priority: P3
 epic: "Widget UI rework"
 blocked_by: [T-020, T-064]
@@ -69,3 +69,4 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-19 22:40 · coordinator · blocked · conflicts_with T-065: both regenerate packages/chat-protocol
 - 2026-10-20 01:09 · LukassSoukup · blocked · parallel analysis: dropped T-065 (done); added T-042 (cards in ChatView.vue/useChat.ts) and T-035 (orchestrator emits data_card)
 - 2026-10-20 02:30 · coordinator · blocked · added T-074 to conflicts_with (new task)
+- 2026-10-20 02:18 · kanban-board · blocked → backlog · blockers done: T-020, T-064
