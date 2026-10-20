@@ -1,7 +1,7 @@
 ---
 id: T-079
 title: "Bug: report the page origin, not the backend host, on signing requests"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Wallet tools"
 blocked_by: []
@@ -9,8 +9,8 @@ area: ["backend/Biatec.Chat.Api/Chat/Confirm/ConfirmService.cs", "backend/Biatec
 parallel: no
 conflicts_with: [T-025, T-087]
 issue: "#148"
-branch: ""
-owner: ""
+branch: "task/T-079"
+owner: "worker-T-079"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#protocol-rules"
 created: 2026-10-20
@@ -121,3 +121,4 @@ Filled in by the agent when it moves the task to `review`.
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #2)
 - 2026-10-20 03:34 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 03:34 · coordinator · backlog → in-progress · dispatched to worker

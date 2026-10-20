@@ -1,7 +1,7 @@
 ---
 id: T-089
 title: "Bug: Algorand transfer preview must use MCP network codes and the error field"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Wallet tools"
 blocked_by: [T-082]
@@ -9,8 +9,8 @@ area: ["backend/Biatec.Chat.Tools/Wallet/Transfer/**", "backend/Biatec.Chat.Test
 parallel: yes
 conflicts_with: []
 issue: "#168"
-branch: ""
-owner: ""
+branch: "task/T-089"
+owner: "worker-T-089"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#capabilities-and-intents"
 created: 2026-10-20
@@ -64,3 +64,4 @@ files.
 - 2026-10-20 03:33 · kanban-board · backlog → blocked · waiting on: T-082
 - 2026-10-20 03:33 · kanban-board · blocked → backlog · blockers done: T-082
 - 2026-10-20 03:34 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 03:34 · coordinator · backlog → in-progress · dispatched to worker
