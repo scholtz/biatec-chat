@@ -105,9 +105,10 @@ watch(
   },
 );
 
-// A reused card instance must not carry review state over to a different action.
+// A reused card instance must not carry review state over to a different action, nor over to the next step of a
+// multi-step preview (the user reviews and acknowledges each group on its own).
 watch(
-  () => props.preview.previewId,
+  () => `${props.preview.previewId}:${props.preview.steps.find((s) => s.status === "AwaitingConfirmation")?.stepId ?? ""}`,
   () => {
     reviewed.value = false;
     acknowledged.value = false;

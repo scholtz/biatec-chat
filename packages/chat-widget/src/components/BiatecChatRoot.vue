@@ -293,10 +293,14 @@ onBeforeUnmount(() => {
         :busy="chat.busy.value"
         :phase="chat.phase.value"
         :announcement="chat.announcement.value"
+        :session-expires-at="chat.session.value?.expiresAt ?? null"
         :agent-mode="agentMode"
         :context-label="pageContext(options)?.product ?? null"
         @send="(text, opts) => chat.send(text, opts)"
         @sign-in="chat.signIn({ scope: $event })"
+        @confirm-preview="chat.confirmPreview($event)"
+        @cancel-preview="chat.cancelPreview($event)"
+        @authorize-preview="(id, scope) => chat.authorizePreview(id, scope)"
       />
       <template #banner>
         <AgentNotices :agent="agent" />

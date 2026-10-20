@@ -5,6 +5,7 @@ import { AuthClient } from "../components/chat/auth";
 import { useChat, type ChatServices } from "../components/chat/useChat";
 import { TransportManager } from "../transport";
 import { AgentClient, type AgentApi } from "../components/agent/api";
+import { PreviewClient } from "../components/chat/previews";
 import { useAgent } from "../components/agent/useAgent";
 import { useActivity } from "../components/activity/model";
 import { t } from "../i18n";
@@ -61,7 +62,18 @@ export function createCore(options: ResolvedOptions, services?: WidgetServices) 
     send: (o) => tap(base.send({ ...o, context: o.context !== undefined ? o.context : pageContext(options) }), o.message),
     dispose: () => base.dispose(),
   };
-  const chat = useChat({ ...svc, transport });
+  const agentApi = services?.agent ?? new AgentClient(cfg);
+  // Preview cards: confirm and cancel go to the backend; the agent, Activity and keepalive hooks are filled in below.
+  const chat = useChat({
+    ...svc,
+    transport,
+    previews: svc.previews ?? new PreviewClient(cfg),
+    cancelPreview: svc.cancelPreview ?? ((id, hash) => agentApi.cancelPreview(id, hash)),
+    keepalive: svc.keepalive ?? (base instanceof TransportManager ? base.keepalive : undefined),
+    onConfirmed: (id) => activity.recordConfirm(id),
+    onCancelled: (id) => activity.markCancelled(id),
+    onConfirmResponse: (body) => void agent.reportRefusal(body),
+  });
 
   /** Every stream event also feeds the Activity timeline and the agent's typed refusals. */
   async function* tap(events: AsyncGenerator<ChatEvent>, question: string): AsyncGenerator<ChatEvent> {
@@ -94,7 +106,7 @@ export function createCore(options: ResolvedOptions, services?: WidgetServices) 
     inline: 0,
     focusTick: 0,
   });
-  const agent = useAgent(chat, services?.agent ?? new AgentClient(cfg), activity, ui);
+  const agent = useAgent(chat, agentApi, activity, ui);
 
   /** Whether a panel can be shown at all: `mode: 'inline'` has no floating panel, only BiatecChatInline. */
   const canShow = computed(() => ui.inline > 0 || options.mode !== "inline");
