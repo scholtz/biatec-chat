@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Biatec.Chat.Tools.Mcp;
 
 namespace Biatec.Chat.Tools.Wallet.Transfer;
 
@@ -11,7 +12,7 @@ public enum TransferStepKind { Fund, OptIn, Transfer }
 public sealed record TransferRequest(string Network, string From, string To, ulong AssetId, string Amount)
 {
     /// <summary>The network name stored on steps and sent to Biatec OIDC, for example <c>algorand-testnet</c>.</summary>
-    public string StepNetwork => McpWalletJson.AlgorandNetwork(Network);
+    public string StepNetwork => McpNetworks.Algorand(Network);
 
     public bool SameAs(TransferRequest o) =>
         Network == o.Network && From == o.From && To == o.To && AssetId == o.AssetId && Amount == o.Amount;
@@ -26,9 +27,6 @@ public sealed record BalanceEntry(ulong AssetId, string? Symbol, string Amount, 
 /// <summary>Tolerant readers for Biatec MCP wallet results.</summary>
 public static class McpWalletJson
 {
-    /// <summary>The Biatec MCP network code for a chat Algorand network name: <c>testnet</c> is <c>algorand-testnet</c>.</summary>
-    public static string AlgorandNetwork(string network) => "algorand-" + network;
-
     public static List<string> Addresses(JsonElement? json)
     {
         var result = new List<string>();
@@ -50,18 +48,19 @@ public static class McpWalletJson
     /// <summary>
     /// Entries of a <c>getCryptoBalance</c> result. The real Biatec MCP shape is native ALGO as
     /// <c>nativeBalanceBaseUnits</c> (a decimal string, 6 decimals) plus ASA holdings <c>assets: [{assetId, amount}]</c>
-    /// without decimals; older list shapes are still read. The caller checks <see cref="Mcp.McpToolResult.Failed"/> first.
+    /// without decimals; older list shapes are still read. The caller checks <see cref="McpToolResult.Failed"/> first.
+    /// Null when <c>nativeBalanceBaseUnits</c> is present but not a non-negative integer: a failed read, never "no ALGO".
     /// </summary>
-    public static List<BalanceEntry> Balances(JsonElement? json)
+    public static List<BalanceEntry>? Balances(JsonElement? json)
     {
         var list = new List<BalanceEntry>();
         if (json is not { } root) return list;
         List<JsonElement> items;
-        if (root.ValueKind == JsonValueKind.Object && TryGet(root, "nativeBalanceBaseUnits", out var native)
-            && native.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+        if (root.ValueKind == JsonValueKind.Object && TryGet(root, "nativeBalanceBaseUnits", out var native))
         {
-            var units = native.ToString();
-            if (BigInteger.TryParse(units, NumberStyles.None, CultureInfo.InvariantCulture, out _)) list.Add(new BalanceEntry(0, "ALGO", units, 6));
+            var units = native.ValueKind is JsonValueKind.String or JsonValueKind.Number ? native.ToString() : "";
+            if (!BigInteger.TryParse(units, NumberStyles.None, CultureInfo.InvariantCulture, out _)) return null;
+            list.Add(new BalanceEntry(0, "ALGO", units, 6));
             items = TryGet(root, "assets", out var assets) && assets.ValueKind == JsonValueKind.Array
                 ? assets.EnumerateArray().Where(a => Str(a, "assetId", "asset_id", "asset", "id") is { } id && id != "0").ToList()
                 : [];

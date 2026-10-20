@@ -28,6 +28,8 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
         ?? "Host=127.0.0.1;Port=5432;Database=postgres;Username=biatec;Password=biatec-dev-only";
 
     private const ulong Usdc = 10458941;
+    private const string TestnetHash = "SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=";
+    private const string MainnetHash = "wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=";
     private static readonly Address Mine = new Address("UPYAFLHSIPMJOHVXU2MPLQ46GXJKSDCEMZ6RLCQ7GWB5PRDKJUWKKXECXI");
     private static readonly Address Mine2 = new Address("KV2XGKMXGYJ6PWYQA5374BYIQBL3ONRMSIARPCFCJEAMAHQEVYPB7PL3KU");
     private static readonly Address Stranger = new Address("7ZUECA7HFLZTXENRV24SHLU4AVPUTMTTDUFUBNBD64C73F3UHRTHAIOF6Q");
@@ -44,6 +46,7 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
         /// <summary>The network argument of every MCP call that takes one, as "tool:network".</summary>
         public List<string> Networks { get; } = [];
         public string GenesisId { get; set; } = "testnet-v1.0";
+        public string GenesisHash { get; set; } = TestnetHash;
         public Dictionary<string, string> Balances { get; } = new();
         public Func<Transaction, Transaction>? Tamper { get; set; }
         public ulong FirstValid { get; set; } = 1000;
@@ -53,7 +56,7 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
         private Transaction Common(Transaction t)
         {
             t.Fee = 1000; t.FirstValid = FirstValid; t.LastValid = FirstValid + 1000; t.GenesisId = GenesisId;
-            t.GenesisHash = new Digest(Convert.FromBase64String("SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI="));
+            t.GenesisHash = new Digest(Convert.FromBase64String(GenesisHash));
             return Tamper is null ? t : Tamper(t);
         }
 
@@ -222,23 +225,26 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
 
     private static string Algo(string addr, string micro) => Real(addr, micro);
 
-    private void FundMine(bool withUsdc = true)
-    {
-        var usdc = withUsdc ? $",{{\"assetId\":{Usdc},\"symbol\":\"USDC\",\"amount\":\"50000000\",\"decimals\":6}}" : "";
-        _mcp.Balances[Mine.EncodeAsString()] = $"{{\"balances\":[{{\"assetId\":0,\"amount\":\"10000000\"}}{usdc}]}}";
-    }
+    /// <summary>
+    /// The source in the real MCP shape: 10 ALGO, and 50 USDC whose entry also carries decimals and a unit name. Real
+    /// MCP sends only {assetId, amount}; those two fields stand in for the asset lookup of T-090.
+    /// </summary>
+    private void FundMine(bool withUsdc = true) =>
+        _mcp.Balances[Mine.EncodeAsString()] = Real(Mine.EncodeAsString(), "10000000",
+            withUsdc ? $"{{\"assetId\":{Usdc},\"amount\":50000000,\"decimals\":6,\"unitName\":\"USDC\"}}" : "");
 
     private static TransferRequest Req(Address to, ulong assetId = 0, string amount = "1500000", string network = "testnet") =>
         new(network, Mine.EncodeAsString(), to.EncodeAsString(), assetId, amount);
 
     [Theory]
-    [InlineData("testnet", "algorand-testnet", "testnet-v1.0")]
-    [InlineData("mainnet", "algorand-mainnet", "mainnet-v1.0")]
-    public async Task Biatec_mcp_is_called_with_its_own_network_codes(string network, string mcpCode, string genesis)
+    [InlineData("testnet", "algorand-testnet", "testnet-v1.0", TestnetHash)]
+    [InlineData("mainnet", "algorand-mainnet", "mainnet-v1.0", MainnetHash)]
+    public async Task Biatec_mcp_is_called_with_its_own_network_codes(string network, string mcpCode, string genesis, string hash)
     {
         FundMine();
         _mcp.Balances[Mine2.EncodeAsString()] = Real(Mine2.EncodeAsString(), "5000000");
         _mcp.GenesisId = genesis;
+        _mcp.GenesisHash = hash;
         var (svc, _, _) = NewService();
         var r = await svc.StartAsync(Ctx, _conversation, Req(Mine2, Usdc, "2500000", network), default);
 
@@ -246,6 +252,67 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
         Assert.Equal(["getCryptoBalance", "getCryptoBalance", "createOptInTransaction"], _mcp.Networks.Select(n => n.Split(':')[0]));
         Assert.All(_mcp.Networks, n => Assert.Equal(mcpCode, n.Split(':')[1]));
         Assert.Equal(network, r.Request!.Network); // the model-facing name is unchanged
+    }
+
+    [Fact]
+    public async Task A_mainnet_genesis_id_with_the_testnet_genesis_hash_is_refused()
+    {
+        FundMine();
+        _mcp.GenesisId = "mainnet-v1.0"; // the hash stays testnet's
+        var (svc, _, db) = NewService();
+        var r = await svc.StartAsync(Ctx, _conversation, Req(Stranger, network: "mainnet"), default);
+        Assert.True(r.IsError);
+        Assert.Contains("does not match the request (network)", r.Message);
+        Assert.Equal(0, await db.ActionPreviews.CountAsync(x => x.ConversationId == _conversation));
+    }
+
+    [Theory]
+    [InlineData("\"\"")]
+    [InlineData("\"1.5\"")]
+    [InlineData("\"-1\"")]
+    [InlineData("null")]
+    public async Task A_present_but_malformed_nativeBalanceBaseUnits_is_a_failed_read(string native)
+    {
+        _mcp.Balances[Mine.EncodeAsString()] = $"{{\"nativeBalanceBaseUnits\":{native},\"assets\":[]}}";
+        var (svc, _, _) = NewService();
+        var source = await svc.StartAsync(Ctx, _conversation, Req(Stranger), default);
+        Assert.True(source.IsError);
+        Assert.Contains("The balance could not be read", source.Message);
+
+        // On the receiver it is not "no ALGO, fund it": it stops the transfer.
+        FundMine();
+        _mcp.Balances[Mine2.EncodeAsString()] = $"{{\"nativeBalanceBaseUnits\":{native},\"assets\":[]}}";
+        var receiver = await svc.StartAsync(Ctx, _conversation, Req(Mine2, Usdc), default);
+        Assert.True(receiver.IsError);
+        Assert.Contains("The receiving address could not be read", receiver.Message);
+        Assert.DoesNotContain(_mcp.Calls, c => c.StartsWith("create"));
+    }
+
+    [Theory]
+    [InlineData("\"Unknown network\"", true)]
+    [InlineData("{\"code\":\"NetworkUnknown\"}", true)]
+    [InlineData("[\"x\"]", true)]
+    [InlineData("42", true)]
+    [InlineData("\"\"", false)]
+    [InlineData("\"  \"", false)]
+    [InlineData("null", false)]
+    [InlineData("false", false)]
+    [InlineData("{}", false)]
+    [InlineData("[]", false)]
+    public void Any_non_empty_mcp_error_field_fails_the_result(string error, bool failed)
+    {
+        var json = $"{{\"nativeBalanceBaseUnits\":\"1\",\"error\":{error}}}";
+        Assert.Equal(failed, FakeMcp.Ok(json).Failed);
+    }
+
+    [Fact]
+    public async Task An_mcp_error_object_on_the_source_balance_is_a_failed_read()
+    {
+        _mcp.Balances[Mine.EncodeAsString()] = Real(Mine.EncodeAsString(), "10000000").Replace("\"error\":\"\"", "\"error\":{\"message\":\"algod down\"}");
+        var (svc, _, _) = NewService();
+        var r = await svc.StartAsync(Ctx, _conversation, Req(Stranger), default);
+        Assert.True(r.IsError);
+        Assert.Contains("The balance could not be read", r.Message);
     }
 
     [Fact]
@@ -296,12 +363,12 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
     {
         var json = JsonDocument.Parse(Real(Mine.EncodeAsString(), "123456789012345678901",
             $"{{\"assetId\":{Usdc},\"amount\":0}},{{\"assetId\":31566704,\"amount\":18446744073709551615}}")).RootElement;
-        var b = McpWalletJson.Balances(json);
+        var b = McpWalletJson.Balances(json)!;
         Assert.Equal(3, b.Count);
         Assert.Equal(new BalanceEntry(0, "ALGO", "123456789012345678901", 6), b[0]);
         Assert.Equal(new BalanceEntry(Usdc, null, "0", null), b[1]);
         Assert.Equal(new BalanceEntry(31566704, null, "18446744073709551615", null), b[2]);
-        Assert.Empty(McpWalletJson.Balances(JsonDocument.Parse("{\"nativeBalanceBaseUnits\":\"x\",\"assets\":null}").RootElement));
+        Assert.Null(McpWalletJson.Balances(JsonDocument.Parse("{\"nativeBalanceBaseUnits\":\"x\",\"assets\":null}").RootElement));
     }
 
     [Fact]
@@ -423,7 +490,7 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
     public async Task Own_receiver_that_already_opted_in_is_a_single_step()
     {
         FundMine();
-        _mcp.Balances[Mine2.EncodeAsString()] = $"{{\"balances\":[{{\"assetId\":0,\"amount\":\"5000000\"}},{{\"assetId\":{Usdc},\"amount\":\"0\",\"decimals\":6}}]}}";
+        _mcp.Balances[Mine2.EncodeAsString()] = Real(Mine2.EncodeAsString(), "5000000", $"{{\"assetId\":{Usdc},\"amount\":0}}");
         var (svc, _, _) = NewService();
         var r = await svc.StartAsync(Ctx, _conversation, Req(Mine2, Usdc), default);
         Assert.Single(r.Plan);

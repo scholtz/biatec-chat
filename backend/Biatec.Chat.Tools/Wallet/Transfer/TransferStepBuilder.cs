@@ -25,7 +25,7 @@ public sealed class TransferStepBuilder(IBiatecMcpClient mcp)
     public async Task<BuiltTransferStep> BuildAsync(McpCallContext ctx, string network, TransferStepPlan step, CancellationToken ct)
     {
         // Biatec MCP takes its own network code (algorand-testnet); the chat name (testnet) is kept for the checks below.
-        var mcpNetwork = McpWalletJson.AlgorandNetwork(network);
+        var mcpNetwork = McpNetworks.Algorand(network);
         var result = step.Kind switch
         {
             TransferStepKind.OptIn => await mcp.CreateOptInTransactionAsync(ctx, mcpNetwork, step.Sender, step.AssetId, ct),
@@ -99,13 +99,17 @@ public sealed class TransferStepBuilder(IBiatecMcpClient mcp)
     /// <summary>Highest fee accepted for a single transaction: ten times the network minimum (1000 microALGO).</summary>
     internal const ulong MaxFee = 10_000;
 
+    internal const string MainnetGenesisHash = "wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=";
+    internal const string TestnetGenesisHash = "SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=";
+
     internal static void Verify(Transaction tx, TransferStepPlan step, string network)
     {
         void Fail(string what) => throw new TransferException($"The built transaction does not match the request ({what}); nothing was previewed.");
         if (A(tx.Sender) != step.Sender) Fail("sender");
         if (!IsZero(tx.RekeyTo)) Fail("rekey");
-        var genesis = network == "mainnet" ? "mainnet-v1.0" : "testnet-v1.0";
+        var (genesis, genesisHash) = network == "mainnet" ? ("mainnet-v1.0", MainnetGenesisHash) : ("testnet-v1.0", TestnetGenesisHash);
         if (tx.GenesisId != genesis) Fail("network");
+        if (tx.GenesisHash?.Bytes is not { } gh || Convert.ToBase64String(gh) != genesisHash) Fail("network");
         if (tx.Fee > MaxFee) Fail("fee");
         if (HasForbiddenField(tx)) Fail("close-out or clawback");
         switch (tx)

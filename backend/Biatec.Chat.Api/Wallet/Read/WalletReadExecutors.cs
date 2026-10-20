@@ -43,7 +43,7 @@ public abstract class WalletReadExecutor(IBiatecMcpClient mcp) : IToolExecutor
     internal static bool IsBitcoin(string? network) => network is "bitcoin";
 
     /// <summary>The Biatec MCP code for a chat Algorand network name: <c>testnet</c> is <c>algorand-testnet</c>, as everywhere else in the backend.</summary>
-    internal static string AlgorandMcpNetwork(string network) => Biatec.Chat.Tools.Wallet.Transfer.McpWalletJson.AlgorandNetwork(network);
+    internal static string AlgorandMcpNetwork(string network) => McpNetworks.Algorand(network);
 
     /// <summary>Addresses from <c>listAlgorandAddresses</c>: tolerates a bare array, an object with an array, strings or objects.</summary>
     internal static List<string> ParseAddresses(JsonElement? json)

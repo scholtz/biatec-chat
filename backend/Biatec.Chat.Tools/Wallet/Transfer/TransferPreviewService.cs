@@ -56,8 +56,9 @@ public sealed class TransferPreviewService(
             return TransferOutcome.Error("The source address does not belong to the signed-in user. Use wallet.listAddresses to see the user's addresses.");
 
         var fromBal = await mcp.GetCryptoBalanceAsync(ctx, request.StepNetwork, request.From, ct);
-        if (fromBal.Failed) return TransferOutcome.Error("The balance could not be read. Tell the user to try again.");
-        var held = McpWalletJson.Balances(fromBal.Json).FirstOrDefault(b => b.AssetId == request.AssetId);
+        var fromEntries = fromBal.Failed ? null : McpWalletJson.Balances(fromBal.Json);
+        if (fromEntries is null) return TransferOutcome.Error("The balance could not be read. Tell the user to try again.");
+        var held = fromEntries.FirstOrDefault(b => b.AssetId == request.AssetId);
         if (held is null)
             return TransferOutcome.Error(request.AssetId == 0 ? "The source address holds no ALGO." : $"The source address does not hold asset {request.AssetId}.");
         var symbol = request.AssetId == 0 ? "ALGO" : string.IsNullOrWhiteSpace(held.Symbol) ? $"asset {request.AssetId}" : held.Symbol!;
@@ -73,8 +74,8 @@ public sealed class TransferPreviewService(
         if (request.AssetId != 0 && receiverOwn && request.To != request.From)
         {
             var toBal = await mcp.GetCryptoBalanceAsync(ctx, request.StepNetwork, request.To, ct);
-            if (toBal.Failed) return TransferOutcome.Error("The receiving address could not be read. Tell the user to try again.");
-            var entries = McpWalletJson.Balances(toBal.Json);
+            var entries = toBal.Failed ? null : McpWalletJson.Balances(toBal.Json);
+            if (entries is null) return TransferOutcome.Error("The receiving address could not be read. Tell the user to try again.");
             optedIn = entries.Any(b => b.AssetId == request.AssetId);
             receiverAlgo = entries.Where(b => b.AssetId == 0).Select(b => BigInteger.Parse(b.Amount, CultureInfo.InvariantCulture)).FirstOrDefault();
         }
