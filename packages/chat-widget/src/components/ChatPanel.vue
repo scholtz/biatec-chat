@@ -9,7 +9,7 @@ export type PanelMode = "floating" | "inline" | "workspace";
 
 /**
  * Panel frame: header, status bar, conversation and the regions T-066 fills.
- * Slots: default = conversation; `aside` = Activity aside (beside the conversation in workspace, an overlay sheet
+ * Slots: default = conversation; `banner` = under the status bar (paused banner, refusals); `aside` = Activity aside (beside the conversation in workspace, an overlay sheet
  * otherwise; rendered only while Activity is on); `dialog` = permissions dialog.
  */
 const props = defineProps<{
@@ -74,6 +74,7 @@ const asideId = `${props.id}-activity`;
       @open-permissions="emit('openPermissions')"
       @toggle-activity="emit('toggleActivity')"
     />
+    <slot name="banner" />
     <p v-if="notice" class="bc-shell-notice" role="status" data-testid="shell-notice">{{ notice }}</p>
     <div class="bc-body">
       <div class="bc-shell-main">

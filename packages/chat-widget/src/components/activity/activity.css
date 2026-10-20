@@ -1,0 +1,121 @@
+/* Agent & Activity aside (T-066). Tokens only. */
+.biatec-chat .bc-activity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+.biatec-chat .bc-activity p {
+  margin: 0;
+}
+.biatec-chat .bc-activity-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.biatec-chat .bc-activity-h {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.biatec-chat .bc-activity-agent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border-default);
+}
+.biatec-chat .bc-activity-mode {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 18px;
+  font-weight: 600;
+}
+.biatec-chat .bc-activity-sub,
+.biatec-chat .bc-activity-empty,
+.biatec-chat .bc-activity-footer {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+.biatec-chat .bc-activity-actions,
+.biatec-chat .bc-activity-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.biatec-chat .bc-activity-day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.biatec-chat .bc-activity-dayh {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+.biatec-chat .bc-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.biatec-chat .bc-activity-item {
+  display: flex;
+  gap: var(--space-3);
+}
+/* 10 px square kind marker: analysis neutral, preview hollow, execution brand, permissions text. */
+.biatec-chat .bc-activity-marker {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: var(--space-1);
+  border-radius: 2px;
+  background: var(--color-status-neutral);
+}
+.biatec-chat .bc-activity-marker[data-kind="preview"] {
+  background: transparent;
+  border: 2px solid var(--color-text-secondary);
+}
+.biatec-chat .bc-activity-marker[data-kind="execution"] {
+  background: var(--color-brand-primary);
+}
+.biatec-chat .bc-activity-marker[data-kind="permission"] {
+  background: var(--color-text-primary);
+}
+.biatec-chat .bc-activity-body {
+  flex: 1;
+  min-width: 0;
+}
+.biatec-chat .bc-activity-title {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+.biatec-chat .bc-activity-time {
+  flex: none;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.biatec-chat .bc-activity-detail {
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.biatec-chat .bc-activity-meta {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.biatec-chat .bc-activity-kind {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

@@ -1,0 +1,190 @@
+/* Permissions dialog, paused banner, agent refusals and shell toasts (T-066). Tokens only. */
+.biatec-chat .bc-dialog:has(.bc-perm) {
+  width: min(540px, 100%);
+}
+.biatec-chat .bc-perm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.biatec-chat .bc-perm p {
+  margin: 0;
+}
+.biatec-chat .bc-perm-kicker {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.biatec-chat .bc-perm-intro {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.biatec-chat .bc-perm-row,
+.biatec-chat .bc-perm-limits,
+.biatec-chat .bc-perm-guest {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-secondary);
+}
+.biatec-chat .bc-perm-limits,
+.biatec-chat .bc-perm-guest {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.biatec-chat .bc-perm-row-text {
+  flex: 1;
+  min-width: 0;
+}
+.biatec-chat .bc-perm-row-title {
+  font-weight: 600;
+}
+.biatec-chat .bc-perm-row-sub,
+.biatec-chat .bc-perm-note {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.45;
+}
+.biatec-chat .bc-perm-modes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.biatec-chat .bc-perm-mode {
+  position: relative;
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 2px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color var(--motion-fast) var(--ease);
+}
+.biatec-chat .bc-perm-mode[data-selected] {
+  border-color: var(--color-brand-primary);
+}
+.biatec-chat .bc-perm-mode[data-disabled] {
+  cursor: not-allowed;
+  color: var(--color-text-disabled);
+}
+.biatec-chat .bc-perm-mode input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.biatec-chat .bc-perm-mode:has(input:focus-visible) {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+.biatec-chat .bc-perm-num {
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.biatec-chat .bc-perm-mode-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.biatec-chat .bc-perm-mode-title {
+  font-weight: 600;
+}
+.biatec-chat .bc-perm-mode-sub {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+.biatec-chat .bc-perm-tag {
+  align-self: flex-start;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+.biatec-chat .bc-perm-powers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.biatec-chat .bc-perm-powers li {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  line-height: 1.45;
+}
+.biatec-chat .bc-perm-ack {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: pointer;
+}
+.biatec-chat .bc-perm-ack input {
+  accent-color: var(--color-brand-primary);
+  margin-top: 2px;
+}
+.biatec-chat .bc-perm-ack input:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+.biatec-chat .bc-perm-error {
+  color: var(--color-status-danger);
+  font-size: 13px;
+}
+.biatec-chat .bc-perm-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.biatec-chat .bc-perm-spacer {
+  flex: 1;
+}
+
+.biatec-chat .bc-agent-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4);
+  border-bottom: 1px solid var(--color-border-default);
+  background: var(--color-status-warning-subtle);
+  color: var(--color-status-warning);
+  font-size: 13px;
+}
+.biatec-chat .bc-agent-banner p {
+  flex: 1;
+  margin: 0;
+}
+.biatec-chat .bc-agent-banner .bc-btn {
+  color: var(--color-status-warning);
+}
+/* Toasts float 12 px under the status bar, over the conversation. */
+.biatec-chat .bc-agent-toasts {
+  position: relative;
+  z-index: 2;
+  height: 0;
+}
+.biatec-chat .bc-agent-toasts .bc-toasts {
+  top: var(--space-3);
+  right: var(--space-4);
+  bottom: auto;
+  left: var(--space-4);
+  align-items: center;
+  margin: 0;
+  pointer-events: none;
+}
+.biatec-chat .bc-agent-toasts .bc-toast {
+  pointer-events: auto;
+  font-size: 13px;
+}
