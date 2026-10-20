@@ -4,9 +4,10 @@ import cards from "./en/cards.json";
 import chat from "./en/chat.json";
 import agent from "./en/agent.json";
 import activity from "./en/activity.json";
+import safe from "./en/safe.json";
 
 /** One catalog file per feature (ui, shell, chat, cards, agent, data) so parallel UI tasks never edit the same file. */
-export const en = { ...ui, ...cards, ...chat, ...agent, ...activity };
+export const en = { ...ui, ...cards, ...chat, ...agent, ...activity, ...safe };
 
 export const i18n = createI18n({
   legacy: false,
