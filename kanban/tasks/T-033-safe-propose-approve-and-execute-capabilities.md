@@ -1,7 +1,7 @@
 ---
 id: T-033
 title: safe.propose, approve and execute capabilities
-status: blocked
+status: in-progress
 priority: P1
 epic: "Safe"
 blocked_by: [T-023, T-030, T-032]
@@ -9,12 +9,12 @@ area: ["backend/Biatec.Chat.Tools/Safe/Proposals/**"]
 parallel: yes
 conflicts_with: []
 issue: "#34"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-033"
+owner: "worker-T-033"
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#safe-capabilities"
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # T-033 · safe.propose, approve and execute capabilities
@@ -55,3 +55,6 @@ dotnet test --filter SafeProposals; testnet demo run
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:00 · coordinator · review · added T-023: safe funding and box top-ups are separate wallet.transfer steps
+- 2026-10-20 01:57 · kanban-board · blocked → backlog · blockers done: T-023, T-030, T-032
+- 2026-10-20 01:58 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 01:58 · coordinator · backlog → in-progress · dispatched to worker

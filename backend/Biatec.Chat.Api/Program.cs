@@ -53,6 +53,7 @@ Biatec.Chat.Api.Wallet.Transfer.WalletTransferRegistration.AddWalletTransferTool
 Biatec.Chat.Api.Limits.LimitsRegistration.AddLimitsTools(builder.Services);
 Biatec.Chat.Api.X402.X402Registration.AddX402Pay(builder.Services, builder.Configuration);
 Biatec.Chat.Api.Dex.Liquidity.DexLiquidityRegistration.AddDexLiquidityTools(builder.Services, builder.Configuration);
+Biatec.Chat.Api.Safe.Create.SafeCreateRegistration.AddSafeCreateTools(builder.Services, builder.Configuration);
 // Last: it decorates services registered above.
 Biatec.Chat.Api.Telemetry.TelemetryRegistration.AddBiatecTelemetry(builder.Services, builder.Configuration);
 

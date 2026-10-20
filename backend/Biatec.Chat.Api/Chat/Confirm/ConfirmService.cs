@@ -63,7 +63,8 @@ public sealed class ConfirmService(
     ILogger<ConfirmService> log,
     IEnumerable<ISettlementHandler>? settlementHandlers = null,
     Biatec.Chat.Api.Limits.LimitsConfirmService? limits = null,
-    IEvidenceRecorder? recorder = null)
+    IEvidenceRecorder? recorder = null,
+    IEnumerable<IStepLandedObserver>? landedObservers = null)
 {
     public const string OutageMessage = "The sign-in service is unavailable. Your session is unchanged; please try again shortly.";
 
@@ -440,6 +441,7 @@ public sealed class ConfirmService(
                 return new ConfirmResult(ConfirmOutcome.Failed, "The transaction did not land before it expired. Nothing moved; the preview must be rebuilt.", txIds, ErrorCode: "expired");
             case TxConfirmationState.Confirmed:
                 await previews.MarkStepLandedAsync(session.ConversationId, preview.Id, step.Seq, txIds, IsFinalStep(preview, step), ct);
+                await NotifyLandedAsync(session, preview, step, tracked);
                 await RecordAsync(session, "action_receipt", new JsonObject
                 {
                     ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["seq"] = step.Seq,
@@ -455,6 +457,16 @@ public sealed class ConfirmService(
                 return new ConfirmResult(ConfirmOutcome.Submitted,
                     unknownSubmit ? "The submission could not be confirmed either way; the transaction may still land. Check again shortly."
                                   : "The transaction was submitted and is waiting to be confirmed.", txIds);
+        }
+    }
+
+    /// <summary>Observers (safe.create records the deployed app id) never turn a landed step into an error.</summary>
+    private async Task NotifyLandedAsync(ChatSession session, ActionPreview preview, ActionStep step, TxConfirmation tracked)
+    {
+        foreach (var o in landedObservers ?? [])
+        {
+            try { await o.OnLandedAsync(session.TenantId, preview, step, tracked, CancellationToken.None); }
+            catch (Exception ex) { log.LogError("A landed-step observer failed: {ErrorType}", ex.GetType().Name); }
         }
     }
 
