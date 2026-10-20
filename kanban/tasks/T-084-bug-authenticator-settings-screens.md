@@ -1,7 +1,7 @@
 ---
 id: T-084
 title: "Bug: authenticator device management, trusted clients and security settings screens"
-status: backlog
+status: in-progress
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: []
@@ -9,9 +9,9 @@ area: ["apps/biatec_authenticator/lib/devices/**", "apps/biatec_authenticator/li
 parallel: yes
 conflicts_with: []
 issue: "#153"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-084"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-20
 updated: 2026-10-20
@@ -123,3 +123,5 @@ Filled in by the agent when it moves the task to `review`.
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #7)
+- 2026-10-20 03:21 · scholtz · taken · status stays backlog
+- 2026-10-20 03:21 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

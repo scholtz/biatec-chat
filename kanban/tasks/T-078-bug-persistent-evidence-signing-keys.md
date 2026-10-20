@@ -1,7 +1,7 @@
 ---
 id: T-078
 title: "Bug: persistent, shared evidence signing keys and JWKS"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Evidence"
 blocked_by: []
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Core/Evidence/EvidenceKeys.cs", "backend/Biatec.Chat
 parallel: no
 conflicts_with: [T-071, T-081, T-088]
 issue: "#147"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-078"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#session-recording-and-evidence"
 created: 2026-10-20
 updated: 2026-10-20
@@ -126,3 +126,5 @@ Filled in by the agent when it moves the task to `review`.
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #1)
+- 2026-10-20 03:21 · scholtz · taken · status stays backlog
+- 2026-10-20 03:21 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
