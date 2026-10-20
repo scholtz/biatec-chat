@@ -7,7 +7,7 @@ epic: "Widget UI rework"
 blocked_by: [T-020, T-064]
 area: ["packages/chat-widget/src/components/data/**", "backend/Biatec.Chat.Api/Chat/DataCards/**"]
 parallel: no
-conflicts_with: [T-035, T-042, T-074]
+conflicts_with: [T-035, T-042, T-074, T-076]
 issue: "#108"
 branch: ""
 owner: ""
@@ -39,7 +39,7 @@ Asking for balances shows a structured, accurate holdings card instead of number
 
 ## Parallel work
 
-Parallel work possible: **no**. Don't run it at the same time as T-035, T-042, T-074: they change the same files, and running them together causes merge conflicts or broken behaviour.
+Parallel work possible: **no**. Don't run it at the same time as T-035, T-042, T-074, T-076: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 

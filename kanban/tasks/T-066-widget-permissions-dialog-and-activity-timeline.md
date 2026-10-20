@@ -47,12 +47,12 @@ Parallel work possible: **no**. Don't run it at the same time as T-036: they cha
 
 ## Acceptance criteria
 
-- [ ] Lowering prepare → analyze and Pause call the API immediately; raising and Resume show the confirm step and are disabled until the checkbox is ticked
-- [ ] The status pill dot and label reflect the server state after each change, and after a reload (from `GET /session`)
-- [ ] Revoke all access cancels open previews (decision calls observed in the test) before sign-out, and the header returns to Guest
-- [ ] Typed errors `agent_paused` / `agent_analyze_only` from confirm show a message with a Resume / Change mode action
-- [ ] Activity lists a preview, a confirmation, a receipt and a mode change from a fixture event stream, newest first, filterable
-- [ ] Dialog: `role=dialog`, `aria-modal`, focus trap, Esc closes, focus returns to the status pill
+- [x] Lowering prepare → analyze and Pause call the API immediately; raising and Resume show the confirm step and are disabled until the checkbox is ticked
+- [x] The status pill dot and label reflect the server state after each change, and after a reload (from `GET /session`)
+- [x] Revoke all access cancels open previews (decision calls observed in the test) before sign-out, and the header returns to Guest
+- [x] Typed errors `agent_paused` / `agent_analyze_only` from confirm show a message with a Resume / Change mode action
+- [x] Activity lists a preview, a confirmation, a receipt and a mode change from a fixture event stream, newest first, filterable
+- [x] Dialog: `role=dialog`, `aria-modal`, focus trap, Esc closes, focus returns to the status pill
 
 ## Implementation notes
 
@@ -65,7 +65,10 @@ pnpm --filter @biatec/chat-widget test; manual playground run against the local 
 
 ## Hand-off
 
-Filled in by the agent when it moves the task to `review`.
+- `task/T-066 @ 5b3ce11`, merged as PR #141. New: `components/agent/**` (api, useAgent store, PermissionsDialog, AgentNotices), `components/activity/**` (model, ActivityTimeline), `i18n/en/{agent,activity}.json`, `test/agent.test.ts`. Outside the area (additive): `api/core.ts` (stream tap, `agent`/`activity` on the core, `WidgetServices`), `BiatecChatRoot.vue`, `ChatPanel.vue` (`banner` slot), `BiatecChatInline.vue`, `i18n/index.ts`, `styles.css`.
+- Verification: widget tests 167/167 (18 new), `vue-tsc` clean, build OK. The manual playground run against a local backend was **not** done.
+- Gaps: there is no backend preview cancel endpoint yet, so Revoke calls `POST /chat/previews/{id}/cancel`, ignores a refusal and signs out anyway (T-075). The T-042 cards aren't wired into the conversation: confirm errors must call `core.agent.reportRefusal()`, and an accepted confirm `core.activity.recordConfirm()` (T-076). Only the English catalog exists.
+- **Unblocks:** T-043 (still waits on T-064).
 
 ## Review
 
