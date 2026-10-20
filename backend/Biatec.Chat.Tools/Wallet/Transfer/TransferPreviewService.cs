@@ -7,6 +7,7 @@ using Biatec.Chat.Core.Previews;
 using Biatec.Chat.Tools.Algod;
 using Biatec.Chat.Tools.Mcp;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Biatec.Chat.Tools.Wallet.Transfer;
 
@@ -37,7 +38,8 @@ public sealed class TransferPreviewService(
     TimeProvider clock,
     AlgodClientFactory? algod = null,
     IAlgodSimulateClient? simulate = null,
-    IAlgodAssetReader? assets = null)
+    IAlgodAssetReader? assets = null,
+    ILogger<TransferPreviewService>? logger = null)
 {
     private readonly TransferStepBuilder _builder = new(mcp);
 
@@ -49,6 +51,13 @@ public sealed class TransferPreviewService(
     {
         if (request.Network is not ("mainnet" or "testnet"))
             return TransferOutcome.Error("Only Algorand mainnet and testnet are supported here. Bitcoin transfers are not available yet.");
+
+        if (request.AssetId != 0 && (Assets is not { } reader || !reader.IsConfigured(request.StepNetwork)))
+        {
+            logger?.LogError("Configuration error: no algod asset lookup is configured for {Network}; ASA transfers are refused.", request.StepNetwork);
+            return TransferOutcome.Error("Asset lookup is not configured on this server, so the decimals of an Algorand asset cannot be read. " +
+                "Nothing was previewed. Tell the user that asset transfers are unavailable here right now; ALGO transfers still work.");
+        }
 
         var existing = await FindExistingAsync(conversationId, request, ct);
         if (existing is not null) return await ContinueAsync(ctx, conversationId, request, existing, ct);
@@ -66,7 +75,7 @@ public sealed class TransferPreviewService(
         if (heldAmount is null && request.AssetId != 0 && McpWalletJson.AssetsTruncated(fromBal.Json))
         {
             // Biatec MCP lists at most 50 ASAs: ask algod about this asset rather than concluding from the cut list.
-            var holding = Assets is null ? null : await Assets.GetAccountAssetAsync(request.StepNetwork, request.From, request.AssetId, ct);
+            var holding = await Assets!.GetAccountAssetAsync(request.StepNetwork, request.From, request.AssetId, ct);
             if (holding is null) return TransferOutcome.Error($"Whether the source address holds asset {request.AssetId} could not be checked. Nothing was previewed. Tell the user to try again.");
             if (holding.OptedIn) heldAmount = holding.Amount.ToString(CultureInfo.InvariantCulture);
         }
@@ -79,10 +88,10 @@ public sealed class TransferPreviewService(
         else
         {
             // Real Biatec MCP balances carry no decimals or unit name: algod is the only source, and a failed read refuses.
-            var info = Assets is null ? null : await Assets.GetAssetAsync(request.StepNetwork, request.AssetId, ct);
+            var info = await Assets!.GetAssetAsync(request.StepNetwork, request.AssetId, ct);
             if (info is null)
                 return TransferOutcome.Error($"The number of decimals of asset {request.AssetId} could not be read from the Algorand node, so the amount cannot be shown correctly. Nothing was previewed. Tell the user to try again.");
-            (symbol, decimals) = (info.UnitName ?? $"asset {request.AssetId}", info.Decimals);
+            (symbol, decimals) = (AsaLabel(request.AssetId, info.UnitName), info.Decimals);
         }
         if (BigInteger.Parse(request.Amount, CultureInfo.InvariantCulture) > BigInteger.Parse(heldAmount, CultureInfo.InvariantCulture))
             return TransferOutcome.Error($"The source address holds only {TransferPlanner.FormatAmount(heldAmount, decimals)} {symbol}, less than the requested {TransferPlanner.FormatAmount(request.Amount, decimals)}.");
@@ -98,7 +107,7 @@ public sealed class TransferPreviewService(
             optedIn = entries.Any(b => b.AssetId == request.AssetId);
             if (!optedIn && McpWalletJson.AssetsTruncated(toBal.Json))
             {
-                var holding = Assets is null ? null : await Assets.GetAccountAssetAsync(request.StepNetwork, request.To, request.AssetId, ct);
+                var holding = await Assets!.GetAccountAssetAsync(request.StepNetwork, request.To, request.AssetId, ct);
                 if (holding is null) return TransferOutcome.Error($"Whether the receiving address has opted in to {symbol} could not be checked. Nothing was previewed. Tell the user to try again.");
                 optedIn = holding.OptedIn;
             }
@@ -108,6 +117,17 @@ public sealed class TransferPreviewService(
         var plan = TransferPlanner.Plan(request, receiverOwn, optedIn, receiverAlgo, symbol);
         var canonical = JsonCanonicalizer.Canonicalize(TransferPlanner.ToJson(request, symbol, decimals, plan));
         return await BuildAndCreateAsync(ctx, conversationId, request, symbol, decimals, plan, canonical, plan[0], rebuildOf: null, ct);
+    }
+
+    /// <summary>
+    /// How an ASA is named on the card, step titles and messages. The unit name is the creator's (a scam asset can call
+    /// itself "ALGO" or "USDC"), so the asset ID is always next to it: "USDC (ASA 31566704)", or "ASA 31566704".
+    /// </summary>
+    public static string AsaLabel(ulong assetId, string? unitName)
+    {
+        var id = assetId.ToString(CultureInfo.InvariantCulture);
+        var name = AlgodAssetReader.CleanUnitName(unitName);
+        return name is null ? $"ASA {id}" : $"{name} (ASA {id})";
     }
 
     private async Task<ActionPreview?> FindExistingAsync(Guid conversationId, TransferRequest request, CancellationToken ct)

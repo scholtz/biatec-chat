@@ -22,6 +22,9 @@ public interface IAlgodAssetReader
 
     /// <summary>The holding from <c>GET /v2/accounts/{address}/assets/{id}</c> (404 is "not opted in"), or null when the read failed.</summary>
     Task<AlgodAccountAsset?> GetAccountAssetAsync(string network, string address, ulong assetId, CancellationToken ct = default);
+
+    /// <summary>Whether an algod endpoint is configured for <paramref name="network"/>; false is a configuration error, not an outage.</summary>
+    bool IsConfigured(string network);
 }
 
 /// <summary>
@@ -32,6 +35,9 @@ public sealed class AlgodAssetReader : IAlgodAssetReader
 {
     public static readonly TimeSpan DefaultCacheTtl = TimeSpan.FromMinutes(10);
     private const int MaxCacheEntries = 2048;
+
+    /// <summary>algod's 404 message when the account holds no such asset (not opted in, or no such account).</summary>
+    public const string AccountAssetNotFound = "account asset info not found";
 
     private readonly Dictionary<string, AlgodNetworkOptions> _networks;
     private readonly Func<AlgodNetworkOptions, HttpClient> _httpFor;
@@ -53,7 +59,8 @@ public sealed class AlgodAssetReader : IAlgodAssetReader
     {
         if (assetId == 0) return new AlgodAssetParams(0, 6, "ALGO");
         var now = _clock.GetUtcNow();
-        if (_cache.TryGetValue((network, assetId), out var hit) && hit.Until > now) return hit.Params;
+        var key = (network.ToLowerInvariant(), assetId);
+        if (_cache.TryGetValue(key, out var hit) && hit.Until > now) return hit.Params;
 
         using var res = await SendAsync(network, $"v2/assets/{assetId.ToString(CultureInfo.InvariantCulture)}", ct);
         if (res is null || !res.IsSuccessStatusCode) return null;
@@ -65,7 +72,7 @@ public sealed class AlgodAssetReader : IAlgodAssetReader
                 : null, ct);
         if (result is null) return null;
         if (_cache.Count >= MaxCacheEntries) _cache.Clear();
-        _cache[(network, assetId)] = (result, now + _ttl);
+        _cache[key] = (result, now + _ttl);
         return result;
     }
 
@@ -73,7 +80,13 @@ public sealed class AlgodAssetReader : IAlgodAssetReader
     {
         using var res = await SendAsync(network, $"v2/accounts/{Uri.EscapeDataString(address)}/assets/{assetId.ToString(CultureInfo.InvariantCulture)}", ct);
         if (res is null) return null;
-        if (res.StatusCode == HttpStatusCode.NotFound) return new AlgodAccountAsset(false, 0); // not opted in (or no such account)
+        if (res.StatusCode == HttpStatusCode.NotFound)
+        {
+            // Only algod's own "account asset info not found" means not opted in; any other 404 (a wrong route,
+            // a proxy) is a failed read.
+            var msg = await ReadAsync(res, root => root.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() : null, ct);
+            return msg is not null && msg.Contains(AccountAssetNotFound, StringComparison.OrdinalIgnoreCase) ? new AlgodAccountAsset(false, 0) : null;
+        }
         if (!res.IsSuccessStatusCode) return null;
         return await ReadAsync(res, root =>
             root.TryGetProperty("asset-holding", out var h) && h.ValueKind == JsonValueKind.Object
@@ -83,18 +96,12 @@ public sealed class AlgodAssetReader : IAlgodAssetReader
     }
 
     /// <summary>
-    /// A creator-chosen unit name made safe to show and to put in model-facing text: control characters, quotes,
-    /// backticks and angle brackets become spaces, whitespace collapses, and it is cut to 8 characters (the
-    /// Algorand limit). Null when nothing is left.
+    /// A creator-chosen unit name made safe to show and to put in model-facing text (<see cref="UntrustedText.Clean"/>),
+    /// cut to 8 characters (the Algorand limit). Null when nothing is left.
     /// </summary>
-    public static string? CleanUnitName(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return null;
-        var chars = text.Select(c => char.IsControl(c) || char.IsWhiteSpace(c) || c is '\'' or '"' or '`' or '<' or '>' or '\\' ? ' ' : c).ToArray();
-        var clean = string.Join(' ', new string(chars).Split(' ', StringSplitOptions.RemoveEmptyEntries));
-        if (clean.Length > 8) clean = clean[..8].TrimEnd();
-        return clean.Length == 0 ? null : clean;
-    }
+    public static string? CleanUnitName(string? text) => UntrustedText.Clean(text, 8, ellipsis: false) is { Length: > 0 } c ? c : null;
+
+    public bool IsConfigured(string network) => _networks.TryGetValue(network, out var n) && !string.IsNullOrWhiteSpace(n.BaseUrl);
 
     private async Task<HttpResponseMessage?> SendAsync(string network, string path, CancellationToken ct)
     {

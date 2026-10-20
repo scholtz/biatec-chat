@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using Biatec.Chat.Tools;
 using Biatec.Chat.Tools.Algod;
 
 namespace Biatec.Chat.Tests.Transfer;
@@ -130,6 +131,60 @@ public sealed class AlgodAssetReaderTests
         Assert.Null(await reader.GetAccountAssetAsync("algorand-testnet", Addr, 10458941));
         algod.Respond = _ => (HttpStatusCode.OK, "{\"round\":5}");
         Assert.Null(await reader.GetAccountAssetAsync("algorand-testnet", Addr, 10458941));
+    }
+
+    [Theory]
+    [InlineData("404 page not found")] // a wrong route or proxy, not algod
+    [InlineData("{}")]
+    [InlineData("{\"message\":\"Not Found\"}")]
+    [InlineData("{\"message\":\"application not found\"}")]
+    public async Task A_404_that_is_not_algods_account_asset_not_found_is_a_failed_read(string body)
+    {
+        var (reader, algod, _) = New();
+        algod.Respond = _ => (HttpStatusCode.NotFound, body);
+        Assert.Null(await reader.GetAccountAssetAsync("algorand-testnet", Addr, 10458941));
+    }
+
+    [Fact]
+    public async Task The_asset_cache_ignores_the_case_of_the_network_name()
+    {
+        var (reader, algod, _) = New();
+        algod.Respond = _ => (HttpStatusCode.OK, UsdcBody);
+        Assert.NotNull(await reader.GetAssetAsync("algorand-testnet", 10458941));
+        Assert.NotNull(await reader.GetAssetAsync("Algorand-TESTNET", 10458941));
+        Assert.Single(algod.Requests);
+    }
+
+    [Fact]
+    public void Is_configured_only_for_networks_with_an_algod_url()
+    {
+        var (reader, _, _) = New();
+        Assert.True(reader.IsConfigured("algorand-testnet"));
+        Assert.True(reader.IsConfigured("ALGORAND-MAINNET"));
+        Assert.False(reader.IsConfigured("algorand-betanet"));
+    }
+
+    [Theory]
+    [InlineData("US\u202EDC", "US DC")] // right-to-left override
+    [InlineData("U\u200BS\u200CD\u200DC", "U S D C")] // zero-width space / non-joiner / joiner
+    [InlineData("\uFEFFUSDC\u2060", "USDC")] // BOM, word joiner
+    [InlineData("\u2066US\u2069DC", "US DC")] // bidi isolates
+    [InlineData("US\u2028DC", "US DC")] // line separator
+    [InlineData("US\uE000DC", "US DC")] // private use
+    [InlineData("US\uD800DC", "US DC")] // lone surrogate
+    [InlineData("\uD83D\uDCB0USD", "\uD83D\uDCB0USD")] // a printable surrogate pair survives
+    public void Unit_names_lose_every_non_printing_character(string raw, string expected)
+    {
+        Assert.Equal(expected, AlgodAssetReader.CleanUnitName(raw));
+    }
+
+    [Fact]
+    public void The_shared_untrusted_text_cleaner_strips_spoofing_characters()
+    {
+        const string hostile = "a\u202Eb\u200B\"c`<d>\\e\nf";
+        Assert.Equal("a b c d e f", UntrustedText.Clean(hostile));
+        Assert.Equal("a b...", UntrustedText.Clean(hostile, 3));
+        Assert.Equal("", UntrustedText.Clean("\u200B\u202E "));
     }
 
     [Fact]

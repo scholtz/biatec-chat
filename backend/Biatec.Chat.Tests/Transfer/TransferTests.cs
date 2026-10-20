@@ -133,6 +133,9 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
         public bool FailParams { get; set; }
         public bool FailHoldings { get; set; }
         public List<string> Calls { get; } = [];
+        public bool Configured { get; set; } = true;
+
+        public bool IsConfigured(string network) => Configured;
 
         public Task<AlgodAssetParams?> GetAssetAsync(string network, ulong assetId, CancellationToken ct = default)
         {
@@ -230,7 +233,7 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
         var svc = new TransferPreviewService(_mcp, new ActionPreviewService(db, _clock), db, _clock, factory);
         var r = await svc.StartAsync(Ctx, _conversation, Req(Stranger, Usdc, "2500000"), default);
         Assert.False(r.IsError, r.Message);
-        Assert.Equal("USDC", r.Symbol);
+        Assert.Equal("USDC (ASA 10458941)", r.Symbol);
         Assert.Contains($"asset:algorand-testnet:{Usdc}", _assets.Calls);
     }
 
@@ -257,7 +260,7 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
         var svc = new TransferPreviewService(_mcp, new ActionPreviewService(db, _clock), db, _clock);
         var r = await svc.StartAsync(Ctx, _conversation, Req(Stranger, Usdc, "2500000"), default);
         Assert.True(r.IsError);
-        Assert.Contains("decimals", r.Message);
+        Assert.Contains("Asset lookup is not configured", r.Message);
         Assert.DoesNotContain(_mcp.Calls, c => c.StartsWith("create"));
     }
 
@@ -444,18 +447,18 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
 
         Assert.False(r.IsError, r.Message);
         Assert.Equal(2, r.Decimals);
-        Assert.Equal("GOLD", r.Symbol);
+        Assert.Equal("GOLD (ASA 31566704)", r.Symbol);
         Assert.Contains($"asset:algorand-testnet:{Odd}", _assets.Calls);
         Assert.DoesNotContain(_assets.Calls, c => c.StartsWith("holding")); // the list was complete
         var card = TransferCard.Map(r);
-        Assert.StartsWith("Send 12.5 GOLD from ", card.Intent);
+        Assert.StartsWith("Send 12.5 GOLD (ASA 31566704) from ", card.Intent);
         var amount = Assert.Single(card.Steps[0].Assets);
         Assert.Equal(2, amount.Decimals);
-        Assert.Equal("GOLD", amount.Symbol);
+        Assert.Equal("GOLD (ASA 31566704)", amount.Symbol);
 
         // Too much is refused in the asset's own units.
         var tooMuch = await svc.StartAsync(Ctx, _conversation, Req(Stranger, Odd, "60000"), default);
-        Assert.Contains("holds only 500 GOLD, less than the requested 600", tooMuch.Message);
+        Assert.Contains("holds only 500 GOLD (ASA 31566704), less than the requested 600", tooMuch.Message);
     }
 
     [Fact]
@@ -466,14 +469,51 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
         var (svc, _, _) = NewService();
         var r = await svc.StartAsync(Ctx, _conversation, Req(Stranger, Usdc, "2500000"), default);
         Assert.False(r.IsError, r.Message);
-        Assert.True(r.Symbol.Length <= 8, r.Symbol);
+        Assert.EndsWith($" (ASA {Usdc})", r.Symbol);
+        Assert.True(r.Symbol.Length <= 8 + $" (ASA {Usdc})".Length, r.Symbol);
         Assert.DoesNotContain('"', r.Symbol);
         Assert.DoesNotContain('<', r.Symbol);
         Assert.DoesNotContain("instructions", TransferCard.Map(r).Intent);
 
         _assets.Params[Usdc] = new AlgodAssetParams(Usdc, 6, null);
         var r2 = await svc.StartAsync(Ctx, _conversation, Req(Stranger, Usdc, "2600000"), default);
-        Assert.Equal($"asset {Usdc}", r2.Symbol);
+        Assert.Equal($"ASA {Usdc}", r2.Symbol);
+    }
+
+    [Fact]
+    public async Task A_scam_asa_named_ALGO_is_always_shown_with_its_asset_id()
+    {
+        FundMine();
+        _assets.Params[Usdc] = new AlgodAssetParams(Usdc, 6, "ALGO");
+        _mcp.Balances[Mine2.EncodeAsString()] = Algo(Mine2.EncodeAsString(), "0");
+        var (svc, _, _) = NewService();
+        var r = await svc.StartAsync(Ctx, _conversation, Req(Mine2, Usdc, "5000000"), default);
+
+        Assert.False(r.IsError, r.Message);
+        Assert.Equal($"ALGO (ASA {Usdc})", r.Symbol);
+        var card = TransferCard.Map(r);
+        Assert.StartsWith($"Send 5 ALGO (ASA {Usdc}) from ", card.Intent);
+        Assert.Contains($"ALGO (ASA {Usdc})", card.Steps[1].Title); // the opt-in step names it with its id
+        Assert.Contains($"ALGO (ASA {Usdc})", card.Steps[2].Title);
+        Assert.Equal($"ALGO (ASA {Usdc})", card.Steps[2].Assets[0].Symbol);
+        Assert.Equal("ALGO", card.Steps[0].Assets[0].Symbol); // the funding step really is ALGO
+        Assert.Equal("ASA 7", TransferPreviewService.AsaLabel(7, " \u200B\u202E "));
+    }
+
+    [Fact]
+    public async Task An_asset_reader_without_algod_for_the_request_network_is_a_configuration_refusal()
+    {
+        FundMine();
+        _assets.Configured = false;
+        var (svc, _, _) = NewService();
+        var r = await svc.StartAsync(Ctx, _conversation, Req(Stranger, Usdc, "2500000"), default);
+        Assert.True(r.IsError);
+        Assert.Contains("Asset lookup is not configured", r.Message);
+        Assert.Empty(_assets.Calls);
+        Assert.Empty(_mcp.Calls);
+
+        // ALGO itself needs no asset lookup.
+        Assert.False((await svc.StartAsync(Ctx, _conversation, Req(Stranger), default)).IsError);
     }
 
     [Fact]
@@ -530,7 +570,7 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
         _assets.FailHoldings = true;
         var failed = await svc.StartAsync(Ctx, _conversation, Req(Mine2, Usdc, "2700000"), default);
         Assert.True(failed.IsError);
-        Assert.Contains("opted in to USDC could not be checked", failed.Message);
+        Assert.Contains("opted in to USDC (ASA 10458941) could not be checked", failed.Message);
     }
 
     private static IReadOnlyList<Transaction> Decode(Biatec.Chat.Core.Data.ActionStep step) =>
@@ -567,13 +607,13 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
         var r = await svc.StartAsync(Ctx, _conversation, Req(Stranger, Usdc, "2500000"), default);
 
         Assert.False(r.IsError, r.Message);
-        Assert.Equal("USDC", r.Symbol);
+        Assert.Equal("USDC (ASA 10458941)", r.Symbol);
         Assert.Equal(6, r.Decimals);
         var tx = Assert.IsType<AssetTransferTransaction>(Assert.Single(Decode(r.Snapshot!.Steps[0])));
         Assert.Equal(Usdc, tx.XferAsset);
         Assert.Equal(2500000UL, tx.AssetAmount);
         var card = TransferCard.Map(r);
-        Assert.Equal("Send 2.5 USDC from " + Mine.EncodeAsString()[..6] + "..." + Mine.EncodeAsString()[^6..] + " to " + Stranger.EncodeAsString()[..6] + "..." + Stranger.EncodeAsString()[^6..], card.Intent);
+        Assert.Equal("Send 2.5 USDC (ASA 10458941) from " + Mine.EncodeAsString()[..6] + "..." + Mine.EncodeAsString()[^6..] + " to " + Stranger.EncodeAsString()[..6] + "..." + Stranger.EncodeAsString()[^6..], card.Intent);
         Assert.Equal(r.Snapshot.Steps[0].SubjectHash, card.Steps[0].GroupHash);
         Assert.Equal("1000", card.Steps[0].FeeAmount);
     }
