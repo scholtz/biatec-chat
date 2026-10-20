@@ -1,7 +1,7 @@
 ---
 id: T-096
 title: "Admin: knowledge-base reload and upload"
-status: review
+status: done
 priority: P3
 epic: "Orchestrator"
 blocked_by: [T-086]
@@ -57,6 +57,8 @@ Parallel work possible: **no**. Don't run it at the same time as T-097: they cha
 
 ## Review
 
+- 2026-10-20 06:06 · approve · PR #196 merged into main @ 7cc6302 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 05:31 · coordinator · (new) → backlog · proposed by a worker / found during verification
@@ -64,3 +66,4 @@ Parallel work possible: **no**. Don't run it at the same time as T-097: they cha
 - 2026-10-20 05:32 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 05:32 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 06:05 · coordinator · in-progress → review · branch task/T-096 @ 09bfb48, PR #196
+- 2026-10-20 06:06 · user · review → done · PR #196 merged into main @ 7cc6302 (synced by kanban-sync)
