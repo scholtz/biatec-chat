@@ -1,7 +1,7 @@
 ---
 id: T-108
 title: "Widget: render assistant replies as safe Markdown"
-status: review
+status: done
 priority: P1
 epic: "Widget"
 blocked_by: []
@@ -88,9 +88,12 @@ Parallel work possible: **yes**. No other unfinished task changes the widget's c
 
 ## Review
 
+- 2026-10-20 10:27 · approve · PR #231 merged into main @ 5cdf261 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 12:00 · coordinator · (new) → backlog · created from demo testing (raw Markdown in replies)
 - 2026-10-20 10:07 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 10:07 · session-20261020-1007 · backlog → in-progress · claimed in session
 - 2026-10-20 10:19 · session-20261020-1007 · in-progress → review · PR #231, tests green, review clean
+- 2026-10-20 10:27 · user · review → done · PR #231 merged into main @ 5cdf261 (synced by kanban-sync)
