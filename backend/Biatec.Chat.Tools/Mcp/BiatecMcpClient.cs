@@ -11,6 +11,11 @@ public interface IBiatecMcpClient
 
     Task<McpToolResult> ListAlgorandAddressesAsync(McpCallContext ctx, CancellationToken ct = default);
     Task<McpToolResult> GetCryptoAddressAsync(McpCallContext ctx, string network, CancellationToken ct = default);
+
+    /// <summary><c>getCryptoAddress</c> for one ARC-76 derivation slot of the primary seed: 0 is the user's first (primary) address, 1 the second.</summary>
+    Task<McpToolResult> GetCryptoAddressAsync(McpCallContext ctx, string network, int slot, CancellationToken ct = default) =>
+        slot == 0 ? GetCryptoAddressAsync(ctx, network, ct) : throw new NotSupportedException("This client cannot read other derivation slots.");
+
     Task<McpToolResult> GetCryptoBalanceAsync(McpCallContext ctx, string network, string address, CancellationToken ct = default);
     Task<McpToolResult> CreatePaymentTransactionAsync(McpCallContext ctx, string network, string sender, string receiver, string amount, ulong? assetId = null, string? note = null, CancellationToken ct = default);
     Task<McpToolResult> CreateOptInTransactionAsync(McpCallContext ctx, string network, string address, ulong assetId, CancellationToken ct = default);
@@ -83,6 +88,9 @@ public sealed class BiatecMcpClient(
 
     public Task<McpToolResult> GetCryptoAddressAsync(McpCallContext ctx, string network, CancellationToken ct = default) =>
         CallAsync(ctx, McpToolNames.GetCryptoAddress, new() { ["network"] = network }, ct);
+
+    public Task<McpToolResult> GetCryptoAddressAsync(McpCallContext ctx, string network, int slot, CancellationToken ct = default) =>
+        CallAsync(ctx, McpToolNames.GetCryptoAddress, new() { ["network"] = network, ["slot"] = slot }, ct);
 
     public Task<McpToolResult> GetCryptoBalanceAsync(McpCallContext ctx, string network, string address, CancellationToken ct = default) =>
         CallAsync(ctx, McpToolNames.GetCryptoBalance, new() { ["network"] = network, ["address"] = address }, ct);

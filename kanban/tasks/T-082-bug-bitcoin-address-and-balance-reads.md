@@ -1,7 +1,7 @@
 ---
 id: T-082
 title: "Bug: wallet.listAddresses and wallet.balance must cover Bitcoin"
-status: in-progress
+status: done
 priority: P1
 epic: "Wallet tools"
 blocked_by: []
@@ -70,7 +70,14 @@ or `PARTIAL`.**
 
 ## Analysis verdict
 
-_pending: filled in by the agent that runs the Analysis prompt (verdict, date, evidence, approved items)._
+APPROVED, 2026-10-20 (worker, recorded by the coordinator). Evidence on main: `CapabilityRegistry.cs:84/95/194-196`
+(listAddresses and balance took only mainnet|testnet; listAddresses described as "Algorand addresses");
+`BiatecMcpClient.GetCryptoAddressAsync` (`:84`) used only by `BitcoinTransferService:79`; spec
+`PRODUCT-DESCRIPTION.md:84,257`. Real MCP schema (sibling BiatecMCP `MCP/BiatecMCP.cs:128-345`, read only):
+`getCryptoAddress(network, slot=0, seedAddress?)` → `{network, family, address, error}` (slot 0 = first address,
+1 = second); `getCryptoBalance(network, address?, …)` → `{nativeCurrencySymbol, nativeBalance, nativeBalanceBaseUnits
+(decimal string), error, errorType}`; failures mostly in `error`, not as tool errors. Real MCP knows only `bitcoin`
+(no Bitcoin testnet).
 
 ## Goal
 
@@ -89,10 +96,10 @@ running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
-- [ ] The Analysis verdict is recorded (APPROVED / PARTIAL / REJECTED) with evidence
-- [ ] `wallet.listAddresses` with `bitcoin`/`bitcoin-testnet` returns the user's Bitcoin addresses via getCryptoAddress
-- [ ] `wallet.balance` returns a Bitcoin balance with 8 decimals
-- [ ] Anonymous sessions still cannot call either tool (tier policy tests stay green)
+- [x] The Analysis verdict is recorded (APPROVED / PARTIAL / REJECTED) with evidence
+- [x] `wallet.listAddresses` with `bitcoin`/`bitcoin-testnet` returns the user's Bitcoin addresses via getCryptoAddress
+- [x] `wallet.balance` returns a Bitcoin balance with 8 decimals
+- [x] Anonymous sessions still cannot call either tool (tier policy tests stay green)
 
 ## Implementation notes
 
@@ -104,19 +111,22 @@ Network names must match `wallet.transfer` exactly. T-087 also edits CapabilityR
 
 ## Hand-off
 
-Filled in by the agent when it moves the task to `review`.
-
-- **Summary:** what was done.
-- **Files changed:** ...
-- **How it was verified:** commands run and their results.
-- **Follow-up tasks created:** IDs, or "none".
-- **Unblocks:** output of `kanban/scripts/board.py unblocks T-082`: tasks that become ready once this is approved.
-- **Open questions:** for the user, or "none".
+- **Summary:** on `bitcoin`, wallet.listAddresses returns the primary (slot 0) and secondary (slot 1) addresses via getCryptoAddress and wallet.balance returns sats (8 decimals, amounts as strings) via getCryptoBalance; one shared `BitcoinOwnAddresses` helper (case-insensitive bech32) backs listAddresses, balance and the Bitcoin transfer ownership check, so the secondary can be a transfer source. `bitcoin-testnet` removed from the shared network enum (real MCP has no Bitcoin testnet; Bitcoin is mainnet only). Algorand wallet.balance fixed against the real MCP shape: MCP network code `algorand-<network>`, native ALGO from `nativeBalanceBaseUnits` plus ASAs, a non-empty `error` is a failed read (`McpToolResult.Failed`).
+- **Branch:** `task/T-082` @ `928f497` (merged with main), PR #163 (`Closes #151`).
+- **Files changed:** `Api/Wallet/Read/WalletReadExecutors.cs`, tests; outside the area: `Core/Capabilities/CapabilityRegistry.cs`, `Tools/Wallet/Bitcoin/{BitcoinOwnAddresses,BitcoinTransferService}.cs`, `Tools/Mcp/{BiatecMcpClient,McpTypes}.cs`, `Tests/Bitcoin/BitcoinTransferTests.cs`.
+- **How it was verified:** WalletRead + TierPolicy + Bitcoin 127 passed; full backend on main + T-025: 1020 passed, 1 skipped, 0 failed. Review (medium): all realistic findings fixed.
+- **Follow-up tasks created:** T-089 (Algorand transfer preview: MCP network code and `error` field).
+- **Unblocks:** no task is blocked by T-082.
+- **Open questions:** bring back a Bitcoin testnet once Biatec MCP supports one? Only the primary seed's slots 0 and 1 are read (other `seedAddress` seeds are ignored).
 
 ## Review
+
+- 2026-10-20 03:33 · approve · PR #163 merged into main @ 4870eff (recorded by kanban-sync)
 
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #5)
 - 2026-10-20 03:01 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 03:01 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 03:33 · coordinator · in-progress → review · branch task/T-082 @ 928f497, PR #163; analysis verdict APPROVED recorded
+- 2026-10-20 03:33 · user · review → done · PR #163 merged into main @ 4870eff (synced by kanban-sync)

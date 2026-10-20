@@ -82,6 +82,8 @@ public sealed class CapabilityRegistry
     private static readonly string[] NoScopes = [];
 
     private static JsonObject Network() => new() { ["type"] = "string", ["enum"] = new JsonArray("mainnet", "testnet") };
+    // Algorand mainnet/testnet or Bitcoin mainnet. Biatec MCP resolves only "bitcoin" (no Bitcoin testnet), so none is offered.
+    private static JsonObject NetworkWithBitcoin() => new() { ["type"] = "string", ["enum"] = new JsonArray("mainnet", "testnet", "bitcoin") };
     private static JsonObject Address() => Str(max: 64, pattern: @"\A[A-Za-z0-9]+\z");
     // Canonical non-negative integer string (no leading zeros); AmountPositive additionally excludes zero.
     private static JsonObject Amount() => Str(max: 20, pattern: @"\A(0|[1-9][0-9]*)\z");
@@ -92,11 +94,11 @@ public sealed class CapabilityRegistry
     public static CapabilityRegistry CreateDefault()
     {
         var empty = Obj(new JsonObject());
-        var networkOnly = Obj(new JsonObject { ["network"] = Network() }, "network");
+        var networkOnly = Obj(new JsonObject { ["network"] = NetworkWithBitcoin() }, "network");
         var transferInput = Obj(new JsonObject
         {
             // Algorand (createPaymentTransaction) or Bitcoin (createBitcoinTransaction); assetId omitted or 0 = native ALGO.
-            ["network"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("mainnet", "testnet", "bitcoin", "bitcoin-testnet") },
+            ["network"] = NetworkWithBitcoin(),
             ["from"] = Address(),
             ["to"] = Address(),
             ["assetId"] = Id(),
@@ -191,10 +193,10 @@ public sealed class CapabilityRegistry
                 Obj(new JsonObject { ["query"] = Str(max: 500) }, "query")),
             Tool("explain.product", A, NoScopes, null, false, ValuationBasis.None, "Explain Biatec products (no tool of its own).", null),
             Tool("explain.blockchain", A, NoScopes, null, false, ValuationBasis.None, "Explain Algorand and DEX concepts (no tool of its own).", null),
-            Tool("wallet.listAddresses", U, Open, null, false, ValuationBasis.None, "List the user's Algorand addresses.", networkOnly),
-            Tool("wallet.balance", U, Open, null, false, ValuationBasis.None, "Read a balance for one of the user's addresses.",
-                Obj(new JsonObject { ["network"] = Network(), ["address"] = Address() }, "network", "address")),
-            Tool("wallet.transfer", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Build and preview a transfer.", transferInput),
+            Tool("wallet.listAddresses", U, Open, null, false, ValuationBasis.None, "List the user's own addresses: Algorand on mainnet/testnet, Bitcoin on bitcoin (Bitcoin mainnet only; each Bitcoin address is labelled primary or secondary).", networkOnly),
+            Tool("wallet.balance", U, Open, null, false, ValuationBasis.None, "Read a balance for one of the user's addresses (network bitcoin is Bitcoin mainnet only: amount in sats, 8 decimals).",
+                Obj(new JsonObject { ["network"] = NetworkWithBitcoin(), ["address"] = Address() }, "network", "address")),
+            Tool("wallet.transfer", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Build and preview a transfer (network bitcoin is Bitcoin mainnet only).", transferInput),
             Tool("dex.swap", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Quote and build a swap.", swapInput),
             Tool("dex.addLiquidity", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Add liquidity to a Biatec DEX pool (amountA/amountB are in base units of the pool's asset A/B). Set poolAppId 0 with assetAId and assetBId when the user has not named a pool: the tool lists the pair's pools and you must ask which one.", liquidityInput),
             Tool("dex.removeLiquidity", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Remove liquidity (percent of the user's LP tokens) from a Biatec DEX pool. Set poolAppId 0 with assetAId and assetBId when the user has not named a pool: the tool lists the pair's pools and you must ask which one.", removeLiquidityInput),

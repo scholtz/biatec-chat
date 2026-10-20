@@ -847,8 +847,10 @@ public sealed class SafeProposalFlowTests : IAsyncLifetime
             Assert.Equal("2500000", canonical["payloadValue"]![0]!["amount"]!.GetValue<string>());
             Assert.Equal("0", canonical["payloadValue"]![0]!["assetId"]!.GetValue<string>());
         }
-        // The confirm path asks Biatec OIDC for consent whatever the value.
-        Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(_alice, card)).Outcome);
+        // The confirm path asks Biatec OIDC for consent whatever the value. This fake ignores requireConsent and signs
+        // without a challenge, so the confirm path fails closed instead of submitting (T-025).
+        var forced = await ConfirmAsync(_alice, card);
+        Assert.Equal((ConfirmOutcome.Failed, "consent_not_enforced"), (forced.Outcome, forced.ErrorCode));
         Assert.True(_oidc.Calls[^1].Request.RequireConsent);
 
         // An opt-in moves nothing: no forced consent even at threshold 1.

@@ -47,7 +47,22 @@ public sealed record McpCallContext(string TenantId, string SessionId, IReadOnly
 public sealed record McpToolInfo(string Name, string? Description);
 
 /// <summary>Result of one tool call. <see cref="Json"/> is the structured content, or the text content parsed as JSON when possible.</summary>
-public sealed record McpToolResult(bool IsError, string Text, JsonElement? Json);
+public sealed record McpToolResult(bool IsError, string Text, JsonElement? Json)
+{
+    /// <summary>A tool error, or a non-empty <c>error</c> field: Biatec MCP reports most failures that way rather than as a tool error.</summary>
+    public bool Failed
+    {
+        get
+        {
+            if (IsError) return true;
+            if (Json is not { ValueKind: JsonValueKind.Object } o) return false;
+            foreach (var p in o.EnumerateObject())
+                if (string.Equals(p.Name, "error", StringComparison.OrdinalIgnoreCase))
+                    return p.Value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(p.Value.GetString());
+            return false;
+        }
+    }
+}
 
 /// <summary>Supplies the user's current access token for a session (vault, refreshed on demand). Null when there is none.</summary>
 public interface IMcpBearerSource
