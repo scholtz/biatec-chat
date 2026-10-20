@@ -1,7 +1,7 @@
 ---
 id: T-072
 title: Fix failing authenticator enrollment tests
-status: in-progress
+status: review
 priority: P2
 epic: "Authenticator"
 blocked_by: [T-051, T-071]
@@ -46,14 +46,22 @@ Parallel work possible: **yes**. It edits `ci.yml` that T-071 creates, so it wai
 
 ## Acceptance criteria
 
-- [ ] `cd apps/biatec_authenticator && flutter test` passes.
-- [ ] `continue-on-error` is gone from the `authenticator` job.
+- [x] `cd apps/biatec_authenticator && flutter test` passes.
+- [x] `continue-on-error` is gone from the `authenticator` job.
 
 ## Verification
 
 `flutter analyze && flutter test` in `apps/biatec_authenticator`.
 
 ## Hand-off
+
+- **Summary:** the enrollment tests were already fixed on main by T-071 (9690a2c): the tests were wrong, the code right (spec `PRODUCT-DESCRIPTION.md:489`: the recovery code is "shown once only after a device has become active (never during enrollment)"); 9690a2c also removed `continue-on-error`. The now-blocking authenticator job still failed at `flutter analyze`; this task removes the two flagged imports (`lib/main.dart` routes.dart, `lib/security/settings_controller.dart` dart:typed_data).
+- **Branch:** `task/T-072` @ `619ceb8`, PR #178 (`Closes #129`).
+- **Files changed:** outside the area, at the coordinator's request: `apps/biatec_authenticator/lib/main.dart`, `apps/biatec_authenticator/lib/security/settings_controller.dart` (one import each).
+- **How it was verified:** coordinator re-ran `flutter analyze` (No issues found) and `flutter test` (114 passed, 8 skipped: MOCK_OIDC_URL contract tests).
+- **Follow-up tasks created:** none.
+- **Unblocks:** no task is blocked by T-072.
+- **Open questions:** none.
 
 ## Review
 
@@ -66,3 +74,4 @@ Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>
 - 2026-10-20 03:49 · kanban-board · blocked → backlog · blockers done: T-051, T-071
 - 2026-10-20 04:06 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 04:06 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 04:16 · coordinator · in-progress → review · branch task/T-072 @ 619ceb8, PR #178
