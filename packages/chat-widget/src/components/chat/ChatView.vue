@@ -35,6 +35,8 @@ const props = withDefaults(
     messages: ChatMessage[];
     tier: SessionTier;
     suggestions: "default" | string[];
+    /** The tenant's own sample prompts from the session; used when `suggestions` is 'default'. */
+    tenantSuggestions?: readonly string[] | null;
     busy: boolean;
     phase: SignInPhase;
     announcement: string;
@@ -44,7 +46,7 @@ const props = withDefaults(
     /** The host page context, when the host set one. The chip only exists while this is set. */
     contextLabel?: string | null;
   }>(),
-  { agentMode: "analyze", contextLabel: null, sessionExpiresAt: null },
+  { agentMode: "analyze", contextLabel: null, sessionExpiresAt: null, tenantSuggestions: null },
 );
 const emit = defineEmits<{
   send: [text: string, opts?: { includeContext?: boolean }];
@@ -57,7 +59,7 @@ const emit = defineEmits<{
 const draft = ref("");
 const input = ref<HTMLTextAreaElement | null>(null);
 const list = ref<HTMLElement | null>(null);
-const prompts = computed(() => promptsFor(props.tier, props.suggestions));
+const prompts = computed(() => promptsFor(props.tier, props.suggestions, props.tenantSuggestions));
 const includeContext = ref(true);
 const copiedId = ref<number | null>(null);
 let copiedTimer: ReturnType<typeof setTimeout> | undefined;

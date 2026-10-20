@@ -1889,6 +1889,12 @@
           },
           "paused": {
             "type": "boolean"
+          },
+          "suggestions": {
+            "type": ["null", "array"],
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

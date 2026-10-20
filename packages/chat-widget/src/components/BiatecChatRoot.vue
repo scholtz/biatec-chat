@@ -291,6 +291,7 @@ onBeforeUnmount(() => {
         :messages="chat.messages"
         :tier="chat.tier.value"
         :suggestions="options.suggestions"
+        :tenant-suggestions="chat.session.value?.suggestions"
         :busy="chat.busy.value"
         :phase="chat.phase.value"
         :announcement="chat.announcement.value"

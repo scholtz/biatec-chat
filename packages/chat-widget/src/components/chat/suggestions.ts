@@ -37,9 +37,17 @@ export function defaultPrompts(): SamplePrompt[] {
   }));
 }
 
-/** Prompts for the tier. A host-supplied list replaces the defaults, is shown to every tier and is capped at four. */
-export function promptsFor(tier: SessionTier, option: "default" | string[]): SamplePrompt[] {
-  if (Array.isArray(option)) return option.slice(0, MAX_PROMPTS).map((p) => ({ label: p, prompt: p, minTier: "Anonymous" as const, icon: "sparkles" as const }));
+function custom(list: string[]): SamplePrompt[] {
+  return list.slice(0, MAX_PROMPTS).map((p) => ({ label: p, prompt: p, minTier: "Anonymous" as const, icon: "sparkles" as const }));
+}
+
+/**
+ * Prompts for the tier. A host-supplied list replaces the defaults, is shown to every tier and is capped at four.
+ * With the option 'default', the tenant's own prompts (from the session) win when set, else the built-in ones.
+ */
+export function promptsFor(tier: SessionTier, option: "default" | string[], tenant?: readonly string[] | null): SamplePrompt[] {
+  if (Array.isArray(option)) return custom(option);
+  if (tenant && tenant.length > 0) return custom([...tenant]);
   const want: SessionTier = tier === "Authenticated" ? "Authenticated" : "Anonymous";
   return defaultPrompts().filter((p) => p.minTier === want);
 }
