@@ -52,6 +52,7 @@ builder.Services.AddLogoutAndSweeper(builder.Configuration);
 builder.Services.AddEvidence(builder.Configuration);
 builder.Services.AddEvidenceAnchoring(builder.Configuration);
 builder.Services.AddEvidenceRecording();
+Biatec.Chat.Api.Retention.RetentionRegistration.AddRetention(builder.Services);
 builder.Services.AddSingleton<Biatec.Chat.Tools.Mcp.IMcpBearerSource, Biatec.Chat.Api.Mcp.VaultMcpBearerSource>();
 Biatec.Chat.Tools.Mcp.McpRegistration.AddBiatecMcp(builder.Services, builder.Configuration);
 Biatec.Chat.Api.Wallet.Read.WalletReadRegistration.AddWalletReadTools(builder.Services);
@@ -94,6 +95,7 @@ app.MapConsent();
 app.MapLogout();
 app.MapEvidenceJwks();
 Biatec.Chat.Api.Evidence.Export.EvidenceExportEndpoints.MapEvidenceExport(app);
+Biatec.Chat.Api.Retention.RetentionEndpoints.MapRetention(app);
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
