@@ -1,4 +1,5 @@
-# Every push to main: run ci.yml, build and push both images, deploy them to stage (k8s/stage, stage.chat.biatec.io).
+# Every push to main: run ci.yml, build and push the backend, builders and demo images, deploy them to stage (k8s/stage,
+# stage.chat.biatec.io and the demo site demo.stage.chat.biatec.io).
 # Production is never touched here: promote-production.yml re-tags the exact stage images. Follows BiatecDEX
 # deploy-stage.yml (Docker Hub, date-based tag, base64 KUBE_CONFIG), but pins the tag at deploy time instead of
 # committing it back to main. See docs/cicd.md.
@@ -21,6 +22,7 @@ concurrency:
 env:
   BACKEND_IMAGE: scholtz2/biatec-chat-backend
   BUILDERS_IMAGE: scholtz2/biatec-chat-builders
+  DEMO_IMAGE: scholtz2/biatec-chat-demo
 
 jobs:
   ci:
@@ -84,6 +86,26 @@ jobs:
           cache-from: type=gha,scope=builders
           cache-to: type=gha,scope=builders,mode=max
 
+      # The demo site (apps/demo, docs/demo-site.md), built for the stage backend (the Dockerfile default). Stage only:
+      # promote-production.yml does not re-tag it.
+      - name: Build and push demo
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/demo/Dockerfile
+          push: true
+          provenance: false
+          build-args: |
+            BACKEND_URL=https://stage.chat.biatec.io
+          tags: |
+            ${{ env.DEMO_IMAGE }}:${{ steps.version.outputs.tag }}
+            ${{ env.DEMO_IMAGE }}:stage
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=demo
+          cache-to: type=gha,scope=demo,mode=max
+
   deploy:
     needs: build
     uses: ./.github/workflows/deploy.yml
@@ -93,4 +115,5 @@ jobs:
       overlay: stage
       namespace: biatec-chat-stage
       tag: ${{ needs.build.outputs.tag }}
+      demo_url: https://demo.stage.chat.biatec.io
     secrets: inherit

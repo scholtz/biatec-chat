@@ -3,5 +3,6 @@ kind: Kustomization
 resources:
   - backend.yaml
   - builders.yaml
+  - demo.yaml
   - postgres.yaml
   - redis.yaml

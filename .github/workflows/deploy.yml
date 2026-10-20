@@ -10,7 +10,12 @@ on:
       url: {type: string, required: true}
       overlay: {type: string, required: true, description: "k8s/<overlay>: stage or main"}
       namespace: {type: string, required: true}
-      tag: {type: string, required: true, description: "Image tag of both images, already in the registry"}
+      tag: {type: string, required: true, description: "Image tag of all images in the overlay, already in the registry"}
+      demo_url:
+        type: string
+        required: false
+        default: ""
+        description: "Demo site URL (apps/demo) when the overlay deploys it (stage only): its origin is registered on the tenant and its rollout awaited"
 
 permissions:
   contents: read
@@ -104,11 +109,12 @@ jobs:
             --dry-run=client -o yaml | kubectl apply -f -
           rm -f "$RUNNER_TEMP/aws-config"
 
-      # Both images carry the same tag; pin it in the overlay (not committed) and apply.
+      # Every image of the overlay carries the same tag; pin it in the overlay (not committed) and apply.
       - name: Apply ${{ inputs.overlay }} with tag ${{ inputs.tag }}
         run: |
           sed -i "s/^\(\s*newTag:\).*/\1 $TAG/" "$OVERLAY/kustomization.yaml"
-          [ "$(grep -c "newTag: $TAG$" "$OVERLAY/kustomization.yaml")" = 2 ]
+          total="$(grep -c "newTag:" "$OVERLAY/kustomization.yaml")"
+          [ "$total" -ge 2 ] && [ "$(grep -c "newTag: $TAG$" "$OVERLAY/kustomization.yaml")" = "$total" ]
           kubectl apply -k "$OVERLAY"
 
       - name: Wait for databases
@@ -154,10 +160,34 @@ jobs:
                                            "ClientSecretRef" = EXCLUDED."ClientSecretRef", "RedirectUri" = EXCLUDED."RedirectUri";
           SQL
 
+      # The demo site (docs/demo-site.md) calls the backend from its own origin with client key biatec-demo. Adds just
+      # that origin and key to the tenant when missing; everything else on the row stays owned by onboarding. Same
+      # site as the backend host (the session cookie is SameSite=Lax), checked here so a typo cannot open CORS wider.
+      - name: Register demo origin on tenant biatec-chat
+        if: inputs.demo_url != ''
+        env:
+          DEMO_URL: ${{ inputs.demo_url }}
+          SITE_URL: ${{ inputs.url }}
+        run: |
+          origin="${DEMO_URL%/}"
+          [[ "$origin" =~ ^https://[a-z0-9.-]+$ ]] || { echo "::error::demo_url must be https://<host>, got '$DEMO_URL'."; exit 1; }
+          site="${SITE_URL#https://}"; site="${site%/}"
+          [[ "${origin#https://}" == *."${site#*.}" ]] || { echo "::error::$origin is not under ${site#*.} (same site as $site)."; exit 1; }
+          kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
+            psql -q -v ON_ERROR_STOP=1 -U biatec -d biatec_chat -v origin="$origin" -v client_key=biatec-demo <<'SQL'
+          UPDATE "Tenants" SET "AllowedOrigins" = array_append("AllowedOrigins", :'origin')
+           WHERE "Id" = 'biatec-chat' AND NOT (:'origin' = ANY ("AllowedOrigins"));
+          UPDATE "Tenants" SET "ClientKeys" = "ClientKeys" || jsonb_build_array(:'client_key'::text)
+           WHERE "Id" = 'biatec-chat' AND NOT ("ClientKeys" @> jsonb_build_array(:'client_key'::text));
+          SQL
+
       - name: Wait for rollout
+        env:
+          DEMO_URL: ${{ inputs.demo_url }}
         run: |
           kubectl rollout status deployment/biatec-chat-builders -n "$NAMESPACE" --timeout=5m
           kubectl rollout status deployment/biatec-chat-backend -n "$NAMESPACE" --timeout=5m
+          if [ -n "$DEMO_URL" ]; then kubectl rollout status deployment/biatec-chat-demo -n "$NAMESPACE" --timeout=5m; fi
 
       - name: Summary
         run: echo "Deployed \`$TAG\` to ${{ inputs.environment }} (\`$NAMESPACE\`)." >> "$GITHUB_STEP_SUMMARY"

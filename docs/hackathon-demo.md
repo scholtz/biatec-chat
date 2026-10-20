@@ -94,6 +94,12 @@ Prompt counts assume "always ask". Under the later testnet-valuation mode the **
    transaction ids line up, and verifies the signatures against `/.well-known/evidence-jwks.json`. Export bundles and the conversation
    wiring are on the board; if they have not landed, show the verifier tests and the anchor on chain instead.
 
+## Showcase site on stage
+
+For a walkthrough without the two-phone setup, open the demo site at <https://demo.stage.chat.biatec.io>: the real widget
+against the stage backend, one section per capability with one-click prompts, and what is not on stage yet labelled
+"Coming next". [demo-site.md](demo-site.md) lists what each section shows, the testnet setup and the post-deploy checks.
+
 ## What to say about trust
 
 - The widget and the page it runs in are not trusted with funds. Limits, thresholds and the phone approval live at Biatec OIDC; the

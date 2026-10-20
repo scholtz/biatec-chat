@@ -3,3 +3,4 @@ packages:
   - "packages/consent-protocol/*"
   - "builders/*"
   - "e2e"
+  - "apps/demo"
