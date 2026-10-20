@@ -17,7 +17,11 @@
         "name": "InvestmentAdvice",
         "definition": "Personalised recommendations to buy, sell or hold a specific crypto asset, or predictions of a crypto asset's future price.",
         "examples": ["Should I buy ALGO now?", "Which token will go up next week?", "Is now a good time to sell my USDC for ALGO?", "Tell me which coin to put my savings in.", "Will EURS be worth more next month?"],
-        "type": "DENY"
+        "type": "DENY",
+        "inputEnabled": true,
+        "inputAction": "BLOCK",
+        "outputEnabled": false,
+        "outputAction": "NONE"
       }
     ]
   },

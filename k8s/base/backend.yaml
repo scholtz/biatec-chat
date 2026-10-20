@@ -10,10 +10,10 @@ data:
   Bedrock__AnonymousModelId: eu.anthropic.claude-sonnet-4-5-20250929-v1:0
   Bedrock__AuthenticatedModelId: eu.anthropic.claude-opus-4-5-20251101-v1:0
   Bedrock__MaxTokens: "4096"
-  # Guardrail from infra/guardrail/create.sh in the AWS account that owns the role (hackathon account: rwa0b0by3y18 v1).
+  # Guardrail from infra/guardrail/create.sh in the AWS account that owns the role (hackathon account: rwa0b0by3y18 v3).
   Bedrock__Guardrail__Enabled: "true"
   Bedrock__Guardrail__GuardrailId: rwa0b0by3y18
-  Bedrock__Guardrail__GuardrailVersion: "1"
+  Bedrock__Guardrail__GuardrailVersion: "3"
   Builders__BaseAddress: http://biatec-chat-builders:3100
   # The vault wraps its data keys with the master key in biatec-chat-generated (Vault__MasterKey below), generated
   # once by the deploy; never the local Dev key. AWS is used for Bedrock only.
