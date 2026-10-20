@@ -1,7 +1,7 @@
 ---
 id: T-105
 title: "npm pipeline: release @biatec/chat-widget automatically on a version bump"
-status: review
+status: done
 priority: P2
 epic: "Deploy & docs"
 blocked_by: []
@@ -70,7 +70,10 @@ actionlint; `act` or a dry-run walkthrough of each path; read the docs against t
 
 ## Review
 
+- 2026-10-20 08:33 · approve · PR #219 merged into main @ 00a384f (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 08:10 · coordinator · (new) → in-progress · user request: npm package needs its own CI/CD pipeline that uploads to npm
 - 2026-10-20 08:33 · coordinator · in-progress → review · PR #219
+- 2026-10-20 08:33 · user · review → done · PR #219 merged into main @ 00a384f (synced by kanban-sync)
