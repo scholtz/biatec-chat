@@ -153,6 +153,7 @@ jobs:
       - name: Migrate database
         run: |
           dotnet tool restore
+          dotnet restore backend/Biatec.Chat.Api
           dotnet ef migrations script --idempotent --project backend/Biatec.Chat.Api --output migrate.sql
           sed -i '1s/^\xEF\xBB\xBF//' migrate.sql
           kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
