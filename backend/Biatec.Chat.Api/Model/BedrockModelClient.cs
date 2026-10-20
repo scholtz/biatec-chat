@@ -84,7 +84,7 @@ public sealed class BedrockModelClient(
 
         return new ConverseStreamRequest
         {
-            ModelId = request.Profile == ModelProfile.Authenticated ? _o.AuthenticatedModelId : _o.AnonymousModelId,
+            ModelId = TenantModels.IsAllowed(request.ModelIdOverride) ? request.ModelIdOverride! : request.Profile == ModelProfile.Authenticated ? _o.AuthenticatedModelId : _o.AnonymousModelId,
             System = system,
             // With tools a follow-up call (the tool result) is likely to reuse the history; without, it would be a paid write nobody reads.
             Messages = request.Tools.Count > 0 ? WithHistoryCachePoint(request.Messages) : [.. request.Messages],

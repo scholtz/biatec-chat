@@ -1,7 +1,7 @@
 ---
 id: T-069
 title: market.snapshot capability and market card from Biatec DEX data
-status: in-progress
+status: done
 priority: P3
 epic: "Widget UI rework"
 blocked_by: [T-067]
@@ -64,6 +64,8 @@ Filled in by the agent when it moves the task to `review`.
 
 ## Review
 
+- 2026-10-20 07:44 · approve · PR #200 merged into main @ 0181ee3 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 22:40 · coordinator · (new) → blocked · created from the Biatec AI design handoff (docs/design/) for the widget UI rework
@@ -72,3 +74,4 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-20 06:18 · kanban-board · blocked → backlog · blockers done: T-067
 - 2026-10-20 06:19 · scholtz · taken · status stays backlog
 - 2026-10-20 06:19 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 07:44 · user · in-progress → done · PR #200 merged into main @ 0181ee3 (synced by kanban-sync)

@@ -249,6 +249,8 @@ public sealed class AdminTenantPolicyTests : IAsyncLifetime
     [InlineData("{\"host\":\"evil.example\",\"reason\":\"r\"}")]
     [InlineData("{\"x402Enabled\":true}")]
     [InlineData("{\"defaultModel\":\"eu.anthropic.claude-sonnet-5-0\",\"reason\":\"r\"}")]
+    [InlineData("{\"defaultModel\":\"eu.anthropic.claude-opus-5-0-20270101-v1:0\",\"reason\":\"r\"}")]
+    [InlineData("{\"defaultModel\":\"us.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"reason\":\"r\"}")]
     [InlineData("{\"bedrockUsdPerWindow\":-1,\"reason\":\"r\"}")]
     [InlineData("{\"safeApprovalCaps\":{\"approvalsPerHour\":-1},\"reason\":\"r\"}")]
     public async Task InvalidPatch_IsRefusedAndChangesNothing(string json)

@@ -8,5 +8,19 @@
     "concentration": "{asset} tvorí {percent} % tejto peňaženky, nad {threshold} %. Väčšina hodnoty je v jednom aktíve.",
     "asOf": "Zostatky k {time} UTC · {network}",
     "announce": "Karta aktív: {count} aktív."
+  },
+  "market": {
+    "label": "Trhový prehľad {pair}",
+    "kicker": "Trhový prehľad · {source}",
+    "up": "Rast",
+    "down": "Pokles",
+    "flat": "Bez zmeny",
+    "period": "24 h",
+    "high": "Maximum za 24 h",
+    "low": "Minimum za 24 h",
+    "volume": "Objem za 24 h",
+    "spark": "Cena za posledných 24 hodín",
+    "stamp": "Prehľad k {time} UTC · nie je živý",
+    "announce": "Karta trhu pre {pair}."
   }
 }

@@ -135,7 +135,10 @@ export function useChat(svc: ChatServices) {
 
   /** A reply that is only a data card still gets announced. */
   function dataSummary(m: ChatMessage): string {
-    const n = (m.dataCards ?? []).reduce((sum, c) => sum + c.assets.length, 0);
+    const cards = m.dataCards ?? [];
+    const market = cards.find((c) => c.kind === "market");
+    if (market) return t("market.announce", { pair: market.pair ?? "" });
+    const n = cards.reduce((sum, c) => sum + c.assets.length, 0);
     return n ? t("holdings.announce", { count: n }) : "";
   }
 
