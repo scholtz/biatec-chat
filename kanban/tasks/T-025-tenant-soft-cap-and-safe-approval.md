@@ -1,7 +1,7 @@
 ---
 id: T-025
 title: Tenant soft cap and safe approval caps
-status: backlog
+status: in-progress
 priority: P2
 epic: "Wallet tools"
 blocked_by: [T-022]
@@ -9,8 +9,8 @@ area: ["backend/Biatec.Chat.Tools/Caps/**"]
 parallel: no
 conflicts_with: [T-024, T-035, T-049]
 issue: "#26"
-branch: ""
-owner: ""
+branch: "task/T-025"
+owner: "worker-T-025"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#rules"
 created: 2026-10-19
@@ -57,3 +57,4 @@ dotnet test --filter Caps
 - 2026-10-19 22:29 · kanban-board · blocked → backlog · blockers done: T-022
 - 2026-10-19 23:24 · LukassSoukup · backlog · conflicts_with revised: dropped T-057: OTel spans come from HttpClient/AWS SDK instrumentation at registration
 - 2026-10-20 02:26 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 02:26 · coordinator · backlog → in-progress · dispatched to worker
