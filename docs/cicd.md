@@ -74,6 +74,23 @@ kubectl create rolebinding github-actions-deploy -n biatec-chat-stage \
   --clusterrole=admin --serviceaccount=<namespace of the account>:<service account of KUBE_CONFIG>
 ```
 
+## Storage
+
+The cluster has no dynamic volume provisioner, so Postgres and Redis (StatefulSet claims `data-biatec-chat-postgres-0`
+and `data-biatec-chat-redis-0`) are bound to fixed volumes. On stage they are `local` PersistentVolumes in
+[k8s/stage/storage.yaml](../k8s/stage/storage.yaml), pinned to node `sch-g-04` and pre-bound to their claims, on the
+NVMe drive under `/mnt/nvme1/chat-stage/`. They are `local` rather than `hostPath` because the kubelet applies the pods'
+`fsGroup` (999) to them, so the non-root database users can write; a hostPath directory would stay root-owned.
+`Retain` keeps the data on the drive if a claim is deleted. The deploy account needs `persistentvolumes`
+(cluster-scoped; `create-token.sh` grants it). Once, on the node, before the first deploy:
+
+```
+mkdir -p /mnt/nvme1/chat-stage/postgres /mnt/nvme1/chat-stage/redis
+```
+
+Production (`k8s/main`) has no volumes defined yet: add a `storage.yaml` for it the same way (own directory, claims
+`data-biatec-chat-postgres-0` / `data-biatec-chat-redis-0` in `biatec-chat-main`) before its first deploy.
+
 ## First deploy
 
 1. AWS part: [aws-setup.md](aws-setup.md) §3 (guardrail exists; Roles Anywhere role, certificates and the five `AWS_*` secrets).
