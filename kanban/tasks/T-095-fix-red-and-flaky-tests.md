@@ -1,7 +1,7 @@
 ---
 id: T-095
 title: "Fix the red widget i18n test and the flaky session-profile test on main"
-status: in-progress
+status: done
 priority: P1
 epic: "Deploy & docs"
 blocked_by: []
@@ -38,9 +38,9 @@ Parallel work possible: **no**. Don't run it at the same time as T-092, T-094: t
 
 ## Acceptance criteria
 
-- [ ] `pnpm -C packages/chat-widget test` passes on a fresh checkout (no prior build)
-- [ ] The i18n test still fails on a real user-visible string literal (test)
-- [ ] Fill_IsSingleFlightedPerSession has no fixed sleep and passes 20/20
+- [x] `pnpm -C packages/chat-widget test` passes on a fresh checkout (no prior build)
+- [x] The i18n test still fails on a real user-visible string literal (test)
+- [x] Fill_IsSingleFlightedPerSession has no fixed sleep and passes 20/20
 
 ## Verification
 
@@ -48,10 +48,27 @@ Fresh worktree: `pnpm install && pnpm -C packages/chat-widget test`; `dotnet tes
 
 ## Hand-off
 
+- **Summary:** (1) The i18n test cut a tag at the first `>`, which is the `=>` of an arrow function in a handler, so
+  `emit('authorizePreview', …)` leaked into the "text"; the tag pattern now skips quoted attribute values (checked: a
+  real literal in text and a literal `placeholder` are still flagged, an arrow-function handler is not). ChatView is
+  unchanged. (2) `vite.config.ts` `test.alias` resolves `@biatec/chat-widget` to the source, so dex-integration runs on a
+  fresh checkout without a build. (3) `Fill_IsSingleFlightedPerSession` waits (with a deadline) until the first MCP call
+  is really in flight instead of a fixed 50 ms sleep.
+- **Verified:** widget 276/276 with no `dist` (local Node 26 needs `NODE_OPTIONS=--no-experimental-webstorage`, CI's Node
+  22 does not); that test 0 failures in 20 runs; backend 1192 passed / 1 skipped.
+- **Files:** `packages/chat-widget/test/chat-conversation.test.ts`, `packages/chat-widget/vite.config.ts`,
+  `backend/Biatec.Chat.Tests/Sessions/SessionProfileTests.cs`.
+- **Note:** touches `packages/chat-widget/test/**`, which T-094 (in progress, LukassSoukup) also owns; edits here are one
+  regex and one config key, so a merge conflict is unlikely.
+
 ## Review
+
+- 2026-10-20 06:16 · approve · PR #195 merged into main @ 7a1744a (recorded by kanban-sync)
 
 ## Activity log
 
 - 2026-10-20 05:31 · coordinator · (new) → backlog · proposed by a worker / found during verification
 - 2026-10-20 05:31 · coordinator · backlog · conflicts_with + T-092, T-094 (blockers scan: shared files)
 - 2026-10-20 05:45 · scholtz · backlog → in-progress · claimed with session-20261020-claude on branch task/T-095 (main CI is red on the i18n test, which blocks the stage deploy)
+- 2026-10-20 06:05 · session-20261020-claude · in-progress → review · PR for T-095
+- 2026-10-20 06:16 · user · review → done · PR #195 merged into main @ 7a1744a (synced by kanban-sync)

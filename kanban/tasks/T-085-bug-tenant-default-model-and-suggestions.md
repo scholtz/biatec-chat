@@ -1,7 +1,7 @@
 ---
 id: T-085
 title: "Bug: apply the tenant's defaultModel and suggestions"
-status: backlog
+status: in-progress
 priority: P3
 epic: "Orchestrator"
 blocked_by: []
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Api/Orchestration/ConversationOrchestrator.cs", "bac
 parallel: no
 conflicts_with: [T-067, T-076]
 issue: "#154"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-085"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#data-model-backend"
 created: 2026-10-20
 updated: 2026-10-20
@@ -117,3 +117,5 @@ Filled in by the agent when it moves the task to `review`.
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #8)
 - 2026-10-20 05:53 · coordinator · backlog · conflicts_with + T-067 (both edit ConversationOrchestrator.cs; seen on task/T-067)
+- 2026-10-20 06:19 · scholtz · taken · status stays backlog
+- 2026-10-20 06:19 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

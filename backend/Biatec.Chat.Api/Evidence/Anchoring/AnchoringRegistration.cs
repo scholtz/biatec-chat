@@ -149,6 +149,13 @@ public sealed class AnchorHostedService(IServiceScopeFactory scopes, IOptions<An
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Without the evidence account mnemonic every tick would fail at broadcast time, after it had already consumed a sequence
+        // number (an attempt row) and so left bogus gaps in the anchor chain. Do not tick at all until the secret exists.
+        if (string.IsNullOrWhiteSpace(options.Value.AccountMnemonic))
+        {
+            log.LogWarning("Evidence anchoring is enabled but Evidence:Anchoring:AccountMnemonic is not configured; anchoring is inactive until the secret exists and the pod restarts.");
+            return;
+        }
         using var timer = new PeriodicTimer(options.Value.Interval);
         do
         {

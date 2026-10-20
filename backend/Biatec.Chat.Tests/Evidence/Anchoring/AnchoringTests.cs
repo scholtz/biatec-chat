@@ -234,6 +234,88 @@ public sealed class AnchoringServiceTests : IAsyncLifetime
         Assert.Equal(2, r2.Leaves);
     }
 
+
+    private sealed class BlockingBroadcaster : IAnchorBroadcaster
+    {
+        public int Calls;
+        public readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task<string> BroadcastAsync(byte[] note, CancellationToken ct)
+        {
+            var n = Interlocked.Increment(ref Calls);
+            Entered.TrySetResult();
+            await Release.Task;
+            return "TXBLOCK" + n.ToString("D4") + "AAAA";
+        }
+    }
+
+    [Fact]
+    public async Task TwoReplicasTickingConcurrently_BroadcastExactlyOneTransaction()
+    {
+        await using (var seed = NewContext())
+            await Writer(seed).AppendFirstAsync(Guid.NewGuid(), "message", P("a1"));
+
+        var chain = new BlockingBroadcaster();
+        await using var dbA = NewContext();
+        await using var dbB = NewContext();
+        var a = new AnchorService(dbA, chain, _opts, NullLogger<AnchorService>.Instance, _time);
+        var b = new AnchorService(dbB, chain, _opts, NullLogger<AnchorService>.Instance, _time);
+
+        var tickA = a.TickAsync();
+        await chain.Entered.Task.WaitAsync(TimeSpan.FromSeconds(30)); // A is inside the broadcast, holding the lock
+        var rb = await b.TickAsync();
+        Assert.True(rb.Skipped);
+        Assert.Null(rb.Anchor);
+        chain.Release.SetResult();
+        var ra = await tickA;
+
+        Assert.False(ra.Skipped);
+        Assert.NotNull(ra.Anchor);
+        Assert.Equal(1, chain.Calls);
+        await using var check = NewContext();
+        Assert.Equal(1, await check.EvidenceAnchors.CountAsync());
+
+        // The lock is released afterwards: the next tick on the other replica runs.
+        _time.Advance(TimeSpan.FromMinutes(10));
+        var rb2 = await b.TickAsync();
+        Assert.False(rb2.Skipped);
+    }
+
+    private sealed class CancellingBroadcaster : IAnchorBroadcaster
+    {
+        public Task<string> BroadcastAsync(byte[] note, CancellationToken ct) => throw new OperationCanceledException();
+    }
+
+    [Fact]
+    public async Task TheLockIsReleased_WhenTheTickThrows()
+    {
+        await using (var seed = NewContext())
+            await Writer(seed).AppendFirstAsync(Guid.NewGuid(), "message", P("a1"));
+        await using var dbA = NewContext();
+        await using var dbB = NewContext();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            new AnchorService(dbA, new CancellingBroadcaster(), _opts, NullLogger<AnchorService>.Instance, _time).TickAsync());
+        var rb = await new AnchorService(dbB, _chain, _opts, NullLogger<AnchorService>.Instance, _time).TickAsync();
+        Assert.False(rb.Skipped);
+    }
+
+    [Fact]
+    public async Task HostedService_WithoutAMnemonic_DoesNotTick()
+    {
+        var scopes = new ThrowingScopeFactory();
+        var host = new AnchorHostedService(scopes, Options.Create(new AnchoringOptions { Enabled = true }), NullLogger<AnchorHostedService>.Instance);
+        await host.StartAsync(CancellationToken.None);
+        await host.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10));
+        await host.StopAsync(CancellationToken.None);
+        Assert.Equal(0, scopes.Calls);
+    }
+
+    private sealed class ThrowingScopeFactory : Microsoft.Extensions.DependencyInjection.IServiceScopeFactory
+    {
+        public int Calls;
+        public Microsoft.Extensions.DependencyInjection.IServiceScope CreateScope() { Calls++; throw new InvalidOperationException("must not tick"); }
+    }
+
     [Fact]
     public async Task AnchorId_IsDerivedFromTheTxId_AndRelabelledBundleAnchorsAreRejected()
     {

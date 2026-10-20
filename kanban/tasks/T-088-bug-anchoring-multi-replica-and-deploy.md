@@ -1,7 +1,7 @@
 ---
 id: T-088
 title: "Bug: evidence anchoring with two replicas and in the k8s deployment"
-status: in-progress
+status: done
 priority: P2
 epic: "Evidence"
 blocked_by: []
@@ -115,8 +115,11 @@ Filled in by the agent when it moves the task to `review`.
 
 ## Review
 
+- 2026-10-20 06:18 · approve · PR #182 merged into main @ 82a3880 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #13)
 - 2026-10-20 04:35 · scholtz · taken · status stays backlog
 - 2026-10-20 04:35 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 06:18 · user · in-progress → done · PR #182 merged into main @ 82a3880 (synced by kanban-sync)

@@ -291,7 +291,8 @@ describe("i18n", () => {
     const text = template
       .replace(/<!--[\s\S]*?-->/g, "")
       .replace(/\{\{[\s\S]*?\}\}/g, "")
-      .replace(/<[^>]*>/g, (tag) => (/\s(?:placeholder|aria-label|title|alt|label)="[^"]*[A-Za-z]/.test(tag) ? "LITERAL-ATTR" : ""));
+      // A tag ends at the first ">" outside a quoted attribute value, so an arrow function in a handler is not a tag end.
+      .replace(/<(?:[^>"']|"[^"]*"|'[^']*')*>/g, (tag) => (/\s(?:placeholder|aria-label|title|alt|label)="[^"]*[A-Za-z]/.test(tag) ? "LITERAL-ATTR" : ""));
     expect(text.replace(/\s+/g, "")).toBe("");
   });
 

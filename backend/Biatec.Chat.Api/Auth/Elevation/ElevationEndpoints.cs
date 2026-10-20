@@ -45,7 +45,7 @@ public static class ElevationEndpoints
             var session = await AuthEndpoints.FindLiveAsync(db, tenant, SessionEndpoints.ReadCookie(ctx.Request), now, ctx.RequestAborted);
             if (session is null || session.Tier != SessionTier.Authenticated || await vault.GetAsync(session.Id.ToString("N"), ctx.RequestAborted) is null)
                 return Results.Unauthorized();
-            if (AgentModePolicy.ConfirmRefusal(session) is { } refusal)
+            if (RestrictionFor(session, scope!) is { } refusal)
                 return Results.Json(new { error = refusal.Code, message = refusal.Message }, statusCode: StatusCodes.Status403Forbidden);
 
             await db.PopupAuthRequests
@@ -86,7 +86,7 @@ public static class ElevationEndpoints
             var nonce = ctx.Request.Query["nonce"].ToString();
             if (session is null || session.Tier != SessionTier.Authenticated || !Guid.TryParse(ctx.Request.Query["req"], out var reqId) || nonce.Length is 0 or > 128)
                 return Results.StatusCode(StatusCodes.Status403Forbidden);
-            if (AgentModePolicy.ConfirmRefusal(session) is not null) return AuthEndpoints.ClosePage(ctx, 403);
+            if (RestrictionFor(session, scope) is not null) return AuthEndpoints.ClosePage(ctx, 403);
 
             var hash = NonceHash(scope, nonce);
             var used = await db.PopupAuthRequests
@@ -129,6 +129,10 @@ public static class ElevationEndpoints
 
         return app;
     }
+
+    /// <summary>Paused or analyze sessions may still elevate manage-limits (a lowering-only path); sign stays refused.</summary>
+    private static AgentRefusal? RestrictionFor(ChatSession session, string scope) =>
+        scope == ElevationScopes.ManageLimits ? null : AgentModePolicy.ConfirmRefusal(session);
 
     private static string NonceHash(string scope, string nonce) => AuthEndpoints.Hash(scope + "\n" + nonce);
 

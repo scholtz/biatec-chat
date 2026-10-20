@@ -13,7 +13,7 @@ public class ContractsTests : IClassFixture<WebApplicationFactory<Program>>
         "SessionState", "SessionTier", "SignInStatus", "Suggestion", "SuggestionList", "ChatMessageRequest",
         "ActionDecisionRequest", "ActionPreview", "ActionStep", "AssetAmount", "ConsentStatus", "ConsentState",
         "ChatEvent", "ChatEventTextDeltaEvent", "ChatEventToolStatusEvent", "ChatEventPreviewCardEvent",
-        "ChatEventConsentStatusEvent", "ChatEventSignInCardEvent", "ChatEventErrorEvent", "ChatEventSafeCardEvent",
+        "ChatEventConsentStatusEvent", "ChatEventSignInCardEvent", "ChatEventErrorEvent", "ChatEventSafeCardEvent", "ChatEventDataCardEvent", "DataCardAsset",
         "SafeCard", "SafeCardSafe", "SafeCardSignerGroup", "SafeCardProposal",
     ];
 
@@ -33,7 +33,7 @@ public class ContractsTests : IClassFixture<WebApplicationFactory<Program>>
             Assert.True(schemas.ContainsKey(name), $"Missing schema {name}");
 
         Assert.Equal("type", (string?)schemas["ChatEvent"]!["discriminator"]!["propertyName"]);
-        Assert.Equal(7, schemas["ChatEvent"]!["discriminator"]!["mapping"]!.AsObject().Count);
+        Assert.Equal(8, schemas["ChatEvent"]!["discriminator"]!["mapping"]!.AsObject().Count);
         foreach (var variant in schemas.Where(s => s.Key.StartsWith("ChatEvent") && s.Key != "ChatEvent"))
             Assert.Contains("type", variant.Value!["required"]!.AsArray().Select(n => (string?)n));
     }
