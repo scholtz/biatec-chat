@@ -1,7 +1,7 @@
 ---
 id: T-078
 title: "Bug: persistent, shared evidence signing keys and JWKS"
-status: in-progress
+status: done
 priority: P1
 epic: "Evidence"
 blocked_by: []
@@ -123,8 +123,11 @@ Filled in by the agent when it moves the task to `review`.
 
 ## Review
 
+- 2026-10-20 04:05 · approve · PR #167 merged into main @ 3436ca2 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #1)
 - 2026-10-20 03:21 · scholtz · taken · status stays backlog
 - 2026-10-20 03:21 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 04:05 · user · in-progress → done · PR #167 merged into main @ 3436ca2 (synced by kanban-sync)
