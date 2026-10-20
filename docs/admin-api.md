@@ -120,7 +120,7 @@ Rules, enforced server-side:
 | `limitsUpdateEnabled`, `x402Enabled` | Booleans. `x402Enabled` still needs the deployment switch `X402:Enabled`. |
 | `bedrockUsdPerWindow` | 0 to 10 000; written to `bedrockBudgets.usdPerWindow`, other keys of that JSON are kept. |
 | `safeApprovalCaps.*` | Counts 0 to 10 000, EUR 0 to 1 000 000; merged into the stored JSON. |
-| `defaultModel` | An `eu.anthropic.claude-(haiku\|sonnet\|opus)-4-*` inference profile id (Claude 5 isn't available on this account); `""` clears it. Stored now; takes effect once T-085 ships (the runtime does not read it yet). |
+| `defaultModel` | An `eu.anthropic.claude-(haiku\|sonnet\|opus)-4-*` inference profile id (Claude 5 isn't available on this account); `""` clears it. Used for signed-in sessions in place of `Bedrock:AuthenticatedModelId` (`Model/TenantModels.cs`); anonymous sessions keep `Bedrock:AnonymousModelId`. |
 | `consentThresholdCeilingEur` | Read-only here: it is the deployment's ceiling, not a per-tenant knob. |
 
 The soft-cap save rule runs when the patch changes `softCapEurPerHour` or `trustAnchorVerified`. A patch of other

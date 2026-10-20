@@ -19,24 +19,26 @@ Biatec OIDC today cannot price testnet assets, has no consent (CIBA) endpoints a
 
 ## Honest status: what the repo can demonstrate today
 
-The full script needs parts that are still on the board. Check the [board](../kanban/BOARD.md) before presenting; do not claim
-a step the code cannot do.
+Every task on the [board](../kanban/BOARD.md) is merged. The limits are outside this repository: do not claim a step the
+code cannot do against the service you are pointing at.
 
-| Script area | Needs | Status when this page was written |
+| Script area | Needs | Status on `main` |
 | --- | --- | --- |
-| Sign-in in a popup, session cookie, no token in the browser | Widget popup handling, `/auth/*` | Backend built and tested against a mock OIDC; widget popup handling planned |
-| Chat that streams answers, tool use, anonymous sign-in card | Orchestrator, SSE endpoint, knowledge base | In progress / planned |
-| Previews bound to a group hash with countdown | `ActionPreviewService` | Built (library); card UI planned |
+| Sign-in in a popup, session cookie, no token in the browser | Widget popup handling, `/auth/*` | Built; works on stage against stage Biatec OIDC |
+| Chat that streams answers, tool use, anonymous sign-in card | Orchestrator, `POST /chat/messages` (SSE), `POST /public/chat`, knowledge base | Built |
+| Previews bound to a group hash with countdown | `ActionPreviewService`, preview cards | Built |
 | Scope elevation to `sign` | `/auth/elevate` | Built |
-| Confirm, sign at Biatec OIDC, submit | Confirm-and-sign task | Planned |
-| Safe create, propose, approve, execute, pool liquidity | Sidecar builders and capability executors | Builders in progress, executors planned |
-| Phone card, binding code, receipts | Authenticator, consent orchestrator, real or mock OIDC | Mock OIDC built; authenticator scaffold only; backend orchestrator planned |
-| Evidence chain, JWKS, anchoring | Evidence log, anchoring | Log, JWKS, verifier and anchoring built; export bundle and conversation wiring planned |
+| Confirm, sign at Biatec OIDC, submit | `POST /chat/previews/{previewId}/confirm` | Built |
+| Safe create, propose, approve, execute, pool liquidity | Sidecar builders and capability executors | Built |
+| Phone card, binding code, receipts | Authenticator, consent orchestrator, real or mock OIDC | Built against the mock OIDC only: real Biatec OIDC has no consent endpoints, and the authenticator has not been run on a device |
+| Evidence chain, JWKS, export, anchoring | Evidence log, `GET /session/evidence`, anchoring | Built; the bundle has no anchor inclusion proofs yet, and no testnet anchor run is recorded |
 
-What can be shown live today, without any planned part: the architecture, `GET /health`, the login and elevation flow against the
-mock OIDC, the tool gate refusing a wallet call in the anonymous tier (tests), the hash-chained evidence log and its JWKS, the
-Merkle anchor on testnet if the evidence account has been funded, and the consent protocol against the mock (receipt with device
-signature, binding code, wrong-code attempts, group-hash mismatch refused).
+What can be shown live: everything on the [demo site](demo-site.md) marked "Works" (stage backend, stage Biatec OIDC,
+testnet, no phone approval), `GET /health`, the tool gate refusing a wallet call in the anonymous tier, the hash-chained
+evidence log, its export and JWKS with the offline verifier, the Merkle anchor on testnet if the evidence account has been
+funded, and the consent protocol against the mock (receipt with device signature, binding code, wrong-code attempts,
+group-hash mismatch refused), which `pnpm --filter e2e test` runs as steps 1 to 8 of the script ([e2e/README.md](../e2e/README.md)).
+The two-phone script below needs the consent side; against stage it stops at the first above-threshold approval.
 
 ## Before the demo
 
@@ -46,11 +48,10 @@ signature, binding code, wrong-code attempts, group-hash mismatch refused).
 2. Start dependencies and the backend:
 
    ```sh
-   docker compose up -d                                   # Redis 7, PostgreSQL 16
+   docker compose up -d                                   # Redis 7, PostgreSQL 16, builders sidecar (:3100)
    dotnet run --project backend/Biatec.Chat.Api           # Development seeds the Biatec Chat and localhost tenants
    pnpm --filter mock-oidc start                          # consent side, http://127.0.0.1:8089
-   pnpm --filter @biatec/chat-widget dev                  # widget playground
-   # once T-068 lands, /dex.html shows the widget inside a Biatec DEX-like page
+   pnpm --filter @biatec/chat-widget dev                  # widget playground; /dex.html shows it in a Biatec DEX-like page
    ```
 
 3. Two browsers, two identities (Alice, Bob), two phones with the authenticator, each enrolled and activated **at least a day
@@ -91,8 +92,9 @@ Prompt counts assume "always ask". Under the later testnet-valuation mode the **
 7. Either user: "Execute the proposal." Under "always ask" the executor's phone asks once more **(extra)**. The safe executes the inner
    group atomically; the chat shows the pool position and the LP tokens held by the safe.
 8. The presenter opens the evidence export for both sessions and shows that the hash chain, the consent receipt and the on-chain
-   transaction ids line up, and verifies the signatures against `/.well-known/evidence-jwks.json`. Export bundles and the conversation
-   wiring are on the board; if they have not landed, show the verifier tests and the anchor on chain instead.
+   transaction ids line up, and verifies the signatures against `/.well-known/evidence-jwks.json` with
+   `pnpm --filter evidence-verifier build` (once), then `node packages/evidence-verifier/cli.mjs verify <bundle.json> --jwks <jwks.json>`. Each user downloads the bundle from a receipt
+   or the Activity panel (`GET /session/evidence`).
 
 ## Showcase site on stage
 
@@ -117,5 +119,5 @@ against the stage backend, one section per capability with one-click prompts, an
 | Sign-in popup loops | The tenant's client is not registered at Biatec OIDC | Operator registers it; see the required-changes doc |
 | `ThrottlingException` in the log | The team's shared 50 requests per minute | The client already backs off with jitter; wait, or switch the anonymous model to Sonnet |
 | Preview card says it cannot be confirmed | Under 600 seconds left on the group or the session | The backend rebuilds it as a new preview with a new hash; confirm again |
-| Phone shows nothing | Push is not wired yet (authenticator push task) | The mock replaces push with polling; open the pending list on the phone |
+| Phone shows nothing | Push needs the Firebase `--dart-define` options, and the mock never sends to FCM (it only records `GET /mock/push-outbox`) | Open the pending list on the phone; it polls every 5 seconds |
 | Wrong binding code three times | Rule 2: third wrong code denies the request | Start the action again |

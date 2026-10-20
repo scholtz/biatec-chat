@@ -15,8 +15,9 @@ decoding for limit enforcement.
 - **Fallback in use:** an operator adds each tenant's client (`Tenant.OidcClientId`, authorization-code grant, S256 PKCE, `resource` indicator
   `https://mcp.biatec.io/tools`, redirect URI `Tenant.RedirectUri`) to Biatec OIDC's static client list. The client secret is supplied to the
   backend as configuration `Secrets:<path of Tenant.ClientSecretRef>` (for example `Secrets__biatec-chat__oidc-client-secret`), never in the repo.
-- **Status:** the `biatec-chat` client registration is not confirmed to exist on oidc.biatec.io. `/auth/login` has been tested only against the in-repo
-  mock OIDC (`backend/Biatec.Chat.Tests/Auth/MockOidc.cs`); the stage run needs the registration first.
+- **Status:** automated tests of `/auth/login` run only against the in-repo mock OIDC (`backend/Biatec.Chat.Tests/Auth/MockOidc.cs`). Stage uses
+  the client named by the `Stage` environment's `OIDC_CLIENT_ID` at stage.oidc.biatec.io, and the demo site lists sign-in on stage as working,
+  subject to its post-deploy checks ([demo-site.md](demo-site.md)). A production registration on oidc.biatec.io is not confirmed in this repository.
 
 ## Tenant onboarding registration (T-045)
 
@@ -318,8 +319,8 @@ Here `value_eur` on the entry is the per-call value and the top-level `value_eur
   tenant's client (`Tenant.OidcClientId`, authorization-code grant, S256 PKCE, `resource` `https://mcp.biatec.io/tools`, redirect
   URI `Tenant.RedirectUri`) to Biatec OIDC's static client list. The client secret is supplied to the backend as configuration
   `Secrets:<path of Tenant.ClientSecretRef>` (for example `Secrets__biatec-chat__oidc-client-secret`), never in the repo.
-- **Status (T-009):** the `biatec-chat` registration is not confirmed to exist on oidc.biatec.io. `/auth/login` has been tested only
-  against the in-repo mock OIDC (`backend/Biatec.Chat.Tests/Auth/MockOidc.cs`); the stage run needs the registration first.
+- **Status:** as at the top of this file: automated tests run against the in-repo mock OIDC only; stage uses the `OIDC_CLIENT_ID` client at
+  stage.oidc.biatec.io ([cicd.md](cicd.md#secrets)); a production registration on oidc.biatec.io is not confirmed in this repository.
 - **Registration request for the Biatec Chat tenant, once the consent protocol ships** (RFC 7591; sent by an operator, or accepted by a future confidential
   registration endpoint; secret values are never committed):
 

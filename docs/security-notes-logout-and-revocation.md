@@ -8,7 +8,8 @@ Logout (`GET /auth/logout`), the idle sweep and the absolute-lifetime sweep all 
 
 1. Read the refresh token (and, for logout, the ID token) from the vault into memory.
 2. Revoke the refresh token at Biatec OIDC (RFC 7009, `Oidc:Revocation:Url`). If that is not possible, park the token
-   encrypted (vault KMS key) in `PendingRevocation`.
+   encrypted with the vault's key provider (`Vault:KeyProvider`: `Secret` in stage and production, `Kms` or `Dev`
+   elsewhere) in `PendingRevocation`.
 3. Delete the vault entry, then the `ChatSession` row.
 4. Logout only: clear the `__Host-biatec_session` cookie and redirect to `/connect/endsession` with `id_token_hint`.
 

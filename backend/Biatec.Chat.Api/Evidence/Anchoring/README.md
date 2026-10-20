@@ -29,7 +29,7 @@
   lost (and the broadcaster drops its `_submitted` entry). After a restart the broadcaster does not know the transaction;
   the attempt then stays pending until `UnknownGrace` (5 min) after its creation.
 
-## Integration points for T-036 and the chat flow (must adopt)
+## Integration points for the chat flow and the export bundle
 
 - Chat flow: first entry of a conversation via `AnchoredEvidenceWriter.AppendFirstAsync`; the first entry after the
   conversation was dropped from ticks via `ResumeIfDroppedAsync`; closing a conversation via `EndAsync`. Entries appended
@@ -39,16 +39,19 @@
 
 ## Wired vs deferred
 
-Open acceptance criteria (not ticked, do not tick until done): a recorded testnet run, calling `AnchoredEvidenceWriter` from the
-conversation flow, and embedding `AnchorExporter` output in the export bundle with an end-to-end test (hand-off to T-036).
-
 Tick cost: a tick only reads conversations with an entry since a cutoff reaching back past the last confirmed anchor, not all history.
 
-Wired: tick job, broadcaster, gap handling, exporter and verifier. Not yet called from the conversation flow:
-`AnchoredEvidenceWriter.AppendFirstAsync / ResumeIfDroppedAsync / EndAsync`, and the evidence bundle integration (T-036).
-A testnet run is not recorded: it needs a funded evidence account, which this environment does not have. The broadcaster is
-covered against a fake Algod (transaction shape, idempotent retry, expiry). To run on testnet: set
-`Evidence__Anchoring__Enabled=true`, `Evidence__Anchoring__AccountMnemonic` (secret store), and fund the account from the testnet dispenser.
+Wired: tick job, broadcaster, gap handling, exporter and verifier, and the first entry of every conversation:
+`EvidenceRecorder` (`Evidence/Recording/`, T-035) calls `AnchoredEvidenceWriter.AppendFirstAsync` for a conversation's
+first entry, so it carries `anchorRef`. The anchoring job runs in stage and production (`k8s/base/backend.yaml`,
+`Evidence__Anchoring__Enabled: "true"`, testnet) once the evidence-account secret exists (k8s/README.md).
+
+Not wired yet: `ResumeIfDroppedAsync` and `EndAsync` are not called from the conversation flow (so there are no `resume`
+entries or `end` markers), and the export bundle (`Evidence/Export/EvidenceBundleBuilder.cs`, T-036) carries each entry's
+`anchorRef` but not `AnchorExporter`'s anchors and inclusion proofs. A testnet run is not recorded in this repository. The
+broadcaster is covered against a fake Algod (transaction shape, idempotent retry, expiry). To run on testnet: set
+`Evidence__Anchoring__Enabled=true`, `Evidence__Anchoring__AccountMnemonic` (secret store), and fund the account from the
+testnet dispenser.
 
 ## anchorRef (T-081)
 

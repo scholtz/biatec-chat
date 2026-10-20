@@ -98,6 +98,7 @@ Vue, vue-i18n, the icons and the CSS included.
 | `mode` | `floating` | `floating`, `workspace`, or `inline` (Vue `BiatecChatInline` only) |
 | `suggestions` | `default` | Sample prompts, or your own list |
 | `pageContext` | none | Opt-in description of the page; nothing is read from your page otherwise |
+| `autoMount` | `true` | Vue plugin: `false` provides the options only, with no floating widget; mount `BiatecChatInline` yourself |
 
 Restyle through CSS custom properties on `[data-biatec-chat-host]`, for example `--bc-offset-bottom`, `--bc-z`,
 `--color-brand-primary`.
