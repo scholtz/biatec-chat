@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json.Nodes;
+using Biatec.Chat.Tools.Mcp;
 
 namespace Biatec.Chat.Tools.Safe.Proposals;
 
@@ -56,7 +57,7 @@ public sealed record SafeProposeRequest(
     ulong? AmountB = null,
     SafeAdminRequest? Admin = null)
 {
-    public string StepNetwork => "algorand-" + Network;
+    public string StepNetwork => McpNetworks.Algorand(Network);
 
     public string KindName => Kind switch
     {
@@ -100,5 +101,5 @@ public sealed record SafeProposeRequest(
 /// <summary>An approval or execution of proposal <see cref="ProposalId"/>, signed by <see cref="From"/> (one of the user's own addresses).</summary>
 public sealed record SafeProposalActionRequest(string Network, string From, ulong SafeAppId, ulong ProposalId, ulong? ExpectedPayloadVersion = null)
 {
-    public string StepNetwork => "algorand-" + Network;
+    public string StepNetwork => McpNetworks.Algorand(Network);
 }

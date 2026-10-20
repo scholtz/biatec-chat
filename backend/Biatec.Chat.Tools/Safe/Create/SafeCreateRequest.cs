@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Biatec.Chat.Tools.Mcp;
 
 namespace Biatec.Chat.Tools.Safe.Create;
 
@@ -14,7 +15,7 @@ public sealed record SafeCreateRequest(string Network, string From, string Name,
     /// <summary>The name of the initial signer group.</summary>
     public const string GroupName = "Signers";
 
-    public string StepNetwork => "algorand-" + Network;
+    public string StepNetwork => McpNetworks.Algorand(Network);
 
     public bool SameAs(SafeCreateRequest o) =>
         Network == o.Network && From == o.From && Name == o.Name && Threshold == o.Threshold
