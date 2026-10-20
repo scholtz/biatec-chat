@@ -11,7 +11,7 @@ conflicts_with: [T-083]
 issue: "#149"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#action-preview"
 created: 2026-10-20
 updated: 2026-10-20
@@ -119,3 +119,4 @@ Filled in by the agent when it moves the task to `review`.
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #3)
+- 2026-10-20 03:01 · LukassSoukup · taken · status stays backlog
