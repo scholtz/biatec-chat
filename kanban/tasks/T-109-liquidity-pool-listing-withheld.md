@@ -145,4 +145,4 @@ above with logs showing no `Guardrail withheld` line.
 - 2026-10-20 12:00 · coordinator · (new) → backlog · created from demo testing (add-liquidity result withheld)
 - 2026-10-20 10:07 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 10:20 · session-20261020-1007 · backlog → in-progress · claimed in session
-- 2026-10-20 10:37 · session-20261020-1007 · in-progress → review · PR #233, full suite green, review fixes applied\n
+- 2026-10-20 10:37 · session-20261020-1007 · in-progress → review · PR #233, full suite green, review fixes applied
