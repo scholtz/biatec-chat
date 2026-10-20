@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { t } from "../i18n";
+import { chipVar } from "./chipColors";
 
 /**
  * Biatec AI chip mark (docs/design/biatec-ai-widget/assets). `small` drops the pins and is used up to 24 px;
@@ -12,8 +13,8 @@ const props = withDefaults(defineProps<{ size?: number; variant?: "default" | "s
 });
 const small = computed(() => props.variant === "small" || (props.variant === "default" && props.size <= 24));
 const mono = computed(() => props.variant === "mono-dark");
-const chip = computed(() => (mono.value ? "var(--color-brand-on)" : "var(--color-brand-primary)"));
-const ink = computed(() => (mono.value ? "var(--color-brand-primary)" : "var(--color-brand-on)"));
+const chip = computed(() => (mono.value ? chipVar.on : chipVar.primary));
+const ink = computed(() => (mono.value ? chipVar.primary : chipVar.on));
 </script>
 
 <template>
@@ -34,7 +35,7 @@ const ink = computed(() => (mono.value ? "var(--color-brand-primary)" : "var(--c
     <template v-else>
       <path
         d="M24 3.5V12M32 3.5V12M40 3.5V12M24 52V60.5M32 52V60.5M40 52V60.5M3.5 24H12M3.5 32H12M3.5 40H12M52 24H60.5M52 32H60.5M52 40H60.5"
-        :stroke="mono ? chip : 'var(--color-text-secondary)'"
+        :stroke="mono ? chip : chipVar.pins"
         stroke-width="3.8"
         stroke-linecap="round"
       />

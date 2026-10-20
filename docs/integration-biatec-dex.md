@@ -103,8 +103,13 @@ promise of what happened, which the DEX can turn into a toast:
 | `'empty'` | The prompt was blank |
 | `'unavailable'` | No widget is mounted (or `mode: 'inline'` without a `BiatecChatInline`); nothing was sent |
 
-The design puts the Biatec AI chip (16 px) next to the label. The package does not export the chip yet, so use a
-primeicon (the playground uses `pi pi-comments`) until it does.
+The design puts the Biatec AI chip (16 px) next to the label. The package exports it as `BiatecAiChip`; it works
+outside the widget root (its colours fall back to the Biatec green and ink), and the DEX can override them with
+`--color-brand-primary`, `--color-brand-on` and `--color-text-secondary` on an ancestor:
+
+```vue
+<template #icon><BiatecAiChip :size="16" /></template>
+```
 
 ### 5. Optional inline mode
 

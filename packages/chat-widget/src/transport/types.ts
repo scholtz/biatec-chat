@@ -52,4 +52,14 @@ export const PATHS = {
   publicOrigin: "/public/origin",
   /** Cookie endpoint that adopts an anonymous public conversation into the cookie session. */
   adopt: "/session/adopt",
+  /** GET: the signed evidence bundle of the session's own conversation (Content-Disposition: attachment). */
+  evidence: "/session/evidence",
 } as const;
+
+/**
+ * Link target for the "Download evidence" link (ReceiptCard `evidenceUrl`). A plain navigation is enough: the session
+ * cookie travels with it and the backend answers with an attachment, so no token or script is involved.
+ */
+export function evidenceDownloadUrl(backendUrl: string): string {
+  return backendUrl.replace(/\/+$/, "") + PATHS.evidence;
+}
