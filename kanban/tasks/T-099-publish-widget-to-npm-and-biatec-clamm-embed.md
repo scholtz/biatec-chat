@@ -11,7 +11,7 @@ conflicts_with: []
 issue: "#203"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#components"
 created: 2026-10-20
 updated: 2026-10-20
@@ -100,3 +100,4 @@ tarball in scratch Vite-Vue, Vite-React and Docusaurus apps; `actionlint .github
 ## Activity log
 
 - 2026-10-20 07:10 · coordinator · (new) → backlog · created on the user's request (npm publish + BiatecCLAMM embed); no existing task covered it (T-068, T-071 list npm publishing as out of scope)
+- 2026-10-20 07:17 · LukassSoukup · taken · status stays backlog

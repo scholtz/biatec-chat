@@ -11,7 +11,7 @@ conflicts_with: []
 issue: "#204"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#demonstration-script"
 created: 2026-10-20
 updated: 2026-10-20
@@ -96,3 +96,4 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
 ## Activity log
 
 - 2026-10-20 07:10 · coordinator · (new) → backlog · created on the user's request (showcase demo on stage); no existing task covered it (T-059 is a test, T-068 a dev-only playground)
+- 2026-10-20 07:17 · LukassSoukup · taken · status stays backlog
