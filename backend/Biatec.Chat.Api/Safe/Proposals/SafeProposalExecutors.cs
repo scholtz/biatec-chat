@@ -5,6 +5,7 @@ using Biatec.Chat.Api.Contracts;
 using Biatec.Chat.Api.Orchestration;
 using Biatec.Chat.Api.Wallet.Transfer;
 using Biatec.Chat.Core.Previews;
+using Biatec.Chat.Tools.Algod;
 using Biatec.Chat.Tools.Builders;
 using Biatec.Chat.Tools.Dex.Liquidity;
 using Biatec.Chat.Tools.Mcp;
@@ -280,49 +281,18 @@ public static class SafeProposalCard
     }
 }
 
-/// <summary>Algod read of what an account holds of one asset (the safe's holdings for "deposit everything").</summary>
-public sealed class AlgodSafeHoldingsReader(IHttpClientFactory http, IOptions<Config.AlgodOptions> algod) : ISafeHoldingsReader
+/// <summary>
+/// The safe proposal card's algod reads (holdings for "deposit everything", decimals and unit names), delegated to the
+/// shared, cached <see cref="IAlgodAssetReader"/> the transfer preview uses. The service passes the plain network
+/// name (<c>testnet</c>); the reader is keyed by the step network (<c>algorand-testnet</c>, <see cref="McpNetworks.Algorand"/>).
+/// </summary>
+public sealed class AlgodSafeHoldingsReader(IAlgodAssetReader assets) : ISafeHoldingsReader
 {
-    public const string HttpClientName = "algod-safe-holdings";
+    public async Task<SafeAssetInfo?> AssetInfoAsync(string network, ulong assetId, CancellationToken ct = default) =>
+        await assets.GetAssetAsync(McpNetworks.Algorand(network), assetId, ct) is { } a ? new SafeAssetInfo(a.Decimals, a.UnitName) : null;
 
-    public async Task<SafeAssetInfo?> AssetInfoAsync(string network, ulong assetId, CancellationToken ct = default)
-    {
-        if (!algod.Value.Networks.TryGetValue(network, out var net)) return null;
-        try
-        {
-            using var req = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(net.Url.TrimEnd('/') + "/"), $"v2/assets/{assetId.ToString(CultureInfo.InvariantCulture)}"));
-            if (!string.IsNullOrEmpty(net.Token)) req.Headers.TryAddWithoutValidation("X-Algo-API-Token", net.Token);
-            using var res = await http.CreateClient(HttpClientName).SendAsync(req, ct);
-            if (!res.IsSuccessStatusCode) return null;
-            using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
-            if (!doc.RootElement.TryGetProperty("params", out var p) || !p.TryGetProperty("decimals", out var d) || !d.TryGetInt32(out var decimals)) return null;
-            return new SafeAssetInfo(decimals, p.TryGetProperty("unit-name", out var u) && u.ValueKind == JsonValueKind.String ? u.GetString() : null);
-        }
-        catch (Exception e) when ((e is HttpRequestException or JsonException or TaskCanceledException or UriFormatException) && !ct.IsCancellationRequested)
-        {
-            return null;
-        }
-    }
-
-    public async Task<ulong?> AssetAmountAsync(string network, string address, ulong assetId, CancellationToken ct = default)
-    {
-        if (!algod.Value.Networks.TryGetValue(network, out var net)) return null;
-        try
-        {
-            var path = $"v2/accounts/{Uri.EscapeDataString(address)}/assets/{assetId.ToString(CultureInfo.InvariantCulture)}";
-            using var req = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(net.Url.TrimEnd('/') + "/"), path));
-            if (!string.IsNullOrEmpty(net.Token)) req.Headers.TryAddWithoutValidation("X-Algo-API-Token", net.Token);
-            using var res = await http.CreateClient(HttpClientName).SendAsync(req, ct);
-            if (res.StatusCode == System.Net.HttpStatusCode.NotFound) return 0; // not opted in
-            if (!res.IsSuccessStatusCode) return null;
-            using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
-            return doc.RootElement.TryGetProperty("asset-holding", out var h) && h.TryGetProperty("amount", out var a) && a.TryGetUInt64(out var v) ? v : null;
-        }
-        catch (Exception e) when ((e is HttpRequestException or JsonException or TaskCanceledException or UriFormatException) && !ct.IsCancellationRequested)
-        {
-            return null;
-        }
-    }
+    public async Task<ulong?> AssetAmountAsync(string network, string address, ulong assetId, CancellationToken ct = default) =>
+        (await assets.GetAccountAssetAsync(McpNetworks.Algorand(network), address, assetId, ct))?.Amount;
 }
 
 public static class SafeProposalRegistration
@@ -330,7 +300,7 @@ public static class SafeProposalRegistration
     /// <summary>
     /// Registers safe.propose, safe.approve and safe.execute when a builder sidecar is configured
     /// (<c>Builders:BaseAddress</c>); without one the capabilities have no executor and the orchestrator reports them
-    /// unavailable. Needs AddSafeCreateTools (ISafeBuilder) and AddConfirm.
+    /// unavailable. Needs AddSafeCreateTools (ISafeBuilder), AddConfirm and AddWalletTransferTools (the algod asset reader).
     /// </summary>
     public static IServiceCollection AddSafeProposalTools(this IServiceCollection services, IConfiguration configuration)
     {
@@ -338,8 +308,10 @@ public static class SafeProposalRegistration
         services.AddBuildersClient(configuration);
         services.AddOptions<SafeProposalOptions>().BindConfiguration(SafeProposalOptions.Section);
         services.TryAddSingleton(sp => sp.GetRequiredService<IOptions<SafeProposalOptions>>().Value);
-        services.AddHttpClient(AlgodSafeHoldingsReader.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
-        services.TryAddSingleton<ISafeHoldingsReader, AlgodSafeHoldingsReader>();
+        // The shared asset reader: a registered IAlgodAssetReader, else the one the algod factory (AddWalletTransferTools) holds.
+        services.TryAddSingleton<ISafeHoldingsReader>(sp => new AlgodSafeHoldingsReader(
+            sp.GetService<IAlgodAssetReader>() ?? sp.GetRequiredService<AlgodClientFactory>().Assets
+            ?? throw new InvalidOperationException("No algod asset reader is configured.")));
         services.TryAddSingleton<ISafeBuilder, SafeBuilder>();
         services.TryAddSingleton<ILiquidityBuilder, LiquidityBuilder>();
         services.TryAddSingleton<ISafeProposalBuilder, SafeProposalBuilder>();
