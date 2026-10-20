@@ -1,7 +1,7 @@
 ---
 id: T-098
 title: "Onboarding: record operator tenant approvals in the admin evidence chain"
-status: review
+status: done
 priority: P3
 epic: "Sessions & auth"
 blocked_by: [T-097]
@@ -60,6 +60,8 @@ files.
 
 ## Review
 
+- 2026-10-20 07:15 · approve · PR #205 merged into main @ c4066a6 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 09:20 · coordinator · (new) → blocked · proposed by T-097
@@ -67,3 +69,4 @@ files.
 - 2026-10-20 07:00 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 07:00 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 07:15 · coordinator · in-progress → review · PR #205
+- 2026-10-20 07:15 · user · review → done · PR #205 merged into main @ c4066a6 (synced by kanban-sync)
