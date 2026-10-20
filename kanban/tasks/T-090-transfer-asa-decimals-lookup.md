@@ -1,7 +1,7 @@
 ---
 id: T-090
 title: "Bug: transfer preview must look up ASA decimals and unit name (real MCP balances carry none)"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Wallet tools"
 blocked_by: [T-089]
@@ -9,8 +9,8 @@ area: ["backend/Biatec.Chat.Tools/Wallet/Transfer/**", "backend/Biatec.Chat.Tool
 parallel: yes
 conflicts_with: []
 issue: "#170"
-branch: ""
-owner: ""
+branch: "task/T-090"
+owner: "worker-T-090"
 taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#capabilities-and-intents"
 created: 2026-10-20
@@ -63,3 +63,4 @@ files.
 - 2026-10-20 05:50 · coordinator · (new) → blocked · proposed by T-089
 - 2026-10-20 04:00 · kanban-board · blocked → backlog · blockers done: T-089
 - 2026-10-20 04:00 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 04:00 · coordinator · backlog → in-progress · dispatched to worker
