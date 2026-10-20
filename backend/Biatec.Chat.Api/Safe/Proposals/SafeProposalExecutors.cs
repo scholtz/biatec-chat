@@ -206,9 +206,13 @@ public static class SafeProposalCard
                 var amount = e.TryGetProperty("amount", out var am) ? am.GetString() : null;
                 if (type is not ("payment" or "assetTransfer") || amount is null or "0") continue;
                 var asset = type == "payment" ? "0" : e.TryGetProperty("assetId", out var a) ? a.GetString() ?? "?" : "?";
+                // Decimals and unit name as algod reported them at build time; an asset that could not be read shows base units.
+                var info = asset != "0" && c.TryGetProperty("assetInfo", out var ai) && ai.TryGetProperty(asset, out var i) ? i : default;
+                var decimals = asset == "0" ? 6 : info.ValueKind == JsonValueKind.Object && info.TryGetProperty("decimals", out var d) && d.TryGetInt32(out var dv) ? dv : 0;
+                var unit = info.ValueKind == JsonValueKind.Object && info.TryGetProperty("unitName", out var u) && u.ValueKind == JsonValueKind.String ? u.GetString() : null;
                 assets.Add(new AssetAmount
                 {
-                    AssetId = asset == "0" ? "ALGO" : asset, Symbol = asset == "0" ? "ALGO" : "ASA " + asset, Amount = amount, Decimals = asset == "0" ? 6 : 0,
+                    AssetId = asset == "0" ? "ALGO" : asset, Symbol = asset == "0" ? "ALGO" : unit ?? "ASA " + asset, Amount = amount, Decimals = decimals,
                 });
             }
 
@@ -223,6 +227,10 @@ public static class SafeProposalCard
         };
         var lines = payload.ValueKind == JsonValueKind.Array ? SafeProposalService.PayloadSummary(JsonNode.Parse(payload.GetRawText())!.AsArray()) : "";
         var step = snap.Steps.OrderBy(s => s.Seq).Last();
+        var warnings = c.TryGetProperty("warnings", out var w) && w.ValueKind == JsonValueKind.Array
+            ? w.EnumerateArray().Select(x => x.GetString()).Where(x => !string.IsNullOrEmpty(x)).ToList()
+            : [];
+        var warningText = warnings.Count == 0 ? null : "WARNING: " + string.Join(" WARNING: ", warnings);
         var simulation = S("simulation");
         return new Contracts.ActionPreview
         {
@@ -238,17 +246,23 @@ public static class SafeProposalCard
                 {
                     StepId = step.Id.ToString(), Index = 0, Title = title, Status = TransferCard.StepState(step.Status), GroupHash = step.SubjectHash,
                     From = S("sender"), To = $"Biatec Safe {S("safeAppId")} ({S("safeAddress")})", Assets = assets, FeeAmount = Fee(step),
-                    SimulationSummary = string.Join(" · ", new[] { simulation, note, "Payload: " + lines }.Where(x => !string.IsNullOrEmpty(x))),
+                    SimulationSummary = string.Join(" · ", new[] { warningText, simulation, note, "Payload: " + lines }.Where(x => !string.IsNullOrEmpty(x))),
                     TransactionId = step.TxIds.Length > 0 ? step.TxIds[0] : null,
                 },
             ],
             ExpectsAuthenticatorApproval = snap.Preview.PredictedNeedsConsent,
-            ApprovalReason = capability switch
+            ApprovalReason = string.Join(" ", new[]
             {
-                SafeProposalService.Approve => "Your approval authorizes the safe to send this payload, so Biatec OIDC values it at the payload.",
-                SafeProposalService.Execute => "Valued at zero (every approver consented to this payload); Biatec OIDC may still ask for phone approval.",
-                _ => null,
-            },
+                warningText,
+                capability switch
+                {
+                    SafeProposalService.Approve => "Your approval authorizes the safe to send this payload, so Biatec OIDC values it at the payload.",
+                    SafeProposalService.Execute => "Valued at zero (every approver consented to this payload); Biatec OIDC may still ask for phone approval.",
+                    _ => c.TryGetProperty(SafeProposalService.RequireConsentField, out var rc) && rc.ValueKind == JsonValueKind.True
+                        ? "This signer group needs only 1 approval, so proposing authorizes the spend: your phone approval is requested."
+                        : null,
+                },
+            }.Where(x => !string.IsNullOrEmpty(x))) is { Length: > 0 } reason ? reason : null,
             ExpiresAt = snap.Preview.ExpiresAt,
         };
     }
@@ -270,6 +284,25 @@ public static class SafeProposalCard
 public sealed class AlgodSafeHoldingsReader(IHttpClientFactory http, IOptions<Config.AlgodOptions> algod) : ISafeHoldingsReader
 {
     public const string HttpClientName = "algod-safe-holdings";
+
+    public async Task<SafeAssetInfo?> AssetInfoAsync(string network, ulong assetId, CancellationToken ct = default)
+    {
+        if (!algod.Value.Networks.TryGetValue(network, out var net)) return null;
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(net.Url.TrimEnd('/') + "/"), $"v2/assets/{assetId.ToString(CultureInfo.InvariantCulture)}"));
+            if (!string.IsNullOrEmpty(net.Token)) req.Headers.TryAddWithoutValidation("X-Algo-API-Token", net.Token);
+            using var res = await http.CreateClient(HttpClientName).SendAsync(req, ct);
+            if (!res.IsSuccessStatusCode) return null;
+            using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
+            if (!doc.RootElement.TryGetProperty("params", out var p) || !p.TryGetProperty("decimals", out var d) || !d.TryGetInt32(out var decimals)) return null;
+            return new SafeAssetInfo(decimals, p.TryGetProperty("unit-name", out var u) && u.ValueKind == JsonValueKind.String ? u.GetString() : null);
+        }
+        catch (Exception e) when ((e is HttpRequestException or JsonException or TaskCanceledException or UriFormatException) && !ct.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
 
     public async Task<ulong?> AssetAmountAsync(string network, string address, ulong assetId, CancellationToken ct = default)
     {

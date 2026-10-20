@@ -44,7 +44,8 @@ public sealed class SafeProposalFlowTests : IAsyncLifetime
     private static readonly JsonElement Fx = ProposalFixture.Load();
     private const ulong AppId = 777;
     private const ulong Pool = 600;
-    private const ulong Provider = 500;
+    private static readonly BiatecDexApps Apps = BiatecDexApps.For("testnet")!;
+    private static readonly ulong Provider = Apps.PoolProviderAppId;
     private const ulong AssetA = 31566704;
     private const ulong AssetB = 10458941;
     private const ulong Lp = 900;
@@ -118,6 +119,8 @@ public sealed class SafeProposalFlowTests : IAsyncLifetime
     private sealed class FakeHoldings : ISafeHoldingsReader
     {
         public readonly Dictionary<ulong, ulong> Amounts = new();
+        public readonly Dictionary<ulong, SafeAssetInfo> Info = new() { [AssetA] = new(6, "EURS"), [AssetB] = new(6, "USDC\u0007") };
+        public Task<SafeAssetInfo?> AssetInfoAsync(string network, ulong assetId, CancellationToken ct = default) => Task.FromResult(Info.GetValueOrDefault(assetId));
         public Task<ulong?> AssetAmountAsync(string network, string address, ulong assetId, CancellationToken ct = default) =>
             Task.FromResult<ulong?>(address == SafeAddress ? Amounts.GetValueOrDefault(assetId) : null);
     }
@@ -151,6 +154,12 @@ public sealed class SafeProposalFlowTests : IAsyncLifetime
         /// <summary>Makes the propose call pay this receiver instead of the requested one (a lying builder).</summary>
         public string? Tamper;
         public (JsonElement Params, string Hash, JsonArray Payload, string Kind)? LastPropose;
+        /// <summary>The signer groups of the safe: (id, threshold, allowed actions).</summary>
+        public List<(string Id, int Threshold, string[] Actions)> Groups = [("1", 2, ["payment", "assetTransfer", "appCall"])];
+        /// <summary>The pool's asset A (0 makes it an ALGO pool).</summary>
+        public ulong PoolAssetA = AssetA;
+        /// <summary>Makes the pool call in the liquidity payload a different method.</summary>
+        public bool WrongPoolMethod;
 
         public Task<bool> IsHealthyAsync(CancellationToken ct = default) => Task.FromResult(true);
 
@@ -239,11 +248,11 @@ public sealed class SafeProposalFlowTests : IAsyncLifetime
                     safes.Add(new JsonObject
                     {
                         ["appId"] = AppId.ToString(), ["address"] = SafeAddress, ["name"] = "Team Safe", ["paused"] = false,
-                        ["groups"] = new JsonArray(new JsonObject
+                        ["groups"] = new JsonArray(Groups.Select(g => (JsonNode?)new JsonObject
                         {
-                            ["id"] = "1", ["name"] = "Signers", ["threshold"] = 2, ["memberCount"] = Members.Count,
-                            ["allowedActions"] = new JsonArray("payment", "assetTransfer", "appCall"), ["isAdminGroup"] = true, ["membershipEpoch"] = 1,
-                        }),
+                            ["id"] = g.Id, ["name"] = "Signers " + g.Id, ["threshold"] = g.Threshold, ["memberCount"] = Members.Count,
+                            ["allowedActions"] = new JsonArray(g.Actions.Select(a => (JsonNode?)JsonValue.Create(a)).ToArray()), ["isAdminGroup"] = true, ["membershipEpoch"] = 1,
+                        }).ToArray()),
                     });
                 data = new JsonObject { ["member"] = member, ["safes"] = safes, ["skipped"] = new JsonArray() };
             }
@@ -264,13 +273,15 @@ public sealed class SafeProposalFlowTests : IAsyncLifetime
         {
             Assert.Equal("clamm.pools.list", query);
             var p = JsonSerializer.SerializeToElement(parameters);
-            Assert.Equal(SafeAddress, p.GetProperty("account").GetString()); // the safe's class decides, not the user's
+            // The safe's class decides, not the user's (the execution's pool lookup names no account).
+            if (p.TryGetProperty("account", out var acct)) Assert.Equal(SafeAddress, acct.GetString());
             var pool = new JsonObject
             {
-                ["appId"] = Pool.ToString(), ["assetA"] = AssetA.ToString(), ["assetB"] = AssetB.ToString(), ["lpTokenId"] = Lp.ToString(), ["feePercent"] = "0.1",
+                ["appId"] = Pool.ToString(), ["assetA"] = PoolAssetA.ToString(), ["assetB"] = AssetB.ToString(), ["lpTokenId"] = Lp.ToString(), ["feePercent"] = "0.1",
                 ["priceMin"] = "900000000", ["priceMax"] = "1100000000", ["currentPrice"] = "1000000000", ["liquidity"] = "5000000", ["verificationClass"] = 0,
             };
-            var data = new JsonObject { ["pools"] = new JsonArray(pool), ["excluded"] = new JsonArray(), ["accountVerificationClass"] = 0 };
+            var isPool = !p.TryGetProperty("poolAppId", out var id) || id.GetString() == Pool.ToString();
+            var data = new JsonObject { ["pools"] = isPool ? new JsonArray(pool) : new JsonArray(), ["excluded"] = new JsonArray(), ["accountVerificationClass"] = 0 };
             return Task.FromResult(JsonDocument.Parse(data.ToJsonString()).RootElement.Clone());
         }
 
@@ -316,14 +327,20 @@ public sealed class SafeProposalFlowTests : IAsyncLifetime
         };
 
         /// <summary>The group biatec-concentrated-liquidity-amm builds for the safe, as algo-safe stores it.</summary>
-        private static List<SafePayloadEntry> Liquidity(JsonElement l) =>
-        [
-            SafePayloadEntry.Axfer(Lp, SafeAddress, 0),
-            new(SafeTxType.AppCall, AppId: Provider, AppArgs: [[1, 2, 3, 4]], Accounts: [], ForeignApps: [], ForeignAssets: []),
-            SafePayloadEntry.Axfer(AssetA, PoolAddress, ulong.Parse(l.GetProperty("amountA").GetString()!)),
-            SafePayloadEntry.Axfer(AssetB, PoolAddress, ulong.Parse(l.GetProperty("amountB").GetString()!)),
-            new(SafeTxType.AppCall, AppId: Pool, AppArgs: [[9, 9, 9, 9]], Accounts: [], ForeignApps: [Provider], ForeignAssets: [AssetA, AssetB, Lp]),
-        ];
+        private List<SafePayloadEntry> Liquidity(JsonElement l)
+        {
+            var amountA = ulong.Parse(l.GetProperty("amountA").GetString()!);
+            return
+            [
+                SafePayloadEntry.Axfer(Lp, SafeAddress, 0),
+                new(SafeTxType.AppCall, AppId: Provider, AppArgs: [BiatecDexApps.ProviderNoop, U64(1)], Accounts: [], ForeignApps: [], ForeignAssets: []),
+                PoolAssetA == 0 ? SafePayloadEntry.Pay(PoolAddress, amountA) : SafePayloadEntry.Axfer(PoolAssetA, PoolAddress, amountA),
+                SafePayloadEntry.Axfer(AssetB, PoolAddress, ulong.Parse(l.GetProperty("amountB").GetString()!)),
+                new(SafeTxType.AppCall, AppId: Pool,
+                    AppArgs: [WrongPoolMethod ? [1, 2, 3, 4] : BiatecDexApps.AddLiquidity, U64(Apps.ConfigAppId), U64(Apps.IdentityAppId), U64(PoolAssetA), U64(AssetB), U64(Lp)],
+                    Accounts: [], ForeignApps: [Provider], ForeignAssets: [PoolAssetA, AssetB, Lp]),
+            ];
+        }
 
         /// <summary>The payload as the sidecar's describePayload reads it back from the chain (a note written by the proposer included).</summary>
         private static JsonArray Chain(IReadOnlyList<SafePayloadEntry> entries) => new(entries.Select(e => (JsonNode?)(e.TxType switch
@@ -515,12 +532,12 @@ public sealed class SafeProposalFlowTests : IAsyncLifetime
         Assert.Equal(card1.Steps[0].GroupHash, Convert.ToHexStringLower(sign1.GroupId));
         var proposal = _sidecar.LandPropose();
 
-        // Asking again finds the proposal on chain by its payload hash and proposer; nothing is built twice.
+        // Asking again after it landed is a new proposal (a landed preview is never reused), with a note to the model.
         var again = await Run(_propose, _alice, ProposeArgs(_alice, "optIn", new JsonObject { ["assetIds"] = new JsonArray(AssetA, AssetB) }));
-        Assert.Equal("landed", Status(again));
-        Assert.Equal(proposal.Id.ToString(), Json(again)["proposalId"]!.GetValue<string>());
-        Assert.Equal("1 of 2 approvals", Json(again)["progress"]!.GetValue<string>());
-        Assert.Single(_sidecar.Builds);
+        Assert.Equal("awaiting_user_confirmation", Status(again));
+        Assert.NotEqual(card1.PreviewId, Card(again).PreviewId);
+        Assert.Contains("identical proposal already landed", Json(again)["instruction"]!.GetValue<string>());
+        Assert.Equal(2, _sidecar.Builds.Count);
 
         // Alice's approval is already recorded with her proposal: approving again is not offered.
         var self = await Run(_approve, _alice, ActionArgs(_alice, proposal.Id, 1));
@@ -541,8 +558,9 @@ public sealed class SafeProposalFlowTests : IAsyncLifetime
         Assert.Equal(_bob.Bearer, _oidc.Calls[^1].Bearer);
         _sidecar.LandApprove(proposal.Id, _bob.Address);
 
-        // Bob executes it: valued at zero, the safe sends the opt-ins.
+        // Bob executes it: valued at zero, the safe sends the opt-ins. No pool calls, so no extra fee allowance.
         var r3 = await Run(_execute, _bob, ActionArgs(_bob, proposal.Id));
+        Assert.Equal(0, _sidecar.Builds[^1].Params.GetProperty("poolAppIds").GetArrayLength());
         Assert.False(r3.IsError, r3.Content);
         var card3 = Card(r3);
         Assert.Equal("safe.execute", card3.Capability);
@@ -575,6 +593,9 @@ public sealed class SafeProposalFlowTests : IAsyncLifetime
         Assert.Contains($"Biatec DEX pool {Pool}", card1.Intent);
         Assert.Contains("fee 0.1 %", card1.Intent);
         Assert.Equal([AssetA.ToString(), AssetB.ToString()], card1.Steps[0].Assets.Select(a => a.AssetId));
+        // Decimals and unit names from algod; a unit name is cleaned chain text.
+        Assert.All(card1.Steps[0].Assets, a => Assert.Equal(6, a.Decimals));
+        Assert.Equal(["EURS", "USDC"], card1.Steps[0].Assets.Select(a => a.Symbol));
         Assert.All(card1.Steps[0].Assets, a => Assert.Equal("2000000000", a.Amount));
         Assert.Contains($"call application {Pool}", card1.Steps[0].SimulationSummary);
         Assert.Equal("2000000000", _sidecar.Builds.Single().Params.GetProperty("liquidity").GetProperty("amountA").GetString());
@@ -607,6 +628,8 @@ public sealed class SafeProposalFlowTests : IAsyncLifetime
         var r3 = await Run(_execute, _alice, ActionArgs(_alice, proposal.Id));
         var card3 = Card(r3);
         Assert.False(card3.ExpectsAuthenticatorApproval);
+        // The pool call (checked against the pool registry) is the only one given the inner-fee allowance.
+        Assert.Equal([Pool.ToString()], _sidecar.Builds[^1].Params.GetProperty("poolAppIds").EnumerateArray().Select(x => x.GetString()));
         _oidc.StepUpFor.Add(_alice.Bearer);
         var c3 = await ConfirmAsync(_alice, card3);
         Assert.Equal(ConfirmOutcome.ConsentPending, c3.Outcome);
@@ -752,5 +775,136 @@ public sealed class SafeProposalFlowTests : IAsyncLifetime
         Assert.False(_registry.Find("safe.propose")!.MovesFunds);
         Assert.True(_registry.Find("safe.approve")!.MovesFunds);
         await Task.CompletedTask;
+    }
+
+    // ---- review fixes ----------------------------------------------------------------------------------------------
+
+    private Proposal Chain(JsonArray payload, string status = "active")
+    {
+        var prop = new Proposal { Id = _sidecar.NextId++, Proposer = _alice.Address, Payload = payload, Status = status, Hash = new string('a', 64) };
+        prop.Approved.Add(_alice.Address);
+        _sidecar.Proposals[prop.Id] = prop;
+        return prop;
+    }
+
+    [Fact]
+    public async Task SafeProposals_rekey_proposals_are_neither_approved_nor_executed()
+    {
+        var rekey = Chain([new JsonObject { ["type"] = "rekey", ["from"] = "safe", ["rekeyTo"] = _bob.Address }]);
+        var r = await Run(_approve, _bob, ActionArgs(_bob, rekey.Id, 1));
+        Assert.Equal("not_actionable", Status(r));
+        Assert.Contains("rekeys an account", Json(r)["instruction"]!.GetValue<string>());
+        Assert.Equal(_bob.Address, Json(r)["payload"]![0]!["rekeyTo"]!.GetValue<string>());
+        rekey.Status = "ready";
+        var x = await Run(_execute, _alice, ActionArgs(_alice, rekey.Id));
+        Assert.Equal("not_actionable", Status(x));
+        Assert.DoesNotContain(_sidecar.Builds, b => b.Name is "proposal.approve" or "proposal.execute");
+    }
+
+    [Fact]
+    public async Task SafeProposals_config_closes_and_unknown_entries_fail_closed_with_warnings()
+    {
+        var carol = new Account().Address.EncodeAsString();
+        var risky = Chain(
+        [
+            new JsonObject { ["type"] = "assetTransfer", ["from"] = "safe", ["assetId"] = AssetA.ToString(), ["receiver"] = carol, ["amount"] = "0", ["closesAssetTo"] = carol },
+            new JsonObject { ["type"] = "assetConfig", ["configAsset"] = "77", ["manager"] = carol, ["reserve"] = carol, ["freeze"] = carol, ["clawback"] = carol },
+            new JsonObject { ["type"] = "keyReg", ["online"] = true, ["voteFirst"] = "1", ["voteLast"] = "2" },
+            new JsonObject { ["type"] = "somethingNew" },
+        ]);
+        var r = await Run(_approve, _bob, ActionArgs(_bob, risky.Id, 1));
+        Assert.False(r.IsError, r.Content);
+        var card = Card(r);
+        // A zero-amount transfer that closes the holding moves everything: the phone is predicted, with warnings.
+        Assert.True(card.ExpectsAuthenticatorApproval);
+        Assert.Contains($"Closes the safe's holding of asset {AssetA} to {carol}", card.ApprovalReason);
+        Assert.Contains($"clawback {carol}", card.Steps[0].SimulationSummary);
+        Assert.Contains("Registers participation keys", card.Steps[0].SimulationSummary);
+        Assert.Contains("cannot describe (somethingNew)", card.Steps[0].SimulationSummary);
+        Assert.Contains($"CLOSE the safe's holding to {carol}", card.Intent);
+        var payload = Json(r)["payload"]!.AsArray();
+        Assert.Equal(carol, payload[1]!["manager"]!.GetValue<string>());
+        Assert.Equal("true", payload[2]!["online"]!.GetValue<string>());
+
+        Assert.True(SafeProposalService.MovesValue([new JsonObject { ["type"] = "keyReg" }]));
+        Assert.True(SafeProposalService.MovesValue([new JsonObject { ["type"] = "unknown" }]));
+        Assert.False(SafeProposalService.MovesValue([new JsonObject { ["type"] = "assetTransfer", ["amount"] = "0" }, new JsonObject { ["type"] = "addMember" }]));
+    }
+
+    [Fact]
+    public async Task SafeProposals_threshold_one_proposals_that_move_value_require_consent()
+    {
+        _sidecar.Groups = [("1", 1, ["payment", "assetTransfer", "appCall"])];
+        var r = await Run(_propose, _alice, ProposeArgs(_alice, "payment", new JsonObject { ["receiver"] = _bob.Address, ["amount"] = "2500000" }));
+        var card = Card(r);
+        Assert.True(card.ExpectsAuthenticatorApproval);
+        Assert.Contains("needs only 1 approval", card.ApprovalReason);
+        Assert.Contains("needs only 1 approval", card.Steps[0].SimulationSummary);
+        await using (var db = NewContext())
+        {
+            var canonical = JsonNode.Parse((await db.ActionPreviews.SingleAsync()).CanonicalJson)!;
+            Assert.True(canonical["requireConsent"]!.GetValue<bool>());
+            Assert.Equal("2500000", canonical["payloadValue"]![0]!["amount"]!.GetValue<string>());
+            Assert.Equal("0", canonical["payloadValue"]![0]!["assetId"]!.GetValue<string>());
+        }
+        // The confirm path asks Biatec OIDC for consent whatever the value.
+        Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(_alice, card)).Outcome);
+        Assert.True(_oidc.Calls[^1].Request.RequireConsent);
+
+        // An opt-in moves nothing: no forced consent even at threshold 1.
+        var optIn = await Run(_propose, _alice, ProposeArgs(_alice, "optIn", new JsonObject { ["assetIds"] = new JsonArray(AssetA) }));
+        Assert.False(Card(optIn).ExpectsAuthenticatorApproval);
+        Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(_alice, Card(optIn))).Outcome);
+        Assert.False(_oidc.Calls[^1].Request.RequireConsent);
+    }
+
+    [Fact]
+    public async Task SafeProposals_threshold_two_proposals_do_not_force_consent()
+    {
+        var r = await Run(_propose, _alice, ProposeArgs(_alice, "payment", new JsonObject { ["receiver"] = _bob.Address, ["amount"] = "2500000" }));
+        Assert.False(Card(r).ExpectsAuthenticatorApproval);
+        Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(_alice, Card(r))).Outcome);
+        Assert.False(_oidc.Calls[^1].Request.RequireConsent);
+    }
+
+    [Fact]
+    public async Task SafeProposals_liquidity_group_is_chosen_for_every_action_and_the_pool_call_is_checked()
+    {
+        _holdings.Amounts[AssetB] = 5;
+        // Group 1 may not call apps; group 2 may do everything: group 2 proposes.
+        _sidecar.Groups = [("1", 2, ["payment", "assetTransfer"]), ("2", 2, ["payment", "assetTransfer", "appCall"])];
+        var args = ProposeArgs(_alice, "addLiquidity", new JsonObject { ["poolAppId"] = Pool, ["amountA"] = "7" });
+        var ok = await Run(_propose, _alice, args);
+        Assert.False(ok.IsError, ok.Content);
+        Assert.Equal("2", _sidecar.Builds[^1].Params.GetProperty("groupId").GetString());
+
+        // An ALGO pool also needs payments: a group without them is not picked.
+        _sidecar.PoolAssetA = 0;
+        _sidecar.Groups = [("1", 2, ["assetTransfer", "appCall"])];
+        var algo = await Run(_propose, _alice, ProposeArgs(_alice, "addLiquidity", new JsonObject { ["poolAppId"] = Pool, ["amountA"] = "8" }));
+        Assert.True(algo.IsError);
+        Assert.Contains("payment", algo.Content);
+
+        // A pool call that is not addLiquidity is refused.
+        _sidecar.PoolAssetA = AssetA;
+        _sidecar.Groups = [("1", 2, ["payment", "assetTransfer", "appCall"])];
+        _sidecar.WrongPoolMethod = true;
+        var wrong = await Run(_propose, _alice, ProposeArgs(_alice, "addLiquidity", new JsonObject { ["poolAppId"] = Pool, ["amountA"] = "9" }));
+        Assert.True(wrong.IsError);
+        Assert.Contains("does not match the request", wrong.Content);
+    }
+
+    [Fact]
+    public async Task SafeProposals_execute_reports_an_executed_proposal_before_reusing_a_preview()
+    {
+        var prop = Chain([new JsonObject { ["type"] = "payment", ["from"] = "safe", ["receiver"] = _bob.Address, ["amount"] = "1" }], status: "ready");
+        var first = await Run(_execute, _alice, ActionArgs(_alice, prop.Id));
+        Assert.Equal("awaiting_user_confirmation", Status(first));
+        // Executed elsewhere (by Bob): the still-confirmable card is not offered again.
+        prop.Status = "executed";
+        var again = await Run(_execute, _alice, ActionArgs(_alice, prop.Id));
+        Assert.Equal("not_actionable", Status(again));
+        Assert.Contains("already been executed", Json(again)["instruction"]!.GetValue<string>());
+        Assert.Null(again.Events);
     }
 }

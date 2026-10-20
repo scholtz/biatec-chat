@@ -26,6 +26,26 @@ public sealed record SafeProposalView(
     bool? ApprovedByMember,
     JsonElement Payload);
 
+/// <summary>
+/// The Biatec DEX applications per network, held by the backend itself (the values <c>biatec-concentrated-liquidity-amm</c>
+/// 0.9.44 resolves with <c>getConfig</c> from the genesis id), so a liquidity payload is checked against them and never
+/// against app ids the builder reports.
+/// </summary>
+public sealed record BiatecDexApps(ulong ConfigAppId, ulong IdentityAppId, ulong PoolProviderAppId)
+{
+    /// <summary>addLiquidity(uint64,uint64,txn,txn,uint64,uint64,uint64)uint64 of the Biatec CLAMM pool.</summary>
+    public static readonly byte[] AddLiquidity = Convert.FromHexString("0440fa8f");
+    /// <summary>noop(uint64)void of the Biatec pool provider (the call clammAddLiquidityTxs puts before the deposit).</summary>
+    public static readonly byte[] ProviderNoop = Convert.FromHexString("1b8ca919");
+
+    public static BiatecDexApps? For(string network) => network switch
+    {
+        "mainnet" => new BiatecDexApps(3074197827, 3074197744, 3074197785),
+        "testnet" => new BiatecDexApps(741107917, 741107914, 741107916),
+        _ => null,
+    };
+}
+
 /// <summary>The Biatec DEX add-liquidity payload a safe proposal must hold, from the pool's own registration.</summary>
 public sealed record LiquidityExpectation(ulong PoolAppId, ulong AssetA, ulong AssetB, ulong LpTokenId, ulong AmountA, ulong AmountB);
 
@@ -66,8 +86,11 @@ public interface ISafeProposalBuilder
     /// <summary>The approveProposal call, bound to <paramref name="expectedPayloadVersion"/> (the version the member reviewed).</summary>
     Task<SafeProposalBuild> BuildApproveAsync(string network, string sender, ulong appId, ulong proposalId, ulong expectedPayloadVersion, CancellationToken ct = default);
 
-    /// <summary>The executeProposal call of a proposal that reached its threshold.</summary>
-    Task<SafeProposalBuild> BuildExecuteAsync(string network, string sender, ulong appId, ulong proposalId, CancellationToken ct = default);
+    /// <summary>
+    /// The executeProposal call of a proposal that reached its threshold. <paramref name="poolAppIds"/> are the payload's
+    /// calls to registered Biatec DEX pools, the only app calls given an extra fee for their own inner transactions.
+    /// </summary>
+    Task<SafeProposalBuild> BuildExecuteAsync(string network, string sender, ulong appId, ulong proposalId, IReadOnlyList<ulong> poolAppIds, CancellationToken ct = default);
 
     /// <summary>The newest proposals of a safe (with whether <paramref name="member"/> approved each), payload hash included.</summary>
     Task<IReadOnlyList<SafeProposalView>> ProposalsAsync(string network, ulong appId, string? member, CancellationToken ct = default);
@@ -110,9 +133,10 @@ public sealed class SafeProposalBuilder(IBuildersClient builders) : ISafeProposa
         var (result, tx, preview) = await CallAsync(ProposeBuilder, network, sender, appId, "safe.propose", request, MaxCallFeeMicroAlgo, ct);
         var p = SafeProposalAbi.Propose(tx);
         CheckPropose(p, groupId, preview);
-        ulong? provider = preview.TryGetProperty("liquidity", out var l) && ulong.TryParse(SafeBuilder.Str(l, "poolProviderAppId"), NumberStyles.None, CultureInfo.InvariantCulture, out var pv) ? pv : null;
-        CheckLiquidity(p.Entries ?? throw new SafeBuildException("The liquidity proposal holds no transaction group."), appId, e, provider);
-        return Finish(result, tx, sender, appId, "safe.propose", proposal: p, provider: provider);
+        // The Biatec app ids come from the backend's own table, never from the builder's facts.
+        var apps = BiatecDexApps.For(network) ?? throw new SafeBuildException("No Biatec DEX deployment is known for this network.");
+        CheckLiquidity(p.Entries ?? throw new SafeBuildException("The liquidity proposal holds no transaction group."), appId, e, apps);
+        return Finish(result, tx, sender, appId, "safe.propose", proposal: p, provider: apps.PoolProviderAppId);
     }
 
     public async Task<SafeProposalBuild> BuildProposeAdminAsync(string network, string sender, ulong appId, ulong groupId, SafeAdminChange expected, object change, CancellationToken ct = default)
@@ -138,9 +162,9 @@ public sealed class SafeProposalBuilder(IBuildersClient builders) : ISafeProposa
         return Finish(result, tx, sender, appId, "safe.approve", view: view, version: version);
     }
 
-    public async Task<SafeProposalBuild> BuildExecuteAsync(string network, string sender, ulong appId, ulong proposalId, CancellationToken ct = default)
+    public async Task<SafeProposalBuild> BuildExecuteAsync(string network, string sender, ulong appId, ulong proposalId, IReadOnlyList<ulong> poolAppIds, CancellationToken ct = default)
     {
-        var request = new { appId = Id(appId), sender, proposalId = Id(proposalId), simulate = true };
+        var request = new { appId = Id(appId), sender, proposalId = Id(proposalId), simulate = true, poolAppIds = poolAppIds.Select(Id).ToArray() };
         var (result, tx, preview) = await CallAsync(ExecuteBuilder, network, sender, appId, "safe.execute", request, MaxExecuteFeeMicroAlgo, ct);
         var (id, _) = SafeProposalAbi.Execute(tx);
         if (id != proposalId) throw new SafeBuildException("The execution names a different proposal.");
@@ -209,14 +233,16 @@ public sealed class SafeProposalBuilder(IBuildersClient builders) : ISafeProposa
 
     /// <summary>
     /// The payload must be exactly a Biatec DEX deposit by the safe into the requested pool: amountA of asset A and
-    /// amountB of asset B paid to the pool's account, an optional zero-amount LP-token opt-in of the safe to itself,
-    /// and plain calls to the pool (and the pool provider it references). Nothing else, no closes, no other sender.
+    /// amountB of asset B paid to the pool's account, an optional zero-amount LP-token opt-in of the safe to itself, at
+    /// most one pool-provider <c>noop</c>, and exactly one <c>addLiquidity</c> call to the pool whose arguments name the
+    /// network's Biatec config and identity apps and the pool's assets and LP token. Nothing else, no closes, no other sender.
     /// </summary>
-    public static void CheckLiquidity(IReadOnlyList<SafePayloadEntry> entries, ulong safeAppId, LiquidityExpectation e, ulong? providerAppId)
+    public static void CheckLiquidity(IReadOnlyList<SafePayloadEntry> entries, ulong safeAppId, LiquidityExpectation e, BiatecDexApps apps)
     {
         var safe = Algorand.Address.ForApplication(safeAppId).EncodeAsString();
         var pool = Algorand.Address.ForApplication(e.PoolAppId).EncodeAsString();
-        bool paidA = false, paidB = false, poolCalled = false, optIn = false;
+        bool paidA = false, paidB = false, optIn = false;
+        int poolCalls = 0, providerCalls = 0;
         foreach (var x in entries)
         {
             if (x.Sender is not null || x.CloseTo is not null) throw new SafeBuildException("The liquidity payload spends from another account or closes one.");
@@ -233,20 +259,39 @@ public sealed class SafeProposalBuilder(IBuildersClient builders) : ISafeProposa
                     break;
                 }
                 case SafeTxType.AppCall:
+                {
                     if (x.OnCompletion != 0) throw new SafeBuildException("The liquidity payload makes a call that is not a plain call.");
-                    if (x.AppId == e.PoolAppId) poolCalled = true;
-                    else if (providerAppId is null || x.AppId != providerAppId || x.AppId == safeAppId)
-                        throw new SafeBuildException("The liquidity payload calls an application other than the pool.");
+                    var args = x.AppArgs ?? [];
+                    if (x.AppId == e.PoolAppId)
+                    {
+                        // addLiquidity(config, identity, txn, txn, assetA, assetB, assetLp): transaction arguments are not app args.
+                        if (args.Count != 6 || !args[0].AsSpan().SequenceEqual(BiatecDexApps.AddLiquidity)
+                            || U64Arg(args[1]) != apps.ConfigAppId || U64Arg(args[2]) != apps.IdentityAppId
+                            || U64Arg(args[3]) != e.AssetA || U64Arg(args[4]) != e.AssetB || U64Arg(args[5]) != e.LpTokenId)
+                            throw new SafeBuildException("The pool call is not an addLiquidity call for the requested pool and assets.");
+                        poolCalls++;
+                    }
+                    else if (x.AppId == apps.PoolProviderAppId)
+                    {
+                        if (args.Count != 2 || !args[0].AsSpan().SequenceEqual(BiatecDexApps.ProviderNoop) || args[1].Length != 8)
+                            throw new SafeBuildException("The pool-provider call is not the provider's noop.");
+                        providerCalls++;
+                    }
+                    else throw new SafeBuildException("The liquidity payload calls an application other than the pool.");
                     break;
+                }
                 default:
                     throw new SafeBuildException("The liquidity payload holds an unexpected transaction.");
             }
         }
-        if (!paidA || !paidB || !poolCalled) throw new SafeBuildException("The liquidity payload is not a complete deposit into the pool.");
+        if (!paidA || !paidB || poolCalls != 1 || providerCalls > 1) throw new SafeBuildException("The liquidity payload is not exactly one deposit into the pool.");
         // The LP-token opt-in, when present, must come first so the safe can receive the LP tokens.
         if (optIn && !(entries[0].TxType == SafeTxType.AssetTransfer && entries[0].AssetId == e.LpTokenId))
             throw new SafeBuildException("The LP-token opt-in is not the first transaction of the payload.");
     }
+
+    private static ulong U64Arg(byte[] b) =>
+        b.Length == 8 ? System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(b) : throw new SafeBuildException("An app call argument is not a uint64.");
 
     private static SafeProposalView View(JsonElement preview, ulong proposalId)
     {

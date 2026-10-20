@@ -57,8 +57,9 @@ const MAX_SCAN = 500n;
 const DEFAULT_EXPIRY_ROUNDS = 216_000n;
 const MAX_PAYLOAD_TXNS = 16;
 /**
- * Extra fee per app-call payload entry, pooled by the outer executeProposal call, for the inner transactions the
- * called app sends itself (a Biatec DEX addLiquidity call pays 7 of its own, as its 8000 microAlgo static fee shows).
+ * Extra fee for each payload call to a Biatec DEX pool (named by the caller in `poolAppIds`), pooled by the outer
+ * executeProposal call, for the inner transactions the pool sends itself (addLiquidity pays 7 of its own, as its 8000
+ * microAlgo static fee shows). Other app calls get no allowance.
  */
 const APP_CALL_INNER_FEE_ALLOWANCE = 7n * MIN_FEE;
 
@@ -493,7 +494,10 @@ export function proposalExecute(makeChain: ChainFactory): Builder {
     // Inner transactions: one per payload entry, one validator call per non-app-call entry, and the opcode top-ups.
     const validatorCalls = BigInt(tuples.filter(([t]) => t !== TX_APP).length);
     const opups = (ensureBudgetValue + 699n) / 700n;
-    const appCalls = BigInt(tuples.filter(([t]) => t === TX_APP).length);
+    const rawPools = p.poolAppIds ?? [];
+    if (!Array.isArray(rawPools) || rawPools.length > MAX_PAYLOAD_TXNS) throw new BadRequest(`poolAppIds must have at most ${MAX_PAYLOAD_TXNS} entries`);
+    const poolApps = new Set(rawPools.map((x) => uint(x, "poolAppIds[]", { min: 1n })));
+    const appCalls = BigInt(tuples.filter(([t, data]) => t === TX_APP && poolApps.has(decodeAppTxn(data).appId)).length);
     const feeMicroAlgo = MIN_FEE * (1n + BigInt(tuples.length) + validatorCalls + opups) + APP_CALL_INNER_FEE_ALLOWANCE * appCalls;
     const txn = await safe.executeTxn(sender, { proposalId: id, ensureBudgetValue, feeMicroAlgo });
     const view = await proposalView(safe, id, prop);

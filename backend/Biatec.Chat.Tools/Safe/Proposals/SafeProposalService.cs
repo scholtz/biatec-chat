@@ -54,7 +54,13 @@ public interface ISafeHoldingsReader
 {
     /// <summary>Base units of <paramref name="assetId"/> held (0 when not opted in), or null when it cannot be read.</summary>
     Task<ulong?> AssetAmountAsync(string network, string address, ulong assetId, CancellationToken ct = default);
+
+    /// <summary>Decimals and unit name of an asset, or null when it cannot be read. The unit name is the asset creator's text.</summary>
+    Task<SafeAssetInfo?> AssetInfoAsync(string network, ulong assetId, CancellationToken ct = default);
 }
+
+/// <summary>How an asset's base units are shown: its decimals and (untrusted, creator-chosen) unit name.</summary>
+public sealed record SafeAssetInfo(int Decimals, string? UnitName);
 
 /// <summary>
 /// <c>safe.propose</c>, <c>safe.approve</c> and <c>safe.execute</c>. Each is one signing call through the shared confirm
@@ -90,30 +96,60 @@ public sealed partial class SafeProposalService(
 
         try
         {
+            // Only an open preview of the same request is reused; an identical later proposal is a new proposal.
             var existing = await FindAsync(conversationId, Propose, key, ct);
-            if (existing is not null && await ExistingAsync(conversationId, existing, ct) is { } reuse)
-                return reuse.State == SafeProposalState.Landed ? await ProposedAsync(r, existing, reuse, ct) : reuse;
+            if (existing is not null && await ExistingAsync(conversationId, existing, ct) is { } reuse) return reuse;
+            var landedBefore = await LandedBeforeAsync(conversationId, Propose, key, ct);
 
-            // The proposing signer group: the one named, else the first of the user's groups allowed to propose this.
             var listing = await safes.ListAsync(r.Network, r.From, [r.SafeAppId], ct);
             var safe = listing.Safes.FirstOrDefault(s => s.AppId == r.SafeAppId);
             if (safe is null)
                 return SafeProposalOutcome.Error(listing.Unreadable.Contains(r.SafeAppId)
                     ? $"Safe {r.SafeAppId} could not be read. Tell the user to try again later."
                     : $"{r.From} is not a member of safe {r.SafeAppId}. Ask the user which of their addresses is a member, or check the app id with safe.list.");
-            var need = r.Kind switch
+
+            // The payload first, so the proposing group is chosen for every action the payload uses.
+            List<SafePayloadEntry>? entries = null;
+            LiquidityExpectation? expected = null;
+            PoolInfo? pool = null;
+            SafeAdminChange? adminChange = null;
+            object? sidecarChange = null;
+            List<string> sequence = [];
+            var needs = new HashSet<string>(StringComparer.Ordinal);
+            switch (r.Kind)
             {
-                SafeProposalKind.Payment => "payment",
-                SafeProposalKind.AddLiquidity => "appCall",
-                SafeProposalKind.Admin => null,
-                _ => "assetTransfer",
-            };
+                case SafeProposalKind.Payment or SafeProposalKind.AssetTransfer or SafeProposalKind.OptIn:
+                    entries = Entries(r, safeAddress, out var invalidEntries);
+                    if (invalidEntries is not null) return SafeProposalOutcome.Error(invalidEntries);
+                    foreach (var e in entries) needs.Add(e.TxType == SafeTxType.Payment ? "payment" : "assetTransfer");
+                    break;
+                case SafeProposalKind.AddLiquidity:
+                {
+                    SafeProposalOutcome? refusal;
+                    (expected, pool, refusal) = await LiquidityAsync(r, safeAddress, ct);
+                    if (refusal is not null) return refusal;
+                    // Calls to the pool, asset deposits and the LP-token opt-in; an ALGO side is a payment.
+                    needs.UnionWith(["appCall", "assetTransfer"]);
+                    if (pool!.AssetA == 0 || pool.AssetB == 0) needs.Add("payment");
+                    break;
+                }
+                default:
+                {
+                    string? invalidAdmin;
+                    (adminChange, sidecarChange, sequence, invalidAdmin) = Admin(r.Admin);
+                    if (invalidAdmin is not null) return SafeProposalOutcome.Error(invalidAdmin);
+                    break;
+                }
+            }
+
+            // The proposing signer group: the one named, else the first of the user's groups allowed every action the payload uses.
+            var isAdmin = r.Kind == SafeProposalKind.Admin;
             var group = safe.Groups.FirstOrDefault(g => (r.GroupId is null || g.Id == r.GroupId.Value.ToString(CultureInfo.InvariantCulture))
-                && (need is null ? g.IsAdminGroup : g.AllowedActions.Contains(need) && (r.Kind != SafeProposalKind.AddLiquidity || g.AllowedActions.Contains("assetTransfer"))));
+                && (isAdmin ? g.IsAdminGroup : needs.All(n => g.AllowedActions.Contains(n))));
             if (group is null || !ulong.TryParse(group.Id, NumberStyles.None, CultureInfo.InvariantCulture, out var groupId))
-                return SafeProposalOutcome.Error(need is null
+                return SafeProposalOutcome.Error(isAdmin
                     ? $"None of {r.From}'s signer groups in safe {r.SafeAppId} may propose administrative changes."
-                    : $"None of {r.From}'s signer groups in safe {r.SafeAppId} may propose this kind of transaction.");
+                    : $"None of {r.From}'s signer groups in safe {r.SafeAppId} may propose this kind of transaction (it needs: {string.Join(", ", needs.Order())}).");
 
             SafeProposalBuild build;
             JsonObject extra = new();
@@ -121,17 +157,10 @@ public sealed partial class SafeProposalService(
             switch (r.Kind)
             {
                 case SafeProposalKind.Payment or SafeProposalKind.AssetTransfer or SafeProposalKind.OptIn:
-                {
-                    var entries = Entries(r, safeAddress, out var invalid);
-                    if (invalid is not null) return SafeProposalOutcome.Error(invalid);
-                    build = await builder.BuildProposeAsync(r.Network, r.From, r.SafeAppId, groupId, entries, ct);
+                    build = await builder.BuildProposeAsync(r.Network, r.From, r.SafeAppId, groupId, entries!, ct);
                     summary = r.Kind == SafeProposalKind.OptIn ? $"opt the safe in to asset(s) {string.Join(", ", r.OptInAssetIds!)}" : Summary(build.Proposal!.Entries!, safeAddress);
                     break;
-                }
                 case SafeProposalKind.AddLiquidity:
-                {
-                    var (expected, pool, refusal) = await LiquidityAsync(r, safeAddress, ct);
-                    if (refusal is not null) return refusal;
                     build = await builder.BuildProposeLiquidityAsync(r.Network, r.From, r.SafeAppId, groupId, expected!, ct);
                     summary = $"add {expected!.AmountA} base units of asset {pool!.AssetA} and {expected.AmountB} base units of asset {pool.AssetB} as liquidity to Biatec DEX pool {pool.AppId} " +
                               $"(fee {pool.FeePercent} %, price range {pool.PriceRange})";
@@ -141,16 +170,11 @@ public sealed partial class SafeProposalService(
                         ["feePercent"] = pool.FeePercent, ["priceRangeOfAInB"] = pool.PriceRange, ["amountA"] = Id(expected.AmountA), ["amountB"] = Id(expected.AmountB),
                     };
                     break;
-                }
                 default:
-                {
-                    var (expected, change, sequence, invalid) = Admin(r.Admin);
-                    if (invalid is not null) return SafeProposalOutcome.Error(invalid);
-                    build = await builder.BuildProposeAdminAsync(r.Network, r.From, r.SafeAppId, groupId, expected!, change!, ct);
-                    summary = AdminSummary(expected!);
-                    if (sequence.Count > 0) extra["nextInSequence"] = new JsonArray(sequence.Select(s => (JsonNode?)JsonValue.Create(s)).ToArray());
+                    build = await builder.BuildProposeAdminAsync(r.Network, r.From, r.SafeAppId, groupId, adminChange!, sidecarChange!, ct);
+                    summary = AdminSummary(adminChange!);
+                    if (sequence.Count > 0) extra["nextInSequence"] = new JsonArray(sequence.Select(x => (JsonNode?)JsonValue.Create(x)).ToArray());
                     break;
-                }
             }
 
             if (build.Simulation is { Ok: false } sim)
@@ -164,6 +188,13 @@ public sealed partial class SafeProposalService(
             }
 
             var p = build.Proposal!;
+            var payloadJson = p.Change is null ? DescribeEntries(p.Entries!, safeAddress) : new JsonArray(DescribeAdmin(p.Change));
+            // A group with threshold 1: the proposer's own approval (recorded by the propose call) is the only one, and the
+            // execution is valued at zero, so the propose call is where the spend is authorized. It must ask the phone.
+            var soleApproval = group.Threshold <= 1 && MovesValue(payloadJson);
+            var warnings = Warnings(payloadJson);
+            if (soleApproval)
+                warnings.Insert(0, "This signer group needs only 1 approval: proposing alone authorizes the safe to send this payload, so Biatec OIDC is asked for your phone approval now.");
             var canonical = new JsonObject
             {
                 ["capability"] = Propose,
@@ -177,7 +208,8 @@ public sealed partial class SafeProposalService(
                 ["groupName"] = Sanitize(group.Name),
                 ["threshold"] = group.Threshold,
                 ["kind"] = p.Change is null ? "transactionGroup" : "admin",
-                ["payload"] = p.Change is null ? DescribeEntries(p.Entries!, safeAddress) : new JsonArray(DescribeAdmin(p.Change)),
+                ["payload"] = payloadJson,
+                ["payloadValue"] = PayloadValue(payloadJson),
                 ["payloadHash"] = p.PayloadHash,
                 // A new proposal starts at payload version 1; the contract assigns it when the call lands.
                 ["payloadVersion"] = "1",
@@ -185,43 +217,28 @@ public sealed partial class SafeProposalService(
                 ["proposerApproves"] = true,
                 ["valueMicroAlgo"] = "0",
             };
+            if (warnings.Count > 0) canonical["warnings"] = new JsonArray(warnings.Select(w => (JsonNode?)JsonValue.Create(w)).ToArray());
+            if (soleApproval) canonical[RequireConsentField] = true;
             foreach (var (k, v) in extra) canonical[k] = v?.DeepClone();
-            var snap = await PersistAsync(conversationId, Propose, canonical, build, r.From, r.StepNetwork, existing, predictedNeedsConsent: false, ct);
+            await AssetInfoAsync(r.Network, payloadJson, canonical, ct);
+            var snap = await PersistAsync(conversationId, Propose, canonical, build, r.From, r.StepNetwork, existing, predictedNeedsConsent: soleApproval, ct);
             var data = new JsonObject
             {
                 ["safeAddress"] = safeAddress, ["groupId"] = Id(groupId), ["threshold"] = group.Threshold, ["payloadVersion"] = "1",
             };
+            if (warnings.Count > 0) data["warnings"] = canonical["warnings"]!.DeepClone();
             foreach (var (k, v) in extra) data[k] = v?.DeepClone();
             return new SafeProposalOutcome(SafeProposalState.AwaitingConfirmation,
                 $"The proposal ({summary}) is ready for the user's confirmation. Proposing moves nothing; the contract records the proposer's own approval with it " +
                 $"(1 of {group.Threshold}), so there is no separate approval by {r.From}. " +
-                (group.Threshold > 1 ? "After it lands, the other signers approve it with safe.approve from their own sessions, then anyone calls safe.execute. " : "After it lands it is ready: call safe.execute. ") +
-                "Any funding the payload needs (ALGO for opt-ins, the assets it moves) is a separate wallet.transfer to the safe.",
+                (group.Threshold > 1
+                    ? "After it lands, the other signers approve it with safe.approve from their own sessions (safe.list shows its proposal id), then anyone calls safe.execute. "
+                    : "This group needs only 1 approval, so proposing authorizes the spend and the user's phone is asked for it. After it lands it is ready: call safe.execute (safe.list shows its proposal id). ") +
+                "Any funding the payload needs (ALGO for opt-ins, the assets it moves) is a separate wallet.transfer to the safe." +
+                (landedBefore ? " Note: an identical proposal already landed in this conversation; this builds a second one, so make sure the user wants that." : ""),
                 snap, data);
         }
         catch (PreviewException e) { return SafeProposalOutcome.Error(e.Message); }
-    }
-
-    /// <summary>A landed proposal: its id, found on chain by its proposer and the hash of the payload it carries.</summary>
-    private async Task<SafeProposalOutcome> ProposedAsync(SafeProposeRequest r, ActionPreview preview, SafeProposalOutcome landed, CancellationToken ct)
-    {
-        var hash = Field(preview.CanonicalJson, "payloadHash");
-        var found = (await builder.ProposalsAsync(r.Network, r.SafeAppId, r.From, ct))
-            .Where(p => p.PayloadHash == hash && p.Proposer == r.From).OrderByDescending(p => p.ProposalId).FirstOrDefault();
-        var data = landed.Data ?? new JsonObject();
-        if (found is null)
-            return landed with { Message = "The proposal has landed, but it could not be found on the safe yet. Tell the user to check the pending proposals with safe.list in a moment.", Data = data };
-        data["proposalId"] = Id(found.ProposalId);
-        data["proposalStatus"] = found.Status == "ready" ? "ready_to_execute" : found.Status == "active" ? "awaiting_approvals" : Sanitize(found.Status);
-        data["progress"] = $"{found.Approvals} of {found.Threshold} approvals";
-        data["payloadVersion"] = Id(found.PayloadVersion);
-        data["expiryRound"] = Id(found.ExpiryRound);
-        return landed with
-        {
-            Message = $"The proposal is on the safe as proposal {found.ProposalId} (payload version {found.PayloadVersion}, {found.Approvals} of {found.Threshold} approvals). " +
-                      (found.Status == "ready" ? "The threshold is met: anyone may now call safe.execute." : "The other signers approve it with safe.approve from their own sessions."),
-            Data = data,
-        };
     }
 
     private static List<SafePayloadEntry> Entries(SafeProposeRequest r, string safeAddress, out string? invalid)
@@ -353,6 +370,7 @@ public sealed partial class SafeProposalService(
                 if (live.ApprovedByMember == true)
                     return new SafeProposalOutcome(SafeProposalState.NotActionable,
                         $"{r.From} has already approved proposal {r.ProposalId} (a proposer's approval is recorded when proposing). It has {live.Approvals} of {live.Threshold} approvals.", Data: ViewJson(live));
+                if (RekeyRefusal(SanitizedPayload(live.Payload), "approved") is { } rekey) return rekey with { Data = ViewJson(live) };
             }
             var version = r.ExpectedPayloadVersion ?? live!.PayloadVersion;
             var key = new JsonObject { ["network"] = r.Network, ["from"] = r.From, ["safeAppId"] = Id(r.SafeAppId), ["proposalId"] = Id(r.ProposalId), ["expectedPayloadVersion"] = Id(version) };
@@ -364,13 +382,16 @@ public sealed partial class SafeProposalService(
                 return SafeProposalOutcome.Error($"The approval would fail on chain, so nothing was previewed. Simulation reported: '{Sanitize(sim.FailureMessage)}'.");
             var view = build.View!;
             var payload = SanitizedPayload(view.Payload);
+            if (RekeyRefusal(payload, "approved") is { } rekeyed) return rekeyed with { Data = ViewJson(view) };
             var summary = PayloadSummary(payload);
             var canonical = ActionCanonical(Approve, r, build, view, payload,
                 $"Approve proposal {r.ProposalId} on Biatec Safe {r.SafeAppId} (payload version {version}): {summary}", key);
             canonical["expectedPayloadVersion"] = Id(version);
             canonical["approvalsAfter"] = view.Approvals + 1;
-            // The approval is the consent point: Biatec OIDC values it at the payload it authorizes. A payload that moves
-            // nothing (an opt-in) is valued at zero.
+            AddWarnings(canonical, payload);
+            await AssetInfoAsync(r.Network, payload, canonical, ct);
+            // The approval is the consent point: Biatec OIDC values it at the payload it authorizes. Only a payload that
+            // provably moves nothing (an opt-in, an admin change) is predicted below threshold; anything else asks.
             var snap = await PersistAsync(conversationId, Approve, canonical, build, r.From, r.StepNetwork, existing, predictedNeedsConsent: MovesValue(payload), ct);
             var after = view.Approvals + 1;
             return new SafeProposalOutcome(SafeProposalState.AwaitingConfirmation,
@@ -388,25 +409,35 @@ public sealed partial class SafeProposalService(
         if (await OwnAddressProblemAsync(ctx, r.From, ct) is { } problem) return SafeProposalOutcome.Error(problem);
         try
         {
+            // The chain first: an executed (or not yet ready) proposal is reported as such, whatever this conversation previewed.
+            var live = (await builder.ProposalsAsync(r.Network, r.SafeAppId, r.From, ct)).FirstOrDefault(p => p.ProposalId == r.ProposalId);
+            if (live is not null && live.Status != "ready")
+                return new SafeProposalOutcome(SafeProposalState.NotActionable, live.Status switch
+                {
+                    "active" => $"Proposal {r.ProposalId} has {live.Approvals} of {live.Threshold} approvals; it can be executed once the threshold is met.",
+                    "executed" => $"Proposal {r.ProposalId} has already been executed; there is nothing left to execute.",
+                    _ => $"Proposal {r.ProposalId} is {Sanitize(live.Status)}; there is nothing to execute.",
+                }, Data: ViewJson(live));
+            if (live is not null && RekeyRefusal(SanitizedPayload(live.Payload), "executed") is { } rekey) return rekey with { Data = ViewJson(live) };
+
             var key = new JsonObject { ["network"] = r.Network, ["from"] = r.From, ["safeAppId"] = Id(r.SafeAppId), ["proposalId"] = Id(r.ProposalId) };
             var existing = await FindAsync(conversationId, Execute, key, ct);
             if (existing is not null && await ExistingAsync(conversationId, existing, ct) is { } reuse) return reuse;
 
-            var live = (await builder.ProposalsAsync(r.Network, r.SafeAppId, r.From, ct)).FirstOrDefault(p => p.ProposalId == r.ProposalId);
-            if (live is not null && live.Status != "ready")
-                return new SafeProposalOutcome(SafeProposalState.NotActionable, live.Status == "active"
-                    ? $"Proposal {r.ProposalId} has {live.Approvals} of {live.Threshold} approvals; it can be executed once the threshold is met."
-                    : $"Proposal {r.ProposalId} is {Sanitize(live.Status)}; there is nothing to execute.", Data: ViewJson(live));
-
-            var build = await builder.BuildExecuteAsync(r.Network, r.From, r.SafeAppId, r.ProposalId, ct);
+            // Calls to registered Biatec DEX pools send inner transactions of their own; only those get the extra fee.
+            var poolApps = live is null ? [] : await PoolCallsAsync(r.Network, SanitizedPayload(live.Payload), ct);
+            var build = await builder.BuildExecuteAsync(r.Network, r.From, r.SafeAppId, r.ProposalId, poolApps, ct);
             if (build.Simulation is { Ok: false } sim)
                 return SafeProposalOutcome.Error($"The execution would fail on chain, so nothing was previewed. Simulation reported: '{Sanitize(sim.FailureMessage)}'. " +
                     "The safe may lack the assets or ALGO the payload needs; that funding is a separate wallet.transfer to the safe.");
             var view = build.View!;
             var payload = SanitizedPayload(view.Payload);
+            if (RekeyRefusal(payload, "executed") is { } rekeyed) return rekeyed with { Data = ViewJson(view) };
             var canonical = ActionCanonical(Execute, r, build, view, payload,
                 $"Execute proposal {r.ProposalId} on Biatec Safe {r.SafeAppId} (payload version {view.PayloadVersion}): {PayloadSummary(payload)}", key);
             canonical["feeMicroAlgo"] = Id(build.FeeMicroAlgo);
+            AddWarnings(canonical, payload);
+            await AssetInfoAsync(r.Network, payload, canonical, ct);
             // Valued at zero: every approver consented to this exact payload. Non-value triggers can still ask the phone;
             // the confirm path handles that step-up like any other.
             var snap = await PersistAsync(conversationId, Execute, canonical, build, r.From, r.StepNetwork, existing, predictedNeedsConsent: false, ct);
@@ -422,20 +453,28 @@ public sealed partial class SafeProposalService(
 
     private async Task<ActionPreview?> FindAsync(Guid conversationId, string capability, JsonObject key, CancellationToken ct)
     {
+        // Open only: awaiting confirmation, being signed or submitted, or expired (rebuilt). A landed, failed or
+        // cancelled preview is never reused, so an identical later request is a new action.
         var candidates = await db.ActionPreviews.AsNoTracking()
             .Where(p => p.ConversationId == conversationId && p.Capability == capability && p.RebuiltAsPreviewId == null
-                        && p.Status != ActionPreviewStatus.Failed && p.Status != ActionPreviewStatus.Cancelled)
+                        && (p.Status == ActionPreviewStatus.Proposed || p.Status == ActionPreviewStatus.Confirmed
+                            || p.Status == ActionPreviewStatus.InProgress || p.Status == ActionPreviewStatus.Expired))
             .ToListAsync(ct);
         return candidates.Where(p => KeyOf(p.CanonicalJson) is { } k && JsonNode.DeepEquals(k, key)).OrderByDescending(p => p.ExpiresAt).FirstOrDefault();
     }
 
-    /// <summary>What an earlier preview of the same request means now: landed, in flight, still confirmable, or null (expired: build again).</summary>
+    private async Task<bool> LandedBeforeAsync(Guid conversationId, string capability, JsonObject key, CancellationToken ct)
+    {
+        var landed = await db.ActionPreviews.AsNoTracking()
+            .Where(p => p.ConversationId == conversationId && p.Capability == capability && p.Status == ActionPreviewStatus.Completed)
+            .Select(p => p.CanonicalJson).ToListAsync(ct);
+        return landed.Any(c => KeyOf(c) is { } k && JsonNode.DeepEquals(k, key));
+    }
+
+    /// <summary>What an earlier open preview of the same request means now: in flight, still confirmable, or null (expired: build again).</summary>
     private async Task<SafeProposalOutcome?> ExistingAsync(Guid conversationId, ActionPreview preview, CancellationToken ct)
     {
         var snap = await previews.GetAsync(conversationId, preview.Id, null, ct);
-        if (snap.Preview.Status == ActionPreviewStatus.Completed)
-            return new SafeProposalOutcome(SafeProposalState.Landed, "This has already landed.", snap,
-                new JsonObject { ["txIds"] = new JsonArray(snap.Steps.SelectMany(s => s.TxIds).Select(t => (JsonNode?)JsonValue.Create(t)).ToArray()) });
         if (snap.Preview.Status is ActionPreviewStatus.Confirmed or ActionPreviewStatus.InProgress
             || snap.Steps.Any(s => s.Status is StepStatus.Submitted or StepStatus.AwaitingConsent or StepStatus.Signed))
             return new SafeProposalOutcome(SafeProposalState.Busy, "This is being signed or is waiting to land. Wait for it before asking again.", snap);
@@ -501,11 +540,11 @@ public sealed partial class SafeProposalService(
     internal static JsonArray DescribeEntries(IReadOnlyList<SafePayloadEntry> entries, string safeAddress) =>
         new(entries.Select(e => (JsonNode?)(e.TxType switch
         {
-            SafeTxType.Payment => new JsonObject { ["type"] = "payment", ["from"] = "safe", ["receiver"] = e.Receiver, ["assetId"] = "0", ["amount"] = Id(e.Amount), ["note"] = Sanitize(e.Note, 64) },
+            SafeTxType.Payment => new JsonObject { ["type"] = "payment", ["from"] = "safe", ["receiver"] = e.Receiver, ["assetId"] = "0", ["amount"] = Id(e.Amount), ["closesAccountTo"] = e.CloseTo, ["note"] = Sanitize(e.Note, 64) },
             SafeTxType.AssetTransfer => new JsonObject
             {
                 ["type"] = e.Amount == 0 && e.Receiver == safeAddress ? "optIn" : "assetTransfer", ["from"] = "safe", ["receiver"] = e.Receiver,
-                ["assetId"] = Id(e.AssetId), ["amount"] = Id(e.Amount), ["note"] = Sanitize(e.Note, 64),
+                ["assetId"] = Id(e.AssetId), ["amount"] = Id(e.Amount), ["closesAssetTo"] = e.CloseTo, ["note"] = Sanitize(e.Note, 64),
             },
             _ => new JsonObject { ["type"] = "appCall", ["appId"] = Id(e.AppId), ["onCompletion"] = Id(e.OnCompletion), ["appArgs"] = (e.AppArgs ?? []).Count },
         })).ToArray());
@@ -535,14 +574,22 @@ public sealed partial class SafeProposalService(
     {
         var o = new JsonArray();
         if (payload.ValueKind != JsonValueKind.Array) return o;
-        string[] fields = ["type", "from", "receiver", "assetId", "amount", "closesAccountTo", "closesAssetTo", "appId", "onCompletion", "targetGroupId", "groupName", "member", "threshold"];
+        // Every field that decides where value or control goes is kept: close-to, rekey target, asset-config addresses.
+        string[] fields =
+        [
+            "type", "txType", "from", "receiver", "assetId", "amount", "closesAccountTo", "closesAssetTo", "appId", "onCompletion", "targetGroupId", "groupName",
+            "member", "threshold", "rekeyTo", "configAsset", "total", "decimals", "unitName", "assetName", "manager", "reserve", "freeze", "clawback",
+            "online", "voteFirst", "voteLast", "dailyLimit", "monthlyLimit", "adminPrivileges", "active",
+        ];
         foreach (var e in payload.EnumerateArray().Take(SafeProposalAbi.MaxEntries))
         {
             if (e.ValueKind != JsonValueKind.Object) continue;
             var x = new JsonObject();
             foreach (var f in fields)
-                if (e.TryGetProperty(f, out var v) && v.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+                if (e.TryGetProperty(f, out var v) && v.ValueKind is JsonValueKind.String or JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False)
                     x[f] = Sanitize(v.ValueKind == JsonValueKind.String ? v.GetString() : v.GetRawText(), 64);
+            // A type the card does not know is still shown, as unknown.
+            if (x["type"] is null) x["type"] = "unknown";
             if (e.TryGetProperty("note", out var n) && n.ValueKind == JsonValueKind.String && n.GetString() is { Length: > 0 } note) x["note"] = Sanitize(note, 64);
             if (e.TryGetProperty("appArgs", out var args) && args.ValueKind == JsonValueKind.Array) x["appArgs"] = args.GetArrayLength();
             o.Add(x);
@@ -555,10 +602,13 @@ public sealed partial class SafeProposalService(
     {
         var parts = payload.OfType<JsonObject>().Select(e => (string?)e["type"] switch
         {
-            "payment" => $"pay {Algo(e["amount"])} ALGO to {e["receiver"]}",
+            "payment" => $"pay {Algo(e["amount"])} ALGO to {e["receiver"]}" + (e["closesAccountTo"] is { } c ? $" and CLOSE the safe's account to {c}" : ""),
             "optIn" => $"opt the safe in to asset {e["assetId"]}",
-            "assetTransfer" when (string?)e["amount"] == "0" => $"opt-in transfer of asset {e["assetId"]} to {e["receiver"]}",
-            "assetTransfer" => $"send {e["amount"]} base units of asset {e["assetId"]} to {e["receiver"]}",
+            "assetTransfer" when (string?)e["amount"] == "0" && e["closesAssetTo"] is null => $"opt-in transfer of asset {e["assetId"]} to {e["receiver"]}",
+            "assetTransfer" => $"send {e["amount"]} base units of asset {e["assetId"]} to {e["receiver"]}" + (e["closesAssetTo"] is { } c ? $" and CLOSE the safe's holding to {c}" : ""),
+            "rekey" => $"REKEY {e["from"]} to {e["rekeyTo"]}",
+            "assetConfig" => $"configure asset {e["configAsset"]} (manager {e["manager"]}, reserve {e["reserve"]}, freeze {e["freeze"]}, clawback {e["clawback"]})",
+            "keyReg" => $"register participation keys (online {e["online"]})",
             "appCall" => $"call application {e["appId"]}",
             "addMember" => $"add {e["member"]} to signer group {e["targetGroupId"]}",
             "removeMember" => $"remove {e["member"]} from signer group {e["targetGroupId"]}",
@@ -571,14 +621,103 @@ public sealed partial class SafeProposalService(
         return string.Join("; ", parts);
     }
 
-    /// <summary>Whether the payload can move value (anything but zero-amount opt-ins and admin changes).</summary>
-    private static bool MovesValue(JsonArray payload) =>
+    /// <summary>The admin changes the spec values at zero (they move nothing; their effect is governed by the same approvals).</summary>
+    private static readonly HashSet<string> ZeroValuedAdmin = ["addMember", "removeMember", "changeThreshold", "createGroup", "setPolicy", "setPrivileges", "setActive", "setPaused"];
+
+    /// <summary>
+    /// Whether the payload can move value. Fail closed: only zero-amount transfers that close nothing and the
+    /// zero-valued admin changes do not; app calls, rekeys, asset configuration, key registration and anything unknown do.
+    /// </summary>
+    public static bool MovesValue(JsonArray payload) =>
         payload.OfType<JsonObject>().Any(e => (string?)e["type"] switch
         {
-            "payment" or "assetTransfer" => (string?)e["amount"] != "0" || e["closesAccountTo"] is not null || e["closesAssetTo"] is not null,
-            "appCall" => true,
-            _ => false,
+            "payment" or "assetTransfer" or "optIn" => (string?)e["amount"] != "0" || e["closesAccountTo"] is not null || e["closesAssetTo"] is not null,
+            { } t when ZeroValuedAdmin.Contains(t) => false,
+            _ => true,
         });
+
+    /// <summary>Plain-language warnings for what can hand over value or control beyond the listed amounts.</summary>
+    public static List<string> Warnings(JsonArray payload)
+    {
+        var w = new List<string>();
+        foreach (var e in payload.OfType<JsonObject>())
+        {
+            var type = (string?)e["type"];
+            if (e["closesAccountTo"] is { } ca) w.Add($"Closes the safe's ALGO account to {ca}: everything left in it goes to that address.");
+            if (e["closesAssetTo"] is { } cs) w.Add($"Closes the safe's holding of asset {e["assetId"]} to {cs}: all of it goes to that address.");
+            switch (type)
+            {
+                case "rekey": w.Add($"Rekeys {e["from"]} to {e["rekeyTo"]}: control of that account passes to another key."); break;
+                case "assetConfig": w.Add($"Reconfigures asset {e["configAsset"]}: manager {e["manager"]}, reserve {e["reserve"]}, freeze {e["freeze"]}, clawback {e["clawback"]}."); break;
+                case "keyReg": w.Add("Registers participation keys for the safe's account."); break;
+                case "payment" or "assetTransfer" or "optIn" or "appCall": break;
+                case { } t when ZeroValuedAdmin.Contains(t): break;
+                default: w.Add($"Contains a transaction chat cannot describe ({type ?? "unknown"}); treat it as able to move funds."); break;
+            }
+        }
+        return w;
+    }
+
+    private static void AddWarnings(JsonObject canonical, JsonArray payload)
+    {
+        var w = Warnings(payload);
+        if (w.Count > 0) canonical["warnings"] = new JsonArray(w.Select(x => (JsonNode?)JsonValue.Create(x)).ToArray());
+    }
+
+    /// <summary>
+    /// Rekeys hand control of an account to another key, which chat does not do (the rekey scope is excluded in version 1):
+    /// a rekey proposal is neither approved nor executed here.
+    /// </summary>
+    private static SafeProposalOutcome? RekeyRefusal(JsonArray payload, string verb) =>
+        payload.OfType<JsonObject>().Any(e => (string?)e["type"] == "rekey")
+            ? new SafeProposalOutcome(SafeProposalState.NotActionable,
+                $"This proposal rekeys an account (it hands control of it to another key). Rekeying is not available in chat, so it cannot be {verb} here. " +
+                "Tell the user to review it in the safe's own interface; do not retry.")
+            : null;
+
+    /// <summary>What the payload moves, summed per asset (base units; asset 0 is ALGO), for the preview and the consent request.</summary>
+    private static JsonArray PayloadValue(JsonArray payload)
+    {
+        var sums = new SortedDictionary<ulong, System.Numerics.BigInteger>();
+        foreach (var e in payload.OfType<JsonObject>())
+        {
+            if ((string?)e["type"] is not ("payment" or "assetTransfer")) continue;
+            if (!ulong.TryParse((string?)e["assetId"] ?? "0", NumberStyles.None, CultureInfo.InvariantCulture, out var asset)) continue;
+            if (!ulong.TryParse((string?)e["amount"], NumberStyles.None, CultureInfo.InvariantCulture, out var amount) || amount == 0) continue;
+            sums[asset] = sums.GetValueOrDefault(asset) + amount;
+        }
+        return new JsonArray(sums.Select(kv => (JsonNode?)new JsonObject { ["assetId"] = Id(kv.Key), ["amount"] = kv.Value.ToString(CultureInfo.InvariantCulture) }).ToArray());
+    }
+
+    /// <summary>Decimals and unit name of every asset the payload moves, for the card (read from algod; unit names are cleaned).</summary>
+    private async Task AssetInfoAsync(string network, JsonArray payload, JsonObject canonical, CancellationToken ct)
+    {
+        var info = new JsonObject();
+        var ids = payload.OfType<JsonObject>().Where(e => (string?)e["type"] == "assetTransfer")
+            .Select(e => ulong.TryParse((string?)e["assetId"], NumberStyles.None, CultureInfo.InvariantCulture, out var a) ? a : 0).Where(a => a > 0).Distinct().Take(SafeProposalAbi.MaxEntries);
+        foreach (var id in ids)
+            if (await holdings.AssetInfoAsync(network, id, ct) is { } a && a.Decimals is >= 0 and <= 19)
+                info[Id(id)] = new JsonObject { ["decimals"] = a.Decimals, ["unitName"] = string.IsNullOrWhiteSpace(a.UnitName) ? null : Sanitize(a.UnitName, 8) };
+        if (info.Count > 0) canonical["assetInfo"] = info;
+    }
+
+    /// <summary>The payload's app calls that go to a registered Biatec DEX pool (checked against the pool registry, not the payload).</summary>
+    private async Task<IReadOnlyList<ulong>> PoolCallsAsync(string network, JsonArray payload, CancellationToken ct)
+    {
+        var found = new List<ulong>();
+        var apps = payload.OfType<JsonObject>().Where(e => (string?)e["type"] == "appCall")
+            .Select(e => ulong.TryParse((string?)e["appId"], NumberStyles.None, CultureInfo.InvariantCulture, out var a) ? a : 0).Where(a => a > 0).Distinct().Take(4);
+        foreach (var app in apps)
+        {
+            try
+            {
+                var listing = await pools.ListPoolsAsync(network, null, null, app, null, ct);
+                if (listing.Pools.Any(x => x.AppId == app)) found.Add(app);
+            }
+            catch (Exception e) when (e is Builders.BuilderException or HttpRequestException) { }
+        }
+        return found;
+    }
 
     private static string Algo(JsonNode? micro) =>
         ulong.TryParse((string?)micro, NumberStyles.None, CultureInfo.InvariantCulture, out var v) ? SafeCreateService.FormatAlgo(v) : "?";
@@ -621,4 +760,7 @@ public sealed partial class SafeProposalService(
     }
 
     private static string Id(ulong v) => v.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>Canonical-JSON flag the confirm path reads to send <c>requireConsent</c> on the signing request.</summary>
+    public const string RequireConsentField = "requireConsent";
 }

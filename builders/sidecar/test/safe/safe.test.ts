@@ -362,7 +362,12 @@ describe.skipIf(!process.env.TESTNET_ALGOD_URL || !process.env.TESTNET_SAFE_SEND
 // ---- T-033: liquidity payloads, payload hashes, execution fees ----
 
 const POOL = 600;
-const PROVIDER = 500;
+// Testnet Biatec DEX apps (biatec-concentrated-liquidity-amm getConfig), as the backend's own table holds them.
+const PROVIDER = 741107916;
+const CONFIG_APP = 741107917n;
+const IDENTITY_APP = 741107914n;
+const u64 = (n: bigint) => algosdk.bigIntToBytes(n, 8);
+const sel = (sig: string) => algosdk.ABIMethod.fromSignature(sig).getSelector();
 const ASSET_A = 31566704;
 const ASSET_B = 10458941;
 const LP = 900;
@@ -374,10 +379,10 @@ const fakeLiquidity = (optIn: boolean) => async (params: unknown, _ctx?: BuildCo
   const sp: algosdk.SuggestedParams = { fee: 1000n, minFee: 1000n, flatFee: true, firstValid: 1000n, lastValid: 2000n, genesisID: "testnet-v1.0", genesisHash: Buffer.alloc(32, 7) };
   const txs: algosdk.Transaction[] = [];
   if (optIn) txs.push(algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({ sender: p.sender, receiver: p.sender, amount: 0n, assetIndex: LP, suggestedParams: sp }));
-  txs.push(algosdk.makeApplicationNoOpTxnFromObject({ sender: p.sender, appIndex: PROVIDER, appArgs: [new Uint8Array([1, 2, 3, 4])], suggestedParams: sp }));
+  txs.push(algosdk.makeApplicationNoOpTxnFromObject({ sender: p.sender, appIndex: PROVIDER, appArgs: [sel("noop(uint64)void"), u64(1n)], suggestedParams: sp }));
   txs.push(algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({ sender: p.sender, receiver: poolAddress, amount: BigInt(p.amountA), assetIndex: ASSET_A, suggestedParams: sp }));
   txs.push(algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({ sender: p.sender, receiver: poolAddress, amount: BigInt(p.amountB), assetIndex: ASSET_B, suggestedParams: sp }));
-  txs.push(algosdk.makeApplicationNoOpTxnFromObject({ sender: p.sender, appIndex: Number(p.poolAppId), appArgs: [new Uint8Array([9, 9, 9, 9])], foreignApps: [PROVIDER], foreignAssets: [ASSET_A, ASSET_B, LP], suggestedParams: { ...sp, fee: 8000n } }));
+  txs.push(algosdk.makeApplicationNoOpTxnFromObject({ sender: p.sender, appIndex: Number(p.poolAppId), appArgs: [sel("addLiquidity(uint64,uint64,txn,txn,uint64,uint64,uint64)uint64"), u64(CONFIG_APP), u64(IDENTITY_APP), u64(BigInt(ASSET_A)), u64(BigInt(ASSET_B)), u64(BigInt(LP))], foreignApps: [PROVIDER], foreignAssets: [ASSET_A, ASSET_B, LP], suggestedParams: { ...sp, fee: 8000n } }));
   algosdk.assignGroupID(txs);
   return { transactions: txs.map((t) => algosdk.encodeUnsignedTransaction(t)), facts: { pool: { appId: p.poolAppId, lpTokenId: String(LP) }, poolProviderAppId: String(PROVIDER), amountA: p.amountA, amountB: p.amountB, lpOptIn: optIn } };
 };
@@ -441,16 +446,21 @@ describe("payload hashes", () => {
 });
 
 describe("proposal.execute fees", () => {
-  it("adds the inner-transaction allowance for each app call", async () => {
+  it("adds the inner-transaction allowance only for calls to the named pools", async () => {
     const appGroup = toSafeTxnGroup([createAppCallSafeTxn({ appId: BigInt(POOL), onCompletion: 0n, appArgs: [], accounts: [], foreignApps: [], foreignAssets: [], note: "" })]);
     put(APP, boxName("proposals", "uint64", 30n), proposal({ status: 2n, approvals: 2n }));
     put(APP, boxName("transactionGroups", "uint64", 30n * 7n + 1n), txGroupType.encode(appGroup));
-    const r = await b()["proposal.execute"]!({ appId: APP, sender: carol, proposalId: 30 }, ctx());
-    const t = decode(r.transactions[0]!);
     const budget = 3400n + 700n + 1500n;
-    expect(uintArg(t, 2)).toBe(budget);
-    // 1 outer + 1 payload + 0 validator calls + opups, plus 7 for the app's own inner transactions
-    expect(t.fee).toBe(1000n * (2n + (budget + 699n) / 700n) + 7000n);
+    const base = 1000n * (2n + (budget + 699n) / 700n); // 1 outer + 1 payload + 0 validator calls + opups
+    const plain = decode((await b()["proposal.execute"]!({ appId: APP, sender: carol, proposalId: 30 }, ctx())).transactions[0]!);
+    expect(uintArg(plain, 2)).toBe(budget);
+    expect(plain.fee).toBe(base);
+    const other = decode((await b()["proposal.execute"]!({ appId: APP, sender: carol, proposalId: 30, poolAppIds: [601] }, ctx())).transactions[0]!);
+    expect(other.fee).toBe(base);
+    // plus 7 for the pool's own inner transactions
+    const pool = decode((await b()["proposal.execute"]!({ appId: APP, sender: carol, proposalId: 30, poolAppIds: [String(POOL)] }, ctx())).transactions[0]!);
+    expect(pool.fee).toBe(base + 7000n);
+    await expect(b()["proposal.execute"]!({ appId: APP, sender: carol, proposalId: 30, poolAppIds: "600" }, ctx())).rejects.toThrow(/poolAppIds/);
   });
 });
 

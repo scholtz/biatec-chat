@@ -192,14 +192,28 @@ public sealed class SafeProposalBuilderTests
 
         var entries = SafeProposalAbi.Propose(ProposalFixture.Tx(Fx.GetProperty("liquidity"))).Entries!.ToList();
         var pool = SafeCreateService.SafeAddress(U("pool"));
-        SafeProposalBuilder.CheckLiquidity(entries, App, e, U("provider"));
-        // A payment out of the safe to someone else, a call to another app, or no provider id: refused.
-        Assert.Throws<SafeBuildException>(() => SafeProposalBuilder.CheckLiquidity([.. entries, SafePayloadEntry.Pay(S("carol"), 1)], App, e, U("provider")));
-        Assert.Throws<SafeBuildException>(() => SafeProposalBuilder.CheckLiquidity([.. entries, new SafePayloadEntry(SafeTxType.AppCall, AppId: 999)], App, e, U("provider")));
-        Assert.Throws<SafeBuildException>(() => SafeProposalBuilder.CheckLiquidity(entries, App, e, null));
+        var apps = BiatecDexApps.For("testnet")!;
+        Assert.Equal(apps.PoolProviderAppId, U("provider"));
+        SafeProposalBuilder.CheckLiquidity(entries, App, e, apps);
+        // A payment out of the safe to someone else, or a call to another app: refused.
+        Assert.Throws<SafeBuildException>(() => SafeProposalBuilder.CheckLiquidity([.. entries, SafePayloadEntry.Pay(S("carol"), 1)], App, e, apps));
+        Assert.Throws<SafeBuildException>(() => SafeProposalBuilder.CheckLiquidity([.. entries, new SafePayloadEntry(SafeTxType.AppCall, AppId: 999)], App, e, apps));
+        // The provider is the backend's own table, never the builder's: on mainnet the testnet provider call is refused.
+        Assert.Throws<SafeBuildException>(() => SafeProposalBuilder.CheckLiquidity(entries, App, e, BiatecDexApps.For("mainnet")!));
+        // The pool call must be addLiquidity naming the config and identity apps and the pool's assets and LP token.
+        var poolCall = entries.FindIndex(x => x.AppId == U("pool"));
+        var args = entries[poolCall].AppArgs!.ToList();
+        Assert.Equal(BiatecDexApps.AddLiquidity, args[0]);
+        var swapped = entries.ToList();
+        swapped[poolCall] = entries[poolCall] with { AppArgs = [[1, 2, 3, 4], .. args.Skip(1)] };
+        Assert.Throws<SafeBuildException>(() => SafeProposalBuilder.CheckLiquidity(swapped, App, e, apps));
+        swapped[poolCall] = entries[poolCall] with { AppArgs = [.. args.Take(3), args[4], args[3], args[5]] };
+        Assert.Throws<SafeBuildException>(() => SafeProposalBuilder.CheckLiquidity(swapped, App, e, apps));
+        // Two deposits calls into the pool: refused.
+        Assert.Throws<SafeBuildException>(() => SafeProposalBuilder.CheckLiquidity([.. entries, entries[poolCall]], App, e, apps));
         // A deposit closing the safe's asset holding to the pool: refused.
         entries[2] = entries[2] with { CloseTo = pool };
-        Assert.Throws<SafeBuildException>(() => SafeProposalBuilder.CheckLiquidity(entries, App, e, U("provider")));
+        Assert.Throws<SafeBuildException>(() => SafeProposalBuilder.CheckLiquidity(entries, App, e, apps));
     }
 
     [Fact]
@@ -218,15 +232,15 @@ public sealed class SafeProposalBuilderTests
         var shifted = Edited("approve", args: a => [a[0], a[1], [0, 0, 0, 0, 0, 0, 0, 4], a[3]]);
         await Assert.ThrowsAsync<SafeBuildException>(() => new SafeProposalBuilder(new OneShot((_, _) => shifted)).BuildApproveAsync("testnet", S("bob"), App, 1, 3));
 
-        var exec = await Builder("execute", out _).BuildExecuteAsync("testnet", S("carol"), App, 2);
+        var exec = await Builder("execute", out _).BuildExecuteAsync("testnet", S("carol"), App, 2, []);
         Assert.Equal("safe.execute", exec.Kind);
         Assert.Equal(10_000UL, exec.FeeMicroAlgo);
-        await Assert.ThrowsAsync<SafeBuildException>(() => Builder("execute", out _).BuildExecuteAsync("testnet", S("carol"), App, 3));
+        await Assert.ThrowsAsync<SafeBuildException>(() => Builder("execute", out _).BuildExecuteAsync("testnet", S("carol"), App, 3, []));
         var t = ProposalFixture.Tx(Fx.GetProperty("execute"));
         t.Fee = SafeProposalBuilder.MaxExecuteFeeMicroAlgo + 1;
         var node = JsonNode.Parse(Fx.GetProperty("execute").GetRawText())!;
         node["transactions"] = new JsonArray(Convert.ToBase64String(AlgoEncoder.EncodeToMsgPackOrdered(t)));
         var expensive = ProposalFixture.Result(JsonDocument.Parse(node.ToJsonString()).RootElement);
-        await Assert.ThrowsAsync<SafeBuildException>(() => new SafeProposalBuilder(new OneShot((_, _) => expensive)).BuildExecuteAsync("testnet", S("carol"), App, 2));
+        await Assert.ThrowsAsync<SafeBuildException>(() => new SafeProposalBuilder(new OneShot((_, _) => expensive)).BuildExecuteAsync("testnet", S("carol"), App, 2, []));
     }
 }
