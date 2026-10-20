@@ -23,7 +23,9 @@ owner should run `kubectl kustomize k8s/stage | kubectl apply --dry-run=client -
 
 Create `biatec-chat-secrets` in each namespace out of band (sealed-secrets, external-secrets or `kubectl create secret`) with keys:
 `postgres-connection-string`, `redis-connection-string`, `kms-key-id`, `oidc-client-secret`, `builders-internal-secret`,
-`aws-role-arn`.
+`aws-role-arn`, `evidence-master-key` (base64 of at least 32 random bytes, e.g. `kubectl create secret generic
+biatec-chat-secrets --from-literal=evidence-master-key="$(openssl rand -base64 32)" ...`; the pods stay in
+`CreateContainerConfigError` without it).
 
 ## AWS access (no keys)
 
@@ -60,7 +62,10 @@ in Biatec's own account and update `Bedrock__Guardrail__GuardrailId` in the base
   at least 32 random bytes (`openssl rand -base64 32`). Every replica derives the same ES256 keys from it (HKDF), and the
   key metadata (kid, public point, created/retired dates, which key is active) lives in the PostgreSQL table
   `EvidenceSigningKeys`, so all replicas publish an identical JWKS and retired keys stay published across restarts and
-  rollouts. Back the master key up and never change it: a new master cannot sign for the existing kids. Rotation
+  rollouts. Rotation is automatic: every replica checks hourly and, when the active key is older than
+  `Evidence__RotationDays` (default 90, `0` disables), retires it and activates a new kid (one replica wins; others
+  follow within 30 s, signing meanwhile with the retired kid, which still verifies). To rotate sooner, lower
+  `Evidence__RotationDays` (for example `1`) and roll out; there is no HTTP endpoint for it. Back the master key up and never change it: a new master cannot sign for the existing kids. Rotation
   retires the active key and activates a new kid; the database holds no private key material.
   Alternative `Evidence__KeyStore=Kms` with `Evidence__Kms__KeyIds__0=<key id>`, `...__1=...` (oldest first): operators
   pre-create ECC_NIST_P256 `SIGN_VERIFY` keys in eu-central-1 tagged `Project=biatec` (about 1 USD/month each plus

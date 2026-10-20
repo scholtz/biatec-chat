@@ -21,6 +21,9 @@ public sealed class EvidenceOptions
 
     public KmsStoreOptions Kms { get; set; } = new();
 
+    /// <summary>Automatic rotation: when the active key is older than this many days it is retired and a new one activated (checked hourly by every replica). 0 disables it; the default is 90.</summary>
+    public int RotationDays { get; set; } = 90;
+
     public sealed class SecretOptions { public string? MasterKey { get; set; } }
 
     public sealed class KmsStoreOptions
@@ -68,6 +71,7 @@ public static class EvidenceJwks
             return new DevEvidenceKeyStore(o.DevKeyFile);
         });
         services.TryAddScoped<IEvidenceLog>(sp => new EvidenceLog(sp.GetRequiredService<ChatDbContext>(), sp.GetRequiredService<IEvidenceKeyStore>()));
+        services.AddHostedService<EvidenceKeyRotationService>();
         return services;
     }
 

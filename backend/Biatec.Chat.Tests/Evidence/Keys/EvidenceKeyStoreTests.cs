@@ -215,6 +215,41 @@ public sealed class EvidenceKeyStoreTests : IAsyncLifetime
         Assert.Equal(2, (await FetchJwks(b)).Count);
     }
 
+    private sealed class ManualTime(DateTimeOffset start) : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = start;
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    [Fact]
+    public async Task RotateIfOlderThan_RotatesOnlyAgedKeys_AndActiveKidIsCachedBriefly()
+    {
+        await using var a = Host();
+        await FetchJwks(a);
+        var time = new ManualTime(DateTimeOffset.UtcNow);
+        using var material = new SecretEvidenceKeyMaterial(RandomNumberGenerator.GetBytes(32));
+        var store = new DbEvidenceKeyStore(a.Services.GetRequiredService<IServiceScopeFactory>(), material, time);
+
+        // Empty-looking host database: the store sees the key the host provisioned (different master, but metadata is shared).
+        var first = await store.GetActiveKidAsync(default);
+        Assert.Null(await store.RotateIfOlderThanAsync(TimeSpan.FromDays(90), default));
+        Assert.Equal(first, await store.GetActiveKidAsync(default));
+
+        time.Now = time.Now.AddDays(91);
+        var rotated = await store.RotateIfOlderThanAsync(TimeSpan.FromDays(90), default);
+        Assert.NotNull(rotated);
+        Assert.NotEqual(first, rotated);
+        Assert.Equal(rotated, await store.GetActiveKidAsync(default));
+        Assert.Null(await store.RotateIfOlderThanAsync(TimeSpan.FromDays(90), default));
+        Assert.Equal(2, (await store.GetPublicKeysAsync(default)).Count);
+
+        // Another replica rotates: this one keeps the cached kid until the TTL ends, then follows.
+        var other = await a.Services.GetRequiredService<IEvidenceKeyStore>().RotateAsync(default);
+        Assert.Equal(rotated, await store.GetActiveKidAsync(default));
+        time.Now = time.Now.AddMinutes(1);
+        Assert.Equal(other, await store.GetActiveKidAsync(default));
+    }
+
     [Fact]
     public async Task Database_HoldsOnlyPublicKeyMaterial()
     {
