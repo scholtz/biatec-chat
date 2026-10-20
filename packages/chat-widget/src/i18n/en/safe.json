@@ -22,6 +22,8 @@
     "noProposals": "No pending proposals",
     "proposalsUnreadable": "The proposals could not be read, so the queue is unknown.",
     "proposalsTruncated": "More proposals exist than are shown.",
+    "proposalsNotLoaded": "Proposals not loaded for this safe. Ask about it by its app ID to see them.",
+    "announce": "Safe card: {safes} safe(s), {proposals} pending proposal(s).",
     "proposal": "Proposal {id} · {kind}",
     "state": {
       "AwaitingApprovals": "Awaiting approvals",

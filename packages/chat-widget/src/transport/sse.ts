@@ -12,6 +12,34 @@ export const CHAT_EVENT_TYPES = [
 
 const isStr = (v: unknown): v is string => typeof v === "string";
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
+const isInt = (v: unknown): boolean => (typeof v === "number" && Number.isFinite(v)) || (isStr(v) && /^-?\d+$/.test(v));
+/** Absent, or an array whose every element passes `ok`. */
+const optArray = (v: unknown, ok: (x: unknown) => boolean): boolean => v === undefined || v === null || (Array.isArray(v) && v.every(ok));
+
+const isSafeGroup = (g: unknown): boolean =>
+  isObj(g) && isStr(g.name) && isInt(g.threshold) && isInt(g.memberCount) && optArray(g.allowedActions, isStr);
+const isSafeProposal = (p: unknown): boolean =>
+  isObj(p) &&
+  isStr(p.proposalId) &&
+  isStr(p.kind) &&
+  isStr(p.status) &&
+  isInt(p.approvals) &&
+  isInt(p.threshold) &&
+  isStr(p.proposer) &&
+  isStr(p.payloadVersion) &&
+  isStr(p.expiryRound);
+const isSafe = (s: unknown): boolean =>
+  isObj(s) &&
+  isStr(s.appId) &&
+  isStr(s.address) &&
+  isStr(s.name) &&
+  isStr(s.network) &&
+  optArray(s.yourAddresses, isStr) &&
+  optArray(s.signerGroups, isSafeGroup) &&
+  optArray(s.pendingProposals, isSafeProposal);
+/** Every field SafeCard.vue reads, so a malformed frame is dropped instead of breaking the message list. */
+const isSafeCard = (c: unknown): boolean =>
+  isObj(c) && isStr(c.source) && isStr(c.network) && Array.isArray(c.safes) && c.safes.every(isSafe) && optArray(c.couldNotRead, isStr);
 
 /** Narrow an unknown JSON value to a ChatEvent: the discriminator and the required fields of that event type. */
 export function isChatEvent(v: unknown): v is ChatEvent {
@@ -28,7 +56,7 @@ export function isChatEvent(v: unknown): v is ChatEvent {
     case "sign_in_card":
       return isStr(v.signInUrl) && isStr(v.reason) && typeof v.unavailable === "boolean";
     case "safe_card":
-      return isObj(v.card) && isStr(v.card.network) && Array.isArray(v.card.safes);
+      return isSafeCard(v.card);
     case "error":
       return isStr(v.code) && isStr(v.message) && typeof v.retryable === "boolean";
     default:

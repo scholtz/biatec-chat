@@ -664,6 +664,7 @@ export interface components {
             pendingProposals?: components["schemas"]["SafeCardProposal"][];
             proposalsTruncated?: boolean;
             proposalsCouldNotBeRead?: boolean;
+            proposalsNotLoaded?: boolean;
             creation?: null | components["schemas"]["SafeCardCreationState"];
         };
         SafeCardSignerGroup: {

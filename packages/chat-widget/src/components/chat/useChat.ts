@@ -98,8 +98,16 @@ export function useChat(svc: ChatServices) {
       reply.streaming = false;
       busy.value = false;
       abort = null;
-      announce(reply.error ?? (reply.text || reply.signIn?.description || ""));
+      announce(reply.error ?? (reply.text || reply.signIn?.description || safeSummary(reply)));
     }
+  }
+
+  /** A reply that is only a safe card still gets announced: a short summary of what the card shows. */
+  function safeSummary(m: ChatMessage): string {
+    const safes = (m.safeCards ?? []).flatMap((c) => c.safes);
+    if (!m.safeCards?.length) return "";
+    const proposals = safes.reduce((n, s) => n + (s.pendingProposals?.length ?? 0), 0);
+    return t("safe.announce", { safes: safes.length, proposals });
   }
 
   function apply(m: ChatMessage, e: ChatEvent): void {

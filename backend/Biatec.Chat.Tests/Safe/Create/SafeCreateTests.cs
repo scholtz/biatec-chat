@@ -600,6 +600,21 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         // The app id was recorded by the confirm path when the deployment landed: no later chain lookup was needed.
         Assert.Equal(0, _chain.AppIdLookups);
 
+        // While the setup step is in flight (here: marked submitted), safe.create still shows the deployed safe's card.
+        await using (var db = NewContext())
+        {
+            var setupStep = await db.ActionSteps.SingleAsync(s => s.Seq == 1);
+            var before = setupStep.Status;
+            setupStep.Status = StepStatus.Submitted;
+            await db.SaveChangesAsync();
+            var busy = await _create.ExecuteAsync(Ctx("safe.create"), Full(), default);
+            Assert.Equal("step_in_flight", JsonNode.Parse(busy.Content)!["status"]!.GetValue<string>());
+            var busySafe = Assert.Single(SafeCardOf(busy)!.Safes);
+            Assert.Equal(("778", address, SafeCardCreationState.SetupPending), (busySafe.AppId, busySafe.Address, busySafe.Creation));
+            setupStep.Status = before;
+            await db.SaveChangesAsync();
+        }
+
         var c3 = await ConfirmAsync(card3, 1);
         Assert.Equal(ConfirmOutcome.Landed, c3.Outcome);
         Assert.Equal(2, _oidc.Calls.Count);
@@ -828,6 +843,29 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         Assert.Equal(_bob, list.GetProperty("member").GetString());
         Assert.Equal(2, list.GetProperty("appIds").GetArrayLength());
         Assert.Equal("778", Assert.Single(_builders.Reads, x => x.Name == "safe.proposals").Params.GetProperty("appId").GetString());
+    }
+
+    [Fact]
+    public async Task SafeCreate_list_marks_proposals_not_loaded_past_the_limit_instead_of_none()
+    {
+        _own = [_bob];
+        for (var i = 0; i <= SafeListService.MaxSafesWithProposals; i++)
+        {
+            var id = 1000UL + (ulong)i;
+            await SeedKnownSafeAsync(id);
+            _builders.Members[id] = [_bob];
+        }
+
+        var r = await _list.ExecuteAsync(Ctx("safe.list"), new JsonObject { ["network"] = "testnet" }, default);
+        Assert.False(r.IsError, r.Content);
+        var o = JsonNode.Parse(r.Content)!;
+        var safes = o["safes"]!.AsArray();
+        Assert.Equal(SafeListService.MaxSafesWithProposals + 1, safes.Count);
+        Assert.Single(safes, s => s!["proposalsNotLoaded"]!.GetValue<bool>());
+        Assert.Contains("proposalsNotLoaded", o["instruction"]!.GetValue<string>());
+        var notLoaded = Assert.Single(SafeCardOf(r)!.Safes, s => s.ProposalsNotLoaded);
+        Assert.Equal(safes.Last()!["appId"]!.GetValue<string>(), notLoaded.AppId);
+        Assert.Equal(SafeListService.MaxSafesWithProposals, _builders.Reads.Count(x => x.Name == "safe.proposals"));
     }
 
     [Fact]

@@ -82,6 +82,8 @@ public sealed record SafeCardSafe
     public bool ProposalsTruncated { get; init; }
     /// <summary>The proposals could not be read, so the queue is unknown (not empty).</summary>
     public bool ProposalsCouldNotBeRead { get; init; }
+    /// <summary>The proposals were not read (only the first safes of a listing are), so the queue is unknown (not empty).</summary>
+    public bool ProposalsNotLoaded { get; init; }
     /// <summary>Set on cards from <c>safe.create</c> only.</summary>
     public SafeCardCreationState? Creation { get; init; }
 }

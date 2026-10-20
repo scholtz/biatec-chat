@@ -34,7 +34,8 @@ public sealed record SafeCardData(
     IReadOnlyList<SafeGroupSummary> Groups,
     IReadOnlyList<SafePendingProposal> PendingProposals,
     bool ProposalsTruncated,
-    bool ProposalsUnreadable = false);
+    bool ProposalsUnreadable = false,
+    bool ProposalsNotLoaded = false);
 
 /// <summary><see cref="Unreadable"/> are candidate safes that could not be read (so membership is unknown, not "not a member").</summary>
 public sealed record SafeListOutcome(bool IsError, string Message, IReadOnlyList<SafeCardData> Safes, IReadOnlyList<ulong>? Unreadable = null)
@@ -100,7 +101,9 @@ public sealed class SafeListService(IBiatecMcpClient mcp, ISafeBuilder builder, 
             var proposalsUnreadable = false;
             if (cards.Count < MaxSafesWithProposals)
                 (pending, truncated, proposalsUnreadable) = await PendingAsync(network, appId, members, ct);
-            cards.Add(new SafeCardData(appId, safe.Address, safe.Name, network, safe.Paused, members, safe.Groups, pending, truncated, proposalsUnreadable));
+            // Past MaxSafesWithProposals the proposals are not read at all: say so, never "no pending proposals".
+            var notLoaded = cards.Count >= MaxSafesWithProposals;
+            cards.Add(new SafeCardData(appId, safe.Address, safe.Name, network, safe.Paused, members, safe.Groups, pending, truncated, proposalsUnreadable, notLoaded));
         }
 
         var orderedUnreadable = candidates.Where(unreadable.Contains).ToList();

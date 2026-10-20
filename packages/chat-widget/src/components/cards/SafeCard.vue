@@ -93,6 +93,7 @@ const hasEpoch = (e: number | string | null | undefined) => e !== null && e !== 
       <template v-if="card.source === 'List'">
         <h5 class="bc-safe-h">{{ t("safe.proposals") }}</h5>
         <p v-if="s.proposalsCouldNotBeRead" class="bc-hint" data-test="safe-proposals-unreadable">{{ t("safe.proposalsUnreadable") }}</p>
+        <p v-else-if="s.proposalsNotLoaded" class="bc-hint" data-test="safe-proposals-not-loaded">{{ t("safe.proposalsNotLoaded") }}</p>
         <p v-else-if="!s.pendingProposals?.length" class="bc-hint">{{ t("safe.noProposals") }}</p>
         <ul v-else class="bc-steps">
           <li v-for="p in s.pendingProposals" :key="p.proposalId" class="bc-step bc-safe-proposal" data-test="safe-proposal">

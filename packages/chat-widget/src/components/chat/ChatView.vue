@@ -139,7 +139,7 @@ const TOOL_STATE_KEY: Record<string, string> = { Started: "chat.toolStarted", Su
 const toolState = (s: string) => (TOOL_STATE_KEY[s] ? t(TOOL_STATE_KEY[s]!) : "");
 const toolIcon = (s: string): Component => (s === "Succeeded" ? Check : s === "Failed" ? TriangleAlert : Loader);
 const cardText = (m: ChatMessage) => m.signIn?.description ?? t(m.signIn?.reason === "ElevateScope" ? "chat.elevateCard" : "chat.signInCard");
-const showThinking = (m: ChatMessage) => m.role === "assistant" && m.streaming && !m.text && !m.signIn && !m.safeCards?.length && !m.error;
+const showThinking = (m: ChatMessage) => m.role === "assistant" && m.streaming && !m.text && !m.signIn && !m.error;
 </script>
 
 <template>

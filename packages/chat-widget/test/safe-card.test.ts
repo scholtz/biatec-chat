@@ -92,6 +92,13 @@ describe("SafeCard", () => {
     expect(w.get("[data-test=safe-could-not-read]").text()).toContain("555, 666");
   });
 
+  it("safe.list: a safe whose proposals were not loaded says so instead of 'No pending proposals'", () => {
+    const base = listCard().safes[0]!;
+    const w = mount(SafeCard, { props: { card: listCard({ safes: [{ ...base, pendingProposals: [], proposalsNotLoaded: true }] }) } });
+    expect(w.find("[data-test=safe-proposals-not-loaded]").exists()).toBe(true);
+    expect(w.text()).not.toContain("No pending proposals");
+  });
+
   it("safe.create: shows the app id and safe address once deployed, without a proposal queue", () => {
     const w = mount(SafeCard, { props: { card: createCard } });
     expect(w.get(".bc-card-title").text()).toBe("Your new safe");
@@ -139,9 +146,9 @@ describe("safe_card in the conversation", () => {
     };
   }
 
-  async function ask(events: ChatEvent[]) {
+  async function ask(events: ChatEvent[], svc: ChatServices = services(events)) {
     const w = mount(BiatecChatRoot, {
-      props: { options: resolveOptions({ backendUrl: "https://chat.biatec.io", clientKey: "k" }), services: services(events) },
+      props: { options: resolveOptions({ backendUrl: "https://chat.biatec.io", clientKey: "k" }), services: svc },
       attachTo: document.body,
     });
     await w.get(".bc-launcher").trigger("click");
@@ -173,9 +180,48 @@ describe("safe_card in the conversation", () => {
     w.unmount();
   });
 
+  it("keeps the thinking indicator after a safe card until text arrives", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const svc = services([]);
+    svc.transport.send = vi.fn(async function* () {
+      yield { type: "safe_card", card: listCard() } as ChatEvent;
+      await gate;
+      yield { type: "text_delta", text: "Done." } as ChatEvent;
+    });
+    const w = await ask([], svc);
+    expect(w.find("[data-test=safe-card]").exists()).toBe(true);
+    expect(w.find(".bc-thinking").exists()).toBe(true);
+    release();
+    await flushPromises();
+    expect(w.find(".bc-thinking").exists()).toBe(false);
+    w.unmount();
+  });
+
+  it("announces a reply that is only a safe card", async () => {
+    const w = await ask([{ type: "safe_card", card: listCard() }]);
+    await flushPromises();
+    expect(w.get("[data-testid=announcer]").text()).toBe("Safe card: 1 safe(s), 2 pending proposal(s).");
+    w.unmount();
+  });
+
   it("the transport accepts safe_card frames and drops malformed ones", () => {
     expect(isChatEvent({ type: "safe_card", card: listCard() })).toBe(true);
+    expect(isChatEvent({ type: "safe_card", card: createCard })).toBe(true);
     expect(isChatEvent({ type: "safe_card" })).toBe(false);
     expect(isChatEvent({ type: "safe_card", card: { network: "algorand-testnet", safes: "nope" } })).toBe(false);
+    const base = listCard();
+    const safe = base.safes[0]!;
+    const bad: unknown[] = [
+      { ...base, safes: [null] },
+      { ...base, safes: [{ ...safe, appId: 778 }] },
+      { ...base, safes: [{ ...safe, name: undefined }] },
+      { ...base, safes: [{ ...safe, signerGroups: [{ name: "x" }] }] },
+      { ...base, safes: [{ ...safe, pendingProposals: [{ ...safe.pendingProposals![0]!, expiryRound: 5 }] }] },
+      { ...base, safes: [{ ...safe, yourAddresses: [1] }] },
+      { ...base, couldNotRead: "555" },
+      { ...base, couldNotRead: [555] },
+    ];
+    for (const card of bad) expect(isChatEvent({ type: "safe_card", card })).toBe(false);
   });
 });
