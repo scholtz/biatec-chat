@@ -105,7 +105,7 @@ const agentLine = computed(() => {
       </ol>
     </section>
     <p class="bc-activity-footer">{{ t("activity.footer") }}</p>
-    <a v-if="evidenceUrl" class="bc-link" data-testid="activity-evidence" :href="evidenceUrl" download>
+    <a v-if="evidenceUrl" class="bc-link" data-testid="activity-evidence" :href="evidenceUrl" download target="_blank" rel="noopener">
       {{ t("activity.downloadEvidence") }}
     </a>
   </div>
