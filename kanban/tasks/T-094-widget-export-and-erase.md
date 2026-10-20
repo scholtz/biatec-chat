@@ -1,7 +1,7 @@
 ---
 id: T-094
 title: "Widget: export view and erase button for the user's own conversations"
-status: review
+status: done
 priority: P2
 epic: "Widget"
 blocked_by: [T-060]
@@ -64,6 +64,8 @@ Parallel work possible: **no**. Don't run it at the same time as T-095: they cha
 
 ## Review
 
+- 2026-10-20 05:41 · approve · PR #193 merged into main @ 731d342 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 07:40 · coordinator · (new) → blocked · proposed by T-060
@@ -72,3 +74,4 @@ Parallel work possible: **no**. Don't run it at the same time as T-095: they cha
 - 2026-10-20 05:08 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 05:31 · coordinator · in-progress · conflicts_with + T-095 (blockers scan: shared files)
 - 2026-10-20 05:41 · coordinator · in-progress → review · branch task/T-094 @ e348cf5, PR #193
+- 2026-10-20 05:41 · user · review → done · PR #193 merged into main @ 731d342 (synced by kanban-sync)
