@@ -6,8 +6,8 @@ priority: P1
 epic: "Deployment"
 blocked_by: [T-054]
 area: [".github/workflows/**", "docs/cicd.md", "docs/aws-setup.md", "docs/deploy-aws.md", "docs/AWS-AGENTCORE-GUIDE.md", "runGuide.md", "k8s/**", "infra/aws/**", "infra/guardrail/**", "backend/Biatec.Chat.Api/Vault/**", "backend/Biatec.Chat.Api/Config/Options.cs", "backend/Biatec.Chat.Tests/Vault/**", "backend/Biatec.Chat.Tests/ConfigAndHealthTests.cs"]
-parallel: yes
-conflicts_with: []
+parallel: no
+conflicts_with: [T-078, T-088]
 issue: "#128"
 branch: "task/T-071"
 owner: "session-20261020-claude"
@@ -47,7 +47,7 @@ to stage, with all credentials coming from the `Stage` environment secrets.
 
 ## Parallel work
 
-Parallel work possible: **yes**. No other unfinished task that could run at the same time changes the same files.
+Parallel work possible: **no**. Don't run it at the same time as T-078, T-088: they change the same files.
 
 ## Acceptance criteria
 

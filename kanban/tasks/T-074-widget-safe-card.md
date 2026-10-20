@@ -7,7 +7,7 @@ epic: "Safe"
 blocked_by: [T-032, T-042]
 area: ["packages/chat-widget/src/components/cards/SafeCard.vue", "backend/Biatec.Chat.Api/Contracts/**", "packages/chat-protocol/**"]
 parallel: no
-conflicts_with: [T-064, T-067, T-076]
+conflicts_with: [T-064, T-067, T-076, T-083]
 issue: "#138"
 branch: "task/T-074"
 owner: "worker-T-074"
