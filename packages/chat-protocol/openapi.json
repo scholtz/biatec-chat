@@ -393,6 +393,40 @@
         }
       }
     },
+    "/chat/previews/{previewId}/cancel": {
+      "post": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "CancelPreview",
+        "parameters": [
+          {
+            "name": "previewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/chat/previews/{previewId}/consent": {
       "post": {
         "tags": [
