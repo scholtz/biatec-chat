@@ -1,7 +1,7 @@
 ---
 id: T-061
 title: Backend fallback cap for users without an active device
-status: backlog
+status: in-progress
 priority: P3
 epic: "Consent & authenticator"
 blocked_by: [T-025, T-049]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Tools/Caps/NoDevice/**"]
 parallel: no
 conflicts_with: [T-024, T-035]
 issue: "#62"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-061"
+owner: "worker-T-061"
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#required-changes-to-biatec-oidc"
 created: 2026-10-19
 updated: 2026-10-20
@@ -61,3 +61,5 @@ dotnet test --filter NoDevice
 - 2026-10-19 18:00 · coordinator · (new) → blocked · created in task review: rule 4 fallback had no task
 - 2026-10-20 01:09 · LukassSoukup · blocked · parallel analysis: parallel: no, added T-024 and T-035: the above-threshold refusal goes into ConfirmService.cs
 - 2026-10-20 03:29 · kanban-board · blocked → backlog · blockers done: T-025, T-049
+- 2026-10-20 04:17 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 04:17 · coordinator · backlog → in-progress · dispatched to worker
