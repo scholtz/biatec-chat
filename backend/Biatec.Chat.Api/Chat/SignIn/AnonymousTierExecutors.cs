@@ -6,7 +6,7 @@ using Biatec.Chat.Tools.Kb;
 
 namespace Biatec.Chat.Api.Chat.SignIn;
 
-/// <summary>kb.search: ranked keyword search over docs/kb. The result is data for the model and is wrapped as untrusted.</summary>
+/// <summary>kb.search: ranked keyword search over docs/kb and operator-uploaded pages. The result is data for the model and is wrapped as untrusted.</summary>
 public sealed class KbSearchExecutor(KbSearchService kb) : IToolExecutor
 {
     public string CapabilityName => CapabilityRegistry.KbSearch;
@@ -73,12 +73,11 @@ public static class AnonymousTierRegistration
 {
     public static IServiceCollection AddAnonymousTier(this IServiceCollection services, IConfiguration config)
     {
-        services.AddSingleton(_ =>
-        {
-            var path = config["Kb:Path"];
-            if (string.IsNullOrWhiteSpace(path)) path = Path.Combine(AppContext.BaseDirectory, "kb");
-            return KbSearchService.FromDirectory(path);
-        });
+        services.Configure<KbOptions>(config.GetSection(KbOptions.Section));
+        // Starts with the seed pages; KbLibrary overlays the uploaded ones from PostgreSQL (T-096).
+        services.AddSingleton(sp => KbSearchService.FromDirectory(sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<KbOptions>>().Value.ResolvedPath));
+        services.AddSingleton<KbLibrary>();
+        services.AddHostedService<KbRefreshService>();
         services.AddSingleton<IToolExecutor, KbSearchExecutor>();
         services.AddSingleton<IToolExecutor, RequestSignInExecutor>();
         return services;

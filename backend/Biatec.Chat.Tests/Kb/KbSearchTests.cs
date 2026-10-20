@@ -50,6 +50,20 @@ public sealed class KbSearchTests
     }
 
     [Fact]
+    public void Kb_Replace_SwapsTheSnapshot_AndMergeLetsUploadsOverrideSeed()
+    {
+        var kb = KbSearchService.FromDirectory(SeedDir());
+        var before = kb.Pages;
+        var merged = KbSearchService.Merge(before, [KbSearchService.Parse("what-is-biatec", "# Overview\n\nquokka text"), KbSearchService.Parse("new-page", "no heading, wombat")]);
+        kb.Replace(merged);
+
+        Assert.Equal(before.Count + 1, kb.PageCount);
+        Assert.Equal("Overview", kb.Search("quokka").Single().Title);
+        Assert.Equal("new-page", kb.Search("wombat").Single().Title); // no heading: the id is the title
+        Assert.DoesNotContain(before, p => p.Body.Contains("quokka")); // an old snapshot never changes
+    }
+
+    [Fact]
     public async Task Kb_ExecutorReturnsCitedContent_AndHandlesNoHits()
     {
         var exec = new KbSearchExecutor(KbSearchService.FromDirectory(SeedDir()));

@@ -262,3 +262,22 @@ public class KnownSafe
     public string? DeployTxId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 }
+
+/// <summary>
+/// A knowledge-base page uploaded by an operator through the admin API (T-096). Every replica serves the same rows
+/// (overlaying the seed pages under <c>Kb:Path</c>). The body is untrusted data: it reaches the model only as a
+/// <c>kb.search</c> tool result, never the system prompt.
+/// </summary>
+public class KbStoredPage
+{
+    /// <summary>Lower-case slug; what the model cites as the source id.</summary>
+    public string Id { get; set; } = "";
+    /// <summary>"text/markdown" or "text/plain".</summary>
+    public string ContentType { get; set; } = "";
+    public string Body { get; set; } = "";
+    /// <summary>UTF-8 size of <see cref="Body"/> in bytes.</summary>
+    public int SizeBytes { get; set; }
+    /// <summary>Lower-case hex SHA-256 of the UTF-8 body; replicas compare it to see whether to reload.</summary>
+    public string Sha256 { get; set; } = "";
+    public DateTimeOffset UpdatedAt { get; set; }
+}
