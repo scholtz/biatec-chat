@@ -64,7 +64,8 @@ public sealed class ConfirmService(
     IEnumerable<ISettlementHandler>? settlementHandlers = null,
     Biatec.Chat.Api.Limits.LimitsConfirmService? limits = null,
     IEvidenceRecorder? recorder = null,
-    IEnumerable<IStepLandedObserver>? landedObservers = null)
+    IEnumerable<IStepLandedObserver>? landedObservers = null,
+    IEnumerable<IPreviewFreshnessGate>? freshnessGates = null)
 {
     public const string OutageMessage = "The sign-in service is unavailable. Your session is unchanged; please try again shortly.";
 
@@ -85,6 +86,11 @@ public sealed class ConfirmService(
             return await limits.ConfirmAsync(tenant, session, previewId, groupHash, ct);
         if (pending is null || pending.Kind != ActionStepKind.Sign || peek.Preview.Status != ActionPreviewStatus.Proposed)
             throw new PreviewException(PreviewError.InvalidState, "The preview has no signing step awaiting confirmation.");
+
+        // Capability-specific freshness (Bitcoin: expiry, spent input, fee rate move) before scope, consent or signing.
+        foreach (var gate in freshnessGates ?? [])
+            if (await gate.CheckAsync(peek.Preview, pending, ct) is { } stale)
+                return new ConfirmResult(ConfirmOutcome.Failed, stale, [], ErrorCode: "preview_stale");
 
         var scope = await scopes.CheckAsync(sessionId, ElevationScopes.Sign, ct);
         if (!scope.Allowed)

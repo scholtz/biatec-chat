@@ -96,7 +96,7 @@ public sealed class CapabilityRegistry
         var transferInput = Obj(new JsonObject
         {
             // Algorand (createPaymentTransaction) or Bitcoin (createBitcoinTransaction); assetId omitted or 0 = native ALGO.
-            ["network"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("mainnet", "testnet", "bitcoin") },
+            ["network"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("mainnet", "testnet", "bitcoin", "bitcoin-testnet") },
             ["from"] = Address(),
             ["to"] = Address(),
             ["assetId"] = Id(),
