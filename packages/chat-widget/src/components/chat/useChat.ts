@@ -1,8 +1,9 @@
 import { reactive, ref, computed, onBeforeUnmount } from "vue";
-import type { ChatEvent, SafeCard, SessionState, SessionTier, Suggestion } from "@biatec/chat-protocol";
+import type { ActionPreview, ChatEvent, ConsentStatus, SafeCard, SessionState, SessionTier, Suggestion } from "@biatec/chat-protocol";
 import { t } from "../../i18n";
 import type { TransportManager } from "../../transport";
 import type { AuthClient } from "./auth";
+import { PENDING_STATUSES, decisionHash, type PreviewApi, type PreviewEntry } from "./previews";
 
 export interface ToolLine {
   id: string;
@@ -25,6 +26,8 @@ export interface ChatMessage {
   signIn?: SignInCard;
   /** Safe cards from safe.list / safe.create results (safe_card events), in arrival order. */
   safeCards?: SafeCard[];
+  /** Preview cards (latest per previewId) from preview_card events, with consent state. */
+  previews?: PreviewEntry[];
   /** Follow-up questions the backend suggested for this reply, if any. */
   followUps?: Suggestion[];
   error?: string;
@@ -41,6 +44,18 @@ export interface ChatServices {
   timeoutMs?: number;
   /** Test seam; defaults to window.open. */
   openPopup?: () => Window | null;
+  /** Confirm call for preview cards (T-076). Without it a card cannot be confirmed. */
+  previews?: PreviewApi;
+  /** POST /chat/previews/{id}/cancel; true when the backend accepted the cancel. */
+  cancelPreview?: (previewId: string, groupHash: string) => Promise<boolean>;
+  /** Keeps the session alive while a preview, consent or signing is pending. */
+  keepalive?: { hold(reason: string): void; release(reason: string): void };
+  /** A confirm was accepted (Activity logs it). */
+  onConfirmed?: (previewId: string) => void;
+  /** A cancel was accepted. */
+  onCancelled?: (previewId: string) => void;
+  /** Every confirm response body, so typed agent refusals can be shown (core.agent.reportRefusal). */
+  onConfirmResponse?: (body: unknown) => void;
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -98,7 +113,7 @@ export function useChat(svc: ChatServices) {
       reply.streaming = false;
       busy.value = false;
       abort = null;
-      announce(reply.error ?? (reply.text || reply.signIn?.description || safeSummary(reply)));
+      announce(reply.error ?? (reply.text || reply.signIn?.description || safeSummary(reply) || previewSummary(reply)));
     }
   }
 
@@ -136,12 +151,172 @@ export function useChat(svc: ChatServices) {
       case "safe_card":
         (m.safeCards ??= []).push(e.card);
         break;
+      case "preview_card":
+        applyPreview(m, e.preview);
+        break;
+      case "consent_status": {
+        const entry = findPreview(e.consent.previewId);
+        if (entry) {
+          entry.consent = e.consent;
+          syncKeepalive(entry);
+        } else orphanConsent.set(e.consent.previewId, e.consent);
+        break;
+      }
       case "error":
         m.error = e.message;
         break;
       default:
-        break; // preview_card and consent_status are rendered by T-042
+        break;
     }
+  }
+
+  // ---- Preview cards (T-076) ----
+  const orphanConsent = new Map<string, ConsentStatus>();
+  const held = new Set<string>();
+
+  function findPreview(previewId: string): PreviewEntry | undefined {
+    for (const m of messages) {
+      const found = m.previews?.find((p) => p.preview.previewId === previewId);
+      if (found) return found;
+    }
+    return undefined;
+  }
+
+  /** The latest event for a previewId replaces the card where it already is; a new id adds a card to this reply. */
+  function applyPreview(m: ChatMessage, preview: ActionPreview): void {
+    const existing = findPreview(preview.previewId);
+    if (existing) {
+      existing.preview = preview;
+      if (preview.status !== "AwaitingConfirmation") existing.note = "";
+      syncKeepalive(existing);
+      return;
+    }
+    const list = (m.previews ??= []);
+    list.push({
+      preview,
+      consent: orphanConsent.get(preview.previewId) ?? null,
+      submitting: false,
+      note: "",
+      needsSignIn: false,
+      scope: null,
+    });
+    orphanConsent.delete(preview.previewId);
+    syncKeepalive(list[list.length - 1]!);
+  }
+
+  function isPending(e: PreviewEntry): boolean {
+    return e.submitting || PENDING_STATUSES.includes(e.preview.status) || e.consent?.state === "Pending";
+  }
+  function syncKeepalive(e: PreviewEntry): void {
+    const reason = `preview:${e.preview.previewId}`;
+    if (isPending(e)) {
+      if (!held.has(reason)) {
+        held.add(reason);
+        svc.keepalive?.hold(reason);
+      }
+    } else if (held.delete(reason)) svc.keepalive?.release(reason);
+  }
+
+  function setStatus(e: PreviewEntry, status: ActionPreview["status"], txIds: string[] = []): void {
+    e.preview = {
+      ...e.preview,
+      status,
+      steps: e.preview.steps.map((s, i) => ({
+        ...s,
+        status,
+        transactionId: txIds[i] ?? s.transactionId,
+      })),
+    };
+  }
+
+  /** Confirm posts the group hash the card showed; every ConfirmResponse.status has its own outcome. */
+  async function confirmPreview(previewId: string, retried = false): Promise<void> {
+    const entry = findPreview(previewId);
+    if (!entry || entry.submitting || !svc.previews) return;
+    const hash = decisionHash(entry.preview);
+    entry.submitting = true;
+    entry.note = "";
+    entry.needsSignIn = false;
+    syncKeepalive(entry);
+    let elevate = false;
+    try {
+      let r;
+      try {
+        r = await svc.previews.confirm(previewId, hash);
+      } catch {
+        entry.note = t("chat.previewConfirmFailed");
+        return;
+      }
+      svc.onConfirmResponse?.(r.raw);
+      switch (r.status) {
+        case "landed":
+          setStatus(entry, "Completed", r.txIds);
+          svc.onConfirmed?.(previewId);
+          break;
+        case "submitted":
+          setStatus(entry, "Submitted", r.txIds);
+          svc.onConfirmed?.(previewId);
+          break;
+        case "consent_pending":
+          entry.consent = r.consent ?? entry.consent;
+          entry.preview = { ...entry.preview, status: "AwaitingApproval" };
+          svc.onConfirmed?.(previewId);
+          break;
+        case "scope_required":
+          entry.scope = r.reauthorizeScope ?? "sign";
+          entry.preview = { ...entry.preview, status: "AwaitingScope" };
+          elevate = !retried;
+          break;
+        case "sign_in_required":
+          entry.note = t("chat.previewSignInRequired");
+          entry.needsSignIn = true;
+          break;
+        case "sign_in_unavailable":
+          entry.note = t("chat.previewSignInUnavailable");
+          break;
+        case "agent_paused":
+        case "agent_analyze_only":
+          break; // shown through core.agent.reportRefusal with Resume / Change mode
+        default:
+          entry.note = r.message || t("chat.previewFailed");
+      }
+    } finally {
+      entry.submitting = false;
+      syncKeepalive(entry);
+    }
+    // Elevate the scope in a popup, then retry the confirm once.
+    if (elevate && !disposed) await authorizePreview(previewId, entry.scope ?? "sign");
+  }
+
+  /** Runs the elevate popup for the scope, then retries the confirm once. Also the card's Authorize button. */
+  async function authorizePreview(previewId: string, scope: string): Promise<void> {
+    const entry = findPreview(previewId);
+    if (!entry || entry.submitting) return;
+    if (!(await signIn({ scope: entry.scope ?? scope }))) return;
+    entry.preview = { ...entry.preview, status: "AwaitingConfirmation" };
+    await confirmPreview(previewId, true);
+  }
+
+  async function cancelPreview(previewId: string): Promise<void> {
+    const entry = findPreview(previewId);
+    if (!entry || !svc.cancelPreview) return;
+    let ok = false;
+    try {
+      ok = await svc.cancelPreview(previewId, decisionHash(entry.preview));
+    } catch {
+      ok = false;
+    }
+    if (ok) {
+      setStatus(entry, "Cancelled");
+      entry.note = "";
+      svc.onCancelled?.(previewId);
+    } else entry.note = t("chat.previewCancelFailed");
+    syncKeepalive(entry);
+  }
+
+  function previewSummary(m: ChatMessage): string {
+    const p = m.previews?.[0];
+    return p ? t("chat.previewAnnounce", { intent: p.preview.intent }) : "";
   }
 
   const POPUP_FEATURES = "popup=yes,width=480,height=720";
@@ -259,7 +434,9 @@ export function useChat(svc: ChatServices) {
   onBeforeUnmount(() => {
     disposed = true;
     abort?.abort();
+    for (const reason of held) svc.keepalive?.release(reason);
+    held.clear();
   });
 
-  return { messages, session, tier, busy, phase, announcement, start, send, signIn, signOut, refreshSession };
+  return { confirmPreview, authorizePreview, cancelPreview, messages, session, tier, busy, phase, announcement, start, send, signIn, signOut, refreshSession };
 }
