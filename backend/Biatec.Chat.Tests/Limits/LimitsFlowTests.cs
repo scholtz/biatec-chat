@@ -294,6 +294,34 @@ public sealed class LimitsFlowTests : IAsyncLifetime
         Assert.Equal(Biatec.Chat.Core.Data.ActionPreviewStatus.Proposed, (await LoadAsync(id)).Preview.Status);
     }
 
+    [Theory]
+    [InlineData(false, Biatec.Chat.Core.Data.AgentMode.Analyze)]
+    [InlineData(true, Biatec.Chat.Core.Data.AgentMode.Prepare)]
+    [InlineData(true, Biatec.Chat.Core.Data.AgentMode.Analyze)]
+    public async Task Confirm_of_a_lowering_still_applies_while_paused_or_analyze_only(bool paused, Biatec.Chat.Core.Data.AgentMode mode)
+    {
+        var (id, hash) = await PrepareAsync();
+        _session.Paused = paused;
+        _session.AgentMode = mode;
+        var r = await ConfirmAsync(id, hash);
+
+        Assert.Equal(ConfirmOutcome.Landed, r.Outcome);
+        Assert.Single(_oidc.Puts);
+    }
+
+    [Fact]
+    public async Task Confirm_of_a_raise_is_still_refused_while_paused()
+    {
+        var (id, hash) = await PrepareAsync();
+        _oidc.Now = [L("per_day_eur", "100"), L("per_week_eur", "2000"), L("per_month_eur", "5000")];
+        _session.Paused = true;
+        var r = await ConfirmAsync(id, hash);
+
+        Assert.Equal(ConfirmOutcome.Failed, r.Outcome);
+        Assert.Equal("raise_refused", r.ErrorCode);
+        Assert.Empty(_oidc.Puts);
+    }
+
     [Fact]
     public async Task Confirm_refuses_when_the_limits_dropped_meanwhile_so_the_body_would_now_raise()
     {

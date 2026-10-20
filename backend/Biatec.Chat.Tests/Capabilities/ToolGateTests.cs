@@ -210,12 +210,9 @@ public class ToolGateTests
     }
 
     [Fact]
-    public void Elevated_tier_is_at_least_authenticated()
+    public void Session_tier_has_exactly_two_values()
     {
-        var (gate, _) = Make();
-        var ctx = new GateContext(SessionTier.Elevated, Openid);
-        Assert.True(gate.Check("wallet.listAddresses", new JsonObject { ["network"] = "testnet" }, ctx).Allowed);
-        Assert.True(gate.Check("requestSignIn", null, ctx).Allowed);
+        Assert.Equal(["Anonymous", "Authenticated"], Enum.GetNames<SessionTier>());
     }
 
     [Fact]
@@ -311,10 +308,10 @@ public class ToolGateTests
         var (gate, _) = Make();
         Assert.Equal("not_signing_capability", gate.CheckSigningScope("wallet.balance", Auth("openid", "sign")).Reason);
         Assert.Equal("not_signing_capability", gate.CheckSigningScope("explain.product", Auth("openid", "sign")).Reason);
-        var reg = new CapabilityRegistry([new Capability("x.elevated", 1, SessionTier.Elevated, [], null, false, ValuationBasis.None, "d", new JsonObject { ["type"] = "object" })]);
+        var reg = new CapabilityRegistry([new Capability("x.authed", 1, SessionTier.Authenticated, [], null, false, ValuationBasis.None, "d", new JsonObject { ["type"] = "object" })]);
         var g = new ToolGate(reg, new InMemoryPolicyEventSink());
-        Assert.False(g.Check("x.elevated", null, Auth()).Allowed);
-        Assert.True(g.Check("x.elevated", null, new GateContext(SessionTier.Elevated, [])).Allowed);
+        Assert.False(g.Check("x.authed", null, new GateContext(SessionTier.Anonymous, [])).Allowed);
+        Assert.True(g.Check("x.authed", null, new GateContext(SessionTier.Authenticated, [])).Allowed);
     }
 
     [Fact]

@@ -3,7 +3,7 @@ namespace Biatec.Chat.Core.Data;
 // Entities for the "Data Model (Backend)" table of PRODUCT-DESCRIPTION.md. TokenVaultEntry lives in Redis, not here.
 // Hashes and signatures are stored as text (hex or base64url as the producer defines); JSON columns are jsonb.
 
-public enum SessionTier { Anonymous, Authenticated, Elevated }
+public enum SessionTier { Anonymous, Authenticated }
 /// <summary>What the assistant may do for the user: analyze (read only) or prepare (build previews the user confirms).</summary>
 public enum AgentMode { Analyze, Prepare }
 public enum MessageRole { User, Assistant, Tool, System }

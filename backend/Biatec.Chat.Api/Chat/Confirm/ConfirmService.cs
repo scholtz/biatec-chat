@@ -80,14 +80,17 @@ public sealed class ConfirmService(
     {
         var sessionId = session.Id.ToString("N");
 
-        // Agent mode and pause are enforced here, server-side, before anything is read or flipped.
-        if (Biatec.Chat.Api.Agent.AgentModePolicy.ConfirmRefusal(session) is { } refusal)
-            return new ConfirmResult(ConfirmOutcome.AgentRestricted, refusal.Message, [], ErrorCode: refusal.Code);
-
-        // Peek first: scope and group integrity are checked before the preview is flipped to Confirmed, so a refusal
-        // here leaves it awaiting confirmation.
-        var peek = await previews.GetAsync(session.ConversationId, previewId, session.AbsoluteExpiresAt, ct);
-        var pending = peek.Steps.FirstOrDefault(s => s.Status == StepStatus.Pending);
+        // Agent mode and pause are enforced here, server-side, before anything is flipped. The one exception is a limits
+        // step: LimitsConfirmService refuses any raise, so lowering stays possible in every mode ("a user without a
+        // device can always reduce their own exposure"). The peek is read-only.
+        var restriction = Biatec.Chat.Api.Agent.AgentModePolicy.ConfirmRefusal(session);
+        PreviewSnapshot peek;
+        try { peek = await previews.GetAsync(session.ConversationId, previewId, session.AbsoluteExpiresAt, ct); }
+        catch (PreviewException) when (restriction is not null) { peek = null!; }
+        var pending = peek?.Steps.FirstOrDefault(s => s.Status == StepStatus.Pending);
+        if (restriction is not null && pending is not { Kind: ActionStepKind.Limits })
+            return new ConfirmResult(ConfirmOutcome.AgentRestricted, restriction.Message, [], ErrorCode: restriction.Code);
+        if (peek is null) throw new PreviewException(PreviewError.InvalidState, "The preview has no signing step awaiting confirmation.");
         // A limits step (lowering only) goes to Biatec OIDC PUT /wallet/limits, not to the signing endpoint.
         if (pending is { Kind: ActionStepKind.Limits } && limits is not null && peek.Preview.Status == ActionPreviewStatus.Proposed)
             return await limits.ConfirmAsync(tenant, session, previewId, groupHash, ct);
