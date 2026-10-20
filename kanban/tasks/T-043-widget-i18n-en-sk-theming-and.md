@@ -1,7 +1,7 @@
 ---
 id: T-043
 title: Widget Slovak translation and accessibility pass
-status: in-progress
+status: done
 priority: P2
 epic: "Widget"
 blocked_by: [T-042, T-064, T-066]
@@ -54,6 +54,8 @@ pnpm --filter chat-widget test
 
 ## Review
 
+- 2026-10-20 04:34 · approve · PR #181 merged into main @ 4ac6a9b (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
@@ -62,3 +64,4 @@ pnpm --filter chat-widget test
 - 2026-10-20 02:18 · kanban-board · blocked → backlog · blockers done: T-042, T-064, T-066
 - 2026-10-20 04:05 · scholtz · taken · status stays backlog
 - 2026-10-20 04:05 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 04:34 · user · in-progress → done · PR #181 merged into main @ 4ac6a9b (synced by kanban-sync)
