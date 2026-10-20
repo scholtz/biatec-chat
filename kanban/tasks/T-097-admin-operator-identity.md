@@ -1,7 +1,7 @@
 ---
 id: T-097
 title: "Admin: per-operator identity and evidence for admin changes"
-status: review
+status: done
 priority: P3
 epic: "Sessions & auth"
 blocked_by: [T-086]
@@ -57,6 +57,8 @@ Parallel work possible: **no**. Don't run it at the same time as T-096: they cha
 
 ## Review
 
+- 2026-10-20 06:59 · approve · PR #197 merged into main @ b273055 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 05:31 · coordinator · (new) → backlog · proposed by a worker / found during verification
@@ -64,3 +66,4 @@ Parallel work possible: **no**. Don't run it at the same time as T-096: they cha
 - 2026-10-20 06:07 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 06:07 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 06:59 · coordinator · in-progress → review · branch task/T-097 @ 6175f8f, PR #197
+- 2026-10-20 06:59 · user · review → done · PR #197 merged into main @ b273055 (synced by kanban-sync)

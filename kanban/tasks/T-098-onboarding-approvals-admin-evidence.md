@@ -1,7 +1,7 @@
 ---
 id: T-098
 title: "Onboarding: record operator tenant approvals in the admin evidence chain"
-status: blocked
+status: backlog
 priority: P3
 epic: "Sessions & auth"
 blocked_by: [T-097]
@@ -57,3 +57,4 @@ files.
 ## Activity log
 
 - 2026-10-20 09:20 · coordinator · (new) → blocked · proposed by T-097
+- 2026-10-20 06:59 · kanban-board · blocked → backlog · blockers done: T-097
