@@ -31,7 +31,7 @@ function block(b: Block): VNode {
 }
 
 function list(l: ListBlock): VNode {
-  const items = l.items.map((it) => h("li", [...inline(it.content), ...(it.sublist ? [list(it.sublist)] : [])]));
+  const items = l.items.map((it) => h("li", [...inline(it.content), ...(it.sublists ?? []).map(list)]));
   return l.kind === "ul"
     ? h("ul", { class: "bc-bullets" }, items)
     : h("ol", { class: "bc-numbered", start: l.start === 1 ? undefined : l.start }, items);
@@ -49,7 +49,7 @@ function inline(nodes: Inline[]): VNodeArrayChildren {
       case "em":
         return h("em", inline(n.children));
       case "link":
-        return h("a", { class: "bc-link", href: n.href, target: "_blank", rel: "noopener noreferrer" }, inline(n.children));
+        return h("a", { class: "bc-link", href: n.href, title: n.href, target: "_blank", rel: "noopener noreferrer" }, inline(n.children));
     }
   });
 }

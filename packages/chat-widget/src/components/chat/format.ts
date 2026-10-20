@@ -6,7 +6,7 @@ export type Inline =
   | { kind: "em"; children: Inline[] }
   | { kind: "link"; href: string; children: Inline[] };
 
-export type ListItem = { content: Inline[]; sublist?: ListBlock };
+export type ListItem = { content: Inline[]; sublists?: ListBlock[] };
 export type ListBlock = { kind: "ul"; items: ListItem[] } | { kind: "ol"; start: number; items: ListItem[] };
 export type Block =
   | { kind: "p"; content: Inline[] }
@@ -18,10 +18,14 @@ export type Block =
 
 const BULLET = /^(\s*)[-*+•]\s+(.*)$/;
 const ORDERED = /^(\s*)(\d{1,9})[.)]\s+(.*)$/;
-const HEADING = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
+// A closing run of # is stripped only after whitespace, so "C#" keeps its #.
+const HEADING = /^\s{0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
 const FENCE = /^\s{0,3}(```|~~~)/;
 const RULE = /^\s{0,3}([-*_])(\s*\1){2,}\s*$/;
 const QUOTE = /^\s{0,3}>\s?(.*)$/;
+
+/** A list while it is parsed: raw lines per item, so inline spans may cross line breaks. */
+type DraftList = { kind: "ul" | "ol"; start: number; indent: number; items: { lines: string[]; subs: DraftList[] }[] };
 
 /**
  * Parses reply text into a small, safe Markdown subset: paragraphs, headings, lists (one nesting level), fenced code,
@@ -33,8 +37,7 @@ export function parseBlocks(text: string): Block[] {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   let para: string[] = [];
   let quote: string[] = [];
-  let list: ListBlock | null = null;
-  let listIndent = 0;
+  let list: DraftList | null = null;
 
   const flushPara = () => {
     if (para.length) blocks.push({ kind: "p", content: parseInline(para.join("\n")) });
@@ -45,7 +48,7 @@ export function parseBlocks(text: string): Block[] {
     quote = [];
   };
   const flushList = () => {
-    if (list) blocks.push(list);
+    if (list) blocks.push(finishList(list));
     list = null;
   };
   const flushAll = () => {
@@ -66,45 +69,50 @@ export function parseBlocks(text: string): Block[] {
       continue;
     }
     if (!line.trim()) {
+      // A loose list goes on across blank lines while the next text is another item or indented detail.
+      const next = lines.slice(i + 1).find((l) => l.trim());
+      if (list && next !== undefined && (listItem(next) || /^\s/.test(next))) continue;
       flushAll();
+      continue;
+    }
+    if (RULE.test(line)) {
+      flushAll();
+      blocks.push({ kind: "hr" });
       continue;
     }
     const item = listItem(line);
     if (item) {
       flushPara();
       flushQuote();
-      const current = list as ListBlock | null;
-      const last = current?.items[current.items.length - 1];
-      if (current && last && item.indent > listIndent) {
-        // Deeper than the list's own markers: one nesting level under the previous item.
-        if (!last.sublist || last.sublist.kind !== item.list.kind) last.sublist = item.list;
-        else last.sublist.items.push(...item.list.items);
-      } else if (current && current.kind === item.list.kind) {
-        current.items.push(...item.list.items);
+      const entry = { lines: [item.text], subs: [] as DraftList[] };
+      const current = list as DraftList | null;
+      if (current && item.indent > current.indent) {
+        // Deeper than the list's own markers: nested under the previous item (deeper levels flatten into it).
+        const parent = current.items[current.items.length - 1]!;
+        const sub = parent.subs[parent.subs.length - 1];
+        if (sub?.kind === item.kind) sub.items.push(entry);
+        else parent.subs.push({ kind: item.kind, start: item.start, indent: item.indent, items: [entry] });
+      } else if (current?.kind === item.kind) {
+        current.items.push(entry);
       } else {
         flushList();
-        list = item.list;
-        listIndent = item.indent;
+        list = { kind: item.kind, start: item.start, indent: item.indent, items: [entry] };
       }
       continue;
     }
-    const current = list as ListBlock | null;
-    if (current && /^\s+/.test(line)) {
-      // An indented line continues the previous item.
-      const last = current.items[current.items.length - 1]!;
-      const target = last.sublist ? last.sublist.items[last.sublist.items.length - 1]! : last;
-      target.content.push({ kind: "text", text: "\n" }, ...parseInline(line.trim()));
+    const current = list as DraftList | null;
+    if (current && /^\s/.test(line)) {
+      // Indented text continues an item: the nested one when it is indented past the nested markers.
+      const parent = current.items[current.items.length - 1]!;
+      const sub = parent.subs[parent.subs.length - 1];
+      const indent = line.length - line.trimStart().length;
+      (sub && indent > sub.indent ? sub.items[sub.items.length - 1]! : parent).lines.push(line.trim());
       continue;
     }
     const heading = HEADING.exec(line);
     if (heading) {
       flushAll();
       blocks.push({ kind: "heading", level: heading[1]!.length, content: parseInline(heading[2]!) });
-      continue;
-    }
-    if (RULE.test(line)) {
-      flushAll();
-      blocks.push({ kind: "hr" });
       continue;
     }
     const q = QUOTE.exec(line);
@@ -122,25 +130,38 @@ export function parseBlocks(text: string): Block[] {
   return blocks;
 }
 
-function listItem(line: string): { indent: number; list: ListBlock } | null {
+function listItem(line: string): { indent: number; kind: "ul" | "ol"; start: number; text: string } | null {
   const b = BULLET.exec(line);
-  if (b) return { indent: b[1]!.length, list: { kind: "ul", items: [{ content: parseInline(b[2]!.trim()) }] } };
+  if (b) return { indent: b[1]!.length, kind: "ul", start: 1, text: b[2]!.trim() };
   const o = ORDERED.exec(line);
-  if (o) return { indent: o[1]!.length, list: { kind: "ol", start: Number(o[2]), items: [{ content: parseInline(o[3]!.trim()) }] } };
+  if (o) return { indent: o[1]!.length, kind: "ol", start: Number(o[2]), text: o[3]!.trim() };
   return null;
+}
+
+function finishList(d: DraftList): ListBlock {
+  const items = d.items.map((it) => ({
+    content: parseInline(it.lines.join("\n")),
+    sublists: it.subs.length ? it.subs.map(finishList) : undefined,
+  }));
+  return d.kind === "ul" ? { kind: "ul", items } : { kind: "ol", start: d.start, items };
 }
 
 // The target may hold one level of balanced parentheses, as in https://en.wikipedia.org/wiki/Foo_(bar).
 const LINK = /^\[([^\]\n]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/;
+const WORD = /\w/;
 
-/** Inline spans. An opening marker without its closing one stays literal text, so partial text streams cleanly. */
+/**
+ * Inline spans. An opening marker without its closing one stays literal text, so partial text streams cleanly.
+ * Emphasis markers (* and _, single, double or triple) never open inside a word, so 2*3*4, snake_case and __init__
+ * stay as written.
+ */
 export function parseInline(text: string): Inline[] {
   const out: Inline[] = [];
   let plain = "";
-  const push = (node: Inline) => {
+  const push = (...nodes: Inline[]) => {
     if (plain) out.push({ kind: "text", text: plain });
     plain = "";
-    out.push(node);
+    out.push(...nodes);
   };
   let i = 0;
   while (i < text.length) {
@@ -152,28 +173,35 @@ export function parseInline(text: string): Inline[] {
         i = end + 1;
         continue;
       }
-    } else if ((c === "*" || c === "_") && text[i + 1] === c) {
-      const end = text.indexOf(c + c, i + 2);
-      if (end > i + 2 && !/\s/.test(text[i + 2]!)) {
-        push({ kind: "strong", children: parseInline(text.slice(i + 2, end)) });
-        i = end + 2;
+    } else if (c === "*" || c === "_") {
+      let n = 0;
+      while (text[i + n] === c) n++;
+      const end = n <= 3 && !WORD.test(text[i - 1] ?? "") && !/\s/.test(text[i + n] ?? " ") ? findClose(text, i + n, c, n) : -1;
+      if (end > 0) {
+        const inner = parseInline(text.slice(i + n, end));
+        push(
+          n === 1 ? { kind: "em", children: inner }
+          : n === 2 ? { kind: "strong", children: inner }
+          : { kind: "strong", children: [{ kind: "em", children: inner }] },
+        );
+        i = end + n;
         continue;
       }
-    } else if ((c === "*" || c === "_") && !(c === "_" && /\w/.test(text[i - 1] ?? ""))) {
-      // Single marker: emphasis. "_" inside a word (snake_case) is not a marker.
-      const end = findEmClose(text, i + 1, c);
-      if (end > i + 1 && !/\s/.test(text[i + 1]!)) {
-        push({ kind: "em", children: parseInline(text.slice(i + 1, end)) });
-        i = end + 1;
-        continue;
-      }
+      plain += c.repeat(n);
+      i += n;
+      continue;
     } else if (c === "[") {
       const m = LINK.exec(text.slice(i));
       if (m) {
+        const label = parseInline(m[1]!);
         const href = safeHttpUrl(m[2]);
-        // A link to anything but http(s) keeps only its label, as text.
-        if (href) push({ kind: "link", href, children: parseInline(m[1]!) });
-        else plain += m[1];
+        if (!href) push(...label); // a link to anything but http(s) keeps only its label, as text
+        else {
+          // The destination host is always visible, so a label can't pass off one site as another.
+          const host = new URL(href).host;
+          push({ kind: "link", href, children: label });
+          if (!inlineText(label).toLowerCase().includes(host.toLowerCase())) plain += ` (${host})`;
+        }
         i += m[0].length;
         continue;
       }
@@ -185,23 +213,18 @@ export function parseInline(text: string): Inline[] {
   return out;
 }
 
-function findEmClose(text: string, from: number, marker: string): number {
-  for (let j = from; j < text.length; j++) {
-    if (text[j] === "\n") return -1;
-    if (text[j] !== marker) continue;
-    if (text[j + 1] === marker) {
-      j++; // part of a ** pair, not this emphasis
-      continue;
-    }
-    if (/\s/.test(text[j - 1]!)) continue;
-    if (marker === "_" && /\w/.test(text[j + 1] ?? "")) continue;
+/** The closing run of exactly n markers c: not after whitespace, not inside a longer run, not followed by a word. */
+function findClose(text: string, from: number, c: string, n: number): number {
+  const run = c.repeat(n);
+  for (let j = text.indexOf(run, from + 1); j > 0; j = text.indexOf(run, j + 1)) {
+    if (text[j - 1] === c || text[j + n] === c) continue;
+    if (/\s/.test(text[j - 1]!) || WORD.test(text[j + n] ?? "")) continue;
     return j;
   }
   return -1;
 }
 
-/** The plain text of inline spans, for tests and accessible labels. */
-export function inlineText(nodes: Inline[]): string {
+function inlineText(nodes: Inline[]): string {
   return nodes.map((n) => (n.kind === "text" || n.kind === "code" ? n.text : inlineText(n.children))).join("");
 }
 
