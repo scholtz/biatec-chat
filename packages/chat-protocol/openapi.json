@@ -1266,6 +1266,57 @@
           },
           "partial": {
             "type": "boolean"
+          },
+          "pair": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "price": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "change24hPct": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "high24h": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "low24h": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "volume24h": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "series": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "source": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

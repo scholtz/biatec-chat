@@ -45,8 +45,23 @@ const isSafeCard = (c: unknown): boolean =>
 /** Every field HoldingsCard.vue reads. Amounts must be strings so a number never loses digits above 2^53. */
 const isHoldingsAsset = (a: unknown): boolean =>
   isObj(a) && isStr(a.assetId) && isStr(a.unitName) && isStr(a.amount) && isInt(a.decimals) && (a.fiatValue == null || isStr(a.fiatValue));
+/** Every field MarketCard.vue reads; every number is a decimal string. */
+const isDecimal = (v: unknown): boolean => isStr(v) && /^-?\d+(?:\.\d+)?$/.test(v);
+const isMarketCard = (v: Record<string, unknown>): boolean =>
+  v.kind === "market" &&
+  isStr(v.asOf) &&
+  isStr(v.pair) &&
+  isDecimal(v.price) &&
+  isDecimal(v.change24hPct) &&
+  isDecimal(v.high24h) &&
+  isDecimal(v.low24h) &&
+  isDecimal(v.volume24h) &&
+  Array.isArray(v.series) &&
+  v.series.every(isDecimal) &&
+  (v.source == null || isStr(v.source));
 const isDataCard = (v: Record<string, unknown>): boolean =>
-  v.kind === "holdings" &&
+  isMarketCard(v) ||
+  (v.kind === "holdings" &&
   isStr(v.network) &&
   isStr(v.asOf) &&
   Array.isArray(v.addresses) &&
@@ -54,7 +69,7 @@ const isDataCard = (v: Record<string, unknown>): boolean =>
   Array.isArray(v.assets) &&
   v.assets.every(isHoldingsAsset) &&
   (v.fiatCurrency == null || isStr(v.fiatCurrency)) &&
-  (v.partial == null || typeof v.partial === "boolean");
+  (v.partial == null || typeof v.partial === "boolean"));
 
 /** Narrow an unknown JSON value to a ChatEvent: the discriminator and the required fields of that event type. */
 export function isChatEvent(v: unknown): v is ChatEvent {

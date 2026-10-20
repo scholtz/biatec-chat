@@ -287,7 +287,7 @@ public sealed class OrchestrationTests : IAsyncLifetime
         Assert.Equal([MessageRole.User, MessageRole.Assistant], rows.Select(x => x.Role));
         Assert.Equal("Hello there", rows[1].Content);
         // Anonymous: only the two anonymous tools reach the model, with Bedrock-safe names.
-        Assert.Equal(["requestSignIn", "kb_search"], model.Requests[0].Tools.Select(t => t.Name));
+        Assert.Equal(["requestSignIn", "kb_search", "market_snapshot"], model.Requests[0].Tools.Select(t => t.Name));
         Assert.Equal(ModelProfile.Anonymous, model.Requests[0].Profile);
         Assert.Contains("untrusted_data", model.Requests[0].Persona);
     }

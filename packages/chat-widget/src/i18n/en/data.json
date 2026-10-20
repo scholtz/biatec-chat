@@ -8,5 +8,19 @@
     "concentration": "{asset} is {percent}% of this wallet, above {threshold}%. Most of the value sits in one asset.",
     "asOf": "Balances as of {time} UTC · {network}",
     "announce": "Holdings card: {count} asset(s)."
+  },
+  "market": {
+    "label": "Market snapshot {pair}",
+    "kicker": "Market snapshot · {source}",
+    "up": "Up",
+    "down": "Down",
+    "flat": "Unchanged",
+    "period": "24 h",
+    "high": "24 h high",
+    "low": "24 h low",
+    "volume": "24 h volume",
+    "spark": "Price over the last 24 hours",
+    "stamp": "Snapshot {time} UTC · not live",
+    "announce": "Market card for {pair}."
   }
 }
