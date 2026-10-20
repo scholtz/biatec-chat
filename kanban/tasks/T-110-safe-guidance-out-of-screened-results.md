@@ -1,7 +1,7 @@
 ---
 id: T-110
 title: "Safe executors: move instruction text out of guardrail-screened results"
-status: blocked
+status: backlog
 priority: P2
 epic: "Safe"
 blocked_by: [T-109]
@@ -75,3 +75,4 @@ apply-guardrail` (eu-central-1, guardrail `rwa0b0by3y18` v1) on a recorded `safe
 ## Activity log
 
 - 2026-10-20 10:28 · coordinator · (new) → blocked · follow-up from T-109 (instruction text trips the tool-result guardrail)
+- 2026-10-20 10:43 · kanban-board · blocked → backlog · blockers done: T-109
