@@ -1,7 +1,7 @@
 ---
 id: T-075
 title: Backend preview cancel endpoint
-status: backlog
+status: in-progress
 priority: P2
 epic: "Wallet tools"
 blocked_by: []
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Api/Chat/Cancel/**", "backend/Biatec.Chat.Tests/Canc
 parallel: yes
 conflicts_with: []
 issue: "#142"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-075"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#user-experience"
 created: 2026-10-20
 updated: 2026-10-20
@@ -69,3 +69,5 @@ dotnet test backend (new tests under `backend/Biatec.Chat.Tests/Cancel/`); `pnpm
 ## Activity log
 
 - 2026-10-20 02:10 · session-20261020-0154 · (new) → backlog · follow-up from T-066: the widget's Revoke all access calls a cancel route the backend lacks
+- 2026-10-20 02:19 · scholtz · taken · status stays backlog
+- 2026-10-20 02:19 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

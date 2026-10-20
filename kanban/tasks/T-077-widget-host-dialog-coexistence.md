@@ -1,7 +1,7 @@
 ---
 id: T-077
 title: Widget fixes for coexisting with host dialogs (Esc, focus trap, lang, chip export)
-status: backlog
+status: in-progress
 priority: P2
 epic: "Widget"
 blocked_by: [T-063, T-068]
@@ -9,9 +9,9 @@ area: ["packages/chat-widget/src/components/BiatecChatRoot.vue", "packages/chat-
 parallel: no
 conflicts_with: [T-043]
 issue: "#144"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-077"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#accessibility-and-localization"
 created: 2026-10-20
 updated: 2026-10-20
@@ -68,3 +68,5 @@ Parallel work possible: **no**. Don't run it at the same time as T-043: they cha
 
 - 2026-10-20 03:20 · coordinator · (new) → backlog · proposed by T-068; conflicts with T-043 (lang / i18n resolution)
 - 2026-10-20 02:09 · coordinator · backlog · blocked_by + T-068 (its acceptance checks run in the DEX playground)
+- 2026-10-20 02:19 · scholtz · taken · status stays backlog
+- 2026-10-20 02:19 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
