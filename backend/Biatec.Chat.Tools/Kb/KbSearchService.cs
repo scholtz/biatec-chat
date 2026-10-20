@@ -3,8 +3,15 @@ using System.Text.RegularExpressions;
 
 namespace Biatec.Chat.Tools.Kb;
 
-/// <summary>One knowledge base page. <see cref="Id"/> is the file name without extension and is what the model cites.</summary>
-public sealed record KbPage(string Id, string Title, string Body);
+/// <summary>
+/// One knowledge base page. <see cref="Id"/> is the file name without extension (or the uploaded id) and is what the
+/// model cites. <see cref="Source"/> is "seed" (a <c>Kb:Path</c> file) or "upload" (the admin API).
+/// </summary>
+public sealed record KbPage(string Id, string Title, string Body, string Source = KbPage.SeedSource)
+{
+    public const string SeedSource = "seed";
+    public const string UploadSource = "upload";
+}
 
 /// <summary>A ranked hit with a short excerpt around the best match.</summary>
 public sealed record KbHit(string Id, string Title, string Excerpt, double Score);
@@ -38,22 +45,36 @@ public sealed partial class KbSearchService
     public static KbSearchService FromDirectory(string directory) => new(LoadDirectory(directory));
 
     /// <summary>The <c>*.md</c> pages of a directory (id = file name without extension), or none when it is missing.</summary>
-    public static IReadOnlyList<KbPage> LoadDirectory(string directory)
+    public static IReadOnlyList<KbPage> LoadDirectory(string directory) => LoadDirectory(directory, out _);
+
+    /// <summary>
+    /// As <see cref="LoadDirectory(string)"/>. Ids stay the file name, so two files with one name in different
+    /// subdirectories collide: the first in ordinal path order is served and the others are returned in
+    /// <paramref name="duplicates"/> (paths relative to the directory) for the caller to log.
+    /// </summary>
+    public static IReadOnlyList<KbPage> LoadDirectory(string directory, out IReadOnlyList<string> duplicates)
     {
         var pages = new List<KbPage>();
+        var skipped = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         if (Directory.Exists(directory))
         {
             foreach (var file in Directory.EnumerateFiles(directory, "*.md", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
-                pages.Add(Parse(Path.GetFileNameWithoutExtension(file), File.ReadAllText(file, Encoding.UTF8)));
+            {
+                var id = Path.GetFileNameWithoutExtension(file);
+                if (seen.Add(id)) pages.Add(Parse(id, File.ReadAllText(file, Encoding.UTF8)));
+                else skipped.Add(Path.GetRelativePath(directory, file));
+            }
         }
+        duplicates = skipped;
         return pages;
     }
 
     /// <summary>A page from its text: the title is the first <c># heading</c>, else the id.</summary>
-    public static KbPage Parse(string id, string text)
+    public static KbPage Parse(string id, string text, string source = KbPage.SeedSource)
     {
         var title = TitleRegex().Match(text) is { Success: true } m ? m.Groups[1].Value.Trim() : id;
-        return new KbPage(id, title, text);
+        return new KbPage(id, title, text, source);
     }
 
     /// <summary>Seed pages overlaid with uploaded ones: an uploaded page replaces the seed page with the same id.</summary>

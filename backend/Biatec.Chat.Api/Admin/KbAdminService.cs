@@ -12,7 +12,8 @@ namespace Biatec.Chat.Api.Admin;
 
 public enum KbChange { Created, Replaced, Unchanged, Deleted, NotFound, Invalid, UnsupportedType, TooLarge }
 
-public sealed record KbWriteResult(KbChange Change, string? Error = null, KbStoredPageView? Page = null, int Served = 0);
+/// <summary><see cref="ReloadError"/> is set when the change is stored but this replica could not reload; it picks the change up on its next refresh.</summary>
+public sealed record KbWriteResult(KbChange Change, string? Error = null, KbStoredPageView? Page = null, int Served = 0, string? ReloadError = null);
 
 /// <summary>An uploaded page without its body.</summary>
 public sealed record KbStoredPageView(string Id, string ContentType, int SizeBytes, string Sha256, DateTimeOffset UpdatedAt)
@@ -32,10 +33,15 @@ public sealed partial class KbAdminService(ChatDbContext db, KbLibrary library, 
 {
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
-    [GeneratedRegex(@"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")]
+    public const int MaxIdLength = 64;
+
+    // \z, not $: $ also matches before a trailing newline.
+    [GeneratedRegex(@"\A[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?\z")]
     private static partial Regex IdRegex();
 
-    public static bool ValidId(string id) => IdRegex().IsMatch(id);
+    public static bool ValidId(string id) => id.Length is > 0 and <= MaxIdLength && IdRegex().IsMatch(id);
+
+    private const string LockSql = "SELECT pg_advisory_xact_lock(hashtextextended('biatec-chat-admin:kb', 0))";
 
     /// <summary>"text/markdown" or "text/plain" for an accepted Content-Type (charset, if any, must be UTF-8), else null.</summary>
     public static string? AcceptedType(string? contentType)
@@ -56,8 +62,8 @@ public sealed partial class KbAdminService(ChatDbContext db, KbLibrary library, 
     {
         var rows = await db.KbPages.AsNoTracking().OrderBy(p => p.Id)
             .Select(p => new KbStoredPageView(p.Id, p.ContentType, p.SizeBytes, p.Sha256, p.UpdatedAt)).ToListAsync(ct);
-        var uploaded = rows.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
-        var served = kb.Pages.Select(p => new KbServedPageView(p.Id, p.Title, uploaded.Contains(p.Id) ? "upload" : "seed")).ToList();
+        // What this replica serves now, from its own snapshot (it can lag the table until its next refresh).
+        var served = kb.Pages.Select(p => new KbServedPageView(p.Id, p.Title, p.Source)).ToList();
         return (rows, served);
     }
 
@@ -85,7 +91,7 @@ public sealed partial class KbAdminService(ChatDbContext db, KbLibrary library, 
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
             // One knowledge-base write at a time, so the page limit holds and two uploads of one id never collide.
-            await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(hashtextextended('biatec-chat-admin:kb', 0))", ct);
+            await db.Database.ExecuteSqlRawAsync(LockSql, ct);
             var existing = await db.KbPages.FirstOrDefaultAsync(p => p.Id == id, ct);
             if (existing is null)
             {
@@ -113,16 +119,24 @@ public sealed partial class KbAdminService(ChatDbContext db, KbLibrary library, 
             await tx.CommitAsync(ct);
         }
 
-        var served = await library.ReloadAsync(reseed: false, ct);
-        return new(change, Page: KbStoredPageView.Of(page), Served: served);
+        if (change == KbChange.Unchanged) return new(change, Page: KbStoredPageView.Of(page), Served: kb.PageCount);
+        var reload = await library.ReloadAsync(reseed: false, ct);
+        return new(change, Page: KbStoredPageView.Of(page), Served: reload.Served, ReloadError: reload.Error);
     }
 
     public async Task<KbWriteResult> DeleteAsync(string id, CancellationToken ct)
     {
         if (!ValidId(id)) return new(KbChange.NotFound, "Unknown page.");
-        var n = await db.KbPages.Where(p => p.Id == id).ExecuteDeleteAsync(ct);
+        int n;
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        {
+            // The same lock as uploads, so a delete never races a replace of the same page.
+            await db.Database.ExecuteSqlRawAsync(LockSql, ct);
+            n = await db.KbPages.Where(p => p.Id == id).ExecuteDeleteAsync(ct);
+            await tx.CommitAsync(ct);
+        }
         if (n == 0) return new(KbChange.NotFound, "Unknown page.");
-        var served = await library.ReloadAsync(reseed: false, ct);
-        return new(KbChange.Deleted, Served: served);
+        var reload = await library.ReloadAsync(reseed: false, ct);
+        return new(KbChange.Deleted, Served: reload.Served, ReloadError: reload.Error);
     }
 }

@@ -142,10 +142,10 @@ public static class AdminEndpoints
             switch (r.Change)
             {
                 case KbChange.Created or KbChange.Replaced or KbChange.Unchanged:
-                    // Audit record: id, size and hash only, never the content.
-                    log.LogInformation("Admin: operator from {RemoteIp} uploaded kb page {PageId} ({Change}, {Bytes} bytes, sha256 {Sha256}); serving {Served} pages. Reason: {Reason}",
-                        remote, id, r.Change.ToString().ToLowerInvariant(), r.Page!.SizeBytes, r.Page.Sha256, r.Served, reason);
-                    return Results.Json(new { page = r.Page, change = r.Change.ToString().ToLowerInvariant(), served = r.Served },
+                    // Audit record, written once the change is committed: id, size and hash only, never the content.
+                    log.LogInformation("Admin: operator from {RemoteIp} uploaded kb page {PageId} ({Change}, {Bytes} bytes, sha256 {Sha256}); {Reload}. Reason: {Reason}",
+                        remote, id, r.Change.ToString().ToLowerInvariant(), r.Page!.SizeBytes, r.Page.Sha256, ReloadNote(r), reason);
+                    return Results.Json(new { page = r.Page, change = r.Change.ToString().ToLowerInvariant(), served = r.Served, reloaded = r.ReloadError is null, note = Note(r) },
                         statusCode: r.Change == KbChange.Created ? 201 : 200);
                 case KbChange.UnsupportedType: return Refuse(log, remote, id, reason, 415, r.Error!);
                 case KbChange.TooLarge: return Refuse(log, remote, id, reason, 413, r.Error!);
@@ -167,19 +167,33 @@ public static class AdminEndpoints
                 log.LogWarning("Admin: operator from {RemoteIp} tried to delete unknown kb page {PageId}", remote, id);
                 return Results.Json(new { error = r.Error }, statusCode: 404);
             }
-            log.LogInformation("Admin: operator from {RemoteIp} deleted kb page {PageId}; serving {Served} pages. Reason: {Reason}", remote, id, r.Served, reason);
-            return Results.Json(new { deleted = pageId, served = r.Served });
+            log.LogInformation("Admin: operator from {RemoteIp} deleted kb page {PageId}; {Reload}. Reason: {Reason}", remote, id, ReloadNote(r), reason);
+            return Results.Json(new { deleted = pageId, served = r.Served, reloaded = r.ReloadError is null, note = Note(r) });
         });
 
         // Re-reads the seed directory (Kb:Path) and the uploaded pages on this replica.
         g.MapPost("/reload", async (HttpContext ctx, KbLibrary library, ILogger<KbAdminService> log, CancellationToken ct) =>
         {
             if (OperatorAuth.Check(ctx) is { } denied) return denied;
-            var served = await library.ReloadAsync(reseed: true, ct);
-            log.LogInformation("Admin: operator from {RemoteIp} reloaded the knowledge base; serving {Served} pages", OperatorAuth.Remote(ctx), served);
-            return Results.Json(new { served });
+            var r = await library.ReloadAsync(reseed: true, ct);
+            if (!r.Ok)
+            {
+                // Partial: the new seed is served with the last uploaded pages read; the database could not be read.
+                log.LogWarning("Admin: operator from {RemoteIp} reloaded the knowledge base partially: seed reloaded, uploaded pages unavailable ({Error}); serving {Served} pages",
+                    OperatorAuth.Remote(ctx), r.Error, r.Served);
+                return Results.Json(new { served = r.Served, partial = true, error = "Seed pages reloaded; the uploaded pages could not be read, so the last ones read are served. " + r.Error }, statusCode: 503);
+            }
+            log.LogInformation("Admin: operator from {RemoteIp} reloaded the knowledge base; serving {Served} pages", OperatorAuth.Remote(ctx), r.Served);
+            return Results.Json(new { served = r.Served, partial = false });
         });
     }
+
+    private static string ReloadNote(KbWriteResult r) => r.Change == KbChange.Unchanged
+        ? $"no reload needed, serving {r.Served} pages"
+        : r.ReloadError is null ? $"serving {r.Served} pages" : $"stored, this replica could not reload ({r.ReloadError}) and picks it up on its next refresh";
+
+    private static string? Note(KbWriteResult r) =>
+        r.ReloadError is null ? null : "Stored; this replica will pick it up on the next refresh.";
 
     private static IResult Refuse(ILogger log, string remote, string id, string? reason, int status, string error)
     {

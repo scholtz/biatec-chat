@@ -101,7 +101,7 @@ public sealed class KbAdminTests : IAsyncLifetime
     }
 
     /// <summary>One replica: its own host and singletons, the shared test database.</summary>
-    private WebApplicationFactory<Program> Replica(Dictionary<string, string?>? extra = null, IModelClient? model = null, string? operatorKey = OperatorKey)
+    private WebApplicationFactory<Program> Replica(Dictionary<string, string?>? extra = null, IModelClient? model = null, string? operatorKey = OperatorKey, Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor? interceptor = null)
     {
         var f = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
@@ -125,6 +125,7 @@ public sealed class KbAdminTests : IAsyncLifetime
                 s.RemoveAll<ITenantStore>();
                 s.AddSingleton<ITenantStore>(new MemoryTenantStore(TenantSeed.BiatecChat()));
                 s.AddSingleton<ILoggerProvider>(_logs);
+                if (interceptor is not null) s.ConfigureDbContext<ChatDbContext>(o => o.AddInterceptors(interceptor));
                 if (model is not null)
                 {
                     s.RemoveAll<IModelClient>();
@@ -337,6 +338,123 @@ public sealed class KbAdminTests : IAsyncLifetime
             .SelectMany(c => c.ToolResult.Content).Select(c => c.Text).Single();
         Assert.StartsWith("<untrusted_data source=\"tool.kb.search\">", fed);
         Assert.Contains("[source: zebra-staking]", fed);
+    }
+
+    /// <summary>Fails the full page read of a reload (the query that selects bodies in id order) while <see cref="Fail"/> is set.</summary>
+    private sealed class FailReload : Microsoft.EntityFrameworkCore.Diagnostics.DbCommandInterceptor
+    {
+        public volatile bool Fail;
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader>> ReaderExecutingAsync(
+            System.Data.Common.DbCommand command, Microsoft.EntityFrameworkCore.Diagnostics.CommandEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader> result, CancellationToken ct = default)
+        {
+            if (Fail && command.CommandText.Contains("\"Body\"") && command.CommandText.Contains("ORDER BY"))
+                throw new InvalidOperationException("simulated reload failure");
+            return base.ReaderExecutingAsync(command, eventData, result, ct);
+        }
+    }
+
+    [Theory]
+    [InlineData("zebra%0A")]
+    [InlineData("zebra%0D%0A")]
+    [InlineData("-zebra")]
+    public async Task PageIdWithTrailingNewlineOrBadShape_IsRefused(string encoded)
+    {
+        Assert.False(Biatec.Chat.Api.Admin.KbAdminService.ValidId("zebra\n"));
+        Assert.False(Biatec.Chat.Api.Admin.KbAdminService.ValidId(new string('a', 65)));
+        Assert.True(Biatec.Chat.Api.Admin.KbAdminService.ValidId(new string('a', 64)));
+        var a = Replica();
+        Assert.Equal(HttpStatusCode.BadRequest, (await UploadAsync(a, encoded, Text(Page))).StatusCode);
+        Assert.Equal(0, await StoredCountAsync());
+    }
+
+    [Fact]
+    public async Task ConcurrentReplaceAndDelete_NeverFail()
+    {
+        var a = Replica();
+        var tasks = Enumerable.Range(0, 20).Select(i => i % 2 == 0
+            ? UploadAsync(a, "zebra-staking", Text(Page + i))
+            : SendAsync(a, HttpMethod.Delete, "/pages/zebra-staking")).ToList();
+        var statuses = (await Task.WhenAll(tasks)).Select(r => (int)r.StatusCode).ToList();
+        Assert.All(statuses, st => Assert.Contains(st, new[] { 200, 201, 404 }));
+    }
+
+    [Fact]
+    public async Task ReloadFailureAfterCommit_StillSucceeds_IsAudited_AndRefreshPicksItUp()
+    {
+        var fail = new FailReload();
+        var a = Replica(interceptor: fail);
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(a, HttpMethod.Post, "/reload")).StatusCode);
+        fail.Fail = true;
+
+        var up = await UploadAsync(a, "zebra-staking", Text(Page), reason: "ticket 9");
+        Assert.Equal(HttpStatusCode.Created, up.StatusCode);
+        var body = JsonDocument.Parse(await up.Content.ReadAsStringAsync()).RootElement;
+        Assert.False(body.GetProperty("reloaded").GetBoolean());
+        Assert.Contains("next refresh", body.GetProperty("note").GetString());
+        Assert.Equal(1, await StoredCountAsync());
+        Assert.Empty(Kb(a).Search("zebra stripe"));
+        Assert.Contains(_logs.Lines, l => l.Contains("uploaded kb page zebra-staking (created") && l.Contains("next refresh") && l.Contains("ticket 9"));
+
+        fail.Fail = false;
+        Assert.True(await a.Services.GetRequiredService<KbLibrary>().RefreshIfChangedAsync(default));
+        Assert.Equal("zebra-staking", Kb(a).Search("zebra stripe").Single().Id);
+
+        // Same content again: unchanged, no reload attempted.
+        fail.Fail = true;
+        var same = await UploadAsync(a, "zebra-staking", Text(Page));
+        Assert.True(JsonDocument.Parse(await same.Content.ReadAsStringAsync()).RootElement.GetProperty("reloaded").GetBoolean());
+        Assert.Contains(_logs.Lines, l => l.Contains("(unchanged") && l.Contains("no reload needed"));
+    }
+
+    [Fact]
+    public async Task Reload_WithDatabaseDown_ServesNewSeed_AndLastUploads_AndReportsPartial()
+    {
+        var seed = Directory.CreateTempSubdirectory("kb-seed-");
+        try
+        {
+            File.WriteAllText(Path.Combine(seed.FullName, "first.md"), "# First\n\nAardvark facts.\n");
+            var a = Replica(new() { ["Kb:Path"] = seed.FullName });
+            Assert.Equal(HttpStatusCode.Created, (await UploadAsync(a, "zebra-staking", Text(Page))).StatusCode);
+
+            File.WriteAllText(Path.Combine(seed.FullName, "second.md"), "# Second\n\nPangolin facts.\n");
+            await DbSqlAsync("DROP TABLE \"KbPages\"");
+
+            var r = await SendAsync(a, HttpMethod.Post, "/reload");
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, r.StatusCode);
+            var body = JsonDocument.Parse(await r.Content.ReadAsStringAsync()).RootElement;
+            Assert.True(body.GetProperty("partial").GetBoolean());
+            Assert.Contains("42P01", body.GetProperty("error").GetString()); // missing table: diagnosable
+            Assert.Equal("second", Kb(a).Search("pangolin").Single().Id);           // new seed served
+            Assert.Equal("zebra-staking", Kb(a).Search("zebra stripe").Single().Id); // last uploads kept
+            Assert.Contains(_logs.Lines, l => l.Contains("reloaded the knowledge base partially") && l.Contains("42P01"));
+
+            var ex = await Assert.ThrowsAnyAsync<Exception>(() => a.Services.GetRequiredService<KbLibrary>().RefreshIfChangedAsync(default));
+            Assert.Contains("42P01", KbLibrary.Describe(ex)); // what the poller logs
+        }
+        finally { seed.Delete(recursive: true); }
+    }
+
+    [Fact]
+    public async Task List_ReportsWhatThisReplicaServes_AndTheStoredPagesSeparately()
+    {
+        var a = Replica();
+        var b = Replica();
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(b, HttpMethod.Post, "/reload")).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await UploadAsync(a, "zebra-staking", Text(Page))).StatusCode);
+
+        var list = JsonDocument.Parse(await (await SendAsync(b, HttpMethod.Get, "/pages")).Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal("zebra-staking", list.GetProperty("uploaded").EnumerateArray().Single().GetProperty("id").GetString());
+        Assert.DoesNotContain(list.GetProperty("served").EnumerateArray(), p => p.GetProperty("id").GetString() == "zebra-staking");
+        Assert.All(list.GetProperty("served").EnumerateArray(), p => Assert.Equal("seed", p.GetProperty("source").GetString()));
+    }
+
+    private async Task DbSqlAsync(string sql)
+    {
+        await using var conn = new NpgsqlConnection(Cs);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await cmd.ExecuteNonQueryAsync();
     }
 
     private static IEnumerable<ModelStreamEvent> ToolCall(string id, string wireName, string input)

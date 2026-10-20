@@ -64,6 +64,23 @@ public sealed class KbSearchTests
     }
 
     [Fact]
+    public void Kb_SeedFilesWithTheSameName_KeepTheFirst_AndReportTheOthers()
+    {
+        var dir = Directory.CreateTempSubdirectory("kb-dup-");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(dir.FullName, "a"));
+            Directory.CreateDirectory(Path.Combine(dir.FullName, "b"));
+            File.WriteAllText(Path.Combine(dir.FullName, "a", "fees.md"), "# Fees A\n\nalpha");
+            File.WriteAllText(Path.Combine(dir.FullName, "b", "fees.md"), "# Fees B\n\nbeta");
+            var pages = KbSearchService.LoadDirectory(dir.FullName, out var duplicates);
+            Assert.Equal("Fees A", Assert.Single(pages).Title);
+            Assert.Equal(Path.Combine("b", "fees.md"), Assert.Single(duplicates));
+        }
+        finally { dir.Delete(recursive: true); }
+    }
+
+    [Fact]
     public async Task Kb_ExecutorReturnsCitedContent_AndHandlesNoHits()
     {
         var exec = new KbSearchExecutor(KbSearchService.FromDirectory(SeedDir()));

@@ -129,7 +129,12 @@ Each replica holds an immutable page snapshot and swaps it atomically on reload.
 - the replica that handles an upload or delete reloads at once;
 - every replica polls the table every `Kb:RefreshSeconds` (default 30; `0` turns polling off) and reloads when the
   set of page ids and SHA-256 hashes changed (the poll reads ids and hashes only, not bodies). If the database cannot
-  be read, the replica keeps the pages it serves (at start: the seed only) and logs one warning per outage.
+  be read, the replica keeps the pages it serves (at start: the seed only) and logs one warning per outage, with the
+  PostgreSQL SQL state and message (for example `42P01 relation "KbPages" does not exist`: the migration is not
+  applied).
+
+Seed page ids are file names without `.md`. Two seed files with the same name in different subdirectories collide:
+the first in ordinal path order is served and each other one is skipped with a warning.
 
 Settings (section `Kb`): `Path` (seed directory, default `kb/` next to the binary), `MaxPageBytes` (default 16384),
 `MaxPages` (uploaded pages, default 200), `RefreshSeconds` (default 30).
@@ -143,13 +148,17 @@ Settings (section `Kb`): `Path` (seed directory, default `kb/` next to the binar
 }
 ```
 
-`uploaded` is the shared table (no bodies); `served` is what this replica serves right now.
+`uploaded` is the shared table (no bodies); `served` is what this replica serves right now, from its own snapshot,
+with `source` `seed` or `upload` as served. Until its next refresh a replica can serve less than `uploaded` shows.
 
 ### `PUT /onboarding/operator/kb/pages/{pageId}`
 
 Creates or replaces a page. The raw request body is the page; the audit reason goes in the header `X-Admin-Reason`
 (required, 1-200 characters, no control characters). Answer: `201` created, `200` replaced or unchanged (same
-content), with `{ "page": <uploaded page>, "change": "created|replaced|unchanged", "served": <count> }`.
+content), with `{ "page": <uploaded page>, "change": "created|replaced|unchanged", "served": <count>, "reloaded":
+true|false, "note": null|"..." }`. An unchanged upload does not reload. If the change is committed but this replica
+then cannot reload, the request still succeeds and is audited, with `reloaded: false` and the note "Stored; this
+replica will pick it up on the next refresh."
 
 | Check | Refusal |
 |---|---|
@@ -165,12 +174,16 @@ The title is the first `# heading`, else the id. Writes are serialized with a Po
 
 ### `DELETE /onboarding/operator/kb/pages/{pageId}`
 
-Removes an uploaded page (`X-Admin-Reason` required). `200 { "deleted": id, "served": <count> }`, or `404`.
+Removes an uploaded page (`X-Admin-Reason` required). `200 { "deleted": id, "served": <count>, "reloaded": ..., "note": ... }` (as for an upload), or `404`.
+Deletes take the same advisory lock as uploads.
 
 ### `POST /onboarding/operator/kb/reload`
 
 Re-reads the seed directory (`Kb:Path`) and the uploaded pages on the replica that handles it, for example after a
-mounted seed volume changed: `200 { "served": <count> }`. Uploaded pages reach other replicas by polling.
+mounted seed volume changed: `200 { "served": <count>, "partial": false }`. Uploaded pages reach other replicas by
+polling. If the database cannot be read, the new seed is still served together with the last uploaded pages read,
+and the answer is `503 { "served": <count>, "partial": true, "error": "... <SQL state and message>" }`, audited as
+`reloaded the knowledge base partially`.
 
 ```bash
 curl -sS -X PUT https://chat.biatec.io/onboarding/operator/kb/pages/zebra-staking \

@@ -75,7 +75,9 @@ public static class AnonymousTierRegistration
     {
         services.Configure<KbOptions>(config.GetSection(KbOptions.Section));
         // Starts with the seed pages; KbLibrary overlays the uploaded ones from PostgreSQL (T-096).
-        services.AddSingleton(sp => KbSearchService.FromDirectory(sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<KbOptions>>().Value.ResolvedPath));
+        services.AddSingleton(sp => new KbSearchService(KbLibrary.LoadSeed(
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<KbOptions>>().Value.ResolvedPath,
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger<KbLibrary>())));
         services.AddSingleton<KbLibrary>();
         services.AddHostedService<KbRefreshService>();
         services.AddSingleton<IToolExecutor, KbSearchExecutor>();
