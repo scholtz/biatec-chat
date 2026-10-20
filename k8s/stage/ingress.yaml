@@ -5,7 +5,7 @@ metadata:
   name: biatec-chat-backend
   labels: {app.kubernetes.io/name: biatec-chat-backend, app.kubernetes.io/part-of: biatec-chat}
   annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
+    cert-manager.io/cluster-issuer: letsencrypt-dns
     nginx.ingress.kubernetes.io/proxy-buffering: "off"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
 spec:

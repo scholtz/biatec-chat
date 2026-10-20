@@ -88,6 +88,8 @@ NVMe drive under `/mnt/nvme1/chat-stage/`. They are `local` rather than `hostPat
 mkdir -p /mnt/nvme1/chat-stage/postgres /mnt/nvme1/chat-stage/redis
 ```
 
+Both ingresses use the `letsencrypt-dns` ClusterIssuer (DNS-01), so the certificate for the host does not need the ingress to be reachable first.
+
 Production (`k8s/main`) has no volumes defined yet: add a `storage.yaml` for it the same way (own directory, claims
 `data-biatec-chat-postgres-0` / `data-biatec-chat-redis-0` in `biatec-chat-main`) before its first deploy.
 
