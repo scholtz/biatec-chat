@@ -259,6 +259,33 @@ public sealed class RetentionTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AdminChain_KeepsItsPayloads_UntilTheRecordWindow()
+    {
+        using var keys = new DevEvidenceKeyStore(time: _time);
+        await using var db = NewContext();
+        var log = new EvidenceLog(db, keys, _time);
+        var admin = Biatec.Chat.Api.Admin.AdminEvidence.ChainId;
+        var conv = await SeedConversationAsync(db, "sub-1");
+        await log.AppendAsync(admin, Biatec.Chat.Api.Admin.AdminEvidence.Kind, new JsonObject { ["operator"] = "alice" });
+        await log.AppendAsync(conv, "message", new JsonObject { ["text"] = "x" });
+
+        _time.Now += TimeSpan.FromDays(91);
+        Assert.Equal(1, (await Retention(db).ApplyAsync(default)).PayloadsDeleted); // the conversation's entry only
+        var kept = (await log.GetChainAsync(admin)).Single();
+        Assert.Contains("alice", kept.Payload);
+        Assert.NotNull(kept.Salt);
+        Assert.True((await log.VerifyAsync(admin)).Valid);
+
+        _time.Now += TimeSpan.FromDays(2556 - 91);
+        await Retention(db).ApplyAsync(default);
+        Assert.Single(await log.GetChainAsync(admin)); // inside the record window
+
+        _time.Now += TimeSpan.FromDays(2);
+        await Retention(db).ApplyAsync(default);
+        Assert.Empty(await log.GetChainAsync(admin)); // past it: removed like any orphan chain
+    }
+
+    [Fact]
     public async Task HostedService_RunsShortlyAfterStartup_WithoutWaitingAFullInterval()
     {
         var services = new ServiceCollection();

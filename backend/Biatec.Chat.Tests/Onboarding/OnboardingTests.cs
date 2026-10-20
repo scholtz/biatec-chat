@@ -1,10 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Biatec.Chat.Api.Admin;
 using Biatec.Chat.Api.Data;
 using Biatec.Chat.Api.Onboarding;
 using Biatec.Chat.Api.Tenancy;
 using Biatec.Chat.Core.Data;
+using Biatec.Chat.Core.Evidence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -110,6 +112,7 @@ public sealed class OnboardingTests : IAsyncLifetime
                 ["Kms:KeyId"] = "alias/test",
                 ["Onboarding:ChallengeKey"] = ChallengeKey,
                 ["Onboarding:OperatorKey"] = OperatorKey,
+                ["Evidence:AllowEphemeralKeys"] = "true",
             }));
             b.ConfigureServices(s =>
             {
@@ -390,6 +393,107 @@ public sealed class OnboardingTests : IAsyncLifetime
         var m = new HttpRequestMessage(HttpMethod.Post, "http://chat.biatec.io/onboarding/operator/tenants") { Content = JsonContent.Create(new { }) };
         m.Headers.TryAddWithoutValidation("Authorization", "Bearer " + (key ?? ""));
         Assert.Equal(HttpStatusCode.NotFound, (await client.SendAsync(m)).StatusCode);
+    }
+
+    private const string AliceKey = "alice-operator-key-0123456789-abcdefghij";
+
+    private static string Hash(string key) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key)));
+
+    private static HttpRequestMessage RawApproval(string body, string? bearer, string contentType = "application/json")
+    {
+        var m = new HttpRequestMessage(HttpMethod.Post, "http://chat.biatec.io/onboarding/operator/tenants")
+        {
+            Content = new StringContent(body, System.Text.Encoding.UTF8, contentType),
+        };
+        if (bearer is not null) m.Headers.TryAddWithoutValidation("Authorization", "Bearer " + bearer);
+        return m;
+    }
+
+    [Fact]
+    public async Task OperatorRoute_AuthenticatesBeforeReadingTheBody()
+    {
+        using var client = _factory.CreateClient();
+        // Unauthenticated: 401 whatever the body, never 400 or 415.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.SendAsync(RawApproval("{not json", null))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.SendAsync(RawApproval("{not json", "wrong-key-0123456789-abcdefghij-xyz"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.SendAsync(RawApproval("x", null, "text/plain"))).StatusCode);
+        // Authenticated: the body is then parsed.
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.SendAsync(RawApproval("{not json", OperatorKey))).StatusCode);
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, (await client.SendAsync(RawApproval("x", OperatorKey, "text/plain"))).StatusCode);
+
+        // Without any operator key the route does not exist: 404, also for an unparseable body.
+        using var off = ClientWith(("Onboarding:OperatorKey", null));
+        Assert.Equal(HttpStatusCode.NotFound, (await off.SendAsync(RawApproval("{not json", null))).StatusCode);
+    }
+
+    private async Task<List<EvidenceEntry>> AdminChainAsync()
+    {
+        await using var db = NewContext();
+        return await db.EvidenceEntries.AsNoTracking().Where(e => e.ConversationId == AdminEvidence.ChainId).OrderBy(e => e.Seq).ToListAsync();
+    }
+
+    [Fact]
+    public async Task OperatorApproval_IsRecordedInTheAdminChain_WithTheNamedOperator_AndNoSecretRef()
+    {
+        _dns.Prove("chat.example-bank.com", "chat.example-bank.com");
+        // Ephemeral signing keys live per host, so the chain is verified on the same host that signed it.
+        using var factory = _factory.WithWebHostBuilder(b => b.ConfigureAppConfiguration((_, c) =>
+            c.AddInMemoryCollection(new Dictionary<string, string?> { ["Admin:Operators:alice:KeyHash"] = Hash(AliceKey) })));
+        using var client = factory.CreateClient();
+        const string secretRef = "secret://tenants/chat.example-bank.com/oidc-client-secret";
+        var body = JsonSerializer.Serialize(new { request = Req("chat.example-bank.com"), oidcClientId = "static-client", clientSecretRef = secretRef, reason = "ticket 7" });
+
+        // A reason with control characters is refused and nothing is created or recorded.
+        var badReason = JsonSerializer.Serialize(new { request = Req("chat.example-bank.com"), oidcClientId = "static-client", clientSecretRef = secretRef, reason = "a\nb" });
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.SendAsync(RawApproval(badReason, AliceKey))).StatusCode);
+        Assert.Empty(await AdminChainAsync());
+
+        Assert.Equal(HttpStatusCode.Created, (await client.SendAsync(RawApproval(body, AliceKey))).StatusCode);
+        var entry = Assert.Single(await AdminChainAsync());
+        Assert.Equal(AdminEvidence.Kind, entry.Kind);
+        Assert.DoesNotContain("secret://", entry.Payload!);
+        var p = JsonDocument.Parse(entry.Payload!).RootElement;
+        Assert.Equal("alice", p.GetProperty("operator").GetString());
+        Assert.Equal("named-key", p.GetProperty("operatorAuth").GetString());
+        Assert.Equal(AdminEvidence.TenantApprove, p.GetProperty("action").GetString());
+        Assert.Equal("tenant:chat.example-bank.com", p.GetProperty("target").GetString());
+        Assert.Equal("ticket 7", p.GetProperty("reason").GetString());
+        Assert.Equal(JsonValueKind.Null, p.GetProperty("before").ValueKind);
+        var after = p.GetProperty("after");
+        Assert.Equal("chat.example-bank.com", after.GetProperty("host").GetString());
+        Assert.Equal("static-client", after.GetProperty("oidcClientId").GetString());
+        Assert.Equal("1500", after.GetProperty("softCapEurPerHour").GetString());
+        Assert.Equal("1000", after.GetProperty("consentThresholdCeilingEur").GetString());
+        Assert.False(after.GetProperty("trustAnchorVerified").GetBoolean());
+
+        using var scope = factory.Services.CreateScope();
+        Assert.True((await scope.ServiceProvider.GetRequiredService<IEvidenceLog>().VerifyAsync(AdminEvidence.ChainId)).Valid);
+    }
+
+    private sealed class FailingEvidenceLog : IEvidenceLog
+    {
+        public Task<EvidenceEntry> AppendAsync(Guid conversationId, string kind, System.Text.Json.Nodes.JsonObject payload, string? anchorRef = null, CancellationToken ct = default) =>
+            throw new InvalidOperationException("simulated evidence store failure");
+        public Task<bool> DeletePayloadAsync(Guid conversationId, long seq, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<int> DeleteAllPayloadsAsync(Guid conversationId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<IReadOnlyList<EvidenceEntry>> GetChainAsync(Guid conversationId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<EvidenceVerification> VerifyAsync(Guid conversationId, CancellationToken ct = default) => throw new NotSupportedException();
+    }
+
+    [Fact]
+    public async Task OperatorApproval_IsRolledBack_WhenTheEvidenceAppendFails()
+    {
+        _dns.Prove("chat.example-bank.com", "chat.example-bank.com");
+        using var client = _factory.WithWebHostBuilder(b => b.ConfigureServices(s =>
+        {
+            s.RemoveAll<IEvidenceLog>();
+            s.AddScoped<IEvidenceLog, FailingEvidenceLog>();
+        })).CreateClient();
+        var body = JsonSerializer.Serialize(new { request = Req("chat.example-bank.com"), oidcClientId = "static-client", clientSecretRef = "secret://tenants/chat.example-bank.com/oidc-client-secret" });
+        // The test server rethrows the unhandled exception (a 500 in production).
+        await Assert.ThrowsAnyAsync<InvalidOperationException>(() => client.SendAsync(RawApproval(body, OperatorKey)));
+        Assert.Null(await TenantAsync("chat.example-bank.com"));
+        Assert.Empty(await AdminChainAsync());
     }
 
     [Fact]
