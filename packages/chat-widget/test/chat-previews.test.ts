@@ -213,9 +213,13 @@ describe("preview cards in the conversation", () => {
     const { svc, confirm } = setup([card(preview())], [result("scope_required"), result("scope_required"), result("scope_required")]);
     const w = await chat(svc);
     await confirmClick(w);
+    // The retry runs after the elevate popup is polled on a real timer, so wait for it instead of one flush.
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(w.find("[data-test=scope]").exists()).toBe(true));
+    // And it never retries a second time.
+    await new Promise((r) => setTimeout(r, 50));
     await flushPromises();
     expect(confirm).toHaveBeenCalledTimes(2);
-    expect(w.find("[data-test=scope]").exists()).toBe(true);
   });
 
   it.each([

@@ -76,6 +76,28 @@ kubectl create rolebinding github-actions-deploy -n biatec-chat-stage \
   --clusterrole=admin --serviceaccount=<namespace of the account>:<service account of KUBE_CONFIG>
 ```
 
+## Storage
+
+The cluster has no dynamic volume provisioner and no default StorageClass, so Postgres and Redis (StatefulSet claims
+`data-biatec-chat-postgres-0` and `data-biatec-chat-redis-0`, which set no class) are bound to fixed volumes. On stage
+they are `hostPath` PersistentVolumes in [k8s/stage/storage.yaml](../k8s/stage/storage.yaml), pinned to node `sch-g-04`
+and pre-bound to their claims, under `/mnt/nvme1/chat-stage/`. They have no class on purpose: a claim without a class
+binds only to a volume without one. `Retain` keeps the data on the drive if a claim is deleted. The deploy account
+needs `persistentvolumes` (cluster-scoped; `create-token.sh` grants it).
+
+The kubelet does not apply `fsGroup` to hostPath directories, and the databases run as user 999, so the directories are
+created and owned once, on the node, before the first deploy:
+
+```
+mkdir -p /mnt/nvme1/chat-stage/postgres /mnt/nvme1/chat-stage/redis
+chown 999:999 /mnt/nvme1/chat-stage/postgres /mnt/nvme1/chat-stage/redis
+```
+
+Both ingresses use the `letsencrypt-dns` ClusterIssuer (DNS-01), so the certificate for the host does not need the ingress to be reachable first.
+
+Production (`k8s/main`) has no volumes defined yet: add a `storage.yaml` for it the same way (own directory, claims
+`data-biatec-chat-postgres-0` / `data-biatec-chat-redis-0` in `biatec-chat-main`) before its first deploy.
+
 ## First deploy
 
 1. AWS part: [aws-setup.md](aws-setup.md) §3 (guardrail exists; Roles Anywhere role, certificates and the five `AWS_*` secrets).
