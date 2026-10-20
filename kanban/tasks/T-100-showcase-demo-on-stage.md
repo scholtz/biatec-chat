@@ -1,7 +1,7 @@
 ---
 id: T-100
 title: Showcase demo site deployed to stage
-status: in-progress
+status: review
 priority: P1
 epic: "Deployment"
 blocked_by: []
@@ -69,11 +69,11 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
 - [ ] A push to `main` deploys the demo to stage and the URL serves it over HTTPS; `kubectl rollout status` waits on it.
 - [ ] On stage: guest Q&A answers, sign-in reaches the authenticated tier, and at least one testnet action goes
       preview → Confirm → receipt with an exportable evidence bundle that verifies offline.
-- [ ] No token, secret or client secret in the built assets (grep the `dist/`); CSP set by nginx allows only the stage
+- [x] No token, secret or client secret in the built assets (grep the `dist/`); CSP set by nginx allows only the stage
       backend.
 - [ ] Look follows the Biatec AI tokens in dark and light, and works at 375 px; axe check has no serious violations.
-- [ ] Every section either works on stage or is labelled "coming next"; `docs/demo-site.md` lists which and why.
-- [ ] Workflows pass `actionlint`; `kubectl kustomize k8s/stage` and `k8s/main` render.
+- [x] Every section either works on stage or is labelled "coming next"; `docs/demo-site.md` lists which and why.
+- [x] Workflows pass `actionlint`; `kubectl kustomize k8s/stage` and `k8s/main` render.
 
 ## Implementation notes
 
@@ -91,6 +91,14 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
 
 ## Hand-off
 
+- **Summary:** `apps/demo` (Vite + Vue 3, real `@biatec/chat-widget` against stage): 7 sections, each item "Works on stage" / "· sign in first" / "Coming next" (no prompt on next items); market snapshot live (T-069 merged); T-068's DEX page reused at `/dex.html` (Tailwind source fixed). Hardened nginx-unprivileged image, one security-headers include for every location, CSP `connect-src` only the stage backend; no secrets in dist (build fails if any). Ingress `demo.stage.chat.biatec.io` with `letsencrypt-dns` (existing wildcard DNS; no new cloud resource); k8s/main deletes the demo. deploy-stage has one `STAGE_URL`; deploy.yml detects the demo from the rendered overlay, waits for its rollout and registers its origin and client key `biatec-demo` on the stage tenant (NULL-safe, onboarding caps, fails if not applied). docs/demo-site.md lists what works, what's next and the post-deploy checks.
+- **Branch:** `task/T-100` @ `2a8a1d4` (merged with main), PR #209 (`Closes #204`).
+- **Verification:** demo build + 6 tests; widget 319 tests; kustomize stage/main; actionlint clean; nginx container header checks; Chromium + axe on the main page (dark/light, 1280/375 px): no serious violations. Review (medium): all realistic findings fixed.
+- **Not met yet:** live stage criteria (HTTPS served, guest Q&A, sign-in, one testnet action with a verifiable bundle) — checked after the deploy (docs/demo-site.md "Post-deploy checks"). `/dex.html` has 2 serious axe violations in the reused PrimeVue host chrome (follow-up T-102).
+- **Known limitations:** duplicated page-theme module and dex-main.ts copy of the playground mount.
+- **Follow-up tasks created:** T-102 (DEX playground axe fixes), T-103 (docs/cicd.md for the demo pipeline).
+- **Unblocks:** no task is blocked by T-100.
+
 ## Review
 
 ## Activity log
@@ -98,3 +106,4 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
 - 2026-10-20 07:10 · coordinator · (new) → backlog · created on the user's request (showcase demo on stage); no existing task covered it (T-059 is a test, T-068 a dev-only playground)
 - 2026-10-20 07:17 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 07:17 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 07:57 · coordinator · in-progress → review · branch task/T-100 @ 2a8a1d4, PR #209
