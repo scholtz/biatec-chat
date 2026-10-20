@@ -68,6 +68,36 @@ describe("coexisting with host dialogs", () => {
     expect(e3.defaultPrevented).toBe(true);
   });
 
+  it("a native modal dialog owns Esc and Tab (focus outside the widget)", async () => {
+    const shadow = await openWidget({}, true);
+    const d = document.createElement("dialog");
+    d.setAttribute("open", "");
+    d.innerHTML = '<button id="n">N</button>';
+    d.getClientRects = () => [{}] as unknown as DOMRectList;
+    // jsdom has no showModal(): emulate :modal for the open dialog.
+    const matches = d.matches.bind(d);
+    d.matches = (sel: string) => (sel.includes(":modal") ? true : matches(sel));
+    document.body.appendChild(d);
+    const e = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    document.body.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await frame();
+    expect(shadow.querySelector(".bc-panel")).not.toBeNull();
+  });
+
+  it("Esc does not close the panel when the host handler removes its dialog during the same keydown", async () => {
+    const shadow = await openWidget();
+    const d = hostDialog();
+    const b = d.querySelector<HTMLElement>("#a")!;
+    b.focus();
+    d.addEventListener("keydown", () => d.remove());
+    b.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, composed: true }));
+    await frame();
+    expect(document.body.contains(d)).toBe(false);
+    expect(shadow.querySelector(".bc-panel")).not.toBeNull();
+  });
+
   it("lang is the resolved catalog locale", async () => {
     const shadow = await openWidget({ locale: "de" });
     expect(shadow.querySelector(".biatec-chat")!.getAttribute("lang")).toBe("en");

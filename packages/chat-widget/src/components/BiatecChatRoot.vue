@@ -142,15 +142,32 @@ function inWidget(e: Event): boolean {
 }
 
 const HOST_MODAL = "[role=dialog][aria-modal=true], dialog[open]:modal";
+function isHostModal(el: Element): boolean {
+  try {
+    return el.matches(HOST_MODAL);
+  } catch {
+    // Engines without :modal: fall back to the ARIA form and open native dialogs.
+    return el.matches("[role=dialog][aria-modal=true], dialog[open]");
+  }
+}
 /** A modal dialog of the host page (not ours) is open: it owns Esc and Tab. */
 function hostModalOpen(): boolean {
   if (typeof document === "undefined") return false;
-  return [...document.querySelectorAll<HTMLElement>("[role=dialog][aria-modal=true]")].some(
-    (el) => !rootEl.value?.contains(el) && !el.closest("[data-biatec-chat-host]") && el.getClientRects().length > 0,
-  );
+  const found = [...document.querySelectorAll("[role=dialog][aria-modal=true], dialog[open]")].filter(isHostModal);
+  return found.some((el) => !rootEl.value?.contains(el) && !el.closest("[data-biatec-chat-host]") && el.getClientRects().length > 0);
+}
+function insideHostDialog(n: Node | null): boolean {
+  for (let el = n instanceof Element ? n : (n?.parentElement ?? null); el; el = el.parentElement)
+    if (!rootEl.value?.contains(el) && isHostModal(el)) return true;
+  return false;
 }
 function fromHostDialog(e: Event): boolean {
-  return e.composedPath().some((n) => n instanceof Element && !!rootEl.value && !rootEl.value.contains(n) && n.matches(HOST_MODAL));
+  return e.composedPath().some((n) => n instanceof Element && !!rootEl.value && !rootEl.value.contains(n) && isHostModal(n));
+}
+/** Decided in the capture phase, before any host handler can remove its dialog. */
+const hostOwned = new WeakSet<Event>();
+function onDocKeydownCapture(e: KeyboardEvent) {
+  if (fromHostDialog(e) || insideHostDialog(document.activeElement) || (!inWidget(e) && hostModalOpen())) hostOwned.add(e);
 }
 
 // Closing the permissions dialog returns focus to the status pill when its opener is gone (a banner that hid).
@@ -171,7 +188,7 @@ function onEscape(e: KeyboardEvent) {
   if (e.defaultPrevented) return;
   if (inline && !inWidget(e)) return;
   // Esc meant for a host dialog (pressed inside it, or while it is open and focus is outside the widget).
-  if (fromHostDialog(e) || (!inWidget(e) && hostModalOpen())) return;
+  if (hostOwned.has(e) || fromHostDialog(e) || (!inWidget(e) && hostModalOpen())) return;
   if (ui.permissions) {
     agent.escape();
     return;
@@ -193,7 +210,7 @@ function onDocKeydown(e: KeyboardEvent) {
   }
   if (e.key !== "Tab" || !modal.value || !rootEl.value) return;
   // The full-screen trap yields while a host modal dialog is open over it.
-  if (fromHostDialog(e) || hostModalOpen()) return;
+  if (hostOwned.has(e) || fromHostDialog(e) || hostModalOpen()) return;
   const items = [...rootEl.value.querySelectorAll<HTMLElement>(FOCUSABLE)];
   const first = items[0];
   const last = items[items.length - 1];
@@ -219,13 +236,20 @@ watch(
     if (typeof document === "undefined") return;
     if (v) {
       measure();
+      document.addEventListener("keydown", onDocKeydownCapture, true);
       document.addEventListener("keydown", onDocKeydown);
-    } else document.removeEventListener("keydown", onDocKeydown);
+    } else {
+      document.removeEventListener("keydown", onDocKeydownCapture, true);
+      document.removeEventListener("keydown", onDocKeydown);
+    }
   },
   { immediate: true },
 );
 onBeforeUnmount(() => {
-  if (typeof document !== "undefined") document.removeEventListener("keydown", onDocKeydown);
+  if (typeof document !== "undefined") {
+    document.removeEventListener("keydown", onDocKeydownCapture, true);
+    document.removeEventListener("keydown", onDocKeydown);
+  }
 });
 </script>
 
