@@ -8,6 +8,7 @@ import { AgentClient, type AgentApi } from "../components/agent/api";
 import { PreviewClient } from "../components/chat/previews";
 import { useAgent } from "../components/agent/useAgent";
 import { useActivity } from "../components/activity/model";
+import { RetentionClient, type RetentionApi } from "../components/export/api";
 import { t } from "../i18n";
 import { currentCore, hostSettings, registerCore, type CoreHandle } from "./controller";
 import type { AskResult } from "./types";
@@ -34,8 +35,8 @@ export interface ShellState {
 
 export type WidgetCore = ReturnType<typeof createCore>;
 
-/** Chat services plus the agent-mode and preview-decision calls (T-066); each is a test seam. */
-export type WidgetServices = ChatServices & { agent?: AgentApi };
+/** Chat services plus the agent-mode and preview-decision calls (T-066) and the export and erase calls (T-094); each is a test seam. */
+export type WidgetServices = ChatServices & { agent?: AgentApi; retention?: RetentionApi };
 
 /** Page context as the chat request's HostContext. Nothing is read from the host page: only what the host passed. */
 export function pageContext(options: ResolvedOptions): HostContext | null {
@@ -63,6 +64,8 @@ export function createCore(options: ResolvedOptions, services?: WidgetServices) 
     dispose: () => base.dispose(),
   };
   const agentApi = services?.agent ?? new AgentClient(cfg);
+  // Export view and erasure (T-094). Injected services without it get no export view, so it never reaches the network.
+  const retention: RetentionApi | null = services ? (services.retention ?? null) : new RetentionClient(cfg);
   // Preview cards: confirm and cancel go to the backend; the agent, Activity and keepalive hooks are filled in below.
   const chat = useChat({
     ...svc,
@@ -73,6 +76,10 @@ export function createCore(options: ResolvedOptions, services?: WidgetServices) 
     onConfirmed: (id) => activity.recordConfirm(id),
     onCancelled: (id) => activity.markCancelled(id),
     onConfirmResponse: (body) => void agent.reportRefusal(body),
+    onReset: () => {
+      activity.reset();
+      agent.refusal.value = null;
+    },
   });
 
   /** Every stream event also feeds the Activity timeline and the agent's typed refusals. */
@@ -151,6 +158,13 @@ export function createCore(options: ResolvedOptions, services?: WidgetServices) 
     ui.activity = ui.expanded;
   }
 
+  /** After an erase: the cookie session is already on the fresh conversation; clear the old one and re-read the session. */
+  async function resetConversation(): Promise<void> {
+    chat.resetConversation();
+    ui.notice = "";
+    await chat.refreshSession().catch(() => {});
+  }
+
   let asking = false;
   async function ask(prompt: string): Promise<AskResult> {
     const text = prompt.trim();
@@ -192,7 +206,7 @@ export function createCore(options: ResolvedOptions, services?: WidgetServices) 
     if (v) ui.unread = 0;
   });
 
-  const core = { options, chat, ui, agent, activity, canShow, visible, start, openPanel, closePanel, minimize, toggleExpand, ask };
+  const core = { options, chat, ui, agent, activity, retention, canShow, visible, start, openPanel, closePanel, minimize, toggleExpand, ask, resetConversation };
   const unregister = registerCore(core satisfies CoreHandle);
   onBeforeUnmount(unregister);
   if (hostSettings.pendingOpen) {

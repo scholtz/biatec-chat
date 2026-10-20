@@ -6,6 +6,7 @@ using Algorand;
 using Algorand.Algod.Model.Transactions;
 using Biatec.Chat.Tools.Algod;
 using Biatec.Chat.Tools.Builders;
+using Biatec.Chat.Tools.Mcp;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Biatec.Chat.Tools.X402;
@@ -133,7 +134,7 @@ public sealed class X402PayService(
     /// settlement after the user's Confirm does not depend on in-memory state.
     /// </summary>
     public static X402Requirements RequirementsFor(string network, string resourceUrl, string payTo, ulong asset, ulong amount) =>
-        new("exact", "algorand-" + network, amount, resourceUrl, payTo, asset, null);
+        new("exact", McpNetworks.Algorand(network), amount, resourceUrl, payTo, asset, null);
 
     public async Task<X402PayResult> PayAsync(X402Requirements requirements, string resourceUrl, IReadOnlyList<string> signedGroup, CancellationToken ct)
     {
@@ -187,7 +188,7 @@ public sealed class X402PayService(
             {
                 var scheme = Str(a, "scheme");
                 var net = Str(a, "network");
-                if (scheme != "exact" || !string.Equals(net, "algorand-" + network, StringComparison.OrdinalIgnoreCase)) continue;
+                if (scheme != "exact" || !string.Equals(net, McpNetworks.Algorand(network), StringComparison.OrdinalIgnoreCase)) continue;
                 var payTo = Str(a, "payTo");
                 if (payTo is null || !Algorand.Address.IsValid(payTo) || !TryUlong(a, "maxAmountRequired", out var amount) || !TryUlong(a, "asset", out var asset) || asset == 0) continue;
                 var description = Str(a, "description");

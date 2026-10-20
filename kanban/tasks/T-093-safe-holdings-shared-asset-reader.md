@@ -1,7 +1,7 @@
 ---
 id: T-093
 title: "Safe proposal card: use the shared algod asset reader"
-status: backlog
+status: in-progress
 priority: P3
 epic: "Safe"
 blocked_by: [T-090]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Api/Safe/Proposals/**", "backend/Biatec.Chat.Tools/A
 parallel: yes
 conflicts_with: []
 issue: "#180"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-093"
+owner: "worker-T-093"
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md"
 created: 2026-10-20
 updated: 2026-10-20
@@ -55,3 +55,5 @@ files.
 - 2026-10-20 04:16 · coordinator · (new) → backlog · proposed by a worker
 - 2026-10-20 04:17 · kanban-board · backlog → blocked · waiting on: T-090
 - 2026-10-20 04:31 · kanban-board · blocked → backlog · blockers done: T-090
+- 2026-10-20 05:32 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 05:32 · coordinator · backlog → in-progress · dispatched to worker

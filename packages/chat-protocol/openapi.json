@@ -524,6 +524,46 @@
         }
       }
     },
+    "/session/conversations": {
+      "get": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "ListOwnConversations",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/session/erase": {
+      "post": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "EraseOwnData",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErasureResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/onboarding/challenges": {
       "post": {
         "tags": [
@@ -959,10 +999,101 @@
           }
         }
       },
+      "ConversationList": {
+        "required": [
+          "conversations"
+        ],
+        "type": "object",
+        "properties": {
+          "conversations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConversationSummary"
+            }
+          }
+        }
+      },
+      "ConversationSummary": {
+        "required": [
+          "conversationId",
+          "createdAt",
+          "lastMessageAt",
+          "current",
+          "evidenceEntries"
+        ],
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastMessageAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "current": {
+            "type": "boolean"
+          },
+          "evidenceEntries": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "ElevatePopupRequest": {
         "type": "object",
         "properties": {
           "scope": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ErasureResponse": {
+        "required": [
+          "status",
+          "conversations",
+          "payloadsDeleted"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "conversations": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "payloadsDeleted": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "conversationId": {
             "type": [
               "null",
               "string"
