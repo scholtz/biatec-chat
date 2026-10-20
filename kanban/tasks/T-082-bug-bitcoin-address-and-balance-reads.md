@@ -1,7 +1,7 @@
 ---
 id: T-082
 title: "Bug: wallet.listAddresses and wallet.balance must cover Bitcoin"
-status: review
+status: done
 priority: P1
 epic: "Wallet tools"
 blocked_by: []
@@ -121,9 +121,12 @@ Network names must match `wallet.transfer` exactly. T-087 also edits CapabilityR
 
 ## Review
 
+- 2026-10-20 03:33 · approve · PR #163 merged into main @ 4870eff (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #5)
 - 2026-10-20 03:01 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 03:01 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 03:33 · coordinator · in-progress → review · branch task/T-082 @ 928f497, PR #163; analysis verdict APPROVED recorded
+- 2026-10-20 03:33 · user · review → done · PR #163 merged into main @ 4870eff (synced by kanban-sync)
