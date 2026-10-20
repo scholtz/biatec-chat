@@ -1,7 +1,7 @@
 ---
 id: T-111
 title: "Fix Converse guardrail blocking every answer (InvestmentAdvice topic, whole-history screening)"
-status: review
+status: done
 priority: P0
 epic: "Orchestrator"
 blocked_by: []
@@ -95,9 +95,12 @@ set, Haiku) with the logs; apply-guardrail checks of the advice examples.
 
 ## Review
 
+- 2026-10-20 11:24 · approve · PR #236 merged into main @ 58be230 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 11:02 · coordinator · (new) → backlog · created from demo testing (guardrail blocks every answer)
 - 2026-10-20 11:02 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 11:02 · session-20261020-1102 · backlog → in-progress · claimed in session
 - 2026-10-20 11:23 · session-20261020-1102 · in-progress → review · PR #236, full suite green, CI green, review clean
+- 2026-10-20 11:24 · user · review → done · PR #236 merged into main @ 58be230 (synced by kanban-sync)
