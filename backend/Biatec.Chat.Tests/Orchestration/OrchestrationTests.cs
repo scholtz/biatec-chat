@@ -48,6 +48,15 @@ public sealed class OrchestrationTests : IAsyncLifetime
         }
     }
 
+    /// <summary>No tokens: the chat endpoint reads scopes from the vault for non-anonymous sessions, and Redis isn't running here.</summary>
+    private sealed class EmptyVault : Biatec.Chat.Api.Vault.ITokenVault
+    {
+        public Task PutAsync(string sessionId, Biatec.Chat.Api.Vault.TokenVaultEntry entry, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<Biatec.Chat.Api.Vault.TokenVaultEntry?> GetAsync(string sessionId, CancellationToken ct = default) => Task.FromResult<Biatec.Chat.Api.Vault.TokenVaultEntry?>(null);
+        public Task DeleteAsync(string sessionId, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<string?> GetAccessTokenAsync(string sessionId, CancellationToken ct = default) => Task.FromResult<string?>(null);
+    }
+
     private sealed class FakeExecutor(string name, Func<JsonElement?, ToolExecutionResult> run) : IToolExecutor
     {
         public int Calls;
@@ -107,6 +116,8 @@ public sealed class OrchestrationTests : IAsyncLifetime
             {
                 s.RemoveAll<ITenantStore>();
                 s.AddSingleton<ITenantStore>(new MemoryTenantStore(tenant));
+                s.RemoveAll<Biatec.Chat.Api.Vault.ITokenVault>();
+                s.AddSingleton<Biatec.Chat.Api.Vault.ITokenVault>(new EmptyVault());
                 s.RemoveAll<IModelClient>();
                 s.AddSingleton(modelClient);
                 s.RemoveAll<IPolicyEventSink>();
@@ -206,6 +217,35 @@ public sealed class OrchestrationTests : IAsyncLifetime
         using var f = Factory(model, tenant);
         await (await PostChatAsync(f, new { message = "hi" })).Content.ReadAsStringAsync();
         Assert.Null(model.Requests[0].ModelIdOverride);
+    }
+
+    [Theory]
+    [InlineData("eu.anthropic.claude-opus-4-5-20251101-v1:0", "eu.anthropic.claude-opus-4-5-20251101-v1:0")]
+    [InlineData("eu.anthropic.claude-opus-5-0-20270101-v1:0", null)]
+    public async Task Orchestration_AuthenticatedSessionUsesTheTenantsModel_AndIgnoresAnInvalidStoredId(string stored, string? expected)
+    {
+        var tenant = TenantSeed.BiatecChat();
+        tenant.DefaultModel = stored;
+        var model = new ScriptedModel(_ => Text("ok"));
+        using var f = Factory(model, tenant);
+
+        var first = await PostChatAsync(f, new { message = "hi" });
+        var cookie = CookieOf(first);
+        await first.Content.ReadAsStringAsync();
+        Assert.Null(model.Requests[0].ModelIdOverride);
+
+        await using (var db = NewContext())
+        {
+            var s = await db.ChatSessions.SingleAsync();
+            s.Tier = Biatec.Chat.Core.Data.SessionTier.Authenticated;
+            s.OidcSub = "user-1";
+            await db.SaveChangesAsync();
+        }
+        await (await PostChatAsync(f, new { message = "again" }, cookie)).Content.ReadAsStringAsync();
+
+        Assert.Equal(2, model.Requests.Count);
+        Assert.Equal(ModelProfile.Authenticated, model.Requests[1].Profile);
+        Assert.Equal(expected, model.Requests[1].ModelIdOverride);
     }
 
     [Fact]
