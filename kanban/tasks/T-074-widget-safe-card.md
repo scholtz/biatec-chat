@@ -11,7 +11,7 @@ conflicts_with: [T-064, T-067, T-076]
 issue: "#138"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#safe-capabilities"
 created: 2026-10-20
 updated: 2026-10-20
@@ -59,3 +59,4 @@ Parallel work possible: **no**. Don't run it at the same time as T-064, T-067, T
 
 - 2026-10-20 02:30 · coordinator · (new) → blocked · proposed by T-032; blocked by T-042 (card set and message-list rendering); conflicts with T-064 and T-067 (ChatView.vue/useChat.ts, contracts)
 - 2026-10-20 01:57 · kanban-board · blocked → backlog · blockers done: T-032, T-042
+- 2026-10-20 02:26 · LukassSoukup · taken · status stays backlog
