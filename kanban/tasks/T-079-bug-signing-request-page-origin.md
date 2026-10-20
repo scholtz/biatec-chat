@@ -1,7 +1,7 @@
 ---
 id: T-079
 title: "Bug: report the page origin, not the backend host, on signing requests"
-status: in-progress
+status: review
 priority: P1
 epic: "Wallet tools"
 blocked_by: []
@@ -72,7 +72,12 @@ or `PARTIAL`.**
 
 ## Analysis verdict
 
-_pending: filled in by the agent that runs the Analysis prompt (verdict, date, evidence, approved items)._
+APPROVED, 2026-10-20 (worker, recorded by the coordinator; origin/main @ eda9c9b). Evidence: the only two
+WalletSignRequest builders, both in `Chat/Confirm/ConfirmService.cs` (confirm path `:185/:205/:211`, consent resume
+`:473-475`), reported `tenant.RedirectUri`'s origin (always https://chat.biatec.io). Spec: `PRODUCT-DESCRIPTION.md:492`
+(Protocol Rules 10, "origin is reported by the backend with each request"; pauses scoped to the reporting origin) and
+`:525` ("the backend reports the page origin with each signing request"). CSRF already requires a registered Origin
+on every POST (`Security/CsrfMiddleware.cs:28`, `OriginPolicy.cs:38-49`).
 
 ## Goal
 
@@ -91,10 +96,10 @@ running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
-- [ ] The Analysis verdict is recorded (APPROVED / PARTIAL / REJECTED) with evidence
-- [ ] A confirm from `https://dex.biatec.io` sends `origin: https://dex.biatec.io` to the fake wallet endpoint; one from `https://web.biatec.io` sends that
-- [ ] A request without a registered Origin never reaches signing (existing CSRF guard, covered by a test)
-- [ ] The `signing_requested` evidence entry records the page origin
+- [x] The Analysis verdict is recorded (APPROVED / PARTIAL / REJECTED) with evidence
+- [x] A confirm from `https://dex.biatec.io` sends `origin: https://dex.biatec.io` to the fake wallet endpoint; one from `https://web.biatec.io` sends that
+- [x] A request without a registered Origin never reaches signing (existing CSRF guard, covered by a test)
+- [x] The `signing_requested` evidence entry records the page origin
 
 ## Implementation notes
 
@@ -106,14 +111,13 @@ Use the canonical origin from `OriginPolicy.AllowedOrigin(tenant, request)`, nev
 
 ## Hand-off
 
-Filled in by the agent when it moves the task to `review`.
-
-- **Summary:** what was done.
-- **Files changed:** ...
-- **How it was verified:** commands run and their results.
-- **Follow-up tasks created:** IDs, or "none".
-- **Unblocks:** output of `kanban/scripts/board.py unblocks T-079`: tasks that become ready once this is approved.
-- **Open questions:** for the user, or "none".
+- **Summary:** the confirm endpoint passes the canonical registered origin (`OriginPolicy.AllowedOrigin`, never the raw header; 403 without one) as a required `pageOrigin` to ConfirmService, which re-checks it against the tenant's origins, sends it as WalletSignRequest.Origin and records it in signing_requested evidence. The consent request stores it (new nullable `ConsentRequest.Origin`, migration `ConsentRequestOrigin`) and the resume after phone approval reports the same origin; missing/unregistered → backend origin.
+- **Branch:** `task/T-079` @ `3ef52ef` (merged with main), PR #171 (`Closes #148`).
+- **Files changed:** `Chat/Confirm/{ConfirmService,ConfirmEndpoints}.cs`, Signing tests; outside the area: `Core/Data/Entities.cs`, migration + snapshot, `Security/OriginPolicy.cs` (new overload), one-line call-site changes in 7 test files.
+- **How it was verified:** Signing + Consent 160 passed; full backend on current main 1080 passed, 1 skipped, 0 failed; endpoint tests for dex/web, canonicalization, missing / evil / suffix-trick / "null" origins (403, no wallet calls). Review (medium): all realistic findings fixed.
+- **Follow-up tasks created:** none (proposed: report the origin on PUT /wallet/limits if Biatec OIDC scopes limits by origin — a spec question).
+- **Unblocks:** T-087 (conflict) can start once this leaves in-progress.
+- **Open questions:** none.
 
 ## Review
 
@@ -122,3 +126,4 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #2)
 - 2026-10-20 03:34 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 03:34 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 04:05 · coordinator · in-progress → review · branch task/T-079 @ 3ef52ef, PR #171; analysis verdict APPROVED recorded
