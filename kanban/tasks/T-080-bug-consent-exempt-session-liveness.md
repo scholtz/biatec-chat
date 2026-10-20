@@ -1,7 +1,7 @@
 ---
 id: T-080
 title: "Bug: a session awaiting phone consent must stay live past the idle timeout"
-status: review
+status: done
 priority: P1
 epic: "Sessions & auth"
 blocked_by: []
@@ -119,9 +119,12 @@ Keep the query translatable by EF Core (the sweeper's `awaitingConsent` subquery
 
 ## Review
 
+- 2026-10-20 03:38 · approve · PR #164 merged into main @ b7521b9 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #3)
 - 2026-10-20 03:01 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 03:01 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 03:38 · coordinator · in-progress → review · branch task/T-080 @ 10b8f78, PR #164; analysis verdict APPROVED recorded
+- 2026-10-20 03:38 · user · review → done · PR #164 merged into main @ b7521b9 (synced by kanban-sync)
