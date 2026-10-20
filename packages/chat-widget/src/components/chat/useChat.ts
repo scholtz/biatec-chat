@@ -1,5 +1,5 @@
 import { reactive, ref, computed, onBeforeUnmount } from "vue";
-import type { ChatEvent, SessionState, SessionTier, Suggestion } from "@biatec/chat-protocol";
+import type { ChatEvent, SafeCard, SessionState, SessionTier, Suggestion } from "@biatec/chat-protocol";
 import { t } from "../../i18n";
 import type { TransportManager } from "../../transport";
 import type { AuthClient } from "./auth";
@@ -23,6 +23,8 @@ export interface ChatMessage {
   text: string;
   tools: ToolLine[];
   signIn?: SignInCard;
+  /** Safe cards from safe.list / safe.create results (safe_card events), in arrival order. */
+  safeCards?: SafeCard[];
   /** Follow-up questions the backend suggested for this reply, if any. */
   followUps?: Suggestion[];
   error?: string;
@@ -122,6 +124,9 @@ export function useChat(svc: ChatServices) {
           unavailable: e.unavailable === true,
           url: e.unavailable === true ? e.signInUrl : null,
         };
+        break;
+      case "safe_card":
+        (m.safeCards ??= []).push(e.card);
         break;
       case "error":
         m.error = e.message;

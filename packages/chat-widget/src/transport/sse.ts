@@ -6,6 +6,7 @@ export const CHAT_EVENT_TYPES = [
   "preview_card",
   "consent_status",
   "sign_in_card",
+  "safe_card",
   "error",
 ] as const;
 
@@ -26,6 +27,8 @@ export function isChatEvent(v: unknown): v is ChatEvent {
       return isObj(v.consent) && isStr(v.consent.previewId) && isStr(v.consent.state);
     case "sign_in_card":
       return isStr(v.signInUrl) && isStr(v.reason) && typeof v.unavailable === "boolean";
+    case "safe_card":
+      return isObj(v.card) && isStr(v.card.network) && Array.isArray(v.card.safes);
     case "error":
       return isStr(v.code) && isStr(v.message) && typeof v.retryable === "boolean";
     default:

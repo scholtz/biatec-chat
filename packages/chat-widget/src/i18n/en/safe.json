@@ -1,0 +1,38 @@
+{
+  "safe": {
+    "label": "Biatec Safe",
+    "listTitle": "Your safes",
+    "createTitle": "Your new safe",
+    "appId": "App ID",
+    "address": "Safe address",
+    "yourAddresses": "Your member addresses",
+    "paused": "Paused",
+    "active": "Active",
+    "creation": {
+      "SetupPending": "Deployed · signer group setup pending",
+      "NeedsFunding": "Deployed · needs ALGO for storage",
+      "Created": "Created"
+    },
+    "groups": "Signer groups",
+    "group": "{name} · {threshold} of {members}",
+    "admin": "Admin",
+    "epoch": "Membership epoch {epoch}",
+    "epochUnknown": "Membership epoch not read yet",
+    "proposals": "Pending proposals",
+    "noProposals": "No pending proposals",
+    "proposalsUnreadable": "The proposals could not be read, so the queue is unknown.",
+    "proposalsTruncated": "More proposals exist than are shown.",
+    "proposal": "Proposal {id} · {kind}",
+    "state": {
+      "AwaitingApprovals": "Awaiting approvals",
+      "ReadyToExecute": "Ready to execute"
+    },
+    "progress": "{approvals} of {threshold} approvals",
+    "approvedByYou": "You approved",
+    "notApprovedByYou": "You have not approved",
+    "payloadVersion": "Payload version",
+    "expiry": "Expires after round",
+    "proposer": "Proposer",
+    "couldNotRead": "Could not be read: {ids}. Membership is unknown, not ruled out."
+  }
+}
