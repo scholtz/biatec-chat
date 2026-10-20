@@ -10,10 +10,10 @@ data:
   Bedrock__AnonymousModelId: eu.anthropic.claude-sonnet-4-5-20250929-v1:0
   Bedrock__AuthenticatedModelId: eu.anthropic.claude-opus-4-5-20251101-v1:0
   Bedrock__MaxTokens: "4096"
-  # Guardrail from infra/guardrail/create.sh in the AWS account that owns the role (hackathon account: rwa0b0by3y18 v3).
+  # Guardrail from infra/guardrail/create.sh in the AWS account that owns the role (hackathon account: rwa0b0by3y18 v4).
   Bedrock__Guardrail__Enabled: "true"
   Bedrock__Guardrail__GuardrailId: rwa0b0by3y18
-  Bedrock__Guardrail__GuardrailVersion: "3"
+  Bedrock__Guardrail__GuardrailVersion: "4"
   # kb.search retrieves from this Bedrock Knowledge Base (docs/kb, synced by infra/kb/sync.sh) and falls back to the
   # local docs/kb search when it fails. The role needs bedrock:Retrieve on it (infra/aws/bedrock-role-policy.json).
   Kb__Bedrock__KnowledgeBaseId: DZZGQITEAS
