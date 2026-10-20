@@ -83,6 +83,6 @@ public sealed class KmsOptions
     [Required, RegularExpression("^eu-central-1$", ErrorMessage = "Kms:Region must be eu-central-1.")]
     public string Region { get; set; } = "eu-central-1";
 
-    /// <summary>Key id or alias used to wrap vault data keys.</summary>
-    [Required] public string KeyId { get; set; } = "";
+    /// <summary>Key id or alias used to wrap vault data keys. Required only with Vault:KeyProvider=Kms.</summary>
+    public string KeyId { get; set; } = "";
 }

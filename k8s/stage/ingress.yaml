@@ -11,10 +11,10 @@ metadata:
 spec:
   ingressClassName: nginx
   tls:
-    - hosts: [chat.stage.biatec.io]
+    - hosts: [stage.chat.biatec.io]
       secretName: biatec-chat-stage-tls
   rules:
-    - host: chat.stage.biatec.io
+    - host: stage.chat.biatec.io
       http:
         paths:
           - path: /
