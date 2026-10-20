@@ -52,9 +52,9 @@ Parallel work possible: **yes**. No other unfinished task changes the Safe execu
 
 ## Acceptance criteria
 
-- [ ] No `"instruction"` field is left in screened tool content (`grep -rn '"instruction"' backend/Biatec.Chat.Api`).
-- [ ] Guidance never contains upstream data (reviewed per call site).
-- [ ] Safe tests pass; a test per executor asserts the guidance is in `ToolExecutionResult.Guidance`.
+- [x] No `"instruction"` field is left in screened tool content (`grep -rn '"instruction"' backend/Biatec.Chat.Api`).
+- [x] Guidance never contains upstream data (reviewed per call site).
+- [x] Safe tests pass; a test per executor asserts the guidance is in `ToolExecutionResult.Guidance`.
 
 ## Verification
 
@@ -63,12 +63,12 @@ apply-guardrail` (eu-central-1, guardrail `rwa0b0by3y18` v1) on a recorded `safe
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** safe.create (missing details), safe.list and the safe proposal executors send their fixed wording as `ToolExecutionResult.Guidance`; service messages stay screened as `"message"`. task/T-110 @ 69200d2, merged in PR #234.
+- **Files changed:** `Safe/Create/SafeCreateExecutors.cs`, `Safe/Proposals/SafeProposalExecutors.cs`, `Tests/Safe/Create/SafeCreateTests.cs`, `Tests/Safe/Proposals/SafeProposalFlowTests.cs`.
+- **How it was verified:** full backend suite 1321 passed / 1 skipped; no `"instruction"` left in `backend/Biatec.Chat.Api`; live apply-guardrail on a recorded safe.list result: NONE before and after (sample did not reproduce the block).
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** SafeProposalService messages (Biatec.Chat.Tools) still phrase steps as instructions inside the screened data; split them only if the guardrail is seen withholding them.
 
 ## Review
 
