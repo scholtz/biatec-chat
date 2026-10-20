@@ -1,7 +1,7 @@
 ---
 id: T-113
 title: "Bug: an expired session silently turns a signed-in chat anonymous"
-status: review
+status: done
 priority: P1
 epic: "Auth"
 blocked_by: []
@@ -94,9 +94,12 @@ header anonymous.
 
 ## Review
 
+- 2026-10-20 12:08 · approve · PR #239 merged into main @ 00a0787 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 11:50 · session-20261020-1150 · (new) → backlog · created from demo testing (signed-in chat asked to sign in)
 - 2026-10-20 11:50 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 11:50 · session-20261020-1150 · backlog → in-progress · claimed in session
 - 2026-10-20 12:05 · session-20261020-1150 · in-progress → review · tests green, PR opened
+- 2026-10-20 12:08 · user · review → done · PR #239 merged into main @ 00a0787 (synced by kanban-sync)
