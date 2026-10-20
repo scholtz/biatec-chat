@@ -474,7 +474,7 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         var confirm = new ConfirmService(db, new ActionPreviewService(db, _clock), new ScopeGuard(_vault, _clock), _vault, _oidc, _mcp,
             new FakeConfirmer(() => card.Capability == "safe.create" && card.Steps[step].Title.Contains("Deploy") ? _landedAppId : null), new FakeEvidence(), _clock,
             NullLogger<ConfirmService>.Instance, landedObservers: [new SafeDeployLandedObserver(db, _clock)]);
-        return await confirm.ConfirmAsync(_tenant, _session, Guid.Parse(card.PreviewId), card.Steps[step].GroupHash, default);
+        return await confirm.ConfirmAsync(_tenant, _session, Guid.Parse(card.PreviewId), card.Steps[step].GroupHash, Biatec.Chat.Api.Chat.Confirm.ConfirmService.BackendOrigin(_tenant), default);
     }
 
     private static ActionPreview Card(ToolExecutionResult r) => Assert.Single(r.Events!.OfType<PreviewCardEvent>()).Preview;

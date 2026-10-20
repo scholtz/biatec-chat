@@ -1,7 +1,7 @@
 ---
 id: T-059
 title: End-to-end demo test on testnet
-status: backlog
+status: in-progress
 priority: P1
 epic: "Deploy & docs"
 blocked_by: [T-033, T-036, T-042, T-049]
@@ -9,9 +9,9 @@ area: ["e2e/**"]
 parallel: yes
 conflicts_with: []
 issue: "#60"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-059"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#demonstration-script"
 created: 2026-10-19
 updated: 2026-10-20
@@ -56,3 +56,5 @@ pnpm --filter e2e test
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 18:00 · coordinator · review · added T-049: demo phone approvals need the consent orchestrator
 - 2026-10-20 03:14 · kanban-board · blocked → backlog · blockers done: T-033, T-036, T-042, T-049
+- 2026-10-20 04:05 · scholtz · taken · status stays backlog
+- 2026-10-20 04:05 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

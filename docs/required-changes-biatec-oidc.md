@@ -57,6 +57,8 @@ against the mock and cannot be enabled against real Biatec OIDC until the row sh
 | 18 | Per-client refresh token lifetime (8 h) with absolute-expiry-preserving rotation | Keep 30-day tokens, destroy the vault entry at logout (no IdP revocation, row 14); residual exposure at the IdP is 30 days |
 | 19 | Consent-gated loosening of consent settings | Loosening only from an enrolled device's own screen; chat hides raising limits (`limits.update` is lowering-only) |
 | 20 | `GET /consent/settings` | Card says "may need approval on your phone" without predicting |
+| 21 | Device list and cancelling a pending enrollment from a device (`GET /devices`, `POST /devices/{kid}/cancel`) | None. The authenticator's device screen runs only against the mock; `CONSENT_SETTINGS_API` is off for any other Biatec OIDC and the screen then says "not available yet" (T-084) |
+| 22 | Device-side consent settings (`GET` / `PUT /devices/settings`) with device-signed loosening | None. The security and trusted-clients screens run only against the mock, behind the same `CONSENT_SETTINGS_API` flag (T-084) |
 
 **Mock status.** Today the mock covers only the authorization-code flow used by `/auth/login`. The CIBA, step-up, receipt and
 settings shapes below are the contract the mock must grow to, as the consent tasks (backend and authenticator) are implemented;
@@ -487,3 +489,81 @@ Authorization: Bearer <access token>
 
 The response is for the calling client. The backend's prediction adds its own triggers (soft cap, safe caps via `requireConsent`)
 and never reports less consent than OIDC would require. If the call fails, the fallback card text is used.
+
+## 21. Device list and cancelling a pending enrollment (T-084)
+
+- **Purpose:** the authenticator's device management screen (spec, Authenticator App) and rule 7: a pending enrollment "can be
+  cancelled from that device". **Fallback:** none. The app has the config flag `--dart-define=CONSENT_SETTINGS_API=true|false`;
+  it defaults to on for the mock URL and off for every other Biatec OIDC, where the three settings screens show "Not available yet"
+  and make no call.
+
+```http
+GET /devices
+Authorization: Device <device token>
+```
+
+```json
+{ "devices": [ { "kid": "alice-device", "current": true, "active": true, "active_at": 0 },
+               { "kid": "phone-2", "current": false, "active": false, "active_at": 1792512000 } ] }
+```
+
+`current` marks the caller; only the caller's user's devices are listed; cancelled devices are not.
+
+```http
+POST /devices/{kid}/cancel
+Authorization: Device <device token of any device of the same user, active or pending>
+```
+
+`200 {"kid": "...", "cancelled": true}`; `409` for an active device (only pending enrollments cancel); `404` for another user's or an
+unknown device. A cancelled device's token stops working (`401`) and it gets no push. Cancelling only shuts a device out, so it
+needs no consent.
+
+## 22. Device-side consent settings with device-signed loosening (T-084)
+
+- **Purpose:** the security settings and trusted-clients screens, and row 19: loosening needs a receipt from an active device.
+  **Fallback:** none; same `CONSENT_SETTINGS_API` flag as above.
+- The CIBA request model with a `biatec_settings_change` type (row 19) is the web-initiated path. On the device's own screen the
+  change is signed directly, which this section proposes: no round trip through `auth_req_id`.
+
+```http
+GET /devices/settings
+Authorization: Device <device token>
+```
+
+```json
+{
+  "sub": "pw_alice",
+  "biometric_required": true,
+  "threshold_eur": "1000.00",
+  "block_unverified_clients": false,
+  "clients": [ { "client_id": "biatec-chat", "label": "Biatec Chat", "verified": true, "always_ask": false,
+                 "per_client_threshold_eur": null, "paused_until": null } ]
+}
+```
+
+`paused_until` is epoch seconds while the 24 hour client pause of rule 10 runs, else `null`; `per_client_threshold_eur` `null` follows
+`threshold_eur`.
+
+```http
+PUT /devices/settings
+Authorization: Device <device token>
+Content-Type: application/json
+
+{ "change": { "threshold_eur": "800", "clients": { "biatec-chat": { "always_ask": false, "paused": false } } },
+  "consent": { "signed": { "type": "biatec_settings_change", "sub": "pw_alice", "kid": "alice-device",
+                           "nonce": "9f1c...", "issued_at": 1792425600, "change": { "...": "same as change" } },
+               "alg": "ES256", "signature": "<base64url r||s over JCS(signed)>" } }
+```
+
+- `change` members, all optional, at least one: `threshold_eur` (decimal string), `biometric_required`, `block_unverified_clients`
+  (booleans), `clients.{id}.always_ask` (boolean), `clients.{id}.per_client_threshold_eur` (decimal string, or `null` to follow
+  the account threshold), `clients.{id}.paused` (only `false`: lift the pause). Unknown members answer `400`.
+- **Tightening** (lower a threshold, turn a requirement on, set always-ask) applies at once with no `consent`.
+- **Loosening** (raise a threshold, turn `biometric_required`, `block_unverified_clients` or `always_ask` off, lift a pause, or set a
+  per-client threshold above the effective one) needs `consent`: signed by the device key of an **active** device (rule 7) over
+  JCS of `signed`; `signed.change` must equal `change`, `sub` and `kid` must be the caller's, `issued_at` within 300 seconds, and the
+  `nonce` unused for that device. A mixed change needs consent as a whole. Otherwise
+  `403 {"error": "insufficient_user_authentication", "acr_values": "biatec:consent", "reason": "consent_required"}` and nothing changes.
+- `200 {"applied": true, "loosened": bool, "settings": <GET body>}`.
+- The device classifies a change itself to decide whether to ask for the biometric check and sign; if Biatec OIDC answers
+  `consent_required` for a change the device judged tightening, the device signs and retries once.

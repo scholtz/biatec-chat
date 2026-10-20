@@ -24,6 +24,9 @@ import { parseBlocks, safeHttpUrl } from "./format";
 import { AGENT_MODE_LABEL, type AgentModeDisplay } from "../shell/agentMode";
 import { BaiSymbol } from "../../ui";
 import SafeCard from "../cards/SafeCard.vue";
+import ActionPreviewCard from "../cards/ActionPreviewCard.vue";
+import ReceiptCard from "../cards/ReceiptCard.vue";
+import { RECEIPT_STATUSES } from "./previews";
 import { t } from "../../i18n";
 
 const props = withDefaults(
@@ -34,13 +37,21 @@ const props = withDefaults(
     busy: boolean;
     phase: SignInPhase;
     announcement: string;
+    /** The session's absolute expiry; the preview cards warn when it is close. */
+    sessionExpiresAt?: string | null;
     agentMode?: AgentModeDisplay;
     /** The host page context, when the host set one. The chip only exists while this is set. */
     contextLabel?: string | null;
   }>(),
-  { agentMode: "analyze", contextLabel: null },
+  { agentMode: "analyze", contextLabel: null, sessionExpiresAt: null },
 );
-const emit = defineEmits<{ send: [text: string, opts?: { includeContext?: boolean }]; signIn: [scope: string | null] }>();
+const emit = defineEmits<{
+  send: [text: string, opts?: { includeContext?: boolean }];
+  signIn: [scope: string | null];
+  confirmPreview: [previewId: string];
+  cancelPreview: [previewId: string];
+  authorizePreview: [previewId: string, scope: string];
+}>();
 
 const draft = ref("");
 const input = ref<HTMLTextAreaElement | null>(null);
@@ -109,7 +120,7 @@ onBeforeUnmount(() => clearTimeout(copiedTimer));
 
 // Keep the newest text in view while it streams.
 watch(
-  () => props.messages.map((m) => m.text.length + m.tools.length + (m.safeCards?.length ?? 0)).join(","),
+  () => props.messages.map((m) => m.text.length + m.tools.length + (m.safeCards?.length ?? 0) + (m.previews?.length ?? 0)).join(","),
   async () => {
     await nextTick();
     if (list.value) list.value.scrollTop = list.value.scrollHeight;
@@ -139,7 +150,7 @@ const TOOL_STATE_KEY: Record<string, string> = { Started: "chat.toolStarted", Su
 const toolState = (s: string) => (TOOL_STATE_KEY[s] ? t(TOOL_STATE_KEY[s]!) : "");
 const toolIcon = (s: string): Component => (s === "Succeeded" ? Check : s === "Failed" ? TriangleAlert : Loader);
 const cardText = (m: ChatMessage) => m.signIn?.description ?? t(m.signIn?.reason === "ElevateScope" ? "chat.elevateCard" : "chat.signInCard");
-const showThinking = (m: ChatMessage) => m.role === "assistant" && m.streaming && !m.text && !m.signIn && !m.error;
+const showThinking = (m: ChatMessage) => m.role === "assistant" && m.streaming && !m.text && !m.signIn && !m.error && !m.previews?.length;
 </script>
 
 <template>
@@ -187,6 +198,24 @@ const showThinking = (m: ChatMessage) => m.role === "assistant" && m.streaming &
             </div>
             <!-- Safe cards come only from safe_card events (structured tool results), never from model text. -->
             <SafeCard v-for="(sc, si) in m.safeCards ?? []" :key="si" :card="sc" />
+            <!-- Preview cards come only from preview_card events (structured backend data), never from model text. -->
+            <template v-for="pv in m.previews ?? []" :key="pv.preview.previewId">
+              <ReceiptCard v-if="RECEIPT_STATUSES.includes(pv.preview.status)" :preview="pv.preview" />
+              <ActionPreviewCard
+                v-else
+                :preview="pv.preview"
+                :consent="pv.consent"
+                :session-expires-at="sessionExpiresAt"
+                :submitting="pv.submitting"
+                @confirm="emit('confirmPreview', $event)"
+                @cancel="emit('cancelPreview', $event)"
+                @authorize="(scope) => emit('authorizePreview', pv.preview.previewId, scope)"
+              />
+              <div v-if="pv.note" class="bc-preview-note">
+                <p class="bc-error" role="alert">{{ pv.note }}</p>
+                <button v-if="pv.needsSignIn" type="button" class="bc-btn" data-variant="primary" :disabled="signingIn" @click="emit('signIn', null)">{{ t("chat.previewSignIn") }}</button>
+              </div>
+            </template>
             <p v-if="showThinking(m)" class="bc-thinking" role="status">
               <span class="bc-pulse" aria-hidden="true"><i /><i /><i /></span>
               <span>{{ t("chat.thinking") }}</span>

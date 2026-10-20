@@ -54,6 +54,13 @@
     "errorGeneric": "Something went wrong. Please try again.",
     "signedInAs": "Signed in as {email}",
     "signedIn": "Signed in",
-    "signedOut": "Signed out"
+    "signedOut": "Signed out",
+    "previewConfirmFailed": "The confirmation could not be sent. Nothing was signed. Please try again.",
+    "previewFailed": "The action failed. Nothing was signed.",
+    "previewSignInRequired": "Sign in again to confirm this action.",
+    "previewSignInUnavailable": "Signing is not available on this site right now. Nothing was signed.",
+    "previewCancelFailed": "The action could not be cancelled. Please try again.",
+    "previewSignIn": "Sign in",
+    "previewAnnounce": "Action ready to review: {intent}"
   }
 }

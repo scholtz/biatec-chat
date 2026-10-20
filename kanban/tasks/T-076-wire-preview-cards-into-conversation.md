@@ -1,7 +1,7 @@
 ---
 id: T-076
 title: Wire preview, consent and receipt cards into the conversation
-status: in-progress
+status: done
 priority: P1
 epic: "Widget UI rework"
 blocked_by: [T-064, T-075]
@@ -68,9 +68,12 @@ pnpm --filter @biatec/chat-widget test (fixture streams and a mocked fetch); man
 
 ## Review
 
+- 2026-10-20 04:05 · approve · PR #165 merged into main @ 793575d (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 02:10 · session-20261020-0154 · (new) → blocked · follow-up from T-066: T-042's cards were never wired into the conversation
 - 2026-10-20 03:21 · kanban-board · blocked → backlog · blockers done: T-064, T-075
 - 2026-10-20 03:21 · scholtz · taken · status stays backlog
 - 2026-10-20 03:21 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 04:05 · user · in-progress → done · PR #165 merged into main @ 793575d (synced by kanban-sync)
