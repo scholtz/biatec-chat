@@ -1,7 +1,7 @@
 ---
 id: T-114
 title: "Fix guardrail blocking swaps and generic questions; ship KB pages in the backend image"
-status: review
+status: done
 priority: P0
 epic: "Orchestrator"
 blocked_by: []
@@ -59,3 +59,4 @@ line 21). The image ships the local KB pages.
 
 - 2026-10-20 12:50 · LukassSoukup · (new) → in-progress · created from demo logs, claimed in session
 - 2026-10-20 13:00 · LukassSoukup · in-progress → review · PR opened, guardrail/KB tests green
+- 2026-10-20 13:10 · user · review → done · PR #242 merged into main @ b7c4972 (synced by kanban-sync)
