@@ -104,6 +104,10 @@ public sealed partial class KbSearchService
                 var n = body.Count(b => b == t);
                 if (n > 0) score += 1 + Math.Log(n);
             }
+            // The query names the whole page ("What is Biatec?" → "What is Biatec"): it outranks pages that only
+            // mention the term often.
+            var titleTerms = title.Where(t => !Stop.Contains(t)).ToList();
+            if (score > 0 && titleTerms.Count > 0 && titleTerms.All(terms.Contains)) score += 5;
             if (score > 0) hits.Add(new KbHit(page.Id, page.Title, Excerpt(page.Body, terms), score));
         }
         return hits.OrderByDescending(h => h.Score).ThenBy(h => h.Id, StringComparer.Ordinal).Take(max).ToList();

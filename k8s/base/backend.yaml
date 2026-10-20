@@ -14,6 +14,9 @@ data:
   Bedrock__Guardrail__Enabled: "true"
   Bedrock__Guardrail__GuardrailId: rwa0b0by3y18
   Bedrock__Guardrail__GuardrailVersion: "3"
+  # kb.search retrieves from this Bedrock Knowledge Base (docs/kb, synced by infra/kb/sync.sh) and falls back to the
+  # local docs/kb search when it fails. The role needs bedrock:Retrieve on it (infra/aws/bedrock-role-policy.json).
+  Kb__Bedrock__KnowledgeBaseId: DZZGQITEAS
   Builders__BaseAddress: http://biatec-chat-builders:3100
   # The vault wraps its data keys with the master key in biatec-chat-generated (Vault__MasterKey below), generated
   # once by the deploy; never the local Dev key. AWS is used for Bedrock only.

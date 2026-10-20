@@ -24,6 +24,14 @@
         "bedrock:ApplyGuardrail"
       ],
       "Resource": "arn:aws:bedrock:eu-central-1:${ACCOUNT_ID}:guardrail/*"
+    },
+    {
+      "Sid": "RetrieveBiatecKnowledgeBase",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:Retrieve"
+      ],
+      "Resource": "arn:aws:bedrock:eu-central-1:${ACCOUNT_ID}:knowledge-base/DZZGQITEAS"
     }
   ]
 }
