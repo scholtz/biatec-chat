@@ -297,7 +297,7 @@ public class ToolGateTests
     public void Required_amounts_and_min_properties_are_enforced()
     {
         var (gate, _) = Make();
-        var add = new JsonObject { ["network"] = "testnet", ["from"] = "A", ["poolAppId"] = 1 };
+        var add = new JsonObject { ["network"] = "testnet", ["from"] = "A", ["amountA"] = "1", ["amountB"] = "1" }; // no poolAppId
         Assert.False(gate.Check("dex.addLiquidity", add, Auth("openid")).Allowed);
         Assert.False(gate.Check("limits.update", new JsonObject(), new GateContext(SessionTier.Authenticated, ["manage-limits"], LimitsUpdateEnabled: true)).Allowed);
     }

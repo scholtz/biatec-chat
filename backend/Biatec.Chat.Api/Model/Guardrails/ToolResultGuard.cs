@@ -5,11 +5,15 @@ using Microsoft.Extensions.Options;
 
 namespace Biatec.Chat.Api.Model.Guardrails;
 
-/// <summary>Outcome of screening untrusted text before the model sees it.</summary>
-public sealed record GuardrailVerdict(bool Withheld)
+/// <summary>Outcome of screening untrusted text before the model sees it. <see cref="CheckFailed"/>: withheld because the check itself failed.</summary>
+public sealed record GuardrailVerdict(bool Withheld, bool CheckFailed = false)
 {
     public static readonly GuardrailVerdict Allowed = new(false);
     public static readonly GuardrailVerdict Blocked = new(true);
+    public static readonly GuardrailVerdict Unavailable = new(true, true);
+
+    /// <summary>What the model sees instead of a withheld result.</summary>
+    public string ModelMessage => CheckFailed ? GuardrailMessages.ToolResultUnchecked : GuardrailMessages.ToolResultWithheld;
 }
 
 /// <summary>Screens tool results (attacker-controlled on-chain data, web content) for injected instructions.</summary>
@@ -21,13 +25,18 @@ public interface IToolResultGuard
 /// <summary>What the model sees instead of a withheld tool result.</summary>
 public static class GuardrailMessages
 {
-    public const string ToolResultWithheld = "Tool output withheld: it contained instructions or unsafe content. Tell the user the result could not be used.";
+    public const string ToolResultWithheld = "Tool output withheld: a safety check found instructions or unsafe content in it. Tell the user a safety check stopped this result; do not describe it as a data or connection problem, and do not retry the same call.";
+
+    public const string ToolResultUnchecked = "Tool output withheld: the safety check for tool output is unavailable right now. Tell the user to try again in a moment.";
 }
 
 /// <summary>
 /// Applies the configured guardrail to a tool result with the standalone ApplyGuardrail API (source INPUT, since the
 /// text is input to the model). Fails closed: if the guardrail can't be reached the result is withheld, because the
 /// content is untrusted. A no-op when the feature is disabled.
+/// Denied topics (InvestmentAdvice) are about what the assistant says, not about data: prices, pools and balances
+/// match them, so an intervention whose only reasons are denied topics lets the result through. Prompt attacks,
+/// harmful content and sensitive information (recovery phrases) still withhold it.
 /// </summary>
 public sealed class BedrockToolResultGuard(
     IAmazonBedrockRuntime bedrock,
@@ -53,19 +62,41 @@ public sealed class BedrockToolResultGuard(
                 Content = blocks,
             }, ct);
 
-            if (response.Action == GuardrailAction.GUARDRAIL_INTERVENED)
+            if (response.Action != GuardrailAction.GUARDRAIL_INTERVENED) return GuardrailVerdict.Allowed;
+
+            var reasons = Reasons(response.Assessments);
+            if (reasons.Count > 0 && reasons.All(r => r.StartsWith("topic:", StringComparison.Ordinal)))
             {
-                log.LogWarning("Guardrail withheld a result of {Source} ({Chars} chars)", source, text.Length);
-                return GuardrailVerdict.Blocked;
+                log.LogInformation("Guardrail matched only denied topics on {Source} ({Reasons}); data is not advice, so the result is kept", source, string.Join(", ", reasons));
+                return GuardrailVerdict.Allowed;
             }
-            return GuardrailVerdict.Allowed;
+            log.LogWarning("Guardrail withheld a result of {Source} ({Chars} chars): {Reasons}", source, text.Length,
+                reasons.Count == 0 ? "no assessment" : string.Join(", ", reasons));
+            return GuardrailVerdict.Blocked;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            log.LogWarning("Guardrail check for {Source} failed ({ErrorType}); the result is withheld", source, ex.GetType().Name);
-            return GuardrailVerdict.Blocked;
+            // AWS error messages name the request problem (permissions, throttling, validation), never the screened text.
+            log.LogWarning("Guardrail check for {Source} failed ({ErrorType}: {Error}); the result is withheld", source, ex.GetType().Name, ex.Message);
+            return GuardrailVerdict.Unavailable;
         }
+    }
+
+    /// <summary>The blocking findings, as "content:PROMPT_ATTACK/LOW", "topic:InvestmentAdvice", "pii:…", "regex:…" or "word:…".</summary>
+    public static List<string> Reasons(List<GuardrailAssessment>? assessments)
+    {
+        var reasons = new List<string>();
+        foreach (var a in assessments ?? [])
+        {
+            reasons.AddRange(from f in a.ContentPolicy?.Filters ?? [] where f.Action == GuardrailContentPolicyAction.BLOCKED select $"content:{f.Type}/{f.Confidence}");
+            reasons.AddRange(from t in a.TopicPolicy?.Topics ?? [] where t.Action == GuardrailTopicPolicyAction.BLOCKED select $"topic:{t.Name}");
+            reasons.AddRange(from e in a.SensitiveInformationPolicy?.PiiEntities ?? [] where e.Action == GuardrailSensitiveInformationPolicyAction.BLOCKED select $"pii:{e.Type}");
+            reasons.AddRange(from r in a.SensitiveInformationPolicy?.Regexes ?? [] where r.Action == GuardrailSensitiveInformationPolicyAction.BLOCKED select $"regex:{r.Name}");
+            reasons.AddRange(from w in a.WordPolicy?.CustomWords ?? [] where w.Action == GuardrailWordPolicyAction.BLOCKED select "word:custom");
+            reasons.AddRange(from w in a.WordPolicy?.ManagedWordLists ?? [] where w.Action == GuardrailWordPolicyAction.BLOCKED select $"word:{w.Type}");
+        }
+        return reasons;
     }
 }
 

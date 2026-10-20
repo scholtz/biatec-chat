@@ -57,7 +57,7 @@ public sealed class ConversationOrchestrator(
         executors.GroupBy(e => e.CapabilityName, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Last(), StringComparer.Ordinal);
 
     private sealed record StoredToolCall(string Id, string Name, string Input);
-    private sealed record StoredToolResult(string ToolUseId, string Name, string Content, bool IsError);
+    private sealed record StoredToolResult(string ToolUseId, string Name, string Content, bool IsError, string? Guidance = null);
 
     public async IAsyncEnumerable<ChatEvent> RunAsync(ChatTurn turn, [EnumeratorCancellation] CancellationToken ct = default)
     {
@@ -195,8 +195,8 @@ public sealed class ConversationOrchestrator(
                 // Defence in depth for indirect prompt injection; the gate above stays the authority. Gate and
                 // executor errors are screened too, since error text may be upstream data; only the orchestrator's
                 // own fixed messages skip it. A withheld result is also what gets stored and drops its events.
-                if (fromExecutor && await toolGuard.ScreenAsync("tool." + capName, result.Content, ct) is { Withheld: true })
-                    result = new ToolExecutionResult(GuardrailMessages.ToolResultWithheld, true);
+                if (fromExecutor && await toolGuard.ScreenAsync("tool." + capName, result.Content, ct) is { Withheld: true } verdict)
+                    result = new ToolExecutionResult(verdict.ModelMessage, true);
 
                 foreach (var ev in result.Events ?? []) yield return ev;
                 // Holdings card: built from the (screened) wallet.balance result, never from model text, and only for signed-in users.
@@ -207,7 +207,7 @@ public sealed class ConversationOrchestrator(
 
                 // Anything the tool's output schema marks sensitive is removed before it is stored or recorded.
                 var storedContent = redactor.Redact(MessageRole.Tool, capName, RedactBySchema(capName, result.Content, input: false));
-                results.Add(new StoredToolResult(call.ToolUseId, capName, storedContent, result.IsError));
+                results.Add(new StoredToolResult(call.ToolUseId, capName, storedContent, result.IsError, result.Guidance));
                 await RecordAsync(turn.ConversationId, EvidenceKinds.ToolResult, EvidencePayloads.ToolResult(call.ToolUseId, capName, result.IsError, storedContent), CancellationToken.None);
                 blocks.Add(new ContentBlock
                 {
@@ -215,7 +215,7 @@ public sealed class ConversationOrchestrator(
                     {
                         ToolUseId = call.ToolUseId,
                         Status = result.IsError ? ToolResultStatus.Error : ToolResultStatus.Success,
-                        Content = [new ToolResultContentBlock { Text = UntrustedData.Wrap("tool." + capName, result.Content) }],
+                        Content = ToolResultContent(capName, result.Content, result.Guidance),
                     },
                 });
             }
@@ -333,7 +333,7 @@ public sealed class ConversationOrchestrator(
                             {
                                 ToolUseId = c.Id,
                                 Status = failed ? ToolResultStatus.Error : ToolResultStatus.Success,
-                                Content = [new ToolResultContentBlock { Text = UntrustedData.Wrap("tool." + c.Name, res?.Content ?? "The tool did not finish.") }],
+                                Content = ToolResultContent(c.Name, res?.Content ?? "The tool did not finish.", res?.Guidance),
                             },
                         };
                     }).ToList();
@@ -362,6 +362,14 @@ public sealed class ConversationOrchestrator(
 
     private static List<StoredToolCall> ParseCalls(string? json) =>
         string.IsNullOrEmpty(json) ? [] : JsonSerializer.Deserialize<List<StoredToolCall>>(json, Json) ?? [];
+
+    /// <summary>The untrusted, screened data, then the executor's own guidance outside the wrapper.</summary>
+    private static List<ToolResultContentBlock> ToolResultContent(string capabilityName, string content, string? guidance)
+    {
+        var blocks = new List<ToolResultContentBlock> { new() { Text = UntrustedData.Wrap("tool." + capabilityName, content) } };
+        if (!string.IsNullOrEmpty(guidance)) blocks.Add(new ToolResultContentBlock { Text = guidance });
+        return blocks;
+    }
 
     private static List<StoredToolResult> ParseResults(string? json) =>
         string.IsNullOrEmpty(json) ? [] : JsonSerializer.Deserialize<List<StoredToolResult>>(json, Json) ?? [];

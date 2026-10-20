@@ -19,10 +19,13 @@ public sealed record ToolExecutionContext(
     bool SignInAvailable = true);
 
 /// <summary>
-/// Outcome of a tool run. <see cref="Content"/> is data for the model and is always wrapped as untrusted before it is
-/// sent; <see cref="Events"/> (preview cards, sign-in cards) go straight to the browser.
+/// Outcome of a tool run. <see cref="Content"/> is data for the model and is always screened and wrapped as untrusted
+/// before it is sent; <see cref="Events"/> (preview cards, sign-in cards) go straight to the browser.
+/// <see cref="Guidance"/> is the executor's own fixed instruction to the model (what to ask the user next). It must
+/// never contain upstream data: it skips the tool-result guardrail, whose prompt-attack filter flags instructions, and
+/// is sent after the untrusted wrapper.
 /// </summary>
-public sealed record ToolExecutionResult(string Content, bool IsError = false, IReadOnlyList<ChatEvent>? Events = null);
+public sealed record ToolExecutionResult(string Content, bool IsError = false, IReadOnlyList<ChatEvent>? Events = null, string? Guidance = null);
 
 /// <summary>Runs one capability. Later tasks (knowledge base, wallet, DEX, safes) register implementations.</summary>
 public interface IToolExecutor
