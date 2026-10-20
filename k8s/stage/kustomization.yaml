@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: biatec-chat-stage
 resources:
   - ../base
+  - storage.yaml
   - ingress.yaml
 patches:
   - path: backend-config.patch.yaml
