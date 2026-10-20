@@ -7,7 +7,7 @@ epic: "Widget"
 blocked_by: [T-042, T-064, T-066]
 area: ["packages/chat-widget/src/i18n/**", "packages/chat-widget/src/styles/**"]
 parallel: no
-conflicts_with: [T-036]
+conflicts_with: [T-036, T-077]
 issue: "#44"
 branch: ""
 owner: ""
@@ -37,7 +37,7 @@ Launch-quality widget polish.
 
 ## Parallel work
 
-Parallel work possible: **no**. Don't run it at the same time as T-036: they change the same files, and running them together causes merge conflicts or broken behaviour.
+Parallel work possible: **no**. Don't run it at the same time as T-036, T-077: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
@@ -58,3 +58,4 @@ pnpm --filter chat-widget test
 
 - 2026-10-19 17:30 · kanban-split · (new) → blocked · created from PRODUCT-DESCRIPTION.md
 - 2026-10-19 22:40 · coordinator · blocked · widget UI rework: theming moved to T-062; now Slovak catalog + a11y audit of the reworked UI, blocked_by T-064, T-066
+- 2026-10-20 03:20 · coordinator · blocked · added T-077 to conflicts_with (new task)

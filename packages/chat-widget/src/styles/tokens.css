@@ -3,7 +3,8 @@
    Defaults are declared on :host (the shadow host) and on a standalone .biatec-chat root (mounted without a shadow
    root). A custom property set on the host element by the embedding page wins over these defaults.
    Dark is the base; light overrides under [data-theme="light"].
-   --bc-z 1000 stays below PrimeVue overlays (auto z-index from 1100), so host dialogs open above the floating widget. */
+   --bc-z 1000 stays below PrimeVue's automatic z-index (overlays, menus and popovers from 1001, dialogs and toasts from
+   1101), so host overlays and dialogs open above the floating widget. */
 :host,
 .biatec-chat[data-standalone] {
   --color-bg-primary: #070b14;
