@@ -28,7 +28,7 @@ Settings → Secrets and variables → Actions:
 |---|---|---|
 | `DOCKERHUB_USER` | repository | Docker Hub user that can push `scholtz2/biatec-chat-*` |
 | `DOCKERHUB_TOKEN` | repository | Docker Hub access token (read/write) for that user |
-| `KUBE_CONFIG` | `Stage` and `Production` environments, each its own | `base64 -w0` of a kubeconfig allowed to manage that environment's namespace: deployments, statefulsets, services, ingresses, network policies, config maps, secrets, service accounts, persistent volume claims, `pods/exec` (migration), and create the namespace on the first run |
+| `KUBE_CONFIG` | `Stage` and `Production` environments, each its own | `base64 -w0` of a kubeconfig allowed to manage that environment's namespace: deployments, statefulsets, services, ingresses, network policies, config maps, secrets, service accounts, persistent volume claims, `pods/exec` (migration). The namespace must already exist (see below); the deploy never creates it |
 | `OIDC_CLIENT_ID` | `Stage` and `Production` | Client id of the `biatec-chat` client at that environment's Biatec OIDC, e.g. `biatec-chat-stage` on stage.oidc.biatec.io. Its allowed redirect URI there must include `https://<host>/auth/callback` (`stage.chat.biatec.io` / `chat.biatec.io`) |
 | `OIDC_CLIENT_SECRET` | `Stage` and `Production` | Biatec OIDC client secret of the `biatec-chat` tenant at that environment's OIDC (stage.oidc.biatec.io / oidc.biatec.io) |
 | `AWS_ROLE_ARN` | `Stage` and `Production` | Bedrock role from `infra/aws/rolesanywhere.sh` (aws-setup.md §3), e.g. `arn:aws:iam::<account>:role/biatec-chat-bedrock-role` |
@@ -61,6 +61,18 @@ The backend migrates on startup only in Development. Each deploy runs
 `dotnet ef migrations script --idempotent` and pipes it into `psql` in the Postgres pod, which applies just the
 migrations missing from `__EFMigrationsHistory`. A migration must therefore be compatible with the previous backend
 version for the few seconds both run.
+
+## Namespaces
+
+The deploy account has no cluster-scope rights, so the namespaces are created once by a cluster admin; neither the
+workflow nor the overlays create them. Per environment (`biatec-chat-stage` / `biatec-chat-main`):
+
+```
+kubectl create namespace biatec-chat-stage
+kubectl label namespace biatec-chat-stage app.kubernetes.io/part-of=biatec-chat environment=stage
+kubectl create rolebinding github-actions-deploy -n biatec-chat-stage \
+  --clusterrole=admin --serviceaccount=<namespace of the account>:<service account of KUBE_CONFIG>
+```
 
 ## First deploy
 
