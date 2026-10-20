@@ -50,13 +50,13 @@ public sealed class TransferPreviewService(
         if (existing is not null) return await ContinueAsync(ctx, conversationId, request, existing, ct);
 
         var own = await mcp.ListAlgorandAddressesAsync(ctx, ct);
-        if (own.IsError) return TransferOutcome.Error("The addresses could not be read. Tell the user to try again.");
+        if (own.Failed) return TransferOutcome.Error("The addresses could not be read. Tell the user to try again.");
         var addresses = McpWalletJson.Addresses(own.Json);
         if (!addresses.Contains(request.From, StringComparer.Ordinal))
             return TransferOutcome.Error("The source address does not belong to the signed-in user. Use wallet.listAddresses to see the user's addresses.");
 
-        var fromBal = await mcp.GetCryptoBalanceAsync(ctx, request.Network, request.From, ct);
-        if (fromBal.IsError) return TransferOutcome.Error("The balance could not be read. Tell the user to try again.");
+        var fromBal = await mcp.GetCryptoBalanceAsync(ctx, request.StepNetwork, request.From, ct);
+        if (fromBal.Failed) return TransferOutcome.Error("The balance could not be read. Tell the user to try again.");
         var held = McpWalletJson.Balances(fromBal.Json).FirstOrDefault(b => b.AssetId == request.AssetId);
         if (held is null)
             return TransferOutcome.Error(request.AssetId == 0 ? "The source address holds no ALGO." : $"The source address does not hold asset {request.AssetId}.");
@@ -72,8 +72,8 @@ public sealed class TransferPreviewService(
         BigInteger receiverAlgo = 0;
         if (request.AssetId != 0 && receiverOwn && request.To != request.From)
         {
-            var toBal = await mcp.GetCryptoBalanceAsync(ctx, request.Network, request.To, ct);
-            if (toBal.IsError) return TransferOutcome.Error("The receiving address could not be read. Tell the user to try again.");
+            var toBal = await mcp.GetCryptoBalanceAsync(ctx, request.StepNetwork, request.To, ct);
+            if (toBal.Failed) return TransferOutcome.Error("The receiving address could not be read. Tell the user to try again.");
             var entries = McpWalletJson.Balances(toBal.Json);
             optedIn = entries.Any(b => b.AssetId == request.AssetId);
             receiverAlgo = entries.Where(b => b.AssetId == 0).Select(b => BigInteger.Parse(b.Amount, CultureInfo.InvariantCulture)).FirstOrDefault();

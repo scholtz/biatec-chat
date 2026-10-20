@@ -24,13 +24,15 @@ public sealed class TransferStepBuilder(IBiatecMcpClient mcp)
 {
     public async Task<BuiltTransferStep> BuildAsync(McpCallContext ctx, string network, TransferStepPlan step, CancellationToken ct)
     {
+        // Biatec MCP takes its own network code (algorand-testnet); the chat name (testnet) is kept for the checks below.
+        var mcpNetwork = McpWalletJson.AlgorandNetwork(network);
         var result = step.Kind switch
         {
-            TransferStepKind.OptIn => await mcp.CreateOptInTransactionAsync(ctx, network, step.Sender, step.AssetId, ct),
-            TransferStepKind.Fund => await mcp.CreatePaymentTransactionAsync(ctx, network, step.Sender, step.Receiver, step.Amount, null, null, ct),
-            _ => await mcp.CreatePaymentTransactionAsync(ctx, network, step.Sender, step.Receiver, step.Amount, step.AssetId == 0 ? null : step.AssetId, null, ct),
+            TransferStepKind.OptIn => await mcp.CreateOptInTransactionAsync(ctx, mcpNetwork, step.Sender, step.AssetId, ct),
+            TransferStepKind.Fund => await mcp.CreatePaymentTransactionAsync(ctx, mcpNetwork, step.Sender, step.Receiver, step.Amount, null, null, ct),
+            _ => await mcp.CreatePaymentTransactionAsync(ctx, mcpNetwork, step.Sender, step.Receiver, step.Amount, step.AssetId == 0 ? null : step.AssetId, null, ct),
         };
-        if (result.IsError) throw new TransferException("The transaction could not be built.");
+        if (result.Failed) throw new TransferException("The transaction could not be built.");
         var txns = Decode(result);
         if (txns.Count != 1) throw new TransferException("The builder did not return exactly one transaction.");
         var tx = txns[0];
