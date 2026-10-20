@@ -56,8 +56,8 @@ public static class SessionEndpoints
             NoStore(ctx);
             var handle = await sessions.ResolveOrCreateAsync(ctx.GetTenant()!, ReadCookie(ctx.Request), ctx.RequestAborted);
             if (handle.NewToken is not null) WriteCookie(ctx.Response, handle.NewToken, handle.Session.AbsoluteExpiresAt, clock.GetUtcNow());
-            var (email, primaryAddress) = await profile.GetAsync(handle.Session, ctx.RequestAborted);
-            return Results.Ok(await BuildStateAsync(db, handle.Session, email, primaryAddress, ctx.RequestAborted));
+            var (email, primaryAddress, scopes) = await profile.GetProfileAsync(handle.Session, ctx.RequestAborted);
+            return Results.Ok(await BuildStateAsync(db, handle.Session, email, primaryAddress, scopes, ctx.RequestAborted));
         }).WithName("GetSession").Produces<SessionState>().RegisteredOriginsOnly();
 
         // Cookie probe. Without a live cookie: creates the session, sets the cookie, reports false. With it: true.
@@ -99,7 +99,8 @@ public static class SessionEndpoints
 
     /// <param name="email">From <see cref="ISessionProfile"/>, which already returns null for guests.</param>
     /// <param name="primaryAddress">From <see cref="ISessionProfile"/>, which already returns null for guests.</param>
-    internal static async Task<SessionState> BuildStateAsync(ChatDbContext db, ChatSession s, string? email, string? primaryAddress, CancellationToken ct)
+    /// <param name="scopes">Scope names from <see cref="ISessionProfile"/>, empty for guests. Names only.</param>
+    internal static async Task<SessionState> BuildStateAsync(ChatDbContext db, ChatSession s, string? email, string? primaryAddress, IReadOnlyList<string> scopes, CancellationToken ct)
     {
         var popup = await db.PopupAuthRequests.AsNoTracking()
             .Where(p => p.ConversationId == s.ConversationId)
@@ -112,7 +113,7 @@ public static class SessionEndpoints
             // Derived strings only (T-083), never token material.
             Email = email,
             PrimaryAddress = primaryAddress,
-            Scopes = [],
+            Scopes = scopes,
             AuthRequestId = popup?.Id.ToString(),
             SignInStatus = popup?.Status switch
             {
@@ -148,7 +149,17 @@ public interface ISessionProfile
     /// The only guest check: both null for guests. Never waits for Biatec MCP and never throws for a vault or MCP
     /// outage: a value that is not known yet is null, and a later poll picks it up.
     /// </summary>
-    Task<(string? Email, string? PrimaryAddress)> GetAsync(ChatSession session, CancellationToken ct);
+    Task<(string? Email, string? PrimaryAddress)> GetAsync(ChatSession session, CancellationToken ct) =>
+        GetProfileAsync(session, ct).ContinueWith(t => (t.Result.Email, t.Result.PrimaryAddress), TaskScheduler.Default);
+
+    /// <summary>
+    /// The same lookup plus the OIDC scope names the session holds (names only). Guests get an empty list. Served from
+    /// the same per-session cache, so a poll never decrypts the vault entry again.
+    /// </summary>
+    Task<(string? Email, string? PrimaryAddress, IReadOnlyList<string> Scopes)> GetProfileAsync(ChatSession session, CancellationToken ct);
+
+    /// <summary>Drops the cached profile after the session's tokens or scopes changed (an elevation), so the next poll reads them again.</summary>
+    void Invalidate(string sessionId);
 }
 
 public sealed class SessionProfileOptions
@@ -195,30 +206,47 @@ public sealed class SessionProfile(
     private readonly SessionProfileOptions _o = options.Value;
     private readonly ConcurrentDictionary<string, Task> _fills = new();
 
-    private sealed record Cached(string? Email, string? Address);
+    private sealed record Cached(string? Email, string? Address, IReadOnlyList<string> Scopes);
+
+    private readonly ConcurrentDictionary<string, int> _generations = new();
+
+    public void Invalidate(string sessionId)
+    {
+        var key = CacheKey(sessionId);
+        _generations.AddOrUpdate(key, 1, (_, g) => g + 1);
+        cache.Remove(key);
+    }
 
     private static string CacheKey(string sessionId) => "biatec:session:profile:" + sessionId;
 
     public async Task<(string? Email, string? PrimaryAddress)> GetAsync(ChatSession session, CancellationToken ct)
     {
-        if (session.Tier == Core.Data.SessionTier.Anonymous) return (null, null);
+        var (email, address, _) = await GetProfileAsync(session, ct);
+        return (email, address);
+    }
+
+    public async Task<(string? Email, string? PrimaryAddress, IReadOnlyList<string> Scopes)> GetProfileAsync(ChatSession session, CancellationToken ct)
+    {
+        if (session.Tier == Core.Data.SessionTier.Anonymous) return (null, null, []);
         var sessionId = session.Id.ToString("N");
         var key = CacheKey(sessionId);
-        if (cache.TryGetValue<Cached>(key, out var hit) && hit is not null) return (hit.Email, hit.Address);
+        if (cache.TryGetValue<Cached>(key, out var hit) && hit is not null) return (hit.Email, hit.Address, hit.Scopes);
 
         TokenVaultEntry? entry;
         try { entry = await vault.GetAsync(sessionId, ct); }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             log.LogWarning("Session profile: vault read failed: {ErrorType}", ex.GetType().Name);
-            return (null, null);
+            return (null, null, []);
         }
-        if (entry is null) return (null, null);
+        if (entry is null) return (null, null, []);
 
         var email = EmailOf(entry.IdToken);
-        cache.Set(key, new Cached(email, null), _o.FailureTtl);
-        StartFill(key, new McpCallContext(session.TenantId, sessionId, entry.Scopes), entry.AccessExpiresAt, email);
-        return (email, null);
+        var scopes = (IReadOnlyList<string>)[.. entry.Scopes];
+        var generation = _generations.GetValueOrDefault(key);
+        cache.Set(key, new Cached(email, null, scopes), _o.FailureTtl);
+        StartFill(key, new McpCallContext(session.TenantId, sessionId, entry.Scopes), entry.AccessExpiresAt, email, scopes, generation);
+        return (email, null, scopes);
     }
 
     /// <summary>The <c>email</c> claim, or null. The token was validated when it entered the vault; only the claim leaves this method.</summary>
@@ -232,7 +260,7 @@ public sealed class SessionProfile(
         catch (Exception) { return null; } // malformed: never echo it
     }
 
-    private void StartFill(string key, McpCallContext ctx, DateTimeOffset accessExpiresAt, string? email)
+    private void StartFill(string key, McpCallContext ctx, DateTimeOffset accessExpiresAt, string? email, IReadOnlyList<string> scopes, int generation)
     {
         // A token that would need a refresh is left alone: the chat path refreshes it, and a later poll fills the address.
         if (accessExpiresAt - clock.GetUtcNow() <= vaultOptions.Value.RefreshSkew + TokenMargin) return;
@@ -240,7 +268,7 @@ public sealed class SessionProfile(
         if (!_fills.TryAdd(key, slot.Task)) return;
         _ = Task.Run(async () =>
         {
-            try { await FillAsync(key, ctx, email); }
+            try { await FillAsync(key, ctx, email, scopes, generation); }
             catch (Exception ex) { log.LogWarning("Session profile: address fill failed: {ErrorType}", ex.GetType().Name); }
             finally
             {
@@ -250,7 +278,7 @@ public sealed class SessionProfile(
         });
     }
 
-    private async Task FillAsync(string key, McpCallContext ctx, string? email)
+    private async Task FillAsync(string key, McpCallContext ctx, string? email, IReadOnlyList<string> scopes, int generation)
     {
         Task<McpToolResult> call;
         try { call = mcp.ListAlgorandAddressesAsync(ctx, CancellationToken.None); }
@@ -263,7 +291,8 @@ public sealed class SessionProfile(
         {
             var r = await call.WaitAsync(_o.McpTimeout, clock);
             var address = r.Failed ? null : WalletReadExecutor.ParseAddresses(r.Json).FirstOrDefault();
-            if (address is not null) cache.Set(key, new Cached(email, address), _o.AddressTtl);
+            // An entry invalidated meanwhile (an elevation) is not resurrected with the scopes read before it.
+            if (address is not null && _generations.GetValueOrDefault(key) == generation) cache.Set(key, new Cached(email, address, scopes), _o.AddressTtl);
             return;
         }
         catch (Exception ex)
