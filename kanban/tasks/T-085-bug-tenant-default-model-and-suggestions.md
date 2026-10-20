@@ -1,7 +1,7 @@
 ---
 id: T-085
 title: "Bug: apply the tenant's defaultModel and suggestions"
-status: in-progress
+status: done
 priority: P3
 epic: "Orchestrator"
 blocked_by: []
@@ -113,9 +113,12 @@ Filled in by the agent when it moves the task to `review`.
 
 ## Review
 
+- 2026-10-20 07:43 · approve · PR #198 merged into main @ fe908e7 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #8)
 - 2026-10-20 05:53 · coordinator · backlog · conflicts_with + T-067 (both edit ConversationOrchestrator.cs; seen on task/T-067)
 - 2026-10-20 06:19 · scholtz · taken · status stays backlog
 - 2026-10-20 06:19 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 07:43 · user · in-progress → done · PR #198 merged into main @ fe908e7 (synced by kanban-sync)

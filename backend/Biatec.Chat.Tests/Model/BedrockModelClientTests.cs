@@ -280,6 +280,16 @@ public class BedrockModelClientTests
     }
 
     [Fact]
+    public void A_tenants_model_override_is_the_Bedrock_model_id_but_a_disallowed_one_is_ignored()
+    {
+        var c = Client(new FakeSource());
+        const string sonnet = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0";
+        Assert.Equal(sonnet, c.BuildRequest(Request(ModelProfile.Authenticated) with { ModelIdOverride = sonnet }).ModelId);
+        Assert.Equal("eu.anthropic.claude-opus-4-5-20251101-v1:0",
+            c.BuildRequest(Request(ModelProfile.Authenticated) with { ModelIdOverride = "eu.anthropic.claude-opus-5-0-x" }).ModelId);
+    }
+
+    [Fact]
     public void Model_id_comes_from_the_profile_and_tools_only_when_present()
     {
         var c = Client(new FakeSource());

@@ -85,9 +85,6 @@ public sealed partial class TenantPolicyService(ChatDbContext db, Biatec.Chat.Ap
     public const decimal MaxUsdPerWindow = 10_000m;
     public const int MaxCount = 10_000;
 
-    [GeneratedRegex(@"^eu\.anthropic\.claude-(haiku|sonnet|opus)-4-\d+-[A-Za-z0-9.:-]{1,80}$")]
-    private static partial Regex ModelRegex();
-
     public async Task<IReadOnlyList<TenantPolicyView>> ListAsync(CancellationToken ct) =>
         (await db.Tenants.AsNoTracking().OrderBy(t => t.Id).ToListAsync(ct)).Select(TenantPolicyView.Of).ToList();
 
@@ -191,7 +188,7 @@ public sealed partial class TenantPolicyService(ChatDbContext db, Biatec.Chat.Ap
                 return $"safeApprovalCaps counts must be between 0 and {MaxCount}.";
             if (c.ApprovalEurPerHour is { } eur && (eur < 0 || eur > MaxEur)) return $"safeApprovalCaps.approvalEurPerHour must be between 0 and {MaxEur} EUR.";
         }
-        if (p.DefaultModel is { Length: > 0 } m && !ModelRegex().IsMatch(m))
+        if (p.DefaultModel is { Length: > 0 } m && !Biatec.Chat.Api.Model.TenantModels.IsAllowed(m))
             return "defaultModel must be an eu.anthropic.claude-(haiku|sonnet|opus)-4-* inference profile id (Claude 5 isn't available on this account).";
         return null;
     }

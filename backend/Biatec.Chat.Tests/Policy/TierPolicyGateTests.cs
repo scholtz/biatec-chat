@@ -75,7 +75,7 @@ public class TierPolicyGateTests
     public void Anonymous_model_tool_list_never_contains_a_wallet_tool()
     {
         var (gate, _) = Make();
-        var allowed = new[] { "kb.search", "requestSignIn" };
+        var allowed = new[] { "kb.search", "market.snapshot", "requestSignIn" };
         Assert.Equal(allowed, gate.ToolsFor(Anon()).Select(c => c.ToolName!).OrderBy(x => x).ToArray());
         Assert.Equal(allowed, gate.ToolsFor(new GateContext(SessionTier.Anonymous, null!)).Select(c => c.ToolName!).OrderBy(x => x).ToArray());
     }
