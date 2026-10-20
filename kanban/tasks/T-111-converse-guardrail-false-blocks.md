@@ -1,7 +1,7 @@
 ---
 id: T-111
 title: "Fix Converse guardrail blocking every answer (InvestmentAdvice topic, whole-history screening)"
-status: in-progress
+status: review
 priority: P0
 epic: "Orchestrator"
 blocked_by: []
@@ -54,11 +54,11 @@ Parallel work possible: **yes**. No other unfinished task changes the model clie
 
 ## Acceptance criteria
 
-- [ ] The three demo messages get real answers in a local run against the real guardrail (Haiku).
-- [ ] "Should I buy ALGO now?" and "Which token will go up next week?" are still refused.
-- [ ] A Converse request carries exactly the latest user text as `guardContent`; host context and tool results don't.
-- [ ] A blocked Converse call logs the blocking policy and topic.
-- [ ] Config and k8s point at the new guardrail version.
+- [x] The three demo messages get real answers in a local run against the real guardrail (Haiku).
+- [x] "Should I buy ALGO now?" and "Which token will go up next week?" are still refused.
+- [x] A Converse request carries exactly the latest user text as `guardContent`; host context and tool results don't.
+- [x] A blocked Converse call logs the blocking policy and topic.
+- [x] Config and k8s point at the new guardrail version.
 
 ## Verification
 
@@ -67,12 +67,31 @@ set, Haiku) with the logs; apply-guardrail checks of the advice examples.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** every block was the `InvestmentAdvice` deny topic (guardrail trace, local backend on `main` with
+  Haiku). Converse screened the whole history on every call, so one matching answer poisoned every later turn, and
+  on output the topic flagged ordinary explanations and even capability lists, not reproducibly. Fixes:
+  - `BedrockModelClient` makes the turn's user message (user text and host page context) the only `guardContent`.
+    Earlier turns were screened when sent, and tool results by the tool-result guard. Guardrail trace on; a block logs
+    `Bedrock guardrail blocked <model>: input:topic:InvestmentAdvice` (also when the metadata has no usage).
+  - Guardrail `rwa0b0by3y18` **v3** (published with the user's approval; v1 untouched): `InvestmentAdvice` is limited to
+    personalised buy/sell/hold advice and price predictions, and screens **input only**. Output stays advice-free
+    through a persona rule. Prompt-attack, harm and recovery-phrase filters still screen output. `k8s/base/backend.yaml`
+    and `docs/aws-setup.md` point at v3; troubleshooting row added.
+  - Known trade-offs (from review): advice on output is now prevented by the system prompt, not the guardrail
+    (review finding kept on purpose: the output topic blocked legitimate answers). The history cache prefix misses once per turn, because the
+    previous turn's message changes from guardContent to text. The system-prompt cache and in-turn tool-loop cache still hit.
+- **Files changed:** `backend/Biatec.Chat.Api/Model/BedrockModelClient.cs`, `backend/Biatec.Chat.Api/Orchestration/PromptBuilder.cs`
+  (one persona rule, outside the area), `infra/guardrail/guardrail.json`, `k8s/base/backend.yaml`, `docs/aws-setup.md`,
+  `backend/Biatec.Chat.Tests/Guardrails/GuardrailsTests.cs`.
+- **How it was verified:** `dotnet test backend/Biatec.Chat.slnx` 1325 passed, 1 skipped. Local backend with guardrail
+  v3 and Haiku, demo messages replayed three times: the DEX explanation (3 KB searches), "what is my capital"
+  (sign-in), "what can you help me with" and "how do fees work" all answered. "Should I buy ALGO now?", "Which token
+  will go up next week?" and "Is it better to put my USDC in the EURS/USDC pool or keep it?" refused (input topic).
+  Apply-guardrail checks on the DRAFT before each publish. Reviews: medium (9 findings: 6 fixed, 2 trade-offs
+  noted, 1 accepted), then low (none). Branch `task/T-111` @ 1e3b0a2, PR #236, CI green.
+- **Follow-up tasks created:** none.
+- **Unblocks:** nothing.
+- **Open questions:** none. Deploying the backend picks up v3 from `k8s/base/backend.yaml`.
 
 ## Review
 
@@ -81,3 +100,4 @@ set, Haiku) with the logs; apply-guardrail checks of the advice examples.
 - 2026-10-20 11:02 · coordinator · (new) → backlog · created from demo testing (guardrail blocks every answer)
 - 2026-10-20 11:02 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 11:02 · session-20261020-1102 · backlog → in-progress · claimed in session
+- 2026-10-20 11:23 · session-20261020-1102 · in-progress → review · PR #236, full suite green, CI green, review clean
