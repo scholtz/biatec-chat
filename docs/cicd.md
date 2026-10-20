@@ -45,12 +45,18 @@ Settings → Secrets and variables → Actions:
 | `NPM_TOKEN` | `npm` environment only (optional) | **Fallback only** for `publish-widget.yml` when npm trusted publishing (GitHub OIDC, no secret) is not configured yet, and required for the very first publish of `@biatec/chat-widget` through the workflow (a trusted publisher needs an existing package): an npmjs.com granular access token with read and write on the `@biatec` packages and a short expiry. A repository admin adds it under Settings → Environments → `npm` of scholtz/biatec-chat, and deletes it once the trusted publisher is configured. See [packages/chat-widget/README.md, "Publishing"](../packages/chat-widget/README.md#publishing) |
 | `EVIDENCE_MASTER_KEY` | `Stage` and `Production`, each its own | Evidence-signing master key, base64 of at least 32 bytes: `openssl rand -base64 32`. All replicas derive the same ES256 keys from it; back it up and never change it |
 
-**Every secret lives in GitHub, none is generated in the cluster.** Each deploy writes the environment's secrets into
-three cluster secrets and fails with a clear message if one is missing: `biatec-chat-generated` (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `BUILDERS_INTERNAL_SECRET`, `VAULT_MASTER_KEY` and
-`EVIDENCE_MASTER_KEY`, name kept from the earlier design; the backend builds its connection strings from them and the in-cluster service
-names), `biatec-chat-secrets` (`OIDC_CLIENT_SECRET`; `OIDC_CLIENT_ID` goes into the tenant row, see "Tenant") and `biatec-chat-aws` (certificate, key and the AWS config file;
-the five `AWS_*` secrets are validated: certificate matches key, expiry warning). To rotate a value, set the GitHub
-secret and deploy; Postgres is the exception above.
+**Who creates which secret.** Credentials only a person can issue (`KUBE_CONFIG`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, the
+five `AWS_*`) are GitHub environment secrets and the deploy fails with a clear message if one is missing. The five random
+values (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `BUILDERS_INTERNAL_SECRET`, `VAULT_MASTER_KEY`, `EVIDENCE_MASTER_KEY`) are
+optional as GitHub secrets: each deploy uses the GitHub secret if it is set (to pin or rotate a value), otherwise the
+value already in the cluster, otherwise it generates one (`openssl rand`) and keeps it in the cluster, so a new
+environment needs none of them. The deploy log says per key where the value came from (never the value). Each deploy
+writes three cluster secrets: `biatec-chat-generated` (those five; the backend builds its connection strings from them
+and the in-cluster service names), `biatec-chat-secrets` (`OIDC_CLIENT_SECRET`; `OIDC_CLIENT_ID` goes into the tenant row,
+see "Tenant") and `biatec-chat-aws` (certificate, key and the AWS config file; the five `AWS_*` secrets are validated:
+certificate matches key, expiry warning). Postgres is the exception to rotating by deploy (above). Generated values exist
+only in the cluster secret, so back up `vault-master-key` and `evidence-master-key` from it
+(`kubectl get secret biatec-chat-generated -n <ns> -o jsonpath='{.data.vault-master-key}' | base64 -d`).
 
 ## Tenant
 
