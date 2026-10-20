@@ -1,7 +1,7 @@
 ---
 id: T-095
 title: "Fix the red widget i18n test and the flaky session-profile test on main"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Deploy & docs"
 blocked_by: []
@@ -9,9 +9,9 @@ area: ["packages/chat-widget/src/components/chat/ChatView.vue", "packages/chat-w
 parallel: no
 conflicts_with: [T-092, T-094]
 issue: "#190"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-095"
+owner: "session-20261020-claude"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md"
 created: 2026-10-20
 updated: 2026-10-20
@@ -54,3 +54,4 @@ Fresh worktree: `pnpm install && pnpm -C packages/chat-widget test`; `dotnet tes
 
 - 2026-10-20 05:31 · coordinator · (new) → backlog · proposed by a worker / found during verification
 - 2026-10-20 05:31 · coordinator · backlog · conflicts_with + T-092, T-094 (blockers scan: shared files)
+- 2026-10-20 05:45 · scholtz · backlog → in-progress · claimed with session-20261020-claude on branch task/T-095 (main CI is red on the i18n test, which blocks the stage deploy)

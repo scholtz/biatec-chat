@@ -1,0 +1,32 @@
+{
+  "export": {
+    "title": "Your conversations",
+    "intro": "Download the signed evidence record of any of your conversations. It verifies offline against the published keys.",
+    "loading": "Loading your conversations",
+    "empty": "No conversations yet.",
+    "loadFailed": "Your conversations could not be loaded.",
+    "retry": "Try again",
+    "current": "Current",
+    "started": "Started {date}",
+    "entries": "Evidence entries: {count}",
+    "download": "Download evidence",
+    "downloadLabel": "Download evidence of the conversation started {date}",
+    "noEvidence": "No evidence yet",
+    "downloadFailed": "The evidence could not be downloaded. Try again.",
+    "carveOut": "Receipts and transaction references are kept for 7 years under the financial record-keeping obligation, even after you erase your data. They hold the on-chain addresses and amounts of approved transactions, which are public on the ledger.",
+    "erase": "Erase my data",
+    "eraseGuest": "Sign in to erase your data. Guest conversations are removed automatically after 30 days.",
+    "eraseTitle": "Erase your conversations?",
+    "eraseText": "Message text, tool results and unsigned transaction data of all your conversations are removed now. This cannot be undone.",
+    "eraseKept": "Kept: evidence hashes, signed receipts and transaction IDs, so an exported bundle still verifies.",
+    "exportFirst": "Download all your evidence first (one file)",
+    "exportFirstDone": "Evidence downloaded",
+    "exportPartial": "Not downloaded: {count}. If you erase now, their evidence will no longer include the message text. Try again first:",
+    "cancel": "Cancel",
+    "eraseConfirm": "Erase my data",
+    "actionInFlight": "Finish or cancel the action first, then erase your data.",
+    "unauthorized": "Your session has ended. Sign in again to erase your data.",
+    "eraseFailed": "Your data could not be erased. Try again.",
+    "erased": "Your data was erased. A new conversation has started."
+  }
+}

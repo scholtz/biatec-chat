@@ -128,7 +128,15 @@ export function useActivity(now: () => number = Date.now) {
     log({ kind: "preview", title: "previewCancelled", detail: clip(p.intent), by: "you" });
   }
 
-  return { entries, log, record, recordReply, recordConfirm, openPreviews, markCancelled };
+  /** Forget the conversation's activity (sign-out, erasure): entries, previews, consent and confirmations. */
+  function reset(): void {
+    entries.splice(0, entries.length);
+    previews.clear();
+    consent.clear();
+    confirmed.clear();
+  }
+
+  return { entries, log, record, recordReply, recordConfirm, openPreviews, markCancelled, reset };
 }
 
 export type Activity = ReturnType<typeof useActivity>;

@@ -1,7 +1,7 @@
 ---
 id: T-093
 title: "Safe proposal card: use the shared algod asset reader"
-status: in-progress
+status: review
 priority: P3
 epic: "Safe"
 blocked_by: [T-090]
@@ -39,14 +39,19 @@ files.
 
 ## Acceptance criteria
 
-- [ ] Safe proposal cards read decimals and unit names through IAlgodAssetReader (test)
-- [ ] SafeProposal tests stay green
+- [x] Safe proposal cards read decimals and unit names through IAlgodAssetReader (test)
+- [x] SafeProposal tests stay green
 
 ## Verification
 
 `dotnet test --filter SafeProposal`, then the full backend suite.
 
 ## Hand-off
+
+- **Summary:** `AlgodSafeHoldingsReader` delegates to the shared `IAlgodAssetReader` (one cache, unit-name cleaning, strict 404 handling); the extra named HttpClient is gone. `AddSafeProposalTools` now relies on `AddWalletTransferTools` (already called first in Program.cs).
+- **Branch:** `task/T-093` @ `0590408`, PR #194 (`Closes #180`).
+- **Verification:** SafeProposal 25 passed (new SafeProposalHoldingsReaderTests); full backend 1195 passed, 1 skipped, 0 failed.
+- **Unblocks:** no task is blocked by T-093.
 
 ## Review
 
@@ -57,3 +62,4 @@ files.
 - 2026-10-20 04:31 · kanban-board · blocked → backlog · blockers done: T-090
 - 2026-10-20 05:32 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 05:32 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 05:47 · coordinator · in-progress → review · PR #194
