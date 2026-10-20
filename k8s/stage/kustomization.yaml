@@ -9,7 +9,7 @@ patches:
   - path: backend-config.patch.yaml
   - path: builders-env.patch.yaml
 images:
-  - name: ghcr.io/scholtz/biatec-chat-backend
+  - name: scholtz2/biatec-chat-backend
     newTag: stage
-  - name: ghcr.io/scholtz/biatec-chat-builders
+  - name: scholtz2/biatec-chat-builders
     newTag: stage

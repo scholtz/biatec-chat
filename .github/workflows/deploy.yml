@@ -1,0 +1,170 @@
+# Reusable deploy of already-pushed images to one Kubernetes environment. Called by deploy-stage.yml (Stage, k8s/stage)
+# and promote-production.yml (Production, k8s/main); it never builds anything. Credentials come only from the GitHub
+# environment's secrets (KUBE_CONFIG, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET,AWS_ROLE_ARN, AWS_TRUST_ANCHOR_ARN, AWS_PROFILE_ARN, AWS_CLIENT_CERT, AWS_CLIENT_KEY); see docs/cicd.md.
+name: deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment: {type: string, required: true, description: "GitHub environment: Stage or Production"}
+      url: {type: string, required: true}
+      overlay: {type: string, required: true, description: "k8s/<overlay>: stage or main"}
+      namespace: {type: string, required: true}
+      tag: {type: string, required: true, description: "Image tag of both images, already in the registry"}
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ inputs.url }}
+    env:
+      NAMESPACE: ${{ inputs.namespace }}
+      OVERLAY: k8s/${{ inputs.overlay }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+        run: |
+          if [ -z "$KUBE_CONFIG" ]; then echo "::error::KUBE_CONFIG is not set on the ${{ inputs.environment }} environment."; exit 1; fi
+          mkdir -p "$HOME/.kube"
+          echo "$KUBE_CONFIG" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Ensure namespace
+        run: kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$NAMESPACE"
+
+      # Postgres, Redis and builders passwords and the token-vault master key come from the environment's GitHub secrets
+      # (docs/cicd.md has the one-liners that generate them). Postgres only reads its password when its volume is first
+      # initialised, so never change POSTGRES_PASSWORD afterwards; losing VAULT_MASTER_KEY signs every user out.
+      - name: Sync biatec-chat-generated
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          BUILDERS_INTERNAL_SECRET: ${{ secrets.BUILDERS_INTERNAL_SECRET }}
+          VAULT_MASTER_KEY: ${{ secrets.VAULT_MASTER_KEY }}
+        run: |
+          for v in POSTGRES_PASSWORD REDIS_PASSWORD BUILDERS_INTERNAL_SECRET VAULT_MASTER_KEY; do
+            if [ -z "${!v}" ]; then echo "::error::$v is not set on the ${{ inputs.environment }} environment (docs/cicd.md)."; exit 1; fi
+          done
+          # The vault key is base64 of 32 bytes (Vault:MasterKey).
+          [ "$(printf '%s' "$VAULT_MASTER_KEY" | base64 -d 2>/dev/null | wc -c)" = 32 ] \
+            || { echo "::error::VAULT_MASTER_KEY must be base64 of 32 bytes (openssl rand -base64 32)."; exit 1; }
+          kubectl create secret generic biatec-chat-generated -n "$NAMESPACE" \
+            --from-literal=postgres-password="$POSTGRES_PASSWORD" \
+            --from-literal=redis-password="$REDIS_PASSWORD" \
+            --from-literal=builders-internal-secret="$BUILDERS_INTERNAL_SECRET" \
+            --from-literal=vault-master-key="$VAULT_MASTER_KEY" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      # The tenant's Biatec OIDC client secret, from the environment's GitHub secrets.
+      - name: Sync biatec-chat-secrets
+        env:
+          OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
+        run: |
+          if [ -z "$OIDC_CLIENT_SECRET" ]; then echo "::error::OIDC_CLIENT_SECRET is not set on the ${{ inputs.environment }} environment (docs/cicd.md)."; exit 1; fi
+          kubectl create secret generic biatec-chat-secrets -n "$NAMESPACE" \
+            --from-literal=oidc-client-secret="$OIDC_CLIENT_SECRET" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      # Bedrock access through IAM Roles Anywhere (docs/aws-setup.md): the environment's client certificate and key, and
+      # the config file the AWS SDK reads (credential_process runs the aws_signing_helper in the backend image).
+      - name: Sync biatec-chat-aws
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+          AWS_TRUST_ANCHOR_ARN: ${{ secrets.AWS_TRUST_ANCHOR_ARN }}
+          AWS_PROFILE_ARN: ${{ secrets.AWS_PROFILE_ARN }}
+          AWS_CLIENT_CERT: ${{ secrets.AWS_CLIENT_CERT }}
+          AWS_CLIENT_KEY: ${{ secrets.AWS_CLIENT_KEY }}
+        run: |
+          for v in AWS_ROLE_ARN AWS_TRUST_ANCHOR_ARN AWS_PROFILE_ARN AWS_CLIENT_CERT AWS_CLIENT_KEY; do
+            if [ -z "${!v}" ]; then echo "::error::$v is missing (see docs/aws-setup.md)."; exit 1; fi
+          done
+          # The client certificate must match the key, or the SDK would fail only at the first chat message.
+          cert_pub="$(printf '%s\n' "$AWS_CLIENT_CERT" | openssl x509 -pubkey -noout)"
+          key_pub="$(printf '%s\n' "$AWS_CLIENT_KEY" | openssl pkey -pubout)"
+          [ "$cert_pub" = "$key_pub" ] || { echo "::error::AWS_CLIENT_CERT and AWS_CLIENT_KEY do not match."; exit 1; }
+          printf '%s\n' "$AWS_CLIENT_CERT" | openssl x509 -noout -checkend 1209600 \
+            || echo "::warning::The AWS client certificate expires within 14 days; renew it (docs/aws-setup.md, RENEW=1)."
+          d=/var/run/secrets/aws-rolesanywhere
+          cat > "$RUNNER_TEMP/aws-config" <<CONFIG
+          [default]
+          region = eu-central-1
+          credential_process = /usr/local/bin/aws_signing_helper credential-process --certificate $d/certificate.pem --private-key $d/private-key.pem --trust-anchor-arn $AWS_TRUST_ANCHOR_ARN --profile-arn $AWS_PROFILE_ARN --role-arn $AWS_ROLE_ARN --region eu-central-1
+          CONFIG
+          kubectl create secret generic biatec-chat-aws -n "$NAMESPACE" \
+            --from-file=config="$RUNNER_TEMP/aws-config" \
+            --from-literal=certificate.pem="$AWS_CLIENT_CERT" \
+            --from-literal=private-key.pem="$AWS_CLIENT_KEY" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          rm -f "$RUNNER_TEMP/aws-config"
+
+      # Both images carry the same tag; pin it in the overlay (not committed) and apply.
+      - name: Apply ${{ inputs.overlay }} with tag ${{ inputs.tag }}
+        run: |
+          sed -i "s/^\(\s*newTag:\).*/\1 $TAG/" "$OVERLAY/kustomization.yaml"
+          [ "$(grep -c "newTag: $TAG$" "$OVERLAY/kustomization.yaml")" = 2 ]
+          kubectl apply -k "$OVERLAY"
+
+      - name: Wait for databases
+        run: |
+          kubectl rollout status statefulset/biatec-chat-postgres -n "$NAMESPACE" --timeout=5m
+          kubectl rollout status statefulset/biatec-chat-redis -n "$NAMESPACE" --timeout=5m
+
+      # The backend migrates only in Development; elsewhere the schema is a deploy step. The idempotent script applies
+      # just the migrations missing from __EFMigrationsHistory, so it is safe on every deploy.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Migrate database
+        run: |
+          dotnet tool restore
+          dotnet ef migrations script --idempotent --project backend/Biatec.Chat.Api --output migrate.sql
+          sed -i '1s/^\xEF\xBB\xBF//' migrate.sql
+          kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
+            psql -q -v ON_ERROR_STOP=1 -U biatec -d biatec_chat < migrate.sql
+
+      # The backend resolves the tenant (host, OIDC client id, redirect URI) from the Tenants table and seeds it only in
+      # Development. This creates the biatec-chat tenant for the environment's host from OIDC_CLIENT_ID, or updates just
+      # those four columns on later deploys (everything else on the row is owned by onboarding and left alone). The
+      # client secret itself stays a pointer (ClientSecretRef) to the biatec-chat-secrets key.
+      - name: Seed tenant biatec-chat
+        env:
+          OIDC_CLIENT_ID: ${{ secrets.OIDC_CLIENT_ID }}
+          SITE_URL: ${{ inputs.url }}
+        run: |
+          if [ -z "$OIDC_CLIENT_ID" ]; then echo "::error::OIDC_CLIENT_ID is not set on the ${{ inputs.environment }} environment (docs/cicd.md)."; exit 1; fi
+          host="${SITE_URL#https://}"; host="${host%/}"
+          kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
+            psql -q -v ON_ERROR_STOP=1 -U biatec -d biatec_chat \
+              -v host="$host" -v client_id="$OIDC_CLIENT_ID" -v redirect="https://$host/auth/callback" <<'SQL'
+          INSERT INTO "Tenants" ("Id", "Host", "SignInPageUrl", "BedrockBudgets", "SafeApprovalCaps", "ConsentThresholdCeilingEur",
+                                 "LimitsUpdateEnabled", "X402Enabled", "OidcClientId", "ClientSecretRef", "RedirectUri",
+                                 "AllowedOrigins", "ClientKeys", "SoftCapEurPerHour", "TrustAnchorVerified", "Suggestions")
+          VALUES ('biatec-chat', :'host', 'https://web.biatec.io', '{}', '{}', 1000, false, false, :'client_id',
+                  'secret://biatec-chat/oidc-client-secret', :'redirect',
+                  ARRAY['https://web.biatec.io', 'https://dex.biatec.io'], '["biatec-web","biatec-dex"]', 1500, true, '[]')
+          ON CONFLICT ("Id") DO UPDATE SET "Host" = EXCLUDED."Host", "OidcClientId" = EXCLUDED."OidcClientId",
+                                           "ClientSecretRef" = EXCLUDED."ClientSecretRef", "RedirectUri" = EXCLUDED."RedirectUri";
+          SQL
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/biatec-chat-builders -n "$NAMESPACE" --timeout=5m
+          kubectl rollout status deployment/biatec-chat-backend -n "$NAMESPACE" --timeout=5m
+
+      - name: Summary
+        run: echo "Deployed \`$TAG\` to ${{ inputs.environment }} (\`$NAMESPACE\`)." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove kubeconfig
+        if: always()
+        run: rm -f "$HOME/.kube/config"

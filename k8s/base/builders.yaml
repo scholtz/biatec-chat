@@ -17,7 +17,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: builders
-          image: ghcr.io/scholtz/biatec-chat-builders:latest
+          image: scholtz2/biatec-chat-builders:latest
           imagePullPolicy: Always
           ports:
             - {name: http, containerPort: 3100}
@@ -25,7 +25,7 @@ spec:
             - name: PORT
               value: "3100"
             - name: BUILDERS_INTERNAL_SECRET
-              valueFrom: {secretKeyRef: {name: biatec-chat-secrets, key: builders-internal-secret}}
+              valueFrom: {secretKeyRef: {name: biatec-chat-generated, key: builders-internal-secret}}
             # ALGOD_URL_MAINNET / ALGOD_URL_TESTNET are set per overlay (builders-env.patch.yaml).
           startupProbe:
             httpGet: {path: /health, port: http}

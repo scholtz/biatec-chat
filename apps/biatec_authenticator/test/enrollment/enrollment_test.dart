@@ -174,7 +174,7 @@ void main() {
       expect(c.state.phase, EnrollmentPhase.activeRecoveryPending);
       expect(c.recoveryCodeToShow, 'AAAA-BBBB-CCCC');
       expect(
-          (jsonDecode(requests.single.body) as Map)['approved_by_kid'],
+          (jsonDecode(requests.first.body) as Map)['approved_by_kid'],
           'alice-device');
     });
 
@@ -383,6 +383,8 @@ void main() {
 
       await tester.runAsync(() async {
         await tester.tap(find.text('I have saved it'));
+        // The acknowledgement is asynchronous (HTTP call, then storage write).
+        await Future<void>.delayed(const Duration(milliseconds: 50));
       });
       await tester.pump();
       expect(find.text('AAAA-BBBB-CCCC'), findsNothing);
