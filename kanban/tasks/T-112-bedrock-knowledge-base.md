@@ -1,7 +1,7 @@
 ---
 id: T-112
 title: "Move the business knowledge base into Bedrock Knowledge Base DZZGQITEAS and answer from it"
-status: review
+status: done
 priority: P1
 epic: "Knowledge base"
 blocked_by: []
@@ -99,7 +99,10 @@ files.
 
 ## Review
 
+- 2026-10-20 12:07 · approve · PR #240 merged into main @ c7caf7c (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 12:00 · LukassSoukup · (new) → in-progress · created on user request; claimed by session-20261020-kb
 - 2026-10-20 13:00 · session-20261020-kb · in-progress → review · PR #240; role policy not applied yet (see Open questions)
+- 2026-10-20 12:07 · user · review → done · PR #240 merged into main @ c7caf7c (synced by kanban-sync)
