@@ -58,6 +58,11 @@ public sealed class CancelService(ChatDbContext db, TimeProvider clock, ILogger<
         if (preview.Status == ActionPreviewStatus.Confirmed && open.Any(s => s.Status == StepStatus.Pending))
             return new CancelResult(CancelOutcome.NotCancellable, "Signing is already in progress.");
 
+        // An approved consent is being redeemed (signing may already be under way on the resumed path): too late to cancel.
+        var awaitingIds = open.Where(s => s.Status == StepStatus.AwaitingConsent).Select(s => s.Id).ToList();
+        if (awaitingIds.Count > 0 && await db.ConsentRequests.AnyAsync(c => awaitingIds.Contains(c.StepId) && c.Status == ConsentStatus.Approved, ct))
+            return new CancelResult(CancelOutcome.NotCancellable, "The approval was already given; signing is in progress.");
+
         // Atomic: only one of a cancel and a concurrent confirm wins the status flip.
         var observed = preview.Status;
         var flipped = await db.ActionPreviews

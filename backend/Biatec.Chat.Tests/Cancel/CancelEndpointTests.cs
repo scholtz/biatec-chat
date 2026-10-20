@@ -267,6 +267,27 @@ public sealed class CancelEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Cancel_OfAPreviewWhoseConsentWasApproved_Is409AndChangesNothing()
+    {
+        var (cookie, _, conv) = await NewSessionAsync(true);
+        var (pid, sid) = await SeedAsync(conv, ActionPreviewStatus.Confirmed, StepStatus.AwaitingConsent);
+        await using (var seed = NewContext())
+        {
+            seed.ConsentRequests.Add(new ConsentRequest
+            {
+                Id = Guid.NewGuid(), StepId = sid, SubjectHash = Hash, AuthReqId = "req-2", ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5), Status = ConsentStatus.Approved,
+            });
+            await seed.SaveChangesAsync();
+        }
+
+        Assert.Equal(HttpStatusCode.Conflict, (await CancelAsync(cookie, pid)).StatusCode);
+
+        await using var db = NewContext();
+        Assert.Equal(StepStatus.AwaitingConsent, (await db.ActionSteps.SingleAsync(s => s.Id == sid)).Status);
+        Assert.Equal(ActionPreviewStatus.Confirmed, (await db.ActionPreviews.SingleAsync(x => x.Id == pid)).Status);
+    }
+
+    [Fact]
     public async Task Cancel_WhileSigningIsInFlight_Is409()
     {
         var (cookie, _, conv) = await NewSessionAsync(true);
