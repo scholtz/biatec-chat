@@ -1,11 +1,11 @@
 ---
 id: T-112
 title: "Move the business knowledge base into Bedrock Knowledge Base DZZGQITEAS and answer from it"
-status: in-progress
+status: review
 priority: P1
 epic: "Knowledge base"
 blocked_by: []
-area: ["docs/kb/**", "backend/Biatec.Chat.Api/Chat/SignIn/KbSearchExecutor.cs", "backend/Biatec.Chat.Api/Chat/SignIn/BedrockKb*.cs", "backend/Biatec.Chat.Tests/Kb/**", "infra/kb/**", "infra/aws/bedrock-role-policy.json", "docs/aws-setup.md", "k8s/base/backend.yaml"]
+area: ["docs/kb/**", "backend/Biatec.Chat.Api/Chat/SignIn/AnonymousTierExecutors.cs", "backend/Biatec.Chat.Api/Chat/SignIn/BedrockKb*.cs", "backend/Biatec.Chat.Tools/Kb/KbSearchService.cs", "backend/Biatec.Chat.Api/appsettings.Development.json", "backend/Biatec.Chat.Api/Biatec.Chat.Api.csproj", "backend/Biatec.Chat.Tests/Kb/**", "infra/kb/**", "infra/aws/bedrock-role-policy.json", "docs/aws-setup.md", "k8s/base/backend.yaml"]
 parallel: yes
 conflicts_with: []
 issue: "#237"
@@ -62,15 +62,15 @@ files.
 
 ## Acceptance criteria
 
-- [ ] `docs/kb/` holds user-facing pages covering the topics in Scope, consistent with PRODUCT-DESCRIPTION.md and not
+- [x] `docs/kb/` holds user-facing pages covering the topics in Scope, consistent with PRODUCT-DESCRIPTION.md and not
       claiming roadmap features as live.
-- [ ] `infra/kb/sync.sh` uploads `docs/kb/*.md` to `s3://biantec-chatbot-knowladgebase/`, starts an ingestion job and
+- [x] `infra/kb/sync.sh` uploads `docs/kb/*.md` to `s3://biantec-chatbot-knowladgebase/`, starts an ingestion job and
       waits for it; the job indexes every page.
-- [ ] With `Kb__BedrockKnowledgeBaseId` set, `kb.search` returns Bedrock `Retrieve` chunks labelled with their source
+- [x] With `Kb__Bedrock__KnowledgeBaseId` set, `kb.search` returns Bedrock `Retrieve` chunks labelled with their source
       page; unset, failing or empty, it returns the local keyword hits. Unit tests cover all four.
-- [ ] `infra/aws/bedrock-role-policy.json` allows `bedrock:Retrieve` on the KB; `docs/aws-setup.md` documents the KB,
+- [x] `infra/aws/bedrock-role-policy.json` allows `bedrock:Retrieve` on the KB; `docs/aws-setup.md` documents the KB,
       the sync and the config.
-- [ ] `dotnet test` green.
+- [x] `dotnet test` green.
 
 ## Verification
 
@@ -79,8 +79,27 @@ files.
 
 ## Hand-off
 
+- **Summary:** `docs/kb` rewritten and extended to 27 user-facing pages (~11k words, from 7 pages / ~780) drawn from
+  PRODUCT-DESCRIPTION.md and docs/. Synced to Bedrock KB `DZZGQITEAS` (27 indexed, 0 failed; ingestion job
+  GXBLZGZQNK). `kb.search` uses Bedrock `Retrieve` (managed search; the managed KB rejects `vectorSearchConfiguration`)
+  plus the best uploaded-page hit, and falls back to the local keyword search. Local search ranks a page first when the
+  query covers its whole title. PR #240.
+- **Files changed:** docs/kb/*.md, Chat/SignIn/BedrockKbRetriever.cs (new), Chat/SignIn/AnonymousTierExecutors.cs,
+  Biatec.Chat.Tools/Kb/KbSearchService.cs, Tests/Kb/BedrockKbTests.cs (new), infra/kb/sync.sh (new),
+  infra/aws/bedrock-role-policy.json, k8s/base/backend.yaml, appsettings.Development.json, Api csproj
+  (AWSSDK.BedrockAgentRuntime), docs/aws-setup.md §6.
+- **How it was verified:** full `dotnet test` 1333 passed / 1 skipped; Kb tests rerun after the managed-search fix
+  (53 passed, including the live `Live_retrieve_returns_cited_docs_kb_chunks` against DZZGQITEAS); local backend +
+  Haiku: a guest question about a lost phone → kb.search → answer from the authenticator page.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** the role policy is changed in the repo but not applied to `biatec-chat-bedrock-role` (the
+  agent was not permitted to change IAM). Until an operator reruns `infra/aws/rolesanywhere.sh`, production kb.search
+  falls back to the local pages (same content).
+
 ## Review
 
 ## Activity log
 
 - 2026-10-20 12:00 · LukassSoukup · (new) → in-progress · created on user request; claimed by session-20261020-kb
+- 2026-10-20 13:00 · session-20261020-kb · in-progress → review · PR #240; role policy not applied yet (see Open questions)
