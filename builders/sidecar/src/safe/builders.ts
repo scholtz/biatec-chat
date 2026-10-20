@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import algosdk from "algosdk";
 import {
   ACT_ALL,
@@ -15,12 +16,17 @@ import {
   TX_ACFG,
   TX_APP,
   TX_KEYREG,
+  TX_ASSET,
+  TX_PAYMENT,
   ZERO_ADDR,
+  algosdkTxnsToSafeTxnGroup,
   createAdminChange,
   createAppCallSafeTxn,
   createAssetSafeTxn,
   createPaymentSafeTxn,
   decodeAppTxn,
+  decodeAssetTxn,
+  decodePaymentTxn,
   toSafeTxnGroup,
   type AdminChange,
   type GroupSeed,
@@ -29,6 +35,7 @@ import {
   type SafeTxnTuple,
 } from "algo-safe";
 import type { BuildContext, BuildResult, Builder } from "../app.js";
+import { addLiquidityForProposal } from "../clamm/builders.js";
 import { createAlgodChain, type SafeChain, type SafeHandle } from "./chain.js";
 import { BadRequest, actionBitForTxType, actionNames, address, describeAdminChange, describePayload, obj, text, toJson, uint, type Json } from "./codec.js";
 
@@ -49,8 +56,36 @@ const MAX_SCAN = 500n;
 /** About a week of rounds at roughly 2.8 seconds each. */
 const DEFAULT_EXPIRY_ROUNDS = 216_000n;
 const MAX_PAYLOAD_TXNS = 16;
+/**
+ * Extra fee for each payload call to a Biatec DEX pool (named by the caller in `poolAppIds`), pooled by the outer
+ * executeProposal call, for the inner transactions the pool sends itself (addLiquidity pays 7 of its own, as its 8000
+ * microAlgo static fee shows). Other app calls get no allowance.
+ */
+const APP_CALL_INNER_FEE_ALLOWANCE = 7n * MIN_FEE;
+
+const PAYLOAD_CODEC = algosdk.ABIType.from("(uint64,byte[])[]");
+const ADMIN_CODEC = algosdk.ABIType.from("(uint64,uint64,string,address,uint64,string,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64)");
+
+/**
+ * SHA-256 (hex) of the payload exactly as the propose call encodes it and the safe stores it: the transaction group
+ * as `(uint64,byte[])[]`, an admin change as its tuple. The backend recomputes it from the propose call's own bytes,
+ * so a landed proposal is found by what it contains, never by a description.
+ */
+export function payloadHash(payload: SafeTxnTuple[] | AdminChange): string {
+  const bytes = Array.isArray(payload)
+    ? PAYLOAD_CODEC.encode(payload)
+    : ADMIN_CODEC.encode([
+        payload.changeType, payload.targetGroupId, payload.groupName, payload.memberAddr, payload.memberType, payload.memberLabel,
+        payload.threshold, payload.adminPrivileges, payload.allowedActions, payload.limitAssetId, payload.dailyLimit,
+        payload.monthlyLimit, payload.cooldownRounds, payload.activeFlag, payload.guardAmount,
+      ]);
+  return createHash("sha256").update(bytes).digest("hex");
+}
 
 export type ChainFactory = (ctx: BuildContext) => SafeChain;
+
+/** Builds a CLAMM add-liquidity group for the given sender (the safe's account), as encoded unsigned transactions. */
+export type LiquidityGroupBuilder = (params: unknown, ctx: BuildContext) => Promise<{ transactions: Uint8Array[]; facts: Record<string, unknown> }>;
 
 /** Clears any grp a simulation left behind: assignGroupID hashes each transaction as it is, so a stale grp would change the new group id. */
 export function regroup(txns: algosdk.Transaction[]): algosdk.Transaction[] {
@@ -166,9 +201,11 @@ export function safeCreate(makeChain: ChainFactory): Builder {
 
 async function proposalView(safe: SafeHandle, id: bigint, p: Proposal, member?: string): Promise<Json> {
   let payload: Json = [];
+  let hash: string | null = null;
   if (p.payloadType === PT_ADMIN) {
     const change = await safe.adminPayload(id);
     payload = change ? [describeAdminChange(change)] : [];
+    hash = change ? payloadHash(change) : null;
   } else {
     const all: SafeTxnTuple[] = [];
     for (let slot = 1n; slot <= p.numPayloads; slot++) {
@@ -176,6 +213,7 @@ async function proposalView(safe: SafeHandle, id: bigint, p: Proposal, member?: 
       if (part) all.push(...part);
     }
     payload = describePayload(all);
+    hash = payloadHash(all);
   }
   const view: Record<string, unknown> = {
     proposalId: id,
@@ -187,6 +225,7 @@ async function proposalView(safe: SafeHandle, id: bigint, p: Proposal, member?: 
     proposer: p.proposer,
     expiryRound: p.expiryRound,
     payloadVersion: p.payloadVersion,
+    payloadHash: hash,
     payload,
   };
   if (member) view.approvedByMember = await safe.hasApproved(id, member);
@@ -311,10 +350,45 @@ function adminChange(raw: unknown): AdminChange {
 }
 
 /**
+ * A Biatec DEX add-liquidity payload for the safe: the group `biatec-concentrated-liquidity-amm` builds for the safe's
+ * application account (with the LP-token opt-in first when the safe is not opted in yet), converted by algo-safe.
+ * Payments and asset transfers sent by the safe's own account are stored with the zero address, which means the safe.
+ */
+async function liquidityPayload(build: LiquidityGroupBuilder, safe: SafeHandle, raw: unknown, ctx: BuildContext): Promise<{ tuples: SafeTxnTuple[]; facts: Record<string, unknown> }> {
+  const o = obj(raw, "liquidity");
+  const params = {
+    sender: safe.appAddress,
+    poolAppId: uint(o.poolAppId, "liquidity.poolAppId", { min: 1n }).toString(),
+    amountA: uint(o.amountA, "liquidity.amountA").toString(),
+    amountB: uint(o.amountB, "liquidity.amountB").toString(),
+  };
+  const { transactions, facts } = await build(params, ctx);
+  if (transactions.length === 0 || transactions.length > MAX_PAYLOAD_TXNS) throw new BadRequest(`the liquidity group must have 1 to ${MAX_PAYLOAD_TXNS} transactions`);
+  // Decoded with this module's algosdk: the CLAMM library runs on its own copy.
+  const txns = transactions.map((b) => algosdk.decodeUnsignedTransaction(b));
+  for (const t of txns) {
+    if (t.sender.toString() !== safe.appAddress) throw new BadRequest("the liquidity group has a transaction the safe does not send");
+    t.group = undefined;
+  }
+  const tuples = algosdkTxnsToSafeTxnGroup(txns).map(([txType, data]): SafeTxnTuple => {
+    if (txType === TX_PAYMENT) {
+      const d = decodePaymentTxn(data);
+      return d.sender === safe.appAddress ? [txType, createPaymentSafeTxn({ ...d, sender: ZERO_ADDR }).data] : [txType, data];
+    }
+    if (txType === TX_ASSET) {
+      const d = decodeAssetTxn(data);
+      return d.sender === safe.appAddress ? [txType, createAssetSafeTxn({ ...d, sender: ZERO_ADDR }).data] : [txType, data];
+    }
+    return [txType, data];
+  });
+  return { tuples, facts };
+}
+
+/**
  * Builds the single proposal call. The proposal itself moves nothing; a payload's funding is a separate wallet transfer.
  * `payload` (transaction group) or `change` (admin change) selects the proposal kind.
  */
-export function proposalCreate(makeChain: ChainFactory): Builder {
+export function proposalCreate(makeChain: ChainFactory, liquidity: LiquidityGroupBuilder = addLiquidityForProposal): Builder {
   return async (params, ctx) => {
     const p = obj(params, "params");
     const chain = makeChain(ctx);
@@ -325,11 +399,18 @@ export function proposalCreate(makeChain: ChainFactory): Builder {
     const expiryRound = p.expiryRound === undefined ? (await chain.currentRound()) + DEFAULT_EXPIRY_ROUNDS : uint(p.expiryRound, "expiryRound", { min: 1n });
     if (expiryRound <= (await chain.currentRound())) throw new BadRequest("expiryRound must be in the future");
 
-    if ((p.payload === undefined) === (p.change === undefined)) throw new BadRequest("give exactly one of payload or change");
+    const sources = [p.payload, p.change, p.liquidity].filter((x) => x !== undefined).length;
+    if (sources !== 1) throw new BadRequest("give exactly one of payload, change or liquidity");
 
-    if (p.payload !== undefined) {
-      if (!Array.isArray(p.payload) || p.payload.length === 0 || p.payload.length > MAX_PAYLOAD_TXNS) throw new BadRequest(`payload must have 1 to ${MAX_PAYLOAD_TXNS} entries`);
-      const tuples = toSafeTxnGroup(p.payload.map(payloadEntry));
+    if (p.payload !== undefined || p.liquidity !== undefined) {
+      let tuples: SafeTxnTuple[];
+      let liquidityFacts: Record<string, unknown> | undefined;
+      if (p.liquidity !== undefined) {
+        ({ tuples, facts: liquidityFacts } = await liquidityPayload(liquidity, safe, p.liquidity, ctx));
+      } else {
+        if (!Array.isArray(p.payload) || p.payload.length === 0 || p.payload.length > MAX_PAYLOAD_TXNS) throw new BadRequest(`payload must have 1 to ${MAX_PAYLOAD_TXNS} entries`);
+        tuples = toSafeTxnGroup(p.payload.map(payloadEntry));
+      }
       const group = (await safe.groups()).find((g) => g.id === groupId.toString());
       if (!group || !group.active) throw new BadRequest("signer group does not exist or is inactive");
       const allowed = BigInt(group.allowedActions);
@@ -338,13 +419,14 @@ export function proposalCreate(makeChain: ChainFactory): Builder {
       }
       const txn = await safe.proposeTxn(sender, { groupId, payload: tuples, expiryRound });
       return finish(chain, [txn], { kind: "safe.propose", intent: `Propose a transaction group on safe ${safe.appId}`, appId: safe.appId, safeAddress: safe.appAddress, groupId, expiryRound, network: ctx.network, valueMicroAlgo: 0n,
-        payload: describePayload(tuples), notes: ["Proposing moves nothing. Members approve, then anyone executes once the threshold is met."] }, wantsSimulate(p));
+        payload: describePayload(tuples), payloadHash: payloadHash(tuples), ...(liquidityFacts ? { liquidity: liquidityFacts } : {}),
+        notes: ["Proposing moves nothing. The proposer's own approval is recorded with the proposal; other members approve, then anyone executes once the threshold is met."] }, wantsSimulate(p));
     }
 
     const change = adminChange(p.change);
     const txn = await safe.proposeAdminTxn(sender, { groupId, change, expiryRound });
     return finish(chain, [txn], { kind: "safe.propose", intent: `Propose an administrative change on safe ${safe.appId}`, appId: safe.appId, safeAddress: safe.appAddress, groupId, expiryRound, network: ctx.network, valueMicroAlgo: 0n,
-      change: describeAdminChange(change) }, wantsSimulate(p));
+      change: describeAdminChange(change), payloadHash: payloadHash(change) }, wantsSimulate(p));
   };
 }
 
@@ -412,7 +494,11 @@ export function proposalExecute(makeChain: ChainFactory): Builder {
     // Inner transactions: one per payload entry, one validator call per non-app-call entry, and the opcode top-ups.
     const validatorCalls = BigInt(tuples.filter(([t]) => t !== TX_APP).length);
     const opups = (ensureBudgetValue + 699n) / 700n;
-    const feeMicroAlgo = MIN_FEE * (1n + BigInt(tuples.length) + validatorCalls + opups);
+    const rawPools = p.poolAppIds ?? [];
+    if (!Array.isArray(rawPools) || rawPools.length > MAX_PAYLOAD_TXNS) throw new BadRequest(`poolAppIds must have at most ${MAX_PAYLOAD_TXNS} entries`);
+    const poolApps = new Set(rawPools.map((x) => uint(x, "poolAppIds[]", { min: 1n })));
+    const appCalls = BigInt(tuples.filter(([t, data]) => t === TX_APP && poolApps.has(decodeAppTxn(data).appId)).length);
+    const feeMicroAlgo = MIN_FEE * (1n + BigInt(tuples.length) + validatorCalls + opups) + APP_CALL_INNER_FEE_ALLOWANCE * appCalls;
     const txn = await safe.executeTxn(sender, { proposalId: id, ensureBudgetValue, feeMicroAlgo });
     const view = await proposalView(safe, id, prop);
     return finish(chain, [txn], { kind: "safe.execute", intent: `Execute proposal ${id} on safe ${safe.appId}`, appId: safe.appId, safeAddress: safe.appAddress, proposalId: id, ensureBudgetValue, feeMicroAlgo,
@@ -421,12 +507,12 @@ export function proposalExecute(makeChain: ChainFactory): Builder {
 }
 
 /** The builders this module registers, keyed by the name used in POST /v1/build/:builder. */
-export function safeBuilders(makeChain: ChainFactory = (ctx) => createAlgodChain(ctx.algodUrl)): Record<string, Builder> {
+export function safeBuilders(makeChain: ChainFactory = (ctx) => createAlgodChain(ctx.algodUrl), liquidity: LiquidityGroupBuilder = addLiquidityForProposal): Record<string, Builder> {
   return {
     "safe.create": safeCreate(makeChain),
     "safe.list": safeList(makeChain),
     "safe.proposals": safeProposals(makeChain),
-    "proposal.create": proposalCreate(makeChain),
+    "proposal.create": proposalCreate(makeChain, liquidity),
     "proposal.approve": proposalApprove(makeChain),
     "proposal.execute": proposalExecute(makeChain),
   };

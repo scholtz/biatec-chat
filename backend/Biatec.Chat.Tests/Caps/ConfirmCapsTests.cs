@@ -64,8 +64,13 @@ public sealed class ConfirmCapsTests : IAsyncLifetime
 
     private sealed class FakeMcp : IBiatecMcpClient
     {
-        public Task<McpToolResult> SubmitTransactionToBlockchainAsync(McpCallContext ctx, string network, string signedTransactionBase64, CancellationToken ct = default) =>
-            Task.FromResult(new McpToolResult(false, "", null));
+        public int Submits;
+        public bool Fails;
+        public Task<McpToolResult> SubmitTransactionToBlockchainAsync(McpCallContext ctx, string network, string signedTransactionBase64, CancellationToken ct = default)
+        {
+            Submits++;
+            return Task.FromResult(new McpToolResult(Fails, "", null));
+        }
         public Task<IReadOnlyList<McpToolInfo>> GetToolsAsync(McpCallContext ctx, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<McpToolResult> ListAlgorandAddressesAsync(McpCallContext ctx, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<McpToolResult> GetCryptoAddressAsync(McpCallContext ctx, string network, CancellationToken ct = default) => throw new NotSupportedException();
@@ -78,8 +83,19 @@ public sealed class ConfirmCapsTests : IAsyncLifetime
 
     private sealed class FakeConfirmer : ITransactionConfirmer
     {
+        public TxConfirmationState State = TxConfirmationState.Confirmed;
         public Task<TxConfirmation> WaitAsync(string network, string txId, ulong lastValid, CancellationToken ct = default) =>
-            Task.FromResult(new TxConfirmation(TxConfirmationState.Confirmed, 4242));
+            Task.FromResult(new TxConfirmation(State, 4242));
+    }
+
+    private sealed class FakeRecorder : IEvidenceRecorder
+    {
+        public readonly List<(string Kind, JsonObject Payload)> Entries = [];
+        public Task RecordAsync(Guid conversationId, string kind, JsonObject payload, CancellationToken ct = default)
+        {
+            Entries.Add((kind, payload));
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeEvidence : IEvidenceLog
@@ -100,6 +116,10 @@ public sealed class ConfirmCapsTests : IAsyncLifetime
     private Tenant _tenant = null!;
     private ChatSession _session = null!;
     private ulong _amount = 1_000_000;
+    private readonly FakeMcp _mcp = new();
+    private readonly FakeConfirmer _confirmer = new();
+    private readonly FakeRecorder _recorder = new();
+    private readonly CapsOptions _capsOptions = new() { OidcHonoursRequireConsent = true };
 
     private ChatDbContext NewContext()
     {
@@ -143,7 +163,7 @@ public sealed class ConfirmCapsTests : IAsyncLifetime
 
     private sealed record Built(GroupedTransactions Group, Guid PreviewId);
 
-    private async Task<Built> BuildPreviewAsync(decimal? valueEur, string capability = "wallet.transfer")
+    private async Task<Built> BuildPreviewAsync(decimal? valueEur, string capability = "wallet.transfer", string canonical = "{\"intent\":\"send\"}")
     {
         // A distinct amount per preview gives each group its own hash.
         var group = AlgorandGroup.Ensure([new PaymentTransaction
@@ -153,7 +173,7 @@ public sealed class ConfirmCapsTests : IAsyncLifetime
             GenesisHash = new Digest(Convert.FromBase64String("SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=")), Note = Encoding.UTF8.GetBytes("t"),
         }]);
         await using var db = NewContext();
-        var snap = await new ActionPreviewService(db, _clock).CreateAsync(new NewPreviewSpec(_session.ConversationId, capability, "{\"intent\":\"send\"}",
+        var snap = await new ActionPreviewService(db, _clock).CreateAsync(new NewPreviewSpec(_session.ConversationId, capability, canonical,
         [
             new NewStepSpec(ActionStepKind.Sign, group.GroupHash, _clock.Now.AddSeconds(1500), UnsignedGroup: JsonSerializer.Serialize(group.ToBase64()),
                 SenderAddress: _user.Address.EncodeAsString(), Network: Network),
@@ -162,8 +182,8 @@ public sealed class ConfirmCapsTests : IAsyncLifetime
     }
 
     private ConfirmService NewService(ChatDbContext db) =>
-        new(db, new ActionPreviewService(db, _clock), new ScopeGuard(_vault, _clock), _vault, _oidc, new FakeMcp(), new FakeConfirmer(), new FakeEvidence(), _clock,
-            NullLogger<ConfirmService>.Instance, caps: new SpendCaps(db, _clock));
+        new(db, new ActionPreviewService(db, _clock), new ScopeGuard(_vault, _clock), _vault, _oidc, _mcp, _confirmer, new FakeEvidence(), _clock,
+            NullLogger<ConfirmService>.Instance, recorder: _recorder, caps: new SpendCaps(db, _clock, _capsOptions));
 
     private async Task<ConfirmResult> ConfirmAsync(Built b)
     {
@@ -284,5 +304,85 @@ public sealed class ConfirmCapsTests : IAsyncLifetime
         await using var db = NewContext();
         // Executions are valued at zero.
         Assert.Equal(0m, await db.SafeApprovalCounts.Where(x => x.Kind == SafeApprovalKind.Execute).SumAsync(x => x.ValueEur));
+    }
+
+    private async Task FillWindowAsync()
+    {
+        _oidc.ValuedEur = "1500";
+        Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(await BuildPreviewAsync(1500m))).Outcome);
+        _oidc.ValuedEur = "12.00";
+    }
+
+    [Fact]
+    public async Task Caps_consent_forced_by_the_cap_tells_the_user_why_and_is_recorded_in_signing_requested()
+    {
+        await FillWindowAsync();
+        _oidc.Override = _ => new WalletSignOutcome.StepUp("ar", "12", 300, 2);
+        var r = await ConfirmAsync(await BuildPreviewAsync(10m));
+        Assert.Equal(ConfirmOutcome.ConsentPending, r.Outcome);
+        Assert.Contains("hourly spending limit", r.Message);
+        var requested = _recorder.Entries.Where(e => e.Kind == EvidenceKinds.SigningRequested).Select(e => e.Payload).ToList();
+        Assert.Equal(2, requested.Count);
+        Assert.False(requested[0]["requireConsent"]!.GetValue<bool>());
+        Assert.Null(requested[0]["capReason"]);
+        Assert.True(requested[1]["requireConsent"]!.GetValue<bool>());
+        Assert.Equal("soft_cap", requested[1]["capReason"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Caps_fail_closed_when_consent_was_required_and_oidc_signed_without_a_challenge()
+    {
+        await FillWindowAsync();
+        var submits = _mcp.Submits;
+        var r = await ConfirmAsync(await BuildPreviewAsync(10m)); // the fake signs regardless of requireConsent
+        Assert.Equal((ConfirmOutcome.Failed, "consent_not_enforced"), (r.Outcome, r.ErrorCode));
+        Assert.Contains("approval on your phone", r.Message);
+        Assert.True(_oidc.Calls[^1].RequireConsent);
+        Assert.Equal(submits, _mcp.Submits);
+        Assert.Equal(1500m, (await SpendsAsync()).Sum(x => x.AmountEur));
+    }
+
+    [Fact]
+    public async Task Caps_the_previews_own_require_consent_flag_is_ored_in_and_also_fails_closed()
+    {
+        var r = await ConfirmAsync(await BuildPreviewAsync(10m, canonical: "{\"intent\":\"send\",\"requireConsent\":true}"));
+        Assert.True(Assert.Single(_oidc.Calls).RequireConsent);
+        Assert.Equal("consent_not_enforced", r.ErrorCode);
+        Assert.Equal(0, _mcp.Submits);
+        Assert.Empty(await SpendsAsync()); // its reservation was released
+    }
+
+    [Fact]
+    public async Task Caps_are_a_hard_stop_when_oidc_does_not_honour_require_consent()
+    {
+        await FillWindowAsync();
+        _capsOptions.OidcHonoursRequireConsent = false;
+        var calls = _oidc.Calls.Count;
+        var b = await BuildPreviewAsync(10m);
+        var r = await ConfirmAsync(b);
+        Assert.Equal((ConfirmOutcome.Failed, "soft_cap"), (r.Outcome, r.ErrorCode));
+        Assert.Contains("hourly spending limit", r.Message);
+        Assert.Equal(calls, _oidc.Calls.Count); // never sent to Biatec OIDC
+        await using (var db = NewContext())
+            Assert.Equal(ActionPreviewStatus.Proposed, (await db.ActionPreviews.AsNoTracking().SingleAsync(p => p.Id == b.PreviewId)).Status);
+
+        // Under the cap nothing changes.
+        _clock.Now = _clock.Now.AddMinutes(61);
+        Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(await BuildPreviewAsync(10m))).Outcome);
+    }
+
+    [Theory]
+    [InlineData("mcp_error", "wallet.transfer")]
+    [InlineData("network_rejected", "wallet.transfer")]
+    [InlineData("expired", "wallet.transfer")]
+    [InlineData("mcp_error", SpendCaps.SafeApprove)]
+    public async Task Caps_a_signed_action_that_moved_nothing_is_not_counted(string kind, string capability)
+    {
+        if (kind == "mcp_error") _mcp.Fails = true;
+        else _confirmer.State = kind == "expired" ? TxConfirmationState.Expired : TxConfirmationState.Rejected;
+        Assert.Equal(ConfirmOutcome.Failed, (await ConfirmAsync(await BuildPreviewAsync(10m, capability))).Outcome);
+        Assert.Empty(await SpendsAsync());
+        await using var db = NewContext();
+        Assert.Empty(await db.SafeApprovalCounts.ToListAsync());
     }
 }

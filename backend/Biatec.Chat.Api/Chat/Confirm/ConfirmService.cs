@@ -183,17 +183,27 @@ public sealed class ConfirmService(
 
         var remaining = (int)Math.Max(1, (step.ExpiresAt - clock.GetUtcNow()).TotalSeconds);
         var origin = new Uri(tenant.RedirectUri).GetLeftPart(UriPartial.Authority);
+        // T-025: reserve against the tenant soft cap / safe caps before signing; over a cap, ask Biatec OIDC for consent.
+        var capRequest = CapRequestFor(tenant, session, preview, step);
+        var cap = capRequest is null || caps is null ? Biatec.Chat.Tools.Caps.CapDecision.None : await caps.ReserveAsync(capRequest, ct);
+        if (cap.RequireConsent && caps is { OidcHonoursRequireConsent: false })
+        {
+            // Biatec OIDC does not honour requireConsent yet (required-changes row 3): the cap is a hard stop instead.
+            await RevertAsync(preview, ct);
+            await RecordAsync(session, "signing_refused", new JsonObject
+            {
+                ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["reason"] = cap.Reason, ["hardCap"] = true,
+            }, ct);
+            return new ConfirmResult(ConfirmOutcome.Failed, CapMessage(cap.Reason) + " This can't be signed until the hour's window frees up. Nothing was signed.", [], ErrorCode: cap.Reason);
+        }
+        // More consent only: the cap's decision and the preview's own flag are OR-ed, never subtracted.
+        var requireConsent = cap.RequireConsent || PreviewRequiresConsent(preview);
         await RecordExtraAsync(session, EvidenceKinds.SigningRequested, new JsonObject
         {
             ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash,
             ["network"] = step.Network, ["address"] = address, ["transactionCount"] = step.UnsignedGroupList().Count,
-            ["maxConsentSeconds"] = remaining, ["origin"] = origin,
+            ["maxConsentSeconds"] = remaining, ["origin"] = origin, ["requireConsent"] = requireConsent, ["capReason"] = cap.Reason,
         }, ct);
-        // T-025: reserve against the tenant soft cap / safe caps before signing; over a cap, ask Biatec OIDC for consent.
-        var capRequest = CapRequestFor(tenant, session, preview, step);
-        var cap = capRequest is null || caps is null ? Biatec.Chat.Tools.Caps.CapDecision.None : await caps.ReserveAsync(capRequest, ct);
-        // More consent only: any other backend trigger (for example a per-preview flag) is OR-ed in here, never subtracted.
-        var requireConsent = cap.RequireConsent;
         WalletSignOutcome outcome;
         try
         {
@@ -204,14 +214,27 @@ public sealed class ConfirmService(
         {
             // A failed signing call releases the reservation. An aborted one may have reached Biatec OIDC: it stays
             // reserved until the step expires (the pruner frees it) or the step is confirmed again.
-            await ReleaseCapAsync(cap, step);
+            await ReleaseCapAsync(step);
             throw;
+        }
+        if (requireConsent && outcome is WalletSignOutcome.Signed)
+        {
+            // Fail closed: consent was asked for and Biatec OIDC signed without a challenge. Never submitted, never counted.
+            await ReleaseCapAsync(step);
+            await RecordExtraAsync(session, EvidenceKinds.SigningOutcome, SigningOutcomePayload(previewId, step, outcome), CancellationToken.None);
+            await FailAsync(preview, step, CancellationToken.None);
+            await RecordAsync(session, "signing_refused", new JsonObject
+            {
+                ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["reason"] = "consent_not_enforced", ["capReason"] = cap.Reason,
+            }, CancellationToken.None);
+            return new ConfirmResult(ConfirmOutcome.Failed,
+                "This needs approval on your phone, but the sign-in service didn't ask for it. Nothing was submitted; the preview must be rebuilt.", [], ErrorCode: "consent_not_enforced");
         }
         if (cap.Reserved != Biatec.Chat.Tools.Caps.CapKind.None)
         {
             // Only a signature without a challenge counts; a step-up is signed under consent and never counted.
             if (outcome is WalletSignOutcome.Signed counted) await FinalizeCapAsync(step, counted);
-            else await ReleaseCapAsync(cap, step);
+            else await ReleaseCapAsync(step);
         }
 
         await RecordExtraAsync(session, EvidenceKinds.SigningOutcome, SigningOutcomePayload(previewId, step, outcome), CancellationToken.None);
@@ -222,7 +245,7 @@ public sealed class ConfirmService(
                 return await OutageAsync(session, preview, step, u.Reason, ct);
 
             case WalletSignOutcome.StepUp s:
-                return await ConsentPendingAsync(session, preview, step, s, ct);
+                return await ConsentPendingAsync(session, preview, step, s, ct, cap.RequireConsent ? CapMessage(cap.Reason) : null);
 
             case WalletSignOutcome.Rejected { Error: "invalid_token" }:
                 // An expired or invalid sign-in says nothing about the group: keep the preview confirmable after re-auth.
@@ -262,12 +285,28 @@ public sealed class ConfirmService(
         catch (Exception ex) { log.LogError("Could not finalize a soft cap reservation: {ErrorType}", ex.GetType().Name); }
     }
 
-    private async Task ReleaseCapAsync(Biatec.Chat.Tools.Caps.CapDecision cap, ActionStep step)
+    private async Task ReleaseCapAsync(ActionStep step)
     {
-        if (cap.Reserved == Biatec.Chat.Tools.Caps.CapKind.None) return;
-        try { await caps!.ReleaseAsync(step.Id, CancellationToken.None); }
+        if (caps is null) return;
+        try { await caps.ReleaseAsync(step.Id, CancellationToken.None); }
         catch (Exception ex) { log.LogError("Could not release a soft cap reservation: {ErrorType}", ex.GetType().Name); }
     }
+
+    /// <summary>Signed but provably nothing moved: the step's cap rows (final ones too) are removed.</summary>
+    private async Task RevokeCapAsync(ActionStep step)
+    {
+        if (caps is null) return;
+        try { await caps.RevokeAsync(step.Id, CancellationToken.None); }
+        catch (Exception ex) { log.LogError("Could not revoke a soft cap row: {ErrorType}", ex.GetType().Name); }
+    }
+
+    /// <summary>What the user is told when a cap forces phone approval or, against real Biatec OIDC, refuses.</summary>
+    private static string CapMessage(string? reason) => reason switch
+    {
+        "safe_approval_cap" => "You've reached this site's hourly limit for safe approvals without phone approval.",
+        "safe_execution_cap" => "You've reached this site's hourly limit for safe executions without phone approval.",
+        _ => "You've reached this site's hourly spending limit for actions without phone approval.",
+    };
 
     private (IReadOnlyList<Algorand.Algod.Model.Transactions.Transaction> Group, string Address) PrepareGroup(ActionStep step)
     {
@@ -290,6 +329,7 @@ public sealed class ConfirmService(
         try { raw = SignedGroupVerifier.VerifySigned(signed.SignedTransactions, group, step.SubjectHash); }
         catch (SigningVerificationException ex)
         {
+            await RevokeCapAsync(step);
             await FailAsync(preview, step, ct);
             await RecordAsync(session, "signing_refused", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["reason"] = "signed_group_mismatch" }, ct);
             return new ConfirmResult(ConfirmOutcome.Failed, ex.Message + " Nothing was submitted.", [], ErrorCode: "signed_group_mismatch");
@@ -322,6 +362,7 @@ public sealed class ConfirmService(
         if (unknownError is null && (result is null || result.IsError))
         {
             // An explicit MCP error result: the group was not accepted.
+            await RevokeCapAsync(step);
             step.TxIds = [];
             await FailAsync(preview, step, CancellationToken.None);
             await RecordAsync(session, "submission_failed", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash }, ct);
@@ -366,6 +407,7 @@ public sealed class ConfirmService(
         switch (result.Kind)
         {
             case SettlementKind.NotBroadcast:
+                await RevokeCapAsync(step);
                 step.TxIds = [];
                 await FailAsync(preview, step, CancellationToken.None);
                 await RecordAsync(session, "submission_failed", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["reason"] = result.ErrorCode ?? "settlement_refused" }, CancellationToken.None);
@@ -433,7 +475,7 @@ public sealed class ConfirmService(
         // T-025: signed under phone consent, so not counted in the soft cap; a safe approval or execution still counts.
         if (outcome is WalletSignOutcome.Signed && caps is not null && CapRequestFor(tenant, session, preview, step) is { } consented)
         {
-            try { await caps.RecordConsentedAsync(consented, CancellationToken.None); }
+            try { await caps.RecordConsentedAsync(consented, ((WalletSignOutcome.Signed)outcome).ValuedEur, CancellationToken.None); }
             catch (Exception ex) { log.LogError("Could not record a consented safe action: {ErrorType}", ex.GetType().Name); }
         }
 
@@ -491,6 +533,7 @@ public sealed class ConfirmService(
         {
             case TxConfirmationState.Expired:
                 // Not on chain and past LastValid: it can never land, so the preview ends here and can be rebuilt.
+                await RevokeCapAsync(step);
                 await FailAsync(preview, step, ct);
                 await RecordAsync(session, "submission_failed", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["reason"] = "expired" }, ct);
                 return new ConfirmResult(ConfirmOutcome.Failed, "The transaction did not land before it expired. Nothing moved; the preview must be rebuilt.", txIds, ErrorCode: "expired");
@@ -505,6 +548,7 @@ public sealed class ConfirmService(
                 }, ct);
                 return new ConfirmResult(ConfirmOutcome.Landed, "The transaction is confirmed on chain.", txIds);
             case TxConfirmationState.Rejected:
+                await RevokeCapAsync(step);
                 await FailAsync(preview, step, ct);
                 await RecordAsync(session, "submission_failed", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["reason"] = "network_rejected" }, ct);
                 return new ConfirmResult(ConfirmOutcome.Failed, "The network rejected the transaction.", txIds, ErrorCode: "network_rejected");
@@ -537,6 +581,20 @@ public sealed class ConfirmService(
     /// A step is the last one unless the preview's canonical JSON announces more in an integer <c>totalSteps</c>
     /// (multi-step actions build later steps only after the earlier one landed).
     /// </summary>
+    /// <summary>
+    /// A preview whose canonical JSON carries <c>"requireConsent": true</c> asks Biatec OIDC for consent whatever the value
+    /// (T-033: a threshold-1 safe proposal, whose propose call is the only approval). More consent only, never less.
+    /// </summary>
+    private static bool PreviewRequiresConsent(ActionPreview preview)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(preview.CanonicalJson);
+            return doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("requireConsent", out var r) && r.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException) { return false; }
+    }
+
     private static bool IsFinalStep(ActionPreview preview, ActionStep step)
     {
         try
@@ -549,7 +607,7 @@ public sealed class ConfirmService(
         return true;
     }
 
-    private async Task<ConfirmResult> ConsentPendingAsync(ChatSession session, ActionPreview preview, ActionStep step, WalletSignOutcome.StepUp s, CancellationToken ct)
+    private async Task<ConfirmResult> ConsentPendingAsync(ChatSession session, ActionPreview preview, ActionStep step, WalletSignOutcome.StepUp s, CancellationToken ct, string? capNote = null)
     {
         var expires = clock.GetUtcNow().AddSeconds(s.ExpiresInSeconds);
         step.Status = StepStatus.AwaitingConsent;
@@ -564,7 +622,7 @@ public sealed class ConfirmService(
             ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash,
             ["expiresAt"] = expires.ToString("O"),
         }, ct);
-        return new ConfirmResult(ConfirmOutcome.ConsentPending, "Waiting for approval on your phone.", [],
+        return new ConfirmResult(ConfirmOutcome.ConsentPending, capNote is null ? "Waiting for approval on your phone." : capNote + " Waiting for approval on your phone.", [],
             Consent: new Contracts.ConsentStatus
             {
                 PreviewId = preview.Id.ToString(), StepId = step.Id.ToString(), State = ConsentState.Pending,

@@ -10,7 +10,10 @@ public static class CapsRegistration
     /// <summary>Tenant soft cap and safe caps (T-025): the confirm path reserves through <see cref="ISpendCaps"/>; rows are pruned every sweeper interval.</summary>
     public static IServiceCollection AddSpendCaps(this IServiceCollection services)
     {
-        services.TryAddScoped<ISpendCaps, SpendCaps>();
+        // Caps:OidcHonoursRequireConsent stays false against real Biatec OIDC (required-changes row 3); true only with the mock.
+        services.AddOptions<CapsOptions>().BindConfiguration(CapsOptions.Section);
+        services.TryAddScoped<ISpendCaps>(sp => new SpendCaps(sp.GetRequiredService<Biatec.Chat.Core.Data.ChatDbContext>(),
+            sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<IOptions<CapsOptions>>().Value));
         services.AddHostedService<CapsPruneHostedService>();
         return services;
     }

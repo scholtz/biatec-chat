@@ -137,16 +137,29 @@ public sealed class SpendCapsTests : IAsyncLifetime
         Assert.False((await ReserveAsync(1500m)).RequireConsent);
         Assert.False((await ReserveAsync(1500m, sub: "someone-else")).RequireConsent);
         // Safe funds are not the user's: approvals add their value only to the safe cap.
-        var approve = await ReserveAsync(900m, SpendCaps.SafeApprove);
+        var step = Guid.NewGuid();
+        var approve = await ReserveAsync(900m, SpendCaps.SafeApprove, step);
         Assert.Equal((false, CapKind.SafeApproval), (approve.RequireConsent, approve.Reserved));
-        Assert.Equal(3000m, (await SpendsAsync()).Sum(r => r.AmountEur));
+        // The in-flight approval is a marked reservation that never adds to the soft cap.
+        Assert.False((await ReserveAsync(0m)).RequireConsent);
+        Assert.Equal(3000m, (await SpendsAsync()).Where(r => r.ValueSource != SpendCaps.SafeApproveReserved).Sum(r => r.AmountEur));
+        await WithCapsAsync(c => c.FinalizeAsync(step, null));
         Assert.Equal(900m, Assert.Single(await SafesAsync()).ValueEur);
+        Assert.DoesNotContain(await SpendsAsync(), r => r.Id == step);
     }
 
     [Fact]
     public async Task Caps_safe_approvals_are_capped_at_five_per_hour()
     {
-        for (var i = 0; i < 5; i++) Assert.False((await ReserveAsync(1m, SpendCaps.SafeApprove)).RequireConsent);
+        for (var i = 0; i < 5; i++)
+        {
+            // Signed approvals and in-flight ones both count.
+            var step = Guid.NewGuid();
+            Assert.False((await ReserveAsync(1m, SpendCaps.SafeApprove, step)).RequireConsent);
+            if (i % 2 == 0) await WithCapsAsync(c => c.FinalizeAsync(step, null));
+        }
+        await WithCapsAsync(c => c.PruneAsync()); // in-flight ones whose step is gone are released...
+        for (var i = 0; i < 2; i++) Assert.False((await ReserveAsync(1m, SpendCaps.SafeApprove)).RequireConsent); // ...so two fit again
         var sixth = await ReserveAsync(1m, SpendCaps.SafeApprove);
         Assert.Equal((true, "safe_approval_cap"), (sixth.RequireConsent, sixth.Reason));
         // Executions are their own kind.
@@ -181,7 +194,40 @@ public sealed class SpendCapsTests : IAsyncLifetime
     {
         var results = await Task.WhenAll(Enumerable.Range(0, 12).Select(_ => Task.Run(() => ReserveAsync(1m, SpendCaps.SafeApprove))));
         Assert.Equal(5, results.Count(r => !r.RequireConsent));
-        Assert.Equal(5, (await SafesAsync()).Count);
+        Assert.Equal(5, (await SpendsAsync()).Count(r => r.Status == SoftCapStatus.Reserved && r.ValueSource == SpendCaps.SafeApproveReserved));
+    }
+
+    [Fact]
+    public async Task Caps_safe_approval_value_accrues_from_the_oidc_valued_eur_when_signed()
+    {
+        // No predicted payload value: the valuedEur Biatec OIDC returns is what accrues toward 2000 EUR/h.
+        var direct = Guid.NewGuid();
+        await ReserveAsync(null, SpendCaps.SafeApprove, direct);
+        await WithCapsAsync(c => c.FinalizeAsync(direct, "1200"));
+        await WithCapsAsync(c => c.RecordConsentedAsync(new CapRequest(_tenant, Sub, Guid.NewGuid(), SpendCaps.SafeApprove, null), "700"));
+        Assert.Equal(1900m, (await SafesAsync()).Sum(r => r.ValueEur));
+        Assert.True((await ReserveAsync(200m, SpendCaps.SafeApprove)).RequireConsent);
+        Assert.False((await ReserveAsync(100m, SpendCaps.SafeApprove)).RequireConsent);
+    }
+
+    [Fact]
+    public async Task Caps_an_aborted_safe_reservation_is_released_and_revoke_removes_a_final_row()
+    {
+        var aborted = Guid.NewGuid();
+        await ReserveAsync(1m, SpendCaps.SafeApprove, aborted);
+        await WithCapsAsync(c => c.PruneAsync()); // its step is gone
+        Assert.Empty(await SpendsAsync());
+
+        var notMoved = Guid.NewGuid();
+        await ReserveAsync(1m, SpendCaps.SafeApprove, notMoved);
+        await WithCapsAsync(c => c.FinalizeAsync(notMoved, "1"));
+        var spend = Guid.NewGuid();
+        await ReserveAsync(10m, stepId: spend);
+        await WithCapsAsync(c => c.FinalizeAsync(spend, "10"));
+        await WithCapsAsync(c => c.RevokeAsync(notMoved));
+        await WithCapsAsync(c => c.RevokeAsync(spend));
+        Assert.Empty(await SafesAsync());
+        Assert.Empty(await SpendsAsync());
     }
 
     [Fact]
@@ -190,9 +236,9 @@ public sealed class SpendCapsTests : IAsyncLifetime
         var step = Guid.NewGuid();
         await ReserveAsync(10m, SpendCaps.SafeApprove, step);
         await WithCapsAsync(c => c.ReleaseAsync(step)); // step-up
-        await WithCapsAsync(c => c.RecordConsentedAsync(new CapRequest(_tenant, Sub, step, SpendCaps.SafeApprove, 10m)));
-        await WithCapsAsync(c => c.RecordConsentedAsync(new CapRequest(_tenant, Sub, step, SpendCaps.SafeApprove, 10m))); // idempotent
-        await WithCapsAsync(c => c.RecordConsentedAsync(new CapRequest(_tenant, Sub, Guid.NewGuid(), "wallet.transfer", 500m)));
+        await WithCapsAsync(c => c.RecordConsentedAsync(new CapRequest(_tenant, Sub, step, SpendCaps.SafeApprove, 10m), null));
+        await WithCapsAsync(c => c.RecordConsentedAsync(new CapRequest(_tenant, Sub, step, SpendCaps.SafeApprove, 10m), null)); // idempotent
+        await WithCapsAsync(c => c.RecordConsentedAsync(new CapRequest(_tenant, Sub, Guid.NewGuid(), "wallet.transfer", 500m), "500"));
         Assert.Single(await SafesAsync());
         Assert.Empty(await SpendsAsync());
     }
@@ -216,7 +262,10 @@ public sealed class SpendCapsTests : IAsyncLifetime
         var finalStep = Guid.NewGuid();
         await ReserveAsync(100m, stepId: finalStep);
         await WithCapsAsync(c => c.FinalizeAsync(finalStep, "100"));
-        await ReserveAsync(1m, SpendCaps.SafeApprove);
+        var safeStep = Guid.NewGuid();
+        await ReserveAsync(1m, SpendCaps.SafeApprove, safeStep);
+        await WithCapsAsync(c => c.FinalizeAsync(safeStep, null));
+        await ReserveAsync(1m, SpendCaps.SafeApprove); // in flight, no step: released
 
         await WithCapsAsync(c => c.PruneAsync());
         Assert.Equal(new[] { live, finalStep }.Order(), (await SpendsAsync()).Select(r => r.Id).Order());

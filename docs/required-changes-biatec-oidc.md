@@ -39,7 +39,7 @@ against the mock and cannot be enabled against real Biatec OIDC until the row sh
 | --- | --- | --- |
 | 1 | CIBA backchannel authentication endpoint and token grant | None. Consent flows run only against the mock; above-threshold signing is unavailable against real OIDC until it ships |
 | 2 | `authorization_details` types `biatec_transaction`, `biatec_limits_change` | None. Mock builds them from the group |
-| 3 | Step-up challenge on sign and `PUT /wallet/limits`, `requireConsent` | None. Mock returns the challenge; on the wallet signing and limits endpoints the backend treats a 401 `insufficient_user_authentication` with an `auth_req_id` as the only consent trigger, and retries the same request after the poll |
+| 3 | Step-up challenge on sign and `PUT /wallet/limits`, `requireConsent` | None. Mock returns the challenge; on the wallet signing and limits endpoints the backend treats a 401 `insufficient_user_authentication` with an `auth_req_id` as the only consent trigger, and retries the same request after the poll. `requireConsent` (set by the soft cap and safe caps, T-025) is sent only when `Caps:OidcHonoursRequireConsent` is true (mock only; default false): against real Biatec OIDC an action a cap would send to the phone is refused instead, so the cap is a hard stop for the rest of the window. Whenever `requireConsent` was sent and OIDC signs without a challenge, the backend refuses to submit (`consent_not_enforced`) |
 | 4 | Device enrollment, attestation, receipts, `GET /consent/receipts/{auth_req_id}` | None. Authenticator and backend develop against the mock |
 | 5 | Algo Safe application-call valuation | Unknown application calls are treated as above threshold (always ask) |
 | 6 | Biatec DEX pool call decoding | Treated as an unknown application call (always ask); card shows decoded transfers and the application ID only |
@@ -269,6 +269,14 @@ Receipts verify offline against the device public key and attestation. The backe
 ```
 
 Here `value_eur` on the entry is the per-call value and the top-level `value_eur` of section 2 is the sum over the group.
+
+- **Proposer's approval (found in T-033):** the deployed algo-safe contract records the proposer's own approval inside
+  `proposeTransactionGroup`, so the proposer never sends a separate `approveProposal` (it would be refused as "already approved").
+  The spec's "propose, then approve as a second call" does not exist on chain. **Needed:** value `proposeTransactionGroup` at its
+  payload (decoded from the call's own `payload` argument, which is the exact `(uint64,byte[])[]` the safe stores) instead of at
+  zero, so the proposer's consent lands where the authorization happens. `proposeAdminChange` stays at zero.
+  **Fallback in use:** the chat card says that proposing records the proposer's approval; under "always ask" (the demo fallback)
+  the phone still asks for the propose call, but it shows no payload value; under testnet valuation it would not ask at all.
 
 ## 6. Biatec DEX pool call decoding
 
