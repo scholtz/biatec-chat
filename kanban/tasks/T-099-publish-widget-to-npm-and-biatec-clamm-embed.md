@@ -1,7 +1,7 @@
 ---
 id: T-099
 title: Publish @biatec/chat-widget to npm and embed it in BiatecCLAMM
-status: review
+status: done
 priority: P1
 epic: "Deployment"
 blocked_by: []
@@ -105,9 +105,12 @@ tarball in scratch Vite-Vue, Vite-React and Docusaurus apps; `actionlint .github
 
 ## Review
 
+- 2026-10-20 07:59 · approve · PR #210 merged into main @ d909de7 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 07:10 · coordinator · (new) → backlog · created on the user's request (npm publish + BiatecCLAMM embed); no existing task covered it (T-068, T-071 list npm publishing as out of scope)
 - 2026-10-20 07:17 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 07:17 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 07:59 · coordinator · in-progress → review · branch task/T-099 @ cd45995, PR #210
+- 2026-10-20 07:59 · user · review → done · PR #210 merged into main @ d909de7 (synced by kanban-sync)
