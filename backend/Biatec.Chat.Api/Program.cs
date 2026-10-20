@@ -32,6 +32,8 @@ builder.Services.AddOidcAuth();
 builder.Services.AddTokenVault(builder.Configuration);
 builder.Services.AddTenancy();
 builder.Services.AddSessions();
+if (builder.Configuration.GetValue<TimeSpan?>("Sessions:InFlightGrace") is { } inFlightGrace)
+    Biatec.Chat.Api.Sessions.SessionPolicy.InFlightGrace = inFlightGrace;
 builder.Services.AddBedrockModel();
 Biatec.Chat.Api.Budget.BudgetRegistration.AddBedrockBudget(builder.Services);
 builder.Services.AddChat();
@@ -42,6 +44,7 @@ Biatec.Chat.Api.Public.ClientAddress.AddClientAddress(builder.Services, builder.
 
 builder.Services.AddScopeElevation();
 builder.Services.AddConfirm();
+Biatec.Chat.Api.Caps.CapsRegistration.AddSpendCaps(builder.Services);
 builder.Services.AddCancel();
 builder.Services.AddConsent();
 builder.Services.AddLogoutAndSweeper(builder.Configuration);

@@ -75,7 +75,8 @@ public class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbContext(
         {
             e.HasOne<ActionStep>().WithMany().HasForeignKey(x => x.StepId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => x.AuthReqId).IsUnique();
-            e.HasIndex(x => x.StepId);
+            // Serves the session liveness EXISTS (T-080) and every StepId lookup.
+            e.HasIndex(x => new { x.StepId, x.Status, x.ExpiresAt });
             e.Property(x => x.Receipt).HasColumnType("jsonb");
         });
 
