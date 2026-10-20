@@ -230,6 +230,9 @@ namespace Biatec.Chat.Api.Migrations
                     b.Property<DateTimeOffset?>("EndedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("ErasedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset>("LastMessageAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -405,6 +408,8 @@ namespace Biatec.Chat.Api.Migrations
 
                     b.HasIndex("AnchorRef");
 
+                    b.HasIndex("SignedAt");
+
                     b.HasIndex("ConversationId", "Seq")
                         .IsUnique();
 
@@ -491,6 +496,11 @@ namespace Biatec.Chat.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
                     b.Property<string>("ModelId")
                         .HasColumnType("text");
 
@@ -509,6 +519,8 @@ namespace Biatec.Chat.Api.Migrations
                         .HasColumnType("jsonb");
 
                     b.HasKey("ConversationId", "Seq");
+
+                    b.HasIndex("CreatedAt");
 
                     b.ToTable("Messages");
                 });
