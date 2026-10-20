@@ -22,6 +22,7 @@ public class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbContext(
     public DbSet<SafeApprovalCount> SafeApprovalCounts => Set<SafeApprovalCount>();
     public DbSet<SoftCapSpend> SoftCapSpends => Set<SoftCapSpend>();
     public DbSet<KnownSafe> KnownSafes => Set<KnownSafe>();
+    public DbSet<KbStoredPage> KbPages => Set<KbStoredPage>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -172,6 +173,15 @@ public class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbContext(
             e.Property(x => x.TenantId).HasMaxLength(128);
             e.Property(x => x.Network).HasMaxLength(32);
             e.Property(x => x.DeployTxId).HasMaxLength(64);
+        });
+
+        b.Entity<KbStoredPage>(e =>
+        {
+            e.ToTable("KbPages");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasMaxLength(64);
+            e.Property(x => x.ContentType).HasMaxLength(32);
+            e.Property(x => x.Sha256).HasMaxLength(64);
         });
     }
 }

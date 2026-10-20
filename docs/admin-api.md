@@ -1,8 +1,8 @@
 # Admin API (operators)
 
 PRODUCT-DESCRIPTION.md, Chat Backend Responsibilities: *"Expose health, metrics, and an admin API for policy and
-knowledge-base management."* This page documents the tenant policy part (T-086). Knowledge-base management is not
-part of it yet; see [Not covered](#not-covered).
+knowledge-base management."* This page documents the tenant policy part (T-086) and knowledge-base management
+(T-096, [Knowledge base](#knowledge-base)).
 
 Code: `backend/Biatec.Chat.Api/Admin/`. Tests: `backend/Biatec.Chat.Tests/Admin/`.
 
@@ -114,6 +114,83 @@ safe caps) from the cached tenant row in `DbTenantStore`. A successful change ev
 handled it, so it applies there at once. Other replicas pick it up when their entry expires: the cache TTL is 10
 seconds, so a gate switched off is off everywhere within 10 seconds.
 
+## Knowledge base
+
+`kb.search` serves the seed pages under `Kb:Path` (the `docs/kb/*.md` files shipped in the image) overlaid with pages
+operators upload here. Uploaded pages live in the PostgreSQL table `KbPages` (migration `KbPages`), so every replica
+serves the same set; no AWS resource is involved. An uploaded page replaces the seed page with the same id; deleting
+it brings the seed page back (a seed page cannot be hidden from here).
+
+Uploaded pages are untrusted data, exactly like seed pages: they reach the model only as a `kb.search` tool result
+(wrapped in `<untrusted_data source="tool.kb.search">`, excerpt at most 600 characters), never in the system prompt.
+
+Each replica holds an immutable page snapshot and swaps it atomically on reload. Replicas converge in two ways:
+
+- the replica that handles an upload or delete reloads at once;
+- every replica polls the table every `Kb:RefreshSeconds` (default 30; `0` turns polling off) and reloads when the
+  set of page ids and SHA-256 hashes changed (the poll reads ids and hashes only, not bodies). If the database cannot
+  be read, the replica keeps the pages it serves (at start: the seed only) and logs one warning per outage, with the
+  PostgreSQL SQL state and message (for example `42P01 relation "KbPages" does not exist`: the migration is not
+  applied).
+
+Seed page ids are file names without `.md`. Two seed files with the same name in different subdirectories collide:
+the first in ordinal path order is served and each other one is skipped with a warning.
+
+Settings (section `Kb`): `Path` (seed directory, default `kb/` next to the binary), `MaxPageBytes` (default 16384),
+`MaxPages` (uploaded pages, default 200), `RefreshSeconds` (default 30).
+
+### `GET /onboarding/operator/kb/pages`
+
+```json
+{
+  "uploaded": [ { "id": "zebra-staking", "contentType": "text/markdown", "sizeBytes": 87, "sha256": "…", "updatedAt": "2026-10-20T10:00:00+00:00" } ],
+  "served": [ { "id": "what-is-biatec", "title": "What is Biatec", "source": "seed" }, { "id": "zebra-staking", "title": "Zebra staking", "source": "upload" } ]
+}
+```
+
+`uploaded` is the shared table (no bodies); `served` is what this replica serves right now, from its own snapshot,
+with `source` `seed` or `upload` as served. Until its next refresh a replica can serve less than `uploaded` shows.
+
+### `PUT /onboarding/operator/kb/pages/{pageId}`
+
+Creates or replaces a page. The raw request body is the page; the audit reason goes in the header `X-Admin-Reason`
+(required, 1-200 characters, no control characters). Answer: `201` created, `200` replaced or unchanged (same
+content), with `{ "page": <uploaded page>, "change": "created|replaced|unchanged", "served": <count>, "reloaded":
+true|false, "note": null|"..." }`. An unchanged upload does not reload. If the change is committed but this replica
+then cannot reload, the request still succeeds and is audited, with `reloaded: false` and the note "Stored; this
+replica will pick it up on the next refresh."
+
+| Check | Refusal |
+|---|---|
+| `pageId`: 1-64 characters, lower-case letters, digits and inner hyphens (it is the id the model cites) | `400` |
+| `X-Admin-Reason` missing or invalid | `400` |
+| `Content-Type` `text/markdown` (or `text/x-markdown`) or `text/plain`; a charset other than UTF-8 is refused | `415` |
+| Valid UTF-8, no control characters other than tab and line breaks (no binary) | `415` |
+| At most `Kb:MaxPageBytes` bytes (also for a chunked body without a length); the `/onboarding` body limit of 32 KiB applies as well | `413` |
+| Not empty or whitespace only | `400` |
+| A new id while `Kb:MaxPages` pages are stored | `400` |
+
+The title is the first `# heading`, else the id. Writes are serialized with a PostgreSQL advisory lock.
+
+### `DELETE /onboarding/operator/kb/pages/{pageId}`
+
+Removes an uploaded page (`X-Admin-Reason` required). `200 { "deleted": id, "served": <count>, "reloaded": ..., "note": ... }` (as for an upload), or `404`.
+Deletes take the same advisory lock as uploads.
+
+### `POST /onboarding/operator/kb/reload`
+
+Re-reads the seed directory (`Kb:Path`) and the uploaded pages on the replica that handles it, for example after a
+mounted seed volume changed: `200 { "served": <count>, "partial": false }`. Uploaded pages reach other replicas by
+polling. If the database cannot be read, the new seed is still served together with the last uploaded pages read,
+and the answer is `503 { "served": <count>, "partial": true, "error": "... <SQL state and message>" }`, audited as
+`reloaded the knowledge base partially`.
+
+```bash
+curl -sS -X PUT https://chat.biatec.io/onboarding/operator/kb/pages/zebra-staking \
+  -H "Authorization: Bearer $OPERATOR_KEY" -H 'Content-Type: text/markdown' \
+  -H 'X-Admin-Reason: ticket 42: new staking page' --data-binary @zebra-staking.md
+```
+
 ## Audit
 
 Every call writes a structured log line (category `Biatec.Chat.Api.Admin.TenantPolicyService`):
@@ -122,6 +199,10 @@ Every call writes a structured log line (category `Biatec.Chat.Api.Admin.TenantP
 - change: `Admin: operator from {RemoteIp} changed tenant policy {TenantId}: {Changes}. Reason: {Reason}`, with each
   changed field as `name: old -> new`;
 - refusal: `Admin: refused tenant policy change {TenantId} from {RemoteIp}: {Error}. Reason: {Reason}`;
+- knowledge base (category `Biatec.Chat.Api.Admin.KbAdminService`): `uploaded kb page {PageId} ({Change}, {Bytes}
+  bytes, sha256 {Sha256}); serving {Served} pages. Reason: {Reason}`, `deleted kb page {PageId}; ... Reason: {Reason}`,
+  `reloaded the knowledge base; serving {Served} pages`, `listed kb pages`, and refusals as `refused kb page change
+  {PageId} from {RemoteIp}: {Error}. Reason: {Reason}`. Lines carry the page id, size and hash, never its content;
 - rejected authentication (category `Biatec.Chat.Api.Operator`, shared with operator onboarding): `Operator: rejected unauthenticated {Method} {Path} from {RemoteIp}`.
 
 Lines carry policy values only, never the bearer key, `clientSecretRef` or another secret. Caller-supplied text
@@ -142,11 +223,7 @@ curl -sS -X PATCH https://chat.biatec.io/onboarding/operator/tenants/chat.exampl
 
 ## Not covered
 
-- **Knowledge-base management (reload, upload).** `KbSearchService` loads `Kb:Path` once at start-up into an
-  immutable singleton, and the pages ship in the image, so a reload needs a change in `Tools/Kb` and its registration,
-  and an upload needs shared storage (database or S3) so every replica serves the same pages. Until then, KB content
-  changes ship as a new image (edit `docs/kb/`, deploy). Uploaded pages, when added, are untrusted data: they reach the
-  model only as `kb.search` tool results, never the system prompt.
+- A knowledge-base editor UI, hiding a seed page, and page version history (an upload overwrites).
 - A dedicated `/admin` prefix, operator identities (for example an operator group claim at Biatec OIDC) instead of one
   shared bearer key, and the hash-chained evidence log for admin changes.
 - A UI.

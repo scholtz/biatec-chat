@@ -50,6 +50,37 @@ public sealed class KbSearchTests
     }
 
     [Fact]
+    public void Kb_Replace_SwapsTheSnapshot_AndMergeLetsUploadsOverrideSeed()
+    {
+        var kb = KbSearchService.FromDirectory(SeedDir());
+        var before = kb.Pages;
+        var merged = KbSearchService.Merge(before, [KbSearchService.Parse("what-is-biatec", "# Overview\n\nquokka text"), KbSearchService.Parse("new-page", "no heading, wombat")]);
+        kb.Replace(merged);
+
+        Assert.Equal(before.Count + 1, kb.PageCount);
+        Assert.Equal("Overview", kb.Search("quokka").Single().Title);
+        Assert.Equal("new-page", kb.Search("wombat").Single().Title); // no heading: the id is the title
+        Assert.DoesNotContain(before, p => p.Body.Contains("quokka")); // an old snapshot never changes
+    }
+
+    [Fact]
+    public void Kb_SeedFilesWithTheSameName_KeepTheFirst_AndReportTheOthers()
+    {
+        var dir = Directory.CreateTempSubdirectory("kb-dup-");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(dir.FullName, "a"));
+            Directory.CreateDirectory(Path.Combine(dir.FullName, "b"));
+            File.WriteAllText(Path.Combine(dir.FullName, "a", "fees.md"), "# Fees A\n\nalpha");
+            File.WriteAllText(Path.Combine(dir.FullName, "b", "fees.md"), "# Fees B\n\nbeta");
+            var pages = KbSearchService.LoadDirectory(dir.FullName, out var duplicates);
+            Assert.Equal("Fees A", Assert.Single(pages).Title);
+            Assert.Equal(Path.Combine("b", "fees.md"), Assert.Single(duplicates));
+        }
+        finally { dir.Delete(recursive: true); }
+    }
+
+    [Fact]
     public async Task Kb_ExecutorReturnsCitedContent_AndHandlesNoHits()
     {
         var exec = new KbSearchExecutor(KbSearchService.FromDirectory(SeedDir()));

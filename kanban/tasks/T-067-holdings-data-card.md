@@ -7,7 +7,7 @@ epic: "Widget UI rework"
 blocked_by: [T-020, T-064]
 area: ["packages/chat-widget/src/components/data/**", "backend/Biatec.Chat.Api/Chat/DataCards/**"]
 parallel: no
-conflicts_with: [T-035, T-042, T-074, T-076, T-082]
+conflicts_with: [T-035, T-042, T-074, T-076, T-082, T-085]
 issue: "#108"
 branch: "task/T-067"
 owner: "session-20261019-agent"
@@ -39,7 +39,7 @@ Asking for balances shows a structured, accurate holdings card instead of number
 
 ## Parallel work
 
-Parallel work possible: **no**. Don't run it at the same time as T-035, T-042, T-074, T-076, T-082: they change the same files, and running them together causes merge conflicts or broken behaviour.
+Parallel work possible: **no**. Don't run it at the same time as T-035, T-042, T-074, T-076, T-082, T-085: they change the same files, and running them together causes merge conflicts or broken behaviour.
 
 ## Acceptance criteria
 
@@ -72,3 +72,4 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-20 02:18 · kanban-board · blocked → backlog · blockers done: T-020, T-064
 - 2026-10-20 04:35 · scholtz · taken · status stays backlog
 - 2026-10-20 04:35 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
+- 2026-10-20 05:53 · coordinator · in-progress · conflicts_with + T-085 (both edit ConversationOrchestrator.cs; seen on task/T-067)
