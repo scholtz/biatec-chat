@@ -1,7 +1,7 @@
 ---
 id: T-104
 title: "Floating panel must not cover the host navbar on short viewports"
-status: review
+status: done
 priority: P3
 epic: "Widget"
 blocked_by: []
@@ -55,9 +55,12 @@ files.
 
 ## Review
 
+- 2026-10-20 08:05 · approve · PR #215 merged into main @ 8bae226 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 07:59 · coordinator · (new) → backlog · proposed by a worker
 - 2026-10-20 07:59 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 07:59 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 08:04 · coordinator · in-progress → review · PR #215
+- 2026-10-20 08:05 · user · review → done · PR #215 merged into main @ 8bae226 (synced by kanban-sync)
