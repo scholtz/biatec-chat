@@ -15,7 +15,7 @@
 # check, so a revert can never become `latest`. Prereleases (x.y.z-<id>…) go to the npm dist-tag <id> (`next` if <id>
 # isn't a word), never `latest`, and get a GitHub prerelease.
 # Dry runs (pull requests, manual runs with dry_run ticked, on any branch) only build, test, pack, list the files and
-# run `npm publish --dry-run`.
+# run `npm publish --dry-run` (that last step is skipped, with a notice, for a version already on npm, which npm rejects).
 # Authentication: npm trusted publishing (GitHub OIDC, `id-token: write`, no secret) is the primary path. Fallback
 # only, while no trusted publisher is configured on npmjs.com (always for the very first publish of the package): the
 # environment secret `NPM_TOKEN` of the GitHub environment `npm` (repo scholtz/biatec-chat → Settings → Environments →
@@ -72,6 +72,7 @@ jobs:
       build: ${{ steps.decide.outputs.build }}
       publish: ${{ steps.decide.outputs.publish }}
       first_publish: ${{ steps.decide.outputs.first_publish }}
+      on_npm: ${{ steps.decide.outputs.on_npm }}
       prerelease: ${{ steps.decide.outputs.prerelease }}
       dist_tag: ${{ steps.decide.outputs.dist_tag }}
     steps:
@@ -169,6 +170,7 @@ jobs:
             exit 1
           fi
           {
+            echo "on_npm=$on_npm"
             echo "prerelease=$prerelease"
             echo "dist_tag=$dist_tag"
           } >> "$GITHUB_OUTPUT"
@@ -260,10 +262,17 @@ jobs:
           mkdir -p ../../artifacts
           pnpm pack --pack-destination ../../artifacts
           tar -tzf ../../artifacts/*.tgz | sort
+      # npm rejects a dry run of a version it already has, so it runs only for a version not yet on npm.
       - name: Dry run
+        if: needs.check.outputs.on_npm != 'true'
         env:
           DIST_TAG: ${{ needs.check.outputs.dist_tag }}
         run: npm publish ./artifacts/*.tgz --dry-run --access public --tag "$DIST_TAG"
+      - name: Dry run skipped (version already on npm)
+        if: needs.check.outputs.on_npm == 'true'
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: echo "::notice::$VERSION is already on npm; the npm publish dry run is skipped (build, tests and pack ran)."
       - uses: actions/upload-artifact@v4
         with:
           name: chat-widget-tarball

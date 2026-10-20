@@ -112,8 +112,9 @@ For maintainers of [scholtz/biatec-chat](https://github.com/scholtz/biatec-chat)
 
 1. In a pull request: bump `version` in `packages/chat-widget/package.json` (semver; before 1.0 a minor may break the
    API) and add a `## <version>` section to [CHANGELOG.md](https://github.com/scholtz/biatec-chat/blob/main/packages/chat-widget/CHANGELOG.md). The PR runs the workflow as a dry run
-   (build, typecheck, test, pack, list the tarball's files, `npm publish --dry-run`); for a PR into `main` its notice
-   says whether merging would publish.
+   (build, typecheck, test, pack, list the tarball's files, `npm publish --dry-run`; the last step is skipped with a
+   notice when the version is already on npm, which npm would reject, as in every PR that doesn't bump the version);
+   for a PR into `main` its notice says whether merging would publish.
 2. Merge the PR. The push to `main` publishes the new version to npm (with provenance, in the `npm` environment), then
    creates the tag **`chat-widget-v<version>`** on the merged commit and a GitHub release whose text is that version's
    CHANGELOG section. Nothing else to do.
@@ -147,13 +148,13 @@ prerelease rules as above:
 - **Tag:** push `chat-widget-v<version>`, exactly the version in `package.json`, pointing at a commit `main` contains:
 
   ```sh
-  git tag chat-widget-v0.1.0 origin/main
-  git push origin chat-widget-v0.1.0
+  git tag chat-widget-v0.2.0 origin/main
+  git push origin chat-widget-v0.2.0
   ```
 
   The workflow fails if the tag and `package.json` differ, or if the tagged commit is not on `main`. After publishing
-  it creates the GitHub release. Use it for a version that is in `package.json` on `main` but was never published,
-  such as `0.1.0` (it predates the automatic path, so no push will ever see it change).
+  it creates the GitHub release. Use it for a version that is in `package.json` on `main` but was never published
+  (the warning on a push to `main` points here, for example after a release whose publish failed).
 - **Manual run:** Actions → **publish-widget** → Run workflow on `main`, untick **dry_run** (ticked by default, so an
   accidental run only packs). After publishing it creates the tag and the GitHub release. A non-dry manual run on any
   other branch fails; a dry run works on any branch.
@@ -165,9 +166,9 @@ prerelease rules as above:
    provenance statement. Nothing is stored in GitHub.
 2. **`NPM_TOKEN` (fallback only).** If no trusted publisher is configured on npmjs.com, npm falls back to the token in
    the environment secret `NPM_TOKEN` (below), passed as `NODE_AUTH_TOKEN`. When the secret is not set, it is empty
-   and unused. The very first publish always needs it (or a publish by hand), because a trusted publisher can only be
-   configured on a package that exists. A first publish without the secret, or a publish npm rejects for auth, fails
-   the run with an error pointing to this section; it is never silently skipped.
+   and unused. (A first publish of a package that doesn't exist yet would always need it, because a trusted publisher
+   can only be configured on an existing package; `@biatec/chat-widget` exists since 0.1.0.) A publish npm rejects
+   for auth fails the run with an error pointing to this section; it is never silently skipped.
 
 | | |
 | --- | --- |
@@ -183,26 +184,13 @@ publish waits for approval. The tag and the GitHub release are made by a separat
 
 ### One-time setup
 
-1. **Create the npm organization `biatec`** on npmjs.com (avatar → Add Organization → name `biatec`, free plan for
-   public packages). This reserves the `@biatec` scope. Done by the scope owner (scholtz).
-2. **First publish**, one of:
-   - **With the workflow (recommended):** a repository admin creates the environment `npm` in scholtz/biatec-chat
-     (Settings → Environments → New environment, if missing) and adds its `NPM_TOKEN` secret (above); then publish
-     `0.1.0` with the tag or a manual run (above), which also creates the tag and GitHub release.
-   - **By hand**, from a clean checkout of `main`, logged in with `npm login` as an owner of the `biatec` org:
-
-     ```sh
-     pnpm install --frozen-lockfile
-     pnpm --filter @biatec/chat-protocol build
-     cd packages/chat-widget
-     pnpm run build && pnpm run test
-     pnpm pack                                  # rewrites workspace: ranges; publish this exact tarball
-     npm publish biatec-chat-widget-0.1.0.tgz --access public
-     ```
-
-     This makes no tag or GitHub release, and the workflow will not make them later (it skips published versions);
-     push the tag and create the release on GitHub by hand if you want them.
-3. **Configure the trusted publisher**: npmjs.com → package `@biatec/chat-widget` → Settings → **Trusted Publisher** →
+1. **npm organization `biatec`** (reserves the `@biatec` scope): done by the scope owner (scholtz).
+2. **First publish**: done. `0.1.0` (dist-tag `latest`) and `0.0.0-stage` were published on 2026-10-20 by a manual
+   run of the earlier version of this workflow, which made no tag or GitHub release for them (the current workflow
+   skips published versions, so it won't either; push `chat-widget-v0.1.0` and create its release on GitHub by hand
+   if you want them). `0.0.0-stage` is a prerelease and lower, so the version check ignores it. **The next release is
+   simply a version bump** (above).
+3. **Configure the trusted publisher** (if not done yet): npmjs.com → package `@biatec/chat-widget` → Settings → **Trusted Publisher** →
    GitHub Actions: Organization or user `scholtz`, Repository `biatec-chat`, Workflow filename `publish-widget.yml`,
    Environment `npm`. Then, under Publishing access, choose "Require two-factor authentication and disallow tokens",
    and delete the `NPM_TOKEN` secret if one was set. From then on, every release is the automatic path above.

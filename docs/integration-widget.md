@@ -9,8 +9,7 @@ the Slovak translation are planned (tasks T-040 to T-043). The rework to the **B
 `theme: 'host'`, `mode`, `useBiatecChat()`, permissions and activity) is planned in tasks T-062 to T-069; `theme: 'host'`, `mode`, `BiatecChatInline`
 and `useBiatecChat()` are built (T-062, T-063); options marked *planned* below are not. For Biatec DEX specifically, see [integration-biatec-dex.md](integration-biatec-dex.md);
 for the BiatecCLAMM Docusaurus site (a React host), see [integration-biatec-clamm.md](integration-biatec-clamm.md). The package
-is `@biatec/chat-widget@0.1.0`, npm-ready (T-099); its first npm publish is pending the `@biatec` scope owner (see
-[Publishing to npm](#publishing-to-npm)).
+is `@biatec/chat-widget`, published on npm since 0.1.0 (see [Publishing to npm](#publishing-to-npm)).
 
 ## 1. Install the plugin
 

@@ -3,7 +3,7 @@
 All notable changes to `@biatec/chat-widget`. Versions follow [semver](https://semver.org/); before 1.0 a minor
 version may change the public API. Releases are tagged `chat-widget-v<version>`.
 
-## 0.1.0 (unreleased, first npm publish)
+## 0.1.0 (2026-10-20, first npm publish)
 
 - First public release: the Vue 3 plugin `BiatecChat` (ESM and UMD, Vue as a peer dependency), `BiatecChatInline`,
   `BiatecAiChip` and the host API `useBiatecChat()` (`open`, `close`, `ask`, `setPageContext`, `setTheme`,
