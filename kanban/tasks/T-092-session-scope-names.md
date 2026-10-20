@@ -1,7 +1,7 @@
 ---
 id: T-092
 title: "Session endpoint: return the session's OIDC scope names"
-status: backlog
+status: in-progress
 priority: P3
 epic: "Sessions & auth"
 blocked_by: [T-083]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Api/Sessions/SessionEndpoints.cs", "backend/Biatec.C
 parallel: no
 conflicts_with: [T-095]
 issue: "#179"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-092"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md"
 created: 2026-10-20
 updated: 2026-10-20
@@ -53,3 +53,5 @@ Parallel work possible: **no**. Don't run it at the same time as T-095: they cha
 
 - 2026-10-20 04:16 · coordinator · (new) → backlog · proposed by a worker
 - 2026-10-20 05:31 · coordinator · backlog · conflicts_with + T-095 (blockers scan: shared files)
+- 2026-10-20 06:19 · scholtz · taken · status stays backlog
+- 2026-10-20 06:19 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop

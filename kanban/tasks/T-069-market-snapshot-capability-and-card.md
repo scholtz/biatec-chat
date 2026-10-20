@@ -1,7 +1,7 @@
 ---
 id: T-069
 title: market.snapshot capability and market card from Biatec DEX data
-status: backlog
+status: in-progress
 priority: P3
 epic: "Widget UI rework"
 blocked_by: [T-067]
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Tools/Market/**", "backend/Biatec.Chat.Tests/Market/
 parallel: yes
 conflicts_with: []
 issue: "#110"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-069"
+owner: "session-20261019-agent"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#user-experience"
 created: 2026-10-19
 updated: 2026-10-20
@@ -70,3 +70,5 @@ Filled in by the agent when it moves the task to `review`.
 - 2026-10-19 22:40 · coordinator · blocked · conflicts_with T-065: both regenerate packages/chat-protocol and change the capability registry
 - 2026-10-20 01:09 · LukassSoukup · blocked · parallel analysis: dropped T-065 (done); no remaining overlap, parallel: yes
 - 2026-10-20 06:18 · kanban-board · blocked → backlog · blockers done: T-067
+- 2026-10-20 06:19 · scholtz · taken · status stays backlog
+- 2026-10-20 06:19 · session-20261019-agent · backlog → in-progress · claimed via /kanban-parallel + /kanban-take loop
