@@ -1,7 +1,7 @@
 ---
 id: T-072
 title: Fix failing authenticator enrollment tests
-status: review
+status: done
 priority: P2
 epic: "Authenticator"
 blocked_by: [T-051, T-071]
@@ -65,6 +65,8 @@ Parallel work possible: **yes**. It edits `ci.yml` that T-071 creates, so it wai
 
 ## Review
 
+- 2026-10-20 04:16 · approve · PR #178 merged into main @ 0986467 (recorded by kanban-sync)
+
 ## Activity log
 
 Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>`
@@ -75,3 +77,4 @@ Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>
 - 2026-10-20 04:06 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 04:06 · coordinator · backlog → in-progress · dispatched to worker
 - 2026-10-20 04:16 · coordinator · in-progress → review · branch task/T-072 @ 619ceb8, PR #178
+- 2026-10-20 04:16 · user · review → done · PR #178 merged into main @ 0986467 (synced by kanban-sync)
