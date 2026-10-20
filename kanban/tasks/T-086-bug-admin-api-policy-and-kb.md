@@ -1,7 +1,7 @@
 ---
 id: T-086
 title: "Bug: admin API for policy and knowledge-base management"
-status: backlog
+status: in-progress
 priority: P3
 epic: "Orchestrator"
 blocked_by: []
@@ -9,9 +9,9 @@ area: ["backend/Biatec.Chat.Api/Admin/**", "backend/Biatec.Chat.Tests/Admin/**",
 parallel: yes
 conflicts_with: []
 issue: "#155"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-086"
+owner: "worker-T-086"
+taken_by: "LukassSoukup"
 source: "PRODUCT-DESCRIPTION.md#responsibilities"
 created: 2026-10-20
 updated: 2026-10-20
@@ -119,3 +119,5 @@ Filled in by the agent when it moves the task to `review`.
 ## Activity log
 
 - 2026-10-20 02:40 · coordinator · (new) → backlog · created from the spec-vs-implementation audit of main @ 6b701e5 (finding #9)
+- 2026-10-20 04:44 · LukassSoukup · taken · status stays backlog
+- 2026-10-20 04:44 · coordinator · backlog → in-progress · dispatched to worker
