@@ -36,9 +36,13 @@ public sealed class TransferPreviewService(
     ChatDbContext db,
     TimeProvider clock,
     AlgodClientFactory? algod = null,
-    IAlgodSimulateClient? simulate = null)
+    IAlgodSimulateClient? simulate = null,
+    IAlgodAssetReader? assets = null)
 {
     private readonly TransferStepBuilder _builder = new(mcp);
+
+    /// <summary>Asset decimals, unit names and per-asset holdings from algod (the factory's reader unless one is given).</summary>
+    private IAlgodAssetReader? Assets => assets ?? algod?.Assets;
 
     /// <summary>Starts the transfer, or continues / rebuilds the matching earlier preview of this conversation.</summary>
     public async Task<TransferOutcome> StartAsync(McpCallContext ctx, Guid conversationId, TransferRequest request, CancellationToken ct)
@@ -58,15 +62,30 @@ public sealed class TransferPreviewService(
         var fromBal = await mcp.GetCryptoBalanceAsync(ctx, request.StepNetwork, request.From, ct);
         var fromEntries = fromBal.Failed ? null : McpWalletJson.Balances(fromBal.Json);
         if (fromEntries is null) return TransferOutcome.Error("The balance could not be read. Tell the user to try again.");
-        var held = fromEntries.FirstOrDefault(b => b.AssetId == request.AssetId);
-        if (held is null)
+        var heldAmount = fromEntries.FirstOrDefault(b => b.AssetId == request.AssetId)?.Amount;
+        if (heldAmount is null && request.AssetId != 0 && McpWalletJson.AssetsTruncated(fromBal.Json))
+        {
+            // Biatec MCP lists at most 50 ASAs: ask algod about this asset rather than concluding from the cut list.
+            var holding = Assets is null ? null : await Assets.GetAccountAssetAsync(request.StepNetwork, request.From, request.AssetId, ct);
+            if (holding is null) return TransferOutcome.Error($"Whether the source address holds asset {request.AssetId} could not be checked. Nothing was previewed. Tell the user to try again.");
+            if (holding.OptedIn) heldAmount = holding.Amount.ToString(CultureInfo.InvariantCulture);
+        }
+        if (heldAmount is null)
             return TransferOutcome.Error(request.AssetId == 0 ? "The source address holds no ALGO." : $"The source address does not hold asset {request.AssetId}.");
-        var symbol = request.AssetId == 0 ? "ALGO" : string.IsNullOrWhiteSpace(held.Symbol) ? $"asset {request.AssetId}" : held.Symbol!;
-        if (held.Decimals is null)
-            return TransferOutcome.Error($"The number of decimals of {symbol} is unknown, so the amount cannot be shown correctly. Nothing was previewed.");
-        var decimals = held.Decimals.Value;
-        if (BigInteger.Parse(request.Amount, CultureInfo.InvariantCulture) > BigInteger.Parse(held.Amount, CultureInfo.InvariantCulture))
-            return TransferOutcome.Error($"The source address holds only {TransferPlanner.FormatAmount(held.Amount, decimals)} {symbol}, less than the requested {TransferPlanner.FormatAmount(request.Amount, decimals)}.");
+
+        string symbol;
+        int decimals;
+        if (request.AssetId == 0) (symbol, decimals) = ("ALGO", 6);
+        else
+        {
+            // Real Biatec MCP balances carry no decimals or unit name: algod is the only source, and a failed read refuses.
+            var info = Assets is null ? null : await Assets.GetAssetAsync(request.StepNetwork, request.AssetId, ct);
+            if (info is null)
+                return TransferOutcome.Error($"The number of decimals of asset {request.AssetId} could not be read from the Algorand node, so the amount cannot be shown correctly. Nothing was previewed. Tell the user to try again.");
+            (symbol, decimals) = (info.UnitName ?? $"asset {request.AssetId}", info.Decimals);
+        }
+        if (BigInteger.Parse(request.Amount, CultureInfo.InvariantCulture) > BigInteger.Parse(heldAmount, CultureInfo.InvariantCulture))
+            return TransferOutcome.Error($"The source address holds only {TransferPlanner.FormatAmount(heldAmount, decimals)} {symbol}, less than the requested {TransferPlanner.FormatAmount(request.Amount, decimals)}.");
 
         var receiverOwn = addresses.Contains(request.To, StringComparer.Ordinal);
         var optedIn = true;
@@ -77,6 +96,12 @@ public sealed class TransferPreviewService(
             var entries = toBal.Failed ? null : McpWalletJson.Balances(toBal.Json);
             if (entries is null) return TransferOutcome.Error("The receiving address could not be read. Tell the user to try again.");
             optedIn = entries.Any(b => b.AssetId == request.AssetId);
+            if (!optedIn && McpWalletJson.AssetsTruncated(toBal.Json))
+            {
+                var holding = Assets is null ? null : await Assets.GetAccountAssetAsync(request.StepNetwork, request.To, request.AssetId, ct);
+                if (holding is null) return TransferOutcome.Error($"Whether the receiving address has opted in to {symbol} could not be checked. Nothing was previewed. Tell the user to try again.");
+                optedIn = holding.OptedIn;
+            }
             receiverAlgo = entries.Where(b => b.AssetId == 0).Select(b => BigInteger.Parse(b.Amount, CultureInfo.InvariantCulture)).FirstOrDefault();
         }
 

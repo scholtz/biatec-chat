@@ -90,6 +90,14 @@ public static class McpWalletJson
         return list;
     }
 
+    /// <summary>
+    /// True when Biatec MCP cut the <c>assets</c> list short (it lists at most 50 ASAs): an asset missing from the list
+    /// may still be held, so the caller asks algod about that asset instead of concluding from the list.
+    /// </summary>
+    public static bool AssetsTruncated(JsonElement? json) =>
+        json is { ValueKind: JsonValueKind.Object } root && TryGet(root, "assetsTruncated", out var t)
+        && (t.ValueKind == JsonValueKind.True || (t.ValueKind == JsonValueKind.String && string.Equals(t.GetString(), "true", StringComparison.OrdinalIgnoreCase)));
+
     public static string? Str(JsonElement e, params string[] names)
     {
         foreach (var n in names)
