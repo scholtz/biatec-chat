@@ -269,6 +269,24 @@ describe("preview cards in the conversation", () => {
     expect(w.text()).toContain("Cancelled");
   });
 
+  it("cancelling step 2 after step 1 landed keeps step 1 settled", async () => {
+    const two = preview("AwaitingConfirmation", {
+      steps: [
+        { ...preview().steps[0]!, stepId: "s1", index: 0, groupHash: "H1" },
+        { ...preview().steps[0]!, stepId: "s2", index: 1, groupHash: "H2" },
+      ],
+    });
+    const { svc, cancelPreview } = setup([card(two)], [result("landed", { txIds: ["TX1"] })]);
+    const w = await chat(svc);
+    await confirmClick(w);
+    const cancel = w.findAll("button").find((b) => b.text() === "Cancel")!;
+    await cancel.trigger("click");
+    await flushPromises();
+    expect(cancelPreview).toHaveBeenCalledWith("p1", "H2");
+    expect(w.get("article.bc-card").attributes("data-status")).toBe("completed");
+    expect(w.text()).toContain("TX1");
+  });
+
   it("a refused cancel leaves the card open with a note", async () => {
     const { svc, cancelPreview } = setup([card(preview())], []);
     cancelPreview.mockResolvedValueOnce(false);

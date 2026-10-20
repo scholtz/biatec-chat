@@ -219,13 +219,15 @@ export function useChat(svc: ChatServices) {
 
   const OPEN_STEP: ActionPreview["status"][] = ["AwaitingConfirmation", "AwaitingScope", "AwaitingApproval"];
 
-  /** Cancel applies to the whole preview: every step still open becomes Cancelled. */
-  function setStatus(e: PreviewEntry, status: ActionPreview["status"]): void {
-    e.preview = {
-      ...e.preview,
-      status,
-      steps: e.preview.steps.map((s) => ({ ...s, status })),
-    };
+  /**
+   * Cancel closes only the steps still open; steps that already landed or were submitted keep their status. The
+   * preview as a whole is Cancelled only when nothing settled, otherwise it reflects the partial completion.
+   */
+  function cancelOpenSteps(e: PreviewEntry): void {
+    const steps = e.preview.steps.map((s) => (OPEN_STEP.includes(s.status) ? { ...s, status: "Cancelled" as const } : s));
+    const settled = steps.filter((s) => s.status === "Completed" || s.status === "Submitted");
+    const status: ActionPreview["status"] = settled.length === 0 ? "Cancelled" : settled.some((s) => s.status === "Submitted") ? "Submitted" : "Completed";
+    e.preview = { ...e.preview, steps, status };
   }
 
   /**
@@ -326,10 +328,10 @@ export function useChat(svc: ChatServices) {
         ok = false;
       }
       if (ok) {
-        setStatus(entry, "Cancelled");
+        cancelOpenSteps(entry);
         entry.note = "";
         svc.onCancelled?.(previewId);
-      } else if (entry.preview.status !== "Cancelled") entry.note = t("chat.previewCancelFailed");
+      } else entry.note = t("chat.previewCancelFailed");
     } finally {
       entry.submitting = false;
       syncKeepalive(entry);
