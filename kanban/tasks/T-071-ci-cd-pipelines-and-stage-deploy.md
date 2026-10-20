@@ -1,7 +1,7 @@
 ---
 id: T-071
 title: CI/CD pipelines, stage deploy and production promotion
-status: review
+status: done
 priority: P1
 epic: "Deployment"
 blocked_by: [T-054]
@@ -92,6 +92,8 @@ locally; first real run on GitHub once Scholtz has set the secrets.
 
 ## Review
 
+- 2026-10-20 03:49 · approve · PR #130 merged into main @ d0bc601 (recorded by kanban-sync)
+
 ## Activity log
 
 Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>`
@@ -103,3 +105,4 @@ Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>
 - 2026-10-20 00:57 · session-20261020-claude · review → review · scope extended at the user's request: in-cluster Postgres/Redis with generated passwords, deploy-time migrations, AWS setup guide, merged fix/aws-access (#124)
 - 2026-10-20 01:30 · session-20261020-claude · review → review · rework at the user's request: own k8s stage + prod, promote pipeline, AWS for Bedrock only (Secret vault key provider, EC2/KMS removed)
 - 2026-10-20 03:00 · session-20261020-claude · review → review · rework at the user's request: Bedrock credentials through IAM Roles Anywhere instead of web identity (the cluster issuer is in-cluster only and must not change): `infra/aws/rolesanywhere.sh` replaces `k8s-role.sh`, signing helper in the backend image, `biatec-chat-aws` secret synced by `deploy.yml`, five `AWS_*` secrets, teardown and tests updated
+- 2026-10-20 03:49 · user · review → done · PR #130 merged into main @ d0bc601 (synced by kanban-sync)
