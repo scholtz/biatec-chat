@@ -18,6 +18,8 @@ using Biatec.Chat.Tools.Consent;
 using Biatec.Chat.Tools.Mcp;
 using Biatec.Chat.Tools.Signing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using AlgoEncoder = Algorand.Utils.Encoder;
@@ -39,11 +41,13 @@ public sealed class NoDeviceCapTests : IAsyncLifetime
     {
         public ConsentSettings? Value = new(250m, DeviceEnrolled: false, DeviceActive: false, AlwaysAsk: false, CoolingOff: false, FirstUse: false);
         public int Calls;
-        public Task<ConsentSettings?> GetAsync(Uri settingsEndpoint, string bearer, CancellationToken ct = default)
+        public bool Missing; // the endpoint answers 404
+        public Task<ConsentSettings?> GetAsync(Uri settingsEndpoint, string bearer, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<ConsentSettingsFetch> FetchAsync(Uri settingsEndpoint, string bearer, CancellationToken ct = default)
         {
             Calls++;
             Assert.Equal("ACCESS", bearer);
-            return Task.FromResult(Value);
+            return Task.FromResult(Missing ? new ConsentSettingsFetch(null, true) : new ConsentSettingsFetch(Value, false));
         }
     }
 
@@ -137,6 +141,8 @@ public sealed class NoDeviceCapTests : IAsyncLifetime
     private readonly CapsOptions _capsOptions = new() { OidcHonoursRequireConsent = true };
     private readonly FakeSettings _settings = new();
     private readonly NoDeviceCapOptions _noDeviceOptions = new();
+    private NoDeviceSettingsCache _cache = null!;
+    private bool _withoutCaps;
 
     private ChatDbContext NewContext()
     {
@@ -155,6 +161,7 @@ public sealed class NoDeviceCapTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _oidc = new FakeOidc(_user);
+        _cache = new NoDeviceSettingsCache(_clock);
         await AdminAsync($"CREATE DATABASE \"{_dbName}\"");
         await using var db = NewContext();
         await db.Database.MigrateAsync();
@@ -200,8 +207,8 @@ public sealed class NoDeviceCapTests : IAsyncLifetime
 
     private ConfirmService NewService(ChatDbContext db) =>
         new(db, new ActionPreviewService(db, _clock), new ScopeGuard(_vault, _clock), _vault, _oidc, _mcp, _confirmer, new FakeEvidence(), _clock,
-            NullLogger<ConfirmService>.Instance, recorder: _recorder, caps: new SpendCaps(db, _clock, _capsOptions),
-            noDevice: new NoDeviceGate(_settings, new Uri("https://oidc.test/consent/settings"), _noDeviceOptions));
+            NullLogger<ConfirmService>.Instance, recorder: _recorder, caps: _withoutCaps ? null : new SpendCaps(db, _clock, _capsOptions, _noDeviceOptions),
+            noDevice: new NoDeviceGate(_settings, () => new Uri("https://oidc.test/consent/settings"), _noDeviceOptions, _cache));
 
     private async Task<ConfirmResult> ConfirmAsync(Built b)
     {
@@ -232,12 +239,12 @@ public sealed class NoDeviceCapTests : IAsyncLifetime
             _clock.Now = now - ago;
             var step = Guid.NewGuid();
             await using var db = NewContext();
-            var caps = new SpendCaps(db, _clock, _capsOptions);
+            var caps = new SpendCaps(db, _clock, _capsOptions, _noDeviceOptions);
             await caps.ReserveAsync(new CapRequest(_tenant, "user-1", step, "wallet.transfer", eur));
             await caps.FinalizeAsync(step, null);
         }
         _clock.Now = now;
-        await using (var db = NewContext()) await new SpendCaps(db, _clock, _capsOptions).PruneAsync();
+        await using (var db = NewContext()) await new SpendCaps(db, _clock, _capsOptions, _noDeviceOptions).PruneAsync();
         Assert.Equal(2, (await SpendsAsync()).Count); // the pruner keeps a day plus one hour of final rows
 
         _oidc.ValuedEur = null; // the backend's prediction is counted
@@ -271,10 +278,16 @@ public sealed class NoDeviceCapTests : IAsyncLifetime
     [InlineData("always_ask")]
     [InlineData("preview_flag")]
     [InlineData("inactive_device")]
+    [InlineData("cooling_off")]
+    [InlineData("first_use")]
+    [InlineData("threshold_above_ceiling")]
     public async Task NoDevice_above_threshold_action_is_refused_with_an_enrollment_hint(string kind)
     {
-        decimal? value = kind switch { "above" or "inactive_device" => 300m, "unknown_value" => null, _ => 10m };
+        decimal? value = kind switch { "above" or "inactive_device" => 300m, "unknown_value" => null, "threshold_above_ceiling" => 1200m, _ => 10m };
         if (kind == "always_ask") _settings.Value = _settings.Value! with { AlwaysAsk = true };
+        if (kind == "cooling_off") _settings.Value = _settings.Value! with { CoolingOff = true };
+        if (kind == "first_use") _settings.Value = _settings.Value! with { FirstUse = true };
+        if (kind == "threshold_above_ceiling") { _settings.Value = _settings.Value! with { ThresholdEur = 5000m }; _noDeviceOptions.DailyCapEur = 5000m; } // clamped to 1000
         if (kind == "inactive_device") _settings.Value = _settings.Value! with { DeviceEnrolled = true }; // enrolled, still in its 24 h delay
         var b = await BuildPreviewAsync(value, canonical: kind == "preview_flag" ? "{\"intent\":\"send\",\"requireConsent\":true}" : "{\"intent\":\"send\"}");
 
@@ -316,6 +329,69 @@ public sealed class NoDeviceCapTests : IAsyncLifetime
         Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(await BuildPreviewAsync(200m))).Outcome);
         Assert.Equal(2, _oidc.Calls.Count);
         Assert.All(_oidc.Calls, c => Assert.False(c.RequireConsent));
-        Assert.Equal(kind == "switched_off" ? 0 : 2, _settings.Calls);
+        // An answer is cached for the session; a failure is not.
+        Assert.Equal(kind switch { "switched_off" => 0, "active" => 1, _ => 2 }, _settings.Calls);
+    }
+
+    [Fact]
+    public async Task NoDevice_without_a_cap_store_is_refused_saying_the_limit_could_not_be_checked()
+    {
+        _withoutCaps = true;
+        var r = await ConfirmAsync(await BuildPreviewAsync(10m));
+        Assert.Equal((ConfirmOutcome.Failed, NoDevicePolicy.UncheckedReason), (r.Outcome, r.ErrorCode));
+        Assert.Contains("couldn't be checked", r.Message);
+        Assert.DoesNotContain("You've reached", r.Message);
+        Assert.Empty(_oidc.Calls);
+    }
+
+    [Fact]
+    public async Task NoDevice_settings_are_cached_per_session_and_a_missing_endpoint_is_remembered()
+    {
+        _settings.Value = _settings.Value! with { DeviceEnrolled = true, DeviceActive = true };
+        _oidc.ValuedEur = "10";
+        await ConfirmAsync(await BuildPreviewAsync(10m));
+        await ConfirmAsync(await BuildPreviewAsync(10m));
+        Assert.Equal(1, _settings.Calls);
+        _clock.Now = _clock.Now.AddSeconds(61);
+        await ConfirmAsync(await BuildPreviewAsync(10m));
+        Assert.Equal(2, _settings.Calls);
+
+        // 404: not asked again for a while, and the user is not affected (OIDC's step-up is relied on).
+        _clock.Now = _clock.Now.AddSeconds(61);
+        _settings.Missing = true;
+        Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(await BuildPreviewAsync(10m))).Outcome);
+        Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(await BuildPreviewAsync(10m))).Outcome);
+        Assert.Equal(3, _settings.Calls);
+        _clock.Now = _clock.Now.AddMinutes(11);
+        _vault.Items[_session.Id.ToString("N")] = new TokenVaultEntry
+        {
+            AccessToken = "ACCESS", AccessExpiresAt = _clock.Now.AddMinutes(10), RefreshToken = "REFRESH",
+            Scopes = ["openid", "sign"], AbsoluteExpiresAt = _session.AbsoluteExpiresAt,
+        };
+        await ConfirmAsync(await BuildPreviewAsync(10m));
+        Assert.Equal(4, _settings.Calls);
+    }
+
+    [Theory]
+    [InlineData(false, "")]
+    [InlineData(true, "")]
+    [InlineData(true, "not a url")]
+    public async Task NoDevice_registration_resolves_without_settings_client_or_issuer(bool enabled, string issuer)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Caps:NoDevice:Enabled"] = enabled ? "true" : "false",
+        }).Build());
+        services.AddSingleton<TimeProvider>(_clock);
+        services.Configure<Biatec.Chat.Api.Config.OidcOptions>(o => o.Issuer = issuer);
+        if (enabled) services.AddSingleton<IConsentSettingsClient>(_settings);
+        Biatec.Chat.Api.Caps.CapsRegistration.AddSpendCaps(services);
+        await using var sp = services.BuildServiceProvider();
+        await using var scope = sp.CreateAsyncScope();
+        var gate = scope.ServiceProvider.GetRequiredService<INoDeviceGate>();
+        Assert.Equal(enabled, gate is NoDeviceGate);
+        Assert.Null(await gate.CheckAsync("s", "ACCESS"));
+        Assert.Equal(0, _settings.Calls);
     }
 }

@@ -366,16 +366,19 @@ this request is processed by hand.
 - Backend fallback (T-061, `backend/Biatec.Chat.Tools/Caps/NoDevice/`): before every signing request the confirm path reads
   `GET /consent/settings` (row 20). When it answers `device_active: false` (an enrolled device still in its activation delay
   counts as none):
-  - an action that would need the phone (value above `threshold_eur`, or above the 1000 EUR ceiling when OIDC omits it; a value
-    the backend cannot predict; `always_ask`; a preview's own `requireConsent`; or a soft or safe cap forcing consent) is refused
-    with `no_active_device` and an enrollment hint, before anything is reserved or signed;
+  - an action that would need the phone (value above `threshold_eur`, clamped to the 1000 EUR ceiling and the ceiling when OIDC
+    omits it; a value the backend cannot predict; `always_ask`; `cooling_off_until` or `first_use`, which OIDC answers with a
+    step-up the user cannot approve; a preview's own `requireConsent`; or a soft or safe cap forcing consent) is refused with
+    `no_active_device` and an enrollment hint, before anything is reserved or signed;
   - otherwise the action's value is reserved in the T-025 store (`SoftCapSpends`, same advisory lock as the soft cap) against a
     rolling 24-hour own-funds total per user `sub` and tenant; over `Caps:NoDevice:DailyCapEur` (default 100) it is refused with
-    `no_device_daily_cap` and the enrollment hint. Safe approvals and executions add nothing, as in the soft cap. Final rows are
-    kept 25 hours for this window.
+    `no_device_daily_cap` and the enrollment hint. Safe approvals and executions add nothing, as in the soft cap, and a
+    zero-value action is never refused by it. While the cap is enabled, final rows are kept 25 hours (otherwise 2 hours).
+    Without a signed-in `sub` or a cap store the cap cannot be checked: refused with `no_device_cap_unavailable`.
   - The backend applies the reduced cap every day, not only during the client's first 24 hours and the user's first day with the
     client as rule 4 says for OIDC: it has no record of those dates, so it takes the stricter reading.
-  - If `GET /consent/settings` is missing or fails, nothing changes (OIDC's step-up is relied on).
+  - If `GET /consent/settings` is missing or fails, nothing changes (OIDC's step-up is relied on). An answer is cached per
+    session for 60 seconds per pod; a 404 or 501 is remembered for 10 minutes and the endpoint is not called meanwhile.
   - Config: `Caps:NoDevice:Enabled` (default true) and `Caps:NoDevice:DailyCapEur` (default 100). Turn `Enabled` off once Biatec
     OIDC ships the 403 `daily_cap_exceeded` / `no_active_device` rule above; the backend already passes such a refusal through as a
     rejected signing request.

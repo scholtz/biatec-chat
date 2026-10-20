@@ -18,7 +18,7 @@ public static class CapDefaults
     public static readonly TimeSpan Window = TimeSpan.FromHours(1);
     /// <summary>Rows are pruned once older than the longest window plus one hour.</summary>
     public static readonly TimeSpan Retention = Window + TimeSpan.FromHours(1);
-    /// <summary>T-061: final soft cap rows are also counted by the no-device daily cap, so they are kept for a day plus one hour.</summary>
+    /// <summary>T-061: while the no-device daily cap is enabled, final soft cap rows are kept for a day plus one hour.</summary>
     public static readonly TimeSpan FinalRetention = NoDevice.NoDeviceDefaults.Window + TimeSpan.FromHours(1);
 }
 

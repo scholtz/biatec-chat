@@ -1,5 +1,6 @@
 using Biatec.Chat.Api.Sweeper;
 using Biatec.Chat.Tools.Caps;
+using Biatec.Chat.Tools.Caps.NoDevice;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
@@ -12,16 +13,33 @@ public static class CapsRegistration
     {
         // Caps:OidcHonoursRequireConsent stays false against real Biatec OIDC (required-changes row 3); true only with the mock.
         services.AddOptions<CapsOptions>().BindConfiguration(CapsOptions.Section);
-        services.TryAddScoped<ISpendCaps>(sp => new SpendCaps(sp.GetRequiredService<Biatec.Chat.Core.Data.ChatDbContext>(),
-            sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<IOptions<CapsOptions>>().Value));
         // T-061: reduced daily cap for users without an active device; Caps:NoDevice:Enabled = false once Biatec OIDC enforces rule 4 (required-changes row 10).
-        services.AddOptions<Biatec.Chat.Tools.Caps.NoDevice.NoDeviceCapOptions>().BindConfiguration(Biatec.Chat.Tools.Caps.NoDevice.NoDeviceCapOptions.Section);
-        services.TryAddScoped<Biatec.Chat.Tools.Caps.NoDevice.INoDeviceGate>(sp => new Biatec.Chat.Tools.Caps.NoDevice.NoDeviceGate(
-            sp.GetRequiredService<Biatec.Chat.Tools.Consent.IConsentSettingsClient>(),
-            new Uri(sp.GetRequiredService<IOptions<Biatec.Chat.Api.Config.OidcOptions>>().Value.Issuer.TrimEnd('/') + "/consent/settings"),
-            sp.GetRequiredService<IOptions<Biatec.Chat.Tools.Caps.NoDevice.NoDeviceCapOptions>>().Value));
+        services.AddOptions<NoDeviceCapOptions>().BindConfiguration(NoDeviceCapOptions.Section);
+        services.TryAddScoped<ISpendCaps>(sp => new SpendCaps(sp.GetRequiredService<Biatec.Chat.Core.Data.ChatDbContext>(),
+            sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<IOptions<CapsOptions>>().Value,
+            sp.GetRequiredService<IOptions<NoDeviceCapOptions>>().Value));
+        services.TryAddSingleton(sp => new NoDeviceSettingsCache(sp.GetRequiredService<TimeProvider>()));
+        services.TryAddScoped<INoDeviceGate>(sp =>
+        {
+            var options = sp.GetRequiredService<IOptions<NoDeviceCapOptions>>().Value;
+            if (!options.Enabled) return DisabledNoDeviceGate.Instance; // resolves nothing else
+            return new NoDeviceGate(sp.GetRequiredService<Biatec.Chat.Tools.Consent.IConsentSettingsClient>(),
+                () => SettingsEndpoint(sp.GetRequiredService<IOptions<Biatec.Chat.Api.Config.OidcOptions>>()),
+                options, sp.GetRequiredService<NoDeviceSettingsCache>());
+        });
         services.AddHostedService<CapsPruneHostedService>();
         return services;
+    }
+
+    /// <summary>Biatec OIDC <c>GET /consent/settings</c>; null (the backend cannot tell) when the issuer is unset or invalid.</summary>
+    private static Uri? SettingsEndpoint(IOptions<Biatec.Chat.Api.Config.OidcOptions> oidc)
+    {
+        try
+        {
+            return Uri.TryCreate(oidc.Value.Issuer?.TrimEnd('/') + "/consent/settings", UriKind.Absolute, out var u)
+                   && (u.Scheme == Uri.UriSchemeHttps || u.Scheme == Uri.UriSchemeHttp) ? u : null;
+        }
+        catch (OptionsValidationException) { return null; }
     }
 }
 

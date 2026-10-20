@@ -76,8 +76,8 @@ public sealed class SpendCapsTests : IAsyncLifetime
         // 20 parallel 400 EUR requests against 1500 EUR/h: at most three fit, the rest need phone consent.
         var results = await Task.WhenAll(Enumerable.Range(0, 20).Select(_ => Task.Run(() => ReserveAsync(400m))));
 
-        Assert.Equal(3, results.Count(r => r.Reserved == CapKind.SoftCap && !r.RequireConsent));
-        Assert.Equal(17, results.Count(r => r.RequireConsent && r.Reserved == CapKind.None && r.Reason == "soft_cap"));
+        Assert.Equal(3, results.Count(r => r.Reserved == CapKind.SoftCap && r.Outcome == CapOutcome.Allowed));
+        Assert.Equal(17, results.Count(r => r.Outcome == CapOutcome.RequireConsent && r.Reserved == CapKind.None && r.Reason == "soft_cap"));
         var rows = await SpendsAsync();
         Assert.Equal(3, rows.Count);
         Assert.True(rows.Sum(r => r.AmountEur) <= 1500m);
@@ -87,10 +87,10 @@ public sealed class SpendCapsTests : IAsyncLifetime
     [Fact]
     public async Task Caps_require_consent_while_the_window_total_plus_the_action_exceeds_the_cap_per_action_not_sticky()
     {
-        Assert.False((await ReserveAsync(1000m)).RequireConsent);
-        Assert.True((await ReserveAsync(600m)).RequireConsent);   // 1000 + 600 > 1500
-        Assert.False((await ReserveAsync(500m)).RequireConsent);  // 1000 + 500 = 1500 fits: not a sticky flag
-        Assert.True((await ReserveAsync(0.01m)).RequireConsent);  // the window is full
+        Assert.Equal(CapOutcome.Allowed, (await ReserveAsync(1000m)).Outcome);
+        Assert.Equal(CapOutcome.RequireConsent, (await ReserveAsync(600m)).Outcome);   // 1000 + 600 > 1500
+        Assert.Equal(CapOutcome.Allowed, (await ReserveAsync(500m)).Outcome);  // 1000 + 500 = 1500 fits: not a sticky flag
+        Assert.Equal(CapOutcome.RequireConsent, (await ReserveAsync(0.01m)).Outcome);  // the window is full
         // Phone-approved actions are never counted.
         Assert.Equal(1500m, (await SpendsAsync()).Sum(r => r.AmountEur));
     }
@@ -104,9 +104,9 @@ public sealed class SpendCapsTests : IAsyncLifetime
         var row = Assert.Single(await SpendsAsync());
         Assert.Equal((SoftCapStatus.Final, 1400.50m, "oidc", _clock.Now), (row.Status, row.AmountEur, row.ValueSource, row.SpentAt!.Value));
 
-        Assert.True((await ReserveAsync(100m)).RequireConsent);
+        Assert.Equal(CapOutcome.RequireConsent, (await ReserveAsync(100m)).Outcome);
         _clock.Now = _clock.Now.AddMinutes(61);
-        Assert.False((await ReserveAsync(100m)).RequireConsent);
+        Assert.Equal(CapOutcome.Allowed, (await ReserveAsync(100m)).Outcome);
     }
 
     [Fact]
@@ -128,20 +128,20 @@ public sealed class SpendCapsTests : IAsyncLifetime
         Assert.Single(await SpendsAsync());
         await WithCapsAsync(c => c.ReleaseAsync(step));
         Assert.Empty(await SpendsAsync());
-        Assert.False((await ReserveAsync(1500m)).RequireConsent);
+        Assert.Equal(CapOutcome.Allowed, (await ReserveAsync(1500m)).Outcome);
     }
 
     [Fact]
     public async Task Caps_are_keyed_on_sub_and_tenant_and_safe_actions_are_not_counted_in_the_soft_cap()
     {
-        Assert.False((await ReserveAsync(1500m)).RequireConsent);
-        Assert.False((await ReserveAsync(1500m, sub: "someone-else")).RequireConsent);
+        Assert.Equal(CapOutcome.Allowed, (await ReserveAsync(1500m)).Outcome);
+        Assert.Equal(CapOutcome.Allowed, (await ReserveAsync(1500m, sub: "someone-else")).Outcome);
         // Safe funds are not the user's: approvals add their value only to the safe cap.
         var step = Guid.NewGuid();
         var approve = await ReserveAsync(900m, SpendCaps.SafeApprove, step);
-        Assert.Equal((false, CapKind.SafeApproval), (approve.RequireConsent, approve.Reserved));
+        Assert.Equal((CapOutcome.Allowed, CapKind.SafeApproval), (approve.Outcome, approve.Reserved));
         // The in-flight approval is a marked reservation that never adds to the soft cap.
-        Assert.False((await ReserveAsync(0m)).RequireConsent);
+        Assert.Equal(CapOutcome.Allowed, (await ReserveAsync(0m)).Outcome);
         Assert.Equal(3000m, (await SpendsAsync()).Where(r => r.ValueSource != SpendCaps.SafeApproveReserved).Sum(r => r.AmountEur));
         await WithCapsAsync(c => c.FinalizeAsync(step, null));
         Assert.Equal(900m, Assert.Single(await SafesAsync()).ValueEur);
@@ -155,45 +155,45 @@ public sealed class SpendCapsTests : IAsyncLifetime
         {
             // Signed approvals and in-flight ones both count.
             var step = Guid.NewGuid();
-            Assert.False((await ReserveAsync(1m, SpendCaps.SafeApprove, step)).RequireConsent);
+            Assert.Equal(CapOutcome.Allowed, (await ReserveAsync(1m, SpendCaps.SafeApprove, step)).Outcome);
             if (i % 2 == 0) await WithCapsAsync(c => c.FinalizeAsync(step, null));
         }
         await WithCapsAsync(c => c.PruneAsync()); // in-flight ones whose step is gone are released...
-        for (var i = 0; i < 2; i++) Assert.False((await ReserveAsync(1m, SpendCaps.SafeApprove)).RequireConsent); // ...so two fit again
+        for (var i = 0; i < 2; i++) Assert.Equal(CapOutcome.Allowed, (await ReserveAsync(1m, SpendCaps.SafeApprove)).Outcome); // ...so two fit again
         var sixth = await ReserveAsync(1m, SpendCaps.SafeApprove);
-        Assert.Equal((true, "safe_approval_cap"), (sixth.RequireConsent, sixth.Reason));
+        Assert.Equal((CapOutcome.RequireConsent, "safe_approval_cap"), (sixth.Outcome, sixth.Reason));
         // Executions are their own kind.
-        Assert.False((await ReserveAsync(0m, SpendCaps.SafeExecute)).RequireConsent);
+        Assert.Equal(CapOutcome.Allowed, (await ReserveAsync(0m, SpendCaps.SafeExecute)).Outcome);
         _clock.Now = _clock.Now.AddMinutes(61);
-        Assert.False((await ReserveAsync(1m, SpendCaps.SafeApprove)).RequireConsent);
+        Assert.Equal(CapOutcome.Allowed, (await ReserveAsync(1m, SpendCaps.SafeApprove)).Outcome);
     }
 
     [Fact]
     public async Task Caps_safe_approvals_are_capped_at_2000_eur_per_hour()
     {
-        Assert.False((await ReserveAsync(1500m, SpendCaps.SafeApprove)).RequireConsent);
-        Assert.True((await ReserveAsync(600m, SpendCaps.SafeApprove)).RequireConsent);
-        Assert.False((await ReserveAsync(500m, SpendCaps.SafeApprove)).RequireConsent);
+        Assert.Equal(CapOutcome.Allowed, (await ReserveAsync(1500m, SpendCaps.SafeApprove)).Outcome);
+        Assert.Equal(CapOutcome.RequireConsent, (await ReserveAsync(600m, SpendCaps.SafeApprove)).Outcome);
+        Assert.Equal(CapOutcome.Allowed, (await ReserveAsync(500m, SpendCaps.SafeApprove)).Outcome);
     }
 
     [Fact]
     public async Task Caps_safe_executions_are_capped_at_ten_per_hour_and_tenant_caps_override_defaults()
     {
-        for (var i = 0; i < 10; i++) Assert.False((await ReserveAsync(0m, SpendCaps.SafeExecute)).RequireConsent);
+        for (var i = 0; i < 10; i++) Assert.Equal(CapOutcome.Allowed, (await ReserveAsync(0m, SpendCaps.SafeExecute)).Outcome);
         var eleventh = await ReserveAsync(0m, SpendCaps.SafeExecute);
-        Assert.Equal((true, "safe_execution_cap"), (eleventh.RequireConsent, eleventh.Reason));
+        Assert.Equal((CapOutcome.RequireConsent, "safe_execution_cap"), (eleventh.Outcome, eleventh.Reason));
         Assert.All(await SafesAsync(), r => Assert.Equal((SafeApprovalKind.Execute, 0m), (r.Kind, r.ValueEur)));
 
         _tenant.SafeApprovalCaps = """{"approvalsPerHour":1}""";
-        Assert.False((await ReserveAsync(1m, SpendCaps.SafeApprove)).RequireConsent);
-        Assert.True((await ReserveAsync(1m, SpendCaps.SafeApprove)).RequireConsent);
+        Assert.Equal(CapOutcome.Allowed, (await ReserveAsync(1m, SpendCaps.SafeApprove)).Outcome);
+        Assert.Equal(CapOutcome.RequireConsent, (await ReserveAsync(1m, SpendCaps.SafeApprove)).Outcome);
     }
 
     [Fact]
     public async Task Caps_concurrent_safe_approvals_cannot_exceed_the_count_cap()
     {
         var results = await Task.WhenAll(Enumerable.Range(0, 12).Select(_ => Task.Run(() => ReserveAsync(1m, SpendCaps.SafeApprove))));
-        Assert.Equal(5, results.Count(r => !r.RequireConsent));
+        Assert.Equal(5, results.Count(r => r.Outcome == CapOutcome.Allowed));
         Assert.Equal(5, (await SpendsAsync()).Count(r => r.Status == SoftCapStatus.Reserved && r.ValueSource == SpendCaps.SafeApproveReserved));
     }
 
@@ -206,8 +206,8 @@ public sealed class SpendCapsTests : IAsyncLifetime
         await WithCapsAsync(c => c.FinalizeAsync(direct, "1200"));
         await WithCapsAsync(c => c.RecordConsentedAsync(new CapRequest(_tenant, Sub, Guid.NewGuid(), SpendCaps.SafeApprove, null), "700"));
         Assert.Equal(1900m, (await SafesAsync()).Sum(r => r.ValueEur));
-        Assert.True((await ReserveAsync(200m, SpendCaps.SafeApprove)).RequireConsent);
-        Assert.False((await ReserveAsync(100m, SpendCaps.SafeApprove)).RequireConsent);
+        Assert.Equal(CapOutcome.RequireConsent, (await ReserveAsync(200m, SpendCaps.SafeApprove)).Outcome);
+        Assert.Equal(CapOutcome.Allowed, (await ReserveAsync(100m, SpendCaps.SafeApprove)).Outcome);
     }
 
     [Fact]
@@ -273,12 +273,8 @@ public sealed class SpendCapsTests : IAsyncLifetime
 
         _clock.Now = _clock.Now.AddHours(2).AddMinutes(1);
         await WithCapsAsync(c => c.PruneAsync());
-        Assert.Equal(new[] { finalStep }, (await SpendsAsync()).Select(r => r.Id)); // T-061: final rows feed the no-device daily cap
+        Assert.Empty(await SpendsAsync()); // the no-device cap is off here: the old two hours (T-061)
         Assert.Empty(await SafesAsync());
-
-        _clock.Now = _clock.Now.AddHours(23);
-        await WithCapsAsync(c => c.PruneAsync());
-        Assert.Empty(await SpendsAsync());
     }
 
     [Fact]
