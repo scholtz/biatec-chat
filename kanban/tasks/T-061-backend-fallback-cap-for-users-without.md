@@ -1,7 +1,7 @@
 ---
 id: T-061
 title: Backend fallback cap for users without an active device
-status: blocked
+status: backlog
 priority: P3
 epic: "Consent & authenticator"
 blocked_by: [T-025, T-049]
@@ -60,3 +60,4 @@ dotnet test --filter NoDevice
 
 - 2026-10-19 18:00 · coordinator · (new) → blocked · created in task review: rule 4 fallback had no task
 - 2026-10-20 01:09 · LukassSoukup · blocked · parallel analysis: parallel: no, added T-024 and T-035: the above-threshold refusal goes into ConfirmService.cs
+- 2026-10-20 03:29 · kanban-board · blocked → backlog · blockers done: T-025, T-049
