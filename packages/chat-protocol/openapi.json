@@ -144,6 +144,65 @@
         }
       }
     },
+    "/public/origin": {
+      "get": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "GetPublicOrigin",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/public/chat": {
+      "post": {
+        "tags": [
+          "PublicChatEndpoints"
+        ],
+        "operationId": "PostPublicChat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/session/adopt": {
+      "post": {
+        "tags": [
+          "PublicChatEndpoints"
+        ],
+        "operationId": "AdoptPublicConversation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdoptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/auth/popup": {
       "post": {
         "tags": [
@@ -324,6 +383,124 @@
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/chat/previews/{previewId}/cancel": {
+      "post": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "CancelPreview",
+        "parameters": [
+          {
+            "name": "previewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/chat/previews/{previewId}/consent": {
+      "post": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "PollConsent",
+        "parameters": [
+          {
+            "name": "previewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/chat/previews/{previewId}/consent/stream": {
+      "post": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "StreamConsent",
+        "parameters": [
+          {
+            "name": "previewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/chat/previews/{previewId}/consent/prediction": {
+      "get": {
+        "tags": [
+          "Biatec.Chat.Api"
+        ],
+        "operationId": "ConsentPrediction",
+        "parameters": [
+          {
+            "name": "previewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "valueEur",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+              "type": [
+                "number",
+                "string"
+              ],
+              "format": "double"
             }
           }
         ],
@@ -593,6 +770,27 @@
             ]
           },
           "explorerUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "AdoptRequest": {
+        "required": [
+          "conversationId",
+          "continuationToken"
+        ],
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "continuationToken": {
             "type": [
               "null",
               "string"
@@ -1139,6 +1337,45 @@
           }
         }
       },
+      "PublicChatRequest": {
+        "required": [
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "conversationId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "continuationToken": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "context": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HostContext"
+              }
+            ]
+          },
+          "widgetVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "SessionState": {
         "required": [
           "sessionId",
@@ -1261,6 +1498,9 @@
   "tags": [
     {
       "name": "Biatec.Chat.Api"
+    },
+    {
+      "name": "PublicChatEndpoints"
     }
   ]
 }
