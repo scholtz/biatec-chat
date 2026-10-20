@@ -325,8 +325,10 @@ Integrators do not need to implement these, but should know them:
 
 ## Publishing to npm
 
-`.github/workflows/publish-widget.yml` publishes the package on a `chat-widget-v<version>` tag or a manual run with
-`dry_run` unticked, only for a commit on `main` (other refs fail), and dry-runs it on pull requests. It uses npm trusted publishing (GitHub OIDC, no secret); the
+`.github/workflows/publish-widget.yml` publishes the package automatically when a version bump of
+`packages/chat-widget/package.json` is merged to `main` (then tags it `chat-widget-v<version>` and creates a GitHub
+release), and also on a `chat-widget-v<version>` tag or a manual run with `dry_run` unticked, only for a commit on
+`main` (other refs fail) and never for a version already on npm; it dry-runs on pull requests. It uses npm trusted publishing (GitHub OIDC, no secret); the
 GitHub secret **`NPM_TOKEN`**, an environment secret of the **`npm`** environment of scholtz/biatec-chat, is only a
 fallback until the trusted publisher is configured. The secret, who adds it, how to create the token, the one-time
 setup (npm org `biatec`, first manual publish, trusted publisher) and how to cut a release are in
