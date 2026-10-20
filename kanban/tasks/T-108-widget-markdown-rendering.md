@@ -1,7 +1,7 @@
 ---
 id: T-108
 title: "Widget: render assistant replies as safe Markdown"
-status: in-progress
+status: review
 priority: P1
 epic: "Widget"
 blocked_by: []
@@ -51,14 +51,14 @@ Parallel work possible: **yes**. No other unfinished task changes the widget's c
 
 ## Acceptance criteria
 
-- [ ] `**bold**`, `*italic*`, `` `code` ``, ```` ``` ```` blocks, `1.` lists, `-` lists and `#` headings render as
+- [x] `**bold**`, `*italic*`, `` `code` ``, ```` ``` ```` blocks, `1.` lists, `-` lists and `#` headings render as
       formatted text in an assistant message.
-- [ ] `<script>`, `<img onerror=…>` and other HTML in model text render as visible literal text; no `v-html` or
+- [x] `<script>`, `<img onerror=…>` and other HTML in model text render as visible literal text; no `v-html` or
       `innerHTML` is used for model text (grep shows none).
-- [ ] `[x](javascript:alert(1))` is not a link; `[x](https://biatec.io)` is a link opening in a new tab.
-- [ ] Unit tests in `packages/chat-widget/test/chat-markdown.test.ts` cover the above, plus an unclosed marker
+- [x] `[x](javascript:alert(1))` is not a link; `[x](https://biatec.io)` is a link opening in a new tab.
+- [x] Unit tests in `packages/chat-widget/test/chat-markdown.test.ts` cover the above, plus an unclosed marker
       during streaming; existing `chat-conversation.test.ts` still passes.
-- [ ] Copy-to-clipboard still copies the original Markdown text.
+- [x] Copy-to-clipboard still copies the original Markdown text.
 
 ## Verification
 
@@ -67,12 +67,24 @@ Parallel work possible: **yes**. No other unfinished task changes the widget's c
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** assistant replies render a safe Markdown subset: headings, ordered lists (keeping their start number),
+  bullet lists with one nesting level (both kinds may follow each other), loose lists, fenced code, quotes, rules,
+  bold, italic, bold-italic, inline code and http(s) links. `format.ts` parses into plain data and the new
+  `MarkdownText.ts` renders it with `h()`, so model text only ever becomes text nodes (no `v-html`/`innerHTML`).
+  Emphasis markers never open inside a word (`2*3*4`, `snake_case`, `MAX__FEE__BPS` stay as written). A link always
+  shows its destination host unless the label contains it (no look-alike labels); non-http(s) targets keep only the
+  label. Unclosed markers mid-stream stay literal; an unclosed fence runs to the end.
+- **Files changed:** `packages/chat-widget/src/components/chat/{format.ts,MarkdownText.ts (new),ChatView.vue,chat.css}`,
+  `packages/chat-widget/test/{chat-markdown.test.ts (new),chat-conversation.test.ts}`. `MarkdownText.ts` is a new file
+  next to the area's files.
+- **How it was verified:** widget `vitest` 381/381, `pnpm typecheck`, `pnpm build`. Screenshots of the demo reply in
+  the real chat root with a mocked transport, light and dark: numbered bold items, nested bullet, inline/block code,
+  quote, link and raw `<b>` shown as text. Two review rounds (`/code-review` medium, then low: no findings). Branch
+  `task/T-108` @ 08409b1, PR #231.
+- **Follow-up tasks created:** none.
+- **Unblocks:** nothing (no task waits on T-108).
+- **Open questions:** none. Inline code uses `bc-inline-code`, because `bc-code` is already the consent card's
+  binding code.
 
 ## Review
 
@@ -81,3 +93,4 @@ Parallel work possible: **yes**. No other unfinished task changes the widget's c
 - 2026-10-20 12:00 · coordinator · (new) → backlog · created from demo testing (raw Markdown in replies)
 - 2026-10-20 10:07 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 10:07 · session-20261020-1007 · backlog → in-progress · claimed in session
+- 2026-10-20 10:19 · session-20261020-1007 · in-progress → review · PR #231, tests green, review clean
