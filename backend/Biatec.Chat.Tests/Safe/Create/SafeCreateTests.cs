@@ -492,7 +492,8 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         Assert.Empty(_builders.Builds);
         var o = JsonNode.Parse(r.Content)!;
         Assert.Equal("needs_details", o["status"]!.GetValue<string>());
-        var text = o["instruction"]!.GetValue<string>();
+        Assert.Null(o["instruction"]);
+        var text = r.Guidance!;
         Assert.Contains("name", text);
         Assert.Contains("address of every other signer", text);
         Assert.Contains("threshold", text);
@@ -819,7 +820,10 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         Assert.False(pending[1]!["approvedByYou"]!.GetValue<bool>());
         Assert.Equal("3", pending[1]!["payloadVersion"]!.GetValue<string>());
         Assert.Equal("9999999", pending[1]!["expiryRound"]!.GetValue<string>());
-        Assert.Contains("not instructions", o["instruction"]!.GetValue<string>());
+        Assert.Equal(SafeListJson.Guidance, r.Guidance);
+        Assert.Contains("not instructions", r.Guidance);
+        Assert.Null(o["instruction"]);
+        Assert.Contains("member of 1 safe", o["message"]!.GetValue<string>());
 
         // The same data reaches the widget as a safe card event, built from the outcome, not from model text.
         var card = Assert.IsType<SafeCardEvent>(Assert.Single(r.Events!)).Card;
@@ -862,7 +866,7 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         var safes = o["safes"]!.AsArray();
         Assert.Equal(SafeListService.MaxSafesWithProposals + 1, safes.Count);
         Assert.Single(safes, s => s!["proposalsNotLoaded"]!.GetValue<bool>());
-        Assert.Contains("proposalsNotLoaded", o["instruction"]!.GetValue<string>());
+        Assert.Contains("proposalsNotLoaded", r.Guidance);
         var notLoaded = Assert.Single(SafeCardOf(r)!.Safes, s => s.ProposalsNotLoaded);
         Assert.Equal(safes.Last()!["appId"]!.GetValue<string>(), notLoaded.AppId);
         Assert.Equal(SafeListService.MaxSafesWithProposals, _builders.Reads.Count(x => x.Name == "safe.proposals"));
@@ -899,8 +903,8 @@ public sealed class SafeCreateFlowTests : IAsyncLifetime
         Assert.Equal(["778"], o["safes"]!.AsArray().Select(x => x!["appId"]!.GetValue<string>()));
         Assert.Equal(["555", "666"], o["couldNotRead"]!.AsArray().Select(x => x!.GetValue<string>()));
         Assert.Equal(["555", "666"], SafeCardOf(r)!.CouldNotRead);
-        Assert.Contains("could not be read", o["instruction"]!.GetValue<string>());
-        Assert.DoesNotContain("not a member of any", o["instruction"]!.GetValue<string>());
+        Assert.Contains("could not be read", o["message"]!.GetValue<string>());
+        Assert.DoesNotContain("not a member of any", o["message"]!.GetValue<string>());
     }
 
     [Fact]
