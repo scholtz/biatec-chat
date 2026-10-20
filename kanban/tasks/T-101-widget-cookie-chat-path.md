@@ -1,7 +1,7 @@
 ---
 id: T-101
 title: "Bug: widget cookie transport must POST /chat/messages"
-status: in-progress
+status: done
 priority: P0
 epic: "Widget"
 blocked_by: []
@@ -53,6 +53,9 @@ files.
 
 ## Review
 
+- 2026-10-20 07:41 · approve · PR #208 merged into main @ 177bdbb (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-20 07:40 · coordinator · (new) → in-progress · P0 found by the T-100 worker; fixed directly by the coordinator
+- 2026-10-20 07:41 · user · in-progress → done · PR #208 merged into main @ 177bdbb (synced by kanban-sync)
