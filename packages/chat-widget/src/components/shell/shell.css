@@ -1,6 +1,7 @@
 /* Widget shell (T-063): launcher, minimized bar, panel frame per mode, header and status bar.
    Geometry from docs/design/biatec-ai-widget/README.md screens 1 to 3. Tokens only for colour, radius and spacing.
-   Hosts can move the floating widget with --bc-offset-right / --bc-offset-bottom on the host element (default 24 px). */
+   Hosts can move the floating widget with --bc-offset-right / --bc-offset-bottom on the host element (default 24 px),
+   and keep the open floating panel below a fixed top navbar with --bc-offset-top (default 0, T-104). */
 
 :host([data-biatec-chat-inline-host]) {
   display: block;
@@ -120,7 +121,12 @@
   bottom: var(--bc-offset-bottom, var(--space-6));
   z-index: var(--bc-z);
   width: min(420px, calc(100vw - 32px));
-  height: min(700px, calc(100vh - 48px));
+  /* Never above offset-top + 24 px: the space between the bottom offset and the host's top navbar, less a 24 px gap.
+     With both offsets at their defaults this is the T-063 min(700px, 100vh - 48px). */
+  height: min(
+    700px,
+    calc(100vh - var(--bc-offset-top, 0px) - var(--bc-offset-bottom, var(--space-6)) - var(--space-6))
+  );
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-lg);

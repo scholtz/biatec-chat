@@ -133,13 +133,45 @@ describe("shell walk: launcher, panel, minimized bar, workspace", () => {
     expect(rule(".biatec-chat .bc-launcher-wrap")).toMatch(/right: var\(--bc-offset-right, var\(--space-6\)\)/);
     const floating = rule('.biatec-chat .bc-panel[data-mode="floating"]');
     expect(floating).toMatch(/width: min\(420px, calc\(100vw - 32px\)\)/);
-    expect(floating).toMatch(/height: min\(700px, calc\(100vh - 48px\)\)/);
     expect(floating).toMatch(/box-shadow: var\(--shadow-lg\)/);
     expect(rule('.biatec-chat .bc-panel[data-mode="inline"]')).toMatch(/box-shadow: none/);
     expect(css).toMatch(/\.bc-panel\[data-mode="workspace"\],\s*\.biatec-chat \.bc-panel\[data-fullscreen\] \{[^}]*inset: 0/);
     expect(rule(".biatec-chat .bc-minbar")).toMatch(/width: min\(320px, calc\(100vw - 32px\)\)/);
     expect(css).toMatch(/animation: bc-shell-in var\(--motion-slow\)/);
     expect(css).toMatch(/prefers-reduced-motion: reduce\)[^@]*animation: none/);
+  });
+
+  it("floating panel height leaves room for --bc-offset-top and --bc-offset-bottom (T-104)", () => {
+    const floating = rule('.biatec-chat .bc-panel[data-mode="floating"]');
+    const expr = /height: (min\([^;]*\));/.exec(floating)?.[1];
+    expect(expr, "floating height").toBeDefined();
+    // Resolve the declaration the way a browser would for a given viewport height and host variables (all in px).
+    const heightAt = (vh: number, host: Record<string, number>) => {
+      const space6 = 24; // --space-6 in tokens.css
+      let e = expr!.replace(/\s+/g, " ");
+      // Innermost var() first, so a fallback that is itself a var() resolves.
+      for (let guard = 0; /var\(/.test(e) && guard < 10; guard++)
+        e = e.replace(/var\((--[\w-]+)(?:, ([^()]*))?\)/g, (_m, name: string, fb?: string) =>
+          name in host ? `${host[name]}px` : name === "--space-6" ? `${space6}px` : (fb ?? "0px"),
+        );
+      e = e.replace(/100vh/g, `${vh}px`).replace(/(\d+(?:\.\d+)?)px/g, "$1").replace(/calc/g, "");
+      const [a, b] = /^min\((.*?), (.*)\)$/.exec(e)!.slice(1);
+      return Math.min(Number(a), Function(`return (${b});`)() as number);
+    };
+    // Defaults keep the T-063 geometry: min(700px, 100vh - 48px).
+    expect(heightAt(1080, {})).toBe(700);
+    expect(heightAt(600, {})).toBe(552);
+    // Docusaurus at 800 px high: 60 px navbar, launcher lifted 4.5rem above "Back to top".
+    const host = { "--bc-offset-top": 60, "--bc-offset-bottom": 72 };
+    const height = heightAt(800, host);
+    const top = 800 - host["--bc-offset-bottom"] - height;
+    expect(top).toBeGreaterThanOrEqual(host["--bc-offset-top"]);
+    expect(top).toBe(60 + 24);
+    // Without the top offset the old rule (100vh - 48px) would have put the top at 800 - 72 - 700 = 28 px, under the navbar.
+    expect(800 - 72 - Math.min(700, 800 - 48)).toBeLessThan(60);
+    // Inline and workspace / full screen frames are unchanged.
+    expect(rule('.biatec-chat .bc-panel[data-mode="inline"]')).toMatch(/height: min\(700px, calc\(100vh - 48px\)\)/);
+    expect(css).toMatch(/\.bc-panel\[data-fullscreen\] \{[^}]*inset: 0;[^}]*height: 100dvh/);
   });
 
   it("every selector is scoped to the widget root or :host", () => {

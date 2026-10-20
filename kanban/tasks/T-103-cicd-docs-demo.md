@@ -1,7 +1,7 @@
 ---
 id: T-103
 title: "docs/cicd.md: document the demo image and pipeline"
-status: in-progress
+status: done
 priority: P3
 epic: "Deploy & docs"
 blocked_by: []
@@ -38,7 +38,7 @@ files.
 
 ## Acceptance criteria
 
-- [ ] docs/cicd.md covers the demo image, STAGE_URL and the tenant step
+- [x] docs/cicd.md covers the demo image, STAGE_URL and the tenant step
 
 ## Verification
 
@@ -46,10 +46,18 @@ Read against .github/workflows/deploy-stage.yml and deploy.yml.
 
 ## Hand-off
 
+- **Summary:** docs/cicd.md documents the demo image, STAGE_URL, the overlay-driven demo detection, the tenant registration step and the rollout wait; fixed the split Secrets table and the namespace wording. Cross-checked against ci.yml, deploy-stage.yml, deploy.yml, promote-production.yml, apps/demo/Dockerfile, k8s overlays.
+- **Branch:** `task/T-103`, PR #214 (`Closes #212`).
+- **Unblocks:** no task is blocked by T-103.
+
 ## Review
+
+- 2026-10-20 08:02 · approve · PR #214 merged into main @ 9ba9d1f (recorded by kanban-sync)
 
 ## Activity log
 
 - 2026-10-20 07:59 · coordinator · (new) → backlog · proposed by a worker
 - 2026-10-20 07:59 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 07:59 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 08:02 · coordinator · in-progress → review · PR #214
+- 2026-10-20 08:02 · user · review → done · PR #214 merged into main @ 9ba9d1f (synced by kanban-sync)

@@ -1,7 +1,7 @@
 ---
 id: T-104
 title: "Floating panel must not cover the host navbar on short viewports"
-status: in-progress
+status: done
 priority: P3
 epic: "Widget"
 blocked_by: []
@@ -39,7 +39,7 @@ files.
 
 ## Acceptance criteria
 
-- [ ] With --bc-offset-top set, the panel stays below the host navbar at 800 px height (test)
+- [x] With --bc-offset-top set, the panel stays below the host navbar at 800 px height (test)
 
 ## Verification
 
@@ -47,10 +47,20 @@ files.
 
 ## Hand-off
 
+- **Summary:** `--bc-offset-top` host CSS variable bounds the floating panel's height below a host navbar; defaults unchanged; documented in integration-widget.md and the Docusaurus hand-off.
+- **Branch:** `task/T-104`, PR #215 (`Closes #213`).
+- **Verification:** widget tests 357/357 incl. a geometry test; typecheck; demo build.
+- **Decisions:** CSS variable only (like the other offsets); the proposed "typecheck without a prior build" is not needed (CI builds the widget before typecheck).
+- **Unblocks:** no task is blocked by T-104.
+
 ## Review
+
+- 2026-10-20 08:05 · approve · PR #215 merged into main @ 8bae226 (recorded by kanban-sync)
 
 ## Activity log
 
 - 2026-10-20 07:59 · coordinator · (new) → backlog · proposed by a worker
 - 2026-10-20 07:59 · LukassSoukup · taken · status stays backlog
 - 2026-10-20 07:59 · coordinator · backlog → in-progress · dispatched to worker
+- 2026-10-20 08:04 · coordinator · in-progress → review · PR #215
+- 2026-10-20 08:05 · user · review → done · PR #215 merged into main @ 8bae226 (synced by kanban-sync)
