@@ -97,6 +97,8 @@ Round 1 (high): fixed explicit readiness failure in run.sh, softened the unverif
 
 Round 2 (high): fixed the stale ConfigMap comment, a distinct `app.kubernetes.io/name` label, SSE check reports a failed request instead of exiting silently. Declined (repeats): case-insensitive match, ordering depends on ingress-nginx (the leftover DEX objects are removed by the admin; the check pins v1.12.1), HTTP status in fakes, TLS owned by the DEX Ingress (by design, documented).
 
+Round 3 (high): fixed the missing executable bit. Everything else repeats declined items (ordering/`/?`, case-insensitivity, cross-repo TLS ownership, CI wiring of a kind test, prose duplication). Clean after this fix.
+
 ## Activity log
 
 Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>`
