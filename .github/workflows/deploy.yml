@@ -151,7 +151,7 @@ jobs:
           awk -F= '{ k = tolower($1); sub(/^[^=]*=/, ""); print k "=" $0 }' "$RUNNER_TEMP/backend-config.env" \
             | grep '^hosting__mounts__' > "$RUNNER_TEMP/mounts.env" || true
           # Two spellings of one key (Host and HOST) would bind to whichever the backend's providers resolve last.
-          dup="$(cut -d= -f1 "$RUNNER_TEMP/mounts.env" | sort | uniq -d | head -n1)"
+          dup="$(cut -d= -f1 "$RUNNER_TEMP/mounts.env" | sort | uniq -d | awk 'NR==1')"
           [ -z "$dup" ] || { echo "::error::Hosting__Mounts__ key '$dup' is defined twice (keys are case-insensitive)."; exit 1; }
           declare -A seen_ids=() seen_slots=()
           for i in $(sed -n 's/^hosting__mounts__\([0-9][0-9]*\)__.*/\1/p' "$RUNNER_TEMP/mounts.env" | sort -u); do
@@ -159,7 +159,7 @@ jobs:
             slot=$((10#$i))
             [ -z "${seen_slots[$slot]:-}" ] || { echo "::error::Hosting__Mounts__${seen_slots[$slot]} and Hosting__Mounts__${i} are the same list slot."; exit 1; }
             seen_slots[$slot]="$i"
-            get() { sed -n "s/^hosting__mounts__${i}__$1=//p" "$RUNNER_TEMP/mounts.env" | head -n1; }
+            get() { sed -n "s/^hosting__mounts__${i}__$1=//p" "$RUNNER_TEMP/mounts.env" | awk 'NR==1'; }
             host="$(get host)"; prefix="$(get prefix)"; client_key="$(get clientkey)"
             [ -n "$host" ] && [ -n "$prefix" ] && [ -n "$client_key" ] || { echo "::error::Hosting__Mounts__${i} needs Host, Prefix and ClientKey (got host '$host', prefix '$prefix', client key '$client_key')."; exit 1; }
             [[ "$host" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$ ]] && [ "${#host}" -le 253 ] || { echo "::error::Mounted host '$host' is not a lower-case DNS name."; exit 1; }
@@ -250,7 +250,7 @@ jobs:
           indexes="$(sed -n 's/^hosting__mounts__\([0-9][0-9]*\)__host=.*/\1/p' "$RUNNER_TEMP/mounts.env" | sort -un)"
           if [ -z "$indexes" ]; then echo "No mounted hosts in ${{ inputs.overlay }}."; exit 0; fi
           for i in $indexes; do
-            get() { sed -n "s/^hosting__mounts__${i}__$1=//p" "$RUNNER_TEMP/mounts.env" | head -n1; }
+            get() { sed -n "s/^hosting__mounts__${i}__$1=//p" "$RUNNER_TEMP/mounts.env" | awk 'NR==1'; }
             host="$(get host)"; prefix="$(get prefix)"; client_key="$(get clientkey)"
             id="mount-${host//./-}"
             # The mounted tenant is a copy of biatec-chat, which the "Seed tenant biatec-chat" step just before this one creates.
