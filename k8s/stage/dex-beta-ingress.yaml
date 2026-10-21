@@ -1,0 +1,31 @@
+# /chat on the BiatecDEX beta host (https://beta.dex.biatec.io/chat), routed from the chat namespace straight to the backend
+# Service, so ingress-nginx connects to the pod IPs exactly as it does for stage.chat.biatec.io. (An ExternalName Service in the
+# DEX namespace was tried first; on this cluster its upstream timed out after 5 s.) The DEX repo owns the host, its certificate
+# (no tls block and no cert-manager annotation here) and the catch-all; ingress-nginx merges the Ingresses of one host across
+# namespaces. The backend needs the FULL path (it moves the /chat prefix to its path base, Hosting:Mounts), so the rewrite is the
+# identity: a regex path needs a rewrite-target, and the capture group is the whole path. Anchored with $: without it /chatty
+# would match as /chat. The optional trailing "/?" only makes this path string differ from the older DEX-side
+# "/(chat(?:/.*)?)$" (a duplicate path across Ingresses is won by the oldest one, i.e. the broken route) and sort before it:
+# ingress-nginx sorts the locations of a host by path string, descending, and "/" is above "$". It also sorts before the DEX
+# catch-all "/(.*)". All of /chat is forwarded on purpose: the backend answers only the routes the widget uses and 404s the rest.
+# k8s/stage/dex-beta-ingress-test/run.sh checks this against a real ingress-nginx.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: biatec-chat-dex-beta
+  labels: {app.kubernetes.io/name: biatec-chat-dex-beta, app.kubernetes.io/part-of: biatec-chat}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: beta.dex.biatec.io
+      http:
+        paths:
+          - path: /(chat(?:/.*)?)/?$
+            pathType: ImplementationSpecific
+            backend:
+              service: {name: biatec-chat-backend, port: {name: http}}

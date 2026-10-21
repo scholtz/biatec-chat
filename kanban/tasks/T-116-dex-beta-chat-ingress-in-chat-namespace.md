@@ -1,7 +1,7 @@
 ---
 id: T-116
 title: "Route beta.dex.biatec.io/chat with an Ingress in the chat namespace (the ExternalName hop times out)"
-status: in-progress
+status: review
 priority: P1
 epic: "Deploy & docs"
 blocked_by: [T-115]
@@ -84,14 +84,20 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
+- **Summary:** Ingress `biatec-chat-dex-beta` (ns `biatec-chat-stage`, host `beta.dex.biatec.io`, path `/(chat(?:/.*)?)/?$`, identity rewrite) straight to the backend Service; added to the stage overlay only.
+- **Files changed:** `k8s/stage/dex-beta-ingress.yaml`, `k8s/stage/kustomization.yaml`, `k8s/stage/dex-beta-ingress-test/{run.sh,fakes.yaml}`, docs.
+- **How it was verified:** `dex-beta-ingress-test/run.sh` in kind with real ingress-nginx v1.12.1, DEX catch-all and the old broken ExternalName route (older) present: ALL CHECKS PASSED. Stage overlay renders the Ingress, main does not.
 - **Follow-up tasks created:**
 - **Unblocks:**
 - **Open questions:** why the ExternalName hop times out (controller log line for `beta.dex.biatec.io` on the cluster).
 
 ## Review
+
+Round 1 (high): fixed explicit readiness failure in run.sh, softened the unverified-cause wording in docs. Declined: case-insensitive match of `/Chat` (same as the DEX-side rule; no DEX route starts with /chat in any case), `proxy-body-size` (equal to the backend's own host), HTTP status in the fake checks (the fake always answers 200; the test asserts routing), duplicate prose (each doc has a different reader).
+
+Round 2 (high): fixed the stale ConfigMap comment, a distinct `app.kubernetes.io/name` label, SSE check reports a failed request instead of exiting silently. Declined (repeats): case-insensitive match, ordering depends on ingress-nginx (the leftover DEX objects are removed by the admin; the check pins v1.12.1), HTTP status in fakes, TLS owned by the DEX Ingress (by design, documented).
+
+Round 3 (high): fixed the missing executable bit. Everything else repeats declined items (ordering/`/?`, case-insensitivity, cross-repo TLS ownership, CI wiring of a kind test, prose duplication). Clean after this fix.
 
 ## Activity log
 
@@ -99,3 +105,4 @@ Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>
 
 - 2026-10-21 13:20 · scholtz · (new) → backlog · created after the live check of T-115 / BiatecDEX#83: /chat returns 504 after 5 s through the ExternalName hop
 - 2026-10-21 13:25 · scholtz · backlog → in-progress · taken, branch task/T-116, issue #247
+- 2026-10-21 13:50 · scholtz · in-progress → review · PR #248; post-deploy curl check pending the stage deploy
