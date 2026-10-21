@@ -1,7 +1,7 @@
 ---
 id: T-116
 title: "Route beta.dex.biatec.io/chat with an Ingress in the chat namespace (the ExternalName hop times out)"
-status: in-progress
+status: review
 priority: P1
 epic: "Deploy & docs"
 blocked_by: [T-115]
@@ -93,9 +93,12 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
 
 ## Review
 
+Round 1 (high): fixed explicit readiness failure in run.sh, softened the unverified-cause wording in docs. Declined: case-insensitive match of `/Chat` (same as the DEX-side rule; no DEX route starts with /chat in any case), `proxy-body-size` (equal to the backend's own host), HTTP status in the fake checks (the fake always answers 200; the test asserts routing), duplicate prose (each doc has a different reader).
+
 ## Activity log
 
 Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>`
 
 - 2026-10-21 13:20 · scholtz · (new) → backlog · created after the live check of T-115 / BiatecDEX#83: /chat returns 504 after 5 s through the ExternalName hop
 - 2026-10-21 13:25 · scholtz · backlog → in-progress · taken, branch task/T-116, issue #247
+- 2026-10-21 13:50 · scholtz · in-progress → review · PR #248; post-deploy curl check pending the stage deploy

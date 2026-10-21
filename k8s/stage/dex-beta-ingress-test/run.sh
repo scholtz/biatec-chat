@@ -84,6 +84,7 @@ k apply -f "$(native "$WORK/under-test.yaml")" >/dev/null
 # Wait until both routes answer (the controller reloads nginx after the ingresses appear), at most about a minute.
 for attempt in $(seq 1 30); do
   [[ "$(get /)" == DEX-APP* && "$(get /chat/session/probe)" == CHAT-BACKEND* ]] && break
+  [ "$attempt" = 30 ] && { echo "NOT READY: the controller did not route both the DEX app and /chat within a minute (not a routing result)" >&2; exit 2; }
   sleep 2
 done
 
