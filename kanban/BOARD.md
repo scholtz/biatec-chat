@@ -286,4 +286,4 @@ flowchart LR
 
 ## Board warnings
 
-- T-116: invariant 6: done but the last Activity log entry isn't the approval/merge
+none

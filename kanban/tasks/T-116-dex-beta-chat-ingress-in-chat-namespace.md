@@ -101,6 +101,8 @@ Round 3 (high): fixed the missing executable bit. Everything else repeats declin
 
 - 2026-10-21 13:44 · approve · PR #248 merged into main @ 39db698 (recorded by kanban-sync)
 
+Live check after BiatecDEX#86 (HTTPS ExternalName to stage.chat.biatec.io): passed; docs corrected to the two-cluster design in PR #249.
+
 ## Activity log
 
 Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>`
@@ -109,4 +111,3 @@ Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>
 - 2026-10-21 13:25 · scholtz · backlog → in-progress · taken, branch task/T-116, issue #247
 - 2026-10-21 13:50 · scholtz · in-progress → review · PR #248; post-deploy curl check pending the stage deploy
 - 2026-10-21 13:44 · user · review → done · PR #248 merged into main @ 39db698 (synced by kanban-sync)
-- 2026-10-21 14:40 · scholtz · review → review · live check done after BiatecDEX#86; docs corrected to the two-cluster design
