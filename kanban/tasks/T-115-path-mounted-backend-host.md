@@ -100,8 +100,8 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
 
 ## Acceptance criteria
 
-- [x] With `Hosting:Mounts = [{Host: beta.dex.biatec.io, Prefix: /chat}]`, `GET /chat/health` and `POST /chat/chat/messages` on that
-      host reach the same endpoints as `/health` and `/chat/messages` on an unmounted host (test).
+- [x] With `Hosting:Mounts = [{Host: beta.dex.biatec.io, Prefix: /chat}]`, `GET /chat/session/probe` and `POST /chat/chat/messages` on that
+      host reach the same endpoints as `/session/probe` and `/chat/messages` on an unmounted host (test); `/health` and `/chat/health` are a 404 there.
 - [x] On a mounted host a path without the prefix is a 404, and `X-Forwarded-Prefix`/`X-Forwarded-Host` change nothing (test).
 - [x] On an unmounted host, including one whose path starts with `/chat/`, nothing changes (test).
 - [x] The popup `LoginUrl`, the elevation URL and the sign-in/limits card URLs contain the prefix for the mounted tenant and are
@@ -122,7 +122,7 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
   scheme, port or path (`TenantHost.Normalize` is the single parser). Compare the prefix case-insensitively like
   `PathString.StartsWithSegments`.
 - The middleware runs before `UseTenancy` and after `UseClientAddress`; `PathBase` is appended to any existing one.
-- Health probes address the pod by IP, so they never match a mounted host and keep working on `/health`.
+- Health probes address the pod by IP, so they never match a mounted host and keep working on `/health`; behind a mount `/health` is a 404.
 - Cookie attributes stay as they are (`__Host-`, `Path=/`).
 - The deploy step reads `Hosting__Mounts__N__*` from the rendered ConfigMap `biatec-chat-backend` (yq, as the demo step
   does) so the overlay is the single source.
@@ -131,7 +131,7 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
 
 `dotnet test backend/Biatec.Chat.slnx --filter FullyQualifiedName~Hosting`, `pnpm --filter @biatec/chat-widget test`,
 `kubectl kustomize k8s/stage`, CI green, then after the BiatecDEX change:
-`curl -i https://beta.dex.biatec.io/chat/health` (200) and `curl -i https://beta.dex.biatec.io/chat/chat/messages` (not the DEX app).
+`curl -i https://beta.dex.biatec.io/chat/session/probe` (200 and the cookie) and `curl -i https://beta.dex.biatec.io/chat/chat/messages` (not the DEX app).
 
 ## Hand-off
 
@@ -172,3 +172,4 @@ Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>
 - 2026-10-21 11:55 · session-20261021-claude · review → review · code review round 4: the redirect-URI check is exact (Ordinal, as Biatec OIDC) and also gates /auth/login, /auth/elevate and the sign-in/limits cards, a mounted tenant starts with limits updates, x402 and the trust-anchor flag off, reserved prefixes /health and /onboarding are rejected (backend and deploy, with a test that keeps the bash and C# patterns in step), the deploy finds the ConfigMap by name, the telemetry filter resolves the mounts once, request overloads shorten the call sites; declined: the claim that the biatec-chat row may not exist yet (the deploy seeds it in an earlier step) and SignInPageUrl being rewritten (documented overlay-owned)
 - 2026-10-21 12:20 · session-20261021-claude · review → review · code review round 5: the mount prefix is matched exactly (ordinal), the redirect-URI check compares the stored path instead of a rebuilt string (a default port or host case is fine), the deploy reads mount keys case-insensitively and requires Host, Prefix and ClientKey of every entry and names a tenant that already owns the host, one SignInBase helper for the cards, BackendUrls.Origin, the probe paths are precomputed once; declined: a single shared validator for C# and bash (a test keeps the two in step)
 - 2026-10-21 12:50 · session-20261021-claude · review → review · code review round 6: the redirect-URI check also needs the tenant's own host and no dot segments; the tracing probe filter is a DI singleton wired through the AspNetCore options (tested through the real wiring), matches the prefix exactly and what follows like routing; an end-to-end chat test pins the prefixed sign-in card (a forgotten PathBase would fail open); the consistency check runs once per tenant row; the upsert keeps onboarding's 10 origins / 20 keys; declined: hiding /chat/health on the mounted host (status-only body, same as the chat host, and the post-deploy check uses it) and one shared validator for C# and bash
+- 2026-10-21 13:15 · session-20261021-claude · review → review · code review round 7: the mount/redirect-URI refusal lives in one place (the tenant middleware: popup, login, elevate; not the callback or logout) instead of six endpoints; `/health` is a 404 behind a mount (probes use the pod's address), which also reverts all telemetry changes (TelemetryRegistration is identical to main); declined again: threading PathBase (pinned by an end-to-end test), a shared C#/bash validator, multi-line ConfigMap values (the values are re-validated by the same patterns)

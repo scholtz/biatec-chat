@@ -41,7 +41,6 @@ public static class AuthEndpoints
         {
             Harden(ctx);
             var tenant = ctx.GetTenant()!;
-            if (!MountConsistency.IsConsistent(tenant, ctx.Request)) return MountConsistency.Misconfigured();
             var now = clock.GetUtcNow();
             var handle = await sessions.ResolveOrCreateAsync(tenant, SessionEndpoints.ReadCookie(ctx.Request), ctx.RequestAborted);
             if (handle.NewToken is not null) SessionEndpoints.WriteCookie(ctx.Response, handle.NewToken, handle.Session.AbsoluteExpiresAt, now);
@@ -79,7 +78,6 @@ public static class AuthEndpoints
             Harden(ctx);
             var tenant = ctx.GetTenant()!;
             if (!NavigationAllowed(ctx.Request)) return Results.StatusCode(StatusCodes.Status403Forbidden);
-            if (!MountConsistency.IsConsistent(tenant, ctx.Request)) return ClosePage(ctx, 503);
             var now = clock.GetUtcNow();
             var session = await FindLiveAsync(db, tenant, SessionEndpoints.ReadCookie(ctx.Request), now, ctx.RequestAborted);
             var nonce = ctx.Request.Query["nonce"].ToString();

@@ -5,8 +5,8 @@ namespace Biatec.Chat.Api.Hosting;
 /// <summary>
 /// The OIDC redirect URI is the exact stored value and Biatec OIDC matches it exactly, so the tenant of a mounted host
 /// must say <c>https://host/chat/auth/callback</c>, byte for byte. One that says otherwise would send the sign-in callback
-/// to the wrong application, so the sign-in and elevation flow is refused for it (503) instead of failing later in the
-/// popup, and it is logged once.
+/// to the wrong application, so <see cref="Tenancy.TenantMiddleware"/> refuses the sign-in and elevation flow for it (503)
+/// instead of letting it fail later in the popup, and logs it once; the sign-in cards fall back to the sign-in page.
 /// </summary>
 public static class MountConsistency
 {

@@ -132,13 +132,16 @@ public sealed class HostMountTests : IDisposable
         Assert.Equal("/chat|/messages|mount-beta-dex-biatec-io", prefixOnly.Body);
     }
 
-    [Fact]
-    public async Task MountedHost_ServesHealthUnderThePrefix()
+    [Theory]
+    [InlineData("/chat/health")]
+    [InlineData("/chat/health/live")]
+    [InlineData("/chat/HEALTH")]
+    public async Task MountedHost_DoesNotServeTheDependencyProbes(string path)
     {
-        var (status, body) = await SendAsync(HttpMethod.Get, MountedHost, "/chat/health/live");
-
-        Assert.Equal(HttpStatusCode.OK, status);
-        Assert.Equal("Healthy", body);
+        // Probes address the pod by IP; the partner site's origin carries the widget only.
+        Assert.Equal(HttpStatusCode.NotFound, (await SendAsync(HttpMethod.Get, MountedHost, path)).Status);
+        // They are untouched on the chat host.
+        Assert.Equal("Healthy", (await SendAsync(HttpMethod.Get, "chat.biatec.io", "/health/live")).Body);
     }
 
     [Theory]
@@ -148,7 +151,6 @@ public sealed class HostMountTests : IDisposable
     [InlineData("/chatty/zzz")]
     [InlineData("/chat-x")]
     [InlineData("/CHAT/zzz")]
-    [InlineData("/Chat/health/live")]
     [InlineData("/auth/callback")]
     public async Task MountedHost_WithoutThePrefix_IsNotFound(string path)
     {
@@ -200,7 +202,31 @@ public sealed class HostMountTests : IDisposable
     public async Task SignInStart_IsRefusedWith503_ForARedirectUriThatDiffersOnlyInCase(string path) =>
         await AssertRefusedAsync(path, MountedOrigin + "/Chat/auth/callback"); // Biatec OIDC matches the redirect URI exactly
 
-    private async Task AssertRefusedAsync(string path, string redirectUri)
+    [Theory]
+    [InlineData("/chat/auth/login?req=x&nonce=y")]
+    [InlineData("/chat/auth/elevate?req=x&nonce=y&scope=sign")]
+    [InlineData("/chat/auth/popup/00000000-0000-0000-0000-000000000000")]
+    public async Task SignInNavigations_AreRefusedWith503_InOnePlace_ForAMisconfiguredMountedTenant(string path) =>
+        await AssertRefusedAsync(path, MountedOrigin + "/auth/callback", HttpMethod.Get);
+
+    [Fact]
+    public async Task TheOidcCallbackAndLogout_AreNotPartOfTheRefusedFlow()
+    {
+        var wrong = MountedTenant();
+        wrong.RedirectUri = MountedOrigin + "/auth/callback";
+        using var factory = _factory.WithWebHostBuilder(b => b.ConfigureServices(s =>
+        {
+            s.RemoveAll<ITenantStore>();
+            s.AddSingleton<ITenantStore>(new MemoryTenantStore(wrong, TenantSeed.BiatecChat()));
+        }));
+        using var client = factory.CreateClient();
+
+        var callback = await client.GetAsync($"http://{MountedHost}/chat/auth/callback?code=x&state=y");
+
+        Assert.NotEqual(HttpStatusCode.ServiceUnavailable, callback.StatusCode);
+    }
+
+    private async Task AssertRefusedAsync(string path, string redirectUri, HttpMethod? method = null)
     {
         var wrong = MountedTenant();
         wrong.RedirectUri = redirectUri;
@@ -210,7 +236,7 @@ public sealed class HostMountTests : IDisposable
             s.AddSingleton<ITenantStore>(new MemoryTenantStore(wrong, TenantSeed.BiatecChat()));
         }));
         using var client = factory.CreateClient();
-        var r = new HttpRequestMessage(HttpMethod.Post, $"http://{MountedHost}{path}");
+        var r = new HttpRequestMessage(method ?? HttpMethod.Post, $"http://{MountedHost}{path}");
         r.Headers.TryAddWithoutValidation("Origin", MountedOrigin);
         r.Headers.TryAddWithoutValidation("X-Biatec-Chat", "1");
         r.Headers.TryAddWithoutValidation("X-Biatec-Client-Key", "biatec-dex");
@@ -495,66 +521,6 @@ public sealed class HostMountTests : IDisposable
 
         Assert.Null(BackendUrls.TryBase(tenant, "/chat"));
         Assert.Throws<UriFormatException>(() => BackendUrls.Base(tenant, "/chat"));
-    }
-
-    private static Biatec.Chat.Api.Telemetry.TelemetryRegistration.ProbeFilter Probes(params HostMountOptions[] mounts) =>
-        new(Options.Create(new HostingOptions { Mounts = [.. mounts] }));
-
-    private static HostMountOptions ChatMount => new() { Host = MountedHost, Prefix = "/chat" };
-
-    [Theory]
-    [InlineData(MountedHost, "/health", true)]
-    [InlineData(MountedHost, "/health/live", true)]
-    [InlineData(MountedHost, "/chat/health", true)]
-    [InlineData(MountedHost, "/chat/health/live", true)]
-    [InlineData(MountedHost, "/chat/HEALTH", true)] // what follows the prefix is matched like routing does
-    [InlineData("chat.biatec.io", "/health", true)]
-    [InlineData(MountedHost, "/CHAT/health", false)] // the prefix is matched exactly, as the mount does (so it is a 404 anyway)
-    [InlineData(MountedHost, "/chat/chat/messages", false)]
-    [InlineData(MountedHost, "/healthy", false)]
-    [InlineData(MountedHost, "/chat/healthcare", false)]
-    // Only the mount prefix of the request's own host counts, so a caller cannot hide a request from tracing by appending /health.
-    [InlineData(MountedHost, "/public/health", false)]
-    [InlineData(MountedHost, "/onboarding/health", false)]
-    [InlineData(MountedHost, "/other/health", false)]
-    [InlineData("chat.biatec.io", "/chat/health", false)]
-    [InlineData(null, "/chat/health", false)]
-    [InlineData(MountedHost, "/", false)]
-    public void Telemetry_DoesNotTraceProbes_OnlyBehindTheMountOfTheRequestsOwnHost(string? host, string path, bool probe) =>
-        Assert.Equal(probe, Probes(ChatMount).IsProbe(path, host));
-
-    [Fact]
-    public void Telemetry_WithoutMounts_OnlyTheBareProbePathCounts()
-    {
-        Assert.True(Probes().IsProbe("/health", MountedHost));
-        Assert.False(Probes().IsProbe("/chat/health", MountedHost));
-    }
-
-    [Fact]
-    public void Telemetry_TheFilterThatRunsIsTheOneBuiltFromTheValidatedMounts()
-    {
-        // Through the real wiring: OpenTelemetry reads its AspNetCore options from DI, where the probe filter is configured.
-        using var factory = _factory.WithWebHostBuilder(b =>
-        {
-            b.UseSetting("Telemetry:Enabled", "true");
-            b.UseSetting("Telemetry:Exporter", "None");
-        });
-        var filter = factory.Services.GetRequiredService<IOptionsMonitor<OpenTelemetry.Instrumentation.AspNetCore.AspNetCoreTraceInstrumentationOptions>>()
-            .Get(Options.DefaultName).Filter;
-        Assert.NotNull(filter);
-
-        bool Traced(string host, string path)
-        {
-            var ctx = new DefaultHttpContext();
-            ctx.Request.Host = new HostString(host);
-            ctx.Request.Path = path;
-            return filter!(ctx);
-        }
-
-        Assert.False(Traced(MountedHost, "/chat/health"));
-        Assert.False(Traced("chat.biatec.io", "/health/live"));
-        Assert.True(Traced(MountedHost, "/chat/chat/messages"));
-        Assert.True(Traced("chat.biatec.io", "/chat/health"));
     }
 
     [Theory]

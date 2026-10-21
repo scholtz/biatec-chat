@@ -39,7 +39,6 @@ public static class ElevationEndpoints
         {
             Harden(ctx);
             var tenant = ctx.GetTenant()!;
-            if (!MountConsistency.IsConsistent(tenant, ctx.Request)) return MountConsistency.Misconfigured();
             var now = clock.GetUtcNow();
             var scope = body?.Scope;
             if (!ElevationScopes.IsAllowed(scope))
@@ -81,7 +80,6 @@ public static class ElevationEndpoints
             Harden(ctx);
             var tenant = ctx.GetTenant()!;
             if (!AuthEndpoints.NavigationAllowed(ctx.Request)) return Results.StatusCode(StatusCodes.Status403Forbidden);
-            if (!MountConsistency.IsConsistent(tenant, ctx.Request)) return AuthEndpoints.ClosePage(ctx, 503);
             var scope = ctx.Request.Query["scope"].ToString();
             if (!ElevationScopes.IsAllowed(scope)) return AuthEndpoints.ClosePage(ctx, 400); // checked before anything is consumed
             var now = clock.GetUtcNow();

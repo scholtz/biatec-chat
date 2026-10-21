@@ -3,7 +3,6 @@ using Biatec.Chat.Api.Chat.SignIn;
 using Biatec.Chat.Api.Orchestration;
 using Biatec.Chat.Core.Capabilities;
 using Biatec.Chat.Core.Evidence;
-using Microsoft.Extensions.Options;
 using OpenTelemetry;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
@@ -14,26 +13,6 @@ namespace Biatec.Chat.Api.Telemetry;
 
 public static class TelemetryRegistration
 {
-    /// <summary>
-    /// Probe requests are not traced. The filter sees the path as the client sent it, before a host mount moves its prefix
-    /// into PathBase, so <c>/health</c> also counts behind the mount prefix of that very host (<c>/chat/health</c> on the
-    /// mounted host), and nothing else. The prefix is matched exactly, as the mount does, and what follows it like routing
-    /// does (case-insensitive), so the filter and the route agree.
-    /// </summary>
-    public sealed class ProbeFilter(IOptions<Hosting.HostingOptions> options)
-    {
-        private readonly Dictionary<string, PathString> _mounts = options.Value.Mounts.ToDictionary(m => m.Host, m => new PathString(m.Prefix), StringComparer.Ordinal);
-
-        public bool IsProbe(PathString path, string? host) =>
-            path.StartsWithSegments("/health")
-            || (host is not null && _mounts.TryGetValue(host, out var prefix)
-                && path.StartsWithSegments(prefix, StringComparison.Ordinal, out var rest) && rest.StartsWithSegments("/health"));
-
-        /// <summary>The OpenTelemetry filter: true when the request should be traced.</summary>
-        public bool IsTraced(HttpContext ctx) =>
-            !ctx.Request.Path.StartsWithSegments("/health") && !IsProbe(ctx.Request.Path, Tenancy.TenantHost.Normalize(ctx.Request.Host));
-    }
-
     /// <summary>
     /// OpenTelemetry traces (incoming requests, every outbound HTTP call: Biatec MCP, Biatec OIDC, algod, the
     /// builders; AWS SDK calls: Bedrock, KMS; PostgreSQL) and metrics (ASP.NET Core, HttpClient, AWS SDK and
@@ -51,13 +30,10 @@ public static class TelemetryRegistration
         Decorate<IToolExecutor>(services, d => d.ImplementationType == typeof(RequestSignInExecutor),
             (sp, inner) => new MeteringSignInExecutor(inner, sp.GetRequiredService<ChatMetrics>()), all: true);
 
-        services.AddSingleton<ProbeFilter>();
-        services.AddOptions<OpenTelemetry.Instrumentation.AspNetCore.AspNetCoreTraceInstrumentationOptions>()
-            .Configure<ProbeFilter>((o, probes) => o.Filter = probes.IsTraced);
         var otel = services.AddOpenTelemetry()
             .ConfigureResource(r => r.AddService(o.ServiceName))
             .WithTracing(t => t
-                .AddAspNetCoreInstrumentation()
+                .AddAspNetCoreInstrumentation(a => a.Filter = ctx => !ctx.Request.Path.StartsWithSegments("/health"))
                 .AddHttpClientInstrumentation()
                 .AddAWSInstrumentation()
                 .AddSource("Npgsql")
