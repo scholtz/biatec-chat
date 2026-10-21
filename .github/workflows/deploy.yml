@@ -143,9 +143,15 @@ jobs:
             || { echo "::error::ConfigMap biatec-chat-backend was not found in the rendered ${OVERLAY}."; exit 1; }
           yq -r 'select(.kind == "ConfigMap" and .metadata.name == "biatec-chat-backend") | .data | to_entries | .[] | .key + "=" + (.value | tostring)' \
             "$RUNNER_TEMP/rendered.yaml" > "$RUNNER_TEMP/backend-config.env"
+          # A value of a mount key that spans lines would be cut at the first line here and rejected by the backend at startup.
+          awk '/^[A-Za-z0-9_.-]+=/ { cur = tolower($0); sub(/=.*/, "", cur); next } cur ~ /^hosting__mounts__/ { bad = 1 } END { exit bad }' "$RUNNER_TEMP/backend-config.env" \
+            || { echo "::error::A Hosting__Mounts__ value in the ConfigMap spans several lines."; exit 1; }
           # .NET configuration keys are case-insensitive, so are these; an entry is any index that has any Hosting__Mounts__N__ key.
           awk -F= '{ k = tolower($1); sub(/^[^=]*=/, ""); print k "=" $0 }' "$RUNNER_TEMP/backend-config.env" \
             | grep '^hosting__mounts__' > "$RUNNER_TEMP/mounts.env" || true
+          # Two spellings of one key (Host and HOST) would bind to whichever the backend's providers resolve last.
+          dup="$(cut -d= -f1 "$RUNNER_TEMP/mounts.env" | sort | uniq -d | head -n1)"
+          [ -z "$dup" ] || { echo "::error::Hosting__Mounts__ key '$dup' is defined twice (keys are case-insensitive)."; exit 1; }
           declare -A seen_ids=()
           for i in $(sed -n 's/^hosting__mounts__\([0-9][0-9]*\)__.*/\1/p' "$RUNNER_TEMP/mounts.env" | sort -un); do
             get() { sed -n "s/^hosting__mounts__${i}__$1=//p" "$RUNNER_TEMP/mounts.env" | head -n1; }
@@ -242,12 +248,13 @@ jobs:
             host="$(get host)"; prefix="$(get prefix)"; client_key="$(get clientkey)"
             id="mount-${host//./-}"
             # Another tenant (onboarded, or made by hand) may already own the host: say so instead of a raw unique violation.
+            # The same goes for a tenant that already has the derived id for another host: the upsert would take it over.
             owner="$(kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
               psql -qtA -v ON_ERROR_STOP=1 -U biatec -d biatec_chat -v id="$id" -v host="$host" <<'SQL'
-          SELECT "Id" FROM "Tenants" WHERE "Host" = :'host' AND "Id" <> :'id';
+          SELECT "Id" || ' (host ' || "Host" || ')' FROM "Tenants" WHERE ("Host" = :'host' AND "Id" <> :'id') OR ("Id" = :'id' AND "Host" <> :'host');
           SQL
             )"
-            [ -z "$owner" ] || { echo "::error::$host already belongs to tenant '$owner'; the mount would be tenant $id. Remove one of them."; exit 1; }
+            [ -z "$owner" ] || { echo "::error::Tenant $owner conflicts with the mount of $host (tenant id $id). Remove or rename one of them."; exit 1; }
             ok="$(kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
               psql -qtA -v ON_ERROR_STOP=1 -U biatec -d biatec_chat \
                 -v id="$id" -v host="$host" -v origin="https://$host" -v redirect="https://$host$prefix/auth/callback" -v client_key="$client_key" <<'SQL'

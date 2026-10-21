@@ -18,9 +18,9 @@ public static class TenantHttpContextExtensions
 /// </summary>
 public sealed class TenantMiddleware(RequestDelegate next, ITenantStore store, ILogger<TenantMiddleware> log)
 {
-    // The verdict per tenant, redirect URI and mount, so a request does not parse the URI again; a corrected tenant row has
-    // another redirect URI and is checked (and logged) anew.
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _consistent = new(StringComparer.Ordinal);
+    // The verdict per tenant instance. The store hands out a new instance when it reloads a row, so a corrected row is
+    // checked (and logged) anew and nothing outlives its tenant; Lazy makes the check, and its log line, run once.
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<Biatec.Chat.Core.Data.Tenant, Lazy<bool>> _consistent = new();
 
     public async Task InvokeAsync(HttpContext ctx)
     {
@@ -55,15 +55,21 @@ public sealed class TenantMiddleware(RequestDelegate next, ITenantStore store, I
     private bool MountIsConsistent(HttpContext ctx, Biatec.Chat.Core.Data.Tenant tenant)
     {
         var mount = ctx.Request.PathBase.Value ?? "";
-        if (mount.Length == 0) return true;
-        return _consistent.GetOrAdd($"{tenant.Id}|{tenant.Host}|{tenant.RedirectUri}|{mount}", _ =>
+        return _consistent.GetValue(tenant, t => new Lazy<bool>(() =>
         {
-            var ok = Hosting.MountConsistency.IsConsistent(tenant, mount);
-            if (!ok)
-                log.LogError("Tenant {TenantId} is served under the mount {Mount} but its redirect URI is {RedirectUri}, not {Expected}: sign-in is refused for it until the tenant row is corrected.",
-                    tenant.Id, mount, tenant.RedirectUri, Hosting.MountConsistency.Expected(tenant, mount));
-            return ok;
-        });
+            if (Hosting.MountConsistency.IsConsistent(t, mount))
+            {
+                // The other direction is only logged: a tenant whose redirect URI carries a prefix on a host that has no mount
+                // keeps the URLs it always had, but it is almost certainly a mount that was removed from the overlay.
+                if (mount.Length == 0 && Hosting.MountConsistency.CarriesAPrefix(t))
+                    log.LogError("Tenant {TenantId} has the redirect URI {RedirectUri}, which carries a path prefix, but host {Host} is not mounted (Hosting:Mounts): its popup URLs have no prefix.",
+                        t.Id, t.RedirectUri, t.Host);
+                return true;
+            }
+            log.LogError("Tenant {TenantId} is served under the mount {Mount} but its redirect URI is {RedirectUri}, not {Expected}: sign-in is refused for it until the tenant row is corrected.",
+                t.Id, mount, t.RedirectUri, Hosting.MountConsistency.Expected(t, mount));
+            return false;
+        })).Value;
     }
 
     /// <summary>The popup start and the popup navigations of sign-in and elevation; the OIDC callback and logout are not part of it.</summary>

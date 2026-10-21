@@ -30,6 +30,11 @@ public static class MountConsistency
         return afterScheme >= 3 && authority.IndexOf('/', afterScheme) < 0;
     }
 
+    /// <summary>True when the stored redirect URI has a path in front of <c>/auth/callback</c> (it was written for a mount).</summary>
+    public static bool CarriesAPrefix(Tenant tenant) =>
+        Uri.TryCreate(tenant.RedirectUri, UriKind.Absolute, out var uri)
+        && uri.AbsolutePath.EndsWith("/auth/callback", StringComparison.OrdinalIgnoreCase) && uri.AbsolutePath.Length > "/auth/callback".Length;
+
     /// <summary>The base URL for popup and card links, or null when the tenant is not usable for sign-in on this host.</summary>
     public static string? SignInBase(Tenant tenant, string pathBase) =>
         IsConsistent(tenant, pathBase) ? BackendUrls.TryBase(tenant, pathBase) : null;

@@ -347,6 +347,26 @@ public sealed class HostMountTests : IDisposable
     }
 
     [Fact]
+    public async Task AnUnmountedHostWhoseTenantHasAPrefixedRedirectUri_IsLogged_ButStillServed()
+    {
+        // Almost certainly a mount that was removed from the overlay: logged once, nothing is refused.
+        var logs = new CapturingLoggerProvider();
+        var stale = TenantSeed.BiatecChat();
+        stale.RedirectUri = "https://chat.biatec.io/chat/auth/callback";
+        using var factory = _factory.WithWebHostBuilder(b =>
+        {
+            b.ConfigureLogging(l => l.AddProvider(logs));
+            b.ConfigureServices(s => { s.RemoveAll<ITenantStore>(); s.AddSingleton<ITenantStore>(new MemoryTenantStore(stale)); });
+        });
+        using var client = factory.CreateClient();
+
+        for (var i = 0; i < 3; i++)
+            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("http://chat.biatec.io/zzz")).StatusCode);
+
+        Assert.Single(logs.Errors, e => e.Contains("is not mounted"));
+    }
+
+    [Fact]
     public async Task ATenantWhoseRedirectUriCarriesThePrefix_DoesNotWarn()
     {
         var logs = new CapturingLoggerProvider();
