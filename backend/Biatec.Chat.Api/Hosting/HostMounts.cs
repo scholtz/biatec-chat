@@ -31,11 +31,18 @@ public sealed class HostingOptions
 /// <summary>Startup validation: a wrong mount stops the app with a message naming the option.</summary>
 public sealed partial class HostingOptionsValidator : IValidateOptions<HostingOptions>
 {
-    // \z, not $: in .NET $ also matches before a trailing newline, which a multi-line config value could carry.
-    [GeneratedRegex("^(/[A-Za-z0-9._~-]+)+\\z")]
+    // \z, not $: in .NET $ also matches before a trailing newline, which a multi-line config value could carry. The deploy
+    // checks the overlay with the same patterns written for bash (with $); a test keeps the two in step.
+    public const string PrefixRegex = "^(/[A-Za-z0-9._~-]+)+\\z";
+    public const string HostRegex = "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\\z";
+
+    /// <summary>First path segments the backend gives a meaning of its own; a mount named like one would only confuse.</summary>
+    public static readonly string[] ReservedFirstSegments = ["health", "onboarding"];
+
+    [GeneratedRegex(PrefixRegex)]
     private static partial Regex PrefixPattern();
 
-    [GeneratedRegex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\\z")]
+    [GeneratedRegex(HostRegex)]
     private static partial Regex HostPattern();
 
     public ValidateOptionsResult Validate(string? name, HostingOptions options)
@@ -52,6 +59,8 @@ public sealed partial class HostingOptionsValidator : IValidateOptions<HostingOp
                 failures.Add($"{at}:Host '{m.Host}' is mounted twice.");
             if (!PrefixPattern().IsMatch(m.Prefix) || m.Prefix.Split('/').Any(s => s is "." or ".."))
                 failures.Add($"{at}:Prefix must be one or more path segments such as /chat, without a trailing slash (got '{m.Prefix}').");
+            else if (ReservedFirstSegments.Contains(m.Prefix.Split('/')[1], StringComparer.OrdinalIgnoreCase))
+                failures.Add($"{at}:Prefix must not start with /{m.Prefix.Split('/')[1]}: the backend gives that path a meaning of its own (got '{m.Prefix}').");
         }
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }

@@ -190,10 +190,19 @@ public sealed class HostMountTests : IDisposable
     [Theory]
     [InlineData("/chat/auth/popup")]
     [InlineData("/chat/auth/elevate/popup")]
-    public async Task SignInStart_IsRefusedWith503_ForAMountedTenantWhoseRedirectUriMissesThePrefix(string path)
+    public async Task SignInStart_IsRefusedWith503_ForAMountedTenantWhoseRedirectUriMissesThePrefix(string path) =>
+        await AssertRefusedAsync(path, MountedOrigin + "/auth/callback"); // no /chat
+
+    [Theory]
+    [InlineData("/chat/auth/popup")]
+    [InlineData("/chat/auth/elevate/popup")]
+    public async Task SignInStart_IsRefusedWith503_ForARedirectUriThatDiffersOnlyInCase(string path) =>
+        await AssertRefusedAsync(path, MountedOrigin + "/Chat/auth/callback"); // Biatec OIDC matches the redirect URI exactly
+
+    private async Task AssertRefusedAsync(string path, string redirectUri)
     {
         var wrong = MountedTenant();
-        wrong.RedirectUri = MountedOrigin + "/auth/callback"; // no /chat
+        wrong.RedirectUri = redirectUri;
         using var factory = _factory.WithWebHostBuilder(b => b.ConfigureServices(s =>
         {
             s.RemoveAll<ITenantStore>();
@@ -381,6 +390,37 @@ public sealed class HostMountTests : IDisposable
         }).Build().GetSection("Hosting").Bind(options);
 
         Assert.True(new HostingOptionsValidator().Validate(null, options).Succeeded);
+    }
+
+    [Theory]
+    [InlineData("/health")]
+    [InlineData("/Health/x")]
+    [InlineData("/onboarding")]
+    [InlineData("/ONBOARDING/chat")]
+    public void Validator_RejectsAPrefixThatStartsWithAPathTheBackendOwns(string prefix) =>
+        Assert.Contains(Validate(Mount("beta.dex.biatec.io", prefix)).Failures!, f => f.StartsWith("Hosting:Mounts:0:Prefix"));
+
+    [Theory]
+    [InlineData("/chat")]
+    [InlineData("/auth")]
+    [InlineData("/session")]
+    [InlineData("/healthy")]
+    [InlineData("/x/health")]
+    public void Validator_AcceptsOtherPrefixes(string prefix) => Assert.True(Validate(Mount("beta.dex.biatec.io", prefix)).Succeeded);
+
+    [Fact]
+    public void TheDeploysBashChecks_UseTheSamePatternsAsTheBackendsStartupValidation()
+    {
+        // The deploy refuses a bad overlay before applying it, with these patterns written for bash ($ for \z). If they drift
+        // apart the deploy accepts what the backend rejects at startup (a crash loop) or the other way round.
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, ".github", "workflows", "deploy.yml"))) dir = dir.Parent;
+        var workflow = File.ReadAllText(Path.Combine(dir!.FullName, ".github", "workflows", "deploy.yml"));
+
+        Assert.Contains("[[ \"$host\" =~ " + HostingOptionsValidator.HostRegex.Replace("\\z", "$") + " ]]", workflow);
+        Assert.Contains("[[ \"$prefix\" =~ " + HostingOptionsValidator.PrefixRegex.Replace("\\z", "$") + " ]]", workflow);
+        Assert.Contains("(^|/)\\.\\.?(/|$)", workflow); // the "." and ".." segments the validator rejects
+        Assert.Contains("[[ \"${prefix,,}\" =~ ^/(" + string.Join("|", HostingOptionsValidator.ReservedFirstSegments) + ")(/|$) ]]", workflow);
     }
 
     [Fact]

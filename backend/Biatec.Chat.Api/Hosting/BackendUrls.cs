@@ -15,6 +15,9 @@ public static class BackendUrls
     public static string Base(Tenant tenant, string pathBase = "") =>
         TryBase(tenant, pathBase) ?? throw new UriFormatException($"Tenant {tenant.Id} has no valid redirect URI.");
 
+    /// <summary>The base for the request's own host: its path base is the mount, empty when the host is not mounted.</summary>
+    public static string Base(Tenant tenant, HttpRequest request) => Base(tenant, request.PathBase.Value ?? "");
+
     /// <summary>Null when the tenant has no absolute redirect URI.</summary>
     public static string? TryBase(Tenant tenant, string pathBase = "") =>
         Uri.TryCreate(tenant.RedirectUri, UriKind.Absolute, out var uri) ? uri.GetLeftPart(UriPartial.Authority) + pathBase.TrimEnd('/') : null;

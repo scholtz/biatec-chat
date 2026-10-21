@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Biatec.Chat.Api.Config;
 using Biatec.Chat.Api.Contracts;
+using Biatec.Chat.Api.Hosting;
 using Biatec.Chat.Api.Sessions;
 using Biatec.Chat.Api.Tenancy;
 using Biatec.Chat.Api.Vault;
@@ -40,7 +41,7 @@ public static class AuthEndpoints
         {
             Harden(ctx);
             var tenant = ctx.GetTenant()!;
-            if (!Biatec.Chat.Api.Hosting.MountConsistency.IsConsistent(tenant, ctx.Request.PathBase.Value ?? "")) return Biatec.Chat.Api.Hosting.MountConsistency.Misconfigured();
+            if (!MountConsistency.IsConsistent(tenant, ctx.Request)) return MountConsistency.Misconfigured();
             var now = clock.GetUtcNow();
             var handle = await sessions.ResolveOrCreateAsync(tenant, SessionEndpoints.ReadCookie(ctx.Request), ctx.RequestAborted);
             if (handle.NewToken is not null) SessionEndpoints.WriteCookie(ctx.Response, handle.NewToken, handle.Session.AbsoluteExpiresAt, now);
@@ -64,7 +65,7 @@ public static class AuthEndpoints
             await db.SaveChangesAsync(ctx.RequestAborted);
 
             // The popup targets the tenant's own backend (origin from its registered redirect URI, plus the mount prefix of the host), never a request value.
-            var origin = Biatec.Chat.Api.Hosting.BackendUrls.Base(tenant, ctx.Request.PathBase.Value ?? "");
+            var origin = BackendUrls.Base(tenant, ctx.Request);
             return Results.Ok(new PopupStartResponse
             {
                 AuthRequestId = req.Id.ToString(),
@@ -78,6 +79,7 @@ public static class AuthEndpoints
             Harden(ctx);
             var tenant = ctx.GetTenant()!;
             if (!NavigationAllowed(ctx.Request)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+            if (!MountConsistency.IsConsistent(tenant, ctx.Request)) return ClosePage(ctx, 503);
             var now = clock.GetUtcNow();
             var session = await FindLiveAsync(db, tenant, SessionEndpoints.ReadCookie(ctx.Request), now, ctx.RequestAborted);
             var nonce = ctx.Request.Query["nonce"].ToString();

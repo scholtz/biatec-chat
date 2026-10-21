@@ -39,11 +39,13 @@ public static class TelemetryRegistration
         Decorate<IToolExecutor>(services, d => d.ImplementationType == typeof(RequestSignInExecutor),
             (sp, inner) => new MeteringSignInExecutor(inner, sp.GetRequiredService<ChatMetrics>()), all: true);
 
+        // The validated mounts, taken from the options once (static configuration), not resolved per request.
+        IReadOnlyList<Hosting.HostMountOptions>? mounts = null;
         var otel = services.AddOpenTelemetry()
             .ConfigureResource(r => r.AddService(o.ServiceName))
             .WithTracing(t => t
                 .AddAspNetCoreInstrumentation(a => a.Filter = ctx => !IsHealthRequest(ctx.Request.Path, Tenancy.TenantHost.Normalize(ctx.Request.Host),
-                    ctx.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<Hosting.HostingOptions>>().Value.Mounts))
+                    mounts ??= ctx.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<Hosting.HostingOptions>>().Value.Mounts))
                 .AddHttpClientInstrumentation()
                 .AddAWSInstrumentation()
                 .AddSource("Npgsql")

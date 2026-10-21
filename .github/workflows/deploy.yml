@@ -139,9 +139,10 @@ jobs:
           # Mounted hosts (Hosting__Mounts__N__*): checked here, before the ConfigMap reaches the cluster, with the rules of
           # HostingOptionsValidator, so a bad overlay fails this deploy instead of crash-looping the backend at startup.
           # A renamed or hash-suffixed ConfigMap, or a failing yq, must not look like "no mounts": assert it was found.
+          [ "$(yq -r 'select(.kind == "ConfigMap" and .metadata.name == "biatec-chat-backend") | .metadata.name' "$RUNNER_TEMP/rendered.yaml")" = biatec-chat-backend ] \
+            || { echo "::error::ConfigMap biatec-chat-backend was not found in the rendered ${OVERLAY}."; exit 1; }
           yq -r 'select(.kind == "ConfigMap" and .metadata.name == "biatec-chat-backend") | .data | to_entries | .[] | .key + "=" + (.value | tostring)' \
             "$RUNNER_TEMP/rendered.yaml" > "$RUNNER_TEMP/backend-config.env"
-          grep -q '^ASPNETCORE_ENVIRONMENT=' "$RUNNER_TEMP/backend-config.env" || { echo "::error::ConfigMap biatec-chat-backend was not found in the rendered ${OVERLAY}."; exit 1; }
           grep '^Hosting__Mounts__' "$RUNNER_TEMP/backend-config.env" > "$RUNNER_TEMP/mounts.env" || true
           declare -A seen_ids=()
           for i in $(sed -n 's/^Hosting__Mounts__\([0-9][0-9]*\)__Host=.*/\1/p' "$RUNNER_TEMP/mounts.env" | sort -un); do
@@ -149,6 +150,7 @@ jobs:
             host="$(get Host)"; prefix="$(get Prefix)"; client_key="$(get ClientKey)"
             [[ "$host" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$ ]] && [ "${#host}" -le 253 ] || { echo "::error::Mounted host '$host' is not a lower-case DNS name."; exit 1; }
             [[ "$prefix" =~ ^(/[A-Za-z0-9._~-]+)+$ ]] && ! [[ "$prefix" =~ (^|/)\.\.?(/|$) ]] || { echo "::error::Mount prefix '$prefix' of $host must look like /chat (no . or .. segments)."; exit 1; }
+            ! [[ "${prefix,,}" =~ ^/(health|onboarding)(/|$) ]] || { echo "::error::Mount prefix '$prefix' of $host starts with a path the backend owns (/health, /onboarding)."; exit 1; }
             [[ "$client_key" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "::error::Mount client key '$client_key' of $host is missing or invalid."; exit 1; }
             # The tenant id is derived from the host (dots become dashes), which is lossy: two hosts must not share one.
             id="mount-${host//./-}"
@@ -223,7 +225,9 @@ jobs:
       # of truth for host, sign-in page, OIDC client and redirect URI, which a later deploy rewrites; the allowed origin and
       # the client key are only ensured present (an origin or key added later by an operator is never removed, and a key
       # that is dropped from the overlay stays until removed by hand); limits and budgets are copied once and then belong to
-      # onboarding. Production has no mounts, so it does nothing there.
+      # onboarding. Nothing privileged is inherited: a new mounted tenant starts with limits updates, x402 payments and the
+      # trust-anchor flag off, and a deploy never touches them; an operator enables what the site needs through the
+      # tenant policy API. Production has no mounts, so it does nothing there.
       - name: Provision tenants of mounted hosts
         run: |
           # mounts.env was written and validated by the apply step.
@@ -240,8 +244,8 @@ jobs:
                                  "LimitsUpdateEnabled", "X402Enabled", "OidcClientId", "ClientSecretRef", "RedirectUri",
                                  "AllowedOrigins", "ClientKeys", "SoftCapEurPerHour", "TrustAnchorVerified", "DefaultModel", "Suggestions")
           SELECT :'id', :'host', :'origin', "BedrockBudgets", "SafeApprovalCaps", "ConsentThresholdCeilingEur",
-                 "LimitsUpdateEnabled", "X402Enabled", "OidcClientId", "ClientSecretRef", :'redirect',
-                 ARRAY[:'origin'], jsonb_build_array(:'client_key'::text), "SoftCapEurPerHour", "TrustAnchorVerified", "DefaultModel", "Suggestions"
+                 false, false, "OidcClientId", "ClientSecretRef", :'redirect',
+                 ARRAY[:'origin'], jsonb_build_array(:'client_key'::text), "SoftCapEurPerHour", false, "DefaultModel", "Suggestions"
             FROM "Tenants" WHERE "Id" = 'biatec-chat'
           ON CONFLICT ("Id") DO UPDATE SET "Host" = EXCLUDED."Host", "SignInPageUrl" = EXCLUDED."SignInPageUrl",
                                            "OidcClientId" = EXCLUDED."OidcClientId", "ClientSecretRef" = EXCLUDED."ClientSecretRef",

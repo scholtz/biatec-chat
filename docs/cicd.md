@@ -112,12 +112,14 @@ client key and the redirect URI `https://<host><prefix>/auth/callback`. The over
 sign-in page, OIDC client and redirect URI, which a later deploy rewrites; the allowed origin and the client key are only
 ensured present (an origin or key an operator added is never removed, and a key dropped from the overlay stays until it is
 removed by hand; changing `Hosting__Mounts__0__ClientKey` adds the new key). Limits and budgets are copied once and then
-belong to onboarding. The step fails unless the row afterwards holds the redirect URI, the origin and the client key. The
+belong to onboarding. Nothing privileged is inherited: the new tenant starts with limits updates, x402 payments and the
+trust-anchor flag off, a deploy never changes them, and an operator enables what the site needs through the tenant policy
+API. The step fails unless the row afterwards holds the redirect URI, the origin and the client key. The
 mounts are validated before anything is applied (same rules as the backend's startup validation, plus the client key and
-that two hosts do not map to the same tenant id; the step also fails if the ConfigMap is not found in the rendered overlay),
+that two hosts do not map to the same tenant id, and a prefix that does not start with `/health` or `/onboarding`; the step also fails if the ConfigMap is not found in the rendered overlay),
 so a bad overlay fails the deploy instead of crash-looping the backend. The client key is read by the deploy only; the
 backend ignores it. The redirect URI must be exactly `https://<host><prefix>/auth/callback`
-(the OIDC callback is that stored value); the backend logs an error when a mounted host's tenant disagrees and refuses to start a sign-in or elevation for it (503). The popup,
+(the OIDC callback is that stored value); the backend logs an error when a mounted host's tenant disagrees (compared exactly, as Biatec OIDC does) and refuses to start or continue a sign-in or elevation for it (503), and its sign-in cards fall back to the sign-in page. The popup,
 elevation and card URLs follow the mount, not the stored value. The Biatec OIDC client must allow that redirect URI.
 Production has no mount.
 

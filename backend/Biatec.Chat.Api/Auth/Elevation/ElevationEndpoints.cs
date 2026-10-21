@@ -1,4 +1,5 @@
 using Biatec.Chat.Api.Agent;
+using Biatec.Chat.Api.Hosting;
 using Biatec.Chat.Api.Sessions;
 using Biatec.Chat.Api.Tenancy;
 using Biatec.Chat.Api.Vault;
@@ -38,7 +39,7 @@ public static class ElevationEndpoints
         {
             Harden(ctx);
             var tenant = ctx.GetTenant()!;
-            if (!Biatec.Chat.Api.Hosting.MountConsistency.IsConsistent(tenant, ctx.Request.PathBase.Value ?? "")) return Biatec.Chat.Api.Hosting.MountConsistency.Misconfigured();
+            if (!MountConsistency.IsConsistent(tenant, ctx.Request)) return MountConsistency.Misconfigured();
             var now = clock.GetUtcNow();
             var scope = body?.Scope;
             if (!ElevationScopes.IsAllowed(scope))
@@ -66,7 +67,7 @@ public static class ElevationEndpoints
             db.PopupAuthRequests.Add(req);
             await db.SaveChangesAsync(ctx.RequestAborted);
 
-            var origin = Biatec.Chat.Api.Hosting.BackendUrls.Base(tenant, ctx.Request.PathBase.Value ?? "");
+            var origin = BackendUrls.Base(tenant, ctx.Request);
             return Results.Ok(new PopupStartResponse
             {
                 AuthRequestId = req.Id.ToString(),
@@ -80,6 +81,7 @@ public static class ElevationEndpoints
             Harden(ctx);
             var tenant = ctx.GetTenant()!;
             if (!AuthEndpoints.NavigationAllowed(ctx.Request)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+            if (!MountConsistency.IsConsistent(tenant, ctx.Request)) return AuthEndpoints.ClosePage(ctx, 503);
             var scope = ctx.Request.Query["scope"].ToString();
             if (!ElevationScopes.IsAllowed(scope)) return AuthEndpoints.ClosePage(ctx, 400); // checked before anything is consumed
             var now = clock.GetUtcNow();
