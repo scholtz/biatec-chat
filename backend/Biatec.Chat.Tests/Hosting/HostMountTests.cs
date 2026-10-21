@@ -566,6 +566,7 @@ public sealed class HostMountTests : IDisposable
         Assert.Equal(expected, BackendUrls.Base(new Tenant { Id = "t", RedirectUri = redirectUri }, pathBase));
 
     [Theory]
+    [InlineData("http://beta.dex.biatec.io/chat/auth/callback", false)] // the cookie is Secure: https only
     [InlineData("https://beta.dex.biatec.io/chat/auth/callback", true)]
     [InlineData("https://beta.dex.biatec.io:443/chat/auth/callback", true)]
     [InlineData("https://BETA.dex.biatec.io/chat/auth/callback", true)]
@@ -590,6 +591,18 @@ public sealed class HostMountTests : IDisposable
         if (consistent) Assert.EndsWith("/chat", signInBase);
         else Assert.Null(signInBase);
     }
+
+    [Theory]
+    [InlineData("https://h/chat/auth/callback", true)]
+    [InlineData("https://h/a/b/auth/callback", true)]
+    [InlineData("https://h/auth/callback", false)]
+    [InlineData("https://h/CHAT/Auth/Callback", false)] // as written, like the main check: not a callback path at all
+    [InlineData("https://h/chat/auth/callback?x=1", true)]
+    [InlineData("https://h", false)]
+    [InlineData("", false)]
+    [InlineData("nonsense", false)]
+    public void MountConsistency_CarriesAPrefix_ReadsTheStoredPathAsWritten(string redirectUri, bool prefixed) =>
+        Assert.Equal(prefixed, MountConsistency.CarriesAPrefix(new Tenant { Id = "t", RedirectUri = redirectUri }));
 
     [Fact]
     public void MountConsistency_IsAlwaysTrueOnAnUnmountedHost() =>

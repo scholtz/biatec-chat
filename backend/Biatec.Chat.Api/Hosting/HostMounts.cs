@@ -112,7 +112,7 @@ public sealed class HostMountMiddleware(RequestDelegate next, IOptions<HostingOp
         var originalPath = ctx.Request.Path;
         var originalBase = ctx.Request.PathBase;
         ctx.Request.PathBase = originalBase.Add(prefix);
-        ctx.Request.Path = rest.HasValue ? rest : new PathString("/");
+        ctx.Request.Path = rest; // never empty: it started with one of the widget's roots
         try
         {
             await next(ctx);

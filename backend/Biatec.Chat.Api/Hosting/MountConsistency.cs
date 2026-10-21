@@ -22,7 +22,8 @@ public static class MountConsistency
         var path = pathBase + "/auth/callback";
         var raw = tenant.RedirectUri;
         if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri)) return false;
-        // No userinfo either: it would be copied into every popup and card URL.
+        // https only (the __Host- cookie is Secure) and no userinfo (it would be copied into every popup and card URL).
+        if (uri.Scheme != Uri.UriSchemeHttps) return false;
         if (uri.Query.Length != 0 || uri.Fragment.Length != 0 || uri.UserInfo.Length != 0 || !raw.EndsWith(path, StringComparison.Ordinal)) return false;
         if (!string.Equals(uri.Host, tenant.Host, StringComparison.OrdinalIgnoreCase)) return false;
         // What stands in front of the path must be the bare "scheme://authority": no "/x/.." that Uri would normalize away.
@@ -32,9 +33,15 @@ public static class MountConsistency
     }
 
     /// <summary>True when the stored redirect URI has a path in front of <c>/auth/callback</c> (it was written for a mount).</summary>
-    public static bool CarriesAPrefix(Tenant tenant) =>
-        Uri.TryCreate(tenant.RedirectUri, UriKind.Absolute, out var uri)
-        && uri.AbsolutePath.EndsWith("/auth/callback", StringComparison.OrdinalIgnoreCase) && uri.AbsolutePath.Length > "/auth/callback".Length;
+    public static bool CarriesAPrefix(Tenant tenant)
+    {
+        // The path as written, like IsConsistent reads it: after the authority, before any query or fragment.
+        var raw = tenant.RedirectUri;
+        var afterScheme = raw.IndexOf("://", StringComparison.Ordinal) + 3;
+        if (afterScheme < 3 || raw.IndexOf('/', afterScheme) is not (>= 0 and var slash)) return false;
+        var path = raw[slash..].Split('?', '#')[0];
+        return path.EndsWith("/auth/callback", StringComparison.Ordinal) && path.Length > "/auth/callback".Length;
+    }
 
     /// <summary>The base URL for popup and card links, or null when the tenant is not usable for sign-in on this host.</summary>
     public static string? SignInBase(Tenant tenant, string pathBase) =>
