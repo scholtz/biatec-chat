@@ -154,6 +154,45 @@ public sealed class KbChatTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Kb_SignInCard_OnAMountedHost_PointsUnderThePrefix_NotAtTheHostsOwnApplication()
+    {
+        // beta.dex.biatec.io serves the backend under /chat: the card must open /chat/auth/popup, never the DEX site's /auth/popup.
+        var mounted = new Biatec.Chat.Core.Data.Tenant
+        {
+            Id = "mount-beta-dex-biatec-io", Host = "beta.dex.biatec.io", SignInPageUrl = "https://beta.dex.biatec.io",
+            OidcClientId = "biatec-chat", ClientSecretRef = "secret://biatec-chat/oidc-client-secret",
+            RedirectUri = "https://beta.dex.biatec.io/chat/auth/callback", AllowedOrigins = ["https://beta.dex.biatec.io"],
+            ClientKeys = "[\"biatec-dex\"]", ConsentThresholdCeilingEur = 1000, SoftCapEurPerHour = 1500,
+        };
+        var model = new ScriptedModel(
+            _ => ToolCall("tu-1", "requestSignIn", """{"reason":"Moving funds needs a signed-in account."}"""),
+            _ => Text("Please sign in."));
+        using var f = Factory(model).WithWebHostBuilder(b =>
+        {
+            b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Hosting:Mounts:0:Host"] = "beta.dex.biatec.io",
+                ["Hosting:Mounts:0:Prefix"] = "/chat",
+            }));
+            b.ConfigureServices(s => { s.RemoveAll<ITenantStore>(); s.AddSingleton<ITenantStore>(new MemoryTenantStore(mounted)); });
+        });
+        using var client = f.CreateClient();
+        var r = new HttpRequestMessage(HttpMethod.Post, "http://beta.dex.biatec.io/chat/chat/messages") { Content = JsonContent.Create(new { message = "Move 100 USDC" }) };
+        r.Headers.TryAddWithoutValidation("Origin", "https://beta.dex.biatec.io");
+        r.Headers.TryAddWithoutValidation("X-Biatec-Chat", "1");
+        r.Headers.TryAddWithoutValidation("X-Biatec-Client-Key", "biatec-dex");
+
+        var resp = await client.SendAsync(r);
+        var sse = await resp.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Contains("event: sign_in_card", sse);
+        Assert.Contains("\"https://beta.dex.biatec.io/chat/auth/popup\"", sse);
+        Assert.DoesNotContain("\"https://beta.dex.biatec.io/auth/popup\"", sse);
+        Assert.Contains("\"unavailable\":false", sse);
+    }
+
+    [Fact]
     public async Task Kb_MoveFunds_YieldsSignInCard_AndNoWalletCall()
     {
         var wallet = new SpyExecutor("wallet.transfer");

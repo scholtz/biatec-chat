@@ -136,6 +136,41 @@ jobs:
           kubectl kustomize "$OVERLAY" > "$RUNNER_TEMP/rendered.yaml"
           demo_host="$(yq -r 'select(.kind == "Ingress" and .metadata.name == "biatec-chat-demo") | .spec.rules[0].host' "$RUNNER_TEMP/rendered.yaml")"
           echo "demo_host=$demo_host" >> "$GITHUB_OUTPUT"
+          # Mounted hosts (Hosting__Mounts__N__*): checked here, before the ConfigMap reaches the cluster, with the rules of
+          # HostingOptionsValidator, so a bad overlay fails this deploy instead of crash-looping the backend at startup.
+          # A renamed or hash-suffixed ConfigMap, or a failing yq, must not look like "no mounts": assert it was found.
+          [ "$(yq -r 'select(.kind == "ConfigMap" and .metadata.name == "biatec-chat-backend") | .metadata.name' "$RUNNER_TEMP/rendered.yaml")" = biatec-chat-backend ] \
+            || { echo "::error::ConfigMap biatec-chat-backend was not found in the rendered ${OVERLAY}."; exit 1; }
+          yq -r 'select(.kind == "ConfigMap" and .metadata.name == "biatec-chat-backend") | .data | to_entries | .[] | .key + "=" + (.value | tostring)' \
+            "$RUNNER_TEMP/rendered.yaml" > "$RUNNER_TEMP/backend-config.env"
+          # One line per key, or the reader below would cut a value at its first line (and the backend would reject the rest at
+          # startup). A value that spans lines makes the file longer than the number of keys.
+          [ "$(wc -l < "$RUNNER_TEMP/backend-config.env")" -eq "$(yq -r 'select(.kind == "ConfigMap" and .metadata.name == "biatec-chat-backend") | .data | keys | length' "$RUNNER_TEMP/rendered.yaml")" ] \
+            || { echo "::error::A value in the biatec-chat-backend ConfigMap spans several lines; the mount reader of this deploy supports one line per key."; exit 1; }
+          # .NET configuration keys are case-insensitive, so are these; an entry is any index that has any Hosting__Mounts__N__ key.
+          awk -F= '{ k = tolower($1); sub(/^[^=]*=/, ""); print k "=" $0 }' "$RUNNER_TEMP/backend-config.env" \
+            | grep '^hosting__mounts__' > "$RUNNER_TEMP/mounts.env" || true
+          # Two spellings of one key (Host and HOST) would bind to whichever the backend's providers resolve last.
+          dup="$(cut -d= -f1 "$RUNNER_TEMP/mounts.env" | sort | uniq -d | awk 'NR==1')"
+          [ -z "$dup" ] || { echo "::error::Hosting__Mounts__ key '$dup' is defined twice (keys are case-insensitive)."; exit 1; }
+          declare -A seen_ids=() seen_slots=()
+          for i in $(sed -n 's/^hosting__mounts__\([0-9][0-9]*\)__.*/\1/p' "$RUNNER_TEMP/mounts.env" | sort -u); do
+            # The binder reads the index as a number: 1 and 01 are one list slot, so they must not both be written.
+            slot=$((10#$i))
+            [ -z "${seen_slots[$slot]:-}" ] || { echo "::error::Hosting__Mounts__${seen_slots[$slot]} and Hosting__Mounts__${i} are the same list slot."; exit 1; }
+            seen_slots[$slot]="$i"
+            get() { sed -n "s/^hosting__mounts__${i}__$1=//p" "$RUNNER_TEMP/mounts.env" | awk 'NR==1'; }
+            host="$(get host)"; prefix="$(get prefix)"; client_key="$(get clientkey)"
+            [ -n "$host" ] && [ -n "$prefix" ] && [ -n "$client_key" ] || { echo "::error::Hosting__Mounts__${i} needs Host, Prefix and ClientKey (got host '$host', prefix '$prefix', client key '$client_key')."; exit 1; }
+            [[ "$host" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$ ]] && [ "${#host}" -le 253 ] || { echo "::error::Mounted host '$host' is not a lower-case DNS name."; exit 1; }
+            [[ "$prefix" =~ ^(/[A-Za-z0-9._~-]+)+$ ]] && ! [[ "$prefix" =~ (^|/)\.\.?(/|$) ]] || { echo "::error::Mount prefix '$prefix' of $host must look like /chat (no . or .. segments)."; exit 1; }
+            ! [[ "${prefix,,}" =~ ^/(health|onboarding)(/|$) ]] || { echo "::error::Mount prefix '$prefix' of $host starts with a path the backend owns (/health, /onboarding)."; exit 1; }
+            [[ "$client_key" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "::error::Mount client key '$client_key' of $host is missing or invalid."; exit 1; }
+            # The tenant id is derived from the host (dots become dashes), which is lossy: two hosts must not share one.
+            id="mount-${host//./-}"
+            [ -z "${seen_ids[$id]:-}" ] || { echo "::error::Mounted hosts ${seen_ids[$id]} and $host would share the tenant id $id."; exit 1; }
+            seen_ids[$id]="$host"
+          done
           kubectl apply -f "$RUNNER_TEMP/rendered.yaml"
 
       - name: Wait for databases
@@ -196,6 +231,66 @@ jobs:
           ON CONFLICT ("Id") DO UPDATE SET "Host" = EXCLUDED."Host", "OidcClientId" = EXCLUDED."OidcClientId",
                                            "ClientSecretRef" = EXCLUDED."ClientSecretRef", "RedirectUri" = EXCLUDED."RedirectUri";
           SQL
+
+      # Hosts that serve this backend under a path prefix of their own site (Hosting__Mounts__N__* in the overlay's
+      # ConfigMap, for example https://beta.dex.biatec.io/chat) resolve their own tenant by Host. Each one is a copy of
+      # biatec-chat (same OIDC client, secret pointer, limits) with its own id, host, sign-in page, same-origin allowed
+      # origin, the mount's client key and a redirect URI that includes the prefix. Idempotent. The overlay stays the source
+      # of truth for host, sign-in page, OIDC client and redirect URI, which a later deploy rewrites; the allowed origin and
+      # the client key are only ensured present (an origin or key added later by an operator is never removed, and a key
+      # that is dropped from the overlay stays until removed by hand; at most 10 origins and 20 keys, like onboarding, and the
+      # step fails if the overlay's would not fit); limits and budgets are copied once and then belong to
+      # onboarding. Nothing privileged is inherited: a new mounted tenant starts with limits updates, x402 payments and the
+      # trust-anchor flag off, and a deploy never touches them; an operator enables what the site needs through the
+      # tenant policy API. Production has no mounts, so it does nothing there.
+      - name: Provision tenants of mounted hosts
+        run: |
+          # mounts.env was written and validated by the apply step; without it nothing was checked, so do not pass silently.
+          [ -f "$RUNNER_TEMP/mounts.env" ] || { echo "::error::The apply step did not leave mounts.env."; exit 1; }
+          indexes="$(sed -n 's/^hosting__mounts__\([0-9][0-9]*\)__host=.*/\1/p' "$RUNNER_TEMP/mounts.env" | sort -un)"
+          if [ -z "$indexes" ]; then echo "No mounted hosts in ${{ inputs.overlay }}."; exit 0; fi
+          for i in $indexes; do
+            get() { sed -n "s/^hosting__mounts__${i}__$1=//p" "$RUNNER_TEMP/mounts.env" | awk 'NR==1'; }
+            host="$(get host)"; prefix="$(get prefix)"; client_key="$(get clientkey)"
+            id="mount-${host//./-}"
+            # The mounted tenant is a copy of biatec-chat, which the "Seed tenant biatec-chat" step just before this one creates.
+            [ "$(kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
+              psql -qtA -v ON_ERROR_STOP=1 -U biatec -d biatec_chat <<'SQL'
+          SELECT count(*) FROM "Tenants" WHERE "Id" = 'biatec-chat';
+          SQL
+            )" = 1 ] || { echo "::error::Tenant biatec-chat does not exist, so the mounted tenant of $host cannot be copied from it."; exit 1; }
+            # Another tenant (onboarded, or made by hand) may already own the host: say so instead of a raw unique violation.
+            # The same goes for a tenant that already has the derived id for another host: the upsert would take it over.
+            owner="$(kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
+              psql -qtA -v ON_ERROR_STOP=1 -U biatec -d biatec_chat -v id="$id" -v host="$host" <<'SQL'
+          SELECT "Id" || ' (host ' || "Host" || ')' FROM "Tenants" WHERE ("Host" = :'host' AND "Id" <> :'id') OR ("Id" = :'id' AND "Host" <> :'host');
+          SQL
+            )"
+            [ -z "$owner" ] || { echo "::error::Tenant $owner conflicts with the mount of $host (tenant id $id). Remove or rename one of them."; exit 1; }
+            ok="$(kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
+              psql -qtA -v ON_ERROR_STOP=1 -U biatec -d biatec_chat \
+                -v id="$id" -v host="$host" -v origin="https://$host" -v redirect="https://$host$prefix/auth/callback" -v client_key="$client_key" <<'SQL'
+          INSERT INTO "Tenants" ("Id", "Host", "SignInPageUrl", "BedrockBudgets", "SafeApprovalCaps", "ConsentThresholdCeilingEur",
+                                 "LimitsUpdateEnabled", "X402Enabled", "OidcClientId", "ClientSecretRef", "RedirectUri",
+                                 "AllowedOrigins", "ClientKeys", "SoftCapEurPerHour", "TrustAnchorVerified", "DefaultModel", "Suggestions")
+          SELECT :'id', :'host', :'origin', "BedrockBudgets", "SafeApprovalCaps", "ConsentThresholdCeilingEur",
+                 false, false, "OidcClientId", "ClientSecretRef", :'redirect',
+                 ARRAY[:'origin'], jsonb_build_array(:'client_key'::text), "SoftCapEurPerHour", false, "DefaultModel", "Suggestions"
+            FROM "Tenants" WHERE "Id" = 'biatec-chat'
+          ON CONFLICT ("Id") DO UPDATE SET "Host" = EXCLUDED."Host", "SignInPageUrl" = EXCLUDED."SignInPageUrl",
+                                           "OidcClientId" = EXCLUDED."OidcClientId", "ClientSecretRef" = EXCLUDED."ClientSecretRef",
+                                           "RedirectUri" = EXCLUDED."RedirectUri",
+                                           "AllowedOrigins" = CASE WHEN :'origin' = ANY ("Tenants"."AllowedOrigins") OR cardinality("Tenants"."AllowedOrigins") >= 10
+                                                                   THEN "Tenants"."AllowedOrigins" ELSE array_append("Tenants"."AllowedOrigins", :'origin') END,
+                                           "ClientKeys" = CASE WHEN "Tenants"."ClientKeys" @> jsonb_build_array(:'client_key'::text) OR jsonb_array_length("Tenants"."ClientKeys") >= 20
+                                                               THEN "Tenants"."ClientKeys" ELSE "Tenants"."ClientKeys" || jsonb_build_array(:'client_key'::text) END;
+          SELECT count(*) FROM "Tenants" WHERE "Id" = :'id' AND "Host" = :'host' AND "RedirectUri" = :'redirect'
+             AND :'origin' = ANY ("AllowedOrigins") AND "ClientKeys" @> jsonb_build_array(:'client_key'::text);
+          SQL
+            )"
+            [ "$ok" = 1 ] || { echo "::error::Tenant $id for $host was not provisioned with its redirect URI, origin and client key (is the biatec-chat tenant missing, or does it already hold 10 origins / 20 client keys, the limits of onboarding? got '$ok')."; exit 1; }
+            echo "Tenant $id serves https://$host$prefix (redirect URI https://$host$prefix/auth/callback, client key $client_key)."
+          done
 
       # The demo site (docs/demo-site.md) calls the backend from its own origin with client key biatec-demo. Adds just
       # that origin and key to the tenant when missing; everything else on the row stays owned by onboarding. Same limits

@@ -4,6 +4,7 @@ using Biatec.Chat.Api.Orchestration;
 using Biatec.Chat.Core.Capabilities;
 using Biatec.Chat.Tools.Kb;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Biatec.Chat.Api.Hosting;
 
 namespace Biatec.Chat.Api.Chat.SignIn;
 
@@ -67,8 +68,7 @@ public sealed class RequestSignInExecutor : IToolExecutor
 
         // The widget POSTs this endpoint on the tenant's own backend to get the one-time popup URL. Without an
         // absolute origin we cannot build it, so we fall through to the unavailable branch.
-        var origin = context.Tenant is { RedirectUri.Length: > 0 } t && Uri.TryCreate(t.RedirectUri, UriKind.Absolute, out var u)
-            ? u.GetLeftPart(UriPartial.Authority) : null;
+        var origin = context.Tenant is { } t ? MountConsistency.SignInBase(t, context.PathBase) : null;
 
         if (context.SignInAvailable && origin is not null)
         {

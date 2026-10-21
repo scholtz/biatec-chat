@@ -155,8 +155,7 @@ public static class AdminEndpoints
             var v = prefix.Count == 0 ? EvidenceVerification.Ok : EvidenceVerifier.Verify(prefix, map);
             var page = prefix.Where(e => e.Seq >= from).ToList();
 
-            var publicBase = config["Evidence:PublicBaseUrl"]?.Trim().TrimEnd('/');
-            var jwksUrl = (string.IsNullOrEmpty(publicBase) ? $"{ctx.Request.Scheme}://{ctx.Request.Host}" : publicBase) + EvidenceJwks.JwksPath;
+            var jwksUrl = EvidenceJwks.PublicUrl(ctx, config);
             var bundle = await EvidenceBundleBuilder.BuildAsync(AdminEvidence.ChainId, page, keys, jwksUrl, clock.GetUtcNow(), ct);
 
             log.LogInformation("Admin: operator {Operator} from {RemoteIp} read the admin evidence chain (seq {From}, {Count} entries, valid: {Valid})",

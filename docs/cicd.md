@@ -100,6 +100,30 @@ Nothing else tells `deploy.yml` about the demo. When `demo_host` is set:
 Ingress, so `demo_host` is empty: the production tenant is not touched and no demo rollout is awaited.
 `promote-production.yml` does not re-tag the demo image.
 
+### Mounted hosts
+
+A site can serve this backend under a path prefix of its own origin (Biatec DEX beta: `https://beta.dex.biatec.io/chat`,
+[integration-biatec-dex.md](integration-biatec-dex.md) §7). The overlay lists it in the backend ConfigMap
+(`Hosting__Mounts__0__Host`, `__Prefix`, `__ClientKey` in `k8s/stage/backend-config.patch.yaml`); the backend serves that
+host only under the prefix. After the migration the step "Provision tenants of mounted hosts" reads those keys from the
+rendered overlay and upserts one tenant per mount, id `mount-<host with dashes>`: a copy of `biatec-chat` (same OIDC
+client and secret pointer, limits) with its own host, sign-in page and allowed origin (`https://<host>`), the mount's
+client key and the redirect URI `https://<host><prefix>/auth/callback`. The overlay stays the source of truth for host,
+sign-in page, OIDC client and redirect URI, which a later deploy rewrites; the allowed origin and the client key are only
+ensured present (an origin or key an operator added is never removed, and a key dropped from the overlay stays until it is
+removed by hand; changing `Hosting__Mounts__0__ClientKey` adds the new key). Limits and budgets are copied once and then
+belong to onboarding. Nothing privileged is inherited: the new tenant starts with limits updates, x402 payments and the
+trust-anchor flag off, a deploy never changes them, and an operator enables what the site needs through the tenant policy
+API. The step fails unless the row afterwards holds the redirect URI, the origin and the client key. The
+mounts are validated before anything is applied (same rules as the backend's startup validation, plus the client key and
+that two hosts do not map to the same tenant id, and a prefix that does not start with `/health` or `/onboarding`; the step also fails if the ConfigMap is not found in the rendered overlay, if an entry lacks Host, Prefix or ClientKey, if a key is defined twice in different case or a value spans lines (keys are read case-insensitively, like .NET configuration), or if another tenant already owns the host or the derived tenant id),
+so a bad overlay fails the deploy instead of crash-looping the backend. The client key is read by the deploy only; the
+backend ignores it. The backend reads the mounts once at startup; an overlay change always arrives with a new commit, hence a
+new image tag and a rollout, which is what applies it (re-running a deploy of the same commit changes nothing). The redirect URI must be exactly `https://<host><prefix>/auth/callback`
+(the OIDC callback is that stored value); the backend logs an error when a mounted host's tenant disagrees (the path is compared exactly, case included, as Biatec OIDC does; host spelling and a default port are not) and refuses every `/auth` route but logout for it in one place, the tenant middleware (503, so also the callback and the popup status poll), and its sign-in cards fall back to the sign-in page. The popup,
+elevation and card URLs follow the mount, not the stored value. The Biatec OIDC client must allow that redirect URI.
+Production has no mount.
+
 ## Database migrations
 
 The backend migrates on startup only in Development. Each deploy runs

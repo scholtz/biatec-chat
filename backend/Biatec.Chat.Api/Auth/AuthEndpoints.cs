@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Biatec.Chat.Api.Config;
 using Biatec.Chat.Api.Contracts;
+using Biatec.Chat.Api.Hosting;
 using Biatec.Chat.Api.Sessions;
 using Biatec.Chat.Api.Tenancy;
 using Biatec.Chat.Api.Vault;
@@ -62,8 +63,8 @@ public static class AuthEndpoints
             db.PopupAuthRequests.Add(req);
             await db.SaveChangesAsync(ctx.RequestAborted);
 
-            // The popup targets the tenant's own backend origin (from its registered redirect URI), never a request value.
-            var origin = new Uri(tenant.RedirectUri).GetLeftPart(UriPartial.Authority);
+            // The popup targets the tenant's own backend (origin from its registered redirect URI, plus the mount prefix of the host), never a request value.
+            var origin = BackendUrls.Base(tenant, ctx.Request);
             return Results.Ok(new PopupStartResponse
             {
                 AuthRequestId = req.Id.ToString(),

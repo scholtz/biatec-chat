@@ -1,4 +1,5 @@
 using Biatec.Chat.Api.Agent;
+using Biatec.Chat.Api.Hosting;
 using Biatec.Chat.Api.Sessions;
 using Biatec.Chat.Api.Tenancy;
 using Biatec.Chat.Api.Vault;
@@ -65,7 +66,7 @@ public static class ElevationEndpoints
             db.PopupAuthRequests.Add(req);
             await db.SaveChangesAsync(ctx.RequestAborted);
 
-            var origin = new Uri(tenant.RedirectUri).GetLeftPart(UriPartial.Authority);
+            var origin = BackendUrls.Base(tenant, ctx.Request);
             return Results.Ok(new PopupStartResponse
             {
                 AuthRequestId = req.Id.ToString(),
