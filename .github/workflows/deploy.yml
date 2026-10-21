@@ -200,8 +200,10 @@ jobs:
       # Hosts that serve this backend under a path prefix of their own site (Hosting__Mounts__N__* in the overlay's
       # ConfigMap, for example https://beta.dex.biatec.io/chat) resolve their own tenant by Host. Each one is a copy of
       # biatec-chat (same OIDC client, secret pointer, limits) with its own id, host, sign-in page, same-origin allowed
-      # origin, the mount's client key and a redirect URI that includes the prefix. Idempotent: a later deploy updates just
-      # host, client and redirect URI, like the biatec-chat step. Production has no mounts, so it does nothing there.
+      # origin, the mount's client key and a redirect URI that includes the prefix. Idempotent. The overlay stays the source
+      # of truth for what makes the host work (host, sign-in page, OIDC client, redirect URI, allowed origin, client key), so
+      # a later deploy rewrites those; limits and budgets are copied once and then belong to onboarding. Production has no
+      # mounts, so it does nothing there.
       - name: Provision tenants of mounted hosts
         run: |
           yq -r 'select(.kind == "ConfigMap" and .metadata.name == "biatec-chat-backend") | .data | to_entries | .[] | .key + "=" + (.value | tostring)' \
@@ -225,12 +227,15 @@ jobs:
                  "LimitsUpdateEnabled", "X402Enabled", "OidcClientId", "ClientSecretRef", :'redirect',
                  ARRAY[:'origin'], jsonb_build_array(:'client_key'::text), "SoftCapEurPerHour", "TrustAnchorVerified", "DefaultModel", "Suggestions"
             FROM "Tenants" WHERE "Id" = 'biatec-chat'
-          ON CONFLICT ("Id") DO UPDATE SET "Host" = EXCLUDED."Host", "OidcClientId" = EXCLUDED."OidcClientId",
-                                           "ClientSecretRef" = EXCLUDED."ClientSecretRef", "RedirectUri" = EXCLUDED."RedirectUri";
-          SELECT count(*) FROM "Tenants" WHERE "Id" = :'id' AND "RedirectUri" = :'redirect';
+          ON CONFLICT ("Id") DO UPDATE SET "Host" = EXCLUDED."Host", "SignInPageUrl" = EXCLUDED."SignInPageUrl",
+                                           "OidcClientId" = EXCLUDED."OidcClientId", "ClientSecretRef" = EXCLUDED."ClientSecretRef",
+                                           "RedirectUri" = EXCLUDED."RedirectUri", "AllowedOrigins" = EXCLUDED."AllowedOrigins",
+                                           "ClientKeys" = EXCLUDED."ClientKeys";
+          SELECT count(*) FROM "Tenants" WHERE "Id" = :'id' AND "Host" = :'host' AND "RedirectUri" = :'redirect'
+             AND :'origin' = ANY ("AllowedOrigins") AND "ClientKeys" @> jsonb_build_array(:'client_key'::text);
           SQL
             )"
-            [ "$ok" = 1 ] || { echo "::error::Tenant $id for $host was not provisioned (is the biatec-chat tenant missing? got '$ok')."; exit 1; }
+            [ "$ok" = 1 ] || { echo "::error::Tenant $id for $host was not provisioned with its redirect URI, origin and client key (is the biatec-chat tenant missing? got '$ok')."; exit 1; }
             echo "Tenant $id serves https://$host$prefix (redirect URI https://$host$prefix/auth/callback, client key $client_key)."
           done
 

@@ -37,9 +37,7 @@ public static class EvidenceExportEndpoints
             var chain = await log.GetChainAsync(session.ConversationId, ctx.RequestAborted);
             if (chain.Count == 0) return Results.Problem("This conversation has no evidence yet.", statusCode: StatusCodes.Status404NotFound);
 
-            // Prefer the configured public base URL: behind a proxy the request scheme and host can be internal.
-            var publicBase = config["Evidence:PublicBaseUrl"]?.Trim().TrimEnd('/');
-            var jwksUrl = (string.IsNullOrEmpty(publicBase) ? $"{ctx.Request.Scheme}://{ctx.Request.Host}{ctx.Request.PathBase}" : publicBase) + EvidenceJwks.JwksPath;
+            var jwksUrl = EvidenceJwks.PublicUrl(ctx, config);
             var bundle = await EvidenceBundleBuilder.BuildAsync(session.ConversationId, chain, keys, jwksUrl, now, ctx.RequestAborted);
             ctx.Response.Headers.ContentDisposition = $"attachment; filename=\"biatec-evidence-{session.ConversationId:N}.json\"";
             return Results.Content(bundle.ToJsonString(), "application/json");

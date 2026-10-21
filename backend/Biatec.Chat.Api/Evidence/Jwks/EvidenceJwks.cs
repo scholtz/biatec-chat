@@ -41,6 +41,17 @@ public static class EvidenceJwks
 {
     public const string JwksPath = "/.well-known/evidence-jwks.json";
 
+    /// <summary>
+    /// Where a bundle's verifier fetches the keys. The configured public base URL wins (behind a proxy the request scheme and
+    /// host can be internal); otherwise the request's own origin plus its PathBase, so a host mounted under a path prefix
+    /// (Hosting:Mounts) gets a URL that still reaches this backend.
+    /// </summary>
+    public static string PublicUrl(HttpContext ctx, IConfiguration config)
+    {
+        var publicBase = config["Evidence:PublicBaseUrl"]?.Trim().TrimEnd('/');
+        return (string.IsNullOrEmpty(publicBase) ? $"{ctx.Request.Scheme}://{ctx.Request.Host}{ctx.Request.PathBase}" : publicBase) + JwksPath;
+    }
+
     /// <summary>Registers the evidence log and the dev signing key store (register a production <see cref="IEvidenceKeyStore"/> first to replace it).</summary>
     public static IServiceCollection AddEvidence(this IServiceCollection services, IConfiguration config)
     {

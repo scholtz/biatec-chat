@@ -17,8 +17,8 @@ public sealed class HostMountOptions
     public string Prefix { get; set; } = "";
 
     /// <summary>
-    /// Client key the page on that host sends (a label, not a secret). Not read by the backend itself: the deploy uses it
-    /// to provision the mounted host's tenant.
+    /// Client key the page on that host sends (a label, not a secret). The backend itself reads it from the tenant row;
+    /// the deploy provisions that row from this value, so it is required here.
     /// </summary>
     public string ClientKey { get; set; } = "";
 }
@@ -35,6 +35,9 @@ public sealed partial class HostingOptionsValidator : IValidateOptions<HostingOp
 {
     [GeneratedRegex("^(/[A-Za-z0-9._~-]+)+$")]
     private static partial Regex PrefixPattern();
+
+    [GeneratedRegex("^[A-Za-z0-9._-]+$")]
+    private static partial Regex ClientKeyPattern();
 
     [GeneratedRegex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$")]
     private static partial Regex HostPattern();
@@ -53,6 +56,8 @@ public sealed partial class HostingOptionsValidator : IValidateOptions<HostingOp
                 failures.Add($"{at}:Host '{m.Host}' is mounted twice.");
             if (!PrefixPattern().IsMatch(m.Prefix) || m.Prefix.Split('/').Any(s => s is "." or ".."))
                 failures.Add($"{at}:Prefix must be one or more path segments such as /chat, without a trailing slash (got '{m.Prefix}').");
+            if (!ClientKeyPattern().IsMatch(m.ClientKey))
+                failures.Add($"{at}:ClientKey is required (letters, digits, '.', '_' and '-'): the client key the page on that host sends (got '{m.ClientKey}').");
         }
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }

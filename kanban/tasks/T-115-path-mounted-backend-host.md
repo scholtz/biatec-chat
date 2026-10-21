@@ -113,7 +113,8 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
       `https://beta.dex.biatec.io/chat/auth/callback`, origin `https://beta.dex.biatec.io`, client key `biatec-dex`), idempotently.
 - [x] `PRODUCT-DESCRIPTION.md`, `docs/integration-biatec-dex.md`, `docs/cicd.md`, `k8s/README.md` describe the mount, the
       ingress contract (full path forwarded, no rewrite) and the OIDC redirect URI to allow.
-- [x] CI is green and the stage deploy still succeeds.
+- [x] CI is green.
+- [ ] The stage deploy still succeeds and provisions the tenant (can only be verified after the merge; the real run is recorded in the review).
 
 ## Implementation notes
 
@@ -147,7 +148,7 @@ Filled in by the agent when it moves the task to `review`.
   builders and three JWKS fallbacks, `backend/Biatec.Chat.Tests/Hosting/**`, `packages/chat-widget/test/path-mount.test.ts`,
   `k8s/stage/backend-config.patch.yaml`, `.github/workflows/deploy.yml`, `PRODUCT-DESCRIPTION.md`, `docs/{integration-biatec-dex,
   integration-widget,cicd}.md`, `k8s/README.md`.
-- **How it was verified:** backend suite 1393 tests (54 new middleware/validator/URL tests, 3 new full sign-in tests through the
+- **How it was verified:** backend suite 1393 tests (about 75 new middleware/validator/URL tests and 4 full sign-in/JWKS tests through the
   mount against Postgres incl. cookie attributes and the prefixed redirect URI); widget 5 new tests; the new deploy step run against a
   real Postgres with the real rendered overlay and mikefarah yq, twice (idempotent), and against the production overlay (no
   mounts). Not verified: a real deploy, and the nginx behaviour of the DEX ingress (BiatecDEX issue).
@@ -161,6 +162,7 @@ Filled in by the agent when it moves the task to `review`.
 
 Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>`
 
-- 2026-10-21 00:00 · scholtz · (new) → backlog · created at the product owner's request (chat on beta.dex.biatec.io/chat); the spec's "path-based reverse proxying is not supported" is changed deliberately
-- 2026-10-21 00:05 · scholtz · backlog → in-progress · claimed with session-20261021-claude on branch task/T-115; issue #244
-- 2026-10-21 00:40 · session-20261021-claude · in-progress → review · PR for T-115
+- 2026-10-21 10:03 · scholtz · (new) → backlog · created at the product owner's request (chat on beta.dex.biatec.io/chat); the spec's "path-based reverse proxying is not supported" is changed deliberately
+- 2026-10-21 10:04 · scholtz · backlog → in-progress · claimed with session-20261021-claude on branch task/T-115; issue #244
+- 2026-10-21 10:19 · session-20261021-claude · in-progress → review · PR for T-115
+- 2026-10-21 10:45 · session-20261021-claude · review → review · code review round 1: tenant upsert now keeps origin/client key/sign-in page in step with the overlay, mount ClientKey validated, telemetry probe filter covers the mounted /chat/health, one shared JWKS URL helper, warning when a mounted tenant's redirect URI lacks the prefix (fixed a log-template bug found by its test)

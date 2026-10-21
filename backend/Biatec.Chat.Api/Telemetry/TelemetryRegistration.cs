@@ -14,6 +14,14 @@ namespace Biatec.Chat.Api.Telemetry;
 public static class TelemetryRegistration
 {
     /// <summary>
+    /// Probe requests are not traced. The filter sees the path as the client sent it, before a host mount moves its prefix
+    /// into PathBase, so <c>/chat/health</c> on a mounted host counts as well.
+    /// </summary>
+    public static bool IsHealthPath(PathString path) =>
+        path.StartsWithSegments("/health")
+        || (path.Value is { } v && (v.EndsWith("/health", StringComparison.OrdinalIgnoreCase) || v.EndsWith("/health/live", StringComparison.OrdinalIgnoreCase)));
+
+    /// <summary>
     /// OpenTelemetry traces (incoming requests, every outbound HTTP call: Biatec MCP, Biatec OIDC, algod, the
     /// builders; AWS SDK calls: Bedrock, KMS; PostgreSQL) and metrics (ASP.NET Core, HttpClient, AWS SDK and
     /// <see cref="ChatMetrics"/>), exported over OTLP. Product metrics are hooked in by decorating services that are
@@ -33,7 +41,7 @@ public static class TelemetryRegistration
         var otel = services.AddOpenTelemetry()
             .ConfigureResource(r => r.AddService(o.ServiceName))
             .WithTracing(t => t
-                .AddAspNetCoreInstrumentation(a => a.Filter = ctx => !ctx.Request.Path.StartsWithSegments("/health"))
+                .AddAspNetCoreInstrumentation(a => a.Filter = ctx => !IsHealthPath(ctx.Request.Path))
                 .AddHttpClientInstrumentation()
                 .AddAWSInstrumentation()
                 .AddSource("Npgsql")

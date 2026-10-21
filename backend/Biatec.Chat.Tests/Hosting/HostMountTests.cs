@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Biatec.Chat.Tests.Hosting;
@@ -217,12 +218,63 @@ public sealed class HostMountTests : IDisposable
         Assert.Equal("/chat|/public/zzz|mount-beta-dex-biatec-io", pubBody);
     }
 
+    private sealed class CapturingLoggerProvider : ILoggerProvider
+    {
+        public readonly List<string> Warnings = [];
+        public ILogger CreateLogger(string categoryName) => new Capture(this);
+        public void Dispose() { }
+        private sealed class Capture(CapturingLoggerProvider owner) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => true;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                if (logLevel == LogLevel.Warning) lock (owner.Warnings) owner.Warnings.Add(formatter(state, exception));
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ATenantWhoseRedirectUriMissesTheMountPrefix_IsLoggedOnce_NotSilentlyServed()
+    {
+        var logs = new CapturingLoggerProvider();
+        var wrong = MountedTenant();
+        wrong.RedirectUri = MountedOrigin + "/auth/callback"; // no /chat
+        using var factory = _factory.WithWebHostBuilder(b =>
+        {
+            b.ConfigureLogging(l => l.AddProvider(logs));
+            b.ConfigureServices(s => { s.RemoveAll<ITenantStore>(); s.AddSingleton<ITenantStore>(new MemoryTenantStore(wrong, TenantSeed.BiatecChat())); });
+        });
+        using var client = factory.CreateClient();
+
+        for (var i = 0; i < 3; i++)
+            await client.GetAsync($"http://{MountedHost}/chat/zzz");
+        await client.GetAsync("http://chat.biatec.io/zzz"); // an unmounted tenant never warns
+        await client.GetAsync($"http://{MountedHost}/chat/zzz");
+
+        var warning = Assert.Single(logs.Warnings, w => w.Contains("mount-beta-dex-biatec-io"));
+        Assert.Contains("/chat", warning);
+        Assert.DoesNotContain(logs.Warnings, w => w.Contains("biatec-chat "));
+    }
+
+    [Fact]
+    public async Task ATenantWhoseRedirectUriCarriesThePrefix_DoesNotWarn()
+    {
+        var logs = new CapturingLoggerProvider();
+        using var factory = _factory.WithWebHostBuilder(b => b.ConfigureLogging(l => l.AddProvider(logs)));
+        using var client = factory.CreateClient();
+
+        await client.GetAsync($"http://{MountedHost}/chat/zzz");
+
+        Assert.DoesNotContain(logs.Warnings, w => w.Contains("redirect URI"));
+    }
+
     // ---- configuration -------------------------------------------------------------------------------------------
 
     private static ValidateOptionsResult Validate(params HostMountOptions[] mounts) =>
         new HostingOptionsValidator().Validate(null, new HostingOptions { Mounts = [.. mounts] });
 
-    private static HostMountOptions Mount(string host, string prefix) => new() { Host = host, Prefix = prefix };
+    private static HostMountOptions Mount(string host, string prefix, string clientKey = "biatec-dex") => new() { Host = host, Prefix = prefix, ClientKey = clientKey };
 
     [Theory]
     [InlineData("beta.dex.biatec.io", "/chat")]
@@ -255,6 +307,19 @@ public sealed class HostMountTests : IDisposable
 
         Assert.True(result.Failed);
         Assert.Contains(result.Failures!, f => f.StartsWith("Hosting:Mounts:0:" + option));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("biatec dex")]
+    [InlineData("a/b")]
+    [InlineData("key;drop")]
+    public void Validator_RequiresAUsableClientKey_BecauseTheDeployProvisionsTheTenantFromIt(string clientKey)
+    {
+        var result = Validate(Mount("beta.dex.biatec.io", "/chat", clientKey));
+
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, f => f.StartsWith("Hosting:Mounts:0:ClientKey"));
     }
 
     [Fact]
@@ -292,6 +357,34 @@ public sealed class HostMountTests : IDisposable
 
         Assert.Null(BackendUrls.TryBase(tenant));
         Assert.Throws<UriFormatException>(() => BackendUrls.Base(tenant));
+    }
+
+    [Theory]
+    [InlineData("/health", true)]
+    [InlineData("/health/live", true)]
+    [InlineData("/chat/health", true)]
+    [InlineData("/chat/health/live", true)]
+    [InlineData("/CHAT/HEALTH", true)]
+    [InlineData("/chat/chat/messages", false)]
+    [InlineData("/healthy", false)]
+    [InlineData("/chat/healthcare", false)]
+    [InlineData("/", false)]
+    public void Telemetry_DoesNotTraceProbes_AlsoOnAMountedHost(string path, bool probe) =>
+        Assert.Equal(probe, Biatec.Chat.Api.Telemetry.TelemetryRegistration.IsHealthPath(path));
+
+    [Theory]
+    [InlineData("", "", "https://chat.biatec.io/.well-known/evidence-jwks.json")]
+    [InlineData("", "/chat", "https://chat.biatec.io/chat/.well-known/evidence-jwks.json")]
+    [InlineData("https://stage.chat.biatec.io/", "/chat", "https://stage.chat.biatec.io/.well-known/evidence-jwks.json")]
+    public void EvidenceJwksUrl_UsesTheConfiguredBase_ElseTheRequestOriginWithItsPathBase(string publicBase, string pathBase, string expected)
+    {
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Scheme = "https";
+        ctx.Request.Host = new HostString("chat.biatec.io");
+        ctx.Request.PathBase = pathBase;
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Evidence:PublicBaseUrl"] = publicBase }).Build();
+
+        Assert.Equal(expected, Biatec.Chat.Api.Evidence.Jwks.EvidenceJwks.PublicUrl(ctx, config));
     }
 
     private static ToolExecutionContext Ctx(Tenant tenant) =>

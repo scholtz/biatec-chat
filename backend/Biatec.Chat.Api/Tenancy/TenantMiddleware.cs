@@ -16,8 +16,10 @@ public static class TenantHttpContextExtensions
 /// (<see cref="Hosting.HostMountMiddleware"/> runs first and leaves the path without the prefix). An unknown host is
 /// a 404. /health is exempt because orchestrator probes address the pod by IP.
 /// </summary>
-public sealed class TenantMiddleware(RequestDelegate next, ITenantStore store)
+public sealed class TenantMiddleware(RequestDelegate next, ITenantStore store, ILogger<TenantMiddleware> log)
 {
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _warned = new(StringComparer.Ordinal);
+
     public async Task InvokeAsync(HttpContext ctx)
     {
         if (ctx.Request.Path.StartsWithSegments("/health"))
@@ -35,7 +37,24 @@ public sealed class TenantMiddleware(RequestDelegate next, ITenantStore store)
         }
 
         ctx.SetTenant(tenant);
+        WarnWhenMountAndRedirectUriDisagree(ctx, tenant);
         await next(ctx);
+    }
+
+    /// <summary>
+    /// The URLs handed to the browser come from the tenant's redirect URI, which must therefore carry the mount prefix
+    /// (<c>https://host/chat/auth/callback</c>). A mounted host whose tenant says otherwise would send the popup to the
+    /// wrong application, silently, so it is logged once per tenant.
+    /// </summary>
+    private void WarnWhenMountAndRedirectUriDisagree(HttpContext ctx, Biatec.Chat.Core.Data.Tenant tenant)
+    {
+        if (!ctx.Request.PathBase.HasValue) return;
+        var expectedEnd = ctx.Request.PathBase.Value!;
+        var backend = Hosting.BackendUrls.TryBase(tenant);
+        if (backend is not null && backend.EndsWith(expectedEnd, StringComparison.OrdinalIgnoreCase)) return;
+        if (_warned.TryAdd(tenant.Id, 0))
+            log.LogWarning("Tenant {TenantId} is served under the mount {Mount} but its redirect URI {RedirectUri} does not carry that prefix in front of /auth/callback; sign-in and card URLs will miss the prefix.",
+                tenant.Id, expectedEnd, tenant.RedirectUri);
     }
 }
 

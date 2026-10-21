@@ -229,6 +229,15 @@ public sealed class MountedLoginTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task EvidenceKeys_AreServedUnderThePrefix_WhereBundlesPointVerifiers()
+    {
+        var jwks = await SendAsync(HttpMethod.Get, "/.well-known/evidence-jwks.json");
+
+        Assert.Equal(HttpStatusCode.OK, jwks.StatusCode);
+        Assert.True((await jwks.Content.ReadFromJsonAsync<JsonElement>()).TryGetProperty("keys", out _));
+    }
+
+    [Fact]
     public async Task WithoutThePrefix_TheMountedHostServesNothingOfTheBackend()
     {
         using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = false });
