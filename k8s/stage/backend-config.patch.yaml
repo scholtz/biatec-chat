@@ -13,3 +13,7 @@ data:
   Hosting__Mounts__0__Host: beta.dex.biatec.io
   Hosting__Mounts__0__Prefix: /chat
   Hosting__Mounts__0__ClientKey: biatec-dex
+  # Where evidence bundles tell verifiers to fetch the signing keys. Without it the URL is built from the request, which is
+  # plain http behind the TLS-terminating ingress. The keys are the same on every host of this backend, so the mounted
+  # host's bundles point here too.
+  Evidence__PublicBaseUrl: https://stage.chat.biatec.io

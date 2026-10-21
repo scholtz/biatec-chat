@@ -143,9 +143,10 @@ jobs:
             || { echo "::error::ConfigMap biatec-chat-backend was not found in the rendered ${OVERLAY}."; exit 1; }
           yq -r 'select(.kind == "ConfigMap" and .metadata.name == "biatec-chat-backend") | .data | to_entries | .[] | .key + "=" + (.value | tostring)' \
             "$RUNNER_TEMP/rendered.yaml" > "$RUNNER_TEMP/backend-config.env"
-          # A value of a mount key that spans lines would be cut at the first line here and rejected by the backend at startup.
-          awk '/^[A-Za-z0-9_.-]+=/ { cur = tolower($0); sub(/=.*/, "", cur); next } cur ~ /^hosting__mounts__/ { bad = 1 } END { exit bad }' "$RUNNER_TEMP/backend-config.env" \
-            || { echo "::error::A Hosting__Mounts__ value in the ConfigMap spans several lines."; exit 1; }
+          # One line per key, or the reader below would cut a value at its first line (and the backend would reject the rest at
+          # startup). A value that spans lines makes the file longer than the number of keys.
+          [ "$(wc -l < "$RUNNER_TEMP/backend-config.env")" -eq "$(yq -r 'select(.kind == "ConfigMap" and .metadata.name == "biatec-chat-backend") | .data | keys | length' "$RUNNER_TEMP/rendered.yaml")" ] \
+            || { echo "::error::A value in the biatec-chat-backend ConfigMap spans several lines; the mount reader of this deploy supports one line per key."; exit 1; }
           # .NET configuration keys are case-insensitive, so are these; an entry is any index that has any Hosting__Mounts__N__ key.
           awk -F= '{ k = tolower($1); sub(/^[^=]*=/, ""); print k "=" $0 }' "$RUNNER_TEMP/backend-config.env" \
             | grep '^hosting__mounts__' > "$RUNNER_TEMP/mounts.env" || true
@@ -252,6 +253,12 @@ jobs:
             get() { sed -n "s/^hosting__mounts__${i}__$1=//p" "$RUNNER_TEMP/mounts.env" | head -n1; }
             host="$(get host)"; prefix="$(get prefix)"; client_key="$(get clientkey)"
             id="mount-${host//./-}"
+            # The mounted tenant is a copy of biatec-chat, which the "Seed tenant biatec-chat" step just before this one creates.
+            [ "$(kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
+              psql -qtA -v ON_ERROR_STOP=1 -U biatec -d biatec_chat <<'SQL'
+          SELECT count(*) FROM "Tenants" WHERE "Id" = 'biatec-chat';
+          SQL
+            )" = 1 ] || { echo "::error::Tenant biatec-chat does not exist, so the mounted tenant of $host cannot be copied from it."; exit 1; }
             # Another tenant (onboarded, or made by hand) may already own the host: say so instead of a raw unique violation.
             # The same goes for a tenant that already has the derived id for another host: the upsert would take it over.
             owner="$(kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
