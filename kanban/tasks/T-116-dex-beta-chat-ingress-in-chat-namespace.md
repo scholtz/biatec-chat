@@ -1,7 +1,7 @@
 ---
 id: T-116
 title: "Route beta.dex.biatec.io/chat with an Ingress in the chat namespace (the ExternalName hop times out)"
-status: review
+status: done
 priority: P1
 epic: "Deploy & docs"
 blocked_by: [T-115]
@@ -99,6 +99,8 @@ Round 2 (high): fixed the stale ConfigMap comment, a distinct `app.kubernetes.io
 
 Round 3 (high): fixed the missing executable bit. Everything else repeats declined items (ordering/`/?`, case-insensitivity, cross-repo TLS ownership, CI wiring of a kind test, prose duplication). Clean after this fix.
 
+- 2026-10-21 13:44 · approve · PR #248 merged into main @ 39db698 (recorded by kanban-sync)
+
 ## Activity log
 
 Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>`
@@ -106,3 +108,4 @@ Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>
 - 2026-10-21 13:20 · scholtz · (new) → backlog · created after the live check of T-115 / BiatecDEX#83: /chat returns 504 after 5 s through the ExternalName hop
 - 2026-10-21 13:25 · scholtz · backlog → in-progress · taken, branch task/T-116, issue #247
 - 2026-10-21 13:50 · scholtz · in-progress → review · PR #248; post-deploy curl check pending the stage deploy
+- 2026-10-21 13:44 · user · review → done · PR #248 merged into main @ 39db698 (synced by kanban-sync)
