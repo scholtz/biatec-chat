@@ -64,8 +64,18 @@ describe("backendUrl with a path prefix", () => {
     expect(evidenceDownloadUrl(MOUNTED + "/")).toBe(`${MOUNTED}${PATHS.evidence}`);
   });
 
-  it("keeps the backend on the page's origin (no cross-origin call)", () => {
-    expect(new URL(MOUNTED).origin).toBe("https://beta.dex.biatec.io");
-    expect(new URL(`${MOUNTED}${PATHS.cookieChat}`).origin).toBe(new URL("https://beta.dex.biatec.io/markets").origin);
+  it("keeps every request on the page's own origin (no cross-origin call)", async () => {
+    const r = recorder();
+    const auth = new AuthClient(r.cfg);
+
+    await probeCookie(r.cfg);
+    await auth.session();
+    await auth.startLogin();
+    await auth.status("r1");
+    await new CookieTransport(r.cfg).keepalive();
+
+    const pageOrigin = new URL("https://beta.dex.biatec.io/markets").origin;
+    expect(r.urls.length).toBeGreaterThan(0);
+    expect(r.urls.map((u) => new URL(u).origin)).toEqual(r.urls.map(() => pageOrigin));
   });
 });

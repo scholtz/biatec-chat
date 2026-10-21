@@ -35,11 +35,16 @@ public static class MountConsistency
     /// <summary>True when the stored redirect URI has a path in front of <c>/auth/callback</c> (it was written for a mount).</summary>
     public static bool CarriesAPrefix(Tenant tenant)
     {
-        // The path as written, like IsConsistent reads it: after the authority, before any query or fragment.
-        var raw = tenant.RedirectUri;
+        // The path as written, like IsConsistent reads it: after the authority, before any query or fragment. No allocation:
+        // this runs on every request of a host that is not mounted.
+        var raw = tenant.RedirectUri.AsSpan();
         var afterScheme = raw.IndexOf("://", StringComparison.Ordinal) + 3;
-        if (afterScheme < 3 || raw.IndexOf('/', afterScheme) is not (>= 0 and var slash)) return false;
-        var path = raw[slash..].Split('?', '#')[0];
+        if (afterScheme < 3) return false;
+        var slash = raw[afterScheme..].IndexOf('/');
+        if (slash < 0) return false;
+        var path = raw[(afterScheme + slash)..];
+        var end = path.IndexOfAny('?', '#');
+        if (end >= 0) path = path[..end];
         return path.EndsWith("/auth/callback", StringComparison.Ordinal) && path.Length > "/auth/callback".Length;
     }
 

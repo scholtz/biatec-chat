@@ -12,16 +12,16 @@ namespace Biatec.Chat.Api.Hosting;
 public static class BackendUrls
 {
     /// <summary>No trailing slash. Throws for a redirect URI that is not an absolute URI, like the code it replaces.</summary>
-    public static string Base(Tenant tenant, string pathBase = "") =>
+    public static string Base(Tenant tenant, string pathBase) =>
         TryBase(tenant, pathBase) ?? throw new UriFormatException($"Tenant {tenant.Id} has no valid redirect URI.");
 
     /// <summary>The origin only (scheme, host, port), never a mount prefix: what is reported to Biatec OIDC as the backend's origin.</summary>
-    public static string Origin(Tenant tenant) => Base(tenant);
+    public static string Origin(Tenant tenant) => Base(tenant, "");
 
     /// <summary>The base for the request's own host: its path base is the mount, empty when the host is not mounted.</summary>
     public static string Base(Tenant tenant, HttpRequest request) => Base(tenant, request.PathBase.Value ?? "");
 
     /// <summary>Null when the tenant has no absolute redirect URI.</summary>
-    public static string? TryBase(Tenant tenant, string pathBase = "") =>
+    public static string? TryBase(Tenant tenant, string pathBase) =>
         Uri.TryCreate(tenant.RedirectUri, UriKind.Absolute, out var uri) ? uri.GetLeftPart(UriPartial.Authority) + pathBase.TrimEnd('/') : null;
 }

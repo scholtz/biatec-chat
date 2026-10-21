@@ -613,8 +613,8 @@ public sealed class HostMountTests : IDisposable
         Assert.Equal("https://beta.dex.biatec.io", Biatec.Chat.Api.Chat.Confirm.ConfirmService.BackendOrigin(MountedTenant()));
 
     [Fact]
-    public void BackendUrls_DefaultsToNoPathBase() =>
-        Assert.Equal("https://chat.biatec.io", BackendUrls.Base(new Tenant { Id = "t", RedirectUri = "https://chat.biatec.io/auth/callback" }));
+    public void BackendUrls_Origin_IsTheBareOrigin_WhateverTheRedirectUriPathIs() =>
+        Assert.Equal("https://beta.dex.biatec.io", BackendUrls.Origin(MountedTenant()));
 
     [Theory]
     [InlineData("")]
