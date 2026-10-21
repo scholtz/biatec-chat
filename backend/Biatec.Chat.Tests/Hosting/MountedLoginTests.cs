@@ -119,7 +119,6 @@ public sealed class MountedLoginTests : IAsyncLifetime
                 ["Secrets:biatec-chat:oidc-client-secret"] = MockOidc.ClientSecret,
                 ["Hosting:Mounts:0:Host"] = Host,
                 ["Hosting:Mounts:0:Prefix"] = Prefix,
-                ["Hosting:Mounts:0:ClientKey"] = ClientKey,
             }));
             b.ConfigureServices(s =>
             {

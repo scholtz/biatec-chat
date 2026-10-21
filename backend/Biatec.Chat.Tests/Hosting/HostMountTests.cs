@@ -77,7 +77,6 @@ public sealed class HostMountTests : IDisposable
             ["Kms:KeyId"] = "alias/test",
             ["Hosting:Mounts:0:Host"] = MountedHost,
             ["Hosting:Mounts:0:Prefix"] = "/chat",
-            ["Hosting:Mounts:0:ClientKey"] = "biatec-dex",
         }));
         b.ConfigureServices(s =>
         {
@@ -169,6 +168,47 @@ public sealed class HostMountTests : IDisposable
         // A site's own origin carries the widget only; onboarding and the operator surface stay on the chat hosts.
         Assert.Equal(HttpStatusCode.NotFound, (await SendAsync(HttpMethod.Get, MountedHost, path)).Status);
         Assert.Equal(HttpStatusCode.NotFound, (await SendAsync(HttpMethod.Post, MountedHost, path)).Status);
+    }
+
+    [Theory]
+    [InlineData("/chat//onboarding/tenants")]
+    [InlineData("/chat/./onboarding/tenants")]
+    [InlineData("/chat/%6Fnboarding/tenants")]
+    [InlineData("/chat/%2e/onboarding/tenants")]
+    [InlineData("/chat/x/../onboarding/tenants")]
+    [InlineData("/chat//onboarding/operator/tenants")]
+    [InlineData("/chat//chat/messages")]
+    public async Task MountedHost_OnboardingCannotBeReachedWithOddSpellings(string path)
+    {
+        // With every header a real widget request carries, so only the path decides. Either blocked outright (404) or no
+        // endpoint matched (the test's catch-all answers with "|"); never an endpoint.
+        var (status, body) = await SendAsync(HttpMethod.Post, MountedHost, path, origin: MountedOrigin, csrf: true, clientKey: "biatec-dex");
+
+        Assert.True(status == HttpStatusCode.NotFound || body.Contains('|'), $"{path} reached something: {(int)status} {body}");
+    }
+
+    [Theory]
+    [InlineData("/chat/auth/popup")]
+    [InlineData("/chat/auth/elevate/popup")]
+    public async Task SignInStart_IsRefusedWith503_ForAMountedTenantWhoseRedirectUriMissesThePrefix(string path)
+    {
+        var wrong = MountedTenant();
+        wrong.RedirectUri = MountedOrigin + "/auth/callback"; // no /chat
+        using var factory = _factory.WithWebHostBuilder(b => b.ConfigureServices(s =>
+        {
+            s.RemoveAll<ITenantStore>();
+            s.AddSingleton<ITenantStore>(new MemoryTenantStore(wrong, TenantSeed.BiatecChat()));
+        }));
+        using var client = factory.CreateClient();
+        var r = new HttpRequestMessage(HttpMethod.Post, $"http://{MountedHost}{path}");
+        r.Headers.TryAddWithoutValidation("Origin", MountedOrigin);
+        r.Headers.TryAddWithoutValidation("X-Biatec-Chat", "1");
+        r.Headers.TryAddWithoutValidation("X-Biatec-Client-Key", "biatec-dex");
+
+        var res = await client.SendAsync(r);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, res.StatusCode);
+        Assert.Contains("redirect URI", await res.Content.ReadAsStringAsync());
     }
 
     [Theory]
@@ -287,7 +327,7 @@ public sealed class HostMountTests : IDisposable
     private static ValidateOptionsResult Validate(params HostMountOptions[] mounts) =>
         new HostingOptionsValidator().Validate(null, new HostingOptions { Mounts = [.. mounts] });
 
-    private static HostMountOptions Mount(string host, string prefix, string clientKey = "biatec-dex") => new() { Host = host, Prefix = prefix, ClientKey = clientKey };
+    private static HostMountOptions Mount(string host, string prefix) => new() { Host = host, Prefix = prefix };
 
     [Theory]
     [InlineData("beta.dex.biatec.io", "/chat")]
@@ -323,16 +363,24 @@ public sealed class HostMountTests : IDisposable
     }
 
     [Theory]
-    [InlineData("")]
-    [InlineData("biatec dex")]
-    [InlineData("a/b")]
-    [InlineData("key;drop")]
-    public void Validator_RequiresAUsableClientKey_BecauseTheDeployProvisionsTheTenantFromIt(string clientKey)
-    {
-        var result = Validate(Mount("beta.dex.biatec.io", "/chat", clientKey));
+    [InlineData("beta.dex.biatec.io", "/chat\n")]
+    [InlineData("beta.dex.biatec.io", "/chat\r\n")]
+    [InlineData("beta.dex.biatec.io\n", "/chat")]
+    public void Validator_RejectsATrailingNewline_WhichDollarWouldLetThrough(string host, string prefix) =>
+        Assert.True(Validate(Mount(host, prefix)).Failed);
 
-        Assert.True(result.Failed);
-        Assert.Contains(result.Failures!, f => f.StartsWith("Hosting:Mounts:0:ClientKey"));
+    [Fact]
+    public void Validator_DoesNotCareAboutTheDeployOnlyClientKey()
+    {
+        var options = new HostingOptions();
+        new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Hosting:Mounts:0:Host"] = "beta.dex.biatec.io",
+            ["Hosting:Mounts:0:Prefix"] = "/chat",
+            ["Hosting:Mounts:0:ClientKey"] = "not a valid key at all",
+        }).Build().GetSection("Hosting").Bind(options);
+
+        Assert.True(new HostingOptionsValidator().Validate(null, options).Succeeded);
     }
 
     [Fact]
@@ -359,6 +407,10 @@ public sealed class HostMountTests : IDisposable
         Assert.Equal(expected, BackendUrls.Base(new Tenant { Id = "t", RedirectUri = redirectUri }, pathBase));
 
     [Fact]
+    public void ConfirmOrigin_IsTheBareOrigin_NeverAMountedUrl() =>
+        Assert.Equal("https://beta.dex.biatec.io", Biatec.Chat.Api.Chat.Confirm.ConfirmService.BackendOrigin(MountedTenant()));
+
+    [Fact]
     public void BackendUrls_DefaultsToNoPathBase() =>
         Assert.Equal("https://chat.biatec.io", BackendUrls.Base(new Tenant { Id = "t", RedirectUri = "https://chat.biatec.io/auth/callback" }));
 
@@ -374,28 +426,34 @@ public sealed class HostMountTests : IDisposable
         Assert.Throws<UriFormatException>(() => BackendUrls.Base(tenant, "/chat"));
     }
 
-    [Theory]
-    [InlineData("/health", true)]
-    [InlineData("/health/live", true)]
-    [InlineData("/chat/health", true)]
-    [InlineData("/chat/health/live", true)]
-    [InlineData("/CHAT/HEALTH", true)]
-    [InlineData("/chat/chat/messages", false)]
-    [InlineData("/healthy", false)]
-    [InlineData("/chat/healthcare", false)]
-    // Only the configured mount prefixes count, so a caller cannot hide a request from tracing by appending /health.
-    [InlineData("/public/health", false)]
-    [InlineData("/onboarding/health", false)]
-    [InlineData("/other/health", false)]
-    [InlineData("/", false)]
-    public void Telemetry_DoesNotTraceProbes_OnlyBehindTheConfiguredMountPrefixes(string path, bool probe) =>
-        Assert.Equal(probe, Biatec.Chat.Api.Telemetry.TelemetryRegistration.IsHealthPath(path, ["/chat"]));
+    private static readonly HostMountOptions[] ChatMount = [new() { Host = MountedHost, Prefix = "/chat" }];
 
     [Theory]
-    [InlineData("/chat/health", false)]
-    [InlineData("/health", true)]
-    public void Telemetry_WithoutMounts_OnlyTheBareProbePathCounts(string path, bool probe) =>
-        Assert.Equal(probe, Biatec.Chat.Api.Telemetry.TelemetryRegistration.IsHealthPath(path));
+    [InlineData(MountedHost, "/health", true)]
+    [InlineData(MountedHost, "/health/live", true)]
+    [InlineData(MountedHost, "/chat/health", true)]
+    [InlineData(MountedHost, "/chat/health/live", true)]
+    [InlineData(MountedHost, "/CHAT/HEALTH", true)]
+    [InlineData("chat.biatec.io", "/health", true)]
+    [InlineData(MountedHost, "/chat/chat/messages", false)]
+    [InlineData(MountedHost, "/healthy", false)]
+    [InlineData(MountedHost, "/chat/healthcare", false)]
+    // Only the mount prefix of the request's own host counts, so a caller cannot hide a request from tracing by appending /health.
+    [InlineData(MountedHost, "/public/health", false)]
+    [InlineData(MountedHost, "/onboarding/health", false)]
+    [InlineData(MountedHost, "/other/health", false)]
+    [InlineData("chat.biatec.io", "/chat/health", false)]
+    [InlineData(null, "/chat/health", false)]
+    [InlineData(MountedHost, "/", false)]
+    public void Telemetry_DoesNotTraceProbes_OnlyBehindTheMountOfTheRequestsOwnHost(string? host, string path, bool probe) =>
+        Assert.Equal(probe, Biatec.Chat.Api.Telemetry.TelemetryRegistration.IsHealthRequest(path, host, ChatMount));
+
+    [Fact]
+    public void Telemetry_WithoutMounts_OnlyTheBareProbePathCounts()
+    {
+        Assert.True(Biatec.Chat.Api.Telemetry.TelemetryRegistration.IsHealthRequest("/health", MountedHost, []));
+        Assert.False(Biatec.Chat.Api.Telemetry.TelemetryRegistration.IsHealthRequest("/chat/health", MountedHost, []));
+    }
 
     [Theory]
     [InlineData("", "", "https://chat.biatec.io/.well-known/evidence-jwks.json")]

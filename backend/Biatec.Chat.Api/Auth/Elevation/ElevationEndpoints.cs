@@ -38,6 +38,7 @@ public static class ElevationEndpoints
         {
             Harden(ctx);
             var tenant = ctx.GetTenant()!;
+            if (!Biatec.Chat.Api.Hosting.MountConsistency.IsConsistent(tenant, ctx.Request.PathBase.Value ?? "")) return Biatec.Chat.Api.Hosting.MountConsistency.Misconfigured();
             var now = clock.GetUtcNow();
             var scope = body?.Scope;
             if (!ElevationScopes.IsAllowed(scope))

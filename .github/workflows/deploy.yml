@@ -138,14 +138,22 @@ jobs:
           echo "demo_host=$demo_host" >> "$GITHUB_OUTPUT"
           # Mounted hosts (Hosting__Mounts__N__*): checked here, before the ConfigMap reaches the cluster, with the rules of
           # HostingOptionsValidator, so a bad overlay fails this deploy instead of crash-looping the backend at startup.
+          # A renamed or hash-suffixed ConfigMap, or a failing yq, must not look like "no mounts": assert it was found.
           yq -r 'select(.kind == "ConfigMap" and .metadata.name == "biatec-chat-backend") | .data | to_entries | .[] | .key + "=" + (.value | tostring)' \
-            "$RUNNER_TEMP/rendered.yaml" | grep '^Hosting__Mounts__' > "$RUNNER_TEMP/mounts.env" || true
+            "$RUNNER_TEMP/rendered.yaml" > "$RUNNER_TEMP/backend-config.env"
+          grep -q '^ASPNETCORE_ENVIRONMENT=' "$RUNNER_TEMP/backend-config.env" || { echo "::error::ConfigMap biatec-chat-backend was not found in the rendered ${OVERLAY}."; exit 1; }
+          grep '^Hosting__Mounts__' "$RUNNER_TEMP/backend-config.env" > "$RUNNER_TEMP/mounts.env" || true
+          declare -A seen_ids=()
           for i in $(sed -n 's/^Hosting__Mounts__\([0-9][0-9]*\)__Host=.*/\1/p' "$RUNNER_TEMP/mounts.env" | sort -un); do
             get() { sed -n "s/^Hosting__Mounts__${i}__$1=//p" "$RUNNER_TEMP/mounts.env" | head -n1; }
             host="$(get Host)"; prefix="$(get Prefix)"; client_key="$(get ClientKey)"
             [[ "$host" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$ ]] && [ "${#host}" -le 253 ] || { echo "::error::Mounted host '$host' is not a lower-case DNS name."; exit 1; }
             [[ "$prefix" =~ ^(/[A-Za-z0-9._~-]+)+$ ]] && ! [[ "$prefix" =~ (^|/)\.\.?(/|$) ]] || { echo "::error::Mount prefix '$prefix' of $host must look like /chat (no . or .. segments)."; exit 1; }
             [[ "$client_key" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "::error::Mount client key '$client_key' of $host is missing or invalid."; exit 1; }
+            # The tenant id is derived from the host (dots become dashes), which is lossy: two hosts must not share one.
+            id="mount-${host//./-}"
+            [ -z "${seen_ids[$id]:-}" ] || { echo "::error::Mounted hosts ${seen_ids[$id]} and $host would share the tenant id $id."; exit 1; }
+            seen_ids[$id]="$host"
           done
           kubectl apply -f "$RUNNER_TEMP/rendered.yaml"
 

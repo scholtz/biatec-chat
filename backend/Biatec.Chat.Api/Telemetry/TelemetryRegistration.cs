@@ -15,10 +15,12 @@ public static class TelemetryRegistration
 {
     /// <summary>
     /// Probe requests are not traced. The filter sees the path as the client sent it, before a host mount moves its prefix
-    /// into PathBase, so <c>/health</c> also counts behind each configured mount prefix (<c>/chat/health</c>), and nothing else.
+    /// into PathBase, so <c>/health</c> also counts behind the mount prefix of that very host (<c>/chat/health</c> on the
+    /// mounted host), and nothing else.
     /// </summary>
-    public static bool IsHealthPath(PathString path, IReadOnlyCollection<string>? mountPrefixes = null) =>
-        path.StartsWithSegments("/health") || (mountPrefixes?.Any(p => path.StartsWithSegments(p + "/health")) ?? false);
+    public static bool IsHealthRequest(PathString path, string? host, IEnumerable<Hosting.HostMountOptions> mounts) =>
+        path.StartsWithSegments("/health")
+        || (host is not null && mounts.Any(m => m.Host == host && path.StartsWithSegments(m.Prefix + "/health")));
 
     /// <summary>
     /// OpenTelemetry traces (incoming requests, every outbound HTTP call: Biatec MCP, Biatec OIDC, algod, the
@@ -30,7 +32,6 @@ public static class TelemetryRegistration
     {
         var o = config.GetSection(TelemetryOptions.Section).Get<TelemetryOptions>() ?? new TelemetryOptions();
         if (!o.Enabled) return services;
-        var mountPrefixes = (config.GetSection(Hosting.HostingOptions.Section + ":Mounts").Get<List<Hosting.HostMountOptions>>() ?? []).Select(m => m.Prefix).ToArray();
 
         services.AddSingleton<ChatMetrics>();
         Decorate<IPolicyEventSink>(services, _ => true, (sp, inner) => new MeteringPolicyEventSink(inner, sp.GetRequiredService<ChatMetrics>()));
@@ -41,7 +42,8 @@ public static class TelemetryRegistration
         var otel = services.AddOpenTelemetry()
             .ConfigureResource(r => r.AddService(o.ServiceName))
             .WithTracing(t => t
-                .AddAspNetCoreInstrumentation(a => a.Filter = ctx => !IsHealthPath(ctx.Request.Path, mountPrefixes))
+                .AddAspNetCoreInstrumentation(a => a.Filter = ctx => !IsHealthRequest(ctx.Request.Path, Tenancy.TenantHost.Normalize(ctx.Request.Host),
+                    ctx.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<Hosting.HostingOptions>>().Value.Mounts))
                 .AddHttpClientInstrumentation()
                 .AddAWSInstrumentation()
                 .AddSource("Npgsql")

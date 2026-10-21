@@ -40,6 +40,7 @@ public static class AuthEndpoints
         {
             Harden(ctx);
             var tenant = ctx.GetTenant()!;
+            if (!Biatec.Chat.Api.Hosting.MountConsistency.IsConsistent(tenant, ctx.Request.PathBase.Value ?? "")) return Biatec.Chat.Api.Hosting.MountConsistency.Misconfigured();
             var now = clock.GetUtcNow();
             var handle = await sessions.ResolveOrCreateAsync(tenant, SessionEndpoints.ReadCookie(ctx.Request), ctx.RequestAborted);
             if (handle.NewToken is not null) SessionEndpoints.WriteCookie(ctx.Response, handle.NewToken, handle.Session.AbsoluteExpiresAt, now);

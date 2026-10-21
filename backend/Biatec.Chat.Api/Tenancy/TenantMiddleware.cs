@@ -42,19 +42,16 @@ public sealed class TenantMiddleware(RequestDelegate next, ITenantStore store, I
     }
 
     /// <summary>
-    /// The OIDC redirect URI is the exact stored value, so a mounted host's tenant must say
-    /// <c>https://host/chat/auth/callback</c>. One that says otherwise completes sign-in at the wrong application, so it
-    /// is logged as an error once per tenant (the popup URLs themselves follow the mount, not the stored value).
+    /// A mounted host's tenant whose redirect URI does not carry the mount (<see cref="Hosting.MountConsistency"/>) is
+    /// logged as an error once per tenant; the sign-in start endpoints refuse it.
     /// </summary>
     private void WarnWhenMountAndRedirectUriDisagree(HttpContext ctx, Biatec.Chat.Core.Data.Tenant tenant)
     {
-        if (!ctx.Request.PathBase.HasValue) return;
-        var mount = ctx.Request.PathBase.Value!;
-        var expected = Hosting.BackendUrls.TryBase(tenant, mount) + "/auth/callback";
-        if (string.Equals(tenant.RedirectUri, expected, StringComparison.OrdinalIgnoreCase)) return;
+        var mount = ctx.Request.PathBase.Value ?? "";
+        if (Hosting.MountConsistency.IsConsistent(tenant, mount)) return;
         if (_warned.TryAdd(tenant.Id, 0))
-            log.LogError("Tenant {TenantId} is served under the mount {Mount} but its redirect URI is {RedirectUri}, not {Expected}: Biatec OIDC will send the sign-in callback to the wrong application.",
-                tenant.Id, mount, tenant.RedirectUri, expected);
+            log.LogError("Tenant {TenantId} is served under the mount {Mount} but its redirect URI is {RedirectUri}, not {Expected}: sign-in is refused for it until the tenant row is corrected.",
+                tenant.Id, mount, tenant.RedirectUri, Hosting.MountConsistency.Expected(tenant, mount));
     }
 }
 

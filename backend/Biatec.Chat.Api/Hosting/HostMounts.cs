@@ -16,11 +16,9 @@ public sealed class HostMountOptions
     /// <summary>Path the ingress forwards unchanged, for example <c>/chat</c>: one or more segments, no trailing slash.</summary>
     public string Prefix { get; set; } = "";
 
-    /// <summary>
-    /// Client key the page on that host sends (a label, not a secret). The backend itself reads it from the tenant row;
-    /// the deploy provisions that row from this value, so it is required here.
-    /// </summary>
-    public string ClientKey { get; set; } = "";
+    // The overlay's ConfigMap also carries Hosting__Mounts__N__ClientKey, the client key of the page on that host. Only the
+    // deploy reads it (to provision the mounted host's tenant, and it validates it there before anything is applied), so
+    // the backend binds and validates nothing about it: a wrong key can never stop the pods from starting.
 }
 
 public sealed class HostingOptions
@@ -33,13 +31,11 @@ public sealed class HostingOptions
 /// <summary>Startup validation: a wrong mount stops the app with a message naming the option.</summary>
 public sealed partial class HostingOptionsValidator : IValidateOptions<HostingOptions>
 {
-    [GeneratedRegex("^(/[A-Za-z0-9._~-]+)+$")]
+    // \z, not $: in .NET $ also matches before a trailing newline, which a multi-line config value could carry.
+    [GeneratedRegex("^(/[A-Za-z0-9._~-]+)+\\z")]
     private static partial Regex PrefixPattern();
 
-    [GeneratedRegex("^[A-Za-z0-9._-]+$")]
-    private static partial Regex ClientKeyPattern();
-
-    [GeneratedRegex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$")]
+    [GeneratedRegex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\\z")]
     private static partial Regex HostPattern();
 
     public ValidateOptionsResult Validate(string? name, HostingOptions options)
@@ -56,8 +52,6 @@ public sealed partial class HostingOptionsValidator : IValidateOptions<HostingOp
                 failures.Add($"{at}:Host '{m.Host}' is mounted twice.");
             if (!PrefixPattern().IsMatch(m.Prefix) || m.Prefix.Split('/').Any(s => s is "." or ".."))
                 failures.Add($"{at}:Prefix must be one or more path segments such as /chat, without a trailing slash (got '{m.Prefix}').");
-            if (!ClientKeyPattern().IsMatch(m.ClientKey))
-                failures.Add($"{at}:ClientKey is required (letters, digits, '.', '_' and '-'): the client key the page on that host sends (got '{m.ClientKey}').");
         }
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
@@ -71,7 +65,7 @@ public sealed partial class HostingOptionsValidator : IValidateOptions<HostingOp
 /// is decided by the Host header and the configuration alone, which is why a stripping ingress (rewrite) is not supported
 /// (a stripped <c>/chat/messages</c> cannot be told from the unstripped route of the same name). A mounted host serves
 /// the widget on a site's own origin, so tenant onboarding and the operator routes under <c>/onboarding</c> are not
-/// reachable there (404); they stay on the chat hosts.
+/// reachable there (404); they stay on the chat hosts. A path with an empty segment (<c>/chat//x</c>) is a 404 as well.
 /// </summary>
 public sealed class HostMountMiddleware(RequestDelegate next, IOptions<HostingOptions> options)
 {
@@ -93,7 +87,8 @@ public sealed class HostMountMiddleware(RequestDelegate next, IOptions<HostingOp
             return;
         }
 
-        if (rest.StartsWithSegments("/onboarding"))
+        // No route has an empty segment, and "//onboarding" must not slip past the segment match below.
+        if (rest.StartsWithSegments("/onboarding") || (rest.Value?.Contains("//", StringComparison.Ordinal) ?? false))
         {
             ctx.Response.StatusCode = StatusCodes.Status404NotFound;
             return;
