@@ -137,6 +137,29 @@ mounted.
 - `dex.biatec.io` (and any staging origin) is in the Biatec tenant's `allowedOrigins`, and `biatec-dex` in its
   `clientKeys`. Without that the widget falls back to the anonymous public transport (see integration-widget.md).
 
+### 7. Optional: serve the backend from the DEX origin (`/chat`)
+
+Used by the beta site. With `backendUrl: 'https://beta.dex.biatec.io/chat'` the widget talks to the page's own origin, so
+there is no CORS and the `__Host-biatec_session` cookie is plainly first-party. The widget needs nothing else: every URL
+is `backendUrl` plus the route (`packages/chat-widget/test/path-mount.test.ts`). The contract between the two sites:
+
+| Where | What |
+|---|---|
+| DEX ingress | A second Ingress for host `beta.dex.biatec.io`, path `/chat`, that forwards the **full path including `/chat`** (no rewrite, no prefix stripping) to the chat backend of namespace `biatec-chat-stage` through an ExternalName Service. Server-sent events need `proxy-buffering: "off"` and a read timeout of about 300 s. The longer `/chat` path wins over the DEX catch-all. |
+| Backend | `Hosting:Mounts` = host `beta.dex.biatec.io`, prefix `/chat` (`k8s/stage/backend-config.patch.yaml`). The backend moves the prefix to the path base; `/chat/health` is 200, `/health` on that host is 404, and the backend's own `POST /chat/messages` is reached at `/chat/chat/messages`. |
+| Tenant | The stage deploy provisions tenant `mount-beta-dex-biatec-io` for the host from the overlay: copy of `biatec-chat` with redirect URI `https://beta.dex.biatec.io/chat/auth/callback`, allowed origin `https://beta.dex.biatec.io`, client key `biatec-dex`. |
+| Biatec OIDC | The client of the stage tenant must allow the redirect URI `https://beta.dex.biatec.io/chat/auth/callback` (operator step at `stage.oidc.biatec.io`). |
+| CSP | `connect-src 'self'`; the sign-in popup opens on the same origin and goes on to `https://stage.oidc.biatec.io`. |
+
+Not supported: an ingress that strips the prefix (`rewrite-target`), and forwarded-prefix or forwarded-host headers. The
+backend reads neither, by design (see PRODUCT-DESCRIPTION.md, "Path-mounted hosts"). Check after a deploy:
+
+```bash
+curl -i https://beta.dex.biatec.io/chat/health          # 200 Healthy
+curl -i https://beta.dex.biatec.io/health               # the DEX app, not the chat backend
+curl -i https://beta.dex.biatec.io/chat/session/probe   # 200 and a Set-Cookie: __Host-biatec_session=...; path=/; secure; httponly; samesite=lax
+```
+
 ## Known limitations
 
 The three found with the playground are fixed in the widget (T-077): Esc pressed in or while a host modal dialog

@@ -11,9 +11,10 @@ public static class TenantHttpContextExtensions
 }
 
 /// <summary>
-/// Resolves the tenant from the Host header alone. X-Forwarded-Host and friends are never read: path or header
-/// based proxying is unsupported by design. An unknown host is a 404. /health is exempt because orchestrator
-/// probes address the pod by IP.
+/// Resolves the tenant from the Host header alone. X-Forwarded-Host and friends are never read: header based
+/// proxying is unsupported by design. A host served under a path prefix is configured, not detected
+/// (<see cref="Hosting.HostMountMiddleware"/> runs first and leaves the path without the prefix). An unknown host is
+/// a 404. /health is exempt because orchestrator probes address the pod by IP.
 /// </summary>
 public sealed class TenantMiddleware(RequestDelegate next, ITenantStore store)
 {

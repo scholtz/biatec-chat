@@ -197,6 +197,43 @@ jobs:
                                            "ClientSecretRef" = EXCLUDED."ClientSecretRef", "RedirectUri" = EXCLUDED."RedirectUri";
           SQL
 
+      # Hosts that serve this backend under a path prefix of their own site (Hosting__Mounts__N__* in the overlay's
+      # ConfigMap, for example https://beta.dex.biatec.io/chat) resolve their own tenant by Host. Each one is a copy of
+      # biatec-chat (same OIDC client, secret pointer, limits) with its own id, host, sign-in page, same-origin allowed
+      # origin, the mount's client key and a redirect URI that includes the prefix. Idempotent: a later deploy updates just
+      # host, client and redirect URI, like the biatec-chat step. Production has no mounts, so it does nothing there.
+      - name: Provision tenants of mounted hosts
+        run: |
+          yq -r 'select(.kind == "ConfigMap" and .metadata.name == "biatec-chat-backend") | .data | to_entries | .[] | .key + "=" + (.value | tostring)' \
+            "$RUNNER_TEMP/rendered.yaml" | grep '^Hosting__Mounts__' > "$RUNNER_TEMP/mounts.env" || true
+          indexes="$(sed -n 's/^Hosting__Mounts__\([0-9][0-9]*\)__Host=.*/\1/p' "$RUNNER_TEMP/mounts.env" | sort -un)"
+          if [ -z "$indexes" ]; then echo "No mounted hosts in ${{ inputs.overlay }}."; exit 0; fi
+          for i in $indexes; do
+            get() { sed -n "s/^Hosting__Mounts__${i}__$1=//p" "$RUNNER_TEMP/mounts.env" | head -n1; }
+            host="$(get Host)"; prefix="$(get Prefix)"; client_key="$(get ClientKey)"
+            [[ "$host" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$ ]] || { echo "::error::Mounted host '$host' is not a lower-case DNS name."; exit 1; }
+            [[ "$prefix" =~ ^(/[A-Za-z0-9._~-]+)+$ ]] || { echo "::error::Mount prefix '$prefix' of $host must look like /chat."; exit 1; }
+            [[ "$client_key" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "::error::Mount client key '$client_key' of $host is missing or invalid."; exit 1; }
+            id="mount-${host//./-}"
+            ok="$(kubectl exec -i statefulset/biatec-chat-postgres -n "$NAMESPACE" -- \
+              psql -qtA -v ON_ERROR_STOP=1 -U biatec -d biatec_chat \
+                -v id="$id" -v host="$host" -v origin="https://$host" -v redirect="https://$host$prefix/auth/callback" -v client_key="$client_key" <<'SQL'
+          INSERT INTO "Tenants" ("Id", "Host", "SignInPageUrl", "BedrockBudgets", "SafeApprovalCaps", "ConsentThresholdCeilingEur",
+                                 "LimitsUpdateEnabled", "X402Enabled", "OidcClientId", "ClientSecretRef", "RedirectUri",
+                                 "AllowedOrigins", "ClientKeys", "SoftCapEurPerHour", "TrustAnchorVerified", "DefaultModel", "Suggestions")
+          SELECT :'id', :'host', :'origin', "BedrockBudgets", "SafeApprovalCaps", "ConsentThresholdCeilingEur",
+                 "LimitsUpdateEnabled", "X402Enabled", "OidcClientId", "ClientSecretRef", :'redirect',
+                 ARRAY[:'origin'], jsonb_build_array(:'client_key'::text), "SoftCapEurPerHour", "TrustAnchorVerified", "DefaultModel", "Suggestions"
+            FROM "Tenants" WHERE "Id" = 'biatec-chat'
+          ON CONFLICT ("Id") DO UPDATE SET "Host" = EXCLUDED."Host", "OidcClientId" = EXCLUDED."OidcClientId",
+                                           "ClientSecretRef" = EXCLUDED."ClientSecretRef", "RedirectUri" = EXCLUDED."RedirectUri";
+          SELECT count(*) FROM "Tenants" WHERE "Id" = :'id' AND "RedirectUri" = :'redirect';
+          SQL
+            )"
+            [ "$ok" = 1 ] || { echo "::error::Tenant $id for $host was not provisioned (is the biatec-chat tenant missing? got '$ok')."; exit 1; }
+            echo "Tenant $id serves https://$host$prefix (redirect URI https://$host$prefix/auth/callback, client key $client_key)."
+          done
+
       # The demo site (docs/demo-site.md) calls the backend from its own origin with client key biatec-demo. Adds just
       # that origin and key to the tenant when missing; everything else on the row stays owned by onboarding. Same limits
       # as onboarding (10 origins, 20 client keys, same site as the backend host: the session cookie is SameSite=Lax),

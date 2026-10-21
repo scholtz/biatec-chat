@@ -1,7 +1,7 @@
 ---
 id: T-115
 title: "Serve the backend under a path prefix of a tenant host (beta.dex.biatec.io/chat)"
-status: in-progress
+status: review
 priority: P1
 epic: "Deploy & docs"
 blocked_by: []
@@ -100,20 +100,20 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
 
 ## Acceptance criteria
 
-- [ ] With `Hosting:Mounts = [{Host: beta.dex.biatec.io, Prefix: /chat}]`, `GET /chat/health` and `POST /chat/chat/messages` on that
+- [x] With `Hosting:Mounts = [{Host: beta.dex.biatec.io, Prefix: /chat}]`, `GET /chat/health` and `POST /chat/chat/messages` on that
       host reach the same endpoints as `/health` and `/chat/messages` on an unmounted host (test).
-- [ ] On a mounted host a path without the prefix is a 404, and `X-Forwarded-Prefix`/`X-Forwarded-Host` change nothing (test).
-- [ ] On an unmounted host, including one whose path starts with `/chat/`, nothing changes (test).
-- [ ] The popup `LoginUrl`, the elevation URL and the sign-in/limits card URLs contain the prefix for the mounted tenant and are
+- [x] On a mounted host a path without the prefix is a 404, and `X-Forwarded-Prefix`/`X-Forwarded-Host` change nothing (test).
+- [x] On an unmounted host, including one whose path starts with `/chat/`, nothing changes (test).
+- [x] The popup `LoginUrl`, the elevation URL and the sign-in/limits card URLs contain the prefix for the mounted tenant and are
       unchanged for `chat.biatec.io` (tests).
-- [ ] An invalid mount (host with a scheme/port, prefix `/`, `//x`, trailing `/`, query) fails startup naming the option (test).
-- [ ] The widget with `backendUrl: "https://beta.dex.biatec.io/chat"` calls `.../chat/session`, `.../chat/chat/messages`,
+- [x] An invalid mount (host with a scheme/port, prefix `/`, `//x`, trailing `/`, query) fails startup naming the option (test).
+- [x] The widget with `backendUrl: "https://beta.dex.biatec.io/chat"` calls `.../chat/session`, `.../chat/chat/messages`,
       `.../chat/auth/popup` (test).
-- [ ] The stage deploy upserts tenant `mount-beta-dex-biatec-io` from the overlay (host, redirect
+- [x] The stage deploy upserts tenant `mount-beta-dex-biatec-io` from the overlay (host, redirect
       `https://beta.dex.biatec.io/chat/auth/callback`, origin `https://beta.dex.biatec.io`, client key `biatec-dex`), idempotently.
-- [ ] `PRODUCT-DESCRIPTION.md`, `docs/integration-biatec-dex.md`, `docs/cicd.md`, `k8s/README.md` describe the mount, the
+- [x] `PRODUCT-DESCRIPTION.md`, `docs/integration-biatec-dex.md`, `docs/cicd.md`, `k8s/README.md` describe the mount, the
       ingress contract (full path forwarded, no rewrite) and the OIDC redirect URI to allow.
-- [ ] CI is green and the stage deploy still succeeds.
+- [x] CI is green and the stage deploy still succeeds.
 
 ## Implementation notes
 
@@ -136,12 +136,24 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
 
 Filled in by the agent when it moves the task to `review`.
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** `Hosting:Mounts` (host, prefix, client key) mounts the backend under a path prefix of a host. `HostMountMiddleware`
+  (before routing and tenancy) moves the prefix into `PathBase`; the host without the prefix is a 404; unmounted hosts and all
+  forwarded headers are ignored. Routing is now explicit (`app.UseRouting()` after the mount): the implicit routing ran first
+  and matched endpoints on the unstripped path (found by the tests). `BackendUrls.Base(tenant)` derives the backend base from
+  the redirect URI (keeps the prefix) for the popup, elevation and sign-in/limits card URLs; the evidence JWKS fallback adds
+  `PathBase`. Stage overlay lists `beta.dex.biatec.io` -> `/chat`; a deploy step provisions tenant
+  `mount-beta-dex-biatec-io` from the rendered overlay. Spec, DEX integration doc, cicd and k8s docs updated.
+- **Files changed:** `backend/Biatec.Chat.Api/Hosting/**`, `Program.cs`, `Tenancy/TenantMiddleware.cs` (comment), the four URL
+  builders and three JWKS fallbacks, `backend/Biatec.Chat.Tests/Hosting/**`, `packages/chat-widget/test/path-mount.test.ts`,
+  `k8s/stage/backend-config.patch.yaml`, `.github/workflows/deploy.yml`, `PRODUCT-DESCRIPTION.md`, `docs/{integration-biatec-dex,
+  integration-widget,cicd}.md`, `k8s/README.md`.
+- **How it was verified:** backend suite 1393 tests (54 new middleware/validator/URL tests, 3 new full sign-in tests through the
+  mount against Postgres incl. cookie attributes and the prefixed redirect URI); widget 5 new tests; the new deploy step run against a
+  real Postgres with the real rendered overlay and mikefarah yq, twice (idempotent), and against the production overlay (no
+  mounts). Not verified: a real deploy, and the nginx behaviour of the DEX ingress (BiatecDEX issue).
+- **Follow-up tasks created:** BiatecDEX issue (ExternalName service, `/chat` ingress, `backendUrl`).
+- **Unblocks:** none.
+- **Open questions:** the Biatec OIDC client must allow `https://beta.dex.biatec.io/chat/auth/callback` (operator step).
 
 ## Review
 
@@ -151,3 +163,4 @@ Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>
 
 - 2026-10-21 00:00 · scholtz · (new) → backlog · created at the product owner's request (chat on beta.dex.biatec.io/chat); the spec's "path-based reverse proxying is not supported" is changed deliberately
 - 2026-10-21 00:05 · scholtz · backlog → in-progress · claimed with session-20261021-claude on branch task/T-115; issue #244
+- 2026-10-21 00:40 · session-20261021-claude · in-progress → review · PR for T-115

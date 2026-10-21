@@ -101,7 +101,7 @@ public static class RetentionEndpoints
             var chain = await log.GetChainAsync(conversationId, ctx.RequestAborted);
             if (chain.Count == 0) return Results.Problem("This conversation has no evidence yet.", statusCode: StatusCodes.Status404NotFound);
             var publicBase = config["Evidence:PublicBaseUrl"]?.Trim().TrimEnd('/');
-            var jwksUrl = (string.IsNullOrEmpty(publicBase) ? $"{ctx.Request.Scheme}://{ctx.Request.Host}" : publicBase) + EvidenceJwks.JwksPath;
+            var jwksUrl = (string.IsNullOrEmpty(publicBase) ? $"{ctx.Request.Scheme}://{ctx.Request.Host}{ctx.Request.PathBase}" : publicBase) + EvidenceJwks.JwksPath;
             var bundle = await EvidenceBundleBuilder.BuildAsync(conversationId, chain, keys, jwksUrl, now, ctx.RequestAborted);
             ctx.Response.Headers.ContentDisposition = $"attachment; filename=\"biatec-evidence-{conversationId:N}.json\"";
             return Results.Content(bundle.ToJsonString(), "application/json");

@@ -100,6 +100,17 @@ Nothing else tells `deploy.yml` about the demo. When `demo_host` is set:
 Ingress, so `demo_host` is empty: the production tenant is not touched and no demo rollout is awaited.
 `promote-production.yml` does not re-tag the demo image.
 
+### Mounted hosts
+
+A site can serve this backend under a path prefix of its own origin (Biatec DEX beta: `https://beta.dex.biatec.io/chat`,
+[integration-biatec-dex.md](integration-biatec-dex.md) §7). The overlay lists it in the backend ConfigMap
+(`Hosting__Mounts__0__Host`, `__Prefix`, `__ClientKey` in `k8s/stage/backend-config.patch.yaml`); the backend serves that
+host only under the prefix. After the migration the step "Provision tenants of mounted hosts" reads those keys from the
+rendered overlay and upserts one tenant per mount, id `mount-<host with dashes>`: a copy of `biatec-chat` (same OIDC
+client and secret pointer, limits) with its own host, sign-in page and allowed origin (`https://<host>`), the mount's
+client key and the redirect URI `https://<host><prefix>/auth/callback`. A later deploy updates just host, client and
+redirect URI. The Biatec OIDC client must allow that redirect URI. Production has no mount.
+
 ## Database migrations
 
 The backend migrates on startup only in Development. Each deploy runs

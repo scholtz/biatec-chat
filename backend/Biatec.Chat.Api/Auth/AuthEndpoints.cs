@@ -62,8 +62,8 @@ public static class AuthEndpoints
             db.PopupAuthRequests.Add(req);
             await db.SaveChangesAsync(ctx.RequestAborted);
 
-            // The popup targets the tenant's own backend origin (from its registered redirect URI), never a request value.
-            var origin = new Uri(tenant.RedirectUri).GetLeftPart(UriPartial.Authority);
+            // The popup targets the tenant's own backend (origin and any mount prefix, from its registered redirect URI), never a request value.
+            var origin = Biatec.Chat.Api.Hosting.BackendUrls.Base(tenant);
             return Results.Ok(new PopupStartResponse
             {
                 AuthRequestId = req.Id.ToString(),

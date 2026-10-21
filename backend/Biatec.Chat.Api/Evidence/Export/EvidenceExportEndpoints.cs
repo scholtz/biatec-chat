@@ -39,7 +39,7 @@ public static class EvidenceExportEndpoints
 
             // Prefer the configured public base URL: behind a proxy the request scheme and host can be internal.
             var publicBase = config["Evidence:PublicBaseUrl"]?.Trim().TrimEnd('/');
-            var jwksUrl = (string.IsNullOrEmpty(publicBase) ? $"{ctx.Request.Scheme}://{ctx.Request.Host}" : publicBase) + EvidenceJwks.JwksPath;
+            var jwksUrl = (string.IsNullOrEmpty(publicBase) ? $"{ctx.Request.Scheme}://{ctx.Request.Host}{ctx.Request.PathBase}" : publicBase) + EvidenceJwks.JwksPath;
             var bundle = await EvidenceBundleBuilder.BuildAsync(session.ConversationId, chain, keys, jwksUrl, now, ctx.RequestAborted);
             ctx.Response.Headers.ContentDisposition = $"attachment; filename=\"biatec-evidence-{session.ConversationId:N}.json\"";
             return Results.Content(bundle.ToJsonString(), "application/json");

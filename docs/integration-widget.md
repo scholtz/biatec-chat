@@ -264,7 +264,7 @@ never relies on third-party cookies. That gives three modes:
 | Mode | Backend host | Tier | Notes |
 | --- | --- | --- | --- |
 | Biatec sites | `chat.biatec.io`, pages on `web.biatec.io` and `dex.biatec.io` | Authenticated | Same-site but cross-origin: credentialed CORS with the exact origin echoed. The apex `biatec.io` is not an allowed origin |
-| Third party | Your own subdomain, for example `chat.example-bank.com`, pointed at the Biatec Chat backend | Authenticated | The backend is multi-tenant by `Host` header. `backendUrl` must be same-site with your page. Path-based reverse proxying is not supported |
+| Third party | Your own subdomain, for example `chat.example-bank.com`, pointed at the Biatec Chat backend | Authenticated | The backend is multi-tenant by `Host` header. `backendUrl` must be same-site with your page. Header-based reverse proxying (forwarded host or prefix) is not supported; a path mount configured on the backend is (Biatec DEX beta: [integration-biatec-dex.md](integration-biatec-dex.md) §7) |
 | Unregistered or cross-site host | Any backend's public endpoint | Anonymous only | `POST {backendUrl}/public/chat` with continuation tokens ([public-chat-contract.md](public-chat-contract.md)); the widget falls back to it when the cookie does not come back |
 
 ## 3. Register your host as a tenant (third-party mode)

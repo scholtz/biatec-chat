@@ -25,6 +25,7 @@ if (args is [BedrockSmoke.Command, .. var smokeArgs])
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddBiatecOptions(builder.Configuration);
+Biatec.Chat.Api.Hosting.HostMountRegistration.AddHostMounts(builder.Services, builder.Configuration);
 builder.Services.AddBiatecHealth();
 builder.Services.AddContractsOpenApi();
 builder.Services.AddBiatecData();
@@ -71,6 +72,10 @@ await app.MigrateDevelopmentDatabaseAsync();
 await app.SeedTenantsAsync();
 
 Biatec.Chat.Api.Public.ClientAddress.UseClientAddress(app);
+// Before tenancy: a host mounted under a path prefix is resolved and routed without the prefix (Hosting:Mounts).
+Biatec.Chat.Api.Hosting.HostMountRegistration.UseHostMounts(app);
+// Explicit, so endpoints are matched after the mount prefix has moved to PathBase (the implicit UseRouting would run first).
+app.UseRouting();
 app.UseTenancy();
 app.UseOnboardingBodyLimit();
 app.UseRateLimiter();

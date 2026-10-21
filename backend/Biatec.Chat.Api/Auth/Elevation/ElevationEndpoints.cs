@@ -65,7 +65,7 @@ public static class ElevationEndpoints
             db.PopupAuthRequests.Add(req);
             await db.SaveChangesAsync(ctx.RequestAborted);
 
-            var origin = new Uri(tenant.RedirectUri).GetLeftPart(UriPartial.Authority);
+            var origin = Biatec.Chat.Api.Hosting.BackendUrls.Base(tenant);
             return Results.Ok(new PopupStartResponse
             {
                 AuthRequestId = req.Id.ToString(),
