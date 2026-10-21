@@ -139,12 +139,12 @@ Filled in by the agent when it moves the task to `review`.
 
 - **Summary:** `Hosting:Mounts` (host, prefix) mounts the backend under a path prefix of a host. `HostMountMiddleware` (before
   routing and tenancy) moves the prefix into `PathBase` (matched exactly); a mounted host without the prefix, with an empty
-  path segment, or under `/onboarding` or `/health` is a 404; unmounted hosts and all forwarded headers are ignored. Routing
+  path segment, or outside the widget's routes (`/session`, `/chat`, `/auth`, `/public`, `/.well-known`; so `/onboarding`, `/health`, `/contracts` and anything added later) is a 404; unmounted hosts and all forwarded headers are ignored. Routing
   is explicit (`app.UseRouting()` after the mount; the implicit routing matched endpoints on the unstripped path, found by
   the tests). The URLs handed to the browser are the redirect URI's origin plus the host's path base (`BackendUrls`), for the
   popup, elevation and the sign-in/limits cards; the evidence JWKS fallback adds `PathBase` (`EvidenceJwks.PublicUrl`, one
   helper). `TenantMiddleware` checks that a mounted host's tenant has exactly the matching redirect URI
-  (`MountConsistency`): the sign-in and elevation flow is refused with a 503 in that one place, the cards fall back to the
+  (`MountConsistency`): every `/auth` route but logout is refused with a 503 in that one place, the cards fall back to the
   sign-in page, and the problem is logged once. Stage overlay lists `beta.dex.biatec.io` -> `/chat` (+ the client key for the
   deploy); the deploy validates the mounts before applying and provisions tenant `mount-beta-dex-biatec-io` (copy of
   `biatec-chat`, nothing privileged inherited, origin/key only ever added). Spec, DEX integration doc, cicd and k8s docs updated.
@@ -154,10 +154,10 @@ Filled in by the agent when it moves the task to `review`.
   `ConfirmService`, `backend/Biatec.Chat.Tests/Hosting/**` and `Kb/KbChatTests.cs`, `packages/chat-widget/test/path-mount.test.ts`,
   `k8s/stage/backend-config.patch.yaml`, `.github/workflows/deploy.yml`, `PRODUCT-DESCRIPTION.md`, `docs/{integration-biatec-dex,
   integration-widget,cicd}.md`, `k8s/README.md`.
-- **How it was verified:** backend suite 1455 tests (about 130 new: middleware, validator, URL, consistency, JWKS and
+- **How it was verified:** backend suite 1474 tests (about 150 new: middleware, validator, URL, consistency, JWKS and
   three full sign-in/JWKS tests through the mount against Postgres incl. cookie attributes and the prefixed redirect URI, and an
   end-to-end chat test pinning the prefixed sign-in card); widget 5 new tests; the deploy steps (validation, owner check,
-  upsert, caps, add-only) run against a real Postgres with the real rendered overlay and mikefarah yq. Nine rounds of code
+  upsert, caps, add-only) run against a real Postgres with the real rendered overlay and mikefarah yq. Ten rounds of code
   review (see the log). Not verified: a real deploy, and the nginx behaviour of the DEX ingress (BiatecDEX issue).
 - **Follow-up tasks created:** BiatecDEX issue (ExternalName service, `/chat` ingress, `backendUrl`).
 - **Unblocks:** none.
@@ -182,3 +182,4 @@ Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>
 - 2026-10-21 13:15 · session-20261021-claude · review → review · code review round 7: the mount/redirect-URI refusal lives in one place (the tenant middleware: popup, login, elevate; not the callback or logout) instead of six endpoints; `/health` is a 404 behind a mount (probes use the pod's address), which also reverts all telemetry changes (TelemetryRegistration is identical to main); declined again: threading PathBase (pinned by an end-to-end test), a shared C#/bash validator, multi-line ConfigMap values (the values are re-validated by the same patterns)
 - 2026-10-21 13:40 · session-20261021-claude · review → review · code review round 8: the consistency verdict is cached per tenant instance (no key strings, no growth, logged once) and the reverse case (a prefixed redirect URI on a host that is not mounted) is logged, the deploy rejects case-variant duplicate mount keys, multi-line mount values and an existing tenant that has the derived id for another host, the docs say who receives the cookie; declined again: PathBase default (pinned end to end), case-sensitive prefix (documented), a cookie narrower than Path=/ (__Host- forbids it)
 - 2026-10-21 14:05 · session-20261021-claude · review → review · code review round 9: the consistency problem is logged once per distinct (tenant, redirect URI, mount) even though the store reloads the row every 10 s, mount indexes 1 and 01 are rejected as one slot, inline namespaces replaced by usings, the task notes and hand-off rewritten to match the code
+- 2026-10-21 14:40 · session-20261021-claude · review → review · code review round 10: a mounted host answers an allow-list of the widget's routes (`/session`, `/chat`, `/auth`, `/public`, `/.well-known`) instead of denying two names, so `/contracts`, `/openapi`, `/health`, `/onboarding` and later additions are 404 by default; the refusal covers every `/auth` route except logout; the consistency verdict is cached per tenant instance and mount; a redirect URI with userinfo is rejected; the provisioning step insists on the apply step's mounts file; declined again: a shared C#/bash validator

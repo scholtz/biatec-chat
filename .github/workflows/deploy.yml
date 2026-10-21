@@ -244,7 +244,8 @@ jobs:
       # tenant policy API. Production has no mounts, so it does nothing there.
       - name: Provision tenants of mounted hosts
         run: |
-          # mounts.env was written and validated by the apply step.
+          # mounts.env was written and validated by the apply step; without it nothing was checked, so do not pass silently.
+          [ -f "$RUNNER_TEMP/mounts.env" ] || { echo "::error::The apply step did not leave mounts.env."; exit 1; }
           indexes="$(sed -n 's/^hosting__mounts__\([0-9][0-9]*\)__host=.*/\1/p' "$RUNNER_TEMP/mounts.env" | sort -un)"
           if [ -z "$indexes" ]; then echo "No mounted hosts in ${{ inputs.overlay }}."; exit 0; fi
           for i in $indexes; do

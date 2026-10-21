@@ -22,7 +22,7 @@ public sealed class TenantMiddleware(RequestDelegate next, ITenantStore store, I
     // row every few seconds (a new instance), so the verdict is recomputed then, which is cheap; only the log line needs a
     // memory: one per distinct problem (tenant, redirect URI, mount), so a persistent misconfiguration is reported once,
     // not on every reload, and a corrected row that breaks again is reported again.
-    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<Biatec.Chat.Core.Data.Tenant, Lazy<bool>> _consistent = new();
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<Biatec.Chat.Core.Data.Tenant, System.Collections.Concurrent.ConcurrentDictionary<string, Lazy<bool>>> _consistent = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _reported = new(StringComparer.Ordinal);
 
     public async Task InvokeAsync(HttpContext ctx)
@@ -58,8 +58,9 @@ public sealed class TenantMiddleware(RequestDelegate next, ITenantStore store, I
     private bool MountIsConsistent(HttpContext ctx, Biatec.Chat.Core.Data.Tenant tenant)
     {
         var mount = ctx.Request.PathBase.Value ?? "";
-        return _consistent.GetValue(tenant, t => new Lazy<bool>(() =>
+        return _consistent.GetValue(tenant, _ => new()).GetOrAdd(mount, _ => new Lazy<bool>(() =>
         {
+            var t = tenant;
             if (Hosting.MountConsistency.IsConsistent(t, mount))
             {
                 // The other direction is only logged: a tenant whose redirect URI carries a prefix on a host that has no mount
@@ -76,9 +77,8 @@ public sealed class TenantMiddleware(RequestDelegate next, ITenantStore store, I
         })).Value;
     }
 
-    /// <summary>The popup start and the popup navigations of sign-in and elevation; the OIDC callback and logout are not part of it.</summary>
-    private static bool IsSignInFlow(PathString path) =>
-        path.StartsWithSegments("/auth/popup") || path.StartsWithSegments("/auth/login") || path.StartsWithSegments("/auth/elevate");
+    /// <summary>Every auth route (popup, login, elevate, callback, and whatever is added) except logout, which has to keep working.</summary>
+    private static bool IsSignInFlow(PathString path) => path.StartsWithSegments("/auth") && !path.StartsWithSegments("/auth/logout");
 }
 
 public static class TenancyRegistration

@@ -102,10 +102,11 @@ public sealed class HostMountTests : IDisposable
     }
 
     [Theory]
-    [InlineData("/chat/zzz", "/chat|/zzz")]
-    [InlineData("/chat/a/b?x=1", "/chat|/a/b")]
-    [InlineData("/chat", "/chat|/")]
-    [InlineData("/chat/", "/chat|/")]
+    [InlineData("/chat/session/zzz", "/chat|/session/zzz")]
+    [InlineData("/chat/auth/a/b?x=1", "/chat|/auth/a/b")]
+    [InlineData("/chat/public/x", "/chat|/public/x")]
+    [InlineData("/chat/chat/messages/x", "/chat|/chat/messages/x")]
+    [InlineData("/chat/.well-known/anything", "/chat|/.well-known/anything")]
     public async Task MountedHost_MovesThePrefixIntoPathBase_AndResolvesItsOwnTenant(string path, string expected)
     {
         var (status, body) = await SendAsync(HttpMethod.Get, MountedHost, path);
@@ -127,9 +128,9 @@ public sealed class HostMountTests : IDisposable
         Assert.Equal(unmounted.Status, mounted.Status);
         Assert.DoesNotContain("|", mounted.Body);
 
-        // /chat/messages on the mounted host is prefix + "/messages", which is no endpoint (the test's catch-all answers).
+        // /chat/messages on the mounted host is prefix + "/messages", which is no widget route at all: a 404.
         var prefixOnly = await SendAsync(HttpMethod.Post, MountedHost, "/chat/messages", origin: MountedOrigin, csrf: true, clientKey: "biatec-dex");
-        Assert.Equal("/chat|/messages|mount-beta-dex-biatec-io", prefixOnly.Body);
+        Assert.Equal(HttpStatusCode.NotFound, prefixOnly.Status);
     }
 
     [Theory]
@@ -158,6 +159,38 @@ public sealed class HostMountTests : IDisposable
 
         Assert.Equal(HttpStatusCode.NotFound, status);
         Assert.DoesNotContain("|", body);
+    }
+
+    [Theory]
+    [InlineData("/chat")]
+    [InlineData("/chat/")]
+    [InlineData("/chat/zzz")]
+    [InlineData("/chat/contracts")]
+    [InlineData("/chat/contracts/events")]
+    [InlineData("/chat/openapi/v1.json")]
+    [InlineData("/chat/admin/anything")]
+    [InlineData("/chat/sessionx")]
+    [InlineData("/chat/chatty")]
+    [InlineData("/chat/.wellknown")]
+    public async Task MountedHost_AnswersOnlyTheRoutesTheWidgetUses_EverythingElseIsNotFound(string path)
+    {
+        // Default deny: a route added to the backend later does not appear on the partner site's origin by itself.
+        var (status, body) = await SendAsync(HttpMethod.Get, MountedHost, path);
+
+        Assert.Equal(HttpStatusCode.NotFound, status);
+        Assert.DoesNotContain("|", body);
+    }
+
+    [Theory]
+    [InlineData("/session")]
+    [InlineData("/chat")]
+    [InlineData("/auth")]
+    [InlineData("/public")]
+    [InlineData("/.well-known")]
+    public void TheWidgetRoots_AreTheRoutesTheWidgetAndAVerifierCall(string root)
+    {
+        // The widget's own paths (packages/chat-widget: PATHS, AUTH_PATHS, AGENT_PATHS, PREVIEW_PATHS) all start with one of these.
+        Assert.Contains(root, HostMountMiddleware.WidgetRoots);
     }
 
     [Theory]
@@ -210,7 +243,7 @@ public sealed class HostMountTests : IDisposable
         await AssertRefusedAsync(path, MountedOrigin + "/auth/callback", HttpMethod.Get);
 
     [Fact]
-    public async Task TheOidcCallbackAndLogout_AreNotPartOfTheRefusedFlow()
+    public async Task EveryAuthRouteButLogout_IsRefused_ForAMisconfiguredMountedTenant()
     {
         var wrong = MountedTenant();
         wrong.RedirectUri = MountedOrigin + "/auth/callback";
@@ -221,10 +254,17 @@ public sealed class HostMountTests : IDisposable
         }));
         using var client = factory.CreateClient();
 
-        var callback = await client.GetAsync($"http://{MountedHost}/chat/auth/callback?code=x&state=y");
-
-        Assert.NotEqual(HttpStatusCode.ServiceUnavailable, callback.StatusCode);
+        // Including the callback and any auth route added later; logout has to keep working.
+        foreach (var path in new[] { "/chat/auth/callback?code=x&state=y", "/chat/auth/stepup", "/chat/auth/popup/00000000-0000-0000-0000-000000000000" })
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, (await client.GetAsync($"http://{MountedHost}{path}")).StatusCode);
+        Assert.NotEqual(HttpStatusCode.ServiceUnavailable, (await client.GetAsync($"http://{MountedHost}/chat/auth/logout")).StatusCode);
     }
+
+    [Theory]
+    [InlineData("https://user@beta.dex.biatec.io/chat/auth/callback")]
+    [InlineData("https://user:pass@beta.dex.biatec.io/chat/auth/callback")]
+    public void MountConsistency_RejectsUserinfoInTheRedirectUri_WhichWouldBeCopiedIntoEveryPopupUrl(string redirectUri) =>
+        Assert.False(MountConsistency.IsConsistent(new Tenant { Id = "t", Host = MountedHost, RedirectUri = redirectUri }, "/chat"));
 
     private async Task AssertRefusedAsync(string path, string redirectUri, HttpMethod? method = null)
     {
@@ -253,21 +293,21 @@ public sealed class HostMountTests : IDisposable
     public async Task MountedHost_IsMatchedLikeTheTenantHost(string hostHeader)
     {
         using var client = _factory.CreateClient();
-        var r = new HttpRequestMessage(HttpMethod.Get, "http://localhost/chat/zzz");
+        var r = new HttpRequestMessage(HttpMethod.Get, "http://localhost/chat/session/zzz");
         r.Headers.Host = hostHeader;
         var res = await client.SendAsync(r);
 
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
-        Assert.Equal("/chat|/zzz|mount-beta-dex-biatec-io", await res.Content.ReadAsStringAsync());
+        Assert.Equal("/chat|/session/zzz|mount-beta-dex-biatec-io", await res.Content.ReadAsStringAsync());
     }
 
     [Fact]
     public async Task UnmountedHost_IsUnchanged_EvenForPathsThatStartWithTheMountPrefix()
     {
-        var (status, body) = await SendAsync(HttpMethod.Get, "chat.biatec.io", "/chat/zzz");
+        var (status, body) = await SendAsync(HttpMethod.Get, "chat.biatec.io", "/chat/session/zzz");
 
         Assert.Equal(HttpStatusCode.OK, status);
-        Assert.Equal("|/chat/zzz|biatec-chat", body);
+        Assert.Equal("|/chat/session/zzz|biatec-chat", body);
     }
 
     [Fact]
@@ -280,10 +320,10 @@ public sealed class HostMountTests : IDisposable
         Assert.Equal("|/zzz|biatec-chat", b1);
 
         // On the mounted host the tenant still comes from Host, and the configured prefix is the only one.
-        var (s2, b2) = await SendAsync(HttpMethod.Get, MountedHost, "/chat/zzz",
+        var (s2, b2) = await SendAsync(HttpMethod.Get, MountedHost, "/chat/session/zzz",
             headers: [("X-Forwarded-Prefix", "/other"), ("X-Forwarded-Host", "chat.biatec.io")]);
         Assert.Equal(HttpStatusCode.OK, s2);
-        Assert.Equal("/chat|/zzz|mount-beta-dex-biatec-io", b2);
+        Assert.Equal("/chat|/session/zzz|mount-beta-dex-biatec-io", b2);
 
         // A stripped request cannot be declared by a header: without the prefix the mounted host is a 404.
         var (s3, _) = await SendAsync(HttpMethod.Get, MountedHost, "/zzz", headers: [("X-Forwarded-Prefix", "/chat")]);
@@ -294,12 +334,12 @@ public sealed class HostMountTests : IDisposable
     public async Task CsrfAndOriginGuards_SeeThePathWithoutThePrefix()
     {
         // Not public: needs the custom header, an allowed origin and a registered client key.
-        Assert.Equal(HttpStatusCode.Forbidden, (await SendAsync(HttpMethod.Post, MountedHost, "/chat/chat/zzz", origin: MountedOrigin)).Status);
-        Assert.Equal(HttpStatusCode.Forbidden, (await SendAsync(HttpMethod.Post, MountedHost, "/chat/chat/zzz", origin: "https://evil.example", csrf: true, clientKey: "biatec-dex")).Status);
-        Assert.Equal(HttpStatusCode.Forbidden, (await SendAsync(HttpMethod.Post, MountedHost, "/chat/chat/zzz", origin: MountedOrigin, csrf: true, clientKey: "biatec-web")).Status);
-        var (ok, body) = await SendAsync(HttpMethod.Post, MountedHost, "/chat/chat/zzz", origin: MountedOrigin, csrf: true, clientKey: "biatec-dex");
+        Assert.Equal(HttpStatusCode.Forbidden, (await SendAsync(HttpMethod.Post, MountedHost, "/chat/chat/session/zzz", origin: MountedOrigin)).Status);
+        Assert.Equal(HttpStatusCode.Forbidden, (await SendAsync(HttpMethod.Post, MountedHost, "/chat/chat/session/zzz", origin: "https://evil.example", csrf: true, clientKey: "biatec-dex")).Status);
+        Assert.Equal(HttpStatusCode.Forbidden, (await SendAsync(HttpMethod.Post, MountedHost, "/chat/chat/session/zzz", origin: MountedOrigin, csrf: true, clientKey: "biatec-web")).Status);
+        var (ok, body) = await SendAsync(HttpMethod.Post, MountedHost, "/chat/chat/session/zzz", origin: MountedOrigin, csrf: true, clientKey: "biatec-dex");
         Assert.Equal(HttpStatusCode.OK, ok);
-        Assert.Equal("/chat|/chat/zzz|mount-beta-dex-biatec-io", body);
+        Assert.Equal("/chat|/chat/session/zzz|mount-beta-dex-biatec-io", body);
 
         // /public/* is exempt exactly as on an unmounted host, but only once the prefix is gone.
         var (pub, pubBody) = await SendAsync(HttpMethod.Post, MountedHost, "/chat/public/zzz");
@@ -337,9 +377,9 @@ public sealed class HostMountTests : IDisposable
         using var client = factory.CreateClient();
 
         for (var i = 0; i < 3; i++)
-            await client.GetAsync($"http://{MountedHost}/chat/zzz");
+            await client.GetAsync($"http://{MountedHost}/chat/session/zzz");
         await client.GetAsync("http://chat.biatec.io/zzz"); // an unmounted tenant never warns
-        await client.GetAsync($"http://{MountedHost}/chat/zzz");
+        await client.GetAsync($"http://{MountedHost}/chat/session/zzz");
 
         var error = Assert.Single(logs.Errors, w => w.Contains("mount-beta-dex-biatec-io"));
         Assert.Contains(MountedOrigin + "/chat/auth/callback", error);
@@ -369,12 +409,12 @@ public sealed class HostMountTests : IDisposable
         });
         using var client = factory.CreateClient();
 
-        for (var i = 0; i < 6; i++) await client.GetAsync($"http://{MountedHost}/chat/zzz");
+        for (var i = 0; i < 6; i++) await client.GetAsync($"http://{MountedHost}/chat/session/zzz");
         Assert.Single(logs.Errors, e => e.Contains("mount-beta-dex-biatec-io"));
 
         // A different problem (the row is edited to another wrong value) is a new report; the same value again is not.
         redirect = MountedOrigin + "/other/auth/callback";
-        for (var i = 0; i < 3; i++) await client.GetAsync($"http://{MountedHost}/chat/zzz");
+        for (var i = 0; i < 3; i++) await client.GetAsync($"http://{MountedHost}/chat/session/zzz");
         Assert.Equal(2, logs.Errors.Count(e => e.Contains("mount-beta-dex-biatec-io")));
     }
 
@@ -405,7 +445,7 @@ public sealed class HostMountTests : IDisposable
         using var factory = _factory.WithWebHostBuilder(b => b.ConfigureLogging(l => l.AddProvider(logs)));
         using var client = factory.CreateClient();
 
-        await client.GetAsync($"http://{MountedHost}/chat/zzz");
+        await client.GetAsync($"http://{MountedHost}/chat/session/zzz");
 
         Assert.DoesNotContain(logs.Errors, w => w.Contains("redirect URI"));
     }

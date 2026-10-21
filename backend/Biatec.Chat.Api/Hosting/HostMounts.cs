@@ -73,13 +73,17 @@ public sealed partial class HostingOptionsValidator : IValidateOptions<HostingOp
 /// host. A mounted host without the prefix is a 404. Every other host is untouched. No forwarded header is read: the mount
 /// is decided by the Host header and the configuration alone, which is why a stripping ingress (rewrite) is not supported
 /// (a stripped <c>/chat/messages</c> cannot be told from the unstripped route of the same name). A mounted host serves
-/// the widget on a site's own origin, so tenant onboarding and the operator routes under <c>/onboarding</c> and the
-/// dependency probes under <c>/health</c> are not reachable there (404); they stay on the chat hosts and the pod's own
-/// address (orchestrator probes address the pod by IP, never through a mount). A path with an empty segment
-/// (<c>/chat//x</c>) is a 404 as well.
+/// the widget on a site's own origin, so it answers only the routes the widget and an evidence verifier use
+/// (<see cref="WidgetRoots"/>); everything else (tenant onboarding and the operator routes, the dependency probes, the
+/// contract catalog, anything added later) is a 404 there and stays on the chat hosts and the pod's own address
+/// (orchestrator probes address the pod by IP, never through a mount). A path with an empty segment (<c>/chat//x</c>) is a
+/// 404 as well.
 /// </summary>
 public sealed class HostMountMiddleware(RequestDelegate next, IOptions<HostingOptions> options)
 {
+    /// <summary>The first path segments a mounted host answers: the widget's calls, and the key set evidence bundles point at.</summary>
+    public static readonly string[] WidgetRoots = ["/session", "/chat", "/auth", "/public", "/.well-known"];
+
     private readonly Dictionary<string, PathString> _mounts =
         options.Value.Mounts.ToDictionary(m => m.Host, m => new PathString(m.Prefix), StringComparer.Ordinal);
 
@@ -98,8 +102,8 @@ public sealed class HostMountMiddleware(RequestDelegate next, IOptions<HostingOp
             return;
         }
 
-        // No route has an empty segment, and "//onboarding" must not slip past the segment match below.
-        if (rest.StartsWithSegments("/onboarding") || rest.StartsWithSegments("/health") || (rest.Value?.Contains("//", StringComparison.Ordinal) ?? false))
+        // Default deny. No route has an empty segment, and "//session" must not slip past the segment match.
+        if (!WidgetRoots.Any(root => rest.StartsWithSegments(root)) || (rest.Value?.Contains("//", StringComparison.Ordinal) ?? false))
         {
             ctx.Response.StatusCode = StatusCodes.Status404NotFound;
             return;

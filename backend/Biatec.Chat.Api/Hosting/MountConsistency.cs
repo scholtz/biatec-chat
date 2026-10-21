@@ -22,7 +22,8 @@ public static class MountConsistency
         var path = pathBase + "/auth/callback";
         var raw = tenant.RedirectUri;
         if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri)) return false;
-        if (uri.Query.Length != 0 || uri.Fragment.Length != 0 || !raw.EndsWith(path, StringComparison.Ordinal)) return false;
+        // No userinfo either: it would be copied into every popup and card URL.
+        if (uri.Query.Length != 0 || uri.Fragment.Length != 0 || uri.UserInfo.Length != 0 || !raw.EndsWith(path, StringComparison.Ordinal)) return false;
         if (!string.Equals(uri.Host, tenant.Host, StringComparison.OrdinalIgnoreCase)) return false;
         // What stands in front of the path must be the bare "scheme://authority": no "/x/.." that Uri would normalize away.
         var authority = raw[..^path.Length];
@@ -38,8 +39,6 @@ public static class MountConsistency
     /// <summary>The base URL for popup and card links, or null when the tenant is not usable for sign-in on this host.</summary>
     public static string? SignInBase(Tenant tenant, string pathBase) =>
         IsConsistent(tenant, pathBase) ? BackendUrls.TryBase(tenant, pathBase) : null;
-
-    public static bool IsConsistent(Tenant tenant, HttpRequest request) => IsConsistent(tenant, request.PathBase.Value ?? "");
 
     public static string? Expected(Tenant tenant, string pathBase) =>
         BackendUrls.TryBase(tenant, pathBase) is { } b ? b + "/auth/callback" : null;
