@@ -18,9 +18,13 @@ public static class TelemetryRegistration
     /// into PathBase, so <c>/health</c> also counts behind the mount prefix of that very host (<c>/chat/health</c> on the
     /// mounted host), and nothing else.
     /// </summary>
-    public static bool IsHealthRequest(PathString path, string? host, IEnumerable<Hosting.HostMountOptions> mounts) =>
+    public static bool IsHealthRequest(PathString path, string? host, IReadOnlyDictionary<string, PathString> mountedHealthPaths) =>
         path.StartsWithSegments("/health")
-        || (host is not null && mounts.Any(m => m.Host == host && path.StartsWithSegments(m.Prefix + "/health")));
+        || (host is not null && mountedHealthPaths.TryGetValue(host, out var health) && path.StartsWithSegments(health, StringComparison.Ordinal));
+
+    /// <summary>Host to the probe path behind its mount (<c>/chat/health</c>), built once from the validated mounts.</summary>
+    public static IReadOnlyDictionary<string, PathString> MountedHealthPaths(IEnumerable<Hosting.HostMountOptions> mounts) =>
+        mounts.ToDictionary(m => m.Host, m => new PathString(m.Prefix + "/health"), StringComparer.Ordinal);
 
     /// <summary>
     /// OpenTelemetry traces (incoming requests, every outbound HTTP call: Biatec MCP, Biatec OIDC, algod, the
@@ -39,13 +43,13 @@ public static class TelemetryRegistration
         Decorate<IToolExecutor>(services, d => d.ImplementationType == typeof(RequestSignInExecutor),
             (sp, inner) => new MeteringSignInExecutor(inner, sp.GetRequiredService<ChatMetrics>()), all: true);
 
-        // The validated mounts, taken from the options once (static configuration), not resolved per request.
-        IReadOnlyList<Hosting.HostMountOptions>? mounts = null;
+        // The probe path of each mounted host, built once from the validated options on the first request (static configuration).
+        IReadOnlyDictionary<string, PathString>? mountedHealth = null;
         var otel = services.AddOpenTelemetry()
             .ConfigureResource(r => r.AddService(o.ServiceName))
             .WithTracing(t => t
                 .AddAspNetCoreInstrumentation(a => a.Filter = ctx => !IsHealthRequest(ctx.Request.Path, Tenancy.TenantHost.Normalize(ctx.Request.Host),
-                    mounts ??= ctx.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<Hosting.HostingOptions>>().Value.Mounts))
+                    LazyInitializer.EnsureInitialized(ref mountedHealth, () => MountedHealthPaths(ctx.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<Hosting.HostingOptions>>().Value.Mounts))))
                 .AddHttpClientInstrumentation()
                 .AddAWSInstrumentation()
                 .AddSource("Npgsql")

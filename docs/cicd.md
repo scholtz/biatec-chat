@@ -116,10 +116,10 @@ belong to onboarding. Nothing privileged is inherited: the new tenant starts wit
 trust-anchor flag off, a deploy never changes them, and an operator enables what the site needs through the tenant policy
 API. The step fails unless the row afterwards holds the redirect URI, the origin and the client key. The
 mounts are validated before anything is applied (same rules as the backend's startup validation, plus the client key and
-that two hosts do not map to the same tenant id, and a prefix that does not start with `/health` or `/onboarding`; the step also fails if the ConfigMap is not found in the rendered overlay),
+that two hosts do not map to the same tenant id, and a prefix that does not start with `/health` or `/onboarding`; the step also fails if the ConfigMap is not found in the rendered overlay, if an entry lacks Host, Prefix or ClientKey (keys are read case-insensitively, like .NET configuration), or if another tenant already owns the host),
 so a bad overlay fails the deploy instead of crash-looping the backend. The client key is read by the deploy only; the
 backend ignores it. The redirect URI must be exactly `https://<host><prefix>/auth/callback`
-(the OIDC callback is that stored value); the backend logs an error when a mounted host's tenant disagrees (compared exactly, as Biatec OIDC does) and refuses to start or continue a sign-in or elevation for it (503), and its sign-in cards fall back to the sign-in page. The popup,
+(the OIDC callback is that stored value); the backend logs an error when a mounted host's tenant disagrees (the path is compared exactly, case included, as Biatec OIDC does; host spelling and a default port are not) and refuses to start or continue a sign-in or elevation for it (503), and its sign-in cards fall back to the sign-in page. The popup,
 elevation and card URLs follow the mount, not the stored value. The Biatec OIDC client must allow that redirect URI.
 Production has no mount.
 

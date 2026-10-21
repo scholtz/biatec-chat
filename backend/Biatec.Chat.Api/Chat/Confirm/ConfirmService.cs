@@ -749,11 +749,8 @@ public sealed class ConfirmService(
         return o;
     }
 
-    /// <summary>
-    /// The tenant's backend origin (from its registered redirect URI): what is reported when no page origin is known. An
-    /// origin has no path, so a host mount prefix is deliberately not part of it.
-    /// </summary>
-    public static string BackendOrigin(Tenant tenant) => Biatec.Chat.Api.Hosting.BackendUrls.Base(tenant);
+    /// <summary>The tenant's backend origin (from its registered redirect URI): what is reported when no page origin is known.</summary>
+    public static string BackendOrigin(Tenant tenant) => Biatec.Chat.Api.Hosting.BackendUrls.Origin(tenant);
 
     /// <summary>
     /// The origin reported to Biatec OIDC: the page origin when it canonicalizes to one of the tenant's registered

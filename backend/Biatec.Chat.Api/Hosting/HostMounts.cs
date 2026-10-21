@@ -90,7 +90,7 @@ public sealed class HostMountMiddleware(RequestDelegate next, IOptions<HostingOp
             return;
         }
 
-        if (!ctx.Request.Path.StartsWithSegments(prefix, out var rest))
+        if (!ctx.Request.Path.StartsWithSegments(prefix, StringComparison.Ordinal, out var rest))
         {
             ctx.Response.StatusCode = StatusCodes.Status404NotFound;
             return;

@@ -106,7 +106,6 @@ public sealed class HostMountTests : IDisposable
     [InlineData("/chat/a/b?x=1", "/chat|/a/b")]
     [InlineData("/chat", "/chat|/")]
     [InlineData("/chat/", "/chat|/")]
-    [InlineData("/CHAT/zzz", "/chat|/zzz")]
     public async Task MountedHost_MovesThePrefixIntoPathBase_AndResolvesItsOwnTenant(string path, string expected)
     {
         var (status, body) = await SendAsync(HttpMethod.Get, MountedHost, path);
@@ -148,6 +147,8 @@ public sealed class HostMountTests : IDisposable
     [InlineData("/health/live")]
     [InlineData("/chatty/zzz")]
     [InlineData("/chat-x")]
+    [InlineData("/CHAT/zzz")]
+    [InlineData("/Chat/health/live")]
     [InlineData("/auth/callback")]
     public async Task MountedHost_WithoutThePrefix_IsNotFound(string path)
     {
@@ -446,6 +447,32 @@ public sealed class HostMountTests : IDisposable
     public void BackendUrls_IsTheRedirectUriOriginPlusTheHostsPathBase(string redirectUri, string pathBase, string expected) =>
         Assert.Equal(expected, BackendUrls.Base(new Tenant { Id = "t", RedirectUri = redirectUri }, pathBase));
 
+    [Theory]
+    [InlineData("https://beta.dex.biatec.io/chat/auth/callback", true)]
+    [InlineData("https://beta.dex.biatec.io:443/chat/auth/callback", true)]
+    [InlineData("https://BETA.dex.biatec.io/chat/auth/callback", true)]
+    [InlineData("https://beta.dex.biatec.io/Chat/auth/callback", false)]
+    [InlineData("https://beta.dex.biatec.io/auth/callback", false)]
+    [InlineData("https://beta.dex.biatec.io/foo/chat/auth/callback", false)]
+    [InlineData("https://beta.dex.biatec.io/chat/auth/callback?x=1", false)]
+    [InlineData("https://beta.dex.biatec.io/chat/auth/callback#x", false)]
+    [InlineData("https://beta.dex.biatec.io/chat/auth/callback/", false)]
+    [InlineData("/chat/auth/callback", false)]
+    [InlineData("", false)]
+    public void MountConsistency_ComparesThePathOfTheStoredRedirectUri_NotARebuiltString(string redirectUri, bool consistent)
+    {
+        var tenant = new Tenant { Id = "t", RedirectUri = redirectUri };
+
+        Assert.Equal(consistent, MountConsistency.IsConsistent(tenant, "/chat"));
+        var signInBase = MountConsistency.SignInBase(tenant, "/chat");
+        if (consistent) Assert.EndsWith("/chat", signInBase);
+        else Assert.Null(signInBase);
+    }
+
+    [Fact]
+    public void MountConsistency_IsAlwaysTrueOnAnUnmountedHost() =>
+        Assert.True(MountConsistency.IsConsistent(new Tenant { Id = "t", RedirectUri = "https://chat.biatec.io/somewhere/else" }, ""));
+
     [Fact]
     public void ConfirmOrigin_IsTheBareOrigin_NeverAMountedUrl() =>
         Assert.Equal("https://beta.dex.biatec.io", Biatec.Chat.Api.Chat.Confirm.ConfirmService.BackendOrigin(MountedTenant()));
@@ -466,14 +493,15 @@ public sealed class HostMountTests : IDisposable
         Assert.Throws<UriFormatException>(() => BackendUrls.Base(tenant, "/chat"));
     }
 
-    private static readonly HostMountOptions[] ChatMount = [new() { Host = MountedHost, Prefix = "/chat" }];
+    private static readonly IReadOnlyDictionary<string, PathString> ChatMount =
+        Biatec.Chat.Api.Telemetry.TelemetryRegistration.MountedHealthPaths([new() { Host = MountedHost, Prefix = "/chat" }]);
 
     [Theory]
     [InlineData(MountedHost, "/health", true)]
     [InlineData(MountedHost, "/health/live", true)]
     [InlineData(MountedHost, "/chat/health", true)]
     [InlineData(MountedHost, "/chat/health/live", true)]
-    [InlineData(MountedHost, "/CHAT/HEALTH", true)]
+    [InlineData(MountedHost, "/CHAT/HEALTH", false)]
     [InlineData("chat.biatec.io", "/health", true)]
     [InlineData(MountedHost, "/chat/chat/messages", false)]
     [InlineData(MountedHost, "/healthy", false)]
@@ -491,8 +519,9 @@ public sealed class HostMountTests : IDisposable
     [Fact]
     public void Telemetry_WithoutMounts_OnlyTheBareProbePathCounts()
     {
-        Assert.True(Biatec.Chat.Api.Telemetry.TelemetryRegistration.IsHealthRequest("/health", MountedHost, []));
-        Assert.False(Biatec.Chat.Api.Telemetry.TelemetryRegistration.IsHealthRequest("/chat/health", MountedHost, []));
+        var none = Biatec.Chat.Api.Telemetry.TelemetryRegistration.MountedHealthPaths([]);
+        Assert.True(Biatec.Chat.Api.Telemetry.TelemetryRegistration.IsHealthRequest("/health", MountedHost, none));
+        Assert.False(Biatec.Chat.Api.Telemetry.TelemetryRegistration.IsHealthRequest("/chat/health", MountedHost, none));
     }
 
     [Theory]
