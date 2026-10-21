@@ -346,6 +346,38 @@ public sealed class HostMountTests : IDisposable
         Assert.DoesNotContain(logs.Errors, w => w.Contains("Tenant biatec-chat "));
     }
 
+    private sealed class ReloadingTenantStore(Func<Tenant> make) : ITenantStore
+    {
+        // Like DbTenantStore after its cache expires: a new instance of the same row on every lookup.
+        public Task<Tenant?> FindByHostAsync(string host, CancellationToken ct)
+        {
+            var t = make();
+            return Task.FromResult<Tenant?>(t.Host == host ? t : null);
+        }
+    }
+
+    [Fact]
+    public async Task AMisconfiguredTenant_IsReportedOncePerProblem_EvenWhenTheStoreReloadsTheRowOnEveryRequest()
+    {
+        var logs = new CapturingLoggerProvider();
+        var redirect = MountedOrigin + "/auth/callback"; // no /chat
+        Tenant Make() { var t = MountedTenant(); t.RedirectUri = redirect; return t; }
+        using var factory = _factory.WithWebHostBuilder(b =>
+        {
+            b.ConfigureLogging(l => l.AddProvider(logs));
+            b.ConfigureServices(s => { s.RemoveAll<ITenantStore>(); s.AddSingleton<ITenantStore>(new ReloadingTenantStore(Make)); });
+        });
+        using var client = factory.CreateClient();
+
+        for (var i = 0; i < 6; i++) await client.GetAsync($"http://{MountedHost}/chat/zzz");
+        Assert.Single(logs.Errors, e => e.Contains("mount-beta-dex-biatec-io"));
+
+        // A different problem (the row is edited to another wrong value) is a new report; the same value again is not.
+        redirect = MountedOrigin + "/other/auth/callback";
+        for (var i = 0; i < 3; i++) await client.GetAsync($"http://{MountedHost}/chat/zzz");
+        Assert.Equal(2, logs.Errors.Count(e => e.Contains("mount-beta-dex-biatec-io")));
+    }
+
     [Fact]
     public async Task AnUnmountedHostWhoseTenantHasAPrefixedRedirectUri_IsLogged_ButStillServed()
     {

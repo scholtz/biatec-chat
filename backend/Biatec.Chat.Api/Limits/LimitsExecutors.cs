@@ -10,6 +10,7 @@ using Biatec.Chat.Tools.Limits;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using Biatec.Chat.Api.Hosting;
 
 namespace Biatec.Chat.Api.Limits;
 
@@ -157,7 +158,7 @@ public sealed class LimitsUpdateExecutor(ITokenVault vault, IWalletLimitsClient 
 
     private static ToolExecutionResult RequestScope(ToolExecutionContext context)
     {
-        var origin = context.Tenant is { } t ? Biatec.Chat.Api.Hosting.MountConsistency.SignInBase(t, context.PathBase) : null;
+        var origin = context.Tenant is { } t ? MountConsistency.SignInBase(t, context.PathBase) : null;
         if (!context.SignInAvailable || origin is null)
             return new ToolExecutionResult("Changing limits needs the 'manage-limits' permission, and it cannot be requested on this page. Tell the user to open the Biatec site and authorize it there. Nothing was changed.", true);
         var card = new SignInCardEvent(origin + "/auth/elevate/popup", SignInReason.ElevateScope, ElevationScopes.ManageLimits,

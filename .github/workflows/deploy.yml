@@ -152,8 +152,12 @@ jobs:
           # Two spellings of one key (Host and HOST) would bind to whichever the backend's providers resolve last.
           dup="$(cut -d= -f1 "$RUNNER_TEMP/mounts.env" | sort | uniq -d | head -n1)"
           [ -z "$dup" ] || { echo "::error::Hosting__Mounts__ key '$dup' is defined twice (keys are case-insensitive)."; exit 1; }
-          declare -A seen_ids=()
-          for i in $(sed -n 's/^hosting__mounts__\([0-9][0-9]*\)__.*/\1/p' "$RUNNER_TEMP/mounts.env" | sort -un); do
+          declare -A seen_ids=() seen_slots=()
+          for i in $(sed -n 's/^hosting__mounts__\([0-9][0-9]*\)__.*/\1/p' "$RUNNER_TEMP/mounts.env" | sort -u); do
+            # The binder reads the index as a number: 1 and 01 are one list slot, so they must not both be written.
+            slot=$((10#$i))
+            [ -z "${seen_slots[$slot]:-}" ] || { echo "::error::Hosting__Mounts__${seen_slots[$slot]} and Hosting__Mounts__${i} are the same list slot."; exit 1; }
+            seen_slots[$slot]="$i"
             get() { sed -n "s/^hosting__mounts__${i}__$1=//p" "$RUNNER_TEMP/mounts.env" | head -n1; }
             host="$(get host)"; prefix="$(get prefix)"; client_key="$(get clientkey)"
             [ -n "$host" ] && [ -n "$prefix" ] && [ -n "$client_key" ] || { echo "::error::Hosting__Mounts__${i} needs Host, Prefix and ClientKey (got host '$host', prefix '$prefix', client key '$client_key')."; exit 1; }

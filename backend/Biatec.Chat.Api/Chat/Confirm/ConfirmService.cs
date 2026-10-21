@@ -12,6 +12,7 @@ using Biatec.Chat.Core.Previews;
 using Biatec.Chat.Tools.Mcp;
 using Biatec.Chat.Tools.Signing;
 using Microsoft.EntityFrameworkCore;
+using Biatec.Chat.Api.Hosting;
 
 namespace Biatec.Chat.Api.Chat.Confirm;
 
@@ -750,7 +751,7 @@ public sealed class ConfirmService(
     }
 
     /// <summary>The tenant's backend origin (from its registered redirect URI): what is reported when no page origin is known.</summary>
-    public static string BackendOrigin(Tenant tenant) => Biatec.Chat.Api.Hosting.BackendUrls.Origin(tenant);
+    public static string BackendOrigin(Tenant tenant) => BackendUrls.Origin(tenant);
 
     /// <summary>
     /// The origin reported to Biatec OIDC: the page origin when it canonicalizes to one of the tenant's registered

@@ -18,9 +18,12 @@ public static class TenantHttpContextExtensions
 /// </summary>
 public sealed class TenantMiddleware(RequestDelegate next, ITenantStore store, ILogger<TenantMiddleware> log)
 {
-    // The verdict per tenant instance. The store hands out a new instance when it reloads a row, so a corrected row is
-    // checked (and logged) anew and nothing outlives its tenant; Lazy makes the check, and its log line, run once.
+    // The verdict per tenant instance, so the hot path neither parses the redirect URI nor allocates. The store reloads a
+    // row every few seconds (a new instance), so the verdict is recomputed then, which is cheap; only the log line needs a
+    // memory: one per distinct problem (tenant, redirect URI, mount), so a persistent misconfiguration is reported once,
+    // not on every reload, and a corrected row that breaks again is reported again.
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<Biatec.Chat.Core.Data.Tenant, Lazy<bool>> _consistent = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _reported = new(StringComparer.Ordinal);
 
     public async Task InvokeAsync(HttpContext ctx)
     {
@@ -61,13 +64,14 @@ public sealed class TenantMiddleware(RequestDelegate next, ITenantStore store, I
             {
                 // The other direction is only logged: a tenant whose redirect URI carries a prefix on a host that has no mount
                 // keeps the URLs it always had, but it is almost certainly a mount that was removed from the overlay.
-                if (mount.Length == 0 && Hosting.MountConsistency.CarriesAPrefix(t))
+                if (mount.Length == 0 && Hosting.MountConsistency.CarriesAPrefix(t) && _reported.TryAdd($"unmounted|{t.Id}|{t.Host}|{t.RedirectUri}", 0))
                     log.LogError("Tenant {TenantId} has the redirect URI {RedirectUri}, which carries a path prefix, but host {Host} is not mounted (Hosting:Mounts): its popup URLs have no prefix.",
                         t.Id, t.RedirectUri, t.Host);
                 return true;
             }
-            log.LogError("Tenant {TenantId} is served under the mount {Mount} but its redirect URI is {RedirectUri}, not {Expected}: sign-in is refused for it until the tenant row is corrected.",
-                t.Id, mount, t.RedirectUri, Hosting.MountConsistency.Expected(t, mount));
+            if (_reported.TryAdd($"mounted|{t.Id}|{t.Host}|{t.RedirectUri}|{mount}", 0))
+                log.LogError("Tenant {TenantId} is served under the mount {Mount} but its redirect URI is {RedirectUri}, not {Expected}: sign-in is refused for it until the tenant row is corrected.",
+                    t.Id, mount, t.RedirectUri, Hosting.MountConsistency.Expected(t, mount));
             return false;
         })).Value;
     }
