@@ -6,6 +6,7 @@ resources:
   - storage.yaml
   - ingress.yaml
   - demo-ingress.yaml
+  - dex-beta-ingress.yaml
 patches:
   - path: backend-config.patch.yaml
   - path: builders-env.patch.yaml

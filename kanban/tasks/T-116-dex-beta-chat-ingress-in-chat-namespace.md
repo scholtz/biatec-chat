@@ -84,9 +84,9 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
+- **Summary:** Ingress `biatec-chat-dex-beta` (ns `biatec-chat-stage`, host `beta.dex.biatec.io`, path `/(chat(?:/.*)?)/?$`, identity rewrite) straight to the backend Service; added to the stage overlay only.
+- **Files changed:** `k8s/stage/dex-beta-ingress.yaml`, `k8s/stage/kustomization.yaml`, `k8s/stage/dex-beta-ingress-test/{run.sh,fakes.yaml}`, docs.
+- **How it was verified:** `dex-beta-ingress-test/run.sh` in kind with real ingress-nginx v1.12.1, DEX catch-all and the old broken ExternalName route (older) present: ALL CHECKS PASSED. Stage overlay renders the Ingress, main does not.
 - **Follow-up tasks created:**
 - **Unblocks:**
 - **Open questions:** why the ExternalName hop times out (controller log line for `beta.dex.biatec.io` on the cluster).

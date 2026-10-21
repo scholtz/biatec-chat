@@ -56,9 +56,10 @@ setup with `infra/aws/rolesanywhere.sh`; the full walk-through is [docs/aws-setu
   `ClientSecretRef=secret://biatec-chat/oidc-client-secret`.
   The secret itself is the `oidc-client-secret` key above, exposed as `Secrets__biatec-chat__oidc-client-secret`.
 - **Mounted hosts.** `stage` serves `beta.dex.biatec.io` under `/chat` (`Hosting__Mounts__*` in `backend-config.patch.yaml`).
-  The backend answers that host only under the prefix, which the DEX ingress must forward unchanged; the deploy provisions the
-  host's tenant (docs/cicd.md, "Mounted hosts"). The backend's own Ingress here is unchanged and keeps serving
-  `stage.chat.biatec.io` without a prefix.
+  The backend answers that host only under the prefix. `dex-beta-ingress.yaml` routes `/chat` of that host to the backend
+  Service with the full path (the DEX repo owns the host, its certificate and the catch-all; checked in kind by
+  `dex-beta-ingress-test/run.sh`); the deploy provisions the host's tenant (docs/cicd.md, "Mounted hosts"). The backend's
+  own Ingress here is unchanged and keeps serving `stage.chat.biatec.io` without a prefix.
 - **Vault** uses the `Secret` key provider: `Vault__MasterKey` from `biatec-chat-generated` wraps the per-entry data keys
   (AES-GCM). Losing that key only forces users to sign in again.
 - **Evidence signing keys** (`Evidence__KeyStore=Secret`). `base/backend.yaml` reads `Evidence__Secret__MasterKey` from
