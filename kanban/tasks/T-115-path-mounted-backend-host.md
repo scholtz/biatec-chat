@@ -1,7 +1,7 @@
 ---
 id: T-115
 title: "Serve the backend under a path prefix of a tenant host (beta.dex.biatec.io/chat)"
-status: review
+status: done
 priority: P1
 epic: "Deploy & docs"
 blocked_by: []
@@ -165,6 +165,8 @@ Filled in by the agent when it moves the task to `review`.
 
 ## Review
 
+- 2026-10-21 12:19 · approve · PR #245 merged into main @ 3173582 (recorded by kanban-sync)
+
 ## Activity log
 
 Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>`
@@ -187,3 +189,4 @@ Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>
 - 2026-10-21 15:25 · session-20261021-claude · review → review · code review round 12: stage sets Evidence__PublicBaseUrl so bundles tell verifiers an https key URL (it was built from the request, plain http behind the ingress, for every host), the deploy detects multi-line ConfigMap values by line count instead of by what a continuation looks like, says so when the biatec-chat template tenant is missing, and the docs state that the allow-list is by first segment; declined: refusing less than every /auth route but logout (the callback and the poll are meant to stop with the flow), PathBase plumbing (pinned end to end), case-sensitive later segments (routing is case-insensitive everywhere), the _reported map (a few bytes per distinct problem)
 - 2026-10-21 15:50 · session-20261021-claude · review → review · code review round 13: CarriesAPrefix allocates nothing, BackendUrls has no default path base (callers say origin or mounted base), the widget's same-origin test asserts on the requests the widget made, docs note that a mount change arrives with a new image tag; declined: restarting pods on a ConfigMap change (any merged overlay change carries a new tag), the shared C#/bash validator, spec sign-off (the product owner asked for the change; the task and PR say so)
 - 2026-10-21 16:10 · session-20261021-claude · review → review · code review round 14: no definite crash or security bug found; the mount reader no longer pipes through head (SIGPIPE under pipefail); recorded and declined: the per-request check on a mounted host (a cache was removed in round 11 as heavier than the check), the log de-dup set (a few bytes per distinct problem), the caps being checked after apply (the first deploy cannot provision before its database exists; the failure is loud), a route allow-list from endpoint metadata (an explicit list is easier to review and is pinned against the widget's paths), PathBase plumbing (pinned end to end), the spec change (the product owner asked for it)
+- 2026-10-21 12:19 · user · review → done · PR #245 merged into main @ 3173582 (synced by kanban-sync)
