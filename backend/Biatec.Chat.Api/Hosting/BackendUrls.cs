@@ -21,7 +21,12 @@ public static class BackendUrls
     /// <summary>The base for the request's own host: its path base is the mount, empty when the host is not mounted.</summary>
     public static string Base(Tenant tenant, HttpRequest request) => Base(tenant, request.PathBase.Value ?? "");
 
-    /// <summary>Null when the tenant has no absolute redirect URI.</summary>
+    /// <summary>
+    /// Null when the tenant has no absolute http(s) redirect URI. The scheme is checked because on Unix a rooted path such as
+    /// <c>/auth/callback</c> also parses as an absolute (<c>file:</c>) URI.
+    /// </summary>
     public static string? TryBase(Tenant tenant, string pathBase) =>
-        Uri.TryCreate(tenant.RedirectUri, UriKind.Absolute, out var uri) ? uri.GetLeftPart(UriPartial.Authority) + pathBase.TrimEnd('/') : null;
+        Uri.TryCreate(tenant.RedirectUri, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https"
+            ? uri.GetLeftPart(UriPartial.Authority) + pathBase.TrimEnd('/')
+            : null;
 }

@@ -620,6 +620,8 @@ public sealed class HostMountTests : IDisposable
     [InlineData("")]
     [InlineData("/auth/callback")]
     [InlineData("not a url")]
+    [InlineData("file:///auth/callback")] // what a rooted path parses as on Unix
+    [InlineData("ftp://host/auth/callback")]
     public void BackendUrls_WithoutAnAbsoluteRedirectUri_HasNoBase(string redirectUri)
     {
         var tenant = new Tenant { Id = "t", RedirectUri = redirectUri };
