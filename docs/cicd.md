@@ -105,7 +105,7 @@ Ingress, so `demo_host` is empty: the production tenant is not touched and no de
 A site can serve this backend under a path prefix of its own origin (Biatec DEX beta: `https://beta.dex.biatec.io/chat`,
 [integration-biatec-dex.md](integration-biatec-dex.md) §7). The overlay lists it in the backend ConfigMap
 (`Hosting__Mounts__0__Host`, `__Prefix`, `__ClientKey` in `k8s/stage/backend-config.patch.yaml`); the backend serves that
-host only under the prefix. The route to it is `k8s/stage/dex-beta-ingress.yaml`, an Ingress in the chat namespace for the DEX host (ingress-nginx merges it with the DEX repo's Ingress of the same host; an ExternalName hop from the DEX namespace timed out there, cause not established). After the migration the step "Provision tenants of mounted hosts" reads those keys from the
+host only under the prefix. The route to it is `k8s/stage/dex-beta-ingress.yaml`, an Ingress for the DEX host on this cluster: the DEX cluster (another cluster) forwards `/chat` over HTTPS to `stage.chat.biatec.io` with the Host header kept, and this Ingress routes that Host to the backend. After the migration the step "Provision tenants of mounted hosts" reads those keys from the
 rendered overlay and upserts one tenant per mount, id `mount-<host with dashes>`: a copy of `biatec-chat` (same OIDC
 client and secret pointer, limits) with its own host, sign-in page and allowed origin (`https://<host>`), the mount's
 client key and the redirect URI `https://<host><prefix>/auth/callback`. The overlay stays the source of truth for host,

@@ -1,13 +1,16 @@
-# /chat on the BiatecDEX beta host (https://beta.dex.biatec.io/chat), routed from the chat namespace straight to the backend
-# Service, so ingress-nginx connects to the pod IPs exactly as it does for stage.chat.biatec.io. (An ExternalName Service in the
-# DEX namespace was tried first; on this cluster its upstream timed out after 5 s.) The DEX repo owns the host, its certificate
-# (no tls block and no cert-manager annotation here) and the catch-all; ingress-nginx merges the Ingresses of one host across
-# namespaces. The backend needs the FULL path (it moves the /chat prefix to its path base, Hosting:Mounts), so the rewrite is the
+# /chat on the BiatecDEX beta host (https://beta.dex.biatec.io/chat), routed to the backend Service of this cluster.
+# beta.dex.biatec.io is served by ANOTHER cluster (its own ingress controller, the BiatecDEX repo) than stage.chat.biatec.io.
+# The DEX ingress there forwards /chat over HTTPS to https://stage.chat.biatec.io (an ExternalName Service) and KEEPS the Host
+# header beta.dex.biatec.io; this controller, which receives that request, routes the host to the backend here. Users never
+# reach this host name on this cluster directly, so there is no tls block and no cert-manager annotation (the connection from
+# the DEX cluster presents the certificate of stage.chat.biatec.io, or the controller's default one, and is not verified yet,
+# BiatecDEX#87). A first attempt with an in-cluster ExternalName name in the DEX repo timed out after 5 s because that name
+# does not exist in the DEX cluster.
+# The backend needs the FULL path (it moves the /chat prefix to its path base, Hosting:Mounts), so the rewrite is the
 # identity: a regex path needs a rewrite-target, and the capture group is the whole path. Anchored with $: without it /chatty
-# would match as /chat. The optional trailing "/?" only makes this path string differ from the older DEX-side
-# "/(chat(?:/.*)?)$" (a duplicate path across Ingresses is won by the oldest one, i.e. the broken route) and sort before it:
-# ingress-nginx sorts the locations of a host by path string, descending, and "/" is above "$". It also sorts before the DEX
-# catch-all "/(.*)". All of /chat is forwarded on purpose: the backend answers only the routes the widget uses and 404s the rest.
+# would match as /chat. The optional trailing "/?" only keeps this path string different from the DEX-side
+# "/(chat(?:/.*)?)$" (relevant only if the two Ingresses were ever in one cluster). All of /chat is forwarded on purpose: the
+# backend answers only the routes the widget uses and 404s the rest.
 # k8s/stage/dex-beta-ingress-test/run.sh checks this against a real ingress-nginx.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
