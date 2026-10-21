@@ -11,17 +11,23 @@ namespace Biatec.Chat.Api.Hosting;
 public static class MountConsistency
 {
     /// <summary>
-    /// True for every unmounted host; for a mounted one only when the stored redirect URI is an absolute URI whose path is
-    /// exactly the mount followed by /auth/callback (compared as written, case included, with no query or fragment). The
-    /// host part is not rebuilt, so <c>https://host:443/chat/auth/callback</c> is as good as <c>https://host/chat/auth/callback</c>.
+    /// True for every unmounted host; for a mounted one only when the stored redirect URI is an absolute URI on the tenant's
+    /// own host whose path, as written (case included), is exactly the mount followed by /auth/callback, with nothing in
+    /// front of it (no dot segments), no query and no fragment. The host part is not rebuilt, so
+    /// <c>https://host:443/chat/auth/callback</c> is as good as <c>https://host/chat/auth/callback</c>.
     /// </summary>
     public static bool IsConsistent(Tenant tenant, string pathBase)
     {
         if (pathBase.Length == 0) return true;
         var path = pathBase + "/auth/callback";
-        return Uri.TryCreate(tenant.RedirectUri, UriKind.Absolute, out var uri)
-               && uri.AbsolutePath == path && uri.Query.Length == 0 && uri.Fragment.Length == 0
-               && tenant.RedirectUri.EndsWith(path, StringComparison.Ordinal);
+        var raw = tenant.RedirectUri;
+        if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri)) return false;
+        if (uri.Query.Length != 0 || uri.Fragment.Length != 0 || !raw.EndsWith(path, StringComparison.Ordinal)) return false;
+        if (!string.Equals(uri.Host, tenant.Host, StringComparison.OrdinalIgnoreCase)) return false;
+        // What stands in front of the path must be the bare "scheme://authority": no "/x/.." that Uri would normalize away.
+        var authority = raw[..^path.Length];
+        var afterScheme = authority.IndexOf("://", StringComparison.Ordinal) + 3;
+        return afterScheme >= 3 && authority.IndexOf('/', afterScheme) < 0;
     }
 
     /// <summary>The base URL for popup and card links, or null when the tenant is not usable for sign-in on this host.</summary>

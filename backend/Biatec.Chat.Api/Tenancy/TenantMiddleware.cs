@@ -18,7 +18,9 @@ public static class TenantHttpContextExtensions
 /// </summary>
 public sealed class TenantMiddleware(RequestDelegate next, ITenantStore store, ILogger<TenantMiddleware> log)
 {
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _warned = new(StringComparer.Ordinal);
+    // One entry per tenant, redirect URI and mount already checked, so a request does not parse the URI again; a corrected
+    // tenant row has another redirect URI and is checked (and logged) anew.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _checked = new(StringComparer.Ordinal);
 
     public async Task InvokeAsync(HttpContext ctx)
     {
@@ -48,8 +50,8 @@ public sealed class TenantMiddleware(RequestDelegate next, ITenantStore store, I
     private void WarnWhenMountAndRedirectUriDisagree(HttpContext ctx, Biatec.Chat.Core.Data.Tenant tenant)
     {
         var mount = ctx.Request.PathBase.Value ?? "";
-        if (Hosting.MountConsistency.IsConsistent(tenant, mount)) return;
-        if (_warned.TryAdd(tenant.Id, 0))
+        if (mount.Length == 0 || !_checked.TryAdd($"{tenant.Id}|{tenant.Host}|{tenant.RedirectUri}|{mount}", 0)) return;
+        if (!Hosting.MountConsistency.IsConsistent(tenant, mount))
             log.LogError("Tenant {TenantId} is served under the mount {Mount} but its redirect URI is {RedirectUri}, not {Expected}: sign-in is refused for it until the tenant row is corrected.",
                 tenant.Id, mount, tenant.RedirectUri, Hosting.MountConsistency.Expected(tenant, mount));
     }
