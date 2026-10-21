@@ -225,7 +225,7 @@ public static class PublicChatEndpoints
 
                 // Anonymous tier, no sign-in route, no vault scopes: the public transport can never be elevated.
                 var turn = new ChatTurn(conversationId, "public:" + conversationId.ToString("N"), tenant, Core.Data.SessionTier.Anonymous, [], body.Message, body.Context,
-                    SignInAvailable: false);
+                    SignInAvailable: false, PathBase: ctx.Request.PathBase.Value ?? "");
                 await foreach (var ev in orchestrator.RunAsync(turn, ct))
                     await ChatEndpoints.WriteEventAsync(ctx.Response, ev, ct);
             }

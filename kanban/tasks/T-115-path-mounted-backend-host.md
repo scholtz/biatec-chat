@@ -162,7 +162,9 @@ Filled in by the agent when it moves the task to `review`.
 
 Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>`
 
-- 2026-10-21 10:03 · scholtz · (new) → backlog · created at the product owner's request (chat on beta.dex.biatec.io/chat); the spec's "path-based reverse proxying is not supported" is changed deliberately
-- 2026-10-21 10:04 · scholtz · backlog → in-progress · claimed with session-20261021-claude on branch task/T-115; issue #244
-- 2026-10-21 10:19 · session-20261021-claude · in-progress → review · PR for T-115
+- 2026-10-21 00:00 · scholtz · (new) → backlog · created at the product owner's request (chat on beta.dex.biatec.io/chat); the spec's "path-based reverse proxying is not supported" is changed deliberately
+- 2026-10-21 00:05 · scholtz · backlog → in-progress · claimed with session-20261021-claude on branch task/T-115; issue #244
+- 2026-10-21 00:40 · session-20261021-claude · in-progress → review · PR for T-115
 - 2026-10-21 10:45 · session-20261021-claude · review → review · code review round 1: tenant upsert now keeps origin/client key/sign-in page in step with the overlay, mount ClientKey validated, telemetry probe filter covers the mounted /chat/health, one shared JWKS URL helper, warning when a mounted tenant's redirect URI lacks the prefix (fixed a log-template bug found by its test)
+- 2026-10-21 10:55 · session-20261021-claude · review → review · correction: the 00:00, 00:05 and 00:40 times above were typed by hand and are wrong; the real times are 10:03 (created), 10:04 (claimed) and 10:19 (review)
+- 2026-10-21 10:55 · session-20261021-claude · review → review · code review round 2: the base URL now follows the host's mount instead of the redirect URI's shape (unmounted tenants keep their URLs), `/onboarding/**` is a 404 on a mounted host, the probe filter uses the configured prefixes only, the tenant upsert only adds origins and client keys, mounts are validated before apply, the redirect-URI mismatch is an error; documented: shared origin does not widen the trust model, a configured Evidence:PublicBaseUrl wins

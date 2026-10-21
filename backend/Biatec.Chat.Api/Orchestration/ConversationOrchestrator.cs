@@ -30,7 +30,8 @@ public sealed record ChatTurn(
     HostContext? Context,
     bool SignInAvailable,
     AgentMode Mode = AgentMode.Prepare,
-    bool Paused = false);
+    bool Paused = false,
+    string PathBase = "");
 
 /// <summary>
 /// The tool loop: model, then gate, then executor, then the result (wrapped as untrusted data) back to the model,
@@ -185,7 +186,7 @@ public sealed class ConversationOrchestrator(
                     {
                         args ??= new JsonObject();
                         var ctx = new ToolExecutionContext(decision.Capability, call.ToolUseId, turn.ConversationId,
-                            turn.SessionId, turn.Tenant.Id, turn.Tier, turn.Scopes, turn.Tenant, turn.SignInAvailable);
+                            turn.SessionId, turn.Tenant.Id, turn.Tier, turn.Scopes, turn.Tenant, turn.SignInAvailable, turn.PathBase);
                         label = executor.StatusLabel(args) ?? label;
                         result = await RunExecutorAsync(executor, ctx, args, ct);
                         fromExecutor = true;

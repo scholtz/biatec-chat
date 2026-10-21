@@ -108,12 +108,16 @@ A site can serve this backend under a path prefix of its own origin (Biatec DEX 
 host only under the prefix. After the migration the step "Provision tenants of mounted hosts" reads those keys from the
 rendered overlay and upserts one tenant per mount, id `mount-<host with dashes>`: a copy of `biatec-chat` (same OIDC
 client and secret pointer, limits) with its own host, sign-in page and allowed origin (`https://<host>`), the mount's
-client key and the redirect URI `https://<host><prefix>/auth/callback`. The overlay stays the source of truth for what
-makes the host work, so a later deploy rewrites host, sign-in page, OIDC client, redirect URI, allowed origin and client
-key (changing `Hosting__Mounts__0__ClientKey` switches the key); limits and budgets are copied once and then belong to
-onboarding. The step fails unless the row afterwards holds the redirect URI, the origin and the client key. The redirect
-URI must end with `<prefix>/auth/callback`: the backend builds the popup, elevation and card URLs from it and logs a
-warning when a mounted host's tenant disagrees. The Biatec OIDC client must allow that redirect URI. Production has no mount.
+client key and the redirect URI `https://<host><prefix>/auth/callback`. The overlay stays the source of truth for host,
+sign-in page, OIDC client and redirect URI, which a later deploy rewrites; the allowed origin and the client key are only
+ensured present (an origin or key an operator added is never removed, and a key dropped from the overlay stays until it is
+removed by hand; changing `Hosting__Mounts__0__ClientKey` adds the new key). Limits and budgets are copied once and then
+belong to onboarding. The step fails unless the row afterwards holds the redirect URI, the origin and the client key. The
+mounts are validated before anything is applied (same rules as the backend's startup validation), so a bad overlay fails
+the deploy instead of crash-looping the backend. The redirect URI must be exactly `https://<host><prefix>/auth/callback`
+(the OIDC callback is that stored value); the backend logs an error when a mounted host's tenant disagrees. The popup,
+elevation and card URLs follow the mount, not the stored value. The Biatec OIDC client must allow that redirect URI.
+Production has no mount.
 
 ## Database migrations
 

@@ -42,19 +42,19 @@ public sealed class TenantMiddleware(RequestDelegate next, ITenantStore store, I
     }
 
     /// <summary>
-    /// The URLs handed to the browser come from the tenant's redirect URI, which must therefore carry the mount prefix
-    /// (<c>https://host/chat/auth/callback</c>). A mounted host whose tenant says otherwise would send the popup to the
-    /// wrong application, silently, so it is logged once per tenant.
+    /// The OIDC redirect URI is the exact stored value, so a mounted host's tenant must say
+    /// <c>https://host/chat/auth/callback</c>. One that says otherwise completes sign-in at the wrong application, so it
+    /// is logged as an error once per tenant (the popup URLs themselves follow the mount, not the stored value).
     /// </summary>
     private void WarnWhenMountAndRedirectUriDisagree(HttpContext ctx, Biatec.Chat.Core.Data.Tenant tenant)
     {
         if (!ctx.Request.PathBase.HasValue) return;
-        var expectedEnd = ctx.Request.PathBase.Value!;
-        var backend = Hosting.BackendUrls.TryBase(tenant);
-        if (backend is not null && backend.EndsWith(expectedEnd, StringComparison.OrdinalIgnoreCase)) return;
+        var mount = ctx.Request.PathBase.Value!;
+        var expected = Hosting.BackendUrls.TryBase(tenant, mount) + "/auth/callback";
+        if (string.Equals(tenant.RedirectUri, expected, StringComparison.OrdinalIgnoreCase)) return;
         if (_warned.TryAdd(tenant.Id, 0))
-            log.LogWarning("Tenant {TenantId} is served under the mount {Mount} but its redirect URI {RedirectUri} does not carry that prefix in front of /auth/callback; sign-in and card URLs will miss the prefix.",
-                tenant.Id, expectedEnd, tenant.RedirectUri);
+            log.LogError("Tenant {TenantId} is served under the mount {Mount} but its redirect URI is {RedirectUri}, not {Expected}: Biatec OIDC will send the sign-in callback to the wrong application.",
+                tenant.Id, mount, tenant.RedirectUri, expected);
     }
 }
 

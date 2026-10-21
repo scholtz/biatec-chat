@@ -146,10 +146,12 @@ is `backendUrl` plus the route (`packages/chat-widget/test/path-mount.test.ts`).
 | Where | What |
 |---|---|
 | DEX ingress | A second Ingress for host `beta.dex.biatec.io`, path `/chat`, that forwards the **full path including `/chat`** (no rewrite, no prefix stripping) to the chat backend of namespace `biatec-chat-stage` through an ExternalName Service. Server-sent events need `proxy-buffering: "off"` and a read timeout of about 300 s. The longer `/chat` path wins over the DEX catch-all. |
-| Backend | `Hosting:Mounts` = host `beta.dex.biatec.io`, prefix `/chat` (`k8s/stage/backend-config.patch.yaml`). The backend moves the prefix to the path base; `/chat/health` is 200, `/health` on that host is 404, and the backend's own `POST /chat/messages` is reached at `/chat/chat/messages`. |
-| Tenant | The stage deploy provisions tenant `mount-beta-dex-biatec-io` for the host from the overlay: copy of `biatec-chat` with redirect URI `https://beta.dex.biatec.io/chat/auth/callback`, allowed origin `https://beta.dex.biatec.io`, client key `biatec-dex`. |
+| Backend | `Hosting:Mounts` = host `beta.dex.biatec.io`, prefix `/chat`, client key `biatec-dex` (`k8s/stage/backend-config.patch.yaml`). The backend moves the prefix to the path base; `/chat/health` is 200, `/health` on that host is 404, `/chat/onboarding/**` (tenant onboarding and the operator routes) is 404, and the backend's own `POST /chat/messages` is reached at `/chat/chat/messages`. The URLs it hands to the browser (sign-in popup, cards) carry the prefix. |
+| Tenant | The stage deploy provisions tenant `mount-beta-dex-biatec-io` for the host from the overlay: copy of `biatec-chat` with redirect URI `https://beta.dex.biatec.io/chat/auth/callback` (it must be exactly that; the backend logs an error otherwise), allowed origin `https://beta.dex.biatec.io`, client key `biatec-dex`. Later deploys only add the origin and key if missing. |
 | Biatec OIDC | The client of the stage tenant must allow the redirect URI `https://beta.dex.biatec.io/chat/auth/callback` (operator step at `stage.oidc.biatec.io`). |
 | CSP | `connect-src 'self'`; the sign-in popup opens on the same origin and goes on to `https://stage.oidc.biatec.io`. |
+
+The DEX page and the chat now share an origin. That does not widen trust: `dex.biatec.io` is already an allowed origin of the Biatec tenant, so script on a DEX page could always call the backend with the cookie; the cookie is `HttpOnly` and fund-moving actions still need the phone. The ingress can narrow what the DEX origin exposes further by forwarding only `/chat/chat`, `/chat/session`, `/chat/auth`, `/chat/public`, `/chat/.well-known`.
 
 Not supported: an ingress that strips the prefix (`rewrite-target`), and forwarded-prefix or forwarded-host headers. The
 backend reads neither, by design (see PRODUCT-DESCRIPTION.md, "Path-mounted hosts"). Check after a deploy:

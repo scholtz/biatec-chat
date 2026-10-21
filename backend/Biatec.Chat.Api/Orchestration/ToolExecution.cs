@@ -16,7 +16,8 @@ public sealed record ToolExecutionContext(
     Biatec.Chat.Core.Data.SessionTier Tier,
     IReadOnlyCollection<string> Scopes,
     Biatec.Chat.Core.Data.Tenant? Tenant = null,
-    bool SignInAvailable = true);
+    bool SignInAvailable = true,
+    string PathBase = "");
 
 /// <summary>
 /// Outcome of a tool run. <see cref="Content"/> is data for the model and is always screened and wrapped as untrusted

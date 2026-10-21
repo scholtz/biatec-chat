@@ -62,8 +62,8 @@ public static class AuthEndpoints
             db.PopupAuthRequests.Add(req);
             await db.SaveChangesAsync(ctx.RequestAborted);
 
-            // The popup targets the tenant's own backend (origin and any mount prefix, from its registered redirect URI), never a request value.
-            var origin = Biatec.Chat.Api.Hosting.BackendUrls.Base(tenant);
+            // The popup targets the tenant's own backend (origin from its registered redirect URI, plus the mount prefix of the host), never a request value.
+            var origin = Biatec.Chat.Api.Hosting.BackendUrls.Base(tenant, ctx.Request.PathBase.Value ?? "");
             return Results.Ok(new PopupStartResponse
             {
                 AuthRequestId = req.Id.ToString(),

@@ -159,6 +159,19 @@ public sealed class HostMountTests : IDisposable
     }
 
     [Theory]
+    [InlineData("/chat/onboarding/tenants")]
+    [InlineData("/chat/onboarding/challenges")]
+    [InlineData("/chat/onboarding/operator/tenants")]
+    [InlineData("/chat/onboarding/operator/evidence")]
+    [InlineData("/chat/ONBOARDING")]
+    public async Task MountedHost_DoesNotServeTenantOnboardingOrOperatorRoutes(string path)
+    {
+        // A site's own origin carries the widget only; onboarding and the operator surface stay on the chat hosts.
+        Assert.Equal(HttpStatusCode.NotFound, (await SendAsync(HttpMethod.Get, MountedHost, path)).Status);
+        Assert.Equal(HttpStatusCode.NotFound, (await SendAsync(HttpMethod.Post, MountedHost, path)).Status);
+    }
+
+    [Theory]
     [InlineData("BETA.DEX.BIATEC.IO")]
     [InlineData("beta.dex.biatec.io.")]
     public async Task MountedHost_IsMatchedLikeTheTenantHost(string hostHeader)
@@ -220,7 +233,7 @@ public sealed class HostMountTests : IDisposable
 
     private sealed class CapturingLoggerProvider : ILoggerProvider
     {
-        public readonly List<string> Warnings = [];
+        public readonly List<string> Errors = [];
         public ILogger CreateLogger(string categoryName) => new Capture(this);
         public void Dispose() { }
         private sealed class Capture(CapturingLoggerProvider owner) : ILogger
@@ -229,13 +242,13 @@ public sealed class HostMountTests : IDisposable
             public bool IsEnabled(LogLevel logLevel) => true;
             public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
             {
-                if (logLevel == LogLevel.Warning) lock (owner.Warnings) owner.Warnings.Add(formatter(state, exception));
+                if (logLevel >= LogLevel.Error) lock (owner.Errors) owner.Errors.Add(formatter(state, exception));
             }
         }
     }
 
     [Fact]
-    public async Task ATenantWhoseRedirectUriMissesTheMountPrefix_IsLoggedOnce_NotSilentlyServed()
+    public async Task ATenantWhoseRedirectUriMissesTheMountPrefix_IsLoggedAsAnErrorOnce()
     {
         var logs = new CapturingLoggerProvider();
         var wrong = MountedTenant();
@@ -252,9 +265,9 @@ public sealed class HostMountTests : IDisposable
         await client.GetAsync("http://chat.biatec.io/zzz"); // an unmounted tenant never warns
         await client.GetAsync($"http://{MountedHost}/chat/zzz");
 
-        var warning = Assert.Single(logs.Warnings, w => w.Contains("mount-beta-dex-biatec-io"));
-        Assert.Contains("/chat", warning);
-        Assert.DoesNotContain(logs.Warnings, w => w.Contains("biatec-chat "));
+        var error = Assert.Single(logs.Errors, w => w.Contains("mount-beta-dex-biatec-io"));
+        Assert.Contains(MountedOrigin + "/chat/auth/callback", error);
+        Assert.DoesNotContain(logs.Errors, w => w.Contains("Tenant biatec-chat "));
     }
 
     [Fact]
@@ -266,7 +279,7 @@ public sealed class HostMountTests : IDisposable
 
         await client.GetAsync($"http://{MountedHost}/chat/zzz");
 
-        Assert.DoesNotContain(logs.Warnings, w => w.Contains("redirect URI"));
+        Assert.DoesNotContain(logs.Errors, w => w.Contains("redirect URI"));
     }
 
     // ---- configuration -------------------------------------------------------------------------------------------
@@ -332,20 +345,22 @@ public sealed class HostMountTests : IDisposable
     // ---- URLs handed to the browser ------------------------------------------------------------------------------
 
     [Theory]
-    [InlineData("https://chat.biatec.io/auth/callback", "https://chat.biatec.io")]
-    [InlineData("https://beta.dex.biatec.io/chat/auth/callback", "https://beta.dex.biatec.io/chat")]
-    [InlineData("https://beta.dex.biatec.io/api/chat/auth/callback/", "https://beta.dex.biatec.io/api/chat")]
-    [InlineData("https://beta.dex.biatec.io/chat/AUTH/Callback", "https://beta.dex.biatec.io/chat")]
-    [InlineData("https://chat.biatec.io:8443/auth/callback", "https://chat.biatec.io:8443")]
-    [InlineData("https://chat.biatec.io/somewhere/else", "https://chat.biatec.io")]
-    [InlineData("https://chat.biatec.io", "https://chat.biatec.io")]
-    [InlineData("http://localhost/auth/callback", "http://localhost")]
-    public void BackendUrls_KeepsTheMountPrefix_ButNeverAQueryOrFragment(string redirectUri, string expected) =>
-        Assert.Equal(expected, BackendUrls.Base(new Tenant { Id = "t", RedirectUri = redirectUri }));
+    [InlineData("https://chat.biatec.io/auth/callback", "", "https://chat.biatec.io")]
+    [InlineData("https://beta.dex.biatec.io/chat/auth/callback", "/chat", "https://beta.dex.biatec.io/chat")]
+    [InlineData("https://beta.dex.biatec.io/api/chat/auth/callback", "/api/chat", "https://beta.dex.biatec.io/api/chat")]
+    [InlineData("https://chat.biatec.io:8443/auth/callback", "", "https://chat.biatec.io:8443")]
+    [InlineData("http://localhost/auth/callback", "", "http://localhost")]
+    // The prefix comes from the mount, never from the shape of the redirect URI: a tenant that is not mounted keeps its URLs.
+    [InlineData("https://chat.biatec.io/somewhere/auth/callback", "", "https://chat.biatec.io")]
+    [InlineData("https://chat.biatec.io/somewhere/else", "", "https://chat.biatec.io")]
+    [InlineData("https://chat.biatec.io", "", "https://chat.biatec.io")]
+    [InlineData("https://chat.biatec.io/auth/callback?x=1#y", "", "https://chat.biatec.io")]
+    public void BackendUrls_IsTheRedirectUriOriginPlusTheHostsPathBase(string redirectUri, string pathBase, string expected) =>
+        Assert.Equal(expected, BackendUrls.Base(new Tenant { Id = "t", RedirectUri = redirectUri }, pathBase));
 
     [Fact]
-    public void BackendUrls_DropsQueryAndFragmentOfTheRedirectUri() =>
-        Assert.Equal("https://beta.dex.biatec.io/chat", BackendUrls.Base(new Tenant { Id = "t", RedirectUri = "https://beta.dex.biatec.io/chat/auth/callback?x=1#y" }));
+    public void BackendUrls_DefaultsToNoPathBase() =>
+        Assert.Equal("https://chat.biatec.io", BackendUrls.Base(new Tenant { Id = "t", RedirectUri = "https://chat.biatec.io/auth/callback" }));
 
     [Theory]
     [InlineData("")]
@@ -355,8 +370,8 @@ public sealed class HostMountTests : IDisposable
     {
         var tenant = new Tenant { Id = "t", RedirectUri = redirectUri };
 
-        Assert.Null(BackendUrls.TryBase(tenant));
-        Assert.Throws<UriFormatException>(() => BackendUrls.Base(tenant));
+        Assert.Null(BackendUrls.TryBase(tenant, "/chat"));
+        Assert.Throws<UriFormatException>(() => BackendUrls.Base(tenant, "/chat"));
     }
 
     [Theory]
@@ -368,13 +383,24 @@ public sealed class HostMountTests : IDisposable
     [InlineData("/chat/chat/messages", false)]
     [InlineData("/healthy", false)]
     [InlineData("/chat/healthcare", false)]
+    // Only the configured mount prefixes count, so a caller cannot hide a request from tracing by appending /health.
+    [InlineData("/public/health", false)]
+    [InlineData("/onboarding/health", false)]
+    [InlineData("/other/health", false)]
     [InlineData("/", false)]
-    public void Telemetry_DoesNotTraceProbes_AlsoOnAMountedHost(string path, bool probe) =>
+    public void Telemetry_DoesNotTraceProbes_OnlyBehindTheConfiguredMountPrefixes(string path, bool probe) =>
+        Assert.Equal(probe, Biatec.Chat.Api.Telemetry.TelemetryRegistration.IsHealthPath(path, ["/chat"]));
+
+    [Theory]
+    [InlineData("/chat/health", false)]
+    [InlineData("/health", true)]
+    public void Telemetry_WithoutMounts_OnlyTheBareProbePathCounts(string path, bool probe) =>
         Assert.Equal(probe, Biatec.Chat.Api.Telemetry.TelemetryRegistration.IsHealthPath(path));
 
     [Theory]
     [InlineData("", "", "https://chat.biatec.io/.well-known/evidence-jwks.json")]
     [InlineData("", "/chat", "https://chat.biatec.io/chat/.well-known/evidence-jwks.json")]
+    // A configured public base wins: both URLs serve the same keys.
     [InlineData("https://stage.chat.biatec.io/", "/chat", "https://stage.chat.biatec.io/.well-known/evidence-jwks.json")]
     public void EvidenceJwksUrl_UsesTheConfiguredBase_ElseTheRequestOriginWithItsPathBase(string publicBase, string pathBase, string expected)
     {
@@ -387,13 +413,13 @@ public sealed class HostMountTests : IDisposable
         Assert.Equal(expected, Biatec.Chat.Api.Evidence.Jwks.EvidenceJwks.PublicUrl(ctx, config));
     }
 
-    private static ToolExecutionContext Ctx(Tenant tenant) =>
-        new(CapabilityRegistry.CreateDefault().Find("requestSignIn")!, "tu-1", Guid.NewGuid(), "s", tenant.Id, Biatec.Chat.Core.Data.SessionTier.Anonymous, [], tenant, true);
+    private static ToolExecutionContext Ctx(Tenant tenant, string pathBase = "") =>
+        new(CapabilityRegistry.CreateDefault().Find("requestSignIn")!, "tu-1", Guid.NewGuid(), "s", tenant.Id, Biatec.Chat.Core.Data.SessionTier.Anonymous, [], tenant, true, pathBase);
 
     [Fact]
     public async Task SignInCard_OfAMountedTenant_PointsAtThePrefixedPopupEndpoint()
     {
-        var r = await new RequestSignInExecutor().ExecuteAsync(Ctx(MountedTenant()), new JsonObject(), default);
+        var r = await new RequestSignInExecutor().ExecuteAsync(Ctx(MountedTenant(), "/chat"), new JsonObject(), default);
 
         var card = Assert.IsType<SignInCardEvent>(Assert.Single(r.Events!));
         Assert.Equal("https://beta.dex.biatec.io/chat/auth/popup", card.SignInUrl);

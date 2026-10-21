@@ -69,7 +69,9 @@ public sealed partial class HostingOptionsValidator : IValidateOptions<HostingOp
 /// so routing, the tenant middleware, the CSRF/origin checks and every endpoint work on the same paths as on an unmounted
 /// host. A mounted host without the prefix is a 404. Every other host is untouched. No forwarded header is read: the mount
 /// is decided by the Host header and the configuration alone, which is why a stripping ingress (rewrite) is not supported
-/// (a stripped <c>/chat/messages</c> cannot be told from the unstripped route of the same name).
+/// (a stripped <c>/chat/messages</c> cannot be told from the unstripped route of the same name). A mounted host serves
+/// the widget on a site's own origin, so tenant onboarding and the operator routes under <c>/onboarding</c> are not
+/// reachable there (404); they stay on the chat hosts.
 /// </summary>
 public sealed class HostMountMiddleware(RequestDelegate next, IOptions<HostingOptions> options)
 {
@@ -86,6 +88,12 @@ public sealed class HostMountMiddleware(RequestDelegate next, IOptions<HostingOp
         }
 
         if (!ctx.Request.Path.StartsWithSegments(prefix, out var rest))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        if (rest.StartsWithSegments("/onboarding"))
         {
             ctx.Response.StatusCode = StatusCodes.Status404NotFound;
             return;
