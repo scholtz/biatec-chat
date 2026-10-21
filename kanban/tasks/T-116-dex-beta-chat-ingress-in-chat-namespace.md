@@ -89,7 +89,7 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
 - **How it was verified:** `dex-beta-ingress-test/run.sh` in kind with real ingress-nginx v1.12.1, DEX catch-all and the old broken ExternalName route (older) present: ALL CHECKS PASSED. Stage overlay renders the Ingress, main does not.
 - **Follow-up tasks created:**
 - **Unblocks:**
-- **Open questions:** why the ExternalName hop times out (controller log line for `beta.dex.biatec.io` on the cluster).
+- **Open questions:** none. **Cause found after the merge:** `beta.dex.biatec.io` (49.12.17.217) and `stage.chat.biatec.io` (188.34.137.167) are different clusters, so the in-cluster name never existed in the DEX cluster. This Ingress is the chat-side half of the fix; the DEX half is BiatecDEX#84/#85/#86 (HTTPS ExternalName to stage.chat.biatec.io, Host kept). Live: `https://beta.dex.biatec.io/chat/session/probe` is 200 with the `__Host-` cookie, `/` and `/chatty` the DEX app. Certificate verification of that hop: BiatecDEX#87.
 
 ## Review
 
@@ -109,3 +109,4 @@ Append-only. Format: `- YYYY-MM-DD HH:MM · <actor> · <from> → <to> · <note>
 - 2026-10-21 13:25 · scholtz · backlog → in-progress · taken, branch task/T-116, issue #247
 - 2026-10-21 13:50 · scholtz · in-progress → review · PR #248; post-deploy curl check pending the stage deploy
 - 2026-10-21 13:44 · user · review → done · PR #248 merged into main @ 39db698 (synced by kanban-sync)
+- 2026-10-21 14:40 · scholtz · review → review · live check done after BiatecDEX#86; docs corrected to the two-cluster design
