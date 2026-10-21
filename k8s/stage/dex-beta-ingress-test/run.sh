@@ -109,16 +109,19 @@ echo "== server-sent events are not buffered (events about a second apart, not a
 # measurement itself adds no delay between events.
 read -r count spread_ms < <(python3 - "$PORT" <<'PY'
 import http.client, sys, time
-conn = http.client.HTTPConnection("127.0.0.1", int(sys.argv[1]), timeout=20)
-conn.request("GET", "/chat/chat/stream", headers={"Host": "beta.dex.biatec.io"})
-resp = conn.getresponse()
 stamps = []
-while True:
-    line = resp.readline()  # decodes the chunked body and returns b'' at its end
-    if not line:
-        break
-    if line.strip():
-        stamps.append(time.monotonic())
+try:
+    conn = http.client.HTTPConnection("127.0.0.1", int(sys.argv[1]), timeout=20)
+    conn.request("GET", "/chat/chat/stream", headers={"Host": "beta.dex.biatec.io"})
+    resp = conn.getresponse()
+    while True:
+        line = resp.readline()  # decodes the chunked body and returns b'' at its end
+        if not line:
+            break
+        if line.strip():
+            stamps.append(time.monotonic())
+except Exception as e:  # a failed request is a FAIL line below, not a silent exit
+    print("stream failed:", e, file=sys.stderr)
 print(len(stamps), int((stamps[-1] - stamps[0]) * 1000) if stamps else 0)
 PY
 )

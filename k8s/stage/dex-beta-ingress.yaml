@@ -13,7 +13,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: biatec-chat-dex-beta
-  labels: {app.kubernetes.io/name: biatec-chat-backend, app.kubernetes.io/part-of: biatec-chat}
+  labels: {app.kubernetes.io/name: biatec-chat-dex-beta, app.kubernetes.io/part-of: biatec-chat}
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /$1
     nginx.ingress.kubernetes.io/proxy-buffering: "off"
