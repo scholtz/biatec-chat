@@ -1,7 +1,7 @@
 ---
 id: T-125
 title: "Re-run the agent-mode and x402 gates when an approved consent resumes (BCHAT-011)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -62,7 +62,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-22 20:12 · approve · PR #307 merged into main @ aa8eab6 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-22 23:00 · claude · (new) → backlog · created from GitHub issue #264 (BCHAT-011); blockers scan: none
 - 2026-10-22 23:01 · scholtz · taken, and session-20261022-2300 · backlog → in-progress · claimed
+- 2026-10-22 20:12 · user · in-progress → done · PR #307 merged into main @ aa8eab6 (synced by kanban-sync)
