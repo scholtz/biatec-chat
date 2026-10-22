@@ -1,0 +1,3 @@
+use kanban take to work on the github issue. always work only on one issue at a time. 
+work on the issue and make sure it is properly tested, create pull request, do code review, fix code review findings, repeat code reviews until it comes clean, then merge the pull request and check if the ticket is properly implemented. if not repeat the process for the ticket. 
+after you close the ticket, continue to work on new ticket with kanban take until there is no more tickets in queue
