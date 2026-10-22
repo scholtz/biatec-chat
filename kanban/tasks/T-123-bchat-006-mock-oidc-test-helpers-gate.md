@@ -1,7 +1,7 @@
 ---
 id: T-123
 title: "Gate the mock OIDC test helpers and seeded device tokens behind an explicit flag (BCHAT-006)"
-status: in-progress
+status: done
 priority: P2
 epic: "Security"
 blocked_by: []
@@ -63,7 +63,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-22 19:40 · approve · PR #305 merged into main @ 6297ad8 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-22 21:00 · claude · (new) → backlog · created from GitHub issue #259 (BCHAT-006); blockers scan: none
 - 2026-10-22 21:01 · scholtz · taken, and session-20261022-2100 · backlog → in-progress · claimed
+- 2026-10-22 19:40 · user · in-progress → done · PR #305 merged into main @ 6297ad8 (synced by kanban-sync)
