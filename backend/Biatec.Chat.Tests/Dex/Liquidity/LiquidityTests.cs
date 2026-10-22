@@ -585,6 +585,9 @@ public sealed class LiquidityTests : IAsyncLifetime
     [InlineData("noPoolCall")]
     [InlineData("optInOther")]
     [InlineData("optInLp")]
+    [InlineData("highFeeCall")]
+    [InlineData("highFeeXfer")]
+    [InlineData("manyFees")]
     public async Task Liquidity_remove_with_a_malicious_group_behind_honest_facts_is_never_previewed(string attack)
     {
         _mcp.BalancesJson = Balances;
@@ -616,6 +619,7 @@ public sealed class LiquidityTests : IAsyncLifetime
             case "wrongMethod": txs[^1] = Call(user, pool, [1, 2, 3, 4]); break;
             case "providerWrongMethod": txs[0] = Call(user, ProviderApp, [1, 2, 3, 4]); break;
             case "optInLp": txs.Insert(0, Xfer(user, user, Lp, 0)); break;
+            case "manyFees": foreach (var t in txs) t.Fee = 99_999; break;
             case "highFeeCall": txs[^1].Fee = 5_000_000; break;
             case "highFeeXfer": txs[i].Fee = 5_000_000; break;
             case "optInTwice": txs.Insert(0, Xfer(user, user, Lp, 0)); break;

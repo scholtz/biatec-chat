@@ -34,6 +34,7 @@ public static class LiquidityGroupVerifier
         // The Biatec app ids come from the backend's own table, never from the builder's facts.
         var apps = BiatecDexApps.For(network) ?? throw new GroupException("No Biatec DEX deployment is known for this network.");
         var poolAddress = Algorand.Address.ForApplication(pool.AppId).EncodeAsString();
+        if (GroupFees.GroupTooHigh(txs.Select(t => t.Fee))) throw new GroupException("The liquidity group pays an unexpectedly high total fee.");
         var remaining = expected.ToList();
         int poolCalls = 0, providerCalls = 0;
         var optedIn = new HashSet<ulong>();

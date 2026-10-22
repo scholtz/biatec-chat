@@ -97,7 +97,7 @@ public sealed class TransferStepBuilder(IBiatecMcpClient mcp)
     }
 
     /// <summary>Highest fee accepted for a single transaction: ten times the network minimum (1000 microALGO).</summary>
-    internal const ulong MaxFee = 10_000;
+    internal const ulong MaxFee = GroupFees.MaxTransferFeeMicroAlgo;
 
     internal const string MainnetGenesisHash = "wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=";
     internal const string TestnetGenesisHash = "SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=";

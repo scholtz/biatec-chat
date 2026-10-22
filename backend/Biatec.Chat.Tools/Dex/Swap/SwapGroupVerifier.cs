@@ -15,6 +15,7 @@ public static class SwapGroupVerifier
     /// <exception cref="GroupException">The group differs from the request.</exception>
     public static void Verify(IReadOnlyList<Transaction> txs, string from, ulong fromAssetId, ulong amount, ulong? poolAppId)
     {
+        if (GroupFees.GroupTooHigh(txs.Select(t => t.Fee))) throw new GroupException("The swap pays an unexpectedly high total fee.");
         var funded = false;
         var calledPool = poolAppId is null;
         var poolAddress = poolAppId is { } id ? Algorand.Address.ForApplication(id).EncodeAsString() : null;

@@ -54,12 +54,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** GroupFees (per-transaction and per-group ceilings) enforced in the swap, liquidity, safe-create and x402 verifiers; TransferStepBuilder shares the constant. PR #301.
+- **Files changed:** Tools/Algod/GroupFees.cs, Dex/Swap, Dex/Liquidity, Safe/Create, X402, Wallet/Transfer (constant), and their tests.
+- **How it was verified:** dotnet test 1525 passed (incl. real sidecar safe-create fixtures); TEST-015 passes.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** The finding also asks for `FeeAmount` on the swap and x402 cards (widget contract change). I left it out of this task; do you want a follow-up task?
 
 ## Review
 

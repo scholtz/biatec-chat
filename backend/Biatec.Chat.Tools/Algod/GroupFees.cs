@@ -15,5 +15,18 @@ public static class GroupFees
     /// </summary>
     public const ulong MaxCallFeeMicroAlgo = 100_000;
 
-    public static bool TooHigh(ulong? fee, bool isApplicationCall) => fee > (isApplicationCall ? MaxCallFeeMicroAlgo : MaxTransferFeeMicroAlgo);
+    /// <summary>Everything the group may pay in total, so many individually acceptable fees cannot add up to a drain.</summary>
+    public const ulong MaxGroupFeeMicroAlgo = 500_000;
+
+    public static bool TooHigh(ulong fee, bool isApplicationCall) => fee > (isApplicationCall ? MaxCallFeeMicroAlgo : MaxTransferFeeMicroAlgo);
+
+    public static bool GroupTooHigh(IEnumerable<ulong> fees)
+    {
+        ulong sum = 0;
+        foreach (var f in fees)
+        {
+            if (f > MaxGroupFeeMicroAlgo || (sum += f) > MaxGroupFeeMicroAlgo) return true; // each term is bounded, so the sum cannot overflow
+        }
+        return false;
+    }
 }
