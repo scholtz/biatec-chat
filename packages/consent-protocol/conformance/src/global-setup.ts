@@ -17,7 +17,7 @@ export default async function setup(project: TestProject) {
     project.provide("target", "external");
     return;
   }
-  const mock = createMockOidc();
+  const mock = createMockOidc({ testHelpers: true });
   await new Promise<void>((resolve) => mock.server.listen(0, "127.0.0.1", resolve));
   project.provide("baseUrl", `http://127.0.0.1:${(mock.server.address() as AddressInfo).port}`);
   project.provide("target", "mock");

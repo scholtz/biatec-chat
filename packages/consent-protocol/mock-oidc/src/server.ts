@@ -2,5 +2,8 @@ import { createMockOidc } from "./app.ts";
 
 const port = Number(process.env.PORT ?? 8089);
 const host = process.env.HOST ?? "127.0.0.1";
-const { server, issuer } = createMockOidc();
-server.listen(port, host, () => console.log(`mock-oidc (${issuer}) listening on http://${host}:${port}`));
+// The /mock/* helpers and the predictable seeded device tokens are for tests only: anyone who can reach a mock that has them can approve
+// consent as a seeded user. Start with MOCK_TEST_HELPERS=1 for the authenticator contract tests and the conformance kit.
+const testHelpers = process.env.MOCK_TEST_HELPERS === "1";
+const { server, issuer } = createMockOidc({ testHelpers });
+server.listen(port, host, () => console.log(`mock-oidc (${issuer}) listening on http://${host}:${port}${testHelpers ? " with test helpers (MOCK_TEST_HELPERS=1)" : ""}`));

@@ -43,10 +43,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] With helpers off, `GET /mock/devices/alice-device` is 404 and `Device device-token-alice` is rejected.
-- [ ] With helpers on, existing mock-oidc tests pass unchanged.
-- [ ] `server.ts` enables helpers only for `MOCK_TEST_HELPERS=1`; the Dockerfile defaults `HOST=127.0.0.1`; docs say how to start the mock for contract tests.
-- [ ] TEST-010 passes.
+- [x] With helpers off, `GET /mock/devices/alice-device` is 404 and `Device device-token-alice` is rejected.
+- [x] With helpers on, existing mock-oidc tests pass unchanged.
+- [x] `server.ts` enables helpers only for `MOCK_TEST_HELPERS=1`; the Dockerfile defaults `HOST=127.0.0.1`; docs say how to start the mock for contract tests.
+- [x] TEST-010 passes.
 
 ## Verification
 
@@ -54,12 +54,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** `testHelpers` option (default off; tests that embed the mock pass `testHelpers: true`; the standalone server enables it only for `MOCK_TEST_HELPERS=1`). Off: `/mock/*` is 404 and seeded devices get random tokens instead of `device-token-<user>`. Dockerfile defaults `HOST=127.0.0.1`. Docs updated. PR #305.
+- **Files changed:** mock-oidc src/app.ts, src/server.ts, Dockerfile, test, README; docs; authenticator and conformance READMEs.
+- **How it was verified:** `pnpm --filter mock-oidc test` 26 passed (new test: helpers 404, predictable token rejected); conformance suite 23 passed; TEST-010 passes. Flutter contract tests not run (no Flutter here).
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** The finding also says never return `device_token` from the helper. I kept it because the authenticator contract tests and e2e read it; with the flag off it is unreachable. Want a follow-up to rework those tests?
 
 ## Review
 

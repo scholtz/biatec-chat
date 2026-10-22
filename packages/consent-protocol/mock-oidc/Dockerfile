@@ -9,7 +9,8 @@ COPY packages/consent-protocol/mock-oidc/package.json ./mock-oidc/package.json
 WORKDIR /app/packages/consent-protocol/mock-oidc
 RUN npm install --omit=dev --ignore-scripts --no-package-lock
 COPY packages/consent-protocol/mock-oidc/src ./src
-ENV PORT=8089 HOST=0.0.0.0
+# Loopback by default; set HOST=0.0.0.0 (and read the README) only on a private network. Test helpers stay off unless MOCK_TEST_HELPERS=1.
+ENV PORT=8089 HOST=127.0.0.1
 EXPOSE 8089
 USER node
 CMD ["node", "src/server.ts"]

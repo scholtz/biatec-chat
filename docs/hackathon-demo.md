@@ -50,7 +50,7 @@ The two-phone script below needs the consent side; against stage it stops at the
    ```sh
    docker compose up -d                                   # Redis 7, PostgreSQL 16, builders sidecar (:3100)
    dotnet run --project backend/Biatec.Chat.Api           # Development seeds the Biatec Chat and localhost tenants
-   pnpm --filter mock-oidc start                          # consent side, http://127.0.0.1:8089
+   MOCK_TEST_HELPERS=1 pnpm --filter mock-oidc start                          # consent side, http://127.0.0.1:8089
    pnpm --filter @biatec/chat-widget dev                  # widget playground; /dex.html shows it in a Biatec DEX-like page
    ```
 

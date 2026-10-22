@@ -94,7 +94,8 @@ fi
 
 if [ "$WITH_MOCK_OIDC" = 1 ]; then
   log "Starting mock Biatec OIDC on :8089..."
-  pnpm --filter mock-oidc start &
+  # Local demo only: the test helpers let the authenticator contract tests and the conformance kit act as the seeded users.
+  MOCK_TEST_HELPERS=1 pnpm --filter mock-oidc start &
   PIDS+=($!)
 fi
 

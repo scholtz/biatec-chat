@@ -26,7 +26,7 @@ The Biatec OIDC base URL comes from `--dart-define=OIDC_BASE_URL=...` and defaul
 
 The default does not match where the mock actually listens: `pnpm --filter mock-oidc start` serves
 `http://127.0.0.1:8089` (`PORT`, `HOST` override it) with no `/mock-oidc` path. From the Android emulator pass
-`--dart-define=OIDC_BASE_URL=http://10.0.2.2:8089` (start the mock with `HOST=0.0.0.0`). An explicit URL that is not the
+`--dart-define=OIDC_BASE_URL=http://10.0.2.2:8089` (with `adb reverse tcp:8089 tcp:8089` you can instead pass `http://127.0.0.1:8089` and keep the mock on loopback; `HOST=0.0.0.0` exposes it on every interface, and with `MOCK_TEST_HELPERS=1` anyone who reaches it can approve consent as a seeded user). An explicit URL that is not the
 default counts as a real Biatec OIDC, so the settings screens are off unless `--dart-define=CONSENT_SETTINGS_API=true`
 (see T-084 below).
 
@@ -57,7 +57,7 @@ default counts as a real Biatec OIDC, so the settings screens are off unless `--
 - Known gap: the native code was written without the Flutter, Android or Xcode toolchains and has NOT been compiled
   or run on a device or emulator. "Key is non-exportable on device" and the emulator enrollment run are therefore
   unverified and the task is partial until someone runs them (the iOS simulator has no Secure Enclave; use a device).
-- Contract test against the real mock: start `pnpm --filter mock-oidc start`, then
+- Contract test against the real mock: start `MOCK_TEST_HELPERS=1 pnpm --filter mock-oidc start` (the `/mock/*` helpers and the seeded device tokens exist only with that flag), then
   `flutter test --dart-define=MOCK_OIDC_URL=http://127.0.0.1:8089 test/enrollment/mock_oidc_contract_test.dart`
   (skipped otherwise).
 

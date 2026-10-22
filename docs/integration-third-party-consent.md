@@ -70,7 +70,7 @@ The receipt can be fetched again at `GET /consent/receipts/{auth_req_id}` by the
 
 ```sh
 pnpm install
-pnpm --filter mock-oidc start                 # http://127.0.0.1:8089
+pnpm --filter mock-oidc start                 # http://127.0.0.1:8089 (MOCK_TEST_HELPERS=1 adds the /mock/* test helpers)
 pnpm --filter mock-oidc test                  # the mock's own tests
 pnpm --filter @biatec/consent-protocol test   # schema and vector tests
 pnpm --filter @biatec/consent-protocol conformance   # the conformance suite against the bundled mock

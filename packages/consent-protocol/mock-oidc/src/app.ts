@@ -42,6 +42,12 @@ export interface MockOptions {
   newBindingCode?: () => string;
   /** Overrides vectors/keys.json (the test-only Biatec OIDC signing key). */
   oidcKey?: Record<string, string>;
+  /**
+   * Serves the /mock/* test helpers and gives the seeded devices the predictable tokens `device-token-<user>` that tests rely on.
+   * Off by default: anyone who can reach a mock with helpers on can approve consent as a seeded user (BCHAT-006). Tests that embed
+   * the mock pass `testHelpers: true`; `server.ts` turns it on only for MOCK_TEST_HELPERS=1.
+   */
+  testHelpers?: boolean;
 }
 
 interface Device { kid: string; sub: string; publicKey: Record<string, string>; token: string; activeAt: number; cancelled: boolean; attestation: string; recoveryCode?: string; recoveryAcknowledged?: boolean; push?: PushTarget }
@@ -95,6 +101,7 @@ function parseForm(text: string): Record<string, unknown> {
 export function createMockOidc(options: MockOptions = {}) {
   const now = options.now ?? (() => Math.floor(Date.now() / 1000));
   const issuer = options.issuer ?? ISSUER;
+  const testHelpers = options.testHelpers ?? false;
   const newCode = options.newBindingCode ?? (() => String(randomInt(0, 1_000_000)).padStart(6, "0"));
   const keys = options.oidcKey ? { oidc: options.oidcKey, device: loadJson("vectors", "keys.json").device } : loadJson("vectors", "keys.json");
   const oidcKey = keys.oidc;
@@ -135,7 +142,7 @@ export function createMockOidc(options: MockOptions = {}) {
   };
   // Seeded active devices use the vector device key, so receipts signed with vectors/keys.json verify.
   const { d: _dd, kid: _dk, alg: _da, use: _du, ...devicePub } = keys.device;
-  for (const u of users) if (u.activeDevice) addDevice(u.sub, u.email.split("@")[0] + "-device", devicePub, 0, "device-token-" + u.email.split("@")[0]);
+  for (const u of users) if (u.activeDevice) addDevice(u.sub, u.email.split("@")[0] + "-device", devicePub, 0, testHelpers ? "device-token-" + u.email.split("@")[0] : undefined);
 
   const activeDevices = (sub: string) => [...devices.values()].filter((d) => d.sub === sub && !d.cancelled && d.activeAt <= now());
 
@@ -644,7 +651,8 @@ export function createMockOidc(options: MockOptions = {}) {
       return { status: 200, body: deviceView(p) };
     }
     if (m === "POST" && (x = path.match(/^\/consent\/requests\/([^/]+)\/receipt$/))) return postReceipt(req, x[1], await readBody(req));
-    // Test helpers
+    // Test helpers (MOCK_TEST_HELPERS=1 for the standalone server)
+    if (!testHelpers && path.startsWith("/mock/")) throw new HttpError(404, "not_found");
     if (m === "GET" && (x = path.match(/^\/mock\/devices\/([^/]+)$/))) {
       const d = devices.get(x[1]);
       if (!d) throw new HttpError(404, "not_found");

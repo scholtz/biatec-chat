@@ -23,13 +23,28 @@ const keys = load("vectors", "keys.json");
 const vectorJwks = load("vectors", "jwks.json");
 let clock = 1_792_425_600;
 let codes: string[] = [];
-const mock = createMockOidc({ now: () => clock, newBindingCode: () => codes.shift() ?? "483920" });
+const mock = createMockOidc({ now: () => clock, newBindingCode: () => codes.shift() ?? "483920", testHelpers: true });
 let base = "";
 before(async () => {
   await new Promise<void>((r) => mock.server.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(mock.server.address() as AddressInfo).port}`;
 });
 after(() => mock.server.close());
+
+test("BCHAT-006: without test helpers /mock/* is not served and the seeded device token is not predictable", async () => {
+  const plain = createMockOidc();
+  await new Promise<void>((r) => plain.server.listen(0, "127.0.0.1", r));
+  const b = `http://127.0.0.1:${(plain.server.address() as AddressInfo).port}`;
+  try {
+    assert.equal((await fetch(`${b}/mock/devices/alice-device`)).status, 404);
+    assert.equal((await fetch(`${b}/mock/push-outbox`)).status, 404);
+    assert.equal((await fetch(`${b}/mock/devices/alice-device/activate`, { method: "POST" })).status, 404);
+    const r = await fetch(`${b}/devices/requests`, { headers: { Authorization: "Device device-token-alice" } });
+    assert.equal(r.status, 401, "the well-known seeded token is rejected");
+  } finally {
+    plain.server.close();
+  }
+});
 
 const ALICE = "alice";
 const ALICE_ADDR = "ALICEADDRESS";
