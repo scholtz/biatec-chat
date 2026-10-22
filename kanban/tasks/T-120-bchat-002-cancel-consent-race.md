@@ -1,7 +1,7 @@
 ---
 id: T-120
 title: "Close the cancel versus consent-redemption race (BCHAT-002)"
-status: in-progress
+status: done
 priority: P2
 epic: "Security"
 blocked_by: []
@@ -62,7 +62,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-22 19:01 · approve · PR #302 merged into main @ d2f7b35 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-22 18:00 · claude · (new) → backlog · created from GitHub issue #255 (BCHAT-002); blockers scan: none
 - 2026-10-22 18:01 · scholtz · taken, and session-20261022-1800 · backlog → in-progress · claimed
+- 2026-10-22 19:01 · user · in-progress → done · PR #302 merged into main @ d2f7b35 (synced by kanban-sync)
