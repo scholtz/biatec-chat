@@ -1,7 +1,7 @@
 ---
 id: T-124
 title: "Pin the algo-safe deployment programs and validator per network and check the genesis (BCHAT-010)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -62,7 +62,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-22 19:59 · approve · PR #306 merged into main @ 80baf9d (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-22 22:00 · claude · (new) → backlog · created from GitHub issue #263 (BCHAT-010); blockers scan: none
 - 2026-10-22 22:01 · scholtz · taken, and session-20261022-2200 · backlog → in-progress · claimed
+- 2026-10-22 19:59 · user · in-progress → done · PR #306 merged into main @ 80baf9d (synced by kanban-sync)
