@@ -15,6 +15,13 @@ still needs a reachable API server for discovery (even with `--validate=false`),
 `main` uses `oidc.biatec.io` and `mcp.biatec.io/tools`; `stage` uses `stage.oidc.biatec.io` and `stage.mcp.biatec.io/tools`
 (per `docs/AWS-AGENTCORE-GUIDE.md`). Both use the public Nodely mainnet/testnet algod; change per overlay if stage needs other nodes.
 
+## Client address behind the ingress
+
+The backend honours `X-Forwarded-For` only from the networks in `ForwardedHeaders__KnownNetworks__N` (both overlays set the
+RFC 1918 ranges; with nothing configured it trusts loopback only). ingress-nginx overwrites the header with the real peer, and
+`ForwardLimit` is 1, so a visitor cannot pick another rate-limit bucket. Per-IP limits (public chat, admin, onboarding) and the
+operator audit log depend on this; narrow the networks to the ingress pod CIDR once it is known (BCHAT-005).
+
 ## Dry-run status
 
 `kubectl kustomize` renders both overlays offline (the substitute used when no cluster is reachable). The literal

@@ -42,9 +42,9 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] Every overlay configures `ForwardedHeaders__KnownNetworks`; TEST-009 passes.
-- [ ] Unit test: X-Forwarded-For is honoured from a trusted peer (client address is the forwarded one) and ignored from an untrusted peer and when nothing is configured.
-- [ ] `ForwardLimit` stays 1.
+- [x] Every overlay configures `ForwardedHeaders__KnownNetworks`; TEST-009 passes.
+- [x] Unit test: X-Forwarded-For is honoured from a trusted peer (client address is the forwarded one) and ignored from an untrusted peer and when nothing is configured.
+- [x] `ForwardLimit` stays 1.
 
 ## Verification
 
@@ -52,12 +52,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** Both overlays trust X-Forwarded-For from the RFC 1918 ranges; ClientAddress tests added; k8s README documents it. PR below.
+- **Files changed:** k8s/main and k8s/stage backend-config patches, k8s/README.md, Tests/Public/ClientAddressTests.cs.
+- **How it was verified:** 4 new tests pass; TEST-009 passes. Not verified on a cluster (no access).
+- **Follow-up tasks created:** none.
+- **Unblocks:** BCHAT-004 (#257) builds on a correct client address.
+- **Open questions:** I used the RFC 1918 ranges because the ingress pod CIDR is not known from the repo. Please narrow to the real CIDR and confirm a RemoteIp in an admin log line on stage.
 
 ## Review
 
