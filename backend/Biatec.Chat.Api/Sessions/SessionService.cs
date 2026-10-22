@@ -130,7 +130,8 @@ public interface ISessionService
     Task EndAsync(Tenant tenant, string? cookieToken, CancellationToken ct);
 }
 
-public sealed class SessionService(ChatDbContext db, TimeProvider clock, IEvidenceRecorder? evidence = null) : ISessionService
+public sealed class SessionService(ChatDbContext db, TimeProvider clock, IEvidenceRecorder? evidence = null,
+    SessionCreationLimiter? creationLimiter = null, IHttpContextAccessor? http = null) : ISessionService
 {
     public static string NewToken() => Base64Url(RandomNumberGenerator.GetBytes(SessionPolicy.TokenBytes));
 
@@ -167,6 +168,8 @@ public sealed class SessionService(ChatDbContext db, TimeProvider clock, IEviden
 
     private async Task<SessionHandle> CreateAsync(Tenant tenant, DateTimeOffset now, CancellationToken ct)
     {
+        // Only creation is counted, so requests that carry a live session never spend the per-address budget (BCHAT-004).
+        creationLimiter?.Acquire(http?.HttpContext?.Connection.RemoteIpAddress);
         var token = NewToken();
         var conversation = new Conversation { Id = Guid.NewGuid(), TenantId = tenant.Id, CreatedAt = now, LastMessageAt = now };
         var session = new ChatSession

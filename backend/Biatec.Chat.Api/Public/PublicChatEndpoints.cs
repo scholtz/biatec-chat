@@ -80,7 +80,7 @@ public static class PublicChatEndpoints
         app.MapPost("/public/chat", HandleChatAsync).WithName("PostPublicChat").Produces(StatusCodes.Status200OK, contentType: "text/event-stream");
 
         // On the cookie transport: the global CSRF middleware applies (custom header, registered Origin, client key).
-        app.MapPost("/session/adopt", HandleAdoptAsync).WithName("AdoptPublicConversation");
+        app.MapPost("/session/adopt", HandleAdoptAsync).WithName("AdoptPublicConversation").LimitSessionCreation();
         return app;
     }
 

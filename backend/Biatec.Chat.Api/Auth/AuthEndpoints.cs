@@ -70,7 +70,7 @@ public static class AuthEndpoints
                 AuthRequestId = req.Id.ToString(),
                 LoginUrl = $"{origin}/auth/login?req={req.Id}&nonce={Uri.EscapeDataString(nonce)}",
             });
-        }).WithName("StartAuthPopup").Produces<PopupStartResponse>();
+        }).WithName("StartAuthPopup").Produces<PopupStartResponse>().LimitSessionCreation();
 
         // Step 2, a navigation in the popup. Needs the live session cookie and the one-time nonce of a request of that session.
         app.MapGet("/auth/login", async (HttpContext ctx, ChatDbContext db, TimeProvider clock, IOidcClient oidc, IAuthStateStore states, ILogger<AuthLog> log) =>

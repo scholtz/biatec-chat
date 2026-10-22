@@ -40,9 +40,9 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] The (N+1)th `GET /session/probe` from one address within the window returns 429; another address is unaffected.
-- [ ] The other four routes carry the same policy.
-- [ ] Existing session, auth, chat and public tests stay green.
+- [x] The (N+1)th `GET /session/probe` from one address within the window returns 429; another address is unaffected.
+- [x] The other four routes carry the same policy.
+- [x] Existing session, auth, chat and public tests stay green.
 
 ## Verification
 
@@ -50,12 +50,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** `SessionCreationLimiter` (fixed window per client address, default 60 creations/min, `Sessions:CreateRateLimit:*`; IPv6 folded to /64, IPv4-mapped to IPv4) is acquired in `SessionService.CreateAsync`, the single creation point, so only creations are counted and live-session requests never spend the budget. The five routes answer 429 + Retry-After via `LimitSessionCreation`. PR #304.
+- **Files changed:** Sessions/SessionCreateRateLimit.cs, Sessions/SessionService.cs, the four endpoint files, Tests/Sessions/SessionCreateRateLimitTests.cs.
+- **How it was verified:** dotnet test (full suite) passed; tests: 429 + Retry-After and no rows written, live cookie never counted, per-address budgets, IPv6 /64 and mapped forms.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** The counter is per pod (in memory), not shared through Redis like the public chat limiter, so N replicas allow about N times the limit; /public/chat keeps its own limiter; the widget does not yet read Retry-After (not exposed to cross-origin). Want follow-up tasks for any of these?
 
 ## Review
 
