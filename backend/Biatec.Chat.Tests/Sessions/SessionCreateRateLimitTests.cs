@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Hosting;
 using System.Net;
+using Biatec.Chat.Api.Sessions;
 using Biatec.Chat.Api.Data;
 using Biatec.Chat.Api.Tenancy;
 using Biatec.Chat.Core.Data;
@@ -70,7 +71,7 @@ public sealed class SessionCreateRateLimitTests : IAsyncLifetime
         await AdminAsync($"DROP DATABASE IF EXISTS \"{_dbName}\" WITH (FORCE)");
     }
 
-    private async Task<HttpStatusCode> SendAsync(HttpMethod m, string path, string? forwardedFor = null)
+    private async Task<HttpResponseMessage> SendAsync(HttpMethod m, string path, string? cookie = null)
     {
         using var client = _factory.CreateClient();
         var r = new HttpRequestMessage(m, "http://chat.biatec.io" + path);
@@ -80,8 +81,13 @@ public sealed class SessionCreateRateLimitTests : IAsyncLifetime
             r.Headers.TryAddWithoutValidation("X-Biatec-Chat", "1");
             r.Headers.TryAddWithoutValidation("X-Biatec-Client-Key", "biatec-web");
         }
-        return (await client.SendAsync(r)).StatusCode;
+        if (m != HttpMethod.Get) r.Content = new StringContent("{\"message\":\"hello\"}", System.Text.Encoding.UTF8, "application/json");
+        if (cookie is not null) r.Headers.TryAddWithoutValidation("Cookie", $"{SessionPolicy.CookieName}={cookie}");
+        return await client.SendAsync(r);
     }
+
+    private static string TokenOf(HttpResponseMessage r) =>
+        r.Headers.GetValues("Set-Cookie").Single(x => x.StartsWith(SessionPolicy.CookieName + "="))[(SessionPolicy.CookieName.Length + 1)..].Split(';')[0];
 
     private async Task<int> SessionRowsAsync()
     {
@@ -90,16 +96,64 @@ public sealed class SessionCreateRateLimitTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task The_request_after_the_limit_from_one_address_gets_429_and_creates_no_session()
+    public async Task Creating_more_sessions_than_the_limit_from_one_address_gets_429_and_writes_nothing()
     {
-        for (var i = 0; i < 3; i++) Assert.Equal(HttpStatusCode.OK, await SendAsync(HttpMethod.Get, "/session/probe"));
+        string? cookie = null;
+        for (var i = 0; i < 3; i++)
+        {
+            var ok = await SendAsync(HttpMethod.Get, "/session/probe");
+            Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+            cookie = TokenOf(ok);
+        }
         Assert.Equal(3, await SessionRowsAsync());
 
-        Assert.Equal(HttpStatusCode.TooManyRequests, await SendAsync(HttpMethod.Get, "/session/probe"));
-        Assert.Equal(HttpStatusCode.TooManyRequests, await SendAsync(HttpMethod.Get, "/session"));
-        Assert.Equal(HttpStatusCode.TooManyRequests, await SendAsync(HttpMethod.Post, "/auth/popup"));
-        Assert.Equal(HttpStatusCode.TooManyRequests, await SendAsync(HttpMethod.Post, "/session/adopt"));
-        Assert.Equal(HttpStatusCode.TooManyRequests, await SendAsync(HttpMethod.Post, "/chat/messages"));
+        var limited = await SendAsync(HttpMethod.Get, "/session/probe");
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+        Assert.True(limited.Headers.Contains("Retry-After"));
+        foreach (var (m, path) in new[] { (HttpMethod.Get, "/session"), (HttpMethod.Post, "/auth/popup"), (HttpMethod.Post, "/chat/messages") })
+            Assert.Equal(HttpStatusCode.TooManyRequests, (await SendAsync(m, path)).StatusCode);
         Assert.Equal(3, await SessionRowsAsync());
+
+        // A request that carries a live session creates nothing, so it is never counted against the budget.
+        for (var i = 0; i < 5; i++)
+            Assert.Equal(HttpStatusCode.OK, (await SendAsync(HttpMethod.Get, "/session/probe", cookie)).StatusCode);
+        Assert.Equal(3, await SessionRowsAsync());
+    }
+}
+
+public sealed class SessionCreationLimiterTests
+{
+    private static SessionCreationLimiter Limiter(int permits) =>
+        new(Microsoft.Extensions.Options.Options.Create(new SessionCreateRateLimitOptions { Permits = permits, WindowSeconds = 3600 }));
+
+    [Fact]
+    public void Each_address_has_its_own_budget()
+    {
+        using var l = Limiter(2);
+        var a = IPAddress.Parse("203.0.113.1");
+        var b = IPAddress.Parse("203.0.113.2");
+        l.Acquire(a); l.Acquire(a);
+        Assert.Throws<SessionCreationLimitedException>(() => l.Acquire(a));
+        l.Acquire(b); // another address is unaffected
+    }
+
+    [Fact]
+    public void Addresses_of_one_ipv6_allocation_and_ipv4_mapped_forms_share_a_budget()
+    {
+        using var l = Limiter(1);
+        l.Acquire(IPAddress.Parse("2001:db8:1:2::1"));
+        Assert.Throws<SessionCreationLimitedException>(() => l.Acquire(IPAddress.Parse("2001:db8:1:2:ffff:eeee:dddd:cccc")));
+        l.Acquire(IPAddress.Parse("2001:db8:1:3::1")); // a different /64
+
+        l.Acquire(IPAddress.Parse("203.0.113.7"));
+        Assert.Throws<SessionCreationLimitedException>(() => l.Acquire(IPAddress.Parse("::ffff:203.0.113.7")));
+    }
+
+    [Fact]
+    public void A_missing_address_shares_one_bucket_rather_than_being_unlimited()
+    {
+        using var l = Limiter(1);
+        l.Acquire(null);
+        Assert.Throws<SessionCreationLimitedException>(() => l.Acquire(null));
     }
 }

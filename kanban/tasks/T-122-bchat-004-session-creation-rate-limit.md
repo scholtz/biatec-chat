@@ -50,12 +50,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:** Fixed-window per-address policy `session-create` (default 120/min, `Sessions:CreateRateLimit:*`) on /session, /session/probe, /auth/popup, /session/adopt and /chat/messages. PR #304.
-- **Files changed:** Sessions/SessionCreateRateLimit.cs, the four endpoint files, Tests/Sessions/SessionCreateRateLimitTests.cs.
-- **How it was verified:** dotnet test 1534 passed (new test: 429 after the limit, no session rows created).
+- **Summary:** `SessionCreationLimiter` (fixed window per client address, default 60 creations/min, `Sessions:CreateRateLimit:*`; IPv6 folded to /64, IPv4-mapped to IPv4) is acquired in `SessionService.CreateAsync`, the single creation point, so only creations are counted and live-session requests never spend the budget. The five routes answer 429 + Retry-After via `LimitSessionCreation`. PR #304.
+- **Files changed:** Sessions/SessionCreateRateLimit.cs, Sessions/SessionService.cs, the four endpoint files, Tests/Sessions/SessionCreateRateLimitTests.cs.
+- **How it was verified:** dotnet test (full suite) passed; tests: 429 + Retry-After and no rows written, live cookie never counted, per-address budgets, IPv6 /64 and mapped forms.
 - **Follow-up tasks created:** none.
 - **Unblocks:** none.
-- **Open questions:** Limit counts every request to these routes, not only those that create a session (a junk cookie would also create one). 120/min is a guess; tune per deployment.
+- **Open questions:** None. Behind an untrusted proxy all visitors still share one bucket (see T-121 notes).
 
 ## Review
 
