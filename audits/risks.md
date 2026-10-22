@@ -2,7 +2,7 @@
 
 - **Owner of the register:** Biatec Chat CTO / designated security owner
 - **Governed by:** [audits/instructions.md](instructions.md), section 12
-- **Last updated:** 2026-10-22 (seeded from documented limitations; no audit cycle has run yet)
+- **Last updated:** 2026-10-22 (cycle 1, report 20261022T084008304Z_claude-fable-5-1_acc0471b1903_final_v01)
 - **Classification:** Internal. No secrets, exploit detail or customer data belong here.
 
 This register is the living list of security risks. Audit reports in [`reports/`](reports/) are
@@ -31,24 +31,29 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 
 | ID | Title | L | I | Rating | Status | Owner | Review by |
 | --- | --- | ---: | ---: | --- | --- | --- | --- |
-| RISK-001 | Consent protocol (CIBA, step-up, receipts, device enrollment) exists only against the mock OIDC | 4 | 5 | High (20, provisional) | Identified, not yet audited | Unassigned | 2027-01-22 |
-| RISK-002 | No IdP revocation: a stolen refresh token stays valid at Biatec OIDC for up to 30 days | 3 | 4 | High (12, provisional) | Identified, not yet audited | Unassigned | 2027-01-22 |
-| RISK-003 | Hardware-backed authenticator keys not validated on physical Android/iOS devices | 3 | 5 | High (15, provisional) | Identified, not yet audited | Unassigned | 2027-01-22 |
-| RISK-004 | Evidence anchoring and export only partially integrated; unanchored windows | 3 | 3 | Medium (9, provisional) | Identified, not yet audited | Unassigned | 2027-01-22 |
-| RISK-005 | Public `sub` instead of pairwise identifiers: erasure cannot unlink retained receipts | 4 | 2 | Medium (8, provisional) | Identified, not yet audited | Unassigned | 2027-01-22 |
-| RISK-006 | Pending consent slots, rate limits and pauses are per client across all Biatec sites | 2 | 3 | Medium (6, provisional) | Identified, not yet audited | Unassigned | 2027-01-22 |
-| RISK-007 | Hostile host page JavaScript can drive the widget below phone-approval thresholds | 4 | 4 | High (16, provisional) | Identified, not yet audited | Unassigned | 2027-01-22 |
-| RISK-008 | Prompt injection through untrusted content (KB, token metadata, on-chain notes, tool results) | 4 | 3 | High (12, provisional) | Identified, not yet audited | Unassigned | 2027-01-22 |
-| RISK-009 | Spending caps depend on the backend's own price feed and static test-network valuation | 3 | 4 | High (12, provisional) | Identified, not yet audited | Unassigned | 2027-01-22 |
-| RISK-010 | Real OIDC does not honour `requireConsent`: cap becomes a hard stop; submission refused if OIDC signs without a challenge | 4 | 2 | Medium (8, provisional) | Identified, not yet audited | Unassigned | 2027-01-22 |
-| RISK-011 | "No active device" is known only from the backend's own enrollment record | 3 | 3 | Medium (9, provisional) | Identified, not yet audited | Unassigned | 2027-01-22 |
-| RISK-012 | Shared Bedrock quota and Redis outage: fail-open cost or abuse exposure under load | 3 | 3 | Medium (9, provisional) | Identified, not yet audited | Unassigned | 2027-01-22 |
-| RISK-013 | Supply chain: CI workflows, published widget package and container images lack independent provenance assessment | 2 | 5 | Medium (10, provisional) | Identified, not yet audited | Unassigned | 2027-01-22 |
-| RISK-014 | Vault master key custody when the KMS provider is configured off in the deployment | 2 | 5 | Medium (10, provisional) | Identified, not yet audited | Unassigned | 2027-01-22 |
-| RISK-015 | Deprecated shared operator key (`legacy`) still accepted by the admin API | 3 | 4 | High (12, provisional) | Identified, not yet audited | Unassigned | 2027-01-22 |
-| RISK-016 | Sibling dependencies (Biatec OIDC, MCP, CLAMM, algo-safe, smart contracts) are outside audit scope | 3 | 5 | High (15, provisional) | Identified, not yet audited | Unassigned | 2027-01-22 |
-| RISK-017 | Bearer tokens are not sender-constrained (DPoP is a roadmap item) | 2 | 4 | Medium (8, provisional) | Identified, not yet audited | Unassigned | 2027-01-22 |
-| RISK-018 | No independent human review or device/live coverage in an AI-run audit cycle | 5 | 3 | High (15) | Open | Unassigned | 2027-01-22 |
+| RISK-001 | Consent protocol (CIBA, step-up, receipts, device enrollment) exists only against the mock OIDC | 4 | 5 | High (20, provisional) | Open | Unassigned | 2027-01-22 |
+| RISK-002 | No IdP revocation: a stolen refresh token stays valid at Biatec OIDC for up to 30 days | 3 | 4 | High (12, provisional) | Open | Unassigned | 2027-01-22 |
+| RISK-003 | Authenticator: keys not validated on devices, not biometric-bound, platform folders absent | 4 | 5 | Critical (20, provisional) | Open | Unassigned | 2027-01-22 |
+| RISK-004 | Evidence anchoring and export only partially integrated; unanchored windows | 3 | 3 | Medium (9, provisional) | Open | Unassigned | 2027-01-22 |
+| RISK-005 | Public `sub` instead of pairwise identifiers: erasure cannot unlink retained receipts | 4 | 2 | Medium (8, provisional) | Open | Unassigned | 2027-01-22 |
+| RISK-006 | Pending consent slots, rate limits and pauses are per client across all Biatec sites | 2 | 3 | Medium (6, provisional) | Open | Unassigned | 2027-01-22 |
+| RISK-007 | Hostile host page JavaScript can drive the widget below phone-approval thresholds | 4 | 4 | High (16, provisional) | Open | Unassigned | 2027-01-22 |
+| RISK-008 | Prompt injection through untrusted content (KB, token metadata, on-chain notes, tool results) | 4 | 3 | High (12, provisional) | Open | Unassigned | 2027-01-22 |
+| RISK-009 | Spending caps depend on the backend's own price feed and static test-network valuation | 3 | 4 | High (12, provisional) | Open | Unassigned | 2027-01-22 |
+| RISK-010 | Real OIDC does not honour `requireConsent`: cap becomes a hard stop; submission refused if OIDC signs without a challenge | 4 | 2 | Medium (8, provisional) | Open | Unassigned | 2027-01-22 |
+| RISK-011 | "No active device" is known only from the backend's own enrollment record | 3 | 3 | Medium (9, provisional) | Open | Unassigned | 2027-01-22 |
+| RISK-012 | Shared Bedrock quota and Redis outage: fail-open cost or abuse exposure under load | 3 | 3 | Medium (9, provisional) | Open | Unassigned | 2027-01-22 |
+| RISK-013 | Supply chain: CI workflows, published widget package and container images lack independent provenance assessment | 2 | 5 | Medium (10, provisional) | Open | Unassigned | 2027-01-22 |
+| RISK-014 | Vault master key custody when the KMS provider is configured off in the deployment | 2 | 5 | Medium (10, provisional) | Open | Unassigned | 2027-01-22 |
+| RISK-015 | Deprecated shared operator key (`legacy`) still accepted by the admin API | 3 | 4 | High (12, provisional) | Open | Unassigned | 2027-01-22 |
+| RISK-016 | Sibling dependencies (Biatec OIDC, MCP, CLAMM, algo-safe, smart contracts) are outside audit scope | 3 | 5 | High (15, provisional) | Open | Unassigned | 2027-01-22 |
+| RISK-017 | Bearer tokens are not sender-constrained (DPoP is a roadmap item) | 2 | 4 | Medium (8, provisional) | Open | Unassigned | 2027-01-22 |
+| RISK-018 | No independent human review or device/live coverage in an AI-run audit cycle | 5 | 3 | High (15) | Open (confirmed by cycle 1) | Unassigned | 2027-01-22 |
+| RISK-019 | Builder output trusted without field-level verification (liquidity) and no fee ceiling on swap/liquidity/safe-create/x402 | 3 | 5 | High (15) | Open | Unassigned | 2026-11-05 |
+| RISK-020 | Cancel can race consent redemption: a cancelled preview is signed and broadcast | 2 | 4 | Medium (8) | Open | Unassigned | 2026-11-21 |
+| RISK-021 | Anonymous abuse: unbounded session creation and shared rate-limit bucket behind ingress | 4 | 3 | High (12) | Open | Unassigned | 2026-11-21 |
+| RISK-022 | Mock OIDC exposes device tokens and under-models CIBA rules; unsafe on reachable hosts | 2 | 4 | Medium (8) | Open | Unassigned | 2026-11-21 |
+| RISK-023 | Bitcoin transfer path offered but unsupported at confirm; PSBT input values builder-asserted | 2 | 2 | Low (4) | Open | Unassigned | 2027-01-20 |
 
 ## Details
 
@@ -66,7 +71,7 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 - **Treatment:** Audit must verify the gate holds against the real service (instructions 7.7),
   and that mock code cannot be enabled in production builds. Re-rate once Biatec OIDC ships.
 - **Audit refs:** none yet
-- **Status / owner / review:** Identified, not yet audited / Unassigned / 2027-01-22
+- **Status / owner / review:** Open (confirmed in code by cycle 1) / Unassigned / 2027-01-22
 
 ### RISK-002 No IdP revocation; stolen refresh token valid up to 30 days
 
@@ -80,7 +85,7 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 - **Treatment:** Audit the vault read paths (7.1); measure actual residual lifetime; press
   for row 14 and the 8-hour lifetime in Biatec OIDC.
 - **Audit refs:** none yet
-- **Status / owner / review:** Identified, not yet audited / Unassigned / 2027-01-22
+- **Status / owner / review:** Open (confirmed in code by cycle 1) / Unassigned / 2027-01-22
 
 ### RISK-003 Hardware-backed keys not validated on physical devices
 
@@ -92,7 +97,7 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 - **Treatment:** M6 device testing with a recorded device matrix (7.3). Until then, every
   consent claim is mock-only.
 - **Audit refs:** none yet
-- **Status / owner / review:** Identified, not yet audited / Unassigned / 2027-01-22
+- **Status / owner / review:** Open (confirmed in code by cycle 1) / Unassigned / 2027-01-22
 
 ### RISK-004 Evidence anchoring and export partially integrated
 
@@ -104,7 +109,7 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 - **Treatment:** Verify anchors against an independent chain source; identify unanchored windows;
   test verifier on invalid bundles.
 - **Audit refs:** none yet
-- **Status / owner / review:** Identified, not yet audited / Unassigned / 2027-01-22
+- **Status / owner / review:** Open (confirmed in code by cycle 1) / Unassigned / 2027-01-22
 
 ### RISK-005 Public `sub`; erasure cannot unlink retained receipts
 
@@ -116,7 +121,7 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 - **Treatment:** Test erasure across stores (7.6); obtain legal advice on retention; press for
   pairwise `sub`.
 - **Audit refs:** none yet
-- **Status / owner / review:** Identified, not yet audited / Unassigned / 2027-01-22
+- **Status / owner / review:** Open (confirmed in code by cycle 1) / Unassigned / 2027-01-22
 
 ### RISK-006 Consent slots and pauses shared across Biatec sites
 
@@ -128,7 +133,7 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 - **Current controls / fallback:** Backend treats HTTP 429 as "try later".
 - **Treatment:** Test slot exhaustion from one origin (7.4, 7.3); press for row 17.
 - **Audit refs:** none yet
-- **Status / owner / review:** Identified, not yet audited / Unassigned / 2027-01-22
+- **Status / owner / review:** Open (confirmed in code by cycle 1) / Unassigned / 2027-01-22
 
 ### RISK-007 Hostile host page can drive the widget below approval thresholds
 
@@ -142,7 +147,7 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 - **Treatment:** Quantify what a hostile host can do below thresholds (7.1); confirm caps are
   enforced server-side regardless of widget state.
 - **Audit refs:** none yet
-- **Status / owner / review:** Identified, not yet audited / Unassigned / 2027-01-22
+- **Status / owner / review:** Open (confirmed in code by cycle 1) / Unassigned / 2027-01-22
 
 ### RISK-008 Prompt injection through untrusted content
 
@@ -155,7 +160,7 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 - **Treatment:** Deterministic forbidden-tool-call fixtures plus a versioned adversarial corpus
   (M5), re-run every cycle because model behavior drifts.
 - **Audit refs:** none yet
-- **Status / owner / review:** Identified, not yet audited / Unassigned / 2027-01-22
+- **Status / owner / review:** Open (confirmed in code by cycle 1) / Unassigned / 2027-01-22
 
 ### RISK-009 Caps depend on the backend's own valuation
 
@@ -167,7 +172,7 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 - **Current controls / fallback:** Unknown application calls treated as above threshold.
 - **Treatment:** Boundary, stale-price and unknown-asset tests (7.2); review price-feed trust.
 - **Audit refs:** none yet
-- **Status / owner / review:** Identified, not yet audited / Unassigned / 2027-01-22
+- **Status / owner / review:** Open (confirmed in code by cycle 1) / Unassigned / 2027-01-22
 
 ### RISK-010 `requireConsent` not honoured by real OIDC
 
@@ -181,7 +186,7 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 - **Treatment:** Test that submission is refused, not downgraded (7.2); confirm the flag cannot be
   enabled against real OIDC by mistake.
 - **Audit refs:** none yet
-- **Status / owner / review:** Identified, not yet audited / Unassigned / 2027-01-22
+- **Status / owner / review:** Open (confirmed in code by cycle 1) / Unassigned / 2027-01-22
 
 ### RISK-011 "No active device" known only from the backend's own record
 
@@ -192,7 +197,7 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 - **Current controls / fallback:** `Caps:NoDevice` enforcement of the 100 EUR cap.
 - **Treatment:** Test missing-device paths at every entry point (7.2).
 - **Audit refs:** none yet
-- **Status / owner / review:** Identified, not yet audited / Unassigned / 2027-01-22
+- **Status / owner / review:** Open (confirmed in code by cycle 1) / Unassigned / 2027-01-22
 
 ### RISK-012 Shared Bedrock quota and Redis outage
 
@@ -204,7 +209,7 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 - **Treatment:** Approved Redis-outage and multi-replica scenarios; confirm fail-closed for
   security decisions and bounded cost for availability ones.
 - **Audit refs:** none yet
-- **Status / owner / review:** Identified, not yet audited / Unassigned / 2027-01-22
+- **Status / owner / review:** Open (confirmed in code by cycle 1) / Unassigned / 2027-01-22
 
 ### RISK-013 Supply chain provenance not independently assessed
 
@@ -216,7 +221,7 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 - **Current controls / fallback:** Repository CI as configured.
 - **Treatment:** M7 review, SBOM, pinned actions, workflow permissions and fork handling.
 - **Audit refs:** none yet
-- **Status / owner / review:** Identified, not yet audited / Unassigned / 2027-01-22
+- **Status / owner / review:** Open (confirmed in code by cycle 1) / Unassigned / 2027-01-22
 
 ### RISK-014 Vault master key custody without KMS
 
@@ -228,7 +233,7 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 - **Treatment:** Verify the deployed provider, rotation and access path; do not credit a
   configured-off KMS.
 - **Audit refs:** none yet
-- **Status / owner / review:** Identified, not yet audited / Unassigned / 2027-01-22
+- **Status / owner / review:** Open (confirmed in code by cycle 1) / Unassigned / 2027-01-22
 
 ### RISK-015 Deprecated shared operator key still accepted
 
@@ -239,7 +244,7 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 - **Current controls / fallback:** Signed admin evidence chain records the operator name.
 - **Treatment:** Verify in deployment whether the legacy key is set; plan its removal.
 - **Audit refs:** none yet
-- **Status / owner / review:** Identified, not yet audited / Unassigned / 2027-01-22
+- **Status / owner / review:** Open (confirmed in code by cycle 1) / Unassigned / 2027-01-22
 
 ### RISK-016 Sibling dependencies outside audit scope
 
@@ -251,7 +256,7 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 - **Treatment:** Record the gap in every report; obtain or commission audits of the dependencies;
   test reachability of known advisories.
 - **Audit refs:** none yet
-- **Status / owner / review:** Identified, not yet audited / Unassigned / 2027-01-22
+- **Status / owner / review:** Open (confirmed in code by cycle 1) / Unassigned / 2027-01-22
 
 ### RISK-017 Bearer tokens not sender-constrained
 
@@ -262,7 +267,7 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 - **Current controls / fallback:** Tokens never leave the backend; vault encryption; TLS.
 - **Treatment:** Track; re-rate once RISK-002 and the OIDC changes land.
 - **Audit refs:** none yet
-- **Status / owner / review:** Identified, not yet audited / Unassigned / 2027-01-22
+- **Status / owner / review:** Open (confirmed in code by cycle 1) / Unassigned / 2027-01-22
 
 ### RISK-018 AI-run audit cycle lacks independent review and device/live coverage
 
@@ -277,8 +282,50 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 - **Audit refs:** none yet
 - **Status / owner / review:** Open / Unassigned / 2027-01-22
 
+### RISK-019 Builder output trusted without field-level verification; no fee ceiling
+
+- **Category:** Financial integrity / builder boundary
+- **Description:** Liquidity groups from the sidecar are signed after checking only sender and sidecar-reported facts; rekey, close-out, receivers, app ids and fee are not verified. Swap, liquidity, safe-create and x402 verifiers have no fee ceiling.
+- **Current controls:** OIDC consent threshold and phone approval; every other builder path verifies fields.
+- **Treatment:** `LiquidityGroupVerifier`, fee ceilings, program/validator pinning; disable the capabilities by tenant policy until fixed.
+- **Audit refs:** BCHAT-001, BCHAT-003, BCHAT-010; TEST-008, TEST-015; report 20261022T084008304Z_claude-fable-5-1_acc0471b1903_final_v01
+- **Status / owner / review:** Open / Unassigned / 2026-11-05
+
+### RISK-020 Cancel races consent redemption
+
+- **Category:** Concurrency
+- **Description:** Cancel checks for an approved consent and flips the preview; the consent resume path signs without an atomic claim, so a "cancelled" preview can still be broadcast. Resume also skips pause/analyze, x402 and no-device gates.
+- **Treatment:** atomic step claim in resume, cancel refuses signed steps, re-run pre-sign gates.
+- **Audit refs:** BCHAT-002, BCHAT-011
+- **Status / owner / review:** Open / Unassigned / 2026-11-21
+
+### RISK-021 Anonymous abuse and shared rate-limit bucket
+
+- **Category:** Availability / resource abuse
+- **Description:** Session endpoints create rows and evidence without limits, and no overlay configures trusted proxies, so all visitors and the operator API share one per-IP bucket behind the ingress.
+- **Treatment:** ForwardedHeaders in every overlay, rate limits on session endpoints, global body limit.
+- **Audit refs:** BCHAT-004, BCHAT-005, BCHAT-035; TEST-009
+- **Status / owner / review:** Open / Unassigned / 2026-11-21
+
+### RISK-022 Mock OIDC exposure and under-modelled rules
+
+- **Category:** Test double / assurance
+- **Description:** `/mock/devices/{kid}` returns device tokens and activation bypasses the 24 h delay with no gate, and the image binds all interfaces. The mock does not enforce CIBA interval, pending caps or subject-scoped receipts. Not deployed by compose or k8s.
+- **Treatment:** gate helpers behind `MOCK_TEST_HELPERS`, bind localhost by default, model the missing rules.
+- **Audit refs:** BCHAT-006, BCHAT-024; TEST-010
+- **Status / owner / review:** Open / Unassigned / 2026-11-21
+
+### RISK-023 Bitcoin path reachable but unsupported
+
+- **Category:** Functional / financial integrity
+- **Description:** `wallet.transfer` offers Bitcoin and builds a preview that Confirm always fails as `group_mismatch`; PSBT input values rely on `witness_utxo` asserted by the builder.
+- **Treatment:** gate Bitcoin out of the schema until a PSBT signing path exists.
+- **Audit refs:** BCHAT-037, BCHAT-041
+- **Status / owner / review:** Open / Unassigned / 2027-01-20
+
 ## Change log
 
 | Date | Change | By | Report |
 | --- | --- | --- | --- |
 | 2026-10-22 | Register created and seeded with 18 entries from documented limitations and the commissioning brief | Ludovit Scholtz (AI-assisted) | none |
+| 2026-10-22 | Cycle 1: seeded entries RISK-001 to RISK-017 confirmed in code (status Open); RISK-003 re-rated to Critical 20 (BCHAT-007/008/009); RISK-018 confirmed; added RISK-019 to RISK-023 | Claude Fable 5.1 (AI-run cycle, operator Ludovit Scholtz) | 20261022T084008304Z_claude-fable-5-1_acc0471b1903_final_v01 |
