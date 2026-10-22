@@ -31,6 +31,10 @@ public sealed class CancelService(ChatDbContext db, TimeProvider clock, ILogger<
 {
     public const string EvidenceKind = "preview_cancelled";
 
+    private Task<int> RestoreAwaitingAsync(List<Guid> stepIds) =>
+        stepIds.Count == 0 ? Task.FromResult(0) : db.ActionSteps.Where(s => stepIds.Contains(s.Id) && s.Status == StepStatus.Cancelled)
+            .ExecuteUpdateAsync(u => u.SetProperty(s => s.Status, StepStatus.AwaitingConsent), CancellationToken.None);
+
     public async Task<CancelResult> CancelAsync(ChatSession session, Guid previewId, string groupHash, CancellationToken ct)
     {
         var preview = await db.ActionPreviews.AsNoTracking().FirstOrDefaultAsync(p => p.Id == previewId, ct);
@@ -70,7 +74,10 @@ public sealed class CancelService(ChatDbContext db, TimeProvider clock, ILogger<
             var won = await db.ActionSteps.Where(s => awaitingIds.Contains(s.Id) && s.Status == StepStatus.AwaitingConsent)
                 .ExecuteUpdateAsync(u => u.SetProperty(s => s.Status, StepStatus.Cancelled), ct);
             if (won != awaitingIds.Count)
+            {
+                await RestoreAwaitingAsync(awaitingIds);
                 return new CancelResult(CancelOutcome.NotCancellable, "The approval was already given; signing is in progress.");
+            }
         }
 
         // Atomic: only one of a cancel and a concurrent confirm wins the status flip.
@@ -78,7 +85,11 @@ public sealed class CancelService(ChatDbContext db, TimeProvider clock, ILogger<
         var flipped = await db.ActionPreviews
             .Where(p => p.Id == previewId && p.Status == observed)
             .ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, ActionPreviewStatus.Cancelled), ct);
-        if (flipped == 0) return new CancelResult(CancelOutcome.NotCancellable, "The preview changed; please look at it again.");
+        if (flipped == 0)
+        {
+            await RestoreAwaitingAsync(awaitingIds); // do not strand a consent request whose step this cancel already flipped
+            return new CancelResult(CancelOutcome.NotCancellable, "The preview changed; please look at it again.");
+        }
 
         var openIds = open.Select(s => s.Id).ToList();
         await db.ActionSteps.Where(s => openIds.Contains(s.Id) && (s.Status == StepStatus.Pending || s.Status == StepStatus.AwaitingConsent))

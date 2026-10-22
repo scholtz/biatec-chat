@@ -597,6 +597,31 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
         Assert.NotEqual(ActionPreviewStatus.Cancelled, (await LoadAsync(b.PreviewId)).Preview.Status);
     }
 
+    private sealed class ThrowingSigner : IWalletSigningClient
+    {
+        public Task<WalletSignOutcome> SignAsync(string bearer, WalletSignRequest request, CancellationToken ct = default) => throw new InvalidOperationException("boom");
+    }
+
+    // The claimed step must not stay Signed when the sign call fails: it ends like an expired consent.
+    [Fact]
+    public async Task ResumeAfterConsent_WhenSigningThrows_EndsTheClaimedStepAndPreview()
+    {
+        var b = await BuildPreviewAsync();
+        _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_boom", "4821", 300, 2);
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        _oidc.Override = null;
+
+        await using (var db = NewContext())
+        {
+            var r = await NewService(db, new ThrowingSigner()).ResumeAfterConsentAsync(_tenant, _session, b.PreviewId, "ELEVATED", CancellationToken.None);
+            Assert.Equal("resume_failed", r.ErrorCode);
+        }
+        var (preview, step) = await LoadAsync(b.PreviewId);
+        Assert.Equal(StepStatus.Expired, step.Status);
+        Assert.Equal(ActionPreviewStatus.Expired, preview.Status);
+        Assert.Empty(_mcp.Submits);
+    }
+
     // BCHAT-002: a cancel that won the step row means nothing is ever signed or submitted.
     [Fact]
     public async Task Cancel_BeforeTheApprovalIsRedeemed_MeansNothingIsSignedOrSubmitted()

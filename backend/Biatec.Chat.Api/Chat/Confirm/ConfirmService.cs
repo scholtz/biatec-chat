@@ -568,12 +568,24 @@ public sealed class ConfirmService(
                     return new ConfirmResult(ConfirmOutcome.Failed, "Biatec OIDC did not accept the approval. Nothing was signed; the preview must be rebuilt.", [], ErrorCode: error);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // The approval is used up. If nothing was submitted yet the claimed step must not stay Signed: end it, so the preview is rebuilt.
-            await db.ActionSteps.Where(x => x.Id == step.Id && x.Status == StepStatus.Signed)
+            // The approval is used up. If nothing was submitted yet the claimed step must not stay Signed: end it like an expired
+            // consent, so the preview is rebuilt (the same outcome EndConsentAsync gave when the step was still AwaitingConsent).
+            var ended = await db.ActionSteps.Where(x => x.Id == step.Id && x.Status == StepStatus.Signed)
                 .ExecuteUpdateAsync(u => u.SetProperty(x => x.Status, StepStatus.Expired), CancellationToken.None);
-            throw;
+            if (ended == 0) throw; // already submitted or otherwise moved on: leave it to Reconcile
+            await db.ActionPreviews.Where(p => p.Id == previewId && p.Status == ActionPreviewStatus.Confirmed)
+                .ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, ActionPreviewStatus.Expired), CancellationToken.None);
+            step.Status = StepStatus.Expired; // keep the tracked rows in step with the database
+            preview.Status = ActionPreviewStatus.Expired;
+            log.LogError("Resuming after consent failed: {ErrorType}", ex.GetType().Name);
+            await RecordAsync(session, "consent_expired", new JsonObject
+            {
+                ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["reason"] = "resume_failed",
+            }, CancellationToken.None);
+            if (ex is OperationCanceledException) throw;
+            return new ConfirmResult(ConfirmOutcome.Failed, "The approved action could not be completed. Nothing was submitted; ask for the preview again.", [], ErrorCode: "resume_failed");
         }
     }
 

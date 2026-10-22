@@ -53,12 +53,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** Resume claims the AwaitingConsent step (-> Signed) atomically before signing; Cancel flips the same row first and restores it if the preview flip fails; a failed resume ends the step and preview as expired consent. PR #302.
+- **Files changed:** Api/Chat/Confirm/ConfirmService.cs, Api/Chat/Cancel/CancelService.cs, Tests/Signing/ConfirmServiceTests.cs.
+- **How it was verified:** dotnet test 1528 passed; interleaving test with a gated signer.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** A process crash between the claim and the Submitted save leaves the step Signed (no sweeper expires it); previously it stayed AwaitingConsent. Want a follow-up task for a sweeper rule?
 
 ## Review
 
