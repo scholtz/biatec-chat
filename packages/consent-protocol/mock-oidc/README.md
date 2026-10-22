@@ -27,7 +27,7 @@ docker build -f packages/consent-protocol/mock-oidc/Dockerfile -t biatec-mock-oi
 | `PUT /devices/push` | `Authorization: Device <token>`; registers or replaces the device's push token |
 | `GET /devices`, `POST /devices/{kid}/cancel` | Device list; cancelling a pending enrollment (T-084) |
 | `GET /devices/settings`, `PUT /devices/settings` | Consent settings; loosening needs a device-signed `biatec_settings_change` (T-084) |
-| `GET /mock/devices/{kid}`, `POST /mock/devices/{kid}/activate`, `GET /mock/push-outbox?kid=...` | Test helpers; the outbox shows the push messages that would be sent |
+| `GET /mock/devices/{kid}`, `POST /mock/devices/{kid}/activate`, `GET /mock/push-outbox?kid=...` | Test helpers, served only with `MOCK_TEST_HELPERS=1` (always on when the mock is embedded in tests); the outbox shows the push messages that would be sent. Without the flag the seeded devices also get random tokens, because `device-token-<user>` is predictable (BCHAT-006) |
 
 ## Rules implemented
 

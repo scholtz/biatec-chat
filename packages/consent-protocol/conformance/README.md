@@ -48,7 +48,7 @@ Defaults are the mock's public seed data. Override with environment variables:
 | `CONFORMANCE_DEVICE_TOKEN`, `CONFORMANCE_DEVICE_KID`, `CONFORMANCE_DEVICE_PRIVATE_JWK` | Enrolled test device that signs receipts (private JWK as JSON) | vector device |
 
 The authenticator side needs the device's attestation and public key, which the suite reads from the helper
-`GET /mock/devices/{kid}`. A server without that helper must offer an equivalent; adapt the lookup in `approve` in `src/kit.ts`.
+`GET /mock/devices/{kid}` (a standalone mock serves it only when started with `MOCK_TEST_HELPERS=1`). A server without that helper must offer an equivalent; adapt the lookup in `approve` in `src/kit.ts`.
 
 ## Reports
 
