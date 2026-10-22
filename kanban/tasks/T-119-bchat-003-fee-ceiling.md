@@ -33,9 +33,8 @@ Every transaction of these groups is refused when its fee exceeds a documented p
 ## Scope
 
 - In: per-transaction fee ceilings in the four verifiers (plain transfers 10x min fee; app calls with inner
-  transactions a documented larger allowance matching existing builders); `FeeAmount` on the swap and x402 cards if
-  not already shown; tests per path.
-- Out: other findings (BCHAT-010, BCHAT-011).
+  transactions a documented larger allowance); tests per path.
+- Out: showing `FeeAmount` on the swap and x402 cards (widget contract change; follow-up); other findings (BCHAT-010, BCHAT-011).
 
 ## Parallel work
 
@@ -43,11 +42,11 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] Swap refuses a group with `Fee = 5_000_000` on any transaction (`SwapRefused`).
-- [ ] Liquidity refuses an inflated fee; honest add (8,000) and remove (12,000) still pass.
-- [ ] x402 refuses a 1 ALGO fee on the transfer.
-- [ ] Safe creation refuses a 10 ALGO fee on the deploy call.
-- [ ] Existing tests stay green; audit TEST-015 passes.
+- [x] Swap refuses a group with `Fee = 5_000_000` on any transaction (`SwapRefused`).
+- [x] Liquidity refuses an inflated fee; honest add (8,000) and remove (12,000) still pass.
+- [x] x402 refuses a 1 ALGO fee on the transfer.
+- [x] Safe creation refuses a 10 ALGO fee on the deploy call.
+- [x] Existing tests stay green; audit TEST-015 passes.
 
 ## Verification
 
