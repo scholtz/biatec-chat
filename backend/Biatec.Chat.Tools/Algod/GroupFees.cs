@@ -16,7 +16,7 @@ public static class GroupFees
     public const ulong MaxCallFeeMicroAlgo = 100_000;
 
     /// <summary>Everything the group may pay in total, so many individually acceptable fees cannot add up to a drain.</summary>
-    public const ulong MaxGroupFeeMicroAlgo = 500_000;
+    public const ulong MaxGroupFeeMicroAlgo = 200_000;
 
     public static bool TooHigh(ulong fee, bool isApplicationCall) => fee > (isApplicationCall ? MaxCallFeeMicroAlgo : MaxTransferFeeMicroAlgo);
 

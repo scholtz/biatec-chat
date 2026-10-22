@@ -370,7 +370,7 @@ public sealed class SwapExecutorTests
             new[] { Tx(), Tx(amount: 7, asset: 0, receiver: Other), App(5001) },   // extra payment outflow
             new[] { Tx(), Tx(), App(5001) },                               // funding sent twice
             new[] { Tx(fee: 5_000_000), App(5001) },                       // inflated fee on the funding transfer (BCHAT-003)
-            new[] { Tx(), App(5001, fee: 99_999), App(5001, fee: 99_999), App(5001, fee: 99_999), App(5001, fee: 99_999), App(5001, fee: 99_999), App(5001, fee: 99_999) }, // many acceptable fees add up
+            new[] { Tx(), App(5001, fee: 99_999), App(5001, fee: 99_999) }, // each fee passes alone; together they exceed the group cap
             new[] { Tx(), App(5001, fee: 5_000_000) },                     // inflated fee on the pool call
         };
         foreach (var group in cases)
