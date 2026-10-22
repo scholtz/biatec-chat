@@ -164,24 +164,30 @@ public sealed class ConfirmService(
         }
     }
 
+    /// <summary>x402.pay needs the tenant flag and its settlement handler at signing time, however the signing was reached (a confirm or a resumed consent).</summary>
+    private async Task<ConfirmResult?> RefuseUnavailableCapabilityAsync(Tenant tenant, ChatSession session, ActionPreview preview, ActionStep step)
+    {
+        if (UnavailableCapability(tenant, preview) is not { } u) return null;
+        await FailAsync(preview, step, CancellationToken.None);
+        await RecordAsync(session, "submission_failed", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["reason"] = u.Code }, CancellationToken.None);
+        return new ConfirmResult(ConfirmOutcome.Failed, u.Message, [], ErrorCode: u.Code);
+    }
+
+    private (string Code, string Message)? UnavailableCapability(Tenant tenant, ActionPreview preview)
+    {
+        if (!string.Equals(preview.Capability, "x402.pay", StringComparison.Ordinal)) return null;
+        if (!tenant.X402Enabled) return ("feature_disabled", "x402 payments are disabled for this workspace. Nothing was signed; the preview must be rebuilt.");
+        if (settlementHandlers?.Any(h => string.Equals(h.Capability, preview.Capability, StringComparison.Ordinal)) != true)
+            return ("settlement_unavailable", "x402 payments are not available right now. Nothing was signed; the preview must be rebuilt.");
+        return null;
+    }
+
     private async Task<ConfirmResult> SignAndSubmitAsync(Tenant tenant, ChatSession session, ActionPreview preview, ActionStep step,
         IReadOnlyList<Algorand.Algod.Model.Transactions.Transaction> group, string address, string sessionId, Guid previewId, string origin, CancellationToken ct)
     {
         // Fail closed BEFORE anything is signed: x402.pay needs the tenant flag (it may have been turned off after the
         // preview was made) and its settlement handler (platform flag); the MCP broadcast would pay for nothing.
-        if (string.Equals(preview.Capability, "x402.pay", StringComparison.Ordinal))
-        {
-            string? refusal = null, message = null;
-            if (!tenant.X402Enabled) { refusal = "feature_disabled"; message = "x402 payments are disabled for this workspace. Nothing was signed; the preview must be rebuilt."; }
-            else if (settlementHandlers?.Any(h => string.Equals(h.Capability, preview.Capability, StringComparison.Ordinal)) != true)
-            { refusal = "settlement_unavailable"; message = "x402 payments are not available right now. Nothing was signed; the preview must be rebuilt."; }
-            if (refusal is not null)
-            {
-                await FailAsync(preview, step, CancellationToken.None);
-                await RecordAsync(session, "submission_failed", new JsonObject { ["previewId"] = preview.Id.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["reason"] = refusal }, CancellationToken.None);
-                return new ConfirmResult(ConfirmOutcome.Failed, message!, [], ErrorCode: refusal);
-            }
-        }
+        if (await RefuseUnavailableCapabilityAsync(tenant, session, preview, step) is { } unavailable) return unavailable;
 
         string? bearer;
         try { bearer = await vault.GetAccessTokenAsync(sessionId, ct); }
@@ -512,6 +518,38 @@ public sealed class ConfirmService(
             ?? throw new PreviewException(PreviewError.InvalidState, "The preview has no step awaiting consent.");
         if (preview.Status != ActionPreviewStatus.Confirmed)
             throw new PreviewException(PreviewError.InvalidState, "The preview is no longer awaiting consent.");
+        // The gates ConfirmAsync enforces before signing are enforced again here: the session may have been paused or set to analyze
+        // only, or x402 turned off, during the phone wait (BCHAT-011). An approved consent never outranks them.
+        if (Biatec.Chat.Api.Agent.AgentModePolicy.ConfirmRefusal(session) is { } restriction)
+        {
+            var cancelled = await db.ActionSteps.Where(s => s.Id == step.Id && s.Status == StepStatus.AwaitingConsent)
+                .ExecuteUpdateAsync(u => u.SetProperty(s => s.Status, StepStatus.Cancelled), CancellationToken.None);
+            if (cancelled == 0) throw new PreviewException(PreviewError.InvalidState, "The action was cancelled or is no longer awaiting consent.");
+            await db.ActionPreviews.Where(p => p.Id == previewId && p.Status == ActionPreviewStatus.Confirmed)
+                .ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, ActionPreviewStatus.Cancelled), CancellationToken.None);
+            step.Status = StepStatus.Cancelled; // keep the tracked rows in step with the database
+            preview.Status = ActionPreviewStatus.Cancelled;
+            await RecordAsync(session, "signing_refused", new JsonObject { ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["reason"] = restriction.Code }, CancellationToken.None);
+            return new ConfirmResult(ConfirmOutcome.AgentRestricted, restriction.Message + " Nothing was signed.", [], ErrorCode: restriction.Code);
+        }
+        // Capability availability and freshness (Bitcoin expiry, spent input, fee rate move) too. The step row is claimed atomically
+        // first, like a cancel, so a concurrent cancel is never overwritten.
+        (string Code, string Message)? refused = UnavailableCapability(tenant, preview);
+        if (refused is null)
+            foreach (var gate in freshnessGates ?? [])
+                if (await gate.CheckAsync(preview, step, ct) is { } stale) { refused = ("preview_stale", stale); break; }
+        if (refused is { } gateRefusal)
+        {
+            var failed = await db.ActionSteps.Where(s => s.Id == step.Id && s.Status == StepStatus.AwaitingConsent)
+                .ExecuteUpdateAsync(u => u.SetProperty(s => s.Status, StepStatus.Failed), CancellationToken.None);
+            if (failed == 0) throw new PreviewException(PreviewError.InvalidState, "The action was cancelled or is no longer awaiting consent.");
+            await db.ActionPreviews.Where(p => p.Id == previewId && p.Status == ActionPreviewStatus.Confirmed)
+                .ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, ActionPreviewStatus.Failed), CancellationToken.None);
+            step.Status = StepStatus.Failed;
+            preview.Status = ActionPreviewStatus.Failed;
+            await RecordAsync(session, "submission_failed", new JsonObject { ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["reason"] = gateRefusal.Code }, CancellationToken.None);
+            return new ConfirmResult(ConfirmOutcome.Failed, gateRefusal.Message, [], ErrorCode: gateRefusal.Code);
+        }
         // The consent window starts after the confirm gate, so an approval can arrive after the preview has expired.
         // The simulation and policy check are stale then: nothing is signed and the preview is rebuilt.
         if (clock.GetUtcNow() >= step.ExpiresAt || clock.GetUtcNow() >= preview.ExpiresAt)

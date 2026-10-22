@@ -622,6 +622,100 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
         Assert.Empty(_mcp.Submits);
     }
 
+    // BCHAT-011: the gates ConfirmAsync enforces are enforced again when an approved consent resumes.
+    [Theory]
+    [InlineData("paused")]
+    [InlineData("analyze")]
+    public async Task ResumeAfterConsent_WhenTheSessionWasPausedOrSetToAnalyzeDuringThePhoneWait_SignsNothing(string restriction)
+    {
+        var b = await BuildPreviewAsync();
+        _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_gate", "4821", 300, 2);
+        Assert.Equal(ConfirmOutcome.ConsentPending, (await ConfirmAsync(b.PreviewId, b.Group.GroupHash)).Outcome);
+        _oidc.Override = null;
+        var signsBefore = _oidc.Calls.Count;
+
+        if (restriction == "paused") _session.Paused = true; else _session.AgentMode = AgentMode.Analyze;
+        ConfirmResult r;
+        await using (var db = NewContext())
+            r = await NewService(db).ResumeAfterConsentAsync(_tenant, _session, b.PreviewId, "ELEVATED", CancellationToken.None);
+
+        Assert.Equal(ConfirmOutcome.AgentRestricted, r.Outcome);
+        Assert.Equal(signsBefore, _oidc.Calls.Count);
+        Assert.Empty(_mcp.Submits);
+        var (preview, step) = await LoadAsync(b.PreviewId);
+        Assert.Equal(StepStatus.Cancelled, step.Status);
+        Assert.Equal(ActionPreviewStatus.Cancelled, preview.Status);
+    }
+
+    [Fact]
+    public async Task ResumeAfterConsent_WhenX402WasDisabledDuringThePhoneWait_SignsNothing()
+    {
+        var b = await BuildX402PreviewAsync();
+        var (handler, _, facilitator) = X402Handler();
+        _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_x402", "4821", 300, 2);
+        Assert.Equal(ConfirmOutcome.ConsentPending, (await ConfirmAsync(b.PreviewId, b.Group.GroupHash, handlers: [handler])).Outcome);
+        _oidc.Override = null;
+        var signsBefore = _oidc.Calls.Count;
+
+        _tenant.X402Enabled = false;
+        ConfirmResult r;
+        await using (var db = NewContext())
+            r = await NewService(db, handlers: [handler]).ResumeAfterConsentAsync(_tenant, _session, b.PreviewId, "ELEVATED", CancellationToken.None);
+
+        Assert.Equal(ConfirmOutcome.Failed, r.Outcome);
+        Assert.Equal("feature_disabled", r.ErrorCode);
+        Assert.Equal(signsBefore, _oidc.Calls.Count);
+        Assert.Empty(_mcp.Submits);
+        Assert.Empty(facilitator.Settled);
+        var (preview, step) = await LoadAsync(b.PreviewId);
+        Assert.Equal(StepStatus.Failed, step.Status);
+        Assert.Equal(ActionPreviewStatus.Failed, preview.Status);
+    }
+
+    private sealed class StaleGate : IPreviewFreshnessGate
+    {
+        public Task<string?> CheckAsync(ActionPreview preview, ActionStep pendingStep, CancellationToken ct) => Task.FromResult<string?>("The fee rate moved.");
+    }
+
+    [Fact]
+    public async Task ResumeAfterConsent_WhenThePreviewWentStaleDuringThePhoneWait_SignsNothing()
+    {
+        var b = await BuildPreviewAsync();
+        _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_stale", "4821", 300, 2);
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        _oidc.Override = null;
+        var signsBefore = _oidc.Calls.Count;
+
+        ConfirmResult r;
+        await using (var db = NewContext())
+        {
+            var svc = new ConfirmService(db, new ActionPreviewService(db, _clock), new ScopeGuard(_vault, _clock), _vault, _oidc, _mcp, _confirmer, _evidence, _clock,
+                NullLogger<ConfirmService>.Instance, freshnessGates: [new StaleGate()]);
+            r = await svc.ResumeAfterConsentAsync(_tenant, _session, b.PreviewId, "ELEVATED", CancellationToken.None);
+        }
+        Assert.Equal("preview_stale", r.ErrorCode);
+        Assert.Equal(signsBefore, _oidc.Calls.Count);
+        Assert.Empty(_mcp.Submits);
+        Assert.Equal(StepStatus.Failed, (await LoadAsync(b.PreviewId)).Step.Status);
+    }
+
+    [Fact]
+    public async Task ResumeAfterConsent_WhenTheStepWasCancelledMeanwhile_ARefusalDoesNotOverwriteIt()
+    {
+        var b = await BuildX402PreviewAsync();
+        var (handler, _, _) = X402Handler();
+        _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_race2", "4821", 300, 2);
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash, handlers: [handler]);
+        _oidc.Override = null;
+        await using (var db = NewContext())
+            Assert.Equal(CancelOutcome.Cancelled, (await new CancelService(db, _clock, NullLogger<CancelService>.Instance).CancelAsync(_session, b.PreviewId, b.Group.GroupHash, CancellationToken.None)).Outcome);
+
+        _tenant.X402Enabled = false;
+        await using (var db = NewContext())
+            await Assert.ThrowsAsync<PreviewException>(() => NewService(db, handlers: [handler]).ResumeAfterConsentAsync(_tenant, _session, b.PreviewId, "ELEVATED", CancellationToken.None));
+        Assert.Equal(StepStatus.Cancelled, (await LoadAsync(b.PreviewId)).Step.Status);
+    }
+
     // BCHAT-002: a cancel that won the step row means nothing is ever signed or submitted.
     [Fact]
     public async Task Cancel_BeforeTheApprovalIsRedeemed_MeansNothingIsSignedOrSubmitted()
