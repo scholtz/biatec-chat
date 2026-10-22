@@ -59,7 +59,7 @@ public static class SessionEndpoints
             if (handle.NewToken is not null) WriteCookie(ctx.Response, handle.NewToken, handle.Session.AbsoluteExpiresAt, clock.GetUtcNow());
             var (email, primaryAddress, scopes) = await profile.GetProfileAsync(handle.Session, ctx.RequestAborted);
             return Results.Ok(await BuildStateAsync(db, handle.Session, email, primaryAddress, scopes, ctx.RequestAborted, TenantSuggestions.Parse(ctx.GetTenant()?.Suggestions)));
-        }).WithName("GetSession").Produces<SessionState>().RegisteredOriginsOnly();
+        }).WithName("GetSession").Produces<SessionState>().RegisteredOriginsOnly().LimitSessionCreation();
 
         // Cookie probe. Without a live cookie: creates the session, sets the cookie, reports false. With it: true.
         app.MapGet("/session/probe", async (HttpContext ctx, ISessionService sessions, TimeProvider clock) =>
@@ -68,7 +68,7 @@ public static class SessionEndpoints
             var handle = await sessions.ResolveOrCreateAsync(ctx.GetTenant()!, ReadCookie(ctx.Request), ctx.RequestAborted);
             if (handle.NewToken is not null) WriteCookie(ctx.Response, handle.NewToken, handle.Session.AbsoluteExpiresAt, clock.GetUtcNow());
             return Results.Ok(new ProbeResponse { CookieReturned = !handle.Created });
-        }).WithName("ProbeSession").Produces<ProbeResponse>().RegisteredOriginsOnly();
+        }).WithName("ProbeSession").Produces<ProbeResponse>().RegisteredOriginsOnly().LimitSessionCreation();
 
         // Keepalive: extends the idle timeout only. An expired or missing session gets 401 and no new session.
         app.MapPost("/session/keepalive", async (HttpContext ctx, ISessionService sessions, ChatDbContext db) =>
@@ -138,6 +138,7 @@ public static class SessionRegistration
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<ISessionService, SessionService>();
         services.AddMemoryCache();
+        services.AddSessionCreateRateLimit();
         services.AddOptions<SessionProfileOptions>().BindConfiguration(SessionProfileOptions.Section);
         services.AddSingleton<ISessionProfile, SessionProfile>();
         return services;

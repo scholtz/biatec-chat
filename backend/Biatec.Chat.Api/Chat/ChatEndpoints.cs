@@ -90,7 +90,7 @@ public static class ChatEndpoints
                 return Results.Empty;
             }
             finally { TurnsInFlight.TryRemove(session.ConversationId, out _); }
-        }).WithName("PostChatMessage").Produces(StatusCodes.Status200OK, contentType: "text/event-stream");
+        }).WithName("PostChatMessage").Produces(StatusCodes.Status200OK, contentType: "text/event-stream").LimitSessionCreation();
 
         return app;
     }

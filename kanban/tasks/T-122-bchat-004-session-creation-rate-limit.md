@@ -40,9 +40,9 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] The (N+1)th `GET /session/probe` from one address within the window returns 429; another address is unaffected.
-- [ ] The other four routes carry the same policy.
-- [ ] Existing session, auth, chat and public tests stay green.
+- [x] The (N+1)th `GET /session/probe` from one address within the window returns 429; another address is unaffected.
+- [x] The other four routes carry the same policy.
+- [x] Existing session, auth, chat and public tests stay green.
 
 ## Verification
 
@@ -50,12 +50,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** Fixed-window per-address policy `session-create` (default 120/min, `Sessions:CreateRateLimit:*`) on /session, /session/probe, /auth/popup, /session/adopt and /chat/messages. PR #304.
+- **Files changed:** Sessions/SessionCreateRateLimit.cs, the four endpoint files, Tests/Sessions/SessionCreateRateLimitTests.cs.
+- **How it was verified:** dotnet test 1534 passed (new test: 429 after the limit, no session rows created).
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** Limit counts every request to these routes, not only those that create a session (a junk cookie would also create one). 120/min is a guess; tune per deployment.
 
 ## Review
 
