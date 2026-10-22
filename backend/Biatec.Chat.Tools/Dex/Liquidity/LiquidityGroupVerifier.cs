@@ -51,9 +51,9 @@ public static class LiquidityGroupVerifier
                 case AssetClawbackTransaction or AssetCloseTransaction:
                     throw new GroupException("An asset transfer in the liquidity group is a clawback or a close-out.");
                 case AssetAcceptTransaction accept:
-                    // Opt-in: a zero-amount transfer from the user to the user, for an asset the pool pays out or the LP token.
+                    // Opt-in: only an add may opt the user in, and only to the LP token (the builder library never opts in to anything else).
                     if (!Same(accept.AssetReceiver, user) || accept.AssetAmount != 0
-                        || (accept.XferAsset != pool.AssetA && accept.XferAsset != pool.AssetB && accept.XferAsset != pool.LpTokenId)
+                        || !add || accept.XferAsset != pool.LpTokenId
                         || !optedIn.Add(accept.XferAsset))
                         throw new GroupException("The liquidity group opts in to something other than the pool's assets.");
                     break;
