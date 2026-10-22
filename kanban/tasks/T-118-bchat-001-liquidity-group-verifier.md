@@ -47,11 +47,11 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] Add and remove liquidity groups are verified by a `LiquidityGroupVerifier` before the preview is persisted.
-- [ ] A group with `rekeyTo`, `closeRemainderTo`, `assetCloseTo`, an extra outflow, a wrong app id, a wrong receiver or
+- [x] Add and remove liquidity groups are verified by a `LiquidityGroupVerifier` before the preview is persisted.
+- [x] A group with `rekeyTo`, `closeRemainderTo`, `assetCloseTo`, an extra outflow, a wrong app id, a wrong receiver or
       wrong amount is rejected with `LiquidityBuildException`, and no preview row exists.
-- [ ] The honest group still produces a preview (existing liquidity tests stay green).
-- [ ] `audits/harness/.../TEST-008.sh` passes.
+- [x] The honest group still produces a preview (existing liquidity tests stay green).
+- [x] `audits/harness/.../TEST-008.sh` passes.
 
 ## Implementation notes
 
@@ -65,12 +65,12 @@ provider app from `BiatecDexApps.For(network)`.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** LiquidityGroupVerifier runs on the decoded transactions in LiquidityBuilder before any preview; checked against the listed pool (not builder facts). Branch task/T-118 @ b140d3a, PR #300.
+- **Files changed:** Tools/Dex/Liquidity (verifier, builder), Api/Dex/Liquidity/LiquidityExecutors.cs (input validation), Tests/Dex/Liquidity.
+- **How it was verified:** dotnet test (1517+ passed), TEST-008 passes, CI green. Three review rounds; remaining findings are the fee cap (BCHAT-003) and deeper pool-call arg checks (hardening, not in this finding).
+- **Follow-up tasks created:** none (BCHAT-003 already exists as #256).
+- **Unblocks:** none.
+- **Open questions:** none.
 
 ## Review
 

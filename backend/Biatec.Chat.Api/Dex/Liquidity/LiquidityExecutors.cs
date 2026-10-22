@@ -302,7 +302,10 @@ public sealed class DexAddLiquidityExecutor(ILiquidityBuilder liquidity, IBiatec
             return new ToolExecutionResult(facts.ToJsonString(), Guidance:
                 "Nothing has been built. A deposit needs an amount of both assets. Ask the user for the missing amount (currentPriceOfAInB can help them pick a matching one, but do not choose for them), then call dex.addLiquidity again with both amounts in base units.");
         }
-        var build = await Liquidity.BuildAddAsync(r.Network, r.From, pool!.AppId, amountA, amountB, ct);
+        if (!ulong.TryParse(amountA, NumberStyles.None, CultureInfo.InvariantCulture, out _) || !ulong.TryParse(amountB, NumberStyles.None, CultureInfo.InvariantCulture, out _))
+            return new ToolExecutionResult("The amounts must be whole numbers in base units that fit an unsigned 64-bit integer.", true,
+                Guidance: "Nothing has been built. Ask the user for both amounts again and pass them as plain base-unit integers.");
+        var build = await Liquidity.BuildAddAsync(r.Network, r.From, pool!, amountA, amountB, ct);
 
         var book = await ReadAssetsAsync(mcpCtx, r.Network, r.From, ct);
         var a = Amount(book, build.Pool.AssetA, amountA);
@@ -326,6 +329,8 @@ public sealed class DexRemoveLiquidityExecutor(ILiquidityBuilder liquidity, IBia
         if (refusal is not null) return refusal;
 
         var percent = LiquidityRequest.AsLong(arguments["percent"]!);
+        if (percent is < 1 or > 100)
+            return new ToolExecutionResult("The percentage must be between 1 and 100.", true, Guidance: "Nothing has been built. Ask the user how much of their position to remove.");
         var book = await ReadAssetsAsync(mcpCtx, r.Network, r.From, ct);
         if (book.ReadFailed)
             return new ToolExecutionResult("The balance could not be read. Tell the user to try again.", true);
@@ -338,7 +343,7 @@ public sealed class DexRemoveLiquidityExecutor(ILiquidityBuilder liquidity, IBia
             return new ToolExecutionResult("That percentage of the position rounds down to zero liquidity tokens. Ask the user for a larger percentage.", true);
         var lpAmount = lp.ToString(CultureInfo.InvariantCulture);
 
-        var build = await Liquidity.BuildRemoveAsync(r.Network, r.From, pool.AppId, lpAmount, ct);
+        var build = await Liquidity.BuildRemoveAsync(r.Network, r.From, pool, lpAmount, ct);
         var meta = book.Find(pool.LpTokenId);
         var lpAsset = new AssetAmount
         {
