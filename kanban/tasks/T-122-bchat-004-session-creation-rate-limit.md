@@ -55,7 +55,7 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 - **How it was verified:** dotnet test (full suite) passed; tests: 429 + Retry-After and no rows written, live cookie never counted, per-address budgets, IPv6 /64 and mapped forms.
 - **Follow-up tasks created:** none.
 - **Unblocks:** none.
-- **Open questions:** None. Behind an untrusted proxy all visitors still share one bucket (see T-121 notes).
+- **Open questions:** The counter is per pod (in memory), not shared through Redis like the public chat limiter, so N replicas allow about N times the limit; /public/chat keeps its own limiter; the widget does not yet read Retry-After (not exposed to cross-origin). Want follow-up tasks for any of these?
 
 ## Review
 

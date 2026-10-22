@@ -68,7 +68,9 @@ public static class SessionCreateRateLimit
 {
     public static IServiceCollection AddSessionCreateRateLimit(this IServiceCollection services)
     {
-        services.AddOptions<SessionCreateRateLimitOptions>().BindConfiguration(SessionCreateRateLimitOptions.Section);
+        services.AddOptions<SessionCreateRateLimitOptions>().BindConfiguration(SessionCreateRateLimitOptions.Section)
+            .Validate(o => o.Permits >= 1 && o.WindowSeconds >= 1, "Sessions:CreateRateLimit Permits and WindowSeconds must be at least 1.")
+            .ValidateOnStart();
         services.AddHttpContextAccessor();
         services.AddSingleton<SessionCreationLimiter>();
         return services;
