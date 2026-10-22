@@ -23,7 +23,7 @@ const keys = load("vectors", "keys.json");
 const vectorJwks = load("vectors", "jwks.json");
 let clock = 1_792_425_600;
 let codes: string[] = [];
-const mock = createMockOidc({ now: () => clock, newBindingCode: () => codes.shift() ?? "483920" });
+const mock = createMockOidc({ now: () => clock, newBindingCode: () => codes.shift() ?? "483920", testHelpers: true });
 let base = "";
 before(async () => {
   await new Promise<void>((r) => mock.server.listen(0, "127.0.0.1", r));
@@ -32,7 +32,7 @@ before(async () => {
 after(() => mock.server.close());
 
 test("BCHAT-006: without test helpers /mock/* is not served and the seeded device token is not predictable", async () => {
-  const plain = createMockOidc({ testHelpers: false });
+  const plain = createMockOidc();
   await new Promise<void>((r) => plain.server.listen(0, "127.0.0.1", r));
   const b = `http://127.0.0.1:${(plain.server.address() as AddressInfo).port}`;
   try {

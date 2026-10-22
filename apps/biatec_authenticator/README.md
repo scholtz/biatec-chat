@@ -26,7 +26,7 @@ The Biatec OIDC base URL comes from `--dart-define=OIDC_BASE_URL=...` and defaul
 
 The default does not match where the mock actually listens: `pnpm --filter mock-oidc start` serves
 `http://127.0.0.1:8089` (`PORT`, `HOST` override it) with no `/mock-oidc` path. From the Android emulator pass
-`--dart-define=OIDC_BASE_URL=http://10.0.2.2:8089` (start the mock with `HOST=0.0.0.0`, on a private network only: with `MOCK_TEST_HELPERS=1` anyone who reaches it can approve consent as a seeded user). An explicit URL that is not the
+`--dart-define=OIDC_BASE_URL=http://10.0.2.2:8089` (with `adb reverse tcp:8089 tcp:8089` you can instead pass `http://127.0.0.1:8089` and keep the mock on loopback; `HOST=0.0.0.0` exposes it on every interface, and with `MOCK_TEST_HELPERS=1` anyone who reaches it can approve consent as a seeded user). An explicit URL that is not the
 default counts as a real Biatec OIDC, so the settings screens are off unless `--dart-define=CONSENT_SETTINGS_API=true`
 (see T-084 below).
 

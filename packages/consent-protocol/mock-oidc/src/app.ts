@@ -44,8 +44,8 @@ export interface MockOptions {
   oidcKey?: Record<string, string>;
   /**
    * Serves the /mock/* test helpers and gives the seeded devices the predictable tokens `device-token-<user>` that tests rely on.
-   * Defaults to true for in-process use by tests; `server.ts` turns it on only for MOCK_TEST_HELPERS=1, because anyone who can
-   * reach a mock with helpers on can approve consent as a seeded user (BCHAT-006).
+   * Off by default: anyone who can reach a mock with helpers on can approve consent as a seeded user (BCHAT-006). Tests that embed
+   * the mock pass `testHelpers: true`; `server.ts` turns it on only for MOCK_TEST_HELPERS=1.
    */
   testHelpers?: boolean;
 }
@@ -101,7 +101,7 @@ function parseForm(text: string): Record<string, unknown> {
 export function createMockOidc(options: MockOptions = {}) {
   const now = options.now ?? (() => Math.floor(Date.now() / 1000));
   const issuer = options.issuer ?? ISSUER;
-  const testHelpers = options.testHelpers ?? true;
+  const testHelpers = options.testHelpers ?? false;
   const newCode = options.newBindingCode ?? (() => String(randomInt(0, 1_000_000)).padStart(6, "0"));
   const keys = options.oidcKey ? { oidc: options.oidcKey, device: loadJson("vectors", "keys.json").device } : loadJson("vectors", "keys.json");
   const oidcKey = keys.oidc;
@@ -142,7 +142,7 @@ export function createMockOidc(options: MockOptions = {}) {
   };
   // Seeded active devices use the vector device key, so receipts signed with vectors/keys.json verify.
   const { d: _dd, kid: _dk, alg: _da, use: _du, ...devicePub } = keys.device;
-  for (const u of users) if (u.activeDevice) addDevice(u.sub, u.email.split("@")[0] + "-device", devicePub, 0, testHelpers ? "device-token-" + u.email.split("@")[0] : "device-token-" + randomBytes(24).toString("hex"));
+  for (const u of users) if (u.activeDevice) addDevice(u.sub, u.email.split("@")[0] + "-device", devicePub, 0, testHelpers ? "device-token-" + u.email.split("@")[0] : undefined);
 
   const activeDevices = (sub: string) => [...devices.values()].filter((d) => d.sub === sub && !d.cancelled && d.activeAt <= now());
 

@@ -54,7 +54,7 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:** `testHelpers` option (default on in-process, `MOCK_TEST_HELPERS=1` only for the standalone server). Off: `/mock/*` is 404 and seeded devices get random tokens instead of `device-token-<user>`. Dockerfile defaults `HOST=127.0.0.1`. Docs updated. PR #305.
+- **Summary:** `testHelpers` option (default off; tests that embed the mock pass `testHelpers: true`; the standalone server enables it only for `MOCK_TEST_HELPERS=1`). Off: `/mock/*` is 404 and seeded devices get random tokens instead of `device-token-<user>`. Dockerfile defaults `HOST=127.0.0.1`. Docs updated. PR #305.
 - **Files changed:** mock-oidc src/app.ts, src/server.ts, Dockerfile, test, README; docs; authenticator and conformance READMEs.
 - **How it was verified:** `pnpm --filter mock-oidc test` 26 passed (new test: helpers 404, predictable token rejected); conformance suite 23 passed; TEST-010 passes. Flutter contract tests not run (no Flutter here).
 - **Follow-up tasks created:** none.

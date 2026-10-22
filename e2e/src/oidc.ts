@@ -43,7 +43,7 @@ export type PhoneAction =
   | { decision: "deny" };
 
 export class MockOidcHarness {
-  readonly mock = createMockOidc();
+  readonly mock = createMockOidc({ testHelpers: true });
   base = "";
 
   async start(): Promise<void> {
