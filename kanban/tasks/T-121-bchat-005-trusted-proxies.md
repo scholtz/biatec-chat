@@ -1,7 +1,7 @@
 ---
 id: T-121
 title: "Configure trusted proxies for X-Forwarded-For in every overlay (BCHAT-005)"
-status: in-progress
+status: done
 priority: P2
 epic: "Security"
 blocked_by: []
@@ -61,7 +61,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-22 19:12 · approve · PR #303 merged into main @ 1fc4069 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-22 19:00 · claude · (new) → backlog · created from GitHub issue #258 (BCHAT-005); blockers scan: none
 - 2026-10-22 19:01 · scholtz · taken, and session-20261022-1900 · backlog → in-progress · claimed
+- 2026-10-22 19:12 · user · in-progress → done · PR #303 merged into main @ 1fc4069 (synced by kanban-sync)
