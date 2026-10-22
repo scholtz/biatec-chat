@@ -114,6 +114,58 @@ public sealed class SafeCreateBuilderTests
         await Assert.ThrowsAsync<SafeBuildException>(() => priced.BuildDeployAsync("testnet", Alice, "Team Safe"));
     }
 
+    private static string Sha(byte[] b) => Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(b));
+
+    private static SafeBuilder PinnedBuilder(SafeDeploymentPin pin) => new(
+        new OneShot((_, _) => SidecarFixture.Result(Fx.GetProperty("deploy"))),
+        Microsoft.Extensions.Options.Options.Create(new SafeDeploymentOptions { Pins = new(StringComparer.OrdinalIgnoreCase) { ["testnet"] = pin } }));
+
+    [Fact]
+    public async Task SafeCreate_deploy_matching_the_pinned_release_is_accepted_and_any_difference_is_refused()
+    {
+        var tx = (ApplicationCreateTransaction)Transaction.FromBase64String(Fx.GetProperty("deploy").GetProperty("transactions")[0].GetString()!);
+        var approval = Sha(tx.ApprovalProgram.Bytes);
+        var clear = Sha(tx.ClearStateProgram.Bytes);
+
+        await PinnedBuilder(new SafeDeploymentPin { ApprovalSha256 = approval, ClearSha256 = clear, ValidatorAppId = 4242 }).BuildDeployAsync("testnet", Alice, "Team Safe");
+
+        var wrongApproval = await Assert.ThrowsAsync<SafeBuildException>(() => PinnedBuilder(new SafeDeploymentPin { ApprovalSha256 = new string('0', 64) }).BuildDeployAsync("testnet", Alice, "Team Safe"));
+        Assert.Contains("approval program", wrongApproval.Message);
+        var wrongClear = await Assert.ThrowsAsync<SafeBuildException>(() => PinnedBuilder(new SafeDeploymentPin { ClearSha256 = new string('0', 64) }).BuildDeployAsync("testnet", Alice, "Team Safe"));
+        Assert.Contains("clear-state program", wrongClear.Message);
+        var wrongValidator = await Assert.ThrowsAsync<SafeBuildException>(() => PinnedBuilder(new SafeDeploymentPin { ValidatorAppId = 1 }).BuildDeployAsync("testnet", Alice, "Team Safe"));
+        Assert.Contains("validator", wrongValidator.Message);
+    }
+
+    [Fact]
+    public void SafeCreate_a_pin_that_pins_nothing_is_invalid_and_a_pin_for_another_network_does_not_apply()
+    {
+        Assert.False(SafeDeploymentOptions.Valid(new SafeDeploymentOptions { Pins = new() { ["mainnet"] = new SafeDeploymentPin { ApprovalSha256 = " " } } }));
+        Assert.True(SafeDeploymentOptions.Valid(new SafeDeploymentOptions { Pins = new() { ["mainnet"] = new SafeDeploymentPin { ValidatorAppId = 1 } } }));
+    }
+
+    [Fact]
+    public async Task SafeCreate_hex_case_and_surrounding_space_do_not_matter_and_a_pin_on_another_network_is_ignored()
+    {
+        var tx = (ApplicationCreateTransaction)Transaction.FromBase64String(Fx.GetProperty("deploy").GetProperty("transactions")[0].GetString()!);
+        await PinnedBuilder(new SafeDeploymentPin { ApprovalSha256 = " " + Sha(tx.ApprovalProgram.Bytes).ToUpperInvariant() + " " }).BuildDeployAsync("testnet", Alice, "Team Safe");
+
+        var mainnetOnly = new SafeBuilder(new OneShot((_, _) => SidecarFixture.Result(Fx.GetProperty("deploy"))),
+            Microsoft.Extensions.Options.Options.Create(new SafeDeploymentOptions { Pins = new() { ["mainnet"] = new SafeDeploymentPin { ApprovalSha256 = new string('0', 64) } } }));
+        await mainnetOnly.BuildDeployAsync("testnet", Alice, "Team Safe");
+    }
+
+    [Fact]
+    public async Task SafeCreate_builder_refuses_a_group_built_for_another_network()
+    {
+        // The fixture is a testnet group: asking for mainnet (or an unknown network) never previews it.
+        var client = new OneShot((_, _) => SidecarFixture.Result(Fx.GetProperty("deploy")));
+        var e = await Assert.ThrowsAsync<SafeBuildException>(() => new SafeBuilder(client).BuildDeployAsync("mainnet", Alice, "Team Safe"));
+        Assert.Contains("different network", e.Message);
+        await Assert.ThrowsAsync<SafeBuildException>(() => new SafeBuilder(client).BuildBootstrapAsync("mainnet", Alice, 778, "Signers", [Alice, Bob], 2));
+        await Assert.ThrowsAsync<SafeBuildException>(() => new SafeBuilder(client).BuildDeployAsync("devnet", Alice, "Team Safe"));
+    }
+
     [Fact]
     public async Task SafeCreate_builder_refuses_an_inflated_fee_on_the_deploy_call()
     {
