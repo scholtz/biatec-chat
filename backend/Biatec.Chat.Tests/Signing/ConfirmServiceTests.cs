@@ -622,6 +622,53 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
         Assert.Empty(_mcp.Submits);
     }
 
+    // BCHAT-011: the gates ConfirmAsync enforces are enforced again when an approved consent resumes.
+    [Theory]
+    [InlineData("paused")]
+    [InlineData("analyze")]
+    public async Task ResumeAfterConsent_WhenTheSessionWasPausedOrSetToAnalyzeDuringThePhoneWait_SignsNothing(string restriction)
+    {
+        var b = await BuildPreviewAsync();
+        _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_gate", "4821", 300, 2);
+        Assert.Equal(ConfirmOutcome.ConsentPending, (await ConfirmAsync(b.PreviewId, b.Group.GroupHash)).Outcome);
+        _oidc.Override = null;
+        var signsBefore = _oidc.Calls.Count;
+
+        if (restriction == "paused") _session.Paused = true; else _session.AgentMode = AgentMode.Analyze;
+        ConfirmResult r;
+        await using (var db = NewContext())
+            r = await NewService(db).ResumeAfterConsentAsync(_tenant, _session, b.PreviewId, "ELEVATED", CancellationToken.None);
+
+        Assert.Equal(ConfirmOutcome.AgentRestricted, r.Outcome);
+        Assert.Equal(signsBefore, _oidc.Calls.Count);
+        Assert.Empty(_mcp.Submits);
+        var (preview, step) = await LoadAsync(b.PreviewId);
+        Assert.Equal(StepStatus.Cancelled, step.Status);
+        Assert.Equal(ActionPreviewStatus.Cancelled, preview.Status);
+    }
+
+    [Fact]
+    public async Task ResumeAfterConsent_WhenX402WasDisabledDuringThePhoneWait_SignsNothing()
+    {
+        var b = await BuildX402PreviewAsync();
+        var (handler, _, facilitator) = X402Handler();
+        _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_x402", "4821", 300, 2);
+        Assert.Equal(ConfirmOutcome.ConsentPending, (await ConfirmAsync(b.PreviewId, b.Group.GroupHash, handlers: [handler])).Outcome);
+        _oidc.Override = null;
+        var signsBefore = _oidc.Calls.Count;
+
+        _tenant.X402Enabled = false;
+        ConfirmResult r;
+        await using (var db = NewContext())
+            r = await NewService(db, handlers: [handler]).ResumeAfterConsentAsync(_tenant, _session, b.PreviewId, "ELEVATED", CancellationToken.None);
+
+        Assert.Equal(ConfirmOutcome.Failed, r.Outcome);
+        Assert.Equal("feature_disabled", r.ErrorCode);
+        Assert.Equal(signsBefore, _oidc.Calls.Count);
+        Assert.Empty(_mcp.Submits);
+        Assert.Empty(facilitator.Settled);
+    }
+
     // BCHAT-002: a cancel that won the step row means nothing is ever signed or submitted.
     [Fact]
     public async Task Cancel_BeforeTheApprovalIsRedeemed_MeansNothingIsSignedOrSubmitted()

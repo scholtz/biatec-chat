@@ -42,10 +42,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] Confirm, StepUp, pause the session, approve: resume returns `AgentRestricted`, nothing is signed or submitted, the step and preview end cancelled.
-- [ ] Same for analyze-only mode.
-- [ ] x402 preview whose tenant flag is turned off before the approval: resume fails with `feature_disabled`, nothing signed.
-- [ ] Existing confirm, consent and cancel tests stay green.
+- [x] Confirm, StepUp, pause the session, approve: resume returns `AgentRestricted`, nothing is signed or submitted, the step and preview end cancelled.
+- [x] Same for analyze-only mode.
+- [x] x402 preview whose tenant flag is turned off before the approval: resume fails with `feature_disabled`, nothing signed.
+- [x] Existing confirm, consent and cancel tests stay green.
 
 ## Verification
 
