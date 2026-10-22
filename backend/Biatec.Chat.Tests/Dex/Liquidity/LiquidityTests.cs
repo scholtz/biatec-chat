@@ -194,7 +194,7 @@ public sealed class LiquidityTests : IAsyncLifetime
         }
     }
 
-    private const ulong ProviderApp = 741107916; // BiatecDexApps.For("testnet").PoolProviderAppId
+    private static readonly ulong ProviderApp = Biatec.Chat.Tools.Safe.Proposals.BiatecDexApps.For("testnet")!.PoolProviderAppId;
 
     private static readonly Digest GenHash = new(Convert.FromBase64String("SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI="));
 
@@ -557,6 +557,7 @@ public sealed class LiquidityTests : IAsyncLifetime
     [InlineData("noPoolCall")]
     [InlineData("extraProvider")]
     [InlineData("optInOther")]
+    [InlineData("optInTwice")]
     public async Task Liquidity_add_with_a_malicious_group_behind_honest_facts_is_never_previewed(string attack)
     {
         _builders.MutateTxs = (txs, user, pool) => Tamper(txs, user, pool, attack);
@@ -569,10 +570,16 @@ public sealed class LiquidityTests : IAsyncLifetime
     [Theory]
     [InlineData("rekey")]
     [InlineData("closeAsset")]
+    [InlineData("clawback")]
     [InlineData("payAttacker")]
     [InlineData("extraOutflow")]
+    [InlineData("extraPayment")]
     [InlineData("wrongAmount")]
+    [InlineData("wrongAsset")]
     [InlineData("wrongApp")]
+    [InlineData("createApp")]
+    [InlineData("noPoolCall")]
+    [InlineData("optInOther")]
     public async Task Liquidity_remove_with_a_malicious_group_behind_honest_facts_is_never_previewed(string attack)
     {
         _mcp.BalancesJson = Balances;
@@ -601,6 +608,7 @@ public sealed class LiquidityTests : IAsyncLifetime
             case "createApp": txs[^1] = Stamp(new ApplicationCreateTransaction { Sender = user }); break;
             case "extraProvider": txs.Insert(0, Call(user, ProviderApp)); txs.Insert(0, Call(user, ProviderApp)); break;
             case "optInOther": txs.Insert(0, Xfer(user, user, 777, 0)); break;
+            case "optInTwice": txs.Insert(0, Xfer(user, user, Lp, 0)); break;
             case "noPoolCall": txs.RemoveAt(txs.Count - 1); break;
         }
     }

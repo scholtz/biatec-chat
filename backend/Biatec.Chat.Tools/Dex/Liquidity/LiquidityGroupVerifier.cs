@@ -35,7 +35,8 @@ public static class LiquidityGroupVerifier
         var apps = BiatecDexApps.For(network) ?? throw new GroupException("No Biatec DEX deployment is known for this network.");
         var poolAddress = Algorand.Address.ForApplication(pool.AppId).EncodeAsString();
         var remaining = expected.ToList();
-        int poolCalls = 0, providerCalls = 0, optIns = 0;
+        int poolCalls = 0, providerCalls = 0;
+        var optedIn = new HashSet<ulong>();
 
         foreach (var tx in txs)
         {
@@ -53,14 +54,14 @@ public static class LiquidityGroupVerifier
                     // Opt-in: a zero-amount transfer from the user to the user, for an asset the pool pays out or the LP token.
                     if (!Same(accept.AssetReceiver, user) || accept.AssetAmount != 0
                         || (accept.XferAsset != pool.AssetA && accept.XferAsset != pool.AssetB && accept.XferAsset != pool.LpTokenId)
-                        || ++optIns > 3)
+                        || !optedIn.Add(accept.XferAsset))
                         throw new GroupException("The liquidity group opts in to something other than the pool's assets.");
                     break;
                 case AssetTransferTransaction axfer:
                     Deposit(remaining, axfer.XferAsset, axfer.AssetAmount, axfer.AssetReceiver, poolAddress);
                     break;
-                case ApplicationNoopTransaction:
-                    var app = AppId(tx);
+                case ApplicationNoopTransaction call:
+                    var app = call.ApplicationId;
                     if (app == pool.AppId) poolCalls++;
                     else if (app == apps.PoolProviderAppId && ++providerCalls <= 1) { }
                     else throw new GroupException("The liquidity group calls an application other than the pool.");
@@ -82,9 +83,6 @@ public static class LiquidityGroupVerifier
         if (i < 0) throw new GroupException("The liquidity group moves a different asset or amount than was requested.");
         remaining.RemoveAt(i);
     }
-
-    // The SDK declares ApplicationId on the concrete call types, not on the abstract base.
-    private static ulong? AppId(Transaction tx) => tx.GetType().GetProperty("ApplicationId")?.GetValue(tx) as ulong?;
 
     private static bool Same(Algorand.Address a, string b) => string.Equals(a.EncodeAsString(), b, StringComparison.Ordinal);
 

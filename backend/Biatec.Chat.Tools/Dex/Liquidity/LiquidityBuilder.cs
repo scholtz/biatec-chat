@@ -92,20 +92,20 @@ public sealed class LiquidityBuilder(IBuildersClient builders) : ILiquidityBuild
         }
     }
 
-    public Task<LiquidityBuild> BuildAddAsync(string network, string sender, PoolInfo pool, string amountA, string amountB, CancellationToken ct = default)
+    public async Task<LiquidityBuild> BuildAddAsync(string network, string sender, PoolInfo pool, string amountA, string amountB, CancellationToken ct = default)
     {
         // Amounts must fit a uint64 before anything is sent to the sidecar.
         var a = U64Amount(amountA);
         var b = U64Amount(amountB);
-        return BuildAsync(AddBuilder, network, sender, pool, new { poolAppId = pool.AppId.ToString(CultureInfo.InvariantCulture), sender, amountA, amountB },
+        return await BuildAsync(AddBuilder, network, sender, pool, new { poolAppId = pool.AppId.ToString(CultureInfo.InvariantCulture), sender, amountA, amountB },
             x => { Same(x.AmountA, amountA, "amountA"); Same(x.AmountB, amountB, "amountB"); },
             (raw, txs) => LiquidityGroupVerifier.VerifyAdd(raw, txs, network, sender, pool, a, b), ct);
     }
 
-    public Task<LiquidityBuild> BuildRemoveAsync(string network, string sender, PoolInfo pool, string lpAmount, CancellationToken ct = default)
+    public async Task<LiquidityBuild> BuildRemoveAsync(string network, string sender, PoolInfo pool, string lpAmount, CancellationToken ct = default)
     {
         var lp = U64Amount(lpAmount);
-        return BuildAsync(RemoveBuilder, network, sender, pool, new { poolAppId = pool.AppId.ToString(CultureInfo.InvariantCulture), sender, lpAmount },
+        return await BuildAsync(RemoveBuilder, network, sender, pool, new { poolAppId = pool.AppId.ToString(CultureInfo.InvariantCulture), sender, lpAmount },
             x => Same(x.LpAmount, lpAmount, "lpAmount"),
             (raw, txs) => LiquidityGroupVerifier.VerifyRemove(raw, txs, network, sender, pool, lp), ct);
     }
@@ -156,6 +156,10 @@ public sealed class LiquidityBuilder(IBuildersClient builders) : ILiquidityBuild
             // The signed bytes are the transactions, not the facts: verify the transactions themselves.
             try { verifyGroup(result.Transactions, decoded); }
             catch (GroupException e) { throw new LiquidityBuildException(e.Message); }
+            catch (Exception e) when (e is NullReferenceException or FormatException)
+            {
+                throw new LiquidityBuildException("The built group could not be verified.");
+            }
             return build;
         }
         catch (Exception e) when (e is KeyNotFoundException or InvalidOperationException or FormatException or OverflowException)
