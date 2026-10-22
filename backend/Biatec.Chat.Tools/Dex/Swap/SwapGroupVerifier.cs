@@ -21,6 +21,7 @@ public static class SwapGroupVerifier
         foreach (var tx in txs)
         {
             if (IsSet(tx.RekeyTo)) throw new GroupException("A transaction in the swap rekeys an account.");
+            if (GroupFees.TooHigh(tx.Fee, tx is ApplicationCallTransaction)) throw new GroupException("A transaction in the swap pays an unexpectedly high fee.");
             switch (tx)
             {
                 case PaymentTransaction pay:

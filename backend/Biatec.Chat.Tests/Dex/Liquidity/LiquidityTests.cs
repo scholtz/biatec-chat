@@ -558,6 +558,8 @@ public sealed class LiquidityTests : IAsyncLifetime
     [InlineData("extraProvider")]
     [InlineData("optInOther")]
     [InlineData("optInTwice")]
+    [InlineData("highFeeCall")]
+    [InlineData("highFeeXfer")]
     [InlineData("wrongMethod")]
     [InlineData("providerWrongMethod")]
     public async Task Liquidity_add_with_a_malicious_group_behind_honest_facts_is_never_previewed(string attack)
@@ -614,6 +616,8 @@ public sealed class LiquidityTests : IAsyncLifetime
             case "wrongMethod": txs[^1] = Call(user, pool, [1, 2, 3, 4]); break;
             case "providerWrongMethod": txs[0] = Call(user, ProviderApp, [1, 2, 3, 4]); break;
             case "optInLp": txs.Insert(0, Xfer(user, user, Lp, 0)); break;
+            case "highFeeCall": txs[^1].Fee = 5_000_000; break;
+            case "highFeeXfer": txs[i].Fee = 5_000_000; break;
             case "optInTwice": txs.Insert(0, Xfer(user, user, Lp, 0)); break;
             case "noPoolCall": txs.RemoveAt(txs.Count - 1); break;
         }

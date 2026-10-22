@@ -216,6 +216,8 @@ public sealed class SafeBuilder(IBuildersClient builders) : ISafeBuilder
             throw new SafeBuildException("The built group has a transaction from a different sender.");
         if (group.Transactions.Any(t => t.RekeyTo is { } r && r.Bytes.Any(b => b != 0)))
             throw new SafeBuildException("The built group rekeys the sender.");
+        if (group.Transactions.Any(t => GroupFees.TooHigh(t.Fee, t is ApplicationCallTransaction)))
+            throw new SafeBuildException("The built group pays an unexpectedly high fee.");
         return (group, preview);
     }
 
