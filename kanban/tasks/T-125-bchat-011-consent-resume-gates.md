@@ -53,12 +53,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** `ResumeAfterConsentAsync` now refuses, before claiming the step for signing: a paused or analyze-only session (step and preview cancelled, `AgentRestricted`), an x402 payment whose tenant flag or settlement handler is gone, and a preview a freshness gate calls stale. The x402/stale refusals claim the step row atomically first, so a concurrent cancel is never overwritten. PR #307.
+- **Files changed:** Api/Chat/Confirm/ConfirmService.cs, Tests/Signing/ConfirmServiceTests.cs.
+- **How it was verified:** dotnet test (full suite) passed; tests for paused, analyze, x402 disabled, stale, and cancel-then-refusal.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** The Sign-scope check and the cap re-check are still not repeated on resume (the elevated token carries the scope; the cap was reserved at confirm). The consent poll still reports `Approved` next to a refusing result; the widget should key on the result outcome. Want follow-ups?
 
 ## Review
 
