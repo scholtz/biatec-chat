@@ -1,7 +1,7 @@
 ---
 id: T-117
 title: "Commission comprehensive security audit instructions"
-status: in-progress
+status: review
 priority: P2
 epic: "Security"
 blocked_by: []
@@ -44,11 +44,11 @@ Parallel work possible: **yes**. This documentation uses a new, isolated `audits
 
 ## Acceptance criteria
 
-- [ ] Instructions cover the repository's web, backend, mobile, AI, transaction, infrastructure and dependency boundaries.
-- [ ] Distinct methodologies have explicit procedures, evidence and coverage requirements.
-- [ ] Report naming includes sortable UTC time, auditor tag and short audited Git hash, with full provenance inside.
-- [ ] Markdown report structure, severity, remediation, retesting and delivery acceptance are mandatory.
-- [ ] Authoritative reporting sources are linked and limitations of mocks and untested deployments are explicit.
+- [x] Instructions cover the repository's web, backend, mobile, AI, transaction, infrastructure and dependency boundaries.
+- [x] Distinct methodologies have explicit procedures, evidence and coverage requirements.
+- [x] Report naming includes sortable UTC time, auditor tag and short audited Git hash, with full provenance inside.
+- [x] Markdown report structure, severity, remediation, retesting and delivery acceptance are mandatory.
+- [x] Authoritative reporting sources are linked and limitations of mocks and untested deployments are explicit.
 
 ## Verification
 
@@ -58,7 +58,20 @@ Documentation only; no application build or active security testing.
 
 ## Hand-off
 
-Pending.
+- **Summary:** CTO-level proposed USD 500,000 audit commission, nine complementary methodologies,
+  repository-specific test objectives, safe ROE, mandatory Markdown report contract, remediation and two retest rounds.
+- **Branch:** `task/T-117 @ 22475d3`; PR [#251](https://github.com/scholtz/biatec-chat/pull/251).
+- **Files changed:** `audits/instructions.md`, `audits/reports/.gitkeep`.
+- **How it was verified:** read specification/architecture/threat model/fallback matrix; researched and
+  checked authoritative reporting sources. Inline validation passed for 34 relative links, eight budget
+  allocations totaling USD 500,000, two chronological filename examples, four invalid filename cases,
+  11 sections, nine methodologies and required report metadata. `git diff --cached --check` and
+  `python kanban/scripts/board.py check` passed. Normalized new files to repository-standard LF.
+  No application tests or active security assessment were needed for documentation-only changes.
+- **Follow-up tasks created:** none.
+- **Unblocks:** no task is blocked by T-117.
+- **Open questions:** none for this documentation delivery. Actual procurement, ROE, asset authorization,
+  vendor selection and disclosure approval remain sponsor decisions before an audit starts.
 
 ## Review
 
@@ -67,3 +80,4 @@ Pending.
 - 2026-10-22 08:35 - coordinator - (new) -> backlog - created for the user's audit commission; no implementation dependency, isolated audits area; blocker scan pending.
 - 2026-10-22 08:36 - scholtz - taken - status stays backlog; blocker scan found no candidates.
 - 2026-10-22 08:36 - session-20261022-0829 - backlog -> in-progress - claimed documentation task; mirror issue assigned and labeled in-progress.
+- 2026-10-22 08:43 - session-20261022-0829 - in-progress -> review - documentation verified and committed at 22475d3; user authorized publishing PR #251; no dependent tasks; awaiting user approval.
