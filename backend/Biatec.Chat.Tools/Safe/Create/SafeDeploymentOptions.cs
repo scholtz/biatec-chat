@@ -20,4 +20,7 @@ public sealed class SafeDeploymentOptions
 
     /// <summary>Pins by network name ("mainnet", "testnet").</summary>
     public Dictionary<string, SafeDeploymentPin> Pins { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>A pin that exists but pins nothing (every field empty) would look like protection while allowing anything.</summary>
+    public static bool Valid(SafeDeploymentOptions o) => o.Pins.Values.All(p => !string.IsNullOrWhiteSpace(p.ApprovalSha256) || !string.IsNullOrWhiteSpace(p.ClearSha256) || p.ValidatorAppId is not null);
 }

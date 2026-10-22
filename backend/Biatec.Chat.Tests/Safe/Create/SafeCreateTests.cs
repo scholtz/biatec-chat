@@ -138,6 +138,24 @@ public sealed class SafeCreateBuilderTests
     }
 
     [Fact]
+    public void SafeCreate_a_pin_that_pins_nothing_is_invalid_and_a_pin_for_another_network_does_not_apply()
+    {
+        Assert.False(SafeDeploymentOptions.Valid(new SafeDeploymentOptions { Pins = new() { ["mainnet"] = new SafeDeploymentPin { ApprovalSha256 = " " } } }));
+        Assert.True(SafeDeploymentOptions.Valid(new SafeDeploymentOptions { Pins = new() { ["mainnet"] = new SafeDeploymentPin { ValidatorAppId = 1 } } }));
+    }
+
+    [Fact]
+    public async Task SafeCreate_hex_case_and_surrounding_space_do_not_matter_and_a_pin_on_another_network_is_ignored()
+    {
+        var tx = (ApplicationCreateTransaction)Transaction.FromBase64String(Fx.GetProperty("deploy").GetProperty("transactions")[0].GetString()!);
+        await PinnedBuilder(new SafeDeploymentPin { ApprovalSha256 = " " + Sha(tx.ApprovalProgram.Bytes).ToUpperInvariant() + " " }).BuildDeployAsync("testnet", Alice, "Team Safe");
+
+        var mainnetOnly = new SafeBuilder(new OneShot((_, _) => SidecarFixture.Result(Fx.GetProperty("deploy"))),
+            Microsoft.Extensions.Options.Options.Create(new SafeDeploymentOptions { Pins = new() { ["mainnet"] = new SafeDeploymentPin { ApprovalSha256 = new string('0', 64) } } }));
+        await mainnetOnly.BuildDeployAsync("testnet", Alice, "Team Safe");
+    }
+
+    [Fact]
     public async Task SafeCreate_builder_refuses_a_group_built_for_another_network()
     {
         // The fixture is a testnet group: asking for mainnet (or an unknown network) never previews it.

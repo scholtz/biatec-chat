@@ -58,7 +58,7 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 - **How it was verified:** dotnet test (Safe 78 passed, then full suite); tests for matching and each mismatching pin, and for another network.
 - **Follow-up tasks created:** none.
 - **Unblocks:** none.
-- **Open questions:** No pin values are shipped: they depend on the deployed algo-safe release and cannot be derived offline here, so pinning is off until you set them (k8s/README.md says how). The genesis check compares the genesis id only; the test fixture's genesis hash is synthetic. Please provide or approve the hashes for testnet and mainnet.
+- **Open questions:** No pin values are shipped: they depend on the deployed algo-safe release and cannot be derived offline here, so pinning is off until you set them (k8s/README.md says how). The genesis check compares the genesis id only (the test fixture's genesis hash is synthetic), and the validator pin compares the builder's own statement (it is not in the program bytes). Please provide or approve the hashes for testnet and mainnet.
 
 ## Review
 

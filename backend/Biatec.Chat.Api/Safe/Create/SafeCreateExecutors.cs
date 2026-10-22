@@ -519,7 +519,8 @@ public static class SafeCreateRegistration
         services.TryAddSingleton(sp => sp.GetRequiredService<IOptions<SafeCreateOptions>>().Value);
         services.AddHttpClient(AlgodSafeChainReader.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
         services.TryAddSingleton<ISafeChainReader, AlgodSafeChainReader>();
-        services.AddOptions<SafeDeploymentOptions>().BindConfiguration(SafeDeploymentOptions.Section);
+        services.AddOptions<SafeDeploymentOptions>().BindConfiguration(SafeDeploymentOptions.Section)
+            .Validate(SafeDeploymentOptions.Valid, "Safe:Deployment:Pins: a pin must set at least one of ApprovalSha256, ClearSha256 or ValidatorAppId.").ValidateOnStart();
         services.TryAddSingleton<ISafeBuilder, SafeBuilder>();
         services.AddScoped<SafeCreateService>();
         services.AddScoped<Biatec.Chat.Api.Chat.Confirm.IStepLandedObserver, SafeDeployLandedObserver>();

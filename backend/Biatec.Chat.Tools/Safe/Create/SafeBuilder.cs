@@ -205,15 +205,14 @@ public sealed class SafeBuilder(IBuildersClient builders, Microsoft.Extensions.O
             throw new SafeBuildException("The deployment's approval program is not the pinned algo-safe release.");
         if (pin.ClearSha256 is { Length: > 0 } c && !Matches(create.ClearStateProgram, c))
             throw new SafeBuildException("The deployment's clear-state program is not the pinned algo-safe release.");
+        // The validator id is the builder's own statement (it is not in the program bytes); pin it so a changed answer is at least noticed.
         if (pin.ValidatorAppId is { } id && validator != id)
             throw new SafeBuildException("The deployment names a validator other than the pinned one.");
     }
 
-    private static bool Matches(object? program, string expectedHex)
-    {
-        var bytes = program?.GetType().GetProperty("Bytes")?.GetValue(program) as byte[] ?? program as byte[];
-        return bytes is not null && string.Equals(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes)), expectedHex.Trim(), StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool Matches(Algorand.TEALProgram? program, string expectedHex) =>
+        program?.Bytes is { } bytes
+        && string.Equals(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes)), expectedHex.Trim(), StringComparison.OrdinalIgnoreCase);
 
     private static (GroupedTransactions Group, JsonElement Preview) Check(BuildResult result, string sender, string step, string network)
     {
