@@ -526,37 +526,54 @@ public sealed class ConfirmService(
             return new ConfirmResult(ConfirmOutcome.Failed, ex.Message + " Nothing was signed; the preview must be rebuilt.", [], ErrorCode: "group_mismatch");
         }
 
-        var remaining = (int)Math.Max(1, (step.ExpiresAt - clock.GetUtcNow()).TotalSeconds);
-        // The approval completes the request the user confirmed, so it reports the origin that consent was requested under.
-        var origin = await ConsentOriginAsync(tenant, step, ct);
-        var outcome = await signer.SignAsync(elevatedBearer, new WalletSignRequest(step.Network!, address, step.UnsignedGroupList(), Convert.FromHexString(step.SubjectHash),
-            RequireConsent: false, MaxConsentSeconds: remaining, Origin: origin), ct);
-        await RecordExtraAsync(session, EvidenceKinds.SigningOutcome, SigningOutcomePayload(previewId, step, outcome), CancellationToken.None);
-        // T-025: signed under phone consent, so not counted in the soft cap; a safe approval or execution still counts.
-        if (outcome is WalletSignOutcome.Signed && caps is not null && CapRequestFor(tenant, session, preview, step) is { } consented)
-        {
-            try { await caps.RecordConsentedAsync(consented, ((WalletSignOutcome.Signed)outcome).ValuedEur, CancellationToken.None); }
-            catch (Exception ex) { log.LogError("Could not record a consented safe action: {ErrorType}", ex.GetType().Name); }
-        }
+        // Claim the step before anything is signed: a concurrent cancel flips this same row, so exactly one of them wins (BCHAT-002).
+        var claimed = await db.ActionSteps
+            .Where(s => s.Id == step.Id && s.Status == StepStatus.AwaitingConsent)
+            .ExecuteUpdateAsync(u => u.SetProperty(s => s.Status, StepStatus.Signed), CancellationToken.None);
+        if (claimed == 0) throw new PreviewException(PreviewError.InvalidState, "The action was cancelled or is no longer awaiting consent.");
+        step.Status = StepStatus.Signed;
 
-        switch (outcome)
+        try
         {
-            case WalletSignOutcome.Signed signed:
-                return await SubmitAsync(tenant, session, preview, step, group, signed, ct);
-            case WalletSignOutcome.Unavailable u:
-                // The consent token is not kept: the user confirms again, which asks for fresh consent.
-                step.Status = StepStatus.Pending;
-                preview.Status = ActionPreviewStatus.Confirmed;
-                return await OutageAsync(session, preview, step, u.Reason, ct);
-            default:
-                // A second challenge, or a refusal after approval, ends this preview; it is rebuilt.
-                var error = outcome is WalletSignOutcome.Rejected r ? r.Error : "consent_not_accepted";
-                await FailAsync(preview, step, ct);
-                await RecordAsync(session, "signing_refused", new JsonObject
-                {
-                    ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["error"] = error,
-                }, ct);
-                return new ConfirmResult(ConfirmOutcome.Failed, "Biatec OIDC did not accept the approval. Nothing was signed; the preview must be rebuilt.", [], ErrorCode: error);
+            var remaining = (int)Math.Max(1, (step.ExpiresAt - clock.GetUtcNow()).TotalSeconds);
+            // The approval completes the request the user confirmed, so it reports the origin that consent was requested under.
+            var origin = await ConsentOriginAsync(tenant, step, ct);
+            var outcome = await signer.SignAsync(elevatedBearer, new WalletSignRequest(step.Network!, address, step.UnsignedGroupList(), Convert.FromHexString(step.SubjectHash),
+                RequireConsent: false, MaxConsentSeconds: remaining, Origin: origin), ct);
+            await RecordExtraAsync(session, EvidenceKinds.SigningOutcome, SigningOutcomePayload(previewId, step, outcome), CancellationToken.None);
+            // T-025: signed under phone consent, so not counted in the soft cap; a safe approval or execution still counts.
+            if (outcome is WalletSignOutcome.Signed && caps is not null && CapRequestFor(tenant, session, preview, step) is { } consented)
+            {
+                try { await caps.RecordConsentedAsync(consented, ((WalletSignOutcome.Signed)outcome).ValuedEur, CancellationToken.None); }
+                catch (Exception ex) { log.LogError("Could not record a consented safe action: {ErrorType}", ex.GetType().Name); }
+            }
+
+            switch (outcome)
+            {
+                case WalletSignOutcome.Signed signed:
+                    return await SubmitAsync(tenant, session, preview, step, group, signed, ct);
+                case WalletSignOutcome.Unavailable u:
+                    // The consent token is not kept: the user confirms again, which asks for fresh consent.
+                    step.Status = StepStatus.Pending;
+                    preview.Status = ActionPreviewStatus.Confirmed;
+                    return await OutageAsync(session, preview, step, u.Reason, ct);
+                default:
+                    // A second challenge, or a refusal after approval, ends this preview; it is rebuilt.
+                    var error = outcome is WalletSignOutcome.Rejected r ? r.Error : "consent_not_accepted";
+                    await FailAsync(preview, step, ct);
+                    await RecordAsync(session, "signing_refused", new JsonObject
+                    {
+                        ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["error"] = error,
+                    }, ct);
+                    return new ConfirmResult(ConfirmOutcome.Failed, "Biatec OIDC did not accept the approval. Nothing was signed; the preview must be rebuilt.", [], ErrorCode: error);
+            }
+        }
+        catch
+        {
+            // The approval is used up. If nothing was submitted yet the claimed step must not stay Signed: end it, so the preview is rebuilt.
+            await db.ActionSteps.Where(x => x.Id == step.Id && x.Status == StepStatus.Signed)
+                .ExecuteUpdateAsync(u => u.SetProperty(x => x.Status, StepStatus.Expired), CancellationToken.None);
+            throw;
         }
     }
 

@@ -43,9 +43,9 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] Interleaving test: Cancel succeeds while the sign call is blocked, release; `SubmitTransactionToBlockchainAsync` is not called and the preview stays `Cancelled`.
-- [ ] A cancel after the step is claimed for signing is refused.
-- [ ] Existing confirm, consent and cancel tests stay green.
+- [x] Interleaving test: Cancel succeeds while the sign call is blocked, release; `SubmitTransactionToBlockchainAsync` is not called and the preview stays `Cancelled`.
+- [x] A cancel after the step is claimed for signing is refused.
+- [x] Existing confirm, consent and cancel tests stay green.
 
 ## Verification
 
