@@ -42,10 +42,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] With a pin configured, a deploy whose approval program, clear program or validator differs is refused; the matching deploy passes.
-- [ ] A safe-create group built for another genesis is refused.
-- [ ] Unpinned networks behave as before.
-- [ ] Existing safe-create tests stay green.
+- [x] With a pin configured, a deploy whose approval program, clear program or validator differs is refused; the matching deploy passes.
+- [x] A safe-create group built for another genesis is refused.
+- [x] Unpinned networks behave as before.
+- [x] Existing safe-create tests stay green.
 
 ## Verification
 
@@ -53,12 +53,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** `Safe:Deployment:Pins:<network>` (approval SHA-256, clear SHA-256, validator app id) is enforced on the deploy call's bytes when configured; every safe-create group must carry the requested network's genesis id. PR #306.
+- **Files changed:** Tools/Safe/Create/SafeBuilder.cs, SafeDeploymentOptions.cs, Api/Safe/Create/SafeCreateExecutors.cs (registration), Tests/Safe/Create/SafeCreateTests.cs, k8s/README.md.
+- **How it was verified:** dotnet test (Safe 78 passed, then full suite); tests for matching and each mismatching pin, and for another network.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** No pin values are shipped: they depend on the deployed algo-safe release and cannot be derived offline here, so pinning is off until you set them (k8s/README.md says how). The genesis check compares the genesis id only; the test fixture's genesis hash is synthetic. Please provide or approve the hashes for testnet and mainnet.
 
 ## Review
 

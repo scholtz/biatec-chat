@@ -30,6 +30,13 @@ With ingress-nginx's default settings the header carries the real peer. Known li
 
 Per-IP limits (public chat, admin, onboarding) and the operator audit log depend on this.
 
+## Pinning the algo-safe release
+
+`safe.create` deploys an algo-safe. To refuse a deployment whose code is not the release you reviewed, set per network in the backend
+ConfigMap: `Safe__Deployment__Pins__mainnet__ApprovalSha256`, `...__ClearSha256` (lowercase hex SHA-256 of the compiled approval and
+clear-state program bytes) and `...__ValidatorAppId`. A network without a pin is not constrained (BCHAT-010). Every safe-create group
+must also carry the genesis id of the requested network.
+
 ## Dry-run status
 
 `kubectl kustomize` renders both overlays offline (the substitute used when no cluster is reachable). The literal

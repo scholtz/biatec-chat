@@ -70,7 +70,7 @@ public interface ISafeBuilder
     Task<SafeProposalPage> ProposalsAsync(string network, ulong appId, string? member, CancellationToken ct = default);
 }
 
-public sealed class SafeBuilder(IBuildersClient builders) : ISafeBuilder
+public sealed class SafeBuilder(IBuildersClient builders, Microsoft.Extensions.Options.IOptions<SafeDeploymentOptions>? deployment = null) : ISafeBuilder
 {
     public const string CreateBuilder = "safe.create";
     public const string ListBuilder = "safe.list";
@@ -85,14 +85,15 @@ public sealed class SafeBuilder(IBuildersClient builders) : ISafeBuilder
     public async Task<SafeBuild> BuildDeployAsync(string network, string sender, string name, CancellationToken ct = default)
     {
         var result = await builders.BuildAsync(CreateBuilder, network, new { step = "deploy", sender, name, simulate = true }, ct);
-        var (group, preview) = Check(result, sender, "deploy");
-        if (group.Transactions.Count != 1 || group.Transactions[0] is not ApplicationCreateTransaction)
+        var (group, preview) = Check(result, sender, "deploy", network);
+        if (group.Transactions.Count != 1 || group.Transactions[0] is not ApplicationCreateTransaction create)
             throw new SafeBuildException("The deployment is not a single application-create call.");
         // The bytes decide: the createApplication call itself must carry the requested name.
         if (!string.Equals(SafeAbi.DeployName(group.Transactions[0]), name, StringComparison.Ordinal)
             || !string.Equals(Str(preview, "name"), name, StringComparison.Ordinal))
             throw new SafeBuildException("The builder named a different safe.");
         ulong? validator = ulong.TryParse(Str(preview, "validatorAppId"), NumberStyles.None, CultureInfo.InvariantCulture, out var v) ? v : null;
+        CheckPins(network, create, validator);
         return Finish(result, group, sender, "deploy", validator);
     }
 
@@ -116,7 +117,7 @@ public sealed class SafeBuilder(IBuildersClient builders) : ISafeBuilder
             },
         };
         var result = await builders.BuildAsync(CreateBuilder, network, parameters, ct);
-        var (group, preview) = Check(result, sender, "bootstrap");
+        var (group, preview) = Check(result, sender, "bootstrap", network);
         // Bootstrap and finalize are calls to the safe itself, nothing else (funding is a separate transfer).
         foreach (var t in group.Transactions)
             if (t is not ApplicationCallTransaction
@@ -196,7 +197,25 @@ public sealed class SafeBuilder(IBuildersClient builders) : ISafeBuilder
         }
     }
 
-    private static (GroupedTransactions Group, JsonElement Preview) Check(BuildResult result, string sender, string step)
+    /// <summary>The deployed code is the pinned algo-safe release, when the network has a pin (BCHAT-010). The bytes decide, not the sidecar's description.</summary>
+    private void CheckPins(string network, ApplicationCreateTransaction create, ulong? validator)
+    {
+        if (deployment?.Value.Pins.TryGetValue(network, out var pin) != true || pin is null) return;
+        if (pin.ApprovalSha256 is { Length: > 0 } a && !Matches(create.ApprovalProgram, a))
+            throw new SafeBuildException("The deployment's approval program is not the pinned algo-safe release.");
+        if (pin.ClearSha256 is { Length: > 0 } c && !Matches(create.ClearStateProgram, c))
+            throw new SafeBuildException("The deployment's clear-state program is not the pinned algo-safe release.");
+        if (pin.ValidatorAppId is { } id && validator != id)
+            throw new SafeBuildException("The deployment names a validator other than the pinned one.");
+    }
+
+    private static bool Matches(object? program, string expectedHex)
+    {
+        var bytes = program?.GetType().GetProperty("Bytes")?.GetValue(program) as byte[] ?? program as byte[];
+        return bytes is not null && string.Equals(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes)), expectedHex.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static (GroupedTransactions Group, JsonElement Preview) Check(BuildResult result, string sender, string step, string network)
     {
         if (result.Preview is not { ValueKind: JsonValueKind.Object } preview)
             throw new SafeBuildException("The builder returned no preview facts.");
@@ -216,6 +235,10 @@ public sealed class SafeBuilder(IBuildersClient builders) : ISafeBuilder
             throw new SafeBuildException("The built group has a transaction from a different sender.");
         if (group.Transactions.Any(t => t.RekeyTo is { } r && r.Bytes.Any(b => b != 0)))
             throw new SafeBuildException("The built group rekeys the sender.");
+        // A group built for another chain is never previewed as this network's (BCHAT-010).
+        var genesis = network switch { "mainnet" => "mainnet-v1.0", "testnet" => "testnet-v1.0", _ => null };
+        if (genesis is null || group.Transactions.Any(t => t.GenesisId != genesis))
+            throw new SafeBuildException("The built group belongs to a different network.");
         if (group.Transactions.Any(t => GroupFees.TooHigh(t.Fee, t is ApplicationCallTransaction)) || GroupFees.GroupTooHigh(group.Transactions.Select(t => t.Fee)))
             throw new SafeBuildException("The built group pays an unexpectedly high fee.");
         return (group, preview);
