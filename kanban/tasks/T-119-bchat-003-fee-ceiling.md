@@ -1,7 +1,7 @@
 ---
 id: T-119
 title: "Enforce a fee ceiling on swap, liquidity, safe-creation and x402 groups (BCHAT-003)"
-status: in-progress
+status: done
 priority: P1
 epic: "Security"
 blocked_by: []
@@ -63,7 +63,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-22 18:41 · approve · PR #301 merged into main @ 3a4fdb7 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-22 17:00 · claude · (new) → backlog · created from GitHub issue #256 (BCHAT-003); blockers scan: none
 - 2026-10-22 17:01 · scholtz · taken, and session-20261022-1700 · backlog → in-progress · claimed
+- 2026-10-22 18:41 · user · in-progress → done · PR #301 merged into main @ 3a4fdb7 (synced by kanban-sync)
