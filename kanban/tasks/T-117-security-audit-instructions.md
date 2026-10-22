@@ -1,7 +1,7 @@
 ---
 id: T-117
 title: "Commission comprehensive security audit instructions"
-status: review
+status: done
 priority: P2
 epic: "Security"
 blocked_by: []
@@ -75,9 +75,12 @@ Documentation only; no application build or active security testing.
 
 ## Review
 
+- 2026-10-22 09:19 · approve · PR #251 merged into main @ b62224a (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-22 08:35 - coordinator - (new) -> backlog - created for the user's audit commission; no implementation dependency, isolated audits area; blocker scan pending.
 - 2026-10-22 08:36 - scholtz - taken - status stays backlog; blocker scan found no candidates.
 - 2026-10-22 08:36 - session-20261022-0829 - backlog -> in-progress - claimed documentation task; mirror issue assigned and labeled in-progress.
 - 2026-10-22 08:43 - session-20261022-0829 - in-progress -> review - documentation verified and committed at 22475d3; user authorized publishing PR #251; no dependent tasks; awaiting user approval.
+- 2026-10-22 09:19 · user · review → done · PR #251 merged into main @ b62224a (synced by kanban-sync)
