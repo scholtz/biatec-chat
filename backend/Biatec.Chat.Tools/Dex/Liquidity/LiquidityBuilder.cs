@@ -93,11 +93,16 @@ public sealed class LiquidityBuilder(IBuildersClient builders) : ILiquidityBuild
 
     public Task<LiquidityBuild> BuildAddAsync(string network, string sender, ulong poolAppId, string amountA, string amountB, CancellationToken ct = default) =>
         BuildAsync(AddBuilder, network, sender, poolAppId, new { poolAppId = poolAppId.ToString(CultureInfo.InvariantCulture), sender, amountA, amountB },
-            b => { Same(b.AmountA, amountA, "amountA"); Same(b.AmountB, amountB, "amountB"); }, ct);
+            b => { Same(b.AmountA, amountA, "amountA"); Same(b.AmountB, amountB, "amountB"); },
+            (raw, txs, pool) => LiquidityGroupVerifier.VerifyAdd(raw, txs, network, sender, pool, U64Amount(amountA), U64Amount(amountB)), ct);
 
     public Task<LiquidityBuild> BuildRemoveAsync(string network, string sender, ulong poolAppId, string lpAmount, CancellationToken ct = default) =>
         BuildAsync(RemoveBuilder, network, sender, poolAppId, new { poolAppId = poolAppId.ToString(CultureInfo.InvariantCulture), sender, lpAmount },
-            b => Same(b.LpAmount, lpAmount, "lpAmount"), ct);
+            b => Same(b.LpAmount, lpAmount, "lpAmount"),
+            (raw, txs, pool) => LiquidityGroupVerifier.VerifyRemove(raw, txs, network, sender, pool, U64Amount(lpAmount)), ct);
+
+    private static ulong U64Amount(string amount) =>
+        ulong.TryParse(amount, NumberStyles.None, CultureInfo.InvariantCulture, out var v) ? v : throw new LiquidityBuildException("The requested amount is not a valid amount.");
 
     /// <summary>The amount the builder reports must equal the requested one, else the card would show a transfer the group does not make.</summary>
     private static void Same(string? reported, string requested, string name)
@@ -107,14 +112,15 @@ public sealed class LiquidityBuilder(IBuildersClient builders) : ILiquidityBuild
             throw new LiquidityBuildException($"The builder facts {name} differ from the request.");
     }
 
-    private async Task<LiquidityBuild> BuildAsync(string builder, string network, string sender, ulong poolAppId, object parameters, Action<LiquidityBuild> matchesRequest, CancellationToken ct)
+    private async Task<LiquidityBuild> BuildAsync(string builder, string network, string sender, ulong poolAppId, object parameters, Action<LiquidityBuild> matchesRequest, Action<IReadOnlyList<string>, IReadOnlyList<Algorand.Algod.Model.Transactions.Transaction>, PoolInfo> verifyGroup, CancellationToken ct)
     {
         var result = await builders.BuildAsync(builder, network, parameters, ct);
         if (result.Facts is not { ValueKind: JsonValueKind.Object } facts)
             throw new LiquidityBuildException("The builder returned no facts to preview.");
 
         GroupedTransactions group;
-        try { group = AlgorandGroup.Ensure(AlgorandGroup.Decode(result.Transactions)); }
+        IReadOnlyList<Algorand.Algod.Model.Transactions.Transaction> decoded;
+        try { decoded = AlgorandGroup.Decode(result.Transactions); group = AlgorandGroup.Ensure(decoded); }
         catch (Exception e) when (e is GroupException or ArgumentException or InvalidOperationException or FormatException)
         {
             throw new LiquidityBuildException("The builder returned a group that could not be read.");
@@ -136,6 +142,9 @@ public sealed class LiquidityBuilder(IBuildersClient builders) : ILiquidityBuild
                 facts.TryGetProperty("lpOptIn", out var o) && o.ValueKind == JsonValueKind.True, first, last, builtAt);
             if (build.Pool.AppId != poolAppId) throw new LiquidityBuildException("The builder facts name a different pool.");
             matchesRequest(build);
+            // The signed bytes are the transactions, not the facts: verify the transactions themselves.
+            try { verifyGroup(result.Transactions, decoded, build.Pool); }
+            catch (GroupException e) { throw new LiquidityBuildException(e.Message); }
             return build;
         }
         catch (Exception e) when (e is KeyNotFoundException or InvalidOperationException or FormatException or OverflowException)

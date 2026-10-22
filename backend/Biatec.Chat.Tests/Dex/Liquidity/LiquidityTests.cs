@@ -117,6 +117,8 @@ public sealed class LiquidityTests : IAsyncLifetime
         public readonly List<JsonElement> Queries = [];
         public int PoolClassForAccount = 0;
         public Action<JsonObject>? MutateFacts;
+        /// <summary>Lets a test turn the honest group into a malicious one (the facts stay honest).</summary>
+        public Action<List<Transaction>, Address, ulong>? MutateTxs;
 
         private static JsonObject Pool(ulong id, string fee, string min, string max, string liquidity, int cls) => new()
         {
@@ -160,8 +162,25 @@ public sealed class LiquidityTests : IAsyncLifetime
             var p = JsonSerializer.SerializeToElement(parameters);
             Builds.Add((builder, p));
             var sender = senderOverride();
-            var group = AlgorandGroup.Ensure([Pay(new Address(sender), 1_000_000), Pay(new Address(sender), 2_000_000)]);
             var poolId = ulong.Parse(p.GetProperty("poolAppId").GetString()!);
+            var user = new Address(sender);
+            var poolAddress = Address.ForApplication(poolId);
+            List<Transaction> txs = [];
+            if (p.TryGetProperty("amountA", out var amtA))
+            {
+                txs.Add(Call(user, ProviderApp));
+                txs.Add(Xfer(user, poolAddress, Eurs, ulong.Parse(amtA.GetString()!)));
+                txs.Add(Xfer(user, poolAddress, Usdc, ulong.Parse(p.GetProperty("amountB").GetString()!)));
+                txs.Add(Xfer(user, user, Lp, 0));
+                txs.Add(Call(user, poolId));
+            }
+            else
+            {
+                txs.Add(Xfer(user, poolAddress, Lp, ulong.Parse(p.GetProperty("lpAmount").GetString()!)));
+                txs.Add(Call(user, poolId));
+            }
+            MutateTxs?.Invoke(txs, user, poolId);
+            var group = AlgorandGroup.Ensure(txs);
             var facts = new JsonObject
             {
                 ["kind"] = builder, ["sender"] = sender, ["pool"] = AllPools.First(x => x["appId"]!.GetValue<string>() == poolId.ToString()).DeepClone(),
@@ -174,6 +193,22 @@ public sealed class LiquidityTests : IAsyncLifetime
             return Task.FromResult(new BuildResult(group.ToBase64(), JsonDocument.Parse(facts.ToJsonString()).RootElement.Clone()));
         }
     }
+
+    private const ulong ProviderApp = 741107916; // BiatecDexApps.For("testnet").PoolProviderAppId
+
+    private static readonly Digest GenHash = new(Convert.FromBase64String("SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI="));
+
+    private static T Stamp<T>(T t) where T : Transaction
+    {
+        t.Fee = 1000; t.FirstValid = 710399; t.LastValid = 711399; t.GenesisId = "testnet-v1.0"; t.GenesisHash = GenHash;
+        return t;
+    }
+
+    private static AssetTransferTransaction Xfer(Address sender, Address receiver, ulong asset, ulong amount) =>
+        Stamp(new AssetTransferTransaction { Sender = sender, AssetReceiver = receiver, XferAsset = asset, AssetAmount = amount });
+
+    private static ApplicationNoopTransaction Call(Address sender, ulong app) =>
+        Stamp(new ApplicationNoopTransaction { Sender = sender, ApplicationId = app });
 
     private static PaymentTransaction Pay(Address sender, ulong amount) => new()
     {
@@ -400,7 +435,7 @@ public sealed class LiquidityTests : IAsyncLifetime
         Assert.Contains("pool minimum verification class 0", step.SimulationSummary);
         Assert.Equal(["100", "200"], step.Assets.Select(a => a.AssetId));
         Assert.Equal(["100000000", "108000000"], step.Assets.Select(a => a.Amount));
-        Assert.Equal("0.002000 ALGO", step.FeeAmount);
+        Assert.Equal("0.005000 ALGO", step.FeeAmount);
 
         // The preview in the database is the one the sidecar built, byte for byte, with the pool facts in its canonical JSON.
         var (preview, stored) = await LoadAsync(Guid.Parse(card.PreviewId));
@@ -409,7 +444,7 @@ public sealed class LiquidityTests : IAsyncLifetime
         Assert.Equal(_builderSender, stored.SenderAddress);
         Assert.Equal(710399, stored.FirstValid);
         Assert.Equal(711399, stored.LastValid);
-        Assert.Equal(2, JsonSerializer.Deserialize<string[]>(stored.UnsignedGroup!)!.Length);
+        Assert.Equal(5, JsonSerializer.Deserialize<string[]>(stored.UnsignedGroup!)!.Length);
         Assert.Equal(_clock.GetUtcNow().AddSeconds(2700), preview.ExpiresAt); // 1000 rounds at the conservative 2.7 s
         var canonical = JsonNode.Parse(preview.CanonicalJson)!;
         Assert.Equal("1001", canonical["poolAppId"]!.GetValue<string>());
@@ -503,6 +538,67 @@ public sealed class LiquidityTests : IAsyncLifetime
         Assert.True(r.IsError);
         Assert.Null(r.Events);
         Assert.Equal(0, await PreviewCountAsync());
+    }
+
+    private static readonly Address Attacker = new("KV2XGKMXGYJ6PWYQA5374BYIQBL3ONRMSIARPCFCJEAMAHQEVYPB7PL3KU");
+
+    // BCHAT-001: the facts are honest, the transactions that would be signed are not. Nothing may be previewed.
+    [Theory]
+    [InlineData("rekey")]
+    [InlineData("closeAsset")]
+    [InlineData("clawback")]
+    [InlineData("payAttacker")]
+    [InlineData("extraOutflow")]
+    [InlineData("wrongAmount")]
+    [InlineData("wrongAsset")]
+    [InlineData("wrongApp")]
+    [InlineData("createApp")]
+    [InlineData("extraPayment")]
+    [InlineData("noPoolCall")]
+    public async Task Liquidity_add_with_a_malicious_group_behind_honest_facts_is_never_previewed(string attack)
+    {
+        _builders.MutateTxs = (txs, user, pool) => Tamper(txs, user, pool, attack);
+        var r = await _add.ExecuteAsync(Ctx("dex.addLiquidity"), AddArgs(1001, _builderSender), default);
+        Assert.True(r.IsError);
+        Assert.Null(r.Events);
+        Assert.Equal(0, await PreviewCountAsync());
+    }
+
+    [Theory]
+    [InlineData("rekey")]
+    [InlineData("closeAsset")]
+    [InlineData("payAttacker")]
+    [InlineData("extraOutflow")]
+    [InlineData("wrongAmount")]
+    [InlineData("wrongApp")]
+    public async Task Liquidity_remove_with_a_malicious_group_behind_honest_facts_is_never_previewed(string attack)
+    {
+        _mcp.BalancesJson = Balances;
+        _builders.MutateTxs = (txs, user, pool) => Tamper(txs, user, pool, attack);
+        var r = await _remove.ExecuteAsync(Ctx("dex.removeLiquidity"), RemoveArgs(1001, _builderSender, 50), default);
+        Assert.True(r.IsError);
+        Assert.Null(r.Events);
+        Assert.Equal(0, await PreviewCountAsync());
+    }
+
+    private static void Tamper(List<Transaction> txs, Address user, ulong pool, string attack)
+    {
+        var poolAddress = Address.ForApplication(pool);
+        var i = txs.FindIndex(t => t is AssetTransferTransaction { AssetAmount: > 0 });
+        switch (attack)
+        {
+            case "rekey": txs[^1].RekeyTo = Attacker; break;
+            case "closeAsset": txs[i] = new AssetCloseTransaction { Sender = user, AssetReceiver = poolAddress, XferAsset = ((AssetTransferTransaction)txs[i]).XferAsset, AssetAmount = ((AssetTransferTransaction)txs[i]).AssetAmount, AssetCloseTo = Attacker, Fee = 1000, FirstValid = 710399, LastValid = 711399, GenesisId = "testnet-v1.0", GenesisHash = GenHash }; break;
+            case "clawback": txs[i] = new AssetClawbackTransaction { Sender = user, AssetSender = Attacker, AssetReceiver = poolAddress, XferAsset = ((AssetTransferTransaction)txs[i]).XferAsset, AssetAmount = ((AssetTransferTransaction)txs[i]).AssetAmount, Fee = 1000, FirstValid = 710399, LastValid = 711399, GenesisId = "testnet-v1.0", GenesisHash = GenHash }; break;
+            case "payAttacker": { var x = (AssetTransferTransaction)txs[i]; txs[i] = Xfer(user, Attacker, x.XferAsset, x.AssetAmount); break; }
+            case "extraOutflow": txs.Insert(0, Pay(user, 1)); break;
+            case "extraPayment": txs.Insert(0, Stamp(new PaymentTransaction { Sender = user, Receiver = poolAddress, Amount = 5 })); break;
+            case "wrongAmount": { var x = (AssetTransferTransaction)txs[i]; txs[i] = Xfer(user, poolAddress, x.XferAsset, x.AssetAmount + 1); break; }
+            case "wrongAsset": txs[i] = Xfer(user, poolAddress, 777, ((AssetTransferTransaction)txs[i]).AssetAmount); break;
+            case "wrongApp": txs[^1] = Call(user, 999999); break;
+            case "createApp": txs[^1] = Stamp(new ApplicationCreateTransaction { Sender = user }); break;
+            case "noPoolCall": txs.RemoveAt(txs.Count - 1); break;
+        }
     }
 
     [Fact]
