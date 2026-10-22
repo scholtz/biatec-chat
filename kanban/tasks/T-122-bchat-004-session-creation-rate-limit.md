@@ -1,7 +1,7 @@
 ---
 id: T-122
 title: "Rate-limit unauthenticated session and conversation creation per address (BCHAT-004)"
-status: in-progress
+status: done
 priority: P2
 epic: "Security"
 blocked_by: [T-121]
@@ -59,7 +59,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-22 19:29 · approve · PR #304 merged into main @ 993f6cc (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-22 20:00 · claude · (new) → backlog · created from GitHub issue #257 (BCHAT-004); blocked_by T-121 satisfied (done)
 - 2026-10-22 20:01 · scholtz · taken, and session-20261022-2000 · backlog → in-progress · claimed
+- 2026-10-22 19:29 · user · in-progress → done · PR #304 merged into main @ 993f6cc (synced by kanban-sync)
