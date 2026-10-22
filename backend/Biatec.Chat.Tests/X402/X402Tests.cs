@@ -198,6 +198,18 @@ public sealed class X402PayServiceTests
     }
 
     [Fact]
+    public async Task X402_prepare_refuses_a_group_with_an_inflated_fee()
+    {
+        // BCHAT-003: the transfer is exactly what was asked for, but the builder set a 1 ALGO fee.
+        var tx = Algorand.Algod.Model.Transactions.Transaction.FromBase64String(X402Fixtures.Good);
+        tx.Fee = 1_000_000;
+        var expensive = Convert.ToBase64String(Algorand.Utils.Encoder.EncodeToMsgPackOrdered(tx));
+        var (svc, _, _, _) = Make(built: () => [expensive]);
+        var ex = await Assert.ThrowsAsync<X402Exception>(() => svc.PrepareAsync("testnet", X402Fixtures.From, Url, default));
+        Assert.Equal("build_mismatch", ex.Code);
+    }
+
+    [Fact]
     public async Task X402_prepare_refuses_a_different_sender()
     {
         var (svc, _, _, _) = Make();

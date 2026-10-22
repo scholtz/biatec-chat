@@ -34,6 +34,7 @@ public static class LiquidityGroupVerifier
         // The Biatec app ids come from the backend's own table, never from the builder's facts.
         var apps = BiatecDexApps.For(network) ?? throw new GroupException("No Biatec DEX deployment is known for this network.");
         var poolAddress = Algorand.Address.ForApplication(pool.AppId).EncodeAsString();
+        if (GroupFees.GroupTooHigh(txs.Select(t => t.Fee))) throw new GroupException("The liquidity group pays an unexpectedly high total fee.");
         var remaining = expected.ToList();
         int poolCalls = 0, providerCalls = 0;
         var optedIn = new HashSet<ulong>();
@@ -42,6 +43,7 @@ public static class LiquidityGroupVerifier
         {
             if (!Same(tx.Sender, user)) throw new GroupException("The liquidity group has a transaction from a different sender.");
             if (IsSet(tx.RekeyTo)) throw new GroupException("A transaction in the liquidity group rekeys an account.");
+            if (GroupFees.TooHigh(tx.Fee, tx is ApplicationCallTransaction)) throw new GroupException("A transaction in the liquidity group pays an unexpectedly high fee.");
             switch (tx)
             {
                 case PaymentTransaction pay:

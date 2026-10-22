@@ -27,23 +27,23 @@ public sealed class SwapExecutorTests
     private static readonly Digest GenHash = new(Convert.FromBase64String("SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI="));
 
     /// <summary>The user's funding transfer: asset 31566704 by default, a payment when <paramref name="asset"/> is 0.</summary>
-    private static string Tx(string sender = User, ulong amount = 1_000_000, ulong asset = 31566704, bool rekey = false, string? receiver = null)
+    private static string Tx(string sender = User, ulong amount = 1_000_000, ulong asset = 31566704, bool rekey = false, string? receiver = null, ulong fee = 1000)
     {
         receiver ??= PoolAddress;
         Transaction t = asset == 0
             ? new PaymentTransaction { Sender = new Address(sender), Receiver = new Address(receiver), Amount = amount }
             : new AssetTransferTransaction { Sender = new Address(sender), AssetReceiver = new Address(receiver), XferAsset = asset, AssetAmount = amount };
-        t.Fee = 1000; t.FirstValid = 710399; t.LastValid = 711399; t.GenesisId = "testnet-v1.0"; t.GenesisHash = GenHash;
+        t.Fee = fee; t.FirstValid = 710399; t.LastValid = 711399; t.GenesisId = "testnet-v1.0"; t.GenesisHash = GenHash;
         if (rekey) t.RekeyTo = new Address("7ZUECA7HFLZTXENRV24SHLU4AVPUTMTTDUFUBNBD64C73F3UHRTHAIOF6Q");
         return Convert.ToBase64String(AlgoEncoder.EncodeToMsgPackOrdered(t));
     }
 
-    private static string App(ulong app, string sender = User)
+    private static string App(ulong app, string sender = User, ulong fee = 1000)
     {
         var t = new ApplicationNoopTransaction
         {
             Sender = new Address(sender), ApplicationId = app,
-            Fee = 1000, FirstValid = 710399, LastValid = 711399, GenesisId = "testnet-v1.0", GenesisHash = GenHash,
+            Fee = fee, FirstValid = 710399, LastValid = 711399, GenesisId = "testnet-v1.0", GenesisHash = GenHash,
         };
         return Convert.ToBase64String(AlgoEncoder.EncodeToMsgPackOrdered(t));
     }
@@ -369,6 +369,9 @@ public sealed class SwapExecutorTests
             new[] { Tx(), Tx(amount: 7, asset: 777, receiver: Other), App(5001) }, // extra asset outflow
             new[] { Tx(), Tx(amount: 7, asset: 0, receiver: Other), App(5001) },   // extra payment outflow
             new[] { Tx(), Tx(), App(5001) },                               // funding sent twice
+            new[] { Tx(fee: 5_000_000), App(5001) },                       // inflated fee on the funding transfer (BCHAT-003)
+            new[] { Tx(), App(5001, fee: 99_999), App(5001, fee: 99_999) }, // each fee passes alone; together they exceed the group cap
+            new[] { Tx(), App(5001, fee: 5_000_000) },                     // inflated fee on the pool call
         };
         foreach (var group in cases)
         {

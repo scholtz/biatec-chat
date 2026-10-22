@@ -115,6 +115,19 @@ public sealed class SafeCreateBuilderTests
     }
 
     [Fact]
+    public async Task SafeCreate_builder_refuses_an_inflated_fee_on_the_deploy_call()
+    {
+        // BCHAT-003: the deploy call is what was asked for, but pays a 10 ALGO fee.
+        var node = JsonNode.Parse(Fx.GetProperty("deploy").GetRawText())!;
+        var tx = Algorand.Algod.Model.Transactions.Transaction.FromBase64String(node["transactions"]![0]!.GetValue<string>());
+        tx.Fee = 10_000_000;
+        node["transactions"]![0] = Convert.ToBase64String(Algorand.Utils.Encoder.EncodeToMsgPackOrdered(tx));
+        var b = new SafeBuilder(new OneShot((_, _) => SidecarFixture.Result(JsonDocument.Parse(node.ToJsonString()).RootElement)));
+        var e = await Assert.ThrowsAsync<SafeBuildException>(() => b.BuildDeployAsync("testnet", Alice, "Team Safe"));
+        Assert.Contains("fee", e.Message);
+    }
+
+    [Fact]
     public async Task SafeCreate_builder_trusts_the_transaction_bytes_not_the_sidecars_description()
     {
         var carol = new Account().Address.EncodeAsString();

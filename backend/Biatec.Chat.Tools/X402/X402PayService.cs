@@ -110,6 +110,7 @@ public sealed class X402PayService(
         if (group.Transactions.Count != 1 || group.Transactions[0] is not AssetTransferTransaction axfer)
             throw new X402Exception("build_mismatch", "The payment must be exactly one asset transfer.");
         if (axfer.RekeyTo is not null && !IsZero(axfer.RekeyTo)) throw new X402Exception("build_mismatch", "The payment must not rekey.");
+        if (GroupFees.TooHigh(axfer.Fee, false)) throw new X402Exception("build_mismatch", "The payment pays an unexpectedly high fee.");
         return new DecodedTransfer(axfer.Sender.EncodeAsString(), axfer.AssetReceiver.EncodeAsString(), axfer.XferAsset, axfer.AssetAmount);
     }
 
