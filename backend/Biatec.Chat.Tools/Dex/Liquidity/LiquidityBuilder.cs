@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Numerics;
 using System.Text.Json;
+using Algorand.Algod.Model.Transactions;
 using Biatec.Chat.Tools.Algod;
 using Biatec.Chat.Tools.Builders;
 
@@ -54,9 +55,9 @@ public interface ILiquidityBuilder
     /// </summary>
     Task<PoolListing> ListPoolsAsync(string network, ulong? assetA, ulong? assetB, ulong? poolAppId, string? account, CancellationToken ct = default);
 
-    Task<LiquidityBuild> BuildAddAsync(string network, string sender, ulong poolAppId, string amountA, string amountB, CancellationToken ct = default);
+    Task<LiquidityBuild> BuildAddAsync(string network, string sender, PoolInfo pool, string amountA, string amountB, CancellationToken ct = default);
 
-    Task<LiquidityBuild> BuildRemoveAsync(string network, string sender, ulong poolAppId, string lpAmount, CancellationToken ct = default);
+    Task<LiquidityBuild> BuildRemoveAsync(string network, string sender, PoolInfo pool, string lpAmount, CancellationToken ct = default);
 }
 
 public sealed class LiquidityBuilder(IBuildersClient builders) : ILiquidityBuilder
@@ -91,15 +92,23 @@ public sealed class LiquidityBuilder(IBuildersClient builders) : ILiquidityBuild
         }
     }
 
-    public Task<LiquidityBuild> BuildAddAsync(string network, string sender, ulong poolAppId, string amountA, string amountB, CancellationToken ct = default) =>
-        BuildAsync(AddBuilder, network, sender, poolAppId, new { poolAppId = poolAppId.ToString(CultureInfo.InvariantCulture), sender, amountA, amountB },
-            b => { Same(b.AmountA, amountA, "amountA"); Same(b.AmountB, amountB, "amountB"); },
-            (raw, txs, pool) => LiquidityGroupVerifier.VerifyAdd(raw, txs, network, sender, pool, U64Amount(amountA), U64Amount(amountB)), ct);
+    public Task<LiquidityBuild> BuildAddAsync(string network, string sender, PoolInfo pool, string amountA, string amountB, CancellationToken ct = default)
+    {
+        // Amounts must fit a uint64 before anything is sent to the sidecar.
+        var a = U64Amount(amountA);
+        var b = U64Amount(amountB);
+        return BuildAsync(AddBuilder, network, sender, pool, new { poolAppId = pool.AppId.ToString(CultureInfo.InvariantCulture), sender, amountA, amountB },
+            x => { Same(x.AmountA, amountA, "amountA"); Same(x.AmountB, amountB, "amountB"); },
+            (raw, txs) => LiquidityGroupVerifier.VerifyAdd(raw, txs, network, sender, pool, a, b), ct);
+    }
 
-    public Task<LiquidityBuild> BuildRemoveAsync(string network, string sender, ulong poolAppId, string lpAmount, CancellationToken ct = default) =>
-        BuildAsync(RemoveBuilder, network, sender, poolAppId, new { poolAppId = poolAppId.ToString(CultureInfo.InvariantCulture), sender, lpAmount },
-            b => Same(b.LpAmount, lpAmount, "lpAmount"),
-            (raw, txs, pool) => LiquidityGroupVerifier.VerifyRemove(raw, txs, network, sender, pool, U64Amount(lpAmount)), ct);
+    public Task<LiquidityBuild> BuildRemoveAsync(string network, string sender, PoolInfo pool, string lpAmount, CancellationToken ct = default)
+    {
+        var lp = U64Amount(lpAmount);
+        return BuildAsync(RemoveBuilder, network, sender, pool, new { poolAppId = pool.AppId.ToString(CultureInfo.InvariantCulture), sender, lpAmount },
+            x => Same(x.LpAmount, lpAmount, "lpAmount"),
+            (raw, txs) => LiquidityGroupVerifier.VerifyRemove(raw, txs, network, sender, pool, lp), ct);
+    }
 
     private static ulong U64Amount(string amount) =>
         ulong.TryParse(amount, NumberStyles.None, CultureInfo.InvariantCulture, out var v) ? v : throw new LiquidityBuildException("The requested amount is not a valid amount.");
@@ -112,14 +121,14 @@ public sealed class LiquidityBuilder(IBuildersClient builders) : ILiquidityBuild
             throw new LiquidityBuildException($"The builder facts {name} differ from the request.");
     }
 
-    private async Task<LiquidityBuild> BuildAsync(string builder, string network, string sender, ulong poolAppId, object parameters, Action<LiquidityBuild> matchesRequest, Action<IReadOnlyList<string>, IReadOnlyList<Algorand.Algod.Model.Transactions.Transaction>, PoolInfo> verifyGroup, CancellationToken ct)
+    private async Task<LiquidityBuild> BuildAsync(string builder, string network, string sender, PoolInfo listed, object parameters, Action<LiquidityBuild> matchesRequest, Action<IReadOnlyList<string>, IReadOnlyList<Transaction>> verifyGroup, CancellationToken ct)
     {
         var result = await builders.BuildAsync(builder, network, parameters, ct);
         if (result.Facts is not { ValueKind: JsonValueKind.Object } facts)
             throw new LiquidityBuildException("The builder returned no facts to preview.");
 
         GroupedTransactions group;
-        IReadOnlyList<Algorand.Algod.Model.Transactions.Transaction> decoded;
+        IReadOnlyList<Transaction> decoded;
         try { decoded = AlgorandGroup.Decode(result.Transactions); group = AlgorandGroup.Ensure(decoded); }
         catch (Exception e) when (e is GroupException or ArgumentException or InvalidOperationException or FormatException)
         {
@@ -140,10 +149,12 @@ public sealed class LiquidityBuilder(IBuildersClient builders) : ILiquidityBuild
             var build = new LiquidityBuild(Str(facts, "kind") ?? builder, ParsePool(pool), sender, group,
                 Str(facts, "amountA"), Str(facts, "amountB"), Str(facts, "lpAmount"),
                 facts.TryGetProperty("lpOptIn", out var o) && o.ValueKind == JsonValueKind.True, first, last, builtAt);
-            if (build.Pool.AppId != poolAppId) throw new LiquidityBuildException("The builder facts name a different pool.");
+            // The pool the user chose comes from the pool query; the facts must agree with it on every asset the group moves.
+            if (build.Pool.AppId != listed.AppId || build.Pool.AssetA != listed.AssetA || build.Pool.AssetB != listed.AssetB || build.Pool.LpTokenId != listed.LpTokenId)
+                throw new LiquidityBuildException("The builder facts name a different pool.");
             matchesRequest(build);
             // The signed bytes are the transactions, not the facts: verify the transactions themselves.
-            try { verifyGroup(result.Transactions, decoded, build.Pool); }
+            try { verifyGroup(result.Transactions, decoded); }
             catch (GroupException e) { throw new LiquidityBuildException(e.Message); }
             return build;
         }

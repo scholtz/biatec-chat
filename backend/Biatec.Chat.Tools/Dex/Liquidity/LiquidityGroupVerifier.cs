@@ -35,7 +35,7 @@ public static class LiquidityGroupVerifier
         var apps = BiatecDexApps.For(network) ?? throw new GroupException("No Biatec DEX deployment is known for this network.");
         var poolAddress = Algorand.Address.ForApplication(pool.AppId).EncodeAsString();
         var remaining = expected.ToList();
-        var poolCalls = 0;
+        int poolCalls = 0, providerCalls = 0, optIns = 0;
 
         foreach (var tx in txs)
         {
@@ -49,15 +49,21 @@ public static class LiquidityGroupVerifier
                     break;
                 case AssetClawbackTransaction or AssetCloseTransaction:
                     throw new GroupException("An asset transfer in the liquidity group is a clawback or a close-out.");
-                case AssetAcceptTransaction:
-                    break; // opt-in: a zero-amount transfer from the user to the user, for an asset they will receive
+                case AssetAcceptTransaction accept:
+                    // Opt-in: a zero-amount transfer from the user to the user, for an asset the pool pays out or the LP token.
+                    if (!Same(accept.AssetReceiver, user) || accept.AssetAmount != 0
+                        || (accept.XferAsset != pool.AssetA && accept.XferAsset != pool.AssetB && accept.XferAsset != pool.LpTokenId)
+                        || ++optIns > 3)
+                        throw new GroupException("The liquidity group opts in to something other than the pool's assets.");
+                    break;
                 case AssetTransferTransaction axfer:
                     Deposit(remaining, axfer.XferAsset, axfer.AssetAmount, axfer.AssetReceiver, poolAddress);
                     break;
                 case ApplicationNoopTransaction:
                     var app = AppId(tx);
                     if (app == pool.AppId) poolCalls++;
-                    else if (app != apps.PoolProviderAppId) throw new GroupException("The liquidity group calls an application other than the pool.");
+                    else if (app == apps.PoolProviderAppId && ++providerCalls <= 1) { }
+                    else throw new GroupException("The liquidity group calls an application other than the pool.");
                     break;
                 default:
                     throw new GroupException("The liquidity group contains a transaction a liquidity change never needs.");

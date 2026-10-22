@@ -555,6 +555,8 @@ public sealed class LiquidityTests : IAsyncLifetime
     [InlineData("createApp")]
     [InlineData("extraPayment")]
     [InlineData("noPoolCall")]
+    [InlineData("extraProvider")]
+    [InlineData("optInOther")]
     public async Task Liquidity_add_with_a_malicious_group_behind_honest_facts_is_never_previewed(string attack)
     {
         _builders.MutateTxs = (txs, user, pool) => Tamper(txs, user, pool, attack);
@@ -597,8 +599,30 @@ public sealed class LiquidityTests : IAsyncLifetime
             case "wrongAsset": txs[i] = Xfer(user, poolAddress, 777, ((AssetTransferTransaction)txs[i]).AssetAmount); break;
             case "wrongApp": txs[^1] = Call(user, 999999); break;
             case "createApp": txs[^1] = Stamp(new ApplicationCreateTransaction { Sender = user }); break;
+            case "extraProvider": txs.Insert(0, Call(user, ProviderApp)); txs.Insert(0, Call(user, ProviderApp)); break;
+            case "optInOther": txs.Insert(0, Xfer(user, user, 777, 0)); break;
             case "noPoolCall": txs.RemoveAt(txs.Count - 1); break;
         }
+    }
+
+    [Theory]
+    [InlineData("assetA")]
+    [InlineData("lpTokenId")]
+    public async Task Liquidity_facts_that_name_other_assets_than_the_listed_pool_are_never_previewed(string field)
+    {
+        _mcp.BalancesJson = Balances;
+        _builders.MutateFacts = f => f["pool"]![field] = "777";
+        var r = await _add.ExecuteAsync(Ctx("dex.addLiquidity"), AddArgs(1001, _builderSender), default);
+        Assert.True(r.IsError);
+        Assert.Equal(0, await PreviewCountAsync());
+    }
+
+    [Fact]
+    public async Task Liquidity_an_amount_beyond_uint64_never_reaches_the_builder()
+    {
+        var r = await _add.ExecuteAsync(Ctx("dex.addLiquidity"), AddArgs(1001, _builderSender, a: "18446744073709551616"), default);
+        Assert.True(r.IsError);
+        Assert.Empty(_builders.Builds);
     }
 
     [Fact]

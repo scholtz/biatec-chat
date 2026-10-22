@@ -302,7 +302,7 @@ public sealed class DexAddLiquidityExecutor(ILiquidityBuilder liquidity, IBiatec
             return new ToolExecutionResult(facts.ToJsonString(), Guidance:
                 "Nothing has been built. A deposit needs an amount of both assets. Ask the user for the missing amount (currentPriceOfAInB can help them pick a matching one, but do not choose for them), then call dex.addLiquidity again with both amounts in base units.");
         }
-        var build = await Liquidity.BuildAddAsync(r.Network, r.From, pool!.AppId, amountA, amountB, ct);
+        var build = await Liquidity.BuildAddAsync(r.Network, r.From, pool!, amountA, amountB, ct);
 
         var book = await ReadAssetsAsync(mcpCtx, r.Network, r.From, ct);
         var a = Amount(book, build.Pool.AssetA, amountA);
@@ -338,7 +338,7 @@ public sealed class DexRemoveLiquidityExecutor(ILiquidityBuilder liquidity, IBia
             return new ToolExecutionResult("That percentage of the position rounds down to zero liquidity tokens. Ask the user for a larger percentage.", true);
         var lpAmount = lp.ToString(CultureInfo.InvariantCulture);
 
-        var build = await Liquidity.BuildRemoveAsync(r.Network, r.From, pool.AppId, lpAmount, ct);
+        var build = await Liquidity.BuildRemoveAsync(r.Network, r.From, pool, lpAmount, ct);
         var meta = book.Find(pool.LpTokenId);
         var lpAsset = new AssetAmount
         {
