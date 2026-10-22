@@ -15,6 +15,21 @@ still needs a reachable API server for discovery (even with `--validate=false`),
 `main` uses `oidc.biatec.io` and `mcp.biatec.io/tools`; `stage` uses `stage.oidc.biatec.io` and `stage.mcp.biatec.io/tools`
 (per `docs/AWS-AGENTCORE-GUIDE.md`). Both use the public Nodely mainnet/testnet algod; change per overlay if stage needs other nodes.
 
+## Client address behind the ingress
+
+The backend honours `X-Forwarded-For` only from the networks in `ForwardedHeaders__KnownNetworks__N` (both overlays set the
+RFC 1918 ranges; with nothing configured it trusts loopback only), and `ForwardLimit` is 1, so only the last hop is used.
+With ingress-nginx's default settings the header carries the real peer. Known limits (BCHAT-005):
+
+- The trust is by network, not by pod: another in-cluster pod that calls the backend Service directly could set the header.
+  A NetworkPolicy that admits only the ingress namespace (BCHAT-016) closes that; narrow the networks to the ingress pod CIDR once known.
+- If the ingress sits behind a load balancer with `externalTrafficPolicy: Cluster`, or `use-forwarded-headers` / proxy protocol is
+  enabled, the peer or the header differs; check a `RemoteIp` in an admin log line after any ingress change.
+- Traffic that arrives through the DEX cluster's ingress (`beta.dex.biatec.io`) carries that cluster's egress address as the peer,
+  so those visitors still share one bucket until that hop is configured as the trusted proxy.
+
+Per-IP limits (public chat, admin, onboarding) and the operator audit log depend on this.
+
 ## Dry-run status
 
 `kubectl kustomize` renders both overlays offline (the substitute used when no cluster is reachable). The literal
