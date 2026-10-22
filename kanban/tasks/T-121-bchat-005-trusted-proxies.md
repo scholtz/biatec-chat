@@ -52,12 +52,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:** Both overlays trust X-Forwarded-For from the RFC 1918 ranges; ClientAddress tests added; k8s README documents it. PR below.
+- **Summary:** Both overlays trust X-Forwarded-For from the RFC 1918 ranges; ClientAddress tests added; k8s README documents it. PR #303.
 - **Files changed:** k8s/main and k8s/stage backend-config patches, k8s/README.md, Tests/Public/ClientAddressTests.cs.
-- **How it was verified:** 4 new tests pass; TEST-009 passes. Not verified on a cluster (no access).
+- **How it was verified:** 5 new tests pass; TEST-009 passes. Not verified on a cluster (no access).
 - **Follow-up tasks created:** none.
 - **Unblocks:** BCHAT-004 (#257) builds on a correct client address.
-- **Open questions:** I used the RFC 1918 ranges because the ingress pod CIDR is not known from the repo. Please narrow to the real CIDR and confirm a RemoteIp in an admin log line on stage.
+- **Open questions:** I used the RFC 1918 ranges because the ingress pod CIDR is not known from the repo. The trust is by network, so an in-cluster pod could still spoof the header until BCHAT-016 (NetworkPolicy) lands, and the DEX two-hop path still shares one bucket (both documented in k8s/README.md). Please narrow to the real CIDR and confirm a RemoteIp in an admin log line on stage.
 
 ## Review
 

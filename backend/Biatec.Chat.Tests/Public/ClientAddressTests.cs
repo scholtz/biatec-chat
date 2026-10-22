@@ -43,6 +43,10 @@ public sealed class ClientAddressTests
         Assert.Equal(IPAddress.Parse("198.51.100.4"), await ResolveAsync(Overlay, "198.51.100.4", "203.0.113.9"));
 
     [Fact]
+    public async Task A_dual_stack_ipv4_mapped_peer_is_matched_against_the_ipv4_networks() =>
+        Assert.Equal(IPAddress.Parse("203.0.113.9"), await ResolveAsync(Overlay, "::ffff:10.42.1.7", "203.0.113.9"));
+
+    [Fact]
     public async Task Without_configuration_only_loopback_is_trusted() =>
         Assert.Equal(IPAddress.Parse("10.42.1.7"), await ResolveAsync([], "10.42.1.7", "203.0.113.9"));
 
