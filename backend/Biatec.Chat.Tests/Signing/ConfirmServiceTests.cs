@@ -5,6 +5,7 @@ using Algorand;
 using Algorand.Algod.Model;
 using Algorand.Algod.Model.Transactions;
 using Biatec.Chat.Api.Auth.Elevation;
+using Biatec.Chat.Api.Chat.Cancel;
 using Biatec.Chat.Api.Chat.Confirm;
 using Biatec.Chat.Api.Data;
 using Biatec.Chat.Api.Vault;
@@ -552,6 +553,93 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
             Assert.Equal(ConfirmOutcome.Landed, (await NewService(db).ResumeAfterConsentAsync(_tenant, _session, b.PreviewId, "ELEVATED", CancellationToken.None)).Outcome);
         Assert.Equal(2, _oidc.Calls.Count);
         Assert.All(_oidc.Calls, c => Assert.Equal("https://dex.biatec.io", c.Request.Origin));
+    }
+
+    /// <summary>Holds the sign call open so a test can act while a resumed confirm is "in the OIDC round trip".</summary>
+    private sealed class GatedSigner(IWalletSigningClient inner) : IWalletSigningClient
+    {
+        public readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task<WalletSignOutcome> SignAsync(string bearer, WalletSignRequest request, CancellationToken ct = default)
+        {
+            Entered.SetResult();
+            await Release.Task;
+            return await inner.SignAsync(bearer, request, ct);
+        }
+    }
+
+    // BCHAT-002: once the resumed confirm has claimed the step for signing, a cancel must not report success.
+    [Fact]
+    public async Task Cancel_WhileAnApprovedConsentIsBeingSigned_IsRefused_AndTheGroupIsStillSubmittedOnce()
+    {
+        var b = await BuildPreviewAsync();
+        _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_race", "4821", 300, 2);
+        Assert.Equal(ConfirmOutcome.ConsentPending, (await ConfirmAsync(b.PreviewId, b.Group.GroupHash)).Outcome);
+        _oidc.Override = null;
+
+        var gate = new GatedSigner(_oidc);
+        var resume = Task.Run(async () =>
+        {
+            await using var db = NewContext();
+            return await NewService(db, gate).ResumeAfterConsentAsync(_tenant, _session, b.PreviewId, "ELEVATED", CancellationToken.None);
+        });
+        await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        CancelResult cancel;
+        await using (var db = NewContext())
+            cancel = await new Biatec.Chat.Api.Chat.Cancel.CancelService(db, _clock, NullLogger<Biatec.Chat.Api.Chat.Cancel.CancelService>.Instance)
+                .CancelAsync(_session, b.PreviewId, b.Group.GroupHash, CancellationToken.None);
+        Assert.Equal(CancelOutcome.NotCancellable, cancel.Outcome);
+
+        gate.Release.SetResult();
+        Assert.Equal(ConfirmOutcome.Landed, (await resume.WaitAsync(TimeSpan.FromSeconds(10))).Outcome);
+        Assert.Single(_mcp.Submits);
+        Assert.NotEqual(ActionPreviewStatus.Cancelled, (await LoadAsync(b.PreviewId)).Preview.Status);
+    }
+
+    private sealed class ThrowingSigner : IWalletSigningClient
+    {
+        public Task<WalletSignOutcome> SignAsync(string bearer, WalletSignRequest request, CancellationToken ct = default) => throw new InvalidOperationException("boom");
+    }
+
+    // The claimed step must not stay Signed when the sign call fails: it ends like an expired consent.
+    [Fact]
+    public async Task ResumeAfterConsent_WhenSigningThrows_EndsTheClaimedStepAndPreview()
+    {
+        var b = await BuildPreviewAsync();
+        _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_boom", "4821", 300, 2);
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        _oidc.Override = null;
+
+        await using (var db = NewContext())
+        {
+            var r = await NewService(db, new ThrowingSigner()).ResumeAfterConsentAsync(_tenant, _session, b.PreviewId, "ELEVATED", CancellationToken.None);
+            Assert.Equal("resume_failed", r.ErrorCode);
+        }
+        var (preview, step) = await LoadAsync(b.PreviewId);
+        Assert.Equal(StepStatus.Expired, step.Status);
+        Assert.Equal(ActionPreviewStatus.Expired, preview.Status);
+        Assert.Empty(_mcp.Submits);
+    }
+
+    // BCHAT-002: a cancel that won the step row means nothing is ever signed or submitted.
+    [Fact]
+    public async Task Cancel_BeforeTheApprovalIsRedeemed_MeansNothingIsSignedOrSubmitted()
+    {
+        var b = await BuildPreviewAsync();
+        _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_race", "4821", 300, 2);
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        _oidc.Override = null;
+        var signsBefore = _oidc.Calls.Count;
+
+        await using (var db = NewContext())
+            Assert.Equal(CancelOutcome.Cancelled, (await new Biatec.Chat.Api.Chat.Cancel.CancelService(db, _clock, NullLogger<Biatec.Chat.Api.Chat.Cancel.CancelService>.Instance)
+                .CancelAsync(_session, b.PreviewId, b.Group.GroupHash, CancellationToken.None)).Outcome);
+        await using (var db = NewContext())
+            await Assert.ThrowsAsync<PreviewException>(() => NewService(db).ResumeAfterConsentAsync(_tenant, _session, b.PreviewId, "ELEVATED", CancellationToken.None));
+        Assert.Equal(signsBefore, _oidc.Calls.Count);
+        Assert.Empty(_mcp.Submits);
+        Assert.Equal(ActionPreviewStatus.Cancelled, (await LoadAsync(b.PreviewId)).Preview.Status);
     }
 
     [Theory]

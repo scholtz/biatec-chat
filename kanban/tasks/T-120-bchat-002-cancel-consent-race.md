@@ -43,9 +43,9 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] Interleaving test: Cancel succeeds while the sign call is blocked, release; `SubmitTransactionToBlockchainAsync` is not called and the preview stays `Cancelled`.
-- [ ] A cancel after the step is claimed for signing is refused.
-- [ ] Existing confirm, consent and cancel tests stay green.
+- [x] Interleaving test: Cancel succeeds while the sign call is blocked, release; `SubmitTransactionToBlockchainAsync` is not called and the preview stays `Cancelled`.
+- [x] A cancel after the step is claimed for signing is refused.
+- [x] Existing confirm, consent and cancel tests stay green.
 
 ## Verification
 
@@ -53,12 +53,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** Resume claims the AwaitingConsent step (-> Signed) atomically before signing; Cancel flips the same row first; a failed resume ends the step and preview as expired consent. PR #302.
+- **Files changed:** Api/Chat/Confirm/ConfirmService.cs, Api/Chat/Cancel/CancelService.cs, Tests/Signing/ConfirmServiceTests.cs.
+- **How it was verified:** dotnet test 1528 passed; interleaving test with a gated signer.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** A process crash between the claim and the Submitted save leaves the step Signed with no TxIds; cancel stays refused (signing may have happened) and retention treats it as in flight only until its own expiry. None otherwise.
 
 ## Review
 

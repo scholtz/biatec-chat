@@ -63,6 +63,16 @@ public sealed class CancelService(ChatDbContext db, TimeProvider clock, ILogger<
         if (awaitingIds.Count > 0 && await db.ConsentRequests.AnyAsync(c => awaitingIds.Contains(c.StepId) && c.Status == ConsentStatus.Approved, ct))
             return new CancelResult(CancelOutcome.NotCancellable, "The approval was already given; signing is in progress.");
 
+        // A step awaiting consent is claimed by the resume path with the same conditional update: whoever flips the row first
+        // wins, so a cancel that returns 200 can never be followed by a signature (BCHAT-002).
+        if (awaitingIds.Count > 0)
+        {
+            var won = await db.ActionSteps.Where(s => awaitingIds.Contains(s.Id) && s.Status == StepStatus.AwaitingConsent)
+                .ExecuteUpdateAsync(u => u.SetProperty(s => s.Status, StepStatus.Cancelled), ct);
+            if (won != awaitingIds.Count)
+                return new CancelResult(CancelOutcome.NotCancellable, "The approval was already given; signing is in progress.");
+        }
+
         // Atomic: only one of a cancel and a concurrent confirm wins the status flip.
         var observed = preview.Status;
         var flipped = await db.ActionPreviews
