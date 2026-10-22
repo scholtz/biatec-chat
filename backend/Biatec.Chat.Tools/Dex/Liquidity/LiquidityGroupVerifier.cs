@@ -17,13 +17,13 @@ public static class LiquidityGroupVerifier
 
     /// <exception cref="GroupException">The group differs from the request.</exception>
     public static void VerifyAdd(IReadOnlyList<string> base64, IReadOnlyList<Transaction> txs, string network, string user, PoolInfo pool, ulong amountA, ulong amountB) =>
-        Verify(base64, txs, network, user, pool, [(pool.AssetA, amountA), (pool.AssetB, amountB)]);
+        Verify(base64, txs, network, user, pool, [(pool.AssetA, amountA), (pool.AssetB, amountB)], add: true);
 
     /// <exception cref="GroupException">The group differs from the request.</exception>
     public static void VerifyRemove(IReadOnlyList<string> base64, IReadOnlyList<Transaction> txs, string network, string user, PoolInfo pool, ulong lpAmount) =>
-        Verify(base64, txs, network, user, pool, [(pool.LpTokenId, lpAmount)]);
+        Verify(base64, txs, network, user, pool, [(pool.LpTokenId, lpAmount)], add: false);
 
-    private static void Verify(IReadOnlyList<string> base64, IReadOnlyList<Transaction> txs, string network, string user, PoolInfo pool, (ulong Asset, ulong Amount)[] expected)
+    private static void Verify(IReadOnlyList<string> base64, IReadOnlyList<Transaction> txs, string network, string user, PoolInfo pool, (ulong Asset, ulong Amount)[] expected, bool add)
     {
         // The SDK model has no field for some close-outs, so decoding could drop them: re-encoding must give back the builder's bytes.
         if (base64.Count != txs.Count) throw new GroupException("The builder group could not be verified.");
@@ -62,8 +62,20 @@ public static class LiquidityGroupVerifier
                     break;
                 case ApplicationNoopTransaction call:
                     var app = call.ApplicationId;
-                    if (app == pool.AppId) poolCalls++;
-                    else if (app == apps.PoolProviderAppId && ++providerCalls <= 1) { }
+                    var first = call.ApplicationArgs?.FirstOrDefault();
+                    if (app == pool.AppId)
+                    {
+                        // Only the add call's method is known here; a remove call is bound by the LP transfer it pairs with.
+                        if (add && (first is null || !first.AsSpan().SequenceEqual(BiatecDexApps.AddLiquidity)))
+                            throw new GroupException("The pool call is not an addLiquidity call.");
+                        poolCalls++;
+                    }
+                    else if (app == apps.PoolProviderAppId)
+                    {
+                        if (first is null || !first.AsSpan().SequenceEqual(BiatecDexApps.ProviderNoop))
+                            throw new GroupException("The pool-provider call is not the provider's noop.");
+                        providerCalls++;
+                    }
                     else throw new GroupException("The liquidity group calls an application other than the pool.");
                     break;
                 default:
@@ -71,6 +83,7 @@ public static class LiquidityGroupVerifier
             }
         }
         if (remaining.Count != 0) throw new GroupException("The liquidity group does not move the requested assets and amounts.");
+        if (providerCalls > 1) throw new GroupException("The liquidity group calls the pool provider more than once.");
         if (poolCalls != 1) throw new GroupException("The liquidity group does not call the chosen pool exactly once.");
     }
 

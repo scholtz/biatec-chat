@@ -168,11 +168,11 @@ public sealed class LiquidityTests : IAsyncLifetime
             List<Transaction> txs = [];
             if (p.TryGetProperty("amountA", out var amtA))
             {
-                txs.Add(Call(user, ProviderApp));
+                txs.Add(Call(user, ProviderApp, Biatec.Chat.Tools.Safe.Proposals.BiatecDexApps.ProviderNoop));
                 txs.Add(Xfer(user, poolAddress, Eurs, ulong.Parse(amtA.GetString()!)));
                 txs.Add(Xfer(user, poolAddress, Usdc, ulong.Parse(p.GetProperty("amountB").GetString()!)));
                 txs.Add(Xfer(user, user, Lp, 0));
-                txs.Add(Call(user, poolId));
+                txs.Add(Call(user, poolId, Biatec.Chat.Tools.Safe.Proposals.BiatecDexApps.AddLiquidity));
             }
             else
             {
@@ -207,8 +207,8 @@ public sealed class LiquidityTests : IAsyncLifetime
     private static AssetTransferTransaction Xfer(Address sender, Address receiver, ulong asset, ulong amount) =>
         Stamp(new AssetTransferTransaction { Sender = sender, AssetReceiver = receiver, XferAsset = asset, AssetAmount = amount });
 
-    private static ApplicationNoopTransaction Call(Address sender, ulong app) =>
-        Stamp(new ApplicationNoopTransaction { Sender = sender, ApplicationId = app });
+    private static ApplicationNoopTransaction Call(Address sender, ulong app, byte[]? selector = null) =>
+        Stamp(new ApplicationNoopTransaction { Sender = sender, ApplicationId = app, ApplicationArgs = selector is null ? null : [selector] });
 
     private static PaymentTransaction Pay(Address sender, ulong amount) => new()
     {
@@ -558,6 +558,8 @@ public sealed class LiquidityTests : IAsyncLifetime
     [InlineData("extraProvider")]
     [InlineData("optInOther")]
     [InlineData("optInTwice")]
+    [InlineData("wrongMethod")]
+    [InlineData("providerWrongMethod")]
     public async Task Liquidity_add_with_a_malicious_group_behind_honest_facts_is_never_previewed(string attack)
     {
         _builders.MutateTxs = (txs, user, pool) => Tamper(txs, user, pool, attack);
@@ -608,6 +610,8 @@ public sealed class LiquidityTests : IAsyncLifetime
             case "createApp": txs[^1] = Stamp(new ApplicationCreateTransaction { Sender = user }); break;
             case "extraProvider": txs.Insert(0, Call(user, ProviderApp)); txs.Insert(0, Call(user, ProviderApp)); break;
             case "optInOther": txs.Insert(0, Xfer(user, user, 777, 0)); break;
+            case "wrongMethod": txs[^1] = Call(user, pool, [1, 2, 3, 4]); break;
+            case "providerWrongMethod": txs[0] = Call(user, ProviderApp, [1, 2, 3, 4]); break;
             case "optInTwice": txs.Insert(0, Xfer(user, user, Lp, 0)); break;
             case "noPoolCall": txs.RemoveAt(txs.Count - 1); break;
         }
@@ -623,6 +627,18 @@ public sealed class LiquidityTests : IAsyncLifetime
         var r = await _add.ExecuteAsync(Ctx("dex.addLiquidity"), AddArgs(1001, _builderSender), default);
         Assert.True(r.IsError);
         Assert.Equal(0, await PreviewCountAsync());
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(101)]
+    [InlineData(-5)]
+    public async Task Liquidity_remove_percent_outside_1_to_100_never_reaches_the_builder(int percent)
+    {
+        _mcp.BalancesJson = Balances;
+        var r = await _remove.ExecuteAsync(Ctx("dex.removeLiquidity"), RemoveArgs(1001, _builderSender, percent), default);
+        Assert.True(r.IsError);
+        Assert.Empty(_builders.Builds);
     }
 
     [Fact]

@@ -156,7 +156,7 @@ public sealed class LiquidityBuilder(IBuildersClient builders) : ILiquidityBuild
             // The signed bytes are the transactions, not the facts: verify the transactions themselves.
             try { verifyGroup(result.Transactions, decoded); }
             catch (GroupException e) { throw new LiquidityBuildException(e.Message); }
-            catch (Exception e) when (e is NullReferenceException or FormatException)
+            catch (Exception e) when (e is not OperationCanceledException and not LiquidityBuildException)
             {
                 throw new LiquidityBuildException("The built group could not be verified.");
             }
