@@ -1,7 +1,7 @@
 ---
 id: T-118
 title: "Verify liquidity groups from the builder sidecar field by field (BCHAT-001)"
-status: in-progress
+status: done
 priority: P1
 epic: "Security"
 blocked_by: []
@@ -74,8 +74,11 @@ provider app from `BiatecDexApps.For(network)`.
 
 ## Review
 
+- 2026-10-22 18:12 · approve · PR #300 merged into main @ 4c7803b (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-22 16:00 · claude · (new) → backlog · created from GitHub issue #254 (audit finding BCHAT-001); blockers scan: none
 - 2026-10-22 16:01 · scholtz · taken · status stays backlog
 - 2026-10-22 16:02 · session-20261022-1600 · backlog → in-progress · claimed by scholtz
+- 2026-10-22 18:12 · user · in-progress → done · PR #300 merged into main @ 4c7803b (synced by kanban-sync)
