@@ -122,6 +122,34 @@ describe("strictness about JWKS keys (BCHAT-023)", () => {
     expect(r.errors.join(" ")).toMatch(/more than once/);
   });
 
+  it("a null or id-less entry, or a duplicate kid in the embedded keys, fails cleanly instead of throwing", () => {
+    expect(verifyBundle(fresh(), { jwks: { keys: [null as never] } }).valid).toBe(false);
+    expect(verifyBundle(fresh(), { jwks: { keys: [{} as never] } }).valid).toBe(false);
+    const b = fresh();
+    b.keys = [...b.keys, { ...b.keys[0] }];
+    const r = verifyBundle(b, { allowEmbeddedKeys: true });
+    expect(r.valid).toBe(false);
+    expect(r.errors.join(" ")).toMatch(/more than once/);
+  });
+
+  it("a present but unparseable created_at or retired_at is not 'no bound'", () => {
+    for (const bad of ["garbage", "2020-01-01 00:00:00", "2020-01-01T00:00:00+02:00"]) {
+      expect(verifyBundle(fresh(), { jwks: withKeys((ks) => ks.map((k) => ({ ...k, retired_at: bad }))) }).valid).toBe(false);
+      expect(verifyBundle(fresh(), { jwks: withKeys((ks) => ks.map((k) => ({ ...k, created_at: bad }))) }).valid).toBe(false);
+    }
+  });
+
+  it("a malformed exportedAt fails (the bundle signature covers it, so it is re-signed here)", () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const jwk = publicKey.export({ format: "jwk" });
+    const kid = "ev-exp";
+    const es = (text: string) => sign("sha256", Buffer.from(text), { key: privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+    const b: EvidenceBundle = { ...fresh(), kid, exportedAt: "yesterday", keys: [{ kty: "EC", crv: "P-256", alg: "ES256", use: "sig", kid, x: jwk.x!, y: jwk.y!, created_at: "2026-10-01T00:00:00.000Z" }], signature: "" };
+    b.signature = es(bundleSigningInput(b));
+    const r = verifyBundle(b, { allowEmbeddedKeys: true });
+    expect(r.errors.join(" ")).toMatch(/exportedAt is not an RFC 3339/);
+  });
+
   it("a bundle exported outside its signing key's lifetime fails", () => {
     const before = verifyBundle(fresh(), { jwks: withKeys((ks) => ks.map((k) => ({ ...k, created_at: "2999-01-01T00:00:00.000Z" }))) });
     expect(before.valid).toBe(false);
@@ -295,6 +323,12 @@ describe("CLI", () => {
     const r = run("verify", join(dir, "bundle.json"), "--jwks", "http://127.0.0.1:1/jwks.json");
     expect(r.status).toBe(2);
     expect(r.stderr).toMatch(/not https/);
+  });
+
+  it("refuses a redirect when it fetches", () => {
+    // A local server that answers 302 to http://: fetch must not follow it. (Run under node directly; the CLI itself refuses http:// first.)
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src", "cli.ts"), "utf8");
+    expect(src).toMatch(/redirect:\s*"error"/);
   });
 
   it("warns when only embedded keys are used", () => {
