@@ -176,7 +176,7 @@ public static class AuthEndpoints
                     // A superseded popup request must not still change the vault (the nonce check at /auth/elevate enforced its expiry; the state TTL bounds the rest).
                     var open = await db.PopupAuthRequests.AsNoTracking().AnyAsync(p => p.Id == pending.PopupId && p.ConversationId == session.ConversationId
                         && p.Purpose == PopupAuthPurpose.Elevate && p.Status == PopupAuthStatus.Pending, ctx.RequestAborted);
-                    var ok = open && await Elevation.ElevationCompletion.CompleteAsync(tenant, session, pending, code, clock, oidc, validator, vault, ctx.RequestAborted);
+                    var ok = open && await Elevation.ElevationCompletion.CompleteAsync(tenant, session, pending, code, clock, oidc, validator, vault, ctx.RequestServices.GetRequiredService<Logout.IRevocationService>(), log, ctx.RequestAborted);
                     if (ok) ctx.RequestServices.GetRequiredService<Sessions.ISessionProfile>().Invalidate(session.Id.ToString("N")); // the session's scopes changed
                     await SetStatusAsync(db, pending.PopupId, session.ConversationId, ok ? PopupAuthStatus.Completed : PopupAuthStatus.Failed, ctx.RequestAborted);
                     return ClosePage(ctx, ok ? 200 : 400);

@@ -150,11 +150,12 @@ public static class ElevationCompletion
 {
     /// <summary>
     /// Returns true when the new tokens are vaulted (the old entry replaced). Any failure leaves the existing entry
-    /// untouched. The new tokens are stored first; revoking the old refresh token waits for the RFC 7009 endpoint at
-    /// Biatec OIDC (docs/required-changes-biatec-oidc.md), so it simply ages out.
+    /// untouched. The new tokens are stored first, from the entry read under the vault's refresh lock; only then is the refresh
+    /// token they supersede revoked, or parked for the sweeper when the RFC 7009 endpoint is not available
+    /// (docs/required-changes-biatec-oidc.md). That last step never undoes the elevation.
     /// </summary>
     public static async Task<bool> CompleteAsync(Tenant tenant, ChatSession session, PendingAuth pending, string code, TimeProvider clock,
-        IOidcClient oidc, IIdTokenValidator validator, ITokenVault vault, CancellationToken ct)
+        IOidcClient oidc, IIdTokenValidator validator, ITokenVault vault, Logout.IRevocationService revocation, ILogger log, CancellationToken ct)
     {
         var requestedScope = pending.Elevate;
         if (!ElevationScopes.IsAllowed(requestedScope)) return false;
@@ -177,20 +178,34 @@ public static class ElevationCompletion
         foreach (var held in old.Scopes)
             if (ElevationScopes.IsAllowed(held) && Array.IndexOf(granted, held) < 0) return false;
 
-        // The exchange took a network round trip: the session may have been logged out meanwhile, so re-read the
-        // entry and never re-create tokens for an ended session.
-        old = await vault.GetAsync(sessionId, ct);
-        if (old is null || clock.GetUtcNow() >= old.AbsoluteExpiresAt) return false;
-
-        await vault.PutAsync(sessionId, new TokenVaultEntry
+        // The exchange took a network round trip: the session may have been logged out, or a refresh may have rotated the tokens, meanwhile.
+        // So the entry is read again inside the vault's refresh lock and the same checks run on it; nothing is re-created for an ended session.
+        var superseded = await vault.ReplaceAsync(sessionId, current =>
         {
-            AccessToken = tokens.AccessToken,
-            AccessExpiresAt = clock.GetUtcNow().AddSeconds(tokens.ExpiresIn),
-            RefreshToken = tokens.RefreshToken,
-            IdToken = tokens.IdToken,
-            Scopes = granted, // exactly what the new access token carries, so the scope check matches the token
-            AbsoluteExpiresAt = old.AbsoluteExpiresAt, // elevation never extends the session
+            if (clock.GetUtcNow() >= current.AbsoluteExpiresAt) return null;
+            foreach (var held in current.Scopes)
+                if (ElevationScopes.IsAllowed(held) && Array.IndexOf(granted, held) < 0) return null;
+            return new TokenVaultEntry
+            {
+                AccessToken = tokens.AccessToken,
+                AccessExpiresAt = clock.GetUtcNow().AddSeconds(tokens.ExpiresIn),
+                RefreshToken = tokens.RefreshToken,
+                IdToken = tokens.IdToken,
+                Scopes = granted, // exactly what the new access token carries, so the scope check matches the token
+                AbsoluteExpiresAt = current.AbsoluteExpiresAt, // elevation never extends the session
+            };
         }, ct);
+        if (superseded is null) return false;
+
+        // The replaced refresh token is still valid at Biatec OIDC: revoke it, or park it so the sweeper does.
+        if (!string.IsNullOrEmpty(superseded.RefreshToken) && superseded.RefreshToken != tokens.RefreshToken)
+        {
+            try { await revocation.RevokeOrParkAsync(tenant, superseded.RefreshToken, ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                log.LogWarning("The refresh token superseded by an elevation could not be revoked or parked: {ErrorType}", ex.GetType().Name);
+            }
+        }
         return true;
     }
 }

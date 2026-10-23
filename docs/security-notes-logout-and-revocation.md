@@ -27,6 +27,14 @@ parked tokens. A parked token is deleted when revocation succeeds or after `Oidc
 The URL is ignored unless it is on the issuer's origin. Revocation of exactly the presented token (not the whole grant) is
 part of row 14; the product depends on it for scope elevation.
 
+## Scope elevation
+
+An elevation (`/auth/elevate`) exchanges a new code for tokens, then replaces the vault entry **under the same Redis lock the refresh
+uses** (`ITokenVault.ReplaceAsync`): the entry it replaces is read inside the lock, so a refresh that rotated the tokens meanwhile is
+neither overwritten blindly nor left to run against the replaced entry. The refresh token it superseded is then revoked, or parked
+in `PendingRevocation` like a logged-out session's, so the sweeper revokes it once a revocation URL is configured. If that last step fails
+the elevation still stands (the failure is logged by type).
+
 ## ID token in the logout redirect
 
 The spec has the browser follow RP-initiated logout with `id_token_hint`, so the ID token appears once in the `Location`
