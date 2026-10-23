@@ -132,17 +132,18 @@ public static class AuthEndpoints
 
             // The administrator dashboard signs in through this same registered redirect URI (docs/admin-dashboard.md). Its state
             // is bound to its own login cookie, not to a chat session, so it is recognised before the session lookup.
-            if (await states.GetAsync(Hash(state), ctx.RequestAborted) is { Purpose: Admin.Dashboard.AdminAuth.Purpose } adminPending)
+            var stateHash = Hash(state);
+            var stored = await states.GetAsync(stateHash, ctx.RequestAborted);
+            if (stored is { Purpose: Admin.Dashboard.AdminAuth.Purpose } adminPending)
             {
-                if (!await states.TakeAsync(Hash(state), ctx.RequestAborted)) return Admin.Dashboard.AdminLogin.Failed(ctx, Admin.Dashboard.AdminLogin.Errors.LoginFailed); // replay or race
+                if (!await states.TakeAsync(stateHash, ctx.RequestAborted)) return Admin.Dashboard.AdminLogin.Failed(ctx, Admin.Dashboard.AdminLogin.Errors.LoginFailed); // replay or race
                 return await Admin.Dashboard.AdminLogin.CompleteAsync(ctx, tenant, adminPending);
             }
 
             // Login CSRF defence: the state must belong to the session carrying this cookie. A state minted for
             // another session is rejected without being consumed or touching that session's popup request.
             var session = await FindLiveAsync(db, tenant, cookie, now, ctx.RequestAborted);
-            var stateHash = Hash(state);
-            var pending = session is null ? null : await states.GetAsync(stateHash, ctx.RequestAborted);
+            var pending = session is null ? null : stored;
             if (session is null || pending is null || pending.TenantId != tenant.Id || pending.SessionId != session.Id.ToString("N"))
                 return ClosePage(ctx, 400);
             if (!await states.TakeAsync(stateHash, ctx.RequestAborted)) return ClosePage(ctx, 400); // replay or race

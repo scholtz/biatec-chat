@@ -2,6 +2,7 @@ using System.Text.Json;
 using Biatec.Chat.Api.Sessions;
 using Biatec.Chat.Core.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Biatec.Chat.Api.Admin.Dashboard;
 
@@ -33,14 +34,24 @@ public sealed record ViewTranscript(ViewConversation Conversation, IReadOnlyList
 /// The queries behind the administrator dashboard (docs/admin-dashboard.md). Statistics and the user list are metadata only; message text is
 /// read only through <see cref="TranscriptAsync"/>, which the impersonation endpoints call for the impersonated user alone.
 /// </summary>
-public sealed class AdminDashboardService(ChatDbContext db, TimeProvider clock)
+public sealed class AdminDashboardService(ChatDbContext db, TimeProvider clock, IMemoryCache cache)
 {
     public const int MaxMessages = 500;
     public const int MaxConversations = 200;
 
     // ---- statistics -------------------------------------------------------------------------------------------------
 
-    public async Task<StatsResponse> StatsAsync(int days, string? tenant, CancellationToken ct)
+    /// <summary>How long a statistics answer is reused: the overview runs aggregate queries over the whole message table.</summary>
+    public static readonly TimeSpan StatsCacheTime = TimeSpan.FromSeconds(30);
+
+    public async Task<StatsResponse> StatsAsync(int days, string? tenant, CancellationToken ct) =>
+        (await cache.GetOrCreateAsync($"admin-stats|{days}|{tenant}", e =>
+        {
+            e.AbsoluteExpirationRelativeToNow = StatsCacheTime;
+            return ComputeStatsAsync(days, tenant, ct);
+        }))!;
+
+    private async Task<StatsResponse> ComputeStatsAsync(int days, string? tenant, CancellationToken ct)
     {
         var now = clock.GetUtcNow();
         var from = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero).AddDays(-(days - 1));
@@ -145,14 +156,14 @@ public sealed class AdminDashboardService(ChatDbContext db, TimeProvider clock)
 
         rows = (sort, descending) switch
         {
-            ("firstSeen", false) => rows.OrderBy(r => r.FirstSeenAt),
-            ("firstSeen", true) => rows.OrderByDescending(r => r.FirstSeenAt),
-            ("sub", false) => rows.OrderBy(r => r.OidcSub),
-            ("sub", true) => rows.OrderByDescending(r => r.OidcSub),
-            ("conversations", false) => rows.OrderBy(r => r.Conversations).ThenBy(r => r.OidcSub),
-            ("conversations", true) => rows.OrderByDescending(r => r.Conversations).ThenBy(r => r.OidcSub),
-            (_, false) => rows.OrderBy(r => r.LastActivity).ThenBy(r => r.OidcSub),
-            _ => rows.OrderByDescending(r => r.LastActivity).ThenBy(r => r.OidcSub),
+            ("firstSeen", false) => rows.OrderBy(r => r.FirstSeenAt).ThenBy(r => r.OidcSub).ThenBy(r => r.TenantId),
+            ("firstSeen", true) => rows.OrderByDescending(r => r.FirstSeenAt).ThenBy(r => r.OidcSub).ThenBy(r => r.TenantId),
+            ("sub", false) => rows.OrderBy(r => r.OidcSub).ThenBy(r => r.TenantId),
+            ("sub", true) => rows.OrderByDescending(r => r.OidcSub).ThenBy(r => r.TenantId),
+            ("conversations", false) => rows.OrderBy(r => r.Conversations).ThenBy(r => r.OidcSub).ThenBy(r => r.TenantId),
+            ("conversations", true) => rows.OrderByDescending(r => r.Conversations).ThenBy(r => r.OidcSub).ThenBy(r => r.TenantId),
+            (_, false) => rows.OrderBy(r => r.LastActivity).ThenBy(r => r.OidcSub).ThenBy(r => r.TenantId),
+            _ => rows.OrderByDescending(r => r.LastActivity).ThenBy(r => r.OidcSub).ThenBy(r => r.TenantId),
         };
 
         var total = await users.CountAsync(ct);

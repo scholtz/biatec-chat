@@ -4,7 +4,6 @@ using System.Text.Json.Serialization;
 using Biatec.Chat.Api.Tenancy;
 using Biatec.Chat.Core.Evidence;
 using Microsoft.AspNetCore.StaticFiles;
-using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Options;
 
 namespace Biatec.Chat.Api.Admin.Dashboard;
@@ -50,6 +49,7 @@ public static class AdminDashboardEndpoints
         services.AddSingleton<AdminAllowList>();
         services.AddSingleton<IAdminSessionStore, RedisAdminSessionStore>();
         services.AddScoped<AdminDashboardService>();
+        services.AddMemoryCache();
         return services;
     }
 
@@ -57,7 +57,7 @@ public static class AdminDashboardEndpoints
     {
         app.MapAdminLogin();
 
-        var api = app.MapGroup("/admin/api").RequireRateLimiting(AdminEndpoints.RateLimitPolicy).RequireAdmin();
+        var api = app.MapGroup("/admin/api").RequireRateLimiting(AdminEndpoints.DashboardRateLimitPolicy).RequireAdmin();
 
         api.MapGet("/me", (HttpContext ctx, TimeProvider clock) =>
         {
@@ -122,7 +122,7 @@ public static class AdminDashboardEndpoints
             var p = AdminAuth.Current(ctx);
             var now = clock.GetUtcNow();
             var session = p.Session;
-            if (p.Impersonation(now) is { } previous) await AdminImpersonations.RecordStopAsync(log, session, previous, "replaced", ctx.RequestAborted);
+            var previous = p.Impersonation(now);
             var end = now.AddMinutes(Math.Max(1, options.Value.ImpersonationMinutes));
             var imp = new AdminImpersonation
             {
@@ -133,7 +133,11 @@ public static class AdminDashboardEndpoints
             await AdminEvidence.AppendDashboardAsync(log, session.Email, AdminEvidence.ImpersonationStart, AdminImpersonations.Target(imp), reason, null,
                 new JsonObject { ["expiresAt"] = imp.ExpiresAt.ToString("O"), ["mode"] = "read-only" }, ctx.RequestAborted);
             session.Impersonation = imp;
-            await store.PutAsync(p.TokenHash, session, AdminAuth.IdleTtl(session, options.Value, now), ctx.RequestAborted);
+            // Only a session that still exists: a sign-out that raced this request stays a sign-out.
+            if (!await store.ReplaceAsync(p.TokenHash, session, AdminAuth.IdleTtl(session, options.Value, now), ctx.RequestAborted))
+                return Results.Json(new { error = "Sign in required." }, statusCode: StatusCodes.Status401Unauthorized);
+            // The one it replaced is closed in the chain only once the new one is in force.
+            if (previous is not null) await AdminImpersonations.RecordStopAsync(log, session, previous, "replaced", ctx.RequestAborted);
             logger.LogInformation("Admin {Email} started a read-only impersonation of a user of tenant {TenantId} until {ExpiresAt:O}.", Onboarding.OperatorAuth.Clean(session.Email), Onboarding.OperatorAuth.Clean(imp.TenantId), imp.ExpiresAt);
             return Results.Json(imp, Json);
         });
@@ -148,7 +152,7 @@ public static class AdminDashboardEndpoints
             if (p.Impersonation(now) is not { } imp) return Results.Json(new { error = "No impersonation is active." }, statusCode: StatusCodes.Status409Conflict);
             await AdminImpersonations.RecordStopAsync(log, p.Session, imp, "stopped", ctx.RequestAborted);
             p.Session.Impersonation = null;
-            await store.PutAsync(p.TokenHash, p.Session, AdminAuth.IdleTtl(p.Session, options.Value, now), ctx.RequestAborted);
+            await store.ReplaceAsync(p.TokenHash, p.Session, AdminAuth.IdleTtl(p.Session, options.Value, now), ctx.RequestAborted);
             return Results.NoContent();
         });
 
@@ -209,18 +213,17 @@ public static class AdminDashboardEndpoints
         res.Headers["X-Frame-Options"] = "DENY";
         res.Headers["Cross-Origin-Opener-Policy"] = "same-origin";
 
-        var root = options.Value.UiDirectory is { Length: > 0 } dir ? dir : Path.Combine(AppContext.BaseDirectory, "admin-ui");
-        if (!Directory.Exists(root)) return Results.NotFound();
+        var root = Path.GetFullPath(options.Value.UiDirectory is { Length: > 0 } dir ? dir : Path.Combine(AppContext.BaseDirectory, "admin-ui"));
         var path = string.IsNullOrEmpty(file) ? "index.html" : file;
         if (path.StartsWith("api/", StringComparison.Ordinal) || path.StartsWith("auth/", StringComparison.Ordinal) || path.Contains('\\') || path.Contains("..") || path.Contains('\0'))
             return Results.NotFound();
 
-        using var provider = new PhysicalFileProvider(root);
-        var info = provider.GetFileInfo(path);
-        if (!info.Exists || info.IsDirectory) return Results.NotFound();
+        var full = Path.GetFullPath(Path.Combine(root, path));
+        if (!full.StartsWith(root.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.Ordinal) || !File.Exists(full))
+            return Results.NotFound();
         if (!ContentTypes.TryGetContentType(path, out var type)) return Results.NotFound();
         // The shell is never cached; hashed assets under assets/ can be.
         res.Headers.CacheControl = path.StartsWith("assets/", StringComparison.Ordinal) ? "public, max-age=31536000, immutable" : "no-store";
-        return Results.File(info.PhysicalPath!, type);
+        return Results.File(full, type);
     }
 }

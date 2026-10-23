@@ -66,7 +66,7 @@ public static class AdminLogin
                 log.LogWarning("Could not start admin sign-in: {ErrorType}", ex.GetType().Name);
                 return Failed(ctx, Errors.LoginFailed);
             }
-        }).WithName("AdminLogin").RequireRateLimiting(AdminEndpoints.RateLimitPolicy);
+        }).WithName("AdminLogin").RequireRateLimiting(AdminEndpoints.DashboardRateLimitPolicy);
         return app;
     }
 

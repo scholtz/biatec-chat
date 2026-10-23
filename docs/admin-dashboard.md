@@ -29,6 +29,12 @@ alice@example.com;bob@example.com
 > an account at Biatec OIDC with an address they do not control, they could become an admin by claiming an admin email.
 > Keep `RequireVerifiedEmail` on unless Biatec OIDC verifies emails some other way.
 
+### Scope
+
+`Admin:Admins` is **platform-wide**, not per tenant: an admin sees the statistics, users and (through impersonation) conversations
+of every tenant on the deployment. The host an admin signs in on only decides which tenant's OIDC client and redirect URI
+perform the sign-in, and the session stays bound to it (it is refused on any other host).
+
 ### Setting the GitHub secret
 
 1. Repository (or environment) secret `ADMINS`: `a@x.com;b@y.com`.
@@ -78,7 +84,7 @@ Rate limit: the operator limiter (`Admin:RateLimitPermits` per `Admin:RateLimitW
 
 - **Overview** (`/admin/#/`): users, active users (7 days), conversations, messages, live sessions by tier, action previews
   by outcome, model token usage (input, output, cache read and write) in total and per model, a daily series for the last
-  7, 30 or 90 days, and one row per tenant.
+  7, 30 or 90 days (statistics are cached for 30 seconds), and one row per tenant.
 - **Users** (`/admin/#/users`): every signed-in user across tenants: subject, tenant, first and last seen, sign-in
   count, conversations. Search (subject), filter by tenant, sort, page. Metadata only: **message content is
   never in the list or the statistics.**
@@ -88,7 +94,7 @@ Rate limit: the operator limiter (`Admin:RateLimitPermits` per `Admin:RateLimitW
 
 **Users are identified by their OIDC subject, not by email.** The product stores no email or other contact data
 (PRODUCT-DESCRIPTION.md: personal data is minimized to the OIDC `sub`), so the dashboard has none either. Look a user up
-in Biatec OIDC to map a subject to a person. Users who signed in before the dashboard existed are listed too (a migration
+in Biatec OIDC to map a subject to a person. A user row is also removed by the retention job once the user has no conversation left and has not been seen for the record window (`Retention:Records`, 7 years). Users who signed in before the dashboard existed are listed too (a migration
 creates their row from their conversations; their sign-in count starts at 0). A user that was erased (`DELETE /session/user-data`) disappears from every view: erasure removes the dashboard's
 user row and clears the subject from their conversations.
 

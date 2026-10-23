@@ -68,7 +68,7 @@ public static class AdminAuth
             // Seen ended: say so in the chain once, then forget it.
             session.Impersonation = null;
             await AdminImpersonations.RecordStopAsync(ctx.RequestServices.GetRequiredService<IEvidenceLog>(), session, imp, "expired", ctx.RequestAborted);
-            await store.PutAsync(hash, session, IdleTtl(session, options, now), ctx.RequestAborted);
+            await store.ReplaceAsync(hash, session, IdleTtl(session, options, now), ctx.RequestAborted);
         }
         else
         {

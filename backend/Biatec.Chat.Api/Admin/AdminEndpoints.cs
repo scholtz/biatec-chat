@@ -66,6 +66,8 @@ public sealed class AdminOptions
 public static class AdminEndpoints
 {
     public const string RateLimitPolicy = "operator";
+    /// <summary>The administrator dashboard's own bucket (same limits), so its traffic never starves the operator API behind a shared IP.</summary>
+    public const string DashboardRateLimitPolicy = "admin-dashboard";
 
     public const string EvidencePath = "/onboarding/operator/evidence";
     public const int DefaultEvidenceLimit = 200;
@@ -81,17 +83,23 @@ public static class AdminEndpoints
         services.AddScoped<TenantPolicyService>();
         services.AddScoped<KbAdminService>();
         services.AddAdminDashboard();
-        services.AddRateLimiter(o => o.AddPolicy(RateLimitPolicy, ctx =>
+        services.AddRateLimiter(o =>
         {
-            var opts = ctx.RequestServices.GetRequiredService<IOptions<AdminOptions>>().Value;
-            return RateLimitPartition.GetFixedWindowLimiter("operator:" + (ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown"), _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = Math.Max(1, opts.RateLimitPermits),
-                Window = TimeSpan.FromSeconds(Math.Max(1, opts.RateLimitWindowSeconds)),
-                QueueLimit = 0,
-            });
-        }));
+            o.AddPolicy(RateLimitPolicy, ctx => PerIp(ctx, "operator:"));
+            o.AddPolicy(DashboardRateLimitPolicy, ctx => PerIp(ctx, "dashboard:"));
+        });
         return services;
+    }
+
+    private static RateLimitPartition<string> PerIp(HttpContext ctx, string prefix)
+    {
+        var opts = ctx.RequestServices.GetRequiredService<IOptions<AdminOptions>>().Value;
+        return RateLimitPartition.GetFixedWindowLimiter(prefix + (ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown"), _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = Math.Max(1, opts.RateLimitPermits),
+            Window = TimeSpan.FromSeconds(Math.Max(1, opts.RateLimitWindowSeconds)),
+            QueueLimit = 0,
+        });
     }
 
     public static IEndpointRouteBuilder MapAdmin(this IEndpointRouteBuilder app)

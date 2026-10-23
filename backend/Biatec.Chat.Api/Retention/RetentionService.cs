@@ -163,6 +163,11 @@ public sealed class RetentionService(ChatDbContext db, IOptions<RetentionOptions
             return (Math.Max(recordIds.Count, orphanIds.Count), ids.Count);
         }, Spent);
 
+        // 5. Dashboard user rows (subject, first/last seen) of users with no conversation left and none seen within the record window.
+        await db.KnownUsers
+            .Where(u => u.LastSeenAt < recordCutoff && !db.Conversations.Any(c => c.TenantId == u.TenantId && c.OidcSub == u.OidcSub))
+            .ExecuteDeleteAsync(ct);
+
         return new RetentionResult(payloads, transcripts, anonymous, records);
     }
 
@@ -213,7 +218,7 @@ public sealed class RetentionService(ChatDbContext db, IOptions<RetentionOptions
         await BlankStepsAsync(db.ActionSteps.Where(st => db.ActionPreviews.Any(p => p.Id == st.PreviewId && ids.Contains(p.ConversationId))), ct);
         await db.Conversations.Where(c => ids.Contains(c.Id))
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.OidcSub, (string?)null).SetProperty(c => c.ErasedAt, now), ct);
-        await db.KnownUsers.Where(u => u.TenantId == tenantId && u.OidcSub == oidcSub).ExecuteDeleteAsync(ct); // the administrator dashboard's user row, with the email
+        await db.KnownUsers.Where(u => u.TenantId == tenantId && u.OidcSub == oidcSub).ExecuteDeleteAsync(ct); // the administrator dashboard's user row
 
         // Move the live sessions off the erased conversations: one fresh conversation per old one.
         var sessions = await db.ChatSessions.Where(s => ids.Contains(s.ConversationId)).Select(s => new { s.Id, s.ConversationId }).ToListAsync(ct);

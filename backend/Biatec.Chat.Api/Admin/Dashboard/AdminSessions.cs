@@ -73,6 +73,8 @@ public interface IAdminSessionStore
 {
     /// <summary>Stores the session under the SHA-256 of its cookie; the entry disappears after <paramref name="ttl"/> (idle timeout).</summary>
     Task PutAsync(string tokenHash, AdminSession session, TimeSpan ttl, CancellationToken ct);
+    /// <summary>Rewrites a session that still exists (false when it ended meanwhile): a concurrent sign-out is never undone by an update.</summary>
+    Task<bool> ReplaceAsync(string tokenHash, AdminSession session, TimeSpan ttl, CancellationToken ct);
     Task<AdminSession?> GetAsync(string tokenHash, CancellationToken ct);
     /// <summary>Restarts the idle timeout.</summary>
     Task TouchAsync(string tokenHash, TimeSpan ttl, CancellationToken ct);
@@ -89,6 +91,12 @@ public sealed class RedisAdminSessionStore(IConnectionMultiplexer redis, IKeyPro
     {
         var blob = await VaultCrypto.SealAsync(keys, Aad(tokenHash), JsonSerializer.SerializeToUtf8Bytes(session), ct);
         await redis.GetDatabase().StringSetAsync(Key(tokenHash), blob, ttl);
+    }
+
+    public async Task<bool> ReplaceAsync(string tokenHash, AdminSession session, TimeSpan ttl, CancellationToken ct)
+    {
+        var blob = await VaultCrypto.SealAsync(keys, Aad(tokenHash), JsonSerializer.SerializeToUtf8Bytes(session), ct);
+        return await redis.GetDatabase().StringSetAsync(Key(tokenHash), blob, ttl, When.Exists);
     }
 
     public async Task<AdminSession?> GetAsync(string tokenHash, CancellationToken ct)

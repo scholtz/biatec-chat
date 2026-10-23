@@ -56,6 +56,12 @@ public sealed class AdminDashboardTests : IAsyncLifetime
     {
         public readonly Dictionary<string, byte[]> Items = new();
         public Task PutAsync(string h, AdminSession s, TimeSpan ttl, CancellationToken ct) { Items[h] = JsonSerializer.SerializeToUtf8Bytes(s); return Task.CompletedTask; }
+        public Task<bool> ReplaceAsync(string h, AdminSession s, TimeSpan ttl, CancellationToken ct)
+        {
+            if (!Items.ContainsKey(h)) return Task.FromResult(false);
+            Items[h] = JsonSerializer.SerializeToUtf8Bytes(s);
+            return Task.FromResult(true);
+        }
         public Task<AdminSession?> GetAsync(string h, CancellationToken ct) =>
             Task.FromResult(Items.TryGetValue(h, out var b) ? JsonSerializer.Deserialize<AdminSession>(b) : null);
         public Task TouchAsync(string h, TimeSpan ttl, CancellationToken ct) => Task.CompletedTask;
@@ -817,5 +823,48 @@ public sealed class AdminDashboardTests : IAsyncLifetime
         using var scope2 = f.Services.CreateScope();
         await scope2.ServiceProvider.GetRequiredService<RetentionService>().EraseAsync("biatec-chat", "sub-3", null, default);
         Assert.False(await db.KnownUsers.AnyAsync(u => u.OidcSub == "sub-3"));
+    }
+
+    [Fact]
+    public async Task Retention_RemovesDashboardRowsOfUsersWithNothingLeftPastTheRecordWindow()
+    {
+        await SeedUserAsync("sub-keep", userTexts: ["hello"]);
+        await using (var db = NewContext())
+        {
+            var old = _time.Now.AddYears(-8);
+            db.KnownUsers.Add(new KnownUser { Id = Guid.NewGuid(), TenantId = "biatec-chat", OidcSub = "sub-old", FirstSeenAt = old, LastSeenAt = old, SignInCount = 1 });
+            // Old, but still has a conversation: stays until that conversation goes.
+            db.KnownUsers.Add(new KnownUser { Id = Guid.NewGuid(), TenantId = "biatec-chat", OidcSub = "sub-old-with-conversation", FirstSeenAt = old, LastSeenAt = old, SignInCount = 1 });
+            db.Conversations.Add(new Conversation { Id = Guid.NewGuid(), TenantId = "biatec-chat", OidcSub = "sub-old-with-conversation", CreatedAt = _time.Now, LastMessageAt = _time.Now });
+            await db.SaveChangesAsync();
+        }
+        using (var scope = Factory().Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<RetentionService>().ApplyAsync(default);
+        await using var check = NewContext();
+        Assert.Equal(["sub-keep", "sub-old-with-conversation"], await check.KnownUsers.OrderBy(u => u.OidcSub).Select(u => u.OidcSub).ToListAsync());
+    }
+
+    [Fact]
+    public async Task Users_PagingIsStableWhenSortKeysTie()
+    {
+        // Same subject in two tenants and identical first-seen times: the order must still be total.
+        await using (var db = NewContext())
+        {
+            for (var i = 0; i < 6; i++)
+                db.KnownUsers.Add(new KnownUser { Id = Guid.NewGuid(), TenantId = i % 2 == 0 ? "biatec-chat" : "other", OidcSub = "same-" + (i / 2), FirstSeenAt = _time.Now, LastSeenAt = _time.Now, SignInCount = 1 });
+            await db.SaveChangesAsync();
+        }
+        var f = Factory();
+        var cookie = await AdminCookieAsync(f);
+        foreach (var sort in new[] { "firstSeen", "sub", "lastActivity", "conversations" })
+        {
+            var seen = new List<string>();
+            for (var page = 1; page <= 3; page++)
+            {
+                var j = await (await SendAsync(f, HttpMethod.Get, $"/admin/api/users?sort={sort}&dir=asc&pageSize=2&page={page}", cookie)).Content.ReadFromJsonAsync<JsonElement>();
+                seen.AddRange(j.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("tenantId").GetString() + "/" + i.GetProperty("sub").GetString()));
+            }
+            Assert.Equal(6, seen.Distinct().Count());
+        }
     }
 }

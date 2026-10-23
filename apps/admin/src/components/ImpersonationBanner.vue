@@ -11,15 +11,16 @@ const now = ref(Date.now());
 const stopping = ref(false);
 const error = ref("");
 let timer: ReturnType<typeof setInterval> | undefined;
-let expiredSent = false;
+let expiredSentAt = 0;
 
 const remaining = computed(() => msUntil(props.impersonation.expiresAt, now.value));
 const label = computed(() => `subject ${shortMiddle(props.impersonation.sub, 24)}`);
 
 function tick() {
   now.value = Date.now();
-  if (remaining.value <= 0 && !expiredSent) {
-    expiredSent = true;
+  // Asks again every 5 s while the server still reports it (the admin's clock may run ahead of the server's).
+  if (remaining.value <= 0 && now.value - expiredSentAt >= 5000) {
+    expiredSentAt = now.value;
     emit("expired");
   }
 }
@@ -29,7 +30,7 @@ onMounted(() => {
   timer = setInterval(tick, 1000);
 });
 onBeforeUnmount(() => clearInterval(timer));
-watch(() => props.impersonation.expiresAt, () => (expiredSent = false));
+watch(() => props.impersonation.expiresAt, () => (expiredSentAt = 0));
 
 async function stop() {
   stopping.value = true;
