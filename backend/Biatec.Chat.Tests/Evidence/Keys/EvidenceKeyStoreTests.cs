@@ -52,15 +52,16 @@ public class EvidenceKeyMaterialTests
 
     private sealed class CapturingLoggerProvider : Microsoft.Extensions.Logging.ILoggerProvider
     {
-        public readonly List<(Microsoft.Extensions.Logging.LogLevel Level, string Message)> Entries = [];
-        public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName) => new Capture(Entries);
+        private readonly List<(Microsoft.Extensions.Logging.LogLevel Level, string Message)> _entries = [];
+        public (Microsoft.Extensions.Logging.LogLevel Level, string Message)[] Entries { get { lock (_entries) return [.. _entries]; } }
+        public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName) => new Capture(_entries);
         public void Dispose() { }
         private sealed class Capture(List<(Microsoft.Extensions.Logging.LogLevel, string)> entries) : Microsoft.Extensions.Logging.ILogger
         {
             public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
             public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
             public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
-                entries.Add((logLevel, formatter(state, exception)));
+                { lock (entries) entries.Add((logLevel, formatter(state, exception))); }
         }
     }
 

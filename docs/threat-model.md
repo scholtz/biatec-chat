@@ -60,9 +60,11 @@ decision points for spending are Biatec OIDC (limits, consent threshold, first-u
 `Evidence:KeyStore=Secret` (the Kubernetes default while no AWS KMS key exists) derives every evidence signing key with HKDF from the one
 `Evidence:Secret:MasterKey` and the key id. Rotation therefore changes which key signs new entries but gives no recovery from a leaked
 master: whoever holds it can derive every past and future key and forge entries whose `signedAt` falls in a key's lifetime. The anchoring
-job (a Merkle root of conversation heads written to Algorand, threat 20) is what bounds back-dating, once it runs. For production prefer
-`Evidence:KeyStore=Kms` (asymmetric keys the backend can use but not export) or independent secrets per key id; the backend logs a warning
-when the Secret store is built. Protect the master like the vault master key: a Kubernetes secret, never in git or config maps.
+job (a Merkle root of conversation heads written to Algorand, threat 20) would bound back-dating, but it is only partly built and has no
+recorded testnet run, so do not count on it yet. For production prefer `Evidence:KeyStore=Kms` (asymmetric keys the backend can use but
+not export); independent secrets per key id would also help but are **not implemented**. The backend logs a warning each time the Secret
+store is built (expected on the current Kubernetes deployment, which has no KMS key). Protect the master like the vault master key: a
+Kubernetes secret, never in git or config maps.
 
 ## Controls this product deliberately does not own
 
