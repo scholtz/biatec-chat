@@ -51,12 +51,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:** ActionPreviewCard resets its review and acknowledgement when anything the review shows changes (intent, network, genesis id, phone approval, and per step the id, title, group hash, accounts, assets with amounts and decimals, fee, slippage, simulation summary), not only when the preview id or awaiting step id changes. Status, countdown and limit headroom are not part of it.
+- **Summary:** ActionPreviewCard resets its review and acknowledgement when anything in the preview changes except status, countdown, limit headroom and per-step result fields (so a field added later fails safe); numbers are compared as strings (6 and "6" are the same content).
 - **Files changed:** packages/chat-widget/src/components/cards/ActionPreviewCard.vue, test/cards.test.ts.
-- **How it was verified:** pnpm --filter @biatec/chat-widget test: 423 passed, 0 failed (10 new tests: nine content changes each disable Confirm until reviewed again, and a same-content update keeps the review); the nine new reset tests fail without the change; vue-tsc clean for src and test.
+- **How it was verified:** pnpm --filter @biatec/chat-widget test: 430 passed, 0 failed (17 new card tests: every reviewed field, an added step, a change while the dialog is open, number-vs-string decimals, same-content update; the reset tests fail without the change); vue-tsc clean for src and test.
 - **Follow-up tasks created:** none.
 - **Unblocks:** none.
-- **Open questions:** None. The backend still checks the group hash on Confirm; this closes the widget-side gap only.
+- **Open questions:** The Confirm click still sends the preview id and the host reads the current group hash when it builds the request, so a replacement arriving between the click and the request is not caught in the widget (the backend checks the hash). Say if you want the reviewed hash captured at click time.
 
 ## Review
 

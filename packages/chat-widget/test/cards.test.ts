@@ -132,6 +132,11 @@ describe("Confirm gating", () => {
       ["group hash", () => step({ groupHash: "evil" })],
       ["intent", () => fixture({ intent: "Send everything to Mallory" })],
       ["network", () => fixture({ network: "algorand-mainnet" })],
+      ["approval reason", () => fixture({ approvalReason: "Phone approval is needed after all" })],
+      ["genesis id", () => fixture({ genesisId: "mainnet-v1.0" })],
+      ["step title", () => step({ title: "Send everything" })],
+      ["phone approval expectation", () => fixture({ expectsAuthenticatorApproval: false })],
+      ["an added step", () => fixture({ steps: [fixture().steps[0]!, { ...fixture().steps[0]!, stepId: "s2", index: 1, groupHash: "def" }] })],
     ])("a different %s disables Confirm until it is reviewed again", async (_name, replacement) => {
       const w = await reviewed();
       await w.setProps({ preview: replacement() });
@@ -139,6 +144,25 @@ describe("Confirm gating", () => {
       expect(w.get("[data-test=confirm]").attributes("disabled")).toBeDefined();
       await review(w); // reviewing the new content enables it again
       expect(w.get("[data-test=confirm]").attributes("disabled")).toBeUndefined();
+    });
+
+    it("the same amount delivered as a number instead of a string keeps the review (the schema allows both)", async () => {
+      const w = await reviewed();
+      const f = fixture();
+      await w.setProps({ preview: fixture({ steps: [{ ...f.steps[0]!, assets: [{ ...f.steps[0]!.assets![0]!, decimals: "6" as unknown as number }] }] }) });
+      await w.vm.$nextTick();
+      expect(w.get("[data-test=confirm]").attributes("disabled")).toBeUndefined();
+    });
+
+    it("a change while the review dialog is open clears the acknowledgement", async () => {
+      const w = card();
+      await review(w, false);
+      document.body.querySelector<HTMLInputElement>(".bc-check input")!.click();
+      await w.vm.$nextTick();
+      await w.setProps({ preview: step({ to: "ADDR_ATTACKER" }) });
+      await w.vm.$nextTick();
+      expect((document.body.querySelector(".bc-check input") as HTMLInputElement | null)?.checked ?? false).toBe(false);
+      expect(w.get("[data-test=confirm]").attributes("disabled")).toBeDefined();
     });
 
     it("an update with the same content (new countdown, same status) keeps the review", async () => {

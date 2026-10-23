@@ -105,32 +105,22 @@ watch(
   },
 );
 
-// Everything the review shows the user. A preview replaced in place (same ids, different content) must not keep the earlier
-// review and acknowledgement (BCHAT-026). Status, countdown and limit headroom are not part of it: they are not what is reviewed.
-const reviewedContent = computed(() =>
-  JSON.stringify([
-    props.preview.intent,
-    props.preview.network,
-    props.preview.genesisId,
-    props.preview.expectsAuthenticatorApproval ?? null,
-    props.preview.steps.map((s) => [
-      s.stepId,
-      s.title,
-      s.groupHash,
-      s.from ?? null,
-      s.to ?? null,
-      (s.assets ?? []).map((a) => [a.assetId, a.symbol, a.amount, a.decimals, a.fiatValue ?? null, a.fiatCurrency ?? null]),
-      s.feeAmount ?? null,
-      s.slippagePercent ?? null,
-      s.simulationSummary ?? null,
-    ]),
-  ]),
-);
+// Everything in the preview except what changes without changing what the user reviewed: the status, the countdown, the limit headroom
+// and the per-step result fields. Anything else (including a field added later) counts, so a new field fails safe by resetting the
+// review. A preview replaced in place under the same ids must not keep the earlier review and acknowledgement (BCHAT-026).
+// Numbers are written as strings so 6 and "6" (the schema allows both) are the same content.
+const reviewedContent = computed(() => {
+  const { status: _s, expiresAt: _e, limit: _l, steps, ...rest } = props.preview;
+  return JSON.stringify(
+    { ...rest, steps: steps.map(({ status: _st, transactionId: _t, explorerUrl: _x, index: _i, ...step }) => step) },
+    (_k, v: unknown) => (typeof v === "number" ? String(v) : v),
+  );
+});
 
 // A reused card instance must not carry review state over to a different action, nor over to the next step of a
 // multi-step preview (the user reviews and acknowledges each group on its own), nor over changed content.
 watch(
-  () => `${props.preview.previewId}:${props.preview.steps.find((s) => s.status === "AwaitingConfirmation")?.stepId ?? ""}:${reviewedContent.value}`,
+  () => [props.preview.previewId, props.preview.steps.find((s) => s.status === "AwaitingConfirmation")?.stepId ?? "", reviewedContent.value].join("|"),
   () => {
     reviewed.value = false;
     acknowledged.value = false;
