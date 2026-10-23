@@ -9,13 +9,13 @@ pnpm audit
 
 ## .NET
 
-`MessagePack` (GHSA-qhrr-8q5h-9q3h, moderate) reaches the backend transitively. `Biatec.Chat.Api` and `Biatec.Chat.Tools` now reference the patched
+`MessagePack` (GHSA-qhrr-8q5h-9q3h, moderate) reaches the backend transitively. `Biatec.Chat.Tools` (referenced by Api and Tests) now references the patched
 `MessagePack 3.1.12` directly, which wins over the transitive version. `dotnet list package --vulnerable --include-transitive` reports nothing.
 
 ## npm
 
 Transitive versions that the direct dependency has not moved to are forced to patched versions in [`pnpm-workspace.yaml`](../pnpm-workspace.yaml) (`overrides`):
-`parse-duration`, `serialize-javascript`, `undici` (6.x line), `sharp`, `nanoid` (5.x line), `@fastify/busboy`, `uuid`, `postcss-selector-parser`, `tinypool`.
+`parse-duration`, `serialize-javascript`, `undici` (6.x line), `sharp`, `nanoid` (5.x line), `@fastify/busboy`, `uuid`, `postcss-selector-parser`, `tinypool`. Each override is bounded to the vulnerable range (`pkg@<fixed: ^fixed`). The forced majors (`uuid` 11, `serialize-javascript` 7, `sharp` 0.35) only affect docs/build tooling that is not in the sidecar image.
 They all arrive through `biatec-concentrated-liquidity-amm` in the builders sidecar (IPFS client, docs tooling and image handling the sidecar never calls: it only
 uses the library's transaction builders). `vitest` is on 4.1.x in every workspace (3.x had advisories in `vitest`, `@vitest/mocker` and `tinypool`).
 Remove an override when the direct dependency ships the patched range; a stale override is harmless but hides the real tree.
@@ -24,6 +24,6 @@ Remove an override when the direct dependency ships the patched range; a stale o
 
 | Package | Severity | Path | Why it stays |
 |---|---|---|---|
-| `braces <= 3.0.3` | high | `biatec-concentrated-liquidity-amm > @easyops-cn/docusaurus-search-local > @docusaurus/... > micromatch > braces` | The advisory lists no patched version. The path is the library's documentation-site tooling (Docusaurus build), not code the sidecar loads. Ask BiatecCLAMM to drop the docs tooling from its runtime `dependencies` (a sibling repository: consume, do not change). |
+| `braces <= 3.0.3` | high | `biatec-concentrated-liquidity-amm > @easyops-cn/docusaurus-search-local > @docusaurus/... > micromatch > braces` | The advisory lists no patched version. The path is the library's documentation-site tooling (Docusaurus build). Checked on the built sidecar image (`builders/sidecar/Dockerfile`, 2026-10-23): it contains no `braces`, no Docusaurus and no `sharp` (`require('sharp')` fails), so none of these advisories ships in what runs. Ask BiatecCLAMM to drop the docs tooling from its runtime `dependencies` (a sibling repository: consume, do not change). |
 
 SBOM and image provenance are tracked separately (BCHAT-018).

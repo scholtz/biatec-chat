@@ -9,8 +9,8 @@ packages:
 # Patched versions of transitive dependencies that the direct dependency (biatec-concentrated-liquidity-amm, vitest) has not moved to yet.
 # docs/security-notes-dependencies.md lists what remains and why.
 overrides:
-  parse-duration: ">=2.1.3"
-  serialize-javascript: ">=7.0.5"
+  "parse-duration@<2.1.3": "^2.1.3"
+  "serialize-javascript@<7.0.5": "^7.0.5"
   "undici@<6.28.1": "^6.28.1"
   "sharp@<0.35.5": "^0.35.5"
   "nanoid@>=4.0.0 <5.1.16": "^5.1.16"

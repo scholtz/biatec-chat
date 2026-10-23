@@ -49,8 +49,8 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:** `MessagePack 3.1.12` referenced directly (Api, Tools); `overrides` in pnpm-workspace.yaml for nine transitive npm packages; vitest 3 -> 4.1.12 everywhere; docs/security-notes-dependencies.md. One advisory remains (`braces`, no patched version, docs tooling path).
-- **Verification:** dotnet list package --vulnerable: clean; `pnpm audit`: 1 high (braces); admin 40, sidecar 63, evidence-verifier 34, e2e 10 tests pass; widget unchanged from main (the 5 DEX playground failures are BCHAT-045).
+- **Summary:** `MessagePack 3.1.12` referenced directly (Tools, flowing to Api and Tests); `overrides` in pnpm-workspace.yaml for nine transitive npm packages; vitest 3 -> 4.1.12 everywhere; docs/security-notes-dependencies.md. One advisory remains (`braces`, no patched version, docs tooling path).
+- **Verification:** the full backend suite hits a recurring local Windows port-exhaustion flake (Postgres connections), so the backend result is the PR's CI run; sidecar image builds and contains none of the flagged packages; widget failing files identical to main before and after the vitest bump; dotnet list package --vulnerable: clean; `pnpm audit`: 1 high (braces); admin 40, sidecar 63, evidence-verifier 34, e2e 10 tests pass; widget unchanged from main (the 5 DEX playground failures are BCHAT-045).
 
 ## Review
 
