@@ -1,7 +1,7 @@
 ---
 id: T-141
 title: "Do not offer Bitcoin transfers until a PSBT signing path exists (BCHAT-037)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -61,7 +61,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 14:13 · approve · PR #334 merged into main @ b95dba8 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 23:00 · claude · (new) → backlog · created from GitHub issue #290 (BCHAT-037); blockers scan: none
 - 2026-10-23 13:13 · scholtz · taken, and session-20261023-1313 · backlog → in-progress · claimed
+- 2026-10-23 14:13 · user · in-progress → done · PR #334 merged into main @ b95dba8 (synced by kanban-sync)
