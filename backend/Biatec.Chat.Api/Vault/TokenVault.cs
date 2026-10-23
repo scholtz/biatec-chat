@@ -56,6 +56,20 @@ public interface ITokenVault
     /// Returns null when the session has no entry or is past its absolute lifetime.
     /// </summary>
     Task<string?> GetAccessTokenAsync(string sessionId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Replaces the entry from the entry itself while holding the same lock the refresh uses, so a refresh and a replacement never
+    /// overwrite each other. <paramref name="replace"/> gets the current entry and returns the new one, or null to leave it as it is.
+    /// Returns the entry that was replaced (its refresh token is now superseded), or null when there was none or nothing was written.
+    /// The default implementation is a plain read and write for in-memory stores; <see cref="TokenVault"/> locks.
+    /// </summary>
+    async Task<TokenVaultEntry?> ReplaceAsync(string sessionId, Func<TokenVaultEntry, TokenVaultEntry?> replace, CancellationToken ct = default)
+    {
+        var current = await GetAsync(sessionId, ct);
+        if (current is null || replace(current) is not { } next) return null;
+        await PutAsync(sessionId, next, ct);
+        return current;
+    }
 }
 
 /// <summary>Tokens encrypted with an envelope scheme and stored in Redis keyed by session id. Nothing here logs a token.</summary>
@@ -124,6 +138,36 @@ public sealed class TokenVault(
 
             if (_clock.GetUtcNow() >= deadline)
                 throw new VaultRefreshException("Timed out waiting for a token refresh in progress.");
+            await Task.Delay(50, ct);
+        }
+    }
+
+    public async Task<TokenVaultEntry?> ReplaceAsync(string sessionId, Func<TokenVaultEntry, TokenVaultEntry?> replace, CancellationToken ct = default)
+    {
+        var deadline = _clock.GetUtcNow() + _o.WaitTimeout;
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            var lockToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
+            if (await Db.StringSetAsync(LockKey(sessionId), lockToken, _o.LockTtl, When.NotExists))
+            {
+                try
+                {
+                    // Read inside the lock: a refresh that rotated the tokens before this point is what gets replaced, and none can run during it.
+                    var current = await GetAsync(sessionId, ct);
+                    if (current is null || replace(current) is not { } next) return null;
+                    var ttl = Ttl(next);
+                    if (ttl <= TimeSpan.Zero) return null;
+                    var blob = await SealAsync(sessionId, next, ct);
+                    var ok = (int)await Db.ScriptEvaluateAsync(WriteIfLocked,
+                        [(RedisKey)LockKey(sessionId), (RedisKey)EntryKey(sessionId)],
+                        [lockToken, blob, (long)Math.Max(1, ttl.TotalMilliseconds)]) == 1;
+                    if (!ok) throw new VaultRefreshException("The vault lock was lost before the replacement was stored.");
+                    return current;
+                }
+                finally { await ReleaseAsync(sessionId, lockToken); }
+            }
+            if (_clock.GetUtcNow() >= deadline) throw new VaultRefreshException("Timed out waiting for the vault lock.");
             await Task.Delay(50, ct);
         }
     }

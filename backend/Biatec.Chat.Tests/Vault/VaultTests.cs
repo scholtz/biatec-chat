@@ -212,4 +212,50 @@ public class VaultTests
         var blob = await VaultCrypto.SealAsync(kms, "kms-session", Encoding.UTF8.GetBytes("payload"), default);
         Assert.Equal("payload", Encoding.UTF8.GetString(await VaultCrypto.OpenAsync(kms, "kms-session", blob, default)));
     }
+
+    [RedisFact]
+    public async Task Vault_replace_waits_for_a_refresh_in_progress_and_replaces_the_rotated_entry()
+    {
+        using var mux = await ConnectionMultiplexer.ConnectAsync(RedisFactAttribute.Conn);
+        var refresher = new CountingRefresher(TimeSpan.FromMilliseconds(500));
+        var vault = NewVault(mux, refresher);
+        var sid = "t-" + Guid.NewGuid();
+        await vault.PutAsync(sid, Entry(DateTimeOffset.UtcNow.AddHours(8), accessExp: DateTimeOffset.UtcNow.AddSeconds(-5)));
+        try
+        {
+            var refresh = vault.GetAccessTokenAsync(sid); // takes the lock and spends 500 ms in the refresher
+            await Task.Delay(100);
+            string? seenRefreshToken = null;
+            var replaced = await vault.ReplaceAsync(sid, current =>
+            {
+                seenRefreshToken = current.RefreshToken;
+                return new TokenVaultEntry { AccessToken = "ELEVATED", AccessExpiresAt = DateTimeOffset.UtcNow.AddMinutes(15), RefreshToken = "ELEVATED-REFRESH", IdToken = current.IdToken, Scopes = ["openid", "sign"], AbsoluteExpiresAt = current.AbsoluteExpiresAt };
+            });
+            await refresh;
+
+            // The replacement saw the entry AFTER the rotation (not the stale one) and is what is stored now; the rotated token is the superseded one.
+            Assert.Equal("refresh-1-from-SECRET-REFRESH-TOKEN", seenRefreshToken);
+            Assert.Equal("refresh-1-from-SECRET-REFRESH-TOKEN", replaced!.RefreshToken);
+            Assert.Equal("ELEVATED-REFRESH", (await vault.GetAsync(sid))!.RefreshToken);
+            Assert.False(await mux.GetDatabase().KeyExistsAsync("biatec:vault:lock:" + sid));
+        }
+        finally { await vault.DeleteAsync(sid); }
+    }
+
+    [RedisFact]
+    public async Task Vault_replace_writes_nothing_when_the_callback_declines_or_the_entry_is_gone()
+    {
+        using var mux = await ConnectionMultiplexer.ConnectAsync(RedisFactAttribute.Conn);
+        var vault = NewVault(mux, new CountingRefresher(TimeSpan.Zero));
+        var sid = "t-" + Guid.NewGuid();
+        Assert.Null(await vault.ReplaceAsync(sid, _ => throw new InvalidOperationException("no entry: never called")));
+        await vault.PutAsync(sid, Entry(DateTimeOffset.UtcNow.AddHours(8)));
+        try
+        {
+            Assert.Null(await vault.ReplaceAsync(sid, _ => null));
+            Assert.Equal("SECRET-REFRESH-TOKEN", (await vault.GetAsync(sid))!.RefreshToken);
+            Assert.False(await mux.GetDatabase().KeyExistsAsync("biatec:vault:lock:" + sid));
+        }
+        finally { await vault.DeleteAsync(sid); }
+    }
 }

@@ -38,16 +38,19 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] The elevated entry is written under the same Redis lock the refresh uses, from the entry read inside it; a refresh and an elevation never overwrite each other.
-- [ ] If the entry changed so that the elevation no longer holds (session ended, expired, an allow-listed scope lost), nothing is written.
-- [ ] The superseded refresh token is revoked at Biatec OIDC when a revocation endpoint is configured, otherwise parked encrypted in PendingRevocation; a failure to do so does not undo the elevation.
-- [ ] Existing elevation and vault tests stay green.
+- [x] The elevated entry is written under the same Redis lock the refresh uses, from the entry read inside it; a refresh and an elevation never overwrite each other.
+- [x] If the entry changed so that the elevation no longer holds (session ended, expired, an allow-listed scope lost), nothing is written.
+- [x] The superseded refresh token is revoked at Biatec OIDC when a revocation endpoint is configured, otherwise parked encrypted in PendingRevocation; a failure to do so does not undo the elevation.
+- [x] Existing elevation and vault tests stay green.
 
 ## Verification
 
 `dotnet test backend --filter "Elevation|Vault|Auth"` (the Redis tests run when Redis is reachable), full suite in CI.
 
 ## Hand-off
+
+- **Summary:** `ITokenVault.ReplaceAsync` (the Redis `TokenVault` takes the refresh lock, reads the entry inside it, writes only while still holding it; in-memory fakes get a default read-and-write). `ElevationCompletion` replaces the entry through it, re-running the expiry and held-scope checks on the entry read inside the lock, then revokes or parks the superseded refresh token (best effort, never undoes the elevation). docs/security-notes-logout-and-revocation.md has a section on it.
+- **Verification:** Elevation + Vault tests: 46 pass (Redis reachable), including a refresh in progress that the replacement waits for and then replaces, a declined replacement, and the superseded token parked after an elevation. Full suite in CI.
 
 ## Review
 
