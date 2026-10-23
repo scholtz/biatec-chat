@@ -1,7 +1,7 @@
 ---
 id: T-207
 title: "Replace the vault entry atomically on elevation and revoke or park the superseded refresh token (BCHAT-036)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -54,8 +54,11 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 13:31 · approve · PR #333 merged into main @ 7d8aa17 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 13:20 · kanban-split · (new) → backlog · created from audit issue #289
 - 2026-10-23 13:20 · scholtz · taken · status stays backlog
 - 2026-10-23 13:20 · session-20261023-1320 · backlog → in-progress · claimed, branch task/T-207
+- 2026-10-23 13:31 · user · in-progress → done · PR #333 merged into main @ 7d8aa17 (synced by kanban-sync)
