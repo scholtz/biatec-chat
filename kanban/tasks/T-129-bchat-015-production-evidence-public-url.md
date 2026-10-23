@@ -1,7 +1,7 @@
 ---
 id: T-129
 title: "Set Evidence__PublicBaseUrl in the production overlay and honour X-Forwarded-Proto from trusted proxies (BCHAT-015)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -59,7 +59,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 10:29 · approve · PR #312 merged into main @ 987daf8 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 11:00 · claude · (new) → backlog · created from GitHub issue #268 (BCHAT-015); blockers scan: none
 - 2026-10-23 10:15 · scholtz · taken, and session-20261023-1015 · backlog → in-progress · claimed
+- 2026-10-23 10:29 · user · in-progress → done · PR #312 merged into main @ 987daf8 (synced by kanban-sync)
