@@ -39,11 +39,11 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] A JWKS key with `use` other than `sig` or `alg` other than `ES256` is refused when it would verify something.
-- [ ] A JWKS with two keys of the same `kid` fails verification.
-- [ ] A bundle whose `exportedAt` lies outside its signing key's lifetime fails.
-- [ ] The CLI refuses an `http://` JWKS URL (exit 2); file paths and `https://` still work.
-- [ ] Existing verifier tests stay green.
+- [x] A JWKS key with `use` other than `sig` or `alg` other than `ES256` is refused when it would verify something.
+- [x] A JWKS with two keys of the same `kid` fails verification.
+- [x] A bundle whose `exportedAt` lies outside its signing key's lifetime fails.
+- [x] The CLI refuses an `http://` JWKS URL (exit 2); file paths and `https://` still work.
+- [x] Existing verifier tests stay green.
 
 ## Verification
 
@@ -51,12 +51,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** A JWK that declares a use other than sig or an alg other than ES256 is never used to verify; a JWKS listing a kid twice fails; the bundle signature's key must have been valid at exportedAt (like entry keys at signedAt); the CLI refuses http:// sources. Redirects are refused when fetching; a present but unparseable created_at/retired_at fails instead of meaning 'no bound'; null or id-less keys and duplicate kids fail cleanly in both JWKS and embedded-key modes.
+- **Files changed:** packages/evidence-verifier/src/verify.ts, src/cli.ts, test/verify.test.ts.
+- **How it was verified:** pnpm --filter evidence-verifier test (34 passed): wrong use/alg, absent use/alg, duplicate kid (JWKS and embedded), null keys, unparseable bounds, malformed exportedAt, exportedAt before created_at and after retired_at, CLI refuses http. The no-redirect guarantee is checked only as a source assertion (no https test server here).
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** The CLI now refuses http:// for the bundle as well as the JWKS, which also blocks verifying against a local dev backend over http; copy the files and pass paths. Tell me if you want an explicit loopback opt-in.
 
 ## Review
 

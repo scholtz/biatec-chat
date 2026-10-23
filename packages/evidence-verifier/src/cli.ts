@@ -1,14 +1,17 @@
 import { readFile } from "node:fs/promises";
 import { verifyBundle, type Jwks } from "./verify.js";
 
-const USAGE = `Usage: biatec-evidence-verify verify <bundle.json> --jwks <jwks.json | https://url> [--json]
+const USAGE = `Usage: biatec-evidence-verify verify <bundle.json | https://url> --jwks <jwks.json | https://url> [--json]   (http:// is refused; redirects are refused)
        biatec-evidence-verify verify <bundle.json> --insecure-embedded-keys [--json]   (self-consistency only)
 
 Exit codes: 0 verified, 1 verification failed, 2 usage or input error.`;
 
 async function load(source: string): Promise<unknown> {
-  if (/^https?:\/\//i.test(source)) {
-    const res = await fetch(source);
+  // A JWKS (or bundle) fetched over plain http can be swapped on the way, which would defeat the point of verifying against it.
+  if (/^http:\/\//i.test(source)) throw new Error(`${source} is not https; refusing to fetch it.`);
+  if (/^https:\/\//i.test(source)) {
+    // Redirects are an error: an https URL must not hand the request to plain http (or anywhere else) behind the caller's back.
+    const res = await fetch(source, { redirect: "error" });
     if (!res.ok) throw new Error(`GET ${source} returned ${res.status}`);
     return res.json();
   }
