@@ -73,6 +73,8 @@ jobs:
           pnpm --filter builders test
           pnpm --filter @biatec/consent-protocol test
           pnpm --filter mock-oidc test
+          pnpm --filter @biatec/consent-protocol conformance
+          pnpm --filter @biatec/evidence-verifier test
       - name: Build builders
         run: pnpm --filter builders build
       # The demo site (apps/demo) typechecks and builds against the widget's dist; its tests run axe on the page.
@@ -123,6 +125,14 @@ jobs:
           push: false
           cache-from: type=gha,scope=builders
           cache-to: type=gha,scope=builders,mode=max
+      - name: Build mock OIDC image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: packages/consent-protocol/mock-oidc/Dockerfile
+          push: false
+          cache-from: type=gha,scope=mock-oidc
+          cache-to: type=gha,scope=mock-oidc,mode=max
       - name: Build demo image
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:

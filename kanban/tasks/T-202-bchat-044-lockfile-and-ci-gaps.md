@@ -38,16 +38,19 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] `docker build -f packages/consent-protocol/mock-oidc/Dockerfile .` succeeds and installs from the workspace lock (no `--no-package-lock`).
-- [ ] A root `.npmrc` sets `ignore-scripts=true` and `pnpm install --frozen-lockfile` plus the whole JS test run still work.
-- [ ] CI runs `pnpm --filter @biatec/evidence-verifier test` and the consent conformance suite, and both pass locally.
-- [ ] The built mock OIDC image still starts and answers on its port.
+- [x] `docker build -f packages/consent-protocol/mock-oidc/Dockerfile .` succeeds and installs from the workspace lock (no `--no-package-lock`).
+- [x] A root `.npmrc` sets `ignore-scripts=true` and `pnpm install --frozen-lockfile` plus the whole JS test run still work.
+- [x] CI runs `pnpm --filter @biatec/evidence-verifier test` and the consent conformance suite, and both pass locally.
+- [x] The built mock OIDC image still starts and answers on its port.
 
 ## Verification
 
 `docker build` of the image and a run with a curl of its port, `pnpm install --frozen-lockfile`, `pnpm --filter @biatec/evidence-verifier test`, `pnpm --filter @biatec/consent-protocol conformance`.
 
 ## Hand-off
+
+- **Summary:** the mock OIDC image now installs with `pnpm install --frozen-lockfile --prod --filter mock-oidc...` from the workspace lock (multi-stage, like the builders image); root `.npmrc` with `ignore-scripts=true`; CI runs the consent conformance suite and the evidence-verifier tests and builds the mock OIDC image; docs/cicd.md updated.
+- **Verification:** `docker build` of the image succeeds and the container answers 200 on `/.well-known/openid-configuration`; `pnpm install --frozen-lockfile` works with `.npmrc`; conformance (23 tests) and evidence-verifier pass locally.
 
 ## Review
 
