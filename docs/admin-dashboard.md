@@ -29,6 +29,10 @@ alice@example.com;bob@example.com
 > an account at Biatec OIDC with an address they do not control, they could become an admin by claiming an admin email.
 > Keep `RequireVerifiedEmail` on unless Biatec OIDC verifies emails some other way.
 
+### Limits
+
+Lists show at most 200 conversations per user (the newest) and a transcript the newest 500 messages; the user's metadata always carries the true counts.
+
 ### Scope
 
 `Admin:Admins` is **platform-wide**, not per tenant: an admin sees the statistics, users and (through impersonation) conversations
@@ -105,7 +109,7 @@ previews and their status); they never act as the user. This follows from the se
 tokens, signing goes from the backend straight to Biatec OIDC with the user's own consent on their own device, and no
 admin session has a user's tokens or the ability to approve anything.
 
-- Starting needs the user (`tenantId`, `sub`) and a **reason** (8 to 500 characters). The reason goes into the permanent, signed audit chain and can never be erased, so it must be a ticket or case reference, **never the user's personal data**. It lasts `Admin:ImpersonationMinutes`
+- Starting needs the user (`tenantId`, `sub`) and a **reason** (8 to 500 characters). The reason goes into the signed audit chain, which is kept whole until the record window (7 years) has passed and cannot be edited or partly erased, so it must be a ticket or case reference, **never the user's personal data**. It lasts `Admin:ImpersonationMinutes`
   (default 30; it never outlives the admin session) and is one at a time per admin: starting another ends the first.
 - While active, a banner shows who is being viewed, the reason and the time left, with a **Stop** button.
 - The view endpoints take **no user in the request**: the impersonated user comes from the admin session, so a request

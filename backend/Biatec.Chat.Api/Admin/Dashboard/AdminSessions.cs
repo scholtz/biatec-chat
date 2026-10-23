@@ -105,8 +105,9 @@ public sealed class RedisAdminSessionStore(IConnectionMultiplexer redis, IKeyPro
     {
         byte[]? blob = await redis.GetDatabase().StringGetAsync(Key(tokenHash));
         if (blob is null) return null;
+        // A blob that does not open or parse is gone as far as the caller is concerned; a failing key provider is not caught (a 5xx, not a sign-out).
         try { return JsonSerializer.Deserialize<AdminSession>(await VaultCrypto.OpenAsync(keys, Aad(tokenHash), blob, ct)); }
-        catch (Exception ex) when (ex is not OperationCanceledException) { return null; }
+        catch (Exception ex) when (ex is System.Security.Cryptography.CryptographicException or JsonException) { return null; }
     }
 
     public Task TouchAsync(string tokenHash, TimeSpan ttl, CancellationToken ct) =>

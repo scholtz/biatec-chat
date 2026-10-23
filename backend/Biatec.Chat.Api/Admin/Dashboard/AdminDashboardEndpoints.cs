@@ -73,6 +73,8 @@ public static class AdminDashboardEndpoints
 
     public static IEndpointRouteBuilder MapAdminDashboard(this IEndpointRouteBuilder app)
     {
+        // Resolved at start so a malformed ADMINS value is reported in the start-up log, not on the first request.
+        _ = app.ServiceProvider.GetRequiredService<AdminAllowList>();
         app.MapAdminLogin();
 
         var api = app.MapGroup("/admin/api").RequireRateLimiting(AdminEndpoints.DashboardRateLimitPolicy).RequireAdmin();
@@ -107,6 +109,7 @@ public static class AdminDashboardEndpoints
 
         api.MapGet("/stats", async (HttpContext ctx, AdminDashboardService svc, CancellationToken ct) =>
         {
+            if (Repeated(ctx)) return Bad("Each parameter may be given once.");
             var days = 30;
             if (ctx.Request.Query.TryGetValue("days", out var d) && (!int.TryParse(d, out days) || days is < 7 or > 365))
                 return Bad("days must be between 7 and 365.");
@@ -118,6 +121,7 @@ public static class AdminDashboardEndpoints
 
         api.MapGet("/users", async (HttpContext ctx, AdminDashboardService svc, CancellationToken ct) =>
         {
+            if (Repeated(ctx)) return Bad("Each parameter may be given once.");
             var sort = Single(ctx, "sort") ?? "lastActivity";
             var dir = Single(ctx, "dir") ?? "desc";
             if (!AdminDashboardService.SortFields.Contains(sort) || dir is not ("asc" or "desc")) return Bad("Unknown sort or direction.");
@@ -132,7 +136,7 @@ public static class AdminDashboardEndpoints
 
         api.MapGet("/user", async (HttpContext ctx, AdminDashboardService svc, CancellationToken ct) =>
         {
-            if (Single(ctx, "tenant") is not { } tenant || Single(ctx, "sub") is not { } sub) return Bad("tenant and sub are required.");
+            if (Repeated(ctx) || Single(ctx, "tenant") is not { } tenant || Single(ctx, "sub") is not { } sub) return Bad("tenant and sub are required, once each.");
             return await svc.UserAsync(tenant, sub, ct) is { } detail ? Results.Json(detail, Json) : NotFound("Unknown user.");
         });
 
@@ -218,6 +222,9 @@ public static class AdminDashboardEndpoints
 
     private static string? Single(HttpContext ctx, string key) =>
         ctx.Request.Query.TryGetValue(key, out var v) && v.Count == 1 && !string.IsNullOrWhiteSpace(v[0]) ? v[0] : null;
+
+    /// <summary>A key sent twice is an error, never read as "no filter".</summary>
+    private static bool Repeated(HttpContext ctx) => ctx.Request.Query.Any(kv => kv.Value.Count > 1);
 
     private static IResult Bad(string message) => Results.Json(new { error = message }, statusCode: StatusCodes.Status400BadRequest);
     private static IResult NotFound(string message) => Results.Json(new { error = message }, statusCode: StatusCodes.Status404NotFound);

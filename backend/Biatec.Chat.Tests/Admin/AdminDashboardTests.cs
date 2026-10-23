@@ -955,4 +955,13 @@ public sealed class AdminDashboardTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode);
         Assert.Contains(r.Headers.GetValues("Set-Cookie"), c => c.StartsWith(AdminAuth.CookieName + "=;"));
     }
+
+    [Fact]
+    public async Task Queries_RepeatedParametersAreRefusedNotReadAsNoFilter()
+    {
+        var f = Factory();
+        var cookie = await AdminCookieAsync(f);
+        foreach (var path in new[] { "/admin/api/stats?tenant=a&tenant=b", "/admin/api/users?tenant=a&tenant=b", "/admin/api/user?tenant=a&tenant=b&sub=x" })
+            Assert.Equal(HttpStatusCode.BadRequest, (await SendAsync(f, HttpMethod.Get, path, cookie)).StatusCode);
+    }
 }
