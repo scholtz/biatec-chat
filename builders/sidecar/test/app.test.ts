@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createApp, type Builder } from "../src/app.js";
+import { createApp, MAX_BODY_BYTES, type Builder } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
 
 const SECRET = "test-secret-0123456789";
@@ -9,6 +9,20 @@ const app = createApp(config, { echo, bad: async () => ({ transactions: ["not ba
 const auth = { "x-internal-secret": SECRET, "content-type": "application/json" };
 const post = (path: string, body: unknown, headers: Record<string, string> = auth) =>
   app.request(path, { method: "POST", headers, body: JSON.stringify(body) });
+
+describe("request size", () => {
+  it("rejects a body above the limit with 413 and keeps serving normal requests", async () => {
+    const big = { network: "testnet", params: { padding: "x".repeat(MAX_BODY_BYTES + 1) } };
+    const r = await post("/v1/build/echo", big);
+    expect(r.status).toBe(413);
+    expect(await r.json()).toEqual({ error: "payload_too_large" });
+    expect((await post("/v1/build/echo", { network: "testnet", params: { ok: true } })).status).toBe(200);
+  });
+  it("answers 401 before reading an oversized body from a caller without the secret", async () => {
+    const big = { network: "testnet", params: { padding: "x".repeat(MAX_BODY_BYTES + 1) } };
+    expect((await post("/v1/build/echo", big, { "content-type": "application/json" })).status).toBe(401);
+  });
+});
 
 describe("config", () => {
   it("refuses to start without a secret", () => {

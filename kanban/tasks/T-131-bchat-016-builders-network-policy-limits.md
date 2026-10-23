@@ -39,10 +39,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] `kubectl kustomize` of both overlays contains the NetworkPolicy; it selects the builders pods and admits only pods labelled as the backend on port 3100.
-- [ ] The sidecar answers 413 to a body above the limit and still accepts normal requests.
-- [ ] The builders HTTP client has a response buffer limit.
-- [ ] Existing sidecar and backend tests stay green.
+- [x] `kubectl kustomize` of both overlays contains the NetworkPolicy; it selects the builders pods and admits only pods labelled as the backend on port 3100.
+- [x] The sidecar answers 413 to a body above the limit and still accepts normal requests.
+- [x] The builders HTTP client has a response buffer limit.
+- [x] Existing sidecar and backend tests stay green.
 
 ## Verification
 
@@ -50,12 +50,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** A NetworkPolicy (k8s/base/builders-networkpolicy.yaml, in both overlays) admits the builders pod on 3100 only from the backend pods; the sidecar rejects request bodies above 256 KiB with 413 (after the secret check); the backend's builders HttpClient buffers at most 4 MiB of response, and a larger one surfaces as a BuilderException. PR #315.
+- **Files changed:** k8s/base/builders-networkpolicy.yaml, k8s/base/kustomization.yaml, builders/sidecar/src/app.ts, builders/sidecar/test/app.test.ts, Tools/Builders/BuildersClient.cs, Tools/Builders/BuildersServiceCollectionExtensions.cs, Tests/Builders/BuildersClientTests.cs.
+- **How it was verified:** pnpm --filter ./builders/sidecar test (63 passed, new body-limit tests); dotnet test backend full suite (1561 passed, incl. an oversized-response test); kubectl kustomize k8s/main and k8s/stage contain the NetworkPolicy.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** A NetworkPolicy for the backend itself is not included: it must admit the ingress controller's namespace (unknown from this repo) and the demo pod, and a wrong selector would cut off all traffic. It is also the missing piece for the X-Forwarded-For spoofing caveat from T-121. Tell me the ingress namespace and I will add it. NetworkPolicies only take effect on a CNI that enforces them; the 4 MiB and 256 KiB limits are constants, not configuration.
 
 ## Review
 

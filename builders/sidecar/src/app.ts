@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { Hono, type Context } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import type { Config } from "./config.js";
 
 /** Context a builder receives. Builders never see the secret. */
@@ -29,6 +30,9 @@ export type Query = (params: unknown, ctx: BuildContext) => Promise<Record<strin
 
 export const SECRET_HEADER = "x-internal-secret";
 
+/** Largest request body the sidecar reads. Real requests are a few KiB (addresses, amounts, a safe payload of up to 16 entries). */
+export const MAX_BODY_BYTES = 256 * 1024;
+
 function secretMatches(provided: string | undefined, expected: string): boolean {
   if (!provided) return false;
   const a = Buffer.from(provided);
@@ -55,6 +59,9 @@ export function createApp(config: Config, builders: Record<string, Builder> = {}
     }
     await next();
   });
+
+  // After the secret check, so an unauthenticated caller gets 401 and nothing is read.
+  app.use("/v1/*", bodyLimit({ maxSize: MAX_BODY_BYTES, onError: (c) => c.json({ error: "payload_too_large" }, 413) }));
 
   app.get("/v1/networks", (c) => c.json({ networks: Object.keys(config.algod).sort() }));
 

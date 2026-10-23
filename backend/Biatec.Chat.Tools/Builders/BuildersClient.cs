@@ -81,7 +81,7 @@ public sealed class BuildersClient(HttpClient http, BuildersOptions options) : I
         if (string.IsNullOrWhiteSpace(builder)) throw new ArgumentException("Builder name is required.", nameof(builder));
         using var request = Request(HttpMethod.Post, $"v1/build/{Uri.EscapeDataString(builder)}");
         request.Content = JsonContent.Create(new { network, @params = parameters }, options: Json);
-        using var response = await http.SendAsync(request, ct);
+        using var response = await SendBoundedAsync(request, builder, ct);
         if (!response.IsSuccessStatusCode)
         {
             var error = await TryReadError(response, ct);
@@ -98,7 +98,7 @@ public sealed class BuildersClient(HttpClient http, BuildersOptions options) : I
         if (string.IsNullOrWhiteSpace(builder)) throw new ArgumentException("Builder name is required.", nameof(builder));
         using var request = Request(HttpMethod.Post, $"v1/build/{Uri.EscapeDataString(builder)}");
         request.Content = JsonContent.Create(new { network, @params = parameters }, options: Json);
-        using var response = await http.SendAsync(request, ct);
+        using var response = await SendBoundedAsync(request, builder, ct);
         if (!response.IsSuccessStatusCode)
         {
             var error = await TryReadError(response, ct);
@@ -117,7 +117,7 @@ public sealed class BuildersClient(HttpClient http, BuildersOptions options) : I
         if (string.IsNullOrWhiteSpace(query)) throw new ArgumentException("Query name is required.", nameof(query));
         using var request = Request(HttpMethod.Post, $"v1/query/{Uri.EscapeDataString(query)}");
         request.Content = JsonContent.Create(new { network, @params = parameters }, options: Json);
-        using var response = await http.SendAsync(request, ct);
+        using var response = await SendBoundedAsync(request, query, ct);
         if (!response.IsSuccessStatusCode)
         {
             var error = await TryReadError(response, ct);
@@ -125,6 +125,19 @@ public sealed class BuildersClient(HttpClient http, BuildersOptions options) : I
         }
         try { return await response.Content.ReadFromJsonAsync<JsonElement>(Json, ct); }
         catch (JsonException) { throw new BuilderException($"Query '{query}' returned invalid JSON.", response.StatusCode); }
+    }
+
+    /// <summary>
+    /// Sends the request; a response above the client's buffer limit (BCHAT-016) becomes a <see cref="BuilderException"/> instead of an
+    /// HttpRequestException, so callers handle it like any other builder failure. Other transport failures are unchanged.
+    /// </summary>
+    private async Task<HttpResponseMessage> SendBoundedAsync(HttpRequestMessage request, string name, CancellationToken ct)
+    {
+        try { return await http.SendAsync(request, ct); }
+        catch (HttpRequestException e) when (e.Message.Contains("maximum buffer size", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new BuilderException($"'{name}' returned a response that is too large.", System.Net.HttpStatusCode.BadGateway);
+        }
     }
 
     private HttpRequestMessage Request(HttpMethod method, string path)

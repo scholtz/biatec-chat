@@ -5,6 +5,9 @@ namespace Biatec.Chat.Tools.Builders;
 
 public static class BuildersServiceCollectionExtensions
 {
+    /// <summary>Largest sidecar response the backend buffers (a group of up to 16 transactions plus facts is tens of KiB; a pool listing a few hundred). A larger one is refused as a <see cref="BuilderException"/>.</summary>
+    public const long MaxResponseBytes = 4 * 1024 * 1024;
+
     /// <summary>Configuration section: <c>Builders:BaseAddress</c>, <c>Builders:InternalSecret</c>, <c>Builders:TimeoutSeconds</c> (env <c>Builders__*</c>).</summary>
     public const string Section = "Builders";
     public const int DefaultTimeoutSeconds = 15;
@@ -23,7 +26,12 @@ public static class BuildersServiceCollectionExtensions
             throw new InvalidOperationException("Builders:InternalSecret (env Builders__InternalSecret) is required.");
         var timeout = int.TryParse(s["TimeoutSeconds"], out var t) && t > 0 ? t : DefaultTimeoutSeconds;
         services.AddSingleton(new BuildersOptions { BaseAddress = uri, InternalSecret = secret });
-        services.AddHttpClient<IBuildersClient, BuildersClient>(c => c.Timeout = TimeSpan.FromSeconds(timeout));
+        services.AddHttpClient<IBuildersClient, BuildersClient>(c =>
+        {
+            c.Timeout = TimeSpan.FromSeconds(timeout);
+            // A sidecar (or anything impersonating it) must not make the backend buffer an unbounded response.
+            c.MaxResponseContentBufferSize = MaxResponseBytes;
+        });
         return services;
     }
 }
