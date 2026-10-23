@@ -15,7 +15,7 @@ updates:
       prefix: "ci"
   - package-ecosystem: docker
     # One entry for every Dockerfile directory: Dependabot groups them, so the digest of a base image shared by several Dockerfiles
-    # (node:22-alpine) moves in one pull request and the images never run on different bases.
+    # (the Node base) moves in one pull request and the images never run on different bases.
     directories:
       - /backend
       - /builders/sidecar
@@ -25,11 +25,11 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
-    # Node moves between LTS lines by a decision, not by a bot: the images run pnpm through corepack, which Node 25 no longer ships, and a
-    # non-LTS release is not what the deploy should run. Digest and minor updates of the current line still come through.
+    # Node 25 is not an LTS line and has no corepack, which the images use to run pnpm: skip it. LTS majors (24, 26, ...) still come as pull requests.
+    # Odd-numbered majors are non-LTS; add the next one here when it appears.
     ignore:
       - dependency-name: node
-        update-types: ["version-update:semver-major"]
+        versions: ["25.x", "27.x"]
     groups:
       docker-base-images:
         patterns: ["*"]
