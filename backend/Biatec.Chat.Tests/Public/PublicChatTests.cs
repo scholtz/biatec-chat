@@ -173,6 +173,29 @@ public sealed class PublicChatTests : IAsyncLifetime
         Assert.NotEqual(r.Continuation, st.ContinuationTokenHash);
     }
 
+    // BCHAT-039: a turn held by another replica answers busy and does not spend the continuation token.
+    [Fact]
+    public async Task Public_ATurnHeldByAnotherReplica_IsBusy_AndKeepsTheContinuationToken()
+    {
+        using var c = _factory.CreateClient();
+        var first = await ChatAsync(c, null, null);
+        Assert.Equal(HttpStatusCode.OK, first.Status);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ChatDbContext>();
+        var conversationId = (await db.PublicConversationStates.SingleAsync()).ConversationId;
+        var held = await Biatec.Chat.Api.Chat.ConversationTurnLock.TryAcquireAsync(db, conversationId, default);
+        Assert.NotNull(held);
+
+        var busy = await ChatAsync(c, first.Conversation, first.Continuation, "second");
+        Assert.Equal(HttpStatusCode.Conflict, busy.Status);
+        Assert.Equal("turn_in_progress", busy.Code);
+
+        await held!.DisposeAsync();
+        var again = await ChatAsync(c, first.Conversation, first.Continuation, "second");
+        Assert.Equal(HttpStatusCode.OK, again.Status); // the same token still works: the busy refusal did not consume it
+    }
+
     [Fact]
     public async Task Public_ReplyRequiresLatestContinuationToken()
     {

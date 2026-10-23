@@ -122,7 +122,7 @@ public static class PublicChatEndpoints
             });
             await db.SaveChangesAsync(ct);
             InFlight.TryAdd(id, 0);
-            return await StreamAsync(ctx, db, orchestrator, tenant, id, capability, newToken, body, false, 0);
+            return await StreamAsync(ctx, db, orchestrator, tenant, id, capability, newToken, body, false, 0, null); // a conversation created a moment ago: nothing else can hold its turn
         }
 
         if (!WellFormed(body.ConversationId))
@@ -156,8 +156,15 @@ public static class PublicChatEndpoints
             return Refuse(StatusCodes.Status409Conflict, PublicCodes.Busy, "A previous message in this conversation is still being answered.");
 
         var streaming = false;
+        IAsyncDisposable? turnLock = null;
         try
         {
+            // The same one-turn-per-conversation rule across replicas as the cookie transport (BCHAT-039). Taken before the continuation
+            // token is consumed, so a turn that is busy elsewhere costs the caller nothing.
+            turnLock = await ConversationTurnLock.TryAcquireAsync(db, conversationId, ct);
+            if (turnLock is null)
+                return Refuse(StatusCodes.Status409Conflict, PublicCodes.Busy, "A previous message in this conversation is still being answered.");
+
             bool replay;
             long replayAfterSeq = 0;
             if (state.ContinuationTokenHash == presented)
@@ -188,17 +195,21 @@ public static class PublicChatEndpoints
                 replay = true;
             }
 
-            streaming = true; // StreamAsync releases the in-flight slot
-            return await StreamAsync(ctx, db, orchestrator, tenant, conversationId, body.ConversationId!, newToken, body, replay, replayAfterSeq);
+            streaming = true; // StreamAsync releases the in-flight slot and the turn lock
+            return await StreamAsync(ctx, db, orchestrator, tenant, conversationId, body.ConversationId!, newToken, body, replay, replayAfterSeq, turnLock);
         }
         finally
         {
-            if (!streaming) InFlight.TryRemove(conversationId, out _);
+            if (!streaming)
+            {
+                InFlight.TryRemove(conversationId, out _);
+                if (turnLock is not null) await turnLock.DisposeAsync();
+            }
         }
     }
 
     private static async Task<IResult> StreamAsync(HttpContext ctx, ChatDbContext db, ConversationOrchestrator orchestrator, Core.Data.Tenant tenant,
-        Guid conversationId, string capability, string newToken, PublicChatRequest body, bool replay, long replayAfterSeq)
+        Guid conversationId, string capability, string newToken, PublicChatRequest body, bool replay, long replayAfterSeq, IAsyncDisposable? turnLock)
     {
         var ct = ctx.RequestAborted;
         try
@@ -239,7 +250,11 @@ public static class PublicChatEndpoints
             }
             return Results.Empty;
         }
-        finally { InFlight.TryRemove(conversationId, out _); }
+        finally
+        {
+            InFlight.TryRemove(conversationId, out _);
+            if (turnLock is not null) await turnLock.DisposeAsync();
+        }
     }
 
     /// <summary>

@@ -51,12 +51,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:** A turn now also takes a PostgreSQL session advisory lock (pg_try_advisory_lock on 'turn:<conversation id>') on a dedicated, non-pooled connection for its whole duration, after the existing in-process check; another replica's turn on the same conversation gets the same 409. Closing the connection always releases the lock, so a crash or abort cannot leave a conversation locked. Other providers get a no-op handle.
-- **Files changed:** Api/Chat/ConversationTurnLock.cs (new), Api/Chat/ChatEndpoints.cs, Tests/Orchestration/ConversationTurnLockTests.cs, Tests/Orchestration/OrchestrationTests.cs.
-- **How it was verified:** Real-PostgreSQL tests with separate connections as separate replicas: second acquire fails while held and works after release, another conversation is unaffected, the turn lock does not collide with the short per-write ConversationLock (T-128), release is idempotent; an endpoint test where an external holder makes the chat endpoint answer 409 without calling the model and the next turn runs after release. Full backend suite run before the PR.
+- **Summary:** A turn takes a PostgreSQL session advisory lock (pg_try_advisory_lock on 'turn:<conversation id>') on a dedicated, non-pooled connection for its whole duration, in both the cookie transport and the public transport (before the continuation token is consumed); another replica's turn on the same conversation gets the usual 409. Releasing is closing that connection (no unlock round trip that could hang), so a crash, abort or killed backend cannot leave a conversation locked; the in-process entry is removed first. Other providers get a no-op handle.
+- **Files changed:** Api/Chat/ConversationTurnLock.cs (new), Api/Chat/ChatEndpoints.cs, Api/Public/PublicChatEndpoints.cs, Tests/Orchestration/ConversationTurnLockTests.cs, OrchestrationTests.cs, Public/PublicChatTests.cs.
+- **How it was verified:** Real-PostgreSQL tests with separate connections as replicas (blocked while held, free after release, other conversation unaffected, no collision with the per-write ConversationLock, a holder whose backend is terminated frees the conversation); endpoint tests for 409 on both transports (the public one keeps the continuation token). Full backend suite run before the PR.
 - **Follow-up tasks created:** none.
 - **Unblocks:** none.
-- **Open questions:** The Seq allocation itself (max+1) is unchanged: with the turn lock it is serialised per conversation, but a writer that bypasses the endpoint (the public chat transport has its own in-process guard) is not covered by this lock. Want the public transport to take it too?
+- **Open questions:** Each running turn now holds one extra database connection, outside the EF pool (max_connections must allow replicas x concurrent turns). The lock needs a direct PostgreSQL connection, not a transaction-mode pooler (PgBouncer, RDS Proxy); the stage and production setups use a direct connection as far as the manifests show. If the lock connection cannot be opened the turn fails like any database outage.
 
 ## Review
 

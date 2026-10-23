@@ -83,16 +83,46 @@ public sealed class ConversationTurnLockTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Releasing_twice_and_a_dropped_holder_do_not_leave_the_conversation_locked()
+    public async Task Releasing_twice_does_not_throw_and_leaves_nothing_held()
     {
         var conversation = Guid.NewGuid();
         await using var a = Replica();
         await using var b = Replica();
         var first = await ConversationTurnLock.TryAcquireAsync(a, conversation, default);
         await first!.DisposeAsync();
-        await first.DisposeAsync(); // idempotent enough: no exception, nothing held
+        await first.DisposeAsync();
         var again = await ConversationTurnLock.TryAcquireAsync(b, conversation, default);
         Assert.NotNull(again);
         await again!.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task A_holder_whose_connection_dies_without_releasing_does_not_leave_the_conversation_locked()
+    {
+        var conversation = Guid.NewGuid();
+        await using var a = Replica();
+        await using var b = Replica();
+        var held = await ConversationTurnLock.TryAcquireAsync(a, conversation, default);
+        Assert.NotNull(held);
+        Assert.Null(await ConversationTurnLock.TryAcquireAsync(b, conversation, default));
+
+        // A crash or a network drop: the server ends the holder's session without any unlock. (Another replica would see exactly this.)
+        await using (var admin = new NpgsqlConnection(AdminCs))
+        {
+            await admin.OpenAsync();
+            await using var kill = new NpgsqlCommand(
+                "SELECT pg_terminate_backend(pid) FROM pg_locks WHERE locktype = 'advisory' AND granted AND pid <> pg_backend_pid() AND database = (SELECT oid FROM pg_database WHERE datname = @db)", admin);
+            kill.Parameters.AddWithValue("db", _dbName);
+            await kill.ExecuteScalarAsync();
+        }
+        IAsyncDisposable? taken = null;
+        for (var i = 0; i < 50 && taken is null; i++)
+        {
+            taken = await ConversationTurnLock.TryAcquireAsync(b, conversation, default);
+            if (taken is null) await Task.Delay(100);
+        }
+        Assert.NotNull(taken);
+        await taken!.DisposeAsync();
+        await held!.DisposeAsync(); // disposing the dead holder must not throw
     }
 }

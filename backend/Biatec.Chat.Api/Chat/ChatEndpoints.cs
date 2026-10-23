@@ -97,8 +97,8 @@ public static class ChatEndpoints
             }
             finally
             {
-                if (turnLock is not null) await turnLock.DisposeAsync();
                 TurnsInFlight.TryRemove(session.ConversationId, out _);
+                if (turnLock is not null) await turnLock.DisposeAsync();
             }
         }).WithName("PostChatMessage").Produces(StatusCodes.Status200OK, contentType: "text/event-stream").LimitSessionCreation();
 
