@@ -48,10 +48,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] `git ls-files apps/biatec_authenticator` lists `android/` and `ios/` sources and no build output or signing material.
-- [ ] The Android manifest has `allowBackup="false"`, no cleartext in the main manifest, exactly one exported component, and the activity sets FLAG_SECURE; the release build type does not use the debug signing key.
-- [ ] `KeystorePlugin` is registered on Android and iOS, and `native/` no longer holds a second copy.
-- [ ] `test/platform_hardening_test.dart` checks these properties and `flutter test` passes; the Android project builds if the SDK licenses allow it here.
+- [x] `git ls-files apps/biatec_authenticator` lists `android/` and `ios/` sources and no build output or signing material.
+- [x] The Android manifest has `allowBackup="false"`, no cleartext in the main manifest, exactly one exported component, and the activity sets FLAG_SECURE; the release build type does not use the debug signing key.
+- [x] `KeystorePlugin` is registered on Android and iOS, and `native/` no longer holds a second copy.
+- [x] `test/platform_hardening_test.dart` checks these properties and `flutter test` passes; the Android project builds if the SDK licenses allow it here.
 
 ## Verification
 
@@ -59,12 +59,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** apps/biatec_authenticator/android and ios are committed (flutter create, then hardened). Android: application id io.biatec.authenticator, no backup/transfer (allowBackup=false, data_extraction_rules.xml), cleartext forbidden in the main manifest and allowed only by the debug manifest, MainActivity (FlutterFragmentActivity for local_auth) is the only component of the app's own manifest, FLAG_SECURE, KeystorePlugin registered, release builds minified and signed from a git-ignored key.properties (the build fails without it; never the debug key). iOS: default ATS, no URL schemes, Face ID usage string, KeystorePlugin registered in AppDelegate, a new ScreenCover hides content in the app switcher and while recording, both Swift files added to the Runner target, bundle id io.biatec.authenticator. native/ is gone: the plugins live where the build compiles them. test/platform_hardening_test.dart keeps these properties; README documents the posture and the release build.
+- **Files changed:** apps/biatec_authenticator/android/**, apps/biatec_authenticator/ios/**, apps/biatec_authenticator/test/platform_hardening_test.dart, apps/biatec_authenticator/README.md, apps/biatec_authenticator/.metadata, native/ removed.
+- **How it was verified:** flutter build apk --debug and --release (with a throwaway keystore, deleted afterwards) succeed, so the Kotlin plugin compiles and R8 accepts the app; the release build without key.properties fails with 'SigningConfig release is missing required property storeFile'; the merged release manifest has allowBackup false, cleartext false, not debuggable, application id io.biatec.authenticator, and exported components only the launcher plus three library receivers guarded by system permissions; flutter test (140 passed incl. the new test) and flutter analyze are clean.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** Nothing was run on a device or emulator, and nothing iOS was compiled (no Xcode): KeystorePlugin.swift, ScreenCover.swift, the AppDelegate change and the hand-edited project.pbxproj entries need a first build on a Mac. The default Flutter launcher icons are still in place. Firebase messaging (already a dependency) brings its google-services config requirement: no google-services.json / GoogleService-Info.plist is committed, so push is not functional until the owner adds them. Whether the iOS app should also ask for ITSAppUsesNonExemptEncryption is the owner's export-compliance call. BCHAT-007 (user-authentication-bound key) and BCHAT-032 (security-level check) are still open and now have compiled code to build on.
 
 ## Review
 
