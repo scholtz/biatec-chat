@@ -113,11 +113,28 @@ Nothing in the cluster has to change: no API-server flag, no public issuer, no A
 
 ### Renewing the client certificate
 
-Client certificates last 365 days (`CERT_DAYS`); the deploy warns when one expires within 14 days. To renew: run
-`RENEW=1 BIATEC_AWS_APPROVED=yes infra/aws/rolesanywhere.sh --apply` on the machine that holds `rolesanywhere-out/`,
-set the two `AWS_CLIENT_*` secrets again, and deploy. The CA certificate (10 years) and the ARNs do not change. To
-revoke an environment at once, disable the trust anchor or the profile in the Roles Anywhere console, or delete the
-certificate secret.
+Client certificates last 90 days by default (`CERT_DAYS`; the CA lasts 10 years). Two checks warn before one lapses: the
+deploy fails a certificate that expires within 14 days, and the weekly workflow `rolesanywhere-expiry.yml` reads the
+`AWS_CLIENT_CERT` secret of Stage and Production and fails (GitHub emails the watchers) inside a 30-day window. Run it by
+hand on files with `infra/aws/rolesanywhere-expiry.sh --days 30 certificate.pem`.
+
+To renew: run `RENEW=1 BIATEC_AWS_APPROVED=yes infra/aws/rolesanywhere.sh --apply` on the machine that holds
+`rolesanywhere-out/`, set the two `AWS_CLIENT_*` secrets again, and deploy. The CA certificate and the ARNs do not change.
+Rotation of the GitHub secrets is manual: it needs a credential with write access to them.
+
+### Revoking one environment's certificate
+
+If a certificate or its key leaked, revoke just that environment without touching the other:
+
+```
+BIATEC_AWS_APPROVED=yes infra/aws/rolesanywhere-revoke.sh stage --apply      # without --apply it only prints the plan
+```
+
+It records the certificate in `rolesanywhere-out/crl/revoked.index` (kept, so earlier revocations stay in every later CRL),
+signs a certificate revocation list with the CA and imports it into the trust anchor as `biatec-chat-crl` (updated on later
+runs). Roles Anywhere then refuses that certificate within minutes. Afterwards renew as above (`RENEW=1`) and replace the
+secrets of that environment. The CRL is valid for `CRL_DAYS` (365); re-run the script before it lapses, because Roles Anywhere
+stops trusting an expired CRL. Disabling the trust anchor or the profile in the console still stops everything at once.
 
 ## 4. Check that it works
 

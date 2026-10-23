@@ -10,7 +10,7 @@
 # role trust and policy are updated (use it to add an environment, or RENEW=1 to replace client certificates).
 # DEFAULT IS DRY-RUN:
 #   BIATEC_AWS_APPROVED=yes ./rolesanywhere.sh --apply
-# Environment: CERTS_ONLY=1 (local files only, no AWS), ENVIRONMENTS="stage main" (certificate names), OUT_DIR=./rolesanywhere-out, CERT_DAYS=365, RENEW=1.
+# Environment: CERTS_ONLY=1 (local files only, no AWS), ENVIRONMENTS="stage main" (certificate names), OUT_DIR=./rolesanywhere-out, CERT_DAYS=90 (rotate before it lapses: rolesanywhere-expiry.sh and the weekly workflow warn 30 days ahead), RENEW=1.
 set -euo pipefail
 export MSYS2_ARG_CONV_EXCL="/CN="  # Git Bash on Windows would rewrite the /CN= subject as a path
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,7 +19,7 @@ source "$DIR/common.sh"
 
 ENVIRONMENTS="${ENVIRONMENTS:-stage main}"
 OUT_DIR="${OUT_DIR:-./rolesanywhere-out}"
-CERT_DAYS="${CERT_DAYS:-365}"
+CERT_DAYS="${CERT_DAYS:-90}"
 ROLE="$NAME_PREFIX-bedrock-role"
 ANCHOR_NAME="$NAME_PREFIX"
 PROFILE_NAME="$NAME_PREFIX"

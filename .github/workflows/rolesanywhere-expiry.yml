@@ -1,0 +1,36 @@
+# Weekly: warn before the Roles Anywhere client certificate of Stage or Production expires (BCHAT-019). The deploy only checks
+# when it runs, so a certificate could lapse between deploys. Reads the AWS_CLIENT_CERT secret of each environment, offline
+# (infra/aws/rolesanywhere-expiry.sh), and fails the run (GitHub then emails the repository watchers) inside the window.
+# Note: an environment with required reviewers makes the job wait for approval; keep it reviewer-free for this check.
+name: rolesanywhere-expiry
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Warn when a certificate expires within this many days"
+        default: "30"
+
+permissions:
+  contents: read
+
+jobs:
+  expiry:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [Stage, Production]
+    environment: ${{ matrix.environment }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check the client certificate
+        env:
+          AWS_CLIENT_CERT: ${{ secrets.AWS_CLIENT_CERT }}
+          DAYS: ${{ inputs.days || '30' }}
+        run: |
+          if [ -z "$AWS_CLIENT_CERT" ]; then echo "::error::AWS_CLIENT_CERT is not set on the ${{ matrix.environment }} environment."; exit 1; fi
+          printf '%s\n' "$AWS_CLIENT_CERT" > "$RUNNER_TEMP/client.pem"
+          bash infra/aws/rolesanywhere-expiry.sh --days "$DAYS" "$RUNNER_TEMP/client.pem"
