@@ -1,7 +1,7 @@
 ---
 id: T-206
 title: "A global request body limit; bound the load an unauthenticated /health can cause (BCHAT-035)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -54,8 +54,11 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 13:19 · approve · PR #332 merged into main @ ed6bec9 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 13:06 · kanban-split · (new) → backlog · created from audit issue #288
 - 2026-10-23 13:06 · scholtz · taken · status stays backlog
 - 2026-10-23 13:06 · session-20261023-1306 · backlog → in-progress · claimed, branch task/T-206
+- 2026-10-23 13:19 · user · in-progress → done · PR #332 merged into main @ ed6bec9 (synced by kanban-sync)
