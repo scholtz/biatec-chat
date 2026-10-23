@@ -1,0 +1,19 @@
+# The one cluster-scope right of the STAGE deploy identity: the fixed hostPath volumes of k8s/stage/storage.yaml (the cluster has no
+# dynamic provisioner). Production has no volumes yet; give it its own copy with its volume names when it gets a storage.yaml.
+# `create` cannot be limited by name, so a volume can be created but only the named ones can be read or changed afterwards;
+# `list` is for the deploy's diagnostics (`kubectl get pv`). Bind it with a ClusterRoleBinding to the same service account:
+#   kubectl create clusterrolebinding biatec-chat-stage-deploy-pv --clusterrole=biatec-chat-stage-deploy-pv --serviceaccount=<ns>:<sa>
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: biatec-chat-stage-deploy-pv
+  labels:
+    app.kubernetes.io/part-of: biatec-chat
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["create", "list"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    resourceNames: ["biatec-chat-stage-postgres", "biatec-chat-stage-redis"]
+    verbs: ["get", "patch"]

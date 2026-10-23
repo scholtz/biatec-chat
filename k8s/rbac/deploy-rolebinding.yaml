@@ -1,0 +1,16 @@
+# Binds the deploy Role to the service account of the KUBE_CONFIG secret. Replace the two placeholders, then:
+#   kubectl apply -n biatec-chat-stage -f k8s/rbac/deploy-rolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-actions-deploy
+  labels:
+    app.kubernetes.io/part-of: biatec-chat
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: biatec-chat-deploy
+subjects:
+  - kind: ServiceAccount
+    name: SERVICE-ACCOUNT-OF-KUBE_CONFIG
+    namespace: NAMESPACE-OF-THE-SERVICE-ACCOUNT

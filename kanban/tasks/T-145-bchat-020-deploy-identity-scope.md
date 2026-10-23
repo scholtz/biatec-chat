@@ -45,14 +45,14 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] `k8s/rbac/deploy-role.yaml` is a namespaced Role with explicit resources and verbs only (no wildcards, no `delete`, no RBAC
+- [x] `k8s/rbac/deploy-role.yaml` is a namespaced Role with explicit resources and verbs only (no wildcards, no `delete`, no RBAC
       objects, no `secrets` list/watch, secrets limited to the named ones where the verb allows it) and a check fails when a rendered
       resource of `k8s/stage` or `k8s/main` is not covered, or when a forbidden rule appears.
-- [ ] `deploy.yml` warns when the deploy identity can edit RBAC or read all secrets in the namespace, and when the kubeconfig token
+- [x] `deploy.yml` warns when the deploy identity can edit RBAC or read all secrets in the namespace, and when the kubeconfig token
       has no expiry or expires within 7 days; an expired token fails with a clear message.
-- [ ] `docs/cicd.md` replaces the `admin` binding with the scoped Role, documents a time-limited token with rotation, and the
+- [x] `docs/cicd.md` replaces the `admin` binding with the scoped Role, documents a time-limited token with rotation, and the
       required-reviewer and branch-policy commands.
-- [ ] The check runs in CI next to the overlay render.
+- [x] The check runs in CI next to the overlay render.
 
 ## Verification
 
@@ -60,12 +60,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** k8s/rbac holds a namespaced Role limited to what deploy.yml does (apply without delete, three named secrets, pods/exec on the Postgres pod only, no secrets list, no RBAC objects), a RoleBinding template and a stage-only ClusterRole for the two named PersistentVolumes. check_role.py renders both overlays, reads deploy.yml and fails when anything is uncovered or too wide (its --self-test shows 12 bad roles are rejected); CI runs it. deploy.yml gets a 'Check the deploy identity' step (preflight.sh): an expired kubeconfig token fails clearly; no expiry, expiry within 7 days, reading all secrets or editing RBAC are warnings. docs/cicd.md replaces the admin binding, adds the token and required-reviewer/branch-policy runbook.
+- **Files changed:** k8s/rbac/{deploy-role,deploy-rolebinding,deploy-pv-clusterrole}.yaml, k8s/rbac/check_role.py, k8s/rbac/preflight.sh, k8s/rbac/test-preflight.sh, .github/workflows/deploy.yml, .github/workflows/ci.yml, docs/cicd.md.
+- **How it was verified:** python k8s/rbac/check_role.py passes on the rendered stage and main overlays; --self-test rejects all 12 mutated roles; k8s/rbac/test-preflight.sh passes 9 checks (valid, expiring, expired, no exp, opaque, no token, wide identity, scoped identity, missing namespace) with a fake kubectl and forged JWTs. Both workflows parse as YAML.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** Nothing was applied to a cluster or to GitHub: the Role is untested against a real API server, so the first bind should be tried on Stage with a deploy run (kubectl auth can-i --list as the account is a quick check). The required-reviewer and branch-policy commands are documented, not run; Production reviewers also hold the weekly rolesanywhere-expiry check of Production until approved. Identity warnings do not fail the deploy so existing environments can move on the cluster admin's schedule. PV create cannot be limited by name, and pods/exec still grants psql access to the Postgres pod, which the migration needs.
 
 ## Review
 

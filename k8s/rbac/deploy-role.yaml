@@ -1,0 +1,44 @@
+# The rights of the deploy identity (the service account behind the KUBE_CONFIG secret) in ONE environment namespace, and nothing more
+# (BCHAT-020). A cluster admin applies it once per namespace:
+#   kubectl apply -n biatec-chat-stage -f k8s/rbac/deploy-role.yaml
+# and binds it with deploy-rolebinding.yaml. It replaces the built-in `admin` ClusterRole, which could read every secret, edit RBAC and
+# exec into any pod. Every rule below is something .github/workflows/deploy.yml does; k8s/rbac/check_role.py (run in CI) fails when a
+# resource of the rendered overlays, a secret the deploy writes or the pod it execs into is not covered, or when a rule is too wide.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: biatec-chat-deploy
+  labels:
+    app.kubernetes.io/part-of: biatec-chat
+rules:
+  # `kubectl apply` of the rendered overlay: read, create, patch. No delete: removing something is a reviewed manual step.
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "list", "watch", "create", "patch"]
+  - apiGroups: [""]
+    resources: ["configmaps", "services", "serviceaccounts"]
+    verbs: ["get", "create", "patch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "create", "patch"]
+  # The three secrets the deploy writes (`kubectl create secret generic ... | kubectl apply`). Reading is limited to those names, there is
+  # no list or watch, so the account cannot read the other secrets of the namespace. `create` cannot be limited by name.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["biatec-chat-generated", "biatec-chat-secrets", "biatec-chat-aws"]
+    verbs: ["get", "patch"]
+  # Diagnostics after a failed rollout, and what `kubectl exec statefulset/...` needs to find its pod.
+  - apiGroups: [""]
+    resources: ["pods", "persistentvolumeclaims", "events"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # The database migration and the tenant upsert run psql in the Postgres pod, and in no other pod.
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    resourceNames: ["biatec-chat-postgres-0"]
+    verbs: ["create"]
