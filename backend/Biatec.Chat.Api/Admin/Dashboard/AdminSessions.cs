@@ -52,6 +52,8 @@ public sealed class AdminImpersonation
 {
     public required string TenantId { get; init; }
     public required string Sub { get; init; }
+    /// <summary>The dashboard's random id of the user row (<see cref="Biatec.Chat.Core.Data.KnownUser.Id"/>): how the evidence chain names them.</summary>
+    public required Guid UserId { get; init; }
     public required string Reason { get; init; }
     public required DateTimeOffset StartedAt { get; init; }
     public required DateTimeOffset ExpiresAt { get; init; }

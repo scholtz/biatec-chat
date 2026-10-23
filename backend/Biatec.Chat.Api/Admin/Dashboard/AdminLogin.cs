@@ -139,7 +139,7 @@ public static class AdminLogin
         {
             // The sign-in is recorded first: no evidence, no session.
             await AdminEvidence.AppendDashboardAsync(sp.GetRequiredService<IEvidenceLog>(), session.Email, AdminEvidence.DashboardSignIn, "dashboard", null, null,
-                new JsonObject { ["tenantId"] = tenant.Id, ["subjectHash"] = SubjectHash(identity.Subject) }, ct);
+                new JsonObject { ["tenantId"] = tenant.Id }, ct);
             await sp.GetRequiredService<IAdminSessionStore>().PutAsync(AuthEndpoints.Hash(token), session, AdminAuth.IdleTtl(session, options, now), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -152,9 +152,6 @@ public static class AdminLogin
         log.LogInformation("Admin {Email} signed in to the dashboard from {RemoteIp}.", Onboarding.OperatorAuth.Clean(session.Email), Onboarding.OperatorAuth.Remote(ctx));
         return Results.Redirect(Home(tenant, ctx.Request), permanent: false);
     }
-
-    /// <summary>SHA-256 of a subject in lower-case hex: how the evidence chain names a user without holding the subject.</summary>
-    internal static string SubjectHash(string sub) => Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(sub)));
 
     private static string Home(Tenant tenant, HttpRequest req) => BackendUrls.Base(tenant, req) + "/admin/";
 

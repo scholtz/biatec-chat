@@ -6,6 +6,7 @@
 apps
 !apps/admin
 apps/admin/dist
+**/node_modules
 builders
 e2e
 docs

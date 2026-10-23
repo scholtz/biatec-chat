@@ -10,7 +10,7 @@ const item = (i: number) => ({
 
 function setup(total = 120) {
   return mockFetch((url) => {
-    if (url.startsWith("api/stats")) return [200, { tenants: [{ id: "biatec-chat", host: "chat.biatec.io", users: 1, conversations: 1 }] }];
+    if (url.startsWith("api/tenants")) return [200, { tenants: [{ id: "biatec-chat", host: "chat.biatec.io" }] }];
     return [200, { items: [item(1), item(2)], total, page: 1, pageSize: 25 }];
   });
 }
@@ -104,7 +104,7 @@ describe("Users view", () => {
 
   it("shows an error with retry", async () => {
     let fail = true;
-    mockFetch((url) => (url.startsWith("api/stats") ? [200, { tenants: [] }] : fail ? [500, { error: "boom" }] : [200, { items: [], total: 0, page: 1, pageSize: 25 }]));
+    mockFetch((url) => (url.startsWith("api/tenants") ? [200, { tenants: [] }] : fail ? [500, { error: "boom" }] : [200, { items: [], total: 0, page: 1, pageSize: 25 }]));
     const w = mount(Users);
     await settle();
     expect(w.get("[data-test=error-text]").text()).toBe("boom");

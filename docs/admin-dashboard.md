@@ -113,7 +113,7 @@ admin session has a user's tokens or the ability to approve anything.
 - **No write path exists** in the view: the dashboard has no send, confirm, cancel, approve or sign endpoint at all.
 - **Audit:** start, stop (also replacement by another impersonation, and logout), and every conversation opened are appended to the signed
   **admin evidence chain** ([admin-api.md](admin-api.md), `GET /onboarding/operator/evidence`), with the admin's email,
-  the user's tenant and a hash of the subject (not the subject itself), the reason and, for a conversation, its id. Admin
+  the user's tenant and the random id of their dashboard row (neither the subject nor anything derived from it: the chain is permanent, and erasing the user deletes the row, so the id then names no one), the reason and, for a conversation, its id. Admin
   sign-in and sign-out are recorded too. The chain is verifiable offline like conversation evidence.
 - Message text is stored after redaction (PRODUCT-DESCRIPTION.md, Session Recording And Evidence); the view shows exactly
   that. Raw tool payloads and unsigned transaction groups are not exposed: tool calls are shown by name only.
@@ -128,6 +128,7 @@ non-admin is also `401` (never reveals the allow-list). Non-GET calls need the h
 | `GET /admin/auth/login` | Start sign-in (browser navigation). |
 | `GET /admin/api/me` | `{ email, tenantId, expiresAt, impersonation }` (`email` is the admin's). `impersonation` is `null` or `{ tenantId, sub, reason, startedAt, expiresAt }`. |
 | `POST /admin/api/logout` | End the admin session and clear the cookie. |
+| `GET /admin/api/tenants` | `{ tenants: [ { id, host } ] }` for the filters. |
 | `GET /admin/api/stats?days=30&tenant=` | Statistics (`days` 7 to 365). |
 | `GET /admin/api/users?q=&tenant=&sort=&dir=&page=&pageSize=` | User list. `sort`: `lastActivity` (default), `firstSeen`, `sub`, `conversations`. `q` matches the subject. `dir`: `desc` (default) or `asc`. `pageSize` 1 to 100 (default 25). |
 | `GET /admin/api/user?tenant=&sub=` | User detail with conversations (metadata). |
@@ -210,6 +211,6 @@ The backend image builds the app in a Node stage (`backend/Dockerfile`) and copi
 | Token theft from the browser | no token ever reaches the browser; the backend keeps none for admins |
 | Cookie theft | `HttpOnly`, `Secure`, `__Host-`, opaque, server-side revocation (logout, expiry) |
 | Admin abuse of impersonation | reason required, time-boxed, read-only, every start, stop and conversation view in the signed admin evidence chain |
-| Subject in URLs (`/admin/api/user?sub=`, search) reaches proxy logs | The subject is a pseudonymous OIDC identifier, not contact data; the audit chain still stores only its hash |
+| Subject in URLs (`/admin/api/user?sub=`, search) reaches proxy logs | The subject is a pseudonymous OIDC identifier, not contact data; the audit chain stores neither it nor a hash of it, only the random row id |
 | Dashboard reads data of an erased user | erasure clears the subject from conversations and deletes the user row |
 | XSS in the dashboard | Vue escaping, no `v-html`, CSP `script-src 'self'`, transcripts rendered as text |

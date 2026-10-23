@@ -23,9 +23,11 @@ public static class AdminImpersonations
         AdminEvidence.AppendDashboardAsync(log, session.Email, AdminEvidence.ImpersonationStop, Target(imp), imp.Reason,
             new JsonObject { ["startedAt"] = imp.StartedAt.ToString("O") }, new JsonObject { ["how"] = how }, ct);
 
-    /// <summary>The user is named by tenant and a hash of the subject: the chain never holds the subject itself.</summary>
-    public static string Target(AdminImpersonation imp) => $"user:{imp.TenantId}:{AdminLogin.SubjectHash(imp.Sub)}";
-    public static string Target(string tenantId, string sub) => $"user:{tenantId}:{AdminLogin.SubjectHash(sub)}";
+    /// <summary>
+    /// The user is named by tenant and the random id of their dashboard row. The chain is permanent and signed, so it holds neither
+    /// the subject nor anything derived from it: erasing the user deletes the row, and the id then names no one.
+    /// </summary>
+    public static string Target(AdminImpersonation imp) => $"user:{imp.TenantId}:{imp.UserId:N}";
 
     /// <summary>A reason as the audit log keeps it: trimmed, no control characters.</summary>
     public static string? CleanReason(string? reason)
@@ -84,6 +86,9 @@ public static class AdminDashboardEndpoints
             return Results.NoContent();
         });
 
+        // Just the tenants, for the filters: the overview statistics are far too heavy to load for a dropdown.
+        api.MapGet("/tenants", async (AdminDashboardService svc, CancellationToken ct) => Results.Json(new { tenants = await svc.TenantsAsync(ct) }, Json));
+
         api.MapGet("/stats", async (HttpContext ctx, AdminDashboardService svc, CancellationToken ct) =>
         {
             var days = 30;
@@ -136,7 +141,7 @@ public static class AdminDashboardEndpoints
             var end = now.AddMinutes(Math.Max(1, options.Value.ImpersonationMinutes));
             var imp = new AdminImpersonation
             {
-                TenantId = user.TenantId, Sub = user.OidcSub, Reason = reason, StartedAt = now,
+                TenantId = user.TenantId, Sub = user.OidcSub, UserId = user.Id, Reason = reason, StartedAt = now,
                 ExpiresAt = end < session.ExpiresAt ? end : session.ExpiresAt,
             };
             var ttl = AdminAuth.IdleTtl(session, options.Value, now);
@@ -152,7 +157,7 @@ public static class AdminDashboardEndpoints
             }
             catch
             {
-                session.Impersonation = null;
+                session.Impersonation = previous; // the one that was valid stays valid
                 await store.ReplaceAsync(p.TokenHash, session, ttl, CancellationToken.None);
                 throw;
             }
@@ -172,14 +177,19 @@ public static class AdminDashboardEndpoints
         api.MapGet("/impersonation", (HttpContext ctx, TimeProvider clock) =>
             AdminAuth.Current(ctx).Impersonation(clock.GetUtcNow()) is { } imp ? Results.Json(imp, Json) : NotFound("No impersonation is active."));
 
-        api.MapDelete("/impersonation", async (HttpContext ctx, IAdminSessionStore store, IEvidenceLog log, IOptions<AdminOptions> options, TimeProvider clock) =>
+        api.MapDelete("/impersonation", async (HttpContext ctx, IAdminSessionStore store, IEvidenceLog log, IOptions<AdminOptions> options, TimeProvider clock, ILogger<AdminDashboardService> logger) =>
         {
             var p = AdminAuth.Current(ctx);
             var now = clock.GetUtcNow();
             if (p.Impersonation(now) is not { } imp) return Results.Json(new { error = "No impersonation is active." }, statusCode: StatusCodes.Status409Conflict);
-            await AdminImpersonations.RecordStopAsync(log, p.Session, imp, "stopped", ctx.RequestAborted);
+            // Ended first: a failing evidence write must never leave the view open.
             p.Session.Impersonation = null;
             await store.ReplaceAsync(p.TokenHash, p.Session, AdminAuth.IdleTtl(p.Session, options.Value, now), ctx.RequestAborted);
+            try { await AdminImpersonations.RecordStopAsync(log, p.Session, imp, "stopped", ctx.RequestAborted); }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError("The end of an impersonation by {Email} could not be recorded: {ErrorType}", Onboarding.OperatorAuth.Clean(p.Email), ex.GetType().Name);
+            }
             return Results.NoContent();
         });
 

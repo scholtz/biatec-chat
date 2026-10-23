@@ -684,7 +684,11 @@ public sealed class AdminDashboardTests : IAsyncLifetime
         Assert.All(chain, c => Assert.Equal("alice@example.test", c["operator"]!.GetValue<string>()));
         var startEntry = chain[1];
         Assert.Equal("Support ticket 4711", startEntry["reason"]!.GetValue<string>());
-        Assert.Equal(AdminImpersonations.Target("biatec-chat", "sub-1"), startEntry["target"]!.GetValue<string>());
+        await using (var db = NewContext())
+        {
+            var userId = (await db.KnownUsers.SingleAsync(u => u.OidcSub == "sub-1")).Id;
+            Assert.Equal($"user:biatec-chat:{userId:N}", startEntry["target"]!.GetValue<string>());
+        }
         Assert.Equal(convId.ToString(), chain[2]["after"]!["conversationId"]!.GetValue<string>());
         Assert.Equal("stopped", chain[3]["after"]!["how"]!.GetValue<string>());
         var raw = string.Join("\n", chain.Select(c => c.ToJsonString()));

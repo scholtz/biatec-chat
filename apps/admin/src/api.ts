@@ -83,6 +83,7 @@ export function normalizeConversations(raw: unknown): ConversationMeta[] {
 export const api = {
   me: () => request<Me>("GET", "api/me"),
   logout: () => request<void>("POST", "api/logout", {}),
+  tenants: () => request<{ tenants: { id: string; host: string }[] }>("GET", "api/tenants"),
   stats: (days: number, tenant?: string | null) => {
     const p = new URLSearchParams({ days: String(days) });
     if (tenant) p.set("tenant", tenant);

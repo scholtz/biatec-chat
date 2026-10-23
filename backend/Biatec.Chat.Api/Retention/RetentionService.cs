@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace Biatec.Chat.Api.Retention;
 
-public sealed record RetentionResult(int PayloadsDeleted, int TranscriptsCleared, int AnonymousRemoved, int RecordsRemoved);
+public sealed record RetentionResult(int PayloadsDeleted, int TranscriptsCleared, int AnonymousRemoved, int RecordsRemoved, int UsersRemoved = 0);
 
 public enum ErasureOutcome { Erased, ActionInFlight }
 
@@ -164,11 +164,16 @@ public sealed class RetentionService(ChatDbContext db, IOptions<RetentionOptions
         }, Spent);
 
         // 5. Dashboard user rows (subject, first/last seen) of users with no conversation left and none seen within the record window.
-        await db.KnownUsers
-            .Where(u => u.LastSeenAt < recordCutoff && !db.Conversations.Any(c => c.TenantId == u.TenantId && c.OidcSub == u.OidcSub))
-            .ExecuteDeleteAsync(ct);
+        var users = await DrainAsync(async () =>
+        {
+            var ids = await db.KnownUsers
+                .Where(u => u.LastSeenAt < recordCutoff && !db.Conversations.Any(c => c.TenantId == u.TenantId && c.OidcSub == u.OidcSub))
+                .OrderBy(u => u.LastSeenAt).Select(u => u.Id).Take(Batch).ToListAsync(ct);
+            if (ids.Count == 0) return (0, 0);
+            return (ids.Count, await db.KnownUsers.Where(u => ids.Contains(u.Id)).ExecuteDeleteAsync(ct));
+        }, Spent);
 
-        return new RetentionResult(payloads, transcripts, anonymous, records);
+        return new RetentionResult(payloads, transcripts, anonymous, records, users);
     }
 
     /// <summary>

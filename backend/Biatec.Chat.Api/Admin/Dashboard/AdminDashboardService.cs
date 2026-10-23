@@ -12,6 +12,7 @@ public sealed record StatusCount(string Status, int Count);
 public sealed record ModelTokens(string ModelId, long Messages, long Input, long Output, long CacheRead, long CacheWrite);
 public sealed record TokenStats(long Input, long Output, long CacheRead, long CacheWrite, IReadOnlyList<ModelTokens> ByModel);
 public sealed record DailyPoint(string Date, int NewUsers, int Conversations, long Messages, long InputTokens, long OutputTokens);
+public sealed record TenantInfo(string Id, string Host);
 public sealed record TenantStat(string Id, string Host, int Users, int Conversations);
 public sealed record StatsResponse(DateTimeOffset GeneratedAt, int Days, string? Tenant, StatTotals Totals, IReadOnlyList<TierCount> SessionsByTier,
     IReadOnlyList<StatusCount> PreviewsByStatus, TokenStats Tokens, IReadOnlyList<DailyPoint> Daily, IReadOnlyList<TenantStat> Tenants);
@@ -134,6 +135,9 @@ public sealed class AdminDashboardService(ChatDbContext db, TimeProvider clock, 
     private sealed record DayRow(DateOnly Day, long Messages, long Input, long Output);
     private sealed record CountRow(DateOnly Day, long Count);
 
+    public async Task<IReadOnlyList<TenantInfo>> TenantsAsync(CancellationToken ct) =>
+        await db.Tenants.AsNoTracking().OrderBy(t => t.Id).Select(t => new TenantInfo(t.Id, t.Host)).ToListAsync(ct);
+
     // ---- users ------------------------------------------------------------------------------------------------------
 
     public static readonly string[] SortFields = ["lastActivity", "firstSeen", "sub", "conversations"];
@@ -188,11 +192,7 @@ public sealed class AdminDashboardService(ChatDbContext db, TimeProvider clock, 
         var u = await FindUserAsync(tenantId, sub, ct);
         if (u is null) return null;
         var now = clock.GetUtcNow();
-        var convs = await db.Conversations.AsNoTracking().Where(c => c.TenantId == tenantId && c.OidcSub == sub)
-            .OrderByDescending(c => c.LastMessageAt).Take(MaxConversations)
-            .Select(c => new ConversationRow(c.Id, c.CreatedAt, c.LastMessageAt, c.EndedAt,
-                db.Messages.Count(m => m.ConversationId == c.Id), db.ActionPreviews.Count(p => p.ConversationId == c.Id)))
-            .ToListAsync(ct);
+        var convs = await ConversationsAsync(tenantId, sub, ct);
         var conversationCount = await db.Conversations.CountAsync(c => c.TenantId == tenantId && c.OidcSub == sub, ct);
         var messages = await db.Messages.LongCountAsync(m => db.Conversations.Any(c => c.Id == m.ConversationId && c.TenantId == tenantId && c.OidcSub == sub), ct);
         var previews = await db.ActionPreviews.CountAsync(p => db.Conversations.Any(c => c.Id == p.ConversationId && c.TenantId == tenantId && c.OidcSub == sub), ct);

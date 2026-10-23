@@ -7,7 +7,7 @@ import StateBlock from "../components/StateBlock.vue";
 import { formatDateTime, formatNumber, shortMiddle } from "../format";
 import { readPref, useLoader, writePref } from "../loader";
 import { navigate, userHref } from "../router";
-import type { SortDir, UserItem, UserSort, TenantRow } from "../types";
+import type { SortDir, UserItem, UserSort } from "../types";
 
 const PAGE_SIZES = [10, 25, 50, 100];
 const stored = Number(readPref("pageSize"));
@@ -19,7 +19,7 @@ const sort = ref<UserSort>("lastActivity");
 const dir = ref<SortDir>("desc");
 const page = ref(1);
 const pageSize = ref(PAGE_SIZES.includes(stored) ? stored : 25);
-const tenants = ref<TenantRow[]>([]);
+const tenants = ref<{ id: string; host: string }[]>([]);
 const target = ref<UserItem | null>(null);
 
 const { data, loading, error, load } = useLoader(() =>
@@ -46,7 +46,7 @@ watch(pageSize, (v) => writePref("pageSize", String(v)));
 onMounted(async () => {
   load();
   try {
-    tenants.value = (await api.stats(7)).tenants;
+    tenants.value = (await api.tenants()).tenants;
   } catch { /* the filter then only offers "All tenants" */ }
 });
 onBeforeUnmount(() => clearTimeout(debounce));
