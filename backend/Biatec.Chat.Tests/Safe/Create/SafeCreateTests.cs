@@ -114,6 +114,16 @@ public sealed class SafeCreateBuilderTests
         await Assert.ThrowsAsync<SafeBuildException>(() => priced.BuildDeployAsync("testnet", Alice, "Team Safe"));
     }
 
+    [Fact]
+    public async Task Safe_create_a_build_without_the_requested_simulation_is_refused()
+    {
+        var step = JsonNode.Parse(Fx.GetProperty("deploy").GetRawText())!;
+        step.AsObject().Remove("simulation");
+        var builder = new SafeBuilder(new OneShot((_, _) => SidecarFixture.Result(JsonDocument.Parse(step.ToJsonString()).RootElement)));
+        var ex = await Assert.ThrowsAsync<SafeBuildException>(() => builder.BuildDeployAsync("testnet", Alice, "Team Safe"));
+        Assert.Contains("simulation", ex.Message);
+    }
+
     private static string Sha(byte[] b) => Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(b));
 
     private static SafeBuilder PinnedBuilder(SafeDeploymentPin pin) => new(

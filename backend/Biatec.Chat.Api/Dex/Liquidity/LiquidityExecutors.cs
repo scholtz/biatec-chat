@@ -163,8 +163,11 @@ public abstract class LiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpC
             var outcome = await client.SimulateAsync(group.Transactions, false, ct);
             return (outcome.Summary, !outcome.Success);
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+        catch (Exception e) when (!ct.IsCancellationRequested) // an HttpClient timeout is a TaskCanceledException too
         {
+            using var scope = scopes.CreateScope();
+            scope.ServiceProvider.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()?.CreateLogger<LiquidityExecutor>()
+                .LogWarning("Liquidity simulation unavailable for {Network}: {ErrorType}", network, e.GetType().Name);
             return ("Not simulated: algod was unreachable.", false);
         }
     }
@@ -175,7 +178,7 @@ public abstract class LiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpC
     {
         var (simulation, simulationFailed) = await SimulateAsync(r.Network, b.Group, ct);
         if (simulationFailed)
-            return new ToolExecutionResult("The transaction the builder returned would fail on chain, so no preview was made. " + simulation + " Tell the user it could not be prepared; do not retry with guessed values.", true);
+            return new ToolExecutionResult("The transaction the builder returned would fail on chain, so no preview was made. " + (simulation.Length > 300 ? simulation[..300] : simulation) + " Tell the user it could not be prepared; do not retry with guessed values.", true);
         var now = clock.GetUtcNow();
         var expiresAt = Biatec.Chat.Core.Previews.PreviewPolicy.ExpiryFromLastValid(b.LastValid, b.BuiltAtRound, now);
         var stepNetwork = McpNetworks.Algorand(r.Network);
