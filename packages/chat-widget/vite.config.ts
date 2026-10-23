@@ -19,5 +19,15 @@ export default defineConfig({
   },
   // Tests (and the playground host modules they import) resolve the package by name to the source, so they run on a
   // fresh checkout without a prior build. `@/` is the DEX page's host modules, as in playground/vite.config.ts.
-  test: { alias: { "@biatec/chat-widget": fileURLToPath(new URL("./src/index.ts", import.meta.url)), "@/": fileURLToPath(new URL("./playground/dex/host/", import.meta.url)) }, environment: "jsdom", include: ["test/**/*.test.ts"], css: { include: [/.+/] } },
+  // A regex alias with a forward-slash target: the string key "@/" with a Windows path (backslashes) did not resolve (BCHAT-045).
+  test: {
+    alias: [
+      { find: "@biatec/chat-widget", replacement: fileURLToPath(new URL("./src/index.ts", import.meta.url)) },
+      { find: /^@\//, replacement: fileURLToPath(new URL("./playground/dex/host/", import.meta.url)).replace(/\\/g, "/") },
+    ],
+    environment: "jsdom",
+    setupFiles: ["test/setup.ts"],
+    include: ["test/**/*.test.ts"],
+    css: { include: [/.+/] },
+  },
 });
