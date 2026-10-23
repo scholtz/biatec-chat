@@ -3,7 +3,6 @@ package io.biatec.authenticator
 import android.content.pm.PackageManager
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import android.security.keystore.StrongBoxUnavailableException
 import android.util.Base64
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
@@ -68,7 +67,10 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
         try {
             gen.initialize(spec(alias, hasStrongBox))
             gen.generateKeyPair()
-        } catch (e: StrongBoxUnavailableException) {
+        } catch (e: Exception) {
+            // Devices that advertise StrongBox can still refuse the key (StrongBoxUnavailableException, ProviderException,
+            // InvalidAlgorithmParameterException): fall back to the TEE. Without StrongBox there is nothing to fall back from.
+            if (!hasStrongBox) throw e
             gen.initialize(spec(alias, false))
             gen.generateKeyPair()
         }

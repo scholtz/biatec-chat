@@ -18,6 +18,9 @@ then hardened; BCHAT-008). The application id and bundle identifier are `io.biat
   `android.permission.DUMP`); review the merged manifest (`build/app/intermediates/merged_manifests/release/`) on each release.
 - **iOS:** App Transport Security at its default (no exceptions), no URL schemes, a Face ID usage string, `KeystorePlugin` (Secure Enclave) registered in
   `AppDelegate`, and `ScreenCover` hides the content from the app switcher and while the screen is recorded or mirrored.
+- **Push on iOS is not enabled yet:** the Push Notifications capability (a `Runner.entitlements` with `aps-environment`, per build configuration) needs the Apple
+  developer account, and `GoogleService-Info.plist` / `android/app/google-services.json` are not committed; until then approval pushes do not arrive.
+  The deployment target is iOS 15 (Firebase iOS SDK 12).
 - **Not verified:** the Kotlin plugin compiles (`flutter build apk --debug` and `--release` were run), but nothing was run on a device or an emulator.
   The Swift files (`KeystorePlugin.swift`, `ScreenCover.swift`, `AppDelegate.swift`) and the Xcode project edits were written without Xcode: build them
   on a Mac before the first iOS release.
@@ -27,7 +30,7 @@ then hardened; BCHAT-008). The application id and bundle identifier are `io.biat
 The release build never uses the debug key. Create a keystore once, keep it out of the repository, and describe it in `android/key.properties`
 (git-ignored):
 
-    storeFile=/absolute/path/to/upload-keystore.jks
+    storeFile=/absolute/path/to/upload-keystore.jks   (or relative to android/)
     storePassword=...
     keyAlias=...
     keyPassword=...

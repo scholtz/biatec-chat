@@ -1,23 +1,32 @@
 import UIKit
 
 /// Hides the app's content from the app switcher snapshot and while the screen is recorded or mirrored (BCHAT-031): a cover view is put over
-/// every window of the app when it resigns active or when the screen is captured, and removed again afterwards.
+/// every window of the app while the app is not active or the screen is captured, and removed again afterwards. Windows that appear while
+/// the cover is up (a new scene, an alert, the keyboard) are covered as they become visible.
 final class ScreenCover {
     static let shared = ScreenCover()
-    private var covers: [UIView] = []
+    private var covers: [ObjectIdentifier: UIView] = [:]
+    private var inactive = false
     private var started = false
 
     func start() {
         guard !started else { return }
         started = true
         let center = NotificationCenter.default
-        center.addObserver(self, selector: #selector(refresh), name: UIApplication.willResignActiveNotification, object: nil)
-        center.addObserver(self, selector: #selector(refresh), name: UIApplication.didBecomeActiveNotification, object: nil)
-        center.addObserver(self, selector: #selector(refresh), name: UIScreen.capturedDidChangeNotification, object: nil)
+        // applicationState is still .active inside willResignActive, so the state is tracked from the notifications themselves.
+        center.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.inactive = true
+            self?.update()
+        }
+        center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.inactive = false
+            self?.update()
+        }
+        center.addObserver(forName: UIScreen.capturedDidChangeNotification, object: nil, queue: .main) { [weak self] _ in self?.update() }
+        center.addObserver(forName: UIWindow.didBecomeVisibleNotification, object: nil, queue: .main) { [weak self] _ in self?.update() }
     }
 
-    @objc private func refresh() {
-        let inactive = UIApplication.shared.applicationState != .active
+    private func update() {
         if inactive || isCaptured() { show() } else { hide() }
     }
 
@@ -28,20 +37,19 @@ final class ScreenCover {
     }
 
     private func show() {
-        guard covers.isEmpty else { return }
         for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
-            for window in scene.windows {
+            for window in scene.windows where covers[ObjectIdentifier(window)] == nil {
                 let cover = UIView(frame: window.bounds)
                 cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
                 cover.backgroundColor = .systemBackground
                 window.addSubview(cover)
-                covers.append(cover)
+                covers[ObjectIdentifier(window)] = cover
             }
         }
     }
 
     private func hide() {
-        covers.forEach { $0.removeFromSuperview() }
+        covers.values.forEach { $0.removeFromSuperview() }
         covers.removeAll()
     }
 }

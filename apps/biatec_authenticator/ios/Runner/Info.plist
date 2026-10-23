@@ -24,6 +24,10 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Biatec Authenticator asks for Face ID to confirm that it is you before it signs an approval.</string>
 	<key>LSRequiresIPhoneOS</key>
