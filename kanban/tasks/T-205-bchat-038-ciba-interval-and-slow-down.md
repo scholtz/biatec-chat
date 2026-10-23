@@ -1,7 +1,7 @@
 ---
 id: T-205
 title: "Honour the CIBA interval and back off on slow_down (BCHAT-038)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -53,8 +53,11 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 13:05 · approve · PR #330 merged into main @ 990b7de (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 12:52 · kanban-split · (new) → backlog · created from audit issue #291
 - 2026-10-23 12:52 · scholtz · taken · status stays backlog
 - 2026-10-23 12:52 · session-20261023-1252 · backlog → in-progress · claimed, branch task/T-205
+- 2026-10-23 13:05 · user · in-progress → done · PR #330 merged into main @ 990b7de (synced by kanban-sync)
