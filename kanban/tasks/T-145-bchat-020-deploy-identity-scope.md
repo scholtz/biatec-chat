@@ -1,7 +1,7 @@
 ---
 id: T-145
 title: "Scope the deploy identity: a least-privilege Role, a time-limited kubeconfig token and required reviewers (BCHAT-020)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -69,7 +69,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 15:55 · approve · PR #343 merged into main @ 482d12b (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 17:00 · claude · (new) → backlog · created from GitHub issue #273 (BCHAT-020); blockers scan: none
 - 2026-10-23 15:22 · scholtz · taken, and session-20261023-1522 · backlog → in-progress · claimed
+- 2026-10-23 15:55 · user · in-progress → done · PR #343 merged into main @ 482d12b (synced by kanban-sync)
