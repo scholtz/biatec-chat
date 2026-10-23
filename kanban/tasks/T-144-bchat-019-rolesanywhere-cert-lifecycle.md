@@ -1,7 +1,7 @@
 ---
 id: T-144
 title: "Shorten Roles Anywhere client certificate validity, monitor expiry, and give a revocation path (BCHAT-019)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -14,7 +14,7 @@ owner: "session-20261023-1501"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#threat-model-highlights"
 created: 2026-10-24
-updated: 2026-10-24
+updated: 2026-10-23
 ---
 
 # T-144 - Shorten Roles Anywhere client certificate validity, monitor expiry, and give a revocation path (BCHAT-019)
@@ -61,7 +61,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 15:21 · approve · PR #342 merged into main @ 246f6e7 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-24 01:00 · claude · (new) → backlog · created from GitHub issue #272 (BCHAT-019); blockers scan: none
 - 2026-10-23 15:01 · scholtz · taken, and session-20261023-1501 · backlog → in-progress · claimed
+- 2026-10-23 15:21 · user · in-progress → done · PR #342 merged into main @ 246f6e7 (synced by kanban-sync)
