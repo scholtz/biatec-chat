@@ -68,6 +68,9 @@ function roleClass(role: string): string {
             <template v-if="transcript.data.value && selected">
               <h2 class="mono">Conversation {{ shortId(transcript.data.value.conversation.id, 12) }}</h2>
               <p v-if="!transcript.data.value.messages.length" class="empty">No messages.</p>
+              <p v-if="transcript.data.value.truncated" class="notice notice-info" role="note" data-test="truncated">
+                This conversation is longer than what is shown: only the newest {{ transcript.data.value.messages.length }} messages are included.
+              </p>
               <ol class="messages" data-test="messages">
                 <li v-for="m in transcript.data.value.messages" :key="m.seq" class="msg" :class="roleClass(m.role)">
                   <div class="msg-head">

@@ -142,6 +142,7 @@ textarea.input { resize: vertical; }
 
 .notice { padding: .6rem .9rem; border-radius: 6px; margin: .5rem 0; display: flex; gap: .75rem; align-items: center; justify-content: space-between; }
 .notice-error { background: var(--err-bg); color: var(--err-fg); }
+.notice-info { background: var(--info-bg); color: var(--info-fg); justify-content: flex-start; }
 .notice-info { background: var(--info-bg); color: var(--info-fg); }
 .signin .notice-error { justify-content: flex-start; }
 

@@ -149,10 +149,7 @@ public static class AuthEndpoints
             if (!await states.TakeAsync(stateHash, ctx.RequestAborted)) return ClosePage(ctx, 400); // replay or race
 
             var code = ctx.Request.Query["code"].ToString();
-            // RFC 9207: a response that names a different issuer is a mix-up attempt, never exchanged.
-            var iss = ctx.Request.Query["iss"].ToString();
-            var issuerMismatch = iss.Length > 0 && !string.Equals(iss.TrimEnd('/'), options.Value.Issuer.TrimEnd('/'), StringComparison.Ordinal);
-            if (issuerMismatch || ctx.Request.Query.ContainsKey("error") || code.Length is 0 or > 2048)
+            if (!CallbackIsUsable(ctx.Request, options.Value.Issuer))
             {
                 await SetStatusAsync(db, pending.PopupId, session.ConversationId, PopupAuthStatus.Failed, ctx.RequestAborted);
                 return ClosePage(ctx, 400);
@@ -223,10 +220,10 @@ public static class AuthEndpoints
                         ["tenantId"] = tenant.Id, ["at"] = now.ToString("O"),
                     }, ctx.RequestAborted);
 
-                // Last step that can fail the sign-in: the administrator dashboard lists only users whose sign-in completed.
-                await Admin.Dashboard.KnownUsers.RecordSignInAsync(db, tenant.Id, identity, now, log, ctx.RequestAborted);
                 SessionEndpoints.WriteCookie(ctx.Response, rotated.NewToken!, rotated.Session.AbsoluteExpiresAt, now);
                 await SetStatusAsync(db, pending.PopupId, rotated.Session.ConversationId, PopupAuthStatus.Completed, ctx.RequestAborted);
+                // After the last step that can fail the sign-in: the administrator dashboard lists only users whose sign-in completed.
+                await Admin.Dashboard.KnownUsers.RecordSignInAsync(db, tenant.Id, identity, now, log, ctx.RequestAborted);
                 return ClosePage(ctx, 200);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -273,6 +270,18 @@ public static class AuthEndpoints
         }).WithName("GetAuthPopupStatus").Produces<PopupStatusResponse>();
 
         return app;
+    }
+
+    /// <summary>
+    /// The redirect back from Biatec OIDC, before anything is exchanged: no <c>error</c>, a code of sane size, and (RFC 9207) no issuer
+    /// other than ours, since a response that names a different issuer is a mix-up attempt. Shared by the chat and the admin sign-in.
+    /// </summary>
+    internal static bool CallbackIsUsable(HttpRequest req, string issuer)
+    {
+        var code = req.Query["code"].ToString();
+        var iss = req.Query["iss"].ToString();
+        var issuerMismatch = iss.Length > 0 && !string.Equals(iss.TrimEnd('/'), issuer.TrimEnd('/'), StringComparison.Ordinal);
+        return !issuerMismatch && !req.Query.ContainsKey("error") && code.Length is > 0 and <= 2048;
     }
 
     /// <summary>

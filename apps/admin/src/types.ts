@@ -136,6 +136,8 @@ export interface ActionPreview {
 export interface Transcript {
   conversation: { id: string; createdAt: string; lastMessageAt: string | null; endedAt: string | null };
   messages: TranscriptMessage[];
+  /** True when the conversation is longer than the 500 newest messages returned. */
+  truncated?: boolean;
   previews: ActionPreview[];
 }
 

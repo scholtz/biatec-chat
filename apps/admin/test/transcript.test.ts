@@ -50,4 +50,21 @@ describe("ViewAs", () => {
     expect(w.text()).toContain("Confirmed");
     expect(w.get("[data-test=readonly-notice]").text()).toMatch(/Nothing can be sent, confirmed or signed/);
   });
+
+  it("says so when older messages are left out", async () => {
+    session.me = { email: "a@x.com", tenantId: "t", expiresAt: "", impersonation: imp };
+    mockFetch((url) => {
+      if (url === "api/view/conversations")
+        return [200, { user: { tenantId: "t", sub: "s" }, conversations: [{ id: "c1", createdAt: "2026-10-22T10:00:00Z", lastMessageAt: null, endedAt: null, messages: 900, previews: 0 }] }];
+      return [200, {
+        conversation: { id: "c1", createdAt: "2026-10-22T10:00:00Z", lastMessageAt: null, endedAt: null },
+        truncated: true,
+        messages: [{ seq: 401, role: "User", content: "recent", createdAt: "2026-10-22T10:00:00Z", modelId: null, toolNames: [] }],
+        previews: [],
+      }];
+    });
+    const w = mount(ViewAs);
+    await flush(8);
+    expect(w.get("[data-test=truncated]").text()).toMatch(/only the newest 1 messages/);
+  });
 });

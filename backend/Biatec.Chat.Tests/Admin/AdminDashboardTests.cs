@@ -274,7 +274,6 @@ public sealed class AdminDashboardTests : IAsyncLifetime
         foreach (var flag in new[] { "httponly", "secure", "samesite=strict", "path=/" })
             Assert.Contains(flag, set, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("domain=", set, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(AdminAuth.LoginCookieName + "=;", cb.Headers.GetValues("Set-Cookie").First(x => x.StartsWith(AdminAuth.LoginCookieName)).Replace("=", "=;", StringComparison.Ordinal)[..60]);
 
         // Nothing of the OIDC response survives: no vault entry, and the browser saw neither a token nor the code.
         Assert.Empty(_vault.Items);

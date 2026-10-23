@@ -42,7 +42,9 @@ public static class AdminLogin
             try
             {
                 oidc.EnsureConfigured(tenant);
-                var binding = AuthEndpoints.Random64();
+                // Two tabs (or a double click) share one binding: a valid cookie that is already there is kept, so neither attempt invalidates the other.
+                var binding = ctx.Request.Cookies.TryGetValue(AdminAuth.LoginCookieName, out var existing) && existing is { Length: >= 40 and <= 64 }
+                    ? existing : AuthEndpoints.Random64();
                 var state = AuthEndpoints.Random64();
                 var nonce = AuthEndpoints.Random64();
                 var verifier = AuthEndpoints.Random64();
@@ -88,16 +90,13 @@ public static class AdminLogin
         // Same tenant, same browser: the state was started on this host by the browser that holds the login cookie.
         var bound = ctx.Request.Cookies.TryGetValue(AdminAuth.LoginCookieName, out var binding) && binding is { Length: > 0 and <= 128 } &&
                     CryptographicOperations.FixedTimeEquals(System.Text.Encoding.UTF8.GetBytes(AuthEndpoints.Hash(binding)), System.Text.Encoding.UTF8.GetBytes(pending.SessionId));
-        ctx.Response.Cookies.Delete(AdminAuth.LoginCookieName, new CookieOptions { Secure = true, HttpOnly = true, Path = "/" });
         if (!allow.Enabled || !bound || pending.TenantId != tenant.Id) return Failed(ctx, Errors.LoginFailed);
 
-        var code = ctx.Request.Query["code"].ToString();
-        var oidcOptions = sp.GetRequiredService<IOptions<Config.OidcOptions>>().Value;
-        var iss = ctx.Request.Query["iss"].ToString();
         if (ctx.Request.Query.ContainsKey("error"))
             return Failed(ctx, ctx.Request.Query["error"].ToString() == "access_denied" ? Errors.AccessDenied : Errors.LoginFailed);
-        if (code.Length is 0 or > 2048 || (iss.Length > 0 && !string.Equals(iss.TrimEnd('/'), oidcOptions.Issuer.TrimEnd('/'), StringComparison.Ordinal)))
+        if (!AuthEndpoints.CallbackIsUsable(ctx.Request, sp.GetRequiredService<IOptions<Config.OidcOptions>>().Value.Issuer))
             return Failed(ctx, Errors.LoginFailed);
+        var code = ctx.Request.Query["code"].ToString();
 
         IdTokenIdentity identity;
         try
