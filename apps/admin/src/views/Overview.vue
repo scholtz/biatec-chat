@@ -36,10 +36,10 @@ const tiles = computed(() => {
   return [
     { label: "Users", value: t.users },
     { label: "Active (7 days)", value: t.activeUsers7d },
-    { label: "Conversations", value: t.conversations },
-    { label: "Messages", value: t.messages },
+    { label: "Conversations (all time)", value: t.conversations },
+    { label: "Messages (all time)", value: t.messages },
     { label: "Live sessions", value: t.liveSessions },
-    { label: "Previews", value: t.previews },
+    { label: "Previews (all time)", value: t.previews },
     { label: "Tenants", value: t.tenants },
   ];
 });

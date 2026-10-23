@@ -967,19 +967,10 @@ public sealed class AdminDashboardTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SignIn_AgainEndsThePreviousSession_AndAGoneStateLandsOnTheDashboard()
+    public async Task SignIn_AGoneStateLandsOnTheDashboard()
     {
         var f = Factory();
-        var first = await AdminCookieAsync(f);
-        var second = await SignInAsync(f);
-        // The second sign-in came with the first session's cookie? Not in this helper, so send it explicitly through a fresh flow.
         var start = await SendAsync(f, HttpMethod.Get, "/admin/auth/login", tweak: r => r.Headers.Remove("Sec-Fetch-Site"));
-        var (code, state) = _oidc.Authorize(start.Headers.Location!, "openid profile email");
-        var cb = await SendAsync(f, HttpMethod.Get, $"/auth/callback?code={Uri.EscapeDataString(code)}&state={Uri.EscapeDataString(state)}",
-            CookieHeader(SetCookie(start, AdminAuth.LoginCookieName)!) + "; " + first, sameOrigin: false);
-        Assert.NotNull(SetCookie(cb, AdminAuth.CookieName));
-        Assert.Equal(HttpStatusCode.Unauthorized, (await SendAsync(f, HttpMethod.Get, "/admin/api/me", first)).StatusCode);
-        Assert.NotNull(second);
 
         // A state that is gone (waited too long) ends on the dashboard's message, not on the chat popup page.
         var gone = await SendAsync(f, HttpMethod.Get, "/auth/callback?code=x&state=" + new string('z', 43), CookieHeader(SetCookie(start, AdminAuth.LoginCookieName)!), sameOrigin: false);

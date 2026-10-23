@@ -140,12 +140,6 @@ public static class AdminLogin
         };
         var token = AuthEndpoints.Random64();
         var store = sp.GetRequiredService<IAdminSessionStore>();
-        // Signing in again from the same browser ends the session it replaces.
-        if (ctx.Request.Cookies.TryGetValue(AdminAuth.CookieName, out var previousToken) && previousToken is { Length: > 0 and <= 128 })
-        {
-            try { await store.DeleteAsync(AuthEndpoints.Hash(previousToken), ct); }
-            catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning("The previous admin session could not be removed: {ErrorType}", ex.GetType().Name); }
-        }
         var tokenHash = AuthEndpoints.Hash(token);
         try
         {

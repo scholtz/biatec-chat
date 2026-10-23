@@ -31,6 +31,9 @@ alice@example.com;bob@example.com
 
 ### Limits
 
+Signing in again does not end the earlier session (the browser does not send the `SameSite=Strict` cookie on the cross-site return from Biatec OIDC); a session ends by **Sign out**, its idle timeout or its absolute lifetime.
+The totals (users, conversations, messages, previews, tenants) are all time; the daily series, tokens and per-model table cover the selected range.
+
 Lists show at most 200 conversations per user (the newest) and a transcript the newest 500 messages; the user's metadata always carries the true counts.
 
 ### Scope
