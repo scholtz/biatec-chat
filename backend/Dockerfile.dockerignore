@@ -4,6 +4,10 @@
 .git
 .claude
 apps
+# The admin dashboard is built into this image (docs/admin-dashboard.md). Order matters: re-include it, then drop its build products again.
+!apps/admin
+apps/admin/dist
+**/node_modules
 builders
 e2e
 docs

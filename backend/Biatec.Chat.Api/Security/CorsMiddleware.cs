@@ -24,7 +24,16 @@ public sealed class CorsMiddleware(RequestDelegate next)
 
         if (hasOrigin) res.Headers.Append("Vary", "Origin");
 
-        if (tenant is not null && hasOrigin)
+        // The dashboard is same-origin only: no CORS header at all, so no other origin (not even a tenant's own) can read it.
+        if (tenant is not null && hasOrigin && OriginPolicy.IsAdmin(req.Path))
+        {
+            if (isPreflight)
+            {
+                res.StatusCode = StatusCodes.Status403Forbidden;
+                return;
+            }
+        }
+        else if (tenant is not null && hasOrigin)
         {
             if (OriginPolicy.IsPublic(req.Path) && !OriginPolicy.IsOperatorOnboarding(req.Path))
             {

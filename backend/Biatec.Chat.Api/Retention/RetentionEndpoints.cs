@@ -161,9 +161,9 @@ public sealed class RetentionHostedService(IServiceScopeFactory scopes, IOptions
                 {
                     await using var scope = scopes.CreateAsyncScope();
                     var r = await scope.ServiceProvider.GetRequiredService<RetentionService>().ApplyAsync(stoppingToken);
-                    if (r.PayloadsDeleted + r.TranscriptsCleared + r.AnonymousRemoved + r.RecordsRemoved > 0)
-                        log.LogInformation("Retention: {Payloads} payloads deleted, {Messages} messages cleared, {Anonymous} anonymous and {Records} expired conversations removed",
-                            r.PayloadsDeleted, r.TranscriptsCleared, r.AnonymousRemoved, r.RecordsRemoved);
+                    if (r.PayloadsDeleted + r.TranscriptsCleared + r.AnonymousRemoved + r.RecordsRemoved + r.UsersRemoved > 0)
+                        log.LogInformation("Retention: {Payloads} payloads deleted, {Messages} messages cleared, {Anonymous} anonymous and {Records} expired conversations and {Users} dashboard user rows removed",
+                            r.PayloadsDeleted, r.TranscriptsCleared, r.AnonymousRemoved, r.RecordsRemoved, r.UsersRemoved);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

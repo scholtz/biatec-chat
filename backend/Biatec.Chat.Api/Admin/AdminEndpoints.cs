@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.RateLimiting;
+using Biatec.Chat.Api.Admin.Dashboard;
 using Biatec.Chat.Api.Chat.SignIn;
 using Biatec.Chat.Api.Evidence.Export;
 using Biatec.Chat.Api.Evidence.Jwks;
@@ -31,6 +32,27 @@ public sealed class AdminOptions
     /// the hash is configured (environment or secret store); the key itself is never in configuration or the repo.
     /// </summary>
     public Dictionary<string, OperatorKeyOptions> Operators { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Emails of the people who may open the administrator dashboard (docs/admin-dashboard.md), separated by <c>;</c>. Fed by
+    /// the GitHub secret <c>ADMINS</c> (environment variable <c>Admin__Admins</c>). Empty: the dashboard does not exist.
+    /// </summary>
+    public string Admins { get; set; } = "";
+
+    /// <summary>The ID token must carry <c>email_verified: true</c> (default). Turn off only if Biatec OIDC never issues the claim.</summary>
+    public bool RequireVerifiedEmail { get; set; } = true;
+
+    /// <summary>Absolute lifetime of an admin session in hours (default 8).</summary>
+    public int SessionHours { get; set; } = 8;
+
+    /// <summary>Idle timeout of an admin session in minutes (default 30).</summary>
+    public int SessionIdleMinutes { get; set; } = 30;
+
+    /// <summary>Length of one impersonation in minutes (default 30).</summary>
+    public int ImpersonationMinutes { get; set; } = 30;
+
+    /// <summary>Directory with the built dashboard (<c>apps/admin/dist</c>); default <c>admin-ui</c> next to the application.</summary>
+    public string? UiDirectory { get; set; }
 }
 
 /// <summary>
@@ -44,6 +66,10 @@ public sealed class AdminOptions
 public static class AdminEndpoints
 {
     public const string RateLimitPolicy = "operator";
+    /// <summary>The administrator dashboard's own bucket (same limits), so its traffic never starves the operator API behind a shared IP.</summary>
+    public const string DashboardRateLimitPolicy = "admin-dashboard";
+    /// <summary>The unauthenticated sign-in start: a smaller bucket of its own, so it can neither starve the dashboard nor fill Redis with states.</summary>
+    public const string DashboardLoginRateLimitPolicy = "admin-dashboard-login";
 
     public const string EvidencePath = "/onboarding/operator/evidence";
     public const int DefaultEvidenceLimit = 200;
@@ -58,21 +84,30 @@ public static class AdminEndpoints
         services.AddSingleton<OperatorKeyring>();
         services.AddScoped<TenantPolicyService>();
         services.AddScoped<KbAdminService>();
-        services.AddRateLimiter(o => o.AddPolicy(RateLimitPolicy, ctx =>
+        services.AddAdminDashboard();
+        services.AddRateLimiter(o =>
         {
-            var opts = ctx.RequestServices.GetRequiredService<IOptions<AdminOptions>>().Value;
-            return RateLimitPartition.GetFixedWindowLimiter("operator:" + (ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown"), _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = Math.Max(1, opts.RateLimitPermits),
-                Window = TimeSpan.FromSeconds(Math.Max(1, opts.RateLimitWindowSeconds)),
-                QueueLimit = 0,
-            });
-        }));
+            o.AddPolicy(RateLimitPolicy, ctx => PerIp(ctx, "operator:"));
+            o.AddPolicy(DashboardRateLimitPolicy, ctx => PerIp(ctx, "dashboard:"));
+            o.AddPolicy(DashboardLoginRateLimitPolicy, ctx => PerIp(ctx, "dashboard-login:", maxPermits: 20));
+        });
         return services;
+    }
+
+    private static RateLimitPartition<string> PerIp(HttpContext ctx, string prefix, int maxPermits = int.MaxValue)
+    {
+        var opts = ctx.RequestServices.GetRequiredService<IOptions<AdminOptions>>().Value;
+        return RateLimitPartition.GetFixedWindowLimiter(prefix + (ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown"), _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = Math.Max(1, Math.Min(opts.RateLimitPermits, maxPermits)),
+            Window = TimeSpan.FromSeconds(Math.Max(1, opts.RateLimitWindowSeconds)),
+            QueueLimit = 0,
+        });
     }
 
     public static IEndpointRouteBuilder MapAdmin(this IEndpointRouteBuilder app)
     {
+        app.MapAdminDashboard();
         var g = app.MapGroup("/onboarding/operator/tenants").RequireRateLimiting(RateLimitPolicy);
 
         g.MapGet("/", async (HttpContext ctx, TenantPolicyService svc, ILogger<TenantPolicyService> log, CancellationToken ct) =>

@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace Biatec.Chat.Api.Retention;
 
-public sealed record RetentionResult(int PayloadsDeleted, int TranscriptsCleared, int AnonymousRemoved, int RecordsRemoved);
+public sealed record RetentionResult(int PayloadsDeleted, int TranscriptsCleared, int AnonymousRemoved, int RecordsRemoved, int UsersRemoved = 0);
 
 public enum ErasureOutcome { Erased, ActionInFlight }
 
@@ -70,8 +70,8 @@ public sealed class RetentionService(ChatDbContext db, IOptions<RetentionOptions
         bool Spent() => Stopwatch.GetElapsedTime(started) >= O.RunBudget;
 
         // 1. Payloads and salts of entries older than the payload window. Hashes, chain and signatures stay. The admin
-        //    chain is exempt: it holds operator names, reasons and tenant policy values, not end-user personal data, and
-        //    is kept whole for the record window (rule 4 removes it as an orphan chain once its newest entry is past it).
+        //    chain is exempt: it holds operator names and admin emails, reasons, tenant policy values and the random ids of
+        //    dashboard user rows (never a subject), and is kept whole for the record window (rule 4 removes it as an orphan chain once its newest entry is past it).
         var payloadCutoff = now - O.Payloads;
         var adminChain = Biatec.Chat.Api.Admin.AdminEvidence.ChainId;
         var payloads = await DrainAsync(async () =>
@@ -163,7 +163,17 @@ public sealed class RetentionService(ChatDbContext db, IOptions<RetentionOptions
             return (Math.Max(recordIds.Count, orphanIds.Count), ids.Count);
         }, Spent);
 
-        return new RetentionResult(payloads, transcripts, anonymous, records);
+        // 5. Dashboard user rows (subject, first/last seen) of users with no conversation left and none seen within the record window.
+        var users = await DrainAsync(async () =>
+        {
+            var ids = await db.KnownUsers
+                .Where(u => u.LastSeenAt < recordCutoff && !db.Conversations.Any(c => c.TenantId == u.TenantId && c.OidcSub == u.OidcSub))
+                .OrderBy(u => u.LastSeenAt).Select(u => u.Id).Take(Batch).ToListAsync(ct);
+            if (ids.Count == 0) return (0, 0);
+            return (ids.Count, await db.KnownUsers.Where(u => ids.Contains(u.Id)).ExecuteDeleteAsync(ct));
+        }, Spent);
+
+        return new RetentionResult(payloads, transcripts, anonymous, records, users);
     }
 
     /// <summary>
@@ -195,7 +205,12 @@ public sealed class RetentionService(ChatDbContext db, IOptions<RetentionOptions
         var now = clock.GetUtcNow();
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var ids = await db.Conversations.Where(c => c.TenantId == tenantId && c.OidcSub == oidcSub).Select(c => c.Id).ToListAsync(ct);
-        if (ids.Count == 0) return new ErasureResult(ErasureOutcome.Erased, 0, 0);
+        if (ids.Count == 0)
+        {
+            await db.KnownUsers.Where(u => u.TenantId == tenantId && u.OidcSub == oidcSub).ExecuteDeleteAsync(ct); // the administrator dashboard's user row
+            await tx.CommitAsync(ct);
+            return new ErasureResult(ErasureOutcome.Erased, 0, 0);
+        }
         // Serialize with in-flight evidence appends, message stores and preview creation of these conversations (sorted: no lock-order
         // deadlock). The list is read again after locking until it is stable, so a conversation created meanwhile is covered too.
         var locked = new HashSet<Guid>();
@@ -218,6 +233,7 @@ public sealed class RetentionService(ChatDbContext db, IOptions<RetentionOptions
         await BlankStepsAsync(db.ActionSteps.Where(st => db.ActionPreviews.Any(p => p.Id == st.PreviewId && ids.Contains(p.ConversationId))), ct);
         await db.Conversations.Where(c => ids.Contains(c.Id))
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.OidcSub, (string?)null).SetProperty(c => c.ErasedAt, now), ct);
+        await db.KnownUsers.Where(u => u.TenantId == tenantId && u.OidcSub == oidcSub).ExecuteDeleteAsync(ct); // the administrator dashboard's user row
 
         // Move the live sessions off the erased conversations: one fresh conversation per old one.
         var sessions = await db.ChatSessions.Where(s => ids.Contains(s.ConversationId)).Select(s => new { s.Id, s.ConversationId }).ToListAsync(ct);

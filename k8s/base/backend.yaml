@@ -92,6 +92,9 @@ spec:
             # Resolves the seeded tenant's ClientSecretRef secret://biatec-chat/oidc-client-secret.
             - name: Secrets__biatec-chat__oidc-client-secret
               valueFrom: {secretKeyRef: {name: biatec-chat-secrets, key: oidc-client-secret}}
+            # Emails (separated by ;) allowed into the administrator dashboard (docs/admin-dashboard.md). Empty or missing: off.
+            - name: Admin__Admins
+              valueFrom: {secretKeyRef: {name: biatec-chat-secrets, key: admins, optional: true}}
             - name: Evidence__Secret__MasterKey
               valueFrom: {secretKeyRef: {name: biatec-chat-generated, key: evidence-master-key}}
             # Mnemonic of the evidence account (25 words). optional: the pods start without it, but anchoring then fails

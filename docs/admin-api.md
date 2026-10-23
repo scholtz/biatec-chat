@@ -1,5 +1,7 @@
 # Admin API (operators)
 
+> People who sign in through Biatec OIDC use the [administrator dashboard](admin-dashboard.md) (user list, statistics, read-only impersonation). This page is the bearer-key API for scripts.
+
 PRODUCT-DESCRIPTION.md, Chat Backend Responsibilities: *"Expose health, metrics, and an admin API for policy and
 knowledge-base management."* This page documents the tenant policy part (T-086) and knowledge-base management
 (T-096, [Knowledge base](#knowledge-base)), operator identities and the admin evidence chain (T-097,

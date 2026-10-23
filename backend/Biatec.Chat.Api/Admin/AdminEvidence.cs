@@ -25,6 +25,11 @@ public static class AdminEvidence
     public const string KbPageDelete = "kb_page_delete";
     public const string KbReload = "kb_reload";
     public const string TenantApprove = "tenant_approve";
+    public const string DashboardSignIn = "dashboard_sign_in";
+    public const string DashboardSignOut = "dashboard_sign_out";
+    public const string ImpersonationStart = "impersonation_start";
+    public const string ImpersonationStop = "impersonation_stop";
+    public const string ImpersonationViewConversation = "impersonation_view_conversation";
 
     /// <summary>
     /// Appends one admin change. Call it inside the change's own transaction where there is one, so the change commits
@@ -32,10 +37,19 @@ public static class AdminEvidence
     /// </summary>
     public static Task<EvidenceEntry> AppendAsync(IEvidenceLog log, OperatorIdentity op, string action, string target, string? reason,
         JsonObject? before, JsonObject? after, CancellationToken ct) =>
+        AppendAsync(log, op.Name, op.Legacy ? "legacy-shared-key" : "named-key", action, target, reason, before, after, ct);
+
+    /// <summary>The same record for an administrator who signed in to the dashboard through Biatec OIDC (<paramref name="email"/> is the actor).</summary>
+    public static Task<EvidenceEntry> AppendDashboardAsync(IEvidenceLog log, string email, string action, string target, string? reason,
+        JsonObject? before, JsonObject? after, CancellationToken ct) =>
+        AppendAsync(log, email, "oidc-dashboard", action, target, reason, before, after, ct);
+
+    private static Task<EvidenceEntry> AppendAsync(IEvidenceLog log, string actor, string auth, string action, string target, string? reason,
+        JsonObject? before, JsonObject? after, CancellationToken ct) =>
         log.AppendAsync(ChainId, Kind, new JsonObject
         {
-            ["operator"] = op.Name,
-            ["operatorAuth"] = op.Legacy ? "legacy-shared-key" : "named-key",
+            ["operator"] = actor,
+            ["operatorAuth"] = auth,
             ["action"] = action,
             ["target"] = target,
             ["reason"] = reason,

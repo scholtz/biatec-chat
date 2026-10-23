@@ -128,22 +128,37 @@ public static class AuthEndpoints
             var now = clock.GetUtcNow();
             var cookie = SessionEndpoints.ReadCookie(ctx.Request);
             var state = ctx.Request.Query["state"].ToString();
-            if (state.Length is 0 or > 256) return ClosePage(ctx, 400);
+            if (state.Length is 0 or > 256)
+                return ctx.Request.Cookies.ContainsKey(Admin.Dashboard.AdminAuth.LoginCookieName) && !ctx.Request.Cookies.ContainsKey(Sessions.SessionPolicy.CookieName)
+                    ? Admin.Dashboard.AdminLogin.FailedFromCallback(ctx)
+                    : ClosePage(ctx, 400);
+
+            // The administrator dashboard signs in through this same registered redirect URI (docs/admin-dashboard.md). Its state
+            // is bound to its own login cookie, not to a chat session, so it is recognised before the session lookup.
+            var stateHash = Hash(state);
+            var stored = await states.GetAsync(stateHash, ctx.RequestAborted);
+            if (stored is { Purpose: Admin.Dashboard.AdminAuth.Purpose } adminPending)
+            {
+                // A state presented by a browser that did not start it is refused without being consumed, like a chat state of another session.
+                if (!Admin.Dashboard.AdminLogin.BoundToThisBrowser(ctx, adminPending)) return Admin.Dashboard.AdminLogin.Failed(ctx, Admin.Dashboard.AdminLogin.Errors.LoginFailed);
+                if (!await states.TakeAsync(stateHash, ctx.RequestAborted)) return Admin.Dashboard.AdminLogin.Failed(ctx, Admin.Dashboard.AdminLogin.Errors.LoginFailed); // replay or race
+                return await Admin.Dashboard.AdminLogin.CompleteAsync(ctx, tenant, adminPending);
+            }
 
             // Login CSRF defence: the state must belong to the session carrying this cookie. A state minted for
             // another session is rejected without being consumed or touching that session's popup request.
             var session = await FindLiveAsync(db, tenant, cookie, now, ctx.RequestAborted);
-            var stateHash = Hash(state);
-            var pending = session is null ? null : await states.GetAsync(stateHash, ctx.RequestAborted);
+            // An administrator's sign-in whose state is gone (waited too long, back button) or that came back with an error and no state
+            // ends on the dashboard's own message, not on this popup-closing page.
+            if (stored is null && session is null && ctx.Request.Cookies.ContainsKey(Admin.Dashboard.AdminAuth.LoginCookieName))
+                return Admin.Dashboard.AdminLogin.FailedFromCallback(ctx);
+            var pending = session is null ? null : stored;
             if (session is null || pending is null || pending.TenantId != tenant.Id || pending.SessionId != session.Id.ToString("N"))
                 return ClosePage(ctx, 400);
             if (!await states.TakeAsync(stateHash, ctx.RequestAborted)) return ClosePage(ctx, 400); // replay or race
 
             var code = ctx.Request.Query["code"].ToString();
-            // RFC 9207: a response that names a different issuer is a mix-up attempt, never exchanged.
-            var iss = ctx.Request.Query["iss"].ToString();
-            var issuerMismatch = iss.Length > 0 && !string.Equals(iss.TrimEnd('/'), options.Value.Issuer.TrimEnd('/'), StringComparison.Ordinal);
-            if (issuerMismatch || ctx.Request.Query.ContainsKey("error") || code.Length is 0 or > 2048)
+            if (!CallbackIsUsable(ctx.Request, options.Value.Issuer))
             {
                 await SetStatusAsync(db, pending.PopupId, session.ConversationId, PopupAuthStatus.Failed, ctx.RequestAborted);
                 return ClosePage(ctx, 400);
@@ -216,6 +231,8 @@ public static class AuthEndpoints
 
                 SessionEndpoints.WriteCookie(ctx.Response, rotated.NewToken!, rotated.Session.AbsoluteExpiresAt, now);
                 await SetStatusAsync(db, pending.PopupId, rotated.Session.ConversationId, PopupAuthStatus.Completed, ctx.RequestAborted);
+                // After the last step that can fail the sign-in: the administrator dashboard lists only users whose sign-in completed.
+                await Admin.Dashboard.KnownUsers.RecordSignInAsync(db, tenant.Id, identity, now, log, ctx.RequestAborted);
                 return ClosePage(ctx, 200);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -265,6 +282,18 @@ public static class AuthEndpoints
     }
 
     /// <summary>
+    /// The redirect back from Biatec OIDC, before anything is exchanged: no <c>error</c>, a code of sane size, and (RFC 9207) no issuer
+    /// other than ours, since a response that names a different issuer is a mix-up attempt. Shared by the chat and the admin sign-in.
+    /// </summary>
+    internal static bool CallbackIsUsable(HttpRequest req, string issuer)
+    {
+        var code = req.Query["code"].ToString();
+        var iss = req.Query["iss"].ToString();
+        var issuerMismatch = iss.Length > 0 && !string.Equals(iss.TrimEnd('/'), issuer.TrimEnd('/'), StringComparison.Ordinal);
+        return !issuerMismatch && !req.Query.ContainsKey("error") && code.Length is > 0 and <= 2048;
+    }
+
+    /// <summary>
     /// Sec-Fetch checks for the login navigation: a top-level document navigation from the same site (the tenant's
     /// origins are same-site with the backend). Cross-site navigations and subresource, iframe or fetch loads are
     /// refused. Absent headers (old browsers, non-browser clients) fall through to the nonce and cookie checks.
@@ -280,7 +309,7 @@ public static class AuthEndpoints
         return true;
     }
 
-    private static void Harden(HttpContext ctx)
+    internal static void Harden(HttpContext ctx)
     {
         ctx.Response.Headers.CacheControl = "no-store";
         ctx.Response.Headers.Append("Vary", "Cookie");

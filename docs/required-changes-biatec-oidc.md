@@ -622,3 +622,13 @@ Content-Type: application/json
   as the deprecated operator `legacy`. Revoking an operator means removing their entry and redeploying.
 - **Mock:** none needed; the fallback does not call Biatec OIDC. When the claim ships, the mock OIDC grows the
   `groups` claim and the admin API gains a token check next to the key check.
+
+## Administrator dashboard sign-in (T-126)
+
+- **Needed:** the ID token of a Biatec OIDC login carries the `email` claim and `email_verified: true` (boolean or the string `"true"`) for the scope `openid profile email`.
+  The dashboard ([admin-dashboard.md](admin-dashboard.md)) admits a user only when that verified email is on the `ADMINS` list, so its security is exactly the strength of Biatec OIDC's
+  proof of an email address.
+- **Fallback in use:** `Admin:RequireVerifiedEmail` (default `true`). If Biatec OIDC does not issue `email_verified`, admin sign-in fails with `email_not_verified`; an operator can set
+  `Admin__RequireVerifiedEmail=false`, accepting that the email claim is then trusted as is. No change to Biatec OIDC is needed otherwise: the dashboard reuses the tenant's registered
+  client and redirect URI.
+- **Status:** tested against the in-repo mock OIDC only (`AdminDashboardTests`); not confirmed against oidc.biatec.io.

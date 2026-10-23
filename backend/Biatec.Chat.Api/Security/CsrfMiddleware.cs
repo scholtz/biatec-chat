@@ -18,7 +18,15 @@ public sealed class CsrfMiddleware(RequestDelegate next)
 
         var safe = HttpMethods.IsGet(req.Method) || HttpMethods.IsHead(req.Method) || HttpMethods.IsOptions(req.Method);
         // Only GET navigations are exempt; a POST under /auth still needs the header and origin.
-        if (tenant is null || path.StartsWithSegments("/health") || OriginPolicy.IsPublic(path) || (safe && OriginPolicy.IsNavigationOrMetadata(path)))
+        // Every write under /admin needs the dashboard's own-origin proof here, whatever the route (the guard repeats it): a route added
+        // without the admin filter is still not open to a cross-site request.
+        if (tenant is not null && OriginPolicy.IsAdmin(path) && !safe && !Admin.Dashboard.AdminAuth.SameOrigin(req, tenant, safe: false))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
+
+        if (tenant is null || path.StartsWithSegments("/health") || OriginPolicy.IsPublic(path) || OriginPolicy.IsAdmin(path) || (safe && OriginPolicy.IsNavigationOrMetadata(path)))
         {
             await next(ctx);
             return;
