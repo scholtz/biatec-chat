@@ -185,10 +185,13 @@ async function approve(base: string, authReqId: string, code: string) {
 
 async function redeem(base: string, authReqId: string) {
   // The mock decides on the first poll; a real server may answer authorization_pending first.
-  for (let i = 0; i < 10; i++) {
+  // A conforming client waits the interval between polls (2 s here) and adds 5 s after every slow_down.
+  let waitMs = 2500;
+  for (let i = 0; i < 6; i++) {
     const r = await http(base, "POST", "/token", { auth: clientAuth(), form: { grant_type: "urn:openid:params:grant-type:ciba", auth_req_id: authReqId } });
-    if (r.json?.error !== "authorization_pending") return r;
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    if (r.json?.error !== "authorization_pending" && r.json?.error !== "slow_down") return r;
+    if (r.json?.error === "slow_down") waitMs += 5000;
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
   }
   throw new Error("token endpoint stayed authorization_pending");
 }

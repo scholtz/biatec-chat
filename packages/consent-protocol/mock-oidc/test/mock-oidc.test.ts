@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import Ajv2020Module from "ajv/dist/2020.js";
 import { jcs, signEs256, verifyReceipt } from "../../scripts/lib.mjs";
-import { createMockOidc } from "../src/app.ts";
+import { MAX_OPEN_REQUESTS_PER_USER, createMockOidc } from "../src/app.ts";
 import { encodeTx, type Tx } from "../src/group.ts";
 
 const Ajv2020 = Ajv2020Module as unknown as typeof Ajv2020Module.default;
@@ -614,15 +614,85 @@ test("T-084: a client pause is lifted only with a device-signed consent", async 
   assert.equal((await find()).paused_until, null);
 });
 
-test("T-084: an inactive device cannot loosen settings", async () => {
+test("T-084 / BCHAT-024: an inactive device changes no settings (tightening included) and cancels no enrollment", async () => {
   const e = await call("POST", "/devices", { auth: bearer("login-alice"), body: { kid: "alice-inactive", public_key: await freshJwk() } });
   const auth = "Device " + e.json.device_token;
   const change = { threshold_eur: "2000" };
   const r = await call("PUT", "/devices/settings", { auth, body: { change, consent: settingsConsent({ kid: "alice-inactive" }, change, "i1") } });
   assert.equal(r.status, 403);
-  assert.equal((await call("PUT", "/devices/settings", { auth, body: { change: { threshold_eur: "100" } } })).status, 200, "tightening is fine from any device");
-  const back = { threshold_eur: "1000" };
+  assert.equal((await call("PUT", "/devices/settings", { auth, body: { change: { threshold_eur: "100" } } })).status, 403, "tightening needs an active device too (rule 7)");
+  const other = await call("POST", "/devices", { auth: bearer("login-alice"), body: { kid: "alice-inactive-2", public_key: await freshJwk() } });
+  assert.equal((await call("POST", "/devices/alice-inactive-2/cancel", { auth })).status, 403, "a pending device cannot cancel another pending enrollment");
+  assert.equal(other.status, 201);
   const alice = await device(ALICE);
+  assert.equal((await call("PUT", "/devices/settings", { auth: alice.auth, body: { change: { threshold_eur: "100" } } })).status, 200, "an active device can tighten");
+  const back = { threshold_eur: "1000" };
   assert.equal((await call("PUT", "/devices/settings", { auth: alice.auth, body: { change: back, consent: settingsConsent(alice, back, "i2") } })).status, 200);
-  assert.equal((await call("POST", "/devices/alice-inactive/cancel", { auth })).status, 200);
+  assert.equal((await call("POST", "/devices/alice-inactive/cancel", { auth: alice.auth })).status, 200, "an active device cancels a pending enrollment");
+  assert.equal((await call("POST", "/devices/alice-inactive-2/cancel", { auth: alice.auth })).status, 200);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// BCHAT-024: rules the mock must model so that a non-conforming client cannot pass
+
+test("BCHAT-024: the token endpoint answers slow_down to a client that polls too fast, and the interval grows by 5 s", async () => {
+  codes = ["483920"];
+  const r = await challenge();
+  const id = r.json.auth_req_id;
+  assert.equal(r.json.interval, 2, "the challenge announces the interval");
+  assert.equal((await tokenReq(id)).json.error, "authorization_pending", "the first poll is judged on the request");
+  const fast = await tokenReq(id);
+  assert.equal(fast.json.error, "slow_down");
+  assert.equal(fast.json.interval, 7);
+  clock += 2;
+  const stillFast = await tokenReq(id);
+  assert.equal(stillFast.json.error, "slow_down", "7 s are needed now, only 2 passed");
+  assert.equal(stillFast.json.interval, 12);
+  clock += 12;
+  assert.equal((await tokenReq(id)).json.error, "authorization_pending", "a poll after the interval is judged on the request again");
+  clock -= 14;
+});
+
+test("BCHAT-024: an approved request is returned on the first poll, however soon", async () => {
+  codes = ["483920"];
+  const r = await challenge();
+  const alice = await device(ALICE);
+  const req = await fetchRequest(alice, r.json.auth_req_id);
+  assert.equal((await postReceipt(alice, r.json.auth_req_id, receiptFor(alice, req, "483920"))).status, 200);
+  const t = await tokenReq(r.json.auth_req_id);
+  assert.equal(t.status, 200);
+  assert.ok(t.json.consent_receipt);
+});
+
+test("BCHAT-024: a user has a bounded number of open requests", async () => {
+  const own = createMockOidc({ now: () => clock, testHelpers: true });
+  await new Promise<void>((r) => own.server.listen(0, "127.0.0.1", r));
+  const b = `http://127.0.0.1:${(own.server.address() as AddressInfo).port}`;
+  try {
+    const open = () => fetch(`${b}/wallet/algorand-testnet/${ALICE_ADDR}/sign`, { method: "POST", headers: { Authorization: bearer("alice-chat-sign"), "Content-Type": "application/json" }, body: JSON.stringify({ unsigned_group: group(tx("5000")) }) });
+    for (let i = 0; i < MAX_OPEN_REQUESTS_PER_USER; i++) assert.equal((await open()).status, 401, `request ${i + 1} opens`);
+    const refused = await open();
+    assert.equal(refused.status, 429);
+    assert.equal(((await refused.json()) as any).error, "too_many_requests");
+    // Requests that ended no longer count: after the 300 s window the user can ask again.
+    clock += 301;
+    assert.equal((await open()).status, 401);
+    clock -= 301;
+  } finally {
+    own.server.close();
+  }
+});
+
+test("BCHAT-024: a receipt is returned to the subject it was issued for, not to another user of the same client", async () => {
+  codes = ["483920"];
+  const r = await challenge();
+  const id = r.json.auth_req_id;
+  const alice = await device(ALICE);
+  const req = await fetchRequest(alice, id);
+  assert.equal((await postReceipt(alice, id, receiptFor(alice, req, "483920"))).status, 200);
+  const own = await call("GET", `/consent/receipts/${id}`, { auth: bearer("alice-chat-sign") });
+  assert.equal(own.status, 200);
+  assert.equal((await call("GET", `/consent/receipts/${id}`, { auth: chatClient })).status, 200, "the client itself, by its credentials, can still fetch it");
+  const other = await call("GET", `/consent/receipts/${id}`, { auth: bearer("carol-chat-sign") });
+  assert.equal(other.status, 404, "another subject's token of the same client gets nothing");
 });

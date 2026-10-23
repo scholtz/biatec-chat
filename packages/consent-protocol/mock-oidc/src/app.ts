@@ -32,6 +32,12 @@ const loadJson = (...p: string[]) => JSON.parse(readFileSync(join(pkgRoot, ...p)
 export const CONSENT_VALIDITY_SECONDS = 300;
 export const MAX_CODE_ATTEMPTS = 3;
 export const INACTIVE_DEVICE_SECONDS = 24 * 3600;
+/** Seconds a client must wait between token polls of one request (the `interval` the challenge announces). */
+export const POLL_INTERVAL_SECONDS = 2;
+/** RFC 8628 3.5 and CIBA 10.2: a client that polls too fast is told `slow_down` and must add this to its interval. */
+export const SLOW_DOWN_STEP_SECONDS = 5;
+/** Open (pending, unexpired) requests one user can have at a time; a further one is refused. */
+export const MAX_OPEN_REQUESTS_PER_USER = 20;
 export const ISSUER = "https://oidc.biatec.test";
 
 export interface MockOptions {
@@ -62,6 +68,9 @@ interface Pending {
   status: "pending" | "approved" | "denied" | "code_failed";
   receipt?: Record<string, any>;
   tokenIssued: boolean;
+  /** Seconds between token polls; raised by every slow_down. */
+  interval: number;
+  lastPollAt?: number;
   scope: string;
   /** For limits requests: the body to apply once Biatec OIDC accepts the consent. */
   limitsBody?: Record<string, string>;
@@ -188,6 +197,9 @@ export function createMockOidc(options: MockOptions = {}) {
   const expired = (p: Pending) => p.request.expiry <= now();
 
   function openRequest(opts: { entry: "step-up" | "direct"; user: SeedUser; client: SeedClient; details: Record<string, any>; bindingMessage: string; requestedExpiry: number; origin: string; scope: string; limitsBody?: Record<string, string> }) {
+    // A user's open requests are bounded: an unbounded number of pending requests is a flood of phone prompts.
+    const open = [...pending.values()].filter((p) => p.request.sub === opts.user.sub && p.status === "pending" && !p.tokenIssued && !expired(p)).length;
+    if (open >= MAX_OPEN_REQUESTS_PER_USER) throw new HttpError(429, "too_many_requests", `at most ${MAX_OPEN_REQUESTS_PER_USER} requests can be open for one user`);
     const authReqId = "ciba_" + randomBytes(16).toString("hex");
     const code = newCode();
     // Rendered, and so signed, only for a verified client and only in the direct entry (spec section 5).
@@ -205,7 +217,7 @@ export function createMockOidc(options: MockOptions = {}) {
       sub: opts.user.sub,
     };
     validate("consent-request", request, "internal consent request");
-    pending.set(authReqId, { request, code, attempts: 0, clientId: opts.client.id, status: "pending", tokenIssued: false, scope: opts.scope, limitsBody: opts.limitsBody });
+    pending.set(authReqId, { request, code, attempts: 0, clientId: opts.client.id, status: "pending", tokenIssued: false, scope: opts.scope, limitsBody: opts.limitsBody, interval: POLL_INTERVAL_SECONDS });
     for (const d of activeDevices(opts.user.sub)) if (d.push) pushOutbox.push({ kid: d.kid, ...d.push, data: { auth_req_id: authReqId } });
     if (pushOutbox.length > 500) pushOutbox.splice(0, pushOutbox.length - 500); // a long-running mock keeps the recent ones
     return { authReqId, code, expiresIn: opts.requestedExpiry };
@@ -246,7 +258,7 @@ export function createMockOidc(options: MockOptions = {}) {
       details = limitsDetails(user, limitsBody!);
     }
     const r = openRequest({ entry: "direct", user, client, details, bindingMessage: params.binding_message ?? "", requestedExpiry: params.requested_expiry ?? CONSENT_VALIDITY_SECONDS, origin: params.origin, scope: params.scope, limitsBody });
-    const res = { auth_req_id: r.authReqId, expires_in: r.expiresIn, interval: 2, binding_code: r.code };
+    const res = { auth_req_id: r.authReqId, expires_in: r.expiresIn, interval: POLL_INTERVAL_SECONDS, binding_code: r.code };
     validate("backchannel-authentication-response", res, "internal response");
     return { status: 200, body: res };
   }
@@ -262,7 +274,7 @@ export function createMockOidc(options: MockOptions = {}) {
       throw new HttpError(403, "access_denied", "phone approval is required but the user has no active enrolled device (rule 8)", { reason: "no_active_device" });
     }
     const r = openRequest({ entry: "step-up", user, client, details, bindingMessage: "", requestedExpiry: CONSENT_VALIDITY_SECONDS, origin, scope, limitsBody });
-    const body = { error: "insufficient_user_authentication", error_description: "Phone approval is required for this action.", acr_values: "biatec:consent", auth_req_id: r.authReqId, expires_in: r.expiresIn, interval: 2, binding_code: r.code };
+    const body = { error: "insufficient_user_authentication", error_description: "Phone approval is required for this action.", acr_values: "biatec:consent", auth_req_id: r.authReqId, expires_in: r.expiresIn, interval: POLL_INTERVAL_SECONDS, binding_code: r.code };
     validate("stepup-challenge", body, "internal challenge");
     return new HttpError(401, body.error, body.error_description, { acr_values: body.acr_values, auth_req_id: body.auth_req_id, expires_in: body.expires_in, interval: body.interval, binding_code: body.binding_code }, {
       "WWW-Authenticate": 'Bearer error="insufficient_user_authentication", acr_values="biatec:consent"',
@@ -341,7 +353,16 @@ export function createMockOidc(options: MockOptions = {}) {
     if (p.status === "denied") throw new HttpError(400, "access_denied", "the user denied the request");
     if (p.status === "code_failed") throw new HttpError(400, "access_denied", "the binding code was entered wrongly three times", { reason: "code_failed" });
     if (expired(p)) throw new HttpError(400, "expired_token", "the request expired");
-    if (p.status === "pending") throw new HttpError(400, "authorization_pending");
+    if (p.status === "pending") {
+      // Polling faster than the interval is told to slow down, and the interval grows (the poll still counts as the latest one).
+      const tooFast = p.lastPollAt !== undefined && now() - p.lastPollAt < p.interval;
+      p.lastPollAt = now();
+      if (tooFast) {
+        p.interval += SLOW_DOWN_STEP_SECONDS;
+        throw new HttpError(400, "slow_down", "poll less often", { interval: p.interval });
+      }
+      throw new HttpError(400, "authorization_pending");
+    }
     const value = "consent_" + randomBytes(24).toString("base64url");
     const exp = Math.min(now() + CONSENT_VALIDITY_SECONDS, p.request.expiry);
     tokens.set(value, { sub: p.request.sub, clientId: client.id, scope: p.scope, kind: "consent", exp, authReqId: p.request.auth_req_id });
@@ -353,10 +374,16 @@ export function createMockOidc(options: MockOptions = {}) {
 
   function getReceipt(req: IncomingMessage, id: string) {
     let clientId: string;
-    if (req.headers.authorization?.startsWith("Bearer ")) clientId = bearer(req).clientId;
-    else clientId = authClient(req, {}).id;
+    let bearerSub: string | undefined;
+    if (req.headers.authorization?.startsWith("Bearer ")) {
+      const t = bearer(req);
+      clientId = t.clientId;
+      bearerSub = t.sub;
+    } else clientId = authClient(req, {}).id;
     const p = pending.get(id);
     if (!p || p.clientId !== clientId) throw new HttpError(404, "not_found");
+    // A bearer token belongs to a subject: a receipt is handed only to the subject it was issued for (not to any user of the same client).
+    if (bearerSub !== undefined && bearerSub !== p.request.sub) throw new HttpError(404, "not_found");
     if (!p.receipt) throw new HttpError(404, "not_found", "no receipt yet");
     return { status: 200, body: p.receipt };
   }
@@ -540,6 +567,8 @@ export function createMockOidc(options: MockOptions = {}) {
 
   function putSettings(req: IncomingMessage, body: Record<string, any>) {
     const d = deviceAuth(req);
+    // Rule 7: a device that is not active yet (24 h after enrollment) changes nothing, tightening included.
+    if (d.activeAt > now()) throw new HttpError(403, "access_denied", "this device is not active yet (rule 7)");
     const { loosening } = classifyChange(d.sub, body.change);
     if (loosening) {
       // Loosening is a consent from an active device: a signed biatec_settings_change (required changes, section 19).
@@ -573,6 +602,8 @@ export function createMockOidc(options: MockOptions = {}) {
 
   function cancelDevice(req: IncomingMessage, kid: string) {
     const me = deviceAuth(req);
+    // Only an active device can cancel a pending enrollment: a pending one must not be able to cancel the others.
+    if (me.activeAt > now()) throw new HttpError(403, "access_denied", "this device is not active yet (rule 7)");
     const target = devices.get(kid);
     if (!target || target.sub !== me.sub || target.cancelled) throw new HttpError(404, "not_found");
     if (target.activeAt <= now()) throw new HttpError(409, "conflict", "only a pending enrollment can be cancelled");
