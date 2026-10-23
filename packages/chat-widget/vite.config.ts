@@ -1,6 +1,7 @@
 import { defineConfig } from "vitest/config";
 import vue from "@vitejs/plugin-vue";
 import { fileURLToPath } from "node:url";
+import { normalizePath } from "vite";
 
 export default defineConfig({
   plugins: [vue()],
@@ -22,8 +23,9 @@ export default defineConfig({
   // A regex alias with a forward-slash target: the string key "@/" with a Windows path (backslashes) did not resolve (BCHAT-045).
   test: {
     alias: [
-      { find: "@biatec/chat-widget", replacement: fileURLToPath(new URL("./src/index.ts", import.meta.url)) },
-      { find: /^@\//, replacement: fileURLToPath(new URL("./playground/dex/host/", import.meta.url)).replace(/\\/g, "/") },
+      // Exact package name (not a prefix) and forward slashes in both targets, so a Windows path cannot break either.
+      { find: /^@biatec\/chat-widget$/, replacement: normalizePath(fileURLToPath(new URL("./src/index.ts", import.meta.url))) },
+      { find: /^@\//, replacement: normalizePath(fileURLToPath(new URL("./playground/dex/host", import.meta.url))) + "/" },
     ],
     environment: "jsdom",
     setupFiles: ["test/setup.ts"],

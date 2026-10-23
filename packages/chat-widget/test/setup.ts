@@ -24,8 +24,12 @@ class MemoryStorage implements Storage {
 }
 
 for (const name of ["localStorage", "sessionStorage"] as const) {
-  const current = (globalThis as Record<string, unknown>)[name] as Storage | undefined;
-  if (typeof current?.clear !== "function") {
-    Object.defineProperty(globalThis, name, { value: new MemoryStorage(), configurable: true, writable: true });
+  let working = false;
+  try {
+    // Reading the Node 25+ global can warn or throw; either way it is not a working Storage.
+    working = typeof ((globalThis as Record<string, unknown>)[name] as Storage | undefined)?.clear === "function";
+  } catch {
+    working = false;
   }
+  if (!working) Object.defineProperty(globalThis, name, { value: new MemoryStorage(), configurable: true, writable: true });
 }

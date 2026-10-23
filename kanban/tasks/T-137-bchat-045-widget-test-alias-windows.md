@@ -51,10 +51,10 @@ Parallel work possible: **yes**. No other unfinished task changes this file.
 
 - **Summary:** Three environment-dependent causes fixed so the widget suite passes on a Windows checkout with a current Node: the playground alias is a regex alias with a forward-slash target (the string key with a backslash path did not resolve); the DEX doc test normalises CRLF before matching its code fences; a test setup file puts an in-memory Storage in place when the Node 25+ built-in localStorage global hides jsdom's (a no-op on Node 22, which CI uses).
 - **Files changed:** packages/chat-widget/vite.config.ts, test/setup.ts, test/dex-integration.test.ts.
-- **How it was verified:** pnpm --filter @biatec/chat-widget test on Windows with Node 26: 27 files, 413 passed, 5 skipped, 0 failed (was 5 failed); the PR's CI run covers Linux with Node 22.
+- **How it was verified:** pnpm --filter @biatec/chat-widget test on Windows with Node 26: 27 files, 413 passed, 5 skipped, 0 failed (was 5 failed); the PR's CI run (Linux, Node 22) succeeded.
 - **Follow-up tasks created:** none.
 - **Unblocks:** none.
-- **Open questions:** The issue named only the alias; the other two causes (CRLF checkout, Node 25+ localStorage) turned up once the alias worked. None of them is a product defect.
+- **Open questions:** The issue named only the alias; the other two causes (CRLF checkout, Node 25+ localStorage) turned up once the alias worked. None is a product defect. Other tests read repository files and could break on a CRLF checkout too; a .gitattributes with eol=lf would fix that at the source but renormalises the tree, so I left it. The storage shim is an in-memory Storage, not jsdom's (property-style access like localStorage.foo is not supported).
 
 ## Review
 
