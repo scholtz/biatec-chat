@@ -41,9 +41,9 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] After review and acknowledgement, replacing the preview under the same id and step with a different amount, receiver, fee, group hash or intent disables Confirm again until it is reviewed.
-- [ ] A status-only update (the same content) keeps the review.
-- [ ] Existing card tests stay green.
+- [x] After review and acknowledgement, replacing the preview under the same id and step with a different amount, receiver, fee, group hash or intent disables Confirm again until it is reviewed.
+- [x] A status-only update (the same content) keeps the review.
+- [x] Existing card tests stay green.
 
 ## Verification
 
@@ -51,12 +51,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** ActionPreviewCard resets its review and acknowledgement when anything the review shows changes (intent, network, genesis id, phone approval, and per step the id, title, group hash, accounts, assets with amounts and decimals, fee, slippage, simulation summary), not only when the preview id or awaiting step id changes. Status, countdown and limit headroom are not part of it.
+- **Files changed:** packages/chat-widget/src/components/cards/ActionPreviewCard.vue, test/cards.test.ts.
+- **How it was verified:** pnpm --filter @biatec/chat-widget test: 423 passed, 0 failed (10 new tests: nine content changes each disable Confirm until reviewed again, and a same-content update keeps the review); the nine new reset tests fail without the change; vue-tsc clean for src and test.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** None. The backend still checks the group hash on Confirm; this closes the widget-side gap only.
 
 ## Review
 

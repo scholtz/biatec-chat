@@ -109,6 +109,45 @@ describe("Confirm gating", () => {
     await w.vm.$nextTick();
     expect(confirm().attributes("disabled")).toBeUndefined();
   });
+  // BCHAT-026: a preview replaced in place under the same ids must be reviewed again.
+  describe("review is reset when the reviewed content changes", () => {
+    const reviewed = async () => {
+      const w = card();
+      await review(w);
+      expect(w.get("[data-test=confirm]").attributes("disabled")).toBeUndefined();
+      return w;
+    };
+    const step = (over: Record<string, unknown>) => {
+      const f = fixture();
+      return fixture({ steps: [{ ...f.steps[0]!, ...over }] });
+    };
+
+    it.each<[string, () => ReturnType<typeof fixture>]>([
+      ["amount", () => step({ assets: [{ assetId: "31566704", symbol: "USDC", amount: "100000", decimals: 6, fiatValue: "100", fiatCurrency: "USD" }] })],
+      ["receiver", () => step({ to: "ADDR_ATTACKER" })],
+      ["sender", () => step({ from: "ADDR_OTHER" })],
+      ["fee", () => step({ feeAmount: "5 ALGO" })],
+      ["slippage", () => step({ slippagePercent: "50" })],
+      ["simulation summary", () => step({ simulationSummary: "Receive 1 ALGO" })],
+      ["group hash", () => step({ groupHash: "evil" })],
+      ["intent", () => fixture({ intent: "Send everything to Mallory" })],
+      ["network", () => fixture({ network: "algorand-mainnet" })],
+    ])("a different %s disables Confirm until it is reviewed again", async (_name, replacement) => {
+      const w = await reviewed();
+      await w.setProps({ preview: replacement() });
+      await w.vm.$nextTick();
+      expect(w.get("[data-test=confirm]").attributes("disabled")).toBeDefined();
+      await review(w); // reviewing the new content enables it again
+      expect(w.get("[data-test=confirm]").attributes("disabled")).toBeUndefined();
+    });
+
+    it("an update with the same content (new countdown, same status) keeps the review", async () => {
+      const w = await reviewed();
+      await w.setProps({ preview: fixture({ expiresAt: iso(1700), limit: { bucket: "Daily", remaining: "800", currency: "USD" } }) });
+      await w.vm.$nextTick();
+      expect(w.get("[data-test=confirm]").attributes("disabled")).toBeUndefined();
+    });
+  });
   it("review shows the five answers and the 10 percent downside", async () => {
     const w = card();
     await review(w, false);
