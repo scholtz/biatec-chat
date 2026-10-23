@@ -54,6 +54,8 @@ public sealed class ConversationOrchestrator(
     public const int MaxToolUsesPerRound = 8;
     /// <summary>UTF-8 bytes of one tool result that are stored, recorded and sent to the model; a larger one is replaced by an error.</summary>
     public const int MaxToolResultBytes = 64 * 1024;
+    /// <summary>UTF-8 bytes of all tool results of one round together; results past it are replaced by an error, so a round cannot add more than this to the next model request.</summary>
+    public const int MaxToolResultBytesPerRound = 128 * 1024;
     public const int MaxHistoryRows = 60;
     public const int MaxContextFieldLength = 200;
 
@@ -166,6 +168,7 @@ public sealed class ConversationOrchestrator(
             var results = new List<StoredToolResult>();
             var blocks = new List<ContentBlock>();
             var callIndex = 0;
+            var roundBytes = 0;
             foreach (var call in toolUses)
             {
                 var capName = ResolveName(call.Name, wireToCapability);
@@ -199,8 +202,15 @@ public sealed class ConversationOrchestrator(
                         label = executor.StatusLabel(args) ?? label;
                         result = await RunExecutorAsync(executor, ctx, args, ct);
                         fromExecutor = true;
-                        if (System.Text.Encoding.UTF8.GetByteCount(result.Content) > MaxToolResultBytes)
-                            result = new ToolExecutionResult($"The tool returned more data than can be used here (over {MaxToolResultBytes} bytes). Ask for less, for example one page or a narrower filter.", true) { Events = result.Events };
+                        var size = System.Text.Encoding.UTF8.GetByteCount(result.Content ?? "");
+                        if (size > MaxToolResultBytes || roundBytes + size > MaxToolResultBytesPerRound)
+                        {
+                            // The events built from the discarded data go with it; only the fixed message is kept.
+                            log.LogWarning("Tool {Tool} returned {Bytes} bytes (limits: {PerResult} per result, {PerRound} per round); the result was replaced by an error.",
+                                decision.Capability.Name, size, MaxToolResultBytes, MaxToolResultBytesPerRound);
+                            result = new ToolExecutionResult($"The tool returned more data than can be used here (over {MaxToolResultBytes} bytes, or too much in this step). Ask for less, for example one page or a narrower filter.", true);
+                        }
+                        else roundBytes += size;
                     }
                 }
 

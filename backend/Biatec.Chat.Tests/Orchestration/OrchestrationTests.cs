@@ -653,4 +653,26 @@ public sealed class OrchestrationTests : IAsyncLifetime
         var stored = await db.Messages.AsNoTracking().Where(m => m.Role == MessageRole.Tool).ToListAsync();
         Assert.All(stored, m => Assert.True((m.ToolResults ?? "").Length < 2000));
     }
+
+    [Fact]
+    public async Task Orchestration_ToolResultsOfOneRound_AreBoundedTogether_AndTheLimitCountsBytesNotCharacters()
+    {
+        // 3-byte characters: 30000 of them are 90000 bytes, over the per-result limit although under it as characters.
+        var wide = new FakeExecutor("kb.search", _ => new ToolExecutionResult(new string('€', 30000)));
+        var model = new ScriptedModel(_ => ToolCall("tu-1", "kb_search", """{"query":"x"}"""), _ => Text("ok"));
+        using (var f = Factory(model, wide))
+        {
+            await (await PostChatAsync(f, new { message = "wide" })).Content.ReadAsStringAsync();
+            Assert.Contains("more data than can be used", string.Concat(ToolResultTexts(model.Requests[1])));
+        }
+
+        // Each result fits (50 KB), but the third pushes the round past 128 KB.
+        var medium = new FakeExecutor("kb.search", _ => new ToolExecutionResult(new string('a', 50 * 1024)));
+        var model2 = new ScriptedModel(_ => ManyToolCalls(3), _ => Text("ok"));
+        using var f2 = Factory(model2, medium);
+        await (await PostChatAsync(f2, new { message = "three" })).Content.ReadAsStringAsync();
+        var results = model2.Requests[1].Messages.SelectMany(m => m.Content).Where(c => c.ToolResult is not null).Select(c => c.ToolResult).ToList();
+        Assert.Equal(2, results.Count(r => r.Status == ToolResultStatus.Success));
+        Assert.Equal(1, results.Count(r => r.Status == ToolResultStatus.Error));
+    }
 }
