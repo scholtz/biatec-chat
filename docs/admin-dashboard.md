@@ -95,7 +95,7 @@ Rate limit: the operator limiter (`Admin:RateLimitPermits` per `Admin:RateLimitW
 **Users are identified by their OIDC subject, not by email.** The product stores no email or other contact data
 (PRODUCT-DESCRIPTION.md: personal data is minimized to the OIDC `sub`), so the dashboard has none either. Look a user up
 in Biatec OIDC to map a subject to a person. An impersonation that runs out (or whose admin session idles out) has no stop entry: its start entry carries `expiresAt`. A start that raced a sign-out and never took effect is closed with a stop entry whose `how` is `aborted`. A user row is also removed by the retention job once the user has no conversation left and has not been seen for the record window (`Retention:Records`, 7 years). Users who signed in before the dashboard existed are listed too (a migration
-creates their row from their conversations; their sign-in count starts at 0). A user that was erased (`DELETE /session/user-data`) disappears from every view: erasure removes the dashboard's
+creates their row from their conversations; their sign-in count starts at 0). A user that erased their data and keeps chatting reappears in the list only at their next sign-in. A user that was erased (`DELETE /session/user-data`) disappears from every view: erasure removes the dashboard's
 user row and clears the subject from their conversations.
 
 ## Impersonation: "view as user"
@@ -114,7 +114,7 @@ admin session has a user's tokens or the ability to approve anything.
 - **Audit:** start, stop (also replacement by another impersonation, and logout), and every conversation opened are appended to the signed
   **admin evidence chain** ([admin-api.md](admin-api.md), `GET /onboarding/operator/evidence`), with the admin's email,
   the user's tenant and the random id of their dashboard row (neither the subject nor anything derived from it: the chain is permanent, and erasing the user deletes the row, so the id then names no one), the reason and, for a conversation, its id. Admin
-  sign-in and sign-out are recorded too. The chain is verifiable offline like conversation evidence.
+  sign-in and sign-out are recorded too. The chain names the acting admin by email (like operators by name): admins are staff, and an audit trail has to say who did it. The chain is verifiable offline like conversation evidence.
 - Message text is stored after redaction (PRODUCT-DESCRIPTION.md, Session Recording And Evidence); the view shows exactly
   that. Raw tool payloads and unsigned transaction groups are not exposed: tool calls are shown by name only.
 

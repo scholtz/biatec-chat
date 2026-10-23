@@ -140,16 +140,19 @@ public static class AdminLogin
             ExpiresAt = now.AddHours(Math.Max(1, options.SessionHours)),
         };
         var token = AuthEndpoints.Random64();
+        var store = sp.GetRequiredService<IAdminSessionStore>();
+        var tokenHash = AuthEndpoints.Hash(token);
         try
         {
-            // The sign-in is recorded first: no evidence, no session.
+            await store.PutAsync(tokenHash, session, AdminAuth.IdleTtl(session, options, now), ct);
+            // No evidence, no session: when the sign-in cannot be recorded the session is removed again, and the chain never names a sign-in that did not happen.
             await AdminEvidence.AppendDashboardAsync(sp.GetRequiredService<IEvidenceLog>(), session.Email, AdminEvidence.DashboardSignIn, "dashboard", null, null,
                 new JsonObject { ["tenantId"] = tenant.Id }, ct);
-            await sp.GetRequiredService<IAdminSessionStore>().PutAsync(AuthEndpoints.Hash(token), session, AdminAuth.IdleTtl(session, options, now), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             log.LogError("Admin sign-in could not be recorded: {ErrorType}", ex.GetType().Name);
+            try { await store.DeleteAsync(tokenHash, CancellationToken.None); } catch (Exception) { /* the idle timeout removes it */ }
             return Failed(ctx, Errors.LoginFailed);
         }
 

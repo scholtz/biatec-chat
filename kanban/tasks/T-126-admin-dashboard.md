@@ -40,7 +40,7 @@ a user list, user detail and audited read-only impersonation.
 ## Scope
 
 - In: `Admin:Admins` option (fed by `ADMINS`), admin OIDC login/callback/logout, Redis admin sessions, admin JSON API
-  (`/admin/api/*`), `KnownUser` table (subject, first/last seen; no email, the product stores none) filled at sign-in and removed on erasure, statistics,
+  (`/admin/api/*`), `KnownUser` table (email, first/last seen) filled at sign-in and removed on erasure, statistics,
   impersonation with reason, expiry and evidence records, Vue 3 SPA `apps/admin` served from the backend image, deploy
   wiring for the `ADMINS` secret, documentation, tests.
 - Out: acting as a user (sending, confirming, signing), editing users, admin roles beyond "admin", changes to Biatec OIDC.
@@ -65,6 +65,13 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 `dotnet test backend --filter Admin`, the full backend suite, `pnpm --filter @biatec/admin test build`.
 
 ## Hand-off
+
+- **Decision for the user (deviation from the original Scope):** the user list has **no email**. PRODUCT-DESCRIPTION.md ("Personal data is minimized: email and addresses are stored as the OIDC `sub`") and the existing
+  test `GetSession_PersistsNeitherEmailNorAddress` forbid persisting it, so users are listed and searched by OIDC subject. Admins' own emails exist only in the Redis session and the admin evidence chain (as the
+  actor, like operator names). If email lookup is wanted, it needs a spec change first.
+- **Decision for the user:** `ADMINS` is platform-wide (all tenants), by design; the session's tenant is only the host that did the OIDC sign-in.
+- **Known limits (follow-ups, not blocking):** the user list and statistics run aggregate queries per request (cached 30 s for statistics, rate limited); two simultaneous impersonation start/stop calls from the same admin are last-write-wins;
+  a user who erased their data and keeps chatting is listed again only after their next sign-in.
 
 ## Review
 
