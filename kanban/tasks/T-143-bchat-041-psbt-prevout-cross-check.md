@@ -40,10 +40,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] An input whose value or script differs from the chain's makes the build refuse; so does a prevout the chain does not know or cannot be read.
-- [ ] A PSBT whose inputs match the chain is previewed as before.
-- [ ] The Esplora watcher parses `vout[n].value` and `scriptpubkey` correctly and treats a transport error as unknown.
-- [ ] The full backend suite stays green.
+- [x] An input whose value or script differs from the chain's makes the build refuse; so does a prevout the chain does not know or cannot be read.
+- [x] A PSBT whose inputs match the chain is previewed as before.
+- [x] The Esplora watcher parses `vout[n].value` and `scriptpubkey` correctly and treats a transport error as unknown.
+- [x] The full backend suite stays green.
 
 ## Verification
 
@@ -51,12 +51,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** IBitcoinChainWatcher gets GetPrevoutAsync (Esplora tx/{txid}: vout value and scriptpubkey); BitcoinTransferService.BuildAsync refuses a PSBT unless every input's value and script equal what the chain reports for the output it spends, and refuses an output the chain does not know or cannot be read. Without a watcher the PSBT's own data stands, as before.
+- **Files changed:** Tools/Wallet/Bitcoin/BitcoinTransferService.cs, Api/Wallet/Transfer/BitcoinPreviewFreshness.cs, Tests/Bitcoin/BitcoinTransferTests.cs.
+- **How it was verified:** Bitcoin tests 25 passed (wrong value, wrong script, unknown or unreadable output all refused; matching inputs preview as before; the Esplora parsing, missing output, 404, non-txid and unknown network). Full backend suite run before the PR.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** Bitcoin transfers are off by default (T-141), so this is dormant until Wallet__BitcoinTransfers is enabled. An input spending an unconfirmed output may not be served by Esplora and would be refused (fail closed). The check needs the chain watcher registered, which it always is; a service built without one skips it.
 
 ## Review
 

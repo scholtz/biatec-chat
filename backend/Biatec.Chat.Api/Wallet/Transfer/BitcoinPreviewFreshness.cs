@@ -45,6 +45,23 @@ public sealed class EsploraBitcoinChainWatcher(HttpClient http, IOptions<Bitcoin
         catch (Exception e) when (!ct.IsCancellationRequested && e is HttpRequestException or JsonException or TaskCanceledException) { return false; }
     }
 
+    public async Task<BitcoinPrevout?> GetPrevoutAsync(string network, string txid, uint vout, CancellationToken ct)
+    {
+        if (Base(network) is not { } b || txid.Length != 64 || !txid.All(Uri.IsHexDigit)) return null;
+        try
+        {
+            using var res = await http.GetAsync(new Uri(b, $"tx/{txid}"), ct);
+            if (!res.IsSuccessStatusCode) return null;
+            using var doc = await JsonDocument.ParseAsync(await res.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+            if (!doc.RootElement.TryGetProperty("vout", out var outs) || outs.ValueKind != JsonValueKind.Array || vout >= outs.GetArrayLength()) return null;
+            var o = outs[(int)vout];
+            return o.TryGetProperty("value", out var v) && v.TryGetInt64(out var sats) && o.TryGetProperty("scriptpubkey", out var s) && s.GetString() is { } script
+                ? new BitcoinPrevout(sats, script)
+                : null;
+        }
+        catch (Exception e) when (!ct.IsCancellationRequested && e is HttpRequestException or JsonException or TaskCanceledException or InvalidOperationException) { return null; }
+    }
+
     public async Task<decimal?> GetFeeRateAsync(string network, CancellationToken ct)
     {
         if (Base(network) is not { } b) return null;

@@ -169,6 +169,9 @@ public sealed class BitcoinTransferTests : IClassFixture<BitcoinTransferTests.Db
     {
         public HashSet<string> Spent { get; } = [];
         public decimal? FeeRate { get; set; }
+        /// <summary>What the chain says about an output; the default answers from the PSBT the test serves (so a test that does not care about this passes).</summary>
+        public Func<string, uint, BitcoinPrevout?>? Prevout { get; set; }
+        public Task<BitcoinPrevout?> GetPrevoutAsync(string network, string txid, uint vout, CancellationToken ct) => Task.FromResult(Prevout?.Invoke(txid, vout));
         public Task<bool> IsSpentAsync(string network, string txid, uint vout, CancellationToken ct) => Task.FromResult(Spent.Contains($"{txid}:{vout}"));
         public Task<decimal?> GetFeeRateAsync(string network, CancellationToken ct) => Task.FromResult(FeeRate);
     }
@@ -250,6 +253,9 @@ public sealed class BitcoinTransferTests : IClassFixture<BitcoinTransferTests.Db
 
     public async Task InitializeAsync()
     {
+        // By default the "chain" agrees with whatever PSBT the test serves; the cross-check tests override this.
+        _watcher.Prevout = (txid, vout) =>
+            PsbtDecoder.Decode(_mcp.Psbt(), false).Inputs.FirstOrDefault(i => i.Txid == txid && i.Vout == vout) is { } i ? new BitcoinPrevout(i.Sats, i.ScriptPubKey) : null;
         _conversation = Guid.NewGuid();
         await using var db = NewContext();
         db.Conversations.Add(new Conversation { Id = _conversation, TenantId = "t1", CreatedAt = _clock.GetUtcNow(), LastMessageAt = _clock.GetUtcNow() });
@@ -490,6 +496,54 @@ public sealed class BitcoinTransferTests : IClassFixture<BitcoinTransferTests.Db
         Assert.True(await watcher.IsSpentAsync("bitcoin", Utxo1, 7, default)); // unknown
         Assert.Equal(12.5m, await watcher.GetFeeRateAsync("bitcoin-testnet", default));
         Assert.Null(await watcher.GetFeeRateAsync("litecoin", default));
+    }
+
+    // BCHAT-041: the displayed fee is inputs minus outputs, so every input's value and script must be what the chain has.
+    [Fact]
+    public async Task Build_refuses_an_input_whose_value_the_chain_does_not_confirm()
+    {
+        var bytes = _mcp.Psbt();
+        _watcher.Prevout = (txid, vout) => PsbtDecoder.Decode(bytes, false).Inputs.FirstOrDefault(i => i.Txid == txid && i.Vout == vout) is { } i ? new BitcoinPrevout(i.Sats + 1, i.ScriptPubKey) : null;
+        await using var db = NewContext();
+        var svc = new BitcoinTransferService(_mcp, new ActionPreviewService(db, _clock), db, _clock, _watcher);
+        var e = await Assert.ThrowsAsync<BitcoinTransferException>(() => svc.BuildAsync(Ctx, Req, default));
+        Assert.Contains("does not match", e.Message);
+    }
+
+    [Fact]
+    public async Task Build_refuses_an_input_whose_script_differs_from_the_chain()
+    {
+        _watcher.Prevout = (txid, vout) => PsbtDecoder.Decode(_mcp.Psbt(), false).Inputs.FirstOrDefault(i => i.Txid == txid && i.Vout == vout) is { } i ? new BitcoinPrevout(i.Sats, "0014" + new string('a', 40)) : null;
+        await using var db = NewContext();
+        var svc = new BitcoinTransferService(_mcp, new ActionPreviewService(db, _clock), db, _clock, _watcher);
+        await Assert.ThrowsAsync<BitcoinTransferException>(() => svc.BuildAsync(Ctx, Req, default));
+    }
+
+    [Fact]
+    public async Task Build_refuses_an_input_the_chain_does_not_know_or_cannot_be_read()
+    {
+        _watcher.Prevout = (_, _) => null;
+        await using var db = NewContext();
+        var svc = new BitcoinTransferService(_mcp, new ActionPreviewService(db, _clock), db, _clock, _watcher);
+        var e = await Assert.ThrowsAsync<BitcoinTransferException>(() => svc.BuildAsync(Ctx, Req, default));
+        Assert.Contains("could not be confirmed", e.Message);
+    }
+
+    [Fact]
+    public async Task Esplora_watcher_reads_an_outputs_value_and_script_and_treats_errors_as_unknown()
+    {
+        var txid = Utxo1;
+        var handler = new StubHandler(req => req.RequestUri!.AbsolutePath switch
+        {
+            var p when p.EndsWith("/tx/" + txid) => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{\"vout\":[{\"value\":1000,\"scriptpubkey\":\"0014aa\"},{\"value\":150000,\"scriptpubkey\":\"0014bb\"}]}") },
+            _ => new HttpResponseMessage(System.Net.HttpStatusCode.NotFound),
+        });
+        var watcher = new EsploraBitcoinChainWatcher(new HttpClient(handler), Microsoft.Extensions.Options.Options.Create(new BitcoinOptions()));
+        Assert.Equal(new BitcoinPrevout(150000, "0014bb"), await watcher.GetPrevoutAsync("bitcoin", txid, 1, default));
+        Assert.Null(await watcher.GetPrevoutAsync("bitcoin", txid, 2, default)); // no such output
+        Assert.Null(await watcher.GetPrevoutAsync("bitcoin", Utxo2, 0, default)); // unknown transaction (404)
+        Assert.Null(await watcher.GetPrevoutAsync("bitcoin", "zz", 0, default)); // not a txid
+        Assert.Null(await watcher.GetPrevoutAsync("litecoin", txid, 0, default)); // no Esplora for the network
     }
 
     private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler

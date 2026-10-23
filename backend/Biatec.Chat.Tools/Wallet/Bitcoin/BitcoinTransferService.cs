@@ -25,7 +25,13 @@ public interface IBitcoinChainWatcher
 
     /// <summary>Current recommended fee rate in sat/vB, or null when it cannot be read.</summary>
     Task<decimal?> GetFeeRateAsync(string network, CancellationToken ct);
+
+    /// <summary>The output <paramref name="txid"/>:<paramref name="vout"/> as the chain has it, or null when it is unknown or cannot be read (BCHAT-041).</summary>
+    Task<BitcoinPrevout?> GetPrevoutAsync(string network, string txid, uint vout, CancellationToken ct);
 }
+
+/// <summary>An output as the chain reports it: its value and its script (lowercase hex).</summary>
+public sealed record BitcoinPrevout(long Sats, string ScriptPubKey);
 
 public sealed record BitcoinOutcome(PreviewSnapshot? Snapshot, BitcoinTransferRequest? Request, BitcoinIntent? Intent, string Message, bool IsError = false)
 {
@@ -177,7 +183,26 @@ public sealed class BitcoinTransferService(
         try { intent = PsbtDecoder.Decode(psbts[0], request.Testnet); }
         catch (PsbtException e) { throw new BitcoinTransferException("The builder returned a PSBT that cannot be shown, so nothing was previewed: " + e.Message); }
         Verify(intent, request);
+        await VerifyPrevoutsAsync(intent, request.Network, ct);
         return (intent, psbts[0]);
+    }
+
+    /// <summary>
+    /// The fee on the card is inputs minus outputs, and an input that carries only a witness_utxo has a value the builder asserts. Every input's
+    /// value and script must equal what the chain reports for the output it spends; an output the chain does not know, or cannot be read,
+    /// is refused (BCHAT-041). Without a chain watcher the PSBT's own data stands, as before.
+    /// </summary>
+    private async Task VerifyPrevoutsAsync(BitcoinIntent intent, string network, CancellationToken ct)
+    {
+        if (watcher is null) return;
+        foreach (var input in intent.Inputs)
+        {
+            var onChain = await watcher.GetPrevoutAsync(network, input.Txid, input.Vout, ct);
+            if (onChain is null)
+                throw new BitcoinTransferException("The value of an input could not be confirmed on the Bitcoin chain, so nothing was previewed.");
+            if (onChain.Sats != input.Sats || !string.Equals(onChain.ScriptPubKey, input.ScriptPubKey, StringComparison.OrdinalIgnoreCase))
+                throw new BitcoinTransferException("An input does not match the output it spends on the Bitcoin chain, so nothing was previewed.");
+        }
     }
 
     /// <summary>Checks the decoded transaction against the request. The user must see exactly what they asked for.</summary>
