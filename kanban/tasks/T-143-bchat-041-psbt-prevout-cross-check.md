@@ -40,10 +40,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] An input whose value or script differs from the chain's makes the build refuse; so does a prevout the chain does not know or cannot be read.
-- [ ] A PSBT whose inputs match the chain is previewed as before.
-- [ ] The Esplora watcher parses `vout[n].value` and `scriptpubkey` correctly and treats a transport error as unknown.
-- [ ] The full backend suite stays green.
+- [x] An input whose value or script differs from the chain's makes the build refuse; so does a prevout the chain does not know or cannot be read.
+- [x] A PSBT whose inputs match the chain is previewed as before.
+- [x] The Esplora watcher parses `vout[n].value` and `scriptpubkey` correctly and treats a transport error as unknown.
+- [x] The full backend suite stays green.
 
 ## Verification
 
@@ -51,12 +51,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** IBitcoinChainWatcher gets GetOutputsAsync (Esplora tx/{txid}: every output's value and scriptpubkey); BitcoinTransferService.BuildAsync looks up each distinct funding transaction once and refuses a PSBT unless every input's value and script equal the chain's, or when the transaction is unknown or the chain cannot be read. The Esplora client buffers at most 4 MiB. Without a watcher the PSBT's own data stands, as before.
+- **Files changed:** Tools/Wallet/Bitcoin/BitcoinTransferService.cs, Api/Wallet/Transfer/BitcoinPreviewFreshness.cs, Tests/Bitcoin/BitcoinTransferTests.cs.
+- **How it was verified:** Bitcoin tests 28 passed (wrong value, wrong script, only the second input wrong, each funding transaction looked up once, unknown/unreadable refused, no watcher keeps old behaviour; Esplora parsing incl. non-numeric value, missing script, not JSON, endpoint down, 404, non-txid, unknown network). Full backend suite run before merge.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** Dormant while Bitcoin transfers are off (T-141). Unknown and unreadable are one answer (null) and give one message; an input spending an unconfirmed output may not be served by Esplora and would be refused (fail closed). It does not check that the output is unspent (the freshness gate does that at Confirm).
 
 ## Review
 

@@ -254,7 +254,11 @@ public static class WalletTransferRegistration
         services.AddScoped<TransferPreviewService>();
         services.AddScoped<BitcoinTransferService>();
         services.AddOptions<BitcoinOptions>().BindConfiguration(BitcoinOptions.Section);
-        services.AddHttpClient<IBitcoinChainWatcher, EsploraBitcoinChainWatcher>(c => c.Timeout = TimeSpan.FromSeconds(5));
+        services.AddHttpClient<IBitcoinChainWatcher, EsploraBitcoinChainWatcher>(c =>
+        {
+            c.Timeout = TimeSpan.FromSeconds(5);
+            c.MaxResponseContentBufferSize = 4 * 1024 * 1024; // a transaction with thousands of outputs is still well below this
+        });
         services.AddScoped<Biatec.Chat.Api.Chat.Confirm.IPreviewFreshnessGate, BitcoinPreviewFreshnessGate>();
         services.AddSingleton<IToolExecutor, WalletTransferExecutor>();
         return services;
