@@ -38,15 +38,19 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] A history entry stored or read back has no `binding_code`; the rest of the receipt, including its signature, is kept, and the entry says what was removed.
-- [ ] The recovery code is shown as plain `Text` (no selection toolbar, no copy).
-- [ ] `flutter analyze` and `flutter test` pass.
+- [x] A history entry stored or read back has no `binding_code`; the rest of the receipt, including its signature, is kept, and the entry says what was removed.
+- [x] The recovery code is shown as plain `Text` (no selection toolbar, no copy).
+- [x] `flutter analyze` and `flutter test` pass.
 
 ## Verification
 
 `flutter analyze` and `flutter test` in apps/biatec_authenticator.
 
 ## Hand-off
+
+- **Summary:** `redactReceipt` removes `signed.binding_code` (the one-time code the user typed) from a history entry when it is stored and when it is read back (older entries lose it at their next write); the entry carries `redacted: [signed.binding_code]`, and the rest of the receipt, signature included, is kept. The recovery code is plain `Text`. `native/README.md` records the Android `FLAG_SECURE` and iOS resign-active blur / capture-notification work for when the platform projects exist (BCHAT-008): this task does not add native code.
+- **Verification:** `flutter analyze`: no issues; `flutter test`: all pass (new: history_redaction_test, recovery_code_view_test; the approval test now asserts the stored receipt has no code).
+- **Left for BCHAT-031 (not done, platform projects missing):** the native screen-capture protection itself. The issue is closed by this PR only for the Dart-side items; see the issue comment.
 
 ## Review
 

@@ -2,8 +2,23 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-/// One decision this device signed and Biatec OIDC accepted, with the full
-/// signed receipt so the user can look at exactly what was signed.
+/// The receipt as the history keeps it: the code the user typed (`signed.binding_code`) is a one-time secret of that request and has no
+/// use afterwards, so it is not stored; the entry says so (`redacted`). Everything else, the signature included, is kept. The stored copy is for
+/// reading: it no longer verifies against its signature (the signed bytes held the code), and the `redacted` note is not signed. Biatec OIDC
+/// holds the receipt that verifies.
+Map<String, Object?> redactReceipt(Map<String, Object?> receipt) {
+  final signed = receipt['signed'];
+  if (signed is! Map || !signed.containsKey('binding_code')) return receipt;
+  return {
+    ...receipt,
+    'signed': {...signed.cast<String, Object?>()}..remove('binding_code'),
+    'redacted': const ['signed.binding_code'],
+  };
+}
+
+/// One decision this device signed and Biatec OIDC accepted, with the signed
+/// receipt (without the one-time binding code, see [redactReceipt]) so the
+/// user can look at what was signed.
 class HistoryEntry {
   const HistoryEntry({
     required this.authReqId,
@@ -42,7 +57,18 @@ class HistoryEntry {
         decidedAt: DateTime.fromMillisecondsSinceEpoch(
             json['decided_at'] as int,
             isUtc: true),
-        receipt: (json['receipt'] as Map).cast<String, Object?>(),
+        // Entries written before the code was dropped lose it here, and on disk at the next write.
+        receipt: redactReceipt((json['receipt'] as Map).cast<String, Object?>()),
+      );
+
+  /// This entry with the binding code removed from its receipt.
+  HistoryEntry redacted() => HistoryEntry(
+        authReqId: authReqId,
+        decision: decision,
+        summary: summary,
+        clientLabel: clientLabel,
+        decidedAt: decidedAt,
+        receipt: redactReceipt(receipt),
       );
 }
 
@@ -55,7 +81,7 @@ abstract class HistoryStore {
 }
 
 List<HistoryEntry> _prepend(List<HistoryEntry> list, HistoryEntry e) => [
-      e,
+      e.redacted(),
       ...list.where((x) => x.authReqId != e.authReqId),
     ].take(HistoryStore.maxEntries).toList();
 
@@ -81,6 +107,11 @@ class SecureHistoryStore implements HistoryStore {
       }
     } on Object {
       return const []; // corrupt history reads as empty
+    }
+    // Entries stored before the binding code was dropped: rewrite the storage once, so the code does not stay on disk until the next approval.
+    if (raw.contains('binding_code')) {
+      await _storage.write(
+          key: _key, value: jsonEncode([for (final e in out) e.toJson()]));
     }
     return out;
   }
