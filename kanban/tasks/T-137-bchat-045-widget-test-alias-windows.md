@@ -31,7 +31,7 @@ The widget suite passes on Windows and Linux.
 
 ## Scope
 
-- In: the test alias in `packages/chat-widget/vite.config.ts` (a regex alias with a forward-slash target).
+- In: the test alias in `packages/chat-widget/vite.config.ts`, plus two other Windows/current-Node test-environment causes found once it worked (CRLF in the DEX doc test; the Node 25+ localStorage global).
 - Out: the playground build config (`playground/vite.config.ts`).
 
 ## Parallel work
@@ -40,8 +40,8 @@ Parallel work possible: **yes**. No other unfinished task changes this file.
 
 ## Acceptance criteria
 
-- [ ] `pnpm --filter @biatec/chat-widget test` shows no failures on Windows.
-- [ ] CI's widget job still passes on Linux.
+- [x] `pnpm --filter @biatec/chat-widget test` shows no failures on Windows.
+- [x] CI's widget job still passes on Linux.
 
 ## Verification
 
@@ -49,12 +49,12 @@ Parallel work possible: **yes**. No other unfinished task changes this file.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** Three environment-dependent causes fixed so the widget suite passes on a Windows checkout with a current Node: the playground alias is a regex alias with a forward-slash target (the string key with a backslash path did not resolve); the DEX doc test normalises CRLF before matching its code fences; a test setup file puts an in-memory Storage in place when the Node 25+ built-in localStorage global hides jsdom's (a no-op on Node 22, which CI uses).
+- **Files changed:** packages/chat-widget/vite.config.ts, test/setup.ts, test/dex-integration.test.ts.
+- **How it was verified:** pnpm --filter @biatec/chat-widget test on Windows with Node 26: 27 files, 413 passed, 5 skipped, 0 failed (was 5 failed); the PR's CI run (Linux, Node 22) succeeded.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** The issue named only the alias; the other two causes (CRLF checkout, Node 25+ localStorage) turned up once the alias worked. None is a product defect. Other tests read repository files and could break on a CRLF checkout too; a .gitattributes with eol=lf would fix that at the source but renormalises the tree, so I left it. The storage shim is an in-memory Storage, not jsdom's (property-style access like localStorage.foo is not supported).
 
 ## Review
 

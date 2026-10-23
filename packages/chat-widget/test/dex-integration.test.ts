@@ -182,7 +182,8 @@ describe("BiatecDEX host: layering", () => {
 });
 
 describe("docs/integration-biatec-dex.md", () => {
-  const doc = readFileSync(resolve(__dirname, "../../../docs/integration-biatec-dex.md"), "utf8");
+  // LF only: a Windows checkout may have CRLF, which the fence pattern below does not match.
+  const doc = readFileSync(resolve(__dirname, "../../../docs/integration-biatec-dex.md"), "utf8").replace(/\r\n/g, "\n");
   const dir = resolve(__dirname, "../playground/dex");
   const files = (d: string): string[] =>
     readdirSync(d).flatMap((f) => (statSync(join(d, f)).isDirectory() ? files(join(d, f)) : [join(d, f)]));
