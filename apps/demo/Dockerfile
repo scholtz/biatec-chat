@@ -31,7 +31,7 @@ RUN origin="$(printf '%s' "$BACKEND_URL" | sed -E 's#^(https?://[^/]+).*#\1#')" 
  && sed "s#__BACKEND_ORIGIN__#$origin#" apps/demo/security-headers.conf > /security-headers.conf \
  && grep -qF "connect-src $origin;" /security-headers.conf
 
-FROM nginxinc/nginx-unprivileged:1.27-alpine@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0
+FROM nginxinc/nginx-unprivileged:1.29-alpine@sha256:0c79d56aee561a1d81c63f00eee5fb5fe29279560cdc55e91425133104c7fbe6
 COPY apps/demo/nginx.conf /etc/nginx/nginx.conf
 COPY --from=build /security-headers.conf /etc/nginx/security-headers.conf
 COPY --from=build /repo/apps/demo/dist /usr/share/nginx/html
