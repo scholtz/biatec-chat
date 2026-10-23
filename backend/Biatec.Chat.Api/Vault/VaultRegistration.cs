@@ -46,11 +46,12 @@ public sealed class VaultOptionsValidator(IOptions<KmsOptions> kms, IHostEnviron
         if (string.Equals(o.KeyProvider, "Dev", StringComparison.OrdinalIgnoreCase))
         {
             // The Dev provider keeps the key in this process or in config. Outside Development that must be a deliberate choice (BCHAT-012).
+            var errors = new List<string>();
             if (!env.IsDevelopment() && !o.AllowEphemeralKeys)
-                return ValidateOptionsResult.Fail("Vault:KeyProvider=Dev is only allowed in Development. Set Vault:KeyProvider=Secret (or Kms), or set Vault:AllowEphemeralKeys=true to accept it.");
+                errors.Add("Vault:KeyProvider=Dev is only allowed in Development. Set Vault:KeyProvider=Secret (or Kms), or set Vault:AllowEphemeralKeys=true to accept it.");
             if (o.DevKey is not null && !IsBase64Of32Bytes(o.DevKey))
-                return ValidateOptionsResult.Fail("Vault:DevKey must be base64 of 32 bytes.");
-            return ValidateOptionsResult.Success;
+                errors.Add("Vault:DevKey must be base64 of 32 bytes.");
+            return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
         }
         if (string.Equals(o.KeyProvider, "Kms", StringComparison.OrdinalIgnoreCase))
             return string.IsNullOrWhiteSpace(kms.Value.KeyId)

@@ -1,6 +1,7 @@
 using Biatec.Chat.Api.Vault;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Hosting;
 
 namespace Biatec.Chat.Tests.Vault;
@@ -55,6 +56,31 @@ public sealed class VaultKeyProviderGateTests
     [Fact]
     public void The_Dev_provider_outside_Development_works_only_with_the_explicit_flag() =>
         Assert.IsType<DevKeyProvider>(Resolve("Production", new() { ["Vault:KeyProvider"] = "Dev", ["Vault:AllowEphemeralKeys"] = "true" }));
+
+    // The real host: a Production host with the default Dev provider and no flag does not start (ValidateOnStart), instead of failing on a later request.
+    [Fact]
+    public async Task A_production_host_with_the_default_Dev_provider_does_not_start()
+    {
+        await using var factory = new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+        {
+            b.UseEnvironment("Production");
+            b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Oidc:Issuer"] = "https://oidc.example.test",
+                ["Oidc:McpResource"] = "https://mcp.example.test",
+                ["Mcp:Endpoint"] = "https://mcp.example.test/mcp",
+                ["Redis:ConnectionString"] = "127.0.0.1:1",
+                ["Postgres:ConnectionString"] = "Host=127.0.0.1;Database=none;Username=x;Password=x",
+                ["Algod:Networks:testnet:Url"] = "https://algod.example.test",
+                ["Kms:KeyId"] = "alias/test",
+                ["Evidence:AllowEphemeralKeys"] = "true",
+                ["Vault:KeyProvider"] = "Dev",
+                ["Vault:AllowEphemeralKeys"] = "false", // the test process sets the opt-in as an environment variable; this overrides it
+            }));
+        });
+        var e = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
+        Assert.Contains("Vault:KeyProvider=Dev is only allowed in Development", e.ToString());
+    }
 
     [Fact]
     public void The_Secret_provider_is_unaffected_in_Production() =>
