@@ -12,12 +12,13 @@ const M = { l: 48, r: 14, t: 14, b: 30 };
 const innerW = W - M.l - M.r;
 const innerH = H - M.t - M.b;
 
+/** A maximum that is four whole steps (1, 2 or 5 times a power of ten, at least 1): counts never get fractional ticks. */
 function niceMax(v: number): number {
-  if (v <= 0) return 1;
-  const exp = Math.pow(10, Math.floor(Math.log10(v)));
-  const f = v / exp;
+  const raw = Math.max(v, 1) / 4;
+  const exp = Math.pow(10, Math.floor(Math.log10(raw)));
+  const f = raw / exp;
   const nice = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10;
-  return nice * exp;
+  return 4 * Math.max(1, nice * exp);
 }
 
 const yMax = computed(() => niceMax(Math.max(0, ...props.series.flatMap((s) => s.values))));

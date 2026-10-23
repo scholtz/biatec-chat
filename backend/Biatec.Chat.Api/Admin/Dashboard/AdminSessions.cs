@@ -36,7 +36,8 @@ public sealed class AdminAllowList
             var e = Normalize(part);
             if (e.Length == 0) continue;
             var at = e.IndexOf('@');
-            if (at <= 0 || at != e.LastIndexOf('@') || at == e.Length - 1 || e.Length > 320 || e.Any(char.IsWhiteSpace) || e.Any(char.IsControl))
+            // ';' is the separator: an entry holding ',' is a list written with the wrong one, and must not pass as one address.
+            if (at <= 0 || at != e.LastIndexOf('@') || at == e.Length - 1 || e.Length > 320 || e.Any(char.IsWhiteSpace) || e.Any(char.IsControl) || e.Contains(','))
             {
                 ignored++;
                 continue;

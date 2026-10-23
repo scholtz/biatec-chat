@@ -170,7 +170,14 @@ public static class AdminDashboardEndpoints
                 new JsonObject { ["expiresAt"] = imp.ExpiresAt.ToString("O"), ["mode"] = "read-only" }, ctx.RequestAborted);
             session.Impersonation = imp;
             // Only a session that still exists: a sign-out that raced this request stays a sign-out. The start then never took effect, and the chain says so.
-            if (!await store.ReplaceAsync(p.TokenHash, session, AdminAuth.IdleTtl(session, options.Value, now), ctx.RequestAborted))
+            bool stored;
+            try { stored = await store.ReplaceAsync(p.TokenHash, session, AdminAuth.IdleTtl(session, options.Value, now), ctx.RequestAborted); }
+            catch
+            {
+                await AdminImpersonations.TryRecordStopAsync(log, logger, session, imp, "aborted", CancellationToken.None);
+                throw;
+            }
+            if (!stored)
             {
                 await AdminImpersonations.TryRecordStopAsync(log, logger, session, imp, "aborted", ctx.RequestAborted);
                 return Results.Json(new { error = "Sign in required." }, statusCode: StatusCodes.Status401Unauthorized);

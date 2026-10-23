@@ -232,9 +232,9 @@ public sealed class AdminDashboardTests : IAsyncLifetime
     [Fact]
     public void AllowList_ParsesSemicolonSeparatedEmailsCaseInsensitively()
     {
-        var emails = AdminAllowList.Parse("  Alice@Example.test ; bob@example.test;;\nCarol@x.io;bad;two@@x;@x;x@;a b@x.io", out var ignored);
+        var emails = AdminAllowList.Parse("  Alice@Example.test ; bob@example.test;;\nCarol@x.io;bad;two@@x;@x;x@;a b@x.io;d@x.io,e@x.io", out var ignored);
         Assert.Equal(["alice@example.test", "bob@example.test", "carol@x.io"], emails);
-        Assert.Equal(5, ignored);
+        Assert.Equal(6, ignored);
         var list = new AdminAllowList(Microsoft.Extensions.Options.Options.Create(new AdminOptions { Admins = "Alice@Example.test" }), NullLogger<AdminAllowList>.Instance);
         Assert.True(list.Contains(" ALICE@example.TEST "));
         Assert.False(list.Contains("alice@example.test.evil.io"));
@@ -368,7 +368,8 @@ public sealed class AdminDashboardTests : IAsyncLifetime
         Assert.NotNull(SetCookie(await SendAsync(f, HttpMethod.Get, url, login, sameOrigin: false), AdminAuth.CookieName));
         var replay = await SendAsync(f, HttpMethod.Get, url, login, sameOrigin: false);
         Assert.Null(SetCookie(replay, AdminAuth.CookieName));
-        Assert.Equal(HttpStatusCode.BadRequest, replay.StatusCode); // no pending state any more: the chat callback's own refusal
+        Assert.Equal(HttpStatusCode.Redirect, replay.StatusCode); // the state is gone: the dashboard says so itself
+        Assert.EndsWith("error=login_failed", replay.Headers.Location!.ToString());
     }
 
     [Fact]
@@ -963,5 +964,28 @@ public sealed class AdminDashboardTests : IAsyncLifetime
         var cookie = await AdminCookieAsync(f);
         foreach (var path in new[] { "/admin/api/stats?tenant=a&tenant=b", "/admin/api/users?tenant=a&tenant=b", "/admin/api/user?tenant=a&tenant=b&sub=x" })
             Assert.Equal(HttpStatusCode.BadRequest, (await SendAsync(f, HttpMethod.Get, path, cookie)).StatusCode);
+    }
+
+    [Fact]
+    public async Task SignIn_AgainEndsThePreviousSession_AndAGoneStateLandsOnTheDashboard()
+    {
+        var f = Factory();
+        var first = await AdminCookieAsync(f);
+        var second = await SignInAsync(f);
+        // The second sign-in came with the first session's cookie? Not in this helper, so send it explicitly through a fresh flow.
+        var start = await SendAsync(f, HttpMethod.Get, "/admin/auth/login", tweak: r => r.Headers.Remove("Sec-Fetch-Site"));
+        var (code, state) = _oidc.Authorize(start.Headers.Location!, "openid profile email");
+        var cb = await SendAsync(f, HttpMethod.Get, $"/auth/callback?code={Uri.EscapeDataString(code)}&state={Uri.EscapeDataString(state)}",
+            CookieHeader(SetCookie(start, AdminAuth.LoginCookieName)!) + "; " + first, sameOrigin: false);
+        Assert.NotNull(SetCookie(cb, AdminAuth.CookieName));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await SendAsync(f, HttpMethod.Get, "/admin/api/me", first)).StatusCode);
+        Assert.NotNull(second);
+
+        // A state that is gone (waited too long) ends on the dashboard's message, not on the chat popup page.
+        var gone = await SendAsync(f, HttpMethod.Get, "/auth/callback?code=x&state=" + new string('z', 43), CookieHeader(SetCookie(start, AdminAuth.LoginCookieName)!), sameOrigin: false);
+        Assert.Equal(HttpStatusCode.Redirect, gone.StatusCode);
+        Assert.EndsWith("?error=login_failed", gone.Headers.Location!.ToString());
+        var denied = await SendAsync(f, HttpMethod.Get, "/auth/callback?error=access_denied", CookieHeader(SetCookie(start, AdminAuth.LoginCookieName)!), sameOrigin: false);
+        Assert.EndsWith("?error=access_denied", denied.Headers.Location!.ToString());
     }
 }
