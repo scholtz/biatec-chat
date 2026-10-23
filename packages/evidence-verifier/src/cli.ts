@@ -7,7 +7,9 @@ const USAGE = `Usage: biatec-evidence-verify verify <bundle.json> --jwks <jwks.j
 Exit codes: 0 verified, 1 verification failed, 2 usage or input error.`;
 
 async function load(source: string): Promise<unknown> {
-  if (/^https?:\/\//i.test(source)) {
+  // A JWKS (or bundle) fetched over plain http can be swapped on the way, which would defeat the point of verifying against it.
+  if (/^http:\/\//i.test(source)) throw new Error(`${source} is not https; refusing to fetch it.`);
+  if (/^https:\/\//i.test(source)) {
     const res = await fetch(source);
     if (!res.ok) throw new Error(`GET ${source} returned ${res.status}`);
     return res.json();

@@ -102,6 +102,36 @@ describe("what a valid result does not say (BCHAT-022)", () => {
   });
 });
 
+describe("strictness about JWKS keys (BCHAT-023)", () => {
+  const withKeys = (f: (keys: Jwks["keys"]) => Jwks["keys"]): Jwks => ({ ...jwks, keys: f(jwks.keys.map((k) => ({ ...k }))) });
+
+  it("a key that declares another use or algorithm is not used to verify", () => {
+    expect(verifyBundle(fresh(), { jwks }).valid).toBe(true);
+    expect(verifyBundle(fresh(), { jwks: withKeys((ks) => ks.map((k) => ({ ...k, use: "enc" }))) }).valid).toBe(false);
+    expect(verifyBundle(fresh(), { jwks: withKeys((ks) => ks.map((k) => ({ ...k, alg: "ES384" }))) }).valid).toBe(false);
+  });
+
+  it("a key without use or alg (both optional in a JWK) still verifies", () => {
+    const r = verifyBundle(fresh(), { jwks: withKeys((ks) => ks.map(({ use: _u, alg: _a, ...k }) => k)) });
+    expect(r.errors).toEqual([]);
+  });
+
+  it("a kid listed twice makes the JWKS ambiguous and fails", () => {
+    const r = verifyBundle(fresh(), { jwks: withKeys((ks) => [...ks, { ...ks[0] }]) });
+    expect(r.valid).toBe(false);
+    expect(r.errors.join(" ")).toMatch(/more than once/);
+  });
+
+  it("a bundle exported outside its signing key's lifetime fails", () => {
+    const before = verifyBundle(fresh(), { jwks: withKeys((ks) => ks.map((k) => ({ ...k, created_at: "2999-01-01T00:00:00.000Z" }))) });
+    expect(before.valid).toBe(false);
+    expect(before.errors.join(" ")).toMatch(/exportedAt is outside the bundle signing key's lifetime/);
+    const after = verifyBundle(fresh(), { jwks: withKeys((ks) => ks.map((k) => ({ ...k, retired_at: "2000-01-01T00:00:00.000Z" }))) });
+    expect(after.valid).toBe(false);
+    expect(after.errors.join(" ")).toMatch(/exportedAt is outside/);
+  });
+});
+
 describe("tampered bundles fail", () => {
   const fails = (b: unknown, pattern: RegExp) => {
     const r = verifyBundle(b, { jwks });
@@ -259,6 +289,12 @@ describe("CLI", () => {
     expect(run("verify", join(dir, "bundle.json")).status).toBe(2);
     expect(run("verify", join(dir, "nope.json"), "--jwks", join(dir, "jwks.json")).status).toBe(2);
     expect(run("verify", join(dir, "bundle.json"), "--bogus").status).toBe(2);
+  });
+
+  it("refuses to fetch a JWKS over plain http, before any request is made", () => {
+    const r = run("verify", join(dir, "bundle.json"), "--jwks", "http://127.0.0.1:1/jwks.json");
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/not https/);
   });
 
   it("warns when only embedded keys are used", () => {

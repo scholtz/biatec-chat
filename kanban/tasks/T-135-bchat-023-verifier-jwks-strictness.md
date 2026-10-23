@@ -39,11 +39,11 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] A JWKS key with `use` other than `sig` or `alg` other than `ES256` is refused when it would verify something.
-- [ ] A JWKS with two keys of the same `kid` fails verification.
-- [ ] A bundle whose `exportedAt` lies outside its signing key's lifetime fails.
-- [ ] The CLI refuses an `http://` JWKS URL (exit 2); file paths and `https://` still work.
-- [ ] Existing verifier tests stay green.
+- [x] A JWKS key with `use` other than `sig` or `alg` other than `ES256` is refused when it would verify something.
+- [x] A JWKS with two keys of the same `kid` fails verification.
+- [x] A bundle whose `exportedAt` lies outside its signing key's lifetime fails.
+- [x] The CLI refuses an `http://` JWKS URL (exit 2); file paths and `https://` still work.
+- [x] Existing verifier tests stay green.
 
 ## Verification
 
@@ -51,12 +51,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** A JWK that declares a use other than sig or an alg other than ES256 is never used to verify; a JWKS listing a kid twice fails; the bundle signature's key must have been valid at exportedAt (like entry keys at signedAt); the CLI refuses http:// sources.
+- **Files changed:** packages/evidence-verifier/src/verify.ts, src/cli.ts, test/verify.test.ts.
+- **How it was verified:** pnpm --filter evidence-verifier test (30 passed): wrong use, wrong alg, absent use/alg still fine, duplicate kid, exportedAt before created_at and after retired_at, CLI refuses http.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** None. The CLI also rejects http:// for the bundle argument, not only the JWKS, for the same reason.
 
 ## Review
 

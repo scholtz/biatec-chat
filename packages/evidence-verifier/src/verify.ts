@@ -119,6 +119,8 @@ function verifyEs256(key: Jwk, text: string, signature: unknown): boolean {
     const sig = decodeB64u(signature);
     if (!sig || sig.length !== 64) return false;
     if (key.kty !== "EC" || key.crv !== "P-256") return false;
+    // A JWKS entry that declares another use or algorithm is not an ES256 signature key, whatever its curve (BCHAT-023).
+    if ((key.use !== undefined && key.use !== "sig") || (key.alg !== undefined && key.alg !== "ES256")) return false;
     const pub = createPublicKey({ key: { kty: "EC", crv: "P-256", x: key.x, y: key.y }, format: "jwk" });
     return cryptoVerify("sha256", Buffer.from(text, "utf8"), { key: pub, dsaEncoding: "ieee-p1363" }, sig);
   } catch {
@@ -154,6 +156,12 @@ export function verifyBundle(input: unknown, options: VerifyOptions = {}): Verif
   let trusted: Map<string, Jwk>;
   if (options.jwks) {
     if (!Array.isArray(options.jwks.keys)) { fail("The JWKS has no keys array."); return result; }
+    // The same kid twice is ambiguous (a map would silently keep the last): refuse the JWKS.
+    const seen = new Set<string>();
+    for (const k of options.jwks.keys) {
+      if (seen.has(k?.kid)) { fail(`The JWKS lists the key id '${String(k?.kid)}' more than once.`); return result; }
+      seen.add(k?.kid);
+    }
     trusted = new Map(options.jwks.keys.map((k) => [k.kid, k]));
     result.keysAuthenticated = true;
     for (const k of bundle.keys) {
@@ -173,6 +181,15 @@ export function verifyBundle(input: unknown, options: VerifyOptions = {}): Verif
   const bk = trusted.get(String(bundle.kid));
   if (!bk) fail(`Bundle signing key '${String(bundle.kid)}' is not trusted.`);
   else if (!verifyEs256(bk, safe(() => bundleSigningInput(bundle)), bundle.signature)) fail("Bundle signature does not verify.");
+  else {
+    // The bundle is signed when it is exported, so the key must have been valid then, like an entry's key at signedAt.
+    const exported = parseTime(bundle.exportedAt);
+    const created = bk.created_at ? parseTime(bk.created_at) : NaN;
+    const retired = bk.retired_at ? parseTime(bk.retired_at) : NaN;
+    if (Number.isNaN(exported)) fail("exportedAt is not an RFC 3339 UTC timestamp.");
+    else if ((!Number.isNaN(created) && exported < created - SKEW_MS) || (!Number.isNaN(retired) && exported > retired + SKEW_MS))
+      fail("exportedAt is outside the bundle signing key's lifetime.");
+  }
 
   // Chain.
   let prev = GENESIS;
