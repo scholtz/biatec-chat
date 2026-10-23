@@ -1,7 +1,7 @@
 ---
 id: T-132
 title: "Pin GitHub Actions to commit SHAs and add Dependabot (BCHAT-017)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -60,7 +60,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 11:18 · approve · PR #316 merged into main @ 64939ca (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 14:00 · claude · (new) → backlog · created from GitHub issue #270 (BCHAT-017); blockers scan: none
 - 2026-10-23 11:07 · scholtz · taken, and session-20261023-1107 · backlog → in-progress · claimed
+- 2026-10-23 11:18 · user · in-progress → done · PR #316 merged into main @ 64939ca (synced by kanban-sync)
