@@ -1,7 +1,7 @@
 ---
 id: T-136
 title: "Validate preview_card and consent_status frames and bound stream and reply size in the widget (BCHAT-025)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -63,7 +63,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 11:55 · approve · PR #321 merged into main @ 757586a (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 18:00 · claude · (new) → backlog · created from GitHub issue #278 (BCHAT-025); blockers scan: none
 - 2026-10-23 11:47 · scholtz · taken, and session-20261023-1147 · backlog → in-progress · claimed
+- 2026-10-23 11:55 · user · in-progress → done · PR #321 merged into main @ 757586a (synced by kanban-sync)
