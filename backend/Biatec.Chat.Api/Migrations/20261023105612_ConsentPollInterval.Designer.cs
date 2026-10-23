@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Biatec.Chat.Api.Migrations
 {
     [DbContext(typeof(ChatDbContext))]
-    [Migration("20261023105318_ConsentPollInterval")]
+    [Migration("20261023105612_ConsentPollInterval")]
     partial class ConsentPollInterval
     {
         /// <inheritdoc />
@@ -191,6 +191,9 @@ namespace Biatec.Chat.Api.Migrations
                         .HasColumnType("text");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastPolledAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Origin")

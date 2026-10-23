@@ -258,9 +258,13 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
         return await NewConfirm(db).ConfirmAsync(_tenant, _session, previewId, groupHash, Biatec.Chat.Api.Chat.Confirm.ConfirmService.BackendOrigin(_tenant), CancellationToken.None);
     }
 
-    private async Task<ConsentAdvance> AdvanceAsync(Guid previewId)
+    /// <summary>One poll of the consent. A real stream waits the poll interval between polls (the orchestrator enforces it), so the clock moves on first.</summary>
+    private async Task<ConsentAdvance> AdvanceAsync(Guid previewId, int? afterSeconds = null)
     {
         await using var db = NewContext();
+        // Default: one poll interval (plus a second) after the last poll, as a real stream waits. 0 polls again at once.
+        var interval = await db.ConsentRequests.AsNoTracking().Select(c => (int?)c.PollIntervalSeconds).FirstOrDefaultAsync() ?? 0;
+        _clock.Now = _clock.Now.AddSeconds(afterSeconds ?? interval + 1);
         return await NewOrchestrator(db).AdvanceAsync(_tenant, _session, previewId, CancellationToken.None);
     }
 
@@ -287,12 +291,36 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
         Assert.Equal(TimeSpan.FromSeconds(7), slower.PollAfter);
         Assert.Equal(7, (await LoadAsync(b.PreviewId)).Item3.PollIntervalSeconds); // kept: a new stream starts slow too
 
-        // Back to pending: the raised interval stays; and slow_down never goes past the cap.
+        // Back to pending: the raised interval stays. slow_down never goes past the cap (the window is stretched so it does not run out first).
         _server.State = "pending";
         Assert.Equal(TimeSpan.FromSeconds(7), (await AdvanceAsync(b.PreviewId)).PollAfter);
+        await using (var db = NewContext())
+            await db.ConsentRequests.ExecuteUpdateAsync(u => u.SetProperty(c => c.ExpiresAt, _clock.Now.AddDays(1)));
         _server.State = "slow_down";
         for (var i = 0; i < 20; i++) await AdvanceAsync(b.PreviewId);
         Assert.Equal(ConsentOrchestrator.MaxPollIntervalSeconds, (await LoadAsync(b.PreviewId)).Item3.PollIntervalSeconds);
+    }
+
+    [Fact]
+    public async Task Polls_closer_together_than_the_interval_never_reach_the_token_endpoint()
+    {
+        var b = await BuildPreviewAsync();
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        await AdvanceAsync(b.PreviewId); // polls: the first slot
+        var polls = _server.TokenRequests.Count;
+
+        // A second tab, a reconnected stream or the plain poll endpoint right after: answered from the stored state, not by Biatec OIDC.
+        var early = await AdvanceAsync(b.PreviewId, afterSeconds: 0);
+        Assert.Equal(ConsentState.Pending, early.Status.State);
+        Assert.Equal(TimeSpan.FromSeconds(2), early.PollAfter);
+        var early2 = await AdvanceAsync(b.PreviewId, afterSeconds: 1);
+        Assert.Equal(TimeSpan.FromSeconds(1), early2.PollAfter); // 2 s interval, 1 s since the poll
+        Assert.Equal(polls, _server.TokenRequests.Count);
+
+        // An approval that is already waiting is only seen once the interval has passed.
+        _server.State = "approved";
+        Assert.Equal(ConsentState.Pending, (await AdvanceAsync(b.PreviewId, afterSeconds: 0)).Status.State);
+        Assert.Equal(ConsentState.Approved, (await AdvanceAsync(b.PreviewId, afterSeconds: 2)).Status.State);
     }
 
     [Fact]

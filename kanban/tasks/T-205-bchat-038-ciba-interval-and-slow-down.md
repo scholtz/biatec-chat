@@ -48,8 +48,8 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:** `ConsentRequest.PollIntervalSeconds` (migration `ConsentPollInterval`, existing rows default to 2) keeps the `interval` of the step-up (clamped 1 to 30). A `slow_down` poll answer raises it by 5 s (cap 60 s, persisted so a new stream starts slow too). `ConsentAdvance.PollAfter` carries it and the SSE stream waits `max(Consent:Interval, PollAfter)`.
-- **Verification:** `dotnet test --filter Consent|Confirm`: 186 pass, with a new test for the kept interval, the +5 s step and the cap. Full suite in CI.
+- **Summary:** `ConsentRequest.PollIntervalSeconds` (kept from the step-up `interval`, clamped 1 to 30; rows from before the migration get the CIBA default 5) and `LastPolledAt` (migration `ConsentPollInterval`). The orchestrator enforces the interval itself: a poll sooner than the interval after the last one never reaches the token endpoint (one caller wins the slot atomically, the rest get the pending status and when to come back), so a reconnected stream, a second tab or the plain poll endpoint cannot poll faster. `slow_down` raises the stored interval atomically by 5 s (cap 60 s). `ConsentAdvance.PollAfter` carries the wait and the SSE stream waits `max(Consent:Interval, PollAfter)`.
+- **Verification:** `dotnet test --filter Consent|Confirm`: 187 pass, with new tests for the kept interval, the +5 s step and the cap, and for early polls not reaching Biatec OIDC. Full suite in CI.
 
 ## Review
 
