@@ -24,7 +24,7 @@ namespace Biatec.Chat.Api.Dex.Liquidity;
 /// listing when no pool was named, the build through the sidecar, and the persisted preview card. The executors never
 /// sign or submit: the user's Confirm runs the shared confirm path (sign at Biatec OIDC, broadcast, track).
 /// </summary>
-public abstract class LiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpClient mcp, IServiceScopeFactory scopes, TimeProvider clock) : IToolExecutor
+public abstract class LiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpClient mcp, IServiceScopeFactory scopes, TimeProvider clock, Biatec.Chat.Tools.Algod.AlgodClientFactory? algod = null) : IToolExecutor
 {
     public abstract string CapabilityName { get; }
     public abstract string? StatusLabel(JsonNode arguments);
@@ -144,16 +144,44 @@ public abstract class LiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpC
         }
     }
 
+    /// <summary>
+    /// Simulates the built group on algod when an endpoint is configured for the network. Failed means the chain would reject it. When
+    /// there is no endpoint or algod cannot be reached the preview says so plainly: it never claims a simulation that did not run.
+    /// </summary>
+    private async Task<(string Summary, bool Failed)> SimulateAsync(string network, Biatec.Chat.Tools.Algod.GroupedTransactions group, CancellationToken ct)
+    {
+        Biatec.Chat.Tools.Algod.IAlgodSimulateClient? client = null;
+        if (algod is not null)
+            foreach (var name in new[] { network, McpNetworks.Algorand(network) })
+            {
+                try { client = algod.For(name); break; }
+                catch (ArgumentException) { }
+            }
+        if (client is null) return ("Not simulated: no algod endpoint is configured for this network.", false);
+        try
+        {
+            var outcome = await client.SimulateAsync(group.Transactions, false, ct);
+            return (outcome.Summary, !outcome.Success);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            return ("Not simulated: algod was unreachable.", false);
+        }
+    }
+
     /// <summary>Persists the preview and returns the card plus a model-facing summary. Nothing is signed.</summary>
     protected async Task<ToolExecutionResult> CreatePreviewAsync(
         ToolExecutionContext context, LiquidityRequest r, LiquidityBuild b, string intent, IReadOnlyList<AssetAmount> assets, string title, JsonObject extraFacts, int? accountVerificationClass, CancellationToken ct)
     {
+        var (simulation, simulationFailed) = await SimulateAsync(r.Network, b.Group, ct);
+        if (simulationFailed)
+            return new ToolExecutionResult("The transaction the builder returned would fail on chain, so no preview was made. " + simulation + " Tell the user it could not be prepared; do not retry with guessed values.", true);
         var now = clock.GetUtcNow();
         var expiresAt = Biatec.Chat.Core.Previews.PreviewPolicy.ExpiryFromLastValid(b.LastValid, b.BuiltAtRound, now);
         var stepNetwork = McpNetworks.Algorand(r.Network);
         var fee = b.Group.Transactions.Aggregate(BigInteger.Zero, (s, t) => s + t.Fee);
         var accountClass = accountVerificationClass?.ToString(CultureInfo.InvariantCulture) ?? "none";
-        var summary = $"Biatec DEX pool {b.Pool.AppId} · fee tier {b.Pool.FeePercent}% · price range {b.Pool.PriceRange} · pool minimum verification class {b.Pool.VerificationClass} · your verification class {accountClass} · simulation passed";
+        var summary = $"Biatec DEX pool {b.Pool.AppId} · fee tier {b.Pool.FeePercent}% · price range {b.Pool.PriceRange} · pool minimum verification class {b.Pool.VerificationClass} · your verification class {accountClass} · {simulation}";
 
         var canonical = new JsonObject
         {
@@ -273,8 +301,8 @@ public sealed class AssetBook
 }
 
 /// <summary><c>dex.addLiquidity</c>: deposit both assets of a pool, previewed and built from the pool's own state.</summary>
-public sealed class DexAddLiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpClient mcp, IServiceScopeFactory scopes, TimeProvider clock)
-    : LiquidityExecutor(liquidity, mcp, scopes, clock)
+public sealed class DexAddLiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpClient mcp, IServiceScopeFactory scopes, TimeProvider clock, Biatec.Chat.Tools.Algod.AlgodClientFactory? algod = null)
+    : LiquidityExecutor(liquidity, mcp, scopes, clock, algod)
 {
     public override string CapabilityName => "dex.addLiquidity";
     public override string? StatusLabel(JsonNode arguments) => "Preparing the liquidity deposit";
@@ -317,8 +345,8 @@ public sealed class DexAddLiquidityExecutor(ILiquidityBuilder liquidity, IBiatec
 }
 
 /// <summary><c>dex.removeLiquidity</c>: return a percentage of the user's LP tokens of one pool for their share of both assets.</summary>
-public sealed class DexRemoveLiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpClient mcp, IServiceScopeFactory scopes, TimeProvider clock)
-    : LiquidityExecutor(liquidity, mcp, scopes, clock)
+public sealed class DexRemoveLiquidityExecutor(ILiquidityBuilder liquidity, IBiatecMcpClient mcp, IServiceScopeFactory scopes, TimeProvider clock, Biatec.Chat.Tools.Algod.AlgodClientFactory? algod = null)
+    : LiquidityExecutor(liquidity, mcp, scopes, clock, algod)
 {
     public override string CapabilityName => "dex.removeLiquidity";
     public override string? StatusLabel(JsonNode arguments) => "Preparing the liquidity withdrawal";

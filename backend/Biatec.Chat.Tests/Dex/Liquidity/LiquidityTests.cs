@@ -411,6 +411,64 @@ public sealed class LiquidityTests : IAsyncLifetime
         Assert.Empty(_builders.Builds);
     }
 
+
+    // ---- simulation: the card says what ran ---------------------------------------------------------------------
+
+    private sealed class FakeSim(Func<SimulationOutcome> outcome) : IAlgodSimulateClient
+    {
+        public Task<SimulationOutcome> SimulateAsync(IReadOnlyList<Algorand.Algod.Model.Transactions.Transaction> unsignedGroup, bool allowUnnamedResources = false, CancellationToken ct = default) =>
+            Task.FromResult(outcome());
+        public Task<ulong> GetLastRoundAsync(CancellationToken ct = default) => Task.FromResult(1UL);
+    }
+
+    private DexAddLiquidityExecutor AddWith(IAlgodSimulateClient sim) => new(new LiquidityBuilder(_builders), _mcp, _sp.GetRequiredService<IServiceScopeFactory>(), _clock,
+        new AlgodClientFactory(new Dictionary<string, IAlgodSimulateClient> { ["algorand-testnet"] = sim, ["testnet"] = sim }));
+
+    [Fact]
+    public async Task Liquidity_without_an_algod_endpoint_says_it_was_not_simulated_and_never_claims_a_pass()
+    {
+        _mcp.BalancesJson = Balances;
+        var r = await _add.ExecuteAsync(Ctx("dex.addLiquidity"), AddArgs(1001, _builderSender), default);
+        Assert.False(r.IsError);
+        var step = Assert.Single(Assert.IsType<PreviewCardEvent>(Assert.Single(r.Events!)).Preview.Steps);
+        Assert.Contains("Not simulated", step.SimulationSummary);
+        Assert.DoesNotContain("simulation passed", step.SimulationSummary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Liquidity_shows_what_algod_reported_when_the_simulation_succeeded()
+    {
+        _mcp.BalancesJson = Balances;
+        var r = await AddWith(new FakeSim(() => new SimulationOutcome(true, null, [], 4242, null, 5)))
+            .ExecuteAsync(Ctx("dex.addLiquidity"), AddArgs(1001, _builderSender), default);
+        Assert.False(r.IsError);
+        var step = Assert.Single(Assert.IsType<PreviewCardEvent>(Assert.Single(r.Events!)).Preview.Steps);
+        Assert.Contains("Simulation succeeded (5 transaction(s), round 4242)", step.SimulationSummary);
+    }
+
+    [Fact]
+    public async Task Liquidity_a_group_that_fails_the_simulation_is_refused_and_nothing_is_stored()
+    {
+        _mcp.BalancesJson = Balances;
+        var r = await AddWith(new FakeSim(() => new SimulationOutcome(false, "logic eval error", [2], 4242, null, 5)))
+            .ExecuteAsync(Ctx("dex.addLiquidity"), AddArgs(1001, _builderSender), default);
+        Assert.True(r.IsError);
+        Assert.Contains("would fail on chain", r.Content);
+        Assert.Contains("logic eval error", r.Content);
+        Assert.Equal(0, await PreviewCountAsync());
+    }
+
+    [Fact]
+    public async Task Liquidity_an_unreachable_algod_is_reported_as_not_simulated()
+    {
+        _mcp.BalancesJson = Balances;
+        var r = await AddWith(new FakeSim(() => throw new HttpRequestException("down")))
+            .ExecuteAsync(Ctx("dex.addLiquidity"), AddArgs(1001, _builderSender), default);
+        Assert.False(r.IsError);
+        var step = Assert.Single(Assert.IsType<PreviewCardEvent>(Assert.Single(r.Events!)).Preview.Steps);
+        Assert.Contains("Not simulated: algod was unreachable", step.SimulationSummary);
+    }
+
     // ---- add liquidity -------------------------------------------------------------------------------------------
 
     [Fact]

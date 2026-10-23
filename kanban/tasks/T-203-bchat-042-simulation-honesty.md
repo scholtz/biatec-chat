@@ -38,15 +38,18 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] A liquidity preview whose group fails the algod simulation is refused; one that passes says what algod reported; with no endpoint or an unreachable algod the card says it was not simulated. The text "simulation passed" appears nowhere unless algod reported success.
-- [ ] A safe create or proposal build answered without a `simulation` object is refused (nothing previewed).
-- [ ] Existing liquidity and safe tests stay green, with new tests for the three outcomes.
+- [x] A liquidity preview whose group fails the algod simulation is refused; one that passes says what algod reported; with no endpoint or an unreachable algod the card says it was not simulated. The text "simulation passed" appears nowhere unless algod reported success.
+- [x] A safe create or proposal build answered without a `simulation` object is refused (nothing previewed).
+- [x] Existing liquidity and safe tests stay green, with new tests for the three outcomes.
 
 ## Verification
 
 `dotnet test backend --filter "Liquidity|Safe"`, then the full backend suite (CI).
 
 ## Hand-off
+
+- **Summary:** liquidity previews (`dex.addLiquidity`, `dex.removeLiquidity`) now simulate on algod when an endpoint is configured for the network: a failing simulation refuses the preview, a passing one shows algod's own summary, no endpoint or an unreachable algod shows "Not simulated: ..." (the hard-coded "simulation passed" is gone). `SafeBuilder` and `SafeProposalBuilder` refuse a sidecar build that was asked to simulate (`simulate: true` is on every call) and came back without a `simulation` object. Swap and transfer already said "Not simulated" and are unchanged.
+- **Verification:** `dotnet test --filter Liquidity|Safe`: 75 and 81 pass, with 5 new tests (no endpoint, success, failure, unreachable, missing safe simulation). The full suite runs in the PR's CI.
 
 ## Review
 
