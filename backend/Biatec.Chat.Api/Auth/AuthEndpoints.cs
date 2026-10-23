@@ -216,7 +216,6 @@ public static class AuthEndpoints
                         .SetProperty(s => s.AgentMode, AgentMode.Prepare).SetProperty(s => s.Paused, false), ctx.RequestAborted);
                 await db.Conversations.Where(c => c.Id == rotated.Session.ConversationId)
                     .ExecuteUpdateAsync(u => u.SetProperty(c => c.OidcSub, identity.Subject), ctx.RequestAborted);
-                await Admin.Dashboard.KnownUsers.RecordSignInAsync(db, tenant.Id, identity, now, log, ctx.RequestAborted);
                 if (ctx.RequestServices.GetService<Biatec.Chat.Core.Evidence.IEvidenceRecorder>() is { } recorder)
                     await recorder.RecordAsync(rotated.Session.ConversationId, Biatec.Chat.Core.Evidence.EvidenceKinds.TierChanged, new System.Text.Json.Nodes.JsonObject
                     {
@@ -224,6 +223,8 @@ public static class AuthEndpoints
                         ["tenantId"] = tenant.Id, ["at"] = now.ToString("O"),
                     }, ctx.RequestAborted);
 
+                // Last step that can fail the sign-in: the administrator dashboard lists only users whose sign-in completed.
+                await Admin.Dashboard.KnownUsers.RecordSignInAsync(db, tenant.Id, identity, now, log, ctx.RequestAborted);
                 SessionEndpoints.WriteCookie(ctx.Response, rotated.NewToken!, rotated.Session.AbsoluteExpiresAt, now);
                 await SetStatusAsync(db, pending.PopupId, rotated.Session.ConversationId, PopupAuthStatus.Completed, ctx.RequestAborted);
                 return ClosePage(ctx, 200);

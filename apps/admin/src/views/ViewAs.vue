@@ -20,8 +20,9 @@ async function init() {
   if (first && !selected.value) selected.value = first.id;
 }
 onMounted(init);
-watch(imp, (v, old) => {
-  if (v && !old) {
+// A new impersonation (also of another user, replacing the running one) starts from a clean view.
+watch(() => imp.value && `${imp.value.tenantId}|${imp.value.sub}|${imp.value.startedAt}`, (v, old) => {
+  if (v && v !== old) {
     selected.value = null;
     init();
   }

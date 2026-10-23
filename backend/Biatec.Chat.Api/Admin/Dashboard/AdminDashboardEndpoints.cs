@@ -13,7 +13,7 @@ public sealed record MeResponse(string Email, string TenantId, DateTimeOffset Ex
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record StartImpersonationRequest(string? TenantId, string? Sub, string? Reason);
 
-/// <summary>Start, stop and expiry of an impersonation, each recorded in the admin evidence chain.</summary>
+/// <summary>Start and stop of an impersonation, recorded in the admin evidence chain. Running out is not an entry of its own: the start entry holds its end time.</summary>
 public static class AdminImpersonations
 {
     public const int MinReason = 8;
@@ -144,22 +144,19 @@ public static class AdminDashboardEndpoints
                 TenantId = user.TenantId, Sub = user.OidcSub, UserId = user.Id, Reason = reason, StartedAt = now,
                 ExpiresAt = end < session.ExpiresAt ? end : session.ExpiresAt,
             };
-            var ttl = AdminAuth.IdleTtl(session, options.Value, now);
+            // The start is in the chain before the view opens: no evidence, no impersonation (a failing append throws and nothing changed).
+            await AdminEvidence.AppendDashboardAsync(log, session.Email, AdminEvidence.ImpersonationStart, AdminImpersonations.Target(imp), reason, null,
+                new JsonObject { ["expiresAt"] = imp.ExpiresAt.ToString("O"), ["mode"] = "read-only" }, ctx.RequestAborted);
             session.Impersonation = imp;
-            // Only a session that still exists: a sign-out that raced this request stays a sign-out (and writes nothing).
-            if (!await store.ReplaceAsync(p.TokenHash, session, ttl, ctx.RequestAborted))
+            // Only a session that still exists: a sign-out that raced this request stays a sign-out. The start then never took effect, and the chain says so.
+            if (!await store.ReplaceAsync(p.TokenHash, session, AdminAuth.IdleTtl(session, options.Value, now), ctx.RequestAborted))
+            {
+                try { await AdminImpersonations.RecordStopAsync(log, session, imp, "aborted", ctx.RequestAborted); }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    logger.LogError("The abort of an impersonation by {Email} could not be recorded: {ErrorType}", Onboarding.OperatorAuth.Clean(session.Email), ex.GetType().Name);
+                }
                 return Results.Json(new { error = "Sign in required." }, statusCode: StatusCodes.Status401Unauthorized);
-            try
-            {
-                // No evidence, no impersonation: when the start cannot be recorded the view is closed again.
-                await AdminEvidence.AppendDashboardAsync(log, session.Email, AdminEvidence.ImpersonationStart, AdminImpersonations.Target(imp), reason, null,
-                    new JsonObject { ["expiresAt"] = imp.ExpiresAt.ToString("O"), ["mode"] = "read-only" }, ctx.RequestAborted);
-            }
-            catch
-            {
-                session.Impersonation = previous; // the one that was valid stays valid
-                await store.ReplaceAsync(p.TokenHash, session, ttl, CancellationToken.None);
-                throw;
             }
             // The one it replaced is closed in the chain once the new one is in force; a failure here is logged, not fatal.
             if (previous is not null)

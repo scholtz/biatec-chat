@@ -46,7 +46,6 @@ export interface DailyRow {
   newUsers: number;
   conversations: number;
   messages: number;
-  previews: number;
   inputTokens: number;
   outputTokens: number;
 }

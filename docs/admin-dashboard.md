@@ -94,7 +94,7 @@ Rate limit: the operator limiter (`Admin:RateLimitPermits` per `Admin:RateLimitW
 
 **Users are identified by their OIDC subject, not by email.** The product stores no email or other contact data
 (PRODUCT-DESCRIPTION.md: personal data is minimized to the OIDC `sub`), so the dashboard has none either. Look a user up
-in Biatec OIDC to map a subject to a person. A user row is also removed by the retention job once the user has no conversation left and has not been seen for the record window (`Retention:Records`, 7 years). Users who signed in before the dashboard existed are listed too (a migration
+in Biatec OIDC to map a subject to a person. An impersonation that runs out (or whose admin session idles out) has no stop entry: its start entry carries `expiresAt`. A start that raced a sign-out and never took effect is closed with a stop entry whose `how` is `aborted`. A user row is also removed by the retention job once the user has no conversation left and has not been seen for the record window (`Retention:Records`, 7 years). Users who signed in before the dashboard existed are listed too (a migration
 creates their row from their conversations; their sign-in count starts at 0). A user that was erased (`DELETE /session/user-data`) disappears from every view: erasure removes the dashboard's
 user row and clears the subject from their conversations.
 
