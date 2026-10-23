@@ -80,7 +80,7 @@ class SettingsServices {
   factory SettingsServices.fromConfig(
           AppConfig config, ApprovalServices approvals) =>
       SettingsServices(
-        client: SettingsClient(baseUrl: config.oidcBaseUrl),
+        client: SettingsClient(baseUrl: config.oidcBaseUrl, proof: approvals.proof),
         keys: approvals.keys,
         enrollment: approvals.enrollment,
         gate: approvals.gate,

@@ -5,8 +5,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import Ajv2020Module from "ajv/dist/2020.js";
+import { createHash, randomBytes } from "node:crypto";
 import { jcs, signEs256, verifyReceipt } from "../../scripts/lib.mjs";
-import { MAX_OPEN_REQUESTS_PER_USER, createMockOidc } from "../src/app.ts";
+import { DEVICE_PROOF_TYP, MAX_OPEN_REQUESTS_PER_USER, MAX_PUSH_REGISTRATIONS_PER_MINUTE, createMockOidc } from "../src/app.ts";
 import { encodeTx, type Tx } from "../src/group.ts";
 
 const Ajv2020 = Ajv2020Module as unknown as typeof Ajv2020Module.default;
@@ -710,4 +711,67 @@ test("BCHAT-024: a receipt is returned to the subject it was issued for, not to 
   assert.equal((await call("GET", `/consent/receipts/${id}`, { auth: chatClient })).status, 200, "the client itself, by its credentials, can still fetch it");
   const other = await call("GET", `/consent/receipts/${id}`, { auth: bearer("carol-chat-sign") });
   assert.equal(other.status, 404, "another subject's token of the same client gets nothing");
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// BCHAT-030: a device call needs a proof of possession of the device key, not only the bearer token
+
+test("BCHAT-030: with proof mode on the device token alone is refused; a correct proof passes once", async () => {
+  const strict = createMockOidc({ now: () => clock, testHelpers: true, deviceProof: true });
+  await new Promise<void>((r) => strict.server.listen(0, "127.0.0.1", r));
+  const b = `http://127.0.0.1:${(strict.server.address() as AddressInfo).port}`;
+  try {
+    const d = (await (await fetch(`${b}/mock/devices/alice-device`)).json()) as any;
+    const token = d.device_token as string;
+    const proof = (over: { header?: object; payload?: object; key?: typeof keys.device; method?: string; url?: string } = {}) => {
+      const header = { alg: "ES256", typ: DEVICE_PROOF_TYP, kid: d.kid, ...over.header };
+      const payload = {
+        htm: over.method ?? "GET",
+        htu: over.url ?? `${b}/devices/requests`,
+        iat: clock,
+        jti: randomBytes(12).toString("hex"),
+        ath: createHash("sha256").update(token).digest("base64url"),
+        ...over.payload,
+      };
+      const input = Buffer.from(JSON.stringify(header)).toString("base64url") + "." + Buffer.from(JSON.stringify(payload)).toString("base64url");
+      return input + "." + signEs256(over.key ?? keys.device, Buffer.from(input, "utf8"));
+    };
+    const get = (p?: string) => fetch(`${b}/devices/requests`, { headers: { Authorization: "Device " + token, ...(p ? { "X-Device-Proof": p } : {}) } });
+
+    assert.equal((await get()).status, 401, "the bearer alone is not enough");
+    assert.equal((await get(proof())).status, 200);
+    const replay = proof();
+    assert.equal((await get(replay)).status, 200);
+    assert.equal((await get(replay)).status, 401, "a proof is single use");
+    assert.equal((await get(proof({ method: "POST" }))).status, 401, "wrong method");
+    assert.equal((await get(proof({ url: `${b}/devices/settings` }))).status, 401, "wrong URL");
+    assert.equal((await get(proof({ payload: { ath: "x" } }))).status, 401, "not bound to the token");
+    assert.equal((await get(proof({ payload: { iat: clock - 120 } }))).status, 401, "stale");
+    assert.equal((await get(proof({ payload: { iat: clock + 120 } }))).status, 401, "from the future");
+    assert.equal((await get(proof({ payload: { jti: "short" } }))).status, 401, "jti too short");
+    assert.equal((await get(proof({ header: { kid: "someone-else" } }))).status, 401, "another device's kid");
+    assert.equal((await get(proof({ header: { typ: "JWT" } }))).status, 401, "wrong typ");
+    assert.equal((await get(proof({ header: { alg: "none" } }))).status, 401, "wrong alg");
+    assert.equal((await get(proof({ key: keys.oidc }))).status, 401, "signed by a different key");
+    assert.equal((await get("a.b")).status, 401);
+    assert.equal((await get("not-a-jws")).status, 401);
+  } finally {
+    strict.server.close();
+  }
+});
+
+test("BCHAT-030: push registration is rate limited per device", async () => {
+  const dev = await device(ALICE);
+  const reg = (i: number) => call("PUT", "/devices/push", { auth: dev.auth, body: { provider: "fcm", token: "t-" + i } });
+  // Other tests registered for this device on the shared mock; move to a clean minute.
+  clock += 61;
+  const start = clock;
+  try {
+    for (let i = 0; i < MAX_PUSH_REGISTRATIONS_PER_MINUTE; i++) assert.equal((await reg(i)).status, 200, `registration ${i + 1}`);
+    assert.equal((await reg(99)).status, 429);
+    clock += 61;
+    assert.equal((await reg(100)).status, 200, "a minute later it is allowed again");
+  } finally {
+    clock = start - 61;
+  }
 });

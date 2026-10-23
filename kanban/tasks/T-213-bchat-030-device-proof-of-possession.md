@@ -38,17 +38,21 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] The proof is an ES256 compact JWS with header typ `biatec-device-proof+jwt` and the device kid and payload htm, htu, iat, jti, ath (base64url SHA-256 of the device token), signed by the keystore key.
-- [ ] With the mock's proof mode on, a call without a proof, with a wrong method, URL, token hash, key, an old iat or a replayed jti is refused (401); a correct one passes.
-- [ ] The authenticator's approval and settings clients send the proof when a signer is configured, and the app configures one.
-- [ ] More than 6 push registrations per minute for one device are refused (429) by the mock.
-- [ ] Mock, conformance and `flutter test` suites pass.
+- [x] The proof is an ES256 compact JWS with header typ `biatec-device-proof+jwt` and the device kid and payload htm, htu, iat, jti, ath (base64url SHA-256 of the device token), signed by the keystore key.
+- [x] With the mock's proof mode on, a call without a proof, with a wrong method, URL, token hash, key, an old iat or a replayed jti is refused (401); a correct one passes.
+- [x] The authenticator's approval and settings clients send the proof when a signer is configured, and the app configures one.
+- [x] More than 6 push registrations per minute for one device are refused (429) by the mock.
+- [x] Mock, conformance and `flutter test` suites pass.
 
 ## Verification
 
 `pnpm --filter mock-oidc test`, `pnpm --filter @biatec/consent-protocol conformance`, `flutter analyze` and `flutter test`.
 
 ## Hand-off
+
+- **Summary:** authenticator: `DeviceProofSigner` / `KeystoreDeviceProofSigner` (ES256 JWS `X-Device-Proof`: typ, kid, htm, htu, iat, jti, ath) attached by `ApprovalClient` and `SettingsClient`, wired in `ApprovalServices.fromConfig`; `crypto` is now a direct dependency. Mock: `deviceProof` option (`MOCK_DEVICE_PROOF=1`) verifies it with replay protection, and `PUT /devices/push` is limited to 6 a minute per device. docs/required-changes-biatec-oidc.md has the section for the real Biatec OIDC.
+- **Verification:** `pnpm --filter mock-oidc test`: 32 pass (2 new); `flutter analyze` clean; `flutter test`: all pass (3 new + a contract test that I ran against a mock started in proof mode: the bearer alone is refused, the proof opens the call).
+- **Not done / for the owner:** this does not protect against the real server until Biatec OIDC requires the proof (the issue stays about that dependency); the biometric gating of the key (BCHAT-007) needs a second key for these proofs.
 
 ## Review
 

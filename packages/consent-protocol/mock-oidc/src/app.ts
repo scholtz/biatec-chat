@@ -16,7 +16,7 @@
 // Rules enforced: 2 (binding code, 3 attempts), 4 (first use), 5 (300 s, single use, group-hash binding),
 // 7 (24 h inactive first device), 8 (no device, no above-threshold actions), 9 (offline-verifiable receipts).
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,6 +38,11 @@ export const POLL_INTERVAL_SECONDS = 2;
 export const SLOW_DOWN_STEP_SECONDS = 5;
 /** Open (pending, unexpired) requests one user can have at a time; a further one is refused. */
 export const MAX_OPEN_REQUESTS_PER_USER = 20;
+/** Push registrations one device may make per minute (`PUT /devices/push`): a stolen token cannot keep re-pointing the notifications. */
+export const MAX_PUSH_REGISTRATIONS_PER_MINUTE = 6;
+/** How far a device proof's `iat` may be from the clock, and so how long its `jti` is remembered. */
+export const DEVICE_PROOF_WINDOW_SECONDS = 60;
+export const DEVICE_PROOF_TYP = "biatec-device-proof+jwt";
 export const ISSUER = "https://oidc.biatec.test";
 
 export interface MockOptions {
@@ -54,6 +59,12 @@ export interface MockOptions {
    * the mock pass `testHelpers: true`; `server.ts` turns it on only for MOCK_TEST_HELPERS=1.
    */
   testHelpers?: boolean;
+  /**
+   * Every device call must carry `X-Device-Proof`: a compact ES256 JWS, signed by the device key, with `typ` biatec-device-proof+jwt, `kid` of the
+   * device and the claims htm (method), htu (URL), iat, jti (single use) and ath (base64url SHA-256 of the device token). The bearer
+   * `Authorization: Device <token>` alone is then not enough (BCHAT-030). Off by default; `server.ts` turns it on with MOCK_DEVICE_PROOF=1.
+   */
+  deviceProof?: boolean;
 }
 
 interface Device { kid: string; sub: string; publicKey: Record<string, string>; token: string; activeAt: number; cancelled: boolean; attestation: string; recoveryCode?: string; recoveryAcknowledged?: boolean; push?: PushTarget }
@@ -186,11 +197,57 @@ export function createMockOidc(options: MockOptions = {}) {
     return { ...t, value };
   }
 
+  const usedProofs = new Map<string, number>(); // jti -> when it may be forgotten
+  const pushRegistrations = new Map<string, number[]>(); // kid -> times of the last registrations
+
+  function badProof(why: string): never {
+    throw new HttpError(401, "invalid_token", "device proof: " + why, {}, { "WWW-Authenticate": 'Device error="invalid_proof"' });
+  }
+
+  /** DPoP-style proof of possession of the device key (BCHAT-030): the bearer token alone does not authenticate a device call. */
+  function checkDeviceProof(req: IncomingMessage, d: Device) {
+    const raw = req.headers["x-device-proof"];
+    if (typeof raw !== "string") badProof("missing");
+    const parts = raw.split(".");
+    if (parts.length !== 3) badProof("not a compact JWS");
+    let header: any, payload: any;
+    try {
+      header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+      payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    } catch {
+      badProof("not JSON");
+    }
+    if (header?.alg !== "ES256" || header?.typ !== DEVICE_PROOF_TYP || header?.kid !== d.kid) badProof("wrong header");
+    let signatureOk = false;
+    try {
+      signatureOk = verifyEs256(d.publicKey, Buffer.from(parts[0] + "." + parts[1], "utf8"), parts[2]);
+    } catch {
+      signatureOk = false;
+    }
+    if (!signatureOk) badProof("the signature does not verify with this device's key");
+    if (payload?.htm !== req.method) badProof("wrong method");
+    let htu = "";
+    try {
+      const u = new URL(String(payload?.htu));
+      htu = u.pathname + u.search;
+    } catch {
+      badProof("htu is not a URL");
+    }
+    if (!htu.endsWith(req.url ?? "")) badProof("wrong URL");
+    if (typeof payload?.ath !== "string" || !safeEqual(payload.ath, createHash("sha256").update(d.token).digest("base64url"))) badProof("not bound to this device token");
+    if (typeof payload?.iat !== "number" || Math.abs(now() - payload.iat) > DEVICE_PROOF_WINDOW_SECONDS) badProof("stale or future iat");
+    if (typeof payload?.jti !== "string" || payload.jti.length < 16 || payload.jti.length > 128) badProof("jti");
+    for (const [j, until] of usedProofs) if (until <= now()) usedProofs.delete(j);
+    if (usedProofs.has(payload.jti)) badProof("replayed");
+    usedProofs.set(payload.jti, now() + 2 * DEVICE_PROOF_WINDOW_SECONDS);
+  }
+
   function deviceAuth(req: IncomingMessage): Device {
     const h = req.headers.authorization;
     const value = h?.startsWith("Device ") ? h.slice(7) : "";
     const d = [...devices.values()].find((x) => !x.cancelled && safeEqual(x.token, value));
     if (!d) throw new HttpError(401, "invalid_token", "unknown device token");
+    if (options.deviceProof) checkDeviceProof(req, d);
     return d;
   }
 
@@ -666,6 +723,9 @@ export function createMockOidc(options: MockOptions = {}) {
     }
     if (m === "PUT" && path === "/devices/push") {
       const d = deviceAuth(req);
+      const recent = (pushRegistrations.get(d.kid) ?? []).filter((t) => now() - t < 60);
+      if (recent.length >= MAX_PUSH_REGISTRATIONS_PER_MINUTE) throw new HttpError(429, "too_many_requests", "push registrations are limited");
+      pushRegistrations.set(d.kid, [...recent, now()]);
       setPush(d, pushTarget(await readBody(req)));
       return { status: 200, body: { kid: d.kid, provider: d.push!.provider } };
     }

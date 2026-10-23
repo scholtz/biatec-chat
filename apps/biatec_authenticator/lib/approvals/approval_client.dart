@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../security/device_proof.dart';
 import 'consent_request.dart';
 
 /// The request could not be reached or read. [offline] is true when the
@@ -50,16 +51,24 @@ class ReceiptRefused extends ReceiptOutcome {
 /// The authenticator side of Biatec OIDC (the mock in development), using
 /// `Authorization: Device <token>`.
 class ApprovalClient {
-  ApprovalClient({required this.baseUrl, http.Client? client})
+  ApprovalClient({required this.baseUrl, http.Client? client, this.proof})
       : _client = client ?? http.Client();
 
   final String baseUrl;
   final http.Client _client;
 
+  /// Adds the proof of possession of the device key to every call (BCHAT-030); null sends the bearer token alone.
+  final DeviceProofSigner? proof;
+
   static const _timeout = Duration(seconds: 15);
 
-  Map<String, String> _auth(String deviceToken) =>
-      {'Authorization': 'Device $deviceToken'};
+  Future<Map<String, String>> _auth(String method, Uri url, String deviceToken,
+          [Map<String, String> extra = const {}]) async =>
+      {
+        'Authorization': 'Device $deviceToken',
+        ...extra,
+        ...?await proof?.headers(method, url, deviceToken),
+      };
 
   Future<http.Response> _send(Future<http.Response> Function() call) async {
     try {
@@ -86,9 +95,9 @@ class ApprovalClient {
   /// `GET /devices/requests`: the pending requests of this device's user.
   /// Malformed entries are skipped rather than shown.
   Future<List<ConsentRequest>> pending(String deviceToken) async {
-    final res = await _send(() => _client.get(
-        Uri.parse('$baseUrl/devices/requests'),
-        headers: _auth(deviceToken)));
+    final url = Uri.parse('$baseUrl/devices/requests');
+    final res = await _send(() async =>
+        _client.get(url, headers: await _auth('GET', url, deviceToken)));
     final json = _object(res.body, res.statusCode);
     if (res.statusCode != 200) {
       throw ApprovalException(
@@ -110,10 +119,10 @@ class ApprovalClient {
 
   /// `GET /consent/requests/{id}`: the request as Biatec OIDC stores it.
   Future<ConsentRequest> fetch(String deviceToken, String authReqId) async {
-    final res = await _send(() => _client.get(
-        Uri.parse(
-            '$baseUrl/consent/requests/${Uri.encodeComponent(authReqId)}'),
-        headers: _auth(deviceToken)));
+    final url = Uri.parse(
+        '$baseUrl/consent/requests/${Uri.encodeComponent(authReqId)}');
+    final res = await _send(() async =>
+        _client.get(url, headers: await _auth('GET', url, deviceToken)));
     final json = _object(res.body, res.statusCode);
     if (res.statusCode != 200) {
       throw ApprovalException(
@@ -134,9 +143,11 @@ class ApprovalClient {
   /// notifications (T-053).
   Future<void> registerPush(
       String deviceToken, String provider, String pushToken) async {
-    final res = await _send(() => _client.put(
-          Uri.parse('$baseUrl/devices/push'),
-          headers: {..._auth(deviceToken), 'Content-Type': 'application/json'},
+    final url = Uri.parse('$baseUrl/devices/push');
+    final res = await _send(() async => _client.put(
+          url,
+          headers: await _auth('PUT', url, deviceToken,
+              {'Content-Type': 'application/json'}),
           body: jsonEncode({'provider': provider, 'token': pushToken}),
         ));
     if (res.statusCode != 200) {
@@ -149,13 +160,12 @@ class ApprovalClient {
       Map<String, Object?> receipt) async {
     final http.Response res;
     try {
-      res = await _send(() => _client.post(
-            Uri.parse('$baseUrl/consent/requests/'
-                '${Uri.encodeComponent(authReqId)}/receipt'),
-            headers: {
-              ..._auth(deviceToken),
-              'Content-Type': 'application/json'
-            },
+      final url = Uri.parse('$baseUrl/consent/requests/'
+          '${Uri.encodeComponent(authReqId)}/receipt');
+      res = await _send(() async => _client.post(
+            url,
+            headers: await _auth('POST', url, deviceToken,
+                {'Content-Type': 'application/json'}),
             body: jsonEncode(receipt),
           ));
     } on ApprovalException catch (e) {

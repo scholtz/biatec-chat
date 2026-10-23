@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../approvals/approval_client.dart';
+import 'device_proof.dart';
 
 /// One enrolled device of the user, as `GET /devices` lists it.
 class DeviceInfo {
@@ -121,16 +122,24 @@ class ConsentRequiredException extends ApprovalException {
 /// using `Authorization: Device <token>`. Biatec OIDC has no such API yet; the
 /// shapes are in `docs/required-changes-biatec-oidc.md`, rows 21 and 22.
 class SettingsClient {
-  SettingsClient({required this.baseUrl, http.Client? client})
+  SettingsClient({required this.baseUrl, http.Client? client, this.proof})
       : _client = client ?? http.Client();
 
   final String baseUrl;
   final http.Client _client;
 
+  /// Adds the proof of possession of the device key to every call (BCHAT-030); null sends the bearer token alone.
+  final DeviceProofSigner? proof;
+
   static const _timeout = Duration(seconds: 15);
 
-  Map<String, String> _auth(String token) =>
-      {'Authorization': 'Device $token'};
+  Future<Map<String, String>> _auth(String method, Uri url, String token,
+          [Map<String, String> extra = const {}]) async =>
+      {
+        'Authorization': 'Device $token',
+        ...extra,
+        ...?await proof?.headers(method, url, token),
+      };
 
   Future<http.Response> _send(Future<http.Response> Function() call) async {
     try {
@@ -156,8 +165,9 @@ class SettingsClient {
 
   /// `GET /devices`.
   Future<List<DeviceInfo>> devices(String token) async {
-    final res = await _send(() =>
-        _client.get(Uri.parse('$baseUrl/devices'), headers: _auth(token)));
+    final url = Uri.parse('$baseUrl/devices');
+    final res = await _send(
+        () async => _client.get(url, headers: await _auth('GET', url, token)));
     final json = _object(res);
     if (res.statusCode != 200) {
       throw ApprovalException(
@@ -175,9 +185,9 @@ class SettingsClient {
 
   /// `POST /devices/{kid}/cancel`: cancels a pending enrollment.
   Future<void> cancelDevice(String token, String kid) async {
-    final res = await _send(() => _client.post(
-        Uri.parse('$baseUrl/devices/${Uri.encodeComponent(kid)}/cancel'),
-        headers: _auth(token)));
+    final url = Uri.parse('$baseUrl/devices/${Uri.encodeComponent(kid)}/cancel');
+    final res = await _send(() async =>
+        _client.post(url, headers: await _auth('POST', url, token)));
     if (res.statusCode == 200) return;
     final json = _object(res);
     throw ApprovalException(res.statusCode == 409
@@ -187,9 +197,9 @@ class SettingsClient {
 
   /// `GET /devices/settings`.
   Future<ConsentSettings> settings(String token) async {
-    final res = await _send(() => _client.get(
-        Uri.parse('$baseUrl/devices/settings'),
-        headers: _auth(token)));
+    final url = Uri.parse('$baseUrl/devices/settings');
+    final res = await _send(
+        () async => _client.get(url, headers: await _auth('GET', url, token)));
     final json = _object(res);
     if (res.statusCode != 200) {
       throw ApprovalException(
@@ -206,9 +216,11 @@ class SettingsClient {
   /// `biatec_settings_change`, required when [change] loosens anything.
   Future<ConsentSettings> change(String token, Map<String, Object?> change,
       {Map<String, Object?>? consent}) async {
-    final res = await _send(() => _client.put(
-          Uri.parse('$baseUrl/devices/settings'),
-          headers: {..._auth(token), 'Content-Type': 'application/json'},
+    final url = Uri.parse('$baseUrl/devices/settings');
+    final res = await _send(() async => _client.put(
+          url,
+          headers: await _auth(
+              'PUT', url, token, {'Content-Type': 'application/json'}),
           body: jsonEncode({'change': change, if (consent != null) 'consent': consent}),
         ));
     final json = _object(res);

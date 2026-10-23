@@ -1,6 +1,7 @@
 import '../config.dart';
 import '../enrollment/enrollment_store.dart';
 import '../keys/device_key_store.dart';
+import '../security/device_proof.dart';
 import 'approval_client.dart';
 import 'approval_controller.dart';
 import 'biometric_gate.dart';
@@ -15,22 +16,33 @@ class ApprovalServices {
     required this.enrollment,
     required this.gate,
     required this.history,
+    this.proof,
     DateTime Function()? clock,
   }) : clock = clock ?? DateTime.now;
 
-  factory ApprovalServices.fromConfig(AppConfig config) => ApprovalServices(
-        client: ApprovalClient(baseUrl: config.oidcBaseUrl),
-        keys: const PlatformDeviceKeyStore(),
-        enrollment: SecureEnrollmentStore(),
-        gate: LocalAuthBiometricGate(),
-        history: SecureHistoryStore(),
-      );
+  factory ApprovalServices.fromConfig(AppConfig config) {
+    const keys = PlatformDeviceKeyStore();
+    final enrollment = SecureEnrollmentStore();
+    // Every device call proves possession of the device key, not only the bearer token (BCHAT-030).
+    final proof = KeystoreDeviceProofSigner(keys: keys, enrollment: enrollment);
+    return ApprovalServices(
+      client: ApprovalClient(baseUrl: config.oidcBaseUrl, proof: proof),
+      keys: keys,
+      enrollment: enrollment,
+      gate: LocalAuthBiometricGate(),
+      history: SecureHistoryStore(),
+      proof: proof,
+    );
+  }
 
   final ApprovalClient client;
   final DeviceKeyStore keys;
   final EnrollmentStore enrollment;
   final BiometricGate gate;
   final HistoryStore history;
+
+  /// Adds the proof of possession to device calls; null in tests that talk to a fake.
+  final DeviceProofSigner? proof;
   final DateTime Function() clock;
 
   ApprovalController controllerFor(String authReqId) => ApprovalController(
