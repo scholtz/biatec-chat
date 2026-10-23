@@ -40,9 +40,9 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] `kubectl kustomize` of `k8s/main` and `k8s/stage` renders `automountServiceAccountToken: false` on the backend and builders pod templates.
-- [ ] Nothing in the repository reads the service-account token or calls the Kubernetes API from these pods.
-- [ ] CI's kustomize step still passes.
+- [x] `kubectl kustomize` of `k8s/main` and `k8s/stage` renders `automountServiceAccountToken: false` on the backend and builders pod templates.
+- [x] Nothing in the repository reads the service-account token or calls the Kubernetes API from these pods.
+- [x] CI's kustomize step still passes.
 
 ## Verification
 
@@ -50,12 +50,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** automountServiceAccountToken: false on the backend and builders pod templates and on the backend ServiceAccount, so neither pod gets a Kubernetes API token. PR #317.
+- **Files changed:** k8s/base/backend.yaml, k8s/base/builders.yaml.
+- **How it was verified:** kubectl kustomize k8s/main and k8s/stage render the setting on the backend and builders pods (stage's demo pod already had it); a repository search finds no code that reads the service-account token or calls the Kubernetes API; the PR's CI (including the kustomize step) passes.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** The postgres and redis pods still mount the default token (not named by the finding); say if you want them covered too.
 
 ## Review
 
