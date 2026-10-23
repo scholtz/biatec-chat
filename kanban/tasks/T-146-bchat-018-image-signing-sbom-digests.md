@@ -46,10 +46,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] `deploy-stage.yml` signs each pushed image by digest and attests an SBOM, with `id-token: write` only on the build job.
-- [ ] `deploy.yml` verifies each overlay image's signature (identity `deploy-stage.yml` on `main`, issuer GitHub) and pins the verified digest before applying; an unsigned image fails the deploy only when `IMAGE_SIGNING_REQUIRED` is `true`.
-- [ ] Every `FROM` in the repository's Dockerfiles carries a `@sha256:` digest (a check fails otherwise), the images still build, and Dependabot proposes updates for them.
-- [ ] `docs/cicd.md` describes how to verify an image by hand and how to turn enforcement on.
+- [x] `deploy-stage.yml` signs each pushed image by digest and attests an SBOM, with `id-token: write` only on the build job.
+- [x] `deploy.yml` verifies each overlay image's signature (identity `deploy-stage.yml` on `main`, issuer GitHub) and pins the verified digest before applying; an unsigned image fails the deploy only when `IMAGE_SIGNING_REQUIRED` is `true`.
+- [x] Every `FROM` in the repository's Dockerfiles carries a `@sha256:` digest (a check fails otherwise), the images still build, and Dependabot proposes updates for them.
+- [x] `docs/cicd.md` describes how to verify an image by hand and how to turn enforcement on.
 
 ## Verification
 
@@ -58,12 +58,12 @@ only run on GitHub: their first run is the test, which is why enforcement is off
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** deploy-stage.yml signs the pushed backend, builders and demo images by digest with keyless cosign (id-token: write on the build job only) and attaches a syft SPDX SBOM as a signed attestation. deploy.yml resolves each overlay image to its digest, verifies the signature against the deploy-stage.yml-on-main identity and pins the verified digest in the overlay before applying. The repository variable IMAGE_SIGNING_REQUIRED switches enforcement on; until then signing/verification failures only warn. All Dockerfile base images are pinned by digest, infra/ci/check_dockerfile_pins.py enforces it in CI, and Dependabot has docker entries for the four Dockerfile directories. docs/cicd.md has the runbook, manual verification and how to turn enforcement on.
+- **Files changed:** .github/workflows/deploy-stage.yml, .github/workflows/deploy.yml, .github/workflows/ci.yml, .github/dependabot.yml, backend/Dockerfile, builders/sidecar/Dockerfile, apps/demo/Dockerfile, packages/consent-protocol/mock-oidc/Dockerfile, infra/ci/check_dockerfile_pins.py, docs/cicd.md.
+- **How it was verified:** check_dockerfile_pins.py passes on the 4 Dockerfiles and its self-test rejects unpinned/short digests; digests were read from the registries with docker buildx imagetools; kubectl kustomize renders a tag plus digest as name:tag@sha256 (the digest wins at runtime); all edited workflows and dependabot.yml parse as YAML; action SHAs resolved from the release tags. CI builds all images from the pinned bases.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** The cosign and syft steps and the digest verification only run on GitHub; they have never run, so the first stage deploy after the merge is their test (enforcement is off until you set IMAGE_SIGNING_REQUIRED=true after a log shows 'Verified' for all three images). cosign-installer 4.x installs cosign 3.x, whose defaults differ from 2.x (untested here). Docker Hub must allow the signature/attestation tags (sha256-*.sig/.att) to be pushed by DOCKERHUB_TOKEN. postgres:16 and redis:7 in k8s/base and the compose files are still by tag: pinning them rolls the databases to the newest minor on the next deploy, left for a deliberate change. Production promote of a pre-signing version fails once enforcement is on. Build provenance stays off (the promotion needs plain manifests).
 
 ## Review
 

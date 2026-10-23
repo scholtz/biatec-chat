@@ -1,7 +1,7 @@
 # Demo site (docs/demo-site.md). Build context is the repository root: docker build -f apps/demo/Dockerfile .
 # BACKEND_URL (required) is baked into the bundle and into the CSP (connect-src), so the image is built per environment;
 # deploy-stage.yml passes its STAGE_URL. CLIENT_KEY is a label registered on the tenant, not a secret.
-FROM node:22-alpine AS build
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS build
 ARG BACKEND_URL
 ARG CLIENT_KEY=biatec-demo
 RUN [ -n "$BACKEND_URL" ] || { echo "BACKEND_URL build argument is required, e.g. https://stage.chat.biatec.io" >&2; exit 1; }
@@ -31,7 +31,7 @@ RUN origin="$(printf '%s' "$BACKEND_URL" | sed -E 's#^(https?://[^/]+).*#\1#')" 
  && sed "s#__BACKEND_ORIGIN__#$origin#" apps/demo/security-headers.conf > /security-headers.conf \
  && grep -qF "connect-src $origin;" /security-headers.conf
 
-FROM nginxinc/nginx-unprivileged:1.27-alpine
+FROM nginxinc/nginx-unprivileged:1.27-alpine@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0
 COPY apps/demo/nginx.conf /etc/nginx/nginx.conf
 COPY --from=build /security-headers.conf /etc/nginx/security-headers.conf
 COPY --from=build /repo/apps/demo/dist /usr/share/nginx/html

@@ -19,11 +19,41 @@ production has none. See "Demo site" below and [demo-site.md](demo-site.md).
 | [`deploy-stage.yml`](../.github/workflows/deploy-stage.yml) | push to `main` (except `kanban/**`, `docs/**`, `*.md`) and manual run | runs `ci.yml`, builds and pushes `scholtz2/biatec-chat-backend`, `scholtz2/biatec-chat-builders` and `scholtz2/biatec-chat-demo` (built with `BACKEND_URL` from `STAGE_URL`) as `<version>-beta` and the moving `stage` tag, then `deploy.yml` to `Stage` with `url` = `STAGE_URL` |
 | [`promote-production.yml`](../.github/workflows/promote-production.yml) | manual only (Actions → promote-production → Run workflow) | takes a stage version (empty = what `stage` runs now), re-tags the backend and builders images `<version>-beta` → `<version>-main` without rebuilding (same digest, checked; the demo image is not re-tagged), then `deploy.yml` to `Production` with `url` `https://chat.biatec.io` |
 | [`publish-widget.yml`](../.github/workflows/publish-widget.yml) | push to `main` and pull requests touching `packages/chat-widget/**`, `packages/chat-protocol/**` or the workflow; `chat-widget-v<version>` tag push; manual run (publishes only with "dry_run" unticked) | **Releasing = merge a PR that bumps `version` in `packages/chat-widget/package.json` and adds its CHANGELOG.md section.** First checks whether the version changed in the push and whether it is already on npm (public registry, no auth). Push to `main` with a new, unpublished version: builds, typechecks and tests `@biatec/chat-widget`, packs it, publishes the tarball to npm with provenance in the `npm` environment, then (job `release`, the only one with `contents: write`) creates the tag `chat-widget-v<version>` and a GitHub release with that CHANGELOG section. Unchanged or already published version: publishes nothing, `::notice` says why (a `::warning` when the unchanged version is not on npm, i.e. an earlier release failed). Only a version greater than the highest published release (semver) is published; a lower or equal one fails the check. Prereleases (`x.y.z-<id>…`) go to the npm dist-tag `<id>` (`next` if it isn't a word), never `latest`, and get a GitHub prerelease. Tag push or manual non-dry run: the same publish, tag and release for the version in `package.json`, only for a commit on `main` (other refs fail), skipped if that version is on npm, so the workflow's own tag never publishes twice; the publish job re-checks npm right before publishing, so a tag and a merge racing for one version publish it once. Pull requests and dry runs: build, test, pack, `npm publish --dry-run` (skipped with a notice for a version already on npm, which npm rejects), and (for a PR into `main`) a notice saying whether merging would publish. Auth: npm trusted publishing (OIDC); fallback the `npm` environment secret `NPM_TOKEN` (0.1.0, the first publish, is done). See [packages/chat-widget/README.md, "Publishing"](../packages/chat-widget/README.md#publishing) |
-| [`deploy.yml`](../.github/workflows/deploy.yml) | called by the two above | in the given environment (namespace must already exist): syncs `biatec-chat-generated`, `biatec-chat-secrets` and `biatec-chat-aws`, pins the tag in the overlay, renders it with `kubectl kustomize` and applies the result, waits for Postgres and Redis, applies database migrations, upserts the tenant, registers the demo origin when the overlay has the demo (see "Demo site"), waits for builders, backend and, when present, the demo |
+| [`deploy.yml`](../.github/workflows/deploy.yml) | called by the two above | in the given environment (namespace must already exist): verifies the cosign signature of each overlay image and pins its digest (see "Image signing"), syncs `biatec-chat-generated`, `biatec-chat-secrets` and `biatec-chat-aws`, pins the tag in the overlay, renders it with `kubectl kustomize` and applies the result, waits for Postgres and Redis, applies database migrations, upserts the tenant, registers the demo origin when the overlay has the demo (see "Demo site"), waits for builders, backend and, when present, the demo |
 | [`kanban-sync.yml`](../.github/workflows/kanban-sync.yml) | push to `main`; manual run | marks merged task PRs done on the kanban board, moves unblocked dependants to backlog and regenerates `kanban/BOARD.md` (commits to `main`) |
 
 Production is never deployed by a push. Production deploys need a human approval: the `Production` environment must have required
 reviewers (see "The deploy identity" below for the commands); the deploy job then waits for approval. A single reviewer who also starts the promotion can approve their own run; add a second reviewer and set `prevent_self_review` if the team wants a real second pair of eyes.
+
+## Image signing
+
+Every image `deploy-stage.yml` pushes (backend, builders, demo) is signed by digest with cosign, keyless: the build job has
+`id-token: write`, the certificate that Sigstore issues names this workflow on `main`, and the signature is stored next to the image in
+Docker Hub (`sha256-<digest>.sig`). An SPDX SBOM made with syft is attached as a signed attestation (`sha256-<digest>.att`). Build
+provenance stays off on purpose: the production promotion re-tags a plain manifest and reads its labels. Signature and SBOM are separate
+artifacts, so re-tagging `-beta` to `-main` keeps both valid: they belong to the digest.
+
+`deploy.yml` resolves each image of the overlay to its digest, verifies the signature (certificate identity
+`https://github.com/scholtz/biatec-chat/.github/workflows/deploy-stage.yml@refs/heads/main`, issuer GitHub Actions), and writes the
+verified digest into the overlay, so the cluster runs the digest that was checked, not whatever the tag points at a moment later.
+
+**Enforcement is off until you turn it on.** The signing steps only run on GitHub, so they could not be tried before they were merged.
+Until the repository variable `IMAGE_SIGNING_REQUIRED` is `true`, a signing failure or an unsigned image is a warning and the deploy
+continues (still by digest). After one stage deploy shows `Verified scholtz2/...` for all three images in its log, set the variable
+(Settings → Secrets and variables → Actions → Variables); from then on an unsigned image fails the build and the deploy. Promoting
+a version built before signing existed fails the same way once enforcement is on.
+
+Verify an image by hand, and read its SBOM:
+
+```
+cosign verify scholtz2/biatec-chat-backend@sha256:<digest>   --certificate-identity 'https://github.com/scholtz/biatec-chat/.github/workflows/deploy-stage.yml@refs/heads/main'   --certificate-oidc-issuer https://token.actions.githubusercontent.com
+cosign verify-attestation --type spdxjson scholtz2/biatec-chat-backend@sha256:<digest> <same two flags> | jq -r .payload | base64 -d | jq .predicate
+```
+
+Base images are pinned by digest in every Dockerfile (`FROM image:tag@sha256:...`); `infra/ci/check_dockerfile_pins.py` fails CI for an
+unpinned one, and Dependabot opens a weekly pull request when a pinned tag has a new digest. The runtime images `postgres:16` and
+`redis:7` in `k8s/base` and the compose file are still by tag: pinning them would roll the databases to the newest minor on the next
+deploy, so that is a separate, planned change.
 
 ## Secrets
 
