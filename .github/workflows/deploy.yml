@@ -26,9 +26,9 @@ jobs:
       OVERLAY: k8s/${{ inputs.overlay }}
       TAG: ${{ inputs.tag }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4.0.1
+      - uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0
 
       - name: Configure kubeconfig
         env:
@@ -199,7 +199,7 @@ jobs:
 
       # The backend migrates only in Development; elsewhere the schema is a deploy step. The idempotent script applies
       # just the migrations missing from __EFMigrationsHistory, so it is safe on every deploy.
-      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.x
 
