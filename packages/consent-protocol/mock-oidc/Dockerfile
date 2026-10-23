@@ -1,14 +1,14 @@
 # Build from the repository root:
 #   docker build -f packages/consent-protocol/mock-oidc/Dockerfile -t biatec-mock-oidc .
 # Dependencies come from the workspace lock (pnpm-lock.yaml, --frozen-lockfile), like every other image, so a build never resolves new versions.
-FROM node:24-alpine AS build
+FROM node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS build
 RUN corepack enable
 WORKDIR /repo
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY packages/consent-protocol/mock-oidc/package.json packages/consent-protocol/mock-oidc/
 RUN pnpm install --frozen-lockfile --prod --filter mock-oidc...
 
-FROM node:24-alpine
+FROM node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53
 WORKDIR /repo
 # pnpm's node_modules are symlinks into the root .pnpm store, so both keep their relative layout.
 COPY --from=build /repo/node_modules ./node_modules

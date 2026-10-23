@@ -1,5 +1,5 @@
 # Build context is the repository root: docker compose build builders
-FROM node:22-alpine AS build
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS build
 RUN corepack enable
 WORKDIR /repo
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -7,7 +7,7 @@ COPY builders/sidecar/package.json builders/sidecar/
 RUN pnpm install --frozen-lockfile --filter builders...
 COPY builders/sidecar builders/sidecar
 RUN pnpm --filter builders build
-FROM node:22-alpine
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914
 ENV NODE_ENV=production PORT=3100
 WORKDIR /repo
 # pnpm's node_modules are symlinks into the root .pnpm store, so both keep their relative layout.

@@ -13,3 +13,20 @@ updates:
         patterns: ["*"]
     commit-message:
       prefix: "ci"
+  - package-ecosystem: docker
+    # One entry for every Dockerfile directory: Dependabot groups them, so the digest of a base image shared by several Dockerfiles
+    # (node:22-alpine) moves in one pull request and the images never run on different bases.
+    directories:
+      - /backend
+      - /builders/sidecar
+      - /apps/demo
+      - /packages/consent-protocol/mock-oidc
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      docker-base-images:
+        patterns: ["*"]
+    commit-message:
+      prefix: "build"
