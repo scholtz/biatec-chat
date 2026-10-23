@@ -745,6 +745,7 @@ test("BCHAT-030: with proof mode on the device token alone is refused; a correct
     assert.equal((await get(replay)).status, 401, "a proof is single use");
     assert.equal((await get(proof({ method: "POST" }))).status, 401, "wrong method");
     assert.equal((await get(proof({ url: `${b}/devices/settings` }))).status, 401, "wrong URL");
+    assert.equal((await get(proof({ url: `${b}/proxy/devices/requests` }))).status, 401, "a URL that merely ends like the request is another URL");
     assert.equal((await get(proof({ payload: { ath: "x" } }))).status, 401, "not bound to the token");
     assert.equal((await get(proof({ payload: { iat: clock - 120 } }))).status, 401, "stale");
     assert.equal((await get(proof({ payload: { iat: clock + 120 } }))).status, 401, "from the future");

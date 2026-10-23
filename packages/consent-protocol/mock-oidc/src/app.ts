@@ -233,7 +233,7 @@ export function createMockOidc(options: MockOptions = {}) {
     } catch {
       badProof("htu is not a URL");
     }
-    if (!htu.endsWith(req.url ?? "")) badProof("wrong URL");
+    if (htu !== req.url) badProof("wrong URL"); // the path and query the client called, exactly (scheme and host are the client's view of this server)
     if (typeof payload?.ath !== "string" || !safeEqual(payload.ath, createHash("sha256").update(d.token).digest("base64url"))) badProof("not bound to this device token");
     if (typeof payload?.iat !== "number" || Math.abs(now() - payload.iat) > DEVICE_PROOF_WINDOW_SECONDS) badProof("stale or future iat");
     if (typeof payload?.jti !== "string" || payload.jti.length < 16 || payload.jti.length > 128) badProof("jti");
@@ -723,10 +723,11 @@ export function createMockOidc(options: MockOptions = {}) {
     }
     if (m === "PUT" && path === "/devices/push") {
       const d = deviceAuth(req);
+      const target = pushTarget(await readBody(req)); // a malformed registration does not use up the quota
       const recent = (pushRegistrations.get(d.kid) ?? []).filter((t) => now() - t < 60);
       if (recent.length >= MAX_PUSH_REGISTRATIONS_PER_MINUTE) throw new HttpError(429, "too_many_requests", "push registrations are limited");
       pushRegistrations.set(d.kid, [...recent, now()]);
-      setPush(d, pushTarget(await readBody(req)));
+      setPush(d, target);
       return { status: 200, body: { kid: d.kid, provider: d.push!.provider } };
     }
     if (m === "GET" && path === "/devices") return listDevices(req);

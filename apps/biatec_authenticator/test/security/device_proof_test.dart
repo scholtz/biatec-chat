@@ -53,13 +53,24 @@ void main() {
     expect(jws, isNot(contains(token)), reason: 'the token itself is never in the proof');
   });
 
-  test('every proof has its own jti, and an install without a device key sends none', () async {
+  test('every proof has its own jti, and a missing device key is an error, never a silent bearer-only call', () async {
     final signer = await _signer(keys);
     final u = Uri.parse('https://oidc.example/devices');
     final a = _part((await signer.headers('GET', u, token))[deviceProofHeader]!, 1)['jti'];
     final b = _part((await signer.headers('GET', u, token))[deviceProofHeader]!, 1)['jti'];
     expect(a, isNot(b));
-    expect(await (await _signer(keys, alias: null)).headers('GET', u, token), isEmpty);
+    await expectLater((await _signer(keys, alias: null)).headers('GET', u, token), throwsStateError);
+    // Through a client it is a refusal the screens already handle, and nothing is sent.
+    var sent = 0;
+    final client = ApprovalClient(
+        baseUrl: 'https://oidc.example',
+        client: MockClient((_) async {
+          sent++;
+          return http.Response('{}', 200);
+        }),
+        proof: await _signer(keys, alias: null));
+    await expectLater(client.pending(token), throwsA(isA<ApprovalException>()));
+    expect(sent, 0);
   });
 
   test('the approval and settings clients send a proof with each call, and none without a signer', () async {

@@ -67,8 +67,20 @@ class ApprovalClient {
       {
         'Authorization': 'Device $deviceToken',
         ...extra,
-        ...?await proof?.headers(method, url, deviceToken),
+        ...?await _proof(method, url, deviceToken),
       };
+
+  /// The proof of possession, or null when none is configured. A proof that cannot be made is a refusal of the call, not an unexplained crash
+  /// and not a silent fall back to the bearer token alone.
+  Future<Map<String, String>?> _proof(String method, Uri url, String token) async {
+    final signer = proof;
+    if (signer == null) return null;
+    try {
+      return await signer.headers(method, url, token);
+    } on Object catch (e) {
+      throw ApprovalException('The device proof could not be made: $e');
+    }
+  }
 
   Future<http.Response> _send(Future<http.Response> Function() call) async {
     try {

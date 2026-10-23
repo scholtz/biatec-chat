@@ -19,7 +19,7 @@ const deviceProofType = 'biatec-device-proof+jwt';
 /// With a proof every call also carries a short-lived ES256 JWS signed by the device key, bound to the method, the URL and the token, and
 /// used once (the DPoP idea, RFC 9449). Without the key the token is no longer enough.
 abstract class DeviceProofSigner {
-  /// The proof header for one call, or an empty map when this install has no device key to prove with.
+  /// The proof header for one call. Throws when it cannot be made (no device key, the keystore refused).
   Future<Map<String, String>> headers(String method, Uri url, String deviceToken);
 }
 
@@ -43,7 +43,8 @@ class KeystoreDeviceProofSigner implements DeviceProofSigner {
   @override
   Future<Map<String, String>> headers(String method, Uri url, String deviceToken) async {
     final alias = await enrollment.readAlias();
-    if (alias == null) return const {};
+    // No alias means no device key: a configured signer never silently falls back to the bearer token alone.
+    if (alias == null) throw StateError('this install has no device key to prove with');
     final header = {'alg': 'ES256', 'typ': deviceProofType, 'kid': alias};
     final payload = {
       'htm': method.toUpperCase(),
