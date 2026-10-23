@@ -25,25 +25,32 @@ public sealed class VaultKeyProviderGateTests
         services.AddOptions<Biatec.Chat.Api.Config.RedisOptions>();
         services.AddOptions<Biatec.Chat.Api.Config.KmsOptions>();
         services.AddTokenVault(cfg);
-        return services.BuildServiceProvider().GetRequiredService<IKeyProvider>();
+        var sp = services.BuildServiceProvider();
+        _ = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<VaultOptions>>().Value; // what ValidateOnStart does at host start
+        return sp.GetRequiredService<IKeyProvider>();
     }
 
     [Theory]
     [InlineData("Production")]
     [InlineData("Staging")]
-    [InlineData("")]
-    public void The_Dev_provider_outside_Development_is_refused_by_default(string environment)
+    [InlineData("Testing")]
+    public void The_Dev_provider_outside_Development_is_refused_at_start_by_default(string environment)
     {
-        var e = Assert.Throws<InvalidOperationException>(() => Resolve(environment, new() { ["Vault:KeyProvider"] = "Dev" }));
+        var e = Assert.Throws<Microsoft.Extensions.Options.OptionsValidationException>(() => Resolve(environment, new() { ["Vault:KeyProvider"] = "Dev" }));
         Assert.Contains("only allowed in Development", e.Message);
-        Assert.Throws<InvalidOperationException>(() => Resolve(environment, []));
+        Assert.Throws<Microsoft.Extensions.Options.OptionsValidationException>(() => Resolve(environment, []));
     }
 
-    [Theory]
-    [InlineData("Development")]
-    [InlineData("Testing")]
-    public void The_Dev_provider_is_allowed_in_Development_and_Testing(string environment) =>
-        Assert.IsType<DevKeyProvider>(Resolve(environment, new() { ["Vault:KeyProvider"] = "Dev" }));
+    [Fact]
+    public void The_Dev_provider_is_allowed_in_Development() =>
+        Assert.IsType<DevKeyProvider>(Resolve("Development", new() { ["Vault:KeyProvider"] = "Dev" }));
+
+    [Fact]
+    public void A_malformed_DevKey_fails_at_start()
+    {
+        var e = Assert.Throws<Microsoft.Extensions.Options.OptionsValidationException>(() => Resolve("Development", new() { ["Vault:KeyProvider"] = "Dev", ["Vault:DevKey"] = "not-base64" }));
+        Assert.Contains("DevKey", e.Message);
+    }
 
     [Fact]
     public void The_Dev_provider_outside_Development_works_only_with_the_explicit_flag() =>

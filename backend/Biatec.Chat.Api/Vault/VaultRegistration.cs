@@ -28,13 +28,9 @@ public static class VaultRegistration
                 return new KmsKeyProvider(sp.GetRequiredService<IOptions<KmsOptions>>());
             if (string.Equals(o.KeyProvider, "Secret", StringComparison.OrdinalIgnoreCase))
                 return new SecretKeyProvider(Convert.FromBase64String(o.MasterKey!));
-            var env = sp.GetRequiredService<IHostEnvironment>();
-            if (!env.IsDevelopment() && !env.IsEnvironment("Testing"))
-            {
-                if (!o.AllowEphemeralKeys)
-                    throw new InvalidOperationException("The Dev vault key provider is only allowed in Development. Set Vault:KeyProvider=Secret (or Kms), or set Vault:AllowEphemeralKeys=true to accept it.");
+            // VaultOptionsValidator (run at start-up) has already refused the Dev provider outside Development without the explicit flag.
+            if (!sp.GetRequiredService<IHostEnvironment>().IsDevelopment())
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger("Vault").LogWarning("The Dev vault key provider is active outside Development because Vault:AllowEphemeralKeys=true; set Vault:KeyProvider=Secret or Kms.");
-            }
             return new DevKeyProvider(o.DevKey is null ? null : Convert.FromBase64String(o.DevKey));
         });
         services.TryAddSingleton<ITokenVault, TokenVault>();
@@ -43,11 +39,19 @@ public static class VaultRegistration
 }
 
 /// <summary>Checks at startup that the chosen key provider has its key: Secret needs Vault:MasterKey, Kms needs Kms:KeyId.</summary>
-public sealed class VaultOptionsValidator(IOptions<KmsOptions> kms) : IValidateOptions<VaultOptions>
+public sealed class VaultOptionsValidator(IOptions<KmsOptions> kms, IHostEnvironment env) : IValidateOptions<VaultOptions>
 {
     public ValidateOptionsResult Validate(string? name, VaultOptions o)
     {
-        if (string.Equals(o.KeyProvider, "Dev", StringComparison.OrdinalIgnoreCase)) return ValidateOptionsResult.Success;
+        if (string.Equals(o.KeyProvider, "Dev", StringComparison.OrdinalIgnoreCase))
+        {
+            // The Dev provider keeps the key in this process or in config. Outside Development that must be a deliberate choice (BCHAT-012).
+            if (!env.IsDevelopment() && !o.AllowEphemeralKeys)
+                return ValidateOptionsResult.Fail("Vault:KeyProvider=Dev is only allowed in Development. Set Vault:KeyProvider=Secret (or Kms), or set Vault:AllowEphemeralKeys=true to accept it.");
+            if (o.DevKey is not null && !IsBase64Of32Bytes(o.DevKey))
+                return ValidateOptionsResult.Fail("Vault:DevKey must be base64 of 32 bytes.");
+            return ValidateOptionsResult.Success;
+        }
         if (string.Equals(o.KeyProvider, "Kms", StringComparison.OrdinalIgnoreCase))
             return string.IsNullOrWhiteSpace(kms.Value.KeyId)
                 ? ValidateOptionsResult.Fail("Kms:KeyId is required when Vault:KeyProvider is Kms.")

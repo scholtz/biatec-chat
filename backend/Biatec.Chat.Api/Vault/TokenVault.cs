@@ -11,7 +11,7 @@ public sealed class VaultOptions
     public const string Section = "Vault";
 
     /// <summary>
-    /// "Dev" (default, no AWS), "Secret" (master key from <see cref="MasterKey"/>, the Kubernetes deployment) or "Kms"
+    /// "Dev" (default, no AWS; refused at start-up outside Development unless <see cref="AllowEphemeralKeys"/>), "Secret" (master key from <see cref="MasterKey"/>, the Kubernetes deployment) or "Kms"
     /// (AWS KMS envelope encryption using the Kms section).
     /// </summary>
     public string KeyProvider { get; set; } = "Dev";
@@ -22,7 +22,6 @@ public sealed class VaultOptions
     /// <summary>
     /// The Dev key provider keeps the vault key in this process (or in <see cref="DevKey"/>), so outside Development it is refused
     /// unless this is true: tokens would be unreadable after a restart, or protected by a key anyone with the config can read (BCHAT-012).
-    /// The "Testing" environment, which only the test host sets, counts as Development.
     /// </summary>
     public bool AllowEphemeralKeys { get; set; }
 

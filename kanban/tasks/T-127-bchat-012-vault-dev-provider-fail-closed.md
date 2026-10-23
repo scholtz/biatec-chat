@@ -31,7 +31,7 @@ The backend refuses to build the token vault with the Dev key provider outside D
 
 ## Scope
 
-- In: `VaultOptions.AllowEphemeralKeys`, the fail-closed check in `VaultRegistration` (Development and the test host environment Testing are exempt), tests.
+- In: `VaultOptions.AllowEphemeralKeys`, the fail-closed check in `VaultRegistration` (checked at start-up; Development is exempt), tests.
 - Out: other findings.
 
 ## Parallel work
@@ -50,12 +50,12 @@ Parallel work possible: **yes**.
 
 ## Hand-off
 
-- **Summary:** Resolving the vault key provider with `Dev` outside Development now throws unless `Vault:AllowEphemeralKeys=true`; the test host environment `Testing` is exempt so the existing web test factories need no change. `Secret` and `Kms` are unaffected.
-- **Files changed:** Api/Vault/TokenVault.cs (option), Api/Vault/VaultRegistration.cs, Tests/Vault/VaultKeyProviderGateTests.cs.
+- **Summary:** `VaultOptionsValidator` (runs at start-up) now refuses `Vault:KeyProvider=Dev` outside Development unless `Vault:AllowEphemeralKeys=true`, and validates `Vault:DevKey`. `Secret` and `Kms` are unaffected. The test process opts in once through a module initializer (environment variable), so no test factory changed. PR #309.
+- **Files changed:** Api/Vault/TokenVault.cs, Api/Vault/VaultRegistration.cs, Tests/TestHostDefaults.cs, Tests/Vault/VaultKeyProviderGateTests.cs.
 - **How it was verified:** dotnet test full suite (1553 passed); TEST-011 passes.
 - **Follow-up tasks created:** none.
 - **Unblocks:** none.
-- **Open questions:** Unlike the evidence key store, the exemption for `Testing` means a deployment that sets ASPNETCORE_ENVIRONMENT=Testing would get the Dev provider; that is a misconfiguration the manifests do not make. Say if you prefer the explicit flag in every test factory instead.
+- **Open questions:** None.
 
 ## Review
 
