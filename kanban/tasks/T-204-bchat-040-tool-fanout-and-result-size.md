@@ -38,15 +38,18 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] A round with more than `MaxToolUsesPerRound` tool uses executes only the first ones; every tool use still gets a result block, the surplus ones an error.
-- [ ] A tool result larger than `MaxToolResultBytes` UTF-8 bytes is not stored, recorded or sent as is: the model gets an error result naming the limit.
-- [ ] Existing orchestration tests stay green.
+- [x] A round with more than `MaxToolUsesPerRound` tool uses executes only the first ones; every tool use still gets a result block, the surplus ones an error.
+- [x] A tool result larger than `MaxToolResultBytes` UTF-8 bytes is not stored, recorded or sent as is: the model gets an error result naming the limit.
+- [x] Existing orchestration tests stay green.
 
 ## Verification
 
 `dotnet test backend --filter Orchestration`, full suite in CI.
 
 ## Hand-off
+
+- **Summary:** `ConversationOrchestrator.MaxToolUsesPerRound = 8`: the surplus tool uses of a round pass the gate (so a forged call is still refused and logged) but are answered with an error instead of running, so every tool use keeps its result block. `MaxToolResultBytes = 64 KiB`: a larger executor result is replaced by an error before it is screened, stored, recorded or sent. 
+- **Verification:** `dotnet test --filter Orchestration|Policy`: 221 pass, with two new tests (fan-out; oversized result). Full suite in CI.
 
 ## Review
 
