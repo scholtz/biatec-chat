@@ -35,7 +35,9 @@ artifacts, so re-tagging `-beta` to `-main` keeps both valid: they belong to the
 
 `deploy.yml` resolves each image of the overlay to its digest (before anything is written to the cluster), verifies the signature (certificate identity
 `https://github.com/scholtz/biatec-chat/.github/workflows/deploy-stage.yml@refs/heads/main`, issuer GitHub Actions), and writes the
-verified digest into the overlay, so the cluster runs the digest that was checked, not whatever the tag points at a moment later.
+verified digest into the overlay, so the cluster runs the digest that was checked, not whatever the tag points at a moment later. The version tag (`<version>-<sha7>-beta|main`), the commit label of the image and the commit in the signing certificate must agree, so
+re-pointing a tag at an older signed image fails too. While enforcement is off, a problem reading the registry also only warns and that
+image deploys by tag, as before.
 
 **Enforcement is off until you turn it on.** The signing steps only run on GitHub, so they could not be tried before they were merged.
 Until the repository variable `IMAGE_SIGNING_REQUIRED` is `true`, a signing failure or an unsigned image is a warning and the deploy

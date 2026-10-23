@@ -160,7 +160,7 @@ jobs:
           failed=0
           for spec in "$BACKEND_IMAGE|$BACKEND_DIGEST" "$BUILDERS_IMAGE|$BUILDERS_DIGEST" "$DEMO_IMAGE|$DEMO_DIGEST"; do
             image="${spec%%|*}"; digest="${spec##*|}"
-            if "$SYFT" "$image@$digest" -o spdx-json=sbom.spdx.json && cosign attest --yes --type spdxjson --predicate sbom.spdx.json "$image@$digest"; then
+            if "$SYFT" "registry:$image@$digest" -o spdx-json=sbom.spdx.json && cosign attest --yes --type spdxjson --predicate sbom.spdx.json "$image@$digest"; then
               echo "Attached the SBOM of \`$image@$digest\`." >> "$GITHUB_STEP_SUMMARY"
             else
               echo "::error::Attaching the SBOM of $image@$digest failed."; failed=1

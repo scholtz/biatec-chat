@@ -27,6 +27,7 @@ ARG = re.compile(r"^\s*ARG\s+(\w+)=(\S+)")
 
 def check_text(text, name):
     errors, stages, args = [], set(), {}
+    text = re.sub(r"\\\n\s*", " ", text)  # a continued line is one instruction
     for n, line in enumerate(text.splitlines(), 1):
         a = ARG.match(line)
         if a:
@@ -45,7 +46,7 @@ def check_text(text, name):
     for n, line in enumerate(text.splitlines(), 1):
         for m in re.finditer(r"(?:--from=|--mount=[^ ]*\bfrom=)(\S+)", line):
             ref = m.group(1)
-            if ref.lower() not in stages and not ref.isdigit() and not DIGEST.search(ref) and re.search(r"[/:.]", ref):
+            if ref.lower() not in stages and not ref.isdigit() and not DIGEST.search(ref):
                 errors.append(f"{name}:{n}: external image '{ref}' is not pinned by digest (@sha256:...)")
     return errors
 
@@ -65,6 +66,8 @@ def main():
         assert check_text("FROM ${B:-node:22}\n", "default"), "an unpinned default must fail"
         assert check_text("FROM a@sha256:" + "a" * 64 + "\nCOPY --from=nginx:1 /x /y\n", "copy"), "an unpinned COPY --from image must fail"
         assert not check_text("FROM a@sha256:" + "a" * 64 + " AS b\nCOPY --from=b /x /y\nCOPY --from=0 /x /y\n", "copy"), "stage references are fine"
+        assert check_text("FROM a@sha256:" + "a" * 64 + "\nCOPY --from=busybox /x /y\n", "copy"), "a bare external image must fail"
+        assert check_text("FROM \\\n  node:22\n", "continued"), "a continued FROM is still checked"
         for bad in ("FROM node:22-alpine\n", "FROM node:22 AS build\n", "FROM x@sha256:abc\n", "FROM x:1 as b\nFROM b\nFROM y:2\n"):
             assert check_text(bad, "bad"), f"not caught: {bad!r}"
         print("self-test passed")

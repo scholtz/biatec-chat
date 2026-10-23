@@ -64,22 +64,35 @@ jobs:
           [ -n "$images" ] || { echo "::error::$OVERLAY/kustomization.yaml lists no images to verify."; exit 1; }
           identity='^https://github\.com/scholtz/biatec-chat/\.github/workflows/deploy-stage\.yml@refs/heads/main$'
           issuer='https://token.actions.githubusercontent.com'
+          # The version tag is <version>-<sha7>-beta|main. The image carries the full commit it was built from; the tag, the image and
+          # the signing certificate (workflow sha) must all name the same commit, so re-pointing a tag at an older signed image fails.
+          tag_sha=''
+          [[ "$TAG" =~ ^1\.[0-9]{4}\.[0-9]{2}\.[0-9]{2}-([0-9a-f]{7})-(beta|main)$ ]] && tag_sha="${BASH_REMATCH[1]}"
+          # While enforcement is off, a problem with the registry or the signature is a warning and the image deploys by tag, as before.
+          problem() {
+            if [ "$IMAGE_SIGNING_REQUIRED" = true ]; then echo "::error::$1"; exit 1; fi
+            echo "::warning::$1 (not enforced: IMAGE_SIGNING_REQUIRED is not true)"
+          }
           for name in $images; do
             raw="$(docker buildx imagetools inspect "$name:$TAG" --format '{{json .Manifest.Digest}}')" \
-              || { echo "::error::Could not read the manifest of $name:$TAG (no such tag, or the registry refused)."; exit 1; }
+              || { problem "Could not read the manifest of $name:$TAG (no such tag, or the registry refused)."; continue; }
             digest="${raw//\"/}"
-            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::Could not resolve $name:$TAG to a digest."; exit 1; }
-            if cosign verify "$name@$digest" --certificate-identity-regexp "$identity" --certificate-oidc-issuer "$issuer" >/dev/null; then
-              echo "Verified $name@$digest"
-            elif [ "$IMAGE_SIGNING_REQUIRED" = true ]; then
-              echo "::error::$name@$digest has no valid signature from deploy-stage.yml on main."
-              exit 1
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { problem "Could not resolve $name:$TAG to a digest."; continue; }
+            revision="$(docker buildx imagetools inspect "$name@$digest" --format '{{ index .Image.Config.Labels "org.opencontainers.image.revision" }}' 2>/dev/null || true)"
+            if [ -n "$tag_sha" ] && [ "${revision::7}" != "$tag_sha" ]; then
+              problem "$name:$TAG points at an image built from commit '${revision:-unknown}', not from $tag_sha."
+              continue
+            fi
+            sha_flag=()
+            [[ "$revision" =~ ^[0-9a-f]{40}$ ]] && sha_flag=(--certificate-github-workflow-sha "$revision")
+            if cosign verify "$name@$digest" --certificate-identity-regexp "$identity" --certificate-oidc-issuer "$issuer" "${sha_flag[@]}" >/dev/null; then
+              echo "Verified $name@$digest (commit ${revision:0:7})"
             else
-              echo "::warning::$name@$digest has no valid signature from deploy-stage.yml on main (not enforced: IMAGE_SIGNING_REQUIRED is not true)."
+              problem "$name@$digest has no valid signature from deploy-stage.yml on main for commit ${revision:-unknown}."
             fi
             NAME="$name" DIGEST="$digest" yq -i '(.images[] | select(.name == strenv(NAME))).digest = strenv(DIGEST)' "$OVERLAY/kustomization.yaml"
           done
-          yq -r '.images[] | .name + " -> " + .digest' "$OVERLAY/kustomization.yaml"
+          yq -r '.images[] | .name + " -> " + (.digest // "by tag")' "$OVERLAY/kustomization.yaml"
 
       # The random secrets (Postgres, Redis and builders passwords, the token-vault and evidence master keys). Each one is,
       # in this order: the environment's GitHub secret if set (to pin or rotate a value), else the value already in the
@@ -181,9 +194,8 @@ jobs:
           [ "$total" -ge 2 ] && [ "$(grep -c "newTag: $TAG$" "$OVERLAY/kustomization.yaml")" = "$total" ]
           kubectl kustomize "$OVERLAY" > "$RUNNER_TEMP/rendered.yaml"
           # The digest pinned above must be what is rendered: a kustomize change or an overlay entry that drops it would deploy by tag again.
-          for d in $(yq -r '.images[].digest' "$OVERLAY/kustomization.yaml"); do
-            [[ "$d" =~ ^sha256:[0-9a-f]{64}$ ]] && grep -q "@$d" "$RUNNER_TEMP/rendered.yaml" \
-              || { echo "::error::The rendered overlay does not deploy the verified digest '$d'."; exit 1; }
+          for d in $(yq -r '.images[].digest // ""' "$OVERLAY/kustomization.yaml"); do
+            grep -q "@$d" "$RUNNER_TEMP/rendered.yaml" || { echo "::error::The rendered overlay does not deploy the pinned digest '$d'."; exit 1; }
           done
           demo_host="$(yq -r 'select(.kind == "Ingress" and .metadata.name == "biatec-chat-demo") | .spec.rules[0].host' "$RUNNER_TEMP/rendered.yaml")"
           echo "demo_host=$demo_host" >> "$GITHUB_OUTPUT"
