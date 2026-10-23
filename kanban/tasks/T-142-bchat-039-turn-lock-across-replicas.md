@@ -1,7 +1,7 @@
 ---
 id: T-142
 title: "Serialise a conversation's turns across replicas, not only in one process (BCHAT-039)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -60,7 +60,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 14:41 · approve · PR #340 merged into main @ 2a12b78 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 23:59 · claude · (new) → backlog · created from GitHub issue #292 (BCHAT-039); blockers scan: none
 - 2026-10-23 14:14 · scholtz · taken, and session-20261023-1414 · backlog → in-progress · claimed
+- 2026-10-23 14:41 · user · in-progress → done · PR #340 merged into main @ 2a12b78 (synced by kanban-sync)
