@@ -1,7 +1,7 @@
 ---
 id: T-143
 title: "Cross-check PSBT input values against the chain before previewing (BCHAT-041)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -14,7 +14,7 @@ owner: "session-20261023-1443"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#threat-model-highlights"
 created: 2026-10-23
-updated: 2026-10-24
+updated: 2026-10-23
 ---
 
 # T-143 - Cross-check PSBT input values against the chain before previewing (BCHAT-041)
@@ -60,7 +60,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 14:58 · approve · PR #341 merged into main @ 2eaaff8 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-24 00:10 · claude · (new) → backlog · created from GitHub issue #294 (BCHAT-041); blockers scan: none
 - 2026-10-23 14:43 · scholtz · taken, and session-20261023-1443 · backlog → in-progress · claimed
+- 2026-10-23 14:58 · user · in-progress → done · PR #341 merged into main @ 2eaaff8 (synced by kanban-sync)
