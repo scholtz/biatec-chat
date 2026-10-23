@@ -40,9 +40,9 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] Building the Secret evidence key store logs a warning that names the single-master derivation and recommends Kms.
-- [ ] `docs/threat-model.md` describes the limit and the recommendation.
-- [ ] Existing evidence tests stay green.
+- [x] Building the Secret evidence key store logs a warning that names the single-master derivation and recommends Kms.
+- [x] `docs/threat-model.md` describes the limit and the recommendation.
+- [x] Existing evidence tests stay green.
 
 ## Verification
 
@@ -50,12 +50,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** Building the Secret evidence key store now logs a warning that every key derives from one master (rotation gives no recovery from its compromise) and recommends Kms; docs/threat-model.md has a section on it. No behaviour change otherwise.
+- **Files changed:** Api/Evidence/Jwks/EvidenceJwks.cs, docs/threat-model.md, Tests/Evidence/Keys/EvidenceKeyStoreTests.cs.
+- **How it was verified:** dotnet test full suite; new test captures the warning from the real AddEvidence registration.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** The finding's actual fix (Kms, or independent per-kid secrets) is not done: Kms needs AWS keys, and per-kid secrets are a design change to key storage. This task only warns and documents. Want a follow-up for independent per-kid secrets?
 
 ## Review
 
