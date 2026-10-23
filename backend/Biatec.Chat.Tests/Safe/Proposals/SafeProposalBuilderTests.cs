@@ -17,7 +17,9 @@ internal static class ProposalFixture
         JsonDocument.Parse(File.ReadAllText(Path.Combine(Path.GetDirectoryName(here)!, "Fixtures", "sidecar-safe-proposals.json"))).RootElement.Clone();
 
     public static BuildResult Result(JsonElement step) => new(
-        step.GetProperty("transactions").EnumerateArray().Select(t => t.GetString()!).ToList(), Preview: step.GetProperty("preview").Clone());
+        step.GetProperty("transactions").EnumerateArray().Select(t => t.GetString()!).ToList(), Preview: step.GetProperty("preview").Clone(),
+        // The sidecar reports the simulation it was asked for (simulate: true); the fixture predates that field.
+        Simulation: JsonDocument.Parse("""{"ok":true}""").RootElement.Clone());
 
     public static Transaction Tx(JsonElement step) => Transaction.FromBase64String(step.GetProperty("transactions")[0].GetString()!);
 
@@ -242,5 +244,15 @@ public sealed class SafeProposalBuilderTests
         node["transactions"] = new JsonArray(Convert.ToBase64String(AlgoEncoder.EncodeToMsgPackOrdered(t)));
         var expensive = ProposalFixture.Result(JsonDocument.Parse(node.ToJsonString()).RootElement);
         await Assert.ThrowsAsync<SafeBuildException>(() => new SafeProposalBuilder(new OneShot((_, _) => expensive)).BuildExecuteAsync("testnet", S("carol"), App, 2, []));
+    }
+
+    [Fact]
+    public async Task SafeProposals_a_build_without_the_requested_simulation_is_refused()
+    {
+        var step = Fx.GetProperty("approve");
+        var noSimulation = new BuildResult(step.GetProperty("transactions").EnumerateArray().Select(t => t.GetString()!).ToList(), Preview: step.GetProperty("preview").Clone());
+        var builder = new SafeProposalBuilder(new OneShot((_, _) => noSimulation));
+        var ex = await Assert.ThrowsAsync<SafeBuildException>(() => builder.BuildApproveAsync("testnet", S("bob"), App, 1, 3));
+        Assert.Contains("simulation", ex.Message);
     }
 }
