@@ -8,21 +8,28 @@
 # $OUT_DIR/crl/revoked.index (kept, so earlier revocations stay in every later CRL), signs a CRL with the CA, and imports it into the trust
 # anchor ($NAME_PREFIX-crl; created the first time, updated afterwards). Roles Anywhere then refuses the revoked certificate within minutes.
 # Afterwards issue a fresh certificate (RENEW=1 rolesanywhere.sh --apply) and replace the two AWS_CLIENT_* secrets and the cluster secret.
-# Environment: OUT_DIR=./rolesanywhere-out, CRL_DAYS=365 (how long the CRL is valid; re-run before it lapses or Roles Anywhere stops trusting it).
+# Environment: OUT_DIR=./rolesanywhere-out, CRL_DAYS=3650 (how long the CRL is valid; Roles Anywhere stops trusting a lapsed CRL, so keep it long).
+# --cert FILE revokes that certificate (for example the old one after RENEW=1 replaced it) instead of the one in $OUT_DIR/<environment>/.
 set -euo pipefail
 export MSYS2_ARG_CONV_EXCL="/CN="
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=common.sh
 source "$DIR/common.sh"
 
-ENV_NAME=""
-for arg in "$@"; do case "$arg" in --*) ;; *) ENV_NAME="$arg" ;; esac; done
+ENV_NAME=""; CERT_FILE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --cert) [ $# -ge 2 ] || { echo "--cert needs a file." >&2; exit 2; }; CERT_FILE="$2"; shift 2 ;;
+    --*) shift ;;
+    *) ENV_NAME="$1"; shift ;;
+  esac
+done
 # The GitHub environments are Stage and Production; the local directories are stage and main.
 case "$ENV_NAME" in Stage|stage) ENV_NAME=stage ;; Production|production) ENV_NAME=main ;; esac
-[ -n "$ENV_NAME" ] || { echo "Usage: rolesanywhere-revoke.sh <environment> [--apply]" >&2; exit 2; }
+case "$ENV_NAME" in ""|*[!A-Za-z0-9_-]*) echo "Usage: rolesanywhere-revoke.sh <stage|Production|...> [--cert old-certificate.pem] [--apply]" >&2; exit 2 ;; esac
 OUT_DIR="${OUT_DIR:-./rolesanywhere-out}"
-CRL_DAYS="${CRL_DAYS:-365}"
-CERT="$OUT_DIR/$ENV_NAME/certificate.pem"
+CRL_DAYS="${CRL_DAYS:-3650}"
+CERT="${CERT_FILE:-$OUT_DIR/$ENV_NAME/certificate.pem}"
 CRL_NAME="$NAME_PREFIX-crl"
 ANCHOR_NAME="$NAME_PREFIX"
 
@@ -31,11 +38,8 @@ command -v openssl >/dev/null || { echo "openssl is required." >&2; exit 1; }
 for f in "$OUT_DIR/ca.pem" "$OUT_DIR/ca.key" "$CERT"; do [ -f "$f" ] || { echo "Missing $f (run rolesanywhere.sh first, on the machine that holds $OUT_DIR)." >&2; exit 1; }; done
 
 CRL_DIR="$OUT_DIR/crl"
-mkdir -p "$CRL_DIR"
 INDEX="$CRL_DIR/revoked.index"
-touch "$INDEX"
 
-# openssl ca keeps a database of issued certificates; ours were signed with `openssl x509 -req`, so only revoked ones are recorded.
 serial="$(openssl x509 -in "$CERT" -noout -serial | sed 's/^serial=//' | tr 'a-f' 'A-F')"
 [ $(( ${#serial} % 2 )) -eq 0 ] || serial="0$serial"
 TAB="$(printf '\t')"
@@ -43,6 +47,9 @@ if [ "$APPLY" != 1 ]; then
   echo "[dry-run] would revoke certificate $serial of $ENV_NAME: record it in $INDEX, sign a CRL with the CA, and run aws rolesanywhere import-crl --name $CRL_NAME (or update-crl when it exists) on trust anchor $ANCHOR_NAME."
   exit 0
 fi
+# openssl ca keeps a database of issued certificates; ours were signed with `openssl x509 -req`, so only revoked ones are recorded.
+mkdir -p "$CRL_DIR"
+touch "$INDEX"
 if grep -q "$TAB$serial$TAB" "$INDEX" 2>/dev/null; then
   echo "Certificate $serial of $ENV_NAME is already in the revocation list."
 else

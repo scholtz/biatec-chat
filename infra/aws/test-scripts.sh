@@ -78,4 +78,10 @@ check "revoke is a dry run without --apply and refuses a missing certificate" 'O
 check "expiry check rejects --days without a value instead of looping" 'timeout 10 "$DIR/rolesanywhere-expiry.sh" "$TMP/exp/c200.pem" --days >/dev/null 2>&1; [ $? -eq 2 ]'
 check "revoke accepts the GitHub environment name Production for main" 'OUT_DIR="$TMP/ra" "$DIR/rolesanywhere-revoke.sh" Production 2>&1 | grep -q "dry-run"'
 check "teardown deletes the CRL" 'grep -q "delete-crl" "$DIR/teardown.sh"'
+check "a dry run creates no crl directory" 'rm -rf "$TMP/ra2" && mkdir -p "$TMP/ra2/stage" && cp "$TMP/ra/ca.pem" "$TMP/ra/ca.key" "$TMP/ra2/" && cp "$TMP/ra/stage/certificate.pem" "$TMP/ra2/stage/" && OUT_DIR="$TMP/ra2" "$DIR/rolesanywhere-revoke.sh" stage >/dev/null 2>&1 && [ ! -e "$TMP/ra2/crl" ]'
+: > "$FAKE_LOG"
+FAKE_CRL=crl-1 FAKE_ANCHOR=arn:aws:rolesanywhere:eu-central-1:123456789012:trust-anchor/ta-1 OUT_DIR="$TMP/ra" "$DIR/rolesanywhere-revoke.sh" stage --apply >/dev/null 2>&1
+check "an existing CRL is updated, not imported again" 'grep -q "rolesanywhere update-crl --crl-id crl-1" "$FAKE_LOG" && ! grep -q "import-crl" "$FAKE_LOG"'
+check "revoke --cert revokes a given certificate (the old one after a renewal)" 'OUT_DIR="$TMP/ra" "$DIR/rolesanywhere-revoke.sh" stage --cert "$TMP/exp/c10.pem" 2>&1 | grep -q "dry-run" && FAKE_ANCHOR=arn:x:trust-anchor/ta-1 OUT_DIR="$TMP/ra" "$DIR/rolesanywhere-revoke.sh" stage --cert "$TMP/exp/c10.pem" --apply >/dev/null 2>&1 && openssl crl -in "$TMP/ra/crl/crl.pem" -noout -text | grep -qi "Serial Number: $(openssl x509 -in "$TMP/exp/c10.pem" -noout -serial | sed "s/^serial=//")"'
+check "revoke refuses an environment name that is a path" '! OUT_DIR="$TMP/ra" "$DIR/rolesanywhere-revoke.sh" ../x >/dev/null 2>&1'
 exit $fail
