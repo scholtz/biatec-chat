@@ -51,12 +51,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:** All 35 third-party action references in the six workflows are pinned to the commit SHA of the release their tag pointed to (annotated tags dereferenced), each with the tag as a comment; .github/dependabot.yml proposes weekly updates. PR #316.
+- **Summary:** All 35 third-party action references in the six workflows are pinned to the commit SHA of the release their tag pointed to (annotated tags dereferenced), each with the exact release as a comment (pnpm/action-setup has no matching semver tag, so it says v4); .github/dependabot.yml proposes grouped weekly updates after a 7 day cooldown. PR #316.
 - **Files changed:** .github/workflows/*.yml, .github/dependabot.yml.
-- **How it was verified:** TEST-014 passes; the PR's own CI run uses the pinned actions.
+- **How it was verified:** TEST-014 passes; the PR's own CI run (all jobs) succeeded with the pinned actions.
 - **Follow-up tasks created:** none.
 - **Unblocks:** none.
-- **Open questions:** I resolved each SHA from the tag through the GitHub API today; I did not audit the action source at those commits. Pins to major tags such as v4 mean the commit is whatever v4 pointed to now. Dependabot needs to be enabled for the repository (version updates) to open PRs.
+- **Open questions:** I resolved each SHA from the tag through the GitHub API today; I did not audit the action source at those commits. azure/setup-kubectl and pnpm/action-setup still resolve a tool version at run time (kubectl latest, pnpm from package.json) and the downloads are not verified, so the deploy job is only partly hardened; pinning those versions is a separate change. Dependabot version updates must be enabled for the repository to open PRs.
 
 ## Review
 
