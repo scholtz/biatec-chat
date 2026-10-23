@@ -40,6 +40,17 @@ public sealed class ElevationTests : IAsyncLifetime
         public Task<bool> TakeAsync(string h, CancellationToken ct) => Task.FromResult(Items.Remove(h));
     }
 
+    /// <summary>Records which refresh tokens an elevation hands to revocation (the real service parks them; its own tests are in the logout suite).</summary>
+    private sealed class RecordingRevocation : Biatec.Chat.Api.Auth.Logout.IRevocationService
+    {
+        public readonly List<string> Tokens = [];
+        public bool IsConfigured => false;
+        public Task RevokeOrParkAsync(Tenant tenant, string refreshToken, CancellationToken ct) { Tokens.Add(refreshToken); return Task.CompletedTask; }
+        public Task<int> RetryPendingAsync(CancellationToken ct) => Task.FromResult(0);
+    }
+
+    private readonly RecordingRevocation _revocation = new();
+
     private sealed class MemoryVault : ITokenVault
     {
         public readonly Dictionary<string, TokenVaultEntry> Items = new();
@@ -104,6 +115,8 @@ public sealed class ElevationTests : IAsyncLifetime
                 s.AddSingleton<IAuthStateStore>(_states);
                 s.RemoveAll<ITokenVault>();
                 s.AddSingleton<ITokenVault>(_vault);
+                s.RemoveAll<Biatec.Chat.Api.Auth.Logout.IRevocationService>();
+                s.AddSingleton<Biatec.Chat.Api.Auth.Logout.IRevocationService>(_revocation);
                 s.AddHttpClient(OidcMetadataProvider.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => _oidc);
             });
         });
@@ -243,13 +256,8 @@ public sealed class ElevationTests : IAsyncLifetime
         Assert.Equal(["openid", "profile", "email", "sign"], entry.Scopes);
         Assert.Single(_vault.Items);
 
-        // The refresh token the elevation replaced is still valid at Biatec OIDC: with no revocation endpoint it is parked (encrypted) for the sweeper.
-        await using (var db = NewContext())
-        {
-            var parked = await db.PendingRevocations.AsNoTracking().ToListAsync();
-            var one = Assert.Single(parked);
-            Assert.DoesNotContain(loginRefresh, System.Text.Encoding.UTF8.GetString(one.EncryptedRefreshToken));
-        }
+        // The refresh token the elevation replaced is still valid at Biatec OIDC: exactly that one is handed to revocation (revoked, or parked for the sweeper).
+        Assert.Equal([loginRefresh], _revocation.Tokens);
 
         // The second elevation requests everything already held plus the new scope: scopes only ever grow.
         var (_, cb2) = await ElevateAsync(cookie, "manage-limits", "openid profile email sign manage-limits");

@@ -180,7 +180,7 @@ public static class ElevationCompletion
 
         // The exchange took a network round trip: the session may have been logged out, or a refresh may have rotated the tokens, meanwhile.
         // So the entry is read again inside the vault's refresh lock and the same checks run on it; nothing is re-created for an ended session.
-        var superseded = await vault.ReplaceAsync(sessionId, current =>
+        TokenVaultEntry? Replacement(TokenVaultEntry current)
         {
             if (clock.GetUtcNow() >= current.AbsoluteExpiresAt) return null;
             foreach (var held in current.Scopes)
@@ -194,7 +194,16 @@ public static class ElevationCompletion
                 Scopes = granted, // exactly what the new access token carries, so the scope check matches the token
                 AbsoluteExpiresAt = current.AbsoluteExpiresAt, // elevation never extends the session
             };
-        }, ct);
+        }
+
+        TokenVaultEntry? superseded;
+        try { superseded = await vault.ReplaceAsync(sessionId, Replacement, ct); }
+        catch (VaultRefreshException ex)
+        {
+            // The vault lock could not be had (a long refresh) or was lost: the elevation is a failed popup, not a 500 with the popup left pending.
+            log.LogWarning("Scope elevation could not replace the vault entry: {ErrorType}", ex.GetType().Name);
+            return false;
+        }
         if (superseded is null) return false;
 
         // The replaced refresh token is still valid at Biatec OIDC: revoke it, or park it so the sweeper does.
