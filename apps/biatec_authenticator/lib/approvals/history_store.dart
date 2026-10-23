@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../security/secure_storage.dart';
+
 /// The receipt as the history keeps it: the code the user typed (`signed.binding_code`) is a one-time secret of that request and has no
 /// use afterwards, so it is not stored; the entry says so (`redacted`). Everything else, the signature included, is kept. The stored copy is for
 /// reading: it no longer verifies against its signature (the signed bytes held the code), and the `redacted` note is not signed. Biatec OIDC
@@ -87,7 +89,7 @@ List<HistoryEntry> _prepend(List<HistoryEntry> list, HistoryEntry e) => [
 
 class SecureHistoryStore implements HistoryStore {
   SecureHistoryStore([FlutterSecureStorage? storage])
-      : _storage = storage ?? const FlutterSecureStorage();
+      : _storage = storage ?? deviceBoundStorage;
 
   static const _key = 'biatec.approvals.history';
   final FlutterSecureStorage _storage;

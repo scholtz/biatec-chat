@@ -11,12 +11,15 @@ import 'enrollment/enrollment_screen.dart';
 import 'push/fcm_push_transport.dart';
 import 'push/push_controller.dart';
 import 'screens/home_screen.dart';
+import 'security/secure_storage.dart';
 import 'security/security_screen.dart';
 import 'security/settings_controller.dart';
 import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Items stored before the keychain accessibility was set are rewritten once so they stay on this device (BCHAT-009).
+  await rewriteWithDeviceBoundAccessibility();
   final AppConfig config;
   try {
     config = AppConfig.fromEnvironment();

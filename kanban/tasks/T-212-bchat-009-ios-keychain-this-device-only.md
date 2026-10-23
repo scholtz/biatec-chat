@@ -38,15 +38,19 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] Both stores default to a storage created with `KeychainAccessibility.unlocked_this_device`.
-- [ ] At start, existing enrollment, alias and history items are deleted and written again once (marker `biatec.storage.v2`), with their values unchanged; running it again does nothing.
-- [ ] `flutter analyze` and `flutter test` pass.
+- [x] Both stores default to a storage created with `KeychainAccessibility.unlocked_this_device`.
+- [x] At start, existing enrollment, alias and history items are deleted and written again once (marker `biatec.storage.v2`), with their values unchanged; running it again does nothing.
+- [x] `flutter analyze` and `flutter test` pass.
 
 ## Verification
 
 `flutter analyze` and `flutter test` in apps/biatec_authenticator.
 
 ## Hand-off
+
+- **Summary:** `lib/security/secure_storage.dart`: `deviceBoundStorage` (`FlutterSecureStorage` with `KeychainAccessibility.unlocked_this_device`) is the default of the enrollment and history stores; `rewriteWithDeviceBoundAccessibility()` runs at start and rewrites the existing items once (marker `biatec.storage.v2`), tolerating an unavailable keychain (tries again at the next launch).
+- **Verification:** `flutter analyze` no issues; `flutter test` all pass (4 new). Not verified on a real iOS device or backup (no iOS project in the repository, BCHAT-008): the accessibility is the documented option of the plugin, and whether an update changes an existing item's attribute is why items are deleted and rewritten.
+- **Out of scope here:** Android `allowBackup`, iOS file protection (platform projects).
 
 ## Review
 
