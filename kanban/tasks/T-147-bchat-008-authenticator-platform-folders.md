@@ -50,7 +50,7 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 - [x] `git ls-files apps/biatec_authenticator` lists `android/` and `ios/` sources and no build output or signing material.
 - [x] The Android manifest has `allowBackup="false"`, no cleartext in the main manifest, exactly one exported component, and the activity sets FLAG_SECURE; the release build type does not use the debug signing key.
-- [x] `KeystorePlugin` is registered on Android and iOS, and `native/` no longer holds a second copy.
+- [x] `KeystorePlugin` is registered on Android and iOS (the iOS side was written without Xcode and is unbuilt), and `native/` no longer holds a second copy.
 - [x] `test/platform_hardening_test.dart` checks these properties and `flutter test` passes; the Android project builds if the SDK licenses allow it here.
 
 ## Verification

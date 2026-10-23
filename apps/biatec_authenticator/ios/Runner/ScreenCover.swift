@@ -14,6 +14,8 @@ final class ScreenCover {
     func start() {
         guard !started else { return }
         started = true
+        // The app can be started or restored while it is already inactive (Control Center, a call banner): no willResignActive follows.
+        inactive = UIApplication.shared.applicationState != .active
         let center = NotificationCenter.default
         // applicationState is still .active inside willResignActive, so the state is tracked from the notifications themselves.
         center.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
@@ -26,6 +28,7 @@ final class ScreenCover {
         }
         center.addObserver(forName: UIScreen.capturedDidChangeNotification, object: nil, queue: .main) { [weak self] _ in self?.update() }
         center.addObserver(forName: UIWindow.didBecomeVisibleNotification, object: nil, queue: .main) { [weak self] _ in self?.update() }
+        update()
     }
 
     private var windows: [UIWindow] {

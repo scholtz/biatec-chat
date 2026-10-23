@@ -42,7 +42,7 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
 
     // Keystore work (key generation, signing) can take hundreds of milliseconds, StrongBox more: it runs off the platform thread and the
     // result is posted back to it, as MethodChannel requires.
-    private val worker: ExecutorService = Executors.newSingleThreadExecutor()
+    private var worker: ExecutorService = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
 
     /** A failure with a code Dart can tell apart from an unexpected keystore error. */
@@ -53,6 +53,8 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
         if (alias.isNullOrEmpty()) return result.error("bad_args", "alias is required", null)
         val data = call.argument<ByteArray>("data")
         val method = call.method
+        // Created again after a detach (the plugin instance can be attached to another engine).
+        if (worker.isShutdown) worker = Executors.newSingleThreadExecutor()
         worker.execute {
             try {
                 val value: Any? = when (method) {
@@ -65,7 +67,8 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
                 main.post { result.success(value) }
             } catch (e: PluginError) {
                 main.post { result.error(e.code, e.message, null) }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // Throwable, not Exception: a class that is missing on an old API level must still answer Dart instead of leaving the call open.
                 main.post { result.error("keystore_error", e.message, null) }
             }
         }
@@ -94,8 +97,10 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
         } catch (e: Exception) {
             // Devices that advertise StrongBox can still refuse the key: fall back to the TEE, but only for the failures StrongBox is known
             // to cause (BCHAT-032 will report the level the key actually got). Anything else, or no StrongBox at all, is a real error.
+            // hasStrongBox first: StrongBoxUnavailableException does not exist below API 28.
+            if (!hasStrongBox) throw e
             val strongBoxRefused = e is StrongBoxUnavailableException || e is ProviderException || e is InvalidAlgorithmParameterException
-            if (!hasStrongBox || !strongBoxRefused) throw e
+            if (!strongBoxRefused) throw e
             gen.initialize(spec(alias, false))
             gen.generateKeyPair()
         }

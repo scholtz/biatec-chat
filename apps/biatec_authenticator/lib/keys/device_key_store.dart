@@ -21,8 +21,9 @@ class DeviceKey {
 /// The private key is generated inside the keystore and is never readable:
 /// the interface has no way to export it, only to sign with it. Native
 /// implementations must create it non-exportable (iOS
-/// `kSecAttrTokenIDSecureEnclave`, Android `KeyGenParameterSpec` with
-/// `setIsStrongBoxBacked(true)`).
+/// `kSecAttrTokenIDSecureEnclave`, Android `KeyGenParameterSpec`, StrongBox
+/// when the device has it and accepts the key, otherwise the TEE). The
+/// hardware level the key got is best effort until BCHAT-032 reports it.
 abstract class DeviceKeyStore {
   /// Creates the key pair, or returns the existing one for [alias].
   Future<DeviceKey> generate(String alias);
@@ -45,7 +46,8 @@ abstract class DeviceKeyStore {
 /// `{x, y}` (base64url) for `generate` and `load`.
 class PlatformDeviceKeyStore implements DeviceKeyStore {
   const PlatformDeviceKeyStore(
-      [this._channel = const MethodChannel('io.biatec.authenticator/keystore')]);
+      [this._channel =
+          const MethodChannel('io.biatec.authenticator/keystore')]);
 
   final MethodChannel _channel;
 
