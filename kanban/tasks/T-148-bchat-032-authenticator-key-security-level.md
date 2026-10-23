@@ -1,7 +1,7 @@
 ---
 id: T-148
 title: "Report the real security level of the authenticator's device key and refuse a software key (BCHAT-032)"
-status: backlog
+status: in-progress
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -9,9 +9,9 @@ area: ["apps/biatec_authenticator/lib/keys/**", "apps/biatec_authenticator/lib/e
 parallel: yes
 conflicts_with: []
 issue: "#285"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-148"
+owner: "session-20261023-1714"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#threat-model-highlights"
 created: 2026-10-23
 updated: 2026-10-23
@@ -65,3 +65,4 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 ## Activity log
 
 - 2026-10-23 19:30 · claude · (new) → backlog · created from GitHub issue #285 (BCHAT-032); blockers scan: none
+- 2026-10-23 17:14 · scholtz · taken, and session-20261023-1714 · backlog → in-progress · claimed
