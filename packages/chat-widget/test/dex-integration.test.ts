@@ -182,14 +182,15 @@ describe("BiatecDEX host: layering", () => {
 });
 
 describe("docs/integration-biatec-dex.md", () => {
-  const doc = readFileSync(resolve(__dirname, "../../../docs/integration-biatec-dex.md"), "utf8");
+  // Checked-out files may have CRLF line endings (Windows, autocrlf); the snippets are matched on LF.
+  const doc = readFileSync(resolve(__dirname, "../../../docs/integration-biatec-dex.md"), "utf8").replace(/\r\n/g, "\n");
   const dir = resolve(__dirname, "../playground/dex");
   const files = (d: string): string[] =>
     readdirSync(d).flatMap((f) => (statSync(join(d, f)).isDirectory() ? files(join(d, f)) : [join(d, f)]));
   const norm = (s: string) => s.trim().replace(/\s+/g, " ");
   const playground = files(dir)
     .filter((f) => /\.(ts|vue)$/.test(f))
-    .map((f) => readFileSync(f, "utf8"))
+    .map((f) => readFileSync(f, "utf8").replace(/\r\n/g, "\n"))
     .join("\n")
     .split("\n")
     .map(norm);

@@ -38,14 +38,17 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] `pnpm --filter @biatec/chat-widget test` passes with no failing file.
-- [ ] The `@/` alias resolves host modules in vitest on Windows and Linux paths.
+- [x] `pnpm --filter @biatec/chat-widget test` passes with no failing file.
+- [x] The `@/` alias resolves host modules in vitest on Windows and Linux paths.
 
 ## Verification
 
 `pnpm --filter @biatec/chat-widget test`, `pnpm --filter @biatec/chat-widget typecheck`.
 
 ## Hand-off
+
+- **Summary:** the vitest alias `"@/"` (string key) did not match `@/i18n` (the alias matcher wants a `/` after a string key) on this checkout: replaced by a regular-expression alias. Two further local-only causes of the same "five baseline failures" are fixed because they hid the suite behind the alias error: Node 25+ ships an unusable global `localStorage` (shim in `test/setup-storage.ts`, used only when the real one is missing), and the docs-snippet test assumed LF line endings (CRLF checkouts).
+- **Verification:** `pnpm --filter @biatec/chat-widget test`: 27 files, 418 tests, all pass (was 2 files failed, 5 tests failed); the playground still builds.
 
 ## Review
 
