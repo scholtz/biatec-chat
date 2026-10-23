@@ -1,7 +1,7 @@
 ---
 id: T-135
 title: "Make the offline verifier strict about JWKS keys and sources (BCHAT-023)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -60,7 +60,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 11:45 · approve · PR #320 merged into main @ d434f73 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 17:00 · claude · (new) → backlog · created from GitHub issue #276 (BCHAT-023); blockers scan: none
 - 2026-10-23 11:36 · scholtz · taken, and session-20261023-1136 · backlog → in-progress · claimed
+- 2026-10-23 11:45 · user · in-progress → done · PR #320 merged into main @ d434f73 (synced by kanban-sync)
