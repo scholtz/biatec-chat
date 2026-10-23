@@ -190,8 +190,14 @@ namespace Biatec.Chat.Api.Migrations
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("LastPolledAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Origin")
                         .HasColumnType("text");
+
+                    b.Property<int>("PollIntervalSeconds")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Receipt")
                         .HasColumnType("jsonb");

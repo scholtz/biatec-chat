@@ -742,6 +742,7 @@ public sealed class ConfirmService(
         {
             Id = Guid.NewGuid(), StepId = step.Id, SubjectHash = step.SubjectHash, AuthReqId = s.AuthReqId,
             BindingCode = s.BindingCode, ExpiresAt = expires, Status = Biatec.Chat.Core.Data.ConsentStatus.Pending, Origin = origin,
+            PollIntervalSeconds = Math.Clamp(s.IntervalSeconds, 1, 30),
         });
         await db.SaveChangesAsync(ct);
         await RecordAsync(session, "consent_requested", new JsonObject

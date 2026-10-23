@@ -18,7 +18,7 @@ namespace Biatec.Chat.Api.Consent;
 /// One step of a consent: the status the widget shows and, once the consent has ended, the outcome of the confirm
 /// path it completed (signed and submitted, denied, or expired).
 /// </summary>
-public sealed record ConsentAdvance(Contracts.ConsentStatus Status, ConfirmResult? Result)
+public sealed record ConsentAdvance(Contracts.ConsentStatus Status, ConfirmResult? Result, TimeSpan? PollAfter = null)
 {
     public bool Terminal => Status.State != ConsentState.Pending;
 }
@@ -42,6 +42,9 @@ public sealed class ConsentOrchestrator(
     ILogger<ConsentOrchestrator> log,
     IEvidenceRecorder? recorder = null)
 {
+    /// <summary>Upper bound of the poll interval after repeated <c>slow_down</c> answers.</summary>
+    public const int MaxPollIntervalSeconds = 60;
+
     public async Task<ConsentAdvance> AdvanceAsync(Tenant tenant, ChatSession session, Guid previewId, CancellationToken ct)
     {
         var steps = await (from s in db.ActionSteps
@@ -60,6 +63,18 @@ public sealed class ConsentOrchestrator(
 
         if (clock.GetUtcNow() >= request.ExpiresAt)
             return await EndAsync(session, previewId, request, ConsentRequestStatus.Expired, denied: false, "window_elapsed", ct);
+
+        // The interval is enforced here, not left to the caller: a reconnected stream, a second tab or the plain poll endpoint cannot poll faster
+        // than Biatec OIDC asked. One caller wins the slot (atomic), the others get the same pending status and when to come back.
+        var now = clock.GetUtcNow();
+        var interval = TimeSpan.FromSeconds(Math.Max(1, request.PollIntervalSeconds));
+        if (request.LastPolledAt is { } last && now - last < interval)
+            return new ConsentAdvance(StatusOf(previewId, step.Id, ConsentState.Pending, request.BindingCode, request.ExpiresAt), null, interval - (now - last));
+        var since = now - interval;
+        var slot = await db.ConsentRequests.Where(c => c.Id == request.Id && c.Status == ConsentRequestStatus.Pending && (c.LastPolledAt == null || c.LastPolledAt <= since))
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.LastPolledAt, now), CancellationToken.None);
+        if (slot == 0)
+            return new ConsentAdvance(StatusOf(previewId, step.Id, ConsentState.Pending, request.BindingCode, request.ExpiresAt), null, interval);
 
         CibaPollOutcome polled;
         try
@@ -82,9 +97,17 @@ public sealed class ConsentOrchestrator(
                 return await EndAsync(session, previewId, request, ConsentRequestStatus.Expired, denied: false, "expired_token", ct);
             case CibaPollOutcome.Approved a:
                 return await ApprovedAsync(tenant, session, previewId, request, step, a, ct);
+            case CibaPollOutcome.Pending { SlowDown: true }:
+            {
+                // RFC 8628 3.5 / CIBA 10.2: the server asked for a slower rate, so every later poll waits 5 seconds longer (kept, so a new stream starts slow too).
+                await db.ConsentRequests.Where(c => c.Id == request.Id)
+                    .ExecuteUpdateAsync(u => u.SetProperty(c => c.PollIntervalSeconds, c => Math.Min(c.PollIntervalSeconds + 5, MaxPollIntervalSeconds)), CancellationToken.None); // atomic: two slow_downs are +10
+                var next = await db.ConsentRequests.AsNoTracking().Where(c => c.Id == request.Id).Select(c => c.PollIntervalSeconds).SingleAsync(CancellationToken.None);
+                return new ConsentAdvance(StatusOf(previewId, step.Id, ConsentState.Pending, request.BindingCode, request.ExpiresAt), null, TimeSpan.FromSeconds(next));
+            }
             default:
-                // Pending, slow_down, an already redeemed request (another poll took it) or an outage: still waiting.
-                return new ConsentAdvance(StatusOf(previewId, step.Id, ConsentState.Pending, request.BindingCode, request.ExpiresAt), null);
+                // Pending, an already redeemed request (another poll took it) or an outage: still waiting, at the interval Biatec OIDC gave.
+                return new ConsentAdvance(StatusOf(previewId, step.Id, ConsentState.Pending, request.BindingCode, request.ExpiresAt), null, TimeSpan.FromSeconds(request.PollIntervalSeconds));
         }
     }
 
