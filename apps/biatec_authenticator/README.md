@@ -30,6 +30,8 @@ The default does not match where the mock actually listens: `pnpm --filter mock-
 default counts as a real Biatec OIDC, so the settings screens are off unless `--dart-define=CONSENT_SETTINGS_API=true`
 (see T-084 below).
 
+**URL rules (BCHAT-029).** The URL must be `https`. Plain `http` is accepted only for the built-in mock URL and, in a build that is not a release build, for `localhost`, `127.0.0.1`, `::1` and `10.0.2.2`; credentials, a query or a fragment in the URL are refused. A URL that breaks a rule stops the app at launch with a `ConfigException` that says which. Certificate pinning is not done.
+
 ## Enrollment and device key (T-051)
 
 - `lib/keys/device_key_store.dart`: `DeviceKeyStore` is the hardware key (no export method, only `sign`).

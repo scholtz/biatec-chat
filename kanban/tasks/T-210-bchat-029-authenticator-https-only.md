@@ -38,15 +38,18 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] `https://...` URLs resolve; `http://` is refused unless it is the built-in mock URL or (non-release only) a loopback, localhost or 10.0.2.2 host; any other scheme is refused.
-- [ ] A URL with user info, a query or a fragment is refused.
-- [ ] `flutter analyze` and `flutter test` pass.
+- [x] `https://...` URLs resolve; `http://` is refused unless it is the built-in mock URL or (non-release only) a loopback, localhost or 10.0.2.2 host; any other scheme is refused.
+- [x] A URL with user info, a query or a fragment is refused.
+- [x] `flutter analyze` and `flutter test` pass.
 
 ## Verification
 
 `flutter analyze` and `flutter test` in apps/biatec_authenticator.
 
 ## Hand-off
+
+- **Summary:** `AppConfig.resolve` validates the URL (`ConfigException` at launch): https, or http for the mock URL, or http for loopback/localhost/10.0.2.2 in a non-release build; no credentials, query or fragment. README states the rules; certificate pinning is left out on purpose (a pin set and its rotation are a separate decision).
+- **Verification:** `flutter analyze`: no issues; `flutter test`: 119 pass (5 new in test/config_test.dart).
 
 ## Review
 

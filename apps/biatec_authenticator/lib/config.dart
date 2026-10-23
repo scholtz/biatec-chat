@@ -1,3 +1,14 @@
+import 'package:flutter/foundation.dart';
+
+/// The Biatec OIDC URL is not usable: not https (outside local mock use), or not a plain base URL.
+class ConfigException implements Exception {
+  const ConfigException(this.message);
+  final String message;
+
+  @override
+  String toString() => 'ConfigException: $message';
+}
+
 /// Build-time configuration.
 class AppConfig {
   const AppConfig(
@@ -30,14 +41,40 @@ class AppConfig {
   factory AppConfig.fromEnvironment() =>
       AppConfig.resolve(_definedOidcBaseUrl, settingsApi: _definedSettingsApi);
 
-  factory AppConfig.resolve(String defined, {bool settingsApi = false}) {
+  /// Hosts that mean "this machine" for a developer: plain http is acceptable to them in a build that is not a release build.
+  static const _localHosts = {'localhost', '127.0.0.1', '::1', '10.0.2.2'};
+
+  factory AppConfig.resolve(String defined,
+      {bool settingsApi = false, bool? release}) {
     final url = defined.trim().replaceAll(RegExp(r'/+$'), '');
     if (url.isEmpty) {
       return const AppConfig(
           oidcBaseUrl: mockOidcBaseUrl, isMock: true, settingsApi: true);
     }
     final isMock = url == mockOidcBaseUrl;
+    if (!isMock) validateUrl(url, release: release ?? kReleaseMode);
     return AppConfig(
         oidcBaseUrl: url, isMock: isMock, settingsApi: isMock || settingsApi);
+  }
+
+  /// Device tokens, binding codes and receipts travel to this URL, so it must be https. The one exception is local development
+  /// (loopback, `localhost`, the Android emulator's host alias) in a build that is not a release build. Throws [ConfigException].
+  @visibleForTesting
+  static void validateUrl(String url, {required bool release}) {
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasAuthority || uri.host.isEmpty) {
+      throw const ConfigException('OIDC_BASE_URL is not a valid URL.');
+    }
+    if (uri.userInfo.isNotEmpty || uri.hasQuery || uri.hasFragment) {
+      throw const ConfigException(
+          'OIDC_BASE_URL must be a plain base URL (no credentials, query or fragment).');
+    }
+    if (uri.scheme == 'https') return;
+    if (uri.scheme == 'http' && !release && _localHosts.contains(uri.host)) {
+      return;
+    }
+    throw ConfigException(uri.scheme == 'http'
+        ? 'OIDC_BASE_URL must be https (plain http is only allowed for localhost in a non-release build).'
+        : 'OIDC_BASE_URL must be an https URL.');
   }
 }
