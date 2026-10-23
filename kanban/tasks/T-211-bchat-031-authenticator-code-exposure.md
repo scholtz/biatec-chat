@@ -1,7 +1,7 @@
 ---
 id: T-211
 title: "Authenticator: no binding code in the stored history, recovery code not selectable (BCHAT-031)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -54,8 +54,11 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 14:12 · approve · PR #338 merged into main @ d41c9db (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 14:04 · kanban-split · (new) → backlog · created from audit issue #284
 - 2026-10-23 14:04 · scholtz · taken · status stays backlog
 - 2026-10-23 14:04 · session-20261023-1404 · backlog → in-progress · claimed, branch task/T-211
+- 2026-10-23 14:12 · user · in-progress → done · PR #338 merged into main @ d41c9db (synced by kanban-sync)
