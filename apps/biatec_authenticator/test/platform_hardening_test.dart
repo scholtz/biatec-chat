@@ -93,6 +93,39 @@ void main() {
     });
   });
 
+  group('Android merged release manifest (after flutter build apk --release)',
+      () {
+    final dir = Directory('build/app/intermediates/merged_manifests/release');
+    final file = dir.existsSync()
+        ? dir
+            .listSync(recursive: true)
+            .whereType<File>()
+            .where((f) => f.path.endsWith('AndroidManifest.xml'))
+            .firstOrNull
+        : null;
+
+    test('every exported component but the launcher is guarded by a permission',
+        () {
+      final xml = file!.readAsStringSync();
+      expect(xml, contains('android:allowBackup="false"'));
+      expect(xml, contains('android:usesCleartextTraffic="false"'));
+      expect(xml, isNot(contains('android:debuggable="true"')));
+      final tags = RegExp(r'<(activity|service|receiver|provider)\b[^>]*>')
+          .allMatches(xml)
+          .map((m) => m.group(0)!)
+          .where((t) => t.contains('android:exported="true"'));
+      expect(tags, isNotEmpty);
+      for (final tag in tags) {
+        if (tag.contains('.MainActivity')) continue;
+        expect(tag, contains('android:permission='),
+            reason: 'an exported component without a permission: $tag');
+      }
+    },
+        skip: file == null
+            ? 'no merged release manifest: build the release APK first'
+            : false);
+  });
+
   group('iOS', () {
     final plist = read('ios/Runner/Info.plist');
     final delegate = read('ios/Runner/AppDelegate.swift');

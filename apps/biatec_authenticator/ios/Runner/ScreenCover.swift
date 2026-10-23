@@ -8,6 +8,7 @@ final class ScreenCover {
     /// Marks the cover views, so they are found again on the window itself (no bookkeeping that could go stale when a window goes away).
     private static let tag = 0x5C0_7E12
     private var inactive = false
+    private var showing: Bool? = nil   // nil: no cover; false: plain (app inactive); true: with the "recorded or mirrored" message
     private var started = false
 
     func start() {
@@ -33,7 +34,12 @@ final class ScreenCover {
 
     private func update() {
         let captured = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.contains { $0.screen.isCaptured }
-        if inactive || captured { show(captured: captured && !inactive) } else { hide() }
+        guard inactive || captured else { return hide() }
+        let message = captured && !inactive
+        // A cover built for another reason (a plain one from going inactive, then a recording starts) is rebuilt; new windows are covered either way.
+        if showing != message { hide() }
+        show(captured: message)
+        showing = message
     }
 
     private func show(captured: Bool) {
@@ -58,5 +64,6 @@ final class ScreenCover {
 
     private func hide() {
         for window in windows { window.viewWithTag(Self.tag)?.removeFromSuperview() }
+        showing = nil
     }
 }

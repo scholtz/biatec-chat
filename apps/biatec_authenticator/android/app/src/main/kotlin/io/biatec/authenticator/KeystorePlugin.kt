@@ -5,12 +5,15 @@ import android.security.keystore.KeyGenParameterSpec
 import android.os.Handler
 import android.os.Looper
 import android.security.keystore.KeyProperties
+import android.security.keystore.StrongBoxUnavailableException
 import android.util.Base64
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.security.KeyPairGenerator
+import java.security.InvalidAlgorithmParameterException
 import java.security.KeyStore
+import java.security.ProviderException
 import java.security.Signature
 import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
@@ -89,9 +92,10 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
             gen.initialize(spec(alias, hasStrongBox))
             gen.generateKeyPair()
         } catch (e: Exception) {
-            // Devices that advertise StrongBox can still refuse the key (StrongBoxUnavailableException, ProviderException,
-            // InvalidAlgorithmParameterException): fall back to the TEE. Without StrongBox there is nothing to fall back from.
-            if (!hasStrongBox) throw e
+            // Devices that advertise StrongBox can still refuse the key: fall back to the TEE, but only for the failures StrongBox is known
+            // to cause (BCHAT-032 will report the level the key actually got). Anything else, or no StrongBox at all, is a real error.
+            val strongBoxRefused = e is StrongBoxUnavailableException || e is ProviderException || e is InvalidAlgorithmParameterException
+            if (!hasStrongBox || !strongBoxRefused) throw e
             gen.initialize(spec(alias, false))
             gen.generateKeyPair()
         }

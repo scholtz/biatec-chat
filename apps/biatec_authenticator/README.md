@@ -20,7 +20,7 @@ then hardened; BCHAT-008). The application id and bundle identifier are `io.biat
   `AppDelegate`, and `ScreenCover` hides the content from the app switcher and while the screen is recorded or mirrored.
 - **Push on iOS is not enabled yet:** the Push Notifications capability (a `Runner.entitlements` with `aps-environment`, per build configuration) needs the Apple
   developer account, and `GoogleService-Info.plist` / `android/app/google-services.json` are not committed; until then approval pushes do not arrive.
-  The deployment target is iOS 15 (Firebase iOS SDK 12).
+  The deployment target is iOS 15 (Firebase iOS SDK 12); `UIBackgroundModes` `remote-notification` is added together with the capability.
 - **Not verified:** the Kotlin plugin compiles (`flutter build apk --debug` and `--release` were run), but nothing was run on a device or an emulator.
   The Swift files (`KeystorePlugin.swift`, `ScreenCover.swift`, `AppDelegate.swift`) and the Xcode project edits were written without Xcode: build them
   on a Mac before the first iOS release.
