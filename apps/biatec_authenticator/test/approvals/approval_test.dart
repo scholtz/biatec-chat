@@ -280,7 +280,13 @@ void main() {
           isTrue);
       final hist = await h.history.read();
       expect(hist.single.decision, 'approve');
-      expect(hist.single.receipt, r);
+      // The history keeps the signed receipt without the one-time binding code the user typed, and says so.
+      final kept = hist.single.receipt;
+      expect((kept['signed'] as Map).containsKey('binding_code'), isFalse);
+      expect(kept['redacted'], ['signed.binding_code']);
+      expect(kept['signature'], r['signature']);
+      expect({...(kept['signed'] as Map), 'binding_code': s['binding_code']}, s);
+      expect(jsonEncode(kept), isNot(contains(s['binding_code'] as String)));
     });
 
     test('third wrong code yields code_failed and a signed code_failed receipt',

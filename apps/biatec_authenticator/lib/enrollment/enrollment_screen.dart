@@ -175,7 +175,8 @@ class RecoveryCodeView extends StatelessWidget {
       const Text('Write this code down and keep it safe. It is shown only '
           'once and activates a replacement device immediately.'),
       const SizedBox(height: 16),
-      SelectableText(code,
+      // Not selectable on purpose: a copied recovery code lands in the clipboard, which other apps and keyboards read (BCHAT-031).
+      Text(code,
           style: Theme.of(context)
               .textTheme
               .headlineMedium
