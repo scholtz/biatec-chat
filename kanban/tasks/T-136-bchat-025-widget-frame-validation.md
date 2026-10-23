@@ -41,12 +41,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] Valid preview and consent frames from the existing tests still pass through.
-- [ ] A preview with a missing or mistyped field (steps not an array, unknown status, non-string groupHash, malformed asset) is dropped.
-- [ ] A consent frame with an unknown state or non-string optional field is dropped.
-- [ ] A frame above the size limit ends the stream with an `error` event and does not buffer further.
-- [ ] Reply text stops growing at the cap.
-- [ ] The widget test suite shows no new failures (five pre-existing DEX playground failures are BCHAT-045).
+- [x] Valid preview and consent frames from the existing tests still pass through.
+- [x] A preview with a missing or mistyped field (steps not an array, unknown status, non-string groupHash, malformed asset) is dropped.
+- [x] A consent frame with an unknown state or non-string optional field is dropped.
+- [x] A frame above the size limit ends the stream with an `error` event and does not buffer further.
+- [x] Reply text stops growing at the cap.
+- [x] The widget test suite shows no new failures (five pre-existing DEX playground failures are BCHAT-045).
 
 ## Verification
 
@@ -54,12 +54,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** preview_card and consent_status frames are validated field by field against the protocol (statuses and states checked at compile time for exhaustiveness, expiresAt must parse); the SSE reader is bounded per frame (1,000,000 chars), per stream (16M chars, 5,000 events), events completed before an oversized frame are still delivered, then a localised non-retryable error ends the stream; the reply stops at 200,000 characters with a visible notice; orphan consent statuses are capped at 50.
+- **Files changed:** packages/chat-widget/src/transport/sse.ts, src/components/chat/useChat.ts, test/stream-limits.test.ts.
+- **How it was verified:** pnpm --filter @biatec/chat-widget test: 28 new tests pass (frames, limits, endless comments, many events, truncation notice); the suite otherwise shows only the 5 pre-existing DEX playground failures (BCHAT-045, #298); vue-tsc reports no errors in src or test (playground errors need the built dist).
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** None.
 
 ## Review
 

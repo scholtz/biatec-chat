@@ -52,6 +52,7 @@
     "promptLimitsLabel": "Moje limity výdavkov",
     "promptLimitsText": "Aké sú moje aktuálne limity výdavkov?",
     "errorGeneric": "Niečo sa pokazilo. Skúste to prosím znova.",
+    "replyTooLarge": "Odpoveď bola príliš dlhá, preto bola skrátená.",
     "sessionExpired": "Vaša relácia skončila po určitom čase nečinnosti, preto ste odhlásený. Prihláste sa znova a pokračujte; vaša správa nebola odoslaná.",
     "signedInAs": "Prihlásený ako {email}",
     "signedIn": "Prihlásený",

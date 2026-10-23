@@ -64,6 +64,10 @@ export interface ChatServices {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/** Longest assistant reply the widget keeps (characters). A real reply is a few thousand. */
+export const MAX_REPLY_CHARS = 200_000;
+const MAX_ORPHAN_CONSENTS = 50;
+
 export function useChat(svc: ChatServices) {
   const messages = reactive<ChatMessage[]>([]);
   const session = ref<SessionState | null>(null);
@@ -157,7 +161,15 @@ export function useChat(svc: ChatServices) {
   function apply(m: ChatMessage, e: ChatEvent): void {
     switch (e.type) {
       case "text_delta":
-        m.text += e.text;
+        // A reply cannot grow without bound (BCHAT-025): past the cap further text is dropped.
+        if (m.text.length < MAX_REPLY_CHARS) {
+          let take = e.text.slice(0, MAX_REPLY_CHARS - m.text.length);
+          // Do not cut a surrogate pair in half.
+          if (take.length < e.text.length && /[\uD800-\uDBFF]$/.test(take)) take = take.slice(0, -1);
+          m.text += take;
+          // Say so: a truncated reply must not read as a complete one.
+          if (take.length < e.text.length) m.error = t("chat.replyTooLarge");
+        } else if (e.text.length > 0) m.error = t("chat.replyTooLarge");
         break;
       case "tool_status": {
         const line = m.tools.find((t) => t.id === e.toolCallId);
@@ -191,11 +203,15 @@ export function useChat(svc: ChatServices) {
         if (entry) {
           entry.consent = e.consent;
           syncKeepalive(entry);
-        } else orphanConsent.set(e.consent.previewId, e.consent);
+        } else {
+          orphanConsent.set(e.consent.previewId, e.consent);
+          // Bounded: only a handful can legitimately arrive before their preview_card.
+          if (orphanConsent.size > MAX_ORPHAN_CONSENTS) orphanConsent.delete(orphanConsent.keys().next().value as string);
+        }
         break;
       }
       case "error":
-        m.error = e.message;
+        m.error = e.code === "stream_too_large" ? t("chat.replyTooLarge") : e.message;
         break;
       default:
         break;
