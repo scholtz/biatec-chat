@@ -44,21 +44,34 @@ class AppConfig {
   /// Hosts that mean "this machine" for a developer: plain http is acceptable to them in a build that is not a release build.
   static const _localHosts = {'localhost', '127.0.0.1', '::1', '10.0.2.2'};
 
+  /// [release] is true for anything that is not a debug build (release and profile builds): those only accept https, and have no mock default.
   factory AppConfig.resolve(String defined,
       {bool settingsApi = false, bool? release}) {
+    final isRelease = release ?? !kDebugMode;
     final url = defined.trim().replaceAll(RegExp(r'/+$'), '');
     if (url.isEmpty) {
+      if (isRelease) {
+        throw const ConfigException(
+            'OIDC_BASE_URL is required in a release build (there is no mock default).');
+      }
       return const AppConfig(
           oidcBaseUrl: mockOidcBaseUrl, isMock: true, settingsApi: true);
     }
-    final isMock = url == mockOidcBaseUrl;
-    if (!isMock) validateUrl(url, release: release ?? kReleaseMode);
+    // The mock is the same endpoint however the URL is spelled (scheme and host are case-insensitive).
+    final isMock = Uri.tryParse(url)?.toString() == mockOidcBaseUrl;
+    if (isMock && isRelease) {
+      throw const ConfigException(
+          'The mock Biatec OIDC is not available in a release build.');
+    }
+    if (!isMock) validateUrl(url, release: isRelease);
     return AppConfig(
-        oidcBaseUrl: url, isMock: isMock, settingsApi: isMock || settingsApi);
+        oidcBaseUrl: isMock ? mockOidcBaseUrl : url,
+        isMock: isMock,
+        settingsApi: isMock || settingsApi);
   }
 
   /// Device tokens, binding codes and receipts travel to this URL, so it must be https. The one exception is local development
-  /// (loopback, `localhost`, the Android emulator's host alias) in a build that is not a release build. Throws [ConfigException].
+  /// (loopback, `localhost`, the Android emulator's host alias) in a debug build. Throws [ConfigException].
   @visibleForTesting
   static void validateUrl(String url, {required bool release}) {
     final uri = Uri.tryParse(url);
@@ -74,7 +87,7 @@ class AppConfig {
       return;
     }
     throw ConfigException(uri.scheme == 'http'
-        ? 'OIDC_BASE_URL must be https (plain http is only allowed for localhost in a non-release build).'
+        ? 'OIDC_BASE_URL must be https (plain http is only allowed for localhost in a debug build).'
         : 'OIDC_BASE_URL must be an https URL.');
   }
 }
