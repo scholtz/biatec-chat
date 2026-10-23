@@ -68,6 +68,8 @@ public static class AdminEndpoints
     public const string RateLimitPolicy = "operator";
     /// <summary>The administrator dashboard's own bucket (same limits), so its traffic never starves the operator API behind a shared IP.</summary>
     public const string DashboardRateLimitPolicy = "admin-dashboard";
+    /// <summary>The unauthenticated sign-in start: a smaller bucket of its own, so it can neither starve the dashboard nor fill Redis with states.</summary>
+    public const string DashboardLoginRateLimitPolicy = "admin-dashboard-login";
 
     public const string EvidencePath = "/onboarding/operator/evidence";
     public const int DefaultEvidenceLimit = 200;
@@ -87,16 +89,17 @@ public static class AdminEndpoints
         {
             o.AddPolicy(RateLimitPolicy, ctx => PerIp(ctx, "operator:"));
             o.AddPolicy(DashboardRateLimitPolicy, ctx => PerIp(ctx, "dashboard:"));
+            o.AddPolicy(DashboardLoginRateLimitPolicy, ctx => PerIp(ctx, "dashboard-login:", maxPermits: 20));
         });
         return services;
     }
 
-    private static RateLimitPartition<string> PerIp(HttpContext ctx, string prefix)
+    private static RateLimitPartition<string> PerIp(HttpContext ctx, string prefix, int maxPermits = int.MaxValue)
     {
         var opts = ctx.RequestServices.GetRequiredService<IOptions<AdminOptions>>().Value;
         return RateLimitPartition.GetFixedWindowLimiter(prefix + (ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown"), _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = Math.Max(1, opts.RateLimitPermits),
+            PermitLimit = Math.Max(1, Math.Min(opts.RateLimitPermits, maxPermits)),
             Window = TimeSpan.FromSeconds(Math.Max(1, opts.RateLimitWindowSeconds)),
             QueueLimit = 0,
         });

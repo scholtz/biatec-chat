@@ -986,5 +986,6 @@ public sealed class AdminDashboardTests : IAsyncLifetime
         Assert.Equal("case 4711 ok", AdminImpersonations.CleanReason("  case 4711 \u202E\u2028ok  "));
         Assert.Equal("ticket4711", AdminImpersonations.CleanReason("ticket\u200B4711"));
         Assert.Null(AdminImpersonations.CleanReason("ab\u202E\u200B\u2029cd")); // four visible characters are not enough
+        Assert.Equal("ticket 1234", AdminImpersonations.CleanReason("ticket 1234" + char.ConvertFromUtf32(0xE0041) + char.ConvertFromUtf32(0xE0001))); // invisible tag characters
     }
 }

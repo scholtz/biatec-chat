@@ -85,7 +85,7 @@ backend: validates the ID token (signature, iss, aud, nonce, exp), checks the em
 
 All responses under `/admin` carry `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Referrer-Policy:
 no-referrer` and a strict CSP (`default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'`).
-Rate limit: the operator limiter (`Admin:RateLimitPermits` per `Admin:RateLimitWindowSeconds`, per remote IP).
+Rate limit per remote IP: `Admin:RateLimitPermits` per `Admin:RateLimitWindowSeconds` for the API, in a bucket of its own (not shared with the operator API), and at most 20 per window for `/admin/auth/login`.
 
 ## What an admin sees
 
