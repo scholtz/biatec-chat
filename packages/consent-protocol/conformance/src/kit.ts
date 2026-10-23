@@ -183,19 +183,22 @@ async function approve(base: string, authReqId: string, code: string) {
   return request;
 }
 
-async function redeem(base: string, authReqId: string) {
+async function redeem(base: string, authReqId: string, intervalSeconds: number) {
   // The mock decides on the first poll; a real server may answer authorization_pending first.
-  for (let i = 0; i < 10; i++) {
+  // A conforming client waits the announced interval (plus a little, the mock counts whole seconds) between polls and adds 5 s after every slow_down.
+  let waitMs = intervalSeconds * 1000 + 500;
+  for (let i = 0; i < 8; i++) {
     const r = await http(base, "POST", "/token", { auth: clientAuth(), form: { grant_type: "urn:openid:params:grant-type:ciba", auth_req_id: authReqId } });
-    if (r.json?.error !== "authorization_pending") return r;
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    if (r.json?.error !== "authorization_pending" && r.json?.error !== "slow_down") return r;
+    if (r.json?.error === "slow_down") waitMs += 5000;
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
   }
   throw new Error("token endpoint stayed authorization_pending");
 }
 
-async function finish(base: string, entry: FlowResult["entry"], authReqId: string, code: string): Promise<FlowResult> {
+async function finish(base: string, entry: FlowResult["entry"], authReqId: string, code: string, intervalSeconds = 2): Promise<FlowResult> {
   const request = await approve(base, authReqId, code);
-  const tokenReply = await redeem(base, authReqId);
+  const tokenReply = await redeem(base, authReqId, intervalSeconds);
   if (tokenReply.status !== 200) throw new Error(`token endpoint refused: HTTP ${tokenReply.status} ${JSON.stringify(tokenReply.json)}`);
   const signReply = await http(base, "POST", signPath(), { auth: "Bearer " + tokenReply.json.access_token, body: { unsigned_group: config.unsignedGroup } });
   const jwks = (await http(base, "GET", "/.well-known/jwks.json")).json;
@@ -206,7 +209,7 @@ async function finish(base: string, entry: FlowResult["entry"], authReqId: strin
 export async function runStepUp(base: string): Promise<FlowResult & { challenge: Reply }> {
   const challenge = await http(base, "POST", signPath(), { auth: "Bearer " + config.stepUpBearer, body: { unsigned_group: config.unsignedGroup } });
   if (challenge.status !== 401) throw new Error(`expected the step-up challenge (401), got HTTP ${challenge.status} ${JSON.stringify(challenge.json)}`);
-  const flow = await finish(base, "step-up", challenge.json.auth_req_id, challenge.json.binding_code);
+  const flow = await finish(base, "step-up", challenge.json.auth_req_id, challenge.json.binding_code, challenge.json.interval ?? 2);
   return { ...flow, challenge };
 }
 
@@ -226,6 +229,6 @@ export async function runDirect(base: string): Promise<FlowResult & { start: Rep
     },
   });
   if (start.status !== 200) throw new Error(`direct entry refused: HTTP ${start.status} ${JSON.stringify(start.json)}`);
-  const flow = await finish(base, "direct", start.json.auth_req_id, start.json.binding_code);
+  const flow = await finish(base, "direct", start.json.auth_req_id, start.json.binding_code, start.json.interval ?? 2);
   return { ...flow, start };
 }

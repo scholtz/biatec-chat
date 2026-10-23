@@ -38,17 +38,21 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] A token poll sooner than the request's interval (2 s) is answered `slow_down` and raises that request's interval by 5 s; a poll at or after the interval is judged on the request state.
-- [ ] More than 5 open requests of one user are refused (429).
-- [ ] A receipt is returned only to a bearer whose subject owns the request.
-- [ ] An inactive device can neither change settings nor cancel another enrollment.
-- [ ] Mock and conformance suites pass; docs row updated.
+- [x] A token poll sooner than the request's interval (2 s) is answered `slow_down` and raises that request's interval by 5 s; a poll at or after the interval is judged on the request state.
+- [x] More than 20 open requests of one user are refused (429).
+- [x] A receipt is returned only to a bearer whose subject owns the request.
+- [x] An inactive device can neither change settings nor cancel another enrollment.
+- [x] Mock and conformance suites pass; docs row updated.
 
 ## Verification
 
 `pnpm --filter mock-oidc test`, `pnpm --filter @biatec/consent-protocol conformance`.
 
 ## Hand-off
+
+- **Summary:** the mock (`mock-oidc/src/app.ts`) now models: `interval` (2 s) and `slow_down` (+5 s on the request's interval; only a pending request is judged on timing, an approved one is returned on the first poll), at most 20 open requests per user (429 `too_many_requests`; 20 because the shared test mock leaves requests open; the real value is for the OIDC owners), receipts only to a bearer whose subject owns the request (the client by its credentials still can), and an inactive device (rule 7) neither changes settings (tightening included) nor cancels enrollments. The conformance kit waits the interval and adds 5 s after a slow_down. docs/required-changes-biatec-oidc.md row 4 states the rules for the real server.
+- **Decision for the user:** the audit lists "inactive device can tighten settings" as a gap, so tightening now needs an active device too; the earlier test (T-084) said "tightening is fine from any device" and was changed accordingly.
+- **Verification:** `pnpm --filter mock-oidc test`: 30 pass (4 new, 1 rewritten); typecheck clean; conformance: 23 pass.
 
 ## Review
 
