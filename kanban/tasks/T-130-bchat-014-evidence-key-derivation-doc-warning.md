@@ -1,7 +1,7 @@
 ---
 id: T-130
 title: "Warn about and document the single-master derivation of evidence signing keys (BCHAT-014)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -59,7 +59,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 10:40 · approve · PR #313 merged into main @ 7ba13e7 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 12:00 · claude · (new) → backlog · created from GitHub issue #267 (BCHAT-014); blockers scan: none
 - 2026-10-23 10:30 · scholtz · taken, and session-20261023-1030 · backlog → in-progress · claimed
+- 2026-10-23 10:40 · user · in-progress → done · PR #313 merged into main @ 7ba13e7 (synced by kanban-sync)
