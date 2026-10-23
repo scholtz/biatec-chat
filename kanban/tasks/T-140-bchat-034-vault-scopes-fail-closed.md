@@ -51,9 +51,9 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:** A token response without a scope no longer lets the requested scopes stand in for the granted ones: the login callback vaults only openid, and the elevation callback refuses (400, status Failed) and leaves the vault entry untouched.
+- **Summary:** A token response without a scope no longer lets the requested scopes stand in for the granted ones: the login callback vaults only openid, and the elevation callback refuses (400, status Failed) and leaves the vault entry untouched. An empty scope string counts as omitted; a login without scope logs a warning. The refresh path keeps the previous scopes (RFC 6749 section 6: omitted means unchanged), which is deliberate.
 - **Files changed:** Api/Auth/AuthEndpoints.cs, Api/Auth/Elevation/ElevationEndpoints.cs, Tests/Auth/MockOidc.cs (OmitScope switch), Tests/Auth/ElevationTests.cs.
-- **How it was verified:** dotnet test Auth and Elevation (45 passed, 2 new); full backend suite run before the PR.
+- **How it was verified:** Full backend suite 1619 passed, 0 failed (3 new tests: login omitting scope vaults openid only, elevation omitting scope refused, elevation with an empty scope refused).
 - **Follow-up tasks created:** none.
 - **Unblocks:** none.
 - **Open questions:** RFC 6749 lets a server omit scope when it equals the request, so a compliant server that does so now yields an openid-only session after login (the user elevates sign when needed) and cannot elevate until it returns scope. Biatec OIDC's mock always returns it; confirm the real one does.

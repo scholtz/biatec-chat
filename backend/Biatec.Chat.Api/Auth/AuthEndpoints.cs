@@ -204,6 +204,7 @@ public static class AuthEndpoints
                 newSessionToken = rotated.NewToken;
                 newSessionId = rotated.Session.Id.ToString("N");
 
+                if (tokens.Scopes is null) log.LogWarning("The token response has no scope; the session is limited to openid. The OIDC server should return the granted scope.");
                 await vault.PutAsync(newSessionId, new TokenVaultEntry
                 {
                     AccessToken = tokens.AccessToken,

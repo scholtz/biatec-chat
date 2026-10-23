@@ -397,14 +397,31 @@ public sealed class ElevationTests : IAsyncLifetime
         var path = new Uri((await start.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("loginUrl").GetString()!).PathAndQuery;
         var redirect = await SendAsync(HttpMethod.Get, path, anon);
         var (code, state) = _oidc.Authorize(redirect.Headers.Location!);
+        HttpResponseMessage cb;
         _oidc.OmitScope = true;
-        var cb = await SendAsync(HttpMethod.Get, $"/auth/callback?code={Uri.EscapeDataString(code)}&state={Uri.EscapeDataString(state)}", anon);
-        _oidc.OmitScope = false;
+        try { cb = await SendAsync(HttpMethod.Get, $"/auth/callback?code={Uri.EscapeDataString(code)}&state={Uri.EscapeDataString(state)}", anon); }
+        finally { _oidc.OmitScope = false; }
 
         Assert.Equal(HttpStatusCode.OK, cb.StatusCode);
         var sid = SessionIdOf(TokenOf(SetCookie(cb)!));
         Assert.Equal(["openid"], _vault.Items[sid].Scopes);
         Assert.False((await Guard.CheckAsync(sid, ElevationScopes.Sign)).Allowed);
+    }
+
+    [Fact]
+    public async Task Elevation_WhoseTokenResponseHasAnEmptyScope_IsRefusedToo()
+    {
+        var cookie = await LoginAsync();
+        var sid = SessionIdOf(cookie);
+        var before = _vault.Items[sid];
+        _oidc.GrantedScopeOverride = " ";
+        Guid id;
+        HttpResponseMessage cb;
+        try { (id, cb) = await ElevateAsync(cookie, "sign", "openid profile email sign"); }
+        finally { _oidc.GrantedScopeOverride = null; }
+        Assert.Equal(HttpStatusCode.BadRequest, cb.StatusCode);
+        Assert.Equal(PopupAuthStatus.Failed, await StatusAsync(id));
+        Assert.Same(before, _vault.Items[sid]);
     }
 
     [Fact]
@@ -414,9 +431,10 @@ public sealed class ElevationTests : IAsyncLifetime
         var sid = SessionIdOf(cookie);
         var before = _vault.Items[sid];
         _oidc.OmitScope = true;
-
-        var (id, cb) = await ElevateAsync(cookie, "sign", "openid profile email sign");
-        _oidc.OmitScope = false;
+        Guid id;
+        HttpResponseMessage cb;
+        try { (id, cb) = await ElevateAsync(cookie, "sign", "openid profile email sign"); }
+        finally { _oidc.OmitScope = false; }
         Assert.Equal(HttpStatusCode.BadRequest, cb.StatusCode);
         Assert.Equal(PopupAuthStatus.Failed, await StatusAsync(id));
         Assert.Same(before, _vault.Items[sid]);

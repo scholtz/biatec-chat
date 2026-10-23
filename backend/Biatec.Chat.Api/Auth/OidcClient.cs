@@ -108,7 +108,8 @@ public sealed class OidcClient(IHttpClientFactory http, IOidcMetadataProvider me
                 RefreshToken = r.TryGetProperty("refresh_token", out var rt) ? rt.GetString() : null,
                 IdToken = r.TryGetProperty("id_token", out var it) ? it.GetString() : null,
                 ExpiresIn = r.TryGetProperty("expires_in", out var ei) && ei.TryGetInt32(out var n) && n > 0 ? n : 300,
-                Scopes = scope?.Split(' ', StringSplitOptions.RemoveEmptyEntries),
+                // An empty scope string is as uninformative as an absent one: null, so callers fail closed (BCHAT-034).
+                Scopes = scope?.Split(' ', StringSplitOptions.RemoveEmptyEntries) is { Length: > 0 } granted ? granted : null,
             };
         }
         catch (Exception ex) when (ex is not OidcException and not OperationCanceledException)
