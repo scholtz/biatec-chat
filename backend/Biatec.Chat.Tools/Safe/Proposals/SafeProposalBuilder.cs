@@ -320,9 +320,10 @@ public sealed class SafeProposalBuilder(IBuildersClient builders) : ISafeProposa
     {
         var group = AlgorandGroup.Ensure([tx]);
         var (first, last) = group.ValidityWindow();
-        SafeSimulation? sim = null;
-        if (result.Simulation is { ValueKind: JsonValueKind.Object } s)
-            sim = new SafeSimulation(s.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True, SafeBuilder.Str(s, "failureMessage"));
+        // Every call asks for a simulation (simulate: true); a build that comes back without one is not previewed.
+        if (result.Simulation is not { ValueKind: JsonValueKind.Object } s)
+            throw new SafeBuildException("The builder did not report the simulation that was requested, so nothing was previewed.");
+        var sim = new SafeSimulation(s.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True, SafeBuilder.Str(s, "failureMessage"));
         return new SafeProposalBuild(kind, sender, appId, group, first, last, tx.Fee, sim, proposal, view, version, provider);
     }
 
