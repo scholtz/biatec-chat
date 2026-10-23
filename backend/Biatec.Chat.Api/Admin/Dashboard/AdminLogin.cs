@@ -34,7 +34,7 @@ public static class AdminLogin
     {
         app.MapGet("/admin/auth/login", async (HttpContext ctx, AdminAllowList allow, IOidcClient oidc, IAuthStateStore states, ILogger<AdminLoginLog> log) =>
         {
-            Harden(ctx);
+            AuthEndpoints.Harden(ctx);
             var tenant = ctx.GetTenant();
             if (!allow.Enabled || tenant is null) return Results.NotFound();
             // A top-level navigation from the same site, or typed in: never a subresource, frame or fetch.
@@ -73,13 +73,21 @@ public static class AdminLogin
     }
 
     /// <summary>
+    /// Same browser: the state was started by the browser that holds the login cookie. Checked <i>before</i> the state is consumed, so a
+    /// leaked callback URL used elsewhere cannot burn the real admin's single-use state.
+    /// </summary>
+    internal static bool BoundToThisBrowser(HttpContext ctx, PendingAuth pending) =>
+        ctx.Request.Cookies.TryGetValue(AdminAuth.LoginCookieName, out var binding) && binding is { Length: > 0 and <= 128 } &&
+        CryptographicOperations.FixedTimeEquals(System.Text.Encoding.UTF8.GetBytes(AuthEndpoints.Hash(binding)), System.Text.Encoding.UTF8.GetBytes(pending.SessionId));
+
+    /// <summary>
     /// Finishes a sign-in whose state was minted by <c>/admin/auth/login</c> (the caller has taken the state, so it works
     /// once). Always answers with a redirect to the dashboard: with a session cookie on success, with <c>?error=&lt;code&gt;</c>
     /// otherwise.
     /// </summary>
     internal static async Task<IResult> CompleteAsync(HttpContext ctx, Tenant tenant, PendingAuth pending)
     {
-        Harden(ctx);
+        AuthEndpoints.Harden(ctx);
         var sp = ctx.RequestServices;
         var log = sp.GetRequiredService<ILogger<AdminLoginLog>>();
         var allow = sp.GetRequiredService<AdminAllowList>();
@@ -87,10 +95,7 @@ public static class AdminLogin
         var clock = sp.GetRequiredService<TimeProvider>();
         var ct = ctx.RequestAborted;
 
-        // Same tenant, same browser: the state was started on this host by the browser that holds the login cookie.
-        var bound = ctx.Request.Cookies.TryGetValue(AdminAuth.LoginCookieName, out var binding) && binding is { Length: > 0 and <= 128 } &&
-                    CryptographicOperations.FixedTimeEquals(System.Text.Encoding.UTF8.GetBytes(AuthEndpoints.Hash(binding)), System.Text.Encoding.UTF8.GetBytes(pending.SessionId));
-        if (!allow.Enabled || !bound || pending.TenantId != tenant.Id) return Failed(ctx, Errors.LoginFailed);
+        if (!allow.Enabled || pending.TenantId != tenant.Id) return Failed(ctx, Errors.LoginFailed);
 
         if (ctx.Request.Query.ContainsKey("error"))
             return Failed(ctx, ctx.Request.Query["error"].ToString() == "access_denied" ? Errors.AccessDenied : Errors.LoginFailed);
@@ -113,15 +118,16 @@ public static class AdminLogin
             return Failed(ctx, Errors.LoginFailed);
         }
 
-        if (!allow.Contains(identity.Email))
-        {
-            log.LogWarning("Admin sign-in refused: the signed-in user is not on Admin:Admins (tenant {TenantId}, from {RemoteIp}).", tenant.Id, Onboarding.OperatorAuth.Remote(ctx));
-            return Failed(ctx, Errors.NotAdmin);
-        }
+        // The email must be proven before the list is consulted: someone who cannot prove an address learns nothing about who is an admin.
         if (options.RequireVerifiedEmail && identity.EmailVerified != true)
         {
             log.LogWarning("Admin sign-in refused: the ID token does not carry email_verified=true (tenant {TenantId}).", tenant.Id);
             return Failed(ctx, Errors.EmailNotVerified);
+        }
+        if (!allow.Contains(identity.Email))
+        {
+            log.LogWarning("Admin sign-in refused: the signed-in user is not on Admin:Admins (tenant {TenantId}, from {RemoteIp}).", tenant.Id, Onboarding.OperatorAuth.Remote(ctx));
+            return Failed(ctx, Errors.NotAdmin);
         }
 
         var now = clock.GetUtcNow();
@@ -159,13 +165,6 @@ public static class AdminLogin
         ctx.GetTenant() is { } t && BackendUrls.TryBase(t, ctx.Request.PathBase.Value ?? "") is { } b ? b + "/admin/" : (ctx.Request.PathBase.Value ?? "") + "/admin/";
 
     internal static IResult Failed(HttpContext ctx, string code) => Results.Redirect(SafeHome(ctx) + "?error=" + code, permanent: false);
-
-    private static void Harden(HttpContext ctx)
-    {
-        ctx.Response.Headers.CacheControl = "no-store";
-        ctx.Response.Headers.Append("Vary", "Cookie");
-        ctx.Response.Headers["Referrer-Policy"] = "no-referrer";
-    }
 
     /// <summary>Logger category.</summary>
     public sealed class AdminLoginLog;

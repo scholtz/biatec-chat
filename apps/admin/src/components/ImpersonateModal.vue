@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { api } from "../api";
-import { REASON_MAX, shortMiddle, validateReason } from "../format";
+import { REASON_MAX, cleanReason, shortMiddle, validateReason } from "../format";
 import { navigate } from "../router";
 import { setImpersonation } from "../session";
 
@@ -25,7 +25,7 @@ async function submit() {
   if (validation.value || submitting.value) return;
   submitting.value = true;
   try {
-    const imp = await api.startImpersonation(props.target.tenantId, props.target.sub, reason.value.trim());
+    const imp = await api.startImpersonation(props.target.tenantId, props.target.sub, cleanReason(reason.value));
     setImpersonation(imp);
     emit("close");
     navigate("/view");
@@ -75,7 +75,8 @@ onBeforeUnmount(() => {
       <h2 id="imp-title">View as user</h2>
       <p class="muted">
         You will see the conversations of subject <strong class="mono" :title="target.sub">{{ shortMiddle(target.sub, 24) }}</strong>, read-only.
-        The start, every conversation you open and the stop are written to the audit chain with your reason.
+        The start, every conversation you open and the stop are written to the audit chain with your reason, permanently.
+        Give a ticket or case reference; do not put the user's personal data in it.
       </p>
       <form novalidate @submit.prevent="submit">
         <label for="imp-reason" class="label">Reason (shown in the audit trail)</label>
@@ -93,7 +94,7 @@ onBeforeUnmount(() => {
         <div id="imp-help" class="field-help">
           <span v-if="shownError" class="field-error" role="alert" data-test="reason-error">{{ shownError }}</span>
           <span v-else class="muted">8 to {{ REASON_MAX }} characters.</span>
-          <span class="muted counter" data-test="counter">{{ reason.trim().length }} / {{ REASON_MAX }}</span>
+          <span class="muted counter" data-test="counter">{{ cleanReason(reason).length }} / {{ REASON_MAX }}</span>
         </div>
         <p v-if="serverError" class="notice notice-error" role="alert" data-test="server-error">{{ serverError }}</p>
         <div class="modal-actions">

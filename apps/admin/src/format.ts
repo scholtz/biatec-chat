@@ -66,8 +66,14 @@ export const REASON_MIN = 8;
 export const REASON_MAX = 500;
 
 /** Returns an error message, or null when the (trimmed) reason is acceptable. */
+/** The reason as the server keeps it: control characters removed, trimmed. */
+export function cleanReason(reason: string): string {
+  // eslint-disable-next-line no-control-regex
+  return reason.replace(/[\u0000-\u001f\u007f-\u009f]/g, "").trim();
+}
+
 export function validateReason(reason: string): string | null {
-  const len = reason.trim().length;
+  const len = cleanReason(reason).length;
   if (len < REASON_MIN) return `Enter at least ${REASON_MIN} characters (${len} so far).`;
   if (len > REASON_MAX) return `At most ${REASON_MAX} characters (${len} entered).`;
   return null;

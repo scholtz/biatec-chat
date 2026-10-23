@@ -62,7 +62,7 @@ backend: validates the ID token (signature, iss, aud, nonce, exp), checks the em
   read once to learn the email and subject, then dropped. The scope has no `sign`, no `offline_access`.
 - The login state is bound to a short-lived `__Host-biatec_admin_login` cookie (login CSRF defence), is single use and
   expires after 10 minutes. An unknown, replayed or foreign state is refused.
-- A failed sign-in redirects to `/admin/?error=<code>` with one of `not_admin`, `email_not_verified`, `login_failed`,
+- A failed sign-in redirects to `/admin/?error=<code>` with one of `not_admin`, `email_not_verified` (checked first, so someone who cannot prove an email learns nothing about the list), `login_failed`,
   `access_denied`. The page shows a plain message; nothing else is revealed.
 
 ### Admin session
@@ -105,7 +105,7 @@ previews and their status); they never act as the user. This follows from the se
 tokens, signing goes from the backend straight to Biatec OIDC with the user's own consent on their own device, and no
 admin session has a user's tokens or the ability to approve anything.
 
-- Starting needs the user (`tenantId`, `sub`) and a **reason** (8 to 500 characters). It lasts `Admin:ImpersonationMinutes`
+- Starting needs the user (`tenantId`, `sub`) and a **reason** (8 to 500 characters). The reason goes into the permanent, signed audit chain and can never be erased, so it must be a ticket or case reference, **never the user's personal data**. It lasts `Admin:ImpersonationMinutes`
   (default 30; it never outlives the admin session) and is one at a time per admin: starting another ends the first.
 - While active, a banner shows who is being viewed, the reason and the time left, with a **Stop** button.
 - The view endpoints take **no user in the request**: the impersonated user comes from the admin session, so a request

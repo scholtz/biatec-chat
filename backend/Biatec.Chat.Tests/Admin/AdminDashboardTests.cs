@@ -906,4 +906,41 @@ public sealed class AdminDashboardTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, (await SendAsync(f, HttpMethod.Get, "/admin/api/stats?tenant=biatec-chat", cookie)).StatusCode);
         Assert.True(cache.TryGetValue("admin-stats|30|biatec-chat", out _));
     }
+
+    [Fact]
+    public async Task SignIn_UnverifiedEmailNeverRevealsWhoIsAnAdmin()
+    {
+        var f = Factory();
+        var admin = await SignInAsync(f, "alice@example.test", verified: false, explicitVerified: true);
+        var stranger = await SignInAsync(f, "mallory@example.test", verified: false, explicitVerified: true);
+        Assert.Equal(admin.Headers.Location, stranger.Headers.Location);
+        Assert.EndsWith("error=email_not_verified", stranger.Headers.Location!.ToString());
+    }
+
+    [Fact]
+    public async Task SignIn_AStatePresentedWithoutTheLoginCookieIsNotBurned()
+    {
+        var f = Factory();
+        var start = await SendAsync(f, HttpMethod.Get, "/admin/auth/login", tweak: r => r.Headers.Remove("Sec-Fetch-Site"));
+        var (code, state) = _oidc.Authorize(start.Headers.Location!, "openid profile email");
+        _oidc.EmailVerified = true;
+        var url = $"/auth/callback?code={Uri.EscapeDataString(code)}&state={Uri.EscapeDataString(state)}";
+        // Someone who saw the URL in a log opens it elsewhere, without the browser's login cookie.
+        Assert.EndsWith("error=login_failed", (await SendAsync(f, HttpMethod.Get, url, sameOrigin: false)).Headers.Location!.ToString());
+        Assert.Empty(_oidc.TokenRequests);
+        // The real admin's sign-in still works.
+        Assert.NotNull(SetCookie(await SendAsync(f, HttpMethod.Get, url, CookieHeader(SetCookie(start, AdminAuth.LoginCookieName)!), sameOrigin: false), AdminAuth.CookieName));
+    }
+
+    [Fact]
+    public async Task Me_NeverExposesTheInternalUserId()
+    {
+        await SeedUserAsync("sub-1", userTexts: ["hello"]);
+        var f = Factory();
+        var cookie = await AdminCookieAsync(f);
+        var start = await (await SendAsync(f, HttpMethod.Post, "/admin/api/impersonation", cookie, new { tenantId = "biatec-chat", sub = "sub-1", reason = "case 4711" })).Content.ReadAsStringAsync();
+        var me = await (await SendAsync(f, HttpMethod.Get, "/admin/api/me", cookie)).Content.ReadAsStringAsync();
+        Assert.DoesNotContain("userId", start, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("userId", me, StringComparison.OrdinalIgnoreCase);
+    }
 }

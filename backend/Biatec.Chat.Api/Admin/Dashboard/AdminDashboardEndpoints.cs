@@ -8,7 +8,13 @@ using Microsoft.Extensions.Options;
 
 namespace Biatec.Chat.Api.Admin.Dashboard;
 
-public sealed record MeResponse(string Email, string TenantId, DateTimeOffset ExpiresAt, AdminImpersonation? Impersonation);
+/// <summary>What the browser learns of a running impersonation: not the dashboard's internal row id.</summary>
+public sealed record ImpersonationView(string TenantId, string Sub, string Reason, DateTimeOffset StartedAt, DateTimeOffset ExpiresAt)
+{
+    public static ImpersonationView? Of(AdminImpersonation? i) => i is null ? null : new(i.TenantId, i.Sub, i.Reason, i.StartedAt, i.ExpiresAt);
+}
+
+public sealed record MeResponse(string Email, string TenantId, DateTimeOffset ExpiresAt, ImpersonationView? Impersonation);
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record StartImpersonationRequest(string? TenantId, string? Sub, string? Reason);
@@ -64,7 +70,7 @@ public static class AdminDashboardEndpoints
         api.MapGet("/me", (HttpContext ctx, TimeProvider clock) =>
         {
             var p = AdminAuth.Current(ctx);
-            return Results.Json(new MeResponse(p.Email, p.Session.TenantId, p.Session.ExpiresAt, p.Impersonation(clock.GetUtcNow())), Json);
+            return Results.Json(new MeResponse(p.Email, p.Session.TenantId, p.Session.ExpiresAt, ImpersonationView.Of(p.Impersonation(clock.GetUtcNow()))), Json);
         });
 
         api.MapPost("/logout", async (HttpContext ctx, IAdminSessionStore store, IEvidenceLog log, TimeProvider clock, ILogger<AdminDashboardService> logger) =>
@@ -168,11 +174,11 @@ public static class AdminDashboardEndpoints
                 }
             }
             logger.LogInformation("Admin {Email} started a read-only impersonation of a user of tenant {TenantId} until {ExpiresAt:O}.", Onboarding.OperatorAuth.Clean(session.Email), Onboarding.OperatorAuth.Clean(imp.TenantId), imp.ExpiresAt);
-            return Results.Json(imp, Json);
+            return Results.Json(ImpersonationView.Of(imp), Json);
         });
 
         api.MapGet("/impersonation", (HttpContext ctx, TimeProvider clock) =>
-            AdminAuth.Current(ctx).Impersonation(clock.GetUtcNow()) is { } imp ? Results.Json(imp, Json) : NotFound("No impersonation is active."));
+            AdminAuth.Current(ctx).Impersonation(clock.GetUtcNow()) is { } imp ? Results.Json(ImpersonationView.Of(imp), Json) : NotFound("No impersonation is active."));
 
         api.MapDelete("/impersonation", async (HttpContext ctx, IAdminSessionStore store, IEvidenceLog log, IOptions<AdminOptions> options, TimeProvider clock, ILogger<AdminDashboardService> logger) =>
         {

@@ -136,6 +136,8 @@ public static class AuthEndpoints
             var stored = await states.GetAsync(stateHash, ctx.RequestAborted);
             if (stored is { Purpose: Admin.Dashboard.AdminAuth.Purpose } adminPending)
             {
+                // A state presented by a browser that did not start it is refused without being consumed, like a chat state of another session.
+                if (!Admin.Dashboard.AdminLogin.BoundToThisBrowser(ctx, adminPending)) return Admin.Dashboard.AdminLogin.Failed(ctx, Admin.Dashboard.AdminLogin.Errors.LoginFailed);
                 if (!await states.TakeAsync(stateHash, ctx.RequestAborted)) return Admin.Dashboard.AdminLogin.Failed(ctx, Admin.Dashboard.AdminLogin.Errors.LoginFailed); // replay or race
                 return await Admin.Dashboard.AdminLogin.CompleteAsync(ctx, tenant, adminPending);
             }
@@ -300,7 +302,7 @@ public static class AuthEndpoints
         return true;
     }
 
-    private static void Harden(HttpContext ctx)
+    internal static void Harden(HttpContext ctx)
     {
         ctx.Response.Headers.CacheControl = "no-store";
         ctx.Response.Headers.Append("Vary", "Cookie");

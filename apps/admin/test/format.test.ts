@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  formatCountdown, formatDateTime, formatDay, formatNumber, shortId, shortMiddle, shortModel, statusTone, validateReason,
+  formatCountdown, formatDateTime, formatDay, formatNumber, shortId, shortMiddle, shortModel, statusTone, validateReason, cleanReason,
 } from "../src/format";
 
 describe("format helpers", () => {
@@ -40,5 +40,13 @@ describe("format helpers", () => {
     expect(statusTone("Completed")).toBe("good");
     expect(statusTone("Cancelled")).toBe("bad");
     expect(statusTone("Pending")).toBe("neutral");
+  });
+});
+
+describe("cleanReason", () => {
+  it("counts a reason the way the server does", () => {
+    expect(cleanReason("  abc\n\ndefg\t ")).toBe("abcdefg");
+    expect(validateReason("abc\n\ndefg")).not.toBeNull();
+    expect(validateReason("ticket 4711")).toBeNull();
   });
 });
