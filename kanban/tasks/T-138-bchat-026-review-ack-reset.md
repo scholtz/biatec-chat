@@ -1,7 +1,7 @@
 ---
 id: T-138
 title: "Reset the review acknowledgement when what the user reviewed changes (BCHAT-026)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -60,7 +60,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 12:44 · approve · PR #325 merged into main @ ce7f0c5 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 20:00 · claude · (new) → backlog · created from GitHub issue #279 (BCHAT-026); blockers scan: none
 - 2026-10-23 12:12 · scholtz · taken, and session-20261023-1212 · backlog → in-progress · claimed
+- 2026-10-23 12:44 · user · in-progress → done · PR #325 merged into main @ ce7f0c5 (synced by kanban-sync)
