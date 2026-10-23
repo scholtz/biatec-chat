@@ -38,16 +38,19 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] `dotnet list package --vulnerable --include-transitive` shows no vulnerable package.
-- [ ] `pnpm audit` shows no critical advisory and no high advisory with a patched version.
-- [ ] Backend tests, builders tests and the widget/demo/admin builds still pass.
-- [ ] The remaining advisories (no patch available) are recorded in docs/security-notes-dependencies.md with a reachability note.
+- [x] `dotnet list package --vulnerable --include-transitive` shows no vulnerable package.
+- [x] `pnpm audit` shows no critical advisory and no high advisory with a patched version.
+- [x] Backend tests, builders tests and the widget/demo/admin builds still pass.
+- [x] The remaining advisories (no patch available) are recorded in docs/security-notes-dependencies.md with a reachability note.
 
 ## Verification
 
 `dotnet list backend package --vulnerable --include-transitive`, `pnpm audit`, `dotnet test backend`, `pnpm -r test`, `pnpm --filter builders test`.
 
 ## Hand-off
+
+- **Summary:** `MessagePack 3.1.12` referenced directly (Api, Tools); `overrides` in pnpm-workspace.yaml for nine transitive npm packages; vitest 3 -> 4.1.12 everywhere; docs/security-notes-dependencies.md. One advisory remains (`braces`, no patched version, docs tooling path).
+- **Verification:** dotnet list package --vulnerable: clean; `pnpm audit`: 1 high (braces); admin 40, sidecar 63, evidence-verifier 34, e2e 10 tests pass; widget unchanged from main (the 5 DEX playground failures are BCHAT-045).
 
 ## Review
 
