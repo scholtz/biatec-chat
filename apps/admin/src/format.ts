@@ -66,10 +66,9 @@ export const REASON_MIN = 8;
 export const REASON_MAX = 500;
 
 /** Returns an error message, or null when the (trimmed) reason is acceptable. */
-/** The reason as the server keeps it: control characters removed, trimmed. */
+/** The reason as the server keeps it: control, format (bidi overrides, zero-width) and line/paragraph separator characters removed, trimmed. */
 export function cleanReason(reason: string): string {
-  // eslint-disable-next-line no-control-regex
-  return reason.replace(/[\u0000-\u001f\u007f-\u009f]/g, "").trim();
+  return reason.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, "").trim();
 }
 
 export function validateReason(reason: string): string | null {

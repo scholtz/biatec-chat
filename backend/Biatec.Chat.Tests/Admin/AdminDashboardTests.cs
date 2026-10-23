@@ -979,4 +979,12 @@ public sealed class AdminDashboardTests : IAsyncLifetime
         var denied = await SendAsync(f, HttpMethod.Get, "/auth/callback?error=access_denied", CookieHeader(SetCookie(start, AdminAuth.LoginCookieName)!), sameOrigin: false);
         Assert.EndsWith("?error=access_denied", denied.Headers.Location!.ToString());
     }
+
+    [Fact]
+    public void Reason_DropsControlFormatAndSeparatorCharacters()
+    {
+        Assert.Equal("case 4711 ok", AdminImpersonations.CleanReason("  case 4711 \u202E\u2028ok  "));
+        Assert.Equal("ticket4711", AdminImpersonations.CleanReason("ticket\u200B4711"));
+        Assert.Null(AdminImpersonations.CleanReason("ab\u202E\u200B\u2029cd")); // four visible characters are not enough
+    }
 }

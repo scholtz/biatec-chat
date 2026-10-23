@@ -66,7 +66,7 @@ backend: validates the ID token (signature, iss, aud, nonce, exp), checks the em
 - It reuses the tenant's registered OIDC client and redirect URI `/auth/callback`; nothing changes at Biatec OIDC. The
   tenant is the one the host name resolves to (for example `chat.biatec.io`).
 - **The browser never receives an access, refresh or ID token, and the backend keeps none for admins.** The ID token is
-  read once to learn the email and subject, then dropped. The scope has no `sign`, no `offline_access`.
+  read once to learn the email and subject, then dropped. The scope has no `sign`, no `offline_access`, so no refresh token is requested; Biatec OIDC has no revocation call in this client, and the access token it issues lapses on its own.
 - The login state is bound to a short-lived `__Host-biatec_admin_login` cookie (login CSRF defence), is single use and
   expires after 10 minutes. An unknown, replayed or foreign state is refused.
 - A failed sign-in redirects to `/admin/?error=<code>` with one of `not_admin`, `email_not_verified` (checked first, so someone who cannot prove an email learns nothing about the list), `login_failed`,

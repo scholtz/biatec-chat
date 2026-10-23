@@ -48,7 +48,9 @@ public static class AdminImpersonations
     /// <summary>A reason as the audit log keeps it: trimmed, no control characters.</summary>
     public static string? CleanReason(string? reason)
     {
-        var t = new string((reason ?? "").Where(c => !char.IsControl(c)).ToArray()).Trim();
+        // Control, format (bidi overrides, zero-width) and line/paragraph separator characters would reorder or split the text in an audit viewer.
+        var t = new string((reason ?? "").Where(c => char.GetUnicodeCategory(c) is not (System.Globalization.UnicodeCategory.Control or System.Globalization.UnicodeCategory.Format
+            or System.Globalization.UnicodeCategory.LineSeparator or System.Globalization.UnicodeCategory.ParagraphSeparator)).ToArray()).Trim();
         return t.Length is >= MinReason and <= MaxReason ? t : null;
     }
 }

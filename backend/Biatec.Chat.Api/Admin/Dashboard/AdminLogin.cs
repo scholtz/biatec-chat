@@ -96,8 +96,7 @@ public static class AdminLogin
 
         if (!allow.Enabled || pending.TenantId != tenant.Id) return Failed(ctx, Errors.LoginFailed);
 
-        if (ctx.Request.Query.ContainsKey("error"))
-            return Failed(ctx, ctx.Request.Query["error"].ToString() == "access_denied" ? Errors.AccessDenied : Errors.LoginFailed);
+        if (ctx.Request.Query.ContainsKey("error")) return FailedFromCallback(ctx);
         if (!AuthEndpoints.CallbackIsUsable(ctx.Request, sp.GetRequiredService<IOptions<Config.OidcOptions>>().Value.Issuer))
             return Failed(ctx, Errors.LoginFailed);
         var code = ctx.Request.Query["code"].ToString();
@@ -165,6 +164,10 @@ public static class AdminLogin
     /// <summary>The dashboard's address; a tenant without a valid redirect URI (which is why a sign-in can fail) gets the relative one.</summary>
     private static string SafeHome(HttpContext ctx) =>
         ctx.GetTenant() is { } t && BackendUrls.TryBase(t, ctx.Request.PathBase.Value ?? "") is { } b ? b + "/admin/" : (ctx.Request.PathBase.Value ?? "") + "/admin/";
+
+    /// <summary>The dashboard's message for a callback that cannot be completed: what the user declined at Biatec OIDC, or a plain failure.</summary>
+    internal static IResult FailedFromCallback(HttpContext ctx) =>
+        Failed(ctx, ctx.Request.Query["error"].ToString() == "access_denied" ? Errors.AccessDenied : Errors.LoginFailed);
 
     internal static IResult Failed(HttpContext ctx, string code) => Results.Redirect(SafeHome(ctx) + "?error=" + code, permanent: false);
 

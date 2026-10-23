@@ -16,6 +16,7 @@ const transcript = useLoader(() => api.viewMessages(selected.value as string));
 async function init() {
   if (!imp.value) return;
   await convs.load();
+  if (convs.error.value) return; // a failed load keeps the previous user's list: never select from it
   const first = convs.data.value?.[0];
   if (first && !selected.value) selected.value = first.id;
 }

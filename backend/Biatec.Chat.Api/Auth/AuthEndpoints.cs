@@ -130,7 +130,7 @@ public static class AuthEndpoints
             var state = ctx.Request.Query["state"].ToString();
             if (state.Length is 0 or > 256)
                 return ctx.Request.Cookies.ContainsKey(Admin.Dashboard.AdminAuth.LoginCookieName) && !ctx.Request.Cookies.ContainsKey(Sessions.SessionPolicy.CookieName)
-                    ? Admin.Dashboard.AdminLogin.Failed(ctx, ctx.Request.Query["error"].ToString() == "access_denied" ? Admin.Dashboard.AdminLogin.Errors.AccessDenied : Admin.Dashboard.AdminLogin.Errors.LoginFailed)
+                    ? Admin.Dashboard.AdminLogin.FailedFromCallback(ctx)
                     : ClosePage(ctx, 400);
 
             // The administrator dashboard signs in through this same registered redirect URI (docs/admin-dashboard.md). Its state
@@ -151,8 +151,7 @@ public static class AuthEndpoints
             // An administrator's sign-in whose state is gone (waited too long, back button) or that came back with an error and no state
             // ends on the dashboard's own message, not on this popup-closing page.
             if (stored is null && session is null && ctx.Request.Cookies.ContainsKey(Admin.Dashboard.AdminAuth.LoginCookieName))
-                return Admin.Dashboard.AdminLogin.Failed(ctx, ctx.Request.Query["error"].ToString() == "access_denied"
-                    ? Admin.Dashboard.AdminLogin.Errors.AccessDenied : Admin.Dashboard.AdminLogin.Errors.LoginFailed);
+                return Admin.Dashboard.AdminLogin.FailedFromCallback(ctx);
             var pending = session is null ? null : stored;
             if (session is null || pending is null || pending.TenantId != tenant.Id || pending.SessionId != session.Id.ToString("N"))
                 return ClosePage(ctx, 400);
