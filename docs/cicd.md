@@ -23,7 +23,7 @@ production has none. See "Demo site" below and [demo-site.md](demo-site.md).
 | [`kanban-sync.yml`](../.github/workflows/kanban-sync.yml) | push to `main`; manual run | marks merged task PRs done on the kanban board, moves unblocked dependants to backlog and regenerates `kanban/BOARD.md` (commits to `main`) |
 
 Production is never deployed by a push. Production deploys need a human approval: the `Production` environment must have required
-reviewers (see "The deploy identity" below for the commands); the deploy job then waits for approval.
+reviewers (see "The deploy identity" below for the commands); the deploy job then waits for approval. A single reviewer who also starts the promotion can approve their own run; add a second reviewer and set `prevent_self_review` if the team wants a real second pair of eyes.
 
 ## Secrets
 

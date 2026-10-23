@@ -63,13 +63,28 @@ def verbs_for(rules, group, resource, name=None):
         names = r.get("resourceNames")
         if names and name not in names:
             continue
-        found |= set(r.get("verbs", []))
+        verbs = set(r.get("verbs", []))
+        if names and "/" not in resource:
+            # The API server never authorizes create, list or watch of a resource through resourceNames (the request carries no name; a
+            # subresource request such as pods/exec does), so such a grant would pass this check and still be refused on the cluster.
+            verbs -= {"create", "list", "watch", "deletecollection"}
+        found |= verbs
     return found
+
+
+# Every resource a rule may name: an allow-list, so a new resource (jobs, daemonsets, pods/ephemeralcontainers, ...) is a conscious change.
+ALLOWED_RESOURCES = {
+    "deployments", "statefulsets", "configmaps", "services", "serviceaccounts", "ingresses", "networkpolicies", "secrets", "pods",
+    "persistentvolumeclaims", "events", "pods/log", "pods/exec", "persistentvolumes",
+}
 
 
 def check_rules(rules, label):
     errors = []
     for r in rules:
+        for res in r.get("resources", []):
+            if res not in ALLOWED_RESOURCES:
+                errors.append(f"{label}: resource '{res}' is not one the deploy needs ({r})")
         for v in r.get("verbs", []):
             if v in FORBIDDEN_VERBS:
                 errors.append(f"{label}: verb '{v}' is not allowed ({r})")
@@ -236,6 +251,8 @@ def self_test(role, cluster_role, overlays, deploy_yaml):
         "a deploy secret missing": lambda rs: rule(rs, "secrets", True).update(resourceNames=["biatec-chat-generated"]),
         "statefulset watch removed": lambda rs: rule(rs, "statefulsets")["verbs"].remove("watch"),
         "unnamed secrets patch": lambda rs: rs.append({"apiGroups": [""], "resources": ["secrets"], "verbs": ["patch"]}),
+        "jobs create": lambda rs: rs.append({"apiGroups": ["batch"], "resources": ["jobs"], "verbs": ["create"]}),
+        "create through resourceNames": lambda rs: rule(rs, "deployments").update(resourceNames=["biatec-chat-backend"]),
         "pods create": lambda rs: rule(rs, "pods")["verbs"].append("create"),
         "exec without get": lambda rs: rule(rs, "pods/exec", True)["verbs"].remove("get"),
     }
