@@ -1,7 +1,7 @@
 ---
 id: T-210
 title: "Authenticator: refuse a non-HTTPS Biatec OIDC URL outside local mock use (BCHAT-029)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -53,8 +53,11 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 14:03 · approve · PR #337 merged into main @ 2e31aaf (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 13:53 · kanban-split · (new) → backlog · created from audit issue #282
 - 2026-10-23 13:53 · scholtz · taken · status stays backlog
 - 2026-10-23 13:53 · session-20261023-1353 · backlog → in-progress · claimed, branch task/T-210
+- 2026-10-23 14:03 · user · in-progress → done · PR #337 merged into main @ 2e31aaf (synced by kanban-sync)
