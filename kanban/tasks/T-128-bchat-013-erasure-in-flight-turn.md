@@ -1,7 +1,7 @@
 ---
 id: T-128
 title: "Close the erasure bypass by a turn already in flight (BCHAT-013)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -61,7 +61,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 10:14 · approve · PR #311 merged into main @ 645d310 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 10:00 · claude · (new) → backlog · created from GitHub issue #266 (BCHAT-013); blockers scan: none
 - 2026-10-23 09:53 · scholtz · taken, and session-20261023-0953 · backlog → in-progress · claimed
+- 2026-10-23 10:14 · user · in-progress → done · PR #311 merged into main @ 645d310 (synced by kanban-sync)
