@@ -361,7 +361,7 @@ export function createMockOidc(options: MockOptions = {}) {
         p.interval += SLOW_DOWN_STEP_SECONDS;
         throw new HttpError(400, "slow_down", "poll less often", { interval: p.interval });
       }
-      throw new HttpError(400, "authorization_pending");
+      throw new HttpError(400, "authorization_pending", undefined, { interval: p.interval }); // the current interval, so a client that missed a slow_down learns it
     }
     const value = "consent_" + randomBytes(24).toString("base64url");
     const exp = Math.min(now() + CONSENT_VALIDITY_SECONDS, p.request.expiry);
@@ -602,8 +602,8 @@ export function createMockOidc(options: MockOptions = {}) {
 
   function cancelDevice(req: IncomingMessage, kid: string) {
     const me = deviceAuth(req);
-    // Only an active device can cancel a pending enrollment: a pending one must not be able to cancel the others.
-    if (me.activeAt > now()) throw new HttpError(403, "access_denied", "this device is not active yet (rule 7)");
+    // Only an active device can cancel another pending enrollment: a pending one must not be able to cancel the others (it may cancel itself).
+    if (me.activeAt > now() && kid !== me.kid) throw new HttpError(403, "access_denied", "this device is not active yet (rule 7)");
     const target = devices.get(kid);
     if (!target || target.sub !== me.sub || target.cancelled) throw new HttpError(404, "not_found");
     if (target.activeAt <= now()) throw new HttpError(409, "conflict", "only a pending enrollment can be cancelled");

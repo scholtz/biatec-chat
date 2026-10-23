@@ -623,13 +623,16 @@ test("T-084 / BCHAT-024: an inactive device changes no settings (tightening incl
   assert.equal((await call("PUT", "/devices/settings", { auth, body: { change: { threshold_eur: "100" } } })).status, 403, "tightening needs an active device too (rule 7)");
   const other = await call("POST", "/devices", { auth: bearer("login-alice"), body: { kid: "alice-inactive-2", public_key: await freshJwk() } });
   assert.equal((await call("POST", "/devices/alice-inactive-2/cancel", { auth })).status, 403, "a pending device cannot cancel another pending enrollment");
+  assert.equal((await call("POST", "/devices/alice-inactive/cancel", { auth })).status, 200, "but it can cancel itself");
+  const again = await call("POST", "/devices", { auth: bearer("login-alice"), body: { kid: "alice-inactive-3", public_key: await freshJwk() } });
+  assert.equal(again.status, 201);
   assert.equal(other.status, 201);
   const alice = await device(ALICE);
   assert.equal((await call("PUT", "/devices/settings", { auth: alice.auth, body: { change: { threshold_eur: "100" } } })).status, 200, "an active device can tighten");
   const back = { threshold_eur: "1000" };
   assert.equal((await call("PUT", "/devices/settings", { auth: alice.auth, body: { change: back, consent: settingsConsent(alice, back, "i2") } })).status, 200);
-  assert.equal((await call("POST", "/devices/alice-inactive/cancel", { auth: alice.auth })).status, 200, "an active device cancels a pending enrollment");
-  assert.equal((await call("POST", "/devices/alice-inactive-2/cancel", { auth: alice.auth })).status, 200);
+  assert.equal((await call("POST", "/devices/alice-inactive-2/cancel", { auth: alice.auth })).status, 200, "an active device cancels a pending enrollment");
+  assert.equal((await call("POST", "/devices/alice-inactive-3/cancel", { auth: alice.auth })).status, 200);
 });
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -640,17 +643,25 @@ test("BCHAT-024: the token endpoint answers slow_down to a client that polls too
   const r = await challenge();
   const id = r.json.auth_req_id;
   assert.equal(r.json.interval, 2, "the challenge announces the interval");
-  assert.equal((await tokenReq(id)).json.error, "authorization_pending", "the first poll is judged on the request");
-  const fast = await tokenReq(id);
-  assert.equal(fast.json.error, "slow_down");
-  assert.equal(fast.json.interval, 7);
-  clock += 2;
-  const stillFast = await tokenReq(id);
-  assert.equal(stillFast.json.error, "slow_down", "7 s are needed now, only 2 passed");
-  assert.equal(stillFast.json.interval, 12);
-  clock += 12;
-  assert.equal((await tokenReq(id)).json.error, "authorization_pending", "a poll after the interval is judged on the request again");
-  clock -= 14;
+  const start = clock;
+  try {
+    const first = await tokenReq(id);
+    assert.equal(first.json.error, "authorization_pending", "the first poll is judged on the request");
+    assert.equal(first.json.interval, 2);
+    const fast = await tokenReq(id);
+    assert.equal(fast.json.error, "slow_down");
+    assert.equal(fast.json.interval, 7);
+    clock += 2;
+    const stillFast = await tokenReq(id);
+    assert.equal(stillFast.json.error, "slow_down", "7 s are needed now, only 2 passed");
+    assert.equal(stillFast.json.interval, 12);
+    clock += 12;
+    const ok = await tokenReq(id);
+    assert.equal(ok.json.error, "authorization_pending", "a poll after the interval is judged on the request again");
+    assert.equal(ok.json.interval, 12, "and it tells the current interval");
+  } finally {
+    clock = start;
+  }
 });
 
 test("BCHAT-024: an approved request is returned on the first poll, however soon", async () => {
@@ -675,9 +686,13 @@ test("BCHAT-024: a user has a bounded number of open requests", async () => {
     assert.equal(refused.status, 429);
     assert.equal(((await refused.json()) as any).error, "too_many_requests");
     // Requests that ended no longer count: after the 300 s window the user can ask again.
-    clock += 301;
-    assert.equal((await open()).status, 401);
-    clock -= 301;
+    const start = clock;
+    try {
+      clock += 301;
+      assert.equal((await open()).status, 401);
+    } finally {
+      clock = start;
+    }
   } finally {
     own.server.close();
   }
