@@ -1,7 +1,7 @@
 ---
 id: T-139
 title: "Show Subresource Integrity in the CDN embedding and publish the hash with each release (BCHAT-027)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -61,7 +61,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 12:55 · approve · PR #329 merged into main @ 121f09c (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 21:00 · claude · (new) → backlog · created from GitHub issue #280 (BCHAT-027); blockers scan: none
 - 2026-10-23 12:46 · scholtz · taken, and session-20261023-1246 · backlog → in-progress · claimed
+- 2026-10-23 12:55 · user · in-progress → done · PR #329 merged into main @ 121f09c (synced by kanban-sync)
