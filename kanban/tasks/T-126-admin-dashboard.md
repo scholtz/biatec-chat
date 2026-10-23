@@ -1,7 +1,7 @@
 ---
 id: T-126
 title: "Administrator dashboard for ADMINS: OIDC sign-in, user list, impersonation, statistics"
-status: review
+status: done
 priority: P1
 epic: "Deploy & docs"
 blocked_by: []
@@ -78,9 +78,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 11:50 · approve · PR #310 merged into main @ 4569f15 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 09:00 · kanban-split · (new) → backlog · created from the repository owner's request (issue #308)
 - 2026-10-23 09:01 · scholtz · taken · status stays backlog
 - 2026-10-23 09:02 · session-20261023-0900 · backlog → in-progress · claimed, branch task/T-126
 - 2026-10-23 12:00 · session-20261023-0900 · in-progress → review · PR #310, review rounds 1-12 addressed
+- 2026-10-23 11:50 · user · review → done · PR #310 merged into main @ 4569f15 (synced by kanban-sync)
