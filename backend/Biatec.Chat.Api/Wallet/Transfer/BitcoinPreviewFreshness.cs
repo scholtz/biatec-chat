@@ -24,7 +24,10 @@ public sealed class BitcoinOptions
     };
 }
 
-/// <summary>Esplora implementation of <see cref="IBitcoinChainWatcher"/>. A transport failure reads as "cannot tell" (not spent, no fee rate).</summary>
+/// <summary>
+/// Esplora implementation of <see cref="IBitcoinChainWatcher"/>. A transport failure reads as "cannot tell": not spent, no fee rate, and no
+/// outputs (which makes a Bitcoin build refuse, since the input values cannot be confirmed: BCHAT-041).
+/// </summary>
 public sealed class EsploraBitcoinChainWatcher(HttpClient http, IOptions<BitcoinOptions> options) : IBitcoinChainWatcher
 {
     private Uri? Base(string network) =>
@@ -45,21 +48,26 @@ public sealed class EsploraBitcoinChainWatcher(HttpClient http, IOptions<Bitcoin
         catch (Exception e) when (!ct.IsCancellationRequested && e is HttpRequestException or JsonException or TaskCanceledException) { return false; }
     }
 
-    public async Task<BitcoinPrevout?> GetPrevoutAsync(string network, string txid, uint vout, CancellationToken ct)
+    public async Task<IReadOnlyList<BitcoinPrevout>?> GetOutputsAsync(string network, string txid, CancellationToken ct)
     {
         if (Base(network) is not { } b || txid.Length != 64 || !txid.All(Uri.IsHexDigit)) return null;
         try
         {
-            using var res = await http.GetAsync(new Uri(b, $"tx/{txid}"), ct);
+            using var res = await http.GetAsync(new Uri(b, $"tx/{txid.ToLowerInvariant()}"), ct);
             if (!res.IsSuccessStatusCode) return null;
             using var doc = await JsonDocument.ParseAsync(await res.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
-            if (!doc.RootElement.TryGetProperty("vout", out var outs) || outs.ValueKind != JsonValueKind.Array || vout >= outs.GetArrayLength()) return null;
-            var o = outs[(int)vout];
-            return o.TryGetProperty("value", out var v) && v.TryGetInt64(out var sats) && o.TryGetProperty("scriptpubkey", out var s) && s.GetString() is { } script
-                ? new BitcoinPrevout(sats, script)
-                : null;
+            if (!doc.RootElement.TryGetProperty("vout", out var outs) || outs.ValueKind != JsonValueKind.Array) return null;
+            var list = new List<BitcoinPrevout>();
+            foreach (var o in outs.EnumerateArray())
+            {
+                if (!(o.TryGetProperty("value", out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var sats)
+                      && o.TryGetProperty("scriptpubkey", out var s) && s.ValueKind == JsonValueKind.String)) return null;
+                list.Add(new BitcoinPrevout(sats, s.GetString()!));
+            }
+            return list;
         }
-        catch (Exception e) when (!ct.IsCancellationRequested && e is HttpRequestException or JsonException or TaskCanceledException or InvalidOperationException) { return null; }
+        // Unknown and unreadable are the same answer for the caller; the transport failures are not logged here (no logger), only reported as null.
+        catch (Exception e) when (!ct.IsCancellationRequested && e is HttpRequestException or JsonException or TaskCanceledException) { return null; }
     }
 
     public async Task<decimal?> GetFeeRateAsync(string network, CancellationToken ct)

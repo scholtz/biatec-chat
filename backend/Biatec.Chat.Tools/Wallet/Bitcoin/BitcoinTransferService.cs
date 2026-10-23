@@ -26,8 +26,11 @@ public interface IBitcoinChainWatcher
     /// <summary>Current recommended fee rate in sat/vB, or null when it cannot be read.</summary>
     Task<decimal?> GetFeeRateAsync(string network, CancellationToken ct);
 
-    /// <summary>The output <paramref name="txid"/>:<paramref name="vout"/> as the chain has it, or null when it is unknown or cannot be read (BCHAT-041).</summary>
-    Task<BitcoinPrevout?> GetPrevoutAsync(string network, string txid, uint vout, CancellationToken ct);
+    /// <summary>
+    /// The outputs of transaction <paramref name="txid"/> as the chain has them, in order (BCHAT-041). Null when the transaction is unknown to the
+    /// chain or the chain cannot be read: the caller cannot tell those apart and must treat both as "not confirmed".
+    /// </summary>
+    Task<IReadOnlyList<BitcoinPrevout>?> GetOutputsAsync(string network, string txid, CancellationToken ct);
 }
 
 /// <summary>An output as the chain reports it: its value and its script (lowercase hex).</summary>
@@ -195,13 +198,17 @@ public sealed class BitcoinTransferService(
     private async Task VerifyPrevoutsAsync(BitcoinIntent intent, string network, CancellationToken ct)
     {
         if (watcher is null) return;
-        foreach (var input in intent.Inputs)
+        // One lookup per distinct funding transaction, however many of its outputs the PSBT spends.
+        foreach (var funding in intent.Inputs.GroupBy(i => i.Txid, StringComparer.OrdinalIgnoreCase))
         {
-            var onChain = await watcher.GetPrevoutAsync(network, input.Txid, input.Vout, ct);
-            if (onChain is null)
-                throw new BitcoinTransferException("The value of an input could not be confirmed on the Bitcoin chain, so nothing was previewed.");
-            if (onChain.Sats != input.Sats || !string.Equals(onChain.ScriptPubKey, input.ScriptPubKey, StringComparison.OrdinalIgnoreCase))
-                throw new BitcoinTransferException("An input does not match the output it spends on the Bitcoin chain, so nothing was previewed.");
+            var outputs = await watcher.GetOutputsAsync(network, funding.Key, ct)
+                ?? throw new BitcoinTransferException("The value of an input could not be confirmed on the Bitcoin chain (the transaction is unknown or the chain could not be read), so nothing was previewed.");
+            foreach (var input in funding)
+            {
+                if (input.Vout >= outputs.Count || outputs[(int)input.Vout] is not { } onChain
+                    || onChain.Sats != input.Sats || !string.Equals(onChain.ScriptPubKey, input.ScriptPubKey, StringComparison.OrdinalIgnoreCase))
+                    throw new BitcoinTransferException("An input does not match the output it spends on the Bitcoin chain, so nothing was previewed.");
+            }
         }
     }
 

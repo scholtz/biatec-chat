@@ -51,12 +51,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:** IBitcoinChainWatcher gets GetPrevoutAsync (Esplora tx/{txid}: vout value and scriptpubkey); BitcoinTransferService.BuildAsync refuses a PSBT unless every input's value and script equal what the chain reports for the output it spends, and refuses an output the chain does not know or cannot be read. Without a watcher the PSBT's own data stands, as before.
+- **Summary:** IBitcoinChainWatcher gets GetOutputsAsync (Esplora tx/{txid}: every output's value and scriptpubkey); BitcoinTransferService.BuildAsync looks up each distinct funding transaction once and refuses a PSBT unless every input's value and script equal the chain's, or when the transaction is unknown or the chain cannot be read. The Esplora client buffers at most 4 MiB. Without a watcher the PSBT's own data stands, as before.
 - **Files changed:** Tools/Wallet/Bitcoin/BitcoinTransferService.cs, Api/Wallet/Transfer/BitcoinPreviewFreshness.cs, Tests/Bitcoin/BitcoinTransferTests.cs.
-- **How it was verified:** Bitcoin tests 25 passed (wrong value, wrong script, unknown or unreadable output all refused; matching inputs preview as before; the Esplora parsing, missing output, 404, non-txid and unknown network). Full backend suite run before the PR.
+- **How it was verified:** Bitcoin tests 28 passed (wrong value, wrong script, only the second input wrong, each funding transaction looked up once, unknown/unreadable refused, no watcher keeps old behaviour; Esplora parsing incl. non-numeric value, missing script, not JSON, endpoint down, 404, non-txid, unknown network). Full backend suite run before merge.
 - **Follow-up tasks created:** none.
 - **Unblocks:** none.
-- **Open questions:** Bitcoin transfers are off by default (T-141), so this is dormant until Wallet__BitcoinTransfers is enabled. An input spending an unconfirmed output may not be served by Esplora and would be refused (fail closed). The check needs the chain watcher registered, which it always is; a service built without one skips it.
+- **Open questions:** Dormant while Bitcoin transfers are off (T-141). Unknown and unreadable are one answer (null) and give one message; an input spending an unconfirmed output may not be served by Esplora and would be refused (fail closed). It does not check that the output is unspent (the freshness gate does that at Confirm).
 
 ## Review
 
