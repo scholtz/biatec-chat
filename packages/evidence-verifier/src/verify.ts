@@ -119,6 +119,8 @@ function verifyEs256(key: Jwk, text: string, signature: unknown): boolean {
     const sig = decodeB64u(signature);
     if (!sig || sig.length !== 64) return false;
     if (key.kty !== "EC" || key.crv !== "P-256") return false;
+    // A JWKS entry that declares another use or algorithm is not an ES256 signature key, whatever its curve (BCHAT-023).
+    if ((key.use !== undefined && key.use !== "sig") || (key.alg !== undefined && key.alg !== "ES256")) return false;
     const pub = createPublicKey({ key: { kty: "EC", crv: "P-256", x: key.x, y: key.y }, format: "jwk" });
     return cryptoVerify("sha256", Buffer.from(text, "utf8"), { key: pub, dsaEncoding: "ieee-p1363" }, sig);
   } catch {
@@ -128,6 +130,32 @@ function verifyEs256(key: Jwk, text: string, signature: unknown): boolean {
 
 function parseTime(s: unknown): number {
   return typeof s === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(s) ? Date.parse(s) : NaN;
+}
+
+/**
+ * Whether `key` was valid at `t` (ms), allowing clock skew. A present but unparseable created_at or retired_at is not "no bound":
+ * the key is treated as outside its lifetime, so a mangled JWKS cannot widen what a key may sign.
+ */
+function withinLifetime(key: Jwk, t: number): boolean {
+  for (const [bound, isStart] of [[key.created_at, true], [key.retired_at, false]] as const) {
+    if (bound === undefined || bound === null || bound === "") continue;
+    const b = parseTime(bound);
+    if (Number.isNaN(b)) return false;
+    if (isStart ? t < b - SKEW_MS : t > b + SKEW_MS) return false;
+  }
+  return true;
+}
+
+/** A key map from a list of JWKs; null entries, non-string or repeated key ids are refused (a Map would silently keep the last). */
+function keyMap(keys: unknown[], where: string): { map: Map<string, Jwk> } | { error: string } {
+  const map = new Map<string, Jwk>();
+  for (const k of keys) {
+    const kid = (k as Jwk | null)?.kid;
+    if (!k || typeof k !== "object" || typeof kid !== "string" || kid === "") return { error: `${where} has a key without a key id.` };
+    if (map.has(kid)) return { error: `${where} lists the key id '${kid}' more than once.` };
+    map.set(kid, k as Jwk);
+  }
+  return { map };
 }
 
 function safe(f: () => string): string {
@@ -154,7 +182,9 @@ export function verifyBundle(input: unknown, options: VerifyOptions = {}): Verif
   let trusted: Map<string, Jwk>;
   if (options.jwks) {
     if (!Array.isArray(options.jwks.keys)) { fail("The JWKS has no keys array."); return result; }
-    trusted = new Map(options.jwks.keys.map((k) => [k.kid, k]));
+    const km = keyMap(options.jwks.keys, "The JWKS");
+    if ("error" in km) { fail(km.error); return result; }
+    trusted = km.map;
     result.keysAuthenticated = true;
     for (const k of bundle.keys) {
       const p = trusted.get(k?.kid);
@@ -162,7 +192,9 @@ export function verifyBundle(input: unknown, options: VerifyOptions = {}): Verif
         fail(`Embedded key '${String(k?.kid)}' is not in the published JWKS.`);
     }
   } else if (options.allowEmbeddedKeys) {
-    trusted = new Map(bundle.keys.map((k) => [k.kid, k]));
+    const km = keyMap(bundle.keys, "The bundle");
+    if ("error" in km) { fail(km.error); return result; }
+    trusted = km.map;
     warnings.push("Keys were NOT checked against a published JWKS; this proves only that the bundle is consistent with itself, not that it is authentic.");
   } else {
     fail("No JWKS given. Supply the published evidence JWKS; the bundle's embedded keys are not trusted on their own.");
@@ -173,6 +205,12 @@ export function verifyBundle(input: unknown, options: VerifyOptions = {}): Verif
   const bk = trusted.get(String(bundle.kid));
   if (!bk) fail(`Bundle signing key '${String(bundle.kid)}' is not trusted.`);
   else if (!verifyEs256(bk, safe(() => bundleSigningInput(bundle)), bundle.signature)) fail("Bundle signature does not verify.");
+  else {
+    // The bundle is signed when it is exported, so the key must have been valid then, like an entry's key at signedAt.
+    const exported = parseTime(bundle.exportedAt);
+    if (Number.isNaN(exported)) fail("exportedAt is not an RFC 3339 UTC timestamp.");
+    else if (!withinLifetime(bk, exported)) fail("exportedAt is outside the bundle signing key's lifetime.");
+  }
 
   // Chain.
   let prev = GENESIS;
@@ -209,11 +247,7 @@ export function verifyBundle(input: unknown, options: VerifyOptions = {}): Verif
     if (!key) { fail(`${at}: unknown or untrusted signing key '${String(e.kid)}'.`); break; }
     const t = parseTime(e.signedAt);
     if (Number.isNaN(t)) { fail(`${at}: signedAt is not an RFC 3339 UTC timestamp.`); break; }
-    const created = key.created_at ? parseTime(key.created_at) : NaN;
-    const retired = key.retired_at ? parseTime(key.retired_at) : NaN;
-    if ((!Number.isNaN(created) && t < created - SKEW_MS) || (!Number.isNaN(retired) && t > retired + SKEW_MS)) {
-      fail(`${at}: signedAt is outside the signing key's lifetime.`); break;
-    }
+    if (!withinLifetime(key, t)) { fail(`${at}: signedAt is outside the signing key's lifetime.`); break; }
     if (!verifyEs256(key, signingInput(e.entryHash, e.kid, e.signedAt), e.signature)) { fail(`${at}: signature does not verify.`); break; }
 
     prev = e.entryHash;
