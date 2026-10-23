@@ -9,7 +9,7 @@ Every action that would move funds or change your limits produces an action prev
 - The source address and the destination in full (or the DEX pool with its fee tier and price range).
 - Assets, amounts, and the value in EUR used for safety decisions, when it is known.
 - Network fees, and slippage or the worst-case outcome.
-- A simulation of the transaction on Algorand where available (for Bitcoin, the decoded inputs, outputs, change and fee rate).
+- A simulation of the transaction on Algorand where available.
 - Which spending limit it counts against and how much remains.
 - Whether phone approval in Biatec Authenticator is expected, and why.
 
@@ -19,7 +19,7 @@ Confirm is enabled only after you open Review. Review answers what will happen, 
 
 ## Why previews expire
 
-An Algorand transaction is valid for at most 1000 rounds, about 45 minutes, and a Bitcoin preview expires after 30 minutes. The card shows a countdown. Confirm is disabled once less than 10 minutes remain, so there is time for phone approval, signing and broadcasting. An expired preview cannot be confirmed: ask again and the backend builds a fresh one for you to check.
+An Algorand transaction is valid for at most 1000 rounds, about 45 minutes. The card shows a countdown. Confirm is disabled once less than 10 minutes remain, so there is time for phone approval, signing and broadcasting. An expired preview cannot be confirmed: ask again and the backend builds a fresh one for you to check.
 
 ## What you confirm is what gets signed
 

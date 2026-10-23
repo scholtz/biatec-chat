@@ -37,6 +37,12 @@ ConfigMap: `Safe__Deployment__Pins__mainnet__ApprovalSha256`, `...__ClearSha256`
 clear-state program bytes) and `...__ValidatorAppId`. A network without a pin is not constrained (BCHAT-010). Every safe-create group
 must also carry the genesis id of the requested network.
 
+## Bitcoin transfers
+
+`wallet.transfer` does not offer `bitcoin` until Biatec Chat can sign Bitcoin transactions (BCHAT-037): the Bitcoin preview code exists, but Confirm
+signs only Algorand groups. Setting `Wallet__BitcoinTransfers: "true"` in the backend ConfigMap offers it again; do that only together with a PSBT
+signing path. Reading Bitcoin addresses and balances is not affected.
+
 ## Dry-run status
 
 `kubectl kustomize` renders both overlays offline (the substitute used when no cluster is reachable). The literal

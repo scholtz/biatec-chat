@@ -866,7 +866,10 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
     {
         var ex = NewExecutor();
         Assert.True((await ex.ExecuteAsync(ExecCtx(SessionTier.Anonymous), Args(Stranger), default)).IsError);
-        Assert.True((await ex.ExecuteAsync(ExecCtx(), Args(Stranger, network: "bitcoin"), default)).IsError);
+        // Bitcoin with transfers enabled: the argument validation of the Bitcoin path itself refuses it (the address is not a Bitcoin address).
+        var enabled = new ToolExecutionContext(CapabilityRegistry.CreateDefault(bitcoinTransfers: true).Find("wallet.transfer")!, "tu1", _conversation, "sess", "t1", SessionTier.Authenticated, ["openid"]);
+        Assert.True((await ex.ExecuteAsync(enabled, Args(Stranger, network: "bitcoin"), default)).IsError);
+        Assert.True((await ex.ExecuteAsync(ExecCtx(), Args(Stranger, network: "bitcoin"), default)).IsError); // and with it off, as the tool is not offered
         Assert.True((await ex.ExecuteAsync(ExecCtx(), Args(Stranger, amount: "0"), default)).IsError);
         var bad = Args(Stranger);
         bad["to"] = "NOTANADDRESS";
