@@ -25,6 +25,11 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    # Node moves between LTS lines by a decision, not by a bot: the images run pnpm through corepack, which Node 25 no longer ships, and a
+    # non-LTS release is not what the deploy should run. Digest and minor updates of the current line still come through.
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
     groups:
       docker-base-images:
         patterns: ["*"]
