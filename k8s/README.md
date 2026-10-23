@@ -17,7 +17,7 @@ still needs a reachable API server for discovery (even with `--validate=false`),
 
 ## Client address behind the ingress
 
-The backend honours `X-Forwarded-For` and `X-Forwarded-Proto` only from the networks in `ForwardedHeaders__KnownNetworks__N` (both overlays set the
+The backend honours `X-Forwarded-For` only from the networks in `ForwardedHeaders__KnownNetworks__N` (both overlays set the
 RFC 1918 ranges; with nothing configured it trusts loopback only), and `ForwardLimit` is 1, so only the last hop is used.
 With ingress-nginx's default settings the header carries the real peer. Known limits (BCHAT-005):
 
@@ -28,9 +28,7 @@ With ingress-nginx's default settings the header carries the real peer. Known li
 - Traffic that arrives through the DEX cluster's ingress (`beta.dex.biatec.io`) carries that cluster's egress address as the peer,
   so those visitors still share one bucket until that hop is configured as the trusted proxy.
 
-Per-IP limits (public chat, admin, onboarding) and the operator audit log depend on the address; links built from the request scheme depend on the
-protocol header, which a TLS-terminating load balancer in front of the ingress would set to `http` (the evidence JWKS URL does not depend on it:
-`Evidence__PublicBaseUrl` is set in both overlays, and a host mounted under a path prefix still gets the same keys URL).
+Per-IP limits (public chat, admin, onboarding) and the operator audit log depend on this.
 
 ## Pinning the algo-safe release
 
