@@ -46,8 +46,8 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [x] `deploy-stage.yml` signs each pushed image by digest and attests an SBOM, with `id-token: write` only on the build job.
-- [x] `deploy.yml` verifies each overlay image's signature (identity `deploy-stage.yml` on `main`, issuer GitHub) and pins the verified digest before applying; an unsigned image fails the deploy only when `IMAGE_SIGNING_REQUIRED` is `true`.
+- [ ] `deploy-stage.yml` signs each pushed image by digest and attests an SBOM, with `id-token: write` only on the build job. (Written; proven by the first stage run.)
+- [ ] `deploy.yml` verifies each overlay image's signature (identity `deploy-stage.yml` on `main`, issuer GitHub) and pins the verified digest before applying; an unsigned image fails the deploy only when `IMAGE_SIGNING_REQUIRED` is `true`.
 - [x] Every `FROM` in the repository's Dockerfiles carries a `@sha256:` digest (a check fails otherwise), the images still build, and Dependabot proposes updates for them.
 - [x] `docs/cicd.md` describes how to verify an image by hand and how to turn enforcement on.
 

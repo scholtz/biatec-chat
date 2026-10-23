@@ -29,11 +29,11 @@ reviewers (see "The deploy identity" below for the commands); the deploy job the
 
 Every image `deploy-stage.yml` pushes (backend, builders, demo) is signed by digest with cosign, keyless: the build job has
 `id-token: write`, the certificate that Sigstore issues names this workflow on `main`, and the signature is stored next to the image in
-Docker Hub (`sha256-<digest>.sig`). An SPDX SBOM made with syft is attached as a signed attestation (`sha256-<digest>.att`). Build
+Docker Hub (as a tag `sha256-<digest>.sig` or an OCI referrer, depending on the cosign version). An SPDX SBOM made with syft is attached as a signed attestation in the same way. Build
 provenance stays off on purpose: the production promotion re-tags a plain manifest and reads its labels. Signature and SBOM are separate
 artifacts, so re-tagging `-beta` to `-main` keeps both valid: they belong to the digest.
 
-`deploy.yml` resolves each image of the overlay to its digest, verifies the signature (certificate identity
+`deploy.yml` resolves each image of the overlay to its digest (before anything is written to the cluster), verifies the signature (certificate identity
 `https://github.com/scholtz/biatec-chat/.github/workflows/deploy-stage.yml@refs/heads/main`, issuer GitHub Actions), and writes the
 verified digest into the overlay, so the cluster runs the digest that was checked, not whatever the tag points at a moment later.
 
@@ -46,7 +46,9 @@ a version built before signing existed fails the same way once enforcement is on
 Verify an image by hand, and read its SBOM:
 
 ```
-cosign verify scholtz2/biatec-chat-backend@sha256:<digest>   --certificate-identity 'https://github.com/scholtz/biatec-chat/.github/workflows/deploy-stage.yml@refs/heads/main'   --certificate-oidc-issuer https://token.actions.githubusercontent.com
+cosign verify scholtz2/biatec-chat-backend@sha256:<digest> \
+  --certificate-identity 'https://github.com/scholtz/biatec-chat/.github/workflows/deploy-stage.yml@refs/heads/main' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
 cosign verify-attestation --type spdxjson scholtz2/biatec-chat-backend@sha256:<digest> <same two flags> | jq -r .payload | base64 -d | jq .predicate
 ```
 
