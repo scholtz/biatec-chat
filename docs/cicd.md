@@ -15,15 +15,15 @@ production has none. See "Demo site" below and [demo-site.md](demo-site.md).
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| [`ci.yml`](../.github/workflows/ci.yml) | every pull request; called by `deploy-stage.yml`; manual run | backend `dotnet test` (with Postgres and Redis containers); build of `chat-protocol`, `chat-widget` and `builders`, typecheck of `chat-widget` and `builders`, tests of `chat-widget`, `builders`, `consent-protocol` and `mock-oidc`, plus the consent conformance suite and the `evidence-verifier` tests (`e2e` is not run in CI); the demo site (`pnpm --filter demo build`, `pnpm --filter demo test`); Flutter analyze + test of the authenticator; Docker builds (no push) of the backend, builders, mock OIDC and demo images, the demo with `BACKEND_URL=https://backend.invalid`; `kubectl kustomize` of both overlays |
+| [`ci.yml`](../.github/workflows/ci.yml) | every pull request; called by `deploy-stage.yml`; manual run | backend `dotnet test` (with Postgres and Redis containers); build of `chat-protocol`, `chat-widget` and `builders`, typecheck of `chat-widget` and `builders`, tests of `chat-widget`, `builders`, `consent-protocol` and `mock-oidc`, plus the consent conformance suite and the `evidence-verifier` tests (`e2e` is not run in CI); the demo site (`pnpm --filter demo build`, `pnpm --filter demo test`); Flutter analyze + test of the authenticator; Docker builds (no push) of the backend, builders, mock OIDC and demo images, the demo with `BACKEND_URL=https://backend.invalid`; `kubectl kustomize` of both overlays; the deploy RBAC check (`k8s/rbac/check_role.py`, its self-test and the preflight test) |
 | [`deploy-stage.yml`](../.github/workflows/deploy-stage.yml) | push to `main` (except `kanban/**`, `docs/**`, `*.md`) and manual run | runs `ci.yml`, builds and pushes `scholtz2/biatec-chat-backend`, `scholtz2/biatec-chat-builders` and `scholtz2/biatec-chat-demo` (built with `BACKEND_URL` from `STAGE_URL`) as `<version>-beta` and the moving `stage` tag, then `deploy.yml` to `Stage` with `url` = `STAGE_URL` |
 | [`promote-production.yml`](../.github/workflows/promote-production.yml) | manual only (Actions → promote-production → Run workflow) | takes a stage version (empty = what `stage` runs now), re-tags the backend and builders images `<version>-beta` → `<version>-main` without rebuilding (same digest, checked; the demo image is not re-tagged), then `deploy.yml` to `Production` with `url` `https://chat.biatec.io` |
 | [`publish-widget.yml`](../.github/workflows/publish-widget.yml) | push to `main` and pull requests touching `packages/chat-widget/**`, `packages/chat-protocol/**` or the workflow; `chat-widget-v<version>` tag push; manual run (publishes only with "dry_run" unticked) | **Releasing = merge a PR that bumps `version` in `packages/chat-widget/package.json` and adds its CHANGELOG.md section.** First checks whether the version changed in the push and whether it is already on npm (public registry, no auth). Push to `main` with a new, unpublished version: builds, typechecks and tests `@biatec/chat-widget`, packs it, publishes the tarball to npm with provenance in the `npm` environment, then (job `release`, the only one with `contents: write`) creates the tag `chat-widget-v<version>` and a GitHub release with that CHANGELOG section. Unchanged or already published version: publishes nothing, `::notice` says why (a `::warning` when the unchanged version is not on npm, i.e. an earlier release failed). Only a version greater than the highest published release (semver) is published; a lower or equal one fails the check. Prereleases (`x.y.z-<id>…`) go to the npm dist-tag `<id>` (`next` if it isn't a word), never `latest`, and get a GitHub prerelease. Tag push or manual non-dry run: the same publish, tag and release for the version in `package.json`, only for a commit on `main` (other refs fail), skipped if that version is on npm, so the workflow's own tag never publishes twice; the publish job re-checks npm right before publishing, so a tag and a merge racing for one version publish it once. Pull requests and dry runs: build, test, pack, `npm publish --dry-run` (skipped with a notice for a version already on npm, which npm rejects), and (for a PR into `main`) a notice saying whether merging would publish. Auth: npm trusted publishing (OIDC); fallback the `npm` environment secret `NPM_TOKEN` (0.1.0, the first publish, is done). See [packages/chat-widget/README.md, "Publishing"](../packages/chat-widget/README.md#publishing) |
 | [`deploy.yml`](../.github/workflows/deploy.yml) | called by the two above | in the given environment (namespace must already exist): syncs `biatec-chat-generated`, `biatec-chat-secrets` and `biatec-chat-aws`, pins the tag in the overlay, renders it with `kubectl kustomize` and applies the result, waits for Postgres and Redis, applies database migrations, upserts the tenant, registers the demo origin when the overlay has the demo (see "Demo site"), waits for builders, backend and, when present, the demo |
 | [`kanban-sync.yml`](../.github/workflows/kanban-sync.yml) | push to `main`; manual run | marks merged task PRs done on the kanban board, moves unblocked dependants to backlog and regenerates `kanban/BOARD.md` (commits to `main`) |
 
-Production is never deployed by a push. To approve production deploys, add required reviewers to the `Production`
-environment (Settings → Environments → Production → Required reviewers); the deploy job then waits for approval.
+Production is never deployed by a push. Production deploys need a human approval: the `Production` environment must have required
+reviewers (see "The deploy identity" below for the commands); the deploy job then waits for approval. A single reviewer who also starts the promotion can approve their own run; add a second reviewer and set `prevent_self_review` if the team wants a real second pair of eyes.
 
 ## Secrets
 
@@ -33,7 +33,7 @@ Settings → Secrets and variables → Actions:
 |---|---|---|
 | `DOCKERHUB_USER` | repository | Docker Hub user that can push `scholtz2/biatec-chat-*` |
 | `DOCKERHUB_TOKEN` | repository | Docker Hub access token (read/write) for that user |
-| `KUBE_CONFIG` | `Stage` and `Production` environments, each its own | `base64 -w0` of a kubeconfig allowed to manage that environment's namespace: deployments, statefulsets, services, ingresses, network policies, config maps, secrets, service accounts, persistent volume claims, `pods/exec` (migration). The namespace must already exist (see below); the deploy never creates it |
+| `KUBE_CONFIG` | `Stage` and `Production` environments, each its own | `base64 -w0` of a kubeconfig for the deploy identity of that environment: a service account bound to the scoped Role in [`k8s/rbac/`](../k8s/rbac/deploy-role.yaml) (deployments, statefulsets, services, ingresses, network policies, config maps, service accounts, three named secrets, `pods/exec` on the Postgres pod only) with a time-limited token. The namespace must already exist (see "Namespaces"); the deploy never creates it |
 | `OIDC_CLIENT_ID` | `Stage` and `Production` | Client id of the `biatec-chat` client at that environment's Biatec OIDC, e.g. `biatec-chat-stage` on stage.oidc.biatec.io. Its allowed redirect URI there must include `https://<host>/auth/callback` (`stage.chat.biatec.io` / `chat.biatec.io`) |
 | `OIDC_CLIENT_SECRET` | `Stage` and `Production` | Biatec OIDC client secret of the `biatec-chat` tenant at that environment's OIDC (stage.oidc.biatec.io / oidc.biatec.io) |
 | `AWS_ROLE_ARN` | `Stage` and `Production` | Bedrock role from `infra/aws/rolesanywhere.sh` (aws-setup.md §3), e.g. `arn:aws:iam::<account>:role/biatec-chat-bedrock-role` |
@@ -134,15 +134,65 @@ version for the few seconds both run.
 
 ## Namespaces
 
-The deploy account has no cluster-scope rights, so the namespaces are created once by a cluster admin; neither the
-workflow nor the overlays create them. Per environment (`biatec-chat-stage` / `biatec-chat-main`):
+The deploy account has no cluster-scope rights apart from the stage volumes (see "Storage"), so the namespaces are created once by a
+cluster admin; neither the workflow nor the overlays create them. Per environment (`biatec-chat-stage` / `biatec-chat-main`):
 
 ```
 kubectl create namespace biatec-chat-stage
 kubectl label namespace biatec-chat-stage app.kubernetes.io/part-of=biatec-chat environment=stage
-kubectl create rolebinding github-actions-deploy -n biatec-chat-stage \
-  --clusterrole=admin --serviceaccount=<namespace of the account>:<service account of KUBE_CONFIG>
+kubectl apply -n biatec-chat-stage -f k8s/rbac/deploy-role.yaml
+# edit the two placeholders in deploy-rolebinding.yaml (the service account behind KUBE_CONFIG), then
+kubectl apply -n biatec-chat-stage -f k8s/rbac/deploy-rolebinding.yaml
 ```
+
+Do not bind the built-in `admin` ClusterRole: it reads every secret of the namespace, edits RBAC and execs into any pod.
+
+## The deploy identity
+
+What `KUBE_CONFIG` can do is the blast radius of anyone who can run a workflow in the environment or read the secret
+(BCHAT-020). Three layers limit it:
+
+1. **A scoped Role.** [`k8s/rbac/deploy-role.yaml`](../k8s/rbac/deploy-role.yaml) lists exactly what `deploy.yml` does: apply the
+   overlay's kinds (get, create, patch, no delete), read and patch only the three secrets it writes, read pods, claims, events and
+   logs for diagnostics, and `pods/exec` on `biatec-chat-postgres-0` only. It has no secrets list, no RBAC objects, no wildcards.
+   `python k8s/rbac/check_role.py` renders both overlays, reads `deploy.yml` and fails when a resource, a secret or the exec target
+   is not covered or when a rule is too wide (`--self-test` proves it rejects a list of deliberately bad roles and kubectl calls); CI runs it, so a new kind in an
+   overlay or a new secret in the workflow cannot merge without a conscious change of the Role.
+2. **A time-limited token.** Issue the kubeconfig token for the service account with an expiry and replace the secret before it lapses:
+   ```
+   kubectl create token <service-account> -n <its namespace> --duration=720h     # 30 days; the API server may cap it
+   ```
+   Build the kubeconfig with that token, `base64 -w0` it and set it: `gh secret set KUBE_CONFIG --env Stage --body "<base64>"`.
+   The deploy's "Check the deploy identity" step (`k8s/rbac/preflight.sh`) fails with a clear message when the token has expired,
+   and warns when it expires within 7 days, when it has no expiry, and when the identity can read every secret or edit RBAC (that is,
+   it still has the built-in `admin` role). The warnings do not fail the deploy, so an environment can move to the scoped Role when
+   the cluster admin gets to it; once it has, set the environment variable `STRICT_IDENTITY` to `1` (Settings → Environments → Variables)
+   and they do.
+3. **A human in front of Production, and only `main`.** These are repository settings, not files; run them once as a repository admin
+   (replace `<id>` with the user or team id from `gh api users/<login>` or `gh api orgs/<org>/teams/<slug>`):
+   ```
+   gh api -X PUT repos/scholtz/biatec-chat/environments/Production --input - <<'JSON'
+   {"reviewers": [{"type": "User", "id": <id>}],
+    "deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}
+   JSON
+   gh api -X POST repos/scholtz/biatec-chat/environments/Production/deployment-branch-policies -f name=main -f type=branch
+   gh api -X PUT repos/scholtz/biatec-chat/environments/Stage --input - <<'JSON'
+   {"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}
+   JSON
+   gh api -X POST repos/scholtz/biatec-chat/environments/Stage/deployment-branch-policies -f name=main -f type=branch
+   ```
+   A branch policy means a workflow on another branch cannot read the environment's secrets; it also blocks a manual run of a deploy
+   workflow from a task branch ("Branch is not allowed to deploy"). `PUT` replaces the environment's whole protection configuration, so read
+   it first (`gh api repos/scholtz/biatec-chat/environments/Production`) and repeat any wait timer or reviewer you want to keep.
+   Required reviewers also hold the weekly `rolesanywhere-expiry` check of Production until someone approves it; approve it, or accept
+   that Stage's check is the only unattended one.
+
+What the Role does not do: it does not keep the identity away from the namespace's secrets altogether. Anyone holding the token (or
+able to change `deploy.yml` and run it in the environment) can still create a Deployment that mounts a secret of the namespace and read
+it from the pod's log, or create a service-account-token secret, and a hostPath volume (stage uses them) can expose node paths to a
+workload that mounts it. What the Role takes away are the other rights of `admin`: deleting objects, editing RBAC, reading secrets
+directly, exec into any pod. The token lifetime, the branch policy and the reviewers are what limit who can hold the identity, so all
+four layers belong together.
 
 ## Storage
 
@@ -151,8 +201,8 @@ The cluster has no dynamic volume provisioner and no default StorageClass, so Po
 they are `hostPath` PersistentVolumes in [k8s/stage/storage.yaml](../k8s/stage/storage.yaml), pinned to node `sch-g-04`
 and pre-bound to their claims, under `/mnt/nvme1/chat-stage/`. They have no class on purpose: a claim without a class
 binds only to a volume without one. `Retain` keeps the data on the drive if a claim is deleted. The deploy account
-needs `persistentvolumes` (cluster-scoped, granted by the cluster admin's `create-token.sh`, which is not in this
-repository), an exception to the namespace-only rights below.
+needs `persistentvolumes` (cluster-scoped): [`k8s/rbac/deploy-pv-clusterrole.yaml`](../k8s/rbac/deploy-pv-clusterrole.yaml) grants
+create, and get and patch on the two stage volumes by name, nothing else. Production has no volumes yet.
 
 The kubelet does not apply `fsGroup` to hostPath directories, and the databases run as user 999, so the directories are
 created and owned once, on the node, before the first deploy:

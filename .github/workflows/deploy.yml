@@ -39,6 +39,15 @@ jobs:
           echo "$KUBE_CONFIG" | base64 -d > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
 
+      # An expired kubeconfig token fails here with a clear message; a token that never expires, or an identity wider than
+      # k8s/rbac/deploy-role.yaml (reads all secrets, edits RBAC), is a warning. See docs/cicd.md, "The deploy identity".
+      - name: Check the deploy identity
+        env:
+          NAMESPACE: ${{ inputs.namespace }}
+          # Set the variable STRICT_IDENTITY=1 on the environment once it uses the scoped Role: the warnings then fail the deploy.
+          STRICT_IDENTITY: ${{ vars.STRICT_IDENTITY }}
+        run: bash k8s/rbac/preflight.sh
+
       # The random secrets (Postgres, Redis and builders passwords, the token-vault and evidence master keys). Each one is,
       # in this order: the environment's GitHub secret if set (to pin or rotate a value), else the value already in the
       # cluster secret (so a deploy never changes it), else generated here on the first deploy and kept in the cluster.

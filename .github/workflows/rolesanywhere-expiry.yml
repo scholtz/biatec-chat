@@ -1,7 +1,8 @@
 # Weekly: warn before the Roles Anywhere client certificate of Stage or Production expires (BCHAT-019). The deploy only checks
 # when it runs, so a certificate could lapse between deploys. Reads the AWS_CLIENT_CERT secret of each environment, offline
 # (infra/aws/rolesanywhere-expiry.sh), fails the run inside the window and opens an issue, so the alert does not depend on who last edited the cron line.
-# Note: an environment with required reviewers makes the job wait for approval; keep it reviewer-free for this check.
+# Note: an environment with required reviewers (Production should have them, docs/cicd.md) makes its job wait for approval; approve the
+# weekly run, or the Production certificate is only checked by the deploy (which warns 14 days ahead).
 name: rolesanywhere-expiry
 
 on:
