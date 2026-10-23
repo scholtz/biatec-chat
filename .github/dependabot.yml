@@ -1,0 +1,10 @@
+# Pull requests that move the pinned GitHub Actions (BCHAT-017). The pin is the commit SHA; the comment after it names the release.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
+    open-pull-requests-limit: 5

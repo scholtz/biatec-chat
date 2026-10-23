@@ -40,10 +40,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] No `uses:` of a third-party action references a tag; each is `owner/repo@<40 hex> # vN`.
-- [ ] Local reusable workflows (`./.github/workflows/*.yml`) are unchanged.
-- [ ] `.github/dependabot.yml` exists for `github-actions`.
-- [ ] CI on the PR still passes with the pinned actions; TEST-014 passes.
+- [x] No `uses:` of a third-party action references a tag; each is `owner/repo@<40 hex> # vN`.
+- [x] Local reusable workflows (`./.github/workflows/*.yml`) are unchanged.
+- [x] `.github/dependabot.yml` exists for `github-actions`.
+- [x] CI on the PR still passes with the pinned actions; TEST-014 passes.
 
 ## Verification
 
@@ -51,12 +51,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** All 35 third-party action references in the six workflows are pinned to the commit SHA of the release their tag pointed to (annotated tags dereferenced), each with the tag as a comment; .github/dependabot.yml proposes weekly updates. PR #316.
+- **Files changed:** .github/workflows/*.yml, .github/dependabot.yml.
+- **How it was verified:** TEST-014 passes; the PR's own CI run uses the pinned actions.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** I resolved each SHA from the tag through the GitHub API today; I did not audit the action source at those commits. Pins to major tags such as v4 mean the commit is whatever v4 pointed to now. Dependabot needs to be enabled for the repository (version updates) to open PRs.
 
 ## Review
 
