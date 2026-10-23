@@ -40,9 +40,9 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] `k8s/main` sets an `https` `Evidence__PublicBaseUrl`; TEST-012 passes.
-- [ ] A trusted proxy's `X-Forwarded-Proto: https` makes the request scheme `https`; from an untrusted peer it is ignored.
-- [ ] Existing tests stay green.
+- [x] `k8s/main` sets an `https` `Evidence__PublicBaseUrl`; TEST-012 passes.
+- [x] A trusted proxy's `X-Forwarded-Proto: https` makes the request scheme `https`; from an untrusted peer it is ignored.
+- [x] Existing tests stay green.
 
 ## Verification
 
@@ -50,12 +50,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** k8s/main now sets Evidence__PublicBaseUrl (https://chat.biatec.io) like stage, so bundles advertise an https JWKS URL; ClientAddress honours X-Forwarded-Proto together with X-Forwarded-For, only from the configured proxies. PR #312.
+- **Files changed:** k8s/main/backend-config.patch.yaml, Api/Public/ClientAddress.cs, Tests/Public/ClientAddressTests.cs, k8s/README.md.
+- **How it was verified:** dotnet test full suite (1561 passed); TEST-012 passes; new tests for trusted proto honoured, untrusted ignored, unconfigured ignored, proto-only and invalid values.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** The production host name chat.biatec.io is taken from k8s/main/ingress.yaml; please confirm it is the public host evidence verifiers should use. X-Forwarded-Proto is now trusted from the same private ranges as X-Forwarded-For, so another in-cluster pod could set the scheme until the NetworkPolicy ticket (BCHAT-016) lands; PublicBaseUrl does not depend on it.
 
 ## Review
 
