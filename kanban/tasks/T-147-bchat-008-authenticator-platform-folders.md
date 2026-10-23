@@ -1,7 +1,7 @@
 ---
 id: T-147
 title: "Commit the authenticator's android/ and ios/ folders with hardening applied and the keystore plugins wired (BCHAT-008)"
-status: in-progress
+status: done
 priority: P2
 epic: "Security"
 blocked_by: []
@@ -68,7 +68,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 17:13 · approve · PR #346 merged into main @ 2d66218 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 18:30 · claude · (new) → backlog · created from GitHub issue #261 (BCHAT-008); blockers scan: none
 - 2026-10-23 16:33 · scholtz · taken, and session-20261023-1633 · backlog → in-progress · claimed
+- 2026-10-23 17:13 · user · in-progress → done · PR #346 merged into main @ 2d66218 (synced by kanban-sync)
