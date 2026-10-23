@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Hardening (BCHAT-008): nothing is backed up or transferred, cleartext traffic is forbidden (the debug manifest allows it for the local
          mock only), and MainActivity, the launcher, is the only component declared here. Libraries add their own components when the
          manifests are merged; test/platform_hardening_test.dart checks this file, and the merged release manifest is reviewed on release. -->

@@ -28,6 +28,20 @@ void main() {
       expect(rules, contains('<cloud-backup>'));
       expect(rules, contains('<device-transfer>'));
       expect(RegExp('<include').hasMatch(rules), isFalse);
+      for (final domain in [
+        'root',
+        'file',
+        'database',
+        'sharedpref',
+        'external',
+        'device_root',
+        'device_file',
+        'device_database',
+        'device_sharedpref'
+      ]) {
+        expect('<exclude domain="$domain" />'.allMatches(rules).length, 2,
+            reason: '$domain in cloud-backup and device-transfer');
+      }
     });
 
     test('cleartext is forbidden except in the debug manifest', () {
@@ -47,6 +61,10 @@ void main() {
       expect('<activity'.allMatches(manifest).length, 1);
       expect(manifest, contains('android:name=".MainActivity"'));
       expect(manifest, isNot(contains('android:debuggable')));
+    });
+
+    test('the app declares the permission it needs itself', () {
+      expect(manifest, contains('android.permission.INTERNET'));
     });
 
     test('the window is secure and the keystore plugin is wired', () {

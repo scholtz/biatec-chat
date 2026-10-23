@@ -2,6 +2,8 @@ package io.biatec.authenticator
 
 import android.content.pm.PackageManager
 import android.security.keystore.KeyGenParameterSpec
+import android.os.Handler
+import android.os.Looper
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -12,6 +14,8 @@ import java.security.KeyStore
 import java.security.Signature
 import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /**
  * Android Keystore implementation of the device key store channel.
@@ -28,30 +32,47 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel?.setMethodCallHandler(null)
         channel = null
+        worker.shutdown()
     }
 
     private val ks: KeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
 
+    // Keystore work (key generation, signing) can take hundreds of milliseconds, StrongBox more: it runs off the platform thread and the
+    // result is posted back to it, as MethodChannel requires.
+    private val worker: ExecutorService = Executors.newSingleThreadExecutor()
+    private val main = Handler(Looper.getMainLooper())
+
+    /** A failure with a code Dart can tell apart from an unexpected keystore error. */
+    private class PluginError(val code: String, message: String) : Exception(message)
+
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         val alias = call.argument<String>("alias")
         if (alias.isNullOrEmpty()) return result.error("bad_args", "alias is required", null)
-        try {
-            when (call.method) {
-                "generate" -> result.success(publicOf(alias) ?: generate(alias))
-                "load" -> result.success(publicOf(alias))
-                "sign" -> {
-                    val data = call.argument<ByteArray>("data") ?: return result.error("bad_args", "data is required", null)
-                    val key = ks.getKey(alias, null) as? java.security.PrivateKey
-                        ?: return result.error("no_key", "No key for alias", null)
-                    val der = Signature.getInstance("SHA256withECDSA").run { initSign(key); update(data); sign() }
-                    result.success(derToRaw(der))
+        val data = call.argument<ByteArray>("data")
+        val method = call.method
+        worker.execute {
+            try {
+                val value: Any? = when (method) {
+                    "generate" -> publicOf(alias) ?: generate(alias)
+                    "load" -> publicOf(alias)
+                    "sign" -> sign(alias, data)
+                    "delete" -> { if (ks.containsAlias(alias)) ks.deleteEntry(alias); null }
+                    else -> { main.post { result.notImplemented() }; return@execute }
                 }
-                "delete" -> { if (ks.containsAlias(alias)) ks.deleteEntry(alias); result.success(null) }
-                else -> result.notImplemented()
+                main.post { result.success(value) }
+            } catch (e: PluginError) {
+                main.post { result.error(e.code, e.message, null) }
+            } catch (e: Exception) {
+                main.post { result.error("keystore_error", e.message, null) }
             }
-        } catch (e: Exception) {
-            result.error("keystore_error", e.message, null)
         }
+    }
+
+    private fun sign(alias: String, data: ByteArray?): ByteArray {
+        if (data == null) throw PluginError("bad_args", "data is required")
+        val key = ks.getKey(alias, null) as? java.security.PrivateKey ?: throw PluginError("no_key", "No key for alias")
+        val der = Signature.getInstance("SHA256withECDSA").run { initSign(key); update(data); sign() }
+        return derToRaw(der)
     }
 
     private fun spec(alias: String, strongBox: Boolean): KeyGenParameterSpec =

@@ -5,7 +5,8 @@ import UIKit
 /// the cover is up (a new scene, an alert, the keyboard) are covered as they become visible.
 final class ScreenCover {
     static let shared = ScreenCover()
-    private var covers: [ObjectIdentifier: UIView] = [:]
+    /// Marks the cover views, so they are found again on the window itself (no bookkeeping that could go stale when a window goes away).
+    private static let tag = 0x5C0_7E12
     private var inactive = false
     private var started = false
 
@@ -26,30 +27,36 @@ final class ScreenCover {
         center.addObserver(forName: UIWindow.didBecomeVisibleNotification, object: nil, queue: .main) { [weak self] _ in self?.update() }
     }
 
+    private var windows: [UIWindow] {
+        UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap { $0.windows }
+    }
+
     private func update() {
-        if inactive || isCaptured() { show() } else { hide() }
+        let captured = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.contains { $0.screen.isCaptured }
+        if inactive || captured { show(captured: captured && !inactive) } else { hide() }
     }
 
-    private func isCaptured() -> Bool {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .contains { $0.screen.isCaptured }
-    }
-
-    private func show() {
-        for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
-            for window in scene.windows where covers[ObjectIdentifier(window)] == nil {
-                let cover = UIView(frame: window.bounds)
-                cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-                cover.backgroundColor = .systemBackground
-                window.addSubview(cover)
-                covers[ObjectIdentifier(window)] = cover
+    private func show(captured: Bool) {
+        for window in windows where window.viewWithTag(Self.tag) == nil {
+            let cover = UIView(frame: window.bounds)
+            cover.tag = Self.tag
+            cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            cover.backgroundColor = .systemBackground
+            if captured {
+                // The screen is being recorded or mirrored: say why the app is blank, or it looks like a crash.
+                let label = UILabel(frame: cover.bounds.insetBy(dx: 24, dy: 0))
+                label.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+                label.numberOfLines = 0
+                label.textAlignment = .center
+                label.textColor = .label
+                label.text = "Hidden while the screen is recorded or mirrored. Stop the recording to continue."
+                cover.addSubview(label)
             }
+            window.addSubview(cover)
         }
     }
 
     private func hide() {
-        covers.values.forEach { $0.removeFromSuperview() }
-        covers.removeAll()
+        for window in windows { window.viewWithTag(Self.tag)?.removeFromSuperview() }
     }
 }
