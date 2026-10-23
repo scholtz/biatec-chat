@@ -56,6 +56,10 @@ export interface VerifyResult {
   payloadsVerified: number;
   /** Entries whose payload was deleted; the stored hash was used. */
   payloadsDeleted: number;
+  /** Entries that carry an anchorRef. This verifier does not resolve anchors against the chain, so a count here is a claim, not a proof. */
+  anchoredEntries: number;
+  /** Entries without an anchorRef: nothing outside the operator's control commits to them yet. */
+  unanchoredEntries: number;
   errors: string[];
   warnings: string[];
 }
@@ -131,7 +135,7 @@ function safe(f: () => string): string {
 export function verifyBundle(input: unknown, options: VerifyOptions = {}): VerifyResult {
   const errors: string[] = [];
   const warnings: string[] = [];
-  const result: VerifyResult = { valid: false, keysAuthenticated: false, entries: 0, payloadsVerified: 0, payloadsDeleted: 0, errors, warnings };
+  const result: VerifyResult = { valid: false, keysAuthenticated: false, entries: 0, payloadsVerified: 0, payloadsDeleted: 0, anchoredEntries: 0, unanchoredEntries: 0, errors, warnings };
   const fail = (m: string) => { errors.push(m); };
 
   const b = input as Partial<EvidenceBundle> | null;
@@ -213,8 +217,16 @@ export function verifyBundle(input: unknown, options: VerifyOptions = {}): Verif
     prev = e.entryHash;
     expected++;
     result.entries++;
+    if (e.anchorRef === null) result.unanchoredEntries++; else result.anchoredEntries++;
   }
 
   result.valid = errors.length === 0;
+  // "Valid" proves the hash chain and the signatures. It does not prove when the log existed: whoever holds the signing key can rewrite it
+  // unless an anchor outside their control commits to it, and this verifier does not resolve anchors (BCHAT-022).
+  if (result.valid) {
+    warnings.push(result.anchoredEntries === 0
+      ? "No entry is anchored yet: nothing outside the operator's control commits to this log, so this verifies the chain and signatures only, not that the log existed at a point in time."
+      : `${result.anchoredEntries} of ${result.entries} entries carry an anchorRef, but this verifier does not resolve anchors against the chain: the chain and signatures are verified, the anchoring is not.`);
+  }
   return result;
 }
