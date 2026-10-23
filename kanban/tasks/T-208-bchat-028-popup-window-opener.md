@@ -1,7 +1,7 @@
 ---
 id: T-208
 title: "Record the popup window.opener exposure and the COOP prerequisite for Biatec OIDC (BCHAT-028)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -51,8 +51,11 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 13:39 · approve · PR #335 merged into main @ d6f9935 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 13:33 · kanban-split · (new) → backlog · created from audit issue #281
 - 2026-10-23 13:33 · scholtz · taken · status stays backlog
 - 2026-10-23 13:33 · session-20261023-1333 · backlog → in-progress · claimed, branch task/T-208
+- 2026-10-23 13:39 · user · in-progress → done · PR #335 merged into main @ d6f9935 (synced by kanban-sync)
