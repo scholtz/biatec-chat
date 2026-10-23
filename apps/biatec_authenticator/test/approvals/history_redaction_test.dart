@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:biatec_authenticator/approvals/history_store.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 HistoryEntry entry({Map<String, Object?>? signed}) => HistoryEntry(
@@ -39,6 +40,18 @@ void main() {
       final stored = jsonDecode(jsonEncode(entry().toJson())) as Map<String, Object?>;
       final read = HistoryEntry.fromJson(stored);
       expect(jsonEncode(read.receipt), isNot(contains('483920')));
+    });
+
+    test('the secure store rewrites older entries once on read, so the code leaves the disk', () async {
+      const key = 'biatec.approvals.history';
+      FlutterSecureStorage.setMockInitialValues({
+        key: jsonEncode([entry().toJson()..['receipt'] = entry().receipt]),
+      });
+      const storage = FlutterSecureStorage();
+      expect(await storage.read(key: key), contains('483920'));
+      final read = await SecureHistoryStore(storage).read();
+      expect(jsonEncode(read.single.receipt), isNot(contains('483920')));
+      expect(await storage.read(key: key), isNot(contains('483920')));
     });
   });
 }

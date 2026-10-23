@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// The receipt as the history keeps it: the code the user typed (`signed.binding_code`) is a one-time secret of that request and has no
-/// use afterwards, so it is not stored; the entry says so (`redacted`). Everything else, the signature included, is kept.
+/// use afterwards, so it is not stored; the entry says so (`redacted`). Everything else, the signature included, is kept. The stored copy is for
+/// reading: it no longer verifies against its signature (the signed bytes held the code), and the `redacted` note is not signed. Biatec OIDC
+/// holds the receipt that verifies.
 Map<String, Object?> redactReceipt(Map<String, Object?> receipt) {
   final signed = receipt['signed'];
   if (signed is! Map || !signed.containsKey('binding_code')) return receipt;
@@ -105,6 +107,11 @@ class SecureHistoryStore implements HistoryStore {
       }
     } on Object {
       return const []; // corrupt history reads as empty
+    }
+    // Entries stored before the binding code was dropped: rewrite the storage once, so the code does not stay on disk until the next approval.
+    if (raw.contains('binding_code')) {
+      await _storage.write(
+          key: _key, value: jsonEncode([for (final e in out) e.toJson()]));
     }
     return out;
   }
