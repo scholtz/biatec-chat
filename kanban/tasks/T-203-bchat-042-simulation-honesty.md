@@ -1,7 +1,7 @@
 ---
 id: T-203
 title: "Never claim a simulation that did not run; a requested sidecar simulation that is missing is a failed build (BCHAT-042)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -53,8 +53,11 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 12:39 · approve · PR #327 merged into main @ 8302941 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 12:24 · kanban-split · (new) → backlog · created from audit issue #295
 - 2026-10-23 12:24 · scholtz · taken · status stays backlog
 - 2026-10-23 12:24 · session-20261023-1224 · backlog → in-progress · claimed, branch task/T-203
+- 2026-10-23 12:39 · user · in-progress → done · PR #327 merged into main @ 8302941 (synced by kanban-sync)
