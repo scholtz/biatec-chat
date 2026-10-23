@@ -1,7 +1,7 @@
 ---
 id: T-146
 title: "Sign images with cosign, attach an SBOM, deploy by verified digest and pin base images (BCHAT-018)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -67,7 +67,10 @@ only run on GitHub: their first run is the test, which is why enforcement is off
 
 ## Review
 
+- 2026-10-23 16:23 · approve · PR #344 merged into main @ 96fcf7e (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 17:30 · claude · (new) → backlog · created from GitHub issue #271 (BCHAT-018); blockers scan: none
 - 2026-10-23 15:57 · scholtz · taken, and session-20261023-1557 · backlog → in-progress · claimed
+- 2026-10-23 16:23 · user · in-progress → done · PR #344 merged into main @ 96fcf7e (synced by kanban-sync)
