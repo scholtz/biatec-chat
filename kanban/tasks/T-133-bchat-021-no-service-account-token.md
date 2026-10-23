@@ -1,7 +1,7 @@
 ---
 id: T-133
 title: "Do not mount service-account tokens into the backend and builders pods (BCHAT-021)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -59,7 +59,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 11:26 · approve · PR #317 merged into main @ 5046fbf (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 15:00 · claude · (new) → backlog · created from GitHub issue #274 (BCHAT-021); blockers scan: none
 - 2026-10-23 11:19 · scholtz · taken, and session-20261023-1119 · backlog → in-progress · claimed
+- 2026-10-23 11:26 · user · in-progress → done · PR #317 merged into main @ 5046fbf (synced by kanban-sync)
