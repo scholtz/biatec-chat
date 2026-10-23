@@ -38,15 +38,18 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] The consent request keeps the interval from the step-up (clamped to 1 to 30 s).
-- [ ] A `slow_down` poll answer adds 5 seconds to the stored interval (cap 60 s), and the stream's next wait is at least the stored interval.
-- [ ] Authorization pending keeps the interval; existing consent tests stay green.
+- [x] The consent request keeps the interval from the step-up (clamped to 1 to 30 s).
+- [x] A `slow_down` poll answer adds 5 seconds to the stored interval (cap 60 s), and the stream's next wait is at least the stored interval.
+- [x] Authorization pending keeps the interval; existing consent tests stay green.
 
 ## Verification
 
 `dotnet test backend --filter Consent`, full suite in CI.
 
 ## Hand-off
+
+- **Summary:** `ConsentRequest.PollIntervalSeconds` (migration `ConsentPollInterval`, existing rows default to 2) keeps the `interval` of the step-up (clamped 1 to 30). A `slow_down` poll answer raises it by 5 s (cap 60 s, persisted so a new stream starts slow too). `ConsentAdvance.PollAfter` carries it and the SSE stream waits `max(Consent:Interval, PollAfter)`.
+- **Verification:** `dotnet test --filter Consent|Confirm`: 186 pass, with a new test for the kept interval, the +5 s step and the cap. Full suite in CI.
 
 ## Review
 

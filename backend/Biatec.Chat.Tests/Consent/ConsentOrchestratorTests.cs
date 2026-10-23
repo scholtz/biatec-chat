@@ -272,6 +272,30 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Poll_interval_is_kept_and_slow_down_adds_five_seconds_up_to_the_cap()
+    {
+        var b = await BuildPreviewAsync();
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        Assert.Equal(2, (await LoadAsync(b.PreviewId)).Item3.PollIntervalSeconds); // what the step-up returned
+
+        var pending = await AdvanceAsync(b.PreviewId);
+        Assert.Equal(TimeSpan.FromSeconds(2), pending.PollAfter);
+
+        _server.State = "slow_down";
+        var slower = await AdvanceAsync(b.PreviewId);
+        Assert.Equal(ConsentState.Pending, slower.Status.State);
+        Assert.Equal(TimeSpan.FromSeconds(7), slower.PollAfter);
+        Assert.Equal(7, (await LoadAsync(b.PreviewId)).Item3.PollIntervalSeconds); // kept: a new stream starts slow too
+
+        // Back to pending: the raised interval stays; and slow_down never goes past the cap.
+        _server.State = "pending";
+        Assert.Equal(TimeSpan.FromSeconds(7), (await AdvanceAsync(b.PreviewId)).PollAfter);
+        _server.State = "slow_down";
+        for (var i = 0; i < 20; i++) await AdvanceAsync(b.PreviewId);
+        Assert.Equal(ConsentOrchestrator.MaxPollIntervalSeconds, (await LoadAsync(b.PreviewId)).Item3.PollIntervalSeconds);
+    }
+
+    [Fact]
     public async Task EndToEnd_Challenge_Approve_Signed()
     {
         var b = await BuildPreviewAsync();

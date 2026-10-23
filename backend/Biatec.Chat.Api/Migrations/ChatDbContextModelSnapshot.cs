@@ -193,6 +193,9 @@ namespace Biatec.Chat.Api.Migrations
                     b.Property<string>("Origin")
                         .HasColumnType("text");
 
+                    b.Property<int>("PollIntervalSeconds")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Receipt")
                         .HasColumnType("jsonb");
 

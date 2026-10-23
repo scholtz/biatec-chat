@@ -110,7 +110,9 @@ public static class ConsentEndpoints
                         if (step.Result is not null) await WriteAsync(ctx.Response, "confirm_result", ToResponse(step.Result), ctx.RequestAborted);
                         break;
                     }
-                    await Task.Delay(options.Value.Interval, clock, ctx.RequestAborted);
+                    // Never faster than the interval Biatec OIDC asked for (and raised on slow_down).
+                    var wait = step.PollAfter is { } asked && asked > options.Value.Interval ? asked : options.Value.Interval;
+                    await Task.Delay(wait, clock, ctx.RequestAborted);
                     step = await consent.AdvanceAsync(tenant, session, previewId, ctx.RequestAborted);
                 }
             }

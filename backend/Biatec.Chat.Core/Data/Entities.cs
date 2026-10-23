@@ -108,6 +108,11 @@ public class ConsentRequest
     /// Null on rows written before T-079: the resume reports the tenant's backend origin then.
     /// </summary>
     public string? Origin { get; set; }
+    /// <summary>
+    /// Seconds to wait between polls of the token endpoint: the <c>interval</c> Biatec OIDC returned with the step-up, raised by 5 for every
+    /// <c>slow_down</c> answer (RFC 8628 3.5, CIBA 10.2). Rows written before this column existed poll every 2 seconds.
+    /// </summary>
+    public int PollIntervalSeconds { get; set; } = 2;
 }
 
 /// <summary>Append-only. Payload and Salt become null after deletion; the hashes and signature stay.</summary>
