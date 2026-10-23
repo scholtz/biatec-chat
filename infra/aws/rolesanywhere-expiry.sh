@@ -17,6 +17,7 @@ while [ $# -gt 0 ]; do
 done
 case "$days" in ''|*[!0-9]*) echo "--days needs a whole number." >&2; exit 2 ;; esac
 [ "${#files[@]}" -gt 0 ] || { echo "Give at least one certificate file." >&2; exit 2; }
+days=$((10#$days))
 command -v openssl >/dev/null || { echo "openssl is required." >&2; exit 2; }
 
 rc=0

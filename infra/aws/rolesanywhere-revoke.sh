@@ -20,7 +20,8 @@ ENV_NAME=""; CERT_FILE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --cert) [ $# -ge 2 ] || { echo "--cert needs a file." >&2; exit 2; }; CERT_FILE="$2"; shift 2 ;;
-    --*) shift ;;
+    --apply|--dry-run) shift ;;
+    --*) echo "Unknown option $1." >&2; exit 2 ;;
     *) ENV_NAME="$1"; shift ;;
   esac
 done
@@ -44,8 +45,16 @@ serial="$(openssl x509 -in "$CERT" -noout -serial | sed 's/^serial=//' | tr 'a-f
 [ $(( ${#serial} % 2 )) -eq 0 ] || serial="0$serial"
 TAB="$(printf '\t')"
 if [ "$APPLY" != 1 ]; then
-  echo "[dry-run] would revoke certificate $serial of $ENV_NAME: record it in $INDEX, sign a CRL with the CA, and run aws rolesanywhere import-crl --name $CRL_NAME (or update-crl when it exists) on trust anchor $ANCHOR_NAME."
+  echo "[dry-run] would revoke certificate $serial ($CERT) of $ENV_NAME: record it in $INDEX, sign a CRL with the CA, and run aws rolesanywhere import-crl --name $CRL_NAME (or update-crl when it exists) on trust anchor $ANCHOR_NAME."
   exit 0
+fi
+ANCHOR_ARN="$(aws_ rolesanywhere list-trust-anchors --query "trustAnchors[?name=='$ANCHOR_NAME'].trustAnchorArn | [0]" --output text)"
+[ -n "$ANCHOR_ARN" ] && [ "$ANCHOR_ARN" != "None" ] || { echo "Trust anchor $ANCHOR_NAME not found." >&2; exit 1; }
+CRL_ID="$(aws_ rolesanywhere list-crls --query "crls[?name=='$CRL_NAME'].crlId | [0]" --output text)"
+# update-crl replaces the whole CRL in AWS, so a local index that lost earlier revocations would un-revoke them.
+if [ -n "$CRL_ID" ] && [ "$CRL_ID" != "None" ] && [ "${FORCE_CRL:-}" != 1 ] && ! grep -q "$TAB" "$INDEX" 2>/dev/null; then
+  echo "AWS already holds the CRL $CRL_NAME but $INDEX has no revocations: updating would drop the earlier ones. Restore $CRL_DIR from the machine that revoked them (or set FORCE_CRL=1 if the CRL in AWS is meant to be replaced)." >&2
+  exit 1
 fi
 # openssl ca keeps a database of issued certificates; ours were signed with `openssl x509 -req`, so only revoked ones are recorded.
 mkdir -p "$CRL_DIR"
@@ -56,7 +65,7 @@ else
   not_after="$(date -u -d "$(openssl x509 -in "$CERT" -noout -enddate | sed 's/^notAfter=//')" +%y%m%d%H%M%SZ 2>/dev/null || true)"
   [ -n "$not_after" ] || not_after="$(date -u -d '+1 year' +%y%m%d%H%M%SZ 2>/dev/null || date -u -v+1y +%y%m%d%H%M%SZ)"
   subject="$(openssl x509 -in "$CERT" -noout -subject | sed 's/^subject= *//; s/ = /=/g; s#, #/#g; s#^#/#')"
-  printf 'R\t%s\t%s,keyCompromise\t%s\tunknown\t%s\n' "$not_after" "$(date -u +%y%m%d%H%M%SZ)" "$serial" "$subject" >> "$INDEX"
+  printf 'R\t%s\t%s,%s	%s\tunknown\t%s\n' "$not_after" "$(date -u +%y%m%d%H%M%SZ)" "${REVOKE_REASON:-keyCompromise}" "$serial" "$subject" >> "$INDEX"
   echo "Recorded certificate $serial of $ENV_NAME as revoked."
 fi
 
@@ -77,9 +86,6 @@ EOF
 openssl ca -config "$CRL_DIR/openssl.cnf" -gencrl -cert "$OUT_DIR/ca.pem" -keyfile "$OUT_DIR/ca.key" -out "$CRL_DIR/crl.pem"
 echo "Wrote $CRL_DIR/crl.pem ($(grep -c "$TAB" "$INDEX" || true) revoked certificate(s), valid $CRL_DAYS days)"
 
-ANCHOR_ARN="$(aws_ rolesanywhere list-trust-anchors --query "trustAnchors[?name=='$ANCHOR_NAME'].trustAnchorArn | [0]" --output text)"
-[ -n "$ANCHOR_ARN" ] && [ "$ANCHOR_ARN" != "None" ] || { echo "Trust anchor $ANCHOR_NAME not found." >&2; exit 1; }
-CRL_ID="$(aws_ rolesanywhere list-crls --query "crls[?name=='$CRL_NAME'].crlId | [0]" --output text)"
 fileref="fileb://$CRL_DIR/crl.pem"
 if command -v cygpath >/dev/null 2>&1; then fileref="fileb://$(cygpath -m "$CRL_DIR/crl.pem")"; fi
 if [ -z "$CRL_ID" ] || [ "$CRL_ID" = "None" ]; then

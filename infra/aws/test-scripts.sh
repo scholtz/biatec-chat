@@ -8,7 +8,7 @@ cat > "$TMP/bin/aws" <<'STUB'
 #!/usr/bin/env bash
 echo "aws $*" >> "$FAKE_LOG"
 case "$*" in
-  *get-resources*) printf 'arn:aws:bedrock:eu-central-1:1:guardrail/g-1\tarn:aws:kms:eu-central-1:1:key/k-1\tarn:aws:s3:::stray\tarn:aws:rolesanywhere:eu-central-1:1:profile/p-1\tarn:aws:rolesanywhere:eu-central-1:1:trust-anchor/ta-1\n' ;;
+  *get-resources*) printf 'arn:aws:bedrock:eu-central-1:1:guardrail/g-1\tarn:aws:kms:eu-central-1:1:key/k-1\tarn:aws:s3:::stray\tarn:aws:rolesanywhere:eu-central-1:1:profile/p-1\tarn:aws:rolesanywhere:eu-central-1:1:crl/crl-1\tarn:aws:rolesanywhere:eu-central-1:1:trust-anchor/ta-1\n' ;;
   *list-trust-anchors*) if [[ "$*" == *rolesanywhere* ]] && [ -n "${FAKE_ANCHOR:-}" ]; then echo "$FAKE_ANCHOR"; else echo None; fi ;;
   *list-profiles*) echo None ;;
   *list-crls*) echo "${FAKE_CRL:-None}" ;;
@@ -34,6 +34,7 @@ check "teardown deletes the guardrail" 'grep -q "bedrock delete-guardrail --guar
 check "teardown deletes the Roles Anywhere profile and trust anchor" 'grep -q "rolesanywhere delete-profile --profile-id p-1" "$FAKE_LOG" && grep -q "rolesanywhere delete-trust-anchor --trust-anchor-id ta-1" "$FAKE_LOG"'
 check "teardown still reached delete-role" 'grep -q "iam delete-role --role-name biatec-chat-bedrock-role" "$FAKE_LOG" && grep -q "iam delete-role --role-name biatec-chat-k8s-role" "$FAKE_LOG"'
 check "teardown skipped key pending deletion" '! grep -q schedule-key-deletion "$FAKE_LOG"'
+check "teardown deletes the CRL before the trust anchor" 'c=$(grep -n "rolesanywhere delete-crl --crl-id crl-1" "$FAKE_LOG" | head -1 | cut -d: -f1); t=$(grep -n "delete-trust-anchor" "$FAKE_LOG" | head -1 | cut -d: -f1); [ -n "$c" ] && [ -n "$t" ] && [ "$c" -lt "$t" ]'
 check "teardown reports unknown tagged resources" 'grep -q "arn:aws:s3:::stray" "$TMP/td.out"'
 
 : > "$FAKE_LOG"
@@ -77,11 +78,14 @@ check "a second revocation keeps the first in the CRL" 'openssl crl -in "$TMP/ra
 check "revoke is a dry run without --apply and refuses a missing certificate" 'OUT_DIR="$TMP/ra" "$DIR/rolesanywhere-revoke.sh" stage >"$TMP/rv3.out" 2>&1 && grep -q "dry-run" "$TMP/rv3.out" && ! OUT_DIR="$TMP/ra" "$DIR/rolesanywhere-revoke.sh" nope >/dev/null 2>&1'
 check "expiry check rejects --days without a value instead of looping" 'timeout 10 "$DIR/rolesanywhere-expiry.sh" "$TMP/exp/c200.pem" --days >/dev/null 2>&1; [ $? -eq 2 ]'
 check "revoke accepts the GitHub environment name Production for main" 'OUT_DIR="$TMP/ra" "$DIR/rolesanywhere-revoke.sh" Production 2>&1 | grep -q "dry-run"'
-check "teardown deletes the CRL" 'grep -q "delete-crl" "$DIR/teardown.sh"'
 check "a dry run creates no crl directory" 'rm -rf "$TMP/ra2" && mkdir -p "$TMP/ra2/stage" && cp "$TMP/ra/ca.pem" "$TMP/ra/ca.key" "$TMP/ra2/" && cp "$TMP/ra/stage/certificate.pem" "$TMP/ra2/stage/" && OUT_DIR="$TMP/ra2" "$DIR/rolesanywhere-revoke.sh" stage >/dev/null 2>&1 && [ ! -e "$TMP/ra2/crl" ]'
 : > "$FAKE_LOG"
 FAKE_CRL=crl-1 FAKE_ANCHOR=arn:aws:rolesanywhere:eu-central-1:123456789012:trust-anchor/ta-1 OUT_DIR="$TMP/ra" "$DIR/rolesanywhere-revoke.sh" stage --apply >/dev/null 2>&1
 check "an existing CRL is updated, not imported again" 'grep -q "rolesanywhere update-crl --crl-id crl-1" "$FAKE_LOG" && ! grep -q "import-crl" "$FAKE_LOG"'
 check "revoke --cert revokes a given certificate (the old one after a renewal)" 'OUT_DIR="$TMP/ra" "$DIR/rolesanywhere-revoke.sh" stage --cert "$TMP/exp/c10.pem" 2>&1 | grep -q "dry-run" && FAKE_ANCHOR=arn:x:trust-anchor/ta-1 OUT_DIR="$TMP/ra" "$DIR/rolesanywhere-revoke.sh" stage --cert "$TMP/exp/c10.pem" --apply >/dev/null 2>&1 && openssl crl -in "$TMP/ra/crl/crl.pem" -noout -text | grep -qi "Serial Number: $(openssl x509 -in "$TMP/exp/c10.pem" -noout -serial | sed "s/^serial=//")"'
 check "revoke refuses an environment name that is a path" '! OUT_DIR="$TMP/ra" "$DIR/rolesanywhere-revoke.sh" ../x >/dev/null 2>&1'
+rm -rf "$TMP/ra3" && mkdir -p "$TMP/ra3/stage" && cp "$TMP/ra/ca.pem" "$TMP/ra/ca.key" "$TMP/ra3/" && cp "$TMP/ra/stage/certificate.pem" "$TMP/ra3/stage/"
+check "revoke refuses to replace an existing AWS CRL from an empty local index" '! FAKE_CRL=crl-1 FAKE_ANCHOR=arn:x:trust-anchor/ta-1 OUT_DIR="$TMP/ra3" "$DIR/rolesanywhere-revoke.sh" stage --apply >/dev/null 2>&1'
+check "revoke rejects an unknown option" '! OUT_DIR="$TMP/ra" "$DIR/rolesanywhere-revoke.sh" stage --cer x >/dev/null 2>&1'
+check "expiry check treats --days 08 as a number" '"$DIR/rolesanywhere-expiry.sh" --days 08 "$TMP/exp/c200.pem" >/dev/null 2>&1'
 exit $fail

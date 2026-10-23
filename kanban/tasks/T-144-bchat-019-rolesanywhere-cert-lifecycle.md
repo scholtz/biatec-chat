@@ -57,7 +57,7 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 - **How it was verified:** infra/aws/test-scripts.sh passes offline: 90-day default, expiry flags a 10-day certificate and passes a 200-day one, window and usage errors, the CRL verifies against the CA and lists only the revoked serial, a second revocation keeps the first, import-crl is called against the fake aws, dry run writes nothing and a missing certificate is refused.
 - **Follow-up tasks created:** none.
 - **Unblocks:** none.
-- **Open questions:** The weekly workflow was not run (it needs the real environment secrets); an environment with required reviewers would make it wait for approval. Nothing was run against AWS: the real import-crl call is checked only against the fake aws. Rotation of the GitHub secrets stays manual. The CRL must be re-issued before CRL_DAYS (365) lapses.
+- **Open questions:** The weekly workflow was not run (it needs the real environment secrets); an environment with required reviewers would make it wait for approval. Nothing was run against AWS: the real import-crl call is checked only against the fake aws. Rotation of the GitHub secrets stays manual. The CRL is valid for CRL_DAYS (3650, beyond the CA certificate) and nothing monitors its expiry; update-crl replaces the whole CRL, so the script refuses to update an existing AWS CRL from a local index with no revocations unless FORCE_CRL=1.
 
 ## Review
 
