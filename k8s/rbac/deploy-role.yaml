@@ -24,7 +24,8 @@ rules:
     resources: ["ingresses", "networkpolicies"]
     verbs: ["get", "create", "patch"]
   # The three secrets the deploy writes (`kubectl create secret generic ... | kubectl apply`). Reading is limited to those names, there is
-  # no list or watch, so the account cannot read the other secrets directly. `create` cannot be limited by name.
+  # no list or watch, so the account cannot read the other secrets directly. `create` cannot be limited by name. Directly is the point: a
+# token that can create Deployments can still mount a secret into one and read it from the log (docs/cicd.md, "What the Role does not do").
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["create"]

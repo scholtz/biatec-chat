@@ -39,8 +39,8 @@ can() {
   local answer
   answer="$(kubectl auth can-i "$@" -n "$NAMESPACE" 2>/dev/null | head -n1 || true)"
   case "$answer" in
-    yes) return 0 ;;
-    no) return 1 ;;
+    yes*) return 0 ;;
+    no*) return 1 ;;
     *) probe_failed=1; return 1 ;;
   esac
 }

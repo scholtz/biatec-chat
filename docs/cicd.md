@@ -156,7 +156,7 @@ What `KUBE_CONFIG` can do is the blast radius of anyone who can run a workflow i
    overlay's kinds (get, create, patch, no delete), read and patch only the three secrets it writes, read pods, claims, events and
    logs for diagnostics, and `pods/exec` on `biatec-chat-postgres-0` only. It has no secrets list, no RBAC objects, no wildcards.
    `python k8s/rbac/check_role.py` renders both overlays, reads `deploy.yml` and fails when a resource, a secret or the exec target
-   is not covered or when a rule is too wide (`--self-test` proves it rejects twelve bad roles); CI runs it, so a new kind in an
+   is not covered or when a rule is too wide (`--self-test` proves it rejects a list of deliberately bad roles and kubectl calls); CI runs it, so a new kind in an
    overlay or a new secret in the workflow cannot merge without a conscious change of the Role.
 2. **A time-limited token.** Issue the kubeconfig token for the service account with an expiry and replace the secret before it lapses:
    ```
@@ -187,10 +187,12 @@ What `KUBE_CONFIG` can do is the blast radius of anyone who can run a workflow i
    Required reviewers also hold the weekly `rolesanywhere-expiry` check of Production until someone approves it; approve it, or accept
    that Stage's check is the only unattended one.
 
-What the Role does not do: it limits the identity's own API calls, but whoever can change `deploy.yml` and run it in the environment can
-still mount a secret into a Deployment. The same goes for a hostPath volume (stage uses them), which can expose node paths to a workload that mounts it. The branch policy and the reviewers are what close that. A stolen
-token alone can still patch Deployments and read their pods' logs, so the Role makes it narrower than `admin`, not harmless. Short token
-lifetimes, the branch policy and the reviewers are the other layers.
+What the Role does not do: it does not keep the identity away from the namespace's secrets altogether. Anyone holding the token (or
+able to change `deploy.yml` and run it in the environment) can still create a Deployment that mounts a secret of the namespace and read
+it from the pod's log, or create a service-account-token secret, and a hostPath volume (stage uses them) can expose node paths to a
+workload that mounts it. What the Role takes away are the other rights of `admin`: deleting objects, editing RBAC, reading secrets
+directly, exec into any pod. The token lifetime, the branch policy and the reviewers are what limit who can hold the identity, so all
+four layers belong together.
 
 ## Storage
 
