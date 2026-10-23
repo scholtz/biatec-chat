@@ -188,7 +188,7 @@ What `KUBE_CONFIG` can do is the blast radius of anyone who can run a workflow i
    that Stage's check is the only unattended one.
 
 What the Role does not do: it limits the identity's own API calls, but whoever can change `deploy.yml` and run it in the environment can
-still mount a secret into a Deployment. The branch policy and the reviewers are what close that. A stolen
+still mount a secret into a Deployment. The same goes for a hostPath volume (stage uses them), which can expose node paths to a workload that mounts it. The branch policy and the reviewers are what close that. A stolen
 token alone can still patch Deployments and read their pods' logs, so the Role makes it narrower than `admin`, not harmless. Short token
 lifetimes, the branch policy and the reviewers are the other layers.
 
@@ -200,7 +200,7 @@ they are `hostPath` PersistentVolumes in [k8s/stage/storage.yaml](../k8s/stage/s
 and pre-bound to their claims, under `/mnt/nvme1/chat-stage/`. They have no class on purpose: a claim without a class
 binds only to a volume without one. `Retain` keeps the data on the drive if a claim is deleted. The deploy account
 needs `persistentvolumes` (cluster-scoped): [`k8s/rbac/deploy-pv-clusterrole.yaml`](../k8s/rbac/deploy-pv-clusterrole.yaml) grants
-create and list, and get and patch on the two stage volumes by name, nothing else. Production has no volumes yet.
+create, and get and patch on the two stage volumes by name, nothing else. Production has no volumes yet.
 
 The kubelet does not apply `fsGroup` to hostPath directories, and the databases run as user 999, so the directories are
 created and owned once, on the node, before the first deploy:

@@ -148,9 +148,16 @@ jobs:
         run: |
           kubectl kustomize k8s/stage > /dev/null
           kubectl kustomize k8s/main > /dev/null
-      # The deploy identity's Role must cover exactly what the overlays and deploy.yml do (BCHAT-020, k8s/rbac).
+
+  # The deploy identity's Role must cover exactly what the overlays and deploy.yml do and grant nothing wider (BCHAT-020, k8s/rbac).
+  # Its own job, so a failed image build does not hide RBAC drift. kubectl and jq are on the runner image; PyYAML is installed if missing.
+  deploy-rbac:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check the deploy RBAC
         run: |
+          python3 -c 'import yaml' 2>/dev/null || sudo apt-get install -y -qq python3-yaml
           python3 k8s/rbac/check_role.py
           python3 k8s/rbac/check_role.py --self-test
           bash k8s/rbac/test-preflight.sh

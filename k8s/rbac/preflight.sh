@@ -10,6 +10,7 @@ set -uo pipefail
 WARN_DAYS="${WARN_DAYS:-7}"
 STRICT_IDENTITY="${STRICT_IDENTITY:-}"
 problems=0
+command -v jq >/dev/null || { echo "::error::jq is required by k8s/rbac/preflight.sh."; exit 1; }
 
 token="$(kubectl config view --raw --minify -o 'jsonpath={.users[0].user.token}' 2>/dev/null || true)"
 if [ -z "$token" ]; then
@@ -32,7 +33,17 @@ else
   fi
 fi
 
-can() { [ "$(kubectl auth can-i "$@" -n "$NAMESPACE" 2>/dev/null || true)" = yes ]; }
+# yes -> 0, no -> 1. Anything else (API unreachable, request rejected) is a failed probe: it is reported, and under STRICT_IDENTITY it fails.
+probe_failed=0
+can() {
+  local answer
+  answer="$(kubectl auth can-i "$@" -n "$NAMESPACE" 2>/dev/null | head -n1 || true)"
+  case "$answer" in
+    yes) return 0 ;;
+    no) return 1 ;;
+    *) probe_failed=1; return 1 ;;
+  esac
+}
 if can list secrets; then
   echo "::warning::The deploy identity can read every secret in $NAMESPACE. Bind the scoped Role (k8s/rbac/deploy-role.yaml) instead of the built-in admin role."
   problems=1
@@ -44,6 +55,10 @@ if can get secrets/unrelated-probe || can delete deployments.apps || can create 
 fi
 if can create rolebindings.rbac.authorization.k8s.io; then
   echo "::warning::The deploy identity can edit RBAC in $NAMESPACE. Bind the scoped Role (k8s/rbac/deploy-role.yaml) instead of the built-in admin role."
+  problems=1
+fi
+if [ "$probe_failed" = 1 ]; then
+  echo "::warning::kubectl auth can-i did not answer; the rights of the deploy identity could not be checked."
   problems=1
 fi
 if [ "$problems" = 1 ] && [ "$STRICT_IDENTITY" = 1 ]; then
