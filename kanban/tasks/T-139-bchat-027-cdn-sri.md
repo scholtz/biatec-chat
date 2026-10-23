@@ -52,12 +52,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:** The documented CDN snippets (package README and docs/integration-widget.md) now carry integrity="sha384-..." and crossorigin="anonymous" with the real hash of 0.1.0, plus how to compute the hash for another version; the release job downloads the published tarball and writes the SHA-384 of its standalone file to the GitHub release notes and the job summary; a widget test fails if a snippet drops integrity/crossorigin or pins a version other than package.json's.
+- **Summary:** The documented CDN snippets (package README and docs/integration-widget.md) carry integrity="sha384-..." and crossorigin="anonymous" with the real hash of 0.1.0 and how to compute it for another version. The release job downloads the published tarball, extracts the standalone file (so a tar failure stops the step), checks it is non-empty, hashes it with SHA-384, and writes the value to the notes of a new release, or edits an existing release that lacks it, and to the job summary. docs-sri.test.ts keeps the snippets honest.
 - **Files changed:** packages/chat-widget/README.md, docs/integration-widget.md, .github/workflows/publish-widget.yml, packages/chat-widget/test/docs-sri.test.ts.
-- **How it was verified:** The hash in the docs equals the SHA-384 of the file jsDelivr serves for @biatec/chat-widget@0.1.0 (downloaded and hashed when the change was made); the workflow's shell step run against a tarball built from that file gives the same value; widget suite 434 passed, 0 failed; TEST-014 (action pins) still passes.
+- **How it was verified:** The hash in the docs equals the SHA-384 of the file jsDelivr serves for @biatec/chat-widget@0.1.0 (downloaded and hashed); the workflow's extract-and-hash commands run against a tarball built from that file give the same value; widget suite 434 passed, 0 failed; TEST-014 passes.
 - **Follow-up tasks created:** none.
 - **Unblocks:** none.
-- **Open questions:** The workflow change cannot run until the next publish, so only its shell step was exercised locally. Bumping the package version now fails docs-sri.test.ts until the snippets (version and hash) are updated, by design.
+- **Open questions:** The workflow change only runs at the next publish (or a re-run), so it is exercised locally but not in CI. The hash comes from the CI-built tarball; if a version was already on npm from another build, the two could differ, and nothing compares them. The snippets are not tied to package.json's version (a release PR cannot know the hash of a file that does not exist yet), so a version bump needs a follow-up that copies the hash from the release notes.
 
 ## Review
 
