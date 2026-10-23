@@ -65,7 +65,7 @@ else
   not_after="$(date -u -d "$(openssl x509 -in "$CERT" -noout -enddate | sed 's/^notAfter=//')" +%y%m%d%H%M%SZ 2>/dev/null || true)"
   [ -n "$not_after" ] || not_after="$(date -u -d '+1 year' +%y%m%d%H%M%SZ 2>/dev/null || date -u -v+1y +%y%m%d%H%M%SZ)"
   subject="$(openssl x509 -in "$CERT" -noout -subject | sed 's/^subject= *//; s/ = /=/g; s#, #/#g; s#^#/#')"
-  printf 'R\t%s\t%s,%s	%s\tunknown\t%s\n' "$not_after" "$(date -u +%y%m%d%H%M%SZ)" "${REVOKE_REASON:-keyCompromise}" "$serial" "$subject" >> "$INDEX"
+  printf 'R\t%s\t%s,%s\t%s\tunknown\t%s\n' "$not_after" "$(date -u +%y%m%d%H%M%SZ)" "${REVOKE_REASON:-keyCompromise}" "$serial" "$subject" >> "$INDEX"
   echo "Recorded certificate $serial of $ENV_NAME as revoked."
 fi
 
