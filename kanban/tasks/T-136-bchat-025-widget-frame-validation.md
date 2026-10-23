@@ -41,12 +41,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] Valid preview and consent frames from the existing tests still pass through.
-- [ ] A preview with a missing or mistyped field (steps not an array, unknown status, non-string groupHash, malformed asset) is dropped.
-- [ ] A consent frame with an unknown state or non-string optional field is dropped.
-- [ ] A frame above the size limit ends the stream with an `error` event and does not buffer further.
-- [ ] Reply text stops growing at the cap.
-- [ ] The widget test suite shows no new failures (five pre-existing DEX playground failures are BCHAT-045).
+- [x] Valid preview and consent frames from the existing tests still pass through.
+- [x] A preview with a missing or mistyped field (steps not an array, unknown status, non-string groupHash, malformed asset) is dropped.
+- [x] A consent frame with an unknown state or non-string optional field is dropped.
+- [x] A frame above the size limit ends the stream with an `error` event and does not buffer further.
+- [x] Reply text stops growing at the cap.
+- [x] The widget test suite shows no new failures (five pre-existing DEX playground failures are BCHAT-045).
 
 ## Verification
 
@@ -54,12 +54,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** preview_card and consent_status frames are validated field by field against the protocol (statuses and states from the enums, nested steps and assets, optional fields); the SSE parser stops at 1,000,000 characters per frame and readChatEvents then yields a non-retryable stream_too_large error and cancels the body; assistant reply text stops growing at 200,000 characters.
+- **Files changed:** packages/chat-widget/src/transport/sse.ts, src/components/chat/useChat.ts, test/stream-limits.test.ts.
+- **How it was verified:** pnpm --filter @biatec/chat-widget test: 24 new tests pass; the suite otherwise shows only the 5 pre-existing DEX playground failures (BCHAT-045, #298); vue-tsc reports no errors in src or test (the playground errors need the built dist).
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** None.
 
 ## Review
 

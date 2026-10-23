@@ -64,6 +64,9 @@ export interface ChatServices {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/** Longest assistant reply the widget keeps (characters). A real reply is a few thousand. */
+export const MAX_REPLY_CHARS = 200_000;
+
 export function useChat(svc: ChatServices) {
   const messages = reactive<ChatMessage[]>([]);
   const session = ref<SessionState | null>(null);
@@ -157,7 +160,8 @@ export function useChat(svc: ChatServices) {
   function apply(m: ChatMessage, e: ChatEvent): void {
     switch (e.type) {
       case "text_delta":
-        m.text += e.text;
+        // A reply cannot grow without bound (BCHAT-025): past the cap further text is dropped.
+        if (m.text.length < MAX_REPLY_CHARS) m.text += e.text.slice(0, MAX_REPLY_CHARS - m.text.length);
         break;
       case "tool_status": {
         const line = m.tools.find((t) => t.id === e.toolCallId);

@@ -71,6 +71,49 @@ const isDataCard = (v: Record<string, unknown>): boolean =>
   (v.fiatCurrency == null || isStr(v.fiatCurrency)) &&
   (v.partial == null || typeof v.partial === "boolean"));
 
+/** The statuses of an action preview and its steps (ActionPreviewStatus in the protocol). */
+const PREVIEW_STATUSES = ["AwaitingConfirmation", "AwaitingScope", "AwaitingApproval", "Signing", "Submitted", "Completed", "Cancelled", "Expired", "Failed"];
+const CONSENT_STATES = ["NotRequired", "Pending", "Approved", "Denied", "TimedOut"];
+/** Absent, null or a string. */
+const optStr = (v: unknown): boolean => v === undefined || v === null || isStr(v);
+
+const isAssetAmount = (a: unknown): boolean =>
+  isObj(a) && isStr(a.assetId) && isStr(a.symbol) && isStr(a.amount) && isInt(a.decimals) && optStr(a.fiatValue) && optStr(a.fiatCurrency);
+const isActionStep = (s: unknown): boolean =>
+  isObj(s) &&
+  isStr(s.stepId) &&
+  isInt(s.index) &&
+  isStr(s.title) &&
+  isStr(s.status) &&
+  PREVIEW_STATUSES.includes(s.status) &&
+  isStr(s.groupHash) &&
+  optStr(s.from) &&
+  optStr(s.to) &&
+  optArray(s.assets, isAssetAmount) &&
+  optStr(s.feeAmount) &&
+  optStr(s.slippagePercent) &&
+  optStr(s.simulationSummary) &&
+  optStr(s.transactionId) &&
+  optStr(s.explorerUrl);
+/** Every field ActionPreviewCard.vue reads. A malformed frame is dropped rather than breaking the message list (BCHAT-025). */
+export const isActionPreview = (p: unknown): boolean =>
+  isObj(p) &&
+  isStr(p.previewId) &&
+  isStr(p.capability) &&
+  isStr(p.intent) &&
+  isStr(p.network) &&
+  isStr(p.genesisId) &&
+  isStr(p.status) &&
+  PREVIEW_STATUSES.includes(p.status) &&
+  isStr(p.expiresAt) &&
+  Array.isArray(p.steps) &&
+  p.steps.every(isActionStep) &&
+  (p.limit == null || (isObj(p.limit) && isStr(p.limit.bucket) && isStr(p.limit.remaining) && isStr(p.limit.currency))) &&
+  (p.expectsAuthenticatorApproval == null || typeof p.expectsAuthenticatorApproval === "boolean") &&
+  optStr(p.approvalReason);
+export const isConsentStatus = (c: unknown): boolean =>
+  isObj(c) && isStr(c.previewId) && isStr(c.stepId) && isStr(c.state) && CONSENT_STATES.includes(c.state) && optStr(c.bindingCode) && optStr(c.expiresAt);
+
 /** Narrow an unknown JSON value to a ChatEvent: the discriminator and the required fields of that event type. */
 export function isChatEvent(v: unknown): v is ChatEvent {
   if (!isObj(v) || !isStr(v.type)) return false;
@@ -80,9 +123,9 @@ export function isChatEvent(v: unknown): v is ChatEvent {
     case "tool_status":
       return isStr(v.toolCallId) && isStr(v.label) && isStr(v.state);
     case "preview_card":
-      return isObj(v.preview);
+      return isActionPreview(v.preview);
     case "consent_status":
-      return isObj(v.consent) && isStr(v.consent.previewId) && isStr(v.consent.state);
+      return isConsentStatus(v.consent);
     case "sign_in_card":
       return isStr(v.signInUrl) && isStr(v.reason) && typeof v.unavailable === "boolean";
     case "safe_card":
@@ -96,12 +139,19 @@ export function isChatEvent(v: unknown): v is ChatEvent {
   }
 }
 
+/** Largest SSE frame (one event's data) or unterminated line the widget buffers. A real event is a few KiB (BCHAT-025). */
+export const MAX_FRAME_CHARS = 1_000_000;
+
 /** Incremental server-sent-events parser. Feed text chunks; it returns the data payloads completed so far. */
 export class SseParser {
   private buffer = "";
   private data: string[] = [];
+  private dataChars = 0;
+  /** Set when a frame or line exceeded {@link MAX_FRAME_CHARS}; the parser then buffers nothing more. */
+  overflowed = false;
 
   push(chunk: string): string[] {
+    if (this.overflowed) return [];
     this.buffer += chunk;
     const out: string[] = [];
     for (;;) {
@@ -114,12 +164,24 @@ export class SseParser {
       if (line === "") {
         if (this.data.length) out.push(this.data.join("\n"));
         this.data = [];
+        this.dataChars = 0;
       } else if (line.startsWith("data:")) {
+        this.dataChars += line.length;
+        if (this.dataChars > MAX_FRAME_CHARS) return this.overflow();
         this.data.push(line.slice(5).replace(/^ /, ""));
       }
       // event:, id:, retry: and comment lines carry nothing we need: the JSON payload holds its own `type`.
     }
+    // No line break yet and already too long: nothing legitimate looks like this.
+    if (this.buffer.length > MAX_FRAME_CHARS) return this.overflow();
     return out;
+  }
+
+  private overflow(): string[] {
+    this.overflowed = true;
+    this.buffer = "";
+    this.data = [];
+    return [];
   }
 }
 
@@ -132,6 +194,12 @@ export async function* readChatEvents(body: ReadableStream<Uint8Array>): AsyncGe
     for (;;) {
       const { value, done } = await reader.read();
       const payloads = done ? [] : parser.push(decoder.decode(value, { stream: true }));
+      if (parser.overflowed) {
+        // End the stream with an error the UI already knows how to show, and stop reading the rest of the body.
+        yield { type: "error", code: "stream_too_large", message: "The reply was too large and was stopped.", retryable: false } as ChatEvent;
+        await reader.cancel().catch(() => undefined);
+        return;
+      }
       for (const p of payloads) {
         let parsed: unknown;
         try {
