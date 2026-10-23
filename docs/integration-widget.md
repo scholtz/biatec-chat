@@ -211,11 +211,17 @@ One script tag (it mounts on `DOMContentLoaded`, or at once if the page has load
 ```html
 <script
   src="https://cdn.jsdelivr.net/npm/@biatec/chat-widget@0.1.0/dist/standalone/biatec-chat.standalone.iife.js"
+  integrity="sha384-xodF3u1Q6RzYT358YYHDC98l1O3At9l3tAtb9M+JIsEaGOJmw49pSQI8uikEY1H4"
+  crossorigin="anonymous"
   data-backend-url="https://chat.biatec.io"
   data-client-key="example-web"
   defer
 ></script>
 ```
+
+`integrity` and `crossorigin` make the browser refuse a file that is not the one you reviewed, even if the CDN or the package were compromised;
+keep them, pin the exact version, and change the version and the hash together (each GitHub release lists the `sha384-...` of its
+`biatec-chat.standalone.iife.js`; `curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A` computes it).
 
 The options are `data-*` attributes: `data-backend-url` and `data-client-key` (required), `data-locale`,
 `data-chat-theme` (not `data-theme`, which many sites style), `data-mode`, `data-host-dark-class`,

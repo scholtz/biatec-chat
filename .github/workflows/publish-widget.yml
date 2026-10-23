@@ -362,6 +362,11 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
+      # The tarball that was published: its standalone file is what the CDN serves, so its hash is what embedders pin (BCHAT-027).
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: chat-widget-tarball
+          path: artifacts
       - name: Tag and GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -375,6 +380,14 @@ jobs:
             echo "Release of $PACKAGE $VERSION. See packages/chat-widget/CHANGELOG.md." > notes.md
           fi
           printf '\nnpm: https://www.npmjs.com/package/%s/v/%s\n' "$PACKAGE" "$VERSION" >> notes.md
+          # Subresource Integrity of the standalone file embedders load from the CDN. The file is extracted first, so a failing tar
+          # stops the step instead of hashing empty input (a pipe would hide it: the step shell has no pipefail).
+          tar -xzOf artifacts/*.tgz package/dist/standalone/biatec-chat.standalone.iife.js > standalone.iife.js
+          [ -s standalone.iife.js ] || { echo "::error::The tarball has no standalone file to hash."; exit 1; }
+          sri=$(openssl dgst -sha384 -binary standalone.iife.js | openssl base64 -A)
+          [ -n "$sri" ] || { echo "::error::Could not compute the SRI hash of the standalone file."; exit 1; }
+          printf '\nSubresource Integrity of `dist/standalone/biatec-chat.standalone.iife.js`: `sha384-%s`\n' "$sri" >> notes.md
+          echo "SRI sha384-$sri" >> "$GITHUB_STEP_SUMMARY"
 
           if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --silent 2>/dev/null; then
             echo "::notice::Tag $tag already exists; keeping it."
@@ -384,6 +397,12 @@ jobs:
           fi
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::notice::GitHub release $tag already exists; keeping it."
+            # An older release made before the hash was listed gets it added; its other notes stay as they are.
+            if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body -q .body | grep -q "Subresource Integrity"; then
+              gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body -q .body > existing-notes.md
+              printf '\nSubresource Integrity of `dist/standalone/biatec-chat.standalone.iife.js`: `sha384-%s`\n' "$sri" >> existing-notes.md
+              gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file existing-notes.md
+            fi
           else
             pre=()
             if [ "$PRERELEASE" = "true" ]; then pre=(--prerelease --latest=false); fi

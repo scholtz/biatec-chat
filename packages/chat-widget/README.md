@@ -46,11 +46,22 @@ One script tag; the widget mounts when the page has loaded:
 ```html
 <script
   src="https://cdn.jsdelivr.net/npm/@biatec/chat-widget@0.1.0/dist/standalone/biatec-chat.standalone.iife.js"
+  integrity="sha384-xodF3u1Q6RzYT358YYHDC98l1O3At9l3tAtb9M+JIsEaGOJmw49pSQI8uikEY1H4"
+  crossorigin="anonymous"
   data-backend-url="https://chat.biatec.io"
   data-client-key="your-client-key"
   defer
 ></script>
 ```
+
+Keep `integrity` and `crossorigin` and pin the exact version: the browser then refuses a file that is not the one you reviewed, even if the CDN
+or the package were compromised. Every GitHub release lists the `sha384-...` value of its `biatec-chat.standalone.iife.js`; to check one yourself:
+
+```sh
+curl -sL https://cdn.jsdelivr.net/npm/@biatec/chat-widget@0.1.0/dist/standalone/biatec-chat.standalone.iife.js | openssl dgst -sha384 -binary | openssl base64 -A
+```
+
+When you move to a newer version, change the version in the URL and the hash together.
 
 Attributes: `data-backend-url` and `data-client-key` (required), `data-locale`, `data-chat-theme`
 (`auto | light | dark | host`), `data-mode` (`floating | workspace`), `data-host-dark-class`,
