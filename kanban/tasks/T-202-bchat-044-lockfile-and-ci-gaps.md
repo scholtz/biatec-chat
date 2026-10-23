@@ -1,7 +1,7 @@
 ---
 id: T-202
 title: "Install the mock OIDC image from the workspace lock; run the verifier and conformance suites in CI (BCHAT-044)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -54,8 +54,11 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 12:22 · approve · PR #326 merged into main @ 60c54c5 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 12:13 · kanban-split · (new) → backlog · created from audit issue #297
 - 2026-10-23 12:13 · scholtz · taken · status stays backlog
 - 2026-10-23 12:13 · session-20261023-1213 · backlog → in-progress · claimed, branch task/T-202
+- 2026-10-23 12:22 · user · in-progress → done · PR #326 merged into main @ 60c54c5 (synced by kanban-sync)
