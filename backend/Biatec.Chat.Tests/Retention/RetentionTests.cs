@@ -398,15 +398,27 @@ public sealed class RetentionTests : IAsyncLifetime
 
         await using var holder = NewContext();
         await using var held = await holder.Database.BeginTransactionAsync();
-        await Biatec.Chat.Core.Data.ConversationLock.AcquireAsync(holder, conv, default); // the in-flight turn is writing
+        await ConversationLock.AcquireAsync(holder, conv, default); // the in-flight turn is writing
 
         var erase = Task.Run(async () =>
         {
             await using var db = NewContext();
             return await Retention(db).EraseAsync(TenantId, "sub-lock", null, default);
         });
-        await Task.Delay(1500);
-        Assert.False(erase.IsCompleted, "erasure must wait for the writer's lock");
+        // Deterministic: wait until PostgreSQL reports an advisory lock request that is not granted (erasure waiting on the writer).
+        await using (var admin = new NpgsqlConnection(AdminCs))
+        {
+            await admin.OpenAsync();
+            var waiting = false;
+            for (var i = 0; i < 100 && !waiting; i++)
+            {
+                await using var cmd = new NpgsqlCommand("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted", admin);
+                waiting = (long)(await cmd.ExecuteScalarAsync())! > 0;
+                if (!waiting) await Task.Delay(100);
+            }
+            Assert.True(waiting, "erasure must wait for the writer's lock");
+        }
+        Assert.False(erase.IsCompleted);
 
         await held.CommitAsync(); // the write is done
         Assert.Equal(ErasureOutcome.Erased, (await erase.WaitAsync(TimeSpan.FromSeconds(15))).Outcome);

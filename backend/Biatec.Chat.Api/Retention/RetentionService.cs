@@ -196,8 +196,16 @@ public sealed class RetentionService(ChatDbContext db, IOptions<RetentionOptions
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var ids = await db.Conversations.Where(c => c.TenantId == tenantId && c.OidcSub == oidcSub).Select(c => c.Id).ToListAsync(ct);
         if (ids.Count == 0) return new ErasureResult(ErasureOutcome.Erased, 0, 0);
-        // Serialize with in-flight evidence appends and message stores of these conversations (sorted: no lock-order deadlock).
-        foreach (var id in ids.Order()) await Biatec.Chat.Core.Data.ConversationLock.AcquireAsync(db, id, ct);
+        // Serialize with in-flight evidence appends, message stores and preview creation of these conversations (sorted: no lock-order
+        // deadlock). The list is read again after locking until it is stable, so a conversation created meanwhile is covered too.
+        var locked = new HashSet<Guid>();
+        while (true)
+        {
+            foreach (var id in ids.Where(i => !locked.Contains(i)).Order()) { await ConversationLock.AcquireAsync(db, id, ct); locked.Add(id); }
+            var again = await db.Conversations.Where(c => c.TenantId == tenantId && c.OidcSub == oidcSub).Select(c => c.Id).ToListAsync(ct);
+            if (again.All(locked.Contains)) { ids = again; break; }
+            ids = again;
+        }
 
         if (await db.ActionPreviews.Where(p => ids.Contains(p.ConversationId)).AnyAsync(InFlight(now), ct))
             return new ErasureResult(ErasureOutcome.ActionInFlight, 0, 0);

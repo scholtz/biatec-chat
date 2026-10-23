@@ -52,9 +52,9 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:** Erasure, evidence append and message store now share a per-conversation advisory lock (ConversationLock). After erasure an evidence append keeps the chain (hashes, signature) but stores no payload or salt, and a message store keeps its seq but stores no content, tool calls or tool results. PR #310.
+- **Summary:** Erasure, evidence append, message store and preview creation now share a per-conversation advisory lock (ConversationLock). After erasure an evidence append keeps the chain (hashes, signature) but stores no payload or salt, and a message store keeps its seq but stores no content, tool calls or tool results. PR #310.
 - **Files changed:** Core/Data/ConversationLock.cs, Core/Evidence/EvidenceLog.cs, Api/Retention/RetentionService.cs, Api/Orchestration/ConversationOrchestrator.cs, and tests in Evidence, Orchestration and Retention.
-- **How it was verified:** dotnet test full suite (1557 passed); new tests: append to an erased conversation, a reply finishing after erasure, erasure waiting for the lock.
+- **How it was verified:** dotnet test full suite (1558 passed); new tests: append to an erased conversation, a reply finishing after erasure, preview creation in an erased conversation, erasure waiting for the lock (deterministic via pg_locks).
 - **Follow-up tasks created:** none.
 - **Unblocks:** none.
 - **Open questions:** The in-flight stream itself is not stopped (the user still sees the reply); only nothing readable is stored. Want it cancelled on erasure too?
