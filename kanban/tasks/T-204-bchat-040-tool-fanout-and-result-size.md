@@ -1,7 +1,7 @@
 ---
 id: T-204
 title: "Cap tool calls per model turn and the size of a tool result (BCHAT-040)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -53,8 +53,11 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 12:51 · approve · PR #328 merged into main @ f5f5d04 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 12:40 · kanban-split · (new) → backlog · created from audit issue #293
 - 2026-10-23 12:40 · scholtz · taken · status stays backlog
 - 2026-10-23 12:40 · session-20261023-1240 · backlog → in-progress · claimed, branch task/T-204
+- 2026-10-23 12:51 · user · in-progress → done · PR #328 merged into main @ f5f5d04 (synced by kanban-sync)
