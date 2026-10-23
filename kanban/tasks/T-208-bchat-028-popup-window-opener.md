@@ -1,6 +1,6 @@
 ---
 id: T-208
-title: "Sign-in popups: COOP on our page, a widget that survives a severed opener, and the need recorded for Biatec OIDC (BCHAT-028)"
+title: "Record the popup window.opener exposure and the COOP prerequisite for Biatec OIDC (BCHAT-028)"
 status: in-progress
 priority: P3
 epic: "Security"
@@ -17,7 +17,7 @@ created: 2026-10-23
 updated: 2026-10-23
 ---
 
-# T-208 - Sign-in popups: COOP on our page, a widget that survives a severed opener, and the need recorded for Biatec OIDC (BCHAT-028)
+# T-208 - Record the popup window.opener exposure and the COOP prerequisite for Biatec OIDC (BCHAT-028)
 
 ## Context
 
@@ -25,12 +25,15 @@ Security audit finding BCHAT-028 (Low, issue #281, WDG-5, RISK-007). The widget 
 
 ## Goal
 
-Our popup page sends COOP, the widget no longer misreads a severed popup as a cancelled sign-in, and the request for COOP on Biatec OIDC's pages is recorded where the OIDC owners read it.
+The exposure and the exact change needed at Biatec OIDC are written down where the OIDC owners read them, together with what the widget must do before the header is switched on. Nothing in the sign-in flow changes in this task.
 
 ## Scope
 
-- In: COOP on the backend's close page; the widget's popup-closed detection (a popup that was never seen open is not a cancel); the required-changes entry; tests.
-- Out: opening the popup with `noopener` (the blank popup must be navigated after the backend answers); Biatec OIDC's own headers (another repository).
+- In: a section in docs/required-changes-biatec-oidc.md.
+- Out: any code change. Analysis (below) found none that is safe without a real-browser check this session cannot do:
+  - COOP on our own close page protects nothing (it is our page, the last one shown) and would stop the popup from closing itself in some browsers.
+  - COOP only helps on the third-party pages (Biatec OIDC's authorization pages). Once they send it, the opener sees the popup as `closed` immediately, which the widget reads as "the user cancelled", so sign-in would fail at once. The widget needs a cancel signal that does not depend on `popup.closed` (for example a Cancel button while waiting, relying on the status polling and the 5 minute timeout) in the same release.
+  - `noopener` is not possible: the blank popup is opened synchronously from the click and navigated after the backend answers.
 
 ## Parallel work
 
@@ -38,9 +41,7 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] The backend's `/auth/callback` close page sends `Cross-Origin-Opener-Policy: same-origin`.
-- [ ] A popup the widget never saw open (severed by COOP) does not end the sign-in as cancelled; completion by polling still works, and a popup the user closes after it was seen open still ends it.
-- [ ] docs/required-changes-biatec-oidc.md asks Biatec OIDC to send COOP on its authorization pages, with the consequence for the widget.
+- [x] docs/required-changes-biatec-oidc.md has a section naming the exposure, the header Biatec OIDC should send on its authorization pages, and the widget change that must ship with it.
 
 ## Verification
 
