@@ -271,9 +271,13 @@ public sealed class WalletReadTests
     [Fact]
     public void Gate_accepts_the_wallet_transfer_bitcoin_network_names_for_the_read_tools()
     {
-        var registry = CapabilityRegistry.CreateDefault();
+        // With Bitcoin transfers enabled the read tools and wallet.transfer share one list of network names; by default
+        // wallet.transfer leaves bitcoin out (BCHAT-037) while the read tools keep it.
+        var registry = CapabilityRegistry.CreateDefault(bitcoinTransfers: true);
         var gate = new ToolGate(registry, new InMemoryPolicyEventSink());
         var auth = new GateContext(SessionTier.Authenticated, ["openid"]);
+        var defaultTransferNetworks = CapabilityRegistry.CreateDefault().Find("wallet.transfer")!.InputSchema!["properties"]!["network"]!["enum"]!.AsArray().Select(n => (string)n!).ToArray();
+        Assert.Equal(["mainnet", "testnet"], defaultTransferNetworks);
         var transferNetworks = registry.Find("wallet.transfer")!.InputSchema!["properties"]!["network"]!["enum"]!.AsArray().Select(n => (string)n!).ToArray();
         foreach (var name in new[] { "wallet.listAddresses", "wallet.balance" })
             Assert.Equal(transferNetworks, registry.Find(name)!.InputSchema!["properties"]!["network"]!["enum"]!.AsArray().Select(n => (string)n!).ToArray());

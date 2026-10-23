@@ -807,6 +807,20 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
         Assert.Empty(_mcp.Calls);
     }
 
+    // BCHAT-037: even a call that bypassed the gate cannot start a Bitcoin transfer while the schema does not offer it.
+    [Fact]
+    public async Task Executor_refuses_bitcoin_when_the_capability_does_not_offer_it_and_builds_nothing()
+    {
+        var exec = NewExecutor();
+        var r = await exec.ExecuteAsync(ExecCtx(), new JsonObject { ["network"] = "bitcoin", ["from"] = "a", ["to"] = "b", ["amount"] = "100000" }, default);
+
+        Assert.True(r.IsError);
+        Assert.Contains("not available yet", r.Content);
+        Assert.Empty(_mcp.Calls);
+        await using var db = NewContext();
+        Assert.Empty(await db.ActionPreviews.Where(p => p.ConversationId == _conversation).ToListAsync()); // the database is shared by the class
+    }
+
     // ---- executor
 
     private WalletTransferExecutor NewExecutor()
@@ -852,7 +866,10 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
     {
         var ex = NewExecutor();
         Assert.True((await ex.ExecuteAsync(ExecCtx(SessionTier.Anonymous), Args(Stranger), default)).IsError);
-        Assert.True((await ex.ExecuteAsync(ExecCtx(), Args(Stranger, network: "bitcoin"), default)).IsError);
+        // Bitcoin with transfers enabled: the argument validation of the Bitcoin path itself refuses it (the address is not a Bitcoin address).
+        var enabled = new ToolExecutionContext(CapabilityRegistry.CreateDefault(bitcoinTransfers: true).Find("wallet.transfer")!, "tu1", _conversation, "sess", "t1", SessionTier.Authenticated, ["openid"]);
+        Assert.True((await ex.ExecuteAsync(enabled, Args(Stranger, network: "bitcoin"), default)).IsError);
+        Assert.True((await ex.ExecuteAsync(ExecCtx(), Args(Stranger, network: "bitcoin"), default)).IsError); // and with it off, as the tool is not offered
         Assert.True((await ex.ExecuteAsync(ExecCtx(), Args(Stranger, amount: "0"), default)).IsError);
         var bad = Args(Stranger);
         bad["to"] = "NOTANADDRESS";

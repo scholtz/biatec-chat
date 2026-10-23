@@ -38,4 +38,4 @@ A blockchain explorer is a website that shows transactions and accounts. After a
 
 ## Other chains
 
-Biatec OIDC also derives EVM (Ethereum-compatible) and Bitcoin addresses. In Biatec Chat, Bitcoin transfers are supported; bridging between chains is not.
+Biatec OIDC also derives EVM (Ethereum-compatible) and Bitcoin addresses. In Biatec Chat you can see your Bitcoin addresses and balances; sending Bitcoin is not available yet, and bridging between chains is not either.

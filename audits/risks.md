@@ -53,7 +53,7 @@ Add a row to the summary table and a detail block below it. Keep both in ID orde
 | RISK-020 | Cancel can race consent redemption: a cancelled preview is signed and broadcast | 2 | 4 | Medium (8) | Open | Unassigned | 2026-11-21 |
 | RISK-021 | Anonymous abuse: unbounded session creation and shared rate-limit bucket behind ingress | 4 | 3 | High (12) | Open | Unassigned | 2026-11-21 |
 | RISK-022 | Mock OIDC exposes device tokens and under-models CIBA rules; unsafe on reachable hosts | 2 | 4 | Medium (8) | Open | Unassigned | 2026-11-21 |
-| RISK-023 | Bitcoin transfer path offered but unsupported at confirm; PSBT input values builder-asserted | 2 | 2 | Low (4) | Open | Unassigned | 2027-01-20 |
+| RISK-023 | Bitcoin transfer path offered but unsupported at confirm; PSBT input values builder-asserted | 2 | 2 | Low (4) | Mitigated (transfers not offered by default, T-141; PSBT input values remain builder-asserted until a signing path exists, BCHAT-041) | scholtz | 2027-01-20 |
 
 ## Details
 

@@ -41,10 +41,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] With the default registry, `wallet.transfer` with network `bitcoin` is refused by the gate; mainnet and testnet are accepted.
-- [ ] `wallet.balance` and `wallet.listAddresses` still accept `bitcoin`.
-- [ ] `CreateDefault(bitcoinTransfers: true)` restores the old schema (used by the Bitcoin tests).
-- [ ] The full backend suite stays green.
+- [x] With the default registry, `wallet.transfer` with network `bitcoin` is refused by the gate; mainnet and testnet are accepted.
+- [x] `wallet.balance` and `wallet.listAddresses` still accept `bitcoin`.
+- [x] `CreateDefault(bitcoinTransfers: true)` restores the old schema (used by the Bitcoin tests).
+- [x] The full backend suite stays green.
 
 ## Verification
 
@@ -52,12 +52,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** CapabilityRegistry.CreateDefault(bitcoinTransfers: false) removes bitcoin from the wallet.transfer input schema and description, so the gate refuses it; the flag is configurable as Wallet:BitcoinTransfers (default false); WalletTransferExecutor also refuses bitcoin when the capability does not offer it (defence in depth). wallet.balance and wallet.listAddresses still accept bitcoin. The knowledge-base pages and architecture doc no longer claim Bitcoin transfers work.
+- **Files changed:** Core/Capabilities/CapabilityRegistry.cs, Api/Chat/ChatEndpoints.cs, Api/Wallet/Transfer/WalletTransferExecutor.cs, Tests (ToolGate, WalletRead, Transfer), docs/kb/transfers.md, docs/kb/algorand-basics.md, docs/architecture.md. Also docs/kb/biatec-chat-assistant.md, docs/kb/action-previews.md, k8s/README.md (Wallet__BitcoinTransfers), audits/risks.md (RISK-023 mitigated).
+- **How it was verified:** Full backend suite 1624 passed, 0 failed (new: gate refuses bitcoin transfer for the schema reason and records a policy event, flag restores it, reads of bitcoin still allowed, executor refuses without building a preview).
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** Turn Wallet__BitcoinTransfers on only together with a PSBT signing path (documented in k8s/README.md). A Bitcoin preview stored before this change would still reach Confirm and fail as group_mismatch (nothing was in production with Bitcoin enabled that I know of). #294 (BCHAT-041) concerns code that is now unreachable by default.
 
 ## Review
 

@@ -16,7 +16,7 @@ A guest session never sees account data and never builds transactions. The serve
 Everything a guest can do, plus:
 
 - List your addresses and show balances, as a holdings card with an allocation bar.
-- Transfer ALGO, Algorand Standard Assets such as USDC and EURS, or Bitcoin, to your own other address or to anyone else.
+- Transfer ALGO or Algorand Standard Assets such as USDC and EURS to your own other address or to anyone else. Bitcoin addresses and balances can be shown, but sending Bitcoin is not available yet.
 - Swap assets on Biatec DEX.
 - Add liquidity to or remove liquidity from a Biatec DEX pool.
 - Create a Biatec Safe, propose payments from it, approve proposals and execute them.

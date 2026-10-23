@@ -224,11 +224,32 @@ public class ToolGateTests
     }
 
     [Fact]
-    public void Transfer_supports_bitcoin_and_optional_asset()
+    public void Transfer_does_not_offer_bitcoin_by_default_but_still_accepts_algorand_networks()
     {
-        var (gate, _) = Make();
+        var (gate, sink) = Make();
+        var bitcoin = new JsonObject { ["network"] = "bitcoin", ["from"] = "A1", ["to"] = "B2", ["amount"] = "5" };
+        var refused = gate.Check("wallet.transfer", bitcoin, Auth("openid"));
+        Assert.False(refused.Allowed);
+        Assert.Contains("schema", refused.Reason ?? "", StringComparison.OrdinalIgnoreCase); // refused for the network value, not for tier or scope
+        Assert.NotEmpty(sink.Events);
+        foreach (var network in new[] { "mainnet", "testnet" })
+            Assert.True(gate.Check("wallet.transfer", new JsonObject { ["network"] = network, ["from"] = "A1", ["to"] = "B2", ["amount"] = "5" }, Auth("openid")).Allowed);
+    }
+
+    [Fact]
+    public void Transfer_supports_bitcoin_and_optional_asset_when_bitcoin_transfers_are_enabled()
+    {
+        var gate = new ToolGate(CapabilityRegistry.CreateDefault(bitcoinTransfers: true), new InMemoryPolicyEventSink());
         var args = new JsonObject { ["network"] = "bitcoin", ["from"] = "A1", ["to"] = "B2", ["amount"] = "5" };
         Assert.True(gate.Check("wallet.transfer", args, Auth("openid")).Allowed);
+    }
+
+    [Fact]
+    public void Reading_bitcoin_addresses_and_balances_stays_available_by_default()
+    {
+        var (gate, _) = Make();
+        Assert.True(gate.Check("wallet.listAddresses", new JsonObject { ["network"] = "bitcoin" }, Auth("openid")).Allowed);
+        Assert.True(gate.Check("wallet.balance", new JsonObject { ["network"] = "bitcoin", ["address"] = "A1" }, Auth("openid")).Allowed);
     }
 
     [Fact]
