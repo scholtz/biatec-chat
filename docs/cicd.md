@@ -52,6 +52,8 @@ cosign verify scholtz2/biatec-chat-backend@sha256:<digest> \
 cosign verify-attestation --type spdxjson scholtz2/biatec-chat-backend@sha256:<digest> <same two flags> | jq -r .payload | base64 -d | jq .predicate
 ```
 
+A manual run of `deploy-stage` from a branch other than `main` signs with that branch's identity, which the deploy rejects once enforcement is on: dispatch it from `main`.
+
 Base images are pinned by digest in every Dockerfile (`FROM image:tag@sha256:...`); `infra/ci/check_dockerfile_pins.py` fails CI for an
 unpinned one, and Dependabot opens a weekly pull request when a pinned tag has a new digest. The runtime images `postgres:16` and
 `redis:7` in `k8s/base` and the compose file are still by tag: pinning them would roll the databases to the newest minor on the next

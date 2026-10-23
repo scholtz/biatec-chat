@@ -65,8 +65,9 @@ jobs:
           identity='^https://github\.com/scholtz/biatec-chat/\.github/workflows/deploy-stage\.yml@refs/heads/main$'
           issuer='https://token.actions.githubusercontent.com'
           for name in $images; do
-            digest="$(docker buildx imagetools inspect "$name:$TAG" --format '{{json .Manifest.Digest}}' | tr -d '"')" \
+            raw="$(docker buildx imagetools inspect "$name:$TAG" --format '{{json .Manifest.Digest}}')" \
               || { echo "::error::Could not read the manifest of $name:$TAG (no such tag, or the registry refused)."; exit 1; }
+            digest="${raw//\"/}"
             [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::Could not resolve $name:$TAG to a digest."; exit 1; }
             if cosign verify "$name@$digest" --certificate-identity-regexp "$identity" --certificate-oidc-issuer "$issuer" >/dev/null; then
               echo "Verified $name@$digest"
@@ -179,6 +180,11 @@ jobs:
           total="$(grep -c "newTag:" "$OVERLAY/kustomization.yaml")"
           [ "$total" -ge 2 ] && [ "$(grep -c "newTag: $TAG$" "$OVERLAY/kustomization.yaml")" = "$total" ]
           kubectl kustomize "$OVERLAY" > "$RUNNER_TEMP/rendered.yaml"
+          # The digest pinned above must be what is rendered: a kustomize change or an overlay entry that drops it would deploy by tag again.
+          for d in $(yq -r '.images[].digest' "$OVERLAY/kustomization.yaml"); do
+            [[ "$d" =~ ^sha256:[0-9a-f]{64}$ ]] && grep -q "@$d" "$RUNNER_TEMP/rendered.yaml" \
+              || { echo "::error::The rendered overlay does not deploy the verified digest '$d'."; exit 1; }
+          done
           demo_host="$(yq -r 'select(.kind == "Ingress" and .metadata.name == "biatec-chat-demo") | .spec.rules[0].host' "$RUNNER_TEMP/rendered.yaml")"
           echo "demo_host=$demo_host" >> "$GITHUB_OUTPUT"
           # Mounted hosts (Hosting__Mounts__N__*): checked here, before the ConfigMap reaches the cluster, with the rules of
