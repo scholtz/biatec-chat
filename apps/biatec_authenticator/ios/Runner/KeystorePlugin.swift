@@ -92,8 +92,7 @@ public class KeystorePlugin: NSObject, FlutterPlugin {
 
     /// "secure_enclave" when the key's token is the Secure Enclave, "software" for any other key, "unknown" when the attributes cannot be read.
     private func securityLevel(_ key: SecKey) -> String {
-        guard let attrs = SecKeyCopyAttributes(key) as? [String: Any] else { return "unknown" }
-        let token = attrs[kSecAttrTokenID as String] as? String
+        guard let attrs = SecKeyCopyAttributes(key) as? [String: Any], let token = attrs[kSecAttrTokenID as String] as? String else { return "unknown" }
         return token == (kSecAttrTokenIDSecureEnclave as String) ? "secure_enclave" : "software"
     }
 

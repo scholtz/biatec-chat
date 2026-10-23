@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
+import android.util.Log
 import android.util.Base64
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
@@ -99,7 +100,7 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
             gen.generateKeyPair()
         } catch (e: Exception) {
             // Devices that advertise StrongBox can still refuse the key: fall back to the TEE, but only for the failures StrongBox is known
-            // to cause (BCHAT-032 will report the level the key actually got). Anything else, or no StrongBox at all, is a real error.
+            // to cause (securityLevel() reports the level the key actually got). Anything else, or no StrongBox at all, is a real error.
             // hasStrongBox first: StrongBoxUnavailableException does not exist below API 28.
             if (!hasStrongBox) throw e
             val strongBoxRefused = e is StrongBoxUnavailableException || e is ProviderException || e is InvalidAlgorithmParameterException
@@ -107,11 +108,12 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
             gen.initialize(spec(alias, false))
             gen.generateKeyPair()
         }
-        // The key must be in hardware: a key that ended up in software is deleted and refused, not enrolled (BCHAT-032).
+        // The key must be in hardware: a key in software, or one whose level cannot be read, is deleted and refused, not enrolled (BCHAT-032).
         val created = publicOf(alias)!!
-        if (created["securityLevel"] == "software") {
+        val level = created["securityLevel"]
+        if (level == "software" || level == "unknown") {
             ks.deleteEntry(alias)
-            throw PluginError("insecure_key", "The keystore holds the key in software, not in secure hardware")
+            throw PluginError("insecure_key", "The keystore holds the key in $level, not in secure hardware")
         }
         return created
     }
@@ -142,6 +144,7 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
             if (info.isInsideSecureHardware) "hardware" else "software"
         }
     } catch (e: Exception) {
+        Log.w("KeystorePlugin", "Could not read the security level of the key", e)
         "unknown"
     }
 

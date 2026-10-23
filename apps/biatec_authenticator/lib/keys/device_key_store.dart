@@ -8,7 +8,7 @@ class DeviceKey {
     required this.kid,
     required this.x,
     required this.y,
-    this.securityLevel = KeySecurityLevel.unknown,
+    required this.securityLevel,
   });
 
   /// Stable identifier of the key (the keystore alias). The alias is random

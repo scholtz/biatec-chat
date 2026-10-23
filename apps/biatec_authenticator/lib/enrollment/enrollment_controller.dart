@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show PlatformException;
 
 import '../keys/device_key_store.dart';
 import '../keys/key_security_level.dart';
@@ -41,6 +42,14 @@ class EnrollmentController extends ChangeNotifier {
   EnrollmentState get state => _state;
 
   KeySecurityLevel? _keyLevel;
+  String? _keyLevelKid;
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   /// Where the enrolled device key lives, once known (null before enrollment,
   /// or when the keystore cannot be read).
@@ -85,14 +94,19 @@ class EnrollmentController extends ChangeNotifier {
       return;
     }
     _set(EnrollmentState.fromRecord(record, _clock()));
-    await _loadKeyLevel(record.kid);
     await _ensureRecoveryCode();
+    await _loadKeyLevel(record.kid);
   }
 
+  /// Reads where the key of [kid] lives, for display (after the rest of the
+  /// refresh, so a slow keystore delays nothing else).
   Future<void> _loadKeyLevel(String kid) async {
-    if (_keyLevel != null) return;
+    if (_keyLevelKid == kid && _keyLevel != null) return;
     try {
-      _keyLevel = (await keys.load(kid))?.securityLevel;
+      final level = (await keys.load(kid))?.securityLevel;
+      if (_disposed) return;
+      _keyLevel = level;
+      _keyLevelKid = kid;
       notifyListeners();
     } on Object {
       // The level is for display; an unreadable keystore does not stop the app.
@@ -126,10 +140,20 @@ class EnrollmentController extends ChangeNotifier {
       }
       key = await keys.generate(alias);
       if (!key.securityLevel.isHardware) {
-        // Not what this app promises: refuse the key instead of enrolling it.
-        throw StateError('this device keeps the key in '
-            '${key.securityLevel.label}, not in secure hardware');
+        throw _NotInHardware(key.securityLevel);
       }
+    } on _NotInHardware catch (e) {
+      // Not what this app promises: the key is removed instead of enrolled.
+      await _discardKey(alias);
+      _set(EnrollmentState(EnrollmentPhase.failed, error: e.message));
+      return;
+    } on PlatformException catch (e) {
+      await _discardKey(alias);
+      _set(EnrollmentState(EnrollmentPhase.failed,
+          error: e.code == 'insecure_key'
+              ? _NotInHardware(KeySecurityLevel.software).message
+              : 'Could not create the device key: $e'));
+      return;
     } on Object catch (e) {
       await _discardKey(alias);
       _set(EnrollmentState(EnrollmentPhase.failed,
@@ -137,6 +161,7 @@ class EnrollmentController extends ChangeNotifier {
       return;
     }
     _keyLevel = key.securityLevel;
+    _keyLevelKid = key.kid;
     _set(const EnrollmentState(EnrollmentPhase.enrolling));
     final EnrollmentRecord record;
     try {
@@ -172,6 +197,8 @@ class EnrollmentController extends ChangeNotifier {
   }
 
   Future<void> _discardKey(String? alias) async {
+    _keyLevel = null;
+    _keyLevelKid = null;
     if (alias != null) {
       try {
         await keys.delete(alias);
@@ -251,4 +278,16 @@ class EnrollmentController extends ChangeNotifier {
     }
     _set(EnrollmentState.fromRecord(done, _clock(), error: warning));
   }
+}
+
+/// The keystore holds the key somewhere other than secure hardware.
+class _NotInHardware implements Exception {
+  _NotInHardware(KeySecurityLevel level)
+      : message = level == KeySecurityLevel.unknown
+            ? 'This device cannot say where it keeps the key, so it is not '
+                'treated as secure hardware. Enrollment is refused.'
+            : 'This device keeps the key in ${level.label}, not in secure '
+                'hardware. Enrollment is refused.';
+
+  final String message;
 }

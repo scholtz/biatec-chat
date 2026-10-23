@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../enrollment/enrollment_store.dart';
 import '../keys/device_key_store.dart';
+import '../keys/key_security_level.dart';
 import 'approval_client.dart';
 import 'biometric_gate.dart';
 import 'consent_request.dart';
@@ -163,6 +164,10 @@ class ApprovalController extends ChangeNotifier {
     final key = await keys.load(record.kid);
     if (key == null) {
       throw const ApprovalException('The device key is missing.');
+    }
+    if (key.securityLevel == KeySecurityLevel.software) {
+      throw const ApprovalException('This device\'s key is held in software, '
+          'not in secure hardware. Enroll the device again.');
     }
     return (
       record.deviceToken,

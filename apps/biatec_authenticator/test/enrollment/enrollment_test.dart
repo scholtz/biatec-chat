@@ -10,12 +10,14 @@ import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/keys/device_key_store.dart';
 import 'package:biatec_authenticator/keys/key_security_level.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 class FakeKeyStore implements DeviceKeyStore {
   bool failGenerate = false;
+  bool pluginRefuses = false;
   KeySecurityLevel level = KeySecurityLevel.trustedEnvironment;
   bool throwTypeError = false;
   final List<String> generated = [];
@@ -25,6 +27,9 @@ class FakeKeyStore implements DeviceKeyStore {
   @override
   Future<DeviceKey> generate(String alias) async {
     if (failGenerate) throw Exception('no secure hardware');
+    if (pluginRefuses) {
+      throw PlatformException(code: 'insecure_key', message: 'software');
+    }
     if (throwTypeError) {
       // Like a malformed platform channel payload.
       final Object? bad = null;
@@ -268,7 +273,7 @@ void main() {
         final c = build((_) => created());
         await c.enroll(loginToken: 'login-alice');
         expect(c.state.phase, EnrollmentPhase.failed);
-        expect(c.state.error, contains('not in secure hardware'));
+        expect(c.state.error, contains('Enrollment is refused'));
         expect(requests, isEmpty,
             reason: 'the server never sees a software key');
         expect(keys.deleted, isNotEmpty);
@@ -292,6 +297,36 @@ void main() {
         expect(c.keyLevel, level);
       });
     }
+
+    test('the plugin refusing a software key reads as not in secure hardware',
+        () async {
+      keys.pluginRefuses = true;
+      final c = build((_) => created());
+      await c.enroll(loginToken: 'login-alice');
+      expect(c.state.phase, EnrollmentPhase.failed);
+      expect(c.state.error, contains('not in secure hardware'));
+      expect(c.state.error, isNot(contains('Bad state')));
+      expect(requests, isEmpty);
+    });
+
+    test(
+        'an unknown level is explained, not shown as a keystore called unknown',
+        () async {
+      keys.level = KeySecurityLevel.unknown;
+      final c = build((_) => created());
+      await c.enroll(loginToken: 'login-alice');
+      expect(c.state.error, contains('cannot say where it keeps the key'));
+    });
+
+    test('a refused enrollment leaves no level behind for the next key',
+        () async {
+      keys.level = KeySecurityLevel.software;
+      final c = build((_) => created());
+      await c.enroll(loginToken: 'login-alice');
+      keys.level = KeySecurityLevel.strongBox;
+      await c.enroll(loginToken: 'login-alice');
+      expect(c.keyLevel, KeySecurityLevel.strongBox);
+    });
 
     test('after a restart the level is read back from the keystore', () async {
       keys.level = KeySecurityLevel.strongBox;
