@@ -48,8 +48,8 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:** `lib/security/secure_storage.dart`: `deviceBoundStorage` (`FlutterSecureStorage` with `KeychainAccessibility.unlocked_this_device`) is the default of the enrollment and history stores; `rewriteWithDeviceBoundAccessibility()` runs at start and rewrites the existing items once (marker `biatec.storage.v2`), tolerating an unavailable keychain (tries again at the next launch).
-- **Verification:** `flutter analyze` no issues; `flutter test` all pass (4 new). Not verified on a real iOS device or backup (no iOS project in the repository, BCHAT-008): the accessibility is the documented option of the plugin, and whether an update changes an existing item's attribute is why items are deleted and rewritten.
+- **Summary:** `lib/security/secure_storage.dart`: `deviceBoundStorage` (`KeychainAccessibility.unlocked_this_device`) is the default of the enrollment and history stores, which now share the key constants the migration walks. `rewriteWithDeviceBoundAccessibility()` (called from `main()`, bounded to 3 s) rewrites the existing items once through a staging copy (copy, delete, write back, drop the copy), per key; a leftover staging item is restored at the next run; the marker `biatec.storage.v2` is written only when every key went through; an unavailable keychain never stops the start.
+- **Verification:** `flutter analyze` no issues; `flutter test` all pass (6 in security_storage_test.dart, including a write that fails after the delete and an unavailable keychain). Not verified on a real iOS device or backup (no iOS project in the repository, BCHAT-008).
 - **Out of scope here:** Android `allowBackup`, iOS file protection (platform projects).
 
 ## Review

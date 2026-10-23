@@ -91,7 +91,7 @@ class SecureHistoryStore implements HistoryStore {
   SecureHistoryStore([FlutterSecureStorage? storage])
       : _storage = storage ?? deviceBoundStorage;
 
-  static const _key = 'biatec.approvals.history';
+  static const _key = historyStorageKey;
   final FlutterSecureStorage _storage;
 
   @override
