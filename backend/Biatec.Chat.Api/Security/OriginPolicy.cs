@@ -10,6 +10,9 @@ public static class OriginPolicy
     /// <summary>Endpoints that carry no cookie and accept any origin (/public, and /onboarding which authenticates by DNS proof or operator bearer key).</summary>
     public static bool IsPublic(PathString path) => path.StartsWithSegments("/public") || path.StartsWithSegments("/onboarding");
 
+    /// <summary>The administrator dashboard and its API (docs/admin-dashboard.md): same-origin only, guarded by <c>AdminAuth</c> instead of the tenant allow-list.</summary>
+    public static bool IsAdmin(PathString path) => path.StartsWithSegments("/admin");
+
     /// <summary>The operator approval route: exempt from CSRF (bearer key, no ambient credential) but never gets a CORS wildcard.</summary>
     public static bool IsOperatorOnboarding(PathString path) => path.StartsWithSegments("/onboarding/operator");
 

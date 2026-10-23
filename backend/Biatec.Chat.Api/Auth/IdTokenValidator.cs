@@ -4,7 +4,7 @@ using Microsoft.IdentityModel.Tokens;
 namespace Biatec.Chat.Api.Auth;
 
 /// <summary>The only claims the backend keeps from a validated ID token.</summary>
-public sealed record IdTokenIdentity(string Subject, string? Email);
+public sealed record IdTokenIdentity(string Subject, string? Email, bool? EmailVerified = null);
 
 public interface IIdTokenValidator
 {
@@ -36,7 +36,15 @@ public sealed class IdTokenValidator(IOidcMetadataProvider metadata, TimeProvide
             throw new OidcException("The ID token authorized party does not match.");
         if (string.IsNullOrEmpty(jwt.Subject)) throw new OidcException("The ID token has no subject.");
         jwt.TryGetPayloadValue<string>("email", out var email);
-        return new IdTokenIdentity(jwt.Subject, email);
+        return new IdTokenIdentity(jwt.Subject, email, EmailVerified(jwt));
+    }
+
+    /// <summary>The <c>email_verified</c> claim as a boolean (some providers send the string "true"); null when absent or not a boolean.</summary>
+    private static bool? EmailVerified(JsonWebToken jwt)
+    {
+        if (jwt.TryGetPayloadValue<bool>("email_verified", out var b)) return b;
+        if (jwt.TryGetPayloadValue<string>("email_verified", out var s) && bool.TryParse(s, out var parsed)) return parsed;
+        return null;
     }
 
     private async Task<TokenValidationResult> TryAsync(string idToken, string clientId, string issuer, IReadOnlyList<SecurityKey> keys) =>

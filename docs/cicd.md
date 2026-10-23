@@ -52,7 +52,8 @@ optional as GitHub secrets: each deploy uses the GitHub secret if it is set (to 
 value already in the cluster, otherwise it generates one (`openssl rand`) and keeps it in the cluster, so a new
 environment needs none of them. The deploy log says per key where the value came from (never the value). Each deploy
 writes three cluster secrets: `biatec-chat-generated` (those five; the backend builds its connection strings from them
-and the in-cluster service names), `biatec-chat-secrets` (`OIDC_CLIENT_SECRET`; `OIDC_CLIENT_ID` goes into the tenant row,
+and the in-cluster service names), `biatec-chat-secrets` (`OIDC_CLIENT_SECRET`, and the optional `ADMINS`: emails separated by `;` who may open the
+[administrator dashboard](admin-dashboard.md), empty means off; `OIDC_CLIENT_ID` goes into the tenant row,
 see "Tenant") and `biatec-chat-aws` (certificate, key and the AWS config file; the five `AWS_*` secrets are validated:
 certificate matches key, expiry warning). Postgres is the exception to rotating by deploy (above). Generated values exist
 only in the cluster secret, so back up `vault-master-key` and `evidence-master-key` from it

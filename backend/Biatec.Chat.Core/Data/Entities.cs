@@ -281,3 +281,18 @@ public class KbStoredPage
     public string Sha256 { get; set; } = "";
     public DateTimeOffset UpdatedAt { get; set; }
 }
+
+/// <summary>
+/// A signed-in user as the administrator dashboard lists them (T-126): one row per (tenant, <c>OidcSub</c>), written at
+/// every sign-in. It deliberately holds no email or any other contact data (PRODUCT-DESCRIPTION.md: personal data is
+/// minimized to the OIDC <c>sub</c>). Erasure deletes the row.
+/// </summary>
+public class KnownUser
+{
+    public Guid Id { get; set; }
+    public string TenantId { get; set; } = "";
+    public string OidcSub { get; set; } = "";
+    public DateTimeOffset FirstSeenAt { get; set; }
+    public DateTimeOffset LastSeenAt { get; set; }
+    public int SignInCount { get; set; }
+}

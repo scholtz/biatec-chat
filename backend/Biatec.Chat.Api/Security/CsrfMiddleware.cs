@@ -18,7 +18,7 @@ public sealed class CsrfMiddleware(RequestDelegate next)
 
         var safe = HttpMethods.IsGet(req.Method) || HttpMethods.IsHead(req.Method) || HttpMethods.IsOptions(req.Method);
         // Only GET navigations are exempt; a POST under /auth still needs the header and origin.
-        if (tenant is null || path.StartsWithSegments("/health") || OriginPolicy.IsPublic(path) || (safe && OriginPolicy.IsNavigationOrMetadata(path)))
+        if (tenant is null || path.StartsWithSegments("/health") || OriginPolicy.IsPublic(path) || OriginPolicy.IsAdmin(path) || (safe && OriginPolicy.IsNavigationOrMetadata(path)))
         {
             await next(ctx);
             return;

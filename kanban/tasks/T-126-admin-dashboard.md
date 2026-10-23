@@ -40,7 +40,7 @@ a user list, user detail and audited read-only impersonation.
 ## Scope
 
 - In: `Admin:Admins` option (fed by `ADMINS`), admin OIDC login/callback/logout, Redis admin sessions, admin JSON API
-  (`/admin/api/*`), `KnownUser` table (email, first/last seen) filled at sign-in and removed on erasure, statistics,
+  (`/admin/api/*`), `KnownUser` table (subject, first/last seen; no email, the product stores none) filled at sign-in and removed on erasure, statistics,
   impersonation with reason, expiry and evidence records, Vue 3 SPA `apps/admin` served from the backend image, deploy
   wiring for the `ADMINS` secret, documentation, tests.
 - Out: acting as a user (sending, confirming, signing), editing users, admin roles beyond "admin", changes to Biatec OIDC.
@@ -51,14 +51,14 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] Only emails in `ADMINS` (case-insensitive, `;` separated) get an admin session; a verified-email check applies; any other user, an unverified email or a failed validation gets no session.
-- [ ] No OIDC token reaches the browser or is stored; the admin cookie is opaque, HttpOnly, Secure, SameSite=Strict; state-changing calls need the custom header and a same-origin Origin.
-- [ ] Statistics endpoint and dashboard show users, conversations, messages, sessions by tier, previews by status, token usage and a daily series.
-- [ ] User list is searchable, sortable and paged; user detail shows conversations and transcripts.
-- [ ] Impersonation needs a reason, expires, is read-only, shows a banner, and start/stop are recorded in the admin evidence chain.
-- [ ] Erasing a user removes the `KnownUser` row.
-- [ ] The `ADMINS` secret reaches the backend in the deploy workflow and k8s manifest; docs/admin-dashboard.md documents setup, security model and API.
-- [ ] Backend and admin app tests pass; Docker image builds the SPA into `/admin`.
+- [x] Only emails in `ADMINS` (case-insensitive, `;` separated) get an admin session; a verified-email check applies; any other user, an unverified email or a failed validation gets no session.
+- [x] No OIDC token reaches the browser or is stored; the admin cookie is opaque, HttpOnly, Secure, SameSite=Strict; state-changing calls need the custom header and a same-origin Origin.
+- [x] Statistics endpoint and dashboard show users, conversations, messages, sessions by tier, previews by status, token usage and a daily series.
+- [x] User list is searchable, sortable and paged; user detail shows conversations and transcripts.
+- [x] Impersonation needs a reason, expires, is read-only, shows a banner, and start/stop are recorded in the admin evidence chain.
+- [x] Erasing a user removes the `KnownUser` row.
+- [x] The `ADMINS` secret reaches the backend in the deploy workflow and k8s manifest; docs/admin-dashboard.md documents setup, security model and API.
+- [x] Backend and admin app tests pass; Docker image builds the SPA into `/admin`.
 
 ## Verification
 

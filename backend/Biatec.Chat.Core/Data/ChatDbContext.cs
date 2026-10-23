@@ -23,6 +23,7 @@ public class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbContext(
     public DbSet<SoftCapSpend> SoftCapSpends => Set<SoftCapSpend>();
     public DbSet<KnownSafe> KnownSafes => Set<KnownSafe>();
     public DbSet<KbStoredPage> KbPages => Set<KbStoredPage>();
+    public DbSet<KnownUser> KnownUsers => Set<KnownUser>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -182,6 +183,14 @@ public class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbContext(
             e.Property(x => x.Id).HasMaxLength(64);
             e.Property(x => x.ContentType).HasMaxLength(32);
             e.Property(x => x.Sha256).HasMaxLength(64);
+        });
+
+        b.Entity<KnownUser>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.OidcSub }).IsUnique();
+            e.HasIndex(x => x.LastSeenAt);
+            e.Property(x => x.TenantId).HasMaxLength(128);
+            e.Property(x => x.OidcSub).HasMaxLength(256);
         });
     }
 }

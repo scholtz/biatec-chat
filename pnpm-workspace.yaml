@@ -4,3 +4,4 @@ packages:
   - "builders/*"
   - "e2e"
   - "apps/demo"
+  - "apps/admin"

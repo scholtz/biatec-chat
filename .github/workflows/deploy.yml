@@ -86,10 +86,14 @@ jobs:
       - name: Sync biatec-chat-secrets
         env:
           OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
+          # Optional: emails separated by ";" who may open the administrator dashboard (docs/admin-dashboard.md); empty turns it off.
+          ADMINS: ${{ secrets.ADMINS }}
         run: |
           if [ -z "$OIDC_CLIENT_SECRET" ]; then echo "::error::OIDC_CLIENT_SECRET is not set on the ${{ inputs.environment }} environment (docs/cicd.md)."; exit 1; fi
+          if [ -z "$ADMINS" ]; then echo "::notice::ADMINS is not set: the administrator dashboard stays off."; fi
           kubectl create secret generic biatec-chat-secrets -n "$NAMESPACE" \
             --from-literal=oidc-client-secret="$OIDC_CLIENT_SECRET" \
+            --from-literal=admins="$ADMINS" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       # Bedrock access through IAM Roles Anywhere (docs/aws-setup.md): the environment's client certificate and key, and

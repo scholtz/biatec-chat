@@ -1,4 +1,14 @@
 # Build context is the repository root: docker build -f backend/Dockerfile .
+# The administrator dashboard (docs/admin-dashboard.md): a Vue app the backend serves at /admin/. It holds no secret and no URL.
+FROM node:22-alpine AS admin-ui
+RUN corepack enable
+WORKDIR /repo
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY apps/admin/package.json apps/admin/
+RUN pnpm install --frozen-lockfile --filter @biatec/admin...
+COPY apps/admin apps/admin
+RUN pnpm --filter @biatec/admin build
+
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY backend/Biatec.Chat.Core/Biatec.Chat.Core.csproj backend/Biatec.Chat.Core/
@@ -35,6 +45,7 @@ ENV ASPNETCORE_URLS=http://+:8080
 WORKDIR /app
 COPY --from=signing-helper /aws_signing_helper /usr/local/bin/aws_signing_helper
 COPY --from=build /out .
+COPY --from=admin-ui /repo/apps/admin/dist ./admin-ui
 # The aspnet image ships a non-root "app" user (UID 1654); numeric so the kubelet can verify runAsNonRoot.
 USER 1654
 EXPOSE 8080

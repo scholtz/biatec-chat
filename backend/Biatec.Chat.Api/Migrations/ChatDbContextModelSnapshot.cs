@@ -515,6 +515,41 @@ namespace Biatec.Chat.Api.Migrations
                     b.ToTable("KnownSafes");
                 });
 
+            modelBuilder.Entity("Biatec.Chat.Core.Data.KnownUser", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("FirstSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OidcSub")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int>("SignInCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LastSeenAt");
+
+                    b.HasIndex("TenantId", "OidcSub")
+                        .IsUnique();
+
+                    b.ToTable("KnownUsers");
+                });
+
             modelBuilder.Entity("Biatec.Chat.Core.Data.Message", b =>
                 {
                     b.Property<Guid>("ConversationId")

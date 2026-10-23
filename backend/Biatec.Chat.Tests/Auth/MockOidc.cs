@@ -27,6 +27,8 @@ public sealed class MockOidc : HttpMessageHandler
 
     public string Sub = "user-123";
     public string Email = "alice@example.test";
+    /// <summary>The email_verified claim: null leaves it out; a bool or a string ("true") is sent as is.</summary>
+    public object? EmailVerified;
     public DateTimeOffset Now = DateTimeOffset.UtcNow;
     public string AccessToken = "ACCESS-TOKEN-SECRET";
     public string RefreshToken = "REFRESH-TOKEN-SECRET";
@@ -128,6 +130,7 @@ public sealed class MockOidc : HttpMessageHandler
             Claims = new Dictionary<string, object> { ["sub"] = Sub, ["email"] = Email, ["nonce"] = IdTokenNonceOverride ?? nonce },
             SigningCredentials = new SigningCredentials(IdTokenSignedWithOtherKey ? _otherKey : _key, SecurityAlgorithms.RsaSha256),
         };
+        if (EmailVerified is not null) d.Claims["email_verified"] = EmailVerified;
         if (IdTokenExpired) d.NotBefore = now.AddHours(-2);
         if (IdTokenExpired) d.IssuedAt = now.AddHours(-2);
         return new JsonWebTokenHandler().CreateToken(d);

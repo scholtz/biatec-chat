@@ -195,7 +195,12 @@ public sealed class RetentionService(ChatDbContext db, IOptions<RetentionOptions
         var now = clock.GetUtcNow();
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var ids = await db.Conversations.Where(c => c.TenantId == tenantId && c.OidcSub == oidcSub).Select(c => c.Id).ToListAsync(ct);
-        if (ids.Count == 0) return new ErasureResult(ErasureOutcome.Erased, 0, 0);
+        if (ids.Count == 0)
+        {
+            await db.KnownUsers.Where(u => u.TenantId == tenantId && u.OidcSub == oidcSub).ExecuteDeleteAsync(ct); // the administrator dashboard's user row
+            await tx.CommitAsync(ct);
+            return new ErasureResult(ErasureOutcome.Erased, 0, 0);
+        }
 
         if (await db.ActionPreviews.Where(p => ids.Contains(p.ConversationId)).AnyAsync(InFlight(now), ct))
             return new ErasureResult(ErasureOutcome.ActionInFlight, 0, 0);
@@ -208,6 +213,7 @@ public sealed class RetentionService(ChatDbContext db, IOptions<RetentionOptions
         await BlankStepsAsync(db.ActionSteps.Where(st => db.ActionPreviews.Any(p => p.Id == st.PreviewId && ids.Contains(p.ConversationId))), ct);
         await db.Conversations.Where(c => ids.Contains(c.Id))
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.OidcSub, (string?)null).SetProperty(c => c.ErasedAt, now), ct);
+        await db.KnownUsers.Where(u => u.TenantId == tenantId && u.OidcSub == oidcSub).ExecuteDeleteAsync(ct); // the administrator dashboard's user row, with the email
 
         // Move the live sessions off the erased conversations: one fresh conversation per old one.
         var sessions = await db.ChatSessions.Where(s => ids.Contains(s.ConversationId)).Select(s => new { s.Id, s.ConversationId }).ToListAsync(ct);

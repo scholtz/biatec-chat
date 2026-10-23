@@ -73,7 +73,7 @@ public sealed class TenantMiddleware(RequestDelegate next, ITenantStore store, I
     }
 
     /// <summary>Every auth route (popup, login, elevate, callback, and whatever is added) except logout, which has to keep working.</summary>
-    private static bool IsSignInFlow(PathString path) => path.StartsWithSegments("/auth") && !path.StartsWithSegments("/auth/logout");
+    private static bool IsSignInFlow(PathString path) => (path.StartsWithSegments("/auth") && !path.StartsWithSegments("/auth/logout")) || path.StartsWithSegments("/admin/auth");
 }
 
 public static class TenancyRegistration

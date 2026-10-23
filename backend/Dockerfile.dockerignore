@@ -4,6 +4,8 @@
 .git
 .claude
 apps
+!apps/admin
+apps/admin/dist
 builders
 e2e
 docs

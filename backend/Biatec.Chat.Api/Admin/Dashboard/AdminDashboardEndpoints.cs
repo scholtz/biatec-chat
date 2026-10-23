@@ -1,0 +1,226 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using Biatec.Chat.Api.Tenancy;
+using Biatec.Chat.Core.Evidence;
+using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Options;
+
+namespace Biatec.Chat.Api.Admin.Dashboard;
+
+public sealed record MeResponse(string Email, string TenantId, DateTimeOffset ExpiresAt, AdminImpersonation? Impersonation);
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record StartImpersonationRequest(string? TenantId, string? Sub, string? Reason);
+
+/// <summary>Start, stop and expiry of an impersonation, each recorded in the admin evidence chain.</summary>
+public static class AdminImpersonations
+{
+    public const int MinReason = 8;
+    public const int MaxReason = 500;
+
+    public static Task RecordStopAsync(IEvidenceLog log, AdminSession session, AdminImpersonation imp, string how, CancellationToken ct) =>
+        AdminEvidence.AppendDashboardAsync(log, session.Email, AdminEvidence.ImpersonationStop, Target(imp), imp.Reason,
+            new JsonObject { ["startedAt"] = imp.StartedAt.ToString("O") }, new JsonObject { ["how"] = how }, ct);
+
+    /// <summary>The user is named by tenant and a hash of the subject: the chain never holds the subject itself.</summary>
+    public static string Target(AdminImpersonation imp) => $"user:{imp.TenantId}:{AdminLogin.SubjectHash(imp.Sub)}";
+    public static string Target(string tenantId, string sub) => $"user:{tenantId}:{AdminLogin.SubjectHash(sub)}";
+
+    /// <summary>A reason as the audit log keeps it: trimmed, no control characters.</summary>
+    public static string? CleanReason(string? reason)
+    {
+        var t = new string((reason ?? "").Where(c => !char.IsControl(c)).ToArray()).Trim();
+        return t.Length is >= MinReason and <= MaxReason ? t : null;
+    }
+}
+
+/// <summary>
+/// The dashboard: static app at <c>/admin/</c> and JSON API at <c>/admin/api</c> (docs/admin-dashboard.md). Everything is behind
+/// <see cref="AdminAuth.RequireAdmin"/> except the static files and the sign-in redirect.
+/// </summary>
+public static class AdminDashboardEndpoints
+{
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private static readonly FileExtensionContentTypeProvider ContentTypes = new();
+
+    public static IServiceCollection AddAdminDashboard(this IServiceCollection services)
+    {
+        services.AddSingleton<AdminAllowList>();
+        services.AddSingleton<IAdminSessionStore, RedisAdminSessionStore>();
+        services.AddScoped<AdminDashboardService>();
+        return services;
+    }
+
+    public static IEndpointRouteBuilder MapAdminDashboard(this IEndpointRouteBuilder app)
+    {
+        app.MapAdminLogin();
+
+        var api = app.MapGroup("/admin/api").RequireRateLimiting(AdminEndpoints.RateLimitPolicy).RequireAdmin();
+
+        api.MapGet("/me", (HttpContext ctx, TimeProvider clock) =>
+        {
+            var p = AdminAuth.Current(ctx);
+            return Results.Json(new MeResponse(p.Email, p.Session.TenantId, p.Session.ExpiresAt, p.Impersonation(clock.GetUtcNow())), Json);
+        });
+
+        api.MapPost("/logout", async (HttpContext ctx, IAdminSessionStore store, IEvidenceLog log, TimeProvider clock, ILogger<AdminDashboardService> logger) =>
+        {
+            var p = AdminAuth.Current(ctx);
+            if (p.Impersonation(clock.GetUtcNow()) is { } imp) await AdminImpersonations.RecordStopAsync(log, p.Session, imp, "logout", ctx.RequestAborted);
+            await AdminEvidence.AppendDashboardAsync(log, p.Email, AdminEvidence.DashboardSignOut, "dashboard", null, null, null, ctx.RequestAborted);
+            await store.DeleteAsync(p.TokenHash, ctx.RequestAborted);
+            AdminAuth.ClearCookie(ctx.Response);
+            logger.LogInformation("Admin {Email} signed out of the dashboard.", Onboarding.OperatorAuth.Clean(p.Email));
+            return Results.NoContent();
+        });
+
+        api.MapGet("/stats", async (HttpContext ctx, AdminDashboardService svc, CancellationToken ct) =>
+        {
+            var days = 30;
+            if (ctx.Request.Query.TryGetValue("days", out var d) && (!int.TryParse(d, out days) || days is < 7 or > 365))
+                return Bad("days must be between 7 and 365.");
+            return Results.Json(await svc.StatsAsync(days, Single(ctx, "tenant"), ct), Json);
+        });
+
+        api.MapGet("/users", async (HttpContext ctx, AdminDashboardService svc, CancellationToken ct) =>
+        {
+            var sort = Single(ctx, "sort") ?? "lastActivity";
+            var dir = Single(ctx, "dir") ?? "desc";
+            if (!AdminDashboardService.SortFields.Contains(sort) || dir is not ("asc" or "desc")) return Bad("Unknown sort or direction.");
+            int page = 1, pageSize = 25;
+            if ((ctx.Request.Query.TryGetValue("page", out var pg) && (!int.TryParse(pg, out page) || page < 1 || page > 100_000)) ||
+                (ctx.Request.Query.TryGetValue("pageSize", out var ps) && (!int.TryParse(ps, out pageSize) || pageSize is < 1 or > 100)))
+                return Bad("page must be 1 or more and pageSize between 1 and 100.");
+            var q = Single(ctx, "q");
+            if (q is { Length: > 200 }) return Bad("q is too long.");
+            return Results.Json(await svc.UsersAsync(q, Single(ctx, "tenant"), sort, dir == "desc", page, pageSize, ct), Json);
+        });
+
+        api.MapGet("/user", async (HttpContext ctx, AdminDashboardService svc, CancellationToken ct) =>
+        {
+            if (Single(ctx, "tenant") is not { } tenant || Single(ctx, "sub") is not { } sub) return Bad("tenant and sub are required.");
+            return await svc.UserAsync(tenant, sub, ct) is { } detail ? Results.Json(detail, Json) : NotFound("Unknown user.");
+        });
+
+        // ---- impersonation: a read-only view as another user ----
+
+        api.MapPost("/impersonation", async (HttpContext ctx, AdminDashboardService svc, IAdminSessionStore store, IEvidenceLog log,
+            IOptions<AdminOptions> options, TimeProvider clock, ILogger<AdminDashboardService> logger) =>
+        {
+            if (!ctx.Request.HasJsonContentType()) return Results.Json(new { error = "Content-Type must be application/json." }, statusCode: 415);
+            StartImpersonationRequest? body;
+            try { body = await ctx.Request.ReadFromJsonAsync<StartImpersonationRequest>(ctx.RequestAborted); }
+            catch (Exception ex) when (ex is JsonException or BadHttpRequestException) { return Bad("The body must be JSON with tenantId, sub and reason."); }
+            if (body is not { TenantId.Length: > 0, Sub.Length: > 0 }) return Bad("tenantId and sub are required.");
+            if (AdminImpersonations.CleanReason(body.Reason) is not { } reason)
+                return Bad($"A reason of {AdminImpersonations.MinReason} to {AdminImpersonations.MaxReason} characters is required.");
+            var user = await svc.FindUserAsync(body.TenantId, body.Sub, ctx.RequestAborted);
+            if (user is null) return NotFound("Unknown user.");
+
+            var p = AdminAuth.Current(ctx);
+            var now = clock.GetUtcNow();
+            var session = p.Session;
+            if (p.Impersonation(now) is { } previous) await AdminImpersonations.RecordStopAsync(log, session, previous, "replaced", ctx.RequestAborted);
+            var end = now.AddMinutes(Math.Max(1, options.Value.ImpersonationMinutes));
+            var imp = new AdminImpersonation
+            {
+                TenantId = user.TenantId, Sub = user.OidcSub, Reason = reason, StartedAt = now,
+                ExpiresAt = end < session.ExpiresAt ? end : session.ExpiresAt,
+            };
+            // The start is in the chain before the view opens: no evidence, no impersonation.
+            await AdminEvidence.AppendDashboardAsync(log, session.Email, AdminEvidence.ImpersonationStart, AdminImpersonations.Target(imp), reason, null,
+                new JsonObject { ["expiresAt"] = imp.ExpiresAt.ToString("O"), ["mode"] = "read-only" }, ctx.RequestAborted);
+            session.Impersonation = imp;
+            await store.PutAsync(p.TokenHash, session, AdminAuth.IdleTtl(session, options.Value, now), ctx.RequestAborted);
+            logger.LogInformation("Admin {Email} started a read-only impersonation of a user of tenant {TenantId} until {ExpiresAt:O}.", Onboarding.OperatorAuth.Clean(session.Email), Onboarding.OperatorAuth.Clean(imp.TenantId), imp.ExpiresAt);
+            return Results.Json(imp, Json);
+        });
+
+        api.MapGet("/impersonation", (HttpContext ctx, TimeProvider clock) =>
+            AdminAuth.Current(ctx).Impersonation(clock.GetUtcNow()) is { } imp ? Results.Json(imp, Json) : NotFound("No impersonation is active."));
+
+        api.MapDelete("/impersonation", async (HttpContext ctx, IAdminSessionStore store, IEvidenceLog log, IOptions<AdminOptions> options, TimeProvider clock) =>
+        {
+            var p = AdminAuth.Current(ctx);
+            var now = clock.GetUtcNow();
+            if (p.Impersonation(now) is not { } imp) return Results.Json(new { error = "No impersonation is active." }, statusCode: StatusCodes.Status409Conflict);
+            await AdminImpersonations.RecordStopAsync(log, p.Session, imp, "stopped", ctx.RequestAborted);
+            p.Session.Impersonation = null;
+            await store.PutAsync(p.TokenHash, p.Session, AdminAuth.IdleTtl(p.Session, options.Value, now), ctx.RequestAborted);
+            return Results.NoContent();
+        });
+
+        // The view endpoints take no user: it is the one in the admin's session, so a request can never be pointed at another.
+        api.MapGet("/view/conversations", async (HttpContext ctx, AdminDashboardService svc, TimeProvider clock, CancellationToken ct) =>
+        {
+            if (AdminAuth.Current(ctx).Impersonation(clock.GetUtcNow()) is not { } imp) return NotFound("No impersonation is active.");
+            return Results.Json(new { user = new { imp.TenantId, imp.Sub }, conversations = await svc.ConversationsAsync(imp.TenantId, imp.Sub, ct) }, Json);
+        });
+
+        api.MapGet("/view/conversations/{id:guid}/messages", async (Guid id, HttpContext ctx, AdminDashboardService svc, IEvidenceLog log, TimeProvider clock, CancellationToken ct) =>
+        {
+            var p = AdminAuth.Current(ctx);
+            if (p.Impersonation(clock.GetUtcNow()) is not { } imp) return NotFound("No impersonation is active.");
+            var transcript = await svc.TranscriptAsync(imp.TenantId, imp.Sub, id, ct);
+            if (transcript is null) return NotFound("Unknown conversation.");
+            // Reading a user's words is what impersonation is for, and each conversation opened is in the signed chain.
+            await AdminEvidence.AppendDashboardAsync(log, p.Email, AdminEvidence.ImpersonationViewConversation, AdminImpersonations.Target(imp), imp.Reason,
+                null, new JsonObject { ["conversationId"] = id.ToString(), ["messages"] = transcript.Messages.Count }, ct);
+            return Results.Json(transcript, Json);
+        });
+
+        MapUi(app);
+        return app;
+    }
+
+    private static string? Single(HttpContext ctx, string key) =>
+        ctx.Request.Query.TryGetValue(key, out var v) && v.Count == 1 && !string.IsNullOrWhiteSpace(v[0]) ? v[0] : null;
+
+    private static IResult Bad(string message) => Results.Json(new { error = message }, statusCode: StatusCodes.Status400BadRequest);
+    private static IResult NotFound(string message) => Results.Json(new { error = message }, statusCode: StatusCodes.Status404NotFound);
+
+    // ---- the static app ----
+
+    private const string Csp = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; " +
+                               "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+
+    private static void MapUi(IEndpointRouteBuilder app)
+    {
+        // Routing ignores the trailing slash, so "/admin" and "/admin/" reach the same handler: only the bare path is redirected.
+        app.MapGet("/admin", (HttpContext ctx, AdminAllowList allow) =>
+            !allow.Enabled || ctx.GetTenant() is null ? Results.NotFound()
+            : ctx.Request.Path.Value!.EndsWith('/') ? ServeFile(ctx, null)
+            : Results.Redirect(ctx.Request.PathBase.Value + "/admin/", permanent: false));
+        app.MapGet("/admin/{**file}", (string? file, HttpContext ctx) => ServeFile(ctx, file));
+    }
+
+    private static IResult ServeFile(HttpContext ctx, string? file)
+    {
+        var allow = ctx.RequestServices.GetRequiredService<AdminAllowList>();
+        var options = ctx.RequestServices.GetRequiredService<IOptions<AdminOptions>>();
+        // /admin/api and /admin/auth are routes of their own; an unknown path under them is not a file.
+        if (!allow.Enabled || ctx.GetTenant() is null) return Results.NotFound();
+        var res = ctx.Response;
+        res.Headers.ContentSecurityPolicy = Csp;
+        res.Headers.XContentTypeOptions = "nosniff";
+        res.Headers["Referrer-Policy"] = "no-referrer";
+        res.Headers["X-Frame-Options"] = "DENY";
+        res.Headers["Cross-Origin-Opener-Policy"] = "same-origin";
+
+        var root = options.Value.UiDirectory is { Length: > 0 } dir ? dir : Path.Combine(AppContext.BaseDirectory, "admin-ui");
+        if (!Directory.Exists(root)) return Results.NotFound();
+        var path = string.IsNullOrEmpty(file) ? "index.html" : file;
+        if (path.StartsWith("api/", StringComparison.Ordinal) || path.StartsWith("auth/", StringComparison.Ordinal) || path.Contains('\\') || path.Contains("..") || path.Contains('\0'))
+            return Results.NotFound();
+
+        using var provider = new PhysicalFileProvider(root);
+        var info = provider.GetFileInfo(path);
+        if (!info.Exists || info.IsDirectory) return Results.NotFound();
+        if (!ContentTypes.TryGetContentType(path, out var type)) return Results.NotFound();
+        // The shell is never cached; hashed assets under assets/ can be.
+        res.Headers.CacheControl = path.StartsWith("assets/", StringComparison.Ordinal) ? "public, max-age=31536000, immutable" : "no-store";
+        return Results.File(info.PhysicalPath!, type);
+    }
+}

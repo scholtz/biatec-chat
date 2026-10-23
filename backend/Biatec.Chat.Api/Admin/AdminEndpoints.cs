@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.RateLimiting;
+using Biatec.Chat.Api.Admin.Dashboard;
 using Biatec.Chat.Api.Chat.SignIn;
 using Biatec.Chat.Api.Evidence.Export;
 using Biatec.Chat.Api.Evidence.Jwks;
@@ -31,6 +32,27 @@ public sealed class AdminOptions
     /// the hash is configured (environment or secret store); the key itself is never in configuration or the repo.
     /// </summary>
     public Dictionary<string, OperatorKeyOptions> Operators { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Emails of the people who may open the administrator dashboard (docs/admin-dashboard.md), separated by <c>;</c>. Fed by
+    /// the GitHub secret <c>ADMINS</c> (environment variable <c>Admin__Admins</c>). Empty: the dashboard does not exist.
+    /// </summary>
+    public string Admins { get; set; } = "";
+
+    /// <summary>The ID token must carry <c>email_verified: true</c> (default). Turn off only if Biatec OIDC never issues the claim.</summary>
+    public bool RequireVerifiedEmail { get; set; } = true;
+
+    /// <summary>Absolute lifetime of an admin session in hours (default 8).</summary>
+    public int SessionHours { get; set; } = 8;
+
+    /// <summary>Idle timeout of an admin session in minutes (default 30).</summary>
+    public int SessionIdleMinutes { get; set; } = 30;
+
+    /// <summary>Length of one impersonation in minutes (default 30).</summary>
+    public int ImpersonationMinutes { get; set; } = 30;
+
+    /// <summary>Directory with the built dashboard (<c>apps/admin/dist</c>); default <c>admin-ui</c> next to the application.</summary>
+    public string? UiDirectory { get; set; }
 }
 
 /// <summary>
@@ -58,6 +80,7 @@ public static class AdminEndpoints
         services.AddSingleton<OperatorKeyring>();
         services.AddScoped<TenantPolicyService>();
         services.AddScoped<KbAdminService>();
+        services.AddAdminDashboard();
         services.AddRateLimiter(o => o.AddPolicy(RateLimitPolicy, ctx =>
         {
             var opts = ctx.RequestServices.GetRequiredService<IOptions<AdminOptions>>().Value;
@@ -73,6 +96,7 @@ public static class AdminEndpoints
 
     public static IEndpointRouteBuilder MapAdmin(this IEndpointRouteBuilder app)
     {
+        app.MapAdminDashboard();
         var g = app.MapGroup("/onboarding/operator/tenants").RequireRateLimiting(RateLimitPolicy);
 
         g.MapGet("/", async (HttpContext ctx, TenantPolicyService svc, ILogger<TenantPolicyService> log, CancellationToken ct) =>

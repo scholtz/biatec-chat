@@ -130,6 +130,14 @@ public static class AuthEndpoints
             var state = ctx.Request.Query["state"].ToString();
             if (state.Length is 0 or > 256) return ClosePage(ctx, 400);
 
+            // The administrator dashboard signs in through this same registered redirect URI (docs/admin-dashboard.md). Its state
+            // is bound to its own login cookie, not to a chat session, so it is recognised before the session lookup.
+            if (await states.GetAsync(Hash(state), ctx.RequestAborted) is { Purpose: Admin.Dashboard.AdminAuth.Purpose } adminPending)
+            {
+                if (!await states.TakeAsync(Hash(state), ctx.RequestAborted)) return Admin.Dashboard.AdminLogin.Failed(ctx, Admin.Dashboard.AdminLogin.Errors.LoginFailed); // replay or race
+                return await Admin.Dashboard.AdminLogin.CompleteAsync(ctx, tenant, adminPending);
+            }
+
             // Login CSRF defence: the state must belong to the session carrying this cookie. A state minted for
             // another session is rejected without being consumed or touching that session's popup request.
             var session = await FindLiveAsync(db, tenant, cookie, now, ctx.RequestAborted);
@@ -207,6 +215,7 @@ public static class AuthEndpoints
                         .SetProperty(s => s.AgentMode, AgentMode.Prepare).SetProperty(s => s.Paused, false), ctx.RequestAborted);
                 await db.Conversations.Where(c => c.Id == rotated.Session.ConversationId)
                     .ExecuteUpdateAsync(u => u.SetProperty(c => c.OidcSub, identity.Subject), ctx.RequestAborted);
+                await Admin.Dashboard.KnownUsers.RecordSignInAsync(db, tenant.Id, identity, now, log, ctx.RequestAborted);
                 if (ctx.RequestServices.GetService<Biatec.Chat.Core.Evidence.IEvidenceRecorder>() is { } recorder)
                     await recorder.RecordAsync(rotated.Session.ConversationId, Biatec.Chat.Core.Evidence.EvidenceKinds.TierChanged, new System.Text.Json.Nodes.JsonObject
                     {
