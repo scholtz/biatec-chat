@@ -38,8 +38,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
         );
     // The mock accepts the seeded login token; a real build gets the token
     // from the OIDC login.
-    _token = TextEditingController(
-        text: widget.config.isMock ? 'login-alice' : '');
+    _token =
+        TextEditingController(text: widget.config.isMock ? 'login-alice' : '');
     _controller.refresh();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       final s = _controller.state;
@@ -177,7 +177,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
 
 /// Shows the recovery code once. Leaving requires confirming it was saved.
 class RecoveryCodeView extends StatelessWidget {
-  const RecoveryCodeView({super.key, required this.code, required this.onSaved});
+  const RecoveryCodeView(
+      {super.key, required this.code, required this.onSaved});
 
   final String code;
   final VoidCallback onSaved;

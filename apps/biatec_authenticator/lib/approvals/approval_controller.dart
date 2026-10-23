@@ -165,9 +165,8 @@ class ApprovalController extends ChangeNotifier {
     if (key == null) {
       throw const ApprovalException('The device key is missing.');
     }
-    if (key.securityLevel == KeySecurityLevel.software) {
-      throw const ApprovalException('This device\'s key is held in software, '
-          'not in secure hardware. Enroll the device again.');
+    if (key.securityLevel.blocksSigning) {
+      throw const ApprovalException(KeySecurityLevel.softwareKeyMessage);
     }
     return (
       record.deviceToken,

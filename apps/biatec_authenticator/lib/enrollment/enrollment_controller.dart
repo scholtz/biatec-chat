@@ -101,7 +101,10 @@ class EnrollmentController extends ChangeNotifier {
   /// Reads where the key of [kid] lives, for display (after the rest of the
   /// refresh, so a slow keystore delays nothing else).
   Future<void> _loadKeyLevel(String kid) async {
-    if (_keyLevelKid == kid && _keyLevel != null) return;
+    // Asked once per key, also when the keystore had nothing to say.
+    if (_keyLevelKid == kid) {
+      return;
+    }
     try {
       final level = (await keys.load(kid))?.securityLevel;
       if (_disposed) return;
@@ -151,7 +154,7 @@ class EnrollmentController extends ChangeNotifier {
       await _discardKey(alias);
       _set(EnrollmentState(EnrollmentPhase.failed,
           error: e.code == 'insecure_key'
-              ? _NotInHardware(KeySecurityLevel.software).message
+              ? _NotInHardware(_levelOf(e)).message
               : 'Could not create the device key: $e'));
       return;
     } on Object catch (e) {
@@ -175,7 +178,8 @@ class EnrollmentController extends ChangeNotifier {
       // Nothing was enrolled, so the unused key and alias are removed.
       await _discardKey(alias);
       _set(EnrollmentState(EnrollmentPhase.failed,
-          error: e is EnrollmentException ? e.message : 'Enrollment failed: $e'));
+          error:
+              e is EnrollmentException ? e.message : 'Enrollment failed: $e'));
       return;
     }
     // The server now has the device. Never lose it over a storage hiccup: keep
@@ -278,6 +282,15 @@ class EnrollmentController extends ChangeNotifier {
     }
     _set(EnrollmentState.fromRecord(done, _clock(), error: warning));
   }
+}
+
+/// The level the plugin attached to its `insecure_key` refusal (software when it said nothing).
+KeySecurityLevel _levelOf(PlatformException e) {
+  final details = e.details;
+  final level = details is Map
+      ? KeySecurityLevel.fromWire(details['securityLevel'])
+      : KeySecurityLevel.software;
+  return level.isHardware ? KeySecurityLevel.software : level;
 }
 
 /// The keystore holds the key somewhere other than secure hardware.

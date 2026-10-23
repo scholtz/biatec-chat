@@ -50,7 +50,7 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
     private val main = Handler(Looper.getMainLooper())
 
     /** A failure with a code Dart can tell apart from an unexpected keystore error. */
-    private class PluginError(val code: String, message: String) : Exception(message)
+    private class PluginError(val code: String, message: String, val details: Any? = null) : Exception(message)
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         val alias = call.argument<String>("alias")
@@ -70,7 +70,7 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
                 }
                 main.post { result.success(value) }
             } catch (e: PluginError) {
-                main.post { result.error(e.code, e.message, null) }
+                main.post { result.error(e.code, e.message, e.details) }
             } catch (e: Throwable) {
                 // Throwable, not Exception: a class that is missing on an old API level must still answer Dart instead of leaving the call open.
                 main.post { result.error("keystore_error", e.message, null) }
@@ -108,12 +108,12 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
             gen.initialize(spec(alias, false))
             gen.generateKeyPair()
         }
-        // The key must be in hardware: a key in software, or one whose level cannot be read, is deleted and refused, not enrolled (BCHAT-032).
+        // A key that ended up in software is deleted and refused, not enrolled (BCHAT-032). A level that could not be read is returned as
+        // "unknown": enrollment refuses it and removes the key, but a read hiccup must not destroy a key that may be in StrongBox.
         val created = publicOf(alias)!!
-        val level = created["securityLevel"]
-        if (level == "software" || level == "unknown") {
+        if (created["securityLevel"] == "software") {
             ks.deleteEntry(alias)
-            throw PluginError("insecure_key", "The keystore holds the key in $level, not in secure hardware")
+            throw PluginError("insecure_key", "The keystore holds the key in software, not in secure hardware", mapOf("securityLevel" to "software"))
         }
         return created
     }
