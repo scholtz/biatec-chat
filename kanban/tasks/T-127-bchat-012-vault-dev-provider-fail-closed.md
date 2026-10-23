@@ -1,7 +1,7 @@
 ---
 id: T-127
 title: "Refuse the Dev vault key provider outside Development (BCHAT-012)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -59,7 +59,10 @@ Parallel work possible: **yes**.
 
 ## Review
 
+- 2026-10-23 09:52 · approve · PR #309 merged into main @ 82f78c7 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 09:00 · claude · (new) → backlog · created from GitHub issue #265 (BCHAT-012); blockers scan: none
 - 2026-10-23 09:31 · scholtz · taken, and session-20261023-0931 · backlog → in-progress · claimed
+- 2026-10-23 09:52 · user · in-progress → done · PR #309 merged into main @ 82f78c7 (synced by kanban-sync)
