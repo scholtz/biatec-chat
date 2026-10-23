@@ -15,12 +15,20 @@ public class KeystorePlugin: NSObject, FlutterPlugin {
         guard let args = call.arguments as? [String: Any], let alias = args["alias"] as? String, !alias.isEmpty else {
             return result(FlutterError(code: "bad_args", message: "alias is required", details: nil))
         }
-        switch call.method {
+        // Secure Enclave key generation and signing can block for a while: off the main thread, with the result posted back to it.
+        let method = call.method
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.run(method, args, alias) { value in DispatchQueue.main.async { result(value) } }
+        }
+    }
+
+    private func run(_ method: String, _ args: [String: Any], _ alias: String, _ result: (Any?) -> Void) {
+        switch method {
         case "generate":
-            if let key = privateKey(alias) { return result(publicParts(key)) }
+            if let key = privateKey(alias) { return result(keyParts(key)) }
             generate(alias, result)
         case "load":
-            result(privateKey(alias).flatMap { publicParts($0) })
+            result(privateKey(alias).map { keyParts($0) })
         case "sign":
             guard let data = (args["data"] as? FlutterStandardTypedData)?.data, let key = privateKey(alias) else {
                 return result(FlutterError(code: "no_key", message: "No key or data", details: nil))
@@ -65,7 +73,12 @@ public class KeystorePlugin: NSObject, FlutterPlugin {
         guard let key = SecKeyCreateRandomKey(attrs as CFDictionary, &err) else {
             return result(FlutterError(code: "no_secure_enclave", message: err?.takeRetainedValue().localizedDescription, details: nil))
         }
-        result(publicParts(key))
+        result(keyParts(key))
+    }
+
+    /// The public key as the channel returns it, or an error that says what is wrong instead of a nil that Dart reads as malformed data.
+    private func keyParts(_ key: SecKey) -> Any {
+        publicParts(key) ?? FlutterError(code: "keystore_error", message: "The public key has an unexpected shape", details: nil)
     }
 
     private func b64(_ d: Data) -> String {
@@ -74,7 +87,13 @@ public class KeystorePlugin: NSObject, FlutterPlugin {
 
     private func publicParts(_ key: SecKey) -> [String: String]? {
         guard let pub = SecKeyCopyPublicKey(key), let raw = SecKeyCopyExternalRepresentation(pub, nil) as Data?, raw.count == 65, raw[0] == 4 else { return nil }
-        return ["x": b64(raw.subdata(in: 1..<33)), "y": b64(raw.subdata(in: 33..<65))]
+        return ["x": b64(raw.subdata(in: 1..<33)), "y": b64(raw.subdata(in: 33..<65)), "securityLevel": securityLevel(key)]
+    }
+
+    /// "secure_enclave" when the key's token is the Secure Enclave, "software" for any other key, "unknown" when the attributes cannot be read.
+    private func securityLevel(_ key: SecKey) -> String {
+        guard let attrs = SecKeyCopyAttributes(key) as? [String: Any], let token = attrs[kSecAttrTokenID as String] as? String else { return "unknown" }
+        return token == (kSecAttrTokenIDSecureEnclave as String) ? "secure_enclave" : "software"
     }
 
     /// DER ECDSA signature to raw r||s (64 bytes).

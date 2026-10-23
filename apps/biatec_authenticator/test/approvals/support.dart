@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:biatec_authenticator/keys/device_key_store.dart';
+import 'package:biatec_authenticator/keys/key_security_level.dart';
 import 'package:pointycastle/export.dart';
 
 final _curve = ECCurve_secp256r1();
@@ -47,12 +48,18 @@ class SoftwareKeyStore implements DeviceKeyStore {
   final Map<String, Object?> jwk;
   final List<Uint8List> signed = [];
 
+  /// Where this stand-in claims its key lives.
+  KeySecurityLevel level = KeySecurityLevel.trustedEnvironment;
+
   @override
   Future<DeviceKey> generate(String alias) async => (await load(alias))!;
 
   @override
-  Future<DeviceKey?> load(String alias) async =>
-      DeviceKey(kid: alias, x: jwk['x'] as String, y: jwk['y'] as String);
+  Future<DeviceKey?> load(String alias) async => DeviceKey(
+      kid: alias,
+      x: jwk['x'] as String,
+      y: jwk['y'] as String,
+      securityLevel: level);
 
   @override
   Future<Uint8List> sign(String alias, Uint8List data) async {

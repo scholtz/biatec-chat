@@ -11,6 +11,7 @@ import '../config.dart';
 import '../enrollment/enrollment_state.dart';
 import '../enrollment/enrollment_store.dart';
 import '../keys/device_key_store.dart';
+import '../keys/key_security_level.dart';
 import 'settings_client.dart';
 
 /// Parses a decimal EUR string; null when it is not a number.
@@ -308,6 +309,9 @@ class SettingsController extends ChangeNotifier {
     }
     final key = await keys.load(record.kid);
     if (key == null) throw const ApprovalException('The device key is missing.');
+    if (key.securityLevel.blocksSigning) {
+      throw const ApprovalException(KeySecurityLevel.softwareKeyMessage);
+    }
     final signed = <String, Object?>{
       'type': 'biatec_settings_change',
       'sub': current.sub,

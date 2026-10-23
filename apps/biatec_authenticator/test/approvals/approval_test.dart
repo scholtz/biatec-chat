@@ -18,6 +18,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:biatec_authenticator/keys/key_security_level.dart';
+
 import 'support.dart';
 
 class FakeGate implements BiometricGate {
@@ -285,7 +287,8 @@ void main() {
       expect((kept['signed'] as Map).containsKey('binding_code'), isFalse);
       expect(kept['redacted'], ['signed.binding_code']);
       expect(kept['signature'], r['signature']);
-      expect({...(kept['signed'] as Map), 'binding_code': s['binding_code']}, s);
+      expect(
+          {...(kept['signed'] as Map), 'binding_code': s['binding_code']}, s);
       expect(jsonEncode(kept), isNot(contains(s['binding_code'] as String)));
     });
 
@@ -307,6 +310,17 @@ void main() {
       expect(last['binding_code'], '000003');
       expect(h.oidc.receipts, hasLength(4));
       expect((await h.history.read()).single.decision, 'code_failed');
+    });
+
+    test('a key the keystore holds in software signs nothing', () async {
+      final h = Harness(vectorRequest('stepup-transaction-approve'));
+      final c = await h.open();
+      h.keys.level = KeySecurityLevel.software;
+      await c.approve('483920');
+      expect(c.phase, isNot(ApprovalPhase.approved));
+      expect(c.error, contains('not in secure hardware'));
+      expect(h.keys.signed, isEmpty);
+      expect(h.oidc.receipts, isEmpty);
     });
 
     test('offline: nothing is signed or approved', () async {
