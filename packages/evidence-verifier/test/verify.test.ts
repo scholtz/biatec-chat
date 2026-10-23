@@ -37,7 +37,68 @@ describe("backend-exported bundle", () => {
     const r = verifyBundle(fresh(), { allowEmbeddedKeys: true });
     expect(r.valid).toBe(true);
     expect(r.keysAuthenticated).toBe(false);
-    expect(r.warnings.length).toBeGreaterThan(0);
+    expect(r.warnings.join(" ")).toMatch(/NOT checked against a published JWKS/);
+  });
+});
+
+describe("what a valid result does not say (BCHAT-022)", () => {
+  it("counts anchored and unanchored entries and always warns that anchors are not resolved", () => {
+    const r = verifyBundle(fresh(), { jwks });
+    expect(r.valid).toBe(true);
+    expect(r.anchoredEntries + r.unanchoredEntries).toBe(r.entries);
+    expect(r.warnings.some((w) => /anchor/i.test(w))).toBe(true);
+  });
+
+  /** A self-signed bundle whose entries carry the given anchorRefs (verified with allowEmbeddedKeys: only the anchoring wording matters here). */
+  function selfSigned(anchors: (string | null)[]): EvidenceBundle {
+    const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const jwk = publicKey.export({ format: "jwk" });
+    const kid = "ev-anchor-test";
+    const es = (text: string) => sign("sha256", Buffer.from(text), { key: privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+    const src = fresh();
+    let prev = "0".repeat(64);
+    const entries = anchors.map((anchorRef, i) => {
+      const e = src.entries[i % src.entries.length];
+      const seq = i + 1;
+      const ph = payloadHash(e.salt!, e.payload);
+      const eh = entryHash({ conversationId: src.conversationId, seq, prevHash: prev, kind: e.kind, payloadHash: ph, anchorRef });
+      const signedAt = "2026-10-20T10:00:00.000Z";
+      const out = { ...e, seq, anchorRef, payloadHash: ph, prevHash: prev, entryHash: eh, kid, signedAt, signature: es(signingInput(eh, kid, signedAt)) };
+      prev = eh;
+      return out;
+    });
+    const b: EvidenceBundle = { ...src, kid, entries, keys: [{ kty: "EC", crv: "P-256", alg: "ES256", use: "sig", kid, x: jwk.x!, y: jwk.y!, created_at: "2026-10-01T00:00:00.000Z" }], signature: "" };
+    b.signature = es(bundleSigningInput(b));
+    return b;
+  }
+
+  it("says the log is not yet anchored when no entry carries an anchorRef", () => {
+    const r = verifyBundle(selfSigned([null, null, null]), { allowEmbeddedKeys: true });
+    expect(r.valid).toBe(true);
+    expect([r.anchoredEntries, r.unanchoredEntries]).toEqual([0, 3]);
+    expect(r.warnings.join(" ")).toMatch(/No entry is anchored yet/);
+  });
+
+  it("counts anchored entries but still says they were not resolved", () => {
+    const r = verifyBundle(selfSigned([null, "A".repeat(52), "B".repeat(52)]), { allowEmbeddedKeys: true });
+    expect(r.valid).toBe(true);
+    expect([r.anchoredEntries, r.unanchoredEntries]).toEqual([2, 1]);
+    expect(r.warnings.join(" ")).toMatch(/2 of 3 entries carry an anchorRef, but this verifier does not resolve anchors/);
+  });
+
+  it("an empty or blank anchorRef anchors nothing", () => {
+    const r = verifyBundle(selfSigned([null, "", "   "]), { allowEmbeddedKeys: true });
+    expect(r.valid).toBe(true);
+    expect([r.anchoredEntries, r.unanchoredEntries]).toEqual([0, 3]);
+    expect(r.anchorsResolved).toBe(false);
+  });
+
+  it("an invalid bundle gets no anchoring caveat (it already fails)", () => {
+    const b = fresh();
+    (b.entries[0].payload as Record<string, unknown>).text = "edited";
+    const r = verifyBundle(b, { jwks });
+    expect(r.valid).toBe(false);
+    expect(r.warnings.some((w) => /anchor/i.test(w))).toBe(false);
   });
 });
 
@@ -178,6 +239,8 @@ describe("CLI", () => {
     const ok = run("verify", join(dir, "bundle.json"), "--jwks", join(dir, "jwks.json"));
     expect(ok.status).toBe(0);
     expect(ok.stdout).toMatch(/^OK: 3 entries/m);
+    expect(ok.stdout).toMatch(/anchors were NOT checked/);
+    expect(ok.stdout).toMatch(/WARNING: .*anchor/i);
 
     const b = fresh();
     (b.entries[0].payload as Record<string, unknown>).text = "edited";
