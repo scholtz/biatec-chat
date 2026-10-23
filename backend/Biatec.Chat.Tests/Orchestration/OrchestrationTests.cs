@@ -608,4 +608,71 @@ public sealed class OrchestrationTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.BadRequest, (await PostChatAsync(f, new { message = "  " })).StatusCode);
         Assert.Empty(model.Requests);
     }
+
+    private static IEnumerable<ModelStreamEvent> ManyToolCalls(int n)
+    {
+        var content = new List<ContentBlock>();
+        for (var i = 1; i <= n; i++)
+        {
+            yield return new ModelToolUse("tu-" + i, "kb_search", """{"query":"x"}""");
+            content.Add(new ContentBlock { ToolUse = new ToolUseBlock { ToolUseId = "tu-" + i, Name = "kb_search", Input = DocumentJson.FromJson("""{"query":"x"}""") } });
+        }
+        yield return new ModelMessageStop("tool_use", new ModelMessage { Role = ConversationRole.Assistant, Content = content });
+    }
+
+    [Fact]
+    public async Task Orchestration_OnlyTheFirstToolCallsOfARoundRun_AndEveryToolUseGetsAResult()
+    {
+        var exec = new FakeExecutor("kb.search", _ => new ToolExecutionResult("found"));
+        var n = ConversationOrchestrator.MaxToolUsesPerRound + 5;
+        var model = new ScriptedModel(_ => ManyToolCalls(n), _ => Text("done"));
+        using var f = Factory(model, exec);
+
+        await (await PostChatAsync(f, new { message = "fan out" })).Content.ReadAsStringAsync();
+
+        Assert.Equal(ConversationOrchestrator.MaxToolUsesPerRound, exec.Calls);
+        var results = model.Requests[1].Messages.SelectMany(m => m.Content).Where(c => c.ToolResult is not null).Select(c => c.ToolResult).ToList();
+        Assert.Equal(n, results.Count); // a tool use without a result would make the next model request invalid
+        Assert.Equal(5, results.Count(r => r.Status == ToolResultStatus.Error && r.Content.Single().Text.Contains("Too many tool calls")));
+    }
+
+    [Fact]
+    public async Task Orchestration_AnOversizedToolResultIsReplacedByAnError_BeforeItIsStoredOrSent()
+    {
+        var huge = new string('x', ConversationOrchestrator.MaxToolResultBytes + 1);
+        var exec = new FakeExecutor("kb.search", _ => new ToolExecutionResult(huge));
+        var model = new ScriptedModel(_ => ToolCall("tu-1", "kb_search", """{"query":"x"}"""), _ => Text("ok"));
+        using var f = Factory(model, exec);
+
+        await (await PostChatAsync(f, new { message = "big" })).Content.ReadAsStringAsync();
+
+        var sent = string.Concat(ToolResultTexts(model.Requests[1]));
+        Assert.DoesNotContain(huge[..100], sent);
+        Assert.Contains("more data than can be used", sent);
+        await using var db = f.Services.CreateScope().ServiceProvider.GetRequiredService<ChatDbContext>();
+        var stored = await db.Messages.AsNoTracking().Where(m => m.Role == MessageRole.Tool).ToListAsync();
+        Assert.All(stored, m => Assert.True((m.ToolResults ?? "").Length < 2000));
+    }
+
+    [Fact]
+    public async Task Orchestration_ToolResultsOfOneRound_AreBoundedTogether_AndTheLimitCountsBytesNotCharacters()
+    {
+        // 3-byte characters: 30000 of them are 90000 bytes, over the per-result limit although under it as characters.
+        var wide = new FakeExecutor("kb.search", _ => new ToolExecutionResult(new string('€', 30000)));
+        var model = new ScriptedModel(_ => ToolCall("tu-1", "kb_search", """{"query":"x"}"""), _ => Text("ok"));
+        using (var f = Factory(model, wide))
+        {
+            await (await PostChatAsync(f, new { message = "wide" })).Content.ReadAsStringAsync();
+            Assert.Contains("more data than can be used", string.Concat(ToolResultTexts(model.Requests[1])));
+        }
+
+        // Each result fits (50 KB), but the third pushes the round past 128 KB.
+        var medium = new FakeExecutor("kb.search", _ => new ToolExecutionResult(new string('a', 50 * 1024)));
+        var model2 = new ScriptedModel(_ => ManyToolCalls(3), _ => Text("ok"));
+        using var f2 = Factory(model2, medium);
+        await (await PostChatAsync(f2, new { message = "three" })).Content.ReadAsStringAsync();
+        var results = model2.Requests[1].Messages.SelectMany(m => m.Content).Where(c => c.ToolResult is not null).Select(c => c.ToolResult).ToList();
+        Assert.Equal(2, results.Count(r => r.Status == ToolResultStatus.Success));
+        Assert.Equal(1, results.Count(r => r.Status == ToolResultStatus.Error));
+    }
 }

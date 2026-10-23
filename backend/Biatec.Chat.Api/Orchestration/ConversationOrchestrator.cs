@@ -50,6 +50,12 @@ public sealed class ConversationOrchestrator(
     IEvidenceRecorder? evidence = null)
 {
     public const int MaxToolRounds = 8;
+    /// <summary>Tool calls that run in one round; the model asking for more gets the surplus answered with an error, unexecuted.</summary>
+    public const int MaxToolUsesPerRound = 8;
+    /// <summary>UTF-8 bytes of one tool result that are stored, recorded and sent to the model; a larger one is replaced by an error.</summary>
+    public const int MaxToolResultBytes = 64 * 1024;
+    /// <summary>UTF-8 bytes of all tool results of one round together; results past it are replaced by an error, so a round cannot add more than this to the next model request.</summary>
+    public const int MaxToolResultBytesPerRound = 128 * 1024;
     public const int MaxHistoryRows = 60;
     public const int MaxContextFieldLength = 200;
 
@@ -161,6 +167,8 @@ public sealed class ConversationOrchestrator(
 
             var results = new List<StoredToolResult>();
             var blocks = new List<ContentBlock>();
+            var callIndex = 0;
+            var roundBytes = 0;
             foreach (var call in toolUses)
             {
                 var capName = ResolveName(call.Name, wireToCapability);
@@ -170,6 +178,8 @@ public sealed class ConversationOrchestrator(
 
                 ToolExecutionResult result;
                 var fromExecutor = false;
+                // Every tool use needs a result block, but the surplus ones of a round are not run. They still pass the gate, so a forged call is refused and logged as before.
+                var overLimit = callIndex++ >= MaxToolUsesPerRound;
                 if (!TryParse(call.InputJson, out var args))
                 {
                     result = new ToolExecutionResult("The tool arguments were not valid JSON.", true);
@@ -180,6 +190,8 @@ public sealed class ConversationOrchestrator(
                     var decision = gate.Check(capName, args, gateCtx);
                     if (!decision.Allowed)
                         result = new ToolExecutionResult(decision.ModelError ?? "The tool call was refused.", true);
+                    else if (overLimit)
+                        result = new ToolExecutionResult($"Too many tool calls in one step (at most {MaxToolUsesPerRound} run). Call fewer tools, or continue in the next step.", true);
                     else if (!_executors.TryGetValue(decision.Capability!.Name, out var executor))
                         result = new ToolExecutionResult($"'{decision.Capability.Name}' is not available yet.", true);
                     else
@@ -190,6 +202,15 @@ public sealed class ConversationOrchestrator(
                         label = executor.StatusLabel(args) ?? label;
                         result = await RunExecutorAsync(executor, ctx, args, ct);
                         fromExecutor = true;
+                        var size = System.Text.Encoding.UTF8.GetByteCount(result.Content ?? "");
+                        if (size > MaxToolResultBytes || roundBytes + size > MaxToolResultBytesPerRound)
+                        {
+                            // The events built from the discarded data go with it; only the fixed message is kept.
+                            log.LogWarning("Tool {Tool} returned {Bytes} bytes (limits: {PerResult} per result, {PerRound} per round); the result was replaced by an error.",
+                                decision.Capability.Name, size, MaxToolResultBytes, MaxToolResultBytesPerRound);
+                            result = new ToolExecutionResult($"The tool returned more data than can be used here (over {MaxToolResultBytes} bytes, or too much in this step). Ask for less, for example one page or a narrower filter.", true);
+                        }
+                        else roundBytes += size;
                     }
                 }
 
