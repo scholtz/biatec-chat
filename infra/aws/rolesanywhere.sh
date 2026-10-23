@@ -10,7 +10,7 @@
 # role trust and policy are updated (use it to add an environment, or RENEW=1 to replace client certificates).
 # DEFAULT IS DRY-RUN:
 #   BIATEC_AWS_APPROVED=yes ./rolesanywhere.sh --apply
-# Environment: CERTS_ONLY=1 (local files only, no AWS), ENVIRONMENTS="stage main" (certificate names), OUT_DIR=./rolesanywhere-out, CERT_DAYS=365, RENEW=1.
+# Environment: CERTS_ONLY=1 (local files only, no AWS), ENVIRONMENTS="stage main" (certificate names), OUT_DIR=./rolesanywhere-out, CERT_DAYS=90 (rotate before it lapses: rolesanywhere-expiry.sh and the weekly workflow warn 30 days ahead), RENEW=1.
 set -euo pipefail
 export MSYS2_ARG_CONV_EXCL="/CN="  # Git Bash on Windows would rewrite the /CN= subject as a path
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,7 +19,7 @@ source "$DIR/common.sh"
 
 ENVIRONMENTS="${ENVIRONMENTS:-stage main}"
 OUT_DIR="${OUT_DIR:-./rolesanywhere-out}"
-CERT_DAYS="${CERT_DAYS:-365}"
+CERT_DAYS="${CERT_DAYS:-90}"
 ROLE="$NAME_PREFIX-bedrock-role"
 ANCHOR_NAME="$NAME_PREFIX"
 PROFILE_NAME="$NAME_PREFIX"
@@ -43,6 +43,8 @@ make_client_cert() {
   local env="$1" d="$OUT_DIR/$1"
   mkdir -p "$d"
   if [ -f "$d/certificate.pem" ] && [ "${RENEW:-0}" != 1 ]; then echo "Client certificate exists: $d/certificate.pem (RENEW=1 to replace)"; return; fi
+  # Keep the certificate a renewal replaces, so it can still be revoked (rolesanywhere-revoke.sh --cert) if it leaked.
+  if [ -f "$d/certificate.pem" ]; then mkdir -p "$d/retired"; cp "$d/certificate.pem" "$d/retired/$(openssl x509 -in "$d/certificate.pem" -noout -serial | sed 's/^serial=//').pem"; fi
   openssl ecparam -name prime256v1 -genkey -noout -out "$d/private-key.pem"
   chmod 600 "$d/private-key.pem"
   openssl req -new -key "$d/private-key.pem" -subj "/CN=$NAME_PREFIX-$env" -out "$d/client.csr"

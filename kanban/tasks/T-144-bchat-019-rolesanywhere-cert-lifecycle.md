@@ -41,10 +41,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] `rolesanywhere.sh` issues certificates valid for 90 days unless `CERT_DAYS` says otherwise.
-- [ ] The expiry script exits non-zero for a certificate inside the warning window (default 30 days) and zero outside it; the weekly workflow runs it for Stage and Production.
-- [ ] The revoke script produces a CRL that lists the revoked certificate's serial and not the others', and imports it with `import-crl` (checked against the fake `aws` in the offline test).
-- [ ] `docs/aws-setup.md` documents rotation, revocation and monitoring; the existing offline tests stay green.
+- [x] `rolesanywhere.sh` issues certificates valid for 90 days unless `CERT_DAYS` says otherwise.
+- [x] The expiry script exits non-zero for a certificate inside the warning window (default 30 days) and zero outside it; the weekly workflow runs it for Stage and Production.
+- [x] The revoke script produces a CRL that lists the revoked certificate's serial and not the others', and imports it with `import-crl` (checked against the fake `aws` in the offline test).
+- [x] `docs/aws-setup.md` documents rotation, revocation and monitoring; the existing offline tests stay green.
 
 ## Verification
 
@@ -52,12 +52,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** rolesanywhere.sh issues client certificates valid for 90 days by default (CERT_DAYS). rolesanywhere-expiry.sh checks certificate files against a window (default 30 days; exit 1 inside it, 2 on usage errors) and a weekly workflow runs it on the AWS_CLIENT_CERT secret of Stage and Production. rolesanywhere-revoke.sh records one environment's certificate in a kept revocation index, signs a CRL with the CA and imports (or updates) it in the trust anchor; without --apply it only prints the plan and writes nothing. docs/aws-setup.md documents rotation, monitoring and revocation.
+- **Files changed:** infra/aws/rolesanywhere.sh, infra/aws/rolesanywhere-expiry.sh (new), infra/aws/rolesanywhere-revoke.sh (new), infra/aws/test-scripts.sh, .github/workflows/rolesanywhere-expiry.yml (new), docs/aws-setup.md.
+- **How it was verified:** infra/aws/test-scripts.sh passes offline: 90-day default, expiry flags a 10-day certificate and passes a 200-day one, window and usage errors, the CRL verifies against the CA and lists only the revoked serial, a second revocation keeps the first, import-crl is called against the fake aws, dry run writes nothing and a missing certificate is refused.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** The weekly workflow was not run (it needs the real environment secrets); an environment with required reviewers would make it wait for approval. Nothing was run against AWS: the real import-crl call is checked only against the fake aws. Rotation of the GitHub secrets stays manual. The CRL is valid for CRL_DAYS (3650, beyond the CA certificate) and nothing monitors its expiry; update-crl replaces the whole CRL, so the script refuses to update an existing AWS CRL from a local index with no revocations unless FORCE_CRL=1.
 
 ## Review
 

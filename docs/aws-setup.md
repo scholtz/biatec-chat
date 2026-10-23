@@ -113,11 +113,31 @@ Nothing in the cluster has to change: no API-server flag, no public issuer, no A
 
 ### Renewing the client certificate
 
-Client certificates last 365 days (`CERT_DAYS`); the deploy warns when one expires within 14 days. To renew: run
-`RENEW=1 BIATEC_AWS_APPROVED=yes infra/aws/rolesanywhere.sh --apply` on the machine that holds `rolesanywhere-out/`,
-set the two `AWS_CLIENT_*` secrets again, and deploy. The CA certificate (10 years) and the ARNs do not change. To
-revoke an environment at once, disable the trust anchor or the profile in the Roles Anywhere console, or delete the
-certificate secret.
+Client certificates last 90 days by default (`CERT_DAYS`; the CA lasts 10 years). Two checks warn before one lapses: the
+deploy warns about a certificate that expires within 14 days, and the weekly workflow `rolesanywhere-expiry.yml` reads the
+`AWS_CLIENT_CERT` secret of Stage and Production and, inside a 30-day window, fails and opens (or comments on) a GitHub issue
+labelled `cert-expiry`, so the alert does not depend on one person's notification settings. Run it by
+hand on files with `infra/aws/rolesanywhere-expiry.sh --days 30 certificate.pem`.
+
+To renew: run `RENEW=1 BIATEC_AWS_APPROVED=yes infra/aws/rolesanywhere.sh --apply` on the machine that holds
+`rolesanywhere-out/`, set the two `AWS_CLIENT_*` secrets again, and deploy. The CA certificate and the ARNs do not change.
+Rotation of the GitHub secrets is manual: it needs a credential with write access to them.
+
+### Revoking one environment's certificate
+
+If a certificate or its key leaked, revoke just that environment without touching the other:
+
+```
+BIATEC_AWS_APPROVED=yes infra/aws/rolesanywhere-revoke.sh stage --apply      # without --apply it only prints the plan
+```
+
+It records the certificate in `rolesanywhere-out/crl/revoked.index` (kept, so earlier revocations stay in every later CRL),
+signs a certificate revocation list with the CA and imports it into the trust anchor as `biatec-chat-crl` (updated on later
+runs). Roles Anywhere then refuses that certificate within minutes. Revoke first and renew afterwards: the script reads the certificate
+currently in `rolesanywhere-out/<environment>/` (`stage`, or `main` for Production; `Production` is accepted too), so after a
+renewal it would revoke the new one (a renewal keeps the replaced certificate in `rolesanywhere-out/<environment>/retired/`). If you renewed already, pass the leaked certificate: `… rolesanywhere-revoke.sh stage --cert old-certificate.pem --apply`. Afterwards renew as above (`RENEW=1`) and replace the
+secrets of that environment. The CRL is valid for `CRL_DAYS` (3650). Keep `rolesanywhere-out/crl/` with the CA: `update-crl` replaces the whole CRL, so the script refuses to update an existing CRL from a machine without that directory (`FORCE_CRL=1` overrides). Roles Anywhere
+stops trusting an expired CRL. Disabling the trust anchor or the profile in the console still stops everything at once.
 
 ## 4. Check that it works
 
@@ -134,7 +154,7 @@ certificate secret.
 |---|---|---|
 | `AccessDeniedException: Invalid or empty profile provided` / `Unable to get IAM security credentials` | wrong `AWS_PROFILE_ARN`, `AWS_TRUST_ANCHOR_ARN` or `AWS_ROLE_ARN` in the environment secrets | copy the ARNs the script printed (rerun it, it reuses what exists) and redeploy |
 | `AccessDeniedException: Untrusted signing certificate` | the certificate is not from the CA in the trust anchor (for example the CA was regenerated) | rerun `rolesanywhere.sh` with the original `rolesanywhere-out/`, or `RENEW=1` and update the secrets |
-| `Invalid or expired certificate`, or the deploy warns about expiry | the client certificate is past its 365 days | "Renewing the client certificate" above |
+| `Invalid or expired certificate`, or the deploy warns about expiry | the client certificate is past its 90 days | "Renewing the client certificate" above |
 | `not authorized to perform: sts:AssumeRole` | the certificate subject is not `biatec-chat-<env>` listed in the role trust, or another trust anchor was used | rerun `rolesanywhere.sh` with `ENVIRONMENTS` including the environment (it updates the trust) |
 | pod stays `ContainerCreating`, `secret "biatec-chat-aws" not found` | the deploy had no `AWS_*` secrets and the cluster has none | set the five secrets (step 4) and redeploy |
 | every tool result replaced by "withheld" | missing `bedrock:ApplyGuardrail` or wrong guardrail id | steps 2–3, check `Bedrock__Guardrail__*` |
