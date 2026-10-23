@@ -1,7 +1,7 @@
 ---
 id: T-131
 title: "Restrict who can reach the builders sidecar and bound request and response sizes (BCHAT-016)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -59,7 +59,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 11:05 · approve · PR #315 merged into main @ 052d9ad (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 13:00 · claude · (new) → backlog · created from GitHub issue #269 (BCHAT-016); blockers scan: none
 - 2026-10-23 10:50 · scholtz · taken, and session-20261023-1050 · backlog → in-progress · claimed
+- 2026-10-23 11:05 · user · in-progress → done · PR #315 merged into main @ 052d9ad (synced by kanban-sync)
