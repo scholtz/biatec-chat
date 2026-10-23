@@ -1,0 +1,17 @@
+# The builders sidecar is reachable only from the backend pods (BCHAT-016). The shared secret stays the authentication; this stops
+# every other pod in the namespace from even opening a connection. Enforced only by a CNI that implements NetworkPolicy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: biatec-chat-builders-from-backend
+  labels: {app.kubernetes.io/name: biatec-chat-builders, app.kubernetes.io/part-of: biatec-chat}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: biatec-chat-builders}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: biatec-chat-backend}
+      ports:
+        - {protocol: TCP, port: 3100}
