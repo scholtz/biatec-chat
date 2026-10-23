@@ -12,6 +12,7 @@ import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/keys/device_key_store.dart';
+import 'package:biatec_authenticator/keys/key_security_level.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -22,8 +23,11 @@ const _fakeP256 = (
 
 class _Keys implements DeviceKeyStore {
   @override
-  Future<DeviceKey> generate(String alias) async =>
-      DeviceKey(kid: alias, x: _fakeP256.x, y: _fakeP256.y);
+  Future<DeviceKey> generate(String alias) async => DeviceKey(
+      kid: alias,
+      x: _fakeP256.x,
+      y: _fakeP256.y,
+      securityLevel: KeySecurityLevel.trustedEnvironment);
   @override
   Future<DeviceKey?> load(String alias) async => null;
   @override
@@ -64,8 +68,8 @@ void main() {
     expect(early.statusCode, 403);
 
     // Skip the 24 h delay on the server and in the controller's clock.
-    await http.post(Uri.parse(
-        '$baseUrl/mock/devices/${a.state.record!.kid}/activate'));
+    await http.post(
+        Uri.parse('$baseUrl/mock/devices/${a.state.record!.kid}/activate'));
     now = now.add(const Duration(hours: 25));
     await a.refresh();
     expect(a.state.phase, EnrollmentPhase.activeRecoveryPending);

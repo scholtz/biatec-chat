@@ -38,8 +38,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
         );
     // The mock accepts the seeded login token; a real build gets the token
     // from the OIDC login.
-    _token = TextEditingController(
-        text: widget.config.isMock ? 'login-alice' : '');
+    _token =
+        TextEditingController(text: widget.config.isMock ? 'login-alice' : '');
     _controller.refresh();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       final s = _controller.state;
@@ -60,6 +60,16 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$h:$m:$s';
+  }
+
+  /// Where the key lives, once known: the app says what the device did.
+  List<Widget> _keyLevelLines() {
+    final level = _controller.keyLevel;
+    if (level == null) return const [];
+    return [
+      const SizedBox(height: 8),
+      Text('Key protection: ${level.label}', textAlign: TextAlign.center),
+    ];
   }
 
   @override
@@ -99,6 +109,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
             const SizedBox(height: 16),
             Text('Device inactive', style: style),
             const SizedBox(height: 8),
+            ..._keyLevelLines(),
             Text(
               'Approvals from this device start in '
               '${_format(s.remaining(_controller.now))}. '
@@ -131,13 +142,17 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
         );
       case EnrollmentPhase.active:
         return Center(
-            child: Text('This device is enrolled and active.', style: style));
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('This device is enrolled and active.', style: style),
+          ..._keyLevelLines(),
+        ]));
       case EnrollmentPhase.notEnrolled:
       case EnrollmentPhase.failed:
         return ListView(children: [
           Text(
               'Enroll this device. Its key is created in secure hardware '
-              'and cannot be exported.',
+              'and cannot be exported; if this device cannot do that, '
+              'enrollment is refused.',
               style: style),
           const SizedBox(height: 16),
           TextField(
@@ -162,7 +177,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
 
 /// Shows the recovery code once. Leaving requires confirming it was saved.
 class RecoveryCodeView extends StatelessWidget {
-  const RecoveryCodeView({super.key, required this.code, required this.onSaved});
+  const RecoveryCodeView(
+      {super.key, required this.code, required this.onSaved});
 
   final String code;
   final VoidCallback onSaved;

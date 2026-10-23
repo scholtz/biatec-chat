@@ -67,6 +67,10 @@ default counts as a real Biatec OIDC, so the settings screens are off unless `--
   `android/app/src/main/kotlin/io/biatec/authenticator/KeystorePlugin.kt` (Android Keystore, StrongBox with fallback to the TEE; registered in
   `MainActivity.configureFlutterEngine`) and `ios/Runner/KeystorePlugin.swift` (Secure Enclave, `kSecAttrTokenIDSecureEnclave`; registered in
   `AppDelegate`).
+- Key security level (BCHAT-032): `generate` and `load` also return `securityLevel`: `strongbox`, `tee`, `hardware` (Android below API 31, where the platform
+  only says "inside secure hardware"), `secure_enclave` (iOS, read from the key's token attribute), `software` or `unknown`. The Android plugin deletes a key that
+  ended up in software and answers `insecure_key`; `EnrollmentController.enroll` refuses `software` and `unknown` too (fail closed, also for an older plugin that
+  says nothing), and the enrollment screen shows "Key protection: ...". The Kotlin side is compiled, the Swift side is not.
 - `lib/enrollment/`: `EnrollmentController` state machine (`notEnrolled`, `generatingKey`, `enrolling`, `inactive`,
   `activeRecoveryPending`, `active`, `failed`), `OidcEnrollmentClient` (`POST /devices`), secure-storage record, and
   the enrollment and recovery-code screen. Attestation is stubbed by the mock (not sent).

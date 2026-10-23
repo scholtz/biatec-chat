@@ -87,7 +87,13 @@ public class KeystorePlugin: NSObject, FlutterPlugin {
 
     private func publicParts(_ key: SecKey) -> [String: String]? {
         guard let pub = SecKeyCopyPublicKey(key), let raw = SecKeyCopyExternalRepresentation(pub, nil) as Data?, raw.count == 65, raw[0] == 4 else { return nil }
-        return ["x": b64(raw.subdata(in: 1..<33)), "y": b64(raw.subdata(in: 33..<65))]
+        return ["x": b64(raw.subdata(in: 1..<33)), "y": b64(raw.subdata(in: 33..<65)), "securityLevel": securityLevel(key)]
+    }
+
+    /// "secure_enclave" when the key's token is the Secure Enclave, "software" for any other key, "unknown" when the attributes cannot be read.
+    private func securityLevel(_ key: SecKey) -> String {
+        guard let attrs = SecKeyCopyAttributes(key) as? [String: Any], let token = attrs[kSecAttrTokenID as String] as? String else { return "unknown" }
+        return token == (kSecAttrTokenIDSecureEnclave as String) ? "secure_enclave" : "software"
     }
 
     /// DER ECDSA signature to raw r||s (64 bytes).
