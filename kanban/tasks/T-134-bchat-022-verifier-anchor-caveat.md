@@ -1,7 +1,7 @@
 ---
 id: T-134
 title: "Say what the offline verifier did not check: anchoring (BCHAT-022)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -60,7 +60,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files (B
 
 ## Review
 
+- 2026-10-23 11:35 · approve · PR #319 merged into main @ 23c7059 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 16:00 · claude · (new) → backlog · created from GitHub issue #275 (BCHAT-022); blockers scan: none
 - 2026-10-23 11:27 · scholtz · taken, and session-20261023-1127 · backlog → in-progress · claimed
+- 2026-10-23 11:35 · user · in-progress → done · PR #319 merged into main @ 23c7059 (synced by kanban-sync)
