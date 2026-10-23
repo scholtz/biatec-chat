@@ -324,6 +324,30 @@ public sealed class OrchestrationTests : IAsyncLifetime
         Assert.Null(assistant.ToolResults);
     }
 
+    // BCHAT-039: a turn that another replica holds (its advisory lock) makes this replica answer 409 and run nothing.
+    [Fact]
+    public async Task Orchestration_ATurnHeldByAnotherReplica_IsAnswered409_AndRunsNothing()
+    {
+        var model = new ScriptedModel(_ => Text("Hello"), _ => Text("Should not run"));
+        using var f = Factory(model);
+        var first = await PostChatAsync(f, new { message = "hi" });
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var cookie = CookieOf(first);
+        var conversation = Guid.Parse(first.Headers.GetValues("X-Biatec-Conversation").Single());
+
+        await using var otherReplica = NewContext();
+        var held = await Biatec.Chat.Api.Chat.ConversationTurnLock.TryAcquireAsync(otherReplica, conversation, default);
+        Assert.NotNull(held);
+        var second = await PostChatAsync(f, new { message = "again" }, cookie);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        Assert.Single(model.Requests);
+
+        await held!.DisposeAsync();
+        var third = await PostChatAsync(f, new { message = "now" }, cookie);
+        Assert.Equal(HttpStatusCode.OK, third.StatusCode);
+        Assert.Equal(2, model.Requests.Count);
+    }
+
     [Fact]
     public async Task Orchestration_TextStreamsAsSseDeltaEvents_AndIsPersisted()
     {

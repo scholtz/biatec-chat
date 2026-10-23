@@ -64,8 +64,14 @@ public static class ChatEndpoints
             if (!TurnsInFlight.TryAdd(session.ConversationId, 0))
                 return Results.Problem("A previous message in this conversation is still being answered.", statusCode: StatusCodes.Status409Conflict);
 
+            IAsyncDisposable? turnLock = null;
             try
             {
+                // The same rule across replicas (BCHAT-039): a turn running on another pod holds this lock.
+                turnLock = await ConversationTurnLock.TryAcquireAsync(ctx.RequestServices.GetRequiredService<ChatDbContext>(), session.ConversationId, ctx.RequestAborted);
+                if (turnLock is null)
+                    return Results.Problem("A previous message in this conversation is still being answered.", statusCode: StatusCodes.Status409Conflict);
+
                 ctx.Response.StatusCode = StatusCodes.Status200OK;
                 ctx.Response.ContentType = "text/event-stream";
                 ctx.Response.Headers.CacheControl = "no-store";
@@ -89,7 +95,11 @@ public static class ChatEndpoints
                 }
                 return Results.Empty;
             }
-            finally { TurnsInFlight.TryRemove(session.ConversationId, out _); }
+            finally
+            {
+                if (turnLock is not null) await turnLock.DisposeAsync();
+                TurnsInFlight.TryRemove(session.ConversationId, out _);
+            }
         }).WithName("PostChatMessage").Produces(StatusCodes.Status200OK, contentType: "text/event-stream").LimitSessionCreation();
 
         return app;

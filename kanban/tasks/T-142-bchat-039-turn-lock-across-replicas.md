@@ -40,10 +40,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] A second acquire for the same conversation fails while the first is held, from a separate database connection (as another replica would be); a different conversation can be acquired; after release it can be acquired again.
-- [ ] Disposing releases the lock even if the unlock statement is not reached (the dedicated connection is closed, not pooled).
-- [ ] The chat endpoint answers 409 for a turn held by another replica, and releases the lock when the turn ends.
-- [ ] Existing chat and orchestration tests stay green.
+- [x] A second acquire for the same conversation fails while the first is held, from a separate database connection (as another replica would be); a different conversation can be acquired; after release it can be acquired again.
+- [x] Disposing releases the lock even if the unlock statement is not reached (the dedicated connection is closed, not pooled).
+- [x] The chat endpoint answers 409 for a turn held by another replica, and releases the lock when the turn ends.
+- [x] Existing chat and orchestration tests stay green.
 
 ## Verification
 
@@ -51,12 +51,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** A turn now also takes a PostgreSQL session advisory lock (pg_try_advisory_lock on 'turn:<conversation id>') on a dedicated, non-pooled connection for its whole duration, after the existing in-process check; another replica's turn on the same conversation gets the same 409. Closing the connection always releases the lock, so a crash or abort cannot leave a conversation locked. Other providers get a no-op handle.
+- **Files changed:** Api/Chat/ConversationTurnLock.cs (new), Api/Chat/ChatEndpoints.cs, Tests/Orchestration/ConversationTurnLockTests.cs, Tests/Orchestration/OrchestrationTests.cs.
+- **How it was verified:** Real-PostgreSQL tests with separate connections as separate replicas: second acquire fails while held and works after release, another conversation is unaffected, the turn lock does not collide with the short per-write ConversationLock (T-128), release is idempotent; an endpoint test where an external holder makes the chat endpoint answer 409 without calling the model and the next turn runs after release. Full backend suite run before the PR.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** The Seq allocation itself (max+1) is unchanged: with the turn lock it is serialised per conversation, but a writer that bypasses the endpoint (the public chat transport has its own in-process guard) is not covered by this lock. Want the public transport to take it too?
 
 ## Review
 
