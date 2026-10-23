@@ -17,6 +17,8 @@ source "$DIR/common.sh"
 
 ENV_NAME=""
 for arg in "$@"; do case "$arg" in --*) ;; *) ENV_NAME="$arg" ;; esac; done
+# The GitHub environments are Stage and Production; the local directories are stage and main.
+case "$ENV_NAME" in Stage|stage) ENV_NAME=stage ;; Production|production) ENV_NAME=main ;; esac
 [ -n "$ENV_NAME" ] || { echo "Usage: rolesanywhere-revoke.sh <environment> [--apply]" >&2; exit 2; }
 OUT_DIR="${OUT_DIR:-./rolesanywhere-out}"
 CRL_DAYS="${CRL_DAYS:-365}"
@@ -45,7 +47,7 @@ if grep -q "$TAB$serial$TAB" "$INDEX" 2>/dev/null; then
   echo "Certificate $serial of $ENV_NAME is already in the revocation list."
 else
   not_after="$(date -u -d "$(openssl x509 -in "$CERT" -noout -enddate | sed 's/^notAfter=//')" +%y%m%d%H%M%SZ 2>/dev/null || true)"
-  [ -n "$not_after" ] || not_after="$(date -u -d '+1 year' +%y%m%d%H%M%SZ)"
+  [ -n "$not_after" ] || not_after="$(date -u -d '+1 year' +%y%m%d%H%M%SZ 2>/dev/null || date -u -v+1y +%y%m%d%H%M%SZ)"
   subject="$(openssl x509 -in "$CERT" -noout -subject | sed 's/^subject= *//; s/ = /=/g; s#, #/#g; s#^#/#')"
   printf 'R\t%s\t%s,keyCompromise\t%s\tunknown\t%s\n' "$not_after" "$(date -u +%y%m%d%H%M%SZ)" "$serial" "$subject" >> "$INDEX"
   echo "Recorded certificate $serial of $ENV_NAME as revoked."
@@ -65,21 +67,17 @@ default_md = sha256
 default_crl_days = $CRL_DAYS
 unique_subject = no
 EOF
-openssl ca -config "$CRL_DIR/openssl.cnf" -gencrl -cert "$OUT_DIR/ca.pem" -keyfile "$OUT_DIR/ca.key" -out "$CRL_DIR/crl.pem" 2>/dev/null
+openssl ca -config "$CRL_DIR/openssl.cnf" -gencrl -cert "$OUT_DIR/ca.pem" -keyfile "$OUT_DIR/ca.key" -out "$CRL_DIR/crl.pem"
 echo "Wrote $CRL_DIR/crl.pem ($(grep -c "$TAB" "$INDEX" || true) revoked certificate(s), valid $CRL_DAYS days)"
 
-if [ "$APPLY" = 1 ]; then
-  ANCHOR_ARN="$(aws_ rolesanywhere list-trust-anchors --query "trustAnchors[?name=='$ANCHOR_NAME'].trustAnchorArn | [0]" --output text)"
-  [ -n "$ANCHOR_ARN" ] && [ "$ANCHOR_ARN" != "None" ] || { echo "Trust anchor $ANCHOR_NAME not found." >&2; exit 1; }
-  CRL_ID="$(aws_ rolesanywhere list-crls --query "crls[?name=='$CRL_NAME'].crlId | [0]" --output text)"
-  fileref="fileb://$CRL_DIR/crl.pem"
-  if command -v cygpath >/dev/null 2>&1; then fileref="fileb://$(cygpath -m "$CRL_DIR/crl.pem")"; fi
-  if [ -z "$CRL_ID" ] || [ "$CRL_ID" = "None" ]; then
-    run_aws rolesanywhere import-crl --name "$CRL_NAME" --crl-data "$fileref" --trust-anchor-arn "$ANCHOR_ARN" --enabled --tags "key=$TAG_KEY,value=$TAG_VALUE"
-  else
-    run_aws rolesanywhere update-crl --crl-id "$CRL_ID" --crl-data "$fileref"
-  fi
+ANCHOR_ARN="$(aws_ rolesanywhere list-trust-anchors --query "trustAnchors[?name=='$ANCHOR_NAME'].trustAnchorArn | [0]" --output text)"
+[ -n "$ANCHOR_ARN" ] && [ "$ANCHOR_ARN" != "None" ] || { echo "Trust anchor $ANCHOR_NAME not found." >&2; exit 1; }
+CRL_ID="$(aws_ rolesanywhere list-crls --query "crls[?name=='$CRL_NAME'].crlId | [0]" --output text)"
+fileref="fileb://$CRL_DIR/crl.pem"
+if command -v cygpath >/dev/null 2>&1; then fileref="fileb://$(cygpath -m "$CRL_DIR/crl.pem")"; fi
+if [ -z "$CRL_ID" ] || [ "$CRL_ID" = "None" ]; then
+  run_aws rolesanywhere import-crl --name "$CRL_NAME" --crl-data "$fileref" --trust-anchor-arn "$ANCHOR_ARN" --enabled --tags "key=$TAG_KEY,value=$TAG_VALUE"
 else
-  echo "[dry-run] aws rolesanywhere import-crl --name $CRL_NAME --crl-data <$CRL_DIR/crl.pem> --trust-anchor-arn <$ANCHOR_NAME> --enabled (or update-crl when it exists)"
+  run_aws rolesanywhere update-crl --crl-id "$CRL_ID" --crl-data "$fileref"
 fi
 echo "Next: issue a new certificate (RENEW=1 infra/aws/rolesanywhere.sh --apply) and replace the AWS_CLIENT_CERT / AWS_CLIENT_KEY secrets and the cluster secret of $ENV_NAME."

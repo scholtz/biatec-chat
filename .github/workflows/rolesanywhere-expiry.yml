@@ -1,6 +1,6 @@
 # Weekly: warn before the Roles Anywhere client certificate of Stage or Production expires (BCHAT-019). The deploy only checks
 # when it runs, so a certificate could lapse between deploys. Reads the AWS_CLIENT_CERT secret of each environment, offline
-# (infra/aws/rolesanywhere-expiry.sh), and fails the run (GitHub then emails the repository watchers) inside the window.
+# (infra/aws/rolesanywhere-expiry.sh), fails the run inside the window and opens an issue, so the alert does not depend on who last edited the cron line.
 # Note: an environment with required reviewers makes the job wait for approval; keep it reviewer-free for this check.
 name: rolesanywhere-expiry
 
@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   expiry:
@@ -34,3 +35,13 @@ jobs:
           if [ -z "$AWS_CLIENT_CERT" ]; then echo "::error::AWS_CLIENT_CERT is not set on the ${{ matrix.environment }} environment."; exit 1; fi
           printf '%s\n' "$AWS_CLIENT_CERT" > "$RUNNER_TEMP/client.pem"
           bash infra/aws/rolesanywhere-expiry.sh --days "$DAYS" "$RUNNER_TEMP/client.pem"
+      - name: Open an issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Roles Anywhere certificate of ${{ matrix.environment }} expires soon"
+          body="The weekly check failed: see ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}. Renew it (docs/aws-setup.md, Renewing the client certificate)."
+          gh label create cert-expiry --color D93F0B --description "Roles Anywhere certificate expiry" >/dev/null 2>&1 || true
+          existing="$(gh issue list --state open --label cert-expiry --search "$title in:title" --json number -q '.[0].number')"
+          if [ -n "$existing" ]; then gh issue comment "$existing" --body "$body"; else gh issue create --title "$title" --label cert-expiry --body "$body"; fi

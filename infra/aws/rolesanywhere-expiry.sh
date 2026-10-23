@@ -10,7 +10,7 @@ days=30
 files=()
 while [ $# -gt 0 ]; do
   case "$1" in
-    --days) days="${2:-}"; shift 2 ;;
+    --days) [ $# -ge 2 ] || { echo "--days needs a whole number." >&2; exit 2; }; days="$2"; shift 2 ;;
     -h|--help) sed -n '2,8p' "$0"; exit 0 ;;
     *) files+=("$1"); shift ;;
   esac

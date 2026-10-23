@@ -114,8 +114,9 @@ Nothing in the cluster has to change: no API-server flag, no public issuer, no A
 ### Renewing the client certificate
 
 Client certificates last 90 days by default (`CERT_DAYS`; the CA lasts 10 years). Two checks warn before one lapses: the
-deploy fails a certificate that expires within 14 days, and the weekly workflow `rolesanywhere-expiry.yml` reads the
-`AWS_CLIENT_CERT` secret of Stage and Production and fails (GitHub emails the watchers) inside a 30-day window. Run it by
+deploy warns about a certificate that expires within 14 days, and the weekly workflow `rolesanywhere-expiry.yml` reads the
+`AWS_CLIENT_CERT` secret of Stage and Production and, inside a 30-day window, fails and opens (or comments on) a GitHub issue
+labelled `cert-expiry`, so the alert does not depend on one person's notification settings. Run it by
 hand on files with `infra/aws/rolesanywhere-expiry.sh --days 30 certificate.pem`.
 
 To renew: run `RENEW=1 BIATEC_AWS_APPROVED=yes infra/aws/rolesanywhere.sh --apply` on the machine that holds
@@ -132,7 +133,9 @@ BIATEC_AWS_APPROVED=yes infra/aws/rolesanywhere-revoke.sh stage --apply      # w
 
 It records the certificate in `rolesanywhere-out/crl/revoked.index` (kept, so earlier revocations stay in every later CRL),
 signs a certificate revocation list with the CA and imports it into the trust anchor as `biatec-chat-crl` (updated on later
-runs). Roles Anywhere then refuses that certificate within minutes. Afterwards renew as above (`RENEW=1`) and replace the
+runs). Roles Anywhere then refuses that certificate within minutes. Revoke first and renew afterwards: the script reads the certificate
+currently in `rolesanywhere-out/<environment>/` (`stage`, or `main` for Production; `Production` is accepted too), so after a
+renewal it would revoke the new one. Afterwards renew as above (`RENEW=1`) and replace the
 secrets of that environment. The CRL is valid for `CRL_DAYS` (365); re-run the script before it lapses, because Roles Anywhere
 stops trusting an expired CRL. Disabling the trust anchor or the profile in the console still stops everything at once.
 

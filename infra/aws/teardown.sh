@@ -20,8 +20,9 @@ echo "Tagged resources found:"; echo "${ARNS:-<none>}"
 
 ids_of() { echo "$ARNS" | grep ":$1/" | sed 's|.*/||' || true; }
 
-# Roles Anywhere profile and trust anchor first (they reference the role), found through their Project tag.
+# Roles Anywhere profile, CRL and trust anchor first (they reference the role), found through their Project tag.
 for p in $(ids_of profile); do run_aws_ok rolesanywhere delete-profile --profile-id "$p"; done
+for c in $(ids_of crl); do run_aws_ok rolesanywhere delete-crl --crl-id "$c"; done
 for t in $(ids_of trust-anchor); do run_aws_ok rolesanywhere delete-trust-anchor --trust-anchor-id "$t"; done
 
 # IAM is global and its tags are NOT returned by the regional Tagging API, so roles are deleted by name. Older policy
@@ -51,7 +52,7 @@ done
 UNHANDLED=""
 while read -r arn; do
   [ -z "$arn" ] && continue
-  case "$arn" in *:guardrail/*|*:key/*|*:profile/*|*:trust-anchor/*) ;; *) UNHANDLED="$UNHANDLED$arn"$'\n' ;; esac
+  case "$arn" in *:guardrail/*|*:key/*|*:profile/*|*:trust-anchor/*|*:crl/*) ;; *) UNHANDLED="$UNHANDLED$arn"$'\n' ;; esac
 done <<< "$ARNS"
 if [ -n "$UNHANDLED" ]; then
   echo "WARNING: tagged resources this script does not know how to delete (remove them by hand):" >&2

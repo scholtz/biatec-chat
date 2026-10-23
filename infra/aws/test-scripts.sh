@@ -75,4 +75,7 @@ check "the CRL is signed by the CA and lists the stage certificate only" 'openss
 FAKE_ANCHOR=arn:aws:rolesanywhere:eu-central-1:123456789012:trust-anchor/ta-1 OUT_DIR="$TMP/ra" "$DIR/rolesanywhere-revoke.sh" main --apply >"$TMP/rv2.out" 2>&1
 check "a second revocation keeps the first in the CRL" 'openssl crl -in "$TMP/ra/crl/crl.pem" -noout -text | grep -qi "Serial Number: $serial_stage" && openssl crl -in "$TMP/ra/crl/crl.pem" -noout -text | grep -qi "Serial Number: $serial_main"'
 check "revoke is a dry run without --apply and refuses a missing certificate" 'OUT_DIR="$TMP/ra" "$DIR/rolesanywhere-revoke.sh" stage >"$TMP/rv3.out" 2>&1 && grep -q "dry-run" "$TMP/rv3.out" && ! OUT_DIR="$TMP/ra" "$DIR/rolesanywhere-revoke.sh" nope >/dev/null 2>&1'
+check "expiry check rejects --days without a value instead of looping" 'timeout 10 "$DIR/rolesanywhere-expiry.sh" "$TMP/exp/c200.pem" --days >/dev/null 2>&1; [ $? -eq 2 ]'
+check "revoke accepts the GitHub environment name Production for main" 'OUT_DIR="$TMP/ra" "$DIR/rolesanywhere-revoke.sh" Production 2>&1 | grep -q "dry-run"'
+check "teardown deletes the CRL" 'grep -q "delete-crl" "$DIR/teardown.sh"'
 exit $fail
