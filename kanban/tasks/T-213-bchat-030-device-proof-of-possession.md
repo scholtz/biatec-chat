@@ -1,7 +1,7 @@
 ---
 id: T-213
 title: "Authenticator: prove possession of the device key on every device call; rate-limit push re-registration (BCHAT-030)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -56,8 +56,11 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 19:11 · approve · PR #349 merged into main @ 6b88a67 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 18:58 · kanban-split · (new) → backlog · created from audit issue #283
 - 2026-10-23 18:58 · scholtz · taken · status stays backlog
 - 2026-10-23 18:58 · session-20261023-1858 · backlog → in-progress · claimed, branch task/T-213
+- 2026-10-23 19:11 · user · in-progress → done · PR #349 merged into main @ 6b88a67 (synced by kanban-sync)
