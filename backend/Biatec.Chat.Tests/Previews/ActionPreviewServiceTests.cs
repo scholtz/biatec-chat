@@ -68,6 +68,20 @@ public sealed class ActionPreviewServiceTests : IAsyncLifetime
         Assert.Equal([0, 1], snap.Steps.Select(s => s.Seq).ToArray());
     }
 
+    // BCHAT-013: a turn that was already in flight when the user erased their data creates no preview.
+    [Fact]
+    public async Task Create_InAnErasedConversation_IsRefused_AndStoresNothing()
+    {
+        await using var db = NewContext();
+        await db.Conversations.Where(c => c.Id == _conversation).ExecuteUpdateAsync(u => u.SetProperty(c => c.ErasedAt, _clock.Now));
+        var svc = new ActionPreviewService(db, _clock);
+
+        var e = await Assert.ThrowsAsync<PreviewException>(() => svc.CreateAsync(Spec(Step("h1", 2000))));
+        Assert.Equal(PreviewError.InvalidState, e.Error);
+        Assert.Empty(await db.ActionPreviews.AsNoTracking().ToListAsync());
+        Assert.Empty(await db.ActionSteps.AsNoTracking().ToListAsync());
+    }
+
     [Fact]
     public async Task Confirm_IsRefusedUnder600Seconds_AndAllowedAtExactly600()
     {

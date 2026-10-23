@@ -298,6 +298,32 @@ public sealed class OrchestrationTests : IAsyncLifetime
         Assert.True(!none.TryGetProperty("suggestions", out var v) || v.ValueKind == JsonValueKind.Null);
     }
 
+    // BCHAT-013: the user erased their data while this turn was streaming; what the turn stores afterwards holds nothing readable.
+    [Fact]
+    public async Task Orchestration_AReplyThatFinishesAfterTheConversationWasErased_StoresNothingReadable()
+    {
+        IEnumerable<ModelStreamEvent> ErasedMidTurn()
+        {
+            yield return new ModelTextDelta("Secret ");
+            using (var db = NewContext())
+                db.Conversations.ExecuteUpdate(u => u.SetProperty(c => c.ErasedAt, DateTimeOffset.UtcNow));
+            yield return new ModelTextDelta("reply");
+            yield return new ModelMessageStop("end_turn", new ModelMessage { Role = ConversationRole.Assistant, Content = [new ContentBlock { Text = "Secret reply" }] });
+        }
+
+        using var f = Factory(new ScriptedModel(_ => ErasedMidTurn()));
+        var r = await PostChatAsync(f, new { message = "hi" });
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        await r.Content.ReadAsStringAsync();
+
+        await using var check = NewContext();
+        var rows = await check.Messages.AsNoTracking().OrderBy(m => m.Seq).ToListAsync();
+        var assistant = Assert.Single(rows, m => m.Role == MessageRole.Assistant);
+        Assert.Equal("", assistant.Content);
+        Assert.Null(assistant.ToolCalls);
+        Assert.Null(assistant.ToolResults);
+    }
+
     [Fact]
     public async Task Orchestration_TextStreamsAsSseDeltaEvents_AndIsPersisted()
     {

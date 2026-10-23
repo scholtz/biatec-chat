@@ -28,6 +28,12 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock, I
     {
         if (spec.Steps.Count == 0) throw new PreviewException(PreviewError.InvalidSpec, "A preview needs at least one step.");
         RequireFuture(spec.Steps);
+        // Erasure serializes with this on the per-conversation lock: a turn that was already in flight when the user erased their data
+        // creates no preview (its canonical JSON and unsigned group would be readable personal data) (BCHAT-013).
+        await using var tx = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(ct) : null;
+        await ConversationLock.AcquireAsync(db, spec.ConversationId, ct);
+        if (await db.Conversations.AsNoTracking().AnyAsync(c => c.Id == spec.ConversationId && c.ErasedAt != null, ct))
+            throw new PreviewException(PreviewError.InvalidState, "The conversation was erased, so no preview is created.");
         var preview = new ActionPreview
         {
             Id = Guid.NewGuid(),
@@ -44,6 +50,7 @@ public sealed class ActionPreviewService(ChatDbContext db, TimeProvider clock, I
         db.ActionSteps.AddRange(steps);
         await db.SaveChangesAsync(ct);
         await RecordAsync(preview.ConversationId, EvidenceKinds.ActionPreview, PreviewEvidence.Preview(preview, steps), ct);
+        if (tx is not null) await tx.CommitAsync(ct);
         return Snapshot(preview, steps, null);
     }
 

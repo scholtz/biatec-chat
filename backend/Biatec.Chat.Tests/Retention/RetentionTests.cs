@@ -389,6 +389,41 @@ public sealed class RetentionTests : IAsyncLifetime
         return EvidenceVerifier.Verify(entries, keys);
     }
 
+    // BCHAT-013: erasure waits for an in-flight evidence append or message store of the same conversation (they share the per-conversation lock).
+    [Fact]
+    public async Task Erase_WaitsForTheConversationLock_SoAnInFlightWriteLandsBeforeTheBlanking()
+    {
+        Guid conv;
+        await using (var seed = NewContext()) { conv = await SeedConversationAsync(seed, "sub-lock"); await seed.SaveChangesAsync(); }
+
+        await using var holder = NewContext();
+        await using var held = await holder.Database.BeginTransactionAsync();
+        await ConversationLock.AcquireAsync(holder, conv, default); // the in-flight turn is writing
+
+        var erase = Task.Run(async () =>
+        {
+            await using var db = NewContext();
+            return await Retention(db).EraseAsync(TenantId, "sub-lock", null, default);
+        });
+        // Deterministic: wait until PostgreSQL reports an advisory lock request that is not granted (erasure waiting on the writer).
+        await using (var admin = new NpgsqlConnection(AdminCs))
+        {
+            await admin.OpenAsync();
+            var waiting = false;
+            for (var i = 0; i < 100 && !waiting; i++)
+            {
+                await using var cmd = new NpgsqlCommand("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted", admin);
+                waiting = (long)(await cmd.ExecuteScalarAsync())! > 0;
+                if (!waiting) await Task.Delay(100);
+            }
+            Assert.True(waiting, "erasure must wait for the writer's lock");
+        }
+        Assert.False(erase.IsCompleted);
+
+        await held.CommitAsync(); // the write is done
+        Assert.Equal(ErasureOutcome.Erased, (await erase.WaitAsync(TimeSpan.FromSeconds(15))).Outcome);
+    }
+
     [Fact]
     public async Task Erasure_BlanksExactlyTheListedFields_KeepsHashesReceiptsTxIds_AndEveryBundleStillVerifies()
     {
