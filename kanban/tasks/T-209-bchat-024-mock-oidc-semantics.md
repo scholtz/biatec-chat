@@ -1,7 +1,7 @@
 ---
 id: T-209
 title: "Mock OIDC: model interval and slow_down, cap open requests, scope receipts to the subject, deny an inactive device (BCHAT-024)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -56,8 +56,11 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 13:51 · approve · PR #336 merged into main @ 1885c45 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 13:41 · kanban-split · (new) → backlog · created from audit issue #277
 - 2026-10-23 13:41 · scholtz · taken · status stays backlog
 - 2026-10-23 13:41 · session-20261023-1341 · backlog → in-progress · claimed, branch task/T-209
+- 2026-10-23 13:51 · user · in-progress → done · PR #336 merged into main @ 1885c45 (synced by kanban-sync)
