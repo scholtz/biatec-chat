@@ -40,10 +40,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] A second acquire for the same conversation fails while the first is held, from a separate database connection (as another replica would be); a different conversation can be acquired; after release it can be acquired again.
-- [ ] Disposing releases the lock even if the unlock statement is not reached (the dedicated connection is closed, not pooled).
-- [ ] The chat endpoint answers 409 for a turn held by another replica, and releases the lock when the turn ends.
-- [ ] Existing chat and orchestration tests stay green.
+- [x] A second acquire for the same conversation fails while the first is held, from a separate database connection (as another replica would be); a different conversation can be acquired; after release it can be acquired again.
+- [x] Disposing releases the lock even if the unlock statement is not reached (the dedicated connection is closed, not pooled).
+- [x] The chat endpoint answers 409 for a turn held by another replica, and releases the lock when the turn ends.
+- [x] Existing chat and orchestration tests stay green.
 
 ## Verification
 
@@ -51,12 +51,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** A turn takes a PostgreSQL session advisory lock (pg_try_advisory_lock on 'turn:<conversation id>') on a dedicated, non-pooled connection for its whole duration, in both the cookie transport and the public transport (before the continuation token is consumed); another replica's turn on the same conversation gets the usual 409. Releasing is closing that connection (no unlock round trip that could hang), so a crash, abort or killed backend cannot leave a conversation locked; the in-process entry is removed first. Other providers get a no-op handle.
+- **Files changed:** Api/Chat/ConversationTurnLock.cs (new), Api/Chat/ChatEndpoints.cs, Api/Public/PublicChatEndpoints.cs, Tests/Orchestration/ConversationTurnLockTests.cs, OrchestrationTests.cs, Public/PublicChatTests.cs.
+- **How it was verified:** Real-PostgreSQL tests with separate connections as replicas (blocked while held, free after release, other conversation unaffected, no collision with the per-write ConversationLock, a holder whose backend is terminated frees the conversation); endpoint tests for 409 on both transports (the public one keeps the continuation token). Full backend suite run before the PR.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** Each running turn now holds one extra database connection, outside the EF pool (max_connections must allow replicas x concurrent turns). The lock needs a direct PostgreSQL connection, not a transaction-mode pooler (PgBouncer, RDS Proxy); the stage and production setups use a direct connection as far as the manifests show. If the lock connection cannot be opened the turn fails like any database outage.
 
 ## Review
 
