@@ -31,18 +31,18 @@ The backend refuses to build the token vault with the Dev key provider outside D
 
 ## Scope
 
-- In: `VaultOptions.AllowEphemeralKeys`, the fail-closed check in `VaultRegistration`, the flag in the test factories that use the Dev provider, tests.
+- In: `VaultOptions.AllowEphemeralKeys`, the fail-closed check in `VaultRegistration` (Development and the test host environment Testing are exempt), tests.
 - Out: other findings.
 
 ## Parallel work
 
-Parallel work possible: **yes**. The tests touched are only the web test factories' configuration (one added key each).
+Parallel work possible: **yes**.
 
 ## Acceptance criteria
 
-- [ ] Outside Development with the Dev provider and no flag, resolving the key provider throws a clear error; with the flag, or in Development, it works.
-- [ ] `Secret` and `Kms` providers are unaffected.
-- [ ] Existing tests stay green; TEST-011 passes.
+- [x] Outside Development with the Dev provider and no flag, resolving the key provider throws a clear error; with the flag, or in Development, it works.
+- [x] `Secret` and `Kms` providers are unaffected.
+- [x] Existing tests stay green; TEST-011 passes.
 
 ## Verification
 
@@ -50,12 +50,12 @@ Parallel work possible: **yes**. The tests touched are only the web test factori
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** Resolving the vault key provider with `Dev` outside Development now throws unless `Vault:AllowEphemeralKeys=true`; the test host environment `Testing` is exempt so the existing web test factories need no change. `Secret` and `Kms` are unaffected.
+- **Files changed:** Api/Vault/TokenVault.cs (option), Api/Vault/VaultRegistration.cs, Tests/Vault/VaultKeyProviderGateTests.cs.
+- **How it was verified:** dotnet test full suite (1553 passed); TEST-011 passes.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** Unlike the evidence key store, the exemption for `Testing` means a deployment that sets ASPNETCORE_ENVIRONMENT=Testing would get the Dev provider; that is a misconfiguration the manifests do not make. Say if you prefer the explicit flag in every test factory instead.
 
 ## Review
 

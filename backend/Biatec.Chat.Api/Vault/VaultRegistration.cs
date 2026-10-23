@@ -28,8 +28,13 @@ public static class VaultRegistration
                 return new KmsKeyProvider(sp.GetRequiredService<IOptions<KmsOptions>>());
             if (string.Equals(o.KeyProvider, "Secret", StringComparison.OrdinalIgnoreCase))
                 return new SecretKeyProvider(Convert.FromBase64String(o.MasterKey!));
-            if (!sp.GetRequiredService<IHostEnvironment>().IsDevelopment())
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger("Vault").LogWarning("Vault uses the local Dev key provider outside Development; set Vault:KeyProvider=Secret or Kms.");
+            var env = sp.GetRequiredService<IHostEnvironment>();
+            if (!env.IsDevelopment() && !env.IsEnvironment("Testing"))
+            {
+                if (!o.AllowEphemeralKeys)
+                    throw new InvalidOperationException("The Dev vault key provider is only allowed in Development. Set Vault:KeyProvider=Secret (or Kms), or set Vault:AllowEphemeralKeys=true to accept it.");
+                sp.GetRequiredService<ILoggerFactory>().CreateLogger("Vault").LogWarning("The Dev vault key provider is active outside Development because Vault:AllowEphemeralKeys=true; set Vault:KeyProvider=Secret or Kms.");
+            }
             return new DevKeyProvider(o.DevKey is null ? null : Convert.FromBase64String(o.DevKey));
         });
         services.TryAddSingleton<ITokenVault, TokenVault>();
