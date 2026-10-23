@@ -16,29 +16,16 @@ public static class KnownUsers
         if (identity.Subject.Length > 256 || tenantId.Length > 128) return;
         try
         {
-            if (await BumpAsync(db, tenantId, identity.Subject, now, ct) > 0) return;
-            db.KnownUsers.Add(new KnownUser
-            {
-                Id = Guid.NewGuid(), TenantId = tenantId, OidcSub = identity.Subject,
-                FirstSeenAt = now, LastSeenAt = now, SignInCount = 1,
-            });
-            try { await db.SaveChangesAsync(ct); }
-            catch (DbUpdateException)
-            {
-                // A concurrent sign-in of the same user inserted first (unique index): count this one on top of it.
-                db.ChangeTracker.Clear();
-                await BumpAsync(db, tenantId, identity.Subject, now, ct);
-            }
+            // One atomic upsert (also correct for two sign-ins at once); it touches no tracked entity of the request's context.
+            await db.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO ""KnownUsers"" (""Id"", ""TenantId"", ""OidcSub"", ""FirstSeenAt"", ""LastSeenAt"", ""SignInCount"")
+                VALUES ({Guid.NewGuid()}, {tenantId}, {identity.Subject}, {now}, {now}, 1)
+                ON CONFLICT (""TenantId"", ""OidcSub"") DO UPDATE
+                SET ""LastSeenAt"" = EXCLUDED.""LastSeenAt"", ""SignInCount"" = ""KnownUsers"".""SignInCount"" + 1", ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            db.ChangeTracker.Clear();
             log.LogWarning("Could not record the user for the admin dashboard: {ErrorType}", ex.GetType().Name);
         }
     }
-
-    private static Task<int> BumpAsync(ChatDbContext db, string tenantId, string sub, DateTimeOffset now, CancellationToken ct) =>
-        db.KnownUsers.Where(u => u.TenantId == tenantId && u.OidcSub == sub)
-            .ExecuteUpdateAsync(u => u.SetProperty(x => x.LastSeenAt, now).SetProperty(x => x.SignInCount, x => x.SignInCount + 1)
-                , ct);
 }

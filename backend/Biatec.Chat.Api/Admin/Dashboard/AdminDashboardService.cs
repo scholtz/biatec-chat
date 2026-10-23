@@ -44,12 +44,17 @@ public sealed class AdminDashboardService(ChatDbContext db, TimeProvider clock, 
     /// <summary>How long a statistics answer is reused: the overview runs aggregate queries over the whole message table.</summary>
     public static readonly TimeSpan StatsCacheTime = TimeSpan.FromSeconds(30);
 
-    public async Task<StatsResponse> StatsAsync(int days, string? tenant, CancellationToken ct) =>
-        (await cache.GetOrCreateAsync($"admin-stats|{days}|{tenant}", e =>
+    public async Task<StatsResponse> StatsAsync(int days, string? tenant, CancellationToken ct)
+    {
+        tenant = string.IsNullOrWhiteSpace(tenant) ? null : tenant.Trim();
+        // Only a real tenant (or none) is cached, so arbitrary query values cannot fill the cache.
+        if (tenant is not null && !await db.Tenants.AnyAsync(t => t.Id == tenant, ct)) return await ComputeStatsAsync(days, tenant, ct);
+        return (await cache.GetOrCreateAsync($"admin-stats|{days}|{tenant}", e =>
         {
             e.AbsoluteExpirationRelativeToNow = StatsCacheTime;
             return ComputeStatsAsync(days, tenant, ct);
         }))!;
+    }
 
     private async Task<StatsResponse> ComputeStatsAsync(int days, string? tenant, CancellationToken ct)
     {
@@ -211,9 +216,10 @@ public sealed class AdminDashboardService(ChatDbContext db, TimeProvider clock, 
     {
         var c = await db.Conversations.AsNoTracking().FirstOrDefaultAsync(x => x.Id == conversationId && x.TenantId == tenantId && x.OidcSub == sub, ct);
         if (c is null) return null;
-        var rows = await db.Messages.AsNoTracking().Where(m => m.ConversationId == c.Id).OrderBy(m => m.Seq).Take(MaxMessages + 1).ToListAsync(ct);
+        // The newest MaxMessages: when a conversation is longer, it is the recent part that matters, and Truncated says older ones are left out.
+        var rows = await db.Messages.AsNoTracking().Where(m => m.ConversationId == c.Id).OrderByDescending(m => m.Seq).Take(MaxMessages + 1).ToListAsync(ct);
         var truncated = rows.Count > MaxMessages;
-        var messages = rows.Take(MaxMessages).Select(m => new ViewMessage(m.Seq, m.Role.ToString(), m.Content, m.CreatedAt, m.ModelId, ToolNames(m.ToolCalls), CountItems(m.ToolResults))).ToList();
+        var messages = rows.Take(MaxMessages).OrderBy(m => m.Seq).Select(m => new ViewMessage(m.Seq, m.Role.ToString(), m.Content, m.CreatedAt, m.ModelId, ToolNames(m.ToolCalls), CountItems(m.ToolResults))).ToList();
 
         var previews = await db.ActionPreviews.AsNoTracking().Where(p => p.ConversationId == c.Id)
             .OrderBy(p => p.ExpiresAt).Select(p => new { p.Id, p.Capability, p.Status, p.PredictedValueEur, p.PredictedNeedsConsent, p.ExpiresAt }).ToListAsync(ct);

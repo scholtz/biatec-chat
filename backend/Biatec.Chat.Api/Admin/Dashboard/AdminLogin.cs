@@ -158,8 +158,11 @@ public static class AdminLogin
 
     private static string Home(Tenant tenant, HttpRequest req) => BackendUrls.Base(tenant, req) + "/admin/";
 
-    internal static IResult Failed(HttpContext ctx, string code) =>
-        Results.Redirect((ctx.GetTenant() is { } t ? Home(t, ctx.Request) : "/admin/") + "?error=" + code, permanent: false);
+    /// <summary>The dashboard's address; a tenant without a valid redirect URI (which is why a sign-in can fail) gets the relative one.</summary>
+    private static string SafeHome(HttpContext ctx) =>
+        ctx.GetTenant() is { } t && BackendUrls.TryBase(t, ctx.Request.PathBase.Value ?? "") is { } b ? b + "/admin/" : (ctx.Request.PathBase.Value ?? "") + "/admin/";
+
+    internal static IResult Failed(HttpContext ctx, string code) => Results.Redirect(SafeHome(ctx) + "?error=" + code, permanent: false);
 
     private static void Harden(HttpContext ctx)
     {

@@ -68,10 +68,18 @@ public static class AdminDashboardEndpoints
         api.MapPost("/logout", async (HttpContext ctx, IAdminSessionStore store, IEvidenceLog log, TimeProvider clock, ILogger<AdminDashboardService> logger) =>
         {
             var p = AdminAuth.Current(ctx);
-            if (p.Impersonation(clock.GetUtcNow()) is { } imp) await AdminImpersonations.RecordStopAsync(log, p.Session, imp, "logout", ctx.RequestAborted);
-            await AdminEvidence.AppendDashboardAsync(log, p.Email, AdminEvidence.DashboardSignOut, "dashboard", null, null, null, ctx.RequestAborted);
+            // The session ends first: a failing evidence write must never leave a signed-out admin signed in.
             await store.DeleteAsync(p.TokenHash, ctx.RequestAborted);
             AdminAuth.ClearCookie(ctx.Response);
+            try
+            {
+                if (p.Impersonation(clock.GetUtcNow()) is { } imp) await AdminImpersonations.RecordStopAsync(log, p.Session, imp, "logout", ctx.RequestAborted);
+                await AdminEvidence.AppendDashboardAsync(log, p.Email, AdminEvidence.DashboardSignOut, "dashboard", null, null, null, ctx.RequestAborted);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError("The dashboard sign-out of {Email} could not be recorded: {ErrorType}", Onboarding.OperatorAuth.Clean(p.Email), ex.GetType().Name);
+            }
             logger.LogInformation("Admin {Email} signed out of the dashboard.", Onboarding.OperatorAuth.Clean(p.Email));
             return Results.NoContent();
         });
@@ -81,7 +89,9 @@ public static class AdminDashboardEndpoints
             var days = 30;
             if (ctx.Request.Query.TryGetValue("days", out var d) && (!int.TryParse(d, out days) || days is < 7 or > 365))
                 return Bad("days must be between 7 and 365.");
-            return Results.Json(await svc.StatsAsync(days, Single(ctx, "tenant"), ct), Json);
+            var tenant = Single(ctx, "tenant");
+            if (tenant is { Length: > 128 }) return Bad("tenant is too long.");
+            return Results.Json(await svc.StatsAsync(days, tenant, ct), Json);
         });
 
         api.MapGet("/users", async (HttpContext ctx, AdminDashboardService svc, CancellationToken ct) =>
@@ -129,15 +139,32 @@ public static class AdminDashboardEndpoints
                 TenantId = user.TenantId, Sub = user.OidcSub, Reason = reason, StartedAt = now,
                 ExpiresAt = end < session.ExpiresAt ? end : session.ExpiresAt,
             };
-            // The start is in the chain before the view opens: no evidence, no impersonation.
-            await AdminEvidence.AppendDashboardAsync(log, session.Email, AdminEvidence.ImpersonationStart, AdminImpersonations.Target(imp), reason, null,
-                new JsonObject { ["expiresAt"] = imp.ExpiresAt.ToString("O"), ["mode"] = "read-only" }, ctx.RequestAborted);
+            var ttl = AdminAuth.IdleTtl(session, options.Value, now);
             session.Impersonation = imp;
-            // Only a session that still exists: a sign-out that raced this request stays a sign-out.
-            if (!await store.ReplaceAsync(p.TokenHash, session, AdminAuth.IdleTtl(session, options.Value, now), ctx.RequestAborted))
+            // Only a session that still exists: a sign-out that raced this request stays a sign-out (and writes nothing).
+            if (!await store.ReplaceAsync(p.TokenHash, session, ttl, ctx.RequestAborted))
                 return Results.Json(new { error = "Sign in required." }, statusCode: StatusCodes.Status401Unauthorized);
-            // The one it replaced is closed in the chain only once the new one is in force.
-            if (previous is not null) await AdminImpersonations.RecordStopAsync(log, session, previous, "replaced", ctx.RequestAborted);
+            try
+            {
+                // No evidence, no impersonation: when the start cannot be recorded the view is closed again.
+                await AdminEvidence.AppendDashboardAsync(log, session.Email, AdminEvidence.ImpersonationStart, AdminImpersonations.Target(imp), reason, null,
+                    new JsonObject { ["expiresAt"] = imp.ExpiresAt.ToString("O"), ["mode"] = "read-only" }, ctx.RequestAborted);
+            }
+            catch
+            {
+                session.Impersonation = null;
+                await store.ReplaceAsync(p.TokenHash, session, ttl, CancellationToken.None);
+                throw;
+            }
+            // The one it replaced is closed in the chain once the new one is in force; a failure here is logged, not fatal.
+            if (previous is not null)
+            {
+                try { await AdminImpersonations.RecordStopAsync(log, session, previous, "replaced", ctx.RequestAborted); }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    logger.LogError("The end of an impersonation by {Email} could not be recorded: {ErrorType}", Onboarding.OperatorAuth.Clean(session.Email), ex.GetType().Name);
+                }
+            }
             logger.LogInformation("Admin {Email} started a read-only impersonation of a user of tenant {TenantId} until {ExpiresAt:O}.", Onboarding.OperatorAuth.Clean(session.Email), Onboarding.OperatorAuth.Clean(imp.TenantId), imp.ExpiresAt);
             return Results.Json(imp, Json);
         });

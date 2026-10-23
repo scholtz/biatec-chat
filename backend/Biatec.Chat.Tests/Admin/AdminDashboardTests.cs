@@ -712,7 +712,7 @@ public sealed class AdminDashboardTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NoContent, (await SendAsync(f, HttpMethod.Post, "/admin/api/logout", cookie)).StatusCode);
 
         var hows = (await AdminChainAsync()).Where(c => c["action"]!.GetValue<string>() == AdminEvidence.ImpersonationStop).Select(c => c["after"]!["how"]!.GetValue<string>()).ToArray();
-        Assert.Equal(["replaced", "expired", "logout"], hows);
+        Assert.Equal(["replaced", "logout"], hows); // running out is not an entry: the start entry holds expiresAt
         Assert.Equal(AdminEvidence.DashboardSignOut, (await AdminChainAsync()).Last()["action"]!.GetValue<string>());
     }
 
@@ -866,5 +866,41 @@ public sealed class AdminDashboardTests : IAsyncLifetime
             }
             Assert.Equal(6, seen.Distinct().Count());
         }
+    }
+
+    [Fact]
+    public async Task Transcript_OfALongConversationIsTheNewestMessagesInOrder()
+    {
+        var (convId, _) = await SeedUserAsync("sub-long");
+        await using (var db = NewContext())
+        {
+            for (var i = 1; i <= 505; i++)
+                db.Messages.Add(new Message { ConversationId = convId, Seq = i, Role = MessageRole.User, Content = "m" + i, CreatedAt = _time.Now });
+            await db.SaveChangesAsync();
+        }
+        var f = Factory();
+        var cookie = await AdminCookieAsync(f);
+        await SendAsync(f, HttpMethod.Post, "/admin/api/impersonation", cookie, new { tenantId = "biatec-chat", sub = "sub-long", reason = "long conversation" });
+        var j = await (await SendAsync(f, HttpMethod.Get, $"/admin/api/view/conversations/{convId}/messages", cookie)).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(j.GetProperty("truncated").GetBoolean());
+        var seqs = j.GetProperty("messages").EnumerateArray().Select(m => m.GetProperty("seq").GetInt64()).ToList();
+        Assert.Equal(500, seqs.Count);
+        Assert.Equal(6, seqs[0]);
+        Assert.Equal(505, seqs[^1]);
+        Assert.Equal(seqs.OrderBy(x => x), seqs);
+    }
+
+    [Fact]
+    public async Task Stats_UnknownTenantValuesAreNotCachedAndOverlongOnesRefused()
+    {
+        var f = Factory();
+        var cookie = await AdminCookieAsync(f);
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(f, HttpMethod.Get, "/admin/api/stats?tenant=nobody", cookie)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await SendAsync(f, HttpMethod.Get, "/admin/api/stats?tenant=" + new string('x', 129), cookie)).StatusCode);
+        using var scope = f.Services.CreateScope();
+        var cache = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>();
+        Assert.False(cache.TryGetValue("admin-stats|30|nobody", out _));
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(f, HttpMethod.Get, "/admin/api/stats?tenant=biatec-chat", cookie)).StatusCode);
+        Assert.True(cache.TryGetValue("admin-stats|30|biatec-chat", out _));
     }
 }

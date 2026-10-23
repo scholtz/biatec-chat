@@ -32,16 +32,16 @@ watch(search, (v) => {
   debounce = setTimeout(() => {
     if (q.value !== v.trim()) {
       q.value = v.trim();
-      page.value = 1;
     }
   }, 300);
 });
-watch([q, tenant, sort, dir, page, pageSize], load);
-watch(tenant, () => (page.value = 1));
-watch(pageSize, (v) => {
-  writePref("pageSize", String(v));
-  page.value = 1;
+// A changed filter or sort goes back to page 1; moving off a later page loads through the page watcher, so one change is one request.
+watch([q, tenant, sort, dir, pageSize], () => {
+  if (page.value !== 1) page.value = 1;
+  else load();
 });
+watch(page, load);
+watch(pageSize, (v) => writePref("pageSize", String(v)));
 
 onMounted(async () => {
   load();
@@ -66,7 +66,6 @@ function sortBy(key: UserSort) {
     sort.value = key;
     dir.value = key === "sub" ? "asc" : "desc";
   }
-  page.value = 1;
 }
 function ariaSort(key: UserSort | null): "ascending" | "descending" | "none" | undefined {
   if (!key) return undefined;

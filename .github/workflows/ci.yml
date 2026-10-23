@@ -80,6 +80,12 @@ jobs:
         run: |
           pnpm --filter demo build
           pnpm --filter demo test
+      # The administrator dashboard (apps/admin, docs/admin-dashboard.md) is built into the backend image.
+      - name: Admin dashboard
+        run: |
+          pnpm --filter @biatec/admin typecheck
+          pnpm --filter @biatec/admin test
+          pnpm --filter @biatec/admin build
 
   authenticator:
     runs-on: ubuntu-latest

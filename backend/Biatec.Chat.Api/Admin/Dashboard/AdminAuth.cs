@@ -1,9 +1,7 @@
-using System.Text.Json.Nodes;
 using Biatec.Chat.Api.Auth;
 using Biatec.Chat.Api.Hosting;
 using Biatec.Chat.Api.Security;
 using Biatec.Chat.Api.Tenancy;
-using Biatec.Chat.Core.Evidence;
 using Microsoft.Extensions.Options;
 
 namespace Biatec.Chat.Api.Admin.Dashboard;
@@ -62,20 +60,10 @@ public static class AdminAuth
             return Unauthorized();
         }
 
-        var principal = new AdminPrincipal(session, hash);
-        if (session.Impersonation is { } imp && imp.ExpiresAt <= now)
-        {
-            // Seen ended: say so in the chain once, then forget it.
-            session.Impersonation = null;
-            await AdminImpersonations.RecordStopAsync(ctx.RequestServices.GetRequiredService<IEvidenceLog>(), session, imp, "expired", ctx.RequestAborted);
-            await store.ReplaceAsync(hash, session, IdleTtl(session, options, now), ctx.RequestAborted);
-        }
-        else
-        {
-            await store.TouchAsync(hash, IdleTtl(session, options, now), ctx.RequestAborted);
-        }
-
-        ctx.Items[ItemKey] = principal;
+        // An impersonation that ran out is simply not active any more (AdminPrincipal.Impersonation); the chain already holds
+        // its end time in the start entry, so nothing is written here and concurrent requests cannot disagree.
+        await store.TouchAsync(hash, IdleTtl(session, options, now), ctx.RequestAborted);
+        ctx.Items[ItemKey] = new AdminPrincipal(session, hash);
         return await next(c);
     });
 

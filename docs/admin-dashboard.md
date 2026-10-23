@@ -111,7 +111,7 @@ admin session has a user's tokens or the ability to approve anything.
 - The view endpoints take **no user in the request**: the impersonated user comes from the admin session, so a request
   cannot be redirected to a different user, and a conversation id that does not belong to that user is a 404.
 - **No write path exists** in the view: the dashboard has no send, confirm, cancel, approve or sign endpoint at all.
-- **Audit:** start, stop (also expiry-by-replacement and logout), and every conversation opened are appended to the signed
+- **Audit:** start, stop (also replacement by another impersonation, and logout), and every conversation opened are appended to the signed
   **admin evidence chain** ([admin-api.md](admin-api.md), `GET /onboarding/operator/evidence`), with the admin's email,
   the user's tenant and a hash of the subject (not the subject itself), the reason and, for a conversation, its id. Admin
   sign-in and sign-out are recorded too. The chain is verifiable offline like conversation evidence.
@@ -167,7 +167,7 @@ non-admin is also `401` (never reveals the allow-list). Non-GET calls need the h
 
 // GET /admin/api/view/conversations/{id}/messages
 { "conversation": { "id": "…", "createdAt": "…", "lastMessageAt": "…", "endedAt": null },
-  "truncated": false,                                    // true when the conversation has more than 500 messages
+  "truncated": false,                                    // true when older messages are left out: the newest 500 are returned
   "messages": [ { "seq": 1, "role": "User", "content": "…", "createdAt": "…", "modelId": null, "toolNames": [], "toolResultCount": 0 } ],
   "previews": [ { "id": "…", "capability": "wallet.transfer", "status": "Completed", "predictedValueEur": 12.5,
                   "needsConsent": false, "expiresAt": "…",
@@ -210,5 +210,6 @@ The backend image builds the app in a Node stage (`backend/Dockerfile`) and copi
 | Token theft from the browser | no token ever reaches the browser; the backend keeps none for admins |
 | Cookie theft | `HttpOnly`, `Secure`, `__Host-`, opaque, server-side revocation (logout, expiry) |
 | Admin abuse of impersonation | reason required, time-boxed, read-only, every start, stop and conversation view in the signed admin evidence chain |
+| Subject in URLs (`/admin/api/user?sub=`, search) reaches proxy logs | The subject is a pseudonymous OIDC identifier, not contact data; the audit chain still stores only its hash |
 | Dashboard reads data of an erased user | erasure clears the subject from conversations and deletes the user row |
 | XSS in the dashboard | Vue escaping, no `v-html`, CSP `script-src 'self'`, transcripts rendered as text |
