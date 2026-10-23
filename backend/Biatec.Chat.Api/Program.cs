@@ -83,9 +83,9 @@ app.UseTenancy();
 app.UseOnboardingBodyLimit();
 app.UseRateLimiter();
 
-// 200 Healthy when Redis and PostgreSQL answer, 503 Unhealthy otherwise. The body is the status only. The answer is cached for a few seconds and
-// rate limited per IP: the endpoint is unauthenticated and reachable through the ingress (Limits:Health*).
-Biatec.Chat.Api.Security.RequestLimits.MapCachedHealth(app);
+// 200 Healthy when Redis and PostgreSQL answer, 503 Unhealthy otherwise. The body is the status only. The checks are cached for a few seconds and the
+// endpoint is rate limited per IP: it is unauthenticated and reachable through the ingress (Limits:Health*).
+app.MapHealthChecks("/health").RequireRateLimiting(Biatec.Chat.Api.Security.RequestLimits.HealthRateLimitPolicy);
 // Liveness only: runs no dependency checks, so a Redis or PostgreSQL outage never restarts the pods.
 app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = _ => false });
 

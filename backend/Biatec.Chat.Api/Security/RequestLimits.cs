@@ -1,5 +1,4 @@
 using System.Threading.RateLimiting;
-using Biatec.Chat.Api.Health;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
@@ -24,30 +23,41 @@ public sealed class RequestLimitsOptions
 }
 
 /// <summary>
-/// The answer of <c>/health</c>, reused for <see cref="RequestLimitsOptions.HealthCacheSeconds"/>. The endpoint needs no authentication and is
-/// reachable through the ingress, and each real check opens a PostgreSQL connection and pings Redis, so the cost of a caller is bounded here.
-/// A single check at a time; waiters share its result.
+/// The latest result of each dependency check, reused for <see cref="RequestLimitsOptions.HealthCacheSeconds"/>. <c>/health</c> needs no
+/// authentication and is reachable through the ingress, and every real check opens a PostgreSQL connection or pings Redis, so the cost
+/// of a caller is bounded here: one check at a time per dependency, whoever asks and however often.
 /// </summary>
-public sealed class CachedHealth(HealthCheckService checks, IOptions<RequestLimitsOptions> options, TimeProvider clock)
+public sealed class HealthResultCache(IOptions<RequestLimitsOptions> options, TimeProvider clock)
 {
-    private readonly SemaphoreSlim _gate = new(1, 1);
-    private HealthStatus _status;
-    private DateTimeOffset _validUntil = DateTimeOffset.MinValue;
+    // One immutable reference per check, so a reader never sees a result from one run with the expiry of another.
+    private sealed record Entry(HealthCheckResult Result, DateTimeOffset Until);
+    private sealed class Slot { public readonly SemaphoreSlim Gate = new(1, 1); public volatile Entry? Latest; }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Slot> _slots = new(StringComparer.Ordinal);
 
-    public async Task<HealthStatus> StatusAsync(CancellationToken ct)
+    /// <summary>The cached result of <paramref name="name"/>, or the result of one fresh <paramref name="run"/> (shared by everyone waiting).</summary>
+    public async Task<HealthCheckResult> GetAsync(string name, Func<Task<HealthCheckResult>> run, CancellationToken ct)
     {
-        if (clock.GetUtcNow() < _validUntil) return _status;
-        await _gate.WaitAsync(ct);
+        var slot = _slots.GetOrAdd(name, _ => new Slot());
+        if (slot.Latest is { } fresh && clock.GetUtcNow() < fresh.Until) return fresh.Result;
+        await slot.Gate.WaitAsync(ct);
         try
         {
-            if (clock.GetUtcNow() < _validUntil) return _status; // another caller checked while this one waited
-            var report = await checks.CheckHealthAsync(ct);
-            _status = report.Status;
-            _validUntil = clock.GetUtcNow().AddSeconds(Math.Max(0, options.Value.HealthCacheSeconds));
-            return _status;
+            if (slot.Latest is { } again && clock.GetUtcNow() < again.Until) return again.Result; // another caller checked while this one waited
+            HealthCheckResult result;
+            try { result = await run().WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None); }
+            catch (Exception) { result = HealthCheckResult.Unhealthy("The check failed."); } // a failing dependency is cached too: that is when the cost bound matters
+            slot.Latest = new Entry(result, clock.GetUtcNow().AddSeconds(Math.Max(0, options.Value.HealthCacheSeconds)));
+            return result;
         }
-        finally { _gate.Release(); }
+        finally { slot.Gate.Release(); }
     }
+}
+
+/// <summary>Runs <paramref name="inner"/> through the <see cref="HealthResultCache"/>. The check itself is created per run by the health service, so the state lives in the cache.</summary>
+public sealed class CachedHealthCheck(string name, IHealthCheck inner, HealthResultCache cache) : IHealthCheck
+{
+    public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default) =>
+        cache.GetAsync(name, () => inner.CheckHealthAsync(context, CancellationToken.None), cancellationToken);
 }
 
 public static class RequestLimits
@@ -57,7 +67,7 @@ public static class RequestLimits
     public static IServiceCollection AddRequestLimits(this IServiceCollection services, IConfiguration config)
     {
         services.Configure<RequestLimitsOptions>(config.GetSection(RequestLimitsOptions.Section));
-        services.AddSingleton<CachedHealth>();
+        services.AddSingleton<HealthResultCache>();
         services.AddRateLimiter(o => o.AddPolicy(HealthRateLimitPolicy, ctx =>
         {
             var opts = ctx.RequestServices.GetRequiredService<IOptions<RequestLimitsOptions>>().Value;
@@ -86,14 +96,7 @@ public static class RequestLimits
         await next(ctx);
     });
 
-    public static IEndpointRouteBuilder MapCachedHealth(this IEndpointRouteBuilder app)
-    {
-        // 200 Healthy when Redis and PostgreSQL answer, 503 Unhealthy otherwise. The body is the status only.
-        app.MapGet("/health", async (CachedHealth health, CancellationToken ct) =>
-        {
-            var status = await health.StatusAsync(ct);
-            return Results.Text(status.ToString(), "text/plain", statusCode: status == HealthStatus.Unhealthy ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status200OK);
-        }).RequireRateLimiting(HealthRateLimitPolicy);
-        return app;
-    }
+    /// <summary>A registration of <paramref name="inner"/> behind the result cache.</summary>
+    public static HealthCheckRegistration Cached(string name, Func<IServiceProvider, IHealthCheck> inner) =>
+        new(name, sp => new CachedHealthCheck(name, inner(sp), sp.GetRequiredService<HealthResultCache>()), failureStatus: null, tags: null);
 }

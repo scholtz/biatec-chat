@@ -11,9 +11,10 @@ public static class HealthRegistration
     public static IServiceCollection AddBiatecHealth(this IServiceCollection services)
     {
         services.AddSingleton<RedisHealthCheck>();
+        // Both checks sit behind the result cache (Limits:HealthCacheSeconds): /health is unauthenticated, so what it costs must not depend on its callers.
         services.AddHealthChecks()
-            .AddCheck<RedisHealthCheck>("redis")
-            .AddCheck<PostgresHealthCheck>("postgres");
+            .Add(Security.RequestLimits.Cached("redis", sp => sp.GetRequiredService<RedisHealthCheck>()))
+            .Add(Security.RequestLimits.Cached("postgres", sp => ActivatorUtilities.CreateInstance<PostgresHealthCheck>(sp)));
         return services;
     }
 }

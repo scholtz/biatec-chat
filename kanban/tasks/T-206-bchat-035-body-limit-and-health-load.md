@@ -49,8 +49,8 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:** `Security/RequestLimits.cs`: `UseRequestBodyLimit` (413 on a declared length over `Limits:MaxRequestBodyBytes`, default 64 KiB, and the server's `IHttpMaxRequestBodySizeFeature` lowered for chunked bodies; stricter route limits stay), `CachedHealth` (the dependency checks run at most every `Limits:HealthCacheSeconds`, one at a time) behind `MapCachedHealth` with a per-IP rate limit (`Limits:HealthRateLimitPermits`, default 120/min). The 200/503 mapping and the status-only body are unchanged. A row in docs/threat-model.md.
-- **Verification:** new RequestLimitsTests (7) and ConfigAndHealth: 23 pass; Onboarding/Admin/Kb/Public: 230 pass. Full suite in CI.
+- **Summary:** `Security/RequestLimits.cs`: `UseRequestBodyLimit` (413 on a declared length over `Limits:MaxRequestBodyBytes`, default 64 KiB, and the server's `IHttpMaxRequestBodySizeFeature` lowered for chunked bodies; stricter route limits stay) and `HealthResultCache` / `CachedHealthCheck`: the Redis and PostgreSQL checks run at most every `Limits:HealthCacheSeconds` each, one at a time, and a failing or throwing check is cached too. `/health` stays the framework's `MapHealthChecks` (stock status mapping, no-cache headers, HEAD) with a per-IP rate limit (`Limits:HealthRateLimitPermits`, default 120/min). A row in docs/threat-model.md.
+- **Verification:** RequestLimitsTests + ConfigAndHealth: 25 pass (cache window, concurrent callers, failing check, headers/HEAD, rate limit, body limit); Onboarding/Admin/Kb/Public: 230 pass. Full suite in CI.
 
 ## Review
 

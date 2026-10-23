@@ -18,15 +18,27 @@ namespace Biatec.Chat.Tests.Security;
 /// <summary>The global request body limit and the bounded cost of the unauthenticated /health (BCHAT-035). No database is needed.</summary>
 public sealed class RequestLimitsTests
 {
-    private sealed class CountingHealth(HealthStatus status) : HealthCheckService
+    private sealed class CountingCheck(HealthStatus status, bool throws = false) : IHealthCheck
     {
         public int Runs;
-        public override Task<HealthReport> CheckHealthAsync(Func<HealthCheckRegistration, bool>? predicate, CancellationToken cancellationToken = default)
+        public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref Runs);
-            return Task.FromResult(new HealthReport(new Dictionary<string, HealthReportEntry>(), status, TimeSpan.Zero));
+            if (throws) throw new InvalidOperationException("boom");
+            return Task.FromResult(new HealthCheckResult(status));
         }
     }
+
+    /// <summary>The app's own checks are replaced by one counting check behind the same cache the real ones use.</summary>
+    private static Action<IServiceCollection> WithCheck(CountingCheck check, Clock? clock = null) => s =>
+    {
+        s.Configure<HealthCheckServiceOptions>(o =>
+        {
+            o.Registrations.Clear();
+            o.Registrations.Add(RequestLimits.Cached("counting", _ => check));
+        });
+        if (clock is not null) s.AddSingleton<TimeProvider>(clock);
+    };
 
     /// <summary>No tenant exists: whatever passes the body limit ends as an unknown host (404), without touching a database.</summary>
     private sealed class NoTenants : ITenantStore
@@ -127,13 +139,9 @@ public sealed class RequestLimitsTests
     [Fact]
     public async Task Health_runs_the_dependency_checks_once_per_cache_window_and_keeps_its_answers()
     {
-        var health = new CountingHealth(HealthStatus.Healthy);
+        var check = new CountingCheck(HealthStatus.Healthy);
         var clock = new Clock();
-        using var f = Factory(services: s =>
-        {
-            s.AddSingleton<HealthCheckService>(health);
-            s.AddSingleton<TimeProvider>(clock);
-        });
+        using var f = Factory(services: WithCheck(check, clock));
         var client = f.CreateClient();
         for (var i = 0; i < 20; i++)
         {
@@ -141,28 +149,52 @@ public sealed class RequestLimitsTests
             Assert.Equal(HttpStatusCode.OK, r.StatusCode);
             Assert.Equal("Healthy", await r.Content.ReadAsStringAsync());
         }
-        Assert.Equal(1, health.Runs);
+        Assert.Equal(1, check.Runs);
 
         clock.Now = clock.Now.AddSeconds(6); // past the 5 s window
         await client.GetAsync("/health");
-        Assert.Equal(2, health.Runs);
+        Assert.Equal(2, check.Runs);
+    }
+
+    [Fact]
+    public async Task Health_concurrent_callers_share_one_check()
+    {
+        var check = new CountingCheck(HealthStatus.Healthy);
+        using var f = Factory(services: WithCheck(check, new Clock()));
+        var client = f.CreateClient();
+        var all = await Task.WhenAll(Enumerable.Range(0, 30).Select(_ => client.GetAsync("/health")));
+        Assert.All(all, r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));
+        Assert.Equal(1, check.Runs);
+    }
+
+    [Fact]
+    public async Task Health_a_failing_check_is_answered_503_and_cached_too()
+    {
+        var check = new CountingCheck(HealthStatus.Healthy, throws: true);
+        using var f = Factory(services: WithCheck(check, new Clock()));
+        var client = f.CreateClient();
+        for (var i = 0; i < 10; i++) Assert.Equal(HttpStatusCode.ServiceUnavailable, (await client.GetAsync("/health")).StatusCode);
+        Assert.Equal(1, check.Runs); // a dependency that is down is not asked on every call
     }
 
     [Theory]
     [InlineData(HealthStatus.Unhealthy, HttpStatusCode.ServiceUnavailable, "Unhealthy")]
     [InlineData(HealthStatus.Degraded, HttpStatusCode.OK, "Degraded")]
-    public async Task Health_status_codes_are_unchanged(HealthStatus status, HttpStatusCode code, string body)
+    public async Task Health_status_codes_headers_and_methods_are_the_frameworks(HealthStatus status, HttpStatusCode code, string body)
     {
-        using var f = Factory(services: s => s.AddSingleton<HealthCheckService>(new CountingHealth(status)));
-        var r = await f.CreateClient().GetAsync("/health");
+        using var f = Factory(services: WithCheck(new CountingCheck(status)));
+        var client = f.CreateClient();
+        var r = await client.GetAsync("/health");
         Assert.Equal(code, r.StatusCode);
         Assert.Equal(body, await r.Content.ReadAsStringAsync());
+        Assert.Contains("no-store", r.Headers.CacheControl?.ToString());
+        Assert.Equal(code, (await client.SendAsync(new HttpRequestMessage(HttpMethod.Head, "/health"))).StatusCode);
     }
 
     [Fact]
     public async Task Health_is_rate_limited_per_remote_ip_and_health_live_is_not()
     {
-        using var f = Factory(c => c["Limits:HealthRateLimitPermits"] = "3", s => s.AddSingleton<HealthCheckService>(new CountingHealth(HealthStatus.Healthy)));
+        using var f = Factory(c => c["Limits:HealthRateLimitPermits"] = "3", WithCheck(new CountingCheck(HealthStatus.Healthy)));
         var client = f.CreateClient();
         for (var i = 0; i < 3; i++) Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health")).StatusCode);
         Assert.Equal(HttpStatusCode.TooManyRequests, (await client.GetAsync("/health")).StatusCode);
