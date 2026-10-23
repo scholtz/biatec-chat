@@ -8,6 +8,7 @@ import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/keys/device_key_store.dart';
+import 'package:biatec_authenticator/keys/key_security_level.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -15,6 +16,7 @@ import 'package:http/testing.dart';
 
 class FakeKeyStore implements DeviceKeyStore {
   bool failGenerate = false;
+  KeySecurityLevel level = KeySecurityLevel.trustedEnvironment;
   bool throwTypeError = false;
   final List<String> generated = [];
   final List<String> deleted = [];
@@ -26,10 +28,11 @@ class FakeKeyStore implements DeviceKeyStore {
     if (throwTypeError) {
       // Like a malformed platform channel payload.
       final Object? bad = null;
-      return DeviceKey(kid: alias, x: bad as String, y: 'yy');
+      return DeviceKey(
+          kid: alias, x: bad as String, y: 'yy', securityLevel: level);
     }
     generated.add(alias);
-    return key = DeviceKey(kid: alias, x: 'xx', y: 'yy');
+    return key = DeviceKey(kid: alias, x: 'xx', y: 'yy', securityLevel: level);
   }
 
   @override
@@ -167,14 +170,13 @@ void main() {
     });
 
     test('approved by an active device is active at once', () async {
-      final c = build(
-          (_) => created(activeAt: t0.millisecondsSinceEpoch ~/ 1000));
+      final c =
+          build((_) => created(activeAt: t0.millisecondsSinceEpoch ~/ 1000));
       await c.enroll(loginToken: 'login-alice', approvedByKid: 'alice-device');
       // The code is fetched after activation, also for an approved device.
       expect(c.state.phase, EnrollmentPhase.activeRecoveryPending);
       expect(c.recoveryCodeToShow, 'AAAA-BBBB-CCCC');
-      expect(
-          (jsonDecode(requests.first.body) as Map)['approved_by_kid'],
+      expect((jsonDecode(requests.first.body) as Map)['approved_by_kid'],
           'alice-device');
     });
 
@@ -192,8 +194,8 @@ void main() {
       await fresh.refresh();
       expect(fresh.state.phase, EnrollmentPhase.active);
       expect(fresh.recoveryCodeToShow, isNull);
-      expect(jsonEncode((await store.read())!.toJson()),
-          isNot(contains('AAAA')));
+      expect(
+          jsonEncode((await store.read())!.toJson()), isNot(contains('AAAA')));
       expect(acknowledged, isTrue);
     });
 
@@ -209,8 +211,8 @@ void main() {
       final c = build((_) => created(recovery: 'EVIL-EVIL-EVIL'));
       await c.enroll(loginToken: 'login-alice');
       expect(c.recoveryCodeToShow, isNull);
-      expect(jsonEncode((await store.read())!.toJson()),
-          isNot(contains('EVIL')));
+      expect(
+          jsonEncode((await store.read())!.toJson()), isNot(contains('EVIL')));
       clock = t0.add(const Duration(hours: 24));
       await c.refresh();
       expect(c.recoveryCodeToShow, 'AAAA-BBBB-CCCC');
@@ -257,6 +259,48 @@ void main() {
       await c.enroll(loginToken: 'login-alice');
       expect(c.state.phase, EnrollmentPhase.failed);
       expect(requests, isEmpty);
+    });
+
+    for (final level in [KeySecurityLevel.software, KeySecurityLevel.unknown]) {
+      test('a key the keystore holds as ${level.wire} is refused and removed',
+          () async {
+        keys.level = level;
+        final c = build((_) => created());
+        await c.enroll(loginToken: 'login-alice');
+        expect(c.state.phase, EnrollmentPhase.failed);
+        expect(c.state.error, contains('not in secure hardware'));
+        expect(requests, isEmpty,
+            reason: 'the server never sees a software key');
+        expect(keys.deleted, isNotEmpty);
+        expect(keys.key, isNull);
+        expect(c.keyLevel, isNull);
+      });
+    }
+
+    for (final level in [
+      KeySecurityLevel.secureEnclave,
+      KeySecurityLevel.strongBox,
+      KeySecurityLevel.trustedEnvironment,
+      KeySecurityLevel.hardware,
+    ]) {
+      test('a ${level.wire} key is enrolled and its level is kept for display',
+          () async {
+        keys.level = level;
+        final c = build((_) => created());
+        await c.enroll(loginToken: 'login-alice');
+        expect(c.state.phase, EnrollmentPhase.inactive);
+        expect(c.keyLevel, level);
+      });
+    }
+
+    test('after a restart the level is read back from the keystore', () async {
+      keys.level = KeySecurityLevel.strongBox;
+      final first = build((_) => created());
+      await first.enroll(loginToken: 'login-alice');
+      final restarted = build((_) => created());
+      expect(restarted.keyLevel, isNull);
+      await restarted.refresh();
+      expect(restarted.keyLevel, KeySecurityLevel.strongBox);
     });
 
     test('empty login token is refused locally', () async {

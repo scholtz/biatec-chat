@@ -42,10 +42,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] Both plugins return `securityLevel` with `generate` and `load`; Android refuses to keep a key whose level is software (the key is deleted and `insecure_key` is returned).
-- [ ] `PlatformDeviceKeyStore` parses the level (a missing or unknown value is `unknown`) and `EnrollmentController.enroll` refuses `software` and `unknown`, deleting the key.
-- [ ] The enrollment screen no longer claims secure hardware unconditionally: it shows the level the key got.
-- [ ] `flutter test`, `flutter analyze` and `flutter build apk --debug` pass.
+- [x] Both plugins return `securityLevel` with `generate` and `load`; Android refuses to keep a key whose level is software (the key is deleted and `insecure_key` is returned).
+- [x] `PlatformDeviceKeyStore` parses the level (a missing or unknown value is `unknown`) and `EnrollmentController.enroll` refuses `software` and `unknown`, deleting the key.
+- [x] The enrollment screen no longer claims secure hardware unconditionally: it shows the level the key got.
+- [x] `flutter test`, `flutter analyze` and `flutter build apk --debug` pass.
 
 ## Verification
 
@@ -53,12 +53,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** generate and load of both keystore plugins now return securityLevel. Android reads KeyInfo (SECURITY_LEVEL_* on API 31+, isInsideSecureHardware below) and maps it to strongbox, tee, hardware, software or unknown, and deletes a key that ended up in software, answering insecure_key. iOS reads the key's token attribute and reports secure_enclave or software. In Dart, KeySecurityLevel parses the value (anything missing or unrecognised is unknown), DeviceKey carries it, EnrollmentController.enroll refuses software and unknown (deleting the key, never calling the server) and keeps the level for display, and the enrollment screen shows 'Key protection: ...' instead of claiming secure hardware unconditionally.
+- **Files changed:** apps/biatec_authenticator/lib/keys/key_security_level.dart (new), lib/keys/device_key_store.dart, lib/enrollment/enrollment_controller.dart, lib/enrollment/enrollment_screen.dart, android/app/src/main/kotlin/io/biatec/authenticator/KeystorePlugin.kt, ios/Runner/KeystorePlugin.swift, test/keys/device_key_store_test.dart (new), test/enrollment/enrollment_test.dart, test/enrollment/mock_oidc_contract_test.dart, README.md.
+- **How it was verified:** flutter test 157 passed (new: level parsing and fail-closed defaults, a software or unknown key is refused and removed without a server call, each hardware level is enrolled and shown, the level is read back after a restart); flutter analyze clean; flutter build apk --debug compiles the Kotlin changes.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** The Swift change (SecKeyCopyAttributes token check) is not compiled, and nothing ran on a device, so KeyInfo's real answers per device are unseen; an Android device that reports 'unknown' (KeyInfo unreadable) is refused at enrollment by design. Existing enrollments are not re-checked: the level is only displayed for them. A key already in software that was enrolled earlier (impossible with the previous Android plugin only by luck) stays enrolled; re-enrollment is the remedy. BCHAT-007 (key bound to user authentication) is not addressed.
 
 ## Review
 

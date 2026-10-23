@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../keys/device_key_store.dart';
+import '../keys/key_security_level.dart';
 import 'enrollment_state.dart';
 import 'enrollment_store.dart';
 import 'oidc_enrollment_client.dart';
@@ -38,6 +39,12 @@ class EnrollmentController extends ChangeNotifier {
 
   EnrollmentState _state = EnrollmentState.notEnrolled;
   EnrollmentState get state => _state;
+
+  KeySecurityLevel? _keyLevel;
+
+  /// Where the enrolled device key lives, once known (null before enrollment,
+  /// or when the keystore cannot be read).
+  KeySecurityLevel? get keyLevel => _keyLevel;
 
   DateTime get now => _clock();
 
@@ -78,7 +85,18 @@ class EnrollmentController extends ChangeNotifier {
       return;
     }
     _set(EnrollmentState.fromRecord(record, _clock()));
+    await _loadKeyLevel(record.kid);
     await _ensureRecoveryCode();
+  }
+
+  Future<void> _loadKeyLevel(String kid) async {
+    if (_keyLevel != null) return;
+    try {
+      _keyLevel = (await keys.load(kid))?.securityLevel;
+      notifyListeners();
+    } on Object {
+      // The level is for display; an unreadable keystore does not stop the app.
+    }
   }
 
   /// Generates the key and enrolls it. [loginToken] is from a fresh login.
@@ -107,12 +125,18 @@ class EnrollmentController extends ChangeNotifier {
         await store.writeAlias(alias);
       }
       key = await keys.generate(alias);
+      if (!key.securityLevel.isHardware) {
+        // Not what this app promises: refuse the key instead of enrolling it.
+        throw StateError('this device keeps the key in '
+            '${key.securityLevel.label}, not in secure hardware');
+      }
     } on Object catch (e) {
       await _discardKey(alias);
       _set(EnrollmentState(EnrollmentPhase.failed,
           error: 'Could not create the device key: $e'));
       return;
     }
+    _keyLevel = key.securityLevel;
     _set(const EnrollmentState(EnrollmentPhase.enrolling));
     final EnrollmentRecord record;
     try {

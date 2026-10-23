@@ -62,6 +62,16 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     return '$h:$m:$s';
   }
 
+  /// Where the key lives, once known: the app says what the device did.
+  List<Widget> _keyLevelLines() {
+    final level = _controller.keyLevel;
+    if (level == null) return const [];
+    return [
+      const SizedBox(height: 8),
+      Text('Key protection: ${level.label}', textAlign: TextAlign.center),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -99,6 +109,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
             const SizedBox(height: 16),
             Text('Device inactive', style: style),
             const SizedBox(height: 8),
+            ..._keyLevelLines(),
             Text(
               'Approvals from this device start in '
               '${_format(s.remaining(_controller.now))}. '
@@ -131,13 +142,17 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
         );
       case EnrollmentPhase.active:
         return Center(
-            child: Text('This device is enrolled and active.', style: style));
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('This device is enrolled and active.', style: style),
+          ..._keyLevelLines(),
+        ]));
       case EnrollmentPhase.notEnrolled:
       case EnrollmentPhase.failed:
         return ListView(children: [
           Text(
               'Enroll this device. Its key is created in secure hardware '
-              'and cannot be exported.',
+              'and cannot be exported; if this device cannot do that, '
+              'enrollment is refused.',
               style: style),
           const SizedBox(height: 16),
           TextField(
