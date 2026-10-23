@@ -41,10 +41,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] Both snippets show `integrity="sha384-<base64>"` and `crossorigin="anonymous"` and name the pinned version.
-- [ ] The hash in the docs equals the SHA-384 of the file jsDelivr serves for that version (checked when the change was made).
-- [ ] The release workflow computes the hash from the published tarball and writes it to the release notes.
-- [ ] A test fails if a snippet drops `integrity`/`crossorigin` or pins a version other than `package.json`'s.
+- [x] Both snippets show `integrity="sha384-<base64>"` and `crossorigin="anonymous"` and name the pinned version.
+- [x] The hash in the docs equals the SHA-384 of the file jsDelivr serves for that version (checked when the change was made).
+- [x] The release workflow computes the hash from the published tarball and writes it to the release notes.
+- [x] A test fails if a snippet drops `integrity`/`crossorigin` or pins a version other than `package.json`'s.
 
 ## Verification
 
@@ -52,12 +52,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** The documented CDN snippets (package README and docs/integration-widget.md) now carry integrity="sha384-..." and crossorigin="anonymous" with the real hash of 0.1.0, plus how to compute the hash for another version; the release job downloads the published tarball and writes the SHA-384 of its standalone file to the GitHub release notes and the job summary; a widget test fails if a snippet drops integrity/crossorigin or pins a version other than package.json's.
+- **Files changed:** packages/chat-widget/README.md, docs/integration-widget.md, .github/workflows/publish-widget.yml, packages/chat-widget/test/docs-sri.test.ts.
+- **How it was verified:** The hash in the docs equals the SHA-384 of the file jsDelivr serves for @biatec/chat-widget@0.1.0 (downloaded and hashed when the change was made); the workflow's shell step run against a tarball built from that file gives the same value; widget suite 434 passed, 0 failed; TEST-014 (action pins) still passes.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** The workflow change cannot run until the next publish, so only its shell step was exercised locally. Bumping the package version now fails docs-sri.test.ts until the snippets (version and hash) are updated, by design.
 
 ## Review
 
