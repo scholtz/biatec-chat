@@ -135,7 +135,7 @@ It records the certificate in `rolesanywhere-out/crl/revoked.index` (kept, so ea
 signs a certificate revocation list with the CA and imports it into the trust anchor as `biatec-chat-crl` (updated on later
 runs). Roles Anywhere then refuses that certificate within minutes. Revoke first and renew afterwards: the script reads the certificate
 currently in `rolesanywhere-out/<environment>/` (`stage`, or `main` for Production; `Production` is accepted too), so after a
-renewal it would revoke the new one. If you renewed already, pass the leaked certificate: `… rolesanywhere-revoke.sh stage --cert old-certificate.pem --apply`. Afterwards renew as above (`RENEW=1`) and replace the
+renewal it would revoke the new one (a renewal keeps the replaced certificate in `rolesanywhere-out/<environment>/retired/`). If you renewed already, pass the leaked certificate: `… rolesanywhere-revoke.sh stage --cert old-certificate.pem --apply`. Afterwards renew as above (`RENEW=1`) and replace the
 secrets of that environment. The CRL is valid for `CRL_DAYS` (3650). Keep `rolesanywhere-out/crl/` with the CA: `update-crl` replaces the whole CRL, so the script refuses to update an existing CRL from a machine without that directory (`FORCE_CRL=1` overrides). Roles Anywhere
 stops trusting an expired CRL. Disabling the trust anchor or the profile in the console still stops everything at once.
 

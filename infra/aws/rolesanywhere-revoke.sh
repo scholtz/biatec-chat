@@ -22,7 +22,7 @@ while [ $# -gt 0 ]; do
     --cert) [ $# -ge 2 ] || { echo "--cert needs a file." >&2; exit 2; }; CERT_FILE="$2"; shift 2 ;;
     --apply|--dry-run) shift ;;
     --*) echo "Unknown option $1." >&2; exit 2 ;;
-    *) ENV_NAME="$1"; shift ;;
+    *) [ -z "$ENV_NAME" ] || { echo "Give one environment, not $ENV_NAME and $1." >&2; exit 2; }; ENV_NAME="$1"; shift ;;
   esac
 done
 # The GitHub environments are Stage and Production; the local directories are stage and main.

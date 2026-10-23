@@ -49,7 +49,7 @@ jobs:
           title="Roles Anywhere certificate of ${{ matrix.environment }} expires soon"
           body="The weekly check failed: see ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}. Renew it (docs/aws-setup.md, Renewing the client certificate)."
           gh label create cert-expiry --color D93F0B --description "Roles Anywhere certificate expiry" >/dev/null 2>&1 || true
-          existing="$(gh issue list --state open --label cert-expiry --search "$title in:title" --json number -q '.[0].number')"
+          existing="$(gh issue list --state open --label cert-expiry --search "$title in:title" --json number -q '.[0].number // empty')"
           if [ -n "$existing" ]; then gh issue comment "$existing" --body "$body"; else gh issue create --title "$title" --label cert-expiry --body "$body"; fi
       - name: Fail the run when the check failed
         if: steps.check.outcome == 'failure'

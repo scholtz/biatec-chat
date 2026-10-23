@@ -43,6 +43,8 @@ make_client_cert() {
   local env="$1" d="$OUT_DIR/$1"
   mkdir -p "$d"
   if [ -f "$d/certificate.pem" ] && [ "${RENEW:-0}" != 1 ]; then echo "Client certificate exists: $d/certificate.pem (RENEW=1 to replace)"; return; fi
+  # Keep the certificate a renewal replaces, so it can still be revoked (rolesanywhere-revoke.sh --cert) if it leaked.
+  if [ -f "$d/certificate.pem" ]; then mkdir -p "$d/retired"; cp "$d/certificate.pem" "$d/retired/$(openssl x509 -in "$d/certificate.pem" -noout -serial | sed 's/^serial=//').pem"; fi
   openssl ecparam -name prime256v1 -genkey -noout -out "$d/private-key.pem"
   chmod 600 "$d/private-key.pem"
   openssl req -new -key "$d/private-key.pem" -subj "/CN=$NAME_PREFIX-$env" -out "$d/client.csr"
