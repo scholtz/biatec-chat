@@ -1,7 +1,7 @@
 ---
 id: T-137
 title: "Repair the playground alias so the widget suite passes on Windows too (BCHAT-045)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -58,7 +58,10 @@ Parallel work possible: **yes**. No other unfinished task changes this file.
 
 ## Review
 
+- 2026-10-23 12:11 · approve · PR #323 merged into main @ a3e3338 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 19:00 · claude · (new) → backlog · created from GitHub issue #298 (BCHAT-045); blockers scan: none
 - 2026-10-23 11:56 · scholtz · taken, and session-20261023-1156 · backlog → in-progress · claimed
+- 2026-10-23 12:11 · user · in-progress → done · PR #323 merged into main @ a3e3338 (synced by kanban-sync)
