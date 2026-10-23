@@ -177,8 +177,15 @@ What `KUBE_CONFIG` can do is the blast radius of anyone who can run a workflow i
    gh api -X POST repos/scholtz/biatec-chat/environments/Production/deployment-branch-policies -f name=main -f type=branch
    gh api -X POST repos/scholtz/biatec-chat/environments/Stage/deployment-branch-policies -f name=main -f type=branch
    ```
-   A branch policy means a workflow on another branch cannot read the environment's secrets. Required reviewers also hold the weekly
-   `rolesanywhere-expiry` check of Production until someone approves it; approve it, or accept that Stage's check is the only unattended one.
+   A branch policy means a workflow on another branch cannot read the environment's secrets; it also blocks a manual run of a deploy
+   workflow from a task branch ("Branch is not allowed to deploy"). `PUT` replaces the environment's whole protection configuration, so read
+   it first (`gh api repos/scholtz/biatec-chat/environments/Production`) and repeat any wait timer or reviewer you want to keep.
+   Required reviewers also hold the weekly `rolesanywhere-expiry` check of Production until someone approves it; approve it, or accept
+   that Stage's check is the only unattended one.
+
+What the Role does not do: it limits the identity's own API calls, but whoever can change `deploy.yml` and run it in the environment can
+still mount a secret into a Deployment. The branch policy and the reviewers are what close that; the Role makes the damage of a stolen
+token small.
 
 ## Storage
 

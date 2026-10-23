@@ -86,6 +86,30 @@ def check_rules(rules, label):
     return errors
 
 
+# What deploy.yml may run. The checks above find secrets, exec targets and rollouts by their usual spelling; this allow-list makes sure a
+# call of another shape (kubectl delete, patch, get secret X, exec into a deployment, ...) is a conscious change of the Role and of this file.
+ALLOWED_GET = {"secret", "pods", "pvc", "pv", "events"}
+ALLOWED_VERBS = {"kustomize", "apply", "config", "create", "rollout", "exec", "describe", "logs", "get"}
+
+
+def check_kubectl_calls(deploy_yaml):
+    errors = []
+    for n, line in enumerate(deploy_yaml.splitlines(), 1):
+        if line.lstrip().startswith("#"):
+            continue
+        for m in re.finditer(r"kubectl\s+([a-z][\w-]*)(?:\s+([^\s|;&]+))?(?:\s+([^\s|;&]+))?", line):
+            verb, a1, a2 = m.group(1), m.group(2) or "", m.group(3) or ""
+            if verb not in ALLOWED_VERBS:
+                errors.append(f"deploy.yml:{n}: 'kubectl {verb}' is not an operation the deploy Role was written for")
+            elif verb == "create" and not (a1 == "secret" and a2 == "generic"):
+                errors.append(f"deploy.yml:{n}: only 'kubectl create secret generic' is expected, got 'kubectl create {a1}'")
+            elif verb == "get" and not set(a1.split(",")) <= ALLOWED_GET:
+                errors.append(f"deploy.yml:{n}: 'kubectl get {a1}' reads a resource the deploy Role was not written for")
+            elif verb == "get" and a1 == "secret" and a2 != "biatec-chat-generated":
+                errors.append(f"deploy.yml:{n}: 'kubectl get secret {a2}' reads a secret other than biatec-chat-generated")
+    return errors
+
+
 def check(role, cluster_role, overlays, deploy_yaml):
     errors = check_rules(role["rules"], "Role")
     rules = role["rules"]
@@ -110,12 +134,13 @@ def check(role, cluster_role, overlays, deploy_yaml):
     if "create" not in verbs_for(rules, "", "secrets"):
         errors.append("the Role cannot create secrets, which the first deploy does")
     for sts in sorted(set(re.findall(r"kubectl exec -i statefulset/([\w.-]+)", deploy_yaml))):
-        if "create" not in verbs_for(rules, "", "pods/exec", sts + "-0"):
-            errors.append(f"deploy.yml execs into statefulset/{sts} but the Role does not allow pods/exec on {sts}-0")
+        if not {"get", "create"} <= verbs_for(rules, "", "pods/exec", sts + "-0"):
+            errors.append(f"deploy.yml execs into statefulset/{sts} but the Role does not allow get and create on pods/exec of {sts}-0")
     for sts in sorted(set(re.findall(r"kubectl rollout status (?:statefulset|deployment)/([\w.-]+)", deploy_yaml))):
         kind_res = "statefulsets" if f"statefulset/{sts}" in deploy_yaml else "deployments"
         if not {"get", "list", "watch"} <= verbs_for(rules, "apps", kind_res, sts):
             errors.append(f"deploy.yml waits for {kind_res}/{sts} but the Role lacks get, list and watch on it")
+    errors += check_kubectl_calls(deploy_yaml)
     # The cluster role: persistent volumes of stage by name, nothing else.
     crules = cluster_role["rules"]
     errors += check_rules(crules, "ClusterRole")
@@ -177,8 +202,12 @@ def self_test(role, cluster_role, overlays, deploy_yaml):
         "another exec target": lambda rs: rule(rs, "pods/exec", True).update(resourceNames=["other-0"]),
         "a deploy secret missing": lambda rs: rule(rs, "secrets", True).update(resourceNames=["biatec-chat-generated"]),
         "statefulset watch removed": lambda rs: rule(rs, "statefulsets")["verbs"].remove("watch"),
+        "exec without get": lambda rs: rule(rs, "pods/exec", True)["verbs"].remove("get"),
     }
     failed = []
+    for bad in ("kubectl delete deployment x", "kubectl patch secret x", "kubectl get secret other -n a", "kubectl create namespace x", "kubectl get nodes"):
+        if not check_kubectl_calls(deploy_yaml + "\n" + bad):
+            failed.append(bad)
     for name, fn in cases.items():
         if not mutate(fn):
             failed.append(name)
@@ -189,7 +218,7 @@ def self_test(role, cluster_role, overlays, deploy_yaml):
     if failed:
         print("SELF-TEST FAILED, these were not caught:", ", ".join(failed))
         return 1
-    print(f"self-test passed: {len(cases) + 1} bad roles are all rejected")
+    print(f"self-test passed: {len(cases) + 1} bad roles and 5 unexpected kubectl calls are all rejected")
     return 0
 
 

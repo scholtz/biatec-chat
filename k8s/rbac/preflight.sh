@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Looks at the identity of the current kubeconfig before a deploy (BCHAT-020). Needs NAMESPACE; uses kubectl and jq.
 #   - an expired token fails the step with a clear message; a token that expires within 7 days, or never, is a warning;
-#   - a warning when the identity can read all secrets of the namespace or edit RBAC there (it is wider than k8s/rbac/deploy-role.yaml).
+#   - a warning when the identity can read all or arbitrary secrets, delete workloads, exec into any pod or edit RBAC in the namespace
+#     (it is wider than k8s/rbac/deploy-role.yaml). Only the namespace is probed; cluster-scope bindings are the cluster admin's to review.
 # Warnings do not fail the deploy: existing environments move to the scoped Role on the cluster admin's schedule (docs/cicd.md).
 set -uo pipefail
 : "${NAMESPACE:?NAMESPACE is required}"
@@ -30,6 +31,10 @@ fi
 can() { [ "$(kubectl auth can-i "$@" -n "$NAMESPACE" 2>/dev/null || true)" = yes ]; }
 if can list secrets; then
   echo "::warning::The deploy identity can read every secret in $NAMESPACE. Bind the scoped Role (k8s/rbac/deploy-role.yaml) instead of the built-in admin role."
+fi
+# Rights that deploy-role.yaml does not grant: any of these answering yes means the identity is wider than the scoped Role.
+if can get secrets/unrelated-probe || can delete deployments.apps || can create pods --subresource=exec; then
+  echo "::warning::The deploy identity can read arbitrary secrets, delete workloads or exec into any pod in $NAMESPACE. Bind the scoped Role (k8s/rbac/deploy-role.yaml) instead of the built-in admin or edit role."
 fi
 if can create rolebindings.rbac.authorization.k8s.io; then
   echo "::warning::The deploy identity can edit RBAC in $NAMESPACE. Bind the scoped Role (k8s/rbac/deploy-role.yaml) instead of the built-in admin role."

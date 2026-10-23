@@ -10,6 +10,7 @@ case "$*" in
   "config view"*) printf '%s' "${FAKE_TOKEN:-}" ;;
   "auth can-i list secrets"*) echo "${FAKE_SECRETS:-no}" ;;
   "auth can-i create rolebindings"*) echo "${FAKE_RBAC:-no}" ;;
+  "auth can-i get secrets/"*|"auth can-i delete deployments"*|"auth can-i create pods --subresource=exec"*) echo "${FAKE_EDIT:-no}" ;;
 esac
 STUB
 chmod +x "$TMP/bin/kubectl"
@@ -27,6 +28,7 @@ FAKE_TOKEN="$(jwt '{"sub":"x"}')" "$DIR/preflight.sh" >"$TMP/never.out" 2>&1; rc
 FAKE_TOKEN="opaque-token" "$DIR/preflight.sh" >"$TMP/opaque.out" 2>&1; rc_opaque=$?
 FAKE_TOKEN="" "$DIR/preflight.sh" >"$TMP/none.out" 2>&1; rc_none=$?
 FAKE_TOKEN="$(jwt "{\"exp\":$((now + 30 * 86400))}")" FAKE_SECRETS=yes FAKE_RBAC=yes "$DIR/preflight.sh" >"$TMP/wide.out" 2>&1; rc_wide=$?
+FAKE_TOKEN="$(jwt "{\"exp\":$((now + 30 * 86400))}")" FAKE_EDIT=yes "$DIR/preflight.sh" >"$TMP/edit.out" 2>&1
 NAMESPACE= "$DIR/preflight.sh" >/dev/null 2>&1; rc_ns=$?
 
 check "a token valid for 30 days passes quietly" '[ $rc_ok -eq 0 ] && ! grep -q "::warning" "$TMP/ok.out" && grep -q "valid until" "$TMP/ok.out"'
@@ -36,6 +38,7 @@ check "a token without exp warns" '[ $rc_never -eq 0 ] && grep -q "::warning::.*
 check "an opaque token warns instead of failing" '[ $rc_opaque -eq 0 ] && grep -q "::warning::.*no expiry" "$TMP/opaque.out"'
 check "no token is only a notice" '[ $rc_none -eq 0 ] && grep -q "::notice::" "$TMP/none.out"'
 check "an identity that reads all secrets and edits RBAC is reported" '[ $rc_wide -eq 0 ] && grep -q "read every secret" "$TMP/wide.out" && grep -q "edit RBAC" "$TMP/wide.out"'
-check "a scoped identity gets no rights warning" '! grep -q "every secret\|edit RBAC" "$TMP/ok.out"'
+check "an edit-like identity (arbitrary secrets, delete, exec) is reported" 'grep -q "arbitrary secrets, delete workloads or exec" "$TMP/edit.out"'
+check "a scoped identity gets no rights warning" '! grep -q "every secret\|edit RBAC\|arbitrary secrets" "$TMP/ok.out"'
 check "a missing NAMESPACE is an error" '[ $rc_ns -ne 0 ]'
 exit $fail

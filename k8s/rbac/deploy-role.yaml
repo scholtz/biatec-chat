@@ -2,7 +2,9 @@
 # (BCHAT-020). A cluster admin applies it once per namespace:
 #   kubectl apply -n biatec-chat-stage -f k8s/rbac/deploy-role.yaml
 # and binds it with deploy-rolebinding.yaml. It replaces the built-in `admin` ClusterRole, which could read every secret, edit RBAC and
-# exec into any pod. Every rule below is something .github/workflows/deploy.yml does; k8s/rbac/check_role.py (run in CI) fails when a
+# exec into any pod. It limits what the identity can do directly through the API; it cannot stop whoever writes the deploy workflow
+# from mounting a secret into a Deployment, which is why Production also needs required reviewers and a branch policy (docs/cicd.md).
+# Every rule below is something .github/workflows/deploy.yml does; k8s/rbac/check_role.py (run in CI) fails when a
 # resource of the rendered overlays, a secret the deploy writes or the pod it execs into is not covered, or when a rule is too wide.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -22,7 +24,7 @@ rules:
     resources: ["ingresses", "networkpolicies"]
     verbs: ["get", "create", "patch"]
   # The three secrets the deploy writes (`kubectl create secret generic ... | kubectl apply`). Reading is limited to those names, there is
-  # no list or watch, so the account cannot read the other secrets of the namespace. `create` cannot be limited by name.
+  # no list or watch, so the account cannot read the other secrets directly. `create` cannot be limited by name.
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["create"]
@@ -41,4 +43,5 @@ rules:
   - apiGroups: [""]
     resources: ["pods/exec"]
     resourceNames: ["biatec-chat-postgres-0"]
-    verbs: ["create"]
+    # kubectl 1.31+ opens the exec websocket with a GET, which API servers before 1.35 authorize as `get`.
+    verbs: ["get", "create"]
