@@ -1,7 +1,7 @@
 ---
 id: T-140
 title: "Fail closed when the token response omits its scope (BCHAT-034)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -60,7 +60,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 13:11 · approve · PR #331 merged into main @ 30da49a (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 22:00 · claude · (new) → backlog · created from GitHub issue #287 (BCHAT-034); blockers scan: none
 - 2026-10-23 12:57 · scholtz · taken, and session-20261023-1257 · backlog → in-progress · claimed
+- 2026-10-23 13:11 · user · in-progress → done · PR #331 merged into main @ 30da49a (synced by kanban-sync)
