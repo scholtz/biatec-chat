@@ -41,9 +41,9 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] Login with a token response that has no `scope` leaves the session with only `openid` in the vault (no `sign`, no `email`).
-- [ ] Elevation with a token response that has no `scope` is refused (400, status Failed) and leaves the vault entry untouched.
-- [ ] Existing auth and elevation tests stay green.
+- [x] Login with a token response that has no `scope` leaves the session with only `openid` in the vault (no `sign`, no `email`).
+- [x] Elevation with a token response that has no `scope` is refused (400, status Failed) and leaves the vault entry untouched.
+- [x] Existing auth and elevation tests stay green.
 
 ## Verification
 
@@ -51,12 +51,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** A token response without a scope no longer lets the requested scopes stand in for the granted ones: the login callback vaults only openid, and the elevation callback refuses (400, status Failed) and leaves the vault entry untouched. An empty scope string counts as omitted; a login without scope logs a warning. The refresh path keeps the previous scopes (RFC 6749 section 6: omitted means unchanged), which is deliberate.
+- **Files changed:** Api/Auth/AuthEndpoints.cs, Api/Auth/Elevation/ElevationEndpoints.cs, Tests/Auth/MockOidc.cs (OmitScope switch), Tests/Auth/ElevationTests.cs.
+- **How it was verified:** Full backend suite 1619 passed, 0 failed (3 new tests: login omitting scope vaults openid only, elevation omitting scope refused, elevation with an empty scope refused).
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** RFC 6749 lets a server omit scope when it equals the request, so a compliant server that does so now yields an openid-only session after login (the user elevates sign when needed) and cannot elevate until it returns scope. Biatec OIDC's mock always returns it; confirm the real one does.
 
 ## Review
 

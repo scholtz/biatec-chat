@@ -388,6 +388,59 @@ public sealed class ElevationTests : IAsyncLifetime
         Assert.False((await Guard.CheckAsync(sid, ElevationScopes.Sign)).Allowed);
     }
 
+    // BCHAT-034: a token response without a scope grants nothing that was merely requested.
+    [Fact]
+    public async Task Login_WhoseTokenResponseOmitsTheScope_VaultsOnlyOpenid()
+    {
+        var anon = TokenOf(SetCookie(await SendAsync(HttpMethod.Get, "/session/probe"))!);
+        var start = await SendAsync(HttpMethod.Post, "/auth/popup", anon);
+        var path = new Uri((await start.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("loginUrl").GetString()!).PathAndQuery;
+        var redirect = await SendAsync(HttpMethod.Get, path, anon);
+        var (code, state) = _oidc.Authorize(redirect.Headers.Location!);
+        HttpResponseMessage cb;
+        _oidc.OmitScope = true;
+        try { cb = await SendAsync(HttpMethod.Get, $"/auth/callback?code={Uri.EscapeDataString(code)}&state={Uri.EscapeDataString(state)}", anon); }
+        finally { _oidc.OmitScope = false; }
+
+        Assert.Equal(HttpStatusCode.OK, cb.StatusCode);
+        var sid = SessionIdOf(TokenOf(SetCookie(cb)!));
+        Assert.Equal(["openid"], _vault.Items[sid].Scopes);
+        Assert.False((await Guard.CheckAsync(sid, ElevationScopes.Sign)).Allowed);
+    }
+
+    [Fact]
+    public async Task Elevation_WhoseTokenResponseHasAnEmptyScope_IsRefusedToo()
+    {
+        var cookie = await LoginAsync();
+        var sid = SessionIdOf(cookie);
+        var before = _vault.Items[sid];
+        _oidc.GrantedScopeOverride = " ";
+        Guid id;
+        HttpResponseMessage cb;
+        try { (id, cb) = await ElevateAsync(cookie, "sign", "openid profile email sign"); }
+        finally { _oidc.GrantedScopeOverride = null; }
+        Assert.Equal(HttpStatusCode.BadRequest, cb.StatusCode);
+        Assert.Equal(PopupAuthStatus.Failed, await StatusAsync(id));
+        Assert.Same(before, _vault.Items[sid]);
+    }
+
+    [Fact]
+    public async Task Elevation_WhoseTokenResponseOmitsTheScope_IsRefused_AndLeavesTheEntryUntouched()
+    {
+        var cookie = await LoginAsync();
+        var sid = SessionIdOf(cookie);
+        var before = _vault.Items[sid];
+        _oidc.OmitScope = true;
+        Guid id;
+        HttpResponseMessage cb;
+        try { (id, cb) = await ElevateAsync(cookie, "sign", "openid profile email sign"); }
+        finally { _oidc.OmitScope = false; }
+        Assert.Equal(HttpStatusCode.BadRequest, cb.StatusCode);
+        Assert.Equal(PopupAuthStatus.Failed, await StatusAsync(id));
+        Assert.Same(before, _vault.Items[sid]);
+        Assert.DoesNotContain("sign", _vault.Items[sid].Scopes);
+    }
+
     [Fact]
     public async Task Elevation_DeclinedScopeLeavesTheExistingEntryUntouched()
     {
