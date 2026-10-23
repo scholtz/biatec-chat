@@ -1,0 +1,67 @@
+---
+id: T-141
+title: "Do not offer Bitcoin transfers until a PSBT signing path exists (BCHAT-037)"
+status: in-progress
+priority: P3
+epic: "Security"
+blocked_by: []
+area: ["backend/Biatec.Chat.Core/Capabilities/CapabilityRegistry.cs", "backend/Biatec.Chat.Tests/Capabilities/ToolGateTests.cs"]
+parallel: yes
+conflicts_with: []
+issue: "#290"
+branch: "task/T-141"
+owner: "session-20261023-1313"
+taken_by: "scholtz"
+source: "PRODUCT-DESCRIPTION.md#threat-model-highlights"
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# T-141 - Do not offer Bitcoin transfers until a PSBT signing path exists (BCHAT-037)
+
+## Context
+
+Security audit finding BCHAT-037 (Low, issue #290). `wallet.transfer` accepts `network: "bitcoin"` and the backend builds a Bitcoin preview
+and persists it with evidence, but Confirm only signs Algorand groups (`PrepareGroup` refuses anything else), so every Bitcoin
+preview fails as `group_mismatch`. Failing closed is safe, but the user sees a card they can never confirm and the evidence log records an action that
+could not happen.
+
+## Goal
+
+The model cannot start a Bitcoin transfer; reading Bitcoin addresses and balances stays available.
+
+## Scope
+
+- In: `CapabilityRegistry.CreateDefault(bitcoinTransfers: false)` removes `bitcoin` from the `wallet.transfer` input schema (and its description) unless the flag is set; the tool gate then refuses it; tests.
+- Out: the Bitcoin transfer service and PSBT code (kept, switched off by the schema), the PSBT signing path itself; BCHAT-041.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task changes these files.
+
+## Acceptance criteria
+
+- [ ] With the default registry, `wallet.transfer` with network `bitcoin` is refused by the gate; mainnet and testnet are accepted.
+- [ ] `wallet.balance` and `wallet.listAddresses` still accept `bitcoin`.
+- [ ] `CreateDefault(bitcoinTransfers: true)` restores the old schema (used by the Bitcoin tests).
+- [ ] The full backend suite stays green.
+
+## Verification
+
+`dotnet test backend`.
+
+## Hand-off
+
+- **Summary:**
+- **Files changed:**
+- **How it was verified:**
+- **Follow-up tasks created:**
+- **Unblocks:**
+- **Open questions:**
+
+## Review
+
+## Activity log
+
+- 2026-10-23 23:00 · claude · (new) → backlog · created from GitHub issue #290 (BCHAT-037); blockers scan: none
+- 2026-10-23 13:13 · scholtz · taken, and session-20261023-1313 · backlog → in-progress · claimed
