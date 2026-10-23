@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../security/secure_storage.dart';
 import 'enrollment_state.dart';
 
 abstract class EnrollmentStore {
@@ -18,9 +19,9 @@ abstract class EnrollmentStore {
 
 class SecureEnrollmentStore implements EnrollmentStore {
   SecureEnrollmentStore([FlutterSecureStorage? storage])
-      : _storage = storage ?? const FlutterSecureStorage();
+      : _storage = storage ?? deviceBoundStorage;
 
-  static const _key = 'biatec.enrollment';
+  static const _key = enrollmentStorageKey;
   final FlutterSecureStorage _storage;
 
   @override
@@ -36,7 +37,7 @@ class SecureEnrollmentStore implements EnrollmentStore {
     }
   }
 
-  static const _aliasKey = 'biatec.enrollment.alias';
+  static const _aliasKey = enrollmentAliasStorageKey;
 
   @override
   Future<String?> readAlias() => _storage.read(key: _aliasKey);
