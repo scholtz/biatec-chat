@@ -151,7 +151,6 @@ jobs:
       # The deploy identity's Role must cover exactly what the overlays and deploy.yml do (BCHAT-020, k8s/rbac).
       - name: Check the deploy RBAC
         run: |
-          python3 -m pip install --quiet pyyaml==6.0.2
           python3 k8s/rbac/check_role.py
           python3 k8s/rbac/check_role.py --self-test
           bash k8s/rbac/test-preflight.sh

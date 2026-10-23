@@ -16,7 +16,10 @@ import re
 import subprocess
 import sys
 
-import yaml
+try:
+    import yaml
+except ImportError:
+    sys.exit("PyYAML is required: pip install pyyaml")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 RBAC = os.path.join(ROOT, "k8s", "rbac")
@@ -51,7 +54,8 @@ def rendered(overlay):
 
 
 def verbs_for(rules, group, resource, name=None):
-    """The verbs the rules grant on (group, resource), for `name` when given (a rule with resourceNames then only counts for it)."""
+    """The verbs the rules grant on (group, resource). With `name`, rules without resourceNames and rules naming it count; without, only
+    rules without resourceNames do (a verb that holds for every name)."""
     found = set()
     for r in rules:
         if group not in r.get("apiGroups", []) or resource not in r.get("resources", []):
@@ -94,17 +98,26 @@ ALLOWED_VERBS = {"kustomize", "apply", "config", "create", "rollout", "exec", "d
 
 def check_kubectl_calls(deploy_yaml):
     errors = []
-    for n, line in enumerate(deploy_yaml.splitlines(), 1):
+    # Join shell line continuations, then read every `kubectl ...` up to the next pipe or separator, without flags, so
+    # `kubectl -n "$NAMESPACE" delete ...` and a command split over lines are seen like the plain form.
+    joined = re.sub(r"\\\n\s*", " ", deploy_yaml)
+    for n, line in enumerate(joined.splitlines(), 1):
         if line.lstrip().startswith("#"):
             continue
-        for m in re.finditer(r"kubectl\s+([a-z][\w-]*)(?:\s+([^\s|;&]+))?(?:\s+([^\s|;&]+))?", line):
-            verb, a1, a2 = m.group(1), m.group(2) or "", m.group(3) or ""
+        for m in re.finditer(r"kubectl\s+([^|;&]*)", line):
+            rest = re.sub(r"(?:^|\s)(?:-n|--namespace|--context|-c|--container)(?:=|\s+)\S+", " ", m.group(1))
+            words = [w for w in rest.split() if not w.startswith("-") and w != "--"]
+            if not words:
+                continue
+            verb, a1, a2 = words[0], words[1] if len(words) > 1 else "", words[2] if len(words) > 2 else ""
             if verb not in ALLOWED_VERBS:
                 errors.append(f"deploy.yml:{n}: 'kubectl {verb}' is not an operation the deploy Role was written for")
             elif verb == "create" and not (a1 == "secret" and a2 == "generic"):
                 errors.append(f"deploy.yml:{n}: only 'kubectl create secret generic' is expected, got 'kubectl create {a1}'")
             elif verb == "get" and not set(a1.split(",")) <= ALLOWED_GET:
                 errors.append(f"deploy.yml:{n}: 'kubectl get {a1}' reads a resource the deploy Role was not written for")
+            elif verb == "exec" and not a1.startswith("statefulset/"):
+                errors.append(f"deploy.yml:{n}: 'kubectl exec {a1}' is not the statefulset the Role allows exec on")
             elif verb == "get" and a1 == "secret" and a2 != "biatec-chat-generated":
                 errors.append(f"deploy.yml:{n}: 'kubectl get secret {a2}' reads a secret other than biatec-chat-generated")
     return errors
@@ -205,7 +218,8 @@ def self_test(role, cluster_role, overlays, deploy_yaml):
         "exec without get": lambda rs: rule(rs, "pods/exec", True)["verbs"].remove("get"),
     }
     failed = []
-    for bad in ("kubectl delete deployment x", "kubectl patch secret x", "kubectl get secret other -n a", "kubectl create namespace x", "kubectl get nodes"):
+    for bad in ("kubectl delete deployment x", "kubectl patch secret x", "kubectl get secret other -n a", "kubectl create namespace x", "kubectl get nodes",
+                "kubectl -n x delete deployment y", "kubectl --namespace=x get secret other", "kubectl exec deployment/b -- env", "kubectl get \\\n  secret other"):
         if not check_kubectl_calls(deploy_yaml + "\n" + bad):
             failed.append(bad)
     for name, fn in cases.items():
@@ -218,7 +232,7 @@ def self_test(role, cluster_role, overlays, deploy_yaml):
     if failed:
         print("SELF-TEST FAILED, these were not caught:", ", ".join(failed))
         return 1
-    print(f"self-test passed: {len(cases) + 1} bad roles and 5 unexpected kubectl calls are all rejected")
+    print(f"self-test passed: {len(cases) + 1} bad roles and 9 unexpected kubectl calls are all rejected")
     return 0
 
 

@@ -166,15 +166,19 @@ What `KUBE_CONFIG` can do is the blast radius of anyone who can run a workflow i
    The deploy's "Check the deploy identity" step (`k8s/rbac/preflight.sh`) fails with a clear message when the token has expired,
    and warns when it expires within 7 days, when it has no expiry, and when the identity can read every secret or edit RBAC (that is,
    it still has the built-in `admin` role). The warnings do not fail the deploy, so an environment can move to the scoped Role when
-   the cluster admin gets to it.
+   the cluster admin gets to it; once it has, set the environment variable `STRICT_IDENTITY` to `1` (Settings → Environments → Variables)
+   and they do.
 3. **A human in front of Production, and only `main`.** These are repository settings, not files; run them once as a repository admin
    (replace `<id>` with the user or team id from `gh api users/<login>` or `gh api orgs/<org>/teams/<slug>`):
    ```
    gh api -X PUT repos/scholtz/biatec-chat/environments/Production --input - <<'JSON'
-   {"reviewers": [{"type": "User", "id": <id>}], "prevent_self_review": true,
+   {"reviewers": [{"type": "User", "id": <id>}],
     "deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}
    JSON
    gh api -X POST repos/scholtz/biatec-chat/environments/Production/deployment-branch-policies -f name=main -f type=branch
+   gh api -X PUT repos/scholtz/biatec-chat/environments/Stage --input - <<'JSON'
+   {"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}
+   JSON
    gh api -X POST repos/scholtz/biatec-chat/environments/Stage/deployment-branch-policies -f name=main -f type=branch
    ```
    A branch policy means a workflow on another branch cannot read the environment's secrets; it also blocks a manual run of a deploy
@@ -184,8 +188,9 @@ What `KUBE_CONFIG` can do is the blast radius of anyone who can run a workflow i
    that Stage's check is the only unattended one.
 
 What the Role does not do: it limits the identity's own API calls, but whoever can change `deploy.yml` and run it in the environment can
-still mount a secret into a Deployment. The branch policy and the reviewers are what close that; the Role makes the damage of a stolen
-token small.
+still mount a secret into a Deployment. The branch policy and the reviewers are what close that. A stolen
+token alone can still patch Deployments and read their pods' logs, so the Role makes it narrower than `admin`, not harmless. Short token
+lifetimes, the branch policy and the reviewers are the other layers.
 
 ## Storage
 
