@@ -87,7 +87,6 @@ public static class AdminLogin
     /// </summary>
     internal static async Task<IResult> CompleteAsync(HttpContext ctx, Tenant tenant, PendingAuth pending)
     {
-        AuthEndpoints.Harden(ctx);
         var sp = ctx.RequestServices;
         var log = sp.GetRequiredService<ILogger<AdminLoginLog>>();
         var allow = sp.GetRequiredService<AdminAllowList>();
@@ -157,6 +156,7 @@ public static class AdminLogin
         }
 
         AdminAuth.WriteCookie(ctx.Response, AdminAuth.CookieName, token, session.ExpiresAt - now, SameSiteMode.Strict);
+        ctx.Response.Cookies.Delete(AdminAuth.LoginCookieName, new CookieOptions { Secure = true, HttpOnly = true, Path = "/" }); // the binding is spent
         log.LogInformation("Admin {Email} signed in to the dashboard from {RemoteIp}.", Onboarding.OperatorAuth.Clean(session.Email), Onboarding.OperatorAuth.Remote(ctx));
         return Results.Redirect(Home(tenant, ctx.Request), permanent: false);
     }

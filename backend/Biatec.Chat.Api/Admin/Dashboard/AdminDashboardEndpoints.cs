@@ -112,6 +112,7 @@ public static class AdminDashboardEndpoints
                 return Bad("days must be between 7 and 365.");
             var tenant = Single(ctx, "tenant");
             if (tenant is { Length: > 128 }) return Bad("tenant is too long.");
+            if (tenant is not null && !await svc.TenantExistsAsync(tenant, ct)) return NotFound("Unknown tenant.");
             return Results.Json(await svc.StatsAsync(days, tenant, ct), Json);
         });
 
@@ -229,11 +230,11 @@ public static class AdminDashboardEndpoints
     private static void MapUi(IEndpointRouteBuilder app)
     {
         // Routing ignores the trailing slash, so "/admin" and "/admin/" reach the same handler: only the bare path is redirected.
-        app.MapGet("/admin", (HttpContext ctx, AdminAllowList allow) =>
+        app.MapMethods("/admin", [HttpMethods.Get, HttpMethods.Head], (HttpContext ctx, AdminAllowList allow) =>
             !allow.Enabled || ctx.GetTenant() is null ? Results.NotFound()
             : ctx.Request.Path.Value!.EndsWith('/') ? ServeFile(ctx, null)
             : Results.Redirect(ctx.Request.PathBase.Value + "/admin/", permanent: false));
-        app.MapGet("/admin/{**file}", (string? file, HttpContext ctx) => ServeFile(ctx, file));
+        app.MapMethods("/admin/{**file}", [HttpMethods.Get, HttpMethods.Head], (string? file, HttpContext ctx) => ServeFile(ctx, file));
     }
 
     private static IResult ServeFile(HttpContext ctx, string? file)

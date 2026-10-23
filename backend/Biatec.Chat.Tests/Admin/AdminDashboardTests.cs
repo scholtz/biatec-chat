@@ -527,10 +527,10 @@ public sealed class AdminDashboardTests : IAsyncLifetime
         var tenant = Assert.Single(j.GetProperty("tenants").EnumerateArray());
         Assert.Equal(2, tenant.GetProperty("users").GetInt32());
 
-        // A tenant filter that matches nothing is all zeros.
-        var none = await (await SendAsync(f, HttpMethod.Get, "/admin/api/stats?days=30&tenant=nobody", cookie)).Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(0, none.GetProperty("totals").GetProperty("users").GetInt32());
-        Assert.Equal(30, none.GetProperty("daily").GetArrayLength());
+        // A real tenant filters; an unknown one is refused (it would otherwise be an uncached query per value).
+        var other = await (await SendAsync(f, HttpMethod.Get, "/admin/api/stats?days=30&tenant=biatec-chat", cookie)).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(2, other.GetProperty("totals").GetProperty("users").GetInt32());
+        Assert.Equal(30, other.GetProperty("daily").GetArrayLength());
 
         foreach (var bad in new[] { "days=3", "days=999", "days=x" })
             Assert.Equal(HttpStatusCode.BadRequest, (await SendAsync(f, HttpMethod.Get, "/admin/api/stats?" + bad, cookie)).StatusCode);
@@ -898,7 +898,7 @@ public sealed class AdminDashboardTests : IAsyncLifetime
     {
         var f = Factory();
         var cookie = await AdminCookieAsync(f);
-        Assert.Equal(HttpStatusCode.OK, (await SendAsync(f, HttpMethod.Get, "/admin/api/stats?tenant=nobody", cookie)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await SendAsync(f, HttpMethod.Get, "/admin/api/stats?tenant=nobody", cookie)).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await SendAsync(f, HttpMethod.Get, "/admin/api/stats?tenant=" + new string('x', 129), cookie)).StatusCode);
         using var scope = f.Services.CreateScope();
         var cache = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>();
@@ -942,5 +942,17 @@ public sealed class AdminDashboardTests : IAsyncLifetime
         var me = await (await SendAsync(f, HttpMethod.Get, "/admin/api/me", cookie)).Content.ReadAsStringAsync();
         Assert.DoesNotContain("userId", start, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("userId", me, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Ui_AnswersHeadAndDeadCookiesAreCleared()
+    {
+        var f = Factory();
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(f, HttpMethod.Head, "/admin/")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(f, HttpMethod.Head, "/admin/assets/app.js")).StatusCode);
+        // A cookie for a session that is gone (idle timeout) is answered with a 401 that also expires the cookie.
+        var r = await SendAsync(f, HttpMethod.Get, "/admin/api/me", AdminAuth.CookieName + "=" + new string('a', 43));
+        Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode);
+        Assert.Contains(r.Headers.GetValues("Set-Cookie"), c => c.StartsWith(AdminAuth.CookieName + "=;"));
     }
 }

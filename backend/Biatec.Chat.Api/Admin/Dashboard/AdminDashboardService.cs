@@ -48,8 +48,7 @@ public sealed class AdminDashboardService(ChatDbContext db, TimeProvider clock, 
     public async Task<StatsResponse> StatsAsync(int days, string? tenant, CancellationToken ct)
     {
         tenant = string.IsNullOrWhiteSpace(tenant) ? null : tenant.Trim();
-        // Only a real tenant (or none) is cached, so arbitrary query values cannot fill the cache.
-        if (tenant is not null && !await db.Tenants.AnyAsync(t => t.Id == tenant, ct)) return await ComputeStatsAsync(days, tenant, ct);
+        // The caller has checked that a tenant exists (TenantExistsAsync), so only real tenants (or none) reach the cache.
         return (await cache.GetOrCreateAsync($"admin-stats|{days}|{tenant}", e =>
         {
             e.AbsoluteExpirationRelativeToNow = StatsCacheTime;
@@ -64,17 +63,27 @@ public sealed class AdminDashboardService(ChatDbContext db, TimeProvider clock, 
         var weekAgo = now.AddDays(-7);
         tenant = string.IsNullOrWhiteSpace(tenant) ? null : tenant;
 
-        var users = db.KnownUsers.AsNoTracking().Where(u => tenant == null || u.TenantId == tenant);
-        var convs = db.Conversations.AsNoTracking().Where(c => tenant == null || c.TenantId == tenant);
-        var previews = db.ActionPreviews.AsNoTracking().Where(p => tenant == null || db.Conversations.Any(c => c.Id == p.ConversationId && c.TenantId == tenant));
+        // Filters are applied only when a tenant is chosen, so the all-tenants overview is plain counts (no parameterised OR EXISTS per row).
+        var users = db.KnownUsers.AsNoTracking().AsQueryable();
+        var convs = db.Conversations.AsNoTracking().AsQueryable();
+        var previews = db.ActionPreviews.AsNoTracking().AsQueryable();
+        var messages = db.Messages.AsNoTracking().AsQueryable();
+        if (tenant is not null)
+        {
+            users = users.Where(u => u.TenantId == tenant);
+            convs = convs.Where(c => c.TenantId == tenant);
+            previews = previews.Where(p => db.Conversations.Any(c => c.Id == p.ConversationId && c.TenantId == tenant));
+            messages = messages.Where(m => db.Conversations.Any(c => c.Id == m.ConversationId && c.TenantId == tenant));
+        }
 
         var userCount = await users.CountAsync(ct);
         var active = await users.CountAsync(u => u.LastSeenAt >= weekAgo || db.Conversations.Any(c => c.TenantId == u.TenantId && c.OidcSub == u.OidcSub && c.LastMessageAt >= weekAgo), ct);
         var convCount = await convs.CountAsync(ct);
-        var msgCount = await db.Messages.AsNoTracking().LongCountAsync(m => tenant == null || db.Conversations.Any(c => c.Id == m.ConversationId && c.TenantId == tenant), ct);
+        var msgCount = await messages.LongCountAsync(ct);
         var previewCount = await previews.CountAsync(ct);
 
-        var live = db.ChatSessions.AsNoTracking().Where(SessionLiveness.IsLive(db, now)).Where(s => tenant == null || s.TenantId == tenant);
+        var live = db.ChatSessions.AsNoTracking().Where(SessionLiveness.IsLive(db, now));
+        if (tenant is not null) live = live.Where(s => s.TenantId == tenant);
         var tiers = await live.GroupBy(s => s.Tier).Select(g => new { Tier = g.Key, Count = g.Count() }).ToListAsync(ct);
         var liveCount = tiers.Sum(t => t.Count);
         var byStatus = await previews.GroupBy(p => p.Status).Select(g => new { Status = g.Key, Count = g.Count() }).ToListAsync(ct);
@@ -134,6 +143,8 @@ public sealed class AdminDashboardService(ChatDbContext db, TimeProvider clock, 
     private sealed record ModelTokenRow(string ModelId, long Messages, long Input, long Output, long CacheRead, long CacheWrite);
     private sealed record DayRow(DateOnly Day, long Messages, long Input, long Output);
     private sealed record CountRow(DateOnly Day, long Count);
+
+    public Task<bool> TenantExistsAsync(string tenant, CancellationToken ct) => db.Tenants.AnyAsync(t => t.Id == tenant, ct);
 
     public async Task<IReadOnlyList<TenantInfo>> TenantsAsync(CancellationToken ct) =>
         await db.Tenants.AsNoTracking().OrderBy(t => t.Id).Select(t => new TenantInfo(t.Id, t.Host)).ToListAsync(ct);

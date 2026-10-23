@@ -13,7 +13,11 @@ public static class KnownUsers
     /// </summary>
     public static async Task RecordSignInAsync(ChatDbContext db, string tenantId, IdTokenIdentity identity, DateTimeOffset now, ILogger log, CancellationToken ct)
     {
-        if (identity.Subject.Length > 256 || tenantId.Length > 128) return;
+        if (identity.Subject.Length > 256 || tenantId.Length > 128)
+        {
+            log.LogWarning("The administrator dashboard cannot list a user whose subject ({SubjectLength} characters) or tenant id is longer than its column.", identity.Subject.Length);
+            return;
+        }
         try
         {
             // One atomic upsert (also correct for two sign-ins at once); it touches no tracked entity of the request's context.

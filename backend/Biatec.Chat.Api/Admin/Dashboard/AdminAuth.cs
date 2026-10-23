@@ -52,7 +52,11 @@ public static class AdminAuth
         if (token is not { Length: > 0 and <= 128 }) return Unauthorized();
         var hash = AuthEndpoints.Hash(token);
         var session = await store.GetAsync(hash, ctx.RequestAborted);
-        if (session is null) return Unauthorized();
+        if (session is null)
+        {
+            ClearCookie(ctx.Response); // the idle timeout removed it: stop sending the dead cookie
+            return Unauthorized();
+        }
         if (session.ExpiresAt <= now || session.TenantId != tenant.Id || !allow.Contains(session.Email))
         {
             await store.DeleteAsync(hash, ctx.RequestAborted);
@@ -85,8 +89,12 @@ public static class AdminAuth
         var header = req.Headers[CsrfHeader];
         if (header.Count != 1 || header[0] != "1") return false;
         var origin = req.Headers["Origin"];
+        if (origin.Count != 1 || OriginPolicy.Canonicalize(origin[0]) is not { } presented) return false;
+        // The origin of the tenant's registered redirect URI, or of the host name the request itself came in on (the tenant was resolved from it).
         var own = OriginPolicy.Canonicalize(BackendUrls.TryBase(tenant, ""));
-        return origin.Count == 1 && own is not null && OriginPolicy.Canonicalize(origin[0]) == own;
+        if (presented == own) return true;
+        var scheme = own is not null && own.StartsWith("http://", StringComparison.Ordinal) ? "http" : "https";
+        return presented == OriginPolicy.Canonicalize($"{scheme}://{req.Host.Value}");
     }
 
     public static TimeSpan IdleTtl(AdminSession s, AdminOptions o, DateTimeOffset now)
