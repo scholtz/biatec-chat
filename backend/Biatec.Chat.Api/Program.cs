@@ -27,6 +27,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddBiatecOptions(builder.Configuration);
 Biatec.Chat.Api.Hosting.HostMountRegistration.AddHostMounts(builder.Services, builder.Configuration);
 builder.Services.AddBiatecHealth();
+Biatec.Chat.Api.Security.RequestLimits.AddRequestLimits(builder.Services, builder.Configuration);
 builder.Services.AddContractsOpenApi();
 builder.Services.AddBiatecData();
 builder.Services.AddOidcAuth();
@@ -72,6 +73,8 @@ await app.MigrateDevelopmentDatabaseAsync();
 await app.SeedTenantsAsync();
 
 Biatec.Chat.Api.Public.ClientAddress.UseClientAddress(app);
+// Every request body is bounded before anything reads it (Limits:MaxRequestBodyBytes).
+Biatec.Chat.Api.Security.RequestLimits.UseRequestBodyLimit(app);
 // Before tenancy: a host mounted under a path prefix is resolved and routed without the prefix (Hosting:Mounts).
 Biatec.Chat.Api.Hosting.HostMountRegistration.UseHostMounts(app);
 // Explicit, so endpoints are matched after the mount prefix has moved to PathBase (the implicit UseRouting would run first).
@@ -80,8 +83,9 @@ app.UseTenancy();
 app.UseOnboardingBodyLimit();
 app.UseRateLimiter();
 
-// 200 Healthy when Redis and PostgreSQL answer, 503 Unhealthy otherwise. The body is the status only.
-app.MapHealthChecks("/health");
+// 200 Healthy when Redis and PostgreSQL answer, 503 Unhealthy otherwise. The body is the status only. The answer is cached for a few seconds and
+// rate limited per IP: the endpoint is unauthenticated and reachable through the ingress (Limits:Health*).
+Biatec.Chat.Api.Security.RequestLimits.MapCachedHealth(app);
 // Liveness only: runs no dependency checks, so a Redis or PostgreSQL outage never restarts the pods.
 app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = _ => false });
 

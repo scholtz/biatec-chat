@@ -38,16 +38,19 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] A request with a body over the limit gets 413 before any handler, with a declared length and with a chunked body.
-- [ ] Existing routes with legitimate bodies (chat message, onboarding, operator KB page of 16 KiB) still work.
-- [ ] Repeated `/health` calls inside the cache window run the dependency checks once; the answer and the 200/503 mapping are unchanged.
-- [ ] `/health` is rate limited per remote IP and answers 429 beyond the limit.
+- [x] A request with a body over the limit gets 413 before any handler, with a declared length and with a chunked body.
+- [x] Existing routes with legitimate bodies (chat message, onboarding, operator KB page of 16 KiB) still work.
+- [x] Repeated `/health` calls inside the cache window run the dependency checks once; the answer and the 200/503 mapping are unchanged.
+- [x] `/health` is rate limited per remote IP and answers 429 beyond the limit.
 
 ## Verification
 
 `dotnet test backend --filter "Health|RequestLimits|Onboarding|Admin"`, full suite in CI.
 
 ## Hand-off
+
+- **Summary:** `Security/RequestLimits.cs`: `UseRequestBodyLimit` (413 on a declared length over `Limits:MaxRequestBodyBytes`, default 64 KiB, and the server's `IHttpMaxRequestBodySizeFeature` lowered for chunked bodies; stricter route limits stay), `CachedHealth` (the dependency checks run at most every `Limits:HealthCacheSeconds`, one at a time) behind `MapCachedHealth` with a per-IP rate limit (`Limits:HealthRateLimitPermits`, default 120/min). The 200/503 mapping and the status-only body are unchanged. A row in docs/threat-model.md.
+- **Verification:** new RequestLimitsTests (7) and ConfigAndHealth: 23 pass; Onboarding/Admin/Kb/Public: 230 pass. Full suite in CI.
 
 ## Review
 
