@@ -17,7 +17,14 @@ import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final config = AppConfig.fromEnvironment();
+  final AppConfig config;
+  try {
+    config = AppConfig.fromEnvironment();
+  } on ConfigException catch (e) {
+    // Never start talking to an unsafe URL, and say why instead of showing a blank screen.
+    runApp(ConfigErrorApp(message: e.message));
+    return;
+  }
   final approvals = ApprovalServices.fromConfig(config);
   final firebase = FirebasePushConfig.fromEnvironment();
   if (firebase == null) {
@@ -137,4 +144,36 @@ class AuthenticatorApp extends StatelessWidget {
       },
     );
   }
+}
+
+/// Shown instead of the app when the build's Biatec OIDC URL is not acceptable (see [AppConfig.resolve]).
+class ConfigErrorApp extends StatelessWidget {
+  const ConfigErrorApp({super.key, required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+        title: 'Biatec Authenticator',
+        theme: buildTheme(Brightness.light),
+        darkTheme: buildTheme(Brightness.dark),
+        home: Scaffold(
+          body: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('This build cannot start',
+                      key: const Key('config-error-title'),
+                      style: Theme.of(context).textTheme.headlineSmall),
+                  const SizedBox(height: 12),
+                  Text(message, key: const Key('config-error-message')),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
 }

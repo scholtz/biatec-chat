@@ -1,3 +1,14 @@
+import 'package:flutter/foundation.dart';
+
+/// The Biatec OIDC URL is not usable: not https (outside local mock use), or not a plain base URL.
+class ConfigException implements Exception {
+  const ConfigException(this.message);
+  final String message;
+
+  @override
+  String toString() => 'ConfigException: $message';
+}
+
 /// Build-time configuration.
 class AppConfig {
   const AppConfig(
@@ -30,14 +41,53 @@ class AppConfig {
   factory AppConfig.fromEnvironment() =>
       AppConfig.resolve(_definedOidcBaseUrl, settingsApi: _definedSettingsApi);
 
-  factory AppConfig.resolve(String defined, {bool settingsApi = false}) {
+  /// Hosts that mean "this machine" for a developer: plain http is acceptable to them in a build that is not a release build.
+  static const _localHosts = {'localhost', '127.0.0.1', '::1', '10.0.2.2'};
+
+  /// [release] is true for anything that is not a debug build (release and profile builds): those only accept https, and have no mock default.
+  factory AppConfig.resolve(String defined,
+      {bool settingsApi = false, bool? release}) {
+    final isRelease = release ?? !kDebugMode;
     final url = defined.trim().replaceAll(RegExp(r'/+$'), '');
     if (url.isEmpty) {
+      if (isRelease) {
+        throw const ConfigException(
+            'OIDC_BASE_URL is required in a release build (there is no mock default).');
+      }
       return const AppConfig(
           oidcBaseUrl: mockOidcBaseUrl, isMock: true, settingsApi: true);
     }
-    final isMock = url == mockOidcBaseUrl;
+    // The mock is the same endpoint however the URL is spelled (scheme and host are case-insensitive).
+    final isMock = Uri.tryParse(url)?.toString() == mockOidcBaseUrl;
+    if (isMock && isRelease) {
+      throw const ConfigException(
+          'The mock Biatec OIDC is not available in a release build.');
+    }
+    if (!isMock) validateUrl(url, release: isRelease);
     return AppConfig(
-        oidcBaseUrl: url, isMock: isMock, settingsApi: isMock || settingsApi);
+        oidcBaseUrl: isMock ? mockOidcBaseUrl : url,
+        isMock: isMock,
+        settingsApi: isMock || settingsApi);
+  }
+
+  /// Device tokens, binding codes and receipts travel to this URL, so it must be https. The one exception is local development
+  /// (loopback, `localhost`, the Android emulator's host alias) in a debug build. Throws [ConfigException].
+  @visibleForTesting
+  static void validateUrl(String url, {required bool release}) {
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasAuthority || uri.host.isEmpty) {
+      throw const ConfigException('OIDC_BASE_URL is not a valid URL.');
+    }
+    if (uri.userInfo.isNotEmpty || uri.hasQuery || uri.hasFragment) {
+      throw const ConfigException(
+          'OIDC_BASE_URL must be a plain base URL (no credentials, query or fragment).');
+    }
+    if (uri.scheme == 'https') return;
+    if (uri.scheme == 'http' && !release && _localHosts.contains(uri.host)) {
+      return;
+    }
+    throw ConfigException(uri.scheme == 'http'
+        ? 'OIDC_BASE_URL must be https (plain http is only allowed for localhost in a debug build).'
+        : 'OIDC_BASE_URL must be an https URL.');
   }
 }
