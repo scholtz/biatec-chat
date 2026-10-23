@@ -168,7 +168,8 @@ public static class ElevationCompletion
         // The consent must have been given by the account that owns this session, never another one.
         if (!string.Equals(identity.Subject, session.OidcSub, StringComparison.Ordinal)) return false;
 
-        var granted = tokens.Scopes ?? pending.Scope.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        // No scope in the response means nothing was confirmed as granted: an elevation is refused rather than assumed (BCHAT-034).
+        if (tokens.Scopes is not { } granted) return false;
         // The new scope must really have been granted (the user may have declined it).
         if (Array.IndexOf(granted, requestedScope!) < 0) return false;
         // Scopes only grow within a session: a response that drops an allow-listed scope already held is refused,

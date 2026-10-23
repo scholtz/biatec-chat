@@ -34,6 +34,8 @@ public sealed class MockOidc : HttpMessageHandler
     public string RefreshToken = "REFRESH-TOKEN-SECRET";
     /// <summary>When set, the token endpoint reports this scope instead of the requested one (a user who declined a scope).</summary>
     public string? GrantedScopeOverride;
+    /// <summary>When set, the token endpoint leaves the scope out of its response (RFC 6749 allows it when it equals the request).</summary>
+    public bool OmitScope;
 
     /// <summary>Tamper switches for the id_token the next exchange returns.</summary>
     public string? IdTokenIssuer, IdTokenAudience, IdTokenNonceOverride;
@@ -102,6 +104,8 @@ public sealed class MockOidc : HttpMessageHandler
                 var verifier = form.GetValueOrDefault("code_verifier") ?? "";
                 var challenge = Convert.ToBase64String(SHA256.HashData(Encoding.ASCII.GetBytes(verifier))).TrimEnd('=').Replace('+', '-').Replace('/', '_');
                 if (challenge != issued.ChallengeS256) return Error("invalid_grant");
+                if (OmitScope)
+                    return Json(new { access_token = AccessToken, refresh_token = RefreshToken, token_type = "Bearer", expires_in = 900, id_token = IdToken(issued.Nonce) });
                 return Json(new
                 {
                     access_token = AccessToken, refresh_token = RefreshToken, token_type = "Bearer", expires_in = 900,

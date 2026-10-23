@@ -210,7 +210,8 @@ public static class AuthEndpoints
                     AccessExpiresAt = now.AddSeconds(tokens.ExpiresIn),
                     RefreshToken = tokens.RefreshToken,
                     IdToken = tokens.IdToken,
-                    Scopes = tokens.Scopes ?? pending.Scope.Split(' '),
+                    // A response without a scope says nothing about what was granted: record only openid (which the ID token proves), never what was asked for (BCHAT-034).
+                    Scopes = tokens.Scopes ?? ["openid"],
                     AbsoluteExpiresAt = rotated.Session.AbsoluteExpiresAt,
                 }, ctx.RequestAborted);
                 // Re-login from an already signed-in session: the old id's entry must not outlive the old id.
