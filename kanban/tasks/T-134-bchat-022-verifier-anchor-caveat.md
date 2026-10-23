@@ -53,7 +53,7 @@ Parallel work possible: **yes**. No other unfinished task changes these files (B
 
 - **Summary:** The offline verifier now returns anchoredEntries and unanchoredEntries and, for a valid bundle, always warns that anchors are not resolved (stronger wording when nothing is anchored). The CLI OK line ends with the counts and 'anchors were NOT checked'. PR #318.
 - **Files changed:** packages/evidence-verifier/src/verify.ts, src/cli.ts, test/verify.test.ts.
-- **How it was verified:** pnpm --filter evidence-verifier test (24 passed): counts add up on the backend fixture; self-signed bundles with no anchor and with 2 of 3 anchored give the two wordings; an invalid bundle gets no caveat; the CLI prints the caveat.
+- **How it was verified:** pnpm --filter evidence-verifier test (25 passed): counts add up on the backend fixture; self-signed bundles with no anchor and with 2 of 3 anchored give the two wordings; an invalid bundle gets no caveat; the CLI prints the caveat; blank anchorRef anchors nothing; a machine-readable anchorsResolved=false.
 - **Follow-up tasks created:** none.
 - **Unblocks:** none.
 - **Open questions:** The verifier still does not resolve anchorRef values against Algorand (threat model row 20 says it should, once anchoring runs); this task only makes the output honest about it. Want a task for the resolver?

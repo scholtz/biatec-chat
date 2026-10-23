@@ -37,7 +37,7 @@ describe("backend-exported bundle", () => {
     const r = verifyBundle(fresh(), { allowEmbeddedKeys: true });
     expect(r.valid).toBe(true);
     expect(r.keysAuthenticated).toBe(false);
-    expect(r.warnings.length).toBeGreaterThan(0);
+    expect(r.warnings.join(" ")).toMatch(/NOT checked against a published JWKS/);
   });
 });
 
@@ -84,6 +84,13 @@ describe("what a valid result does not say (BCHAT-022)", () => {
     expect(r.valid).toBe(true);
     expect([r.anchoredEntries, r.unanchoredEntries]).toEqual([2, 1]);
     expect(r.warnings.join(" ")).toMatch(/2 of 3 entries carry an anchorRef, but this verifier does not resolve anchors/);
+  });
+
+  it("an empty or blank anchorRef anchors nothing", () => {
+    const r = verifyBundle(selfSigned([null, "", "   "]), { allowEmbeddedKeys: true });
+    expect(r.valid).toBe(true);
+    expect([r.anchoredEntries, r.unanchoredEntries]).toEqual([0, 3]);
+    expect(r.anchorsResolved).toBe(false);
   });
 
   it("an invalid bundle gets no anchoring caveat (it already fails)", () => {
