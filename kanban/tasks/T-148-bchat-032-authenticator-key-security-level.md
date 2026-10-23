@@ -1,7 +1,7 @@
 ---
 id: T-148
 title: "Report the real security level of the authenticator's device key and refuse a software key (BCHAT-032)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -62,7 +62,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 17:33 · approve · PR #347 merged into main @ 3bb5346 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 19:30 · claude · (new) → backlog · created from GitHub issue #285 (BCHAT-032); blockers scan: none
 - 2026-10-23 17:14 · scholtz · taken, and session-20261023-1714 · backlog → in-progress · claimed
+- 2026-10-23 17:33 · user · in-progress → done · PR #347 merged into main @ 3bb5346 (synced by kanban-sync)
