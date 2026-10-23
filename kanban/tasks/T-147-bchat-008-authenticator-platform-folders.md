@@ -1,7 +1,7 @@
 ---
 id: T-147
 title: "Commit the authenticator's android/ and ios/ folders with hardening applied and the keystore plugins wired (BCHAT-008)"
-status: backlog
+status: in-progress
 priority: P2
 epic: "Security"
 blocked_by: []
@@ -9,9 +9,9 @@ area: ["apps/biatec_authenticator/android/**", "apps/biatec_authenticator/ios/**
 parallel: yes
 conflicts_with: []
 issue: "#261"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-147"
+owner: "session-20261023-1633"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#threat-model-highlights"
 created: 2026-10-23
 updated: 2026-10-23
@@ -71,3 +71,4 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 ## Activity log
 
 - 2026-10-23 18:30 · claude · (new) → backlog · created from GitHub issue #261 (BCHAT-008); blockers scan: none
+- 2026-10-23 16:33 · scholtz · taken, and session-20261023-1633 · backlog → in-progress · claimed
