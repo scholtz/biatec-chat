@@ -1,0 +1,70 @@
+---
+id: T-128
+title: "Close the erasure bypass by a turn already in flight (BCHAT-013)"
+status: done
+priority: P3
+epic: "Security"
+blocked_by: []
+area: ["backend/Biatec.Chat.Core/Evidence/EvidenceLog.cs", "backend/Biatec.Chat.Core/Data/ConversationLock.cs", "backend/Biatec.Chat.Api/Retention/RetentionService.cs", "backend/Biatec.Chat.Api/Orchestration/ConversationOrchestrator.cs", "backend/Biatec.Chat.Tests/Retention/**", "backend/Biatec.Chat.Tests/Evidence/EvidenceTests.cs"]
+parallel: yes
+conflicts_with: []
+issue: "#266"
+branch: "task/T-128"
+owner: "session-20261023-0953"
+taken_by: "scholtz"
+source: "PRODUCT-DESCRIPTION.md#threat-model-highlights"
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# T-128 - Close the erasure bypass by a turn already in flight (BCHAT-013)
+
+## Context
+
+Security audit finding BCHAT-013 (Low, issue #266). Erasure blanks a user's conversations in one transaction and moves their
+sessions to fresh conversations. A turn already in flight keeps the old conversation id: its later evidence appends and
+message stores write payloads and content into an erased conversation, with no `ErasedAt` guard.
+
+## Goal
+
+Nothing readable is written into a conversation after it was erased: appends and stores serialize with erasure and see `ErasedAt`.
+
+## Scope
+
+- In: a per-conversation advisory lock shared by erasure, evidence append and message store; an erased conversation gets evidence
+  entries without payload and salt (the chain stays valid) and blank messages; tests.
+- Out: ending the in-flight stream.
+
+## Parallel work
+
+Parallel work possible: **yes**. No other unfinished task changes these files.
+
+## Acceptance criteria
+
+- [x] Appending evidence to an erased conversation stores the entry without payload and salt, and the chain still verifies.
+- [x] Storing a message into an erased conversation stores no content, tool calls or tool results.
+- [x] Erasure takes the same per-conversation lock as the append (PostgreSQL).
+- [x] Existing retention, evidence and orchestration tests stay green.
+
+## Verification
+
+`dotnet test backend`.
+
+## Hand-off
+
+- **Summary:** Erasure, evidence append, message store and preview creation now share a per-conversation advisory lock (ConversationLock). After erasure an evidence append keeps the chain (hashes, signature) but stores no payload or salt, and a message store keeps its seq but stores no content, tool calls or tool results. PR #311.
+- **Files changed:** Core/Data/ConversationLock.cs, Core/Evidence/EvidenceLog.cs, Api/Retention/RetentionService.cs, Api/Orchestration/ConversationOrchestrator.cs, and tests in Evidence, Orchestration and Retention.
+- **How it was verified:** dotnet test full suite (1558 passed); new tests: append to an erased conversation, a reply finishing after erasure, preview creation in an erased conversation, erasure waiting for the lock (deterministic via pg_locks).
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** The in-flight stream itself is not stopped (the user still sees the reply); only nothing readable is stored. Want it cancelled on erasure too?
+
+## Review
+
+- 2026-10-23 10:14 · approve · PR #311 merged into main @ 645d310 (recorded by kanban-sync)
+
+## Activity log
+
+- 2026-10-23 10:00 · claude · (new) → backlog · created from GitHub issue #266 (BCHAT-013); blockers scan: none
+- 2026-10-23 09:53 · scholtz · taken, and session-20261023-0953 · backlog → in-progress · claimed
+- 2026-10-23 10:14 · user · in-progress → done · PR #311 merged into main @ 645d310 (synced by kanban-sync)

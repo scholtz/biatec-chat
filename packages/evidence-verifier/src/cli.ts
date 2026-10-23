@@ -46,7 +46,7 @@ export async function main(argv: string[], out: (s: string) => void = console.lo
     for (const w of r.warnings) out(`WARNING: ${w}`);
     for (const e of r.errors) out(`FAIL: ${e}`);
     out(r.valid
-      ? `OK: ${r.entries} entries verified (${r.payloadsVerified} payloads recomputed, ${r.payloadsDeleted} deleted payloads taken from the stored hash)${r.keysAuthenticated ? ", keys match the JWKS" : ", keys NOT authenticated"}.`
+      ? `OK: ${r.entries} entries verified (${r.payloadsVerified} payloads recomputed, ${r.payloadsDeleted} deleted payloads taken from the stored hash)${r.keysAuthenticated ? ", keys match the JWKS" : ", keys NOT authenticated"}; ${r.anchoredEntries} entries claim an anchor, ${r.unanchoredEntries} do not${r.anchorsResolved ? "; anchors checked" : "; anchors were NOT checked"}.`
       : "INVALID: the bundle did not verify.");
   }
   return r.valid ? 0 : 1;

@@ -63,6 +63,9 @@ public static class EvidenceJwks
             switch ((o.KeyStore ?? "").Trim().ToLowerInvariant())
             {
                 case "secret":
+                    // Every signing key is derived from this one master, so a rotation gives no recovery from its compromise (BCHAT-014).
+                    sp.GetRequiredService<ILoggerFactory>().CreateLogger("Evidence").LogWarning(
+                        "Evidence:KeyStore=Secret derives every signing key from one master secret: rotating keys does not recover from its compromise, and past and future signatures could be forged. Prefer Evidence:KeyStore=Kms for production (docs/threat-model.md).");
                     return new DbEvidenceKeyStore(sp.GetRequiredService<IServiceScopeFactory>(), SecretEvidenceKeyMaterial.FromBase64(o.Secret.MasterKey));
                 case "kms":
                     if (!string.Equals(o.Kms.Region, "eu-central-1", StringComparison.Ordinal))

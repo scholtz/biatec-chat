@@ -1,0 +1,15 @@
+# Pull requests that move the pinned GitHub Actions (BCHAT-017). The pin is the commit SHA; the comment after it names the release.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # A release has to be a week old before it is proposed, so a freshly published (possibly compromised) one is not adopted at once.
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"

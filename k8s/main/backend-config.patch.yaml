@@ -13,3 +13,6 @@ data:
   ForwardedHeaders__KnownNetworks__0: 10.0.0.0/8
   ForwardedHeaders__KnownNetworks__1: 172.16.0.0/12
   ForwardedHeaders__KnownNetworks__2: 192.168.0.0/16
+  # Where evidence bundles tell verifiers to fetch the signing keys. Without it the URL is built from the request, which is
+  # plain http behind the TLS-terminating ingress (BCHAT-015).
+  Evidence__PublicBaseUrl: https://chat.biatec.io

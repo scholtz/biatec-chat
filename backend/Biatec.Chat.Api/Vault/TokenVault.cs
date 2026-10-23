@@ -11,13 +11,19 @@ public sealed class VaultOptions
     public const string Section = "Vault";
 
     /// <summary>
-    /// "Dev" (default, no AWS), "Secret" (master key from <see cref="MasterKey"/>, the Kubernetes deployment) or "Kms"
+    /// "Dev" (default, no AWS; refused at start-up outside Development unless <see cref="AllowEphemeralKeys"/>), "Secret" (master key from <see cref="MasterKey"/>, the Kubernetes deployment) or "Kms"
     /// (AWS KMS envelope encryption using the Kms section).
     /// </summary>
     public string KeyProvider { get; set; } = "Dev";
 
     /// <summary>Base64 of 32 bytes for the Dev provider. Omit it and a random per-process key is used.</summary>
     public string? DevKey { get; set; }
+
+    /// <summary>
+    /// The Dev key provider keeps the vault key in this process (or in <see cref="DevKey"/>), so outside Development it is refused
+    /// unless this is true: tokens would be unreadable after a restart, or protected by a key anyone with the config can read (BCHAT-012).
+    /// </summary>
+    public bool AllowEphemeralKeys { get; set; }
 
     /// <summary>Base64 of 32 bytes for the Secret provider; comes from a Kubernetes secret, never from appsettings.</summary>
     public string? MasterKey { get; set; }

@@ -45,6 +45,34 @@ public sealed class BuildersClientTests
         Assert.DoesNotContain("evil", ex.PublicMessage);
     }
 
+    // BCHAT-016: a sidecar response above the client's buffer limit is a BuilderException, not an unhandled transport error.
+    [Fact]
+    public async Task An_oversized_response_is_refused_as_a_BuilderException_for_build_read_and_query()
+    {
+        var stub = new Stub((_, _) => Json(HttpStatusCode.OK, "{\"transactions\":[\"" + new string('A', 5000) + "\"],\"data\":{},\"x\":1}"));
+        var options = new BuildersOptions { BaseAddress = new Uri("http://builders:3100"), InternalSecret = Secret };
+        var client = new BuildersClient(new HttpClient(stub) { MaxResponseContentBufferSize = 1024 }, options);
+
+        await Assert.ThrowsAsync<BuilderException>(() => client.BuildAsync("any", "testnet", new { }));
+        await Assert.ThrowsAsync<BuilderException>(() => client.ReadAsync("any", "testnet", new { }));
+        var e = await Assert.ThrowsAsync<BuilderException>(() => client.QueryAsync("any", "testnet", new { }));
+        Assert.Contains("too large", e.Message);
+    }
+
+    // BCHAT-016: the backend does not buffer an unbounded response from the sidecar.
+    [Fact]
+    public async Task AddBuildersClient_bounds_the_response_it_buffers()
+    {
+        var cfg = new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Builders:BaseAddress"] = "http://builders:3100", ["Builders:InternalSecret"] = "s3cret-value",
+        }).Build();
+        await using var sp = new ServiceCollection().AddBuildersClient(cfg).BuildServiceProvider();
+        var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(IBuildersClient));
+        Assert.Equal(BuildersServiceCollectionExtensions.MaxResponseBytes, http.MaxResponseContentBufferSize);
+        Assert.True(http.MaxResponseContentBufferSize <= 8 * 1024 * 1024);
+    }
+
     [Fact]
     public void AddBuildersClient_registers_client_and_requires_secret()
     {

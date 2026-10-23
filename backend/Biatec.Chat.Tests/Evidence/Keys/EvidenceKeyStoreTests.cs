@@ -50,6 +50,57 @@ public class EvidenceKeyMaterialTests
         Assert.False(pub.VerifyData(msg, sig, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation));
     }
 
+    private sealed class CapturingLoggerProvider : Microsoft.Extensions.Logging.ILoggerProvider
+    {
+        private readonly List<(Microsoft.Extensions.Logging.LogLevel Level, string Message)> _entries = [];
+        public (Microsoft.Extensions.Logging.LogLevel Level, string Message)[] Entries { get { lock (_entries) return [.. _entries]; } }
+        public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName) => new Capture(_entries);
+        public void Dispose() { }
+        private sealed class Capture(List<(Microsoft.Extensions.Logging.LogLevel, string)> entries) : Microsoft.Extensions.Logging.ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+            public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                lock (entries) entries.Add((logLevel, formatter(state, exception)));
+            }
+        }
+    }
+
+    private sealed class ProductionEnv : Microsoft.Extensions.Hosting.IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = "Production";
+        public string ApplicationName { get; set; } = "test";
+        public string ContentRootPath { get; set; } = ".";
+        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } = null!;
+    }
+
+    // BCHAT-014: the Secret key store derives every key from one master; the operator is told when it is built.
+    [Fact]
+    public void SecretKeyStore_LogsAWarningAboutTheSingleMasterDerivation()
+    {
+        var logs = new CapturingLoggerProvider();
+        var config = new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Evidence:KeyStore"] = "Secret",
+            ["Evidence:Secret:MasterKey"] = Convert.ToBase64String(Master),
+        }).Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<Microsoft.Extensions.Logging.ILoggerProvider>(logs);
+        services.AddSingleton<Microsoft.Extensions.Hosting.IHostEnvironment>(new ProductionEnv());
+        services.AddScoped<ChatDbContext>(_ => null!);
+        Biatec.Chat.Api.Evidence.Jwks.EvidenceJwks.AddEvidence(services, config);
+        using var sp = services.BuildServiceProvider();
+
+        var store = sp.GetRequiredService<IEvidenceKeyStore>();
+
+        Assert.NotNull(store);
+        var warning = Assert.Single(logs.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
+        Assert.Contains("one master secret", warning.Message);
+        Assert.Contains("Kms", warning.Message);
+    }
+
     [Fact]
     public void SecretMaterial_RejectsMissingOrShortMaster()
     {

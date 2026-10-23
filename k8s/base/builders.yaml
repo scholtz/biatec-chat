@@ -11,6 +11,8 @@ spec:
     metadata:
       labels: {app.kubernetes.io/name: biatec-chat-builders, app.kubernetes.io/part-of: biatec-chat}
     spec:
+      # The sidecar never calls the Kubernetes API (BCHAT-021).
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000

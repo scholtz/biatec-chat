@@ -50,8 +50,10 @@ public sealed class EvidenceLog(ChatDbContext db, IEvidenceKeyStore keys, TimePr
             try
             {
                 // Per-conversation lock on PostgreSQL; the unique (conversationId, seq) index backs it up everywhere.
-                if (db.Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true)
-                    await db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock(hashtextextended({conversationId.ToString("D")}, 0))", ct);
+                await ConversationLock.AcquireAsync(db, conversationId, ct);
+                // Erasure takes the same lock, so this sees ErasedAt once it committed: a turn already in flight then keeps the
+                // chain (hashes and signature) but no readable payload or salt (BCHAT-013).
+                var erased = await db.Conversations.AsNoTracking().AnyAsync(c => c.Id == conversationId && c.ErasedAt != null, ct);
 
                 var last = await db.EvidenceEntries.AsNoTracking()
                     .Where(e => e.ConversationId == conversationId)
@@ -74,8 +76,8 @@ public sealed class EvidenceLog(ChatDbContext db, IEvidenceKeyStore keys, TimePr
                     Seq = seq,
                     Kind = kind,
                     AnchorRef = anchorRef,
-                    Payload = payloadText,
-                    Salt = salt,
+                    Payload = erased ? null : payloadText,
+                    Salt = erased ? null : salt,
                     PayloadHash = payloadHash,
                     PrevHash = prevHash,
                     EntryHash = entryHash,

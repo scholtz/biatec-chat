@@ -36,6 +36,8 @@ kind: ServiceAccount
 metadata:
   name: biatec-chat-backend
   labels: {app.kubernetes.io/name: biatec-chat-backend, app.kubernetes.io/part-of: biatec-chat}
+# The backend never calls the Kubernetes API (AWS access is the Roles Anywhere certificate), so no token is mounted (BCHAT-021).
+automountServiceAccountToken: false
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -55,6 +57,7 @@ spec:
       # environment's client certificate and gets short-lived role credentials. Created by infra/aws/rolesanywhere.sh.
       # Needs nothing from the cluster itself (no service-account issuer reachable by AWS).
       serviceAccountName: biatec-chat-backend
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1654
