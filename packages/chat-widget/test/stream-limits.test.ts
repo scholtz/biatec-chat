@@ -4,7 +4,7 @@ import type { ChatEvent, SessionState } from "@biatec/chat-protocol";
 import BiatecChatRoot from "../src/components/BiatecChatRoot.vue";
 import { resolveOptions } from "../src/options";
 import { MAX_REPLY_CHARS, type ChatServices } from "../src/components/chat/useChat";
-import { isChatEvent, MAX_FRAME_CHARS, SseParser, readChatEvents } from "../src/transport/sse";
+import { isChatEvent, MAX_FRAME_CHARS, MAX_STREAM_EVENTS, SseParser, readChatEvents } from "../src/transport/sse";
 
 // BCHAT-025: preview_card and consent_status frames are validated like every other card, and nothing grows without bound.
 
@@ -62,6 +62,10 @@ describe("preview_card frames", () => {
     expect(isChatEvent(frame(mutate(f)))).toBe(false);
   });
 
+  it("drops a preview whose expiresAt is not a date", () => {
+    expect(isChatEvent(frame(mutate((p) => (p.expiresAt = "soon"))))).toBe(false);
+  });
+
   it("drops a preview_card whose preview is not an object", () => {
     expect(isChatEvent(frame(null))).toBe(false);
     expect(isChatEvent(frame("x"))).toBe(false);
@@ -77,6 +81,7 @@ describe("consent_status frames", () => {
     expect(isChatEvent(consent(ok))).toBe(true);
     expect(isChatEvent(consent({ previewId: "p1", stepId: "s1", state: "Approved" }))).toBe(true);
     expect(isChatEvent(consent({ ...ok, bindingCode: null, expiresAt: null }))).toBe(true);
+    expect(isChatEvent(consent({ ...ok, expiresAt: "soon" }))).toBe(false);
   });
 
   it.each<[string, Record<string, unknown>]>([
@@ -116,6 +121,32 @@ describe("size limits", () => {
     const p = new SseParser();
     for (let i = 0; i < 50; i++) expect(p.push('data: {"type":"text_delta","text":"' + "z".repeat(50_000) + '"}\n\n')).toHaveLength(1);
     expect(p.overflowed).toBe(false);
+  });
+
+  it("events completed in the same chunk before the oversized frame are still delivered", async () => {
+    const events: ChatEvent[] = [];
+    const chunk = 'data: {"type":"text_delta","text":"first"}\n\n' + "data: " + "x".repeat(MAX_FRAME_CHARS + 10);
+    for await (const e of readChatEvents(body([chunk]))) events.push(e);
+    expect(events.map((e) => e.type)).toEqual(["text_delta", "error"]);
+  });
+
+  it("endless comment lines end the stream instead of spinning forever", async () => {
+    const events: ChatEvent[] = [];
+    const comments = ":keepalive\n".repeat(100_000);
+    const source = new ReadableStream<Uint8Array>({
+      pull(c) {
+        c.enqueue(new TextEncoder().encode(comments));
+      },
+    });
+    for await (const e of readChatEvents(source)) events.push(e);
+    expect(events.map((e) => e.type)).toEqual(["error"]);
+  });
+
+  it("more small events than a reply can need end the stream", async () => {
+    const events: ChatEvent[] = [];
+    const many = 'data: {"type":"tool_status","toolCallId":"t","label":"l","state":"running"}\n\n'.repeat(MAX_STREAM_EVENTS + 5);
+    for await (const e of readChatEvents(body([many]))) events.push(e);
+    expect(events.at(-1)?.type).toBe("error");
   });
 
   it("readChatEvents ends the stream with an error event and reads no more", async () => {
@@ -172,6 +203,7 @@ describe("reply cap", () => {
     expect(shown).toBeLessThan(MAX_REPLY_CHARS + 500); // the bubble also renders a few characters of chrome (label, time)
     expect(shown).toBeLessThan(3 * 100_000);
     expect(w.get("[data-role=assistant]").text()).not.toContain("tail");
+    expect(w.text()).toContain("The reply was too large, so it was cut off.");
     w.unmount();
   });
 });

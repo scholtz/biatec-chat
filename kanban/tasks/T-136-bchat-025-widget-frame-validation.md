@@ -54,9 +54,9 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:** preview_card and consent_status frames are validated field by field against the protocol (statuses and states from the enums, nested steps and assets, optional fields); the SSE parser stops at 1,000,000 characters per frame and readChatEvents then yields a non-retryable stream_too_large error and cancels the body; assistant reply text stops growing at 200,000 characters.
+- **Summary:** preview_card and consent_status frames are validated field by field against the protocol (statuses and states checked at compile time for exhaustiveness, expiresAt must parse); the SSE reader is bounded per frame (1,000,000 chars), per stream (16M chars, 5,000 events), events completed before an oversized frame are still delivered, then a localised non-retryable error ends the stream; the reply stops at 200,000 characters with a visible notice; orphan consent statuses are capped at 50.
 - **Files changed:** packages/chat-widget/src/transport/sse.ts, src/components/chat/useChat.ts, test/stream-limits.test.ts.
-- **How it was verified:** pnpm --filter @biatec/chat-widget test: 24 new tests pass; the suite otherwise shows only the 5 pre-existing DEX playground failures (BCHAT-045, #298); vue-tsc reports no errors in src or test (the playground errors need the built dist).
+- **How it was verified:** pnpm --filter @biatec/chat-widget test: 28 new tests pass (frames, limits, endless comments, many events, truncation notice); the suite otherwise shows only the 5 pre-existing DEX playground failures (BCHAT-045, #298); vue-tsc reports no errors in src or test (playground errors need the built dist).
 - **Follow-up tasks created:** none.
 - **Unblocks:** none.
 - **Open questions:** None.

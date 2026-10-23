@@ -1,4 +1,4 @@
-import type { ChatEvent } from "@biatec/chat-protocol";
+import type { ActionPreviewStatus, ChatEvent, ConsentState } from "@biatec/chat-protocol";
 
 export const CHAT_EVENT_TYPES = [
   "text_delta",
@@ -72,8 +72,15 @@ const isDataCard = (v: Record<string, unknown>): boolean =>
   (v.partial == null || typeof v.partial === "boolean"));
 
 /** The statuses of an action preview and its steps (ActionPreviewStatus in the protocol). */
-const PREVIEW_STATUSES = ["AwaitingConfirmation", "AwaitingScope", "AwaitingApproval", "Signing", "Submitted", "Completed", "Cancelled", "Expired", "Failed"];
-const CONSENT_STATES = ["NotRequired", "Pending", "Approved", "Denied", "TimedOut"];
+const PREVIEW_STATUSES = ["AwaitingConfirmation", "AwaitingScope", "AwaitingApproval", "Signing", "Submitted", "Completed", "Cancelled", "Expired", "Failed"] as const satisfies readonly ActionPreviewStatus[];
+const CONSENT_STATES = ["NotRequired", "Pending", "Approved", "Denied", "TimedOut"] as const satisfies readonly ConsentState[];
+// Compile-time exhaustiveness: a status or state added to the protocol must be added here, or the build fails instead of cards being dropped.
+const _statusesComplete: [Exclude<ActionPreviewStatus, (typeof PREVIEW_STATUSES)[number]>] extends [never] ? true : never = true;
+const _statesComplete: [Exclude<ConsentState, (typeof CONSENT_STATES)[number]>] extends [never] ? true : never = true;
+void _statusesComplete;
+void _statesComplete;
+/** An RFC 3339 timestamp the browser can parse. */
+const isTime = (v: unknown): boolean => isStr(v) && !Number.isNaN(Date.parse(v));
 /** Absent, null or a string. */
 const optStr = (v: unknown): boolean => v === undefined || v === null || isStr(v);
 
@@ -85,7 +92,7 @@ const isActionStep = (s: unknown): boolean =>
   isInt(s.index) &&
   isStr(s.title) &&
   isStr(s.status) &&
-  PREVIEW_STATUSES.includes(s.status) &&
+  (PREVIEW_STATUSES as readonly string[]).includes(s.status) &&
   isStr(s.groupHash) &&
   optStr(s.from) &&
   optStr(s.to) &&
@@ -104,15 +111,15 @@ export const isActionPreview = (p: unknown): boolean =>
   isStr(p.network) &&
   isStr(p.genesisId) &&
   isStr(p.status) &&
-  PREVIEW_STATUSES.includes(p.status) &&
-  isStr(p.expiresAt) &&
+  (PREVIEW_STATUSES as readonly string[]).includes(p.status) &&
+  isTime(p.expiresAt) &&
   Array.isArray(p.steps) &&
   p.steps.every(isActionStep) &&
   (p.limit == null || (isObj(p.limit) && isStr(p.limit.bucket) && isStr(p.limit.remaining) && isStr(p.limit.currency))) &&
   (p.expectsAuthenticatorApproval == null || typeof p.expectsAuthenticatorApproval === "boolean") &&
   optStr(p.approvalReason);
 export const isConsentStatus = (c: unknown): boolean =>
-  isObj(c) && isStr(c.previewId) && isStr(c.stepId) && isStr(c.state) && CONSENT_STATES.includes(c.state) && optStr(c.bindingCode) && optStr(c.expiresAt);
+  isObj(c) && isStr(c.previewId) && isStr(c.stepId) && isStr(c.state) && (CONSENT_STATES as readonly string[]).includes(c.state) && optStr(c.bindingCode) && (c.expiresAt == null || isTime(c.expiresAt));
 
 /** Narrow an unknown JSON value to a ChatEvent: the discriminator and the required fields of that event type. */
 export function isChatEvent(v: unknown): v is ChatEvent {
@@ -138,6 +145,10 @@ export function isChatEvent(v: unknown): v is ChatEvent {
       return false;
   }
 }
+
+/** Largest whole stream (characters) and number of events one reply may take. */
+export const MAX_STREAM_CHARS = 16_000_000;
+export const MAX_STREAM_EVENTS = 5_000;
 
 /** Largest SSE frame (one event's data) or unterminated line the widget buffers. A real event is a few KiB (BCHAT-025). */
 export const MAX_FRAME_CHARS = 1_000_000;
@@ -167,21 +178,22 @@ export class SseParser {
         this.dataChars = 0;
       } else if (line.startsWith("data:")) {
         this.dataChars += line.length;
-        if (this.dataChars > MAX_FRAME_CHARS) return this.overflow();
+        if (this.dataChars > MAX_FRAME_CHARS) return this.overflow(out);
         this.data.push(line.slice(5).replace(/^ /, ""));
       }
       // event:, id:, retry: and comment lines carry nothing we need: the JSON payload holds its own `type`.
     }
     // No line break yet and already too long: nothing legitimate looks like this.
-    if (this.buffer.length > MAX_FRAME_CHARS) return this.overflow();
+    if (this.buffer.length > MAX_FRAME_CHARS) return this.overflow(out);
     return out;
   }
 
-  private overflow(): string[] {
+  /** Events completed before the oversized frame are still returned; nothing after it is read. */
+  private overflow(out: string[]): string[] {
     this.overflowed = true;
     this.buffer = "";
     this.data = [];
-    return [];
+    return out;
   }
 }
 
@@ -190,16 +202,17 @@ export async function* readChatEvents(body: ReadableStream<Uint8Array>): AsyncGe
   const reader = body.getReader();
   const decoder = new TextDecoder();
   const parser = new SseParser();
+  let total = 0;
+  let events = 0;
   try {
     for (;;) {
       const { value, done } = await reader.read();
-      const payloads = done ? [] : parser.push(decoder.decode(value, { stream: true }));
-      if (parser.overflowed) {
-        // End the stream with an error the UI already knows how to show, and stop reading the rest of the body.
-        yield { type: "error", code: "stream_too_large", message: "The reply was too large and was stopped.", retryable: false } as ChatEvent;
-        await reader.cancel().catch(() => undefined);
-        return;
-      }
+      const chunk = done ? "" : decoder.decode(value, { stream: true });
+      total += chunk.length;
+      const payloads = done ? [] : parser.push(chunk);
+      events += payloads.length;
+      // Bounded as a whole too (not just per frame): endless comment lines, or endless small events, end the stream.
+      const tooBig = parser.overflowed || total > MAX_STREAM_CHARS || events > MAX_STREAM_EVENTS;
       for (const p of payloads) {
         let parsed: unknown;
         try {
@@ -208,6 +221,12 @@ export async function* readChatEvents(body: ReadableStream<Uint8Array>): AsyncGe
           continue;
         }
         if (isChatEvent(parsed)) yield parsed;
+      }
+      if (tooBig) {
+        // End the stream with an error the UI shows in the user's language, and stop reading the rest of the body.
+        yield { type: "error", code: "stream_too_large", message: "", retryable: false } as ChatEvent;
+        await reader.cancel().catch(() => undefined);
+        return;
       }
       if (done) return;
     }
