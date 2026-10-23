@@ -6,9 +6,9 @@ Signed-in users can ask Biatec AI to transfer funds from their own self-custody 
 
 - ALGO, the native coin of Algorand.
 - Algorand Standard Assets (ASAs), such as the stablecoins USDC and EURS.
-- Bitcoin, from your Biatec Bitcoin address.
+- Bitcoin is not available yet: you can see your Bitcoin addresses and balances, but sending is switched off until Biatec Chat can sign Bitcoin transactions.
 
-Examples: "Transfer 10 ALGO to my secondary address", "Send 25 USDC to ABC…XYZ", "Transfer funds from my primary Bitcoin address to my secondary Bitcoin address."
+Examples: "Transfer 10 ALGO to my secondary address", "Send 25 USDC to ABC…XYZ".
 
 ## How a transfer works
 
@@ -22,9 +22,9 @@ Examples: "Transfer 10 ALGO to my secondary address", "Send 25 USDC to ABC…XYZ
 
 On Algorand an address must opt in to an asset before it can receive it. When you send an asset to another of your own addresses that hasn't opted in yet, the assistant adds the steps for you: if needed, a small ALGO payment to cover that address's minimum balance and fee, then the opt-in from that address, then the transfer. Every step is numbered on the card and confirmed one after another. For someone else's address, the receiver has to opt in themselves.
 
-## Bitcoin transfers
+## Bitcoin transfers (not available yet)
 
-A Bitcoin transfer spends from a single address. The preview shows the decoded inputs, outputs, change and fee rate. A Bitcoin preview expires after 30 minutes, or sooner if its inputs are spent or the fee rate moves by more than 25 percent; the assistant then builds a fresh one.
+Bitcoin transfers are switched off until Biatec Chat can sign them; the assistant says so if you ask. When they are available, a Bitcoin transfer spends from a single address. The preview shows the decoded inputs, outputs, change and fee rate. A Bitcoin preview expires after 30 minutes, or sooner if its inputs are spent or the fee rate moves by more than 25 percent; the assistant then builds a fresh one.
 
 ## Always check the destination
 

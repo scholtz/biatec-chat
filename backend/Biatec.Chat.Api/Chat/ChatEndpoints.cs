@@ -108,7 +108,8 @@ public static class ChatRegistration
 {
     public static IServiceCollection AddChat(this IServiceCollection services)
     {
-        services.TryAddSingleton(_ => CapabilityRegistry.CreateDefault());
+        // Wallet:BitcoinTransfers (default false) offers network "bitcoin" on wallet.transfer. Leave it off until a PSBT signing path exists (BCHAT-037).
+        services.TryAddSingleton(sp => CapabilityRegistry.CreateDefault(sp.GetService<IConfiguration>()?.GetValue<bool>("Wallet:BitcoinTransfers") ?? false));
         services.TryAddSingleton<IPolicyEventSink, InMemoryPolicyEventSink>();
         services.TryAddSingleton<ToolGate>();
         services.TryAddSingleton<IMessageRedactor, DefaultMessageRedactor>();

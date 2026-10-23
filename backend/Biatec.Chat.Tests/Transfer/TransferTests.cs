@@ -807,6 +807,20 @@ public sealed class TransferTests : IClassFixture<TransferTests.DbFixture>, IAsy
         Assert.Empty(_mcp.Calls);
     }
 
+    // BCHAT-037: even a call that bypassed the gate cannot start a Bitcoin transfer while the schema does not offer it.
+    [Fact]
+    public async Task Executor_refuses_bitcoin_when_the_capability_does_not_offer_it_and_builds_nothing()
+    {
+        var exec = NewExecutor();
+        var r = await exec.ExecuteAsync(ExecCtx(), new JsonObject { ["network"] = "bitcoin", ["from"] = "a", ["to"] = "b", ["amount"] = "100000" }, default);
+
+        Assert.True(r.IsError);
+        Assert.Contains("not available yet", r.Content);
+        Assert.Empty(_mcp.Calls);
+        await using var db = NewContext();
+        Assert.Empty(await db.ActionPreviews.Where(p => p.ConversationId == _conversation).ToListAsync()); // the database is shared by the class
+    }
+
     // ---- executor
 
     private WalletTransferExecutor NewExecutor()

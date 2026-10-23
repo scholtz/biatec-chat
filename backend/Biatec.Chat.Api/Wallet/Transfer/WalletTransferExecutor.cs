@@ -31,7 +31,13 @@ public sealed class WalletTransferExecutor(IServiceScopeFactory scopes) : IToolE
             return new ToolExecutionResult("This needs a signed-in user. Call requestSignIn instead.", true);
 
         if ((string?)arguments["network"] is "bitcoin" or "bitcoin-testnet")
+        {
+            // The gate already refuses it when the schema does not offer bitcoin; checked again here so no path that skips the gate
+            // can build a preview Confirm could never sign (BCHAT-037).
+            var offered = context.Capability.InputSchema?["properties"]?["network"]?["enum"]?.AsArray().Any(n => (string?)n == "bitcoin") == true;
+            if (!offered) return new ToolExecutionResult("Bitcoin transfers are not available yet. Tell the user; Bitcoin addresses and balances can still be read.", true);
             return await ExecuteBitcoinAsync(context, arguments, ct);
+        }
 
         var request = ParseRequest(arguments, out var problem);
         if (request is null) return new ToolExecutionResult(problem!, true);

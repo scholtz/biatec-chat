@@ -92,14 +92,18 @@ public sealed class CapabilityRegistry
     private static JsonObject Id() => new() { ["type"] = "integer", ["minimum"] = 0, ["maximum"] = 9007199254740991 };
 
     /// <summary>The initial capability set from the product description.</summary>
-    public static CapabilityRegistry CreateDefault()
+    /// <param name="bitcoinTransfers">
+    /// Offer <c>network: "bitcoin"</c> on <c>wallet.transfer</c>. Off by default (BCHAT-037): there is no PSBT signing path behind
+    /// Confirm yet, so a Bitcoin preview could be built and shown but never confirmed. Reading Bitcoin addresses and balances is unaffected.
+    /// </param>
+    public static CapabilityRegistry CreateDefault(bool bitcoinTransfers = false)
     {
         var empty = Obj(new JsonObject());
         var networkOnly = Obj(new JsonObject { ["network"] = NetworkWithBitcoin() }, "network");
         var transferInput = Obj(new JsonObject
         {
-            // Algorand (createPaymentTransaction) or Bitcoin (createBitcoinTransaction); assetId omitted or 0 = native ALGO.
-            ["network"] = NetworkWithBitcoin(),
+            // Algorand (createPaymentTransaction), or Bitcoin (createBitcoinTransaction) when enabled; assetId omitted or 0 = native ALGO.
+            ["network"] = bitcoinTransfers ? NetworkWithBitcoin() : Network(),
             ["from"] = Address(),
             ["to"] = Address(),
             ["assetId"] = Id(),
@@ -200,7 +204,7 @@ public sealed class CapabilityRegistry
             Tool("wallet.listAddresses", U, Open, null, false, ValuationBasis.None, "List the user's own addresses: Algorand on mainnet/testnet, Bitcoin on bitcoin (Bitcoin mainnet only; each Bitcoin address is labelled primary or secondary).", networkOnly),
             Tool("wallet.balance", U, Open, null, false, ValuationBasis.None, "Read a balance for one of the user's addresses (network bitcoin is Bitcoin mainnet only: amount in sats, 8 decimals).",
                 Obj(new JsonObject { ["network"] = NetworkWithBitcoin(), ["address"] = Address() }, "network", "address")),
-            Tool("wallet.transfer", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Build and preview a transfer (network bitcoin is Bitcoin mainnet only).", transferInput),
+            Tool("wallet.transfer", U, Open, Sign, true, ValuationBasis.DecodedByOidc, bitcoinTransfers ? "Build and preview a transfer (network bitcoin is Bitcoin mainnet only)." : "Build and preview an Algorand transfer. Bitcoin transfers are not available yet; Bitcoin addresses and balances can still be read.", transferInput),
             Tool("dex.swap", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Quote and build a swap.", swapInput),
             Tool("dex.addLiquidity", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Add liquidity to a Biatec DEX pool (amountA/amountB are in base units of the pool's asset A/B; omit any amount the user has not given and the tool asks for it; omitting never means the whole balance here). Set poolAppId 0 with assetAId and assetBId when the user has not named a pool: the tool lists the pair's pools and you must ask which one.", liquidityInput),
             Tool("dex.removeLiquidity", U, Open, Sign, true, ValuationBasis.DecodedByOidc, "Remove liquidity (percent of the user's LP tokens) from a Biatec DEX pool. Set poolAppId 0 with assetAId and assetBId when the user has not named a pool: the tool lists the pair's pools and you must ask which one.", removeLiquidityInput),
