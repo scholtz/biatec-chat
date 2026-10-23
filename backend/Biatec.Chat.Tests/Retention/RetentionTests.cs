@@ -389,6 +389,29 @@ public sealed class RetentionTests : IAsyncLifetime
         return EvidenceVerifier.Verify(entries, keys);
     }
 
+    // BCHAT-013: erasure waits for an in-flight evidence append or message store of the same conversation (they share the per-conversation lock).
+    [Fact]
+    public async Task Erase_WaitsForTheConversationLock_SoAnInFlightWriteLandsBeforeTheBlanking()
+    {
+        Guid conv;
+        await using (var seed = NewContext()) { conv = await SeedConversationAsync(seed, "sub-lock"); await seed.SaveChangesAsync(); }
+
+        await using var holder = NewContext();
+        await using var held = await holder.Database.BeginTransactionAsync();
+        await Biatec.Chat.Core.Data.ConversationLock.AcquireAsync(holder, conv, default); // the in-flight turn is writing
+
+        var erase = Task.Run(async () =>
+        {
+            await using var db = NewContext();
+            return await Retention(db).EraseAsync(TenantId, "sub-lock", null, default);
+        });
+        await Task.Delay(1500);
+        Assert.False(erase.IsCompleted, "erasure must wait for the writer's lock");
+
+        await held.CommitAsync(); // the write is done
+        Assert.Equal(ErasureOutcome.Erased, (await erase.WaitAsync(TimeSpan.FromSeconds(15))).Outcome);
+    }
+
     [Fact]
     public async Task Erasure_BlanksExactlyTheListedFields_KeepsHashesReceiptsTxIds_AndEveryBundleStillVerifies()
     {

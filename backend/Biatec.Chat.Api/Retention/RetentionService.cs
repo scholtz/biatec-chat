@@ -196,6 +196,8 @@ public sealed class RetentionService(ChatDbContext db, IOptions<RetentionOptions
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var ids = await db.Conversations.Where(c => c.TenantId == tenantId && c.OidcSub == oidcSub).Select(c => c.Id).ToListAsync(ct);
         if (ids.Count == 0) return new ErasureResult(ErasureOutcome.Erased, 0, 0);
+        // Serialize with in-flight evidence appends and message stores of these conversations (sorted: no lock-order deadlock).
+        foreach (var id in ids.Order()) await Biatec.Chat.Core.Data.ConversationLock.AcquireAsync(db, id, ct);
 
         if (await db.ActionPreviews.Where(p => ids.Contains(p.ConversationId)).AnyAsync(InFlight(now), ct))
             return new ErasureResult(ErasureOutcome.ActionInFlight, 0, 0);

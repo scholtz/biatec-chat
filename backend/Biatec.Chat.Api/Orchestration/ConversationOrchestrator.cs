@@ -383,20 +383,27 @@ public sealed class ConversationOrchestrator(
     {
         // Saved with CancellationToken.None: a disconnected browser must not lose the transcript.
         var now = clock.GetUtcNow();
+        // Erasure takes the same per-conversation lock: a turn that was already in flight when the user erased their data
+        // keeps its seq but stores nothing readable (BCHAT-013).
+        await using var tx = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(CancellationToken.None) : null;
+        await ConversationLock.AcquireAsync(db, conversationId, CancellationToken.None);
+        var erased = await db.Conversations.AsNoTracking().AnyAsync(c => c.Id == conversationId && c.ErasedAt != null, CancellationToken.None);
         db.Messages.Add(new DataMessage
         {
             ConversationId = conversationId,
             Seq = seq,
             Role = role,
-            Content = content,
-            ToolCalls = toolCalls,
-            ToolResults = toolResults,
+            Content = erased ? "" : content,
+            ToolCalls = erased ? null : toolCalls,
+            ToolResults = erased ? null : toolResults,
             ModelId = modelId,
             Usage = usage,
             CreatedAt = now,
         });
-        await db.Conversations.Where(c => c.Id == conversationId)
-            .ExecuteUpdateAsync(u => u.SetProperty(c => c.LastMessageAt, now), CancellationToken.None);
+        if (!erased)
+            await db.Conversations.Where(c => c.Id == conversationId)
+                .ExecuteUpdateAsync(u => u.SetProperty(c => c.LastMessageAt, now), CancellationToken.None);
         await db.SaveChangesAsync(CancellationToken.None);
+        if (tx is not null) await tx.CommitAsync(CancellationToken.None);
     }
 }

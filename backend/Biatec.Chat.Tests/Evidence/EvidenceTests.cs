@@ -200,6 +200,32 @@ public sealed class EvidenceLogTests : IAsyncLifetime
         Assert.True((await log.VerifyAsync(conv)).Valid);
     }
 
+    // BCHAT-013: an append that arrives after the conversation was erased keeps the chain but stores nothing readable.
+    [Fact]
+    public async Task AppendingToAnErasedConversation_KeepsTheChainValid_ButStoresNoPayloadOrSalt()
+    {
+        var conv = Guid.NewGuid();
+        await using (var seed = NewContext())
+        {
+            var tenant = Biatec.Chat.Api.Tenancy.TenantSeed.BiatecChat();
+            seed.Tenants.Add(tenant);
+            seed.Conversations.Add(new Conversation { Id = conv, TenantId = tenant.Id, CreatedAt = DateTimeOffset.UtcNow, LastMessageAt = DateTimeOffset.UtcNow });
+            await seed.SaveChangesAsync();
+        }
+        await using var db = NewContext();
+        var log = NewLog(db);
+        await log.AppendAsync(conv, "message", Payload(1));
+        await db.Conversations.Where(c => c.Id == conv).ExecuteUpdateAsync(u => u.SetProperty(c => c.ErasedAt, DateTimeOffset.UtcNow));
+        await log.AppendAsync(conv, "message", Payload(2)); // the turn that was already in flight
+
+        var chain = await log.GetChainAsync(conv);
+        Assert.NotNull(chain[0].Payload);
+        Assert.Null(chain[1].Payload);
+        Assert.Null(chain[1].Salt);
+        Assert.Matches("^[0-9a-f]{64}$", chain[1].PayloadHash);
+        Assert.True((await log.VerifyAsync(conv)).Valid);
+    }
+
     [Fact]
     public async Task Tampering_IsDetected()
     {

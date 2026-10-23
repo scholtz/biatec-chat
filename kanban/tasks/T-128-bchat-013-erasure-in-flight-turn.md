@@ -41,10 +41,10 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Acceptance criteria
 
-- [ ] Appending evidence to an erased conversation stores the entry without payload and salt, and the chain still verifies.
-- [ ] Storing a message into an erased conversation stores no content, tool calls or tool results.
-- [ ] Erasure takes the same per-conversation lock as the append (PostgreSQL).
-- [ ] Existing retention, evidence and orchestration tests stay green.
+- [x] Appending evidence to an erased conversation stores the entry without payload and salt, and the chain still verifies.
+- [x] Storing a message into an erased conversation stores no content, tool calls or tool results.
+- [x] Erasure takes the same per-conversation lock as the append (PostgreSQL).
+- [x] Existing retention, evidence and orchestration tests stay green.
 
 ## Verification
 
@@ -52,12 +52,12 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Hand-off
 
-- **Summary:**
-- **Files changed:**
-- **How it was verified:**
-- **Follow-up tasks created:**
-- **Unblocks:**
-- **Open questions:**
+- **Summary:** Erasure, evidence append and message store now share a per-conversation advisory lock (ConversationLock). After erasure an evidence append keeps the chain (hashes, signature) but stores no payload or salt, and a message store keeps its seq but stores no content, tool calls or tool results. PR #310.
+- **Files changed:** Core/Data/ConversationLock.cs, Core/Evidence/EvidenceLog.cs, Api/Retention/RetentionService.cs, Api/Orchestration/ConversationOrchestrator.cs, and tests in Evidence, Orchestration and Retention.
+- **How it was verified:** dotnet test full suite (1557 passed); new tests: append to an erased conversation, a reply finishing after erasure, erasure waiting for the lock.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** The in-flight stream itself is not stopped (the user still sees the reply); only nothing readable is stored. Want it cancelled on erasure too?
 
 ## Review
 
