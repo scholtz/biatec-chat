@@ -1,7 +1,7 @@
 ---
 id: T-200
 title: "Patch known-vulnerable transitive dependencies (BCHAT-046)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -54,8 +54,11 @@ Parallel work possible: **yes**. No other unfinished task changes these files.
 
 ## Review
 
+- 2026-10-23 12:08 · approve · PR #322 merged into main @ 7ff8404 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-23 11:52 · kanban-split · (new) → backlog · created from audit issue #299
 - 2026-10-23 11:52 · scholtz · taken · status stays backlog
 - 2026-10-23 11:52 · session-20261023-1152 · backlog → in-progress · claimed, branch task/T-200
+- 2026-10-23 12:08 · user · in-progress → done · PR #322 merged into main @ 7ff8404 (synced by kanban-sync)
