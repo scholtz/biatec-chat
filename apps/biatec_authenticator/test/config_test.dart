@@ -32,6 +32,16 @@ void main() {
       expect(AppConfig.fromEnvironment().isMock, isTrue);
     });
 
+    test('a Windows release build with no URL defaults to stage Biatec OIDC; other release builds still refuse', () {
+      final c = AppConfig.resolve('', release: true, windows: true);
+      expect(c.oidcBaseUrl, AppConfig.stageOidcBaseUrl);
+      expect(c.isMock, isFalse);
+      expect(AppConfig.resolve('https://oidc.biatec.io', release: true, windows: true).oidcBaseUrl,
+          'https://oidc.biatec.io');
+      expect(() => AppConfig.resolve('', release: true, windows: false),
+          throwsA(isA<ConfigException>()));
+    });
+
     test('plain http is refused in a release build, whatever the host', () {
       for (final u in [
         'http://oidc.biatec.io',

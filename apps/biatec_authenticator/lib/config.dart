@@ -20,6 +20,9 @@ class AppConfig {
   /// seen from the Android emulator.
   static const String mockOidcBaseUrl = 'http://10.0.2.2:5080/mock-oidc';
 
+  /// Default for the Windows desktop build when no `OIDC_BASE_URL` is defined.
+  static const String stageOidcBaseUrl = 'https://stage.oidc.biatec.io';
+
   static const String _definedOidcBaseUrl =
       String.fromEnvironment('OIDC_BASE_URL');
 
@@ -46,9 +49,13 @@ class AppConfig {
 
   /// [release] is true for anything that is not a debug build (release and profile builds): those only accept https, and have no mock default.
   factory AppConfig.resolve(String defined,
-      {bool settingsApi = false, bool? release}) {
+      {bool settingsApi = false, bool? release, bool? windows}) {
     final isRelease = release ?? !kDebugMode;
-    final url = defined.trim().replaceAll(RegExp(r'/+$'), '');
+    final isWindows = windows ?? defaultTargetPlatform == TargetPlatform.windows;
+    var url = defined.trim().replaceAll(RegExp(r'/+$'), '');
+    // A plain `flutter build windows` is a release build and cannot read a defines file, so the desktop build
+    // defaults to stage Biatec OIDC. Mobile release builds still need an explicit URL.
+    if (url.isEmpty && isRelease && isWindows) url = stageOidcBaseUrl;
     if (url.isEmpty) {
       if (isRelease) {
         throw const ConfigException(
