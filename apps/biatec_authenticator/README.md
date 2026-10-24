@@ -44,6 +44,11 @@ The `windows/` folder is checked in. Build it with `flutter build windows` (need
 development with C++" workload and Windows Developer Mode for plugin symlinks). `windows/CMakeLists.txt` defines
 `_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS` because `local_auth_windows` fails on MSVC 14.51+ without it.
 
+For a local Windows build against stage Biatec OIDC run `./build-windows.ps1` (it passes
+`--dart-define-from-file=config/local.json`, which sets `OIDC_BASE_URL=https://stage.oidc.biatec.io`); a bare
+`flutter build windows` is a release build and fails without `OIDC_BASE_URL`. Put `nuget.exe` on `PATH` to silence the
+`Nuget.exe not found` message from `local_auth_windows`.
+
 ## Config
 
 The Biatec OIDC base URL comes from `--dart-define=OIDC_BASE_URL=...` and defaults to the mock OIDC
