@@ -155,4 +155,69 @@ void main() {
     expect(c.selected, AppTab.approvals);
     c.dispose();
   });
+
+  testWidgets('a tap for a card that is already open brings it forward',
+      (tester) async {
+    final rig = ShellRig();
+    final opened = <String>[];
+    final already = <String>[];
+    final push = PushController(
+      enrollment: rig.approvals.enrollment,
+      client: rig.approvals.client,
+      onOpenRequest: opened.add,
+      onRequestAlreadyOpen: already.add,
+    );
+    final transport = _Transport();
+    await push.start(transport);
+    push.didPush(
+        MaterialPageRoute<void>(
+            settings:
+                RouteSettings(name: '${ApprovalScreen.routePrefix}ciba_x'),
+            builder: (_) => const SizedBox()),
+        null);
+    transport.openedC.add({'auth_req_id': 'ciba_x'});
+    await tester.pump();
+    expect(opened, isEmpty);
+    expect(already, ['ciba_x']);
+    unawaited(push.dispose());
+  });
+
+  testWidgets('focusing Approvals leaves an open card where it is',
+      (tester) async {
+    final rig = ShellRig();
+    await rig.pump(tester);
+    rig.shell.openApproval(rig.approvals, rig.requestId);
+    await tester.pump(const Duration(seconds: 1));
+    rig.shell.select(AppTab.devices);
+    await tester.pump();
+    rig.shell.focusApprovals();
+    await tester.pump(const Duration(seconds: 1));
+    expect(rig.shell.selected, AppTab.approvals);
+    expect(find.byType(ApprovalScreen), findsOneWidget);
+    await rig.dispose(tester);
+  });
+
+  test('coming back after a long time reloads the showing tab and the list',
+      () {
+    final c = ShellController();
+    var now = DateTime.utc(2026, 10, 24, 12);
+    c.clock = () => now;
+    c.select(AppTab.devices);
+    final generation = c.reloads[AppTab.devices]!.value;
+    final requests = c.requestsChanged.value;
+
+    c.appPaused();
+    now = now.add(const Duration(seconds: 5));
+    c.appResumed();
+    expect(c.reloads[AppTab.devices]!.value, generation,
+        reason: 'a short break changes nothing');
+    expect(c.requestsChanged.value, requests);
+
+    c.appPaused();
+    now = now.add(ShellController.reloadAfter);
+    c.appResumed();
+    expect(c.reloads[AppTab.devices]!.value, generation + 1);
+    expect(c.requestsChanged.value, requests + 1);
+    c.dispose();
+  });
 }

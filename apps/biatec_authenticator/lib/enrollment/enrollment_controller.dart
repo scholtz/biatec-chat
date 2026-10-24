@@ -74,7 +74,6 @@ class EnrollmentController extends ChangeNotifier {
   /// This device signed itself out (its stored enrollment was cleared on purpose). The record held in memory is dropped and is not written back by a refresh that was already running, which would bring the cancelled enrollment back.
   void discardHeldRecord() {
     _discarded = true;
-    _state = EnrollmentState.notEnrolled;
   }
 
   /// Restores the persisted state. Call at startup and on a timer or resume

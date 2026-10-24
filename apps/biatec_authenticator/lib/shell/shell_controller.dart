@@ -103,6 +103,26 @@ class ShellController extends ChangeNotifier {
     _show(tab);
   }
 
+  /// Brings the Approvals tab to the front as it is (a card that is open stays open).
+  void focusApprovals() {
+    if (_selected != AppTab.approvals) _show(AppTab.approvals);
+  }
+
+  DateTime? _pausedAt;
+
+  /// The app went to the background.
+  void appPaused() => _pausedAt = clock();
+
+  /// The app came back. A tab that has been away for a while loads afresh, and the list of requests is asked again: what it showed may be hours old.
+  void appResumed() {
+    final at = _pausedAt;
+    _pausedAt = null;
+    if (at == null || _disposed) return;
+    if (clock().difference(at) < reloadAfter) return;
+    if (_selected != AppTab.approvals) reloads[_selected]!.value++;
+    requestsChanged.value++;
+  }
+
   /// Shows the Approvals tab on its list, for the in-app notice.
   void showApprovals() {
     navigators[AppTab.approvals]?.currentState?.popUntil((r) => r.isFirst);

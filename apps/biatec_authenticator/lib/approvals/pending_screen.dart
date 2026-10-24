@@ -114,6 +114,7 @@ class _PendingScreenState extends State<PendingScreen> {
       final record = await widget.services.enrollment.read();
       if (record == null) {
         // Signed out: nothing is pending for this device any more.
+        _again = false;
         if (mounted) {
           setState(() {
             _requests = const [];

@@ -86,10 +86,14 @@ class _AppGateState extends State<AppGate> {
     super.initState();
     _enrollment = widget.enrollment ?? _build();
     // Coming back to the app is when a delay that ran out becomes visible, or a cancelled enrollment is noticed.
-    _lifecycle = AppLifecycleListener(onResume: () async {
-      await _recheck();
-      await _refresh();
-    });
+    _lifecycle = AppLifecycleListener(
+      onPause: widget.shell.appPaused,
+      onResume: () async {
+        widget.shell.appResumed();
+        await _recheck();
+        await _refresh();
+      },
+    );
     // The store says when the enrollment goes (this device cancelled itself in Devices); a tab change is the fallback for a store that does not.
     _clearsSeen = _store?.clearCount ?? 0;
     _store?.addListener(_recheck);
@@ -115,14 +119,15 @@ class _AppGateState extends State<AppGate> {
     });
   }
 
-  /// A launch that ends in enrollment must not keep a tapped notification for later, and one that will show the shell must.
   /// The device is enrolled and past its activation delay: the app is usable (a recovery code not yet saved is a notice, not a lock).
   bool get _usable =>
       _enrollment.state.phase == EnrollmentPhase.active ||
       _enrollment.state.phase == EnrollmentPhase.activeRecoveryPending;
 
+  /// A launch that ends in enrollment must not keep a tapped notification for later, and one that will show the shell must. Also asks for push registration once per activation, and closes the recovery code screen when the code was saved.
   void _onPhase() {
     final active = _usable;
+    if (_enrollment.state.phase == EnrollmentPhase.active) _closeRecoveryCode();
     // Enrolling is a swap of widgets, not a navigation, so registering for push is asked for here, once per activation.
     if (active && !_wasActive) widget.push?.registerIfEnrolled();
     _wasActive = active;
@@ -276,7 +281,10 @@ class _AppGateState extends State<AppGate> {
             settings: widget.settings,
             controller: widget.shell,
             push: widget.push,
-            banner: _recoveryNotice(),
+            banner:
+                _enrollment.state.phase == EnrollmentPhase.activeRecoveryPending
+                    ? _recoveryNotice()
+                    : null,
           );
         }
         return EnrollmentScreen(config: widget.config, controller: _enrollment);
@@ -284,31 +292,45 @@ class _AppGateState extends State<AppGate> {
     );
   }
 
+  /// The recovery code screen, while it is open inside the Approvals tab.
+  Route<void>? _recoveryRoute;
+
+  void _showRecoveryCode() {
+    final navigator = widget.shell.navigators[AppTab.approvals]?.currentState;
+    if (navigator == null) return;
+    // Inside the tab, so the bar stays and a tapped notification still lands where the user is.
+    widget.shell.focusApprovals();
+    final route = MaterialPageRoute<void>(
+      builder: (_) =>
+          EnrollmentScreen(config: widget.config, controller: _enrollment),
+    );
+    _recoveryRoute = route;
+    navigator.push(route).whenComplete(() {
+      if (identical(_recoveryRoute, route)) _recoveryRoute = null;
+    });
+  }
+
+  void _closeRecoveryCode() {
+    final route = _recoveryRoute;
+    _recoveryRoute = null;
+    if (route != null && route.isActive) {
+      widget.shell.navigators[AppTab.approvals]?.currentState
+          ?.removeRoute(route);
+    }
+  }
+
   /// Shown above every tab while the recovery code has not been saved. It opens the enrollment screen, which shows the code once.
-  Widget? _recoveryNotice() {
-    return ListenableBuilder(
-      listenable: _enrollment,
-      builder: (context, _) {
-        if (_enrollment.state.phase != EnrollmentPhase.activeRecoveryPending) {
-          return const SizedBox.shrink();
-        }
-        return Padding(
-          padding: const EdgeInsets.all(AppSpacing.s),
-          child: StatusBanner(
-            severity: StatusSeverity.warning,
-            title: 'Save your recovery code',
-            message: 'It is shown once and lets you replace this device '
-                'if it is lost.',
-            actionLabel: 'Show code',
-            onAction: () => Navigator.of(context, rootNavigator: true).push(
-              MaterialPageRoute<void>(
-                builder: (_) => EnrollmentScreen(
-                    config: widget.config, controller: _enrollment),
-              ),
-            ),
-          ),
-        );
-      },
+  Widget _recoveryNotice() {
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.s),
+      child: StatusBanner(
+        severity: StatusSeverity.warning,
+        title: 'Save your recovery code',
+        message: 'It is shown once and lets you replace this device '
+            'if it is lost.',
+        actionLabel: 'Show code',
+        onAction: _showRecoveryCode,
+      ),
     );
   }
 }
