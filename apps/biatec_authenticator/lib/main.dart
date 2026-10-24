@@ -14,8 +14,7 @@ import 'theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Items stored before the keychain accessibility was set are rewritten once so they stay on this device (BCHAT-009).
-  await rewriteWithDeviceBoundAccessibility()
-      .timeout(const Duration(seconds: 3), onTimeout: () => 0);
+  await rewriteWithDeviceBoundAccessibility().timeout(const Duration(seconds: 3), onTimeout: () => 0);
   final AppConfig config;
   try {
     config = AppConfig.fromEnvironment();

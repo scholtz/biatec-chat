@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import 'approval_client.dart';
@@ -17,6 +18,7 @@ class PendingScreen extends StatefulWidget {
     this.pollEvery = const Duration(seconds: 5),
     this.pushes,
     this.onCount,
+    this.active,
   });
 
   final ApprovalServices services;
@@ -24,6 +26,9 @@ class PendingScreen extends StatefulWidget {
 
   /// Told how many requests are pending each time the list loads (the badge on the Approvals tab).
   final ValueChanged<int>? onCount;
+
+  /// False while another tab is showing: polling pauses, and the list refreshes when it turns true again. A push still refreshes it. Null means always active.
+  final ValueListenable<bool>? active;
 
   /// Fires when a push announced a new request.
   final Stream<void>? pushes;
@@ -50,15 +55,29 @@ class _PendingScreenState extends State<PendingScreen> {
     _refresh();
     _startPolling();
     _pushSub = widget.pushes?.listen((_) => _refresh());
+    widget.active?.addListener(_onActive);
+  }
+
+  bool get _isActive => widget.active?.value ?? true;
+
+  void _onActive() {
+    if (_isActive) {
+      _startPolling();
+      _refresh();
+    } else {
+      _poll?.cancel();
+    }
   }
 
   void _startPolling() {
     _poll?.cancel();
+    if (!_isActive) return;
     _poll = Timer.periodic(widget.pollEvery, (_) => _refresh());
   }
 
   @override
   void dispose() {
+    widget.active?.removeListener(_onActive);
     _poll?.cancel();
     _pushSub?.cancel();
     super.dispose();

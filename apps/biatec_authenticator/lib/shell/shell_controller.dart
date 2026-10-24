@@ -55,35 +55,56 @@ class ShellController extends ChangeNotifier {
   /// Set by the pending list each time it loads; drives the Approvals badge.
   final ValueNotifier<int> pendingCount = ValueNotifier(0);
 
+  /// Whether the Approvals tab is the one showing. The pending list polls only while it is.
+  final ValueNotifier<bool> approvalsActive = ValueNotifier(true);
+
+  /// A card to open once the shell exists: a notification that started the app is tapped before the enrollment check has finished.
+  (ApprovalServices, String)? _queuedOpen;
+
+  void _show(AppTab tab) {
+    _selected = tab;
+    approvalsActive.value = tab == AppTab.approvals;
+    notifyListeners();
+  }
+
   /// Shows [tab]. Choosing the tab that is already showing returns it to its first screen.
   void select(AppTab tab) {
     if (tab == _selected) {
       navigators[tab]?.currentState?.popUntil((r) => r.isFirst);
       return;
     }
-    _selected = tab;
-    notifyListeners();
+    _show(tab);
   }
 
   /// Shows the Approvals tab on its list, for the in-app notice.
   void showApprovals() {
-    _selected = AppTab.approvals;
     navigators[AppTab.approvals]?.currentState?.popUntil((r) => r.isFirst);
-    notifyListeners();
+    _show(AppTab.approvals);
   }
 
-  /// Opens the card for [authReqId] inside the Approvals tab (a tapped notification). Does nothing while the app has no shell, for example before enrollment.
+  /// Opens the card for [authReqId] inside the Approvals tab (a tapped notification). While the app has no shell yet (it is still checking enrollment, or the device is not enrolled) the request is kept and opened when the shell appears.
   void openApproval(ApprovalServices services, String authReqId) {
     final navigator = navigators[AppTab.approvals]?.currentState;
-    if (navigator == null) return;
-    _selected = AppTab.approvals;
-    notifyListeners();
+    if (navigator == null) {
+      _queuedOpen = (services, authReqId);
+      return;
+    }
+    _show(AppTab.approvals);
     navigator.push(ApprovalScreen.route(services, authReqId));
+  }
+
+  /// Called by the shell once it is on screen: opens a card that was asked for before.
+  void openQueued() {
+    final queued = _queuedOpen;
+    if (queued == null) return;
+    _queuedOpen = null;
+    openApproval(queued.$1, queued.$2);
   }
 
   @override
   void dispose() {
     pendingCount.dispose();
+    approvalsActive.dispose();
     super.dispose();
   }
 }

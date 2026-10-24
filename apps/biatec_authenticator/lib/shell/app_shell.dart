@@ -45,16 +45,22 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
+    // A count left from an earlier shell (the device was re-enrolled) is not this session's.
+    widget.controller.pendingCount.value = 0;
     widget.controller.addListener(_onSelect);
+    // Once the tab navigators exist, open a card a notification asked for.
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => widget.controller.openQueued());
   }
 
   @override
   void didUpdateWidget(AppShell old) {
     super.didUpdateWidget(old);
-    if (old.controller != widget.controller) {
-      old.controller.removeListener(_onSelect);
-      widget.controller.addListener(_onSelect);
-    }
+    // The tabs are built once from these, so they are fixed for the life of the shell.
+    assert(old.controller == widget.controller &&
+        old.approvals == widget.approvals &&
+        old.settings == widget.settings &&
+        old.push == widget.push);
   }
 
   @override
@@ -69,6 +75,7 @@ class _AppShellState extends State<AppShell> {
         AppTab.approvals => PendingScreen(
             services: widget.approvals,
             pushes: widget.push?.requestArrived,
+            active: widget.controller.approvalsActive,
             onCount: (n) => widget.controller.pendingCount.value = n,
           ),
         AppTab.history => HistoryScreen(history: widget.approvals.history),
@@ -95,9 +102,9 @@ class _AppShellState extends State<AppShell> {
     return ValueListenableBuilder<int>(
       valueListenable: widget.controller.pendingCount,
       builder: (context, n, _) => Badge(
-        label: Text('$n'),
+        label: Text('$n', semanticsLabel: '$n pending'),
         isLabelVisible: n > 0,
-        child: Icon(icon, semanticLabel: n > 0 ? '$n pending' : null),
+        child: Icon(icon),
       ),
     );
   }
@@ -130,17 +137,21 @@ class _AppShellState extends State<AppShell> {
       child: Scaffold(
         body: wide
             ? Row(children: [
-                NavigationRail(
-                  selectedIndex: index,
-                  onDestinationSelected: (i) => c.select(AppTab.values[i]),
-                  destinations: [
-                    for (final tab in AppTab.values)
-                      NavigationRailDestination(
-                        icon: _icon(tab, selected: false),
-                        selectedIcon: _icon(tab, selected: true),
-                        label: Text(tab.label),
-                      ),
-                  ],
+                // Keeps the first destination out from under a display cutout in landscape.
+                SafeArea(
+                  right: false,
+                  child: NavigationRail(
+                    selectedIndex: index,
+                    onDestinationSelected: (i) => c.select(AppTab.values[i]),
+                    destinations: [
+                      for (final tab in AppTab.values)
+                        NavigationRailDestination(
+                          icon: _icon(tab, selected: false),
+                          selectedIcon: _icon(tab, selected: true),
+                          label: Text(tab.label),
+                        ),
+                    ],
+                  ),
                 ),
                 const VerticalDivider(width: 1),
                 Expanded(child: body),

@@ -51,10 +51,19 @@ class _AppGateState extends State<AppGate> {
           client: OidcEnrollmentClient(baseUrl: widget.config.oidcBaseUrl),
         );
     // Coming back to the app is when a delay that ran out becomes visible.
-    _lifecycle = AppLifecycleListener(onResume: _enrollment.refresh);
-    _enrollment.refresh().whenComplete(() {
+    _lifecycle = AppLifecycleListener(onResume: _refresh);
+    _refresh().whenComplete(() {
       if (mounted) setState(() => _ready = true);
     });
+  }
+
+  /// A failed refresh leaves the state as it was (the controller already treats an unreadable record as not enrolled), so it never becomes an unhandled error.
+  Future<void> _refresh() async {
+    try {
+      await _enrollment.refresh();
+    } on Object {
+      // Nothing to show; the next resume or the enrollment screen's own refresh tries again.
+    }
   }
 
   @override
