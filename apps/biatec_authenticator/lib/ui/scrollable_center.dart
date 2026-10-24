@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
-/// Centers [child] in the space it is given, in a column no wider than [kMaxContentWidth], and scrolls when the content is taller than that space (large text, a phone on its side), so a button at the bottom stays reachable.
+/// Needs a parent with a bounded height (a screen body); inside a `ListView` use the widget without it. Centers [child] in the space it is given, in a column no wider than [kMaxContentWidth], and scrolls when the content is taller than that space (large text, a phone on its side), so a button at the bottom stays reachable.
 class ScrollableCenter extends StatelessWidget {
   const ScrollableCenter({super.key, required this.child});
 

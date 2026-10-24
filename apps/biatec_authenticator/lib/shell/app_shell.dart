@@ -291,6 +291,10 @@ class _ForwardingObserver extends NavigatorObserver {
   @override
   void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
       target.didRemove(route, previousRoute);
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) =>
+      target.didReplace(newRoute: newRoute, oldRoute: oldRoute);
 }
 
 /// A strip that marks a build talking to the mock Biatec OIDC, never to a real server.

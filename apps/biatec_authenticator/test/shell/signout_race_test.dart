@@ -220,4 +220,31 @@ void main() {
     expect(c.requestsChanged.value, requests + 1);
     c.dispose();
   });
+
+  testWidgets('a replaced card is forgotten and the new one remembered',
+      (tester) async {
+    final rig = ShellRig();
+    final opened = <String>[];
+    final already = <String>[];
+    final push = PushController(
+      enrollment: rig.approvals.enrollment,
+      client: rig.approvals.client,
+      onOpenRequest: opened.add,
+      onRequestAlreadyOpen: already.add,
+    );
+    final transport = _Transport();
+    await push.start(transport);
+    Route<void> card(String id) => MaterialPageRoute<void>(
+        settings: RouteSettings(name: '${ApprovalScreen.routePrefix}$id'),
+        builder: (_) => const SizedBox());
+    push.didPush(card('a'), null);
+    push.didReplace(newRoute: card('b'), oldRoute: card('a'));
+
+    transport.openedC.add({'auth_req_id': 'a'});
+    transport.openedC.add({'auth_req_id': 'b'});
+    await tester.pump();
+    expect(opened, ['a'], reason: 'a is no longer on screen');
+    expect(already, ['b'], reason: 'b is');
+    unawaited(push.dispose());
+  });
 }

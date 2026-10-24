@@ -111,6 +111,13 @@ class PushController extends NavigatorObserver {
   void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
       _openRequests.remove(_requestOf(route));
 
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    if (oldRoute != null) _openRequests.remove(_requestOf(oldRoute));
+    final id = newRoute == null ? null : _requestOf(newRoute);
+    if (id != null) _openRequests.add(id);
+  }
+
   /// Registers the push token once this device is enrolled. Safe to call
   /// often; failures are retried on the next call.
   Future<void> registerIfEnrolled([String? token]) =>
