@@ -109,6 +109,14 @@ class ShellController extends ChangeNotifier {
     _show(AppTab.approvals);
   }
 
+  /// Back to the first tab with nothing remembered, for a new session of the shell (after a sign-out and enrollment).
+  void reset() {
+    _selected = AppTab.approvals;
+    approvalsActive.value = true;
+    _leftAt.clear();
+    _queuedOpen = null;
+  }
+
   /// Opens the card for [authReqId] inside the Approvals tab (a tapped notification). While the app has no shell yet (it is still checking enrollment, or the device is not enrolled) the request is kept and opened when the shell appears.
   void openApproval(ApprovalServices services, String authReqId) {
     final navigator = navigators[AppTab.approvals]?.currentState;

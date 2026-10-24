@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,13 +13,18 @@ import '../devices/devices_screen.dart';
 import '../push/push_controller.dart';
 import '../security/security_screen.dart';
 import '../security/settings_controller.dart';
+import '../theme.dart';
 import 'shell_controller.dart';
 
 /// Width from which the bar moves to the side as a navigation rail (tablets, desktop).
 const double kRailBreakpoint = 840;
 
-/// Shortest window that still shows the rail (dp).
+/// Shortest window that still shows the rail (dp), at normal text size.
 const double kRailMinHeight = 480;
+
+/// Height the rail needs for its five labelled destinations at [textScale]; it does not scroll.
+double railHeightNeeded(double textScale) =>
+    math.max(kRailMinHeight, 5 * (48 + 20 * textScale) + 40);
 
 /// The signed-in app: five destinations in a bottom navigation bar (a rail on wide screens). Each destination keeps its own stack and scroll position while another is showing.
 class AppShell extends StatefulWidget {
@@ -75,6 +82,8 @@ class _AppShellState extends State<AppShell> {
   @override
   void dispose() {
     widget.controller.removeListener(_onSelect);
+    // The next shell (after a sign-out and a new enrollment) starts on Approvals.
+    widget.controller.reset();
     super.dispose();
   }
 
@@ -124,11 +133,13 @@ class _AppShellState extends State<AppShell> {
     final c = widget.controller;
     final size = MediaQuery.sizeOf(context);
     // A rail needs height for five labelled destinations; a phone on its side keeps the bar.
-    final wide = size.width >= kRailBreakpoint && size.height >= kRailMinHeight;
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
+    final wide = size.width >= kRailBreakpoint &&
+        size.height >= railHeightNeeded(textScale);
     // The soft keyboard needs the room, and the bar is no use while typing.
     final typing = MediaQuery.viewInsetsOf(context).bottom > 0;
     final index = c.selected.index;
-    final body = IndexedStack(
+    final tabs = IndexedStack(
       index: index,
       children: [
         for (final tab in AppTab.values)
@@ -148,6 +159,15 @@ class _AppShellState extends State<AppShell> {
               : const SizedBox.shrink(),
       ],
     );
+    // A build pointed at the mock Biatec OIDC says so on every screen.
+    final body = widget.config.isMock
+        ? Column(children: [
+            SafeArea(bottom: false, child: _MockNotice(config: widget.config)),
+            Expanded(
+                child: MediaQuery.removePadding(
+                    context: context, removeTop: true, child: tabs)),
+          ])
+        : tabs;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -260,4 +280,42 @@ class _ForwardingObserver extends NavigatorObserver {
   @override
   void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
       target.didRemove(route, previousRoute);
+}
+
+/// A strip that marks a build talking to the mock Biatec OIDC, never to a real server.
+class _MockNotice extends StatelessWidget {
+  const _MockNotice({required this.config});
+
+  final AppConfig config;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.statusColors;
+    return Semantics(
+      container: true,
+      child: ColoredBox(
+        color: colors.warning,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.m, vertical: AppSpacing.xs),
+          child: Row(children: [
+            Icon(Icons.science_outlined, size: 16, color: colors.onWarning),
+            const SizedBox(width: AppSpacing.s),
+            Expanded(
+              child: Text(
+                'Mock Biatec OIDC \u00b7 ${config.oidcBaseUrl}',
+                key: const Key('mock-notice'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context)
+                    .textTheme
+                    .labelSmall
+                    ?.copyWith(color: colors.onWarning),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
 }

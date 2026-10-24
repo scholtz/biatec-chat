@@ -11,6 +11,8 @@ import 'package:biatec_authenticator/enrollment/enrollment_screen.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/main.dart';
+import 'package:biatec_authenticator/shell/app_shell.dart'
+    show kRailMinHeight, railHeightNeeded;
 import 'package:biatec_authenticator/shell/shell_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -78,12 +80,12 @@ class ShellRig {
       (firstVector()['request'] as Map)['auth_req_id'] as String;
 
   Future<void> pump(WidgetTester tester,
-      {Size size = const Size(400, 900)}) async {
+      {Size size = const Size(400, 900), AppConfig? config}) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(AuthenticatorApp(
-      config: AppConfig.resolve(''),
+      config: config ?? AppConfig.resolve(''),
       approvals: approvals,
       settings: settings.services,
       shell: shell,
@@ -286,5 +288,51 @@ void main() {
         expect(t.icon, isNot(t.selectedIcon), reason: t.label);
       }
     });
+  });
+
+  testWidgets(
+      'a build on the mock Biatec OIDC says so, one on a real server does not',
+      (tester) async {
+    final mock = ShellRig();
+    await mock.pump(tester);
+    expect(find.byKey(const Key('mock-notice')), findsOneWidget);
+    expect(find.textContaining(AppConfig.mockOidcBaseUrl), findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget);
+    await mock.dispose(tester);
+
+    final real = ShellRig();
+    await real.pump(tester, config: AppConfig.resolve('https://oidc.example'));
+    expect(find.byKey(const Key('mock-notice')), findsNothing);
+    await real.dispose(tester);
+  });
+
+  testWidgets(
+      'the rail needs more height at large text, so a short window keeps the bar',
+      (tester) async {
+    expect(railHeightNeeded(1), kRailMinHeight);
+    expect(railHeightNeeded(3), greaterThan(kRailMinHeight));
+    final rig = ShellRig();
+    tester.platformDispatcher.textScaleFactorTestValue = 3.0;
+    addTearDown(tester.platformDispatcher.clearAllTestValues);
+    await rig.pump(tester, size: Size(1000, railHeightNeeded(3) - 20));
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byType(NavigationRail), findsNothing);
+    await rig.dispose(tester);
+
+    final tall = ShellRig();
+    await tall.pump(tester, size: Size(1000, railHeightNeeded(3) + 20));
+    expect(find.byType(NavigationRail), findsOneWidget);
+    await tall.dispose(tester);
+  });
+
+  testWidgets('a new shell after the old one went starts on Approvals',
+      (tester) async {
+    final rig = ShellRig();
+    await rig.pump(tester);
+    rig.shell.select(AppTab.settings);
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox());
+    expect(rig.shell.selected, AppTab.approvals);
+    expect(rig.shell.approvalsActive.value, isTrue);
   });
 }

@@ -59,6 +59,12 @@ class _AppGateState extends State<AppGate> {
   /// Counts start-ups (the first and each retry), so a slow earlier one cannot cancel or finish a later one.
   int _attempt = 0;
 
+  /// The start-up whose stored enrollment has been read. What follows may use the network (the recovery code), so it is not timed.
+  int _readAttempt = 0;
+
+  /// Whether the device was active at the last notification, so push registration is asked for when it becomes so.
+  bool _wasActive = false;
+
   /// The store, when it announces changes (see [ObservableEnrollmentStore]). Production always has one; without it a sign-out is noticed at the next launch.
   ObservableEnrollmentStore? get _store {
     final store = widget.approvals.enrollment;
@@ -111,8 +117,15 @@ class _AppGateState extends State<AppGate> {
   /// A launch that ends in enrollment must not keep a tapped notification for later, and one that will show the shell must.
   void _onPhase() {
     final active = _enrollment.state.phase == EnrollmentPhase.active;
-    // Enrolling is a swap of widgets, not a navigation, so registering for push is asked for here.
-    if (active) widget.push?.registerIfEnrolled();
+    // Enrolling is a swap of widgets, not a navigation, so registering for push is asked for here, once per activation.
+    if (active && !_wasActive) widget.push?.registerIfEnrolled();
+    _wasActive = active;
+    // The stored enrollment is known; do not wait for network work in the rest of the refresh to show it.
+    if (_startup == _Startup.loading &&
+        _readAttempt == _attempt &&
+        _enrollment.state.phase != EnrollmentPhase.notEnrolled) {
+      setState(() => _startup = _Startup.ready);
+    }
     if (_startup != _Startup.ready) return;
     widget.shell.canQueue = active;
     if (!active) widget.shell.dropQueuedOpen();
@@ -123,6 +136,10 @@ class _AppGateState extends State<AppGate> {
     EnrollmentRecord? stored;
     try {
       stored = await widget.approvals.enrollment.read();
+      if (attempt == _attempt) {
+        _readAttempt = attempt;
+        _timeout?.cancel();
+      }
     } on Object {
       if (mounted && attempt == _attempt) {
         setState(() => _startup = _Startup.unreadable);
@@ -171,12 +188,18 @@ class _AppGateState extends State<AppGate> {
   Future<void> _doRecheck() async {
     final store = _store;
     // Only a deliberate clear signs the device out; a record that is merely missing may be an enrollment kept in memory.
-    if (store == null || store.clearCount == _clearsSeen) return;
-    _clearsSeen = store.clearCount;
-    if (_enrollment.state.phase != EnrollmentPhase.active) return;
+    final clears = store?.clearCount;
+    if (store == null || clears == _clearsSeen) return;
+    if (_enrollment.state.phase != EnrollmentPhase.active) {
+      _clearsSeen = clears!;
+      return;
+    }
     try {
       final record = await widget.approvals.enrollment.read();
-      if (record != null || !mounted) return;
+      if (!mounted) return;
+      // Dealt with: a read that failed is tried again at the next notification or resume.
+      _clearsSeen = clears!;
+      if (record != null) return;
       if (_enrollment.state.phase != EnrollmentPhase.active) return;
       final old = _enrollment..removeListener(_onPhase);
       setState(() => _enrollment = _build()..addListener(_onPhase));
@@ -186,7 +209,7 @@ class _AppGateState extends State<AppGate> {
         if (!identical(old, widget.enrollment)) old.dispose();
       });
     } on Object {
-      // An unreadable store is handled by the next refresh.
+      // The same clear is looked at again next time.
     }
   }
 

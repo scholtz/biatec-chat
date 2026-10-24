@@ -67,6 +67,15 @@ class _PendingScreenState extends State<PendingScreen> {
     widget.refreshOn?.addListener(_refresh);
   }
 
+  /// A failing listener is that listener's problem, not a failed load.
+  void _tell(int count) {
+    try {
+      widget.onCount?.call(count);
+    } on Object {
+      // Ignored on purpose.
+    }
+  }
+
   bool get _isActive => widget.active?.value ?? true;
 
   /// Something (an approval card opened from a notification, say) is on top of the list.
@@ -115,7 +124,7 @@ class _PendingScreenState extends State<PendingScreen> {
         _error = null;
         _offline = false;
       });
-      widget.onCount?.call(_requests!.length);
+      _tell(_requests!.length);
     } on Object catch (e) {
       if (!mounted) return;
       final now = widget.services.clock();
@@ -126,7 +135,7 @@ class _PendingScreenState extends State<PendingScreen> {
         _requests = _requests?.where((r) => !r.isExpired(now)).toList();
       });
       final known = _requests;
-      if (known != null) widget.onCount?.call(known.length);
+      if (known != null) _tell(known.length);
     } finally {
       _loading = false;
     }
