@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import 'approval_client.dart';
@@ -16,10 +17,26 @@ class PendingScreen extends StatefulWidget {
     required this.services,
     this.pollEvery = const Duration(seconds: 5),
     this.pushes,
+    this.onCount,
+    this.active,
+    this.refreshOn,
+    this.backgroundEvery = const Duration(seconds: 30),
   });
 
   final ApprovalServices services;
   final Duration pollEvery;
+
+  /// Told how many requests are pending each time the list loads (the badge on the Approvals tab).
+  final ValueChanged<int>? onCount;
+
+  /// False while another tab is showing: polling slows to [backgroundEvery] (the Approvals badge still has to notice a request), and the list refreshes when it turns true again. Null means always active.
+  final ValueListenable<bool>? active;
+
+  /// Refreshes the list whenever it notifies (a card opened from outside the list was closed).
+  final Listenable? refreshOn;
+
+  /// Poll interval while [active] is false.
+  final Duration backgroundEvery;
 
   /// Fires when a push announced a new request.
   final Stream<void>? pushes;
@@ -46,15 +63,42 @@ class _PendingScreenState extends State<PendingScreen> {
     _refresh();
     _startPolling();
     _pushSub = widget.pushes?.listen((_) => _refresh());
+    widget.active?.addListener(_onActive);
+    widget.refreshOn?.addListener(_refresh);
+  }
+
+  /// A failing listener is that listener's problem, not a failed load.
+  void _tell(int count) {
+    try {
+      widget.onCount?.call(count);
+    } on Object {
+      // Ignored on purpose.
+    }
+  }
+
+  bool get _isActive => widget.active?.value ?? true;
+
+  /// Something (an approval card opened from a notification, say) is on top of the list.
+  bool get _covered => ModalRoute.of(context)?.isCurrent == false;
+
+  void _onActive() {
+    _startPolling();
+    if (_isActive && !_covered) _refresh();
   }
 
   void _startPolling() {
     _poll?.cancel();
-    _poll = Timer.periodic(widget.pollEvery, (_) => _refresh());
+    _poll = Timer.periodic(
+        _isActive ? widget.pollEvery : widget.backgroundEvery, (_) {
+      // Nobody sees the list under a card while its tab shows; from another tab the badge still counts it.
+      if (!(_isActive && _covered)) _refresh();
+    });
   }
 
   @override
   void dispose() {
+    widget.active?.removeListener(_onActive);
+    widget.refreshOn?.removeListener(_refresh);
     _poll?.cancel();
     _pushSub?.cancel();
     super.dispose();
@@ -80,12 +124,18 @@ class _PendingScreenState extends State<PendingScreen> {
         _error = null;
         _offline = false;
       });
+      _tell(_requests!.length);
     } on Object catch (e) {
       if (!mounted) return;
+      final now = widget.services.clock();
       setState(() {
         _error = e is ApprovalException ? e.message : '$e';
         _offline = e is ApprovalException && e.offline;
+        // The last known list stays, but a request that has expired meanwhile is gone.
+        _requests = _requests?.where((r) => !r.isExpired(now)).toList();
       });
+      final known = _requests;
+      if (known != null) _tell(known.length);
     } finally {
       _loading = false;
     }

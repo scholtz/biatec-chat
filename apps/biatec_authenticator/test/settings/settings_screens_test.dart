@@ -6,6 +6,7 @@ import 'package:biatec_authenticator/approvals/history_store.dart';
 import 'package:biatec_authenticator/clients/clients_screen.dart';
 import 'package:biatec_authenticator/config.dart';
 import 'package:biatec_authenticator/devices/devices_screen.dart';
+import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/main.dart';
 import 'package:biatec_authenticator/security/security_screen.dart';
 import 'package:biatec_authenticator/security/settings_controller.dart';
@@ -235,12 +236,18 @@ void main() {
   });
 
   group('routes', () {
-    testWidgets('home opens the three screens, none of them a placeholder',
+    testWidgets('the tabs open the three screens, none of them a placeholder',
         (tester) async {
       tester.view.physicalSize = const Size(800, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
-      final rig = SettingsRig();
+      final rig = SettingsRig(
+          record: EnrollmentRecord(
+              kid: 'dev-1',
+              deviceToken: FakeSettingsOidc.token,
+              activeAt: DateTime.utc(2020),
+              attestation: 'att',
+              recoveryCodeShown: true));
       final approvals = ApprovalServices(
         client: ApprovalClient(baseUrl: 'http://oidc.test'),
         keys: rig.keys,
@@ -252,22 +259,23 @@ void main() {
           config: AppConfig.resolve(''),
           approvals: approvals,
           settings: rig.services));
+      await tester.pump();
 
-      for (final (title, type) in [
-        ('Device management', DevicesScreen),
-        ('Trusted clients and thresholds', ClientsScreen),
-        ('Security settings', SecurityScreen),
+      for (final (label, type) in [
+        ('Devices', DevicesScreen),
+        ('Clients', ClientsScreen),
+        ('Settings', SecurityScreen),
       ]) {
-        await tester.tap(find.text(title));
+        await tester.tap(find.descendant(
+            of: find.byType(NavigationBar), matching: find.text(label)));
         await tester.pumpAndSettle();
-        expect(find.byType(type), findsOneWidget, reason: title);
-        await tester.pageBack();
-        await tester.pumpAndSettle();
+        expect(find.byType(type), findsOneWidget, reason: label);
       }
+      await tester.pumpWidget(const SizedBox());
     });
 
     test('no source file builds a placeholder screen any more', () {
-      for (final f in ['lib/routes.dart', 'lib/main.dart']) {
+      for (final f in ['lib/main.dart', 'lib/shell/app_shell.dart']) {
         expect(File(f).readAsStringSync(), isNot(contains('PlaceholderScreen')),
             reason: f);
       }

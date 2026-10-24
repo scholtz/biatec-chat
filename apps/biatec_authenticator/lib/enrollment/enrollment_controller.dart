@@ -51,6 +51,13 @@ class EnrollmentController extends ChangeNotifier {
     super.dispose();
   }
 
+  /// A refresh that was still running when the controller was replaced or closed ends quietly.
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
   /// Where the enrolled device key lives, once known (null before enrollment,
   /// or when the keystore cannot be read).
   KeySecurityLevel? get keyLevel => _keyLevel;

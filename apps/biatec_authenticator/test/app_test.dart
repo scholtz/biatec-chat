@@ -1,15 +1,7 @@
 import 'package:biatec_authenticator/config.dart';
-import 'package:biatec_authenticator/main.dart';
-import 'package:flutter/widgets.dart' show Size;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  void tall(WidgetTester tester) {
-    tester.view.physicalSize = const Size(800, 2400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-  }
-
   test('config defaults to the mock OIDC', () {
     final config = AppConfig.resolve('');
     expect(config.isMock, isTrue);
@@ -26,13 +18,5 @@ void main() {
     final config = AppConfig.resolve('http://10.0.2.2:5080/mock-oidc/');
     expect(config.isMock, isTrue);
     expect(config.oidcBaseUrl, AppConfig.mockOidcBaseUrl);
-  });
-
-  testWidgets('home shows mock OIDC config', (tester) async {
-    tall(tester);
-    await tester.pumpWidget(AuthenticatorApp(config: AppConfig.resolve('')));
-    expect(find.text('Biatec Authenticator'), findsOneWidget);
-    expect(find.text(AppConfig.mockOidcBaseUrl), findsOneWidget);
-    expect(find.text('Biatec OIDC (mock)'), findsOneWidget);
   });
 }
