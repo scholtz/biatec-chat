@@ -1,7 +1,7 @@
 ---
 id: T-214
 title: "Authenticator: design system and bottom navigation shell"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: []
@@ -9,8 +9,8 @@ area: ["apps/biatec_authenticator/lib/main.dart", "apps/biatec_authenticator/lib
 parallel: yes
 conflicts_with: []
 issue: "#350"
-branch: ""
-owner: ""
+branch: "task/T-214"
+owner: "session-20261024-1210"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-24
@@ -70,3 +70,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 
 - 2026-10-24 12:00 · claude · (new) → backlog · created from the authenticator redesign request
 - 2026-10-24 12:05 · scholtz · taken · status stays backlog
+- 2026-10-24 12:10 · session-20261024-1210 · backlog → in-progress · claimed
