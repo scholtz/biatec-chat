@@ -7,6 +7,7 @@ import '../config.dart';
 import '../enrollment/enrollment_controller.dart';
 import '../enrollment/enrollment_screen.dart';
 import '../enrollment/enrollment_state.dart';
+import '../enrollment/observable_enrollment_store.dart';
 import '../enrollment/oidc_enrollment_client.dart';
 import '../push/push_controller.dart';
 import '../security/settings_controller.dart';
@@ -43,14 +44,22 @@ class AppGate extends StatefulWidget {
   State<AppGate> createState() => _AppGateState();
 }
 
-enum _Startup { loading, ready, stuck }
+enum _Startup { loading, ready, stuck, unreadable }
 
 class _AppGateState extends State<AppGate> {
   late EnrollmentController _enrollment;
   late AppLifecycleListener _lifecycle;
   Timer? _timeout;
   _Startup _startup = _Startup.loading;
-  bool _checking = false;
+
+  /// The check for a signed-out device that is running, so a second request waits for it instead of skipping it.
+  Future<void>? _check;
+
+  /// The store, when it announces changes (see [ObservableEnrollmentStore]).
+  Listenable? get _storeChanges {
+    final store = widget.approvals.enrollment;
+    return store is Listenable ? store as Listenable : null;
+  }
 
   EnrollmentController _build() => EnrollmentController(
         keys: widget.approvals.keys,
@@ -67,7 +76,8 @@ class _AppGateState extends State<AppGate> {
       await _recheck();
       await _refresh();
     });
-    // Moving between tabs is the other moment to notice that this device was signed out.
+    // The store says when the enrollment goes (this device cancelled itself in Devices); a tab change is the fallback for a store that does not.
+    _storeChanges?.addListener(_recheck);
     widget.shell.addListener(_recheck);
     _begin();
   }
@@ -84,10 +94,26 @@ class _AppGateState extends State<AppGate> {
         setState(() => _startup = _Startup.stuck);
       }
     });
-    _refresh().whenComplete(() {
+    _open().whenComplete(() {
       _timeout?.cancel();
-      if (mounted) setState(() => _startup = _Startup.ready);
     });
+  }
+
+  /// Reads the stored enrollment once before deciding what to show. A read that fails is not "not enrolled": the user gets a retry instead of the enrollment flow, which would replace a valid enrollment.
+  Future<void> _open() async {
+    try {
+      await widget.approvals.enrollment.read();
+    } on Object {
+      if (mounted) setState(() => _startup = _Startup.unreadable);
+      return;
+    }
+    await _refresh();
+    if (!mounted) return;
+    // A tapped notification waits for the shell; without one it must not outlive this launch.
+    if (_enrollment.state.phase != EnrollmentPhase.active) {
+      widget.shell.dropQueuedOpen();
+    }
+    setState(() => _startup = _Startup.ready);
   }
 
   /// A failed refresh leaves the state as it was (the controller already treats an unreadable record as not enrolled), so it never becomes an unhandled error.
@@ -99,10 +125,13 @@ class _AppGateState extends State<AppGate> {
     }
   }
 
-  /// While the shell shows, looks for the stored enrollment having gone (this device cancelled itself in Devices). The controller would otherwise keep its in-memory record and write it back, so it is replaced by a fresh one, which finds the device not enrolled.
-  Future<void> _recheck() async {
-    if (_checking || _enrollment.state.phase != EnrollmentPhase.active) return;
-    _checking = true;
+  /// While the shell shows, looks for the stored enrollment having gone. The controller would otherwise keep its in-memory record and write it back, so it is replaced by a fresh one, which finds the device not enrolled.
+  Future<void> _recheck() => _check ??= _doRecheck().whenComplete(() {
+        _check = null;
+      });
+
+  Future<void> _doRecheck() async {
+    if (_enrollment.state.phase != EnrollmentPhase.active) return;
     try {
       final record = await widget.approvals.enrollment.read();
       if (record != null || !mounted) return;
@@ -116,8 +145,6 @@ class _AppGateState extends State<AppGate> {
       });
     } on Object {
       // An unreadable store is handled by the next refresh.
-    } finally {
-      _checking = false;
     }
   }
 
@@ -125,6 +152,7 @@ class _AppGateState extends State<AppGate> {
   void dispose() {
     _timeout?.cancel();
     _lifecycle.dispose();
+    _storeChanges?.removeListener(_recheck);
     widget.shell.removeListener(_recheck);
     if (!identical(_enrollment, widget.enrollment)) _enrollment.dispose();
     super.dispose();
@@ -146,6 +174,16 @@ class _AppGateState extends State<AppGate> {
             title: 'Still checking this device',
             message: 'The secure storage on this device is slow to answer. '
                 'Your enrollment is not lost.',
+            onRetry: _retry,
+          ),
+        );
+      case _Startup.unreadable:
+        return Scaffold(
+          body: ErrorState(
+            title: 'Could not read this device',
+            message: 'The secure storage on this device did not open. Your '
+                'enrollment is not lost. Try again, and restart the app if it '
+                'keeps failing.',
             onRetry: _retry,
           ),
         );

@@ -14,7 +14,8 @@ import 'theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Items stored before the keychain accessibility was set are rewritten once so they stay on this device (BCHAT-009).
-  await rewriteWithDeviceBoundAccessibility().timeout(const Duration(seconds: 3), onTimeout: () => 0);
+  await rewriteWithDeviceBoundAccessibility()
+      .timeout(const Duration(seconds: 3), onTimeout: () => 0);
   final AppConfig config;
   try {
     config = AppConfig.fromEnvironment();
@@ -69,73 +70,73 @@ void showRequestArrived(
     ));
 }
 
-class AuthenticatorApp extends StatelessWidget {
-  AuthenticatorApp({
-    Key? key,
-    required AppConfig config,
-    ApprovalServices? approvals,
-    SettingsServices? settings,
-    PushController? push,
-    ShellController? shell,
-    EnrollmentController? enrollment,
-    GlobalKey<NavigatorState>? navigatorKey,
-    GlobalKey<ScaffoldMessengerState>? messengerKey,
-  }) : this._(
-          key,
-          config,
-          approvals ?? ApprovalServices.fromConfig(config),
-          settings,
-          push,
-          shell ?? ShellController(),
-          enrollment,
-          navigatorKey,
-          messengerKey,
-        );
-
-  AuthenticatorApp._(
-    Key? key,
-    this.config,
+class AuthenticatorApp extends StatefulWidget {
+  const AuthenticatorApp({
+    super.key,
+    required this.config,
     this.approvals,
-    SettingsServices? settings,
+    this.settings,
     this.push,
     this.shell,
     this.enrollment,
     this.navigatorKey,
     this.messengerKey,
-  )   : settings = settings ?? SettingsServices.fromConfig(config, approvals),
-        super(key: key);
+  });
 
   final AppConfig config;
-  final ApprovalServices approvals;
-  final SettingsServices settings;
+
+  /// Built from [config] when not given.
+  final ApprovalServices? approvals;
+
+  /// Built from [config] and the approval services when not given.
+  final SettingsServices? settings;
 
   /// Null when push is not configured; the pending list then polls only.
   final PushController? push;
-  final ShellController shell;
 
-  /// Injected in tests; built from [approvals] and [config] otherwise.
+  /// Created (and disposed) by the app when not given.
+  final ShellController? shell;
+
+  /// Injected in tests; built from the approval services and [config] otherwise.
   final EnrollmentController? enrollment;
   final GlobalKey<NavigatorState>? navigatorKey;
   final GlobalKey<ScaffoldMessengerState>? messengerKey;
 
   @override
+  State<AuthenticatorApp> createState() => _AuthenticatorAppState();
+}
+
+class _AuthenticatorAppState extends State<AuthenticatorApp> {
+  late final ApprovalServices _approvals =
+      widget.approvals ?? ApprovalServices.fromConfig(widget.config);
+  late final SettingsServices _settings =
+      widget.settings ?? SettingsServices.fromConfig(widget.config, _approvals);
+  late final ShellController _shell = widget.shell ?? ShellController();
+
+  @override
+  void dispose() {
+    if (widget.shell == null) _shell.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final push = this.push;
+    final push = widget.push;
     return MaterialApp(
-      navigatorKey: navigatorKey,
-      scaffoldMessengerKey: messengerKey,
+      navigatorKey: widget.navigatorKey,
+      scaffoldMessengerKey: widget.messengerKey,
       navigatorObservers: [if (push != null) push],
       title: 'Biatec Authenticator',
       theme: buildTheme(Brightness.light),
       darkTheme: buildTheme(Brightness.dark),
       builder: largeTypeBuilder,
       home: AppGate(
-        config: config,
-        approvals: approvals,
-        settings: settings,
-        shell: shell,
+        config: widget.config,
+        approvals: _approvals,
+        settings: _settings,
+        shell: _shell,
         push: push,
-        enrollment: enrollment,
+        enrollment: widget.enrollment,
       ),
     );
   }

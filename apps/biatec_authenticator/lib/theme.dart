@@ -107,8 +107,13 @@ class StatusColors extends ThemeExtension<StatusColors> {
 }
 
 extension AppThemeContext on BuildContext {
-  StatusColors get statusColors =>
-      Theme.of(this).extension<StatusColors>() ?? StatusColors.light;
+  StatusColors get statusColors {
+    final theme = Theme.of(this);
+    return theme.extension<StatusColors>() ??
+        (theme.brightness == Brightness.dark
+            ? StatusColors.dark
+            : StatusColors.light);
+  }
 }
 
 /// Material 3 theme. Type size follows the system scale (see largeTypeBuilder).

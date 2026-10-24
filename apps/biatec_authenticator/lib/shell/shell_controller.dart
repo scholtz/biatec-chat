@@ -58,8 +58,11 @@ class ShellController extends ChangeNotifier {
   /// Whether the Approvals tab is the one showing. The pending list polls only while it is.
   final ValueNotifier<bool> approvalsActive = ValueNotifier(true);
 
-  /// A card to open once the shell exists: a notification that started the app is tapped before the enrollment check has finished.
-  (ApprovalServices, String)? _queuedOpen;
+  /// A card to open once the shell exists: a notification that started the app is tapped before the enrollment check has finished. Only the latest is kept, and only for [queuedOpenTtl].
+  (ApprovalServices, String, DateTime)? _queuedOpen;
+
+  static const queuedOpenTtl = Duration(minutes: 2);
+  DateTime Function() clock = DateTime.now;
 
   void _show(AppTab tab) {
     _selected = tab;
@@ -86,7 +89,7 @@ class ShellController extends ChangeNotifier {
   void openApproval(ApprovalServices services, String authReqId) {
     final navigator = navigators[AppTab.approvals]?.currentState;
     if (navigator == null) {
-      _queuedOpen = (services, authReqId);
+      _queuedOpen = (services, authReqId, clock());
       return;
     }
     _show(AppTab.approvals);
@@ -98,8 +101,12 @@ class ShellController extends ChangeNotifier {
     final queued = _queuedOpen;
     if (queued == null) return;
     _queuedOpen = null;
+    if (clock().difference(queued.$3) > queuedOpenTtl) return;
     openApproval(queued.$1, queued.$2);
   }
+
+  /// Forgets a queued card, for a launch that ends in enrollment rather than the shell.
+  void dropQueuedOpen() => _queuedOpen = null;
 
   @override
   void dispose() {

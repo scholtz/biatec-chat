@@ -15,6 +15,9 @@ import 'shell_controller.dart';
 /// Width from which the bar moves to the side as a navigation rail (tablets, desktop).
 const double kRailBreakpoint = 840;
 
+/// Shortest window that still shows the rail (dp).
+const double kRailMinHeight = 480;
+
 /// The signed-in app: five destinations in a bottom navigation bar (a rail on wide screens). Each destination keeps its own stack and scroll position while another is showing.
 class AppShell extends StatefulWidget {
   const AppShell({
@@ -117,7 +120,11 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final c = widget.controller;
-    final wide = MediaQuery.sizeOf(context).width >= kRailBreakpoint;
+    final size = MediaQuery.sizeOf(context);
+    // A rail needs height for five labelled destinations; a phone on its side keeps the bar.
+    final wide = size.width >= kRailBreakpoint && size.height >= kRailMinHeight;
+    // The soft keyboard needs the room, and the bar is no use while typing.
+    final typing = MediaQuery.viewInsetsOf(context).bottom > 0;
     final index = c.selected.index;
     final body = IndexedStack(
       index: index,
@@ -162,7 +169,7 @@ class _AppShellState extends State<AppShell> {
                 Expanded(child: body),
               ])
             : body,
-        bottomNavigationBar: wide
+        bottomNavigationBar: wide || typing
             ? null
             : NavigationBar(
                 selectedIndex: index,
@@ -183,7 +190,7 @@ class _AppShellState extends State<AppShell> {
 }
 
 /// One tab's own navigator. Pushes inside the tab stay inside it, below the navigation bar.
-class _TabNavigator extends StatelessWidget {
+class _TabNavigator extends StatefulWidget {
   const _TabNavigator({
     super.key,
     required this.navigatorKey,
@@ -198,13 +205,23 @@ class _TabNavigator extends StatelessWidget {
   final PushController? push;
 
   @override
+  State<_TabNavigator> createState() => _TabNavigatorState();
+}
+
+class _TabNavigatorState extends State<_TabNavigator> {
+  /// Made once: a new observer on every rebuild would be detached and attached again, and miss what happened before.
+  late final List<NavigatorObserver> _observers = [
+    if (widget.push != null) _ForwardingObserver(widget.push!),
+  ];
+
+  @override
   Widget build(BuildContext context) {
     return Navigator(
-      key: navigatorKey,
-      observers: [if (push != null) _ForwardingObserver(push!)],
+      key: widget.navigatorKey,
+      observers: _observers,
       onGenerateRoute: (settings) => MaterialPageRoute<void>(
-        settings: RouteSettings(name: '/${tab.name}'),
-        builder: (_) => root,
+        settings: RouteSettings(name: '/${widget.tab.name}'),
+        builder: (_) => widget.root,
       ),
     );
   }
