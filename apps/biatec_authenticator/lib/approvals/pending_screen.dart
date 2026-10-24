@@ -16,10 +16,14 @@ class PendingScreen extends StatefulWidget {
     required this.services,
     this.pollEvery = const Duration(seconds: 5),
     this.pushes,
+    this.onCount,
   });
 
   final ApprovalServices services;
   final Duration pollEvery;
+
+  /// Told how many requests are pending each time the list loads (the badge on the Approvals tab).
+  final ValueChanged<int>? onCount;
 
   /// Fires when a push announced a new request.
   final Stream<void>? pushes;
@@ -80,6 +84,7 @@ class _PendingScreenState extends State<PendingScreen> {
         _error = null;
         _offline = false;
       });
+      widget.onCount?.call(_requests!.length);
     } on Object catch (e) {
       if (!mounted) return;
       setState(() {

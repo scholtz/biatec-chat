@@ -6,6 +6,7 @@ import 'package:biatec_authenticator/approvals/history_store.dart';
 import 'package:biatec_authenticator/clients/clients_screen.dart';
 import 'package:biatec_authenticator/config.dart';
 import 'package:biatec_authenticator/devices/devices_screen.dart';
+import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/main.dart';
 import 'package:biatec_authenticator/security/security_screen.dart';
 import 'package:biatec_authenticator/security/settings_controller.dart';
@@ -29,7 +30,10 @@ void main() {
       await _open(tester, SecurityScreen(services: rig.services));
       expect(find.text('Security settings'), findsOneWidget);
       expect(find.textContaining('1000.00 EUR'), findsOneWidget);
-      expect(tester.widget<SwitchListTile>(find.byKey(const Key('biometric'))).value,
+      expect(
+          tester
+              .widget<SwitchListTile>(find.byKey(const Key('biometric')))
+              .value,
           isTrue);
     });
 
@@ -157,7 +161,8 @@ void main() {
       expect(find.text('Approved on this device and applied.'), findsOneWidget);
     });
 
-    testWidgets('always ask: on applies at once, off is signed', (tester) async {
+    testWidgets('always ask: on applies at once, off is signed',
+        (tester) async {
       final rig = SettingsRig();
       await _open(tester, ClientsScreen(services: rig.services));
       await tester.tap(find.byKey(const Key('always-ask-biatec-chat')));
@@ -174,21 +179,24 @@ void main() {
     testWidgets('per-client threshold can be set and reset', (tester) async {
       final rig = SettingsRig();
       await _open(tester, ClientsScreen(services: rig.services));
-      expect(find.textContaining('Uses the account threshold'), findsNWidgets(3));
+      expect(
+          find.textContaining('Uses the account threshold'), findsNWidgets(3));
 
       await tester.tap(find.byKey(const Key('threshold-change-bank-example')));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const Key('eur-field')), '100');
       await tester.tap(find.byKey(const Key('eur-save')));
       await tester.pumpAndSettle();
-      expect(rig.oidc.clientById('bank-example')['per_client_threshold_eur'], '100');
+      expect(rig.oidc.clientById('bank-example')['per_client_threshold_eur'],
+          '100');
       expect(rig.gate.asked, 0, reason: 'lower than the account threshold');
       expect(find.textContaining('100 EUR'), findsOneWidget);
 
       // Back to the account threshold (1000) raises 100: signed.
       await tester.tap(find.byKey(const Key('threshold-reset-bank-example')));
       await tester.pumpAndSettle();
-      expect(rig.oidc.clientById('bank-example')['per_client_threshold_eur'], isNull);
+      expect(rig.oidc.clientById('bank-example')['per_client_threshold_eur'],
+          isNull);
       expect(rig.gate.asked, 1);
     });
 
@@ -235,12 +243,18 @@ void main() {
   });
 
   group('routes', () {
-    testWidgets('home opens the three screens, none of them a placeholder',
+    testWidgets('the tabs open the three screens, none of them a placeholder',
         (tester) async {
       tester.view.physicalSize = const Size(800, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
-      final rig = SettingsRig();
+      final rig = SettingsRig(
+          record: EnrollmentRecord(
+              kid: 'dev-1',
+              deviceToken: FakeSettingsOidc.token,
+              activeAt: DateTime.utc(2020),
+              attestation: 'att',
+              recoveryCodeShown: true));
       final approvals = ApprovalServices(
         client: ApprovalClient(baseUrl: 'http://oidc.test'),
         keys: rig.keys,
@@ -252,26 +266,28 @@ void main() {
           config: AppConfig.resolve(''),
           approvals: approvals,
           settings: rig.services));
+      await tester.pump();
 
-      for (final (title, type) in [
-        ('Device management', DevicesScreen),
-        ('Trusted clients and thresholds', ClientsScreen),
-        ('Security settings', SecurityScreen),
+      for (final (label, type) in [
+        ('Devices', DevicesScreen),
+        ('Clients', ClientsScreen),
+        ('Settings', SecurityScreen),
       ]) {
-        await tester.tap(find.text(title));
+        await tester.tap(find.descendant(
+            of: find.byType(NavigationBar), matching: find.text(label)));
         await tester.pumpAndSettle();
-        expect(find.byType(type), findsOneWidget, reason: title);
-        await tester.pageBack();
-        await tester.pumpAndSettle();
+        expect(find.byType(type), findsOneWidget, reason: label);
       }
+      await tester.pumpWidget(const SizedBox());
     });
 
     test('no source file builds a placeholder screen any more', () {
-      for (final f in ['lib/routes.dart', 'lib/main.dart']) {
+      for (final f in ['lib/main.dart', 'lib/shell/app_shell.dart']) {
         expect(File(f).readAsStringSync(), isNot(contains('PlaceholderScreen')),
             reason: f);
       }
       expect(File('lib/screens/placeholder_screen.dart').existsSync(), isFalse);
+      expect(File('lib/routes.dart').existsSync(), isFalse);
     });
   });
 }
