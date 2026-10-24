@@ -11,7 +11,7 @@ conflicts_with: []
 issue: "#350"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-24
 updated: 2026-10-24
@@ -69,3 +69,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 ## Activity log
 
 - 2026-10-24 12:00 · claude · (new) → backlog · created from the authenticator redesign request
+- 2026-10-24 12:05 · scholtz · taken · status stays backlog

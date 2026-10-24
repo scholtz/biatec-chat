@@ -19,11 +19,11 @@ Updated: 2026-10-24 17:07 · Tasks: 167 total · backlog 1 · in-progress 0 · b
 
 | ID | Title | Priority | Blocked by (not done yet) | Parallel | Taken by |
 |---|---|---|---|---|---|
-| T-215 | Authenticator: redesign enrollment into a guided onboarding | P1 | T-214 | yes | free |
-| T-216 | Authenticator: redesign pending approvals and the approval card | P1 | T-214 | yes | free |
-| T-217 | Authenticator: redesign approval history and receipt detail | P1 | T-214 | yes | free |
-| T-218 | Authenticator: redesign devices and trusted clients tabs | P1 | T-214 | yes | free |
-| T-219 | Authenticator: settings tab, about and final accessibility polish | P1 | T-214, T-215, T-216, T-217, T-218 | yes | free |
+| T-215 | Authenticator: redesign enrollment into a guided onboarding | P1 | T-214 | yes | scholtz |
+| T-216 | Authenticator: redesign pending approvals and the approval card | P1 | T-214 | yes | scholtz |
+| T-217 | Authenticator: redesign approval history and receipt detail | P1 | T-214 | yes | scholtz |
+| T-218 | Authenticator: redesign devices and trusted clients tabs | P1 | T-214 | yes | scholtz |
+| T-219 | Authenticator: settings tab, about and final accessibility polish | P1 | T-214, T-215, T-216, T-217, T-218 | yes | scholtz |
 
 ## Backlog
 
@@ -31,7 +31,7 @@ Sorted by priority, then ID. The first row is what `/kanban-next` picks.
 
 | ID | Title | Priority | Epic | Parallel | Taken by |
 |---|---|---|---|---|---|
-| T-214 | Authenticator: design system and bottom navigation shell | P1 | Consent & authenticator | yes | free |
+| T-214 | Authenticator: design system and bottom navigation shell | P1 | Consent & authenticator | yes | scholtz |
 
 ## Done
 
