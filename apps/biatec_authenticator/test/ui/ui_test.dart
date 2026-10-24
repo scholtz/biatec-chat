@@ -229,6 +229,11 @@ void main() {
       await pumpWidgetAt(tester, const LoadingSkeleton(), reduceMotion: true);
       await tester.pumpAndSettle();
       expect(tester.hasRunningAnimations, isFalse);
+      // Stopped at full opacity, not dimmed.
+      final fade = tester.widget<FadeTransition>(find.descendant(
+          of: find.byType(LoadingSkeleton),
+          matching: find.byType(FadeTransition)));
+      expect(fade.opacity.value, 1.0);
     });
 
     testWidgets('holds at 3x text', (tester) async {

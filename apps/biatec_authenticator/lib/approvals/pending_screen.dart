@@ -19,6 +19,7 @@ class PendingScreen extends StatefulWidget {
     this.pushes,
     this.onCount,
     this.active,
+    this.backgroundEvery = const Duration(seconds: 30),
   });
 
   final ApprovalServices services;
@@ -27,8 +28,11 @@ class PendingScreen extends StatefulWidget {
   /// Told how many requests are pending each time the list loads (the badge on the Approvals tab).
   final ValueChanged<int>? onCount;
 
-  /// False while another tab is showing: polling pauses, and the list refreshes when it turns true again. A push still refreshes it. Null means always active.
+  /// False while another tab is showing: polling slows to [backgroundEvery] (the Approvals badge still has to notice a request), and the list refreshes when it turns true again. Null means always active.
   final ValueListenable<bool>? active;
+
+  /// Poll interval while [active] is false.
+  final Duration backgroundEvery;
 
   /// Fires when a push announced a new request.
   final Stream<void>? pushes;
@@ -60,19 +64,21 @@ class _PendingScreenState extends State<PendingScreen> {
 
   bool get _isActive => widget.active?.value ?? true;
 
+  /// Something (an approval card opened from a notification, say) is on top of the list.
+  bool get _covered => ModalRoute.of(context)?.isCurrent == false;
+
   void _onActive() {
-    if (_isActive) {
-      _startPolling();
-      _refresh();
-    } else {
-      _poll?.cancel();
-    }
+    _startPolling();
+    if (_isActive && !_covered) _refresh();
   }
 
   void _startPolling() {
     _poll?.cancel();
-    if (!_isActive) return;
-    _poll = Timer.periodic(widget.pollEvery, (_) => _refresh());
+    _poll = Timer.periodic(
+        _isActive ? widget.pollEvery : widget.backgroundEvery, (_) {
+      // Nobody sees the list under a card, and its answer changes nothing there.
+      if (!_covered) _refresh();
+    });
   }
 
   @override
@@ -106,10 +112,15 @@ class _PendingScreenState extends State<PendingScreen> {
       widget.onCount?.call(_requests!.length);
     } on Object catch (e) {
       if (!mounted) return;
+      final now = widget.services.clock();
       setState(() {
         _error = e is ApprovalException ? e.message : '$e';
         _offline = e is ApprovalException && e.offline;
+        // The last known list stays, but a request that has expired meanwhile is gone.
+        _requests = _requests?.where((r) => !r.isExpired(now)).toList();
       });
+      final known = _requests;
+      if (known != null) widget.onCount?.call(known.length);
     } finally {
       _loading = false;
     }

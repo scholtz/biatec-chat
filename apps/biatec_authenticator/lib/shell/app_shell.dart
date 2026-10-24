@@ -40,13 +40,18 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   /// Tabs are built the first time they are shown, so a tab nobody opened makes no requests.
-  final Set<AppTab> _visited = {AppTab.approvals};
+  late final Set<AppTab> _visited = {
+    AppTab.approvals,
+    widget.controller.selected
+  };
 
   @override
   void initState() {
     super.initState();
     // A count left from an earlier shell (the device was re-enrolled) is not this session's.
     widget.controller.pendingCount.value = 0;
+    widget.controller.approvalsActive.value =
+        widget.controller.selected == AppTab.approvals;
     widget.controller.addListener(_onSelect);
     // Once the tab navigators exist, open a card a notification asked for.
     WidgetsBinding.instance

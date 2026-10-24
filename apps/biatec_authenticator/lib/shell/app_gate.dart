@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../approvals/approval_services.dart';
@@ -8,6 +10,7 @@ import '../enrollment/enrollment_state.dart';
 import '../enrollment/oidc_enrollment_client.dart';
 import '../push/push_controller.dart';
 import '../security/settings_controller.dart';
+import '../ui/ui.dart';
 import 'app_shell.dart';
 import 'shell_controller.dart';
 
@@ -21,6 +24,7 @@ class AppGate extends StatefulWidget {
     required this.shell,
     this.push,
     this.enrollment,
+    this.startupTimeout = const Duration(seconds: 8),
   });
 
   final AppConfig config;
@@ -32,28 +36,57 @@ class AppGate extends StatefulWidget {
   /// Injected in tests; built from [approvals] and [config] otherwise.
   final EnrollmentController? enrollment;
 
+  /// How long to wait for the stored enrollment before offering a retry, so a keystore that never answers is not an endless spinner.
+  final Duration startupTimeout;
+
   @override
   State<AppGate> createState() => _AppGateState();
 }
 
+enum _Startup { loading, ready, stuck }
+
 class _AppGateState extends State<AppGate> {
-  late final EnrollmentController _enrollment;
-  late final AppLifecycleListener _lifecycle;
-  bool _ready = false;
+  late EnrollmentController _enrollment;
+  late AppLifecycleListener _lifecycle;
+  Timer? _timeout;
+  _Startup _startup = _Startup.loading;
+  bool _checking = false;
+
+  EnrollmentController _build() => EnrollmentController(
+        keys: widget.approvals.keys,
+        store: widget.approvals.enrollment,
+        client: OidcEnrollmentClient(baseUrl: widget.config.oidcBaseUrl),
+      );
 
   @override
   void initState() {
     super.initState();
-    _enrollment = widget.enrollment ??
-        EnrollmentController(
-          keys: widget.approvals.keys,
-          store: widget.approvals.enrollment,
-          client: OidcEnrollmentClient(baseUrl: widget.config.oidcBaseUrl),
-        );
-    // Coming back to the app is when a delay that ran out becomes visible.
-    _lifecycle = AppLifecycleListener(onResume: _refresh);
+    _enrollment = widget.enrollment ?? _build();
+    // Coming back to the app is when a delay that ran out becomes visible, or a cancelled enrollment is noticed.
+    _lifecycle = AppLifecycleListener(onResume: () async {
+      await _recheck();
+      await _refresh();
+    });
+    // Moving between tabs is the other moment to notice that this device was signed out.
+    widget.shell.addListener(_recheck);
+    _begin();
+  }
+
+  void _retry() {
+    setState(() => _startup = _Startup.loading);
+    _begin();
+  }
+
+  void _begin() {
+    _timeout?.cancel();
+    _timeout = Timer(widget.startupTimeout, () {
+      if (mounted && _startup == _Startup.loading) {
+        setState(() => _startup = _Startup.stuck);
+      }
+    });
     _refresh().whenComplete(() {
-      if (mounted) setState(() => _ready = true);
+      _timeout?.cancel();
+      if (mounted) setState(() => _startup = _Startup.ready);
     });
   }
 
@@ -66,22 +99,58 @@ class _AppGateState extends State<AppGate> {
     }
   }
 
+  /// While the shell shows, looks for the stored enrollment having gone (this device cancelled itself in Devices). The controller would otherwise keep its in-memory record and write it back, so it is replaced by a fresh one, which finds the device not enrolled.
+  Future<void> _recheck() async {
+    if (_checking || _enrollment.state.phase != EnrollmentPhase.active) return;
+    _checking = true;
+    try {
+      final record = await widget.approvals.enrollment.read();
+      if (record != null || !mounted) return;
+      if (_enrollment.state.phase != EnrollmentPhase.active) return;
+      final old = _enrollment;
+      setState(() => _enrollment = _build());
+      await _refresh();
+      // After the frame that stops using it.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!identical(old, widget.enrollment)) old.dispose();
+      });
+    } on Object {
+      // An unreadable store is handled by the next refresh.
+    } finally {
+      _checking = false;
+    }
+  }
+
   @override
   void dispose() {
+    _timeout?.cancel();
     _lifecycle.dispose();
-    if (widget.enrollment == null) _enrollment.dispose();
+    widget.shell.removeListener(_recheck);
+    if (!identical(_enrollment, widget.enrollment)) _enrollment.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_ready) {
-      return Scaffold(
-        body: Center(
-          child: Semantics(
-              label: 'Loading', child: const CircularProgressIndicator()),
-        ),
-      );
+    switch (_startup) {
+      case _Startup.loading:
+        return Scaffold(
+          body: Center(
+            child: Semantics(
+                label: 'Loading', child: const CircularProgressIndicator()),
+          ),
+        );
+      case _Startup.stuck:
+        return Scaffold(
+          body: ErrorState(
+            title: 'Still checking this device',
+            message: 'The secure storage on this device is slow to answer. '
+                'Your enrollment is not lost.',
+            onRetry: _retry,
+          ),
+        );
+      case _Startup.ready:
+        break;
     }
     return ListenableBuilder(
       listenable: _enrollment,

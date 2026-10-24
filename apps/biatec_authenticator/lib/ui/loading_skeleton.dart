@@ -21,7 +21,10 @@ class _LoadingSkeletonState extends State<LoadingSkeleton>
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (MediaQuery.disableAnimationsOf(context)) {
-      _pulse.stop();
+      // Stopped at full opacity, not wherever the pulse was.
+      _pulse
+        ..stop()
+        ..value = 1;
     } else if (!_pulse.isAnimating) {
       _pulse.repeat(reverse: true);
     }

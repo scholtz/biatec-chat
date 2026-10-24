@@ -172,10 +172,7 @@ ThemeData buildTheme(Brightness brightness) {
       indicatorColor: scheme.secondaryContainer,
       labelType: NavigationRailLabelType.all,
     ),
-    listTileTheme: ListTileThemeData(
-      minVerticalPadding: 12,
-      shape: shape,
-    ),
+    listTileTheme: const ListTileThemeData(minVerticalPadding: 12),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         minimumSize: const Size(kMinTapTarget, kMinTapTarget),
@@ -186,11 +183,6 @@ ThemeData buildTheme(Brightness brightness) {
       style: OutlinedButton.styleFrom(
         minimumSize: const Size(kMinTapTarget, kMinTapTarget),
         shape: shape,
-      ),
-    ),
-    textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(
-        minimumSize: const Size(kMinTapTarget, kMinTapTarget),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(

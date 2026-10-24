@@ -59,7 +59,7 @@ void main() {
     await rig.dispose(tester);
   });
 
-  testWidgets('the pending list polls only while the Approvals tab shows',
+  testWidgets('the pending list polls fast on its tab and slowly on the others',
       (tester) async {
     final rig = ShellRig();
     final active = ValueNotifier(true);
@@ -68,6 +68,7 @@ void main() {
         home: PendingScreen(
             services: rig.approvals,
             pollEvery: const Duration(seconds: 5),
+            backgroundEvery: const Duration(seconds: 20),
             active: active,
             onCount: (_) => polls++)));
     await tester.pump();
@@ -81,16 +82,56 @@ void main() {
 
     active.value = false;
     await tester.pump();
-    await tester.pump(const Duration(seconds: 30));
-    expect(polls, first + 1, reason: 'no polling while another tab shows');
+    await tester.pump(const Duration(seconds: 15));
+    await tester.pump();
+    expect(polls, first + 1, reason: 'not at the fast pace on another tab');
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pump();
+    expect(polls, first + 2, reason: 'still often enough to keep the badge');
 
     active.value = true;
     await tester.pump();
     await tester.pump();
-    expect(polls, first + 2, reason: 'refreshes when it shows again');
+    expect(polls, first + 3, reason: 'refreshes when it shows again');
     await tester.pump(const Duration(seconds: 5));
     await tester.pump();
-    expect(polls, first + 3, reason: 'and polls again');
+    expect(polls, first + 4, reason: 'and polls fast again');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a list with a card open on top does not poll or refresh',
+      (tester) async {
+    final rig = ShellRig();
+    final active = ValueNotifier(true);
+    final navigator = GlobalKey<NavigatorState>();
+    var polls = 0;
+    await tester.pumpWidget(MaterialApp(
+        navigatorKey: navigator,
+        home: PendingScreen(
+            services: rig.approvals,
+            pollEvery: const Duration(seconds: 5),
+            active: active,
+            onCount: (_) => polls++)));
+    await tester.pump();
+    await tester.pump();
+    final before = polls;
+    navigator.currentState!.push(MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: Text('a card'))));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 20));
+    expect(polls, before, reason: 'nobody sees the list');
+    // Switching tabs and back with the card still open does not refresh behind it.
+    active.value = false;
+    await tester.pump();
+    active.value = true;
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 20));
+    expect(polls, before);
+    navigator.currentState!.pop();
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(polls, before + 1, reason: 'polls again once the list is back');
     await tester.pumpWidget(const SizedBox());
   });
 
