@@ -8,7 +8,6 @@ import 'package:biatec_authenticator/approvals/history_store.dart';
 import 'package:biatec_authenticator/approvals/pending_screen.dart';
 import 'package:biatec_authenticator/config.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_controller.dart';
-import 'package:biatec_authenticator/enrollment/enrollment_screen.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/shell/app_gate.dart';
 import 'package:biatec_authenticator/shell/shell_controller.dart';
@@ -20,7 +19,7 @@ import 'package:http/testing.dart';
 
 import '../approvals/approval_test.dart' show firstVector;
 import '../settings/support.dart';
-import 'app_shell_test.dart' show ShellRig, inBar;
+import 'app_shell_test.dart' show ShellRig;
 
 /// A controller whose first refresh never answers until [release] is called.
 class _SlowEnrollment extends EnrollmentController {
@@ -76,27 +75,6 @@ void main() {
       await tester.pump();
       expect(find.byType(NavigationBar), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
-    });
-
-    testWidgets(
-        'a device that cancelled itself goes back to enrollment and is not written back',
-        (tester) async {
-      final rig = ShellRig();
-      await rig.pump(tester);
-      expect(find.byType(NavigationBar), findsOneWidget);
-
-      // What Devices does when this device cancels its own enrollment.
-      await rig.settings.enrollment.clear();
-      await tester.tap(inBar('History'));
-      await tester.pump();
-      await tester.pump();
-      await tester.pump();
-
-      expect(find.byType(EnrollmentScreen), findsOneWidget);
-      expect(find.byType(NavigationBar), findsNothing);
-      expect(await rig.settings.enrollment.read(), isNull,
-          reason: 'the cancelled record must not come back');
-      await rig.dispose(tester);
     });
 
     testWidgets(

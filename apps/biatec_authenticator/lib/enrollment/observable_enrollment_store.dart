@@ -10,6 +10,10 @@ class ObservableEnrollmentStore extends ChangeNotifier
 
   final EnrollmentStore _inner;
 
+  /// How many times the enrollment was deliberately cleared. A record that is merely missing (an enrollment kept in memory after a failed write) is not a clear.
+  int get clearCount => _clearCount;
+  int _clearCount = 0;
+
   @override
   Future<EnrollmentRecord?> read() => _inner.read();
 
@@ -22,6 +26,7 @@ class ObservableEnrollmentStore extends ChangeNotifier
   @override
   Future<void> clear() async {
     await _inner.clear();
+    _clearCount++;
     notifyListeners();
   }
 

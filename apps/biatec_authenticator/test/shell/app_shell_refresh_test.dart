@@ -10,6 +10,7 @@ import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:biatec_authenticator/main.dart';
+import 'package:biatec_authenticator/push/push_controller.dart';
 import 'package:biatec_authenticator/shell/shell_controller.dart';
 import 'package:biatec_authenticator/ui/ui.dart';
 import 'package:flutter/material.dart';
@@ -45,9 +46,30 @@ class _SlowStore extends MemoryEnrollmentStore {
   }
 }
 
+/// Counts registrations asked for outside navigation events.
+class _CountingPush extends PushController {
+  _CountingPush(ShellRig rig)
+      : super(
+          enrollment: rig.approvals.enrollment,
+          client: rig.approvals.client,
+          onOpenRequest: (_) {},
+        );
+
+  int gateCalls = 0;
+
+  @override
+  Future<void> registerIfEnrolled([String? token]) {
+    gateCalls++;
+    return super.registerIfEnrolled(token);
+  }
+}
+
 void main() {
-  testWidgets('a tab loads afresh each time it is shown', (tester) async {
+  testWidgets('a tab left for a while loads afresh when shown again',
+      (tester) async {
     final rig = ShellRig();
+    var now = DateTime.utc(2026, 10, 24, 12);
+    rig.shell.clock = () => now;
     final history = rig.approvals.history as MemoryHistoryStore;
     await rig.pump(tester);
     await tester.tap(inBar('History'));
@@ -58,10 +80,28 @@ void main() {
     await tester.tap(inBar('Approvals'));
     await tester.pump(const Duration(seconds: 1));
     await history.add(_entry('ciba_new'));
+    now = now.add(ShellController.reloadAfter);
     await tester.tap(inBar('History'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('history-ciba_new')), findsOneWidget);
     expect(find.byType(HistoryScreen), findsOneWidget);
+    await rig.dispose(tester);
+  });
+
+  testWidgets('a quick switch keeps the tab as it was', (tester) async {
+    final rig = ShellRig();
+    var now = DateTime.utc(2026, 10, 24, 12);
+    rig.shell.clock = () => now;
+    await rig.pump(tester);
+    await tester.tap(inBar('History'));
+    await tester.pumpAndSettle();
+    final generation = rig.shell.reloads[AppTab.history]!.value;
+    await tester.tap(inBar('Approvals'));
+    await tester.pump(const Duration(seconds: 1));
+    now = now.add(const Duration(seconds: 5));
+    await tester.tap(inBar('History'));
+    await tester.pumpAndSettle();
+    expect(rig.shell.reloads[AppTab.history]!.value, generation);
     await rig.dispose(tester);
   });
 
@@ -102,6 +142,35 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     expect(rig.shell.requestsChanged.value, before + 1);
     await rig.dispose(tester);
+  });
+
+  testWidgets(
+      'the badge keeps counting while a card is open and another tab shows',
+      (tester) async {
+    final rig = ShellRig();
+    final active = ValueNotifier(true);
+    final navigator = GlobalKey<NavigatorState>();
+    var polls = 0;
+    await tester.pumpWidget(MaterialApp(
+        navigatorKey: navigator,
+        home: PendingScreen(
+            services: rig.approvals,
+            pollEvery: const Duration(seconds: 5),
+            backgroundEvery: const Duration(seconds: 20),
+            active: active,
+            onCount: (_) => polls++)));
+    await tester.pump();
+    await tester.pump();
+    navigator.currentState!.push(MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: Text('a card'))));
+    await tester.pumpAndSettle();
+    active.value = false;
+    await tester.pump();
+    final before = polls;
+    await tester.pump(const Duration(seconds: 21));
+    await tester.pump();
+    expect(polls, before + 1);
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('a refresh signal makes the list load again', (tester) async {
@@ -158,6 +227,26 @@ void main() {
     await tester.pump();
     expect(find.byType(EnrollmentScreen), findsOneWidget);
     expect(await inner.read(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('push is registered when the device becomes active',
+      (tester) async {
+    final rig = ShellRig();
+    final push = _CountingPush(rig);
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(AuthenticatorApp(
+      config: AppConfig.resolve(''),
+      approvals: rig.approvals,
+      settings: rig.settings.services,
+      shell: rig.shell,
+      push: push,
+    ));
+    await tester.pump();
+    await tester.pump();
+    expect(push.gateCalls, greaterThanOrEqualTo(1));
     await tester.pumpWidget(const SizedBox());
   });
 

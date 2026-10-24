@@ -69,6 +69,11 @@ class ShellController extends ChangeNotifier {
   /// False once the app is known to end in enrollment rather than the shell: a tapped notification is then not kept.
   bool canQueue = true;
 
+  /// A tab not shown for this long loads afresh when it is shown again; a quick switch keeps scroll position and typing.
+  static const reloadAfter = Duration(seconds: 30);
+  final Map<AppTab, DateTime> _leftAt = {};
+  bool _disposed = false;
+
   /// A card to open once the shell exists: a notification that started the app is tapped before the enrollment check has finished. Only the latest is kept, and only for [queuedOpenTtl].
   (ApprovalServices, String, DateTime)? _queuedOpen;
 
@@ -76,7 +81,14 @@ class ShellController extends ChangeNotifier {
   DateTime Function() clock = DateTime.now;
 
   void _show(AppTab tab) {
-    if (tab != AppTab.approvals) reloads[tab]!.value++;
+    final now = clock();
+    _leftAt[_selected] = now;
+    final left = _leftAt[tab];
+    if (tab != AppTab.approvals &&
+        left != null &&
+        now.difference(left) >= reloadAfter) {
+      reloads[tab]!.value++;
+    }
     _selected = tab;
     approvalsActive.value = tab == AppTab.approvals;
     notifyListeners();
@@ -105,13 +117,14 @@ class ShellController extends ChangeNotifier {
       return;
     }
     _show(AppTab.approvals);
-    navigator
-        .push(ApprovalScreen.route(services, authReqId))
-        .whenComplete(() => requestsChanged.value++);
+    navigator.push(ApprovalScreen.route(services, authReqId)).whenComplete(() {
+      if (!_disposed) requestsChanged.value++;
+    });
   }
 
   /// Called by the shell once it is on screen: opens a card that was asked for before.
   void openQueued() {
+    if (_disposed) return;
     final queued = _queuedOpen;
     if (queued == null) return;
     _queuedOpen = null;
@@ -124,6 +137,7 @@ class ShellController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     pendingCount.dispose();
     approvalsActive.dispose();
     requestsChanged.dispose();

@@ -14,6 +14,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'app_shell_test.dart' show ShellRig;
 
+final _active = EnrollmentRecord(
+    kid: 'dev-1',
+    deviceToken: 'dev-token',
+    activeAt: DateTime.utc(2020),
+    attestation: 'att',
+    recoveryCodeShown: true);
+
 /// A store that cannot be read until [broken] is cleared.
 class _BrokenStore extends MemoryEnrollmentStore {
   bool broken = true;
@@ -63,6 +70,7 @@ void main() {
 
       // Devices cancelling this device clears the store; no tab change follows.
       await store.clear();
+      expect(store.clearCount, 1);
       await tester.pump();
       await tester.pump();
       await tester.pump();
@@ -97,6 +105,30 @@ void main() {
     });
   });
 
+  testWidgets(
+      'an enrollment kept in memory after a failed write is not mistaken for a sign-out',
+      (tester) async {
+    final rig = ShellRig();
+    final inner = MemoryEnrollmentStore();
+    await inner.write(_active);
+    final store = ObservableEnrollmentStore(inner);
+    await _pumpApp(tester, rig, _servicesWith(rig, store));
+    expect(find.byType(NavigationBar), findsOneWidget);
+
+    // The stored copy is gone without anyone clearing it (a write that never landed).
+    await inner.clear();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byType(EnrollmentScreen), findsNothing);
+    expect((await inner.read())?.kid, 'dev-1',
+        reason: 'the controller wrote its record back');
+    await tester.pumpWidget(const SizedBox());
+  });
+
   group('ObservableEnrollmentStore', () {
     test('tells listeners about writes and clears, and passes the rest through',
         () async {
@@ -115,6 +147,7 @@ void main() {
       expect(n, 1, reason: 'aliases are not the enrollment');
       await store.clear();
       expect(n, 2);
+      expect(store.clearCount, 1);
       expect(await store.read(), isNull);
       store.dispose();
     });

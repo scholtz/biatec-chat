@@ -81,8 +81,8 @@ class _PendingScreenState extends State<PendingScreen> {
     _poll?.cancel();
     _poll = Timer.periodic(
         _isActive ? widget.pollEvery : widget.backgroundEvery, (_) {
-      // Nobody sees the list under a card, and its answer changes nothing there.
-      if (!_covered) _refresh();
+      // Nobody sees the list under a card while its tab shows; from another tab the badge still counts it.
+      if (!(_isActive && _covered)) _refresh();
     });
   }
 
