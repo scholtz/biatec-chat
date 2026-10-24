@@ -64,7 +64,7 @@ class _PendingScreenState extends State<PendingScreen> {
     _startPolling();
     _pushSub = widget.pushes?.listen((_) => _refresh());
     widget.active?.addListener(_onActive);
-    widget.refreshOn?.addListener(_refresh);
+    widget.refreshOn?.addListener(_onRefreshSignal);
   }
 
   /// A failing listener is that listener's problem, not a failed load.
@@ -74,6 +74,11 @@ class _PendingScreenState extends State<PendingScreen> {
     } on Object {
       // Ignored on purpose.
     }
+  }
+
+  /// A card that covers the list asks for nothing; the list loads when the card closes.
+  void _onRefreshSignal() {
+    if (!_covered) _refresh();
   }
 
   bool get _isActive => widget.active?.value ?? true;
@@ -98,7 +103,7 @@ class _PendingScreenState extends State<PendingScreen> {
   @override
   void dispose() {
     widget.active?.removeListener(_onActive);
-    widget.refreshOn?.removeListener(_refresh);
+    widget.refreshOn?.removeListener(_onRefreshSignal);
     _poll?.cancel();
     _pushSub?.cancel();
     super.dispose();

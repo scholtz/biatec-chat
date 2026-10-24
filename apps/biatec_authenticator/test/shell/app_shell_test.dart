@@ -272,6 +272,30 @@ void main() {
       await rig.dispose(tester);
     });
 
+    testWidgets(
+        'the notice opens the code screen once, however often it is tapped',
+        (tester) async {
+      final rig = ShellRig();
+      await rig.settings.enrollment.write(EnrollmentRecord(
+          kid: 'dev-1',
+          deviceToken: FakeSettingsOidc.token,
+          activeAt: DateTime.utc(2020),
+          attestation: 'att'));
+      await rig.pump(tester);
+      await tester.tap(find.text('Show code'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(find.text('Show code'), warnIfMissed: false);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      final nav = rig.shell.navigators[AppTab.approvals]!.currentState!;
+      nav.pop();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(nav.canPop(), isFalse, reason: 'one screen was opened, not two');
+      await rig.dispose(tester);
+    });
+
     testWidgets('a device that saved it has no notice', (tester) async {
       final rig = ShellRig();
       await rig.pump(tester);
@@ -337,6 +361,22 @@ void main() {
     await tall.pump(tester, size: Size(1000, railHeightNeeded(3) + 20));
     expect(find.byType(NavigationRail), findsOneWidget);
     await tall.dispose(tester);
+  });
+
+  testWidgets('the bar grows with the text so its labels fit', (tester) async {
+    final rig = ShellRig();
+    await rig.pump(tester, size: const Size(400, 900));
+    final normal = tester.getSize(find.byType(NavigationBar)).height;
+    await rig.dispose(tester);
+
+    final large = ShellRig();
+    tester.platformDispatcher.textScaleFactorTestValue = 3.0;
+    addTearDown(tester.platformDispatcher.clearAllTestValues);
+    await large.pump(tester, size: const Size(400, 900));
+    final big = tester.getSize(find.byType(NavigationBar)).height;
+    expect(big, greaterThan(normal));
+    expect(tester.takeException(), isNull);
+    await large.dispose(tester);
   });
 
   testWidgets('a new shell after the old one went starts on Approvals',

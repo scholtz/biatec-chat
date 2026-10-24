@@ -111,7 +111,7 @@ class ShellController extends ChangeNotifier {
   DateTime? _pausedAt;
 
   /// The app went to the background.
-  void appPaused() => _pausedAt = clock();
+  void appPaused() => _pausedAt ??= clock();
 
   /// The app came back. A tab that has been away for a while loads afresh, and the list of requests is asked again: what it showed may be hours old.
   void appResumed() {

@@ -208,6 +208,8 @@ class _AppShellState extends State<AppShell> {
         bottomNavigationBar: wide || typing
             ? null
             : NavigationBar(
+                // Labels grow with the text, so the bar does too.
+                height: math.max(72, 56 + 18 * textScale),
                 selectedIndex: index,
                 onDestinationSelected: (i) => c.select(AppTab.values[i]),
                 destinations: [

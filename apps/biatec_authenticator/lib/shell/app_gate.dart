@@ -87,6 +87,8 @@ class _AppGateState extends State<AppGate> {
     _enrollment = widget.enrollment ?? _build();
     // Coming back to the app is when a delay that ran out becomes visible, or a cancelled enrollment is noticed.
     _lifecycle = AppLifecycleListener(
+      // Hidden comes first on desktop and Android; paused on iOS. Either marks the start of a break.
+      onHide: widget.shell.appPaused,
       onPause: widget.shell.appPaused,
       onResume: () async {
         widget.shell.appResumed();
@@ -128,6 +130,8 @@ class _AppGateState extends State<AppGate> {
   void _onPhase() {
     final active = _usable;
     if (_enrollment.state.phase == EnrollmentPhase.active) _closeRecoveryCode();
+    // The shell (and the screen inside it) is gone when the device is no longer usable.
+    if (!active) _recoveryRoute = null;
     // Enrolling is a swap of widgets, not a navigation, so registering for push is asked for here, once per activation.
     if (active && !_wasActive) widget.push?.registerIfEnrolled();
     _wasActive = active;
@@ -189,11 +193,15 @@ class _AppGateState extends State<AppGate> {
   }
 
   Future<void> _recheckLoop() async {
-    do {
-      _checkAgain = false;
-      await _doRecheck();
-    } while (_checkAgain && mounted);
-    _check = null;
+    try {
+      do {
+        _checkAgain = false;
+        await _doRecheck();
+      } while (_checkAgain && mounted);
+    } finally {
+      // Whatever happened, the next request starts a new check.
+      _check = null;
+    }
   }
 
   Future<void> _doRecheck() async {
@@ -296,6 +304,8 @@ class _AppGateState extends State<AppGate> {
   Route<void>? _recoveryRoute;
 
   void _showRecoveryCode() {
+    // The banner stays tappable while the screen is open: one screen at a time.
+    if (_recoveryRoute?.isActive ?? false) return;
     final navigator = widget.shell.navigators[AppTab.approvals]?.currentState;
     if (navigator == null) return;
     // Inside the tab, so the bar stays and a tapped notification still lands where the user is.
