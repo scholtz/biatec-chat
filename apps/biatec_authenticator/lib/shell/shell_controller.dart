@@ -135,6 +135,8 @@ class ShellController extends ChangeNotifier {
     if (_disposed) return;
     final queued = _queuedOpen;
     if (queued == null) return;
+    // Still no shell: it stays queued with its original time, so it can expire.
+    if (navigators[AppTab.approvals]?.currentState == null) return;
     _queuedOpen = null;
     if (clock().difference(queued.$3) > queuedOpenTtl) return;
     openApproval(queued.$1, queued.$2);

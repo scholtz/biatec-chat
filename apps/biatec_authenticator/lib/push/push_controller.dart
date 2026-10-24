@@ -80,6 +80,9 @@ class PushController extends NavigatorObserver {
         : null;
   }
 
+  /// Forgets the approval cards on screen, for a shell that was taken down with them still open (a sign-out), which delivers no pop.
+  void clearOpenRequests() => _openRequests.clear();
+
   // Every navigation (for example back from enrollment) is also a chance to
   // register a device that was not enrolled before, or was re-enrolled.
   @override

@@ -113,8 +113,16 @@ class _PendingScreenState extends State<PendingScreen> {
     try {
       final record = await widget.services.enrollment.read();
       if (record == null) {
-        throw const ApprovalException(
-            'Enroll this device to receive requests.');
+        // Signed out: nothing is pending for this device any more.
+        if (mounted) {
+          setState(() {
+            _requests = const [];
+            _error = 'Enroll this device to receive requests.';
+            _offline = false;
+          });
+          _tell(0);
+        }
+        return;
       }
       final list = await widget.services.client.pending(record.deviceToken);
       final now = widget.services.clock();

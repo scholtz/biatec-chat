@@ -69,6 +69,14 @@ class EnrollmentController extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _discarded = false;
+
+  /// This device signed itself out (its stored enrollment was cleared on purpose). The record held in memory is dropped and is not written back by a refresh that was already running, which would bring the cancelled enrollment back.
+  void discardHeldRecord() {
+    _discarded = true;
+    _state = EnrollmentState.notEnrolled;
+  }
+
   /// Restores the persisted state. Call at startup and on a timer or resume
   /// so the inactive state turns active once the delay has passed.
   Future<void> refresh() async {
@@ -83,7 +91,7 @@ class EnrollmentController extends ChangeNotifier {
       record = null; // an unreadable record counts as not enrolled
     }
     if (record == null) {
-      final held = _state.record;
+      final held = _discarded ? null : _state.record;
       if (held != null) {
         // Enrolled in this session but the write failed earlier: try again.
         var saved = true;
@@ -100,6 +108,7 @@ class EnrollmentController extends ChangeNotifier {
       if (p != EnrollmentPhase.failed) _set(EnrollmentState.notEnrolled);
       return;
     }
+    _discarded = false;
     _set(EnrollmentState.fromRecord(record, _clock()));
     await _ensureRecoveryCode();
     await _loadKeyLevel(record.kid);

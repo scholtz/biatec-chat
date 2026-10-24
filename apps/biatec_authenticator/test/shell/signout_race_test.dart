@@ -1,0 +1,158 @@
+import 'dart:async';
+
+import 'package:biatec_authenticator/approvals/approval_screen.dart';
+import 'package:biatec_authenticator/approvals/pending_screen.dart';
+import 'package:biatec_authenticator/enrollment/enrollment_controller.dart';
+import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
+import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
+import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
+import 'package:biatec_authenticator/push/push_controller.dart';
+import 'package:biatec_authenticator/push/push_transport.dart';
+import 'package:biatec_authenticator/shell/shell_controller.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import '../approvals/support.dart';
+import 'app_shell_test.dart' show ShellRig;
+
+final _record = EnrollmentRecord(
+    kid: 'dev-1',
+    deviceToken: 'dev-token',
+    activeAt: DateTime.utc(2020),
+    attestation: 'att',
+    recoveryCodeShown: true);
+
+class _Transport implements PushTransport {
+  final openedC = StreamController<Map<String, Object?>>.broadcast();
+  @override
+  String get provider => 'fcm';
+  @override
+  Future<String?> token() async => null;
+  @override
+  Stream<String> get tokenRefreshes => const Stream.empty();
+  @override
+  Stream<Map<String, Object?>> get received => const Stream.empty();
+  @override
+  Stream<Map<String, Object?>> get opened => openedC.stream;
+  @override
+  Future<Map<String, Object?>?> launchPayload() async => null;
+}
+
+EnrollmentController _controller(EnrollmentStore store) => EnrollmentController(
+      keys: SoftwareKeyStore(deviceTestKey()),
+      store: store,
+      client: OidcEnrollmentClient(baseUrl: 'http://oidc.test'),
+    );
+
+void main() {
+  test('a record dropped on sign-out is not written back by a refresh',
+      () async {
+    final store = MemoryEnrollmentStore();
+    await store.write(_record);
+    final c = _controller(store);
+    await c.refresh();
+    expect(c.state.phase, EnrollmentPhase.active);
+
+    await store.clear();
+    c.discardHeldRecord();
+    await c.refresh();
+    expect(await store.read(), isNull);
+    expect(c.state.phase, EnrollmentPhase.notEnrolled);
+
+    // A new enrollment in the store is picked up again.
+    await store.write(_record);
+    await c.refresh();
+    expect(c.state.phase, EnrollmentPhase.active);
+    c.dispose();
+  });
+
+  test('without a discard a missing record is still written back, as before',
+      () async {
+    final store = MemoryEnrollmentStore();
+    await store.write(_record);
+    final c = _controller(store);
+    await c.refresh();
+    await store.clear();
+    await c.refresh();
+    expect((await store.read())?.kid, 'dev-1');
+    c.dispose();
+  });
+
+  testWidgets('a queue that finds no shell keeps its original time',
+      (tester) async {
+    final rig = ShellRig();
+    var now = DateTime.utc(2026, 10, 24, 12);
+    rig.shell.clock = () => now;
+    rig.shell.openApproval(rig.approvals, rig.requestId);
+    now = now.add(const Duration(minutes: 1));
+    rig.shell.openQueued(); // no shell yet: stays queued, at its first time
+    now = now.add(const Duration(minutes: 1, seconds: 30));
+    await rig.pump(tester);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(ApprovalScreen), findsNothing,
+        reason: 'it waited longer than the time to live in all');
+    await rig.dispose(tester);
+  });
+
+  testWidgets('the list and badge empty when the device is signed out',
+      (tester) async {
+    final rig = ShellRig();
+    final signal = ValueNotifier(0);
+    final counts = <int>[];
+    await tester.pumpWidget(MaterialApp(
+        home: PendingScreen(
+            services: rig.approvals,
+            pollEvery: const Duration(hours: 1),
+            refreshOn: signal,
+            onCount: counts.add)));
+    await tester.pump();
+    await tester.pump();
+    expect(counts, [1]);
+
+    await rig.settings.enrollment.clear();
+    signal.value++;
+    await tester.pump();
+    await tester.pump();
+    expect(counts.last, 0);
+    expect(find.byKey(const Key('pending-error')), findsOneWidget);
+    expect(find.byKey(Key('pending-${rig.requestId}')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('cards that went away with their shell can be opened again',
+      (tester) async {
+    final rig = ShellRig();
+    final opened = <String>[];
+    final push = PushController(
+      enrollment: rig.approvals.enrollment,
+      client: rig.approvals.client,
+      onOpenRequest: opened.add,
+    );
+    final transport = _Transport();
+    await push.start(transport);
+    // A card is on screen: a second tap for it is ignored.
+    push.didPush(
+        MaterialPageRoute<void>(
+            settings:
+                RouteSettings(name: '${ApprovalScreen.routePrefix}ciba_x'),
+            builder: (_) => const SizedBox()),
+        null);
+    transport.openedC.add({'auth_req_id': 'ciba_x'});
+    await tester.pump();
+    expect(opened, isEmpty);
+
+    // Its shell is taken down with the card still open: no pop was delivered.
+    push.clearOpenRequests();
+    transport.openedC.add({'auth_req_id': 'ciba_x'});
+    await tester.pump();
+    expect(opened, ['ciba_x']);
+    unawaited(push.dispose());
+  });
+
+  test('a shell that is gone starts the next one on Approvals', () {
+    final c = ShellController()..select(AppTab.clients);
+    c.reset();
+    expect(c.selected, AppTab.approvals);
+    c.dispose();
+  });
+}

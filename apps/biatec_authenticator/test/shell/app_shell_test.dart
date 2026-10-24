@@ -251,7 +251,7 @@ void main() {
     });
 
     testWidgets(
-        'an enrolled device that must still save its recovery code stays in enrollment',
+        'a device that has not saved its recovery code is usable, with a notice that opens the code',
         (tester) async {
       final rig = ShellRig();
       await rig.settings.enrollment.write(EnrollmentRecord(
@@ -260,8 +260,22 @@ void main() {
           activeAt: DateTime.utc(2020),
           attestation: 'att'));
       await rig.pump(tester);
+      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byType(PendingScreen), findsOneWidget);
+      expect(find.text('Save your recovery code'), findsOneWidget);
+
+      await tester.tap(find.text('Show code'));
+      // The code is being fetched, so a spinner runs and the tree never settles.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       expect(find.byType(EnrollmentScreen), findsOneWidget);
-      expect(find.byType(NavigationBar), findsNothing);
+      await rig.dispose(tester);
+    });
+
+    testWidgets('a device that saved it has no notice', (tester) async {
+      final rig = ShellRig();
+      await rig.pump(tester);
+      expect(find.text('Save your recovery code'), findsNothing);
       await rig.dispose(tester);
     });
   });

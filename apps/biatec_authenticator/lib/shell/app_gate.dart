@@ -11,6 +11,7 @@ import '../enrollment/observable_enrollment_store.dart';
 import '../enrollment/oidc_enrollment_client.dart';
 import '../push/push_controller.dart';
 import '../security/settings_controller.dart';
+import '../theme.dart';
 import '../ui/ui.dart';
 import 'app_shell.dart';
 import 'shell_controller.dart';
@@ -115,8 +116,13 @@ class _AppGateState extends State<AppGate> {
   }
 
   /// A launch that ends in enrollment must not keep a tapped notification for later, and one that will show the shell must.
+  /// The device is enrolled and past its activation delay: the app is usable (a recovery code not yet saved is a notice, not a lock).
+  bool get _usable =>
+      _enrollment.state.phase == EnrollmentPhase.active ||
+      _enrollment.state.phase == EnrollmentPhase.activeRecoveryPending;
+
   void _onPhase() {
-    final active = _enrollment.state.phase == EnrollmentPhase.active;
+    final active = _usable;
     // Enrolling is a swap of widgets, not a navigation, so registering for push is asked for here, once per activation.
     if (active && !_wasActive) widget.push?.registerIfEnrolled();
     _wasActive = active;
@@ -190,17 +196,22 @@ class _AppGateState extends State<AppGate> {
     // Only a deliberate clear signs the device out; a record that is merely missing may be an enrollment kept in memory.
     final clears = store?.clearCount;
     if (store == null || clears == _clearsSeen) return;
-    if (_enrollment.state.phase != EnrollmentPhase.active) {
+    if (!_usable) {
       _clearsSeen = clears!;
       return;
     }
+    // Before the read: a refresh that is already running must not put the record back.
+    _enrollment.discardHeldRecord();
     try {
       final record = await widget.approvals.enrollment.read();
       if (!mounted) return;
       // Dealt with: a read that failed is tried again at the next notification or resume.
       _clearsSeen = clears!;
-      if (record != null) return;
-      if (_enrollment.state.phase != EnrollmentPhase.active) return;
+      if (record != null) {
+        // Cleared and enrolled again meanwhile: the controller learns what is stored.
+        await _refresh();
+        return;
+      }
       final old = _enrollment..removeListener(_onPhase);
       setState(() => _enrollment = _build()..addListener(_onPhase));
       await _refresh();
@@ -209,7 +220,7 @@ class _AppGateState extends State<AppGate> {
         if (!identical(old, widget.enrollment)) old.dispose();
       });
     } on Object {
-      // The same clear is looked at again next time.
+      // The same clear is looked at again next time (the held record stays dropped).
     }
   }
 
@@ -258,16 +269,45 @@ class _AppGateState extends State<AppGate> {
     return ListenableBuilder(
       listenable: _enrollment,
       builder: (context, _) {
-        if (_enrollment.state.phase == EnrollmentPhase.active) {
+        if (_usable) {
           return AppShell(
             config: widget.config,
             approvals: widget.approvals,
             settings: widget.settings,
             controller: widget.shell,
             push: widget.push,
+            banner: _recoveryNotice(),
           );
         }
         return EnrollmentScreen(config: widget.config, controller: _enrollment);
+      },
+    );
+  }
+
+  /// Shown above every tab while the recovery code has not been saved. It opens the enrollment screen, which shows the code once.
+  Widget? _recoveryNotice() {
+    return ListenableBuilder(
+      listenable: _enrollment,
+      builder: (context, _) {
+        if (_enrollment.state.phase != EnrollmentPhase.activeRecoveryPending) {
+          return const SizedBox.shrink();
+        }
+        return Padding(
+          padding: const EdgeInsets.all(AppSpacing.s),
+          child: StatusBanner(
+            severity: StatusSeverity.warning,
+            title: 'Save your recovery code',
+            message: 'It is shown once and lets you replace this device '
+                'if it is lost.',
+            actionLabel: 'Show code',
+            onAction: () => Navigator.of(context, rootNavigator: true).push(
+              MaterialPageRoute<void>(
+                builder: (_) => EnrollmentScreen(
+                    config: widget.config, controller: _enrollment),
+              ),
+            ),
+          ),
+        );
       },
     );
   }

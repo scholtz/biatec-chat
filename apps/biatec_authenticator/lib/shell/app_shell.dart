@@ -35,6 +35,7 @@ class AppShell extends StatefulWidget {
     required this.settings,
     required this.controller,
     this.push,
+    this.banner,
   });
 
   final AppConfig config;
@@ -44,6 +45,9 @@ class AppShell extends StatefulWidget {
 
   /// Null when push is not configured; the pending list then polls only.
   final PushController? push;
+
+  /// A notice shown above every tab (for example that the recovery code has not been saved), or null.
+  final Widget? banner;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -84,6 +88,7 @@ class _AppShellState extends State<AppShell> {
     widget.controller.removeListener(_onSelect);
     // The next shell (after a sign-out and a new enrollment) starts on Approvals.
     widget.controller.reset();
+    widget.push?.clearOpenRequests();
     super.dispose();
   }
 
@@ -160,14 +165,18 @@ class _AppShellState extends State<AppShell> {
       ],
     );
     // A build pointed at the mock Biatec OIDC says so on every screen.
-    final body = widget.config.isMock
-        ? Column(children: [
-            SafeArea(bottom: false, child: _MockNotice(config: widget.config)),
+    final header = [
+      if (widget.config.isMock) _MockNotice(config: widget.config),
+      if (widget.banner != null) widget.banner!,
+    ];
+    final body = header.isEmpty
+        ? tabs
+        : Column(children: [
+            SafeArea(bottom: false, child: Column(children: header)),
             Expanded(
                 child: MediaQuery.removePadding(
                     context: context, removeTop: true, child: tabs)),
-          ])
-        : tabs;
+          ]);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
