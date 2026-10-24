@@ -58,6 +58,17 @@ class ShellController extends ChangeNotifier {
   /// Whether the Approvals tab is the one showing. The pending list polls only while it is.
   final ValueNotifier<bool> approvalsActive = ValueNotifier(true);
 
+  /// Bumped when a tab is shown, so its first screen loads afresh instead of showing what it read on the first visit. The Approvals tab refreshes itself.
+  final Map<AppTab, ValueNotifier<int>> reloads = {
+    for (final tab in AppTab.values) tab: ValueNotifier(0),
+  };
+
+  /// Bumped when a card opened from outside the list (a tapped notification) closes, so the list does not show a request that was just decided.
+  final ValueNotifier<int> requestsChanged = ValueNotifier(0);
+
+  /// False once the app is known to end in enrollment rather than the shell: a tapped notification is then not kept.
+  bool canQueue = true;
+
   /// A card to open once the shell exists: a notification that started the app is tapped before the enrollment check has finished. Only the latest is kept, and only for [queuedOpenTtl].
   (ApprovalServices, String, DateTime)? _queuedOpen;
 
@@ -65,6 +76,7 @@ class ShellController extends ChangeNotifier {
   DateTime Function() clock = DateTime.now;
 
   void _show(AppTab tab) {
+    if (tab != AppTab.approvals) reloads[tab]!.value++;
     _selected = tab;
     approvalsActive.value = tab == AppTab.approvals;
     notifyListeners();
@@ -89,11 +101,13 @@ class ShellController extends ChangeNotifier {
   void openApproval(ApprovalServices services, String authReqId) {
     final navigator = navigators[AppTab.approvals]?.currentState;
     if (navigator == null) {
-      _queuedOpen = (services, authReqId, clock());
+      if (canQueue) _queuedOpen = (services, authReqId, clock());
       return;
     }
     _show(AppTab.approvals);
-    navigator.push(ApprovalScreen.route(services, authReqId));
+    navigator
+        .push(ApprovalScreen.route(services, authReqId))
+        .whenComplete(() => requestsChanged.value++);
   }
 
   /// Called by the shell once it is on screen: opens a card that was asked for before.
@@ -112,6 +126,10 @@ class ShellController extends ChangeNotifier {
   void dispose() {
     pendingCount.dispose();
     approvalsActive.dispose();
+    requestsChanged.dispose();
+    for (final n in reloads.values) {
+      n.dispose();
+    }
     super.dispose();
   }
 }

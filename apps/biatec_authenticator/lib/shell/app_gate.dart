@@ -52,8 +52,12 @@ class _AppGateState extends State<AppGate> {
   Timer? _timeout;
   _Startup _startup = _Startup.loading;
 
-  /// The check for a signed-out device that is running, so a second request waits for it instead of skipping it.
+  /// The check for a signed-out device that is running. A request that comes in meanwhile makes it run once more when it ends, so a sign-out after its read started is still seen.
   Future<void>? _check;
+  bool _checkAgain = false;
+
+  /// Counts start-ups (the first and each retry), so a slow earlier one cannot cancel or finish a later one.
+  int _attempt = 0;
 
   /// The store, when it announces changes (see [ObservableEnrollmentStore]).
   Listenable? get _storeChanges {
@@ -78,7 +82,8 @@ class _AppGateState extends State<AppGate> {
     });
     // The store says when the enrollment goes (this device cancelled itself in Devices); a tab change is the fallback for a store that does not.
     _storeChanges?.addListener(_recheck);
-    widget.shell.addListener(_recheck);
+    if (_storeChanges == null) widget.shell.addListener(_recheck);
+    _enrollment.addListener(_onPhase);
     _begin();
   }
 
@@ -88,32 +93,40 @@ class _AppGateState extends State<AppGate> {
   }
 
   void _begin() {
+    final attempt = ++_attempt;
     _timeout?.cancel();
     _timeout = Timer(widget.startupTimeout, () {
-      if (mounted && _startup == _Startup.loading) {
+      if (mounted && attempt == _attempt && _startup == _Startup.loading) {
         setState(() => _startup = _Startup.stuck);
       }
     });
-    _open().whenComplete(() {
-      _timeout?.cancel();
+    _open(attempt).whenComplete(() {
+      if (attempt == _attempt) _timeout?.cancel();
     });
   }
 
+  /// A launch that ends in enrollment must not keep a tapped notification for later, and one that will show the shell must.
+  void _onPhase() {
+    if (_startup != _Startup.ready) return;
+    final active = _enrollment.state.phase == EnrollmentPhase.active;
+    widget.shell.canQueue = active;
+    if (!active) widget.shell.dropQueuedOpen();
+  }
+
   /// Reads the stored enrollment once before deciding what to show. A read that fails is not "not enrolled": the user gets a retry instead of the enrollment flow, which would replace a valid enrollment.
-  Future<void> _open() async {
+  Future<void> _open(int attempt) async {
     try {
       await widget.approvals.enrollment.read();
     } on Object {
-      if (mounted) setState(() => _startup = _Startup.unreadable);
+      if (mounted && attempt == _attempt) {
+        setState(() => _startup = _Startup.unreadable);
+      }
       return;
     }
     await _refresh();
-    if (!mounted) return;
-    // A tapped notification waits for the shell; without one it must not outlive this launch.
-    if (_enrollment.state.phase != EnrollmentPhase.active) {
-      widget.shell.dropQueuedOpen();
-    }
+    if (!mounted || attempt != _attempt) return;
     setState(() => _startup = _Startup.ready);
+    _onPhase();
   }
 
   /// A failed refresh leaves the state as it was (the controller already treats an unreadable record as not enrolled), so it never becomes an unhandled error.
@@ -126,9 +139,22 @@ class _AppGateState extends State<AppGate> {
   }
 
   /// While the shell shows, looks for the stored enrollment having gone. The controller would otherwise keep its in-memory record and write it back, so it is replaced by a fresh one, which finds the device not enrolled.
-  Future<void> _recheck() => _check ??= _doRecheck().whenComplete(() {
-        _check = null;
-      });
+  Future<void> _recheck() {
+    final running = _check;
+    if (running != null) {
+      _checkAgain = true;
+      return running;
+    }
+    return _check = _recheckLoop();
+  }
+
+  Future<void> _recheckLoop() async {
+    do {
+      _checkAgain = false;
+      await _doRecheck();
+    } while (_checkAgain && mounted);
+    _check = null;
+  }
 
   Future<void> _doRecheck() async {
     if (_enrollment.state.phase != EnrollmentPhase.active) return;
@@ -136,8 +162,8 @@ class _AppGateState extends State<AppGate> {
       final record = await widget.approvals.enrollment.read();
       if (record != null || !mounted) return;
       if (_enrollment.state.phase != EnrollmentPhase.active) return;
-      final old = _enrollment;
-      setState(() => _enrollment = _build());
+      final old = _enrollment..removeListener(_onPhase);
+      setState(() => _enrollment = _build()..addListener(_onPhase));
       await _refresh();
       // After the frame that stops using it.
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -154,6 +180,7 @@ class _AppGateState extends State<AppGate> {
     _lifecycle.dispose();
     _storeChanges?.removeListener(_recheck);
     widget.shell.removeListener(_recheck);
+    _enrollment.removeListener(_onPhase);
     if (!identical(_enrollment, widget.enrollment)) _enrollment.dispose();
     super.dispose();
   }

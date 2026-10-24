@@ -9,6 +9,7 @@ import 'package:biatec_authenticator/approvals/pending_screen.dart';
 import 'package:biatec_authenticator/config.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_screen.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
+import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/main.dart';
 import 'package:biatec_authenticator/shell/shell_controller.dart';
 import 'package:flutter/material.dart';
@@ -61,6 +62,16 @@ class ShellRig {
   final int pending;
   final SettingsRig settings;
   late final ApprovalServices approvals;
+
+  /// The same services on another enrollment store.
+  ApprovalServices approvalsWith(EnrollmentStore store) => ApprovalServices(
+        client: approvals.client,
+        keys: approvals.keys,
+        enrollment: store,
+        gate: approvals.gate,
+        history: approvals.history,
+        clock: approvals.clock,
+      );
   final shell = ShellController();
 
   String get requestId =>

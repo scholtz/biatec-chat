@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -84,6 +85,7 @@ class _AppShellState extends State<AppShell> {
             services: widget.approvals,
             pushes: widget.push?.requestArrived,
             active: widget.controller.approvalsActive,
+            refreshOn: widget.controller.requestsChanged,
             onCount: (n) => widget.controller.pendingCount.value = n,
           ),
         AppTab.history => HistoryScreen(history: widget.approvals.history),
@@ -131,12 +133,17 @@ class _AppShellState extends State<AppShell> {
       children: [
         for (final tab in AppTab.values)
           _visited.contains(tab)
-              ? _TabNavigator(
-                  key: ValueKey(tab),
-                  navigatorKey: c.navigators[tab]!,
-                  push: widget.push,
-                  root: _root(tab),
-                  tab: tab,
+              // Tabs that are not showing stop their animations.
+              ? TickerMode(
+                  enabled: tab == c.selected,
+                  child: _TabNavigator(
+                    key: ValueKey(tab),
+                    navigatorKey: c.navigators[tab]!,
+                    push: widget.push,
+                    root: _root(tab),
+                    reload: c.reloads[tab]!,
+                    tab: tab,
+                  ),
                 )
               : const SizedBox.shrink(),
       ],
@@ -196,11 +203,15 @@ class _TabNavigator extends StatefulWidget {
     required this.navigatorKey,
     required this.root,
     required this.tab,
+    required this.reload,
     this.push,
   });
 
   final GlobalKey<NavigatorState> navigatorKey;
   final Widget root;
+
+  /// Changes each time the tab is shown; the first screen is built afresh then.
+  final ValueListenable<int> reload;
   final AppTab tab;
   final PushController? push;
 
@@ -221,7 +232,12 @@ class _TabNavigatorState extends State<_TabNavigator> {
       observers: _observers,
       onGenerateRoute: (settings) => MaterialPageRoute<void>(
         settings: RouteSettings(name: '/${widget.tab.name}'),
-        builder: (_) => widget.root,
+        builder: (_) => ValueListenableBuilder<int>(
+          valueListenable: widget.reload,
+          builder: (context, generation, child) =>
+              KeyedSubtree(key: ValueKey(generation), child: child!),
+          child: widget.root,
+        ),
       ),
     );
   }

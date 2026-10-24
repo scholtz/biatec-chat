@@ -5,5 +5,6 @@ export 'empty_state.dart';
 export 'error_state.dart';
 export 'loading_skeleton.dart';
 export 'offline_banner.dart';
+export 'scrollable_center.dart';
 export 'section_header.dart';
 export 'status_banner.dart';

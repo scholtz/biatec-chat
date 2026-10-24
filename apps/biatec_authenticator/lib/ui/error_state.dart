@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'scrollable_center.dart';
 
 /// Something failed: says what, and offers a retry when [onRetry] is given. [offline] changes the icon and wording for a missing connection.
 class ErrorState extends StatelessWidget {
@@ -22,43 +23,36 @@ class ErrorState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.l),
-          child: Semantics(
-            liveRegion: true,
-            container: true,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(offline ? Icons.cloud_off : Icons.error_outline,
-                    size: 48,
-                    color: theme.colorScheme.error,
-                    semanticLabel: offline ? 'Offline' : 'Error'),
-                const SizedBox(height: AppSpacing.m),
-                Text(
-                    title ??
-                        (offline ? 'You are offline' : 'Something went wrong'),
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.titleMedium),
-                const SizedBox(height: AppSpacing.s),
-                Text(message,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                if (onRetry != null) ...[
-                  const SizedBox(height: AppSpacing.l),
-                  OutlinedButton.icon(
-                    onPressed: onRetry,
-                    icon: const Icon(Icons.refresh),
-                    label: Text(retryLabel),
-                  ),
-                ],
-              ],
-            ),
-          ),
+    return ScrollableCenter(
+      child: Semantics(
+        liveRegion: true,
+        container: true,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(offline ? Icons.cloud_off : Icons.error_outline,
+                size: 48,
+                color: theme.colorScheme.error,
+                semanticLabel: offline ? 'Offline' : 'Error'),
+            const SizedBox(height: AppSpacing.m),
+            Text(
+                title ?? (offline ? 'You are offline' : 'Something went wrong'),
+                textAlign: TextAlign.center,
+                style: theme.textTheme.titleMedium),
+            const SizedBox(height: AppSpacing.s),
+            Text(message,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            if (onRetry != null) ...[
+              const SizedBox(height: AppSpacing.l),
+              OutlinedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+                label: Text(retryLabel),
+              ),
+            ],
+          ],
         ),
       ),
     );

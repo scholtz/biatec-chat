@@ -19,6 +19,7 @@ class PendingScreen extends StatefulWidget {
     this.pushes,
     this.onCount,
     this.active,
+    this.refreshOn,
     this.backgroundEvery = const Duration(seconds: 30),
   });
 
@@ -30,6 +31,9 @@ class PendingScreen extends StatefulWidget {
 
   /// False while another tab is showing: polling slows to [backgroundEvery] (the Approvals badge still has to notice a request), and the list refreshes when it turns true again. Null means always active.
   final ValueListenable<bool>? active;
+
+  /// Refreshes the list whenever it notifies (a card opened from outside the list was closed).
+  final Listenable? refreshOn;
 
   /// Poll interval while [active] is false.
   final Duration backgroundEvery;
@@ -60,6 +64,7 @@ class _PendingScreenState extends State<PendingScreen> {
     _startPolling();
     _pushSub = widget.pushes?.listen((_) => _refresh());
     widget.active?.addListener(_onActive);
+    widget.refreshOn?.addListener(_refresh);
   }
 
   bool get _isActive => widget.active?.value ?? true;
@@ -84,6 +89,7 @@ class _PendingScreenState extends State<PendingScreen> {
   @override
   void dispose() {
     widget.active?.removeListener(_onActive);
+    widget.refreshOn?.removeListener(_refresh);
     _poll?.cancel();
     _pushSub?.cancel();
     super.dispose();

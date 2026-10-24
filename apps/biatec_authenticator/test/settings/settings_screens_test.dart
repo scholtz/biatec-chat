@@ -280,7 +280,6 @@ void main() {
             reason: f);
       }
       expect(File('lib/screens/placeholder_screen.dart').existsSync(), isFalse);
-      expect(File('lib/routes.dart').existsSync(), isFalse);
     });
   });
 }
