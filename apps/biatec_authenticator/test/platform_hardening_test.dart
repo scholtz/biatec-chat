@@ -183,6 +183,8 @@ void main() {
       expect(activity, contains('setRecentsScreenshotEnabled(false)'));
       expect(activity, contains('setHideOverlayWindows(true)'));
       expect(activity, contains('filterTouchesWhenObscured = true'));
+      // The filter is only for Android 11 and older, where overlays cannot be hidden.
+      expect(activity, contains('SDK_INT < 31'));
       // The overlay API needs its permission, and each call is behind its API level.
       expect(manifest, contains('android.permission.HIDE_OVERLAY_WINDOWS'));
       expect(activity, contains('Build.VERSION.SDK_INT >= 33'));
@@ -199,11 +201,10 @@ void main() {
       expect(gradle, contains('isJniDebuggable = false'));
       expect(gradle, contains('isShrinkResources = true'));
       expect(proguard, contains('-assumenosideeffects class android.util.Log'));
-      for (final level in ['v', 'd', 'i', 'w', 'e']) {
+      for (final level in ['v', 'd', 'i', 'w', 'e', 'wtf', 'println']) {
         expect(proguard, contains('public static int $level(...);'),
             reason: 'Log.$level is stripped');
       }
-      expect(proguard, contains('-repackageclasses'));
     });
 
     test('no source file logs', () {
@@ -213,7 +214,7 @@ void main() {
           .whereType<File>()
           .where((f) => f.path.endsWith('.kt'))) {
         expect(
-            RegExp(r'Log\.[vdiwe]\(').hasMatch(f.readAsStringSync()), isFalse,
+            RegExp(r'\bLog\.[a-z]+\(').hasMatch(f.readAsStringSync()), isFalse,
             reason: '${f.path} must not log');
       }
     });
@@ -242,10 +243,15 @@ void main() {
       ]) {
         expect(delegate, contains(place));
       }
-      // Called from didFinishLaunching, before anything is written.
+      // Called inside didFinishLaunching, before the app (and its plugins) start to write.
       final launch = delegate.indexOf('didFinishLaunchingWithOptions');
-      expect(delegate.indexOf('AppDelegate.excludeStorageFromBackup()'),
-          greaterThan(launch));
+      final exclude =
+          delegate.indexOf('AppDelegate.excludeStorageFromBackup()');
+      final superCall =
+          delegate.indexOf('return super.application(application, didFinish');
+      expect(exclude, greaterThan(launch));
+      expect(exclude, lessThan(superCall),
+          reason: 'before super starts the Flutter engine and plugins');
     });
 
     test('third-party keyboards are not allowed', () {
@@ -255,9 +261,14 @@ void main() {
 
     test('the privacy manifest says no tracking, and is part of the app bundle',
         () {
-      expect(privacy, contains('<key>NSPrivacyTracking</key>\n\t<false/>'));
+      // Whitespace-tolerant: a checkout may have CRLF line endings.
       expect(
-          privacy, contains('<key>NSPrivacyTrackingDomains</key>\n\t<array/>'));
+          RegExp(r'<key>NSPrivacyTracking</key>\s*<false/>').hasMatch(privacy),
+          isTrue);
+      expect(
+          RegExp(r'<key>NSPrivacyTrackingDomains</key>\s*<array/>')
+              .hasMatch(privacy),
+          isTrue);
       expect(privacy, contains('NSPrivacyCollectedDataTypeDeviceID'));
       expect(
           'PrivacyInfo.xcprivacy in Resources */,'.allMatches(project).length,

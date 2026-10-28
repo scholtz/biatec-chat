@@ -56,13 +56,12 @@ What the committed project files enforce, each with a test in `test/platform_har
 | --- | --- | --- |
 | No backup or transfer | `allowBackup=false`, `fullBackupContent=false`, data extraction rules exclude every domain | app folders marked excluded from backup at launch; keychain items `_this_device` |
 | No screenshots or recording | `FLAG_SECURE` set before the first view; recents screenshot off (Android 13+) | cover view when the app is inactive and while the screen is captured |
-| Overlay and tapjacking | other apps' overlay windows hidden (Android 12+, `HIDE_OVERLAY_WINDOWS`), touches through an obscured window dropped | - |
+| Overlay and tapjacking | other apps' overlay windows hidden (Android 12+, `HIDE_OVERLAY_WINDOWS`); on Android 11 and older a touch through another app's overlay is dropped, which also disables a full-screen filter app's taps while it runs | - |
 | No custom keyboard | - | `shouldAllowExtensionPointIdentifier` refuses keyboard extensions |
-| Release build | not debuggable, R8 minify and shrink, `Log` calls removed, classes repackaged | - |
+| Release build | not debuggable, R8 minify and shrink, every `android.util.Log` call removed (and none in the app's own Kotlin) | - |
 | Privacy | cleartext off (pinned network config: T-229) | `PrivacyInfo.xcprivacy`: no tracking; push token declared |
 
-CI builds the release APK with `--obfuscate --split-debug-info=build/symbols`, signed with a throwaway key that exists only for that job, runs the hardening test against the merged release manifest, and keeps `build/symbols` as the `authenticator-debug-symbols` artifact (needed to read crash stack traces; keep it private). Do the same locally with
-the commands in "Release build".
+CI builds the release APK with `--obfuscate --split-debug-info=build/symbols`, signed with a throwaway key that exists only for that job, runs the hardening test against the merged release manifest, and keeps `build/symbols` of that build for 7 days as the `authenticator-debug-symbols` artifact. Those symbols fit only that CI build: a shipped release is built with its own `--obfuscate --split-debug-info=<dir>`, and that directory must be archived privately with the release to read its crash traces.
 
 To check by hand on a device: open the app and try a screenshot (it must fail or show a black image), look at the recents list (blank), `adb backup -f x.ab io.biatec.authenticator` (must produce an empty archive), and `adb shell run-as io.biatec.authenticator ls` (must be refused on a release build).
 

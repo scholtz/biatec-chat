@@ -17,8 +17,9 @@ class MainActivity : FlutterFragmentActivity() {
         // Android 12+: other apps' overlay windows (a fake button over "Approve") are hidden while this window is in front.
         if (Build.VERSION.SDK_INT >= 31) window.setHideOverlayWindows(true)
         super.onCreate(savedInstanceState)
-        // Touches that reach the window through another app's overlay are dropped (tapjacking), on every Android version.
-        window.decorView.filterTouchesWhenObscured = true
+        // Android 11 and older cannot hide overlays, so a touch that reaches the window through another app's overlay is dropped (tapjacking).
+        // From Android 12 the overlays are hidden above, and a screen filter or a chat head keeps working everywhere else.
+        if (Build.VERSION.SDK_INT < 31) window.decorView.filterTouchesWhenObscured = true
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

@@ -8,7 +8,7 @@
     public static int i(...);
     public static int w(...);
     public static int e(...);
+    public static int wtf(...);
+    public static int println(...);
+    public static java.lang.String getStackTraceString(...);
 }
-# Smaller and harder to read: classes are renamed into one package and made as private as they can be.
--repackageclasses ''
--allowaccessmodification
