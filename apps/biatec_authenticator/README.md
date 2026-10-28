@@ -48,6 +48,26 @@ A Windows build without `OIDC_BASE_URL` (a bare `flutter build windows`) default
 `./build-windows.ps1` passes the same URL explicitly via `--dart-define-from-file=config/local.json`. Put `nuget.exe` on `PATH` to silence the
 `Nuget.exe not found` message from `local_auth_windows`.
 
+### Platform hardening (T-227)
+
+What the committed project files enforce, each with a test in `test/platform_hardening_test.dart` that fails on a regression:
+
+| Setting | Android | iOS |
+| --- | --- | --- |
+| No backup or transfer | `allowBackup=false`, `fullBackupContent=false`, data extraction rules exclude every domain | app folders marked excluded from backup at launch; keychain items `_this_device` |
+| No screenshots or recording | `FLAG_SECURE` set before the first view; recents screenshot off (Android 13+) | cover view when the app is inactive and while the screen is captured |
+| Overlay and tapjacking | other apps' overlay windows hidden (Android 12+, `HIDE_OVERLAY_WINDOWS`), touches through an obscured window dropped | - |
+| No custom keyboard | - | `shouldAllowExtensionPointIdentifier` refuses keyboard extensions |
+| Release build | not debuggable, R8 minify and shrink, `Log` calls removed, classes repackaged | - |
+| Privacy | cleartext off (pinned network config: T-229) | `PrivacyInfo.xcprivacy`: no tracking; push token declared |
+
+CI builds the release APK with `--obfuscate --split-debug-info=build/symbols`, signed with a throwaway key that exists only for that job, runs the hardening test against the merged release manifest, and keeps `build/symbols` as the `authenticator-debug-symbols` artifact (needed to read crash stack traces; keep it private). Do the same locally with
+the commands in "Release build".
+
+To check by hand on a device: open the app and try a screenshot (it must fail or show a black image), look at the recents list (blank), `adb backup -f x.ab io.biatec.authenticator` (must produce an empty archive), and `adb shell run-as io.biatec.authenticator ls` (must be refused on a release build).
+
+Not verified on a device: none of this has been run on a phone; the Swift changes were written without Xcode.
+
 ## Config
 
 The Biatec OIDC base URL comes from `--dart-define=OIDC_BASE_URL=...` and defaults to the mock OIDC

@@ -160,4 +160,132 @@ void main() {
       expect(project, isNot(contains('biatecAuthenticator')));
     });
   });
+
+  // T-227: window and build hardening. Like the groups above, these read the committed project files.
+  group('Android window and build hardening (T-227)', () {
+    final activity = read(
+        'android/app/src/main/kotlin/io/biatec/authenticator/MainActivity.kt');
+    final manifest = read('android/app/src/main/AndroidManifest.xml');
+    final gradle = read('android/app/build.gradle.kts');
+    final proguard = read('android/app/proguard-rules.pro');
+
+    test('the window is secure before the first frame, not after', () {
+      final secure = activity.indexOf('FLAG_SECURE');
+      final create = activity.indexOf('super.onCreate(');
+      expect(secure, greaterThan(-1));
+      expect(create, greaterThan(-1));
+      expect(secure, lessThan(create),
+          reason: 'FLAG_SECURE must be set before the view is created');
+      expect(activity, contains('setFlags('));
+    });
+
+    test('recents screenshots are off and overlays are hidden or ignored', () {
+      expect(activity, contains('setRecentsScreenshotEnabled(false)'));
+      expect(activity, contains('setHideOverlayWindows(true)'));
+      expect(activity, contains('filterTouchesWhenObscured = true'));
+      // The overlay API needs its permission, and each call is behind its API level.
+      expect(manifest, contains('android.permission.HIDE_OVERLAY_WINDOWS'));
+      expect(activity, contains('Build.VERSION.SDK_INT >= 33'));
+      expect(activity, contains('Build.VERSION.SDK_INT >= 31'));
+    });
+
+    test('the touch filter is set after the window exists', () {
+      expect(activity.indexOf('filterTouchesWhenObscured'),
+          greaterThan(activity.indexOf('super.onCreate(')));
+    });
+
+    test('the release build is not debuggable and strips logging', () {
+      expect(gradle, contains('isDebuggable = false'));
+      expect(gradle, contains('isJniDebuggable = false'));
+      expect(gradle, contains('isShrinkResources = true'));
+      expect(proguard, contains('-assumenosideeffects class android.util.Log'));
+      for (final level in ['v', 'd', 'i', 'w', 'e']) {
+        expect(proguard, contains('public static int $level(...);'),
+            reason: 'Log.$level is stripped');
+      }
+      expect(proguard, contains('-repackageclasses'));
+    });
+
+    test('no source file logs', () {
+      final dir = Directory('android/app/src/main/kotlin');
+      for (final f in dir
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.kt'))) {
+        expect(
+            RegExp(r'Log\.[vdiwe]\(').hasMatch(f.readAsStringSync()), isFalse,
+            reason: '${f.path} must not log');
+      }
+    });
+
+    test(
+        'the data extraction rules still exclude every domain from both transfers',
+        () {
+      final rules =
+          read('android/app/src/main/res/xml/data_extraction_rules.xml');
+      expect('<exclude domain='.allMatches(rules).length, 18);
+    });
+  });
+
+  group('iOS storage, keyboard and privacy (T-227)', () {
+    final delegate = read('ios/Runner/AppDelegate.swift');
+    final project = read('ios/Runner.xcodeproj/project.pbxproj');
+    final privacy = read('ios/Runner/PrivacyInfo.xcprivacy');
+
+    test('app folders are excluded from backup at launch', () {
+      expect(delegate, contains('excludeStorageFromBackup()'));
+      expect(delegate, contains('isExcludedFromBackup = true'));
+      for (final place in [
+        '.applicationSupportDirectory',
+        '.documentDirectory',
+        '.libraryDirectory'
+      ]) {
+        expect(delegate, contains(place));
+      }
+      // Called from didFinishLaunching, before anything is written.
+      final launch = delegate.indexOf('didFinishLaunchingWithOptions');
+      expect(delegate.indexOf('AppDelegate.excludeStorageFromBackup()'),
+          greaterThan(launch));
+    });
+
+    test('third-party keyboards are not allowed', () {
+      expect(delegate, contains('shouldAllowExtensionPointIdentifier'));
+      expect(delegate, contains('extensionPointIdentifier != .keyboard'));
+    });
+
+    test('the privacy manifest says no tracking, and is part of the app bundle',
+        () {
+      expect(privacy, contains('<key>NSPrivacyTracking</key>\n\t<false/>'));
+      expect(
+          privacy, contains('<key>NSPrivacyTrackingDomains</key>\n\t<array/>'));
+      expect(privacy, contains('NSPrivacyCollectedDataTypeDeviceID'));
+      expect(
+          'PrivacyInfo.xcprivacy in Resources */,'.allMatches(project).length,
+          1,
+          reason: 'it must be in the Resources build phase once');
+      expect('path = PrivacyInfo.xcprivacy;'.allMatches(project).length, 1);
+    });
+
+    test('the keychain items stay on this device', () {
+      final storage = read('lib/security/secure_storage.dart');
+      expect(storage, contains('_this_device'));
+    });
+  });
+
+  group('release build in CI (T-227)', () {
+    final ci = File('../../.github/workflows/ci.yml');
+
+    test('is obfuscated, splits the symbols off and keeps them as an artifact',
+        () {
+      final text = ci.readAsStringSync();
+      expect(text, contains('flutter build apk --release --obfuscate'));
+      expect(text, contains('--split-debug-info=build/symbols'));
+      expect(text, contains('actions/upload-artifact@'));
+      expect(text, contains('authenticator-debug-symbols'));
+      // The throwaway signing key is removed again and never a repository file.
+      expect(text,
+          contains('rm -f android/key.properties android/ci-throwaway.jks'));
+      expect(text, contains('flutter test test/platform_hardening_test.dart'));
+    }, skip: ci.existsSync() ? false : 'run from the repository checkout');
+  });
 }

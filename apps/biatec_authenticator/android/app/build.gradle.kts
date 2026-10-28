@@ -44,6 +44,9 @@ android {
 
     buildTypes {
         release {
+            // Never debuggable, whatever the module or a build flag says.
+            isDebuggable = false
+            isJniDebuggable = false
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
