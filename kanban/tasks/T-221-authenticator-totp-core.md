@@ -1,7 +1,7 @@
 ---
 id: T-221
 title: "Authenticator: two-factor code engine (HOTP, TOTP, otpauth)"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: []
@@ -9,8 +9,8 @@ area: ["apps/biatec_authenticator/lib/totp/core/**", "apps/biatec_authenticator/
 parallel: yes
 conflicts_with: []
 issue: "#358"
-branch: ""
-owner: ""
+branch: "task/T-221"
+owner: "session-20261028-0915"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
@@ -67,3 +67,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 
 - 2026-10-28 09:00 · claude · (new) → backlog · created from the request to add two-factor codes, a biometric lock and industry-standard security
 - 2026-10-28 09:10 · scholtz · taken · status stays backlog
+- 2026-10-28 09:15 · session-20261028-0915 · backlog → in-progress · claimed
