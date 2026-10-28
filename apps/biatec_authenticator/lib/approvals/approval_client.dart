@@ -2,8 +2,9 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../security/device_proof.dart';
 import '../security/pinning/pinned_http.dart';
+
+import '../security/device_proof.dart';
 import 'consent_request.dart';
 
 /// The request could not be reached or read. [offline] is true when the
@@ -86,6 +87,9 @@ class ApprovalClient {
   Future<http.Response> _send(Future<http.Response> Function() call) async {
     try {
       return await call().timeout(_timeout);
+    } on PinningException catch (e) {
+      // Not "offline": retrying will not help, and the user is told to update.
+      throw ApprovalException(e.message);
     } on Object catch (e) {
       throw ApprovalException('Biatec OIDC is not reachable: $e',
           offline: true);

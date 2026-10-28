@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
+import '../../config.dart';
 import 'pin_policy.dart';
 
 /// The server's certificate did not pass the pin policy. This is not "offline": retrying will not help, and there is nothing the user can tap to continue.
@@ -33,15 +34,14 @@ abstract final class PinnedHttp {
   static PinPolicy get policy => _policy;
 
   /// A client for [baseUrl] that reads the configured policy when it first sends, so building one costs nothing (and tests that never send never touch the network).
+  ///
+  /// [baseUrl] is only the address the caller will use; the policy decides per host at send time, so a client built for one host cannot be pointed at another.
   static http.Client clientFor(String baseUrl) =>
       _LazyClient(() => create(_policy));
 
   /// A client that enforces [policy]. Plain `http` is only for a local developer machine in a debug build ([allowLocalHttp]).
   static http.Client create(PinPolicy policy, {bool? allowLocalHttp}) =>
       _PinnedClient(policy, allowLocalHttp ?? kDebugMode);
-
-  /// Hosts that mean "this machine" to a developer.
-  static const localHosts = {'localhost', '127.0.0.1', '::1', '10.0.2.2'};
 }
 
 class _LazyClient extends http.BaseClient {
@@ -55,7 +55,10 @@ class _LazyClient extends http.BaseClient {
       (_inner ??= _make()).send(request);
 
   @override
-  void close() => _inner?.close();
+  void close() {
+    _inner?.close();
+    _inner = null;
+  }
 }
 
 class _PinnedClient extends http.BaseClient {
@@ -73,17 +76,16 @@ class _PinnedClient extends http.BaseClient {
   late final IOClient _https;
   http.Client? _plain;
 
-  /// Why the last handshake with a host was refused; read when the request then fails.
-  final Map<String, PinDecision> _refused = {};
+  /// Why the latest handshake with a host was refused, and when (a counter). A request only believes a refusal that happened after it started, so
+  /// requests to the same host running at once cannot take each other's.
+  final Map<String, (int, PinDecision)> _refused = {};
+  int _clock = 0;
 
   bool _check(X509Certificate cert, String host, int port) {
     final decision =
         _policy.check(host, cert.der, cert.startValidity, cert.endValidity);
-    if (decision == PinDecision.accepted) {
-      _refused.remove(host.toLowerCase());
-      return true;
-    }
-    _refused[host.toLowerCase()] = decision;
+    if (decision == PinDecision.accepted) return true;
+    _refused[host.toLowerCase()] = (++_clock, decision);
     return false;
   }
 
@@ -91,7 +93,7 @@ class _PinnedClient extends http.BaseClient {
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final host = request.url.host.toLowerCase();
     if (request.url.scheme == 'http') {
-      if (_allowLocalHttp && PinnedHttp.localHosts.contains(host)) {
+      if (_allowLocalHttp && AppConfig.localHosts.contains(host)) {
         return (_plain ??= http.Client()).send(request);
       }
       throw PinningException(PinDecision.noPinsForHost, host);
@@ -99,12 +101,16 @@ class _PinnedClient extends http.BaseClient {
     if (request.url.scheme != 'https') {
       throw PinningException(PinDecision.noPinsForHost, host);
     }
-    _refused.remove(host);
+    final started = _clock;
+    // A redirect is never followed: it could lead to plain http or to a host that has no pin, and Biatec OIDC's API does not redirect.
+    request.followRedirects = false;
     try {
       return await _https.send(request);
     } on Object {
-      final decision = _refused.remove(host);
-      if (decision != null) throw PinningException(decision, host);
+      final refusal = _refused[host];
+      if (refusal != null && refusal.$1 > started) {
+        throw PinningException(refusal.$2, host);
+      }
       rethrow;
     }
   }

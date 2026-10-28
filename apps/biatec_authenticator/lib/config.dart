@@ -45,7 +45,7 @@ class AppConfig {
       AppConfig.resolve(_definedOidcBaseUrl, settingsApi: _definedSettingsApi);
 
   /// Hosts that mean "this machine" for a developer: plain http is acceptable to them in a build that is not a release build.
-  static const _localHosts = {'localhost', '127.0.0.1', '::1', '10.0.2.2'};
+  static const localHosts = {'localhost', '127.0.0.1', '::1', '10.0.2.2'};
 
   /// [release] is true for anything that is not a debug build (release and profile builds): those only accept https, and have no mock default.
   factory AppConfig.resolve(String defined,
@@ -90,7 +90,7 @@ class AppConfig {
           'OIDC_BASE_URL must be a plain base URL (no credentials, query or fragment).');
     }
     if (uri.scheme == 'https') return;
-    if (uri.scheme == 'http' && !release && _localHosts.contains(uri.host)) {
+    if (uri.scheme == 'http' && !release && localHosts.contains(uri.host)) {
       return;
     }
     throw ConfigException(uri.scheme == 'http'

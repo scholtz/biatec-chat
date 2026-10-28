@@ -2,9 +2,12 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:biatec_authenticator/approvals/approval_client.dart';
+import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/security/pinning/pin_policy.dart';
 import 'package:biatec_authenticator/security/pinning/pinned_http.dart';
 import 'package:biatec_authenticator/security/pinning/spki_pin.dart';
+import 'package:biatec_authenticator/security/settings_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -191,6 +194,78 @@ void main() {
         await bad.close(force: true);
         await good.close(force: true);
       }
+    });
+
+    test('requests to the same bad server at once each get the pin failure',
+        () async {
+      await withServer(b, (_) => pinsA(a), (client, port, log) async {
+        final results = await Future.wait([
+          for (var i = 0; i < 6; i++)
+            client
+                .get(Uri.parse('https://localhost:$port/$i'))
+                .then<Object?>((_) => 'sent', onError: (Object e) => e),
+        ]);
+        for (final r in results) {
+          expect(r, isA<PinningException>());
+        }
+        expect(log, isEmpty);
+      });
+    });
+
+    test('a redirect from the pinned host is not followed', () async {
+      final context = SecurityContext()
+        ..useCertificateChain(a.certPath)
+        ..usePrivateKey(a.keyPath);
+      final server =
+          await HttpServer.bindSecure(InternetAddress.loopbackIPv4, 0, context);
+      var followed = false;
+      final plain = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      plain.listen((r) {
+        followed = true;
+        r.response.close();
+      });
+      server.listen((r) {
+        r.response
+          ..statusCode = 302
+          ..headers.set('location', 'http://127.0.0.1:${plain.port}/')
+          ..close();
+      });
+      final client = PinnedHttp.create(pinsA(a), allowLocalHttp: true);
+      try {
+        final res =
+            await client.get(Uri.parse('https://localhost:${server.port}/'));
+        expect(res.statusCode, 302);
+        expect(followed, isFalse);
+      } finally {
+        client.close();
+        await server.close(force: true);
+        await plain.close(force: true);
+      }
+    });
+
+    test('the three OIDC clients report a pin failure as such, not as offline',
+        () async {
+      await withServer(b, (_) => pinsA(a), (client, port, log) async {
+        final url = 'https://localhost:$port';
+        await expectLater(
+            ApprovalClient(baseUrl: url, client: client).pending('token'),
+            throwsA(isA<ApprovalException>()
+                .having((e) => e.offline, 'offline', isFalse)
+                .having((e) => e.message, 'message',
+                    contains('could not be verified'))));
+        await expectLater(
+            SettingsClient(baseUrl: url, client: client).devices('token'),
+            throwsA(isA<ApprovalException>()
+                .having((e) => e.offline, 'offline', isFalse)
+                .having((e) => e.message, 'message',
+                    contains('could not be verified'))));
+        await expectLater(
+            OidcEnrollmentClient(baseUrl: url, client: client)
+                .requestRecoveryCode('token'),
+            throwsA(isA<EnrollmentException>().having((e) => e.message,
+                'message', contains('could not be verified'))));
+        expect(log, isEmpty);
+      });
     });
 
     test(

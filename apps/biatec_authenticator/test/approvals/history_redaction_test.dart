@@ -15,11 +15,7 @@ HistoryEntry entry({Map<String, Object?>? signed}) => HistoryEntry(
         'alg': 'ES256',
         'signature': 'sig',
         'signed': signed ??
-            {
-              'auth_req_id': 'ciba_1',
-              'binding_code': '483920',
-              'decision': 'approve'
-            },
+            {'auth_req_id': 'ciba_1', 'binding_code': '483920', 'decision': 'approve'},
       },
     );
 
@@ -41,15 +37,12 @@ void main() {
     });
 
     test('older persisted entries lose the code when read', () {
-      final stored =
-          jsonDecode(jsonEncode(entry().toJson())) as Map<String, Object?>;
+      final stored = jsonDecode(jsonEncode(entry().toJson())) as Map<String, Object?>;
       final read = HistoryEntry.fromJson(stored);
       expect(jsonEncode(read.receipt), isNot(contains('483920')));
     });
 
-    test(
-        'the secure store rewrites older entries once on read, so the code leaves the disk',
-        () async {
+    test('the secure store rewrites older entries once on read, so the code leaves the disk', () async {
       const key = 'biatec.approvals.history';
       FlutterSecureStorage.setMockInitialValues({
         key: jsonEncode([entry().toJson()..['receipt'] = entry().receipt]),

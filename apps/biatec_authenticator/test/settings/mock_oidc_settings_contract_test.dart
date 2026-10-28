@@ -25,8 +25,7 @@ void main() {
   final skip = baseUrl == null ? 'set MOCK_OIDC_URL to run' : false;
 
   /// Alice's seeded device, which signs with the vector device key.
-  Future<(SettingsController, MemoryEnrollmentStore, FakeGate)>
-      alicePhone() async {
+  Future<(SettingsController, MemoryEnrollmentStore, FakeGate)> alicePhone() async {
     final d = jsonDecode(
         (await http.get(Uri.parse('$baseUrl/mock/devices/alice-device')))
             .body) as Map;
@@ -73,8 +72,7 @@ void main() {
     expect(pending, contains('alice-flutter-pending'));
     await c.cancelDevice('alice-flutter-pending');
     expect(c.error, isNull);
-    expect(
-        c.devices.map((d) => d.kid), isNot(contains('alice-flutter-pending')));
+    expect(c.devices.map((d) => d.kid), isNot(contains('alice-flutter-pending')));
     expect((await store.read())!.kid, 'alice-device');
   }, skip: skip);
 

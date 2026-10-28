@@ -20,6 +20,10 @@ enum PinDecision {
 
 /// The public keys Biatec OIDC may present, per host. Checked against the leaf certificate the server sends (Dart's TLS stack shows no more than that),
 /// together with its validity dates. The system's list of trusted certificate authorities is not used at all.
+///
+/// What that means: the trust is one static key per host. Hostnames in the certificate are not compared (the key is pinned to the host in this table, so
+/// a certificate for another name is no use to anyone without the key), there is no revocation check (a compromised key is replaced by an app update,
+/// which is why a backup key is mandatory), and a key listed for two hosts is accepted for both.
 class PinPolicy {
   PinPolicy({
     required Map<String, Iterable<String>> pins,

@@ -158,6 +158,9 @@ class SettingsClient {
   Future<http.Response> _send(Future<http.Response> Function() call) async {
     try {
       return await call().timeout(_timeout);
+    } on PinningException catch (e) {
+      // Not "offline": retrying will not help, and the user is told to update.
+      throw ApprovalException(e.message);
     } on Object catch (e) {
       throw ApprovalException('Biatec OIDC is not reachable: $e',
           offline: true);

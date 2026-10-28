@@ -46,6 +46,8 @@ class OidcEnrollmentClient {
           if (name != null) 'name': name,
         }),
       );
+    } on PinningException catch (e) {
+      throw EnrollmentException(e.message);
     } on Object catch (e) {
       throw EnrollmentException('Could not reach Biatec OIDC: $e');
     }
@@ -96,6 +98,8 @@ class OidcEnrollmentClient {
         Uri.parse('$baseUrl$path'),
         headers: {'Authorization': 'Device $deviceToken'},
       );
+    } on PinningException catch (e) {
+      throw EnrollmentException(e.message);
     } on Object catch (e) {
       throw EnrollmentException('Could not reach Biatec OIDC: $e');
     }

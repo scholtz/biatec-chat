@@ -29,10 +29,7 @@ void main() {
       await _open(tester, SecurityScreen(services: rig.services));
       expect(find.text('Security settings'), findsOneWidget);
       expect(find.textContaining('1000.00 EUR'), findsOneWidget);
-      expect(
-          tester
-              .widget<SwitchListTile>(find.byKey(const Key('biometric')))
-              .value,
+      expect(tester.widget<SwitchListTile>(find.byKey(const Key('biometric'))).value,
           isTrue);
     });
 
@@ -160,8 +157,7 @@ void main() {
       expect(find.text('Approved on this device and applied.'), findsOneWidget);
     });
 
-    testWidgets('always ask: on applies at once, off is signed',
-        (tester) async {
+    testWidgets('always ask: on applies at once, off is signed', (tester) async {
       final rig = SettingsRig();
       await _open(tester, ClientsScreen(services: rig.services));
       await tester.tap(find.byKey(const Key('always-ask-biatec-chat')));
@@ -178,24 +174,21 @@ void main() {
     testWidgets('per-client threshold can be set and reset', (tester) async {
       final rig = SettingsRig();
       await _open(tester, ClientsScreen(services: rig.services));
-      expect(
-          find.textContaining('Uses the account threshold'), findsNWidgets(3));
+      expect(find.textContaining('Uses the account threshold'), findsNWidgets(3));
 
       await tester.tap(find.byKey(const Key('threshold-change-bank-example')));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const Key('eur-field')), '100');
       await tester.tap(find.byKey(const Key('eur-save')));
       await tester.pumpAndSettle();
-      expect(rig.oidc.clientById('bank-example')['per_client_threshold_eur'],
-          '100');
+      expect(rig.oidc.clientById('bank-example')['per_client_threshold_eur'], '100');
       expect(rig.gate.asked, 0, reason: 'lower than the account threshold');
       expect(find.textContaining('100 EUR'), findsOneWidget);
 
       // Back to the account threshold (1000) raises 100: signed.
       await tester.tap(find.byKey(const Key('threshold-reset-bank-example')));
       await tester.pumpAndSettle();
-      expect(rig.oidc.clientById('bank-example')['per_client_threshold_eur'],
-          isNull);
+      expect(rig.oidc.clientById('bank-example')['per_client_threshold_eur'], isNull);
       expect(rig.gate.asked, 1);
     });
 
