@@ -1,7 +1,7 @@
 ---
 id: T-227
 title: "Authenticator: platform hardening (no backups, no screenshots, release build)"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: []
@@ -9,8 +9,8 @@ area: ["apps/biatec_authenticator/android/app/src/main/AndroidManifest.xml", "ap
 parallel: no
 conflicts_with: [T-229]
 issue: "#364"
-branch: ""
-owner: ""
+branch: "task/T-227"
+owner: "session-20261028-1015"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
@@ -67,3 +67,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 
 - 2026-10-28 09:00 · claude · (new) → backlog · created from the request to add two-factor codes, a biometric lock and industry-standard security
 - 2026-10-28 09:10 · scholtz · taken · status stays backlog
+- 2026-10-28 10:15 · session-20261028-1015 · backlog → in-progress · claimed
