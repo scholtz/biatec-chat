@@ -4,7 +4,7 @@ title: "Authenticator: settings tab, about and final accessibility polish"
 status: blocked
 priority: P1
 epic: "Consent & authenticator"
-blocked_by: [T-214, T-215, T-216, T-217, T-218]
+blocked_by: [T-214, T-215, T-216, T-217, T-218, T-225]
 area: ["apps/biatec_authenticator/lib/security/security_screen.dart", "apps/biatec_authenticator/lib/settings/**", "apps/biatec_authenticator/test/security/**", "apps/biatec_authenticator/test/a11y/**", "apps/biatec_authenticator/README.md"]
 parallel: yes
 conflicts_with: []
@@ -24,6 +24,9 @@ updated: 2026-10-24
 Spec: security settings (biometric requirement, threshold, blocked clients) and accessibility (large-type card, screen reader labels, no color-only warnings). The Settings tab is the fifth destination of the shell. It is last because it closes the redesign with an app-wide accessibility pass.
 
 Read first: `PRODUCT-DESCRIPTION.md` (Authenticator App (Flutter)), `AGENTS.md`, `apps/biatec_authenticator/README.md`. The redesign follows current Material 3 and mobile UX practice: bottom navigation with icons and labels for top-level destinations, one primary action per screen, clear states (loading, empty, error, offline), accessible by default.
+
+
+**Navigation change (T-225):** the bar is now Codes, Approvals, History, Devices, Settings. Trusted clients is no longer a tab: it is a screen opened from Settings, under Security. The Settings tab holds a row that opens Trusted clients, the lock timing (T-222) and the backup (T-226) entry; this task lays out the screen and leaves those rows to their tasks. Settings also shows the Biatec OIDC endpoint of every build and the device key level (the endpoint is not shown anywhere else for real builds).
 
 ## Goal
 

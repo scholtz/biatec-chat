@@ -4,7 +4,7 @@ title: "Authenticator: redesign devices and trusted clients tabs"
 status: blocked
 priority: P1
 epic: "Consent & authenticator"
-blocked_by: [T-214]
+blocked_by: [T-214, T-225]
 area: ["apps/biatec_authenticator/lib/devices/**", "apps/biatec_authenticator/lib/clients/**", "apps/biatec_authenticator/lib/security/settings_frame.dart", "apps/biatec_authenticator/test/settings/**"]
 parallel: yes
 conflicts_with: []
@@ -24,6 +24,9 @@ updated: 2026-10-24
 Spec: device management and trusted clients with per-client thresholds. T-084 made these screens work against the mock; the settings API exists in the mock only (see docs/required-changes-biatec-oidc.md rows 21 and 22), so the screens must keep their 'not available on this server' state.
 
 Read first: `PRODUCT-DESCRIPTION.md` (Authenticator App (Flutter)), `AGENTS.md`, `apps/biatec_authenticator/README.md`. The redesign follows current Material 3 and mobile UX practice: bottom navigation with icons and labels for top-level destinations, one primary action per screen, clear states (loading, empty, error, offline), accessible by default.
+
+
+**Navigation change (T-225):** the bar is now Codes, Approvals, History, Devices, Settings. Trusted clients is no longer a tab: it is a screen opened from Settings, under Security. Redesign it as that screen; the Devices tab stays a tab.
 
 ## Goal
 

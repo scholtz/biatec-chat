@@ -6,8 +6,8 @@ priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-214, T-215, T-216]
 area: ["apps/biatec_authenticator/lib/shell/**", "apps/biatec_authenticator/lib/enrollment/enrollment_controller.dart", "apps/biatec_authenticator/lib/enrollment/observable_enrollment_store.dart", "apps/biatec_authenticator/lib/push/push_controller.dart", "apps/biatec_authenticator/lib/main.dart", "apps/biatec_authenticator/test/shell/**"]
-parallel: yes
-conflicts_with: []
+parallel: no
+conflicts_with: [T-222, T-225]
 issue: "#357"
 branch: ""
 owner: ""
@@ -34,7 +34,7 @@ Each item below is fixed with a test, or closed with a reason.
 
 ## Parallel work
 
-Parallel work possible: **yes**. It waits for T-214, T-215 and T-216, which change the files it touches.
+Parallel work possible: **no**. Don't run it at the same time as T-222, T-225: they change the same files under `lib/shell/`. It also waits for T-214, T-215 and T-216.
 
 ## Acceptance criteria
 
