@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:biatec_authenticator/totp/core/base32.dart';
 import 'package:biatec_authenticator/totp/core/otp_account.dart';
+import 'package:biatec_authenticator/totp/core/otp_generator.dart';
 import 'package:biatec_authenticator/totp/core/otp_uri.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -51,7 +52,6 @@ void main() {
         'M',
         'MZX',
         'MZXW6Y',
-        'MZ XW6YTBOJ'
       ]) {
         try {
           Base32.decode(bad);
@@ -62,9 +62,11 @@ void main() {
       }
     });
 
-    test('non-canonical trailing bits are refused', () {
-      // "MZ" decodes to one byte; "MX" has the same first byte but nonzero leftover bits.
-      expect(() => Base32.decode('MX'), throwsA(isA<Base32Exception>()));
+    test('leftover bits in the last character are dropped, as other apps do',
+        () {
+      // "MY" is the canonical "f"; "MZ" has other unused bits and gives the same byte.
+      expect(Base32.decode('MZ'), utf8.encode('f'));
+      expect(Base32.decode('MY'), utf8.encode('f'));
     });
 
     test('round trip for every length', () {
@@ -227,6 +229,19 @@ void main() {
           OtpUriError.invalidName);
       expect(
           errorOf('otpauth://totp/x?$s&issuer=a%00b'), OtpUriError.invalidName);
+      // Invisible characters: two accounts that look the same.
+      for (final hidden in [
+        '%E2%80%8B',
+        '%E2%80%8C',
+        '%EF%BB%BF',
+        '%C2%AD',
+        '%E2%81%A0',
+        '%E2%80%A8'
+      ]) {
+        expect(errorOf('otpauth://totp/Gi${hidden}thub:me?$s'),
+            OtpUriError.invalidName,
+            reason: hidden);
+      }
       expect(
           errorOf('otpauth://totp/${'n' * 300}?$s'), OtpUriError.invalidName);
       // A stray percent sign is read as itself, not as an error.
@@ -275,7 +290,7 @@ void main() {
     test('time-based, with spaces and a plus sign in the names', () {
       final a = account();
       final b = OtpUri.parse(OtpUri.write(a));
-      expect(b.sameAccountAs(a), isTrue);
+      expect(b.isDuplicateOf(a), isTrue);
       expect(b.issuer, 'Example Co');
       expect(b.label, 'alice+test@example.com');
     });
@@ -285,7 +300,7 @@ void main() {
       final b = OtpUri.parse(OtpUri.write(a));
       expect(b.type, OtpType.hotp);
       expect(b.counter, 42);
-      expect(b.sameAccountAs(a), isTrue);
+      expect(b.isDuplicateOf(a), isTrue);
     });
 
     test('special characters and non-Latin names survive', () {
@@ -315,7 +330,11 @@ void main() {
     test('toString never contains the secret', () {
       final a = OtpAccount(issuer: 'I', label: 'L', secret: key());
       final text = a.toString();
-      expect(text, contains('I'));
+      // Nor the issuer or the name, which are usually an email address.
+      final named = OtpAccount(
+          issuer: 'GitHub', label: 'alice@example.com', secret: key());
+      expect(named.toString(), isNot(contains('alice')));
+      expect(named.toString(), isNot(contains('GitHub')));
       expect(text, isNot(contains(Base32.encode(a.secret))));
       expect(text, isNot(contains('7, 7')));
     });
@@ -342,16 +361,44 @@ void main() {
     });
 
     test(
-        'sameAccountAs compares the secret and parameters, not the counter or id',
+        'isDuplicateOf compares the secret and parameters, not names, counter or id',
         () {
       final a = OtpAccount(issuer: 'I', label: 'L', secret: key(), id: '1');
-      final b = a.copyWith(id: '2', counter: 9);
-      expect(a.sameAccountAs(b), isTrue);
+      final b = a.copyWith(id: '2', counter: 9, label: 'other spelling');
+      expect(a.isDuplicateOf(b), isTrue);
       final other = Uint8List.fromList(key())..[19] = 8;
       expect(
-          a.sameAccountAs(OtpAccount(issuer: 'I', label: 'L', secret: other)),
+          a.isDuplicateOf(OtpAccount(issuer: 'I', label: 'L', secret: other)),
           isFalse);
-      expect(a.sameAccountAs(a.copyWith(label: 'M')), isFalse);
+      expect(
+          a.isDuplicateOf(
+              OtpAccount(issuer: 'I', label: 'L', secret: key(), digits: 8)),
+          isFalse);
+    });
+
+    test('the constructor keeps its own copy of the secret', () {
+      final buffer = key();
+      final a = OtpAccount(issuer: '', label: 'a', secret: buffer);
+      buffer.fillRange(0, buffer.length, 0);
+      expect(a.secret.every((v) => v == 7), isTrue);
+      a.wipe();
+      expect(a.secret.every((v) => v == 0), isTrue);
+    });
+
+    test('a wiped account cannot make codes', () {
+      final a = OtpAccount(issuer: '', label: 'a', secret: key());
+      a.wipe();
+      expect(a.isWiped, isTrue);
+      expect(() => OtpGenerator.code(a, DateTime.utc(2026)), throwsStateError);
+      expect(
+          () => OtpGenerator.nextCode(a, DateTime.utc(2026)), throwsStateError);
+    });
+
+    test('names are trimmed, so a link round-trips', () {
+      final a = OtpAccount(issuer: ' Svc ', label: ' work ', secret: key());
+      expect(a.issuer, 'Svc');
+      expect(a.label, 'work');
+      expect(OtpUri.parse(OtpUri.write(a)).label, 'work');
     });
 
     test('secret strength is reported in bits', () {

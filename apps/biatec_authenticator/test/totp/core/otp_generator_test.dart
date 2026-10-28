@@ -164,6 +164,9 @@ void main() {
       expect(OtpGenerator.step(account, before), 0);
       expect(OtpGenerator.code(account, before),
           OtpGenerator.code(account, at(0)));
+      // The countdown agrees with the code: it counts from 1970, not from the bad clock.
+      expect(OtpGenerator.secondsLeft(account, before), 30);
+      expect(OtpGenerator.fractionLeft(account, before), 1.0);
     });
 
     test('the zone of the clock does not matter', () {

@@ -46,6 +46,8 @@ class OtpUriException implements Exception {
 
 /// Reads and writes the `otpauth://` Key URI format that services show as a QR code.
 ///
+/// A `counter` on a time-based link is refused (it is most likely a counter-based account mislabelled); a `period` on a counter-based link is ignored, since it changes nothing.
+///
 /// When the label has an `Issuer:` prefix and the `issuer` setting says something else, the setting is used and the prefix dropped. The format asks for both to agree, but real services differ in case and spacing, so a difference is not an error.
 abstract final class OtpUri {
   /// A real link is a few hundred characters; this stops a hostile QR code from making the parser work on megabytes.
@@ -245,14 +247,25 @@ abstract final class OtpUri {
     return int.parse(text);
   }
 
-  /// Control characters, and the characters that reorder text (they can make "evil.com" display as something else).
+  /// Control characters, invisible characters, and the characters that reorder text: any of them can make two different names look the same or make "evil.com" display as something else.
   static bool _hasUnsafeCharacters(String text) {
     for (final u in text.runes) {
-      if (u < 0x20 || (u >= 0x7F && u <= 0x9F)) return true;
-      if (u >= 0x202A && u <= 0x202E) return true;
-      if (u >= 0x2066 && u <= 0x2069) return true;
-      if (u == 0x200E || u == 0x200F || u == 0x061C) return true;
+      if (_isUnsafe(u)) return true;
     }
     return false;
+  }
+
+  static bool _isUnsafe(int u) {
+    return u < 0x20 ||
+        (u >= 0x7F && u <= 0x9F) ||
+        u == 0x00AD ||
+        u == 0x061C ||
+        u == 0x180E ||
+        (u >= 0x200B && u <= 0x200F) || // zero width, direction marks
+        (u >= 0x2028 && u <= 0x202E) || // line separators, embeddings
+        (u >= 0x2060 && u <= 0x2064) || // word joiner, invisible operators
+        (u >= 0x2066 && u <= 0x2069) || // isolates
+        u == 0xFEFF ||
+        (u >= 0xFFF9 && u <= 0xFFFB);
   }
 }

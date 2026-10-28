@@ -39,16 +39,27 @@ abstract final class OtpGenerator {
     return (binary % mod).toString().padLeft(digits, '0');
   }
 
+  static void _usable(OtpAccount account) {
+    if (account.isWiped) {
+      throw StateError('This account was wiped from memory (the app locked).');
+    }
+  }
+
+  /// Seconds since the epoch, never below 0 (a reset clock), so the code, the seconds left and the ring agree.
+  static int _seconds(DateTime now) {
+    final s = now.toUtc().millisecondsSinceEpoch ~/ 1000;
+    return s < 0 ? 0 : s;
+  }
+
   /// The step a time-based account is in at [now]: seconds since the epoch divided by the period.
   static int step(OtpAccount account, DateTime now) {
-    final seconds = now.toUtc().millisecondsSinceEpoch ~/ 1000;
-    // A clock before 1970 (a reset real-time clock) gives step 0 instead of an error in the middle of drawing the list; the clock check in the app tells the user.
-    if (seconds < 0) return 0;
-    return seconds ~/ account.period;
+    // A clock before 1970 (a reset real-time clock) counts as 1970 instead of failing in the middle of drawing the list; the clock check in the app tells the user.
+    return _seconds(now) ~/ account.period;
   }
 
   /// The code of [account] at [now]. For a counter-based account that is the code for its current counter, whatever the time.
   static String code(OtpAccount account, DateTime now) {
+    _usable(account);
     final value =
         account.type == OtpType.hotp ? account.counter : step(account, now);
     return hotp(account.secret, value,
@@ -57,6 +68,7 @@ abstract final class OtpGenerator {
 
   /// The code of the following period (a time-based account), to show in the last seconds of this one.
   static String nextCode(OtpAccount account, DateTime now) {
+    _usable(account);
     if (account.type == OtpType.hotp) {
       return hotp(account.secret, account.counter + 1,
           algorithm: account.algorithm, digits: account.digits);
@@ -67,13 +79,15 @@ abstract final class OtpGenerator {
 
   /// Whole seconds left until the code changes, 1 to [OtpAccount.period] (a time-based account).
   static int secondsLeft(OtpAccount account, DateTime now) {
-    final seconds = now.toUtc().millisecondsSinceEpoch ~/ 1000;
-    return account.period - (seconds % account.period);
+    return account.period - (_seconds(now) % account.period);
   }
 
   /// A fraction from 1 (just started) to 0 (about to change), for a countdown ring.
   static double fractionLeft(OtpAccount account, DateTime now) {
-    final ms = now.toUtc().millisecondsSinceEpoch;
+    final ms = _seconds(now) * 1000 +
+        (now.toUtc().millisecondsSinceEpoch >= 0
+            ? now.toUtc().millisecondsSinceEpoch % 1000
+            : 0);
     final periodMs = account.period * 1000;
     return 1 - ((ms % periodMs) / periodMs);
   }

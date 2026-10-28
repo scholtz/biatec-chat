@@ -52,14 +52,10 @@ abstract final class Base32 {
         buffer &= (1 << bits) - 1;
       }
     }
-    // A last group of 1, 3 or 6 characters cannot come from whole bytes, and
-    // leftover bits must be zero in a canonical encoding.
+    // A last group of 1, 3 or 6 characters cannot come from whole bytes. Leftover bits in the last character are dropped, as other authenticator apps do: some services hand out keys that have them, and refusing would lock the user out of that account.
     final rest = end % 8;
     if (rest == 1 || rest == 3 || rest == 6) {
       throw const Base32Exception('The key has the wrong length.');
-    }
-    if (buffer != 0) {
-      throw const Base32Exception('The key is not valid Base32.');
     }
     return Uint8List.fromList(out);
   }

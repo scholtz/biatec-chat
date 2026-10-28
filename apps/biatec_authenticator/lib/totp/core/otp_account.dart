@@ -40,17 +40,20 @@ abstract final class OtpLimits {
 ///
 /// The secret is a byte array that [wipe] overwrites. Nothing here prints it: [toString] names the account and its parameters only.
 class OtpAccount {
+  /// The account keeps its own copy of [secret]; wipe the buffer you passed in yourself when you are done with it.
   OtpAccount({
-    required this.issuer,
-    required this.label,
-    required this.secret,
+    required String issuer,
+    required String label,
+    required Uint8List secret,
     this.algorithm = OtpAlgorithm.sha1,
     this.digits = 6,
     this.period = OtpLimits.defaultPeriod,
     this.type = OtpType.totp,
     this.counter = 0,
     this.id,
-  }) {
+  })  : issuer = issuer.trim(),
+        label = label.trim(),
+        secret = Uint8List.fromList(secret) {
     if (secret.isEmpty) {
       throw ArgumentError('An account needs a secret.');
     }
@@ -61,8 +64,8 @@ class OtpAccount {
       throw ArgumentError('The period must be 15 to 120 seconds.');
     }
     if (counter < 0) throw ArgumentError('The counter cannot be negative.');
-    if (issuer.length > OtpLimits.maxTextLength ||
-        label.length > OtpLimits.maxTextLength) {
+    if (this.issuer.length > OtpLimits.maxTextLength ||
+        this.label.length > OtpLimits.maxTextLength) {
       throw ArgumentError('The issuer or name is too long.');
     }
   }
@@ -90,7 +93,7 @@ class OtpAccount {
   /// Strength of the secret in bits. RFC 4226 asks for at least 128, and 160 is recommended; some services give 80.
   int get secretBits => secret.length * 8;
 
-  /// A copy with some fields changed. The secret is copied too, so wiping one account never destroys the other.
+  /// A copy with some fields changed (it has its own copy of the secret).
   OtpAccount copyWith({
     String? issuer,
     String? label,
@@ -100,7 +103,7 @@ class OtpAccount {
       OtpAccount(
         issuer: issuer ?? this.issuer,
         label: label ?? this.label,
-        secret: Uint8List.fromList(secret),
+        secret: secret,
         algorithm: algorithm,
         digits: digits,
         period: period,
@@ -109,21 +112,27 @@ class OtpAccount {
         id: id ?? this.id,
       );
 
-  /// Overwrites the secret in memory. The account cannot make codes afterwards.
-  void wipe() => secret.fillRange(0, secret.length, 0);
+  bool _wiped = false;
 
-  /// Same service, name, secret and parameters (the id and counter are not compared). For duplicate detection.
-  bool sameAccountAs(OtpAccount other) {
-    if (issuer != other.issuer ||
-        label != other.label ||
-        algorithm != other.algorithm ||
+  /// Whether [wipe] was called. A wiped account cannot make codes: the generator refuses it, so a redraw after a lock never shows a wrong code made from zeros.
+  bool get isWiped => _wiped;
+
+  /// Overwrites the secret in memory.
+  void wipe() {
+    secret.fillRange(0, secret.length, 0);
+    _wiped = true;
+  }
+
+  /// The same credential: same secret and parameters. The names are not compared, because scanning one service's code twice under two spellings is still one account (the id and counter are not compared either).
+  bool isDuplicateOf(OtpAccount other) {
+    if (algorithm != other.algorithm ||
         digits != other.digits ||
         period != other.period ||
         type != other.type ||
         secret.length != other.secret.length) {
       return false;
     }
-    // Compared without stopping at the first difference.
+    // Compared without stopping at the first different byte.
     var diff = 0;
     for (var i = 0; i < secret.length; i++) {
       diff |= secret[i] ^ other.secret[i];
@@ -131,8 +140,8 @@ class OtpAccount {
     return diff == 0;
   }
 
-  /// Never includes the secret.
+  /// Names neither the secret nor the person: the issuer and label are usually an email address, and logs and crash reports must not carry one.
   @override
-  String toString() => 'OtpAccount($issuer / $label, ${type.name}, '
-      '${algorithm.uriName}, $digits digits)';
+  String toString() => 'OtpAccount(${type.name}, ${algorithm.uriName}, '
+      '$digits digits${id == null ? '' : ', id $id'})';
 }
