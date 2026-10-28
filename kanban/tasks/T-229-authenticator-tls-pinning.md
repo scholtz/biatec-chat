@@ -1,7 +1,7 @@
 ---
 id: T-229
 title: "Authenticator: TLS pinning for Biatec OIDC and a locked-down network config"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: []
@@ -9,8 +9,8 @@ area: ["apps/biatec_authenticator/lib/security/pinning/**", "apps/biatec_authent
 parallel: no
 conflicts_with: [T-227]
 issue: "#366"
-branch: ""
-owner: ""
+branch: "task/T-229"
+owner: "session-20261028-1135"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
@@ -67,3 +67,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 
 - 2026-10-28 09:00 · claude · (new) → backlog · created from the request to add two-factor codes, a biometric lock and industry-standard security
 - 2026-10-28 09:10 · scholtz · taken · status stays backlog
+- 2026-10-28 11:35 · session-20261028-1135 · backlog → in-progress · claimed
