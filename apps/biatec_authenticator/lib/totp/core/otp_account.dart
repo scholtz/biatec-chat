@@ -90,6 +90,7 @@ class OtpAccount {
   /// Strength of the secret in bits. RFC 4226 asks for at least 128, and 160 is recommended; some services give 80.
   int get secretBits => secret.length * 8;
 
+  /// A copy with some fields changed. The secret is copied too, so wiping one account never destroys the other.
   OtpAccount copyWith({
     String? issuer,
     String? label,
@@ -99,7 +100,7 @@ class OtpAccount {
       OtpAccount(
         issuer: issuer ?? this.issuer,
         label: label ?? this.label,
-        secret: secret,
+        secret: Uint8List.fromList(secret),
         algorithm: algorithm,
         digits: digits,
         period: period,

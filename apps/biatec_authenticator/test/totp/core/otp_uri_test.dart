@@ -358,4 +358,43 @@ void main() {
       expect(OtpAccount(issuer: '', label: 'a', secret: key()).secretBits, 160);
     });
   });
+
+  group('review follow-ups', () {
+    const s = 'secret=JBSWY3DPEHPK3PXP';
+
+    test('bad percent-encoding in a value is a refusal, not a raw exception',
+        () {
+      expect(errorOf('otpauth://totp/a?$s&issuer=%E0%A4%A'),
+          OtpUriError.invalidName);
+    });
+
+    test('two issuers are refused, whatever order they come in', () {
+      expect(errorOf('otpauth://totp/a?$s&issuer=GitHub&issuer=Evil'),
+          OtpUriError.duplicateParameter);
+    });
+
+    test('an account must have a name', () {
+      expect(errorOf('otpauth://totp/?$s'), OtpUriError.invalidName);
+      expect(errorOf('otpauth://totp/Issuer:?$s'), OtpUriError.invalidName);
+      expect(errorOf('otpauth://totp/%20%20?$s'), OtpUriError.invalidName);
+    });
+
+    test('copyWith copies the secret, so wiping one account leaves the other',
+        () {
+      final a = OtpAccount(
+          issuer: 'I',
+          label: 'L',
+          secret: Uint8List.fromList(List.filled(20, 9)));
+      final b = a.copyWith(id: 'x');
+      a.wipe();
+      expect(b.secret.every((v) => v == 9), isTrue);
+      expect(a.secret.every((v) => v == 0), isTrue);
+    });
+
+    test('a differing issuer setting wins over the label prefix', () {
+      final a = OtpUri.parse('otpauth://totp/Github%20:alice?issuer=GitHub&$s');
+      expect(a.issuer, 'GitHub');
+      expect(a.label, 'alice');
+    });
+  });
 }

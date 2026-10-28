@@ -45,11 +45,20 @@ class OtpUriException implements Exception {
 }
 
 /// Reads and writes the `otpauth://` Key URI format that services show as a QR code.
+///
+/// When the label has an `Issuer:` prefix and the `issuer` setting says something else, the setting is used and the prefix dropped. The format asks for both to agree, but real services differ in case and spacing, so a difference is not an error.
 abstract final class OtpUri {
   /// A real link is a few hundred characters; this stops a hostile QR code from making the parser work on megabytes.
   static const maxLength = 2048;
 
-  static const _single = {'secret', 'algorithm', 'digits', 'period', 'counter'};
+  static const _single = {
+    'secret',
+    'issuer',
+    'algorithm',
+    'digits',
+    'period',
+    'counter',
+  };
 
   static OtpAccount parse(String link) {
     final text = link.trim();
@@ -79,7 +88,14 @@ abstract final class OtpUri {
             'Only time-based and counter-based codes are supported.');
     }
 
-    final all = uri.queryParametersAll;
+    final Map<String, List<String>> all;
+    try {
+      all = uri.queryParametersAll;
+    } on Object {
+      // Bad percent-encoding in a value (invalid UTF-8, say).
+      throw const OtpUriException(
+          OtpUriError.invalidName, 'This link has text that is not valid.');
+    }
     for (final name in _single) {
       if ((all[name]?.length ?? 0) > 1) {
         throw const OtpUriException(OtpUriError.duplicateParameter,
@@ -179,6 +195,10 @@ abstract final class OtpUri {
       if (issuerParam.isNotEmpty) issuer = issuerParam;
     }
     label = label.trim();
+    if (label.isEmpty) {
+      throw const OtpUriException(
+          OtpUriError.invalidName, 'This account has no name.');
+    }
     for (final t in [issuer, label]) {
       if (_hasUnsafeCharacters(t) || t.length > OtpLimits.maxTextLength) {
         throw const OtpUriException(

@@ -159,6 +159,13 @@ void main() {
       expect(OtpGenerator.secondsLeft(sixty, at(119)), 1);
     });
 
+    test('a clock before 1970 gives step 0 instead of failing', () {
+      final before = DateTime.fromMillisecondsSinceEpoch(-5000, isUtc: true);
+      expect(OtpGenerator.step(account, before), 0);
+      expect(OtpGenerator.code(account, before),
+          OtpGenerator.code(account, at(0)));
+    });
+
     test('the zone of the clock does not matter', () {
       final utc = DateTime.utc(2026, 10, 28, 12, 0, 5);
       final local = utc.toLocal();

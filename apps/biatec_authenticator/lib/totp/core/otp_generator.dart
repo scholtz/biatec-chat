@@ -42,6 +42,8 @@ abstract final class OtpGenerator {
   /// The step a time-based account is in at [now]: seconds since the epoch divided by the period.
   static int step(OtpAccount account, DateTime now) {
     final seconds = now.toUtc().millisecondsSinceEpoch ~/ 1000;
+    // A clock before 1970 (a reset real-time clock) gives step 0 instead of an error in the middle of drawing the list; the clock check in the app tells the user.
+    if (seconds < 0) return 0;
     return seconds ~/ account.period;
   }
 
