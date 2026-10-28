@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'pinning/pinned_http.dart';
+
 import '../approvals/approval_client.dart';
 import 'device_proof.dart';
 
@@ -123,7 +125,7 @@ class ConsentRequiredException extends ApprovalException {
 /// shapes are in `docs/required-changes-biatec-oidc.md`, rows 21 and 22.
 class SettingsClient {
   SettingsClient({required this.baseUrl, http.Client? client, this.proof})
-      : _client = client ?? http.Client();
+      : _client = client ?? PinnedHttp.clientFor(baseUrl);
 
   final String baseUrl;
   final http.Client _client;

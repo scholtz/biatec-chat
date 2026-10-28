@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Network policy of the platform's own HTTP stack (T-229). No cleartext anywhere, and only the system's certificate authorities: the user's own
+     certificates are not trusted (the debug build has its own file in src/debug). Biatec OIDC is also pinned here to the CA keys that issue
+     its certificates, as a second line behind the pinning of the Dart client (lib/security/pinning), which Android's policy does not apply to.
+     Pins are SHA-256 of the public key of any certificate in the chain. docs/AUTHENTICATOR-PINNING.md says where each comes from and how to rotate them. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="false">stage.oidc.biatec.io</domain>
+        <!-- After this date Android stops enforcing the pins, so rotate before it; the test in test/pinning checks it is still in the future. -->
+        <pin-set expiration="2028-10-28">
+            <!-- ISRG Root X1 (primary), ISRG Root YR (the root of the chain served today), ISRG Root X2 (backup) -->
+            <pin digest="SHA-256">C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=</pin>
+            <pin digest="SHA-256">fk6IOKit1ild5647BH06ujSIq5XbCgqlbYl6ANhhi88=</pin>
+            <pin digest="SHA-256">diGVwiVYbubAI3RW4hB9xU8e/CH2GnkuvVFZE8zmgzI=</pin>
+        </pin-set>
+    </domain-config>
+</network-security-config>

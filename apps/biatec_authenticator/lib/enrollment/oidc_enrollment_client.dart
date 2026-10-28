@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../security/pinning/pinned_http.dart';
+
 import '../keys/device_key_store.dart';
 import 'enrollment_state.dart';
 
@@ -15,7 +17,7 @@ class EnrollmentException implements Exception {
 /// `POST /devices` against Biatec OIDC (the mock in development).
 class OidcEnrollmentClient {
   OidcEnrollmentClient({required this.baseUrl, http.Client? client})
-      : _client = client ?? http.Client();
+      : _client = client ?? PinnedHttp.clientFor(baseUrl);
 
   final String baseUrl;
   final http.Client _client;

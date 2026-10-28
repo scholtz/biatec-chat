@@ -24,6 +24,25 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- No transport security exceptions of any kind. Biatec OIDC is pinned to the CA keys that issue its certificates
+		     (T-229), as a second line behind the pinning of the Dart client. See docs/AUTHENTICATOR-PINNING.md. -->
+		<key>NSPinnedDomains</key>
+		<dict>
+			<key>stage.oidc.biatec.io</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<false/>
+				<key>NSPinnedCAIdentities</key>
+				<array>
+					<dict><key>SPKI-SHA256-BASE64</key><string>C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=</string></dict>
+					<dict><key>SPKI-SHA256-BASE64</key><string>fk6IOKit1ild5647BH06ujSIq5XbCgqlbYl6ANhhi88=</string></dict>
+					<dict><key>SPKI-SHA256-BASE64</key><string>diGVwiVYbubAI3RW4hB9xU8e/CH2GnkuvVFZE8zmgzI=</string></dict>
+				</array>
+			</dict>
+		</dict>
+	</dict>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Biatec Authenticator asks for Face ID to confirm that it is you before it signs an approval.</string>
 	<key>LSRequiresIPhoneOS</key>

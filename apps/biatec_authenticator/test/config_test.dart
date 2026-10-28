@@ -11,32 +11,44 @@ void main() {
       expect(c.isMock, isFalse);
     });
 
-    test('the built-in mock URL and the empty default are the mock in a debug build only', () {
+    test(
+        'the built-in mock URL and the empty default are the mock in a debug build only',
+        () {
       expect(AppConfig.resolve('', release: false).isMock, isTrue);
       expect(
           AppConfig.resolve(AppConfig.mockOidcBaseUrl, release: false).isMock,
           isTrue);
       // However the mock URL is spelled, it is the mock (and not an "other" local URL).
-      final shouty = AppConfig.resolve('HTTP://10.0.2.2:5080/mock-oidc/', release: false);
+      final shouty =
+          AppConfig.resolve('HTTP://10.0.2.2:5080/mock-oidc/', release: false);
       expect(shouty.isMock, isTrue);
       expect(shouty.oidcBaseUrl, AppConfig.mockOidcBaseUrl);
       // A release (or profile) build has no mock and no default.
-      expect(() => AppConfig.resolve('', release: true), throwsA(isA<ConfigException>()));
+      expect(() => AppConfig.resolve('', release: true),
+          throwsA(isA<ConfigException>()));
       expect(() => AppConfig.resolve(AppConfig.mockOidcBaseUrl, release: true),
           throwsA(isA<ConfigException>()));
     });
 
-    test('the default (no release argument) follows the build mode: a debug test run is not a release', () {
+    test(
+        'the default (no release argument) follows the build mode: a debug test run is not a release',
+        () {
       expect(AppConfig.resolve('').isMock, isTrue);
-      expect(AppConfig.resolve('http://localhost:5080').oidcBaseUrl, 'http://localhost:5080');
+      expect(AppConfig.resolve('http://localhost:5080').oidcBaseUrl,
+          'http://localhost:5080');
       expect(AppConfig.fromEnvironment().isMock, isTrue);
     });
 
-    test('a Windows release build with no URL defaults to stage Biatec OIDC; other release builds still refuse', () {
+    test(
+        'a Windows release build with no URL defaults to stage Biatec OIDC; other release builds still refuse',
+        () {
       final c = AppConfig.resolve('', release: true, windows: true);
       expect(c.oidcBaseUrl, AppConfig.stageOidcBaseUrl);
       expect(c.isMock, isFalse);
-      expect(AppConfig.resolve('https://oidc.biatec.io', release: true, windows: true).oidcBaseUrl,
+      expect(
+          AppConfig.resolve('https://oidc.biatec.io',
+                  release: true, windows: true)
+              .oidcBaseUrl,
           'https://oidc.biatec.io');
       expect(() => AppConfig.resolve('', release: true, windows: false),
           throwsA(isA<ConfigException>()));
@@ -70,7 +82,9 @@ void main() {
       }
     });
 
-    test('other schemes, credentials, queries, fragments and non-URLs are refused', () {
+    test(
+        'other schemes, credentials, queries, fragments and non-URLs are refused',
+        () {
       for (final u in [
         'ftp://oidc.biatec.io',
         'file:///etc/passwd',
@@ -88,8 +102,10 @@ void main() {
     });
   });
 
-  testWidgets('a rejected URL shows why the build cannot start', (tester) async {
-    await tester.pumpWidget(const ConfigErrorApp(message: 'OIDC_BASE_URL must be https.'));
+  testWidgets('a rejected URL shows why the build cannot start',
+      (tester) async {
+    await tester.pumpWidget(
+        const ConfigErrorApp(message: 'OIDC_BASE_URL must be https.'));
     expect(find.byKey(const Key('config-error-title')), findsOneWidget);
     expect(find.text('OIDC_BASE_URL must be https.'), findsOneWidget);
   });

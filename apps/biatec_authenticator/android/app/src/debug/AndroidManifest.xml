@@ -5,7 +5,6 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
-    <!-- Debug builds only: plain http to the mock OIDC on the host (10.0.2.2). The main manifest forbids cleartext; a release build is merged
-         from the main manifest alone. -->
-    <application android:usesCleartextTraffic="true" tools:replace="android:usesCleartextTraffic" />
+    <!-- Debug builds only: plain http to the mock OIDC on the host (10.0.2.2) comes from this variant's own network_security_config.xml, which allows
+         cleartext for the developer's machine and nowhere else. No attribute here switches cleartext on for every host. -->
 </manifest>

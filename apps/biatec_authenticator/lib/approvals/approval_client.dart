@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../security/device_proof.dart';
+import '../security/pinning/pinned_http.dart';
 import 'consent_request.dart';
 
 /// The request could not be reached or read. [offline] is true when the
@@ -52,7 +53,7 @@ class ReceiptRefused extends ReceiptOutcome {
 /// `Authorization: Device <token>`.
 class ApprovalClient {
   ApprovalClient({required this.baseUrl, http.Client? client, this.proof})
-      : _client = client ?? http.Client();
+      : _client = client ?? PinnedHttp.clientFor(baseUrl);
 
   final String baseUrl;
   final http.Client _client;

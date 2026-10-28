@@ -92,9 +92,9 @@ class FakeSettingsOidc {
   Map<String, Object?> clientById(String id) =>
       _clients.firstWhere((c) => c['client_id'] == id);
 
-  http.Response _json(int status, Object body) => http.Response(
-      jsonEncode(body), status,
-      headers: {'content-type': 'application/json'});
+  http.Response _json(int status, Object body) =>
+      http.Response(jsonEncode(body), status,
+          headers: {'content-type': 'application/json'});
 
   http.Client get client => MockClient((req) async {
         if (offline) throw http.ClientException('network is unreachable');
@@ -130,8 +130,8 @@ class FakeSettingsOidc {
     puts.add(body);
     final change = (body['change'] as Map).cast<String, Object?>();
     final consent = body['consent'];
-    final loosening =
-        alwaysRequireConsent || isLoosening(ConsentSettings.fromJson(settings), change);
+    final loosening = alwaysRequireConsent ||
+        isLoosening(ConsentSettings.fromJson(settings), change);
     if (loosening) {
       final reject = _json(403, {
         'error': 'insufficient_user_authentication',
@@ -152,11 +152,16 @@ class FakeSettingsOidc {
       if (!ok) return reject;
     }
     _apply(change);
-    return _json(200, {'applied': true, 'loosened': loosening, 'settings': settings});
+    return _json(
+        200, {'applied': true, 'loosened': loosening, 'settings': settings});
   }
 
   void _apply(Map<String, Object?> change) {
-    for (final k in ['threshold_eur', 'biometric_required', 'block_unverified_clients']) {
+    for (final k in [
+      'threshold_eur',
+      'biometric_required',
+      'block_unverified_clients'
+    ]) {
       if (change.containsKey(k)) settings[k] = change[k];
     }
     final clients = (change['clients'] as Map?)?.cast<String, Object?>() ?? {};
@@ -185,7 +190,8 @@ class SettingsRig {
           attestation: 'att',
         ));
     services = SettingsServices(
-      client: SettingsClient(baseUrl: 'http://oidc.test', client: this.oidc.client),
+      client:
+          SettingsClient(baseUrl: 'http://oidc.test', client: this.oidc.client),
       keys: keys,
       enrollment: enrollment,
       gate: gate,
