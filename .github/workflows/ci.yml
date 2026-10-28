@@ -119,6 +119,9 @@ jobs:
           flutter build apk --release --obfuscate --split-debug-info=build/symbols \
             --dart-define=OIDC_BASE_URL=https://oidc.example
       - name: Hardening checks against the merged release manifest
+        # REQUIRE_MERGED_MANIFEST makes a missing merged manifest a failure, not a skipped test.
+        env:
+          REQUIRE_MERGED_MANIFEST: "1"
         run: flutter test test/platform_hardening_test.dart
       # Also when the build failed: the throwaway key and its password must not stay in the workspace.
       - name: Remove the throwaway signing key

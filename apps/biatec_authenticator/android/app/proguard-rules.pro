@@ -12,3 +12,7 @@
     public static int println(...);
     public static java.lang.String getStackTraceString(...);
 }
+# A library's `if (Log.isLoggable(...))` guard is then false, so its message is not even built.
+-assumenosideeffects class android.util.Log {
+    public static boolean isLoggable(...) return false;
+}

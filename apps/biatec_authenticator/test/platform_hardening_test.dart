@@ -93,6 +93,10 @@ void main() {
     });
   });
 
+  // CI sets this after building the release APK, so a manifest that is not found fails the test instead of skipping it.
+  final requireMergedManifest =
+      Platform.environment['REQUIRE_MERGED_MANIFEST'] == '1';
+
   group('Android merged release manifest (after flutter build apk --release)',
       () {
     final dir = Directory('build/app/intermediates/merged_manifests/release');
@@ -106,6 +110,8 @@ void main() {
 
     test('every exported component but the launcher is guarded by a permission',
         () {
+      expect(file, isNotNull,
+          reason: 'build the release APK first (flutter build apk --release)');
       final xml = file!.readAsStringSync();
       expect(xml, contains('android:allowBackup="false"'));
       expect(xml, contains('android:usesCleartextTraffic="false"'));
@@ -121,7 +127,7 @@ void main() {
             reason: 'an exported component without a permission: $tag');
       }
     },
-        skip: file == null
+        skip: file == null && !requireMergedManifest
             ? 'no merged release manifest: build the release APK first'
             : false);
   });
@@ -170,7 +176,7 @@ void main() {
     final proguard = read('android/app/proguard-rules.pro');
 
     test('the window is secure before the first frame, not after', () {
-      final secure = activity.indexOf('FLAG_SECURE');
+      final secure = activity.indexOf('window.setFlags(');
       final create = activity.indexOf('super.onCreate(');
       expect(secure, greaterThan(-1));
       expect(create, greaterThan(-1));
@@ -192,7 +198,7 @@ void main() {
     });
 
     test('the touch filter is set after the window exists', () {
-      expect(activity.indexOf('filterTouchesWhenObscured'),
+      expect(activity.indexOf('window.decorView.filterTouchesWhenObscured'),
           greaterThan(activity.indexOf('super.onCreate(')));
     });
 
@@ -201,6 +207,7 @@ void main() {
       expect(gradle, contains('isJniDebuggable = false'));
       expect(gradle, contains('isShrinkResources = true'));
       expect(proguard, contains('-assumenosideeffects class android.util.Log'));
+      expect(proguard, contains('isLoggable(...) return false'));
       for (final level in ['v', 'd', 'i', 'w', 'e', 'wtf', 'println']) {
         expect(proguard, contains('public static int $level(...);'),
             reason: 'Log.$level is stripped');
@@ -213,9 +220,17 @@ void main() {
           .listSync(recursive: true)
           .whereType<File>()
           .where((f) => f.path.endsWith('.kt'))) {
-        expect(
-            RegExp(r'\bLog\.[a-z]+\(').hasMatch(f.readAsStringSync()), isFalse,
-            reason: '${f.path} must not log');
+        final code = f.readAsStringSync();
+        for (final pattern in [
+          r'\bLog\.[a-zA-Z]+\(',
+          r'printStackTrace',
+          r'System\.(out|err)',
+          r'\bprintln\(',
+          r'Timber\.',
+        ]) {
+          expect(RegExp(pattern).hasMatch(code), isFalse,
+              reason: '${f.path} must not log ($pattern)');
+        }
       }
     });
 
