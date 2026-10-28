@@ -15,6 +15,9 @@ enum OtpUriError {
   tooLong,
   missingSecret,
   invalidSecret,
+
+  /// A secret under 80 bits.
+  weakSecret,
   invalidAlgorithm,
   invalidDigits,
   invalidPeriod,
@@ -119,6 +122,12 @@ abstract final class OtpUri {
           'The secret key in this link is not valid.');
     }
 
+    if (secret.length < OtpLimits.minSecretBytes) {
+      secret.fillRange(0, secret.length, 0);
+      throw const OtpUriException(OtpUriError.weakSecret,
+          'The secret key in this link is too short to be safe.');
+    }
+
     var algorithm = OtpAlgorithm.sha1;
     final algorithmText = param('algorithm');
     if (algorithmText != null) {
@@ -208,16 +217,21 @@ abstract final class OtpUri {
       }
     }
 
-    return OtpAccount(
-      issuer: issuer,
-      label: label,
-      secret: secret,
-      algorithm: algorithm,
-      digits: digits,
-      period: period,
-      type: type,
-      counter: counter,
-    );
+    try {
+      return OtpAccount(
+        issuer: issuer,
+        label: label,
+        secret: secret,
+        algorithm: algorithm,
+        digits: digits,
+        period: period,
+        type: type,
+        counter: counter,
+      );
+    } finally {
+      // The account holds its own copy.
+      secret.fillRange(0, secret.length, 0);
+    }
   }
 
   /// The link for [account], with every setting explicit. Contains the secret: handle the result as one.
@@ -266,6 +280,14 @@ abstract final class OtpUri {
         (u >= 0x2060 && u <= 0x2064) || // word joiner, invisible operators
         (u >= 0x2066 && u <= 0x2069) || // isolates
         u == 0xFEFF ||
-        (u >= 0xFFF9 && u <= 0xFFFB);
+        (u >= 0xFFF9 && u <= 0xFFFB) ||
+        u == 0x034F || // combining grapheme joiner
+        u == 0x115F ||
+        u == 0x1160 || // Hangul fillers
+        u == 0x3164 ||
+        u == 0xFFA0 ||
+        u == 0x2800 || // braille blank
+        (u >= 0xFE00 && u <= 0xFE0F) || // variation selectors
+        (u >= 0xE0000 && u <= 0xE007F); // tag characters
   }
 }

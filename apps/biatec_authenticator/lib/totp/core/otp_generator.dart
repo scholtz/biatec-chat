@@ -39,6 +39,12 @@ abstract final class OtpGenerator {
     return (binary % mod).toString().padLeft(digits, '0');
   }
 
+  static void _timeBased(OtpAccount account) {
+    if (account.type != OtpType.totp) {
+      throw StateError('A counter-based account has no countdown.');
+    }
+  }
+
   static void _usable(OtpAccount account) {
     if (account.isWiped) {
       throw StateError('This account was wiped from memory (the app locked).');
@@ -79,15 +85,15 @@ abstract final class OtpGenerator {
 
   /// Whole seconds left until the code changes, 1 to [OtpAccount.period] (a time-based account).
   static int secondsLeft(OtpAccount account, DateTime now) {
+    _timeBased(account);
     return account.period - (_seconds(now) % account.period);
   }
 
   /// A fraction from 1 (just started) to 0 (about to change), for a countdown ring.
   static double fractionLeft(OtpAccount account, DateTime now) {
-    final ms = _seconds(now) * 1000 +
-        (now.toUtc().millisecondsSinceEpoch >= 0
-            ? now.toUtc().millisecondsSinceEpoch % 1000
-            : 0);
+    _timeBased(account);
+    var ms = now.toUtc().millisecondsSinceEpoch;
+    if (ms < 0) ms = 0;
     final periodMs = account.period * 1000;
     return 1 - ((ms % periodMs) / periodMs);
   }

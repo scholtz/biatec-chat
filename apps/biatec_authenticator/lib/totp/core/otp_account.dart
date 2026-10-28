@@ -34,6 +34,9 @@ abstract final class OtpLimits {
   static const maxPeriod = 120;
   static const defaultPeriod = 30;
   static const maxTextLength = 256;
+
+  /// The smallest secret accepted, 80 bits: what the smallest keys in wide use (Google's 16 characters) carry. A shorter one is guessable, so it is refused instead of shown as a normal account.
+  static const minSecretBytes = 10;
 }
 
 /// One two-factor account: who it is for, and the secret and parameters that make its codes.
@@ -54,8 +57,8 @@ class OtpAccount {
   })  : issuer = issuer.trim(),
         label = label.trim(),
         secret = Uint8List.fromList(secret) {
-    if (secret.isEmpty) {
-      throw ArgumentError('An account needs a secret.');
+    if (secret.length < OtpLimits.minSecretBytes) {
+      throw ArgumentError('The secret is too short (at least 80 bits).');
     }
     if (digits < OtpLimits.minDigits || digits > OtpLimits.maxDigits) {
       throw ArgumentError('Digits must be 6 to 8.');
@@ -99,18 +102,20 @@ class OtpAccount {
     String? label,
     int? counter,
     String? id,
-  }) =>
-      OtpAccount(
-        issuer: issuer ?? this.issuer,
-        label: label ?? this.label,
-        secret: secret,
-        algorithm: algorithm,
-        digits: digits,
-        period: period,
-        type: type,
-        counter: counter ?? this.counter,
-        id: id ?? this.id,
-      );
+  }) {
+    if (_wiped) throw StateError('This account was wiped from memory.');
+    return OtpAccount(
+      issuer: issuer ?? this.issuer,
+      label: label ?? this.label,
+      secret: secret,
+      algorithm: algorithm,
+      digits: digits,
+      period: period,
+      type: type,
+      counter: counter ?? this.counter,
+      id: id ?? this.id,
+    );
+  }
 
   bool _wiped = false;
 
@@ -125,6 +130,8 @@ class OtpAccount {
 
   /// The same credential: same secret and parameters. The names are not compared, because scanning one service's code twice under two spellings is still one account (the id and counter are not compared either).
   bool isDuplicateOf(OtpAccount other) {
+    // Zeros say nothing about the account they were: a wiped one is never a duplicate of anything.
+    if (_wiped || other._wiped) return false;
     if (algorithm != other.algorithm ||
         digits != other.digits ||
         period != other.period ||

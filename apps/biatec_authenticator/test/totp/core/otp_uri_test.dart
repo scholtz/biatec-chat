@@ -444,4 +444,65 @@ void main() {
       expect(a.label, 'alice');
     });
   });
+
+  group('round three', () {
+    const s = 'secret=JBSWY3DPEHPK3PXP';
+    Uint8List key() => Uint8List.fromList(List.filled(20, 7));
+
+    test(
+        'copyWith on a wiped account fails instead of making a zero-key account',
+        () {
+      final a = OtpAccount(issuer: '', label: 'a', secret: key());
+      a.wipe();
+      expect(() => a.copyWith(counter: 1), throwsStateError);
+    });
+
+    test('a wiped account is a duplicate of nothing', () {
+      final a = OtpAccount(issuer: '', label: 'a', secret: key());
+      final b = OtpAccount(
+          issuer: '',
+          label: 'b',
+          secret: Uint8List.fromList(List.filled(20, 9)));
+      a.wipe();
+      b.wipe();
+      expect(a.isDuplicateOf(b), isFalse);
+      expect(b.isDuplicateOf(a), isFalse);
+    });
+
+    test('secrets under 80 bits are refused', () {
+      expect(errorOf('otpauth://totp/x?secret=AA'), OtpUriError.weakSecret);
+      expect(errorOf('otpauth://totp/x?secret=MZXW6YTBOI'),
+          OtpUriError.weakSecret);
+      expect(() => OtpAccount(issuer: '', label: 'a', secret: Uint8List(9)),
+          throwsArgumentError);
+      // The smallest in wide use (16 Base32 characters) is accepted.
+      expect(OtpUri.parse('otpauth://totp/x?$s').secretBits, 80);
+    });
+
+    test('more invisible characters are refused', () {
+      for (final hidden in [
+        '%CD%8F',
+        '%E1%85%9F',
+        '%E3%85%A4',
+        '%EF%BE%A0',
+        '%EF%B8%8F',
+        '%E2%A0%80',
+        '%F3%A0%80%81'
+      ]) {
+        expect(errorOf('otpauth://totp/Gi${hidden}thub:me?$s'),
+            OtpUriError.invalidName,
+            reason: hidden);
+      }
+      expect(errorOf('otpauth://totp/%E3%85%A4?$s'), OtpUriError.invalidName);
+    });
+
+    test('a counter-based account has no countdown', () {
+      final h =
+          OtpAccount(issuer: '', label: 'h', secret: key(), type: OtpType.hotp);
+      expect(() => OtpGenerator.secondsLeft(h, DateTime.utc(2026)),
+          throwsStateError);
+      expect(() => OtpGenerator.fractionLeft(h, DateTime.utc(2026)),
+          throwsStateError);
+    });
+  });
 }
