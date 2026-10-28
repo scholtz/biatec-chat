@@ -11,7 +11,7 @@ conflicts_with: [T-229]
 issue: "#364"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
 updated: 2026-10-28
@@ -66,3 +66,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 ## Activity log
 
 - 2026-10-28 09:00 · claude · (new) → backlog · created from the request to add two-factor codes, a biometric lock and industry-standard security
+- 2026-10-28 09:10 · scholtz · taken · status stays backlog

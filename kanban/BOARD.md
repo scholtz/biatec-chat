@@ -25,15 +25,15 @@ Updated: 2026-10-28 09:43 · Tasks: 179 total · backlog 3 · in-progress 0 · b
 | T-217 | Authenticator: redesign approval history and receipt detail | P1 | T-214 | yes | scholtz |
 | T-218 | Authenticator: redesign devices and trusted clients tabs | P1 | T-214, T-225 | yes | scholtz |
 | T-219 | Authenticator: settings tab, about and final accessibility polish | P1 | T-214, T-215, T-216, T-217, T-218, T-225 | yes | scholtz |
-| T-222 | Authenticator: biometric-only lock for the whole secure area | P1 | T-214, T-227 | no (T-220) | free |
-| T-223 | Authenticator: hardware-bound encrypted vault for two-factor accounts | P1 | T-221, T-227 | yes | free |
-| T-224 | Authenticator: Codes tab (two-factor codes list, add and edit) | P1 | T-221, T-222, T-223, T-225, T-227, T-229 | yes | free |
-| T-225 | Authenticator: navigation with Codes first, Trusted clients inside Settings | P1 | T-214 | no (T-220) | free |
-| T-228 | Authenticator: device integrity checks that fail closed | P1 | T-222, T-227 | yes | free |
-| T-230 | Authenticator: security documentation, MASVS matrix and CI checks | P1 | T-222, T-223, T-227, T-228, T-229 | yes | free |
+| T-222 | Authenticator: biometric-only lock for the whole secure area | P1 | T-214, T-227 | no (T-220) | scholtz |
+| T-223 | Authenticator: hardware-bound encrypted vault for two-factor accounts | P1 | T-221, T-227 | yes | scholtz |
+| T-224 | Authenticator: Codes tab (two-factor codes list, add and edit) | P1 | T-221, T-222, T-223, T-225, T-227, T-229 | yes | scholtz |
+| T-225 | Authenticator: navigation with Codes first, Trusted clients inside Settings | P1 | T-214 | no (T-220) | scholtz |
+| T-228 | Authenticator: device integrity checks that fail closed | P1 | T-222, T-227 | yes | scholtz |
+| T-230 | Authenticator: security documentation, MASVS matrix and CI checks | P1 | T-222, T-223, T-227, T-228, T-229 | yes | scholtz |
 | T-220 | Authenticator: shell hardening leftovers from the T-214 review | P2 | T-214, T-215, T-216 | no (T-222, T-225) | free |
-| T-226 | Authenticator: encrypted backup and restore of two-factor accounts | P2 | T-223, T-224 | yes | free |
-| T-231 | Authenticator: brand identity, motion and haptics | P2 | T-219, T-224, T-227, T-228, T-229, T-226 | yes | free |
+| T-226 | Authenticator: encrypted backup and restore of two-factor accounts | P2 | T-223, T-224 | yes | scholtz |
+| T-231 | Authenticator: brand identity, motion and haptics | P2 | T-219, T-224, T-227, T-228, T-229, T-226 | yes | scholtz |
 
 ## Backlog
 
@@ -41,9 +41,9 @@ Sorted by priority, then ID. The first row is what `/kanban-next` picks.
 
 | ID | Title | Priority | Epic | Parallel | Taken by |
 |---|---|---|---|---|---|
-| T-221 | Authenticator: two-factor code engine (HOTP, TOTP, otpauth) | P1 | Consent & authenticator | yes | free |
-| T-227 | Authenticator: platform hardening (no backups, no screenshots, release build) | P1 | Consent & authenticator | no (T-229) | free |
-| T-229 | Authenticator: TLS pinning for Biatec OIDC and a locked-down network config | P1 | Consent & authenticator | no (T-227) | free |
+| T-221 | Authenticator: two-factor code engine (HOTP, TOTP, otpauth) | P1 | Consent & authenticator | yes | scholtz |
+| T-227 | Authenticator: platform hardening (no backups, no screenshots, release build) | P1 | Consent & authenticator | no (T-229) | scholtz |
+| T-229 | Authenticator: TLS pinning for Biatec OIDC and a locked-down network config | P1 | Consent & authenticator | no (T-227) | scholtz |
 
 ## Done
 
