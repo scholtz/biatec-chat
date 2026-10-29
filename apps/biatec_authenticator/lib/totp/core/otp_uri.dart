@@ -181,12 +181,13 @@ abstract final class OtpUri {
     final decoded = _label(raw.label);
     var issuer = '';
     var label = decoded;
-    final issuerParam = param('issuer')?.trim() ?? '';
+    // Only plain spaces are trimmed: a line break or tab at an end must reach the account's name check, not vanish.
+    final issuerParam = OtpLimits.trimSpaces(param('issuer') ?? '');
     if (issuerParam.isEmpty) {
       // No issuer setting: the path is all there is, read as written.
       final colon = decoded.indexOf(':');
       if (colon >= 0) {
-        issuer = decoded.substring(0, colon).trim();
+        issuer = decoded.substring(0, colon);
         label = decoded.substring(colon + 1);
       }
     } else {
@@ -212,7 +213,10 @@ abstract final class OtpUri {
         }
       }
     }
-    if (label.trim().isEmpty && issuer.isNotEmpty) label = issuer;
+    if (OtpLimits.trimSpaces(label).isEmpty &&
+        OtpLimits.trimSpaces(issuer).isNotEmpty) {
+      label = issuer;
+    }
     final Uint8List secret;
     try {
       secret = Base32.decode(secretText);

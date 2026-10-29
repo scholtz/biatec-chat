@@ -327,6 +327,47 @@ void main() {
       expect(() => a.copyWith(counter: 1), throwsStateError);
     });
 
+    test('a line break or tab at the end of a name is refused, not trimmed',
+        () {
+      for (final bad in ['GitHub\n', '\talice', 'a\r']) {
+        expect(() => OtpAccount(issuer: '', label: bad, secret: key()),
+            throwsArgumentError,
+            reason: bad);
+      }
+      final ls = String.fromCharCode(0x2028);
+      expect(() => OtpAccount(issuer: 'x$ls', label: 'a', secret: key()),
+          throwsArgumentError);
+      expect(errorOf('otpauth://totp/alice%0A?$s'), OtpUriError.invalidName);
+      expect(errorOf('otpauth://totp/alice?$s&issuer=Evil%0D'),
+          OtpUriError.invalidName);
+      // Plain spaces are still trimmed.
+      expect(OtpAccount(issuer: ' I ', label: ' a ', secret: key()).label, 'a');
+    });
+
+    test('the Ogham space mark is kept, not turned into a space', () {
+      final ogham = String.fromCharCode(0x1680);
+      expect(OtpAccount(issuer: '', label: 'a${ogham}b', secret: key()).label,
+          'a${ogham}b');
+    });
+
+    test('Egyptian hieroglyph letters are not refused as format controls', () {
+      expect(
+          OtpLimits.hasUnsafeCharacters(String.fromCharCode(0x13441)), isFalse);
+      expect(
+          OtpLimits.hasUnsafeCharacters(String.fromCharCode(0x13430)), isTrue);
+    });
+
+    test('a clock reset to before the last time seen is caught', () {
+      final seen = DateTime.utc(2028);
+      expect(
+          OtpGenerator.clockIsPlausible(DateTime.utc(2026, 1, 2),
+              notBefore: seen),
+          isFalse);
+      expect(
+          OtpGenerator.clockIsPlausible(DateTime.utc(2028, 2), notBefore: seen),
+          isTrue);
+    });
+
     test('a duplicate check with a wiped account fails closed', () {
       // Answering "no" would let the same key be stored twice; it throws so the caller reloads.
       final a = OtpAccount(issuer: '', label: 'a', secret: key());

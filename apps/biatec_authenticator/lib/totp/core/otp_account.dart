@@ -92,6 +92,19 @@ abstract final class OtpLimits {
       u == 0x205F ||
       u == 0x3000;
 
+  /// [text] without plain spaces (U+0020) at either end. Unlike String.trim, a line break or tab at an end is kept, so the name check refuses it instead of it being dropped unseen.
+  static String trimSpaces(String text) {
+    var start = 0;
+    var end = text.length;
+    while (start < end && text.codeUnitAt(start) == 0x20) {
+      start++;
+    }
+    while (end > start && text.codeUnitAt(end - 1) == 0x20) {
+      end--;
+    }
+    return text.substring(start, end);
+  }
+
   /// Control characters, invisible characters, and the characters that reorder text: any of them can make two different names look the same or make "evil.com" display as something else.
   static bool hasUnsafeCharacters(String text) {
     for (final u in text.runes) {
@@ -115,7 +128,9 @@ abstract final class OtpLimits {
         u == 0x08E2 ||
         u == 0x110BD ||
         u == 0x110CD ||
-        (u >= 0x13430 && u <= 0x1345F) || // Egyptian hieroglyph format controls
+        (u >= 0x13430 &&
+            u <=
+                0x1343F) || // Egyptian hieroglyph format controls (13440 on are letters and marks)
         (u >= 0x200B && u <= 0x200F) || // zero width, direction marks
         (u >= 0x2028 && u <= 0x202E) || // line separators, embeddings
         (u >= 0x2060 && u <= 0x2064) || // word joiner, invisible operators
@@ -161,8 +176,8 @@ class OtpAccount {
     String? id,
   }) {
     // Normalised once, so the value checked is the value stored.
-    final i = _plainSpaces(issuer).trim();
-    final l = _plainSpaces(label).trim();
+    final i = OtpLimits.trimSpaces(_plainSpaces(issuer));
+    final l = OtpLimits.trimSpaces(_plainSpaces(label));
     return OtpAccount._(
       issuer: i,
       label: l,
@@ -190,9 +205,11 @@ class OtpAccount {
   }) : _secret = secret;
 
   /// Unicode spaces (no-break, thin, ideographic and the like) look like a plain space, so they become one: "Git", U+00A0, "Hub" and "Git Hub" are then the same name, not a look-alike.
-  /// Spaces that are control or separator characters (a line break, say) are left alone, so the name check still refuses them.
-  static String _plainSpaces(String s) => String.fromCharCodes(s.runes
-      .map((u) => OtpLimits.isSpace(u) && !OtpLimits._isUnsafe(u) ? 0x20 : u));
+  /// Spaces that are control or separator characters (a line break, say) are left alone, so the name check still refuses them, and so is U+1680 OGHAM SPACE MARK, which draws as a dash.
+  static String _plainSpaces(String s) => String.fromCharCodes(s.runes.map(
+      (u) => OtpLimits.isSpace(u) && !OtpLimits._isUnsafe(u) && u != 0x1680
+          ? 0x20
+          : u));
 
   /// The one place the account rules are checked; the parser maps the [OtpAccountException] to its own error.
   static Uint8List _checkedCopy(Uint8List secret, String issuer, String label,

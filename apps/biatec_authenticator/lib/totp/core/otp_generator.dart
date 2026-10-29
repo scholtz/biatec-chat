@@ -44,9 +44,13 @@ abstract final class OtpGenerator {
   /// The earliest time a working clock can show: before it, the clock was reset (a flat battery, say) and every time-based code is wrong. For the code list (T-224) to check, so it tells the user instead of showing codes.
   static final earliestPlausibleTime = DateTime.utc(2026);
 
-  /// False when [now] is before [earliestPlausibleTime]: the codes would be wrong.
-  static bool clockIsPlausible(DateTime now) =>
-      !now.isBefore(earliestPlausibleTime);
+  /// False when [now] is before [notBefore] (default [earliestPlausibleTime]): the codes would be wrong. The caller passes the latest time it has seen (the vault's last save, say), so a clock reset to a date after the default floor is still caught. A clock running ahead cannot be told from here without a time source, so it is not judged.
+  static bool clockIsPlausible(DateTime now, {DateTime? notBefore}) {
+    final floor = notBefore != null && notBefore.isAfter(earliestPlausibleTime)
+        ? notBefore
+        : earliestPlausibleTime;
+    return !now.isBefore(floor);
+  }
 
   static void _timeBased(OtpAccount account) {
     if (account.type != OtpType.totp) {
@@ -81,7 +85,7 @@ abstract final class OtpGenerator {
   }
 
   static String _codeFor(OtpAccount account, int value) {
-    account.checkUsable();
+    // The secret getter refuses a wiped account.
     return hotp(account.secret, value,
         algorithm: account.algorithm, digits: account.digits);
   }
