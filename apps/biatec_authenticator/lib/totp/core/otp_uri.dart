@@ -55,7 +55,7 @@ class OtpUriException implements Exception {
 ///
 /// A `counter` on a time-based link is refused (it is most likely a counter-based account mislabelled). A `period` on a counter-based link must still be a valid period, so no malformed value is let through, but it is not used, since it changes nothing.
 ///
-/// The `issuer` setting names the issuer. A label prefix that names the same issuer, apart from case and spacing (real services differ in both), is dropped from the name; a prefix that names something else is kept as part of the name, so nothing the link says is lost. A link with an issuer but no account name gets the issuer as its name, as other authenticator apps do. Setting names are read without case.
+/// The `issuer` setting names the issuer; without one, the label prefix does, read as written (a "+" in a path is a plus). A label prefix that names the same issuer as the setting, apart from case and spacing (real services differ in both, and some write a space in the path as a literal "+"), is dropped from the name; a prefix that names something else is kept as part of the name, so nothing the link says is lost. A link with an issuer but no account name gets the issuer as its name, as other authenticator apps do. Setting names are read without case.
 abstract final class OtpUri {
   /// A real link is a few hundred characters; this stops a hostile QR code from making the parser work on megabytes.
   static const maxLength = 2048;
@@ -76,16 +76,21 @@ abstract final class OtpUri {
     if (link.length > 2 * maxLength) throw tooLong;
     final text = link.trim();
     if (text.length > maxLength) throw tooLong;
+    const notOtpAuth = OtpUriException(
+        OtpUriError.notOtpAuth, 'This is not a setup link for a code.');
     final Uri uri;
     try {
       uri = Uri.parse(text);
     } on FormatException {
-      throw const OtpUriException(
-          OtpUriError.notOtpAuth, 'This is not a setup link for a code.');
+      throw notOtpAuth;
     }
-    if (uri.scheme.toLowerCase() != 'otpauth') {
-      throw const OtpUriException(
-          OtpUriError.notOtpAuth, 'This is not a setup link for a code.');
+    if (uri.scheme.toLowerCase() != 'otpauth') throw notOtpAuth;
+    // The label is read from the raw text; refuse anything (user info, a port) that would let that reading and Uri.parse disagree on where the type ends.
+    final raw = _rawParts(text);
+    if (uri.userInfo.isNotEmpty ||
+        uri.hasPort ||
+        raw.authority.toLowerCase() != uri.host.toLowerCase()) {
+      throw notOtpAuth;
     }
     final OtpType type;
     switch (uri.host.toLowerCase()) {
@@ -173,26 +178,28 @@ abstract final class OtpUri {
     }
 
     // The label is "Issuer:account" or just "account", percent-encoded. A "+" stays a "+" (RFC 3986 paths, and plus-addressed emails such as a+b@example.com depend on it); only the query turns "+" into a space.
-    final decoded = _label(text);
+    final decoded = _label(raw.label);
     var issuer = '';
     var label = decoded;
     final issuerParam = param('issuer')?.trim() ?? '';
     if (issuerParam.isEmpty) {
+      // No issuer setting: the path is all there is, read as written.
       final colon = decoded.indexOf(':');
       if (colon >= 0) {
         issuer = decoded.substring(0, colon).trim();
         label = decoded.substring(colon + 1);
       }
     } else {
+      // The issuer setting names the issuer. The prefix is dropped only when it names the same one (the usual "Issuer:account"), apart from case and spacing; a different one is part of the name and kept, so "corp:alice" and "home:alice" stay apart. Every colon is tried, since the issuer itself may contain one.
       issuer = issuerParam;
-      // The prefix is dropped only when it names the same issuer (the usual "Issuer:account"), apart from case and spacing; a different one is part of the name and kept, so "corp:alice" and "home:alice" stay apart. Every colon is tried, since the issuer itself may contain one.
+      final want = _nameKey(issuerParam);
+      // Some services write a space in the path as a literal "+" (the issuer setting was already form-decoded), so the prefix matches as written or with those read as spaces. Both readings have their colons in the same places.
+      final spaced = _label(raw.label, plusAsSpace: true);
       for (var i = decoded.indexOf(':');
           i >= 0;
           i = decoded.indexOf(':', i + 1)) {
-        // The prefix comes from the path, where some services write a space as "+" (the issuer setting was already form-decoded), so it matches as written or with "+" read as a space.
-        final prefix = decoded.substring(0, i);
-        if (_sameName(prefix, issuerParam) ||
-            _sameName(prefix.replaceAll('+', ' '), issuerParam)) {
+        if (_nameKey(decoded.substring(0, i)) == want ||
+            _nameKey(spaced.substring(0, i)) == want) {
           label = decoded.substring(i + 1);
           break;
         }
@@ -264,8 +271,8 @@ abstract final class OtpUri {
     return 'otpauth://${account.type.name}/$label?${params.join('&')}';
   }
 
-  /// The label part of [text] exactly as written, without the leading "/". `Uri.path` would drop "." and ".." segments, turning "corp/../alice" into "alice".
-  static String _rawLabel(String text) {
+  /// The authority and the label of [text] exactly as written (the label without its leading "/"). `Uri.path` would drop "." and ".." segments, turning "corp/../alice" into "alice"; the caller checks that the authority read here is the host Uri.parse found, so both read the same slice of the link.
+  static ({String authority, String label}) _rawParts(String text) {
     final start = text.indexOf('://') + 3;
     var end = text.length;
     for (final c in const ['?', '#']) {
@@ -273,23 +280,29 @@ abstract final class OtpUri {
       if (i >= 0 && i < end) end = i;
     }
     final slash = text.indexOf('/', start);
-    if (slash < 0 || slash >= end) return '';
-    // A stray percent sign is read as itself, as Uri.parse does.
-    return text.substring(slash + 1, end);
+    if (slash < 0 || slash >= end) {
+      return (authority: text.substring(start, end), label: '');
+    }
+    return (
+      authority: text.substring(start, slash),
+      label: text.substring(slash + 1, end)
+    );
   }
 
-  /// The decoded label. The raw text is first encoded the way Uri.parse would (a stray "%" read as itself, raw non-ASCII and spaces percent-encoded), so a QR code with "Café" in it decodes like its encoded form instead of failing.
-  static String _label(String text) {
-    final raw = _rawLabel(text).replaceAll(_strayPercent, '%25');
+  /// The decoded label. The raw text is first encoded the way Uri.parse would (a stray "%" read as itself, raw non-ASCII and spaces percent-encoded), so a QR code with "Café" in it decodes like its encoded form instead of failing. With [plusAsSpace], a literal "+" (not an escaped %2B) is read as a space, as some services mean it.
+  static String _label(String rawLabel, {bool plusAsSpace = false}) {
+    final raw = rawLabel.replaceAll(_strayPercent, '%25');
     // Uri.encodeFull would also escape the "%" of real escapes, so only what cannot stand raw in a URI is encoded here.
     final encoded = StringBuffer();
     for (final r in raw.runes) {
-      if (r > 0x20 && r < 0x7F) {
+      if (plusAsSpace && r == 0x2B) {
+        encoded.write('%20');
+      } else if (r > 0x20 && r < 0x7F) {
         encoded.writeCharCode(r);
-        continue;
-      }
-      for (final b in utf8.encode(String.fromCharCode(r))) {
-        encoded.write('%${b.toRadixString(16).padLeft(2, '0')}');
+      } else {
+        for (final b in utf8.encode(String.fromCharCode(r))) {
+          encoded.write('%${b.toRadixString(16).padLeft(2, '0')}');
+        }
       }
     }
     try {
@@ -311,11 +324,10 @@ abstract final class OtpUri {
     return int.parse(text);
   }
 
-  /// Spacing only: a "+" is a real character here ("C++"); the caller turns a path "+" into a space first.
+  /// Spacing only: a "+" is a real character here ("C++").
   static final _spaces = RegExp(r'\s+');
 
-  /// Equal apart from case and spacing, as services write their own name.
-  static bool _sameName(String a, String b) =>
-      a.replaceAll(_spaces, '').toLowerCase() ==
-      b.replaceAll(_spaces, '').toLowerCase();
+  /// A name without case or spacing, as services write their own name differently in both.
+  static String _nameKey(String name) =>
+      name.replaceAll(_spaces, '').toLowerCase();
 }

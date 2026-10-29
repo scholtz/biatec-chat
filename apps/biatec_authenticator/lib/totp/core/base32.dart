@@ -53,10 +53,17 @@ abstract final class Base32 {
     // First pass: check and count the key characters and the padding after them, without copying them. A character outside the alphabet is reported before any length or padding problem, since it is the usual mistake (0, 1 or 8 typed for O, I or B).
     var count = 0;
     var pads = 0;
+    var padEnded = false;
     for (final u in input.codeUnits) {
-      // Whitespace and dashes group the key for reading; they carry nothing.
-      if (_separator(u)) continue;
+      // Whitespace and dashes group the key for reading; they carry nothing. Padding is one run, so a separator ends it.
+      if (_separator(u)) {
+        if (pads > 0) padEnded = true;
+        continue;
+      }
       if (u == 0x3D) {
+        if (padEnded) {
+          throw const Base32Exception('The key has broken-up padding.');
+        }
         pads++;
       } else if (pads > 0) {
         // Padding is only allowed at the end.

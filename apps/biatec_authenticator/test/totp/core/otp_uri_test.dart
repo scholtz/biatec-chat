@@ -549,8 +549,8 @@ void main() {
         expect(() => Base32.decode(bad), throwsA(isA<Base32Exception>()),
             reason: bad);
       }
-      // Separators may still sit among the padding.
-      expect(Base32.decode('MY== ===='), utf8.encode('f'));
+      // Padding is one run: a separator inside it is refused.
+      expect(() => Base32.decode('MY== ===='), throwsA(isA<Base32Exception>()));
     });
 
     test('padding in the middle is refused', () {
@@ -791,6 +791,30 @@ void main() {
           () => OtpGenerator.hotp(Uint8List(5), 0),
           throwsA(isA<OtpAccountException>().having(
               (e) => e.problem, 'problem', OtpAccountProblem.weakSecret)));
+    });
+
+    test('an escaped plus is a plus, only a literal one may be a space', () {
+      // "A%2BB" names "A+B", which is not the issuer "A B": the prefix stays.
+      final a = OtpUri.parse('otpauth://totp/A%2BB:alice?$s&issuer=A%20B');
+      expect(a.label, 'A+B:alice');
+      // A literal "+" in the path may mean a space.
+      expect(OtpUri.parse('otpauth://totp/A+B:alice?$s&issuer=A%20B').label,
+          'alice');
+      // Without an issuer setting the path is read as written.
+      expect(
+          OtpUri.parse('otpauth://totp/Big+Corp:alice?$s').issuer, 'Big+Corp');
+    });
+
+    test('user info or a port in the link is refused', () {
+      expect(errorOf('otpauth://GitHub@totp/alice?$s'), OtpUriError.notOtpAuth);
+      expect(errorOf('otpauth://totp:80/alice?$s'), OtpUriError.notOtpAuth);
+    });
+
+    test('padding broken up by spaces is refused', () {
+      expect(() => Base32.decode('MFRGGZDFMFRGGZDFME== =='),
+          throwsA(isA<Base32Exception>()));
+      // Spaces after the padding are fine.
+      expect(Base32.decode('MY======  '), utf8.encode('f'));
     });
 
     test('the model says which rule a value broke', () {

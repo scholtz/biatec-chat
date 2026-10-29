@@ -54,6 +54,20 @@ abstract final class OtpLimits {
   static bool validPeriod(int p) => p >= minPeriod && p <= maxPeriod;
   static bool validCounter(int c) => c >= 0 && c <= maxCounter;
 
+  /// The rules every code needs, for the account and the generator alike: a key of at least [minSecretBytes], [digits] in range, and a counter in range.
+  static void checkCodeInputs(int secretLength, int digits, int counter) {
+    if (secretLength < minSecretBytes) {
+      throw OtpAccountException(
+          OtpAccountProblem.weakSecret, weakSecretMessage);
+    }
+    if (!validDigits(digits)) {
+      throw OtpAccountException(OtpAccountProblem.digits, digitsMessage);
+    }
+    if (!validCounter(counter)) {
+      throw OtpAccountException(OtpAccountProblem.counter, counterMessage);
+    }
+  }
+
   // The messages are built from the limits, so they cannot go out of step with them.
   static const digitsMessage =
       'Codes must have $minDigits to $maxDigits digits.';
@@ -164,21 +178,10 @@ class OtpAccount {
   /// The one place the account rules are checked; the parser maps the [OtpAccountException] to its own error.
   static Uint8List _checkedCopy(Uint8List secret, String issuer, String label,
       int digits, int period, OtpType type, int counter) {
-    if (secret.length < OtpLimits.minSecretBytes) {
-      throw OtpAccountException(
-          OtpAccountProblem.weakSecret, OtpLimits.weakSecretMessage);
-    }
-    if (!OtpLimits.validDigits(digits)) {
-      throw OtpAccountException(
-          OtpAccountProblem.digits, OtpLimits.digitsMessage);
-    }
+    OtpLimits.checkCodeInputs(secret.length, digits, counter);
     if (!OtpLimits.validPeriod(period)) {
       throw OtpAccountException(
           OtpAccountProblem.period, OtpLimits.periodMessage);
-    }
-    if (!OtpLimits.validCounter(counter)) {
-      throw OtpAccountException(
-          OtpAccountProblem.counter, OtpLimits.counterMessage);
     }
     // As the parser refuses a counter on a time-based link: it would be lost when the account is written as a link.
     if (type == OtpType.totp && counter != 0) {
