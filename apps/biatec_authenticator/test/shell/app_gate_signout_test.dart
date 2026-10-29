@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:biatec_authenticator/approvals/approval_screen.dart';
 import 'package:biatec_authenticator/approvals/approval_services.dart';
 import 'package:biatec_authenticator/approvals/history_store.dart';
@@ -36,9 +38,11 @@ class _BrokenStore extends MemoryEnrollmentStore {
 class _FlakyWrites extends MemoryEnrollmentStore {
   bool failWrites = false;
   bool failClear = false;
+  int writes = 0;
 
   @override
   Future<void> write(EnrollmentRecord record) async {
+    writes++;
     if (failWrites) throw StateError('keystore busy');
     return super.write(record);
   }
@@ -47,6 +51,17 @@ class _FlakyWrites extends MemoryEnrollmentStore {
   Future<void> clear() async {
     if (failClear) throw StateError('keystore busy');
     return super.clear();
+  }
+}
+
+/// Holds each write until [gate] completes.
+class _SlowWrites extends MemoryEnrollmentStore {
+  final gate = Completer<void>();
+
+  @override
+  Future<void> write(EnrollmentRecord record) async {
+    await gate.future;
+    return super.write(record);
   }
 }
 
@@ -147,14 +162,13 @@ void main() {
       'an enrollment kept in memory after a failed write is not mistaken for a sign-out',
       (tester) async {
     final rig = ShellRig();
-    final inner = MemoryEnrollmentStore();
-    await inner.write(_active);
+    final inner = _FlakyWrites()..failWrites = true;
     final store = ObservableEnrollmentStore(inner);
+    // Enrolled, but the write never landed: the store keeps it in memory.
+    await expectLater(store.write(_active), throwsA(anything));
     await _pumpApp(tester, rig, _servicesWith(rig, store));
     expect(find.byType(NavigationBar), findsOneWidget);
 
-    // The stored copy is gone without anyone clearing it (a write that never landed).
-    await inner.clear();
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
@@ -162,8 +176,6 @@ void main() {
     await tester.pump();
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.byType(EnrollmentScreen), findsNothing);
-    expect((await inner.read())?.kid, 'dev-1',
-        reason: 'the controller wrote its record back');
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -192,20 +204,23 @@ void main() {
 
     test('an enrollment whose write failed is served from memory and saved later',
         () async {
+      var now = DateTime.utc(2026, 10, 29, 12);
       final inner = _FlakyWrites();
-      final store = ObservableEnrollmentStore(inner);
+      final store = ObservableEnrollmentStore(inner, clock: () => now);
       inner.failWrites = true;
       await expectLater(store.write(_active), throwsA(anything));
       expect((await store.read())?.kid, 'dev-1',
           reason: 'the pending list and settings see the device enrolled');
       expect(await inner.read(), isNull);
       inner.failWrites = false;
+      now = now.add(ObservableEnrollmentStore.saveRetryEvery);
       expect((await store.read())?.kid, 'dev-1');
       expect((await inner.read())?.kid, 'dev-1', reason: 'saved by the read');
       store.dispose();
     });
 
-    test('a clear that fails still signs the device out', () async {
+    test('a clear that fails still signs the device out, for every reader',
+        () async {
       final inner = _FlakyWrites();
       final store = ObservableEnrollmentStore(inner);
       await store.write(_active);
@@ -215,6 +230,39 @@ void main() {
       await expectLater(store.clear(), throwsA(anything));
       expect(store.clearCount, 1);
       expect(told, 1);
+      expect(await store.read(), isNull,
+          reason: 'the record left on disk is not handed out');
+      inner.failClear = false;
+      expect(await store.read(), isNull);
+      expect(await inner.read(), isNull, reason: 'the clear was tried again');
+      store.dispose();
+    });
+
+    test('a write that lands after a sign-out is taken out again', () async {
+      final inner = _SlowWrites();
+      final store = ObservableEnrollmentStore(inner);
+      final writing = store.write(_active);
+      await store.clear();
+      inner.gate.complete();
+      await writing;
+      expect(await inner.read(), isNull);
+      expect(await store.read(), isNull);
+      store.dispose();
+    });
+
+    test('an unsaved enrollment is saved at most every so often', () async {
+      var now = DateTime.utc(2026, 10, 29, 12);
+      final inner = _FlakyWrites()..failWrites = true;
+      final store = ObservableEnrollmentStore(inner, clock: () => now);
+      await expectLater(store.write(_active), throwsA(anything));
+      final tries = inner.writes;
+      for (var i = 0; i < 5; i++) {
+        expect((await store.read())?.kid, 'dev-1');
+      }
+      expect(inner.writes, tries, reason: 'no write on every read');
+      now = now.add(ObservableEnrollmentStore.saveRetryEvery);
+      await store.read();
+      expect(inner.writes, tries + 1);
       store.dispose();
     });
   });

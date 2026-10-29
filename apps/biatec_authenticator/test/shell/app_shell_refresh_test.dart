@@ -185,15 +185,20 @@ void main() {
     var now = DateTime.utc(2026, 10, 24, 12);
     rig.shell.clock = () => now;
     await rig.pump(tester);
+    await tester.tap(inBar('Devices'));
+    await tester.pumpAndSettle();
+    final generation = rig.shell.reloads[AppTab.devices]!.value;
+    final history = rig.shell.reloads[AppTab.history]!.value;
     await tester.tap(inBar('History'));
     await tester.pumpAndSettle();
-    final generation = rig.shell.reloads[AppTab.history]!.value;
-    await tester.tap(inBar('Approvals'));
-    await tester.pump(const Duration(seconds: 1));
     now = now.add(const Duration(seconds: 5));
+    await tester.tap(inBar('Devices'));
+    await tester.pumpAndSettle();
+    expect(rig.shell.reloads[AppTab.devices]!.value, generation);
+    // History is local: it is read again on every visit, so a decision just made is in it.
     await tester.tap(inBar('History'));
     await tester.pumpAndSettle();
-    expect(rig.shell.reloads[AppTab.history]!.value, generation);
+    expect(rig.shell.reloads[AppTab.history]!.value, history + 1);
     await rig.dispose(tester);
   });
 

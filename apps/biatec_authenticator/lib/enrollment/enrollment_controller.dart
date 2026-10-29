@@ -89,17 +89,10 @@ class EnrollmentController extends ChangeNotifier {
     _set(EnrollmentState.notEnrolled);
   }
 
-  /// A write of [record] landed after a sign-out had cleared the store: it is removed again, unless the store holds a different enrollment by now.
-  Future<void> _takeBack(EnrollmentRecord record) async {
-    try {
-      if ((await store.read())?.kid == record.kid) await store.clear();
-    } on Object {
-      // The server has cancelled this device; at worst the next launch finds a record it refuses.
-    }
-  }
-
   /// Restores the persisted state. Call at startup and on a timer or resume
   /// so the inactive state turns active once the delay has passed.
+  ///
+  /// An enrollment whose write failed is kept and saved again by the store (see `ObservableEnrollmentStore`), which also keeps a sign-out from being undone by a late write; the controller only reports what the store says.
   Future<void> refresh() async {
     final p = _state.phase;
     if (p == EnrollmentPhase.generatingKey || p == EnrollmentPhase.enrolling) {
@@ -122,25 +115,6 @@ class EnrollmentController extends ChangeNotifier {
       return;
     }
     if (record == null) {
-      // Nothing is held after a sign-out: its state has no record.
-      final held = _state.record;
-      if (held != null) {
-        // Enrolled in this session but the write failed earlier: try again.
-        var saved = true;
-        try {
-          await store.write(held);
-        } on Object {
-          saved = false; // keep working from memory
-        }
-        if (session != _session) {
-          if (saved) await _takeBack(held);
-          return;
-        }
-        _set(EnrollmentState.fromRecord(held, _clock(),
-            error: saved ? null : _state.error));
-        await _ensureRecoveryCode();
-        return;
-      }
       if (p != EnrollmentPhase.failed) _set(EnrollmentState.notEnrolled);
       return;
     }
@@ -343,10 +317,8 @@ class EnrollmentController extends ChangeNotifier {
     } on Object catch (e) {
       warning = 'Could not save locally: $e';
     }
-    if (session != _session) {
-      if (warning == null) await _takeBack(done);
-      return;
-    }
+    // A write that landed after a sign-out was taken out again by the store.
+    if (session != _session) return;
     _set(EnrollmentState.fromRecord(done, _clock(), error: warning));
   }
 }

@@ -6,6 +6,7 @@ import 'package:biatec_authenticator/enrollment/enrollment_controller.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_screen.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
+import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/keys/device_key_store.dart';
 import 'package:biatec_authenticator/keys/key_security_level.dart';
@@ -104,7 +105,8 @@ void main() {
     });
     return EnrollmentController(
       keys: keys,
-      store: store,
+      // As in the app: the store keeps an enrollment whose write failed.
+      store: ObservableEnrollmentStore(store, clock: () => clock),
       client: OidcEnrollmentClient(baseUrl: 'http://mock', client: client),
       clock: () => clock,
     );
@@ -408,6 +410,11 @@ void main() {
       expect(keys.deleted, isEmpty);
 
       store.failWrite = false;
+      await c.refresh();
+      expect(c.state.phase, EnrollmentPhase.inactive,
+          reason: 'served from memory');
+      expect(await store.read(), isNull, reason: 'not tried again so soon');
+      clock = clock.add(ObservableEnrollmentStore.saveRetryEvery);
       await c.refresh();
       expect(c.state.phase, EnrollmentPhase.inactive);
       expect(c.state.error, isNull);

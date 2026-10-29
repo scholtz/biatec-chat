@@ -99,18 +99,6 @@ void main() {
     c.dispose();
   });
 
-  test('without a sign-out a missing record is still written back, as before',
-      () async {
-    final store = MemoryEnrollmentStore();
-    await store.write(_record);
-    final c = _controller(store);
-    await c.refresh();
-    await store.clear();
-    await c.refresh();
-    expect((await store.read())?.kid, 'dev-1');
-    c.dispose();
-  });
-
   testWidgets('a queue that finds no shell keeps its original time',
       (tester) async {
     final rig = ShellRig();

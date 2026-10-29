@@ -91,9 +91,11 @@ class ShellController extends ChangeNotifier {
     final now = clock();
     _leftAt[_selected] = now;
     final left = _leftAt[tab];
-    if (tab != AppTab.approvals &&
-        left != null &&
-        now.difference(left) >= reloadAfter) {
+    // History is read from this device, so it is read again on every visit: a decision just made shows at once.
+    if (left != null &&
+        (tab == AppTab.history ||
+            (tab != AppTab.approvals &&
+                now.difference(left) >= reloadAfter))) {
       reloads[tab]!.value++;
     }
     _selected = tab;

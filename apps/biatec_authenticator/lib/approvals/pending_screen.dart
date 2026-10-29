@@ -55,7 +55,6 @@ class _PendingScreenState extends State<PendingScreen> {
   List<ConsentRequest>? _requests;
   String? _error;
   bool _offline = false;
-  bool _loading = false;
 
   /// The device has no enrollment any more: nothing can be pending for it.
   bool _signedOut = false;
@@ -123,17 +122,30 @@ class _PendingScreenState extends State<PendingScreen> {
     super.dispose();
   }
 
-  Future<void> _refresh() async {
-    if (_loading) {
+  /// Loads the list. A call while a load runs makes it run once more and returns when that is done, so a pull to refresh spins until fresh data is in.
+  Future<void> _refresh() {
+    final running = _running;
+    if (running != null) {
       _again = true;
-      return;
+      return running;
     }
-    _loading = true;
+    return _running = _loadUntilSettled().whenComplete(() => _running = null);
+  }
+
+  Future<void>? _running;
+
+  Future<void> _loadUntilSettled() async {
+    do {
+      _again = false;
+      await _loadOnce();
+    } while (_again && mounted);
+  }
+
+  Future<void> _loadOnce() async {
     try {
       final record = await widget.services.enrollment.read();
       if (record == null) {
         // Signed out: nothing is pending for this device any more.
-        _again = false;
         if (mounted) {
           setState(() {
             _requests = const [];
@@ -171,12 +183,6 @@ class _PendingScreenState extends State<PendingScreen> {
       });
       final known = _requests;
       if (known != null) _tell(known.length);
-    } finally {
-      _loading = false;
-    }
-    if (_again && mounted) {
-      _again = false;
-      await _refresh();
     }
   }
 

@@ -43,6 +43,8 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
 
   Future<void> _load() async {
     final read = ++_reads;
+    // A retry from the error screen shows that it is trying.
+    if (_entries == null && _failed) setState(() => _failed = false);
     try {
       final entries = await widget.history.read();
       if (!mounted || read != _reads) return;
@@ -63,10 +65,14 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
       appBar: AppBar(title: const Text('Approval history')),
       body: list == null
           ? (_failed
-              ? ErrorState(
-                  title: 'History could not be read',
-                  message: 'The decisions stored on this device did not open.',
-                  onRetry: _load)
+              ? RefreshIndicator(
+                  onRefresh: _load,
+                  child: ErrorState(
+                      title: 'History could not be read',
+                      message:
+                          'The decisions stored on this device did not open.',
+                      onRetry: _load),
+                )
               : const LoadingSkeleton())
           : Column(children: [
               // A reload that failed leaves the list as it was, and says so.
