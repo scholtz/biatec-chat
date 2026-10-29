@@ -116,25 +116,49 @@ abstract final class OtpLimits {
 /// The secret is a byte array that [wipe] overwrites. Nothing here prints it: [toString] names the account and its parameters only.
 class OtpAccount {
   /// The account keeps its own copy of [secret]; wipe the buffer you passed in yourself when you are done with it.
-  OtpAccount({
+  factory OtpAccount({
     required String issuer,
     required String label,
     required Uint8List secret,
-    this.algorithm = OtpAlgorithm.sha1,
-    this.digits = 6,
-    this.period = OtpLimits.defaultPeriod,
-    this.type = OtpType.totp,
-    this.counter = 0,
-    this.id,
-  })  : issuer = issuer.trim(),
-        label = label.trim(),
-        // Checked before the copy is made, so a refused account leaves no copy of the secret behind.
-        _secret = _checkedCopy(
-            secret, issuer.trim(), label.trim(), digits, period, counter);
+    OtpAlgorithm algorithm = OtpAlgorithm.sha1,
+    int digits = 6,
+    int period = OtpLimits.defaultPeriod,
+    OtpType type = OtpType.totp,
+    int counter = 0,
+    String? id,
+  }) {
+    // Normalised once, so the value checked is the value stored.
+    final i = issuer.trim();
+    final l = label.trim();
+    return OtpAccount._(
+      issuer: i,
+      label: l,
+      // Checked before the copy is made, so a refused account leaves no copy of the secret behind.
+      secret: _checkedCopy(secret, i, l, digits, period, type, counter),
+      algorithm: algorithm,
+      digits: digits,
+      period: period,
+      type: type,
+      counter: counter,
+      id: id,
+    );
+  }
+
+  OtpAccount._({
+    required this.issuer,
+    required this.label,
+    required Uint8List secret,
+    required this.algorithm,
+    required this.digits,
+    required this.period,
+    required this.type,
+    required this.counter,
+    required this.id,
+  }) : _secret = secret;
 
   /// The one place the account rules are checked; the parser maps the [OtpAccountException] to its own error.
   static Uint8List _checkedCopy(Uint8List secret, String issuer, String label,
-      int digits, int period, int counter) {
+      int digits, int period, OtpType type, int counter) {
     if (secret.length < OtpLimits.minSecretBytes) {
       throw OtpAccountException(
           OtpAccountProblem.weakSecret, OtpLimits.weakSecretMessage);
@@ -150,6 +174,11 @@ class OtpAccount {
     if (!OtpLimits.validCounter(counter)) {
       throw OtpAccountException(
           OtpAccountProblem.counter, OtpLimits.counterMessage);
+    }
+    // As the parser refuses a counter on a time-based link: it would be lost when the account is written as a link.
+    if (type == OtpType.totp && counter != 0) {
+      throw OtpAccountException(OtpAccountProblem.counter,
+          'A time-based account does not have a counter.');
     }
     if (label.isEmpty) {
       throw OtpAccountException(

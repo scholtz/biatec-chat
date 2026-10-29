@@ -378,16 +378,22 @@ void main() {
     test(
         'isDuplicateOf compares the secret and parameters, not names, counter or id',
         () {
-      final a = OtpAccount(issuer: 'I', label: 'L', secret: key(), id: '1');
+      final a = OtpAccount(
+          issuer: 'I', label: 'L', secret: key(), id: '1', type: OtpType.hotp);
       final b = a.copyWith(id: '2', counter: 9, label: 'other spelling');
       expect(a.isDuplicateOf(b), isTrue);
       final other = Uint8List.fromList(key())..[19] = 8;
       expect(
-          a.isDuplicateOf(OtpAccount(issuer: 'I', label: 'L', secret: other)),
+          a.isDuplicateOf(OtpAccount(
+              issuer: 'I', label: 'L', secret: other, type: OtpType.hotp)),
           isFalse);
       expect(
-          a.isDuplicateOf(
-              OtpAccount(issuer: 'I', label: 'L', secret: key(), digits: 8)),
+          a.isDuplicateOf(OtpAccount(
+              issuer: 'I',
+              label: 'L',
+              secret: key(),
+              digits: 8,
+              type: OtpType.hotp)),
           isFalse);
     });
 
@@ -701,6 +707,39 @@ void main() {
     test('limit messages follow the limits', () {
       expect(OtpLimits.digitsMessage, contains('${OtpLimits.maxDigits}'));
       expect(OtpLimits.periodMessage, contains('${OtpLimits.maxPeriod}'));
+    });
+
+    test('raw non-ASCII names, as real QR codes carry them, are read', () {
+      final a = OtpUri.parse('otpauth://totp/Café:alice?$s&issuer=Café');
+      expect(a.issuer, 'Café');
+      expect(a.label, 'alice');
+      final b = OtpUri.parse('otpauth://totp/ユーザー:x y?$s');
+      expect(b.issuer, 'ユーザー');
+      expect(b.label, 'x y');
+      // Real escapes still decode, and a stray percent is still itself.
+      expect(OtpUri.parse('otpauth://totp/%41b?$s').label, 'Ab');
+      expect(OtpUri.parse('otpauth://totp/a%ZZé?$s').label, 'a%ZZé');
+    });
+
+    test('an issuer with a colon matches without case', () {
+      final a =
+          OtpUri.parse('otpauth://totp/ACME:Corp:alice?$s&issuer=acme:corp');
+      expect(a.issuer, 'acme:corp');
+      expect(a.label, 'alice');
+    });
+
+    test('a counter-based account has no time step', () {
+      final h =
+          OtpAccount(issuer: '', label: 'h', secret: key(), type: OtpType.hotp);
+      expect(() => OtpGenerator.step(h, DateTime.utc(2026)), throwsStateError);
+    });
+
+    test('a time-based account cannot carry a counter', () {
+      final t = OtpAccount(issuer: '', label: 't', secret: key());
+      expect(() => t.copyWith(counter: 5), throwsArgumentError);
+      expect(
+          () => OtpAccount(issuer: '', label: 't', secret: key(), counter: 1),
+          throwsArgumentError);
     });
 
     test('the model says which rule a value broke', () {

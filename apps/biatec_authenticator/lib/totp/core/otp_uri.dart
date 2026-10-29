@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'base32.dart';
@@ -171,31 +172,26 @@ abstract final class OtpUri {
     }
 
     // The label is "Issuer:account" or just "account", percent-encoded. A "+" stays a "+" (RFC 3986 paths, and plus-addressed emails such as a+b@example.com depend on it); only the query turns "+" into a space.
-    String decoded;
-    try {
-      decoded = Uri.decodeComponent(_rawLabel(text));
-    } on FormatException {
-      throw const OtpUriException(
-          OtpUriError.invalidName, 'The name in this link is not valid.');
-    }
+    final decoded = _label(text);
     var issuer = '';
     var label = decoded;
     final issuerParam = param('issuer')?.trim() ?? '';
-    final colon = decoded.indexOf(':');
     if (issuerParam.isEmpty) {
+      final colon = decoded.indexOf(':');
       if (colon >= 0) {
         issuer = decoded.substring(0, colon).trim();
         label = decoded.substring(colon + 1);
       }
     } else {
       issuer = issuerParam;
-      // The prefix is dropped only when it names the same issuer (the usual "Issuer:account"); a different one is part of the name and kept, so "corp:alice" and "home:alice" stay apart.
-      if (decoded.startsWith('$issuerParam:')) {
-        // Checked whole first: the issuer itself may contain a colon.
-        label = decoded.substring(issuerParam.length + 1);
-      } else if (colon >= 0 &&
-          _sameName(decoded.substring(0, colon), issuerParam)) {
-        label = decoded.substring(colon + 1);
+      // The prefix is dropped only when it names the same issuer (the usual "Issuer:account"), apart from case and spacing; a different one is part of the name and kept, so "corp:alice" and "home:alice" stay apart. Every colon is tried, since the issuer itself may contain one.
+      for (var i = decoded.indexOf(':');
+          i >= 0;
+          i = decoded.indexOf(':', i + 1)) {
+        if (_sameName(decoded.substring(0, i), issuerParam)) {
+          label = decoded.substring(i + 1);
+          break;
+        }
       }
     }
     final Uint8List secret;
@@ -269,7 +265,30 @@ abstract final class OtpUri {
     final slash = text.indexOf('/', start);
     if (slash < 0 || slash >= end) return '';
     // A stray percent sign is read as itself, as Uri.parse does.
-    return text.substring(slash + 1, end).replaceAll(_strayPercent, '%25');
+    return text.substring(slash + 1, end);
+  }
+
+  /// The decoded label. The raw text is first encoded the way Uri.parse would (a stray "%" read as itself, raw non-ASCII and spaces percent-encoded), so a QR code with "Café" in it decodes like its encoded form instead of failing.
+  static String _label(String text) {
+    final raw = _rawLabel(text).replaceAll(_strayPercent, '%25');
+    // Uri.encodeFull would also escape the "%" of real escapes, so only what cannot stand raw in a URI is encoded here.
+    final encoded = StringBuffer();
+    for (final r in raw.runes) {
+      if (r > 0x20 && r < 0x7F) {
+        encoded.writeCharCode(r);
+        continue;
+      }
+      for (final b in utf8.encode(String.fromCharCode(r))) {
+        encoded.write('%${b.toRadixString(16).padLeft(2, '0')}');
+      }
+    }
+    try {
+      return Uri.decodeComponent(encoded.toString());
+    } on FormatException {
+      // Escapes that are not UTF-8.
+      throw const OtpUriException(
+          OtpUriError.invalidName, 'The name in this link is not valid.');
+    }
   }
 
   static final _strayPercent = RegExp(r'%(?![0-9A-Fa-f]{2})');

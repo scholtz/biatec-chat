@@ -51,7 +51,7 @@ abstract final class OtpGenerator {
   static void _timeBased(OtpAccount account) {
     if (account.type != OtpType.totp) {
       throw StateError(
-          'A counter-based account has no countdown or next code.');
+          'A counter-based account has no time step, countdown or next code.');
     }
   }
 
@@ -65,6 +65,7 @@ abstract final class OtpGenerator {
 
   /// The step a time-based account is in at [now]: seconds since the epoch divided by the period.
   static int step(OtpAccount account, DateTime now) {
+    _timeBased(account);
     // A clock before 1970 (a reset real-time clock) counts as 1970 instead of failing in the middle of drawing the list; the clock check in the app tells the user.
     return _seconds(now) ~/ account.period;
   }
