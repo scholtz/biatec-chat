@@ -20,8 +20,12 @@ abstract final class OtpGenerator {
     int digits = 6,
   }) {
     if (counter < 0) throw ArgumentError('The counter cannot be negative.');
-    if (digits < OtpLimits.minDigits || digits > OtpLimits.maxDigits) {
-      throw ArgumentError('Digits must be 6 to 8.');
+    if (!OtpLimits.validDigits(digits)) {
+      throw ArgumentError(OtpLimits.digitsMessage);
+    }
+    // The same floor as an account, so no layer makes codes from a guessable key.
+    if (secret.length < OtpLimits.minSecretBytes) {
+      throw ArgumentError(OtpLimits.weakSecretMessage);
     }
     // The counter is 8 bytes, big endian, written as two 32-bit halves (setUint64 does not exist when compiled to JavaScript).
     final message = Uint8List(8);

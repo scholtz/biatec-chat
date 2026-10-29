@@ -413,7 +413,7 @@ void main() {
     test('bad percent-encoding in a value is a refusal, not a raw exception',
         () {
       expect(errorOf('otpauth://totp/a?$s&issuer=%E0%A4%A'),
-          OtpUriError.invalidName);
+          OtpUriError.invalidEncoding);
     });
 
     test('two issuers are refused, whatever order they come in', () {
@@ -622,6 +622,71 @@ void main() {
       expect(() => a.secret[0] = 1, throwsUnsupportedError);
       a.wipe();
       expect(a.secret.every((v) => v == 0), isTrue);
+    });
+
+    test('a wiped account cannot be written as a link', () {
+      final a = OtpAccount(issuer: 'I', label: 'L', secret: key());
+      a.wipe();
+      expect(() => OtpUri.write(a), throwsStateError);
+    });
+
+    test('the remaining format characters and lone surrogates are refused', () {
+      for (final u in [
+        0x0605,
+        0x06DD,
+        0x070F,
+        0x08E2,
+        0x110BD,
+        0x110CD,
+        0x13430,
+        0xD800
+      ]) {
+        expect(OtpLimits.hasUnsafeCharacters('Git${String.fromCharCode(u)}Hub'),
+            isTrue,
+            reason: u.toRadixString(16));
+      }
+      expect(errorOf('otpauth://totp/Git%D8%85Hub:me?$s'),
+          OtpUriError.invalidName);
+    });
+
+    test('keys laid out with no-break or thin spaces are accepted', () {
+      final want = Base32.decode('JBSWY3DPEHPK3PXP');
+      final nbsp = String.fromCharCode(0x00A0);
+      final thin = String.fromCharCode(0x2009);
+      expect(Base32.decode('JBSW${nbsp}Y3DP${thin}EHPK 3PXP'), want);
+    });
+
+    test('broken encoding in a setting is its own error', () {
+      expect(errorOf('otpauth://totp/x?secret=JBSW%FF%FE'),
+          OtpUriError.invalidEncoding);
+    });
+
+    test('dot segments in the label are kept as written', () {
+      expect(OtpUri.parse('otpauth://totp/corp/../alice?$s').label,
+          'corp/../alice');
+      expect(OtpUri.parse('otpauth://totp/team/./bob?$s').label, 'team/./bob');
+    });
+
+    test('a plus in the label stays a plus (plus-addressed email)', () {
+      final a = OtpUri.parse('otpauth://totp/Svc:a+b@example.com?$s');
+      expect(a.label, 'a+b@example.com');
+      expect(OtpUri.parse(OtpUri.write(a)).label, 'a+b@example.com');
+    });
+
+    test('hotp refuses a key under the account floor', () {
+      expect(() => OtpGenerator.hotp(Uint8List(9), 0), throwsArgumentError);
+      expect(() => OtpGenerator.hotp(Uint8List(0), 0), throwsArgumentError);
+    });
+
+    test('copyWith can drop the vault id', () {
+      final a = OtpAccount(issuer: 'I', label: 'L', secret: key(), id: '1');
+      expect(a.copyWith(clearId: true).id, isNull);
+      expect(a.copyWith().id, '1');
+    });
+
+    test('limit messages follow the limits', () {
+      expect(OtpLimits.digitsMessage, contains('${OtpLimits.maxDigits}'));
+      expect(OtpLimits.periodMessage, contains('${OtpLimits.maxPeriod}'));
     });
 
     test('a refused account is refused before the secret is copied', () {

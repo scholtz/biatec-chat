@@ -38,6 +38,17 @@ abstract final class OtpLimits {
   /// The smallest secret accepted, 80 bits: what the smallest keys in wide use (Google's 16 characters) carry. A shorter one is guessable, so it is refused instead of shown as a normal account.
   static const minSecretBytes = 10;
 
+  static bool validDigits(int d) => d >= minDigits && d <= maxDigits;
+  static bool validPeriod(int p) => p >= minPeriod && p <= maxPeriod;
+
+  // The messages are built from the limits, so they cannot go out of step with them.
+  static const digitsMessage =
+      'Codes must have $minDigits to $maxDigits digits.';
+  static const periodMessage =
+      'A code must last between $minPeriod and $maxPeriod seconds.';
+  static const weakSecretMessage = 'The secret key is too short to be safe '
+      '(at least ${minSecretBytes * 8} bits).';
+
   /// Control characters, invisible characters, and the characters that reorder text: any of them can make two different names look the same or make "evil.com" display as something else.
   static bool hasUnsafeCharacters(String text) {
     for (final u in text.runes) {
@@ -49,11 +60,19 @@ abstract final class OtpLimits {
   static bool _isUnsafe(int u) {
     return u < 0x20 ||
         (u >= 0x7F && u <= 0x9F) ||
+        (u >= 0xD800 && u <= 0xDFFF) || // an unpaired surrogate
+        // Every format character (general category Cf) as of Unicode 15.1:
         u == 0x00AD ||
+        (u >= 0x0600 && u <= 0x0605) ||
         u == 0x061C ||
-        (u >= 0x180B && u <= 0x180F) || // Mongolian selectors, vowel separator
-        u == 0x17B4 ||
-        u == 0x17B5 || // Khmer invisible vowels
+        u == 0x06DD ||
+        u == 0x070F ||
+        u == 0x0890 ||
+        u == 0x0891 ||
+        u == 0x08E2 ||
+        u == 0x110BD ||
+        u == 0x110CD ||
+        (u >= 0x13430 && u <= 0x1345F) || // Egyptian hieroglyph format controls
         (u >= 0x200B && u <= 0x200F) || // zero width, direction marks
         (u >= 0x2028 && u <= 0x202E) || // line separators, embeddings
         (u >= 0x2060 && u <= 0x2064) || // word joiner, invisible operators
@@ -62,6 +81,10 @@ abstract final class OtpLimits {
         (u >= 0xFFF9 && u <= 0xFFFC) || // annotation, object replacement
         (u >= 0x1BCA0 && u <= 0x1BCA3) || // shorthand format controls
         (u >= 0x1D173 && u <= 0x1D17A) || // musical formatting
+        // Other characters that draw nothing:
+        (u >= 0x180B && u <= 0x180F) || // Mongolian selectors, vowel separator
+        u == 0x17B4 ||
+        u == 0x17B5 || // Khmer invisible vowels
         u == 0x034F || // combining grapheme joiner
         u == 0x115F ||
         u == 0x1160 || // Hangul fillers
@@ -97,13 +120,13 @@ class OtpAccount {
   static Uint8List _checkedCopy(Uint8List secret, String issuer, String label,
       int digits, int period, int counter) {
     if (secret.length < OtpLimits.minSecretBytes) {
-      throw ArgumentError('The secret is too short (at least 80 bits).');
+      throw ArgumentError(OtpLimits.weakSecretMessage);
     }
-    if (digits < OtpLimits.minDigits || digits > OtpLimits.maxDigits) {
-      throw ArgumentError('Digits must be 6 to 8.');
+    if (!OtpLimits.validDigits(digits)) {
+      throw ArgumentError(OtpLimits.digitsMessage);
     }
-    if (period < OtpLimits.minPeriod || period > OtpLimits.maxPeriod) {
-      throw ArgumentError('The period must be 15 to 120 seconds.');
+    if (!OtpLimits.validPeriod(period)) {
+      throw ArgumentError(OtpLimits.periodMessage);
     }
     if (counter < 0) throw ArgumentError('The counter cannot be negative.');
     if (issuer.length > OtpLimits.maxTextLength ||
@@ -147,23 +170,26 @@ class OtpAccount {
   int get secretBits => _secret.length * 8;
 
   /// A copy with some fields changed (it has its own copy of the secret).
+  ///
+  /// [clearId] drops the vault id, for a copy the vault stores as a new account.
   OtpAccount copyWith({
     String? issuer,
     String? label,
     int? counter,
     String? id,
+    bool clearId = false,
   }) {
     if (_wiped) throw StateError('This account was wiped from memory.');
     return OtpAccount(
       issuer: issuer ?? this.issuer,
       label: label ?? this.label,
-      secret: secret,
+      secret: _secret,
       algorithm: algorithm,
       digits: digits,
       period: period,
       type: type,
       counter: counter ?? this.counter,
-      id: id ?? this.id,
+      id: clearId ? null : id ?? this.id,
     );
   }
 

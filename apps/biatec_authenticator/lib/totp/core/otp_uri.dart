@@ -34,6 +34,9 @@ enum OtpUriError {
 
   /// The name has control or direction-changing characters, which can make one account look like another.
   invalidName,
+
+  /// A setting's percent-encoding is broken (not UTF-8, say), so it cannot be read at all.
+  invalidEncoding,
 }
 
 class OtpUriException implements Exception {
@@ -98,10 +101,10 @@ abstract final class OtpUri {
     try {
       uri.queryParametersAll.forEach(
           (name, values) => (all[name.toLowerCase()] ??= []).addAll(values));
-    } on Object {
-      // Bad percent-encoding in a value (invalid UTF-8, say).
-      throw const OtpUriException(
-          OtpUriError.invalidName, 'This link has text that is not valid.');
+    } on FormatException {
+      // Bad percent-encoding in a setting (invalid UTF-8, say); which one is not told, since it may be the secret.
+      throw const OtpUriException(OtpUriError.invalidEncoding,
+          'This link has a setting that cannot be read.');
     }
     for (final name in _single) {
       if ((all[name]?.length ?? 0) > 1) {
@@ -132,9 +135,9 @@ abstract final class OtpUri {
     final digitsText = param('digits');
     if (digitsText != null) {
       final d = _wholeNumber(digitsText);
-      if (d == null || d < OtpLimits.minDigits || d > OtpLimits.maxDigits) {
+      if (d == null || !OtpLimits.validDigits(d)) {
         throw const OtpUriException(
-            OtpUriError.invalidDigits, 'Codes must have 6 to 8 digits.');
+            OtpUriError.invalidDigits, OtpLimits.digitsMessage);
       }
       digits = d;
     }
@@ -144,9 +147,9 @@ abstract final class OtpUri {
     if (periodText != null) {
       // Checked for both types, so a bad value is never let through; only a time-based account uses it.
       final p = _wholeNumber(periodText);
-      if (p == null || p < OtpLimits.minPeriod || p > OtpLimits.maxPeriod) {
-        throw const OtpUriException(OtpUriError.invalidPeriod,
-            'A code must last between 15 and 120 seconds.');
+      if (p == null || !OtpLimits.validPeriod(p)) {
+        throw const OtpUriException(
+            OtpUriError.invalidPeriod, OtpLimits.periodMessage);
       }
       if (type == OtpType.totp) period = p;
     }
@@ -169,13 +172,11 @@ abstract final class OtpUri {
           'A time-based account does not have a counter.');
     }
 
-    // The label is "Issuer:account" or just "account", percent-encoded.
-    var path = uri.path;
-    if (path.startsWith('/')) path = path.substring(1);
+    // The label is "Issuer:account" or just "account", percent-encoded. A "+" stays a "+" (RFC 3986 paths, and plus-addressed emails such as a+b@example.com depend on it); only the query turns "+" into a space.
     String decoded;
     try {
-      decoded = Uri.decodeComponent(path);
-    } on Object {
+      decoded = Uri.decodeComponent(_rawLabel(text));
+    } on FormatException {
       throw const OtpUriException(
           OtpUriError.invalidName, 'The name in this link is not valid.');
     }
@@ -221,8 +222,8 @@ abstract final class OtpUri {
     }
     try {
       if (secret.length < OtpLimits.minSecretBytes) {
-        throw const OtpUriException(OtpUriError.weakSecret,
-            'The secret key in this link is too short to be safe.');
+        throw const OtpUriException(
+            OtpUriError.weakSecret, OtpLimits.weakSecretMessage);
       }
       return OtpAccount(
         issuer: issuer,
@@ -242,6 +243,10 @@ abstract final class OtpUri {
 
   /// The link for [account], with every setting explicit. Contains the secret: handle the result as one.
   static String write(OtpAccount account) {
+    // A wiped account's zeros would make a link that looks valid but never matches the service.
+    if (account.isWiped) {
+      throw StateError('This account was wiped from memory (the app locked).');
+    }
     // With no issuer, a colon inside the name would be read as the separator, so a leading colon says "no issuer".
     final label = account.issuer.isEmpty
         ? (account.label.contains(':')
@@ -260,6 +265,22 @@ abstract final class OtpUri {
     ];
     return 'otpauth://${account.type.name}/$label?${params.join('&')}';
   }
+
+  /// The label part of [text] exactly as written, without the leading "/". `Uri.path` would drop "." and ".." segments, turning "corp/../alice" into "alice".
+  static String _rawLabel(String text) {
+    final start = text.indexOf('://') + 3;
+    var end = text.length;
+    for (final c in const ['?', '#']) {
+      final i = text.indexOf(c, start);
+      if (i >= 0 && i < end) end = i;
+    }
+    final slash = text.indexOf('/', start);
+    if (slash < 0 || slash >= end) return '';
+    // A stray percent sign is read as itself, as Uri.parse does.
+    return text.substring(slash + 1, end).replaceAll(_strayPercent, '%25');
+  }
+
+  static final _strayPercent = RegExp(r'%(?![0-9A-Fa-f]{2})');
 
   /// Digits only: no sign, no decimal point, no spaces.
   static final _digitsOnly = RegExp(r'^[0-9]{1,15}$');
