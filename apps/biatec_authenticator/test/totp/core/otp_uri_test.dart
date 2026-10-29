@@ -301,10 +301,10 @@ void main() {
       final a = OtpAccount(
           issuer: 'I',
           label: 'L',
-          secret: Uint8List.fromList(List.filled(20, 9)));
+          secret: Uint8List.fromList(List.generate(20, (i) => 9 + i)));
       final b = a.copyWith(id: 'x');
       a.wipe();
-      expect(b.secret.every((v) => v == 9), isTrue);
+      expect(b.secret, List.generate(20, (i) => 9 + i));
       expect(a.isZeroed, isTrue);
     });
 
@@ -317,7 +317,7 @@ void main() {
 
   group('round three', () {
     const s = 'secret=JBSWY3DPEHPK3PXP';
-    Uint8List key() => Uint8List.fromList(List.filled(20, 7));
+    Uint8List key() => Uint8List.fromList(List.generate(20, (i) => 7 + i));
 
     test(
         'copyWith on a wiped account fails instead of making a zero-key account',
@@ -444,7 +444,56 @@ void main() {
 
   group('round four', () {
     const s = 'secret=JBSWY3DPEHPK3PXP';
-    Uint8List key() => Uint8List.fromList(List.filled(20, 7));
+    Uint8List key() => Uint8List.fromList(List.generate(20, (i) => 7 + i));
+
+    test('a copy of the secret survives a later wipe, the view does not', () {
+      final a = OtpAccount(issuer: '', label: 'a', secret: key());
+      final view = a.secret;
+      final copy = a.copySecret();
+      a.wipe();
+      expect(view.every((b) => b == 0), isTrue);
+      expect(copy, key());
+      expect(a.copySecret, throwsStateError);
+    });
+
+    test('a key of one repeated byte is weak', () {
+      expect(errorOf('otpauth://totp/x?secret=AAAAAAAAAAAAAAAA'),
+          OtpUriError.weakSecret);
+      expect(
+          () => OtpAccount(
+              issuer: '',
+              label: 'a',
+              secret: Uint8List.fromList(List.filled(20, 7))),
+          throwsA(isA<OtpAccountException>()));
+    });
+
+    test('parser and account agree on what an empty name is', () {
+      // A no-break space as the name: the issuer becomes the name.
+      expect(
+          OtpUri.parse('otpauth://totp/GitHub:%C2%A0?issuer=GitHub&$s').label,
+          'GitHub');
+      // A no-break space as the issuer is no issuer: the path names it.
+      final a = OtpUri.parse('otpauth://totp/Foo:alice?issuer=%C2%A0&$s');
+      expect(a.issuer, 'Foo');
+      expect(a.label, 'alice');
+    });
+
+    test('a clock a little behind the last time seen is still plausible', () {
+      final seen = DateTime.utc(2028, 5, 2);
+      expect(
+          OtpGenerator.clockIsPlausible(DateTime.utc(2028, 5, 1),
+              notBefore: seen),
+          isTrue);
+    });
+
+    test('a link with an empty type is not a setup link', () {
+      expect(errorOf('otpauth:///GitHub:alice?$s'), OtpUriError.notOtpAuth);
+    });
+
+    test('hyphenated algorithm names are read', () {
+      expect(OtpUri.parse('otpauth://totp/x?$s&algorithm=SHA-256').algorithm,
+          OtpAlgorithm.sha256);
+    });
 
     test('padding must be the exact amount when present', () {
       expect(Base32.decode('MY======'), utf8.encode('f'));

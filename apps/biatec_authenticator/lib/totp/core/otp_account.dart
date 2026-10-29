@@ -11,8 +11,9 @@ enum OtpAlgorithm {
   /// The name in an `otpauth://` link.
   final String uriName;
 
+  /// Case and a hyphen are ignored, since some generators write `SHA-256`.
   static OtpAlgorithm? fromUriName(String name) {
-    final n = name.toUpperCase();
+    final n = name.toUpperCase().replaceAll('-', '');
     for (final a in values) {
       if (a.uriName == n) return a;
     }
@@ -91,6 +92,13 @@ abstract final class OtpLimits {
       u == 0x202F ||
       u == 0x205F ||
       u == 0x3000;
+
+  /// A name as the account stores it: Unicode spaces (no-break, thin, ideographic and the like) turned into a plain space, then plain spaces trimmed. "Git", U+00A0, "Hub" and "Git Hub" are then the same name, not a look-alike. The parser uses it too, so both agree on what is empty.
+  ///
+  /// Spaces that are control or separator characters (a line break, say) are left alone, so the name check still refuses them, and so is U+1680 OGHAM SPACE MARK, which draws as a dash.
+  static String normalizeName(String s) =>
+      trimSpaces(String.fromCharCodes(s.runes
+          .map((u) => isSpace(u) && !_isUnsafe(u) && u != 0x1680 ? 0x20 : u)));
 
   /// [text] without plain spaces (U+0020) at either end. Unlike String.trim, a line break or tab at an end is kept, so the name check refuses it instead of it being dropped unseen.
   static String trimSpaces(String text) {
@@ -176,8 +184,8 @@ class OtpAccount {
     String? id,
   }) {
     // Normalised once, so the value checked is the value stored.
-    final i = OtpLimits.trimSpaces(_plainSpaces(issuer));
-    final l = OtpLimits.trimSpaces(_plainSpaces(label));
+    final i = OtpLimits.normalizeName(issuer);
+    final l = OtpLimits.normalizeName(label);
     return OtpAccount._(
       issuer: i,
       label: l,
@@ -204,17 +212,15 @@ class OtpAccount {
     required this.id,
   }) : _secret = secret;
 
-  /// Unicode spaces (no-break, thin, ideographic and the like) look like a plain space, so they become one: "Git", U+00A0, "Hub" and "Git Hub" are then the same name, not a look-alike.
-  /// Spaces that are control or separator characters (a line break, say) are left alone, so the name check still refuses them, and so is U+1680 OGHAM SPACE MARK, which draws as a dash.
-  static String _plainSpaces(String s) => String.fromCharCodes(s.runes.map(
-      (u) => OtpLimits.isSpace(u) && !OtpLimits._isUnsafe(u) && u != 0x1680
-          ? 0x20
-          : u));
-
   /// The one place the account rules are checked; the parser maps the [OtpAccountException] to its own error.
   static Uint8List _checkedCopy(Uint8List secret, String issuer, String label,
       int digits, int period, OtpType type, int counter) {
     OtpLimits.checkCodeInputs(secret.length, digits, counter);
+    // A key of one repeated byte (all zeros, say) has the length of a strong key and none of its strength.
+    if (secret.every((b) => b == secret[0])) {
+      throw OtpAccountException(
+          OtpAccountProblem.weakSecret, OtpLimits.weakSecretMessage);
+    }
     if (!OtpLimits.validPeriod(period)) {
       throw OtpAccountException(
           OtpAccountProblem.period, OtpLimits.periodMessage);
@@ -251,12 +257,20 @@ class OtpAccount {
   final Uint8List _secret;
 
   /// A read-only view of the secret: only [wipe] changes it. Throws once wiped, so nothing can save or use the zeros in place of the key. Showing or exporting it is for the vault and backup code to refuse (PRODUCT-DESCRIPTION.md, "Seeds are never shown again").
+  ///
+  /// The view is live, so use it without an `await` in between: a lock during the await wipes it. Code that awaits (encrypting for the vault, say) takes [copySecret] instead.
   Uint8List get secret {
     checkUsable();
     return _secret.asUnmodifiableView();
   }
 
-  /// Whether every byte of the secret is zero, which [wipe] makes so. Tells nothing about the key itself; for tests and audits of the wipe.
+  /// A copy of the secret that a later [wipe] does not touch, for work that awaits. The caller owns it and wipes it when done.
+  Uint8List copySecret() {
+    checkUsable();
+    return Uint8List.fromList(_secret);
+  }
+
+  /// Whether every byte of the secret is zero, which [wipe] makes so (no account accepts such a key). Tells nothing about the key itself; for tests and audits of the wipe.
   bool get isZeroed => _secret.every((b) => b == 0);
   final OtpAlgorithm algorithm;
   final int digits;

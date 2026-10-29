@@ -44,10 +44,14 @@ abstract final class OtpGenerator {
   /// The earliest time a working clock can show: before it, the clock was reset (a flat battery, say) and every time-based code is wrong. For the code list (T-224) to check, so it tells the user instead of showing codes.
   static final earliestPlausibleTime = DateTime.utc(2026);
 
-  /// False when [now] is before [notBefore] (default [earliestPlausibleTime]): the codes would be wrong. The caller passes the latest time it has seen (the vault's last save, say), so a clock reset to a date after the default floor is still caught. A clock running ahead cannot be told from here without a time source, so it is not judged.
+  /// How far before [notBefore] the clock may still be, so a time saved while the clock ran a little fast does not mark the corrected clock as reset.
+  static const clockSlack = Duration(days: 2);
+
+  /// False when [now] is before [notBefore] less [clockSlack] (or before [earliestPlausibleTime]): the codes would be wrong. The caller passes the latest time it has seen (the vault's last save, say), so a clock reset to a date after the default floor is still caught. A clock running ahead cannot be told from here without a time source, so it is not judged.
   static bool clockIsPlausible(DateTime now, {DateTime? notBefore}) {
-    final floor = notBefore != null && notBefore.isAfter(earliestPlausibleTime)
-        ? notBefore
+    final seen = notBefore?.subtract(clockSlack);
+    final floor = seen != null && seen.isAfter(earliestPlausibleTime)
+        ? seen
         : earliestPlausibleTime;
     return !now.isBefore(floor);
   }
@@ -79,10 +83,9 @@ abstract final class OtpGenerator {
       account.type == OtpType.hotp ? account.counter : step(account, now));
 
   /// The code of the following period (a time-based account), to show in the last seconds of this one. A counter-based account has no next code to show: its next code is only for after the current one was used.
-  static String nextCode(OtpAccount account, DateTime now) {
-    _timeBased(account);
-    return _codeFor(account, step(account, now) + 1);
-  }
+  static String nextCode(OtpAccount account, DateTime now) =>
+      // step refuses a counter-based account.
+      _codeFor(account, step(account, now) + 1);
 
   static String _codeFor(OtpAccount account, int value) {
     // The secret getter refuses a wiped account.

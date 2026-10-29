@@ -84,9 +84,10 @@ abstract final class OtpUri {
     } on FormatException {
       throw notOtpAuth;
     }
-    if (uri.scheme.toLowerCase() != 'otpauth') throw notOtpAuth;
-    // The label is read from the raw text; refuse anything (no "//", user info, a port) that would let that reading and Uri.parse disagree on where the type ends.
-    if (!uri.hasAuthority) throw notOtpAuth;
+    // Uri.parse gives the scheme in lower case.
+    if (uri.scheme != 'otpauth') throw notOtpAuth;
+    // The label is read from the raw text; refuse anything (no "//" or an empty type, user info, a port) that would let that reading and Uri.parse disagree on where the type ends.
+    if (!uri.hasAuthority || uri.host.isEmpty) throw notOtpAuth;
     final raw = _rawParts(text);
     if (uri.userInfo.isNotEmpty ||
         uri.hasPort ||
@@ -181,8 +182,8 @@ abstract final class OtpUri {
     final decoded = _label(raw.label);
     var issuer = '';
     var label = decoded;
-    // Only plain spaces are trimmed: a line break or tab at an end must reach the account's name check, not vanish.
-    final issuerParam = OtpLimits.trimSpaces(param('issuer') ?? '');
+    // Normalised as the account will store it, so both agree on what is empty; a line break or tab at an end is kept for the account's name check.
+    final issuerParam = OtpLimits.normalizeName(param('issuer') ?? '');
     if (issuerParam.isEmpty) {
       // No issuer setting: the path is all there is, read as written.
       final colon = decoded.indexOf(':');
@@ -213,8 +214,8 @@ abstract final class OtpUri {
         }
       }
     }
-    if (OtpLimits.trimSpaces(label).isEmpty &&
-        OtpLimits.trimSpaces(issuer).isNotEmpty) {
+    if (OtpLimits.normalizeName(label).isEmpty &&
+        OtpLimits.normalizeName(issuer).isNotEmpty) {
       label = issuer;
     }
     final Uint8List secret;

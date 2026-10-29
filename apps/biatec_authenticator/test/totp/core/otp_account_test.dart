@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('the account model', () {
-    Uint8List key() => Uint8List.fromList(List.filled(20, 7));
+    Uint8List key() => Uint8List.fromList(List.generate(20, (i) => 7 + i));
 
     test('toString never contains the secret', () {
       final a = OtpAccount(issuer: 'I', label: 'L', secret: key());
@@ -69,7 +69,7 @@ void main() {
       final buffer = key();
       final a = OtpAccount(issuer: '', label: 'a', secret: buffer);
       buffer.fillRange(0, buffer.length, 0);
-      expect(a.secret.every((v) => v == 7), isTrue);
+      expect(a.secret, List.generate(20, (i) => 7 + i));
       a.wipe();
       expect(a.isZeroed, isTrue);
     });
