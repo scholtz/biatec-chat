@@ -59,11 +59,8 @@ class _AppGateState extends State<AppGate> {
   /// Whether the device was active at the last notification, so push registration is asked for when it becomes so.
   bool _wasActive = false;
 
-  /// The store, when it announces changes (see [ObservableEnrollmentStore]). Production always has one; without it a sign-out is noticed at the next launch.
-  ObservableEnrollmentStore? get _store {
-    final store = widget.approvals.enrollment;
-    return store is ObservableEnrollmentStore ? store : null;
-  }
+  /// The store, which announces changes (see [ObservableEnrollmentStore]).
+  ObservableEnrollmentStore get _store => widget.approvals.enrollment;
 
   /// Clears of the store this gate has dealt with.
   int _clearsSeen = 0;
@@ -89,8 +86,8 @@ class _AppGateState extends State<AppGate> {
       },
     );
     // The store says when the enrollment goes (this device cancelled itself in Devices).
-    _clearsSeen = _store?.clearCount ?? 0;
-    _store?.addListener(_onStoreChanged);
+    _clearsSeen = _store.clearCount;
+    _store.addListener(_onStoreChanged);
     _enrollment.addListener(_onPhase);
     _begin();
   }
@@ -163,7 +160,7 @@ class _AppGateState extends State<AppGate> {
 
   /// The stored enrollment was cleared on purpose (this device cancelled itself in Devices): the device is signed out at once, without reading the store, so a read that fails cannot keep it in the shell. A record that is merely missing is not a sign-out: it may be an enrollment kept in memory after a failed write.
   void _onStoreChanged() {
-    final clears = _store!.clearCount;
+    final clears = _store.clearCount;
     if (clears == _clearsSeen) return;
     _clearsSeen = clears;
     if (!_usable) return;
@@ -176,7 +173,7 @@ class _AppGateState extends State<AppGate> {
   void dispose() {
     _timeout?.cancel();
     _lifecycle.dispose();
-    _store?.removeListener(_onStoreChanged);
+    _store.removeListener(_onStoreChanged);
     _enrollment.removeListener(_onPhase);
     if (!identical(_enrollment, widget.enrollment)) _enrollment.dispose();
     super.dispose();

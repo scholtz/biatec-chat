@@ -260,7 +260,9 @@ class _PendingScreenState extends State<PendingScreen> {
                 : StatusBanner(
                     severity: StatusSeverity.warning,
                     title: 'Could not load requests',
-                    message: error),
+                    message: error,
+                    actionLabel: 'Try again',
+                    onAction: _refresh),
           ),
         // Pull to refresh works in every state but the first load (the states scroll, see ScrollableCenter).
         Expanded(

@@ -199,18 +199,35 @@ class SettingsController extends ChangeNotifier {
     }
   }
 
-  /// A load is running; a second one is not started.
-  bool _loading = false;
+  /// The load that is running, if one is.
+  Future<void>? _running;
 
   /// Bumped when a change starts. A quiet load that began before it drops what it read, which may be older than the change's result.
   int _changes = 0;
 
   /// Loads devices and settings. Call on open and to retry. A [quiet] load of a screen that is already showing keeps it (and a dialog open over it) and only swaps the data; the controls stay usable meanwhile.
+  ///
+  /// Asked while a load runs, it waits for that one (a pull to refresh spins until the data is in); a full load asked then still runs afterwards if that one did not end ready and without a problem.
   Future<void> load({bool quiet = false}) async {
-    if (_busy || _loading) return;
+    if (_busy) return;
+    final running = _running;
+    if (running != null) {
+      await running;
+      if (quiet || (_phase == SettingsPhase.ready && _error == null)) return;
+      return load();
+    }
+    final future = _load(quiet);
+    _running = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_running, future)) _running = null;
+    }
+  }
+
+  Future<void> _load(bool quiet) async {
     final inPlace = quiet && _phase == SettingsPhase.ready;
     final changes = _changes;
-    _loading = true;
     if (!inPlace) {
       _phase = SettingsPhase.loading;
       _error = null;
@@ -236,8 +253,6 @@ class SettingsController extends ChangeNotifier {
       _fail(e);
       // What was shown stays, with the problem above it.
       if (!inPlace) _phase = SettingsPhase.unavailable;
-    } finally {
-      _loading = false;
     }
     _changed();
   }
@@ -255,18 +270,21 @@ class SettingsController extends ChangeNotifier {
       final record = await _record();
       await client.cancelDevice(record.deviceToken, kid);
       if (kid == record.kid) {
-        // This device is the cancelled one: it is signed out for good. The key and alias go first: clearing the enrollment signs the app out at once, and a new enrollment started then must not lose its alias to this cleanup.
-        try {
-          await keys.delete(record.kid);
-        } on Object {
-          // The key is useless without an enrollment.
-        }
+        // This device is the cancelled one: it is signed out for good. The alias goes first, so a new enrollment started after the sign-out mints a new one and the key deleted last is never its key. The record is cleared before the key goes, so nothing signs with a key that is gone.
         try {
           await enrollment.clearAlias();
         } on Object {
-          // A stale alias is only reused for the next key.
+          // A stale alias would only be reused for the next key.
         }
-        await enrollment.clear();
+        try {
+          await enrollment.clear();
+        } finally {
+          try {
+            await keys.delete(record.kid);
+          } on Object {
+            // The key is useless without an enrollment.
+          }
+        }
         _devices = const [];
         _settings = null;
         _phase = SettingsPhase.unavailable;

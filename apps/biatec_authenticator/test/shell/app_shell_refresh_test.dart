@@ -123,9 +123,9 @@ void main() {
         reason: 'the user is told it is not fresh');
     history.broken = false;
     await tester.tap(find.text('Try again'));
-    await tester.pump();
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.byKey(const Key('history-stale')), findsNothing);
+    expect(find.byKey(const Key('history-ciba_old')), findsOneWidget);
   });
 
   testWidgets('the settings tabs share one controller and load once',

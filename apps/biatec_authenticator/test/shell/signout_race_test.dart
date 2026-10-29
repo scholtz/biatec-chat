@@ -50,6 +50,17 @@ class _SlowStore extends MemoryEnrollmentStore {
   }
 }
 
+/// Reads fail while [fail] is set.
+class _FailingReads extends MemoryEnrollmentStore {
+  bool fail = false;
+
+  @override
+  Future<EnrollmentRecord?> read() async {
+    if (fail) throw StateError('keystore locked');
+    return super.read();
+  }
+}
+
 EnrollmentController _controller(EnrollmentStore store) => EnrollmentController(
       keys: SoftwareKeyStore(deviceTestKey()),
       store: store,
@@ -96,6 +107,20 @@ void main() {
     await running;
     expect(c.state.phase, EnrollmentPhase.notEnrolled);
     expect(await store.read(), isNull);
+    c.dispose();
+  });
+
+  test('a store read that fails once does not sign an enrolled device out',
+      () async {
+    final store = _FailingReads();
+    await store.write(_record);
+    final c = _controller(store);
+    await c.refresh();
+    expect(c.state.phase, EnrollmentPhase.active);
+    store.fail = true;
+    await c.refresh();
+    expect(c.readFailed, isTrue);
+    expect(c.state.phase, EnrollmentPhase.active);
     c.dispose();
   });
 

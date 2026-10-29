@@ -31,8 +31,9 @@ class ObservableEnrollmentStore extends ChangeNotifier
   @override
   Future<EnrollmentRecord?> read() async {
     if (_clearFailed) {
+      // What is on disk is the enrollment that was signed out; a new one whose write failed is still served.
       await _clearInner();
-      return null;
+      return _unsaved;
     }
     final clears = _clearCount;
     final stored = await _inner.read();

@@ -115,6 +115,8 @@ class EnrollmentController extends ChangeNotifier {
       return;
     }
     if (record == null) {
+      // A read that failed says nothing: an enrolled device stays as it is (a locked or busy keystore), and only a store that answers "nothing" means not enrolled.
+      if (_readFailed && _state.record != null) return;
       if (p != EnrollmentPhase.failed) _set(EnrollmentState.notEnrolled);
       return;
     }

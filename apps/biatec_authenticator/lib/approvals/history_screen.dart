@@ -41,10 +41,13 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
   /// Counts reads; only the latest one's answer is shown, so a slow older read cannot replace a newer list.
   int _reads = 0;
 
+  final _refresher = GlobalKey<RefreshIndicatorState>();
+
+  /// A retry button shows the same spinner as a pull, so the user sees it trying while the screen stays as it is.
+  void _retry() => _refresher.currentState?.show();
+
   Future<void> _load() async {
     final read = ++_reads;
-    // A retry from the error screen shows that it is trying.
-    if (_entries == null && _failed) setState(() => _failed = false);
     try {
       final entries = await widget.history.read();
       if (!mounted || read != _reads) return;
@@ -66,12 +69,13 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
       body: list == null
           ? (_failed
               ? RefreshIndicator(
+                  key: _refresher,
                   onRefresh: _load,
                   child: ErrorState(
                       title: 'History could not be read',
                       message:
                           'The decisions stored on this device did not open.',
-                      onRetry: _load),
+                      onRetry: _retry),
                 )
               : const LoadingSkeleton())
           : Column(children: [
@@ -85,11 +89,12 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
                     title: 'History could not be refreshed',
                     message: 'Showing what was read before.',
                     actionLabel: 'Try again',
-                    onAction: _load,
+                    onAction: _retry,
                   ),
                 ),
               Expanded(
                 child: RefreshIndicator(
+                  key: _refresher,
                   onRefresh: _load,
                   child: _list(list),
                 ),
