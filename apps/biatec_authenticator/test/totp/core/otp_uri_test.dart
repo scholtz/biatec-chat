@@ -177,7 +177,8 @@ void main() {
       expect(errorOf('otpauth://totp/x?secret='), OtpUriError.missingSecret);
       expect(errorOf('otpauth://totp/x?secret=not*base32'),
           OtpUriError.invalidSecret);
-      expect(errorOf('otpauth://totp/x?secret=M'), OtpUriError.invalidSecret);
+      expect(
+          errorOf('otpauth://totp/x?secret=MZXW1'), OtpUriError.invalidSecret);
       // Only padding, dashes or spaces: there is no key at all.
       for (final blank in ['====', '----', '%C2%A0%C2%A0', '%20']) {
         expect(errorOf('otpauth://totp/x?secret=$blank'),
@@ -441,10 +442,15 @@ void main() {
           OtpUriError.duplicateParameter);
     });
 
-    test('an account must have a name', () {
+    test('an account must have a name, or an issuer to use as one', () {
       expect(errorOf('otpauth://totp/?$s'), OtpUriError.invalidName);
-      expect(errorOf('otpauth://totp/Issuer:?$s'), OtpUriError.invalidName);
       expect(errorOf('otpauth://totp/%20%20?$s'), OtpUriError.invalidName);
+      expect(errorOf('otpauth://totp/:?$s'), OtpUriError.invalidName);
+      // With an issuer, the issuer is the name, as other apps do.
+      expect(OtpUri.parse('otpauth://totp/Issuer:?$s').label, 'Issuer');
+      final g = OtpUri.parse('otpauth://totp/?$s&issuer=GitHub');
+      expect(g.issuer, 'GitHub');
+      expect(g.label, 'GitHub');
     });
 
     test('copyWith copies the secret, so wiping one account leaves the other',
@@ -740,6 +746,51 @@ void main() {
       expect(
           () => OtpAccount(issuer: '', label: 't', secret: key(), counter: 1),
           throwsArgumentError);
+    });
+
+    test('a plus in the issuer is a real character', () {
+      // "C:" names another issuer than "C++", so the prefix stays.
+      final a = OtpUri.parse('otpauth://totp/C:alice?$s&issuer=C%2B%2B');
+      expect(a.issuer, 'C++');
+      expect(a.label, 'C:alice');
+      expect(
+          OtpUri.parse('otpauth://totp/C%2B%2B:alice?$s&issuer=C%2B%2B').label,
+          'alice');
+    });
+
+    test('a key too short for one byte is weak, not invalid', () {
+      expect(errorOf('otpauth://totp/x?secret=A'), OtpUriError.weakSecret);
+      expect(
+          errorOf('otpauth://totp/x?secret=AAAAAAAA'), OtpUriError.weakSecret);
+    });
+
+    test('a wrong character is named before a padding problem', () {
+      try {
+        Base32.decode('ABCDEFG1=');
+        fail('should refuse');
+      } on Base32Exception catch (e) {
+        expect(e.message, contains('not part of Base32'));
+      }
+    });
+
+    test('overlays, private use and noncharacters are refused in names', () {
+      for (final u in [0x0338, 0xE000, 0xF0000, 0xFDD0, 0xFFFE, 0x1FFFF]) {
+        expect(OtpLimits.hasUnsafeCharacters('GitHub${String.fromCharCode(u)}'),
+            isTrue,
+            reason: u.toRadixString(16));
+      }
+      expect(OtpLimits.hasUnsafeCharacters('Café ユーザー'), isFalse);
+    });
+
+    test('a huge link is refused before it is copied', () {
+      expect(errorOf(' ' * 5000), OtpUriError.tooLong);
+    });
+
+    test('hotp refuses with the account rule it broke', () {
+      expect(
+          () => OtpGenerator.hotp(Uint8List(5), 0),
+          throwsA(isA<OtpAccountException>().having(
+              (e) => e.problem, 'problem', OtpAccountProblem.weakSecret)));
     });
 
     test('the model says which rule a value broke', () {

@@ -106,6 +106,11 @@ abstract final class OtpLimits {
         u == 0x3164 ||
         u == 0xFFA0 ||
         u == 0x2800 || // braille blank
+        (u >= 0x0334 && u <= 0x0338) || // combining overlays (strike-through)
+        (u >= 0xE000 && u <= 0xF8FF) || // private use
+        u >= 0xF0000 || // supplementary private use (and the tags above)
+        (u >= 0xFDD0 && u <= 0xFDEF) || // noncharacters
+        (u & 0xFFFE) == 0xFFFE || // U+FFFE and U+FFFF in every plane
         (u >= 0xFE00 && u <= 0xFE0F) || // variation selectors
         (u >= 0xE0000 && u <= 0xE0FFF); // tags, variation selectors supplement
   }

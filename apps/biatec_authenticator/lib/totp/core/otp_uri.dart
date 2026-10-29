@@ -53,9 +53,9 @@ class OtpUriException implements Exception {
 
 /// Reads and writes the `otpauth://` Key URI format that services show as a QR code.
 ///
-/// A `counter` on a time-based link is refused (it is most likely a counter-based account mislabelled); a `period` on a counter-based link is ignored, since it changes nothing.
+/// A `counter` on a time-based link is refused (it is most likely a counter-based account mislabelled). A `period` on a counter-based link must still be a valid period, so no malformed value is let through, but it is not used, since it changes nothing.
 ///
-/// The `issuer` setting names the issuer. A label prefix that names the same issuer, apart from case and spacing (real services differ in both), is dropped from the name; a prefix that names something else is kept as part of the name, so nothing the link says is lost. Setting names are read without case.
+/// The `issuer` setting names the issuer. A label prefix that names the same issuer, apart from case and spacing (real services differ in both), is dropped from the name; a prefix that names something else is kept as part of the name, so nothing the link says is lost. A link with an issuer but no account name gets the issuer as its name, as other authenticator apps do. Setting names are read without case.
 abstract final class OtpUri {
   /// A real link is a few hundred characters; this stops a hostile QR code from making the parser work on megabytes.
   static const maxLength = 2048;
@@ -70,11 +70,12 @@ abstract final class OtpUri {
   };
 
   static OtpAccount parse(String link) {
+    const tooLong = OtpUriException(
+        OtpUriError.tooLong, 'This link is too long to be a setup link.');
+    // Refused before anything is copied, with room for whitespace around a pasted link.
+    if (link.length > 2 * maxLength) throw tooLong;
     final text = link.trim();
-    if (text.length > maxLength) {
-      throw const OtpUriException(
-          OtpUriError.tooLong, 'This link is too long to be a setup link.');
-    }
+    if (text.length > maxLength) throw tooLong;
     final Uri uri;
     try {
       uri = Uri.parse(text);
@@ -188,18 +189,27 @@ abstract final class OtpUri {
       for (var i = decoded.indexOf(':');
           i >= 0;
           i = decoded.indexOf(':', i + 1)) {
-        if (_sameName(decoded.substring(0, i), issuerParam)) {
+        // The prefix comes from the path, where some services write a space as "+" (the issuer setting was already form-decoded), so it matches as written or with "+" read as a space.
+        final prefix = decoded.substring(0, i);
+        if (_sameName(prefix, issuerParam) ||
+            _sameName(prefix.replaceAll('+', ' '), issuerParam)) {
           label = decoded.substring(i + 1);
           break;
         }
       }
     }
+    if (label.trim().isEmpty && issuer.isNotEmpty) label = issuer;
     final Uint8List secret;
     try {
       secret = Base32.decode(secretText);
     } on Base32Exception catch (e) {
       // Only spaces, dashes or padding: there is no key, which is not the same as a broken one.
       if (e.empty) throw noSecret;
+      // Valid characters, too few to make a byte: as weak as any key under the floor.
+      if (e.tooShort) {
+        throw const OtpUriException(
+            OtpUriError.weakSecret, OtpLimits.weakSecretMessage);
+      }
       throw const OtpUriException(OtpUriError.invalidSecret,
           'The secret key in this link is not valid.');
     }
@@ -301,8 +311,8 @@ abstract final class OtpUri {
     return int.parse(text);
   }
 
-  /// Spacing, and `+`, which some services use for a space in the label (the path keeps it, the query turns it into a space).
-  static final _spaces = RegExp(r'[\s+]+');
+  /// Spacing only: a "+" is a real character here ("C++"); the caller turns a path "+" into a space first.
+  static final _spaces = RegExp(r'\s+');
 
   /// Equal apart from case and spacing, as services write their own name.
   static bool _sameName(String a, String b) =>

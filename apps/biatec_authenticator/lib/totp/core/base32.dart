@@ -2,11 +2,15 @@ import 'dart:typed_data';
 
 /// A string that is not valid Base32. The message never contains the input, which may be a secret.
 class Base32Exception implements Exception {
-  const Base32Exception(this.message, {this.empty = false});
+  const Base32Exception(this.message,
+      {this.empty = false, this.tooShort = false});
   final String message;
 
   /// True when there was no key at all, only spaces, dashes or padding.
   final bool empty;
+
+  /// True when the key is valid Base32 but too short to make one byte: a weak key rather than a broken one.
+  final bool tooShort;
 
   @override
   String toString() => 'Base32Exception: $message';
@@ -19,6 +23,9 @@ abstract final class Base32 {
   static final Map<int, int> _values = {
     for (var i = 0; i < _alphabet.length; i++) _alphabet.codeUnitAt(i): i,
   };
+
+  /// The value of a Base32 character in either case, or null.
+  static int? _value(int u) => _values[u >= 0x61 && u <= 0x7A ? u - 0x20 : u];
 
   /// `=` characters that complete a last group of 2, 4, 5 or 7 characters to 8.
   static const _padFor = {0: 0, 2: 6, 4: 4, 5: 3, 7: 1};
@@ -43,7 +50,7 @@ abstract final class Base32 {
   ///
   /// The key goes straight into the returned bytes, with no other copy left behind: callers wipe that one buffer.
   static Uint8List decode(String input) {
-    // First pass: count the key characters and the padding after them, without copying them.
+    // First pass: check and count the key characters and the padding after them, without copying them. A character outside the alphabet is reported before any length or padding problem, since it is the usual mistake (0, 1 or 8 typed for O, I or B).
     var count = 0;
     var pads = 0;
     for (final u in input.codeUnits) {
@@ -54,6 +61,9 @@ abstract final class Base32 {
       } else if (pads > 0) {
         // Padding is only allowed at the end.
         throw const Base32Exception('The key has padding in the middle.');
+      } else if (_value(u) == null) {
+        throw const Base32Exception('The key has a character that is not '
+            'part of Base32 (letters A to Z and digits 2 to 7).');
       } else {
         count++;
       }
@@ -67,20 +77,17 @@ abstract final class Base32 {
       throw const Base32Exception('The key has the wrong padding.');
     }
     final out = Uint8List(count * 5 ~/ 8);
-    if (out.isEmpty) throw const Base32Exception('The key is too short.');
+    if (out.isEmpty) {
+      throw const Base32Exception('The key is too short.', tooShort: true);
+    }
     var n = 0;
     var buffer = 0;
     var bits = 0;
-    for (var u in input.codeUnits) {
+    for (final u in input.codeUnits) {
       if (_separator(u)) continue;
       if (u == 0x3D) break;
-      if (u >= 0x61 && u <= 0x7A) u -= 0x20; // lower case
-      final v = _values[u];
-      if (v == null) {
-        out.fillRange(0, out.length, 0);
-        throw const Base32Exception('The key has a character that is not '
-            'part of Base32 (letters A to Z and digits 2 to 7).');
-      }
+      // Checked in the first pass.
+      final v = _value(u)!;
       buffer = (buffer << 5) | v;
       bits += 5;
       if (bits >= 8) {

@@ -19,15 +19,18 @@ abstract final class OtpGenerator {
     OtpAlgorithm algorithm = OtpAlgorithm.sha1,
     int digits = 6,
   }) {
+    // The account's rules and error, so no layer makes codes from values an account refuses (a guessable key, say).
     if (!OtpLimits.validCounter(counter)) {
-      throw ArgumentError(OtpLimits.counterMessage);
+      throw OtpAccountException(
+          OtpAccountProblem.counter, OtpLimits.counterMessage);
     }
     if (!OtpLimits.validDigits(digits)) {
-      throw ArgumentError(OtpLimits.digitsMessage);
+      throw OtpAccountException(
+          OtpAccountProblem.digits, OtpLimits.digitsMessage);
     }
-    // The same floor as an account, so no layer makes codes from a guessable key.
     if (secret.length < OtpLimits.minSecretBytes) {
-      throw ArgumentError(OtpLimits.weakSecretMessage);
+      throw OtpAccountException(
+          OtpAccountProblem.weakSecret, OtpLimits.weakSecretMessage);
     }
     // The counter is 8 bytes, big endian, written as two 32-bit halves (setUint64 does not exist when compiled to JavaScript).
     final message = Uint8List(8);
