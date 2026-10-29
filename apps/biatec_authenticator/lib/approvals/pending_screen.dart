@@ -107,8 +107,8 @@ class _PendingScreenState extends State<PendingScreen> {
     if (!(widget.foreground?.value ?? true)) return;
     _poll = Timer.periodic(
         _isActive ? widget.pollEvery : widget.backgroundEvery, (_) {
-      // Nobody sees the list under a card while its tab shows; from another tab the badge still counts it.
-      if (!(_isActive && _covered)) _refresh();
+      // Nobody sees the list under a card while its tab shows; from another tab the badge still counts it. A tick during a slow load is skipped, not queued: on a slow network the loads would never settle.
+      if (_running == null && !(_isActive && _covered)) _refresh();
     });
   }
 

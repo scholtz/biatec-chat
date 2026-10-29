@@ -38,8 +38,9 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
   @override
   void onReload() => _load();
 
-  /// Counts reads; only the latest one's answer is shown, so a slow older read cannot replace a newer list.
+  /// Counts reads. A list is shown unless a newer one already is, so a slow older read cannot replace a newer list, yet its good answer is not thrown away; a failure counts only for the newest read.
   int _reads = 0;
+  int _shownRead = 0;
 
   final _refresher = GlobalKey<RefreshIndicatorState>();
 
@@ -50,7 +51,8 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
     final read = ++_reads;
     try {
       final entries = await widget.history.read();
-      if (!mounted || read != _reads) return;
+      if (!mounted || read < _shownRead) return;
+      _shownRead = read;
       setState(() {
         _entries = entries;
         _failed = false;

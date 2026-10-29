@@ -50,7 +50,7 @@ class _CountingReads extends MemoryEnrollmentStore {
 }
 
 class _SlowEnrollment extends EnrollmentController {
-  _SlowEnrollment(ShellRig rig, {EnrollmentStore? store})
+  _SlowEnrollment(ShellRig rig, {ObservableEnrollmentStore? store})
       : super(
           keys: rig.approvals.keys,
           store: store ?? rig.approvals.enrollment,

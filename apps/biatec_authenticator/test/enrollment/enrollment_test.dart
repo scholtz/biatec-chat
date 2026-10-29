@@ -355,7 +355,7 @@ void main() {
       final otherStore = FlakyStore();
       final b = EnrollmentController(
         keys: FakeKeyStore(),
-        store: otherStore,
+        store: ObservableEnrollmentStore(otherStore),
         client: OidcEnrollmentClient(
             baseUrl: 'http://mock',
             client: MockClient((r) async {

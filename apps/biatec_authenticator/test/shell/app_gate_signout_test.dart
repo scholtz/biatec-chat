@@ -54,6 +54,20 @@ class _FlakyWrites extends MemoryEnrollmentStore {
   }
 }
 
+/// A read started while [hang] is set waits for [release].
+class _HangOnce extends MemoryEnrollmentStore {
+  bool hang = false;
+  final release = Completer<void>();
+
+  @override
+  Future<EnrollmentRecord?> read() async {
+    final hangs = hang;
+    final record = await super.read();
+    if (hangs) await release.future;
+    return record;
+  }
+}
+
 /// Holds each write until [gate] completes.
 class _SlowWrites extends MemoryEnrollmentStore {
   final gate = Completer<void>();
@@ -216,6 +230,32 @@ void main() {
       now = now.add(ObservableEnrollmentStore.saveRetryEvery);
       expect((await store.read())?.kid, 'dev-1');
       expect((await inner.read())?.kid, 'dev-1', reason: 'saved by the read');
+      store.dispose();
+    });
+
+    test('an unsaved newer record wins over an older one on disk', () async {
+      final inner = _FlakyWrites();
+      final store = ObservableEnrollmentStore(inner);
+      await store.write(_active);
+      inner.failWrites = true;
+      final shown = _active.withCodeShown();
+      await expectLater(store.write(shown), throwsA(anything));
+      expect((await store.read())?.recoveryCodeShown, isTrue);
+      store.dispose();
+    });
+
+    test('a read that hangs does not hold up the next, and a sign-out during a read wins',
+        () async {
+      final inner = _HangOnce();
+      final store = ObservableEnrollmentStore(inner);
+      await store.write(_active);
+      inner.hang = true;
+      final first = store.read();
+      inner.hang = false;
+      expect((await store.read())?.kid, 'dev-1');
+      await store.clear();
+      inner.release.complete();
+      expect(await first, isNull, reason: 'it ran across the sign-out');
       store.dispose();
     });
 

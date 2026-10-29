@@ -7,6 +7,7 @@ import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/shell/shell_controller.dart';
+import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -45,7 +46,7 @@ class _FailingReads extends MemoryEnrollmentStore {
 
 EnrollmentController _controller(EnrollmentStore store) => EnrollmentController(
       keys: SoftwareKeyStore(deviceTestKey()),
-      store: store,
+      store: ObservableEnrollmentStore(store),
       client: OidcEnrollmentClient(baseUrl: 'http://oidc.test'),
     );
 

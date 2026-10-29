@@ -6,7 +6,7 @@ import 'package:flutter/services.dart' show PlatformException;
 import '../keys/device_key_store.dart';
 import '../keys/key_security_level.dart';
 import 'enrollment_state.dart';
-import 'enrollment_store.dart';
+import 'observable_enrollment_store.dart';
 import 'oidc_enrollment_client.dart';
 
 /// Drives the enrollment state machine. Time is injected so the 24 h delay is
@@ -34,7 +34,8 @@ class EnrollmentController extends ChangeNotifier {
   final String Function() _newAlias;
 
   final DeviceKeyStore keys;
-  final EnrollmentStore store;
+  /// The observable store: it keeps an enrollment whose write failed, which this controller relies on.
+  final ObservableEnrollmentStore store;
   final OidcEnrollmentClient client;
   final DateTime Function() _clock;
 

@@ -163,7 +163,8 @@ class _AppGateState extends State<AppGate> {
     final clears = _store.clearCount;
     if (clears == _clearsSeen) return;
     _clearsSeen = clears;
-    if (!_usable) return;
+    // Any enrollment the controller holds goes, also one still waiting for its activation.
+    if (_enrollment.state.record == null) return;
     _enrollment.signOut();
     // Enrolled again meanwhile: the controller learns what is stored.
     _refresh();
