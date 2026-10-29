@@ -94,7 +94,6 @@ class _AppShellState extends State<AppShell> {
     widget.controller.removeListener(_onSelect);
     // The next shell (after a sign-out and a new enrollment) starts on Approvals.
     widget.controller.reset();
-    widget.push?.clearOpenRequests();
     super.dispose();
   }
 
@@ -185,14 +184,16 @@ class _AppShellState extends State<AppShell> {
       if (widget.config.isMock) _MockNotice(config: widget.config),
       if (widget.banner != null) widget.banner!,
     ];
-    final body = header.isEmpty
-        ? tabs
-        : Column(children: [
-            SafeArea(bottom: false, child: Column(children: header)),
-            Expanded(
-                child: MediaQuery.removePadding(
-                    context: context, removeTop: true, child: tabs)),
-          ]);
+    // The same widgets with and without a header, so a banner that comes or goes does not rebuild the tabs.
+    final body = Column(children: [
+      if (header.isEmpty)
+        const SizedBox.shrink()
+      else
+        SafeArea(bottom: false, child: Column(children: header)),
+      Expanded(
+          child: MediaQuery.removePadding(
+              context: context, removeTop: header.isNotEmpty, child: tabs)),
+    ]);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {

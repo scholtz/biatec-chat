@@ -35,7 +35,6 @@ Future<void> main() async {
     enrollment: approvals.enrollment,
     client: approvals.client,
     onOpenRequest: (id) => shell.openApproval(approvals, id),
-    onRequestAlreadyOpen: (id) => shell.bringForward(approvals, id),
   );
   runApp(AuthenticatorApp(
       config: config,

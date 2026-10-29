@@ -14,15 +14,12 @@ class ApprovalServices {
   ApprovalServices({
     required this.client,
     required this.keys,
-    required EnrollmentStore enrollment,
+    required this.enrollment,
     required this.gate,
     required this.history,
     this.proof,
     DateTime Function()? clock,
-  })  : enrollment = enrollment is ObservableEnrollmentStore
-            ? enrollment
-            : ObservableEnrollmentStore(enrollment),
-        clock = clock ?? DateTime.now;
+  }) : clock = clock ?? DateTime.now;
 
   factory ApprovalServices.fromConfig(AppConfig config) {
     const keys = PlatformDeviceKeyStore();
@@ -41,7 +38,7 @@ class ApprovalServices {
 
   final ApprovalClient client;
   final DeviceKeyStore keys;
-  /// Always the observable store, whatever was passed in: the app learns of a sign-out from it, and it keeps an enrollment whose write failed.
+  /// The app learns of a sign-out from it, and it keeps an enrollment whose write failed, so everything that reads the enrollment shares this one.
   final ObservableEnrollmentStore enrollment;
   final BiometricGate gate;
   final HistoryStore history;

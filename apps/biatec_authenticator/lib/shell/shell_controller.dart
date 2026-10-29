@@ -61,9 +61,17 @@ class ShellController extends ChangeNotifier {
   /// False while the app is in the background: nothing polls for a screen nobody is looking at.
   final ValueNotifier<bool> foreground = ValueNotifier(true);
 
-  /// Follows the Approvals tab's stack, so a card that is already open can be found (see [bringForward]).
+  /// Follows the Approvals tab's stack, so a card that is already open can be found (see [openApproval]).
   NavigatorObserver get approvalsObserver => _approvalsStack;
   final _StackObserver _approvalsStack = _StackObserver();
+
+  /// The request ids of the approval cards open in the Approvals tab, bottom first.
+  @visibleForTesting
+  List<String> get openCards => [
+        for (final r in _approvalsStack.routes)
+          if (_isCard(r))
+            r.settings.name!.substring(ApprovalScreen.routePrefix.length),
+      ];
 
   /// Bumped when a tab is shown after a while away, so its first screen loads its data again in place (what it shows and what the user typed stay). The Approvals tab refreshes itself.
   final Map<AppTab, ValueNotifier<int>> reloads = {
@@ -157,24 +165,6 @@ class ShellController extends ChangeNotifier {
     _approvalsStack.routes.clear();
   }
 
-  /// A notification was tapped for a card that is already open: its tab is shown, and the card is uncovered when only screens that can be opened again lie on it (the recovery code screen). The card itself is never closed, so a code being typed or a signature in progress is not lost; another card on top is left as well, and back leads to this one.
-  void bringForward(ApprovalServices services, String authReqId) {
-    final navigator = navigators[AppTab.approvals]?.currentState;
-    final stack = _approvalsStack.routes;
-    final name = '${ApprovalScreen.routePrefix}$authReqId';
-    final open = stack.where((r) => r.settings.name == name).lastOrNull;
-    if (navigator == null || open == null) {
-      // Not in this tab (it went with an earlier shell): open it.
-      openApproval(services, authReqId);
-      return;
-    }
-    focusApprovals();
-    final above = stack.sublist(stack.indexOf(open) + 1);
-    if (above.every((r) => reopenableRoutes.contains(r.settings.name))) {
-      navigator.popUntil((r) => identical(r, open));
-    }
-  }
-
   /// The recovery code screen inside the Approvals tab (opened from the banner).
   static const recoveryCodeRoute = '/recovery-code';
 
@@ -190,10 +180,23 @@ class ShellController extends ChangeNotifier {
   }
 
   /// Opens the card for [authReqId] inside the Approvals tab (a tapped notification). While the app has no shell yet (it is still checking enrollment, or the device is not enrolled) the request is kept and opened when the shell appears.
+  ///
+  /// A card for it that is already open is not opened twice: its tab is shown, and the card is uncovered when only screens that can be opened again lie on it (the recovery code screen). The card itself is never closed, so a code being typed or a signature in progress is not lost; another card on top is left as well, and back leads to this one.
   void openApproval(ApprovalServices services, String authReqId) {
     final navigator = navigators[AppTab.approvals]?.currentState;
     if (navigator == null) {
       if (canQueue) _queuedOpen = (services, authReqId, clock());
+      return;
+    }
+    final stack = _approvalsStack.routes;
+    final name = '${ApprovalScreen.routePrefix}$authReqId';
+    final open = stack.where((r) => r.settings.name == name).lastOrNull;
+    if (open != null) {
+      focusApprovals();
+      final above = stack.sublist(stack.indexOf(open) + 1);
+      if (above.every((r) => reopenableRoutes.contains(r.settings.name))) {
+        navigator.popUntil((r) => identical(r, open));
+      }
       return;
     }
     _show(AppTab.approvals);

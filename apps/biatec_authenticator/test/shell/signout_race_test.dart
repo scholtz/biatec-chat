@@ -6,8 +6,6 @@ import 'package:biatec_authenticator/enrollment/enrollment_controller.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
-import 'package:biatec_authenticator/push/push_controller.dart';
-import 'package:biatec_authenticator/push/push_transport.dart';
 import 'package:biatec_authenticator/shell/shell_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,22 +19,6 @@ final _record = EnrollmentRecord(
     activeAt: DateTime.utc(2020),
     attestation: 'att',
     recoveryCodeShown: true);
-
-class _Transport implements PushTransport {
-  final openedC = StreamController<Map<String, Object?>>.broadcast();
-  @override
-  String get provider => 'fcm';
-  @override
-  Future<String?> token() async => null;
-  @override
-  Stream<String> get tokenRefreshes => const Stream.empty();
-  @override
-  Stream<Map<String, Object?>> get received => const Stream.empty();
-  @override
-  Stream<Map<String, Object?>> get opened => openedC.stream;
-  @override
-  Future<Map<String, Object?>?> launchPayload() async => null;
-}
 
 /// Holds each read's answer until [gate] completes, when one is set.
 class _SlowStore extends MemoryEnrollmentStore {
@@ -162,6 +144,7 @@ void main() {
     expect(counts.last, 0);
     expect(find.byKey(const Key('pending-signed-out')), findsOneWidget);
     expect(find.byKey(const Key('pending-error')), findsNothing);
+    expect(find.byKey(const Key('pending-stale')), findsNothing);
     expect(find.byKey(Key('pending-${rig.requestId}')), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
@@ -169,31 +152,17 @@ void main() {
   testWidgets('cards that went away with their shell can be opened again',
       (tester) async {
     final rig = ShellRig();
-    final opened = <String>[];
-    final push = PushController(
-      enrollment: rig.approvals.enrollment,
-      client: rig.approvals.client,
-      onOpenRequest: opened.add,
-    );
-    final transport = _Transport();
-    await push.start(transport);
-    // A card is on screen: a second tap for it is ignored.
-    push.didPush(
-        MaterialPageRoute<void>(
-            settings:
-                RouteSettings(name: '${ApprovalScreen.routePrefix}ciba_x'),
-            builder: (_) => const SizedBox()),
-        null);
-    transport.openedC.add({'auth_req_id': 'ciba_x'});
-    await tester.pump();
-    expect(opened, isEmpty);
+    await rig.pump(tester);
+    rig.shell.openApproval(rig.approvals, rig.requestId);
+    await tester.pump(const Duration(seconds: 1));
+    // The shell is taken down with the card still open: no pop is delivered.
+    await rig.dispose(tester);
 
-    // Its shell is taken down with the card still open: no pop was delivered.
-    push.clearOpenRequests();
-    transport.openedC.add({'auth_req_id': 'ciba_x'});
-    await tester.pump();
-    expect(opened, ['ciba_x']);
-    unawaited(push.dispose());
+    await rig.pump(tester);
+    rig.shell.openApproval(rig.approvals, rig.requestId);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(ApprovalScreen), findsOneWidget);
+    await rig.dispose(tester);
   });
 
   test('a shell that is gone starts the next one on Approvals', () {
@@ -203,30 +172,16 @@ void main() {
     c.dispose();
   });
 
-  testWidgets('a tap for a card that is already open brings it forward',
+  testWidgets('a second tap for a card that is open does not open it twice',
       (tester) async {
     final rig = ShellRig();
-    final opened = <String>[];
-    final already = <String>[];
-    final push = PushController(
-      enrollment: rig.approvals.enrollment,
-      client: rig.approvals.client,
-      onOpenRequest: opened.add,
-      onRequestAlreadyOpen: already.add,
-    );
-    final transport = _Transport();
-    await push.start(transport);
-    push.didPush(
-        MaterialPageRoute<void>(
-            settings:
-                RouteSettings(name: '${ApprovalScreen.routePrefix}ciba_x'),
-            builder: (_) => const SizedBox()),
-        null);
-    transport.openedC.add({'auth_req_id': 'ciba_x'});
-    await tester.pump();
-    expect(opened, isEmpty);
-    expect(already, ['ciba_x']);
-    unawaited(push.dispose());
+    await rig.pump(tester);
+    rig.shell.openApproval(rig.approvals, rig.requestId);
+    await tester.pump(const Duration(seconds: 1));
+    rig.shell.openApproval(rig.approvals, rig.requestId);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(ApprovalScreen, skipOffstage: false), findsOneWidget);
+    await rig.dispose(tester);
   });
 
   testWidgets(
@@ -246,7 +201,7 @@ void main() {
     rig.shell.select(AppTab.devices);
     await tester.pump();
 
-    rig.shell.bringForward(rig.approvals, rig.requestId);
+    rig.shell.openApproval(rig.approvals, rig.requestId);
     // The tab's tickers start again with the frame that shows it, so the pop animation runs from the next one.
     for (var i = 0; i < 3; i++) {
       await tester.pump(const Duration(seconds: 1));
@@ -276,7 +231,7 @@ void main() {
       rig.shell.select(AppTab.devices);
       await tester.pump();
 
-      rig.shell.bringForward(rig.approvals, rig.requestId);
+      rig.shell.openApproval(rig.approvals, rig.requestId);
       for (var i = 0; i < 3; i++) {
         await tester.pump(const Duration(seconds: 1));
       }
@@ -295,7 +250,7 @@ void main() {
     final card = tester.state(find.byType(ApprovalScreen));
     rig.shell.select(AppTab.devices);
     await tester.pump();
-    rig.shell.bringForward(rig.approvals, rig.requestId);
+    rig.shell.openApproval(rig.approvals, rig.requestId);
     await tester.pump(const Duration(seconds: 1));
     expect(rig.shell.selected, AppTab.approvals);
     expect(tester.state(find.byType(ApprovalScreen)), same(card));
@@ -341,30 +296,19 @@ void main() {
     c.dispose();
   });
 
-  testWidgets('a replaced card is forgotten and the new one remembered',
-      (tester) async {
-    final rig = ShellRig();
-    final opened = <String>[];
-    final already = <String>[];
-    final push = PushController(
-      enrollment: rig.approvals.enrollment,
-      client: rig.approvals.client,
-      onOpenRequest: opened.add,
-      onRequestAlreadyOpen: already.add,
-    );
-    final transport = _Transport();
-    await push.start(transport);
+  test('the stack follows a replaced route', () {
+    final c = ShellController();
+    final observer = c.approvalsObserver;
     Route<void> card(String id) => MaterialPageRoute<void>(
         settings: RouteSettings(name: '${ApprovalScreen.routePrefix}$id'),
         builder: (_) => const SizedBox());
-    push.didPush(card('a'), null);
-    push.didReplace(newRoute: card('b'), oldRoute: card('a'));
-
-    transport.openedC.add({'auth_req_id': 'a'});
-    transport.openedC.add({'auth_req_id': 'b'});
-    await tester.pump();
-    expect(opened, ['a'], reason: 'a is no longer on screen');
-    expect(already, ['b'], reason: 'b is');
-    unawaited(push.dispose());
+    final a = card('a');
+    final b = card('b');
+    observer.didPush(a, null);
+    observer.didReplace(newRoute: b, oldRoute: a);
+    expect(c.openCards, ['b']);
+    observer.didRemove(b, null);
+    expect(c.openCards, isEmpty);
+    c.dispose();
   });
 }

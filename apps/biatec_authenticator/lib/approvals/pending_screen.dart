@@ -112,6 +112,34 @@ class _PendingScreenState extends State<PendingScreen> {
     });
   }
 
+  /// A parent that passes new signals is listened to from then on.
+  @override
+  void didUpdateWidget(PendingScreen old) {
+    super.didUpdateWidget(old);
+    if (old.active != widget.active) {
+      old.active?.removeListener(_onActive);
+      widget.active?.addListener(_onActive);
+    }
+    if (old.foreground != widget.foreground) {
+      old.foreground?.removeListener(_startPolling);
+      widget.foreground?.addListener(_startPolling);
+    }
+    if (old.refreshOn != widget.refreshOn) {
+      old.refreshOn?.removeListener(_onRefreshSignal);
+      widget.refreshOn?.addListener(_onRefreshSignal);
+    }
+    if (old.pushes != widget.pushes) {
+      _pushSub?.cancel();
+      _pushSub = widget.pushes?.listen((_) => _refresh());
+    }
+    if (old.active != widget.active ||
+        old.foreground != widget.foreground ||
+        old.pollEvery != widget.pollEvery ||
+        old.backgroundEvery != widget.backgroundEvery) {
+      _startPolling();
+    }
+  }
+
   @override
   void dispose() {
     widget.active?.removeListener(_onActive);
@@ -249,11 +277,12 @@ class _PendingScreenState extends State<PendingScreen> {
             tooltip: 'Refresh',
             icon: const Icon(Icons.refresh)),
       ]),
+      // The same two slots in every state, so a banner that comes or goes does not rebuild the list under it.
       body: Column(children: [
         // A failed refresh over a list that is still shown is a banner above it.
         if (error != null && requests != null)
           Padding(
-            key: const Key('pending-error'),
+            key: const Key('pending-stale'),
             padding: const EdgeInsets.all(AppSpacing.s),
             child: _offline
                 ? OfflineBanner(onRetry: _refresh)
@@ -263,12 +292,11 @@ class _PendingScreenState extends State<PendingScreen> {
                     message: error,
                     actionLabel: 'Try again',
                     onAction: _refresh),
-          ),
-        // Pull to refresh works in every state but the first load (the states scroll, see ScrollableCenter).
-        Expanded(
-            child: requests == null && error == null
-                ? content
-                : RefreshIndicator(onRefresh: _refresh, child: content)),
+          )
+        else
+          const SizedBox.shrink(),
+        // Pull to refresh in every state (the states scroll, see ScrollableCenter); the first load's skeleton does not scroll, so it has none in effect.
+        Expanded(child: RefreshIndicator(onRefresh: _refresh, child: content)),
       ]),
     );
   }

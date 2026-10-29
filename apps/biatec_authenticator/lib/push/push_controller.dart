@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../approvals/approval_client.dart';
-import '../approvals/approval_screen.dart';
 import '../enrollment/enrollment_store.dart';
 import 'push_payload.dart';
 import 'push_transport.dart';
@@ -20,19 +19,15 @@ class PushController extends NavigatorObserver {
     required this.enrollment,
     required this.client,
     required this.onOpenRequest,
-    this.onRequestAlreadyOpen,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
   final EnrollmentStore enrollment;
   final ApprovalClient client;
 
-  /// Opens the approval screen for the request id. The screen fetches the
+  /// Opens the approval screen for the request id, or brings it forward when it is already open (the shell keeps track of the cards; see `ShellController.openApproval`). The screen fetches the
   /// request from Biatec OIDC; nothing from the push is shown.
   final void Function(String authReqId) onOpenRequest;
-
-  /// Called instead of [onOpenRequest] when the card for the request is already on screen, so the app can bring it to the front.
-  final void Function(String authReqId)? onRequestAlreadyOpen;
   final DateTime Function() _clock;
 
   /// A registration is sent again after this long, so a server that lost it
@@ -68,55 +63,20 @@ class PushController extends NavigatorObserver {
     await registerIfEnrolled();
   }
 
-  /// Approval screens on the navigator stack, by request id.
-  final _openRequests = <String>{};
-
   void _open(Map<String, Object?> data) {
     final id = authReqIdFromPush(data);
-    // A request already on screen is not opened a second time.
-    if (id == null) return;
-    if (_openRequests.contains(id)) {
-      onRequestAlreadyOpen?.call(id);
-    } else {
-      onOpenRequest(id);
-    }
+    if (id != null) onOpenRequest(id);
   }
-
-  String? _requestOf(Route<dynamic> route) {
-    final name = route.settings.name;
-    return name != null && name.startsWith(ApprovalScreen.routePrefix)
-        ? name.substring(ApprovalScreen.routePrefix.length)
-        : null;
-  }
-
-  /// Forgets the approval cards on screen, for a shell that was taken down with them still open (a sign-out), which delivers no pop.
-  void clearOpenRequests() => _openRequests.clear();
 
   // Every navigation (for example back from enrollment) is also a chance to
   // register a device that was not enrolled before, or was re-enrolled.
   @override
-  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    final id = _requestOf(route);
-    if (id != null) _openRequests.add(id);
-    registerIfEnrolled();
-  }
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      registerIfEnrolled();
 
   @override
-  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    _openRequests.remove(_requestOf(route));
-    registerIfEnrolled();
-  }
-
-  @override
-  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
-      _openRequests.remove(_requestOf(route));
-
-  @override
-  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
-    if (oldRoute != null) _openRequests.remove(_requestOf(oldRoute));
-    final id = newRoute == null ? null : _requestOf(newRoute);
-    if (id != null) _openRequests.add(id);
-  }
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      registerIfEnrolled();
 
   /// Registers the push token once this device is enrolled. Safe to call
   /// often; failures are retried on the next call.

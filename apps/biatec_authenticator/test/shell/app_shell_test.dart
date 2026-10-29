@@ -14,6 +14,7 @@ import 'package:biatec_authenticator/main.dart';
 import 'package:biatec_authenticator/shell/app_shell.dart'
     show kRailMinHeight, railHeightNeeded;
 import 'package:biatec_authenticator/shell/shell_controller.dart';
+import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -53,7 +54,7 @@ class ShellRig {
             return http.Response('{"error":"not_found"}', 404);
           })),
       keys: settings.keys,
-      enrollment: settings.enrollment,
+      enrollment: ObservableEnrollmentStore(settings.enrollment),
       gate: FakeGate(),
       history: MemoryHistoryStore(),
       clock: () =>
@@ -69,7 +70,7 @@ class ShellRig {
   ApprovalServices approvalsWith(EnrollmentStore store) => ApprovalServices(
         client: approvals.client,
         keys: approvals.keys,
-        enrollment: store,
+        enrollment: store is ObservableEnrollmentStore ? store : ObservableEnrollmentStore(store),
         gate: approvals.gate,
         history: approvals.history,
         clock: approvals.clock,

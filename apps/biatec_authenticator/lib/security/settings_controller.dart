@@ -207,15 +207,11 @@ class SettingsController extends ChangeNotifier {
 
   /// Loads devices and settings. Call on open and to retry. A [quiet] load of a screen that is already showing keeps it (and a dialog open over it) and only swaps the data; the controls stay usable meanwhile.
   ///
-  /// Asked while a load runs, it waits for that one (a pull to refresh spins until the data is in); a full load asked then still runs afterwards if that one did not end ready and without a problem.
+  /// Asked while a load runs, it waits for that one (a pull to refresh spins until the data is in) instead of starting another: the tabs share this controller, and each would otherwise load again.
   Future<void> load({bool quiet = false}) async {
     if (_busy) return;
     final running = _running;
-    if (running != null) {
-      await running;
-      if (quiet || (_phase == SettingsPhase.ready && _error == null)) return;
-      return load();
-    }
+    if (running != null) return running;
     final future = _load(quiet);
     _running = future;
     try {
@@ -278,12 +274,13 @@ class SettingsController extends ChangeNotifier {
         }
         try {
           await enrollment.clear();
-        } finally {
-          try {
-            await keys.delete(record.kid);
-          } on Object {
-            // The key is useless without an enrollment.
-          }
+        } on Object {
+          // The app's store still signs the device out when the storage did not clear (see ObservableEnrollmentStore.clear).
+        }
+        try {
+          await keys.delete(record.kid);
+        } on Object {
+          // The key is useless without an enrollment.
         }
         _devices = const [];
         _settings = null;

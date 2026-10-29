@@ -217,7 +217,7 @@ void main() {
               return http.Response('{"error":"not_found"}', 404);
             })),
         keys: settings.keys,
-        enrollment: settings.enrollment,
+        enrollment: ObservableEnrollmentStore(settings.enrollment),
         gate: settings.gate,
         history: MemoryHistoryStore(),
         clock: () =>
@@ -237,7 +237,8 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
       await tester.pump();
       expect(counts.last, 1, reason: 'offline: the last known state stands');
-      expect(find.byKey(const Key('pending-error')), findsOneWidget);
+      expect(find.byKey(const Key('pending-stale')), findsOneWidget,
+          reason: 'a banner over the list that is still shown');
 
       // The request expires while offline: it is no longer counted.
       expect(expiresAt, isNotNull);

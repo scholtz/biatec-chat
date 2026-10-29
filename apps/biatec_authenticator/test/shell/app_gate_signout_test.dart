@@ -69,7 +69,7 @@ ApprovalServices _servicesWith(ShellRig rig, EnrollmentStore store) =>
     ApprovalServices(
       client: rig.approvals.client,
       keys: rig.approvals.keys,
-      enrollment: store,
+      enrollment: store is ObservableEnrollmentStore ? store : ObservableEnrollmentStore(store),
       gate: rig.approvals.gate,
       history: MemoryHistoryStore(),
       clock: rig.approvals.clock,
@@ -242,9 +242,12 @@ void main() {
       final inner = _SlowWrites();
       final store = ObservableEnrollmentStore(inner);
       final writing = store.write(_active);
-      await store.clear();
+      // Asked for while the write runs; done after it, in order.
+      final clearing = store.clear();
+      expect(store.clearCount, 1, reason: 'announced at once');
       inner.gate.complete();
       await writing;
+      await clearing;
       expect(await inner.read(), isNull);
       expect(await store.read(), isNull);
       store.dispose();

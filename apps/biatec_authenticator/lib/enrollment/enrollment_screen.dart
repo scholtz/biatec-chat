@@ -7,6 +7,7 @@ import '../keys/device_key_store.dart';
 import 'enrollment_controller.dart';
 import 'enrollment_state.dart';
 import 'enrollment_store.dart';
+import 'observable_enrollment_store.dart';
 import 'oidc_enrollment_client.dart';
 
 /// Enrollment screen: start, inactive countdown, recovery code.
@@ -33,7 +34,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     _controller = widget.controller ??
         EnrollmentController(
           keys: const PlatformDeviceKeyStore(),
-          store: SecureEnrollmentStore(),
+          // The observable store keeps an enrollment whose write failed (the controller relies on it).
+          store: ObservableEnrollmentStore(SecureEnrollmentStore()),
           client: OidcEnrollmentClient(baseUrl: widget.config.oidcBaseUrl),
         );
     // The mock accepts the seeded login token; a real build gets the token

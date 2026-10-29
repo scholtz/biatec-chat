@@ -16,6 +16,7 @@ import 'package:biatec_authenticator/push/push_controller.dart';
 import 'package:biatec_authenticator/push/push_payload.dart';
 import 'package:biatec_authenticator/push/push_transport.dart';
 import 'package:biatec_authenticator/shell/shell_controller.dart';
+import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -206,25 +207,13 @@ void main() {
       expect(openedIds, ['ciba_launch', 'ciba_tap']);
     });
 
-    test('a request already on screen is not opened again', () async {
+    test('every tap is passed on: the shell knows which cards are open',
+        () async {
       await push.start(transport);
-      final route = ApprovalScreen.route(
-          ApprovalServices(
-              client: ApprovalClient(baseUrl: 'http://oidc'),
-              keys: SoftwareKeyStore(deviceTestKey()),
-              enrollment: store,
-              gate: _Pass(),
-              history: MemoryHistoryStore()),
-          'ciba_x');
-      push.didPush(route, null);
       transport.openedC.add({'auth_req_id': 'ciba_x'});
-      transport.openedC.add({'auth_req_id': 'ciba_y'});
-      await pumpEventQueue();
-      expect(openedIds, ['ciba_y']);
-      push.didPop(route, null);
       transport.openedC.add({'auth_req_id': 'ciba_x'});
       await pumpEventQueue();
-      expect(openedIds, ['ciba_y', 'ciba_x']);
+      expect(openedIds, ['ciba_x', 'ciba_x']);
     });
 
     test('a foreground push signals the pending list, without opening it',
@@ -271,7 +260,7 @@ void main() {
               return http.Response('{"error":"not_found"}', 404);
             })),
         keys: SoftwareKeyStore(deviceTestKey()),
-        enrollment: store,
+        enrollment: ObservableEnrollmentStore(store),
         gate: _Pass(),
         history: MemoryHistoryStore(),
       );
