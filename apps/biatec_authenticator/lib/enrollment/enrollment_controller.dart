@@ -69,20 +69,28 @@ class EnrollmentController extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool _discarded = false;
-
   /// Bumped by [signOut]. Work that started before (a refresh, a recovery code fetch) checks it after each wait and drops what it got, so a sign-out is never undone by a slow read.
   int _session = 0;
 
   /// This device signed itself out (its stored enrollment was cleared on purpose): it is not enrolled from now on, without reading anything, so a storage failure cannot keep a signed-out device in the app. The record held in memory is dropped and never written back; a new enrollment found in the store by a later [refresh] is picked up as usual.
   void signOut() {
     _session++;
-    _discarded = true;
     _recoveryCode = null;
     _recoveryCodeError = null;
+    // A fetch for the old enrollment that is still running must not stop the next enrollment's.
+    _fetchingCode = false;
     _keyLevel = null;
     _keyLevelKid = null;
     _set(EnrollmentState.notEnrolled);
+  }
+
+  /// A write of [record] landed after a sign-out had cleared the store: it is removed again, unless the store holds a different enrollment by now.
+  Future<void> _takeBack(EnrollmentRecord record) async {
+    try {
+      if ((await store.read())?.kid == record.kid) await store.clear();
+    } on Object {
+      // The server has cancelled this device; at worst the next launch finds a record it refuses.
+    }
   }
 
   /// Restores the persisted state. Call at startup and on a timer or resume
@@ -101,7 +109,8 @@ class EnrollmentController extends ChangeNotifier {
     }
     if (session != _session) return;
     if (record == null) {
-      final held = _discarded ? null : _state.record;
+      // Nothing is held after a sign-out: its state has no record.
+      final held = _state.record;
       if (held != null) {
         // Enrolled in this session but the write failed earlier: try again.
         var saved = true;
@@ -110,7 +119,10 @@ class EnrollmentController extends ChangeNotifier {
         } on Object {
           saved = false; // keep working from memory
         }
-        if (session != _session) return;
+        if (session != _session) {
+          if (saved) await _takeBack(held);
+          return;
+        }
         _set(EnrollmentState.fromRecord(held, _clock(),
             error: saved ? null : _state.error));
         await _ensureRecoveryCode();
@@ -119,7 +131,6 @@ class EnrollmentController extends ChangeNotifier {
       if (p != EnrollmentPhase.failed) _set(EnrollmentState.notEnrolled);
       return;
     }
-    _discarded = false;
     _set(EnrollmentState.fromRecord(record, _clock()));
     await _ensureRecoveryCode();
     await _loadKeyLevel(record.kid);
@@ -276,7 +287,7 @@ class EnrollmentController extends ChangeNotifier {
         _recoveryCodeError = e is EnrollmentException ? e.message : '$e';
       }
     } finally {
-      _fetchingCode = false;
+      if (session == _session) _fetchingCode = false;
     }
     notifyListeners();
   }
@@ -319,7 +330,10 @@ class EnrollmentController extends ChangeNotifier {
     } on Object catch (e) {
       warning = 'Could not save locally: $e';
     }
-    if (session != _session) return;
+    if (session != _session) {
+      if (warning == null) await _takeBack(done);
+      return;
+    }
     _set(EnrollmentState.fromRecord(done, _clock(), error: warning));
   }
 }

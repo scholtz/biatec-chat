@@ -56,6 +56,9 @@ class _PendingScreenState extends State<PendingScreen> {
   String? _error;
   bool _offline = false;
   bool _loading = false;
+
+  /// The device has no enrollment any more: nothing can be pending for it.
+  bool _signedOut = false;
   Timer? _poll;
   StreamSubscription<void>? _pushSub;
 
@@ -134,8 +137,9 @@ class _PendingScreenState extends State<PendingScreen> {
         if (mounted) {
           setState(() {
             _requests = const [];
-            _error = 'Enroll this device to receive requests.';
+            _error = null;
             _offline = false;
+            _signedOut = true;
           });
           _tell(0);
         }
@@ -148,6 +152,7 @@ class _PendingScreenState extends State<PendingScreen> {
         _requests = list.where((r) => !r.isExpired(now)).toList();
         _error = null;
         _offline = false;
+        _signedOut = false;
       });
       _tell(_requests!.length);
     } on Object catch (e) {
@@ -177,7 +182,8 @@ class _PendingScreenState extends State<PendingScreen> {
         .push(ApprovalScreen.route(widget.services, r.authReqId));
     if (!mounted) return;
     _startPolling();
-    await _refresh();
+    // The card may have been replaced by one on top (a tapped notification); the list loads when that one closes.
+    if (!_covered) await _refresh();
   }
 
   @override
@@ -195,6 +201,13 @@ class _PendingScreenState extends State<PendingScreen> {
               offline: _offline,
               onRetry: _refresh,
             );
+    } else if (_signedOut) {
+      content = const EmptyState(
+        key: Key('pending-signed-out'),
+        icon: Icons.link_off,
+        title: 'This device is not enrolled',
+        message: 'Enroll this device to receive requests.',
+      );
     } else if (requests.isEmpty) {
       content = EmptyState(
         icon: Icons.fact_check_outlined,
@@ -205,9 +218,7 @@ class _PendingScreenState extends State<PendingScreen> {
         onAction: _refresh,
       );
     } else {
-      content = RefreshIndicator(
-        onRefresh: _refresh,
-        child: ListView(children: [
+      content = ListView(children: [
           for (final r in requests)
             ListTile(
               key: Key('pending-${r.authReqId}'),
@@ -218,8 +229,7 @@ class _PendingScreenState extends State<PendingScreen> {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _open(r),
             ),
-        ]),
-      );
+        ]);
     }
     return Scaffold(
       appBar: AppBar(title: const Text('Pending approvals'), actions: [
@@ -241,7 +251,11 @@ class _PendingScreenState extends State<PendingScreen> {
                     title: 'Could not load requests',
                     message: error),
           ),
-        Expanded(child: content),
+        // Pull to refresh works in every state but the first load (the states scroll, see ScrollableCenter).
+        Expanded(
+            child: requests == null && error == null
+                ? content
+                : RefreshIndicator(onRefresh: _refresh, child: content)),
       ]),
     );
   }

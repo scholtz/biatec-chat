@@ -133,6 +133,22 @@ void main() {
           findsOneWidget);
     });
 
+    testWidgets('a change made while a quiet reload runs goes through and is not overwritten',
+        (tester) async {
+      final rig = SettingsRig();
+      await _open(tester, SecurityScreen(services: rig.services));
+      final c = rig.services.controller();
+      await c.load();
+      expect(c.settings!.biometricRequired, isTrue);
+      final reloading = c.load(quiet: true);
+      expect(c.busy, isFalse, reason: 'the controls stay usable');
+      final applied = await c.apply({'block_unverified_clients': true});
+      await reloading;
+      expect(applied, isTrue);
+      expect(c.settings!.blockUnverifiedClients, isTrue);
+      c.dispose();
+    });
+
     testWidgets('a tab reload refreshes in place and keeps the screen',
         (tester) async {
       final rig = SettingsRig();

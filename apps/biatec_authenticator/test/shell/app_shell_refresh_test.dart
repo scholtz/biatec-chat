@@ -12,6 +12,7 @@ import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart
 import 'package:biatec_authenticator/main.dart';
 import 'package:biatec_authenticator/push/push_controller.dart';
 import 'package:biatec_authenticator/shell/shell_controller.dart';
+import 'package:biatec_authenticator/shell/tab_reload.dart';
 import 'package:biatec_authenticator/ui/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -43,6 +44,17 @@ class _SlowStore extends MemoryEnrollmentStore {
     final h = hold;
     if (h != null) await h.future;
     return asked;
+  }
+}
+
+/// History that cannot be read while [broken] is set.
+class _FlakyHistory extends MemoryHistoryStore {
+  bool broken = false;
+
+  @override
+  Future<List<HistoryEntry>> read() async {
+    if (broken) throw StateError('storage locked');
+    return super.read();
   }
 }
 
@@ -88,6 +100,45 @@ void main() {
     expect(tester.state(find.byType(HistoryScreen)), same(screen),
         reason: 'reloaded in place, not rebuilt');
     await rig.dispose(tester);
+  });
+
+  testWidgets('a reload that fails keeps the history that is showing',
+      (tester) async {
+    final history = _FlakyHistory();
+    await history.add(_entry('ciba_old'));
+    final reload = ValueNotifier(0);
+    await tester.pumpWidget(MaterialApp(
+        home: TabReload(
+            reload: reload, child: HistoryScreen(history: history))));
+    await tester.pump();
+    expect(find.byKey(const Key('history-ciba_old')), findsOneWidget);
+    history.broken = true;
+    reload.value++;
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const Key('history-ciba_old')), findsOneWidget);
+    expect(find.text('History could not be read'), findsNothing);
+  });
+
+  testWidgets('the empty list can be pulled to refresh', (tester) async {
+    final rig = ShellRig(pending: 0);
+    var loads = 0;
+    await tester.pumpWidget(MaterialApp(
+        home: PendingScreen(
+            services: rig.approvals,
+            pollEvery: const Duration(hours: 1),
+            onCount: (_) => loads++)));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('No pending approvals'), findsOneWidget);
+    final before = loads;
+    await tester.fling(
+        find.text('No pending approvals'), const Offset(0, 400), 1000);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+    expect(loads, greaterThan(before));
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('a quick switch keeps the tab as it was', (tester) async {

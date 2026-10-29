@@ -56,7 +56,7 @@ class _AppGateState extends State<AppGate> {
   /// Counts start-ups (the first and each retry), so a slow earlier one cannot cancel or finish a later one.
   int _attempt = 0;
 
-  /// The start-up whose stored enrollment has been read. What follows may use the network (the recovery code), so it is not timed.
+  /// The start-up whose stored enrollment has been read. The timer runs on until the gate is ready: the controller reads the store again and a device that is not enrolled is only ready after that read. An enrolled one is ready as soon as its state is known, before any network work (the recovery code).
   int _readAttempt = 0;
 
   /// Whether the device was active at the last notification, so push registration is asked for when it becomes so.
@@ -146,10 +146,7 @@ class _AppGateState extends State<AppGate> {
     EnrollmentRecord? stored;
     try {
       stored = await widget.approvals.enrollment.read();
-      if (attempt == _attempt) {
-        _readAttempt = attempt;
-        _timeout?.cancel();
-      }
+      if (attempt == _attempt) _readAttempt = attempt;
     } on Object {
       if (mounted && attempt == _attempt) {
         setState(() => _startup = _Startup.unreadable);

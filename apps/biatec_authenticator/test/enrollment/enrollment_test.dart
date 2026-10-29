@@ -414,6 +414,22 @@ void main() {
       expect((await store.read())!.kid, lastKid);
     });
 
+    test('after a sign-out a new enrollment whose write fails is still kept',
+        () async {
+      final c = build((_) => created());
+      await c.enroll(loginToken: 'login-alice');
+      await store.clear();
+      c.signOut();
+      expect(c.state.phase, EnrollmentPhase.notEnrolled);
+
+      store.failWrite = true;
+      await c.enroll(loginToken: 'login-alice');
+      expect(c.state.phase, EnrollmentPhase.inactive);
+      await c.refresh();
+      expect(c.state.phase, EnrollmentPhase.inactive,
+          reason: 'held in memory, as for any failed write');
+    });
+
     test('a corrupt stored record counts as not enrolled', () async {
       store.failRead = true;
       final c = build((_) => created());

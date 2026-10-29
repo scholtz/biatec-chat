@@ -24,32 +24,48 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
-  late Future<List<HistoryEntry>> _entries = widget.history.read();
+  List<HistoryEntry>? _entries;
+  bool _failed = false;
 
-  /// The list that is showing stays (and what is expanded) while it is read again.
   @override
-  void onReload() {
-    final entries = widget.history.read();
-    setState(() {
-      _entries = entries;
-    });
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  /// The list that is showing stays (and what is expanded) while it is read again, and also when that read fails.
+  @override
+  void onReload() => _load();
+
+  Future<void> _load() async {
+    try {
+      final entries = await widget.history.read();
+      if (!mounted) return;
+      setState(() {
+        _entries = entries;
+        _failed = false;
+      });
+    } on Object {
+      if (!mounted) return;
+      setState(() => _failed = true);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Approval history')),
-      body: FutureBuilder<List<HistoryEntry>>(
-        future: _entries,
-        builder: (context, snap) {
-          if (snap.hasError) {
-            return const ErrorState(
-                title: 'History could not be read',
-                message: 'The decisions stored on this device did not open.');
-          }
-          final list = snap.data;
+      body: Builder(
+        builder: (context) {
+          final list = _entries;
           if (list == null) {
-            return const LoadingSkeleton();
+            return _failed
+                ? ErrorState(
+                    title: 'History could not be read',
+                    message: 'The decisions stored on this device did not '
+                        'open.',
+                    onRetry: _load)
+                : const LoadingSkeleton();
           }
           if (list.isEmpty) {
             return const EmptyState(

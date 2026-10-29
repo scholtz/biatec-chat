@@ -147,7 +147,8 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(counts.last, 0);
-    expect(find.byKey(const Key('pending-error')), findsOneWidget);
+    expect(find.byKey(const Key('pending-signed-out')), findsOneWidget);
+    expect(find.byKey(const Key('pending-error')), findsNothing);
     expect(find.byKey(Key('pending-${rig.requestId}')), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });

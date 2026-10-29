@@ -59,14 +59,12 @@ class _SettingsFrameState extends State<SettingsFrame>
       bottomNavigationBar:
           footer == null ? null : SafeArea(top: false, child: footer),
       body: !widget.services.enabled
-          ? const ScrollableCenter(
-              child: EmptyState(
-                key: Key('not-available'),
-                icon: Icons.info_outline,
-                title: 'Not available yet',
-                message: 'This Biatec OIDC does not offer device and settings '
-                    'management; it only runs against the mock for now.',
-              ),
+          ? const EmptyState(
+              key: Key('not-available'),
+              icon: Icons.info_outline,
+              title: 'Not available yet',
+              message: 'This Biatec OIDC does not offer device and settings '
+                  'management; it only runs against the mock for now.',
             )
           : ListenableBuilder(
         listenable: _controller,

@@ -199,33 +199,42 @@ class SettingsController extends ChangeNotifier {
     }
   }
 
-  /// Loads devices and settings. Call on open and to retry. A [quiet] load of a screen that is already showing keeps it (and a dialog open over it) and only swaps the data; the controls are busy meanwhile, so no change is made from data that is being replaced.
+  /// A load is running; a second one is not started.
+  bool _loading = false;
+
+  /// Bumped when a change starts. A quiet load that began before it drops what it read, which may be older than the change's result.
+  int _changes = 0;
+
+  /// Loads devices and settings. Call on open and to retry. A [quiet] load of a screen that is already showing keeps it (and a dialog open over it) and only swaps the data; the controls stay usable meanwhile.
   Future<void> load({bool quiet = false}) async {
-    if (_busy) return;
+    if (_busy || _loading) return;
     final inPlace = quiet && _phase == SettingsPhase.ready;
-    if (inPlace) {
-      _busy = true;
-    } else {
+    final changes = _changes;
+    _loading = true;
+    if (!inPlace) {
       _phase = SettingsPhase.loading;
       _error = null;
       _notice = null;
+      _changed();
     }
-    _changed();
     try {
       final token = (await _record()).deviceToken;
       final devices = await client.devices(token);
       final settings = await client.settings(token);
+      if (inPlace && changes != _changes) return;
       _devices = devices;
       _settings = settings;
       _phase = SettingsPhase.ready;
       _offline = false;
       if (inPlace) _error = null;
     } on Object catch (e) {
+      if (inPlace && changes != _changes) return;
       _fail(e);
       // What was shown stays, with the problem above it.
       if (!inPlace) _phase = SettingsPhase.unavailable;
+    } finally {
+      _loading = false;
     }
-    _busy = false;
     _changed();
   }
 
@@ -234,6 +243,7 @@ class SettingsController extends ChangeNotifier {
   Future<void> cancelDevice(String kid) async {
     if (_busy) return;
     _busy = true;
+    _changes++;
     _error = null;
     _notice = null;
     _changed();
@@ -276,6 +286,7 @@ class SettingsController extends ChangeNotifier {
     final current = _settings;
     if (_busy || current == null) return false;
     _busy = true;
+    _changes++;
     _error = null;
     _notice = null;
     _changed();

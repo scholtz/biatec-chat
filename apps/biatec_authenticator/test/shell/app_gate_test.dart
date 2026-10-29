@@ -36,6 +36,17 @@ class _HangingStore extends MemoryEnrollmentStore {
 }
 
 /// A controller whose refresh (the part that may use the network) is slow.
+/// Answers the first read, then never again.
+class _SecondReadHangs extends MemoryEnrollmentStore {
+  var _reads = 0;
+
+  @override
+  Future<EnrollmentRecord?> read() {
+    if (_reads++ == 0) return super.read();
+    return Completer<EnrollmentRecord?>().future;
+  }
+}
+
 class _SlowEnrollment extends EnrollmentController {
   _SlowEnrollment(ShellRig rig)
       : super(
@@ -47,10 +58,11 @@ class _SlowEnrollment extends EnrollmentController {
   final _gate = Completer<void>();
   void release() => _gate.complete();
 
+  /// The state is known from the store at once; what follows (the recovery code, from the network) is slow.
   @override
   Future<void> refresh() async {
+    await super.refresh();
     if (!_gate.isCompleted) await _gate.future;
-    return super.refresh();
   }
 }
 
@@ -115,12 +127,29 @@ void main() {
       )));
       await tester.pump(const Duration(seconds: 10));
       expect(find.byType(ErrorState), findsNothing);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byType(NavigationBar), findsOneWidget,
+          reason: 'the app opens as soon as the state is known');
       enrollment.release();
       await tester.pump();
-      await tester.pump();
-      await tester.pump();
       expect(find.byType(NavigationBar), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets(
+        'a second store read that hangs for a device that is not enrolled still ends in a retry',
+        (tester) async {
+      final rig = ShellRig(enrolled: false);
+      final store = _SecondReadHangs();
+      await tester.pumpWidget(MaterialApp(
+          home: AppGate(
+        config: AppConfig.resolve(''),
+        approvals: rig.approvalsWith(store),
+        settings: rig.settings.services,
+        shell: rig.shell,
+        startupTimeout: const Duration(seconds: 3),
+      )));
+      await tester.pump(const Duration(seconds: 4));
+      expect(find.byType(ErrorState), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
 

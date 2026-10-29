@@ -12,6 +12,8 @@ class ScrollableCenter extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, box) => SingleChildScrollView(
+        // Scrolls even when everything fits, so a pull-to-refresh around it works.
+        physics: const AlwaysScrollableScrollPhysics(),
         child: ConstrainedBox(
           constraints: BoxConstraints(
               minHeight: box.hasBoundedHeight ? box.maxHeight : 0),
