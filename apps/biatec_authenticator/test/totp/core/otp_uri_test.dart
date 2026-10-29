@@ -610,9 +610,11 @@ void main() {
 
     test('the model refuses the names the parser refuses', () {
       final a = OtpAccount(issuer: 'I', label: 'L', secret: key());
-      expect(() => a.copyWith(label: '202Elgoog'), throwsArgumentError);
+      final rlo = String.fromCharCode(0x202E); // right-to-left override
+      final zwsp = String.fromCharCode(0x200B); // zero width space
+      expect(() => a.copyWith(label: '${rlo}lgoog'), throwsArgumentError);
       expect(() => a.copyWith(label: '   '), throwsArgumentError);
-      expect(() => a.copyWith(issuer: 'Git200Bhub'), throwsArgumentError);
+      expect(() => a.copyWith(issuer: 'Git${zwsp}hub'), throwsArgumentError);
     });
 
     test('the secret cannot be changed through the account', () {
