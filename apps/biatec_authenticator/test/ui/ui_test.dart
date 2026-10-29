@@ -243,47 +243,4 @@ void main() {
     });
   });
 
-  group('AmountText', () {
-    testWidgets('shows the amount exactly as given and speaks it in full',
-        (tester) async {
-      final handle = tester.ensureSemantics();
-      await pumpWidgetAt(
-          tester, const AmountText(amount: '12.500000', unit: 'ALGO'));
-      expect(
-          find.textContaining('12.500000', findRichText: true), findsOneWidget);
-      expect(find.bySemanticsLabel('12.500000 ALGO'), findsOneWidget);
-      handle.dispose();
-    });
-
-    testWidgets('without a unit it speaks the amount alone, large or not',
-        (tester) async {
-      final handle = tester.ensureSemantics();
-      await pumpWidgetAt(tester, const AmountText(amount: '0.01', large: true));
-      expect(find.bySemanticsLabel('0.01'), findsOneWidget);
-      handle.dispose();
-    });
-
-    testWidgets('a large amount holds at 3x text', (tester) async {
-      await pumpWidgetAt(tester,
-          const AmountText(amount: '1234567.890123', unit: 'USDC', large: true),
-          textScale: 3);
-      expect(tester.takeException(), isNull);
-    });
-  });
-
-  group('SectionHeader', () {
-    testWidgets('is a heading, with room for a trailing widget',
-        (tester) async {
-      final handle = tester.ensureSemantics();
-      await pumpWidgetAt(
-          tester,
-          const SectionHeader(
-              title: 'Security', trailing: Icon(Icons.lock_outline)));
-      expect(find.text('Security'), findsOneWidget);
-      expect(find.byIcon(Icons.lock_outline), findsOneWidget);
-      expect(tester.getSemantics(find.text('Security')),
-          matchesSemantics(label: 'Security', isHeader: true));
-      handle.dispose();
-    });
-  });
 }

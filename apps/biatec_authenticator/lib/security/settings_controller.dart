@@ -199,23 +199,33 @@ class SettingsController extends ChangeNotifier {
     }
   }
 
-  /// Loads devices and settings. Call on open and to retry.
-  Future<void> load() async {
+  /// Loads devices and settings. Call on open and to retry. A [quiet] load of a screen that is already showing keeps it (and a dialog open over it) and only swaps the data; the controls are busy meanwhile, so no change is made from data that is being replaced.
+  Future<void> load({bool quiet = false}) async {
     if (_busy) return;
-    _phase = SettingsPhase.loading;
-    _error = null;
-    _notice = null;
+    final inPlace = quiet && _phase == SettingsPhase.ready;
+    if (inPlace) {
+      _busy = true;
+    } else {
+      _phase = SettingsPhase.loading;
+      _error = null;
+      _notice = null;
+    }
     _changed();
     try {
       final token = (await _record()).deviceToken;
-      _devices = await client.devices(token);
-      _settings = await client.settings(token);
+      final devices = await client.devices(token);
+      final settings = await client.settings(token);
+      _devices = devices;
+      _settings = settings;
       _phase = SettingsPhase.ready;
       _offline = false;
+      if (inPlace) _error = null;
     } on Object catch (e) {
       _fail(e);
-      _phase = SettingsPhase.unavailable;
+      // What was shown stays, with the problem above it.
+      if (!inPlace) _phase = SettingsPhase.unavailable;
     }
+    _busy = false;
     _changed();
   }
 

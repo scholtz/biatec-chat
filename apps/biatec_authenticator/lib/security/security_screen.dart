@@ -7,15 +7,28 @@ import 'settings_frame.dart';
 /// of unverified clients. Turning protection down needs approval on this
 /// device; turning it up applies at once.
 class SecurityScreen extends StatelessWidget {
-  const SecurityScreen({super.key, required this.services});
+  const SecurityScreen({super.key, required this.services, this.server});
 
   final SettingsServices services;
 
+  /// The Biatec OIDC this build talks to, shown so the user and support can see which server the device is enrolled with.
+  final String? server;
+
   @override
   Widget build(BuildContext context) {
+    final server = this.server;
     return SettingsFrame(
       title: 'Security settings',
       services: services,
+      footer: server == null
+          ? null
+          : ListTile(
+              key: const Key('oidc-server'),
+              dense: true,
+              leading: const Icon(Icons.dns_outlined),
+              title: const Text('Biatec OIDC server'),
+              subtitle: Text(server),
+            ),
       builder: (context, c) {
         final s = c.settings!;
         final enabled = !c.busy;

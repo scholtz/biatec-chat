@@ -48,14 +48,10 @@ class AppGate extends StatefulWidget {
 enum _Startup { loading, ready, stuck, unreadable }
 
 class _AppGateState extends State<AppGate> {
-  late EnrollmentController _enrollment;
+  late final EnrollmentController _enrollment;
   late AppLifecycleListener _lifecycle;
   Timer? _timeout;
   _Startup _startup = _Startup.loading;
-
-  /// The check for a signed-out device that is running. A request that comes in meanwhile makes it run once more when it ends, so a sign-out after its read started is still seen.
-  Future<void>? _check;
-  bool _checkAgain = false;
 
   /// Counts start-ups (the first and each retry), so a slow earlier one cannot cancel or finish a later one.
   int _attempt = 0;
@@ -92,13 +88,12 @@ class _AppGateState extends State<AppGate> {
       onPause: widget.shell.appPaused,
       onResume: () async {
         widget.shell.appResumed();
-        await _recheck();
         await _refresh();
       },
     );
-    // The store says when the enrollment goes (this device cancelled itself in Devices); a tab change is the fallback for a store that does not.
+    // The store says when the enrollment goes (this device cancelled itself in Devices).
     _clearsSeen = _store?.clearCount ?? 0;
-    _store?.addListener(_recheck);
+    _store?.addListener(_onStoreChanged);
     _enrollment.addListener(_onPhase);
     _begin();
   }
@@ -182,66 +177,22 @@ class _AppGateState extends State<AppGate> {
     }
   }
 
-  /// While the shell shows, looks for the stored enrollment having gone. The controller would otherwise keep its in-memory record and write it back, so it is replaced by a fresh one, which finds the device not enrolled.
-  Future<void> _recheck() {
-    final running = _check;
-    if (running != null) {
-      _checkAgain = true;
-      return running;
-    }
-    return _check = _recheckLoop();
-  }
-
-  Future<void> _recheckLoop() async {
-    try {
-      do {
-        _checkAgain = false;
-        await _doRecheck();
-      } while (_checkAgain && mounted);
-    } finally {
-      // Whatever happened, the next request starts a new check.
-      _check = null;
-    }
-  }
-
-  Future<void> _doRecheck() async {
-    final store = _store;
-    // Only a deliberate clear signs the device out; a record that is merely missing may be an enrollment kept in memory.
-    final clears = store?.clearCount;
-    if (store == null || clears == _clearsSeen) return;
-    if (!_usable) {
-      _clearsSeen = clears!;
-      return;
-    }
-    // Before the read: a refresh that is already running must not put the record back.
-    _enrollment.discardHeldRecord();
-    try {
-      final record = await widget.approvals.enrollment.read();
-      if (!mounted) return;
-      // Dealt with: a read that failed is tried again at the next notification or resume.
-      _clearsSeen = clears!;
-      if (record != null) {
-        // Cleared and enrolled again meanwhile: the controller learns what is stored.
-        await _refresh();
-        return;
-      }
-      final old = _enrollment..removeListener(_onPhase);
-      setState(() => _enrollment = _build()..addListener(_onPhase));
-      await _refresh();
-      // After the frame that stops using it.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!identical(old, widget.enrollment)) old.dispose();
-      });
-    } on Object {
-      // The same clear is looked at again next time (the held record stays dropped).
-    }
+  /// The stored enrollment was cleared on purpose (this device cancelled itself in Devices): the device is signed out at once, without reading the store, so a read that fails cannot keep it in the shell. A record that is merely missing is not a sign-out: it may be an enrollment kept in memory after a failed write.
+  void _onStoreChanged() {
+    final clears = _store!.clearCount;
+    if (clears == _clearsSeen) return;
+    _clearsSeen = clears;
+    if (!_usable) return;
+    _enrollment.signOut();
+    // Enrolled again meanwhile: the controller learns what is stored.
+    _refresh();
   }
 
   @override
   void dispose() {
     _timeout?.cancel();
     _lifecycle.dispose();
-    _store?.removeListener(_recheck);
+    _store?.removeListener(_onStoreChanged);
     _enrollment.removeListener(_onPhase);
     if (!identical(_enrollment, widget.enrollment)) _enrollment.dispose();
     super.dispose();

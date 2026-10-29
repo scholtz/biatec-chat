@@ -38,6 +38,18 @@ class _Transport implements PushTransport {
   Future<Map<String, Object?>?> launchPayload() async => null;
 }
 
+/// Holds each read's answer until [gate] completes, when one is set.
+class _SlowStore extends MemoryEnrollmentStore {
+  Completer<void>? gate;
+
+  @override
+  Future<EnrollmentRecord?> read() async {
+    final record = await super.read();
+    await gate?.future;
+    return record;
+  }
+}
+
 EnrollmentController _controller(EnrollmentStore store) => EnrollmentController(
       keys: SoftwareKeyStore(deviceTestKey()),
       store: store,
@@ -54,7 +66,9 @@ void main() {
     expect(c.state.phase, EnrollmentPhase.active);
 
     await store.clear();
-    c.discardHeldRecord();
+    c.signOut();
+    expect(c.state.phase, EnrollmentPhase.notEnrolled,
+        reason: 'at once, without reading anything');
     await c.refresh();
     expect(await store.read(), isNull);
     expect(c.state.phase, EnrollmentPhase.notEnrolled);
@@ -66,7 +80,26 @@ void main() {
     c.dispose();
   });
 
-  test('without a discard a missing record is still written back, as before',
+  test('a refresh that read the record before the sign-out does not undo it',
+      () async {
+    final store = _SlowStore();
+    await store.write(_record);
+    final c = _controller(store);
+    await c.refresh();
+    expect(c.state.phase, EnrollmentPhase.active);
+
+    store.gate = Completer<void>();
+    final running = c.refresh(); // reads the record, then waits
+    await store.clear();
+    c.signOut();
+    store.gate!.complete();
+    await running;
+    expect(c.state.phase, EnrollmentPhase.notEnrolled);
+    expect(await store.read(), isNull);
+    c.dispose();
+  });
+
+  test('without a sign-out a missing record is still written back, as before',
       () async {
     final store = MemoryEnrollmentStore();
     await store.write(_record);
@@ -180,6 +213,50 @@ void main() {
     expect(opened, isEmpty);
     expect(already, ['ciba_x']);
     unawaited(push.dispose());
+  });
+
+  testWidgets('a covered card is brought back on top when its notification is tapped again',
+      (tester) async {
+    final rig = ShellRig();
+    await rig.pump(tester);
+    rig.shell.openApproval(rig.approvals, rig.requestId);
+    await tester.pump(const Duration(seconds: 1));
+    // Something else covers it (another card, the recovery code screen).
+    rig.shell.navigators[AppTab.approvals]!.currentState!.push(
+        MaterialPageRoute<void>(
+            builder: (_) => const Scaffold(body: Text('on top'))));
+    await tester.pump(const Duration(seconds: 1));
+    rig.shell.select(AppTab.devices);
+    await tester.pump();
+
+    rig.shell.bringForward(rig.approvals, rig.requestId);
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+    expect(rig.shell.selected, AppTab.approvals);
+    expect(find.byType(ApprovalScreen), findsOneWidget,
+        reason: 'one card for the request, not two');
+    // The tab's tickers start again with the frame that shows it, so the card's animation runs from the next one.
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('on top'), findsNothing,
+        reason: 'the card is the screen that shows');
+    expect(find.text('on top', skipOffstage: false), findsOneWidget,
+        reason: 'what covered it is kept below');
+    await rig.dispose(tester);
+  });
+
+  testWidgets('a card already on top is only focused', (tester) async {
+    final rig = ShellRig();
+    await rig.pump(tester);
+    rig.shell.openApproval(rig.approvals, rig.requestId);
+    await tester.pump(const Duration(seconds: 1));
+    final card = tester.state(find.byType(ApprovalScreen));
+    rig.shell.select(AppTab.devices);
+    await tester.pump();
+    rig.shell.bringForward(rig.approvals, rig.requestId);
+    await tester.pump(const Duration(seconds: 1));
+    expect(rig.shell.selected, AppTab.approvals);
+    expect(tester.state(find.byType(ApprovalScreen)), same(card));
+    await rig.dispose(tester);
   });
 
   testWidgets('focusing Approvals leaves an open card where it is',

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../shell/tab_reload.dart';
+import '../ui/ui.dart';
 import 'settings_controller.dart';
 
 /// Loads a [SettingsController] on open and wraps the three settings screens:
@@ -11,6 +13,7 @@ class SettingsFrame extends StatefulWidget {
     required this.title,
     required this.services,
     required this.builder,
+    this.footer,
   });
 
   final String title;
@@ -19,11 +22,15 @@ class SettingsFrame extends StatefulWidget {
   /// The screen body once loaded.
   final List<Widget> Function(BuildContext, SettingsController) builder;
 
+  /// Shown below the body whatever state it is in.
+  final Widget? footer;
+
   @override
   State<SettingsFrame> createState() => _SettingsFrameState();
 }
 
-class _SettingsFrameState extends State<SettingsFrame> {
+class _SettingsFrameState extends State<SettingsFrame>
+    with TabReloadListener {
   late final SettingsController _controller;
 
   @override
@@ -34,6 +41,11 @@ class _SettingsFrameState extends State<SettingsFrame> {
   }
 
   @override
+  void onReload() {
+    if (widget.services.enabled) _controller.load(quiet: true);
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();
@@ -41,25 +53,19 @@ class _SettingsFrameState extends State<SettingsFrame> {
 
   @override
   Widget build(BuildContext context) {
+    final footer = widget.footer;
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
+      bottomNavigationBar:
+          footer == null ? null : SafeArea(top: false, child: footer),
       body: !widget.services.enabled
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.info_outline),
-                    SizedBox(height: 8),
-                    Text(
-                        'Not available yet. This Biatec OIDC does not offer '
-                        'device and settings management; it only runs '
-                        'against the mock for now.',
-                        key: Key('not-available'),
-                        textAlign: TextAlign.center),
-                  ],
-                ),
+          ? const ScrollableCenter(
+              child: EmptyState(
+                key: Key('not-available'),
+                icon: Icons.info_outline,
+                title: 'Not available yet',
+                message: 'This Biatec OIDC does not offer device and settings '
+                    'management; it only runs against the mock for now.',
               ),
             )
           : ListenableBuilder(
@@ -68,30 +74,13 @@ class _SettingsFrameState extends State<SettingsFrame> {
           final c = _controller;
           switch (c.phase) {
             case SettingsPhase.loading:
-              return Center(
-                  child: Semantics(
-                      label: 'Loading',
-                      child: const CircularProgressIndicator()));
+              return const LoadingSkeleton();
             case SettingsPhase.unavailable:
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.cloud_off),
-                      const SizedBox(height: 8),
-                      Text(c.error ?? 'Not available.',
-                          key: const Key('unavailable'),
-                          textAlign: TextAlign.center),
-                      const SizedBox(height: 16),
-                      FilledButton(
-                          key: const Key('retry'),
-                          onPressed: c.load,
-                          child: const Text('Try again')),
-                    ],
-                  ),
-                ),
+              return ErrorState(
+                key: const Key('unavailable'),
+                message: c.error ?? 'Not available.',
+                offline: c.offline,
+                onRetry: c.load,
               );
             case SettingsPhase.ready:
               return ListView(

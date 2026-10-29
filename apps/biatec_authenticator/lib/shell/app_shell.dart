@@ -15,6 +15,7 @@ import '../security/security_screen.dart';
 import '../security/settings_controller.dart';
 import '../theme.dart';
 import 'shell_controller.dart';
+import 'tab_reload.dart';
 
 /// Width from which the bar moves to the side as a navigation rail (tablets, desktop).
 const double kRailBreakpoint = 840;
@@ -99,13 +100,15 @@ class _AppShellState extends State<AppShell> {
             services: widget.approvals,
             pushes: widget.push?.requestArrived,
             active: widget.controller.approvalsActive,
+            foreground: widget.controller.foreground,
             refreshOn: widget.controller.requestsChanged,
             onCount: (n) => widget.controller.pendingCount.value = n,
           ),
         AppTab.history => HistoryScreen(history: widget.approvals.history),
         AppTab.devices => DevicesScreen(services: widget.settings),
         AppTab.clients => ClientsScreen(services: widget.settings),
-        AppTab.settings => SecurityScreen(services: widget.settings),
+        AppTab.settings => SecurityScreen(
+            services: widget.settings, server: widget.config.oidcBaseUrl),
       };
 
   /// Back goes up inside the tab first, then to the first tab, and only then leaves the app.
@@ -156,6 +159,7 @@ class _AppShellState extends State<AppShell> {
                     key: ValueKey(tab),
                     navigatorKey: c.navigators[tab]!,
                     push: widget.push,
+                    stack: tab == AppTab.approvals ? c.approvalsObserver : null,
                     root: _root(tab),
                     reload: c.reloads[tab]!,
                     tab: tab,
@@ -236,15 +240,19 @@ class _TabNavigator extends StatefulWidget {
     required this.tab,
     required this.reload,
     this.push,
+    this.stack,
   });
 
   final GlobalKey<NavigatorState> navigatorKey;
   final Widget root;
 
-  /// Changes each time the tab is shown; the first screen is built afresh then.
+  /// Changes when the tab is shown after a while away; the first screen reloads its data then (see [TabReload]).
   final ValueListenable<int> reload;
   final AppTab tab;
   final PushController? push;
+
+  /// Follows this tab's stack, for the Approvals tab.
+  final NavigatorObserver? stack;
 
   @override
   State<_TabNavigator> createState() => _TabNavigatorState();
@@ -254,20 +262,19 @@ class _TabNavigatorState extends State<_TabNavigator> {
   /// Made once: a new observer on every rebuild would be detached and attached again, and miss what happened before.
   late final List<NavigatorObserver> _observers = [
     if (widget.push != null) _ForwardingObserver(widget.push!),
+    if (widget.stack != null) widget.stack!,
   ];
 
   @override
   Widget build(BuildContext context) {
-    return Navigator(
-      key: widget.navigatorKey,
-      observers: _observers,
-      onGenerateRoute: (settings) => MaterialPageRoute<void>(
-        settings: RouteSettings(name: '/${widget.tab.name}'),
-        builder: (_) => ValueListenableBuilder<int>(
-          valueListenable: widget.reload,
-          builder: (context, generation, child) =>
-              KeyedSubtree(key: ValueKey(generation), child: child!),
-          child: widget.root,
+    return TabReload(
+      reload: widget.reload,
+      child: Navigator(
+        key: widget.navigatorKey,
+        observers: _observers,
+        onGenerateRoute: (settings) => MaterialPageRoute<void>(
+          settings: RouteSettings(name: '/${widget.tab.name}'),
+          builder: (_) => widget.root,
         ),
       ),
     );

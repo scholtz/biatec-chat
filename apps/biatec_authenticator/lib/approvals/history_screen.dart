@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../shell/tab_reload.dart';
+import '../ui/ui.dart';
 import 'history_store.dart';
 
 /// Decisions this device signed, newest first, each with its receipt.
@@ -21,8 +23,17 @@ class HistoryScreen extends StatefulWidget {
   State<HistoryScreen> createState() => _HistoryScreenState();
 }
 
-class _HistoryScreenState extends State<HistoryScreen> {
-  late final Future<List<HistoryEntry>> _entries = widget.history.read();
+class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
+  late Future<List<HistoryEntry>> _entries = widget.history.read();
+
+  /// The list that is showing stays (and what is expanded) while it is read again.
+  @override
+  void onReload() {
+    final entries = widget.history.read();
+    setState(() {
+      _entries = entries;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,14 +43,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
         future: _entries,
         builder: (context, snap) {
           if (snap.hasError) {
-            return const Center(child: Text('History could not be read.'));
+            return const ErrorState(
+                title: 'History could not be read',
+                message: 'The decisions stored on this device did not open.');
           }
           final list = snap.data;
           if (list == null) {
-            return const Center(child: CircularProgressIndicator());
+            return const LoadingSkeleton();
           }
           if (list.isEmpty) {
-            return const Center(child: Text('No approvals yet.'));
+            return const EmptyState(
+                icon: Icons.receipt_long_outlined,
+                title: 'No approvals yet',
+                message: 'Requests you approve or deny on this device are '
+                    'listed here with their receipts.');
           }
           return ListView(children: [
             for (final e in list)

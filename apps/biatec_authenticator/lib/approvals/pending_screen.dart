@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../theme.dart';
+import '../ui/ui.dart';
 import 'approval_client.dart';
 import 'approval_controller.dart';
 import 'approval_screen.dart';
@@ -21,7 +23,11 @@ class PendingScreen extends StatefulWidget {
     this.active,
     this.refreshOn,
     this.backgroundEvery = const Duration(seconds: 30),
+    this.foreground,
   });
+
+  /// False while the app is in the background: no polling then. Null means always in the foreground.
+  final ValueListenable<bool>? foreground;
 
   final ApprovalServices services;
   final Duration pollEvery;
@@ -64,6 +70,7 @@ class _PendingScreenState extends State<PendingScreen> {
     _startPolling();
     _pushSub = widget.pushes?.listen((_) => _refresh());
     widget.active?.addListener(_onActive);
+    widget.foreground?.addListener(_startPolling);
     widget.refreshOn?.addListener(_onRefreshSignal);
   }
 
@@ -93,6 +100,9 @@ class _PendingScreenState extends State<PendingScreen> {
 
   void _startPolling() {
     _poll?.cancel();
+    _poll = null;
+    // Coming back after a long break refreshes through [refreshOn]; a short one waits for the next tick.
+    if (!(widget.foreground?.value ?? true)) return;
     _poll = Timer.periodic(
         _isActive ? widget.pollEvery : widget.backgroundEvery, (_) {
       // Nobody sees the list under a card while its tab shows; from another tab the badge still counts it.
@@ -103,6 +113,7 @@ class _PendingScreenState extends State<PendingScreen> {
   @override
   void dispose() {
     widget.active?.removeListener(_onActive);
+    widget.foreground?.removeListener(_startPolling);
     widget.refreshOn?.removeListener(_onRefreshSignal);
     _poll?.cancel();
     _pushSub?.cancel();
@@ -172,31 +183,32 @@ class _PendingScreenState extends State<PendingScreen> {
   @override
   Widget build(BuildContext context) {
     final requests = _requests;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Pending approvals'), actions: [
-        IconButton(
-            onPressed: _refresh,
-            tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh)),
-      ]),
-      body: RefreshIndicator(
+    final error = _error;
+    final Widget content;
+    if (requests == null) {
+      content = error == null
+          ? const LoadingSkeleton()
+          : ErrorState(
+              key: const Key('pending-error'),
+              title: _offline ? null : 'Could not load requests',
+              message: error,
+              offline: _offline,
+              onRetry: _refresh,
+            );
+    } else if (requests.isEmpty) {
+      content = EmptyState(
+        icon: Icons.fact_check_outlined,
+        title: 'No pending approvals',
+        message: 'Requests from Biatec Chat appear here, and this device '
+            'is notified when one arrives.',
+        actionLabel: 'Check again',
+        onAction: _refresh,
+      );
+    } else {
+      content = RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(children: [
-          if (_error != null)
-            ListTile(
-              key: const Key('pending-error'),
-              leading: Icon(_offline ? Icons.cloud_off : Icons.error_outline),
-              title: Text(_offline ? 'Offline' : 'Could not load requests'),
-              subtitle: Text(_error!),
-            ),
-          if (requests == null && _error == null)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-          if (requests != null && requests.isEmpty)
-            const ListTile(title: Text('No pending approvals.')),
-          for (final r in requests ?? const <ConsentRequest>[])
+          for (final r in requests)
             ListTile(
               key: Key('pending-${r.authReqId}'),
               leading: Icon(
@@ -207,7 +219,30 @@ class _PendingScreenState extends State<PendingScreen> {
               onTap: () => _open(r),
             ),
         ]),
-      ),
+      );
+    }
+    return Scaffold(
+      appBar: AppBar(title: const Text('Pending approvals'), actions: [
+        IconButton(
+            onPressed: _refresh,
+            tooltip: 'Refresh',
+            icon: const Icon(Icons.refresh)),
+      ]),
+      body: Column(children: [
+        // A failed refresh over a list that is still shown is a banner above it.
+        if (error != null && requests != null)
+          Padding(
+            key: const Key('pending-error'),
+            padding: const EdgeInsets.all(AppSpacing.s),
+            child: _offline
+                ? OfflineBanner(onRetry: _refresh)
+                : StatusBanner(
+                    severity: StatusSeverity.warning,
+                    title: 'Could not load requests',
+                    message: error),
+          ),
+        Expanded(child: content),
+      ]),
     );
   }
 }

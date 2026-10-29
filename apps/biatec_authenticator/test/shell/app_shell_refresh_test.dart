@@ -74,7 +74,8 @@ void main() {
     await rig.pump(tester);
     await tester.tap(inBar('History'));
     await tester.pumpAndSettle();
-    expect(find.text('No approvals yet.'), findsOneWidget);
+    expect(find.text('No approvals yet'), findsOneWidget);
+    final screen = tester.state(find.byType(HistoryScreen));
 
     // A decision is signed while another tab shows.
     await tester.tap(inBar('Approvals'));
@@ -84,7 +85,8 @@ void main() {
     await tester.tap(inBar('History'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('history-ciba_new')), findsOneWidget);
-    expect(find.byType(HistoryScreen), findsOneWidget);
+    expect(tester.state(find.byType(HistoryScreen)), same(screen),
+        reason: 'reloaded in place, not rebuilt');
     await rig.dispose(tester);
   });
 
@@ -171,6 +173,41 @@ void main() {
     await tester.pump();
     expect(polls, before + 1);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the list does not poll while the app is in the background',
+      (tester) async {
+    final rig = ShellRig();
+    final foreground = ValueNotifier(true);
+    var polls = 0;
+    await tester.pumpWidget(MaterialApp(
+        home: PendingScreen(
+            services: rig.approvals,
+            pollEvery: const Duration(seconds: 5),
+            foreground: foreground,
+            onCount: (_) => polls++)));
+    await tester.pump();
+    await tester.pump();
+    foreground.value = false;
+    await tester.pump();
+    final before = polls;
+    await tester.pump(const Duration(minutes: 2));
+    await tester.pump();
+    expect(polls, before);
+    foreground.value = true;
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pump();
+    expect(polls, greaterThan(before));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  test('the app going to the background and back is passed on', () {
+    final c = ShellController();
+    c.appPaused();
+    expect(c.foreground.value, isFalse);
+    c.appResumed();
+    expect(c.foreground.value, isTrue);
+    c.dispose();
   });
 
   testWidgets('a refresh signal makes the list load again', (tester) async {

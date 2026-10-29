@@ -71,9 +71,18 @@ class EnrollmentController extends ChangeNotifier {
 
   bool _discarded = false;
 
-  /// This device signed itself out (its stored enrollment was cleared on purpose). The record held in memory is dropped and is not written back by a refresh that was already running, which would bring the cancelled enrollment back.
-  void discardHeldRecord() {
+  /// Bumped by [signOut]. Work that started before (a refresh, a recovery code fetch) checks it after each wait and drops what it got, so a sign-out is never undone by a slow read.
+  int _session = 0;
+
+  /// This device signed itself out (its stored enrollment was cleared on purpose): it is not enrolled from now on, without reading anything, so a storage failure cannot keep a signed-out device in the app. The record held in memory is dropped and never written back; a new enrollment found in the store by a later [refresh] is picked up as usual.
+  void signOut() {
+    _session++;
     _discarded = true;
+    _recoveryCode = null;
+    _recoveryCodeError = null;
+    _keyLevel = null;
+    _keyLevelKid = null;
+    _set(EnrollmentState.notEnrolled);
   }
 
   /// Restores the persisted state. Call at startup and on a timer or resume
@@ -83,12 +92,14 @@ class EnrollmentController extends ChangeNotifier {
     if (p == EnrollmentPhase.generatingKey || p == EnrollmentPhase.enrolling) {
       return;
     }
+    final session = _session;
     EnrollmentRecord? record;
     try {
       record = await store.read();
     } on Object {
       record = null; // an unreadable record counts as not enrolled
     }
+    if (session != _session) return;
     if (record == null) {
       final held = _discarded ? null : _state.record;
       if (held != null) {
@@ -99,6 +110,7 @@ class EnrollmentController extends ChangeNotifier {
         } on Object {
           saved = false; // keep working from memory
         }
+        if (session != _session) return;
         _set(EnrollmentState.fromRecord(held, _clock(),
             error: saved ? null : _state.error));
         await _ensureRecoveryCode();
@@ -120,9 +132,10 @@ class EnrollmentController extends ChangeNotifier {
     if (_keyLevelKid == kid) {
       return;
     }
+    final session = _session;
     try {
       final level = (await keys.load(kid))?.securityLevel;
-      if (_disposed) return;
+      if (_disposed || session != _session) return;
       _keyLevel = level;
       _keyLevelKid = kid;
       notifyListeners();
@@ -250,11 +263,18 @@ class EnrollmentController extends ChangeNotifier {
       return;
     }
     _fetchingCode = true;
+    final session = _session;
     try {
-      _recoveryCode = await client.requestRecoveryCode(record.deviceToken);
-      _recoveryCodeError = null;
+      final code = await client.requestRecoveryCode(record.deviceToken);
+      // A code for a device that signed out meanwhile is not kept.
+      if (session == _session) {
+        _recoveryCode = code;
+        _recoveryCodeError = null;
+      }
     } on Object catch (e) {
-      _recoveryCodeError = e is EnrollmentException ? e.message : '$e';
+      if (session == _session) {
+        _recoveryCodeError = e is EnrollmentException ? e.message : '$e';
+      }
     } finally {
       _fetchingCode = false;
     }
@@ -279,13 +299,17 @@ class EnrollmentController extends ChangeNotifier {
         record == null) {
       return;
     }
+    final session = _session;
     try {
       await client.acknowledgeRecoveryCode(record.deviceToken);
     } on Object catch (e) {
+      if (session != _session) return;
       _recoveryCodeError = e is EnrollmentException ? e.message : '$e';
       notifyListeners();
       return;
     }
+    // Signed out meanwhile: the cleared enrollment is not written back.
+    if (session != _session) return;
     _recoveryCode = null;
     _recoveryCodeError = null;
     final done = record.withCodeShown();
@@ -295,6 +319,7 @@ class EnrollmentController extends ChangeNotifier {
     } on Object catch (e) {
       warning = 'Could not save locally: $e';
     }
+    if (session != _session) return;
     _set(EnrollmentState.fromRecord(done, _clock(), error: warning));
   }
 }

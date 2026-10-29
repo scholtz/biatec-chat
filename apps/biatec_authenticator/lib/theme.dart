@@ -159,8 +159,8 @@ ThemeData buildTheme(Brightness brightness) {
         side: BorderSide(color: scheme.outlineVariant),
       ),
     ),
+    // The height follows the text size, so the shell sets it (app_shell.dart).
     navigationBarTheme: NavigationBarThemeData(
-      height: 72,
       labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
       backgroundColor: scheme.surfaceContainer,
       indicatorColor: scheme.secondaryContainer,

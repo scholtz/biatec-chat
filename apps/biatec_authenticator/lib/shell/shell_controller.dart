@@ -55,10 +55,17 @@ class ShellController extends ChangeNotifier {
   /// Set by the pending list each time it loads; drives the Approvals badge.
   final ValueNotifier<int> pendingCount = ValueNotifier(0);
 
-  /// Whether the Approvals tab is the one showing. The pending list polls only while it is.
+  /// Whether the Approvals tab is the one showing. The pending list polls quickly only while it is.
   final ValueNotifier<bool> approvalsActive = ValueNotifier(true);
 
-  /// Bumped when a tab is shown, so its first screen loads afresh instead of showing what it read on the first visit. The Approvals tab refreshes itself.
+  /// False while the app is in the background: nothing polls for a screen nobody is looking at.
+  final ValueNotifier<bool> foreground = ValueNotifier(true);
+
+  /// Follows the Approvals tab's stack, so a card that is already open can be found (see [bringForward]).
+  NavigatorObserver get approvalsObserver => _approvalsStack;
+  final _StackObserver _approvalsStack = _StackObserver();
+
+  /// Bumped when a tab is shown after a while away, so its first screen loads its data again in place (what it shows and what the user typed stay). The Approvals tab refreshes itself.
   final Map<AppTab, ValueNotifier<int>> reloads = {
     for (final tab in AppTab.values) tab: ValueNotifier(0),
   };
@@ -111,13 +118,18 @@ class ShellController extends ChangeNotifier {
   DateTime? _pausedAt;
 
   /// The app went to the background.
-  void appPaused() => _pausedAt ??= clock();
+  void appPaused() {
+    _pausedAt ??= clock();
+    if (!_disposed) foreground.value = false;
+  }
 
   /// The app came back. A tab that has been away for a while loads afresh, and the list of requests is asked again: what it showed may be hours old.
   void appResumed() {
     final at = _pausedAt;
     _pausedAt = null;
-    if (at == null || _disposed) return;
+    if (_disposed) return;
+    foreground.value = true;
+    if (at == null) return;
     if (clock().difference(at) < reloadAfter) return;
     if (_selected != AppTab.approvals) reloads[_selected]!.value++;
     requestsChanged.value++;
@@ -135,6 +147,27 @@ class ShellController extends ChangeNotifier {
     approvalsActive.value = true;
     _leftAt.clear();
     _queuedOpen = null;
+    // A navigator that is taken down reports nothing about the routes it had.
+    _approvalsStack.routes.clear();
+  }
+
+  /// A notification was tapped for a card that is already open: it is shown on top. When something else covers it (another card, the recovery code screen), the covered card is closed and opened again on top, as it has not been decided.
+  void bringForward(ApprovalServices services, String authReqId) {
+    final navigator = navigators[AppTab.approvals]?.currentState;
+    final stack = _approvalsStack.routes;
+    final name = '${ApprovalScreen.routePrefix}$authReqId';
+    final open = stack.where((r) => r.settings.name == name).lastOrNull;
+    if (navigator == null || open == null) {
+      // Not in this tab (it went with an earlier shell): open it.
+      openApproval(services, authReqId);
+      return;
+    }
+    if (!identical(open, stack.last)) {
+      navigator.removeRoute(open);
+      openApproval(services, authReqId);
+      return;
+    }
+    focusApprovals();
   }
 
   /// Opens the card for [authReqId] inside the Approvals tab (a tapped notification). While the app has no shell yet (it is still checking enrollment, or the device is not enrolled) the request is kept and opened when the shell appears.
@@ -170,10 +203,35 @@ class ShellController extends ChangeNotifier {
     _disposed = true;
     pendingCount.dispose();
     approvalsActive.dispose();
+    foreground.dispose();
     requestsChanged.dispose();
     for (final n in reloads.values) {
       n.dispose();
     }
     super.dispose();
+  }
+}
+
+/// The routes of one navigator, bottom first.
+class _StackObserver extends NavigatorObserver {
+  final List<Route<dynamic>> routes = [];
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      routes.add(route);
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      routes.remove(route);
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      routes.remove(route);
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    final i = oldRoute == null ? -1 : routes.indexOf(oldRoute);
+    if (i < 0 || newRoute == null) return;
+    routes[i] = newRoute;
   }
 }

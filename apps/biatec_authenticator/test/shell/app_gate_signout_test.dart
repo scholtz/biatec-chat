@@ -81,6 +81,26 @@ void main() {
     });
 
     testWidgets(
+        'a sign-out holds even when the store cannot be read afterwards',
+        (tester) async {
+      final rig = ShellRig();
+      final inner = _BrokenStore()..broken = false;
+      await inner.write(_active);
+      final store = ObservableEnrollmentStore(inner);
+      await _pumpApp(tester, rig, _servicesWith(rig, store));
+      expect(find.byType(NavigationBar), findsOneWidget);
+
+      await store.clear();
+      inner.broken = true;
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(NavigationBar), findsNothing);
+      expect(find.byType(EnrollmentScreen), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets(
         'a store that cannot be read gives a retry, not the enrollment flow',
         (tester) async {
       final rig = ShellRig();
