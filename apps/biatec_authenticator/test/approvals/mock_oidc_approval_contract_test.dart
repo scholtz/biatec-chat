@@ -15,6 +15,7 @@ import 'package:biatec_authenticator/approvals/biometric_gate.dart';
 import 'package:biatec_authenticator/approvals/history_store.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
+import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -88,7 +89,7 @@ void main() {
     return ApprovalServices(
       client: ApprovalClient(baseUrl: baseUrl!),
       keys: SoftwareKeyStore(deviceTestKey()),
-      enrollment: store,
+      enrollment: ObservableEnrollmentStore(store),
       gate: _Pass(),
       history: MemoryHistoryStore(),
     );

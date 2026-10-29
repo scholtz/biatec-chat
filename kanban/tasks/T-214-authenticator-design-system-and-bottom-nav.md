@@ -1,7 +1,7 @@
 ---
 id: T-214
 title: "Authenticator: design system and bottom navigation shell"
-status: review
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: []
@@ -14,7 +14,7 @@ owner: "session-20261024-1210"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-24
-updated: 2026-10-24
+updated: 2026-10-29
 ---
 
 # T-214 - Authenticator: design system and bottom navigation shell
@@ -72,9 +72,12 @@ Presentation only: services, controllers, clients and the consent protocol stay 
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
 
+- 2026-10-29 16:26 · approve · PR #356 merged into main @ f07f96f (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-24 12:00 · claude · (new) → backlog · created from the authenticator redesign request
 - 2026-10-24 12:05 · scholtz · taken · status stays backlog
 - 2026-10-24 12:10 · session-20261024-1210 · backlog → in-progress · claimed
 - 2026-10-24 17:40 · session-20261024-1210 · in-progress → review · T-214 PR #356 ready, CI green
+- 2026-10-29 16:26 · user · review → done · PR #356 merged into main @ f07f96f (synced by kanban-sync)

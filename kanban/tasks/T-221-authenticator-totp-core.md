@@ -1,7 +1,7 @@
 ---
 id: T-221
 title: "Authenticator: two-factor code engine (HOTP, TOTP, otpauth)"
-status: in-progress
+status: review
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: []
@@ -40,12 +40,12 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
 
 ## Acceptance criteria
 
-- [ ] HOTP matches the RFC 4226 Appendix D test values; TOTP matches the RFC 6238 Appendix B values for SHA-1, SHA-256 and SHA-512.
-- [ ] The parser accepts the forms real services emit (Google, GitHub, Microsoft, Biatec) and rejects: wrong scheme or type, missing secret, invalid Base32, digits outside 6 to 8, period outside 15 to 120, unknown algorithm, a counter for TOTP or a missing counter for HOTP, each with a distinct error.
-- [ ] Writing an account and parsing it again gives the same account (round trip), including issuer and label with special characters.
-- [ ] `OtpAccount.toString()` and any exception message never contain the secret.
-- [ ] Codes are correct across a period boundary and at the Unix epoch edge cases, with the clock injected.
-- [ ] `flutter analyze` is clean and `flutter test` passes in `apps/biatec_authenticator`, with new tests for every behaviour above (the failing case first for each security rule).
+- [x] HOTP matches the RFC 4226 Appendix D test values; TOTP matches the RFC 6238 Appendix B values for SHA-1, SHA-256 and SHA-512.
+- [x] The parser accepts the forms real services emit (Google, GitHub, Microsoft, Biatec) and rejects: wrong scheme or type, missing secret, invalid Base32, digits outside 6 to 8, period outside 15 to 120, unknown algorithm, a counter for TOTP or a missing counter for HOTP, each with a distinct error.
+- [x] Writing an account and parsing it again gives the same account (round trip), including issuer and label with special characters.
+- [x] `OtpAccount.toString()` and any exception message never contain the secret.
+- [x] Codes are correct across a period boundary and at the Unix epoch edge cases, with the clock injected.
+- [x] `flutter analyze` is clean and `flutter test` passes in `apps/biatec_authenticator`, with new tests for every behaviour above (the failing case first for each security rule).
 
 ## Implementation notes
 
@@ -57,7 +57,13 @@ Write the failing test first for every security rule. Never log, print or put in
 
 ## Hand-off
 
-Filled in by the agent when it moves the task to `review`.
+- **Summary:** pure-Dart engine in `lib/totp/core/`: `Base32`, `OtpAccount`, `OtpUri` (parse and write), `OtpGenerator` (HOTP, TOTP, next code, seconds and fraction left, grouping).
+- **Branch @ commit:** `task/T-221` @ 1bc90ac, PR #369 (CI green).
+- **Decisions to know about:** a secret under 80 bits is refused (the smallest in wide use is Google's 16 Base32 characters); Base32 leftover bits in the last character are dropped like other apps do; a `counter` on a time-based link is refused, a `period` on a counter-based link is ignored; the issuer setting wins over a different label prefix; names are trimmed and must not contain control, invisible or direction-changing characters; duplicates are decided by secret and parameters, not names; a wiped account refuses to make codes and `copyWith` on it throws.
+- **How it was verified:** `flutter analyze` clean; `flutter test` 250 pass, including the RFC 4226 appendix D and RFC 6238 appendix B vectors for SHA-1, SHA-256 and SHA-512. Three rounds of `/code-review high`, each fixed; I stopped at three.
+- **Follow-up tasks created:** none.
+- **Unblocks:** T-223 (vault) becomes ready once this is merged; T-224 and T-226 wait on more.
+- **Open questions:** the PR is not merged: merging is refused for the assistant by the session's permission classifier, so it is yours.
 
 ## Review
 
@@ -68,3 +74,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:00 · claude · (new) → backlog · created from the request to add two-factor codes, a biometric lock and industry-standard security
 - 2026-10-28 09:10 · scholtz · taken · status stays backlog
 - 2026-10-28 09:15 · session-20261028-0915 · backlog → in-progress · claimed
+- 2026-10-28 10:10 · session-20261028-0915 · in-progress → review · PR #369, CI green

@@ -8,15 +8,19 @@ import '../security/settings_frame.dart';
 /// 24 hour pause of rule 10. Loosening any of them needs approval on this
 /// device; tightening applies at once.
 class ClientsScreen extends StatelessWidget {
-  const ClientsScreen({super.key, required this.services});
+  const ClientsScreen({super.key, required this.services, this.controller});
 
   final SettingsServices services;
+
+  /// Shared with the other settings tabs (see [SettingsFrame.controller]).
+  final SettingsController? controller;
 
   @override
   Widget build(BuildContext context) {
     return SettingsFrame(
       title: 'Trusted clients and thresholds',
       services: services,
+      controller: controller,
       builder: (context, c) {
         final s = c.settings!;
         return [

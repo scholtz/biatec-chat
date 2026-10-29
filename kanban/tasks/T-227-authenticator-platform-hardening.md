@@ -1,7 +1,7 @@
 ---
 id: T-227
 title: "Authenticator: platform hardening (no backups, no screenshots, release build)"
-status: backlog
+status: review
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: []
@@ -9,8 +9,8 @@ area: ["apps/biatec_authenticator/android/app/src/main/AndroidManifest.xml", "ap
 parallel: no
 conflicts_with: [T-229]
 issue: "#364"
-branch: ""
-owner: ""
+branch: "task/T-227"
+owner: "session-20261028-1015"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
@@ -40,12 +40,12 @@ Parallel work possible: **no**. Don't run it at the same time as T-229: they cha
 
 ## Acceptance criteria
 
-- [ ] A test reads AndroidManifest.xml and fails if `allowBackup` is not false, `debuggable` is set, cleartext is allowed, or an exported component is added without being listed.
-- [ ] `FLAG_SECURE` is set before the first frame (a test of the activity source) and the iOS cover view exists for resign-active and capture (source test).
-- [ ] The Android data extraction rules exclude every domain; the iOS vault and database paths have the exclude-from-backup attribute set (source test).
-- [ ] The CI build command for release uses `--obfuscate` and `--split-debug-info` and publishes the symbols as a private artifact.
-- [ ] README lists the settings and how to verify them by hand with `adb` and a screenshot attempt.
-- [ ] `flutter analyze` is clean and `flutter test` passes in `apps/biatec_authenticator`, with new tests for every behaviour above (the failing case first for each security rule).
+- [x] A test reads AndroidManifest.xml and fails if `allowBackup` is not false, `debuggable` is set, cleartext is allowed, or an exported component is added without being listed.
+- [x] `FLAG_SECURE` is set before the first frame (a test of the activity source) and the iOS cover view exists for resign-active and capture (source test).
+- [x] The Android data extraction rules exclude every domain; the iOS vault and database paths have the exclude-from-backup attribute set (source test).
+- [x] The CI build command for release uses `--obfuscate` and `--split-debug-info` and publishes the symbols as a private artifact.
+- [x] README lists the settings and how to verify them by hand with `adb` and a screenshot attempt.
+- [x] `flutter analyze` is clean and `flutter test` passes in `apps/biatec_authenticator`, with new tests for every behaviour above (the failing case first for each security rule).
 
 ## Implementation notes
 
@@ -57,7 +57,14 @@ Write the failing test first for every security rule. Never log, print or put in
 
 ## Hand-off
 
-Filled in by the agent when it moves the task to `review`.
+- **Summary:** much of the posture existed (BCHAT-008, BCHAT-031). Added: Android overlay hiding (API 31+) and touch filtering below it, recents screenshot off (API 33+), `FLAG_SECURE` proven to be set before the first view, release explicitly not debuggable, every `android.util.Log` call removed by R8 and no logging in the Kotlin plugin; iOS app folders excluded from backup at launch, third-party keyboards refused, `PrivacyInfo.xcprivacy` registered in the project; the CI authenticator job builds an obfuscated release APK with a throwaway key (always removed) and runs the hardening test against the merged manifest, failing when it is missing; README table of what is enforced and how to check it by hand.
+- **Branch @ commit:** `task/T-227` @ 4ff805c, PR #370 (CI green).
+- **How it was verified:** `flutter analyze` clean; `flutter test` and the hardening test (21) pass, also with the merged release manifest required; `flutter build apk --debug` and the obfuscated `--release` build with a throwaway key succeeded locally. Two rounds of `/code-review high`, each fixed.
+- **Not verified:** nothing ran on a device or emulator; the Swift changes (AppDelegate, privacy manifest, project edits) were written without Xcode.
+- **Decisions to know about:** on Android 11 and older the touch filter also stops a full-screen filter app's taps (documented); `Log.e` and `Log.w` of libraries are stripped in release too.
+- **Follow-up tasks created:** none.
+- **Unblocks:** T-222, T-223 and T-228 lose one blocker (T-227); T-224 and T-231 still wait on others.
+- **Open questions:** merging PR #370 is yours (merging is refused for the assistant).
 
 ## Review
 
@@ -67,3 +74,5 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 
 - 2026-10-28 09:00 · claude · (new) → backlog · created from the request to add two-factor codes, a biometric lock and industry-standard security
 - 2026-10-28 09:10 · scholtz · taken · status stays backlog
+- 2026-10-28 10:15 · session-20261028-1015 · backlog → in-progress · claimed
+- 2026-10-28 11:30 · session-20261028-1015 · in-progress → review · PR #370, CI green
