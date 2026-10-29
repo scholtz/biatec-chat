@@ -173,10 +173,17 @@ abstract final class OtpUri {
             'The counter in this link is not valid.');
       }
       counter = c;
-    } else if (counterText != null && _wholeNumber(counterText) != 0) {
+    } else if (counterText != null) {
+      final c = _wholeNumber(counterText);
+      if (c == null) {
+        throw const OtpUriException(OtpUriError.invalidCounter,
+            'The counter in this link is not valid.');
+      }
       // "counter=0" is harmless (generators that write every field add it); any other value means the link is for something else.
-      throw const OtpUriException(OtpUriError.unexpectedCounter,
-          'A time-based account does not have a counter.');
+      if (c != 0) {
+        throw const OtpUriException(OtpUriError.unexpectedCounter,
+            'A time-based account does not have a counter.');
+      }
     }
 
     // The label is "Issuer:account" or just "account", percent-encoded. A "+" stays a "+" (RFC 3986 paths, and plus-addressed emails such as a+b@example.com depend on it); only the query turns "+" into a space.
@@ -195,7 +202,7 @@ abstract final class OtpUri {
       // The issuer setting names the issuer. The prefix is dropped only when it names the same one (the usual "Issuer:account"), apart from case and spacing; a different one is part of the name and kept, so "corp:alice" and "home:alice" stay apart. Every colon is tried, since the issuer itself may contain one.
       issuer = issuerParam;
       final want = _nameKey(issuerParam);
-      // Some services write a space in the path as a literal "+" (the issuer setting was already form-decoded), so the prefix matches as written or with those read as spaces. Both readings have their colons in the same places.
+      // Some services write a space in the path as a literal "+" (the issuer setting was already form-decoded), so the prefix matches as written or with those read as spaces. Both readings have their colons in the same places. The second reading decodes the raw text again rather than replacing "+" in the decoded one, because only there can a literal "+" be told from an escaped %2B, which is a real plus.
       final spaced = raw.label.contains('+')
           ? _label(raw.label, plusAsSpace: true)
           : decoded;

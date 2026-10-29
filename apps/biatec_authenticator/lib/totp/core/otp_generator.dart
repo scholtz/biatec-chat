@@ -33,12 +33,20 @@ abstract final class OtpGenerator {
         (mac[offset + 1] << 16) |
         (mac[offset + 2] << 8) |
         mac[offset + 3];
-    var mod = 1;
-    for (var i = 0; i < digits; i++) {
-      mod *= 10;
-    }
-    return (binary % mod).toString().padLeft(digits, '0');
+    return (binary % _modulus[digits - OtpLimits.minDigits])
+        .toString()
+        .padLeft(digits, '0');
   }
+
+  /// 10 to the power of 6, 7 and 8 digits.
+  static const _modulus = [1000000, 10000000, 100000000];
+
+  /// The earliest time a working clock can show: before it, the clock was reset (a flat battery, say) and every time-based code is wrong. For the code list (T-224) to check, so it tells the user instead of showing codes.
+  static final earliestPlausibleTime = DateTime.utc(2026);
+
+  /// False when [now] is before [earliestPlausibleTime]: the codes would be wrong.
+  static bool clockIsPlausible(DateTime now) =>
+      !now.isBefore(earliestPlausibleTime);
 
   static void _timeBased(OtpAccount account) {
     if (account.type != OtpType.totp) {
@@ -58,7 +66,7 @@ abstract final class OtpGenerator {
   /// The step a time-based account is in at [now]: seconds since the epoch divided by the period.
   static int step(OtpAccount account, DateTime now) {
     _timeBased(account);
-    // A clock before 1970 (a reset real-time clock) counts as 1970 instead of failing in the middle of drawing the list; the clock check in the app tells the user.
+    // A clock before 1970 (a reset real-time clock) counts as 1970 instead of failing in the middle of drawing the list; clockIsPlausible is for the list to check first.
     return _seconds(now) ~/ account.period;
   }
 

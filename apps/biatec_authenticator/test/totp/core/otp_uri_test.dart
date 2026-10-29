@@ -595,13 +595,20 @@ void main() {
       }
     });
 
-    test('a counter-based account is a duplicate whatever its period', () {
-      final a = OtpAccount(
-          issuer: '',
-          label: 'a',
-          secret: key(),
-          type: OtpType.hotp,
-          period: 60);
+    test('a counter-based account has no period, so it cannot differ by one',
+        () {
+      // A period on a counter-based account would be lost in a link, so it is refused.
+      expect(
+          () => OtpAccount(
+              issuer: '',
+              label: 'a',
+              secret: key(),
+              type: OtpType.hotp,
+              period: 60),
+          throwsA(isA<OtpAccountException>()
+              .having((e) => e.problem, 'problem', OtpAccountProblem.period)));
+      final a =
+          OtpAccount(issuer: '', label: 'a', secret: key(), type: OtpType.hotp);
       final b =
           OtpAccount(issuer: '', label: 'b', secret: key(), type: OtpType.hotp);
       expect(a.isDuplicateOf(b), isTrue);
@@ -858,6 +865,46 @@ void main() {
           errorOf('otpauth://totp/x?$s&period=5'), OtpUriError.invalidPeriod);
       expect(errorOf('otpauth://hotp/x?$s&counter=1&period=5'),
           OtpUriError.invalidPeriod);
+    });
+
+    test('every account written as a link reads back the same', () {
+      for (final a in [
+        OtpAccount(issuer: 'I', label: 'L', secret: key(), period: 60),
+        OtpAccount(
+            issuer: 'I',
+            label: 'L',
+            secret: key(),
+            type: OtpType.hotp,
+            counter: 7),
+      ]) {
+        final b = OtpUri.parse(OtpUri.write(a));
+        expect((b.type, b.period, b.counter, b.digits),
+            (a.type, a.period, a.counter, a.digits));
+      }
+    });
+
+    test('a malformed counter on a time-based link is invalid, not unexpected',
+        () {
+      expect(
+          errorOf('otpauth://totp/x?$s&counter='), OtpUriError.invalidCounter);
+      expect(errorOf('otpauth://totp/x?$s&counter=abc'),
+          OtpUriError.invalidCounter);
+    });
+
+    test('Unicode spaces in names become plain spaces', () {
+      final nbsp = String.fromCharCode(0x00A0);
+      final thin = String.fromCharCode(0x2009);
+      final a = OtpAccount(
+          issuer: 'Git${nbsp}Hub', label: 'a${thin}b', secret: key());
+      expect(a.issuer, 'Git Hub');
+      expect(a.label, 'a b');
+    });
+
+    test('a clock before 2026 is not plausible', () {
+      expect(OtpGenerator.clockIsPlausible(DateTime.utc(1969)), isFalse);
+      expect(
+          OtpGenerator.clockIsPlausible(DateTime.utc(2025, 12, 31)), isFalse);
+      expect(OtpGenerator.clockIsPlausible(DateTime.utc(2026, 10, 29)), isTrue);
     });
 
     test('the model says which rule a value broke', () {

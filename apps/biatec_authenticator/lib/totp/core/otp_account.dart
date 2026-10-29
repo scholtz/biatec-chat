@@ -147,8 +147,8 @@ class OtpAccount {
     String? id,
   }) {
     // Normalised once, so the value checked is the value stored.
-    final i = issuer.trim();
-    final l = label.trim();
+    final i = _plainSpaces(issuer).trim();
+    final l = _plainSpaces(label).trim();
     return OtpAccount._(
       issuer: i,
       label: l,
@@ -175,6 +175,18 @@ class OtpAccount {
     required this.id,
   }) : _secret = secret;
 
+  /// Unicode spaces (no-break, thin, ideographic and the like) look like a plain space, so they become one: "Git", U+00A0, "Hub" and "Git Hub" are then the same name, not a look-alike.
+  static String _plainSpaces(String s) =>
+      String.fromCharCodes(s.runes.map((u) => _isUnicodeSpace(u) ? 0x20 : u));
+
+  static bool _isUnicodeSpace(int u) =>
+      u == 0x00A0 ||
+      u == 0x1680 ||
+      (u >= 0x2000 && u <= 0x200A) ||
+      u == 0x202F ||
+      u == 0x205F ||
+      u == 0x3000;
+
   /// The one place the account rules are checked; the parser maps the [OtpAccountException] to its own error.
   static Uint8List _checkedCopy(Uint8List secret, String issuer, String label,
       int digits, int period, OtpType type, int counter) {
@@ -183,10 +195,14 @@ class OtpAccount {
       throw OtpAccountException(
           OtpAccountProblem.period, OtpLimits.periodMessage);
     }
-    // As the parser refuses a counter on a time-based link: it would be lost when the account is written as a link.
+    // Each type refuses the other's setting, which a link would not carry, so writing the account as a link and reading it back gives the same account.
     if (type == OtpType.totp && counter != 0) {
       throw OtpAccountException(OtpAccountProblem.counter,
           'A time-based account does not have a counter.');
+    }
+    if (type == OtpType.hotp && period != OtpLimits.defaultPeriod) {
+      throw OtpAccountException(OtpAccountProblem.period,
+          'A counter-based account does not have a period.');
     }
     if (label.isEmpty) {
       throw OtpAccountException(
