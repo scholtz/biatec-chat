@@ -19,6 +19,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:biatec_authenticator/keys/key_security_level.dart';
+import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 
 import 'support.dart';
 
@@ -137,7 +138,7 @@ class Harness {
     services = ApprovalServices(
       client: ApprovalClient(baseUrl: 'http://oidc', client: oidc.client),
       keys: keys,
-      enrollment: store,
+      enrollment: ObservableEnrollmentStore(store),
       gate: gate,
       history: history,
       clock: () => now,

@@ -6,7 +6,7 @@ import 'package:flutter/services.dart' show PlatformException;
 import '../keys/device_key_store.dart';
 import '../keys/key_security_level.dart';
 import 'enrollment_state.dart';
-import 'enrollment_store.dart';
+import 'observable_enrollment_store.dart';
 import 'oidc_enrollment_client.dart';
 
 /// Drives the enrollment state machine. Time is injected so the 24 h delay is
@@ -34,7 +34,8 @@ class EnrollmentController extends ChangeNotifier {
   final String Function() _newAlias;
 
   final DeviceKeyStore keys;
-  final EnrollmentStore store;
+  /// The observable store: it keeps an enrollment whose write failed, which this controller relies on.
+  final ObservableEnrollmentStore store;
   final OidcEnrollmentClient client;
   final DateTime Function() _clock;
 
@@ -51,6 +52,13 @@ class EnrollmentController extends ChangeNotifier {
     super.dispose();
   }
 
+  /// A refresh that was still running when the controller was replaced or closed ends quietly.
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
   /// Where the enrolled device key lives, once known (null before enrollment,
   /// or when the keystore cannot be read).
   KeySecurityLevel? get keyLevel => _keyLevel;
@@ -62,34 +70,71 @@ class EnrollmentController extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _readFailed = false;
+
+  /// The last [refresh] could not read the store (and so reports not enrolled). The app then offers a retry rather than the enrollment flow, which would replace a valid enrollment.
+  bool get readFailed => _readFailed;
+
+  /// Bumped by [signOut]. Work that started before (a refresh, a recovery code fetch) checks it after each wait and drops what it got, so a sign-out is never undone by a slow read.
+  int _session = 0;
+
+  /// This device signed itself out (its stored enrollment was cleared on purpose): it is not enrolled from now on, without reading anything, so a storage failure cannot keep a signed-out device in the app. The record held in memory is dropped and never written back; a new enrollment found in the store by a later [refresh] is picked up as usual.
+  void signOut() {
+    _session++;
+    // A refresh still running ends without effect; the next one starts afresh.
+    _refreshing = null;
+    _recoveryCode = null;
+    _recoveryCodeError = null;
+    // A fetch for the old enrollment that is still running must not stop the next enrollment's.
+    _fetchingCode = false;
+    _keyLevel = null;
+    _keyLevelKid = null;
+    _set(EnrollmentState.notEnrolled);
+  }
+
   /// Restores the persisted state. Call at startup and on a timer or resume
   /// so the inactive state turns active once the delay has passed.
-  Future<void> refresh() async {
+  ///
+  /// An enrollment whose write failed is kept and saved again by the store (see `ObservableEnrollmentStore`), which also keeps a sign-out from being undone by a late write; the controller only reports what the store says.
+  ///
+  /// Every call reads again (a retry must not wait on a read that hangs); a caller that repeats itself, like the enrollment screen's ticker, checks [refreshing] first.
+  Future<void> refresh() {
+    final next = _refresh();
+    _refreshing = next;
+    return next.whenComplete(() {
+      if (identical(_refreshing, next)) _refreshing = null;
+    });
+  }
+
+  Future<void>? _refreshing;
+
+  /// A refresh is running.
+  bool get refreshing => _refreshing != null;
+
+  Future<void> _refresh() async {
     final p = _state.phase;
     if (p == EnrollmentPhase.generatingKey || p == EnrollmentPhase.enrolling) {
       return;
     }
+    final session = _session;
     EnrollmentRecord? record;
     try {
       record = await store.read();
+      _readFailed = false;
     } on Object {
       record = null; // an unreadable record counts as not enrolled
+      _readFailed = true;
+    }
+    if (session != _session) return;
+    // An enrollment started while the store was read is not undone by what the read found.
+    final now = _state.phase;
+    if (now == EnrollmentPhase.generatingKey ||
+        now == EnrollmentPhase.enrolling) {
+      return;
     }
     if (record == null) {
-      final held = _state.record;
-      if (held != null) {
-        // Enrolled in this session but the write failed earlier: try again.
-        var saved = true;
-        try {
-          await store.write(held);
-        } on Object {
-          saved = false; // keep working from memory
-        }
-        _set(EnrollmentState.fromRecord(held, _clock(),
-            error: saved ? null : _state.error));
-        await _ensureRecoveryCode();
-        return;
-      }
+      // A read that failed says nothing: an enrolled device stays as it is (a locked or busy keystore), and only a store that answers "nothing" means not enrolled.
+      if (_readFailed && _state.record != null) return;
       if (p != EnrollmentPhase.failed) _set(EnrollmentState.notEnrolled);
       return;
     }
@@ -105,9 +150,10 @@ class EnrollmentController extends ChangeNotifier {
     if (_keyLevelKid == kid) {
       return;
     }
+    final session = _session;
     try {
       final level = (await keys.load(kid))?.securityLevel;
-      if (_disposed) return;
+      if (_disposed || session != _session) return;
       _keyLevel = level;
       _keyLevelKid = kid;
       notifyListeners();
@@ -235,13 +281,20 @@ class EnrollmentController extends ChangeNotifier {
       return;
     }
     _fetchingCode = true;
+    final session = _session;
     try {
-      _recoveryCode = await client.requestRecoveryCode(record.deviceToken);
-      _recoveryCodeError = null;
+      final code = await client.requestRecoveryCode(record.deviceToken);
+      // A code for a device that signed out meanwhile is not kept.
+      if (session == _session) {
+        _recoveryCode = code;
+        _recoveryCodeError = null;
+      }
     } on Object catch (e) {
-      _recoveryCodeError = e is EnrollmentException ? e.message : '$e';
+      if (session == _session) {
+        _recoveryCodeError = e is EnrollmentException ? e.message : '$e';
+      }
     } finally {
-      _fetchingCode = false;
+      if (session == _session) _fetchingCode = false;
     }
     notifyListeners();
   }
@@ -264,13 +317,17 @@ class EnrollmentController extends ChangeNotifier {
         record == null) {
       return;
     }
+    final session = _session;
     try {
       await client.acknowledgeRecoveryCode(record.deviceToken);
     } on Object catch (e) {
+      if (session != _session) return;
       _recoveryCodeError = e is EnrollmentException ? e.message : '$e';
       notifyListeners();
       return;
     }
+    // Signed out meanwhile: the cleared enrollment is not written back.
+    if (session != _session) return;
     _recoveryCode = null;
     _recoveryCodeError = null;
     final done = record.withCodeShown();
@@ -280,6 +337,8 @@ class EnrollmentController extends ChangeNotifier {
     } on Object catch (e) {
       warning = 'Could not save locally: $e';
     }
+    // A write that landed after a sign-out was taken out again by the store.
+    if (session != _session) return;
     _set(EnrollmentState.fromRecord(done, _clock(), error: warning));
   }
 }
