@@ -97,10 +97,8 @@ class EnrollmentController extends ChangeNotifier {
   ///
   /// An enrollment whose write failed is kept and saved again by the store (see `ObservableEnrollmentStore`), which also keeps a sign-out from being undone by a late write; the controller only reports what the store says.
   ///
-  /// A call while one runs gets that one: a slow keystore is not asked again every second by the enrollment screen's ticker.
+  /// Every call reads again (a retry must not wait on a read that hangs); a caller that repeats itself, like the enrollment screen's ticker, checks [refreshing] first.
   Future<void> refresh() {
-    final running = _refreshing;
-    if (running != null) return running;
     final next = _refresh();
     _refreshing = next;
     return next.whenComplete(() {
@@ -109,6 +107,9 @@ class EnrollmentController extends ChangeNotifier {
   }
 
   Future<void>? _refreshing;
+
+  /// A refresh is running.
+  bool get refreshing => _refreshing != null;
 
   Future<void> _refresh() async {
     final p = _state.phase;

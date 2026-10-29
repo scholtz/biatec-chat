@@ -45,7 +45,10 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     _controller.refresh();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       final s = _controller.state;
-      if (s.phase == EnrollmentPhase.inactive) _controller.refresh();
+      // A slow keystore is not asked again every second.
+      if (s.phase == EnrollmentPhase.inactive && !_controller.refreshing) {
+        _controller.refresh();
+      }
     });
   }
 
