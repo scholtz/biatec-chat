@@ -130,12 +130,13 @@ void main() {
     });
 
     test(
-        'the issuer parameter wins over the label prefix; extra parameters are ignored',
+        'the issuer parameter names the issuer; a different prefix stays in the name; extra parameters are ignored',
         () {
       final a = OtpUri.parse(
           'otpauth://totp/Old:me?secret=JBSWY3DPEHPK3PXP&issuer=New&image=https%3A%2F%2Fx%2Fi.png');
       expect(a.issuer, 'New');
-      expect(a.label, 'me');
+      expect(a.label, 'Old:me');
+      expect(OtpUri.parse(OtpUri.write(a)).label, 'Old:me');
     });
 
     test('surrounding whitespace is ignored', () {
@@ -503,6 +504,95 @@ void main() {
           throwsStateError);
       expect(() => OtpGenerator.fractionLeft(h, DateTime.utc(2026)),
           throwsStateError);
+    });
+  });
+
+  group('round four', () {
+    const s = 'secret=JBSWY3DPEHPK3PXP';
+    Uint8List key() => Uint8List.fromList(List.filled(20, 7));
+
+    test('padding must be the exact amount when present', () {
+      expect(Base32.decode('MY======'), utf8.encode('f'));
+      expect(Base32.decode('MY'), utf8.encode('f'));
+      for (final bad in [
+        'MY=',
+        'MY=================',
+        'MZXW6YTB=',
+        'MY==-=='
+      ]) {
+        expect(() => Base32.decode(bad), throwsA(isA<Base32Exception>()),
+            reason: bad);
+      }
+      // Separators may still sit among the padding.
+      expect(Base32.decode('MY== ===='), utf8.encode('f'));
+    });
+
+    test('padding in the middle is refused', () {
+      expect(
+          () => Base32.decode('MY======MY'), throwsA(isA<Base32Exception>()));
+    });
+
+    test('a different label prefix is kept in the name', () {
+      final work = OtpUri.parse('otpauth://totp/corp:alice?$s&issuer=GitHub');
+      final home = OtpUri.parse('otpauth://totp/home:alice?$s&issuer=GitHub');
+      expect(work.issuer, 'GitHub');
+      expect(work.label, 'corp:alice');
+      expect(home.label, 'home:alice');
+      // The same issuer in other case and spacing is still dropped.
+      expect(
+          OtpUri.parse('otpauth://totp/git%20hub:alice?$s&issuer=GitHub').label,
+          'alice');
+    });
+
+    test('setting names are read without case', () {
+      expect(
+          OtpUri.parse('otpauth://totp/x?SECRET=JBSWY3DPEHPK3PXP').secretBits,
+          80);
+      expect(errorOf('otpauth://totp/x?$s&Secret=MZXW6YTBOIMZXW6YTB'),
+          OtpUriError.duplicateParameter);
+      expect(errorOf('otpauth://totp/x?$s&DIGITS=7&digits=8'),
+          OtpUriError.duplicateParameter);
+    });
+
+    test('still more invisible characters are refused', () {
+      for (final hidden in [
+        '%E1%A0%8B', // U+180B
+        '%E1%9E%B4', // U+17B4
+        '%EF%BF%BC', // U+FFFC
+        '%F0%9D%85%B3', // U+1D173
+        '%E2%81%AA', // U+206A
+        '%F3%A0%84%80', // U+E0100
+      ]) {
+        expect(errorOf('otpauth://totp/Pay${hidden}Pal:me?$s'),
+            OtpUriError.invalidName,
+            reason: hidden);
+      }
+    });
+
+    test('a counter-based account is a duplicate whatever its period', () {
+      final a = OtpAccount(
+          issuer: '',
+          label: 'a',
+          secret: key(),
+          type: OtpType.hotp,
+          period: 60);
+      final b =
+          OtpAccount(issuer: '', label: 'b', secret: key(), type: OtpType.hotp);
+      expect(a.isDuplicateOf(b), isTrue);
+      // A time-based one with another period makes other codes.
+      final t60 = OtpAccount(issuer: '', label: 'a', secret: key(), period: 60);
+      final t30 = OtpAccount(issuer: '', label: 'a', secret: key());
+      expect(t60.isDuplicateOf(t30), isFalse);
+    });
+
+    test('a refused account is refused before the secret is copied', () {
+      for (final make in <void Function()>[
+        () => OtpAccount(issuer: '', label: 'a', secret: key(), digits: 9),
+        () => OtpAccount(issuer: '', label: 'n' * 300, secret: key()),
+        () => OtpAccount(issuer: '', label: 'a', secret: key(), counter: -1),
+      ]) {
+        expect(make, throwsArgumentError);
+      }
     });
   });
 }

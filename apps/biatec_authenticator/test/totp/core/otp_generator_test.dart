@@ -185,7 +185,8 @@ void main() {
           counter: 3);
       expect(OtpGenerator.code(h, at(0)), '969429');
       expect(OtpGenerator.code(h, at(99999)), '969429');
-      expect(OtpGenerator.nextCode(h, at(0)), '338314');
+      // Its next code is not shown ahead of time.
+      expect(() => OtpGenerator.nextCode(h, at(0)), throwsStateError);
     });
   });
 

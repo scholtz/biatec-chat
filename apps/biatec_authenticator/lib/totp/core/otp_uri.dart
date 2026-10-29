@@ -51,7 +51,7 @@ class OtpUriException implements Exception {
 ///
 /// A `counter` on a time-based link is refused (it is most likely a counter-based account mislabelled); a `period` on a counter-based link is ignored, since it changes nothing.
 ///
-/// When the label has an `Issuer:` prefix and the `issuer` setting says something else, the setting is used and the prefix dropped. The format asks for both to agree, but real services differ in case and spacing, so a difference is not an error.
+/// The `issuer` setting names the issuer. A label prefix that names the same issuer, apart from case and spacing (real services differ in both), is dropped from the name; a prefix that names something else is kept as part of the name, so nothing the link says is lost. Setting names are read without case.
 abstract final class OtpUri {
   /// A real link is a few hundred characters; this stops a hostile QR code from making the parser work on megabytes.
   static const maxLength = 2048;
@@ -93,9 +93,11 @@ abstract final class OtpUri {
             'Only time-based and counter-based codes are supported.');
     }
 
-    final Map<String, List<String>> all;
+    // Names are compared without case, so `Secret` and `secret` count as the same setting given twice.
+    final all = <String, List<String>>{};
     try {
-      all = uri.queryParametersAll;
+      uri.queryParametersAll.forEach(
+          (name, values) => (all[name.toLowerCase()] ??= []).addAll(values));
     } on Object {
       // Bad percent-encoding in a value (invalid UTF-8, say).
       throw const OtpUriException(
@@ -192,18 +194,22 @@ abstract final class OtpUri {
     var issuer = '';
     var label = decoded;
     final issuerParam = param('issuer')?.trim() ?? '';
-    if (issuerParam.isNotEmpty && decoded.startsWith('$issuerParam:')) {
-      // The usual case: the label is "Issuer:account" and the issuer setting says the same.
-      issuer = issuerParam;
-      label = decoded.substring(issuerParam.length + 1);
-    } else {
-      final colon = decoded.indexOf(':');
+    final colon = decoded.indexOf(':');
+    if (issuerParam.isEmpty) {
       if (colon >= 0) {
         issuer = decoded.substring(0, colon).trim();
-        label = decoded.substring(colon + 1).trim();
+        label = decoded.substring(colon + 1);
       }
-      // The issuer setting wins over a different prefix in the label.
-      if (issuerParam.isNotEmpty) issuer = issuerParam;
+    } else {
+      issuer = issuerParam;
+      // The prefix is dropped only when it names the same issuer (the usual "Issuer:account"); a different one is part of the name and kept, so "corp:alice" and "home:alice" stay apart.
+      if (decoded.startsWith('$issuerParam:')) {
+        // Checked whole first: the issuer itself may contain a colon.
+        label = decoded.substring(issuerParam.length + 1);
+      } else if (colon >= 0 &&
+          _sameName(decoded.substring(0, colon), issuerParam)) {
+        label = decoded.substring(colon + 1);
+      }
     }
     label = label.trim();
     if (label.isEmpty) {
@@ -255,11 +261,20 @@ abstract final class OtpUri {
     return 'otpauth://${account.type.name}/$label?${params.join('&')}';
   }
 
+  /// Digits only: no sign, no decimal point, no spaces.
+  static final _digitsOnly = RegExp(r'^[0-9]{1,15}$');
+
   static int? _wholeNumber(String text) {
-    // Digits only: no sign, no decimal point, no spaces.
-    if (!RegExp(r'^[0-9]{1,15}$').hasMatch(text)) return null;
+    if (!_digitsOnly.hasMatch(text)) return null;
     return int.parse(text);
   }
+
+  static final _spaces = RegExp(r'\s+');
+
+  /// Equal apart from case and spacing, as services write their own name.
+  static bool _sameName(String a, String b) =>
+      a.replaceAll(_spaces, '').toLowerCase() ==
+      b.replaceAll(_spaces, '').toLowerCase();
 
   /// Control characters, invisible characters, and the characters that reorder text: any of them can make two different names look the same or make "evil.com" display as something else.
   static bool _hasUnsafeCharacters(String text) {
@@ -274,13 +289,18 @@ abstract final class OtpUri {
         (u >= 0x7F && u <= 0x9F) ||
         u == 0x00AD ||
         u == 0x061C ||
-        u == 0x180E ||
+        (u >= 0x180B && u <= 0x180F) || // Mongolian selectors, vowel separator
+        u == 0x17B4 ||
+        u == 0x17B5 || // Khmer invisible vowels
         (u >= 0x200B && u <= 0x200F) || // zero width, direction marks
         (u >= 0x2028 && u <= 0x202E) || // line separators, embeddings
         (u >= 0x2060 && u <= 0x2064) || // word joiner, invisible operators
-        (u >= 0x2066 && u <= 0x2069) || // isolates
+        (u >= 0x2066 && u <= 0x206F) || // isolates, deprecated format controls
         u == 0xFEFF ||
-        (u >= 0xFFF9 && u <= 0xFFFB) ||
+        (u >= 0xFFF9 &&
+            u <= 0xFFFC) || // interlinear annotation, object replacement
+        (u >= 0x1BCA0 && u <= 0x1BCA3) || // shorthand format controls
+        (u >= 0x1D173 && u <= 0x1D17A) || // musical formatting
         u == 0x034F || // combining grapheme joiner
         u == 0x115F ||
         u == 0x1160 || // Hangul fillers
@@ -288,6 +308,6 @@ abstract final class OtpUri {
         u == 0xFFA0 ||
         u == 0x2800 || // braille blank
         (u >= 0xFE00 && u <= 0xFE0F) || // variation selectors
-        (u >= 0xE0000 && u <= 0xE007F); // tag characters
+        (u >= 0xE0000 && u <= 0xE0FFF); // tags, variation selectors supplement
   }
 }

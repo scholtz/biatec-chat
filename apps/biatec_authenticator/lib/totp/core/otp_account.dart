@@ -56,7 +56,12 @@ class OtpAccount {
     this.id,
   })  : issuer = issuer.trim(),
         label = label.trim(),
-        secret = Uint8List.fromList(secret) {
+        // Checked before the copy is made, so a refused account leaves no copy of the secret behind.
+        secret = _checkedCopy(
+            secret, issuer.trim(), label.trim(), digits, period, counter);
+
+  static Uint8List _checkedCopy(Uint8List secret, String issuer, String label,
+      int digits, int period, int counter) {
     if (secret.length < OtpLimits.minSecretBytes) {
       throw ArgumentError('The secret is too short (at least 80 bits).');
     }
@@ -67,10 +72,11 @@ class OtpAccount {
       throw ArgumentError('The period must be 15 to 120 seconds.');
     }
     if (counter < 0) throw ArgumentError('The counter cannot be negative.');
-    if (this.issuer.length > OtpLimits.maxTextLength ||
-        this.label.length > OtpLimits.maxTextLength) {
+    if (issuer.length > OtpLimits.maxTextLength ||
+        label.length > OtpLimits.maxTextLength) {
       throw ArgumentError('The issuer or name is too long.');
     }
+    return Uint8List.fromList(secret);
   }
 
   /// The service, for example `GitHub`. May be empty.
@@ -128,13 +134,13 @@ class OtpAccount {
     _wiped = true;
   }
 
-  /// The same credential: same secret and parameters. The names are not compared, because scanning one service's code twice under two spellings is still one account (the id and counter are not compared either).
+  /// The same credential: same secret and parameters. The names are not compared, because scanning one service's code twice under two spellings is still one account (the id and counter are not compared either, nor the period of a counter-based account, which it does not use).
   bool isDuplicateOf(OtpAccount other) {
     // Zeros say nothing about the account they were: a wiped one is never a duplicate of anything.
     if (_wiped || other._wiped) return false;
     if (algorithm != other.algorithm ||
         digits != other.digits ||
-        period != other.period ||
+        (type == OtpType.totp && period != other.period) ||
         type != other.type ||
         secret.length != other.secret.length) {
       return false;

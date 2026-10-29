@@ -17,30 +17,51 @@ abstract final class Base32 {
     for (var i = 0; i < _alphabet.length; i++) _alphabet.codeUnitAt(i): i,
   };
 
-  /// Decodes [input]. Case, spaces, dashes and missing `=` padding are tolerated, because people copy setup keys from web pages in groups of four. Anything else outside the alphabet is refused.
+  /// `=` characters that complete a last group of 2, 4, 5 or 7 characters to 8.
+  static const _padFor = {0: 0, 2: 6, 4: 4, 5: 3, 7: 1};
+
+  static bool _separator(int u) =>
+      u == 0x20 || u == 0x09 || u == 0x0A || u == 0x0D || u == 0x2D;
+
+  /// Decodes [input]. Case, spaces, dashes and missing `=` padding are tolerated, because people copy setup keys from web pages in groups of four. Padding, when present, must be the exact amount; anything else outside the alphabet is refused.
+  ///
+  /// The key goes straight into the returned bytes, with no other copy left behind: callers wipe that one buffer.
   static Uint8List decode(String input) {
-    final units = <int>[];
+    // First pass: count the key characters and the padding after them, without copying them.
+    var count = 0;
+    var pads = 0;
     for (final u in input.codeUnits) {
       // Whitespace and dashes group the key for reading; they carry nothing.
-      if (u == 0x20 || u == 0x09 || u == 0x0A || u == 0x0D || u == 0x2D) {
-        continue;
+      if (_separator(u)) continue;
+      if (u == 0x3D) {
+        pads++;
+      } else if (pads > 0) {
+        // Padding is only allowed at the end.
+        throw const Base32Exception('The key has padding in the middle.');
+      } else {
+        count++;
       }
-      units.add(u);
     }
-    // Padding is only allowed at the end.
-    var end = units.length;
-    while (end > 0 && units[end - 1] == 0x3D) {
-      end--;
+    if (count == 0) throw const Base32Exception('The key is empty.');
+    // A last group of 1, 3 or 6 characters cannot come from whole bytes. Leftover bits in the last character are dropped, as other authenticator apps do: some services hand out keys that have them, and refusing would lock the user out of that account.
+    final want = _padFor[count % 8];
+    if (want == null) {
+      throw const Base32Exception('The key has the wrong length.');
     }
-    if (end == 0) throw const Base32Exception('The key is empty.');
-    final out = <int>[];
+    if (pads != 0 && pads != want) {
+      throw const Base32Exception('The key has the wrong padding.');
+    }
+    final out = Uint8List(count * 5 ~/ 8);
+    var n = 0;
     var buffer = 0;
     var bits = 0;
-    for (var i = 0; i < end; i++) {
-      var u = units[i];
+    for (var u in input.codeUnits) {
+      if (_separator(u)) continue;
+      if (u == 0x3D) break;
       if (u >= 0x61 && u <= 0x7A) u -= 0x20; // lower case
       final v = _values[u];
       if (v == null) {
+        out.fillRange(0, out.length, 0);
         throw const Base32Exception('The key has a character that is not '
             'part of Base32 (letters A to Z and digits 2 to 7).');
       }
@@ -48,16 +69,11 @@ abstract final class Base32 {
       bits += 5;
       if (bits >= 8) {
         bits -= 8;
-        out.add((buffer >> bits) & 0xFF);
+        out[n++] = (buffer >> bits) & 0xFF;
         buffer &= (1 << bits) - 1;
       }
     }
-    // A last group of 1, 3 or 6 characters cannot come from whole bytes. Leftover bits in the last character are dropped, as other authenticator apps do: some services hand out keys that have them, and refusing would lock the user out of that account.
-    final rest = end % 8;
-    if (rest == 1 || rest == 3 || rest == 6) {
-      throw const Base32Exception('The key has the wrong length.');
-    }
-    return Uint8List.fromList(out);
+    return out;
   }
 
   /// Encodes [bytes] in upper case without padding, as services show setup keys.

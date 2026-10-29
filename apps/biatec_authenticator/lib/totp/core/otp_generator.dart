@@ -41,7 +41,8 @@ abstract final class OtpGenerator {
 
   static void _timeBased(OtpAccount account) {
     if (account.type != OtpType.totp) {
-      throw StateError('A counter-based account has no countdown.');
+      throw StateError(
+          'A counter-based account has no countdown or next code.');
     }
   }
 
@@ -64,22 +65,18 @@ abstract final class OtpGenerator {
   }
 
   /// The code of [account] at [now]. For a counter-based account that is the code for its current counter, whatever the time.
-  static String code(OtpAccount account, DateTime now) {
-    _usable(account);
-    final value =
-        account.type == OtpType.hotp ? account.counter : step(account, now);
-    return hotp(account.secret, value,
-        algorithm: account.algorithm, digits: account.digits);
+  static String code(OtpAccount account, DateTime now) => _codeFor(account,
+      account.type == OtpType.hotp ? account.counter : step(account, now));
+
+  /// The code of the following period (a time-based account), to show in the last seconds of this one. A counter-based account has no next code to show: its next code is only for after the current one was used.
+  static String nextCode(OtpAccount account, DateTime now) {
+    _timeBased(account);
+    return _codeFor(account, step(account, now) + 1);
   }
 
-  /// The code of the following period (a time-based account), to show in the last seconds of this one.
-  static String nextCode(OtpAccount account, DateTime now) {
+  static String _codeFor(OtpAccount account, int value) {
     _usable(account);
-    if (account.type == OtpType.hotp) {
-      return hotp(account.secret, account.counter + 1,
-          algorithm: account.algorithm, digits: account.digits);
-    }
-    return hotp(account.secret, step(account, now) + 1,
+    return hotp(account.secret, value,
         algorithm: account.algorithm, digits: account.digits);
   }
 
