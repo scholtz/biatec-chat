@@ -114,12 +114,10 @@ abstract final class OtpUri {
     }
     String? param(String name) => all[name]?.first;
 
+    const noSecret = OtpUriException(
+        OtpUriError.missingSecret, 'This link has no secret key.');
     final secretText = param('secret');
-    if (secretText == null || secretText.trim().isEmpty) {
-      throw const OtpUriException(
-          OtpUriError.missingSecret, 'This link has no secret key.');
-    }
-    // Everything else is checked before the secret is decoded, so no refusal leaves a decoded secret behind.
+    if (secretText == null) throw noSecret;
     var algorithm = OtpAlgorithm.sha1;
     final algorithmText = param('algorithm');
     if (algorithmText != null) {
@@ -200,31 +198,17 @@ abstract final class OtpUri {
         label = decoded.substring(colon + 1);
       }
     }
-    label = label.trim();
-    if (label.isEmpty) {
-      throw const OtpUriException(
-          OtpUriError.invalidName, 'This account has no name.');
-    }
-    for (final t in [issuer, label]) {
-      if (OtpLimits.hasUnsafeCharacters(t) ||
-          t.length > OtpLimits.maxTextLength) {
-        throw const OtpUriException(
-            OtpUriError.invalidName, 'The name in this link is not valid.');
-      }
-    }
-
     final Uint8List secret;
     try {
       secret = Base32.decode(secretText);
-    } on Base32Exception {
+    } on Base32Exception catch (e) {
+      // Only spaces, dashes or padding: there is no key, which is not the same as a broken one.
+      if (e.empty) throw noSecret;
       throw const OtpUriException(OtpUriError.invalidSecret,
           'The secret key in this link is not valid.');
     }
     try {
-      if (secret.length < OtpLimits.minSecretBytes) {
-        throw const OtpUriException(
-            OtpUriError.weakSecret, OtpLimits.weakSecretMessage);
-      }
+      // The account checks the rest of its rules (key strength, name); its refusal is told as this link's error.
       return OtpAccount(
         issuer: issuer,
         label: label,
@@ -235,6 +219,16 @@ abstract final class OtpUri {
         type: type,
         counter: counter,
       );
+    } on OtpAccountException catch (e) {
+      throw OtpUriException(
+          switch (e.problem) {
+            OtpAccountProblem.weakSecret => OtpUriError.weakSecret,
+            OtpAccountProblem.digits => OtpUriError.invalidDigits,
+            OtpAccountProblem.period => OtpUriError.invalidPeriod,
+            OtpAccountProblem.counter => OtpUriError.invalidCounter,
+            OtpAccountProblem.name => OtpUriError.invalidName,
+          },
+          e.message as String);
     } finally {
       // The account holds its own copy, and a refusal needs none.
       secret.fillRange(0, secret.length, 0);
@@ -244,9 +238,7 @@ abstract final class OtpUri {
   /// The link for [account], with every setting explicit. Contains the secret: handle the result as one.
   static String write(OtpAccount account) {
     // A wiped account's zeros would make a link that looks valid but never matches the service.
-    if (account.isWiped) {
-      throw StateError('This account was wiped from memory (the app locked).');
-    }
+    account.checkUsable();
     // With no issuer, a colon inside the name would be read as the separator, so a leading colon says "no issuer".
     final label = account.issuer.isEmpty
         ? (account.label.contains(':')

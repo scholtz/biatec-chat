@@ -50,8 +50,7 @@ void main() {
         'MZXW6YT!',
         'MZ=XW',
         'M',
-        'MZX',
-        'MZXW6Y',
+        'MZX=====',
       ]) {
         try {
           Base32.decode(bad);
@@ -67,6 +66,15 @@ void main() {
       // "MY" is the canonical "f"; "MZ" has other unused bits and gives the same byte.
       expect(Base32.decode('MZ'), utf8.encode('f'));
       expect(Base32.decode('MY'), utf8.encode('f'));
+    });
+
+    test('lengths that leave a partial character are accepted the same way',
+        () {
+      // 3 and 6 characters (and 27 or 33, as some services hand out) drop their last bits like other apps do.
+      expect(Base32.decode('MZX'), utf8.encode('f'));
+      expect(Base32.decode('MZXW6Y'), utf8.encode('foo'));
+      final key27 = 'JBSWY3DPEHPK3PXPJBSWY3DPEHP';
+      expect(Base32.decode(key27).length, 16);
     });
 
     test('round trip for every length', () {
@@ -169,7 +177,13 @@ void main() {
       expect(errorOf('otpauth://totp/x?secret='), OtpUriError.missingSecret);
       expect(errorOf('otpauth://totp/x?secret=not*base32'),
           OtpUriError.invalidSecret);
-      expect(errorOf('otpauth://totp/x?secret=MZX'), OtpUriError.invalidSecret);
+      expect(errorOf('otpauth://totp/x?secret=M'), OtpUriError.invalidSecret);
+      // Only padding, dashes or spaces: there is no key at all.
+      for (final blank in ['====', '----', '%C2%A0%C2%A0', '%20']) {
+        expect(errorOf('otpauth://totp/x?secret=$blank'),
+            OtpUriError.missingSecret,
+            reason: blank);
+      }
     });
 
     test('algorithm', () {
@@ -687,6 +701,31 @@ void main() {
     test('limit messages follow the limits', () {
       expect(OtpLimits.digitsMessage, contains('${OtpLimits.maxDigits}'));
       expect(OtpLimits.periodMessage, contains('${OtpLimits.maxPeriod}'));
+    });
+
+    test('the model says which rule a value broke', () {
+      OtpAccountProblem problemOf(void Function() make) {
+        try {
+          make();
+        } on OtpAccountException catch (e) {
+          return e.problem;
+        }
+        fail('should refuse');
+      }
+
+      expect(
+          problemOf(
+              () => OtpAccount(issuer: '', label: 'a', secret: Uint8List(9))),
+          OtpAccountProblem.weakSecret);
+      expect(
+          problemOf(() => OtpAccount(
+              issuer: '',
+              label: 'a',
+              secret: key(),
+              counter: OtpLimits.maxCounter + 1)),
+          OtpAccountProblem.counter);
+      expect(problemOf(() => OtpAccount(issuer: '', label: ' ', secret: key())),
+          OtpAccountProblem.name);
     });
 
     test('a refused account is refused before the secret is copied', () {

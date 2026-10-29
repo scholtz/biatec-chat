@@ -19,7 +19,9 @@ abstract final class OtpGenerator {
     OtpAlgorithm algorithm = OtpAlgorithm.sha1,
     int digits = 6,
   }) {
-    if (counter < 0) throw ArgumentError('The counter cannot be negative.');
+    if (!OtpLimits.validCounter(counter)) {
+      throw ArgumentError(OtpLimits.counterMessage);
+    }
     if (!OtpLimits.validDigits(digits)) {
       throw ArgumentError(OtpLimits.digitsMessage);
     }
@@ -53,17 +55,13 @@ abstract final class OtpGenerator {
     }
   }
 
-  static void _usable(OtpAccount account) {
-    if (account.isWiped) {
-      throw StateError('This account was wiped from memory (the app locked).');
-    }
+  /// Milliseconds since the epoch, never below 0 (a reset clock), so the code, the seconds left and the ring agree. The value does not depend on the time zone.
+  static int _millis(DateTime now) {
+    final ms = now.millisecondsSinceEpoch;
+    return ms < 0 ? 0 : ms;
   }
 
-  /// Seconds since the epoch, never below 0 (a reset clock), so the code, the seconds left and the ring agree.
-  static int _seconds(DateTime now) {
-    final s = now.toUtc().millisecondsSinceEpoch ~/ 1000;
-    return s < 0 ? 0 : s;
-  }
+  static int _seconds(DateTime now) => _millis(now) ~/ 1000;
 
   /// The step a time-based account is in at [now]: seconds since the epoch divided by the period.
   static int step(OtpAccount account, DateTime now) {
@@ -82,7 +80,7 @@ abstract final class OtpGenerator {
   }
 
   static String _codeFor(OtpAccount account, int value) {
-    _usable(account);
+    account.checkUsable();
     return hotp(account.secret, value,
         algorithm: account.algorithm, digits: account.digits);
   }
@@ -96,10 +94,8 @@ abstract final class OtpGenerator {
   /// A fraction from 1 (just started) to 0 (about to change), for a countdown ring.
   static double fractionLeft(OtpAccount account, DateTime now) {
     _timeBased(account);
-    var ms = now.toUtc().millisecondsSinceEpoch;
-    if (ms < 0) ms = 0;
     final periodMs = account.period * 1000;
-    return 1 - ((ms % periodMs) / periodMs);
+    return 1 - ((_millis(now) % periodMs) / periodMs);
   }
 
   /// A code in groups of three digits for reading (PRODUCT-DESCRIPTION.md, "The code list"): `123 456`, `123 456 7`, `123 456 78`.

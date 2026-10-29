@@ -31,11 +31,23 @@ void main() {
     }
 
     test('codes keep their leading zeros', () {
-      // Counter 0 of this secret at 8 digits starts with a zero in the RFC 6238 vectors below; here we check the padding itself.
+      // Find counters whose code starts with a zero and check it is padded with zeros, not cut or spaced.
+      var seen = 0;
       for (var c = 0; c < 200; c++) {
-        expect(OtpGenerator.hotp(secret, c).length, 6);
-        expect(OtpGenerator.hotp(secret, c, digits: 8).length, 8);
+        final code = OtpGenerator.hotp(secret, c);
+        expect(code, matches(RegExp(r'^[0-9]{6}$')));
+        if (code.startsWith('0')) seen++;
+        expect(OtpGenerator.hotp(secret, c, digits: 8),
+            matches(RegExp(r'^[0-9]{8}$')));
       }
+      expect(seen, greaterThan(0));
+    });
+
+    test('a counter above the 15-digit limit is refused', () {
+      expect(() => OtpGenerator.hotp(secret, OtpLimits.maxCounter + 1),
+          throwsArgumentError);
+      expect(OtpGenerator.hotp(secret, OtpLimits.maxCounter),
+          matches(RegExp(r'^[0-9]{6}$')));
     });
 
     test('counters beyond 32 bits work (the counter is 8 bytes)', () {
@@ -197,7 +209,9 @@ void main() {
       expect(OtpGenerator.group('12345678'), '123 456 78');
       expect(OtpGenerator.group('1234567'), '123 456 7');
     });
+  });
 
+  group('counter encoding', () {
     test('a counter above 32 bits is written in full', () {
       // RFC 4226 big-endian counter: the high half must not be lost.
       final k = Uint8List.fromList(List.filled(20, 1));

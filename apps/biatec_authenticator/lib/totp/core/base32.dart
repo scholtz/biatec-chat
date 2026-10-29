@@ -2,8 +2,11 @@ import 'dart:typed_data';
 
 /// A string that is not valid Base32. The message never contains the input, which may be a secret.
 class Base32Exception implements Exception {
-  const Base32Exception(this.message);
+  const Base32Exception(this.message, {this.empty = false});
   final String message;
+
+  /// True when there was no key at all, only spaces, dashes or padding.
+  final bool empty;
 
   @override
   String toString() => 'Base32Exception: $message';
@@ -55,16 +58,16 @@ abstract final class Base32 {
         count++;
       }
     }
-    if (count == 0) throw const Base32Exception('The key is empty.');
-    // A last group of 1, 3 or 6 characters cannot come from whole bytes. Leftover bits in the last character are dropped, as other authenticator apps do: some services hand out keys that have them, and refusing would lock the user out of that account.
-    final want = _padFor[count % 8];
-    if (want == null) {
-      throw const Base32Exception('The key has the wrong length.');
+    if (count == 0) {
+      throw const Base32Exception('The key is empty.', empty: true);
     }
+    // Leftover bits that do not fill a byte are dropped, as other authenticator apps do, whatever the length: some services hand out such keys, and refusing would lock the user out of that account. Padding is defined only for whole-byte lengths, so it must then be exact.
+    final want = _padFor[count % 8];
     if (pads != 0 && pads != want) {
       throw const Base32Exception('The key has the wrong padding.');
     }
     final out = Uint8List(count * 5 ~/ 8);
+    if (out.isEmpty) throw const Base32Exception('The key is too short.');
     var n = 0;
     var buffer = 0;
     var bits = 0;

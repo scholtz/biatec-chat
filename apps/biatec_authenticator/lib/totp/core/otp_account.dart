@@ -26,6 +26,15 @@ enum OtpType {
   hotp,
 }
 
+/// Which account rule a value broke.
+enum OtpAccountProblem { weakSecret, digits, period, counter, name }
+
+/// A value [OtpAccount] refuses. An [ArgumentError], with the rule it broke so callers (the link parser) can tell the user which. The message never contains the secret or the name.
+class OtpAccountException extends ArgumentError {
+  OtpAccountException(this.problem, String super.message);
+  final OtpAccountProblem problem;
+}
+
 /// Limits of an account, shared by the parser and the model so a value cannot be valid in one and refused in the other.
 abstract final class OtpLimits {
   static const minDigits = 6;
@@ -38,8 +47,12 @@ abstract final class OtpLimits {
   /// The smallest secret accepted, 80 bits: what the smallest keys in wide use (Google's 16 characters) carry. A shorter one is guessable, so it is refused instead of shown as a normal account.
   static const minSecretBytes = 10;
 
+  /// The largest counter: 15 digits, what a link may carry, and below 2^53 so the counter is exact when compiled to JavaScript.
+  static const maxCounter = 999999999999999;
+
   static bool validDigits(int d) => d >= minDigits && d <= maxDigits;
   static bool validPeriod(int p) => p >= minPeriod && p <= maxPeriod;
+  static bool validCounter(int c) => c >= 0 && c <= maxCounter;
 
   // The messages are built from the limits, so they cannot go out of step with them.
   static const digitsMessage =
@@ -48,6 +61,8 @@ abstract final class OtpLimits {
       'A code must last between $minPeriod and $maxPeriod seconds.';
   static const weakSecretMessage = 'The secret key is too short to be safe '
       '(at least ${minSecretBytes * 8} bits).';
+  static const counterMessage = 'The counter must be a whole number from 0 '
+      'to $maxCounter.';
 
   /// Control characters, invisible characters, and the characters that reorder text: any of them can make two different names look the same or make "evil.com" display as something else.
   static bool hasUnsafeCharacters(String text) {
@@ -117,28 +132,35 @@ class OtpAccount {
         _secret = _checkedCopy(
             secret, issuer.trim(), label.trim(), digits, period, counter);
 
+  /// The one place the account rules are checked; the parser maps the [OtpAccountException] to its own error.
   static Uint8List _checkedCopy(Uint8List secret, String issuer, String label,
       int digits, int period, int counter) {
     if (secret.length < OtpLimits.minSecretBytes) {
-      throw ArgumentError(OtpLimits.weakSecretMessage);
+      throw OtpAccountException(
+          OtpAccountProblem.weakSecret, OtpLimits.weakSecretMessage);
     }
     if (!OtpLimits.validDigits(digits)) {
-      throw ArgumentError(OtpLimits.digitsMessage);
+      throw OtpAccountException(
+          OtpAccountProblem.digits, OtpLimits.digitsMessage);
     }
     if (!OtpLimits.validPeriod(period)) {
-      throw ArgumentError(OtpLimits.periodMessage);
+      throw OtpAccountException(
+          OtpAccountProblem.period, OtpLimits.periodMessage);
     }
-    if (counter < 0) throw ArgumentError('The counter cannot be negative.');
+    if (!OtpLimits.validCounter(counter)) {
+      throw OtpAccountException(
+          OtpAccountProblem.counter, OtpLimits.counterMessage);
+    }
+    if (label.isEmpty) {
+      throw OtpAccountException(
+          OtpAccountProblem.name, 'This account has no name.');
+    }
     if (issuer.length > OtpLimits.maxTextLength ||
-        label.length > OtpLimits.maxTextLength) {
-      throw ArgumentError('The issuer or name is too long.');
-    }
-    // The same name rules as a scanned link, so a rename cannot bring back what the parser refuses.
-    if (label.isEmpty) throw ArgumentError('The account needs a name.');
-    if (OtpLimits.hasUnsafeCharacters(issuer) ||
+        label.length > OtpLimits.maxTextLength ||
+        OtpLimits.hasUnsafeCharacters(issuer) ||
         OtpLimits.hasUnsafeCharacters(label)) {
-      throw ArgumentError('The issuer or name has invisible or '
-          'direction-changing characters.');
+      throw OtpAccountException(OtpAccountProblem.name,
+          'The name is too long or has invisible or direction-changing characters.');
     }
     return Uint8List.fromList(secret);
   }
@@ -179,7 +201,7 @@ class OtpAccount {
     String? id,
     bool clearId = false,
   }) {
-    if (_wiped) throw StateError('This account was wiped from memory.');
+    checkUsable();
     return OtpAccount(
       issuer: issuer ?? this.issuer,
       label: label ?? this.label,
@@ -197,6 +219,13 @@ class OtpAccount {
 
   /// Whether [wipe] was called. A wiped account cannot make codes: the generator refuses it, so a redraw after a lock never shows a wrong code made from zeros.
   bool get isWiped => _wiped;
+
+  /// Throws once the account was wiped: everything that uses the secret (codes, links, copies) calls this first, so nothing makes a code or link from zeros.
+  void checkUsable() {
+    if (_wiped) {
+      throw StateError('This account was wiped from memory (the app locked).');
+    }
+  }
 
   /// Overwrites the secret in memory.
   void wipe() {
