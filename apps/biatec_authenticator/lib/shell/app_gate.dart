@@ -252,12 +252,12 @@ class _AppGateState extends State<AppGate> {
   Route<void>? _recoveryRoute;
 
   void _showRecoveryCode() {
-    // The banner stays tappable while the screen is open: one screen at a time.
-    if (_recoveryRoute?.isActive ?? false) return;
     final navigator = widget.shell.navigators[AppTab.approvals]?.currentState;
     if (navigator == null) return;
     // Inside the tab, so the bar stays and a tapped notification still lands where the user is.
     widget.shell.focusApprovals();
+    // The banner stays tappable while the screen is open: one screen at a time.
+    if (_recoveryRoute?.isActive ?? false) return;
     final route = MaterialPageRoute<void>(
       builder: (_) =>
           EnrollmentScreen(config: widget.config, controller: _enrollment),

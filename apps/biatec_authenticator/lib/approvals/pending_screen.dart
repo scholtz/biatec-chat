@@ -161,6 +161,11 @@ class _PendingScreenState extends State<PendingScreen> {
       setState(() {
         _error = e is ApprovalException ? e.message : '$e';
         _offline = e is ApprovalException && e.offline;
+        if (_signedOut) {
+          // The empty list was the signed-out one; nothing is known now.
+          _signedOut = false;
+          _requests = null;
+        }
         // The last known list stays, but a request that has expired meanwhile is gone.
         _requests = _requests?.where((r) => !r.isExpired(now)).toList();
       });

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../shell/tab_reload.dart';
+import '../theme.dart';
 import '../ui/ui.dart';
 import 'history_store.dart';
 
@@ -53,28 +54,49 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
 
   @override
   Widget build(BuildContext context) {
+    final list = _entries;
     return Scaffold(
       appBar: AppBar(title: const Text('Approval history')),
-      body: Builder(
-        builder: (context) {
-          final list = _entries;
-          if (list == null) {
-            return _failed
-                ? ErrorState(
-                    title: 'History could not be read',
-                    message: 'The decisions stored on this device did not '
-                        'open.',
-                    onRetry: _load)
-                : const LoadingSkeleton();
-          }
-          if (list.isEmpty) {
-            return const EmptyState(
-                icon: Icons.receipt_long_outlined,
-                title: 'No approvals yet',
-                message: 'Requests you approve or deny on this device are '
-                    'listed here with their receipts.');
-          }
-          return ListView(children: [
+      body: list == null
+          ? (_failed
+              ? ErrorState(
+                  title: 'History could not be read',
+                  message: 'The decisions stored on this device did not open.',
+                  onRetry: _load)
+              : const LoadingSkeleton())
+          : Column(children: [
+              // A reload that failed leaves the list as it was, and says so.
+              if (_failed)
+                Padding(
+                  key: const Key('history-stale'),
+                  padding: const EdgeInsets.all(AppSpacing.s),
+                  child: StatusBanner(
+                    severity: StatusSeverity.warning,
+                    title: 'History could not be refreshed',
+                    message: 'Showing what was read before.',
+                    actionLabel: 'Try again',
+                    onAction: _load,
+                  ),
+                ),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: _load,
+                  child: _list(list),
+                ),
+              ),
+            ]),
+    );
+  }
+
+  Widget _list(List<HistoryEntry> list) {
+    if (list.isEmpty) {
+      return const EmptyState(
+          icon: Icons.receipt_long_outlined,
+          title: 'No approvals yet',
+          message: 'Requests you approve or deny on this device are '
+              'listed here with their receipts.');
+    }
+    return ListView(children: [
             for (final e in list)
               ExpansionTile(
                 key: Key('history-${e.authReqId}'),
@@ -94,8 +116,5 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
                 ],
               ),
           ]);
-        },
-      ),
-    );
   }
 }

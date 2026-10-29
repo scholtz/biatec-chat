@@ -216,13 +216,15 @@ void main() {
     unawaited(push.dispose());
   });
 
-  testWidgets('a covered card is brought back on top when its notification is tapped again',
+  testWidgets(
+      'a card covered by a screen that can be opened again is uncovered, and is the same card',
       (tester) async {
     final rig = ShellRig();
     await rig.pump(tester);
     rig.shell.openApproval(rig.approvals, rig.requestId);
     await tester.pump(const Duration(seconds: 1));
-    // Something else covers it (another card, the recovery code screen).
+    final card = tester.state(find.byType(ApprovalScreen));
+    // The recovery code screen, say.
     rig.shell.navigators[AppTab.approvals]!.currentState!.push(
         MaterialPageRoute<void>(
             builder: (_) => const Scaffold(body: Text('on top'))));
@@ -231,17 +233,39 @@ void main() {
     await tester.pump();
 
     rig.shell.bringForward(rig.approvals, rig.requestId);
-    await tester.pump(const Duration(seconds: 1));
-    await tester.pump(const Duration(seconds: 1));
+    // The tab's tickers start again with the frame that shows it, so the pop animation runs from the next one.
+    for (var i = 0; i < 3; i++) {
+      await tester.pump(const Duration(seconds: 1));
+    }
     expect(rig.shell.selected, AppTab.approvals);
-    expect(find.byType(ApprovalScreen), findsOneWidget,
-        reason: 'one card for the request, not two');
-    // The tab's tickers start again with the frame that shows it, so the card's animation runs from the next one.
+    expect(tester.state(find.byType(ApprovalScreen)), same(card),
+        reason: 'what the user typed in it is kept');
+    expect(find.text('on top', skipOffstage: false), findsNothing);
+    await rig.dispose(tester);
+  });
+
+  testWidgets('a card covered by another card is left where it is',
+      (tester) async {
+    final rig = ShellRig();
+    await rig.pump(tester);
+    rig.shell.openApproval(rig.approvals, rig.requestId);
     await tester.pump(const Duration(seconds: 1));
-    expect(find.text('on top'), findsNothing,
-        reason: 'the card is the screen that shows');
-    expect(find.text('on top', skipOffstage: false), findsOneWidget,
-        reason: 'what covered it is kept below');
+    rig.shell.navigators[AppTab.approvals]!.currentState!.push(
+        MaterialPageRoute<void>(
+            settings: const RouteSettings(
+                name: '${ApprovalScreen.routePrefix}ciba_other'),
+            builder: (_) => const Scaffold(body: Text('other card'))));
+    await tester.pump(const Duration(seconds: 1));
+    rig.shell.select(AppTab.devices);
+    await tester.pump();
+
+    rig.shell.bringForward(rig.approvals, rig.requestId);
+    for (var i = 0; i < 3; i++) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+    expect(rig.shell.selected, AppTab.approvals);
+    expect(find.text('other card'), findsOneWidget);
+    expect(find.byType(ApprovalScreen, skipOffstage: false), findsOneWidget);
     await rig.dispose(tester);
   });
 

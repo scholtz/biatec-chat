@@ -151,7 +151,7 @@ class ShellController extends ChangeNotifier {
     _approvalsStack.routes.clear();
   }
 
-  /// A notification was tapped for a card that is already open: it is shown on top. When something else covers it (another card, the recovery code screen), the covered card is closed and opened again on top, as it has not been decided.
+  /// A notification was tapped for a card that is already open: its tab is shown, and the card is uncovered when only screens that can be opened again lie on it (the recovery code screen). The card itself is never closed, so a code being typed or a signature in progress is not lost; another card on top is left as well, and back leads to this one.
   void bringForward(ApprovalServices services, String authReqId) {
     final navigator = navigators[AppTab.approvals]?.currentState;
     final stack = _approvalsStack.routes;
@@ -162,12 +162,11 @@ class ShellController extends ChangeNotifier {
       openApproval(services, authReqId);
       return;
     }
-    if (!identical(open, stack.last)) {
-      navigator.removeRoute(open);
-      openApproval(services, authReqId);
-      return;
-    }
     focusApprovals();
+    final above = stack.sublist(stack.indexOf(open) + 1);
+    final cardAbove = above.any((r) =>
+        r.settings.name?.startsWith(ApprovalScreen.routePrefix) ?? false);
+    if (!cardAbove) navigator.popUntil((r) => identical(r, open));
   }
 
   /// Opens the card for [authReqId] inside the Approvals tab (a tapped notification). While the app has no shell yet (it is still checking enrollment, or the device is not enrolled) the request is kept and opened when the shell appears.

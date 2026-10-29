@@ -226,7 +226,11 @@ class SettingsController extends ChangeNotifier {
       _settings = settings;
       _phase = SettingsPhase.ready;
       _offline = false;
-      if (inPlace) _error = null;
+      if (inPlace) {
+        // What the last step did is old news once the data is fresh.
+        _error = null;
+        _notice = null;
+      }
     } on Object catch (e) {
       if (inPlace && changes != _changes) return;
       _fail(e);
@@ -251,14 +255,18 @@ class SettingsController extends ChangeNotifier {
       final record = await _record();
       await client.cancelDevice(record.deviceToken, kid);
       if (kid == record.kid) {
-        // This device is the cancelled one: it is signed out for good.
-        await enrollment.clear();
-        await enrollment.clearAlias();
+        // This device is the cancelled one: it is signed out for good. The key and alias go first: clearing the enrollment signs the app out at once, and a new enrollment started then must not lose its alias to this cleanup.
         try {
           await keys.delete(record.kid);
         } on Object {
           // The key is useless without an enrollment.
         }
+        try {
+          await enrollment.clearAlias();
+        } on Object {
+          // A stale alias is only reused for the next key.
+        }
+        await enrollment.clear();
         _devices = const [];
         _settings = null;
         _phase = SettingsPhase.unavailable;

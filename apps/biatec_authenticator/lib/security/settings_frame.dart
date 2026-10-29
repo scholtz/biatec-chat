@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../shell/tab_reload.dart';
+import '../theme.dart';
 import '../ui/ui.dart';
 import 'settings_controller.dart';
 
@@ -14,10 +15,14 @@ class SettingsFrame extends StatefulWidget {
     required this.services,
     required this.builder,
     this.footer,
+    this.controller,
   });
 
   final String title;
   final SettingsServices services;
+
+  /// Shared by the settings tabs of the shell, so the data is loaded once for all of them; the frame makes (and disposes) its own when null.
+  final SettingsController? controller;
 
   /// The screen body once loaded.
   final List<Widget> Function(BuildContext, SettingsController) builder;
@@ -36,8 +41,12 @@ class _SettingsFrameState extends State<SettingsFrame>
   @override
   void initState() {
     super.initState();
-    _controller = widget.services.controller();
-    if (widget.services.enabled) _controller.load();
+    _controller = widget.controller ?? widget.services.controller();
+    // A shared controller another tab has loaded already is used as it is.
+    if (widget.services.enabled &&
+        _controller.phase == SettingsPhase.loading) {
+      _controller.load();
+    }
   }
 
   @override
@@ -47,7 +56,7 @@ class _SettingsFrameState extends State<SettingsFrame>
 
   @override
   void dispose() {
-    _controller.dispose();
+    if (widget.controller == null) _controller.dispose();
     super.dispose();
   }
 
@@ -81,47 +90,39 @@ class _SettingsFrameState extends State<SettingsFrame>
                 onRetry: c.load,
               );
             case SettingsPhase.ready:
-              return ListView(
-                children: [
-                  if (c.busy) const LinearProgressIndicator(),
-                  if (c.error != null)
-                    _Status(
+              return RefreshIndicator(
+                onRefresh: () => c.load(quiet: true),
+                child: ListView(
+                  children: [
+                    if (c.busy) const LinearProgressIndicator(),
+                    if (c.error != null)
+                      Padding(
                         key: const Key('status-error'),
-                        icon: Icons.error_outline,
-                        label: 'Problem',
-                        text: c.error!),
-                  if (c.notice != null)
-                    _Status(
+                        padding: const EdgeInsets.all(AppSpacing.s),
+                        child: StatusBanner(
+                            severity: StatusSeverity.danger,
+                            title: 'Problem',
+                            message: c.error!),
+                      ),
+                    if (c.notice != null)
+                      Padding(
                         key: const Key('status-notice'),
-                        icon: Icons.check_circle_outline,
-                        label: 'Done',
-                        text: c.notice!),
-                  ...widget.builder(context, c),
-                ],
+                        padding: const EdgeInsets.all(AppSpacing.s),
+                        // Announced like a problem is: the user waits for it.
+                        child: Semantics(
+                          liveRegion: true,
+                          child: StatusBanner(
+                              severity: StatusSeverity.success,
+                              title: 'Done',
+                              message: c.notice!),
+                        ),
+                      ),
+                    ...widget.builder(context, c),
+                  ],
+                ),
               );
           }
         },
-      ),
-    );
-  }
-}
-
-class _Status extends StatelessWidget {
-  const _Status(
-      {super.key, required this.icon, required this.label, required this.text});
-
-  final IconData icon;
-  final String label;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      liveRegion: true,
-      child: ListTile(
-        leading: Icon(icon),
-        title: Text(label, style: Theme.of(context).textTheme.labelLarge),
-        subtitle: Text(text),
       ),
     );
   }

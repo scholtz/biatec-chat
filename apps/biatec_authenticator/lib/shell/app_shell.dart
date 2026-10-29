@@ -84,8 +84,14 @@ class _AppShellState extends State<AppShell> {
         old.push == widget.push);
   }
 
+  /// One for the Devices, Clients and Settings tabs: they show the same data, which is then loaded once.
+  SettingsController get _settings =>
+      _settingsController ??= widget.settings.controller();
+  SettingsController? _settingsController;
+
   @override
   void dispose() {
+    _settingsController?.dispose();
     widget.controller.removeListener(_onSelect);
     // The next shell (after a sign-out and a new enrollment) starts on Approvals.
     widget.controller.reset();
@@ -105,10 +111,14 @@ class _AppShellState extends State<AppShell> {
             onCount: (n) => widget.controller.pendingCount.value = n,
           ),
         AppTab.history => HistoryScreen(history: widget.approvals.history),
-        AppTab.devices => DevicesScreen(services: widget.settings),
-        AppTab.clients => ClientsScreen(services: widget.settings),
+        AppTab.devices =>
+          DevicesScreen(services: widget.settings, controller: _settings),
+        AppTab.clients =>
+          ClientsScreen(services: widget.settings, controller: _settings),
         AppTab.settings => SecurityScreen(
-            services: widget.settings, server: widget.config.oidcBaseUrl),
+            services: widget.settings,
+            server: widget.config.oidcBaseUrl,
+            controller: _settings),
       };
 
   /// Back goes up inside the tab first, then to the first tab, and only then leaves the app.
@@ -152,10 +162,12 @@ class _AppShellState extends State<AppShell> {
       children: [
         for (final tab in AppTab.values)
           _visited.contains(tab)
-              // Tabs that are not showing stop their animations.
+              // Tabs that are not showing stop their animations and cannot be reached with the keyboard or switch access.
               ? TickerMode(
                   enabled: tab == c.selected,
-                  child: _TabNavigator(
+                  child: ExcludeFocus(
+                    excluding: tab != c.selected,
+                    child: _TabNavigator(
                     key: ValueKey(tab),
                     navigatorKey: c.navigators[tab]!,
                     push: widget.push,
@@ -163,6 +175,7 @@ class _AppShellState extends State<AppShell> {
                     root: _root(tab),
                     reload: c.reloads[tab]!,
                     tab: tab,
+                  ),
                   ),
                 )
               : const SizedBox.shrink(),

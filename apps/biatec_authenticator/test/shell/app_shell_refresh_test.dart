@@ -11,6 +11,7 @@ import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:biatec_authenticator/main.dart';
 import 'package:biatec_authenticator/push/push_controller.dart';
+import 'package:biatec_authenticator/security/security_screen.dart';
 import 'package:biatec_authenticator/shell/shell_controller.dart';
 import 'package:biatec_authenticator/shell/tab_reload.dart';
 import 'package:biatec_authenticator/ui/ui.dart';
@@ -118,6 +119,44 @@ void main() {
     await tester.pump();
     expect(find.byKey(const Key('history-ciba_old')), findsOneWidget);
     expect(find.text('History could not be read'), findsNothing);
+    expect(find.byKey(const Key('history-stale')), findsOneWidget,
+        reason: 'the user is told it is not fresh');
+    history.broken = false;
+    await tester.tap(find.text('Try again'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const Key('history-stale')), findsNothing);
+  });
+
+  testWidgets('the settings tabs share one controller and load once',
+      (tester) async {
+    final rig = ShellRig();
+    await rig.pump(tester);
+    final before = rig.settings.oidc.deviceListCalls;
+    for (final tab in ['Devices', 'Clients', 'Settings']) {
+      await tester.tap(inBar(tab));
+      await tester.pumpAndSettle();
+    }
+    expect(rig.settings.oidc.deviceListCalls - before, 1);
+    await rig.dispose(tester);
+  });
+
+  testWidgets('tabs that are not showing cannot take the keyboard focus',
+      (tester) async {
+    final rig = ShellRig();
+    await rig.pump(tester);
+    await tester.tap(inBar('Settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(inBar('Approvals'));
+    await tester.pumpAndSettle();
+    bool excluded(Type screen) => tester
+        .widgetList<ExcludeFocus>(find.ancestor(
+            of: find.byType(screen, skipOffstage: false),
+            matching: find.byType(ExcludeFocus, skipOffstage: false)))
+        .any((w) => w.excluding);
+    expect(excluded(SecurityScreen), isTrue);
+    expect(excluded(PendingScreen), isFalse);
+    await rig.dispose(tester);
   });
 
   testWidgets('the empty list can be pulled to refresh', (tester) async {
