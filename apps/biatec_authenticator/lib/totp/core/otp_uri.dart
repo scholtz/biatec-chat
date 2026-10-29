@@ -136,11 +136,12 @@ abstract final class OtpUri {
       algorithm = a;
     }
 
+    // The parser only reads the numbers; their ranges are the account's to judge (its refusal is mapped below).
     var digits = 6;
     final digitsText = param('digits');
     if (digitsText != null) {
       final d = _wholeNumber(digitsText);
-      if (d == null || !OtpLimits.validDigits(d)) {
+      if (d == null) {
         throw const OtpUriException(
             OtpUriError.invalidDigits, OtpLimits.digitsMessage);
       }
@@ -150,9 +151,9 @@ abstract final class OtpUri {
     var period = OtpLimits.defaultPeriod;
     final periodText = param('period');
     if (periodText != null) {
-      // Checked for both types, so a bad value is never let through; only a time-based account uses it.
       final p = _wholeNumber(periodText);
-      if (p == null || !OtpLimits.validPeriod(p)) {
+      // A counter-based account does not get the period, so its range is checked here: a bad value is never let through.
+      if (p == null || (type == OtpType.hotp && !OtpLimits.validPeriod(p))) {
         throw const OtpUriException(
             OtpUriError.invalidPeriod, OtpLimits.periodMessage);
       }
@@ -172,7 +173,8 @@ abstract final class OtpUri {
             'The counter in this link is not valid.');
       }
       counter = c;
-    } else if (counterText != null) {
+    } else if (counterText != null && _wholeNumber(counterText) != 0) {
+      // "counter=0" is harmless (generators that write every field add it); any other value means the link is for something else.
       throw const OtpUriException(OtpUriError.unexpectedCounter,
           'A time-based account does not have a counter.');
     }
@@ -194,14 +196,21 @@ abstract final class OtpUri {
       issuer = issuerParam;
       final want = _nameKey(issuerParam);
       // Some services write a space in the path as a literal "+" (the issuer setting was already form-decoded), so the prefix matches as written or with those read as spaces. Both readings have their colons in the same places.
-      final spaced = _label(raw.label, plusAsSpace: true);
-      for (var i = decoded.indexOf(':');
-          i >= 0;
-          i = decoded.indexOf(':', i + 1)) {
-        if (_nameKey(decoded.substring(0, i)) == want ||
-            _nameKey(spaced.substring(0, i)) == want) {
-          label = decoded.substring(i + 1);
-          break;
+      final spaced = raw.label.contains('+')
+          ? _label(raw.label, plusAsSpace: true)
+          : decoded;
+      if (decoded.startsWith(':')) {
+        // An empty prefix (":name", as write puts it before a name with a colon) says the label has no issuer part.
+        label = decoded.substring(1);
+      } else {
+        for (var i = decoded.indexOf(':');
+            i >= 0;
+            i = decoded.indexOf(':', i + 1)) {
+          if (_nameKey(decoded.substring(0, i)) == want ||
+              _nameKey(spaced.substring(0, i)) == want) {
+            label = decoded.substring(i + 1);
+            break;
+          }
         }
       }
     }
@@ -295,6 +304,11 @@ abstract final class OtpUri {
     // Uri.encodeFull would also escape the "%" of real escapes, so only what cannot stand raw in a URI is encoded here.
     final encoded = StringBuffer();
     for (final r in raw.runes) {
+      if (r >= 0xD800 && r <= 0xDFFF) {
+        // An unpaired surrogate: UTF-8 would turn it into U+FFFD and hide it from the name check.
+        throw const OtpUriException(
+            OtpUriError.invalidName, 'The name in this link is not valid.');
+      }
       if (plusAsSpace && r == 0x2B) {
         encoded.write('%20');
       } else if (r > 0x20 && r < 0x7F) {
@@ -316,12 +330,12 @@ abstract final class OtpUri {
 
   static final _strayPercent = RegExp(r'%(?![0-9A-Fa-f]{2})');
 
-  /// Digits only: no sign, no decimal point, no spaces.
-  static final _digitsOnly = RegExp(r'^[0-9]{1,15}$');
+  /// Digits only: no sign, no decimal point, no spaces. Leading zeros do not count towards the 15 digits, so a zero-padded value in range is read.
+  static final _digitsOnly = RegExp(r'^0*([0-9]{1,15})$');
 
   static int? _wholeNumber(String text) {
-    if (!_digitsOnly.hasMatch(text)) return null;
-    return int.parse(text);
+    final m = _digitsOnly.firstMatch(text);
+    return m == null ? null : int.parse(m.group(1)!);
   }
 
   /// Spacing only: a "+" is a real character here ("C++").

@@ -817,6 +817,49 @@ void main() {
       expect(Base32.decode('MY======  '), utf8.encode('f'));
     });
 
+    test('a leading colon with an issuer setting means no issuer prefix', () {
+      final a = OtpUri.parse('otpauth://totp/:alice@x.com?$s&issuer=Acme');
+      expect(a.issuer, 'Acme');
+      expect(a.label, 'alice@x.com');
+      expect(OtpUri.parse('otpauth://totp/:?$s&issuer=Acme').label, 'Acme');
+    });
+
+    test('an unpaired surrogate in the raw label is refused', () {
+      final lone = String.fromCharCode(0xD800);
+      expect(errorOf('otpauth://totp/a${lone}b?$s'), OtpUriError.invalidName);
+    });
+
+    test('zero-padded numbers in range are read', () {
+      final h = OtpUri.parse(
+          'otpauth://hotp/x?$s&counter=000000000000000000001&digits=0008');
+      expect(h.counter, 1);
+      expect(h.digits, 8);
+    });
+
+    test('counter=0 on a time-based link is harmless', () {
+      expect(
+          OtpUri.parse('otpauth://totp/x?$s&counter=0&period=30').counter, 0);
+      expect(OtpUri.parse('otpauth://totp/x?$s&counter=00').counter, 0);
+    });
+
+    test('a wrong character is named before misplaced padding', () {
+      try {
+        Base32.decode('JBSW=0');
+        fail('should refuse');
+      } on Base32Exception catch (e) {
+        expect(e.message, contains('not part of Base32'));
+      }
+    });
+
+    test('digit and period ranges come from the account', () {
+      expect(
+          errorOf('otpauth://totp/x?$s&digits=9'), OtpUriError.invalidDigits);
+      expect(
+          errorOf('otpauth://totp/x?$s&period=5'), OtpUriError.invalidPeriod);
+      expect(errorOf('otpauth://hotp/x?$s&counter=1&period=5'),
+          OtpUriError.invalidPeriod);
+    });
+
     test('the model says which rule a value broke', () {
       OtpAccountProblem problemOf(void Function() make) {
         try {

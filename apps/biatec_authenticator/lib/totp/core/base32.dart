@@ -65,12 +65,12 @@ abstract final class Base32 {
           throw const Base32Exception('The key has broken-up padding.');
         }
         pads++;
-      } else if (pads > 0) {
-        // Padding is only allowed at the end.
-        throw const Base32Exception('The key has padding in the middle.');
       } else if (_value(u) == null) {
         throw const Base32Exception('The key has a character that is not '
             'part of Base32 (letters A to Z and digits 2 to 7).');
+      } else if (pads > 0) {
+        // Padding is only allowed at the end.
+        throw const Base32Exception('The key has padding in the middle.');
       } else {
         count++;
       }
@@ -78,7 +78,7 @@ abstract final class Base32 {
     if (count == 0) {
       throw const Base32Exception('The key is empty.', empty: true);
     }
-    // Leftover bits that do not fill a byte are dropped, as other authenticator apps do, whatever the length: some services hand out such keys, and refusing would lock the user out of that account. Padding is defined only for whole-byte lengths, so it must then be exact.
+    // Leftover bits that do not fill a byte are dropped, as other authenticator apps do, whatever the length (even 1, 3 or 6 characters past a group, which RFC 4648 cannot produce): some services hand out such keys, and refusing would lock the user out of that account. The cost: a mistyped extra character is not caught here, and makes codes the service refuses. Padding is defined only for whole-byte lengths, so it must then be exact.
     final want = _padFor[count % 8];
     if (pads != 0 && pads != want) {
       throw const Base32Exception('The key has the wrong padding.');
