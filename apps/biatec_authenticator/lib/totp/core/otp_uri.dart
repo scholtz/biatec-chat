@@ -85,7 +85,8 @@ abstract final class OtpUri {
       throw notOtpAuth;
     }
     if (uri.scheme.toLowerCase() != 'otpauth') throw notOtpAuth;
-    // The label is read from the raw text; refuse anything (user info, a port) that would let that reading and Uri.parse disagree on where the type ends.
+    // The label is read from the raw text; refuse anything (no "//", user info, a port) that would let that reading and Uri.parse disagree on where the type ends.
+    if (!uri.hasAuthority) throw notOtpAuth;
     final raw = _rawParts(text);
     if (uri.userInfo.isNotEmpty ||
         uri.hasPort ||
@@ -152,7 +153,7 @@ abstract final class OtpUri {
     final periodText = param('period');
     if (periodText != null) {
       final p = _wholeNumber(periodText);
-      // A counter-based account does not get the period, so its range is checked here: a bad value is never let through.
+      // A counter-based account does not take a period (it would be lost in its link), so the account cannot judge this one: the same OtpLimits rule is applied here instead, and the value is then dropped. A bad value is never let through.
       if (p == null || (type == OtpType.hotp && !OtpLimits.validPeriod(p))) {
         throw const OtpUriException(
             OtpUriError.invalidPeriod, OtpLimits.periodMessage);
@@ -160,30 +161,20 @@ abstract final class OtpUri {
       if (type == OtpType.totp) period = p;
     }
 
-    var counter = 0;
     final counterText = param('counter');
-    if (type == OtpType.hotp) {
-      if (counterText == null) {
-        throw const OtpUriException(OtpUriError.missingCounter,
-            'A counter-based account needs its starting counter.');
-      }
-      final c = _wholeNumber(counterText);
-      if (c == null) {
-        throw const OtpUriException(OtpUriError.invalidCounter,
-            'The counter in this link is not valid.');
-      }
-      counter = c;
-    } else if (counterText != null) {
-      final c = _wholeNumber(counterText);
-      if (c == null) {
-        throw const OtpUriException(OtpUriError.invalidCounter,
-            'The counter in this link is not valid.');
-      }
-      // "counter=0" is harmless (generators that write every field add it); any other value means the link is for something else.
-      if (c != 0) {
-        throw const OtpUriException(OtpUriError.unexpectedCounter,
-            'A time-based account does not have a counter.');
-      }
+    if (counterText == null && type == OtpType.hotp) {
+      throw const OtpUriException(OtpUriError.missingCounter,
+          'A counter-based account needs its starting counter.');
+    }
+    final counter = counterText == null ? 0 : _wholeNumber(counterText);
+    if (counter == null) {
+      throw const OtpUriException(
+          OtpUriError.invalidCounter, 'The counter in this link is not valid.');
+    }
+    // On a time-based link "counter=0" is harmless (generators that write every field add it); any other value means the link is for something else.
+    if (type == OtpType.totp && counter != 0) {
+      throw const OtpUriException(OtpUriError.unexpectedCounter,
+          'A time-based account does not have a counter.');
     }
 
     // The label is "Issuer:account" or just "account", percent-encoded. A "+" stays a "+" (RFC 3986 paths, and plus-addressed emails such as a+b@example.com depend on it); only the query turns "+" into a space.
@@ -345,10 +336,8 @@ abstract final class OtpUri {
     return m == null ? null : int.parse(m.group(1)!);
   }
 
-  /// Spacing only: a "+" is a real character here ("C++").
-  static final _spaces = RegExp(r'\s+');
-
-  /// A name without case or spacing, as services write their own name differently in both.
+  /// A name without case or spacing ([OtpLimits.isSpace]; a "+" is a real character here, as in "C++"), as services write their own name differently in both.
   static String _nameKey(String name) =>
-      name.replaceAll(_spaces, '').toLowerCase();
+      String.fromCharCodes(name.runes.where((u) => !OtpLimits.isSpace(u)))
+          .toLowerCase();
 }

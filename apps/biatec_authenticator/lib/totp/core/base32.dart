@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'otp_account.dart';
+
 /// A string that is not valid Base32. The message never contains the input, which may be a secret.
 class Base32Exception implements Exception {
   const Base32Exception(this.message,
@@ -30,21 +32,12 @@ abstract final class Base32 {
   /// `=` characters that complete a last group of 2, 4, 5 or 7 characters to 8.
   static const _padFor = {0: 0, 2: 6, 4: 4, 5: 3, 7: 1};
 
-  /// Whitespace (including the no-break and thin spaces web pages lay keys out with) and dashes.
+  /// Whitespace (the shared [OtpLimits.isSpace], which includes the no-break and thin spaces web pages lay keys out with) and dashes.
   static bool _separator(int u) =>
-      u == 0x20 ||
-      u == 0x09 ||
-      u == 0x0A ||
-      u == 0x0D ||
+      OtpLimits.isSpace(u) ||
       u == 0x2D ||
-      u == 0x00A0 ||
-      u == 0x1680 ||
-      (u >= 0x2000 && u <= 0x200A) ||
       u == 0x2010 || // hyphen
-      u == 0x2011 || // non-breaking hyphen
-      u == 0x202F ||
-      u == 0x205F ||
-      u == 0x3000;
+      u == 0x2011; // non-breaking hyphen
 
   /// Decodes [input]. Case, spaces, dashes and missing `=` padding are tolerated, because people copy setup keys from web pages in groups of four. Padding, when present, must be the exact amount; anything else outside the alphabet is refused.
   ///

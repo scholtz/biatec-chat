@@ -78,6 +78,20 @@ abstract final class OtpLimits {
   static const counterMessage = 'The counter must be a whole number from 0 '
       'to $maxCounter.';
 
+  /// Unicode White_Space, the one idea of a space shared by Base32 (between key groups), names (turned into a plain space) and the issuer comparison.
+  static bool isSpace(int u) =>
+      (u >= 0x09 && u <= 0x0D) ||
+      u == 0x20 ||
+      u == 0x85 ||
+      u == 0xA0 ||
+      u == 0x1680 ||
+      (u >= 0x2000 && u <= 0x200A) ||
+      u == 0x2028 ||
+      u == 0x2029 ||
+      u == 0x202F ||
+      u == 0x205F ||
+      u == 0x3000;
+
   /// Control characters, invisible characters, and the characters that reorder text: any of them can make two different names look the same or make "evil.com" display as something else.
   static bool hasUnsafeCharacters(String text) {
     for (final u in text.runes) {
@@ -176,16 +190,9 @@ class OtpAccount {
   }) : _secret = secret;
 
   /// Unicode spaces (no-break, thin, ideographic and the like) look like a plain space, so they become one: "Git", U+00A0, "Hub" and "Git Hub" are then the same name, not a look-alike.
-  static String _plainSpaces(String s) =>
-      String.fromCharCodes(s.runes.map((u) => _isUnicodeSpace(u) ? 0x20 : u));
-
-  static bool _isUnicodeSpace(int u) =>
-      u == 0x00A0 ||
-      u == 0x1680 ||
-      (u >= 0x2000 && u <= 0x200A) ||
-      u == 0x202F ||
-      u == 0x205F ||
-      u == 0x3000;
+  /// Spaces that are control or separator characters (a line break, say) are left alone, so the name check still refuses them.
+  static String _plainSpaces(String s) => String.fromCharCodes(s.runes
+      .map((u) => OtpLimits.isSpace(u) && !OtpLimits._isUnsafe(u) ? 0x20 : u));
 
   /// The one place the account rules are checked; the parser maps the [OtpAccountException] to its own error.
   static Uint8List _checkedCopy(Uint8List secret, String issuer, String label,
@@ -226,8 +233,14 @@ class OtpAccount {
 
   final Uint8List _secret;
 
-  /// A read-only view of the secret: only [wipe] changes it. Showing or exporting it is for the vault and backup code to refuse (PRODUCT-DESCRIPTION.md, "Seeds are never shown again").
-  Uint8List get secret => _secret.asUnmodifiableView();
+  /// A read-only view of the secret: only [wipe] changes it. Throws once wiped, so nothing can save or use the zeros in place of the key. Showing or exporting it is for the vault and backup code to refuse (PRODUCT-DESCRIPTION.md, "Seeds are never shown again").
+  Uint8List get secret {
+    checkUsable();
+    return _secret.asUnmodifiableView();
+  }
+
+  /// Whether every byte of the secret is zero, which [wipe] makes so. Tells nothing about the key itself; for tests and audits of the wipe.
+  bool get isZeroed => _secret.every((b) => b == 0);
   final OtpAlgorithm algorithm;
   final int digits;
 
@@ -255,6 +268,9 @@ class OtpAccount {
     bool clearId = false,
   }) {
     checkUsable();
+    if (clearId && id != null) {
+      throw ArgumentError('Give a new id or clear it, not both.');
+    }
     return OtpAccount(
       issuer: issuer ?? this.issuer,
       label: label ?? this.label,
@@ -288,8 +304,9 @@ class OtpAccount {
 
   /// The same credential: same secret and parameters. The names are not compared, because scanning one service's code twice under two spellings is still one account (the id and counter are not compared either, nor the period of a counter-based account, which it does not use).
   bool isDuplicateOf(OtpAccount other) {
-    // Zeros say nothing about the account they were: a wiped one is never a duplicate of anything.
-    if (_wiped || other._wiped) return false;
+    // Zeros say nothing about the account they were, and answering "no" would let the same key be stored twice: a wiped account throws, so the caller reloads first.
+    checkUsable();
+    other.checkUsable();
     if (algorithm != other.algorithm ||
         digits != other.digits ||
         (type == OtpType.totp && period != other.period) ||

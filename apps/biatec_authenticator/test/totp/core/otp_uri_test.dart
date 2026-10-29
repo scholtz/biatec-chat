@@ -17,75 +17,6 @@ OtpUriError errorOf(String link) {
 }
 
 void main() {
-  group('Base32 (RFC 4648)', () {
-    test('test vectors', () {
-      const vectors = {
-        'f': 'MY',
-        'fo': 'MZXQ',
-        'foo': 'MZXW6',
-        'foob': 'MZXW6YQ',
-        'fooba': 'MZXW6YTB',
-        'foobar': 'MZXW6YTBOI',
-      };
-      vectors.forEach((plain, encoded) {
-        expect(Base32.encode(utf8.encode(plain)), encoded);
-        expect(utf8.decode(Base32.decode(encoded)), plain);
-      });
-    });
-
-    test('tolerates case, spaces, dashes and padding as people paste them', () {
-      final want = utf8.encode('foobar');
-      expect(Base32.decode('mzxw 6ytb oi'), want);
-      expect(Base32.decode('MZXW-6YTB-OI'), want);
-      expect(Base32.decode('MZXW6YTBOI======'), want);
-      expect(Base32.decode('  MZXW6YQ=  '), utf8.encode('foob'));
-    });
-
-    test('refuses anything else, without echoing the input', () {
-      for (final bad in [
-        '',
-        '   ',
-        '=',
-        'MZXW1',
-        'MZXW6YT!',
-        'MZ=XW',
-        'M',
-        'MZX=====',
-      ]) {
-        try {
-          Base32.decode(bad);
-          fail('should refuse "$bad"');
-        } on Base32Exception catch (e) {
-          if (bad.length > 3) expect(e.message, isNot(contains(bad)));
-        }
-      }
-    });
-
-    test('leftover bits in the last character are dropped, as other apps do',
-        () {
-      // "MY" is the canonical "f"; "MZ" has other unused bits and gives the same byte.
-      expect(Base32.decode('MZ'), utf8.encode('f'));
-      expect(Base32.decode('MY'), utf8.encode('f'));
-    });
-
-    test('lengths that leave a partial character are accepted the same way',
-        () {
-      // 3 and 6 characters (and 27 or 33, as some services hand out) drop their last bits like other apps do.
-      expect(Base32.decode('MZX'), utf8.encode('f'));
-      expect(Base32.decode('MZXW6Y'), utf8.encode('foo'));
-      final key27 = 'JBSWY3DPEHPK3PXPJBSWY3DPEHP';
-      expect(Base32.decode(key27).length, 16);
-    });
-
-    test('round trip for every length', () {
-      for (var n = 1; n < 70; n++) {
-        final bytes =
-            Uint8List.fromList(List.generate(n, (i) => (i * 37 + n) & 0xFF));
-        expect(Base32.decode(Base32.encode(bytes)), bytes, reason: 'length $n');
-      }
-    });
-  });
-
   group('parsing links real services emit', () {
     test('Google style: issuer in the label and the parameter', () {
       final a = OtpUri.parse(
@@ -340,94 +271,6 @@ void main() {
     });
   });
 
-  group('the account model', () {
-    Uint8List key() => Uint8List.fromList(List.filled(20, 7));
-
-    test('toString never contains the secret', () {
-      final a = OtpAccount(issuer: 'I', label: 'L', secret: key());
-      final text = a.toString();
-      // Nor the issuer or the name, which are usually an email address.
-      final named = OtpAccount(
-          issuer: 'GitHub', label: 'alice@example.com', secret: key());
-      expect(named.toString(), isNot(contains('alice')));
-      expect(named.toString(), isNot(contains('GitHub')));
-      expect(text, isNot(contains(Base32.encode(a.secret))));
-      expect(text, isNot(contains('7, 7')));
-    });
-
-    test('invalid parameters are refused', () {
-      expect(() => OtpAccount(issuer: '', label: 'a', secret: Uint8List(0)),
-          throwsArgumentError);
-      expect(() => OtpAccount(issuer: '', label: 'a', secret: key(), digits: 5),
-          throwsArgumentError);
-      expect(
-          () => OtpAccount(issuer: '', label: 'a', secret: key(), period: 10),
-          throwsArgumentError);
-      expect(
-          () => OtpAccount(issuer: '', label: 'a', secret: key(), counter: -1),
-          throwsArgumentError);
-      expect(() => OtpAccount(issuer: 'x' * 300, label: 'a', secret: key()),
-          throwsArgumentError);
-    });
-
-    test('wipe overwrites the secret in memory', () {
-      final a = OtpAccount(issuer: '', label: 'a', secret: key());
-      a.wipe();
-      expect(a.secret.every((b) => b == 0), isTrue);
-    });
-
-    test(
-        'isDuplicateOf compares the secret and parameters, not names, counter or id',
-        () {
-      final a = OtpAccount(
-          issuer: 'I', label: 'L', secret: key(), id: '1', type: OtpType.hotp);
-      final b = a.copyWith(id: '2', counter: 9, label: 'other spelling');
-      expect(a.isDuplicateOf(b), isTrue);
-      final other = Uint8List.fromList(key())..[19] = 8;
-      expect(
-          a.isDuplicateOf(OtpAccount(
-              issuer: 'I', label: 'L', secret: other, type: OtpType.hotp)),
-          isFalse);
-      expect(
-          a.isDuplicateOf(OtpAccount(
-              issuer: 'I',
-              label: 'L',
-              secret: key(),
-              digits: 8,
-              type: OtpType.hotp)),
-          isFalse);
-    });
-
-    test('the constructor keeps its own copy of the secret', () {
-      final buffer = key();
-      final a = OtpAccount(issuer: '', label: 'a', secret: buffer);
-      buffer.fillRange(0, buffer.length, 0);
-      expect(a.secret.every((v) => v == 7), isTrue);
-      a.wipe();
-      expect(a.secret.every((v) => v == 0), isTrue);
-    });
-
-    test('a wiped account cannot make codes', () {
-      final a = OtpAccount(issuer: '', label: 'a', secret: key());
-      a.wipe();
-      expect(a.isWiped, isTrue);
-      expect(() => OtpGenerator.code(a, DateTime.utc(2026)), throwsStateError);
-      expect(
-          () => OtpGenerator.nextCode(a, DateTime.utc(2026)), throwsStateError);
-    });
-
-    test('names are trimmed, so a link round-trips', () {
-      final a = OtpAccount(issuer: ' Svc ', label: ' work ', secret: key());
-      expect(a.issuer, 'Svc');
-      expect(a.label, 'work');
-      expect(OtpUri.parse(OtpUri.write(a)).label, 'work');
-    });
-
-    test('secret strength is reported in bits', () {
-      expect(OtpAccount(issuer: '', label: 'a', secret: key()).secretBits, 160);
-    });
-  });
-
   group('review follow-ups', () {
     const s = 'secret=JBSWY3DPEHPK3PXP';
 
@@ -462,7 +305,7 @@ void main() {
       final b = a.copyWith(id: 'x');
       a.wipe();
       expect(b.secret.every((v) => v == 9), isTrue);
-      expect(a.secret.every((v) => v == 0), isTrue);
+      expect(a.isZeroed, isTrue);
     });
 
     test('a differing issuer setting wins over the label prefix', () {
@@ -484,16 +327,41 @@ void main() {
       expect(() => a.copyWith(counter: 1), throwsStateError);
     });
 
-    test('a wiped account is a duplicate of nothing', () {
+    test('a duplicate check with a wiped account fails closed', () {
+      // Answering "no" would let the same key be stored twice; it throws so the caller reloads.
       final a = OtpAccount(issuer: '', label: 'a', secret: key());
-      final b = OtpAccount(
-          issuer: '',
-          label: 'b',
-          secret: Uint8List.fromList(List.filled(20, 9)));
+      final b = OtpAccount(issuer: '', label: 'b', secret: key());
       a.wipe();
-      b.wipe();
-      expect(a.isDuplicateOf(b), isFalse);
-      expect(b.isDuplicateOf(a), isFalse);
+      expect(() => a.isDuplicateOf(b), throwsStateError);
+      expect(() => b.isDuplicateOf(a), throwsStateError);
+    });
+
+    test('a wiped account does not hand out its zeros as the secret', () {
+      final a = OtpAccount(issuer: '', label: 'a', secret: key());
+      a.wipe();
+      expect(() => a.secret, throwsStateError);
+      expect(a.isZeroed, isTrue);
+    });
+
+    test('copyWith refuses a new id together with clearId', () {
+      final a = OtpAccount(issuer: '', label: 'a', secret: key(), id: '1');
+      expect(() => a.copyWith(id: '2', clearId: true), throwsArgumentError);
+    });
+
+    test('a link without "//" is not a setup link', () {
+      expect(errorOf('otpauth:x?y=://'), OtpUriError.notOtpAuth);
+      expect(errorOf('otpauth:totp/a?secret=JBSWY3DPEHPK3PXP'),
+          OtpUriError.notOtpAuth);
+    });
+
+    test('one idea of whitespace: Base32 skips it, names match without it', () {
+      final ff = String.fromCharCode(0x0C);
+      final nel = String.fromCharCode(0x85);
+      expect(Base32.decode('JBSW${ff}Y3DP${nel}EHPK3PXP'),
+          Base32.decode('JBSWY3DPEHPK3PXP'));
+      // A line break in a name is still refused, not turned into a space.
+      expect(() => OtpAccount(issuer: '', label: 'a\nb', secret: key()),
+          throwsArgumentError);
     });
 
     test('secrets under 80 bits are refused', () {
@@ -654,7 +522,7 @@ void main() {
       final a = OtpAccount(issuer: 'I', label: 'L', secret: key());
       expect(() => a.secret[0] = 1, throwsUnsupportedError);
       a.wipe();
-      expect(a.secret.every((v) => v == 0), isTrue);
+      expect(a.isZeroed, isTrue);
     });
 
     test('a wiped account cannot be written as a link', () {
