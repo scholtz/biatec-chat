@@ -37,6 +37,40 @@ abstract final class OtpLimits {
 
   /// The smallest secret accepted, 80 bits: what the smallest keys in wide use (Google's 16 characters) carry. A shorter one is guessable, so it is refused instead of shown as a normal account.
   static const minSecretBytes = 10;
+
+  /// Control characters, invisible characters, and the characters that reorder text: any of them can make two different names look the same or make "evil.com" display as something else.
+  static bool hasUnsafeCharacters(String text) {
+    for (final u in text.runes) {
+      if (_isUnsafe(u)) return true;
+    }
+    return false;
+  }
+
+  static bool _isUnsafe(int u) {
+    return u < 0x20 ||
+        (u >= 0x7F && u <= 0x9F) ||
+        u == 0x00AD ||
+        u == 0x061C ||
+        (u >= 0x180B && u <= 0x180F) || // Mongolian selectors, vowel separator
+        u == 0x17B4 ||
+        u == 0x17B5 || // Khmer invisible vowels
+        (u >= 0x200B && u <= 0x200F) || // zero width, direction marks
+        (u >= 0x2028 && u <= 0x202E) || // line separators, embeddings
+        (u >= 0x2060 && u <= 0x2064) || // word joiner, invisible operators
+        (u >= 0x2066 && u <= 0x206F) || // isolates, deprecated format controls
+        u == 0xFEFF ||
+        (u >= 0xFFF9 && u <= 0xFFFC) || // annotation, object replacement
+        (u >= 0x1BCA0 && u <= 0x1BCA3) || // shorthand format controls
+        (u >= 0x1D173 && u <= 0x1D17A) || // musical formatting
+        u == 0x034F || // combining grapheme joiner
+        u == 0x115F ||
+        u == 0x1160 || // Hangul fillers
+        u == 0x3164 ||
+        u == 0xFFA0 ||
+        u == 0x2800 || // braille blank
+        (u >= 0xFE00 && u <= 0xFE0F) || // variation selectors
+        (u >= 0xE0000 && u <= 0xE0FFF); // tags, variation selectors supplement
+  }
 }
 
 /// One two-factor account: who it is for, and the secret and parameters that make its codes.
@@ -57,7 +91,7 @@ class OtpAccount {
   })  : issuer = issuer.trim(),
         label = label.trim(),
         // Checked before the copy is made, so a refused account leaves no copy of the secret behind.
-        secret = _checkedCopy(
+        _secret = _checkedCopy(
             secret, issuer.trim(), label.trim(), digits, period, counter);
 
   static Uint8List _checkedCopy(Uint8List secret, String issuer, String label,
@@ -76,6 +110,13 @@ class OtpAccount {
         label.length > OtpLimits.maxTextLength) {
       throw ArgumentError('The issuer or name is too long.');
     }
+    // The same name rules as a scanned link, so a rename cannot bring back what the parser refuses.
+    if (label.isEmpty) throw ArgumentError('The account needs a name.');
+    if (OtpLimits.hasUnsafeCharacters(issuer) ||
+        OtpLimits.hasUnsafeCharacters(label)) {
+      throw ArgumentError('The issuer or name has invisible or '
+          'direction-changing characters.');
+    }
     return Uint8List.fromList(secret);
   }
 
@@ -85,7 +126,10 @@ class OtpAccount {
   /// The account at the service, for example an email address.
   final String label;
 
-  final Uint8List secret;
+  final Uint8List _secret;
+
+  /// A read-only view of the secret: only [wipe] changes it. Showing or exporting it is for the vault and backup code to refuse (PRODUCT-DESCRIPTION.md, "Seeds are never shown again").
+  Uint8List get secret => _secret.asUnmodifiableView();
   final OtpAlgorithm algorithm;
   final int digits;
 
@@ -100,7 +144,7 @@ class OtpAccount {
   final String? id;
 
   /// Strength of the secret in bits. RFC 4226 asks for at least 128, and 160 is recommended; some services give 80.
-  int get secretBits => secret.length * 8;
+  int get secretBits => _secret.length * 8;
 
   /// A copy with some fields changed (it has its own copy of the secret).
   OtpAccount copyWith({
@@ -130,7 +174,7 @@ class OtpAccount {
 
   /// Overwrites the secret in memory.
   void wipe() {
-    secret.fillRange(0, secret.length, 0);
+    _secret.fillRange(0, _secret.length, 0);
     _wiped = true;
   }
 
@@ -142,13 +186,13 @@ class OtpAccount {
         digits != other.digits ||
         (type == OtpType.totp && period != other.period) ||
         type != other.type ||
-        secret.length != other.secret.length) {
+        _secret.length != other._secret.length) {
       return false;
     }
     // Compared without stopping at the first different byte.
     var diff = 0;
-    for (var i = 0; i < secret.length; i++) {
-      diff |= secret[i] ^ other.secret[i];
+    for (var i = 0; i < _secret.length; i++) {
+      diff |= _secret[i] ^ other._secret[i];
     }
     return diff == 0;
   }

@@ -116,20 +116,7 @@ abstract final class OtpUri {
       throw const OtpUriException(
           OtpUriError.missingSecret, 'This link has no secret key.');
     }
-    final Uint8List secret;
-    try {
-      secret = Base32.decode(secretText);
-    } on Base32Exception {
-      throw const OtpUriException(OtpUriError.invalidSecret,
-          'The secret key in this link is not valid.');
-    }
-
-    if (secret.length < OtpLimits.minSecretBytes) {
-      secret.fillRange(0, secret.length, 0);
-      throw const OtpUriException(OtpUriError.weakSecret,
-          'The secret key in this link is too short to be safe.');
-    }
-
+    // Everything else is checked before the secret is decoded, so no refusal leaves a decoded secret behind.
     var algorithm = OtpAlgorithm.sha1;
     final algorithmText = param('algorithm');
     if (algorithmText != null) {
@@ -154,13 +141,14 @@ abstract final class OtpUri {
 
     var period = OtpLimits.defaultPeriod;
     final periodText = param('period');
-    if (periodText != null && type == OtpType.totp) {
+    if (periodText != null) {
+      // Checked for both types, so a bad value is never let through; only a time-based account uses it.
       final p = _wholeNumber(periodText);
       if (p == null || p < OtpLimits.minPeriod || p > OtpLimits.maxPeriod) {
         throw const OtpUriException(OtpUriError.invalidPeriod,
             'A code must last between 15 and 120 seconds.');
       }
-      period = p;
+      if (type == OtpType.totp) period = p;
     }
 
     var counter = 0;
@@ -217,13 +205,25 @@ abstract final class OtpUri {
           OtpUriError.invalidName, 'This account has no name.');
     }
     for (final t in [issuer, label]) {
-      if (_hasUnsafeCharacters(t) || t.length > OtpLimits.maxTextLength) {
+      if (OtpLimits.hasUnsafeCharacters(t) ||
+          t.length > OtpLimits.maxTextLength) {
         throw const OtpUriException(
             OtpUriError.invalidName, 'The name in this link is not valid.');
       }
     }
 
+    final Uint8List secret;
     try {
+      secret = Base32.decode(secretText);
+    } on Base32Exception {
+      throw const OtpUriException(OtpUriError.invalidSecret,
+          'The secret key in this link is not valid.');
+    }
+    try {
+      if (secret.length < OtpLimits.minSecretBytes) {
+        throw const OtpUriException(OtpUriError.weakSecret,
+            'The secret key in this link is too short to be safe.');
+      }
       return OtpAccount(
         issuer: issuer,
         label: label,
@@ -235,7 +235,7 @@ abstract final class OtpUri {
         counter: counter,
       );
     } finally {
-      // The account holds its own copy.
+      // The account holds its own copy, and a refusal needs none.
       secret.fillRange(0, secret.length, 0);
     }
   }
@@ -269,45 +269,11 @@ abstract final class OtpUri {
     return int.parse(text);
   }
 
-  static final _spaces = RegExp(r'\s+');
+  /// Spacing, and `+`, which some services use for a space in the label (the path keeps it, the query turns it into a space).
+  static final _spaces = RegExp(r'[\s+]+');
 
   /// Equal apart from case and spacing, as services write their own name.
   static bool _sameName(String a, String b) =>
       a.replaceAll(_spaces, '').toLowerCase() ==
       b.replaceAll(_spaces, '').toLowerCase();
-
-  /// Control characters, invisible characters, and the characters that reorder text: any of them can make two different names look the same or make "evil.com" display as something else.
-  static bool _hasUnsafeCharacters(String text) {
-    for (final u in text.runes) {
-      if (_isUnsafe(u)) return true;
-    }
-    return false;
-  }
-
-  static bool _isUnsafe(int u) {
-    return u < 0x20 ||
-        (u >= 0x7F && u <= 0x9F) ||
-        u == 0x00AD ||
-        u == 0x061C ||
-        (u >= 0x180B && u <= 0x180F) || // Mongolian selectors, vowel separator
-        u == 0x17B4 ||
-        u == 0x17B5 || // Khmer invisible vowels
-        (u >= 0x200B && u <= 0x200F) || // zero width, direction marks
-        (u >= 0x2028 && u <= 0x202E) || // line separators, embeddings
-        (u >= 0x2060 && u <= 0x2064) || // word joiner, invisible operators
-        (u >= 0x2066 && u <= 0x206F) || // isolates, deprecated format controls
-        u == 0xFEFF ||
-        (u >= 0xFFF9 &&
-            u <= 0xFFFC) || // interlinear annotation, object replacement
-        (u >= 0x1BCA0 && u <= 0x1BCA3) || // shorthand format controls
-        (u >= 0x1D173 && u <= 0x1D17A) || // musical formatting
-        u == 0x034F || // combining grapheme joiner
-        u == 0x115F ||
-        u == 0x1160 || // Hangul fillers
-        u == 0x3164 ||
-        u == 0xFFA0 ||
-        u == 0x2800 || // braille blank
-        (u >= 0xFE00 && u <= 0xFE0F) || // variation selectors
-        (u >= 0xE0000 && u <= 0xE0FFF); // tags, variation selectors supplement
-  }
 }

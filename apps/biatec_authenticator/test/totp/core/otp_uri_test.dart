@@ -585,6 +585,43 @@ void main() {
       expect(t60.isDuplicateOf(t30), isFalse);
     });
 
+    test('a refusal after the secret is valid wipes the decoded secret', () {
+      // Every other check runs before the secret is decoded, so these refusals hold no secret at all.
+      expect(errorOf('otpauth://totp/x?$s&algorithm=MD5'),
+          OtpUriError.invalidAlgorithm);
+      expect(errorOf('otpauth://totp/x%E2%80%AE?$s'), OtpUriError.invalidName);
+      // A malformed secret is still reported once the rest is fine.
+      expect(errorOf('otpauth://totp/x?secret=1'), OtpUriError.invalidSecret);
+    });
+
+    test('a bad period is refused on a counter-based link too', () {
+      expect(errorOf('otpauth://hotp/x?$s&counter=0&period=abc'),
+          OtpUriError.invalidPeriod);
+      expect(OtpUri.parse('otpauth://hotp/x?$s&counter=0&period=60').period,
+          OtpLimits.defaultPeriod);
+    });
+
+    test('a + in the label prefix matches a form-encoded issuer', () {
+      final a =
+          OtpUri.parse('otpauth://totp/Big+Corp:alice?issuer=Big+Corp&$s');
+      expect(a.issuer, 'Big Corp');
+      expect(a.label, 'alice');
+    });
+
+    test('the model refuses the names the parser refuses', () {
+      final a = OtpAccount(issuer: 'I', label: 'L', secret: key());
+      expect(() => a.copyWith(label: '202Elgoog'), throwsArgumentError);
+      expect(() => a.copyWith(label: '   '), throwsArgumentError);
+      expect(() => a.copyWith(issuer: 'Git200Bhub'), throwsArgumentError);
+    });
+
+    test('the secret cannot be changed through the account', () {
+      final a = OtpAccount(issuer: 'I', label: 'L', secret: key());
+      expect(() => a.secret[0] = 1, throwsUnsupportedError);
+      a.wipe();
+      expect(a.secret.every((v) => v == 0), isTrue);
+    });
+
     test('a refused account is refused before the secret is copied', () {
       for (final make in <void Function()>[
         () => OtpAccount(issuer: '', label: 'a', secret: key(), digits: 9),

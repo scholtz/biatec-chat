@@ -23,9 +23,12 @@ abstract final class OtpGenerator {
     if (digits < OtpLimits.minDigits || digits > OtpLimits.maxDigits) {
       throw ArgumentError('Digits must be 6 to 8.');
     }
-    // The counter is 8 bytes, big endian.
+    // The counter is 8 bytes, big endian, written as two 32-bit halves (setUint64 does not exist when compiled to JavaScript).
     final message = Uint8List(8);
-    ByteData.view(message.buffer).setUint64(0, counter);
+    ByteData.view(message.buffer)
+      ..setUint32(0, counter ~/ 0x100000000)
+      ..setUint32(4, counter % 0x100000000);
+    // package:crypto's Hmac keeps its own padded copy of the key until it is collected; it cannot be wiped from here, and the rules forbid our own HMAC. The account's copy is wiped on lock.
     final mac = Hmac(_hash(algorithm), secret).convert(message).bytes;
     final offset = mac[mac.length - 1] & 0x0F;
     final binary = ((mac[offset] & 0x7F) << 24) |
@@ -95,10 +98,13 @@ abstract final class OtpGenerator {
     return 1 - ((ms % periodMs) / periodMs);
   }
 
-  /// A code split for reading: `123 456`, `1234 5678`, `123 4567`.
+  /// A code in groups of three digits for reading (PRODUCT-DESCRIPTION.md, "The code list"): `123 456`, `123 456 7`, `123 456 78`.
   static String group(String code) {
-    final split = code.length == 8 ? 4 : 3;
-    if (code.length <= split) return code;
-    return '${code.substring(0, split)} ${code.substring(split)}';
+    final sb = StringBuffer();
+    for (var i = 0; i < code.length; i += 3) {
+      if (i > 0) sb.write(' ');
+      sb.write(code.substring(i, i + 3 > code.length ? code.length : i + 3));
+    }
+    return sb.toString();
   }
 }

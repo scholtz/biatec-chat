@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:biatec_authenticator/totp/core/otp_account.dart';
+import 'package:crypto/crypto.dart';
 import 'package:biatec_authenticator/totp/core/otp_generator.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -191,10 +192,24 @@ void main() {
   });
 
   group('display', () {
-    test('groups codes for reading', () {
+    test('groups codes in threes for reading, as the spec asks', () {
       expect(OtpGenerator.group('123456'), '123 456');
-      expect(OtpGenerator.group('12345678'), '1234 5678');
-      expect(OtpGenerator.group('1234567'), '123 4567');
+      expect(OtpGenerator.group('12345678'), '123 456 78');
+      expect(OtpGenerator.group('1234567'), '123 456 7');
+    });
+
+    test('a counter above 32 bits is written in full', () {
+      // RFC 4226 big-endian counter: the high half must not be lost.
+      final k = Uint8List.fromList(List.filled(20, 1));
+      final mac = Hmac(sha1, k).convert([0, 0, 0, 1, 0, 0, 0, 1]).bytes;
+      final o = mac[19] & 0x0F;
+      final want = (((mac[o] & 0x7F) << 24) |
+              (mac[o + 1] << 16) |
+              (mac[o + 2] << 8) |
+              mac[o + 3]) %
+          1000000;
+      expect(
+          OtpGenerator.hotp(k, 0x100000001), want.toString().padLeft(6, '0'));
     });
   });
 }
