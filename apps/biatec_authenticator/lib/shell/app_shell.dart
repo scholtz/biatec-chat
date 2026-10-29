@@ -64,8 +64,7 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
-    // A count left from an earlier shell (the device was re-enrolled) is not this session's.
-    widget.controller.pendingCount.value = 0;
+    // The controller may have been told to start on another tab (see ShellController.reset for the rest).
     widget.controller.approvalsActive.value =
         widget.controller.selected == AppTab.approvals;
     widget.controller.addListener(_onSelect);

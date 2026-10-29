@@ -38,16 +38,20 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
   @override
   void onReload() => _load();
 
+  /// Counts reads; only the latest one's answer is shown, so a slow older read cannot replace a newer list.
+  int _reads = 0;
+
   Future<void> _load() async {
+    final read = ++_reads;
     try {
       final entries = await widget.history.read();
-      if (!mounted) return;
+      if (!mounted || read != _reads) return;
       setState(() {
         _entries = entries;
         _failed = false;
       });
     } on Object {
-      if (!mounted) return;
+      if (!mounted || read != _reads) return;
       setState(() => _failed = true);
     }
   }

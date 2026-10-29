@@ -101,10 +101,10 @@ class ShellController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Shows [tab]. Choosing the tab that is already showing returns it to its first screen.
+  /// Shows [tab]. Choosing the tab that is already showing goes back towards its first screen, but never closes an approval card.
   void select(AppTab tab) {
     if (tab == _selected) {
-      navigators[tab]?.currentState?.popUntil((r) => r.isFirst);
+      _popTowardsRoot(tab);
       return;
     }
     _show(tab);
@@ -135,16 +135,20 @@ class ShellController extends ChangeNotifier {
     requestsChanged.value++;
   }
 
-  /// Shows the Approvals tab on its list, for the in-app notice.
+  /// Shows the Approvals tab on its list, for the in-app notice. A card the user has open stays: back from it leads to the list.
   void showApprovals() {
-    navigators[AppTab.approvals]?.currentState?.popUntil((r) => r.isFirst);
-    _show(AppTab.approvals);
+    _popTowardsRoot(AppTab.approvals);
+    if (_selected != AppTab.approvals) _show(AppTab.approvals);
   }
 
   /// Back to the first tab with nothing remembered, for a new session of the shell (after a sign-out and enrollment).
+  ///
+  /// What the shell session saw is reset; whether the app is in the foreground ([foreground], the pause time) belongs to the app, not the session, and stays, as does [canQueue], which the gate sets.
   void reset() {
     _selected = AppTab.approvals;
     approvalsActive.value = true;
+    // A count from the old session is not the next one's.
+    pendingCount.value = 0;
     _leftAt.clear();
     _queuedOpen = null;
     // A navigator that is taken down reports nothing about the routes it had.
@@ -164,9 +168,23 @@ class ShellController extends ChangeNotifier {
     }
     focusApprovals();
     final above = stack.sublist(stack.indexOf(open) + 1);
-    final cardAbove = above.any((r) =>
-        r.settings.name?.startsWith(ApprovalScreen.routePrefix) ?? false);
-    if (!cardAbove) navigator.popUntil((r) => identical(r, open));
+    if (above.every((r) => reopenableRoutes.contains(r.settings.name))) {
+      navigator.popUntil((r) => identical(r, open));
+    }
+  }
+
+  /// The recovery code screen inside the Approvals tab (opened from the banner).
+  static const recoveryCodeRoute = '/recovery-code';
+
+  /// Screens that may be closed for the user, because nothing is lost: they can be opened again as they were. An approval card is never one.
+  static const reopenableRoutes = {recoveryCodeRoute};
+
+  static bool _isCard(Route<dynamic> r) =>
+      r.settings.name?.startsWith(ApprovalScreen.routePrefix) ?? false;
+
+  /// Back towards the first screen of [tab], stopping at an approval card: one that is open may be half decided.
+  void _popTowardsRoot(AppTab tab) {
+    navigators[tab]?.currentState?.popUntil((r) => r.isFirst || _isCard(r));
   }
 
   /// Opens the card for [authReqId] inside the Approvals tab (a tapped notification). While the app has no shell yet (it is still checking enrollment, or the device is not enrolled) the request is kept and opened when the shell appears.

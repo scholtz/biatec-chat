@@ -168,12 +168,25 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       expect(find.byType(ApprovalScreen), findsOneWidget);
 
-      // Choosing the tab that is showing returns it to its first screen.
+      // Choosing the tab that is showing goes back towards its first screen, but an open card may be half decided: it stays.
       await tester.tap(inBar('Approvals'));
       await tester.pump(const Duration(seconds: 1));
       await tester.pump(const Duration(seconds: 1));
-      expect(find.byType(ApprovalScreen), findsNothing);
-      expect(find.byType(PendingScreen), findsOneWidget);
+      expect(find.byType(ApprovalScreen), findsOneWidget);
+
+      // Other screens are closed.
+      await tester.tap(inBar('History'));
+      await tester.pump(const Duration(seconds: 1));
+      rig.shell.navigators[AppTab.history]!.currentState!.push(
+          MaterialPageRoute<void>(
+              builder: (_) => const Scaffold(body: Text('detail'))));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('detail'), findsOneWidget);
+      await tester.tap(inBar('History'));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('detail'), findsNothing);
+      expect(find.byType(HistoryScreen), findsOneWidget);
       await rig.dispose(tester);
     });
 

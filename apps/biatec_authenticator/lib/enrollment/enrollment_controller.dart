@@ -69,6 +69,11 @@ class EnrollmentController extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _readFailed = false;
+
+  /// The last [refresh] could not read the store (and so reports not enrolled). The app then offers a retry rather than the enrollment flow, which would replace a valid enrollment.
+  bool get readFailed => _readFailed;
+
   /// Bumped by [signOut]. Work that started before (a refresh, a recovery code fetch) checks it after each wait and drops what it got, so a sign-out is never undone by a slow read.
   int _session = 0;
 
@@ -104,10 +109,18 @@ class EnrollmentController extends ChangeNotifier {
     EnrollmentRecord? record;
     try {
       record = await store.read();
+      _readFailed = false;
     } on Object {
       record = null; // an unreadable record counts as not enrolled
+      _readFailed = true;
     }
     if (session != _session) return;
+    // An enrollment started while the store was read is not undone by what the read found.
+    final now = _state.phase;
+    if (now == EnrollmentPhase.generatingKey ||
+        now == EnrollmentPhase.enrolling) {
+      return;
+    }
     if (record == null) {
       // Nothing is held after a sign-out: its state has no record.
       final held = _state.record;

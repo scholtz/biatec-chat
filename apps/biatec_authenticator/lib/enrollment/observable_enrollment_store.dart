@@ -14,20 +14,45 @@ class ObservableEnrollmentStore extends ChangeNotifier
   int get clearCount => _clearCount;
   int _clearCount = 0;
 
-  @override
-  Future<EnrollmentRecord?> read() => _inner.read();
+  /// An enrollment whose write failed. The server has it, so the whole app (the pending list, settings, push) works from this copy until a later read manages to save it.
+  EnrollmentRecord? _unsaved;
 
   @override
-  Future<void> write(EnrollmentRecord record) async {
-    await _inner.write(record);
-    notifyListeners();
+  Future<EnrollmentRecord?> read() async {
+    final stored = await _inner.read();
+    final unsaved = _unsaved;
+    if (stored != null || unsaved == null) return stored;
+    try {
+      await _inner.write(unsaved);
+      _unsaved = null;
+    } on Object {
+      // Still in memory only; tried again at the next read.
+    }
+    return unsaved;
   }
 
   @override
-  Future<void> clear() async {
-    await _inner.clear();
-    _clearCount++;
+  Future<void> write(EnrollmentRecord record) async {
+    try {
+      await _inner.write(record);
+      _unsaved = null;
+    } on Object {
+      _unsaved = record;
+      rethrow;
+    }
     notifyListeners();
+  }
+
+  /// Announced even when clearing the storage fails: the device was signed out on purpose, and the app must stop using it now.
+  @override
+  Future<void> clear() async {
+    _unsaved = null;
+    try {
+      await _inner.clear();
+    } finally {
+      _clearCount++;
+      notifyListeners();
+    }
   }
 
   @override

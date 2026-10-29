@@ -32,6 +32,24 @@ class _BrokenStore extends MemoryEnrollmentStore {
   }
 }
 
+/// Writes or clears fail while asked to.
+class _FlakyWrites extends MemoryEnrollmentStore {
+  bool failWrites = false;
+  bool failClear = false;
+
+  @override
+  Future<void> write(EnrollmentRecord record) async {
+    if (failWrites) throw StateError('keystore busy');
+    return super.write(record);
+  }
+
+  @override
+  Future<void> clear() async {
+    if (failClear) throw StateError('keystore busy');
+    return super.clear();
+  }
+}
+
 ApprovalServices _servicesWith(ShellRig rig, EnrollmentStore store) =>
     ApprovalServices(
       client: rig.approvals.client,
@@ -169,6 +187,34 @@ void main() {
       expect(n, 2);
       expect(store.clearCount, 1);
       expect(await store.read(), isNull);
+      store.dispose();
+    });
+
+    test('an enrollment whose write failed is served from memory and saved later',
+        () async {
+      final inner = _FlakyWrites();
+      final store = ObservableEnrollmentStore(inner);
+      inner.failWrites = true;
+      await expectLater(store.write(_active), throwsA(anything));
+      expect((await store.read())?.kid, 'dev-1',
+          reason: 'the pending list and settings see the device enrolled');
+      expect(await inner.read(), isNull);
+      inner.failWrites = false;
+      expect((await store.read())?.kid, 'dev-1');
+      expect((await inner.read())?.kid, 'dev-1', reason: 'saved by the read');
+      store.dispose();
+    });
+
+    test('a clear that fails still signs the device out', () async {
+      final inner = _FlakyWrites();
+      final store = ObservableEnrollmentStore(inner);
+      await store.write(_active);
+      var told = 0;
+      store.addListener(() => told++);
+      inner.failClear = true;
+      await expectLater(store.clear(), throwsA(anything));
+      expect(store.clearCount, 1);
+      expect(told, 1);
       store.dispose();
     });
   });

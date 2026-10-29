@@ -10,6 +10,8 @@ import 'package:biatec_authenticator/config.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_controller.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
+import 'package:biatec_authenticator/enrollment/enrollment_screen.dart';
+import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/shell/app_gate.dart';
 import 'package:biatec_authenticator/shell/shell_controller.dart';
@@ -36,22 +38,22 @@ class _HangingStore extends MemoryEnrollmentStore {
 }
 
 /// A controller whose refresh (the part that may use the network) is slow.
-/// Answers the first read, then never again.
-class _SecondReadHangs extends MemoryEnrollmentStore {
-  var _reads = 0;
+/// Counts reads.
+class _CountingReads extends MemoryEnrollmentStore {
+  var reads = 0;
 
   @override
   Future<EnrollmentRecord?> read() {
-    if (_reads++ == 0) return super.read();
-    return Completer<EnrollmentRecord?>().future;
+    reads++;
+    return super.read();
   }
 }
 
 class _SlowEnrollment extends EnrollmentController {
-  _SlowEnrollment(ShellRig rig)
+  _SlowEnrollment(ShellRig rig, {EnrollmentStore? store})
       : super(
           keys: rig.approvals.keys,
-          store: rig.approvals.enrollment,
+          store: store ?? rig.approvals.enrollment,
           client: OidcEnrollmentClient(baseUrl: 'http://oidc.test'),
         );
 
@@ -135,21 +137,47 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets(
-        'a second store read that hangs for a device that is not enrolled still ends in a retry',
-        (tester) async {
+    testWidgets('start-up reads the stored enrollment once', (tester) async {
       final rig = ShellRig(enrolled: false);
-      final store = _SecondReadHangs();
+      final store = _CountingReads();
       await tester.pumpWidget(MaterialApp(
           home: AppGate(
         config: AppConfig.resolve(''),
         approvals: rig.approvalsWith(store),
         settings: rig.settings.services,
         shell: rig.shell,
-        startupTimeout: const Duration(seconds: 3),
       )));
-      await tester.pump(const Duration(seconds: 4));
-      expect(find.byType(ErrorState), findsOneWidget);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(EnrollmentScreen), findsOneWidget);
+      expect(store.reads, lessThanOrEqualTo(2),
+          reason: 'the gate leaves reading to the controller; the enrollment '
+              'screen refreshes once more');
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets(
+        'a sign-out while the start-up refresh is still at the network is not a storage problem',
+        (tester) async {
+      final rig = ShellRig();
+      final store = ObservableEnrollmentStore(rig.settings.enrollment);
+      final enrollment = _SlowEnrollment(rig, store: store);
+      await tester.pumpWidget(MaterialApp(
+          home: AppGate(
+        config: AppConfig.resolve(''),
+        approvals: rig.approvalsWith(store),
+        settings: rig.settings.services,
+        shell: rig.shell,
+        enrollment: enrollment,
+      )));
+      await tester.pump();
+      expect(find.byType(NavigationBar), findsOneWidget);
+      await store.clear();
+      enrollment.release();
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(ErrorState), findsNothing);
+      expect(find.byType(EnrollmentScreen), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
 

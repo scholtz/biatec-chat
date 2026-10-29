@@ -224,9 +224,10 @@ void main() {
     rig.shell.openApproval(rig.approvals, rig.requestId);
     await tester.pump(const Duration(seconds: 1));
     final card = tester.state(find.byType(ApprovalScreen));
-    // The recovery code screen, say.
     rig.shell.navigators[AppTab.approvals]!.currentState!.push(
         MaterialPageRoute<void>(
+            settings:
+                const RouteSettings(name: ShellController.recoveryCodeRoute),
             builder: (_) => const Scaffold(body: Text('on top'))));
     await tester.pump(const Duration(seconds: 1));
     rig.shell.select(AppTab.devices);
@@ -244,30 +245,34 @@ void main() {
     await rig.dispose(tester);
   });
 
-  testWidgets('a card covered by another card is left where it is',
-      (tester) async {
-    final rig = ShellRig();
-    await rig.pump(tester);
-    rig.shell.openApproval(rig.approvals, rig.requestId);
-    await tester.pump(const Duration(seconds: 1));
-    rig.shell.navigators[AppTab.approvals]!.currentState!.push(
-        MaterialPageRoute<void>(
-            settings: const RouteSettings(
-                name: '${ApprovalScreen.routePrefix}ciba_other'),
-            builder: (_) => const Scaffold(body: Text('other card'))));
-    await tester.pump(const Duration(seconds: 1));
-    rig.shell.select(AppTab.devices);
-    await tester.pump();
-
-    rig.shell.bringForward(rig.approvals, rig.requestId);
-    for (var i = 0; i < 3; i++) {
+  for (final (what, name) in [
+    ('another card', '${ApprovalScreen.routePrefix}ciba_other'),
+    ('a screen not known to reopen', null),
+  ]) {
+    testWidgets('a card covered by $what is left where it is',
+        (tester) async {
+      final rig = ShellRig();
+      await rig.pump(tester);
+      rig.shell.openApproval(rig.approvals, rig.requestId);
       await tester.pump(const Duration(seconds: 1));
-    }
-    expect(rig.shell.selected, AppTab.approvals);
-    expect(find.text('other card'), findsOneWidget);
-    expect(find.byType(ApprovalScreen, skipOffstage: false), findsOneWidget);
-    await rig.dispose(tester);
-  });
+      rig.shell.navigators[AppTab.approvals]!.currentState!.push(
+          MaterialPageRoute<void>(
+              settings: RouteSettings(name: name),
+              builder: (_) => const Scaffold(body: Text('covering'))));
+      await tester.pump(const Duration(seconds: 1));
+      rig.shell.select(AppTab.devices);
+      await tester.pump();
+
+      rig.shell.bringForward(rig.approvals, rig.requestId);
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+      expect(rig.shell.selected, AppTab.approvals);
+      expect(find.text('covering'), findsOneWidget);
+      expect(find.byType(ApprovalScreen, skipOffstage: false), findsOneWidget);
+      await rig.dispose(tester);
+    });
+  }
 
   testWidgets('a card already on top is only focused', (tester) async {
     final rig = ShellRig();

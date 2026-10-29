@@ -56,9 +56,6 @@ class _AppGateState extends State<AppGate> {
   /// Counts start-ups (the first and each retry), so a slow earlier one cannot cancel or finish a later one.
   int _attempt = 0;
 
-  /// The start-up whose stored enrollment has been read. The timer runs on until the gate is ready: the controller reads the store again and a device that is not enrolled is only ready after that read. An enrolled one is ready as soon as its state is known, before any network work (the recovery code).
-  int _readAttempt = 0;
-
   /// Whether the device was active at the last notification, so push registration is asked for when it becomes so.
   bool _wasActive = false;
 
@@ -130,9 +127,8 @@ class _AppGateState extends State<AppGate> {
     // Enrolling is a swap of widgets, not a navigation, so registering for push is asked for here, once per activation.
     if (active && !_wasActive) widget.push?.registerIfEnrolled();
     _wasActive = active;
-    // The stored enrollment is known; do not wait for network work in the rest of the refresh to show it.
+    // The stored enrollment is known; do not wait for network work in the rest of the refresh (the recovery code) to show it.
     if (_startup == _Startup.loading &&
-        _readAttempt == _attempt &&
         _enrollment.state.phase != EnrollmentPhase.notEnrolled) {
       setState(() => _startup = _Startup.ready);
     }
@@ -141,22 +137,12 @@ class _AppGateState extends State<AppGate> {
     if (!active) widget.shell.dropQueuedOpen();
   }
 
-  /// Reads the stored enrollment once before deciding what to show. A read that fails is not "not enrolled": the user gets a retry instead of the enrollment flow, which would replace a valid enrollment.
+  /// Lets the controller read the stored enrollment before deciding what to show. A read that fails is not "not enrolled": the user gets a retry instead of the enrollment flow, which would replace a valid enrollment. The timer runs until the gate is ready, so a store that never answers ends in a retry too.
   Future<void> _open(int attempt) async {
-    EnrollmentRecord? stored;
-    try {
-      stored = await widget.approvals.enrollment.read();
-      if (attempt == _attempt) _readAttempt = attempt;
-    } on Object {
-      if (mounted && attempt == _attempt) {
-        setState(() => _startup = _Startup.unreadable);
-      }
-      return;
-    }
     await _refresh();
-    if (!mounted || attempt != _attempt) return;
-    // The controller reads the store again and counts a failed read as "not enrolled"; a record that was just read says otherwise.
-    if (stored != null &&
+    // Already showing the app (the state was known before the refresh's network work ended): what happened since, a sign-out say, is not a start-up problem.
+    if (!mounted || attempt != _attempt || _startup == _Startup.ready) return;
+    if (_enrollment.readFailed &&
         _enrollment.state.phase == EnrollmentPhase.notEnrolled) {
       setState(() => _startup = _Startup.unreadable);
       return;
@@ -259,6 +245,7 @@ class _AppGateState extends State<AppGate> {
     // The banner stays tappable while the screen is open: one screen at a time.
     if (_recoveryRoute?.isActive ?? false) return;
     final route = MaterialPageRoute<void>(
+      settings: const RouteSettings(name: ShellController.recoveryCodeRoute),
       builder: (_) =>
           EnrollmentScreen(config: widget.config, controller: _enrollment),
     );
