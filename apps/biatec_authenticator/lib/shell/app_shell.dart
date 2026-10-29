@@ -97,7 +97,15 @@ class _AppShellState extends State<AppShell> {
     super.dispose();
   }
 
-  void _onSelect() => setState(() => _visited.add(widget.controller.selected));
+  AppTab? _shown;
+
+  void _onSelect() {
+    final tab = widget.controller.selected;
+    // What a settings tab's last step said stays on that tab.
+    if (tab != _shown) _settingsController?.clearStatus();
+    _shown = tab;
+    setState(() => _visited.add(tab));
+  }
 
   Widget _root(AppTab tab) => switch (tab) {
         AppTab.approvals => PendingScreen(

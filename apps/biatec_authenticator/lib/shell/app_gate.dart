@@ -125,8 +125,8 @@ class _AppGateState extends State<AppGate> {
     if (active && !_wasActive) widget.push?.registerIfEnrolled();
     _wasActive = active;
     // The stored enrollment is known; do not wait for network work in the rest of the refresh (the recovery code) to show it.
-    // Also from "still checking": storage answered late, but it answered.
-    if ((_startup == _Startup.loading || _startup == _Startup.stuck) &&
+    // Also from "still checking" or "could not read": storage answered late or on a later try (a resume after unlocking), but it answered.
+    if (_startup != _Startup.ready &&
         _enrollment.state.phase != EnrollmentPhase.notEnrolled) {
       setState(() => _startup = _Startup.ready);
     }

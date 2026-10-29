@@ -81,6 +81,8 @@ class EnrollmentController extends ChangeNotifier {
   /// This device signed itself out (its stored enrollment was cleared on purpose): it is not enrolled from now on, without reading anything, so a storage failure cannot keep a signed-out device in the app. The record held in memory is dropped and never written back; a new enrollment found in the store by a later [refresh] is picked up as usual.
   void signOut() {
     _session++;
+    // A refresh still running ends without effect; the next one starts afresh.
+    _refreshing = null;
     _recoveryCode = null;
     _recoveryCodeError = null;
     // A fetch for the old enrollment that is still running must not stop the next enrollment's.
@@ -94,7 +96,21 @@ class EnrollmentController extends ChangeNotifier {
   /// so the inactive state turns active once the delay has passed.
   ///
   /// An enrollment whose write failed is kept and saved again by the store (see `ObservableEnrollmentStore`), which also keeps a sign-out from being undone by a late write; the controller only reports what the store says.
-  Future<void> refresh() async {
+  ///
+  /// A call while one runs gets that one: a slow keystore is not asked again every second by the enrollment screen's ticker.
+  Future<void> refresh() {
+    final running = _refreshing;
+    if (running != null) return running;
+    final next = _refresh();
+    _refreshing = next;
+    return next.whenComplete(() {
+      if (identical(_refreshing, next)) _refreshing = null;
+    });
+  }
+
+  Future<void>? _refreshing;
+
+  Future<void> _refresh() async {
     final p = _state.phase;
     if (p == EnrollmentPhase.generatingKey || p == EnrollmentPhase.enrolling) {
       return;

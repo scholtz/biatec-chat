@@ -253,6 +253,16 @@ class SettingsController extends ChangeNotifier {
     _changed();
   }
 
+  /// Forgets what the last step said. The settings tabs share this controller, so a tab change calls it: "Enrollment cancelled." belongs to Devices, not to the tab shown next.
+  void clearStatus() {
+    if (_busy || (_error == null && _notice == null)) return;
+    // A screen that could not load keeps its reason.
+    if (_phase != SettingsPhase.ready) return;
+    _error = null;
+    _notice = null;
+    _changed();
+  }
+
   /// Cancels the pending enrollment [kid]. Cancelling is always allowed: it
   /// shuts a device out and so only tightens.
   Future<void> cancelDevice(String kid) async {

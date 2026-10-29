@@ -61,11 +61,21 @@ class ObservableEnrollmentStore extends ChangeNotifier
       return null;
     }
     final clears = _clearCount;
+    final writes = _writes;
     final stored = await _inner.read();
     // Signed out while this read ran: what it found is the old enrollment.
     if (clears != _clearCount) return null;
+    // Written while this read ran: the write is newer than what the read found.
+    if (writes != _writes) return _unsaved ?? _lastWritten;
     return _unsaved ?? stored;
   }
+
+  /// Counts writes asked for, and the record of the latest; a read that ran across one answers with it.
+  int _writes = 0;
+  EnrollmentRecord? _lastWritten;
+
+  /// A retry of a failed clear is waiting in line; one is enough.
+  bool _clearQueued = false;
 
   void _saveLater(EnrollmentRecord record) {
     final last = _lastSaveTry;
@@ -74,20 +84,32 @@ class ObservableEnrollmentStore extends ChangeNotifier
     _serial(() async {
       if (!identical(_unsaved, record)) return; // replaced or signed out meanwhile
       await _inner.write(record);
-      if (identical(_unsaved, record)) _unsaved = null;
+      if (identical(_unsaved, record)) {
+        _unsaved = null;
+        // It replaced what a failed clear left behind.
+        _clearFailed = false;
+      }
     }).ignore();
   }
 
   void _clearLater() {
+    if (_clearQueued) return;
+    _clearQueued = true;
     _serial(() async {
-      if (!_clearFailed) return;
-      await _inner.clear();
-      _clearFailed = false;
+      try {
+        if (!_clearFailed) return;
+        await _inner.clear();
+        _clearFailed = false;
+      } finally {
+        _clearQueued = false;
+      }
     }).ignore();
   }
 
   @override
   Future<void> write(EnrollmentRecord record) async {
+    _writes++;
+    _lastWritten = record;
     // The newest enrollment from now on, until a later write or clear.
     _unsaved = record;
     _lastSaveTry = _clock();
@@ -108,6 +130,7 @@ class ObservableEnrollmentStore extends ChangeNotifier
   Future<void> clear() {
     _clearCount++;
     _unsaved = null;
+    _lastWritten = null;
     _clearFailed = true;
     final done = _serial(() async {
       await _inner.clear();

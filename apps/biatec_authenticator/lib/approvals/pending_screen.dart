@@ -93,22 +93,45 @@ class _PendingScreenState extends State<PendingScreen> {
   bool get _isActive => widget.active?.value ?? true;
 
   /// Something (an approval card opened from a notification, say) is on top of the list.
-  bool get _covered => ModalRoute.of(context)?.isCurrent == false;
+  bool get _covered => _route?.isCurrent == false;
+
+  /// Looked up with the dependencies, not from timers and callbacks.
+  ModalRoute<Object?>? _route;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route = ModalRoute.of(context);
+  }
 
   void _onActive() {
     _startPolling();
     if (_isActive && !_covered) _refresh();
   }
 
+  /// Ticks skipped while the list is covered.
+  int _coveredTicks = 0;
+
   void _startPolling() {
     _poll?.cancel();
     _poll = null;
+    _coveredTicks = 0;
     // Coming back after a long break refreshes through [refreshOn]; a short one waits for the next tick.
     if (!(widget.foreground?.value ?? true)) return;
     _poll = Timer.periodic(
         _isActive ? widget.pollEvery : widget.backgroundEvery, (_) {
-      // Nobody sees the list under a card while its tab shows; from another tab the badge still counts it. A tick during a slow load is skipped, not queued: on a slow network the loads would never settle.
-      if (_running == null && !(_isActive && _covered)) _refresh();
+      // A tick during a slow load is skipped, not queued: on a slow network the loads would never settle.
+      if (_running != null) return;
+      // Under a screen on top nobody sees the list, but the badge still counts: it loads at the slower rate of a tab that is not showing.
+      if (_isActive && _covered) {
+        _coveredTicks++;
+        if (_coveredTicks * widget.pollEvery.inMilliseconds <
+            widget.backgroundEvery.inMilliseconds) {
+          return;
+        }
+      }
+      _coveredTicks = 0;
+      _refresh();
     });
   }
 

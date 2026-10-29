@@ -41,6 +41,7 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
   /// Counts reads. A list is shown unless a newer one already is, so a slow older read cannot replace a newer list, yet its good answer is not thrown away; a failure counts only for the newest read.
   int _reads = 0;
   int _shownRead = 0;
+  int _failedRead = 0;
 
   final _refresher = GlobalKey<RefreshIndicatorState>();
 
@@ -55,10 +56,12 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
       _shownRead = read;
       setState(() {
         _entries = entries;
-        _failed = false;
+        // A newer read that failed still says so.
+        _failed = _failedRead > read;
       });
     } on Object {
       if (!mounted || read != _reads) return;
+      _failedRead = read;
       setState(() => _failed = true);
     }
   }
