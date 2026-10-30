@@ -8,7 +8,6 @@ import android.os.Handler
 import android.os.Looper
 import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
-import android.util.Log
 import android.util.Base64
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
@@ -144,7 +143,7 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
             if (info.isInsideSecureHardware) "hardware" else "software"
         }
     } catch (e: Exception) {
-        Log.w("KeystorePlugin", "Could not read the security level of the key", e)
+        // Nothing is logged: not even an exception, whose text can name keys.
         "unknown"
     }
 

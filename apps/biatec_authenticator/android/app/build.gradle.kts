@@ -44,6 +44,10 @@ android {
 
     buildTypes {
         release {
+            // The release defaults, written out so that turning either on is a reviewed change here. They do not override a
+            // debuggable flag injected another way; the hardening test checks the merged release manifest for that.
+            isDebuggable = false
+            isJniDebuggable = false
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
