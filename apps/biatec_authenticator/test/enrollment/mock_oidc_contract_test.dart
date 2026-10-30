@@ -13,6 +13,7 @@ import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/keys/device_key_store.dart';
 import 'package:biatec_authenticator/keys/key_security_level.dart';
+import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -43,7 +44,7 @@ void main() {
   EnrollmentController install(DateTime Function() clock) =>
       EnrollmentController(
         keys: _Keys(),
-        store: MemoryEnrollmentStore(),
+        store: ObservableEnrollmentStore(MemoryEnrollmentStore()),
         client: OidcEnrollmentClient(baseUrl: baseUrl!),
         clock: clock,
       );

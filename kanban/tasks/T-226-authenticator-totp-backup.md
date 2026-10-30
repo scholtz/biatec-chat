@@ -45,6 +45,7 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
 - [ ] The file contains no plaintext issuer, label or secret (a byte search test).
 - [ ] Export and import require a fresh biometric; the passphrase is never stored or logged.
 - [ ] The export never uses a weaker KDF than the floor even on slow devices, and shows progress while it runs off the UI thread.
+- [ ] (From the T-221 review, PR #369.) A saved seed is never shown or exported in clear (PRODUCT-DESCRIPTION.md rule 5). Only the vault and the encrypted backup may reach `OtpUri.write`, `OtpAccount.secret` and `copySecret`, and a test proves that no other path does.
 - [ ] `flutter analyze` is clean and `flutter test` passes in `apps/biatec_authenticator`, with new tests for every behaviour above (the failing case first for each security rule).
 
 ## Implementation notes

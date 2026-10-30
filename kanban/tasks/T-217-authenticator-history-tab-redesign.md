@@ -1,7 +1,7 @@
 ---
 id: T-217
 title: "Authenticator: redesign approval history and receipt detail"
-status: blocked
+status: backlog
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-214]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-24
-updated: 2026-10-24
+updated: 2026-10-29
 ---
 
 # T-217 - Authenticator: redesign approval history and receipt detail
@@ -69,3 +69,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-24 12:00 · claude · (new) → blocked · created from the authenticator redesign request
 - 2026-10-24 17:07 · kanban-board · backlog → blocked · waiting on: T-214
 - 2026-10-24 12:05 · scholtz · taken · status stays blocked
+- 2026-10-29 16:26 · kanban-board · blocked → backlog · blockers done: T-214

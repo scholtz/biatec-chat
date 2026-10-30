@@ -15,6 +15,8 @@ import 'package:biatec_authenticator/push/fcm_push_transport.dart';
 import 'package:biatec_authenticator/push/push_controller.dart';
 import 'package:biatec_authenticator/push/push_payload.dart';
 import 'package:biatec_authenticator/push/push_transport.dart';
+import 'package:biatec_authenticator/shell/shell_controller.dart';
+import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -64,7 +66,10 @@ class FakeRegistry {
 }
 
 EnrollmentRecord record(String token) => EnrollmentRecord(
-    kid: 'alice-device', deviceToken: token, activeAt: DateTime.utc(2020));
+    kid: 'alice-device',
+    deviceToken: token,
+    activeAt: DateTime.utc(2020),
+    recoveryCodeShown: true);
 
 /// ApprovalScreen redraws its countdown every second, so pumpAndSettle never
 /// settles while one is open; pump a fixed second instead.
@@ -202,25 +207,13 @@ void main() {
       expect(openedIds, ['ciba_launch', 'ciba_tap']);
     });
 
-    test('a request already on screen is not opened again', () async {
+    test('every tap is passed on: the shell knows which cards are open',
+        () async {
       await push.start(transport);
-      final route = ApprovalScreen.route(
-          ApprovalServices(
-              client: ApprovalClient(baseUrl: 'http://oidc'),
-              keys: SoftwareKeyStore(deviceTestKey()),
-              enrollment: store,
-              gate: _Pass(),
-              history: MemoryHistoryStore()),
-          'ciba_x');
-      push.didPush(route, null);
       transport.openedC.add({'auth_req_id': 'ciba_x'});
-      transport.openedC.add({'auth_req_id': 'ciba_y'});
-      await pumpEventQueue();
-      expect(openedIds, ['ciba_y']);
-      push.didPop(route, null);
       transport.openedC.add({'auth_req_id': 'ciba_x'});
       await pumpEventQueue();
-      expect(openedIds, ['ciba_y', 'ciba_x']);
+      expect(openedIds, ['ciba_x', 'ciba_x']);
     });
 
     test('a foreground push signals the pending list, without opening it',
@@ -267,7 +260,7 @@ void main() {
               return http.Response('{"error":"not_found"}', 404);
             })),
         keys: SoftwareKeyStore(deviceTestKey()),
-        enrollment: store,
+        enrollment: ObservableEnrollmentStore(store),
         gate: _Pass(),
         history: MemoryHistoryStore(),
       );
@@ -275,37 +268,46 @@ void main() {
 
     testWidgets('a tapped notification opens that request, fetched from OIDC',
         (tester) async {
-      final navigator = GlobalKey<NavigatorState>();
+      final shell = ShellController();
       final transport = FakeTransport()..current = null;
       final push = PushController(
         enrollment: services.enrollment,
         client: services.client,
-        onOpenRequest: (id) =>
-            navigator.currentState?.push(ApprovalScreen.route(services, id)),
+        onOpenRequest: (id) => shell.openApproval(services, id),
       );
       await tester.pumpWidget(AuthenticatorApp(
           config: AppConfig.resolve(''),
           approvals: services,
           push: push,
-          navigatorKey: navigator));
+          shell: shell));
+      await tester.pump();
       await push.start(transport);
+      // Another tab is showing when the notification is tapped.
+      shell.select(AppTab.devices);
+      await tester.pump();
       transport.openedC.add({'auth_req_id': 'ciba_tapped'});
       await settle(tester);
       final screen = tester.widget<ApprovalScreen>(find.byType(ApprovalScreen));
       expect(screen.authReqId, 'ciba_tapped');
+      // It opens inside the Approvals tab, with the navigation bar still there.
+      expect(shell.selected, AppTab.approvals);
+      expect(find.byType(NavigationBar), findsOneWidget);
       expect(fetched, contains('/consent/requests/ciba_tapped'));
     });
 
     testWidgets('a foreground push shows a notice that opens the list',
         (tester) async {
-      final navigator = GlobalKey<NavigatorState>();
+      final shell = ShellController();
       final messenger = GlobalKey<ScaffoldMessengerState>();
       await tester.pumpWidget(AuthenticatorApp(
           config: AppConfig.resolve(''),
           approvals: services,
-          navigatorKey: navigator,
+          shell: shell,
           messengerKey: messenger));
-      showRequestArrived(messenger, navigator);
+      await tester.pump();
+      shell.select(AppTab.history);
+      await tester.pump();
+      showRequestArrived(messenger, shell);
       await tester.pump();
       expect(find.text('New approval request'), findsOneWidget);
       await tester.pump(const Duration(seconds: 1));
@@ -314,11 +316,13 @@ void main() {
       expect(find.byType(PendingScreen), findsOneWidget);
 
       // From the list itself, Open does not stack a second list.
-      showRequestArrived(messenger, navigator);
+      showRequestArrived(messenger, shell);
+      await tester.pump();
       await tester.pump(const Duration(seconds: 1));
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
       expect(find.byType(PendingScreen), findsOneWidget);
+      expect(shell.selected, AppTab.approvals);
     });
 
     testWidgets('the pending list refreshes on a push', (tester) async {

@@ -6,6 +6,7 @@ import 'package:biatec_authenticator/enrollment/enrollment_controller.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_screen.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
+import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/keys/device_key_store.dart';
 import 'package:biatec_authenticator/keys/key_security_level.dart';
@@ -104,7 +105,8 @@ void main() {
     });
     return EnrollmentController(
       keys: keys,
-      store: store,
+      // As in the app: the store keeps an enrollment whose write failed.
+      store: ObservableEnrollmentStore(store, clock: () => clock),
       client: OidcEnrollmentClient(baseUrl: 'http://mock', client: client),
       clock: () => clock,
     );
@@ -353,7 +355,7 @@ void main() {
       final otherStore = FlakyStore();
       final b = EnrollmentController(
         keys: FakeKeyStore(),
-        store: otherStore,
+        store: ObservableEnrollmentStore(otherStore),
         client: OidcEnrollmentClient(
             baseUrl: 'http://mock',
             client: MockClient((r) async {
@@ -409,9 +411,30 @@ void main() {
 
       store.failWrite = false;
       await c.refresh();
+      expect(c.state.phase, EnrollmentPhase.inactive,
+          reason: 'served from memory');
+      expect(await store.read(), isNull, reason: 'not tried again so soon');
+      clock = clock.add(ObservableEnrollmentStore.saveRetryEvery);
+      await c.refresh();
       expect(c.state.phase, EnrollmentPhase.inactive);
       expect(c.state.error, isNull);
       expect((await store.read())!.kid, lastKid);
+    });
+
+    test('after a sign-out a new enrollment whose write fails is still kept',
+        () async {
+      final c = build((_) => created());
+      await c.enroll(loginToken: 'login-alice');
+      await store.clear();
+      c.signOut();
+      expect(c.state.phase, EnrollmentPhase.notEnrolled);
+
+      store.failWrite = true;
+      await c.enroll(loginToken: 'login-alice');
+      expect(c.state.phase, EnrollmentPhase.inactive);
+      await c.refresh();
+      expect(c.state.phase, EnrollmentPhase.inactive,
+          reason: 'held in memory, as for any failed write');
     });
 
     test('a corrupt stored record counts as not enrolled', () async {

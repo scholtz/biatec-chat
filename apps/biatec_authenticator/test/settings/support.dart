@@ -81,6 +81,9 @@ class FakeSettingsOidc {
   /// a tightening, to model a server that judges differently.
   bool alwaysRequireConsent = false;
 
+  /// How many times GET /devices was asked.
+  int deviceListCalls = 0;
+
   /// Every PUT /devices/settings body, in order.
   final List<Map<String, Object?>> puts = [];
   final List<String> cancelled = [];
@@ -103,6 +106,7 @@ class FakeSettingsOidc {
         }
         final path = req.url.path;
         if (req.method == 'GET' && path == '/devices') {
+          deviceListCalls++;
           if (failDevicesList) return _json(503, {'error': 'unavailable'});
           return _json(200, {'devices': devices});
         }
