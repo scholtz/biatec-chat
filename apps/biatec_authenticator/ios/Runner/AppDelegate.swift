@@ -26,13 +26,14 @@ import UIKit
   /// directory covers what is inside it, including what is created later (Apple: "excludes the directory and its contents"), so Library (which
   /// holds Application Support, Preferences and Caches, where the app and its plugins write files) and Documents are enough. The device key and
   /// the secure-storage items are not files: they live in the Secure Enclave and the keychain, kept off backups by their own accessibility class.
-  /// Documents is flagged only once something created it; this runs on every launch.
+  /// Documents is created first if it is missing, so a folder a plugin creates later in the session is already flagged (an empty folder costs
+  /// nothing). This runs on every launch.
   static func excludeStorageFromBackup() {
     let fm = FileManager.default
     let places: [FileManager.SearchPathDirectory] = [.libraryDirectory, .documentDirectory]
     for place in places {
-      guard var url = fm.urls(for: place, in: .userDomainMask).first,
-            fm.fileExists(atPath: url.path) else { continue }
+      guard var url = fm.urls(for: place, in: .userDomainMask).first else { continue }
+      try? fm.createDirectory(at: url, withIntermediateDirectories: true)
       var values = URLResourceValues()
       values.isExcludedFromBackup = true
       do {

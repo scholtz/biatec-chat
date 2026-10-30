@@ -10,21 +10,48 @@ String read(String path) {
   return f.readAsStringSync();
 }
 
-/// The Swift lines a release build compiles: the `#if DEBUG` branches are dropped, their `#else` branches kept, and nested `#if` blocks
-/// are followed, so a release-only log in an `#else` is still seen.
+/// Whether a `#if`/`#elseif` condition holds only in a debug build (`DEBUG`, `DEBUG && X`), only in a release build (`!DEBUG`), or neither.
+enum _Build { debug, release, either }
+
+_Build _branchOf(String condition) {
+  final c = condition.replaceAll(RegExp(r'\s+'), '');
+  if (c == 'DEBUG' || c.startsWith('DEBUG&&') || c.endsWith('&&DEBUG')) {
+    return _Build.debug;
+  }
+  if (c == '!DEBUG') return _Build.release;
+  return _Build.either;
+}
+
+/// The Swift lines a release build compiles. A branch that holds only in a debug build is dropped: `#if DEBUG`, `#elseif DEBUG`, and the
+/// `#else` of `#if !DEBUG`. Everything else is kept (the `#else` of `#if DEBUG`, any other condition), and nested blocks are followed.
 String releaseOnly(String swift) {
-  final branches =
-      <bool>[]; // per open #if: true while in its DEBUG-only branch
+  // Per open #if: what its first condition was, and what the branch now being read is.
+  final open = <({_Build first, _Build now})>[];
   final kept = <String>[];
   for (final line in swift.split('\n')) {
     final t = line.trim();
     if (t.startsWith('#if')) {
-      branches.add(RegExp(r'^#if\s+DEBUG\b').hasMatch(t));
-    } else if (t.startsWith('#elseif') || t.startsWith('#else')) {
-      if (branches.isNotEmpty) branches[branches.length - 1] = false;
+      final b = _branchOf(t.substring(3));
+      open.add((first: b, now: b));
+    } else if (t.startsWith('#elseif')) {
+      if (open.isNotEmpty) {
+        open.last = (first: open.last.first, now: _branchOf(t.substring(7)));
+      }
+    } else if (t.startsWith('#else')) {
+      if (open.isNotEmpty) {
+        final first = open.last.first;
+        open.last = (
+          first: first,
+          now: switch (first) {
+            _Build.debug => _Build.release,
+            _Build.release => _Build.debug,
+            _Build.either => _Build.either,
+          }
+        );
+      }
     } else if (t.startsWith('#endif')) {
-      if (branches.isNotEmpty) branches.removeLast();
-    } else if (!branches.contains(true)) {
+      if (open.isNotEmpty) open.removeLast();
+    } else if (!open.any((o) => o.now == _Build.debug)) {
       kept.add(line);
     }
   }
@@ -40,6 +67,15 @@ void main() {
     expect(kept, isNot(contains('NSLog(b)')));
     expect(kept, contains('NSLog(c)'));
     expect(kept, contains('release()'));
+    // The #else of !DEBUG and an #elseif DEBUG are debug-only; a compound DEBUG condition is too.
+    final other = releaseOnly('#if !DEBUG\nrel()\n#else\nNSLog(d)\n#endif\n'
+        '#if os(iOS)\nios()\n#elseif DEBUG\nNSLog(e)\n#endif\n'
+        '#if DEBUG && targetEnvironment(simulator)\nNSLog(f)\n#endif');
+    expect(other, contains('rel()'));
+    expect(other, contains('ios()'));
+    expect(other, isNot(contains('NSLog(d)')));
+    expect(other, isNot(contains('NSLog(e)')));
+    expect(other, isNot(contains('NSLog(f)')));
   });
 
   group('Android', () {
@@ -132,25 +168,15 @@ void main() {
       () {
     // AGP writes the merged release manifest under merged_manifests or merged_manifest, depending on its version (packaged_manifests is a
     // different, later artifact and is not read).
-    File? newestManifest(String name) {
-      final dir = Directory('build/app/intermediates/$name/release');
-      if (!dir.existsSync()) return null;
-      final files = dir
-          .listSync(recursive: true)
-          .whereType<File>()
-          .where((f) => f.path.endsWith('AndroidManifest.xml'))
-          .toList()
-        ..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
-      return files.firstOrNull;
-    }
-
-    // The newest of both layouts, so a folder left by an older AGP never wins over the one the current build wrote.
+    // The newest across both layouts, so a folder left by an older AGP never wins over the one the current build wrote.
     final file = ([
-      newestManifest('merged_manifests'),
-      newestManifest('merged_manifest'),
-    ].whereType<File>().toList()
-          ..sort(
-              (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync())))
+      for (final name in ['merged_manifests', 'merged_manifest'])
+        if (Directory('build/app/intermediates/$name/release').existsSync())
+          ...Directory('build/app/intermediates/$name/release')
+              .listSync(recursive: true)
+              .whereType<File>()
+              .where((f) => f.path.endsWith('AndroidManifest.xml')),
+    ]..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync())))
         .firstOrNull;
 
     test('every exported component but the launcher is guarded by a permission',
@@ -246,11 +272,14 @@ void main() {
           greaterThan(activity.indexOf('super.onCreate(')));
     });
 
-    test('a partially obscured touch is dropped on Android 10 and 11', () {
+    test('a partially obscured gesture is stopped on Android 10 and 11', () {
       expect(activity, contains('override fun dispatchTouchEvent('));
       expect(
           activity, contains('MotionEvent.FLAG_WINDOW_IS_PARTIALLY_OBSCURED'));
-      expect(activity, contains('SDK_INT in 29..30'));
+      expect(activity, contains('SDK_INT !in 29..30'));
+      // A gesture that started is cancelled, never left pressed, and the user is told why.
+      expect(activity, contains('MotionEvent.ACTION_CANCEL'));
+      expect(activity, contains('Toast.makeText('));
     });
 
     test('the release build is not debuggable and strips logging', () {
@@ -295,8 +324,11 @@ void main() {
         for (final pattern in [
           r'(^|[^\w.])print\(',
           r'\bdebugPrint\(',
+          r'\bdebugPrintStack\(',
           r'\bdeveloper\.log\(',
-          r"import 'dart:developer'",
+          r'''import\s+['"]dart:developer['"]''',
+          r'\bstd(out|err)\.',
+          r'''import\s+['"]package:(logging|logger)/''',
         ]) {
           expect(RegExp(pattern, multiLine: true).hasMatch(code), isFalse,
               reason: '${f.path} must not log ($pattern)');
@@ -309,7 +341,27 @@ void main() {
         () {
       final rules =
           read('android/app/src/main/res/xml/data_extraction_rules.xml');
-      expect('<exclude domain='.allMatches(rules).length, 18);
+      // Each section on its own excludes every domain, so a domain dropped from one transfer fails even if it is listed twice in the other.
+      for (final section in ['cloud-backup', 'device-transfer']) {
+        final body = RegExp('<$section>([\\s\\S]*?)</$section>')
+            .firstMatch(rules)
+            ?.group(1);
+        expect(body, isNotNull, reason: '<$section> is missing');
+        for (final domain in [
+          'root',
+          'file',
+          'database',
+          'sharedpref',
+          'external',
+          'device_root',
+          'device_file',
+          'device_database',
+          'device_sharedpref'
+        ]) {
+          expect(body, contains('<exclude domain="$domain" />'),
+              reason: '$domain in $section');
+        }
+      }
     });
   });
 
@@ -327,6 +379,11 @@ void main() {
       }
       // A failure is not hidden by try?; it is retried on the next launch, and only a debug build says so.
       expect(delegate, isNot(contains('try? url.setResourceValues')));
+      // Documents is created before it is flagged, so a folder created later in the session is covered from the start.
+      expect(
+          delegate,
+          contains(
+              'fm.createDirectory(at: url, withIntermediateDirectories: true)'));
       expect(delegate, contains('could not exclude'));
       // Called inside didFinishLaunching, before the app (and its plugins) start to write.
       final launch = delegate.indexOf('didFinishLaunchingWithOptions');
@@ -429,7 +486,15 @@ void main() {
       // The throwaway signing key is removed again and never a repository file.
       expect(text,
           contains('rm -f android/key.properties android/ci-throwaway.jks'));
-      expect(text, contains('flutter test test/platform_hardening_test.dart'));
+      // The tests run once, after the release build, with a missing merged manifest made a failure.
+      final build = text.indexOf('flutter build apk --release');
+      final tests = text.indexOf('REQUIRE_MERGED_MANIFEST: "1"');
+      expect(tests, greaterThan(build));
+      expect(
+          RegExp(r'^\s*(- )?run: flutter test\s*$', multiLine: true)
+              .allMatches(text)
+              .length,
+          1);
     }, skip: ci.existsSync() ? false : 'run from the repository checkout');
   });
 }
