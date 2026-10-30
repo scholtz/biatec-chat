@@ -13,7 +13,9 @@ import UIKit
   }
 
   /// No third-party keyboard in the app: a custom keyboard can log what is typed (the binding code, a passphrase). The system keyboard only.
-  override func application(
+  /// Not an `override`: FlutterAppDelegate does not implement this optional UIApplicationDelegate method (see FlutterAppDelegate.mm), so
+  /// `override` would not compile. `@objc` makes sure UIKit finds it under its Objective-C selector.
+  @objc func application(
     _ application: UIApplication,
     shouldAllowExtensionPointIdentifier extensionPointIdentifier: UIApplication.ExtensionPointIdentifier
   ) -> Bool {
@@ -21,7 +23,8 @@ import UIKit
   }
 
   /// Nothing the app stores in its own folders goes to an iCloud or iTunes backup (the vault and the history are device-only, BCHAT-009). The flag on a
-  /// directory covers what is inside it, including what is created later, so Library (which holds Application Support) and Documents are enough.
+  /// directory covers what is inside it, including what is created later (Apple: "excludes the directory and its contents"), so Library (which
+  /// holds Application Support, where the vault and history live) and Documents are enough.
   /// Documents is flagged only once something created it; this runs on every launch. Keychain items are kept off backups by their own
   /// accessibility class (ThisDeviceOnly).
   static func excludeStorageFromBackup() {
@@ -35,8 +38,10 @@ import UIKit
       do {
         try url.setResourceValues(values)
       } catch {
-        // Says which folder only, never what is in it. The next launch tries again.
-        NSLog("Biatec: could not exclude %@ from backup: %@", url.lastPathComponent, error.localizedDescription)
+        // The next launch tries again. Only a debug build says so, and by folder name only: a release build logs nothing (as on Android).
+        #if DEBUG
+        NSLog("Biatec: could not exclude %@ from backup", url.lastPathComponent)
+        #endif
       }
     }
   }

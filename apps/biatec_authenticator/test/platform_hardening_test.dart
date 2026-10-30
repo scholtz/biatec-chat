@@ -99,21 +99,23 @@ void main() {
 
   group('Android merged release manifest (after flutter build apk --release)',
       () {
-    // AGP writes the merged release manifest under one of these, depending on its version. The newest one wins, so a manifest left
-    // over from an older build is not read in place of the current one.
-    final candidates = [
-      for (final name in [
-        'merged_manifests',
-        'merged_manifest',
-        'packaged_manifests'
-      ])
-        if (Directory('build/app/intermediates/$name/release').existsSync())
-          ...Directory('build/app/intermediates/$name/release')
-              .listSync(recursive: true)
-              .whereType<File>()
-              .where((f) => f.path.endsWith('AndroidManifest.xml')),
-    ]..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
-    final file = candidates.firstOrNull;
+    // AGP writes the merged release manifest under merged_manifests or merged_manifest, depending on its version (packaged_manifests is a
+    // different, later artifact and is not read). Within the first layout found, the newest file wins, so a manifest left over from an
+    // older build is not read in place of the current one.
+    File? newestManifest(String name) {
+      final dir = Directory('build/app/intermediates/$name/release');
+      if (!dir.existsSync()) return null;
+      final files = dir
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('AndroidManifest.xml'))
+          .toList()
+        ..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+      return files.firstOrNull;
+    }
+
+    final file =
+        newestManifest('merged_manifests') ?? newestManifest('merged_manifest');
 
     test('every exported component but the launcher is guarded by a permission',
         () {
@@ -240,6 +242,25 @@ void main() {
       }
     });
 
+    test('no Dart source in lib logs', () {
+      // R8 cannot strip Dart print/debugPrint (they reach logcat through the engine), so the Dart code must not log at all.
+      for (final f in Directory('lib')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.dart'))) {
+        final code = f.readAsStringSync();
+        for (final pattern in [
+          r'(^|[^\w.])print\(',
+          r'\bdebugPrint\(',
+          r'\bdeveloper\.log\(',
+          r"import 'dart:developer'",
+        ]) {
+          expect(RegExp(pattern, multiLine: true).hasMatch(code), isFalse,
+              reason: '${f.path} must not log ($pattern)');
+        }
+      }
+    });
+
     test(
         'the data extraction rules still exclude every domain from both transfers',
         () {
@@ -261,7 +282,7 @@ void main() {
       for (final place in ['.libraryDirectory', '.documentDirectory']) {
         expect(delegate, contains(place));
       }
-      // A failure is reported (by folder name only), not swallowed.
+      // A failure is not hidden by try?; it is retried on the next launch, and only a debug build says so.
       expect(delegate, isNot(contains('try? url.setResourceValues')));
       expect(delegate, contains('could not exclude'));
       // Called inside didFinishLaunching, before the app (and its plugins) start to write.
@@ -278,6 +299,36 @@ void main() {
     test('third-party keyboards are not allowed', () {
       expect(delegate, contains('shouldAllowExtensionPointIdentifier'));
       expect(delegate, contains('extensionPointIdentifier != .keyboard'));
+      // FlutterAppDelegate does not implement this method, so "override" would not compile; @objc exposes it to UIKit.
+      expect(
+          RegExp(r'override\s+func\s+application\(\s*_ application: UIApplication,\s*shouldAllowExtensionPointIdentifier')
+              .hasMatch(delegate),
+          isFalse);
+      expect(
+          RegExp(r'@objc\s+func\s+application\(\s*_ application: UIApplication,\s*shouldAllowExtensionPointIdentifier')
+              .hasMatch(delegate),
+          isTrue);
+    });
+
+    test('no Swift source logs outside a debug build', () {
+      for (final f in Directory('ios/Runner')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.swift'))) {
+        // Drop every #if DEBUG ... #endif block, then nothing may log.
+        final code = f
+            .readAsStringSync()
+            .replaceAll(RegExp(r'#if DEBUG[\s\S]*?#endif'), '');
+        for (final pattern in [
+          r'\bNSLog\(',
+          r'\bprint\(',
+          r'\bos_log\(',
+          r'Logger\('
+        ]) {
+          expect(RegExp(pattern).hasMatch(code), isFalse,
+              reason: '${f.path} must not log in a release build ($pattern)');
+        }
+      }
     });
 
     test('the privacy manifest says no tracking, and is part of the app bundle',
@@ -291,6 +342,8 @@ void main() {
               .hasMatch(privacy),
           isTrue);
       expect(privacy, contains('NSPrivacyCollectedDataTypeDeviceID'));
+      // The device token, key and signed approvals are tied to the user's account.
+      expect(privacy, contains('NSPrivacyCollectedDataTypeUserID'));
       expect(
           'PrivacyInfo.xcprivacy in Resources */,'.allMatches(project).length,
           1,

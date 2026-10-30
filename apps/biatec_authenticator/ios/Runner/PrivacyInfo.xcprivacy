@@ -2,14 +2,27 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Privacy manifest of the app itself. No tracking, no tracking domains, no analytics. The only data the app sends is the push token
-	     (a device identifier, used to deliver approval requests) to Biatec OIDC. Libraries bring their own manifests. -->
+	<!-- Privacy manifest of the app itself. No tracking, no tracking domains, no analytics. The app sends, to Biatec OIDC only: the push token
+	     (a device identifier, used to deliver approval requests), and the device token, key and signed approvals and settings changes,
+	     which are tied to the user's Biatec account (a user ID). Both are for the app's function. Libraries bring their own manifests. -->
 	<key>NSPrivacyTracking</key>
 	<false/>
 	<key>NSPrivacyTrackingDomains</key>
 	<array/>
 	<key>NSPrivacyCollectedDataTypes</key>
 	<array>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeUserID</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeDeviceID</string>

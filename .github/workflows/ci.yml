@@ -100,6 +100,11 @@ jobs:
         with:
           channel: stable
           cache: true
+      # The JDK that build.gradle.kts targets, so the release build does not change with the runner image's default JDK.
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
