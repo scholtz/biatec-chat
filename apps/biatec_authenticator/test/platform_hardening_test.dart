@@ -15,6 +15,8 @@ enum _Build { debug, release, either }
 
 _Build _branchOf(String condition) {
   final c = condition.replaceAll(RegExp(r'\s+'), '');
+  // With an "||" the branch can also hold in a release build.
+  if (c.contains('||')) return _Build.either;
   if (c == 'DEBUG' || c.startsWith('DEBUG&&') || c.endsWith('&&DEBUG')) {
     return _Build.debug;
   }
@@ -76,6 +78,9 @@ void main() {
     expect(other, isNot(contains('NSLog(d)')));
     expect(other, isNot(contains('NSLog(e)')));
     expect(other, isNot(contains('NSLog(f)')));
+    // An "||" can hold in release, so that branch is kept.
+    expect(releaseOnly('#if DEBUG && X || os(macOS)\nNSLog(g)\n#endif'),
+        contains('NSLog(g)'));
   });
 
   group('Android', () {
@@ -166,18 +171,12 @@ void main() {
 
   group('Android merged release manifest (after flutter build apk --release)',
       () {
-    // AGP writes the merged release manifest under merged_manifests or merged_manifest, depending on its version (packaged_manifests is a
-    // different, later artifact and is not read).
-    // The newest across both layouts, so a folder left by an older AGP never wins over the one the current build wrote.
-    final file = ([
-      for (final name in ['merged_manifests', 'merged_manifest'])
-        if (Directory('build/app/intermediates/$name/release').existsSync())
-          ...Directory('build/app/intermediates/$name/release')
-              .listSync(recursive: true)
-              .whereType<File>()
-              .where((f) => f.path.endsWith('AndroidManifest.xml')),
-    ]..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync())))
-        .firstOrNull;
+    // The final merged release manifest, by the path of the task that writes it, so neither recency nor an intermediate (main-only)
+    // manifest decides: processReleaseManifest (current AGP), then the older layout without a task folder.
+    final file = [
+      'build/app/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml',
+      'build/app/intermediates/merged_manifests/release/AndroidManifest.xml',
+    ].map(File.new).where((f) => f.existsSync()).firstOrNull;
 
     test('every exported component but the launcher is guarded by a permission',
         () {
@@ -272,14 +271,11 @@ void main() {
           greaterThan(activity.indexOf('super.onCreate(')));
     });
 
-    test('a partially obscured gesture is stopped on Android 10 and 11', () {
-      expect(activity, contains('override fun dispatchTouchEvent('));
-      expect(
-          activity, contains('MotionEvent.FLAG_WINDOW_IS_PARTIALLY_OBSCURED'));
-      expect(activity, contains('SDK_INT !in 29..30'));
-      // A gesture that started is cancelled, never left pressed, and the user is told why.
-      expect(activity, contains('MotionEvent.ACTION_CANCEL'));
-      expect(activity, contains('Toast.makeText('));
+    test('touches are not gated window-wide on partial occlusion', () {
+      // Gating every partially obscured touch locks the whole app on Android 10 and 11 whenever a chat head, a screen filter or even the
+      // app's own toast is on screen; the partial-occlusion gap is documented and left to a check on the approve action.
+      expect(activity, isNot(contains('override fun dispatchTouchEvent(')));
+      expect(activity, contains('Known gap on Android 10 and 11'));
     });
 
     test('the release build is not debuggable and strips logging', () {
@@ -482,19 +478,25 @@ void main() {
       for (final p in symbolPaths) {
         expect(p, endsWith('.gpg'), reason: 'unencrypted symbols upload: $p');
       }
+      // Nor on any other line, such as an entry of a multi-line "path: |" list: the folder itself is never named as a whole.
+      expect(
+          RegExp(r'build/symbols/?[ \t]*\r?$', multiLine: true).hasMatch(text),
+          isFalse,
+          reason: 'the raw symbols folder is named for upload');
       expect(text, contains('--symmetric --cipher-algo AES256'));
       // The throwaway signing key is removed again and never a repository file.
       expect(text,
           contains('rm -f android/key.properties android/ci-throwaway.jks'));
-      // The tests run once, after the release build, with a missing merged manifest made a failure.
+      // The unit tests run before the build, so a failing build still reports them; the hardening test runs again after it, with a
+      // missing merged manifest made a failure.
       final build = text.indexOf('flutter build apk --release');
-      final tests = text.indexOf('REQUIRE_MERGED_MANIFEST: "1"');
-      expect(tests, greaterThan(build));
-      expect(
-          RegExp(r'^\s*(- )?run: flutter test\s*$', multiLine: true)
-              .allMatches(text)
-              .length,
-          1);
+      final unit =
+          text.indexOf(RegExp(r'^\s*- run: flutter test\s*$', multiLine: true));
+      final hardening = text.indexOf('REQUIRE_MERGED_MANIFEST: "1"');
+      expect(unit, greaterThan(-1));
+      expect(unit, lessThan(build));
+      expect(hardening, greaterThan(build));
+      expect(text, contains('flutter test test/platform_hardening_test.dart'));
     }, skip: ci.existsSync() ? false : 'run from the repository checkout');
   });
 }

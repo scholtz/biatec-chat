@@ -113,6 +113,8 @@ jobs:
             apps/biatec_authenticator/android/gradle/wrapper/gradle-wrapper.properties
       - run: flutter pub get
       - run: flutter analyze
+      # Before the build, so a failing Gradle, signing or R8 step still reports the Dart tests.
+      - run: flutter test
       # The release build is obfuscated and its debug symbols are split off (BCHAT-008, T-227), signed here with a throwaway key that exists
       # only for this job, so the build itself, and the merged release manifest the hardening test reads, are checked on every change.
       - name: Release build (obfuscated, throwaway signing key)
@@ -128,12 +130,12 @@ jobs:
           } > android/key.properties
           flutter build apk --release --obfuscate --split-debug-info=build/symbols \
             --dart-define=OIDC_BASE_URL=https://oidc.example
-      # One run of every test, after the build, so the hardening test also reads the merged release manifest. REQUIRE_MERGED_MANIFEST
-      # makes a missing merged manifest a failure, not a skipped test.
-      - name: Tests (with the merged release manifest)
+      # The hardening test again, now with the merged release manifest. REQUIRE_MERGED_MANIFEST makes a missing merged manifest a failure,
+      # not a skipped test.
+      - name: Hardening checks against the merged release manifest
         env:
           REQUIRE_MERGED_MANIFEST: "1"
-        run: flutter test
+        run: flutter test test/platform_hardening_test.dart
       # Also when the build failed: the throwaway key and its password must not stay in the workspace.
       - name: Remove the throwaway signing key
         if: always()
