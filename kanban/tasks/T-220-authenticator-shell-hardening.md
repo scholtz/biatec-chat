@@ -49,6 +49,8 @@ Parallel work possible: **no**. Don't run it at the same time as T-222, T-225: t
 - [ ] Push registration is asked for from several places (`main.dart` resume, `AppGate._onPhase`, `PushController.didPush/didPop` through every tab's navigator, `start`). Pick one owner.
 - [ ] Carried over: `ApprovalScreen` redraws its countdown from a `Timer.periodic` that `TickerMode` does not stop, so a card in a hidden tab keeps rebuilding every second (after T-216).
 - [ ] Carried over: the mock strip shows only inside the shell. Show it on the startup, retry and enrollment screens too (after T-215).
+- [ ] (From the T-227 review, PR #370.) Android 10 and 11 let a partially obscured touch reach the Approve button (an overlay painting a fake amount next to it). Gating every such touch window-wide locks the whole app when a chat head or screen filter is on screen, so check it on the approve action alone, through a method channel to Dart (`FLAG_WINDOW_IS_PARTIALLY_OBSCURED` of the tap's event).
+- [ ] (From the T-227 review, PR #370.) The authenticator CI job builds an obfuscated, signed release APK on every pull request. Add a path filter (or a changed-files guard) so backend-only and widget-only changes do not wait for it.
 - [ ] `flutter analyze` is clean and `flutter test` passes.
 
 ## Implementation notes
