@@ -1,7 +1,7 @@
 ---
 id: T-222
 title: "Authenticator: biometric-only lock for the whole secure area"
-status: blocked
+status: backlog
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-214, T-227]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
-updated: 2026-10-28
+updated: 2026-10-30
 ---
 
 # T-222 - Authenticator: biometric-only lock for the whole secure area
@@ -71,3 +71,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:00 · claude · (new) → blocked · created from the request to add two-factor codes, a biometric lock and industry-standard security
 - 2026-10-28 09:42 · kanban-board · backlog → blocked · waiting on: T-214
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
+- 2026-10-30 16:40 · kanban-board · blocked → backlog · blockers done: T-214, T-227
