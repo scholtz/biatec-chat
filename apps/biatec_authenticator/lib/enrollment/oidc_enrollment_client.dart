@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../keys/device_key_store.dart';
+import '../security/pinning/pinned_http.dart';
 import 'enrollment_state.dart';
 
 class EnrollmentException implements Exception {
@@ -15,7 +16,7 @@ class EnrollmentException implements Exception {
 /// `POST /devices` against Biatec OIDC (the mock in development).
 class OidcEnrollmentClient {
   OidcEnrollmentClient({required this.baseUrl, http.Client? client})
-      : _client = client ?? http.Client();
+      : _client = client ?? PinnedHttp.clientFor(baseUrl);
 
   final String baseUrl;
   final http.Client _client;
@@ -44,6 +45,8 @@ class OidcEnrollmentClient {
           if (name != null) 'name': name,
         }),
       );
+    } on PinningException catch (e) {
+      throw EnrollmentException(e.message);
     } on Object catch (e) {
       throw EnrollmentException('Could not reach Biatec OIDC: $e');
     }
@@ -94,6 +97,8 @@ class OidcEnrollmentClient {
         Uri.parse('$baseUrl$path'),
         headers: {'Authorization': 'Device $deviceToken'},
       );
+    } on PinningException catch (e) {
+      throw EnrollmentException(e.message);
     } on Object catch (e) {
       throw EnrollmentException('Could not reach Biatec OIDC: $e');
     }

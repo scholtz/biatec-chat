@@ -5,6 +5,8 @@ import 'config.dart';
 import 'enrollment/enrollment_controller.dart';
 import 'push/fcm_push_transport.dart';
 import 'push/push_controller.dart';
+import 'security/pinning/pinned_http.dart';
+import 'security/pinning/pins.dart';
 import 'security/secure_storage.dart';
 import 'security/settings_controller.dart';
 import 'shell/app_gate.dart';
@@ -18,6 +20,8 @@ Future<void> main() async {
   final AppConfig config;
   try {
     config = AppConfig.fromEnvironment();
+    // Every HTTPS connection to Biatec OIDC is checked against pinned public keys; with none for the host, the app does not start.
+    PinnedHttp.configure(pinPolicyFor(config));
   } on ConfigException catch (e) {
     // Never start talking to an unsafe URL, and say why instead of showing a blank screen.
     runApp(ConfigErrorApp(message: e.message));

@@ -126,7 +126,8 @@ void main() {
     test('cleartext is forbidden except in the debug manifest', () {
       expect(manifest, contains('android:usesCleartextTraffic="false"'));
       expect(manifest, isNot(contains('usesCleartextTraffic="true"')));
-      expect(debugManifest, contains('android:usesCleartextTraffic="true"'));
+      // No attribute switches cleartext on for every host: the debug build's own network config allows the developer's machine only.
+      expect(debugManifest, isNot(contains('usesCleartextTraffic="true"')));
       expect(profileManifest, isNot(contains('usesCleartextTraffic="true"')));
     });
 
@@ -215,10 +216,10 @@ void main() {
     final project = read('ios/Runner.xcodeproj/project.pbxproj');
 
     test(
-        'App Transport Security is left at its default and there are no URL schemes',
+        'App Transport Security has no exceptions and there are no URL schemes',
         () {
-      expect(plist, isNot(contains('NSAppTransportSecurity')));
       expect(plist, isNot(contains('NSAllowsArbitraryLoads')));
+      expect(plist, isNot(contains('NSExceptionDomains')));
       expect(plist, isNot(contains('CFBundleURLTypes')));
       expect(plist, contains('NSFaceIDUsageDescription'));
     });

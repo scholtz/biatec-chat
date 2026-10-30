@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../approvals/approval_client.dart';
 import 'device_proof.dart';
+import 'pinning/pinned_http.dart';
 
 /// One enrolled device of the user, as `GET /devices` lists it.
 class DeviceInfo {
@@ -123,7 +124,7 @@ class ConsentRequiredException extends ApprovalException {
 /// shapes are in `docs/required-changes-biatec-oidc.md`, rows 21 and 22.
 class SettingsClient {
   SettingsClient({required this.baseUrl, http.Client? client, this.proof})
-      : _client = client ?? http.Client();
+      : _client = client ?? PinnedHttp.clientFor(baseUrl);
 
   final String baseUrl;
   final http.Client _client;
@@ -156,6 +157,9 @@ class SettingsClient {
   Future<http.Response> _send(Future<http.Response> Function() call) async {
     try {
       return await call().timeout(_timeout);
+    } on PinningException catch (e) {
+      // Not "offline": retrying will not help, and the user is told to update.
+      throw ApprovalException(e.message);
     } on Object catch (e) {
       throw ApprovalException('Biatec OIDC is not reachable: $e',
           offline: true);
