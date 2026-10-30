@@ -49,6 +49,7 @@ Parallel work possible: **yes**. No other unfinished task that could run at the 
 - [ ] A screen reader announces issuer, label and the code digit by digit in groups, the countdown at 10 s, 5 s and at renewal, and not every second; layouts hold at 3x text in light and dark mode.
 - [ ] Locking the app clears the displayed codes from the widget tree and the ticker stops.
 - [ ] A device clock off by more than 5 s shows a warning that explains the fix.
+- [ ] (From the T-221 review, PR #369.) The list asks `OtpGenerator.clockIsPlausible(now, notBefore: …)` before showing time-based codes. It recovers when the stored latest time is far in the future (it was saved while the clock ran ahead), so a corrected clock does not hide codes until that date.
 - [ ] `flutter analyze` is clean and `flutter test` passes in `apps/biatec_authenticator`, with new tests for every behaviour above (the failing case first for each security rule).
 
 ## Implementation notes
