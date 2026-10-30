@@ -2,10 +2,9 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import 'pinning/pinned_http.dart';
-
 import '../approvals/approval_client.dart';
 import 'device_proof.dart';
+import 'pinning/pinned_http.dart';
 
 /// One enrolled device of the user, as `GET /devices` lists it.
 class DeviceInfo {

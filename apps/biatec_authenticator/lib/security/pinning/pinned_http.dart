@@ -94,7 +94,11 @@ class _PinnedClient extends http.BaseClient {
     final host = request.url.host.toLowerCase();
     if (request.url.scheme == 'http') {
       if (_allowLocalHttp && AppConfig.localHosts.contains(host)) {
-        return (_plain ??= http.Client()).send(request);
+        // Same rules as the pinned path where they apply: no redirect (a local mock must not lead to another host), and a timeout.
+        request.followRedirects = false;
+        return (_plain ??= http.Client())
+            .send(request)
+            .timeout(const Duration(seconds: 15));
       }
       throw PinningException(PinDecision.noPinsForHost, host);
     }

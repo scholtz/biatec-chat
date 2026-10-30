@@ -2,9 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../security/pinning/pinned_http.dart';
-
 import '../keys/device_key_store.dart';
+import '../security/pinning/pinned_http.dart';
 import 'enrollment_state.dart';
 
 class EnrollmentException implements Exception {

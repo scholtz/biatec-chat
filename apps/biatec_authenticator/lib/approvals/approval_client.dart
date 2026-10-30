@@ -2,9 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../security/pinning/pinned_http.dart';
-
 import '../security/device_proof.dart';
+import '../security/pinning/pinned_http.dart';
 import 'consent_request.dart';
 
 /// The request could not be reached or read. [offline] is true when the
