@@ -1,7 +1,7 @@
 ---
 id: T-221
 title: "Authenticator: two-factor code engine (HOTP, TOTP, otpauth)"
-status: review
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: []
@@ -14,7 +14,7 @@ owner: "session-20261028-0915"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
-updated: 2026-10-28
+updated: 2026-10-30
 ---
 
 # T-221 - Authenticator: two-factor code engine (HOTP, TOTP, otpauth)
@@ -76,9 +76,12 @@ Write the failing test first for every security rule. Never log, print or put in
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
 
+- 2026-10-30 09:51 · approve · PR #369 merged into main @ fb7c9f5 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-28 09:00 · claude · (new) → backlog · created from the request to add two-factor codes, a biometric lock and industry-standard security
 - 2026-10-28 09:10 · scholtz · taken · status stays backlog
 - 2026-10-28 09:15 · session-20261028-0915 · backlog → in-progress · claimed
 - 2026-10-28 10:10 · session-20261028-0915 · in-progress → review · PR #369, CI green
+- 2026-10-30 09:51 · user · review → done · PR #369 merged into main @ fb7c9f5 (synced by kanban-sync)
