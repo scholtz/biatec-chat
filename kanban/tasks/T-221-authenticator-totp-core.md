@@ -57,13 +57,20 @@ Write the failing test first for every security rule. Never log, print or put in
 
 ## Hand-off
 
-- **Summary:** pure-Dart engine in `lib/totp/core/`: `Base32`, `OtpAccount`, `OtpUri` (parse and write), `OtpGenerator` (HOTP, TOTP, next code, seconds and fraction left, grouping).
-- **Branch @ commit:** `task/T-221` @ 1bc90ac, PR #369 (CI green).
-- **Decisions to know about:** a secret under 80 bits is refused (the smallest in wide use is Google's 16 Base32 characters); Base32 leftover bits in the last character are dropped like other apps do; a `counter` on a time-based link is refused, a `period` on a counter-based link is ignored; the issuer setting wins over a different label prefix; names are trimmed and must not contain control, invisible or direction-changing characters; duplicates are decided by secret and parameters, not names; a wiped account refuses to make codes and `copyWith` on it throws.
-- **How it was verified:** `flutter analyze` clean; `flutter test` 250 pass, including the RFC 4226 appendix D and RFC 6238 appendix B vectors for SHA-1, SHA-256 and SHA-512. Three rounds of `/code-review high`, each fixed; I stopped at three.
+- **Summary:** pure-Dart engine in `lib/totp/core/`: `Base32`, `OtpAccount`, `OtpUri` (parse and write), `OtpGenerator` (HOTP, TOTP, next code, seconds and fraction left, grouping in threes, clock plausibility).
+- **Branch:** `task/T-221`, PR #369; see the PR for the commit merged.
+- **Decisions to know about:**
+  - A secret under 80 bits is refused at every layer (the account, the parser and `hotp`).
+  - Base32 drops leftover bits at any length, as other apps do. When padding is present, it must be exact and in one run.
+  - Each account type refuses the other's setting: a counter on a time-based account (except `counter=0` in a link) and a period on a counter-based one. A period in a counter-based link is still checked.
+  - The `issuer` setting names the issuer. A label prefix naming the same issuer, apart from case and spacing, is dropped; a different prefix is kept. With an issuer but no name, the issuer is the name.
+  - Names have Unicode spaces turned into plain spaces and are trimmed. They must not contain control, format, invisible, private-use or direction-changing characters.
+  - The secret is a read-only view; a wiped account refuses codes, links and copies (`checkUsable`).
+  - `OtpAccount` refusals are `OtpAccountException`s carrying the broken rule, which the parser maps to its own error.
+- **How it was verified:** `flutter analyze` is clean; `flutter test` passes 398 tests, including the RFC 4226 appendix D and RFC 6238 appendix B vectors for SHA-1, SHA-256 and SHA-512. `/code-review` ran in rounds on PR #369, each round's findings fixed or answered on the PR.
 - **Follow-up tasks created:** none.
 - **Unblocks:** T-223 (vault) becomes ready once this is merged; T-224 and T-226 wait on more.
-- **Open questions:** the PR is not merged: merging is refused for the assistant by the session's permission classifier, so it is yours.
+- **Open questions:** none.
 
 ## Review
 
