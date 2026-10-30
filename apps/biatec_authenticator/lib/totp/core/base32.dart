@@ -36,8 +36,8 @@ abstract final class Base32 {
   static bool _separator(int u) =>
       OtpLimits.isSpace(u) ||
       u == 0x2D ||
-      u == 0x2010 || // hyphen
-      u == 0x2011; // non-breaking hyphen
+      (u >= 0x2010 && u <= 0x2014) || // hyphens, figure, en and em dashes
+      u == 0x2212; // minus sign
 
   /// Decodes [input]. Case, spaces, dashes and missing `=` padding are tolerated, because people copy setup keys from web pages in groups of four. Padding, when present, must be the exact amount; anything else outside the alphabet is refused.
   ///

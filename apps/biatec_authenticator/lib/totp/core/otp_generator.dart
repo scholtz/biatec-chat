@@ -20,7 +20,7 @@ abstract final class OtpGenerator {
     int digits = 6,
   }) {
     // The account's own check, so no layer makes codes from values an account refuses (a guessable key, say).
-    OtpLimits.checkCodeInputs(secret.length, digits, counter);
+    OtpLimits.checkCodeInputs(secret, digits, counter);
     // The counter is 8 bytes, big endian, written as two 32-bit halves (setUint64 does not exist when compiled to JavaScript).
     final message = Uint8List(8);
     ByteData.view(message.buffer)

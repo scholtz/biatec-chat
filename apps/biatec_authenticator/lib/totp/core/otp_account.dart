@@ -11,8 +11,9 @@ enum OtpAlgorithm {
   /// The name in an `otpauth://` link.
   final String uriName;
 
-  /// Case and a hyphen are ignored, since some generators write `SHA-256`.
+  /// Case and a hyphen are ignored, since some generators write `SHA-256`. Only ASCII is read: a look-alike such as U+017F (long s, which upper-cases to "S") is refused, not taken for SHA1.
   static OtpAlgorithm? fromUriName(String name) {
+    if (name.codeUnits.any((u) => u > 0x7F)) return null;
     final n = name.toUpperCase().replaceAll('-', '');
     for (final a in values) {
       if (a.uriName == n) return a;
@@ -55,9 +56,10 @@ abstract final class OtpLimits {
   static bool validPeriod(int p) => p >= minPeriod && p <= maxPeriod;
   static bool validCounter(int c) => c >= 0 && c <= maxCounter;
 
-  /// The rules every code needs, for the account and the generator alike: a key of at least [minSecretBytes], [digits] in range, and a counter in range.
-  static void checkCodeInputs(int secretLength, int digits, int counter) {
-    if (secretLength < minSecretBytes) {
+  /// The rules every code needs, for the account and the generator alike: a key of at least [minSecretBytes] that is not one repeated byte, [digits] in range, and a counter in range.
+  static void checkCodeInputs(List<int> secret, int digits, int counter) {
+    // A key of one repeated byte (all zeros, as a wiped buffer is) has the length of a strong key and none of its strength.
+    if (secret.length < minSecretBytes || secret.every((b) => b == secret[0])) {
       throw OtpAccountException(
           OtpAccountProblem.weakSecret, weakSecretMessage);
     }
@@ -159,7 +161,7 @@ abstract final class OtpLimits {
         u == 0x2800 || // braille blank
         (u >= 0x0334 && u <= 0x0338) || // combining overlays (strike-through)
         (u >= 0xE000 && u <= 0xF8FF) || // private use
-        u >= 0xF0000 || // supplementary private use (and the tags above)
+        u >= 0xF0000 || // supplementary private use planes 15 and 16
         (u >= 0xFDD0 && u <= 0xFDEF) || // noncharacters
         (u & 0xFFFE) == 0xFFFE || // U+FFFE and U+FFFF in every plane
         (u >= 0xFE00 && u <= 0xFE0F) || // variation selectors
@@ -215,12 +217,7 @@ class OtpAccount {
   /// The one place the account rules are checked; the parser maps the [OtpAccountException] to its own error.
   static Uint8List _checkedCopy(Uint8List secret, String issuer, String label,
       int digits, int period, OtpType type, int counter) {
-    OtpLimits.checkCodeInputs(secret.length, digits, counter);
-    // A key of one repeated byte (all zeros, say) has the length of a strong key and none of its strength.
-    if (secret.every((b) => b == secret[0])) {
-      throw OtpAccountException(
-          OtpAccountProblem.weakSecret, OtpLimits.weakSecretMessage);
-    }
+    OtpLimits.checkCodeInputs(secret, digits, counter);
     if (!OtpLimits.validPeriod(period)) {
       throw OtpAccountException(
           OtpAccountProblem.period, OtpLimits.periodMessage);
@@ -270,8 +267,6 @@ class OtpAccount {
     return Uint8List.fromList(_secret);
   }
 
-  /// Whether every byte of the secret is zero, which [wipe] makes so (no account accepts such a key). Tells nothing about the key itself; for tests and audits of the wipe.
-  bool get isZeroed => _secret.every((b) => b == 0);
   final OtpAlgorithm algorithm;
   final int digits;
 

@@ -39,8 +39,9 @@ void main() {
 
     test('wipe overwrites the secret in memory', () {
       final a = OtpAccount(issuer: '', label: 'a', secret: key());
+      final view = a.secret;
       a.wipe();
-      expect(a.isZeroed, isTrue);
+      expect(view.every((b) => b == 0), isTrue);
     });
 
     test(
@@ -70,8 +71,9 @@ void main() {
       final a = OtpAccount(issuer: '', label: 'a', secret: buffer);
       buffer.fillRange(0, buffer.length, 0);
       expect(a.secret, List.generate(20, (i) => 7 + i));
+      final view = a.secret;
       a.wipe();
-      expect(a.isZeroed, isTrue);
+      expect(view.every((b) => b == 0), isTrue);
     });
 
     test('a wiped account cannot make codes', () {

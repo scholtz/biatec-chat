@@ -214,7 +214,7 @@ void main() {
   group('counter encoding', () {
     test('a counter above 32 bits is written in full', () {
       // RFC 4226 big-endian counter: the high half must not be lost.
-      final k = Uint8List.fromList(List.filled(20, 1));
+      final k = Uint8List.fromList(List.generate(20, (i) => i + 1));
       final mac = Hmac(sha1, k).convert([0, 0, 0, 1, 0, 0, 0, 1]).bytes;
       final o = mac[19] & 0x0F;
       final want = (((mac[o] & 0x7F) << 24) |

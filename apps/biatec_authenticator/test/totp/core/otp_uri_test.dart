@@ -303,9 +303,10 @@ void main() {
           label: 'L',
           secret: Uint8List.fromList(List.generate(20, (i) => 9 + i)));
       final b = a.copyWith(id: 'x');
+      final view = a.secret;
       a.wipe();
       expect(b.secret, List.generate(20, (i) => 9 + i));
-      expect(a.isZeroed, isTrue);
+      expect(view.every((b) => b == 0), isTrue);
     });
 
     test('a differing issuer setting wins over the label prefix', () {
@@ -379,9 +380,10 @@ void main() {
 
     test('a wiped account does not hand out its zeros as the secret', () {
       final a = OtpAccount(issuer: '', label: 'a', secret: key());
+      final view = a.secret;
       a.wipe();
       expect(() => a.secret, throwsStateError);
-      expect(a.isZeroed, isTrue);
+      expect(view.every((b) => b == 0), isTrue);
     });
 
     test('copyWith refuses a new id together with clearId', () {
@@ -488,6 +490,30 @@ void main() {
 
     test('a link with an empty type is not a setup link', () {
       expect(errorOf('otpauth:///GitHub:alice?$s'), OtpUriError.notOtpAuth);
+    });
+
+    test('hotp refuses a zeroed or one-byte key, like the account', () {
+      expect(() => OtpGenerator.hotp(Uint8List(20), 0),
+          throwsA(isA<OtpAccountException>()));
+      expect(() => OtpGenerator.hotp(Uint8List.fromList(List.filled(20, 5)), 0),
+          throwsA(isA<OtpAccountException>()));
+    });
+
+    test('algorithm names are ASCII only', () {
+      final longS = String.fromCharCode(0x017F);
+      expect(
+          errorOf(
+              'otpauth://totp/x?$s&algorithm=${Uri.encodeQueryComponent('${longS}ha1')}'),
+          OtpUriError.invalidAlgorithm);
+    });
+
+    test('keys typeset with en dashes, em dashes or minus signs are read', () {
+      final want = Base32.decode('JBSWY3DPEHPK3PXP');
+      for (final d in [0x2012, 0x2013, 0x2014, 0x2212]) {
+        final dash = String.fromCharCode(d);
+        expect(Base32.decode('JBSW${dash}Y3DP${dash}EHPK${dash}3PXP'), want,
+            reason: d.toRadixString(16));
+      }
     });
 
     test('hyphenated algorithm names are read', () {
@@ -611,8 +637,9 @@ void main() {
     test('the secret cannot be changed through the account', () {
       final a = OtpAccount(issuer: 'I', label: 'L', secret: key());
       expect(() => a.secret[0] = 1, throwsUnsupportedError);
+      final view = a.secret;
       a.wipe();
-      expect(a.isZeroed, isTrue);
+      expect(view.every((b) => b == 0), isTrue);
     });
 
     test('a wiped account cannot be written as a link', () {
