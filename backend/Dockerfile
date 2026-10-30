@@ -1,6 +1,6 @@
 # Build context is the repository root: docker build -f backend/Dockerfile .
 # The administrator dashboard (docs/admin-dashboard.md): a Vue app the backend serves at /admin/. It holds no secret and no URL.
-FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS admin-ui
+FROM node:25-alpine@sha256:bdf2cca6fe3dabd014ea60163eca3f0f7015fbd5c7ee1b0e9ccb4ced6eb02ef4 AS admin-ui
 RUN corepack enable
 WORKDIR /repo
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -9,7 +9,7 @@ RUN pnpm install --frozen-lockfile --filter @biatec/admin...
 COPY apps/admin apps/admin
 RUN pnpm --filter @biatec/admin build
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:747cbade5bfd918a175ac32f8f1d931edec2c7d0d5397a3de72eaef1ac1f66d2 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:de4fe90a98845d75910b9769662465c84de1a934665c431279d1382b2bddc02b AS build
 WORKDIR /src
 COPY backend/Biatec.Chat.Core/Biatec.Chat.Core.csproj backend/Biatec.Chat.Core/
 COPY backend/Biatec.Chat.Tools/Biatec.Chat.Tools.csproj backend/Biatec.Chat.Tools/
@@ -24,7 +24,7 @@ RUN dotnet publish backend/Biatec.Chat.Api/Biatec.Chat.Api.csproj -c Release --n
 
 # AWS IAM Roles Anywhere credential helper (Bedrock access without access keys or a cluster OIDC issuer AWS can reach).
 # The AWS SDK runs it through credential_process (k8s/base/backend.yaml, docs/aws-setup.md). Pinned and checksummed.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:8af87eba5e7cdafb1514d7388be287365da97c132509e84dfe252ffd552398ca AS signing-helper
+FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:de0ee358cdd672f7017a003bed21e9ac9ed48a27c922a59b18175b6e82fa7fee AS signing-helper
 ARG TARGETARCH
 ARG SIGNING_HELPER_VERSION=1.8.0
 ARG SIGNING_HELPER_SHA256_AMD64=4ec587c4b2a7a4b2980f0fb084c3fabd99a862ce1091341ba514ae3c0923b905
@@ -40,7 +40,7 @@ RUN set -eu; \
     echo "${sha}  /aws_signing_helper" | sha256sum -c -; \
     chmod 0755 /aws_signing_helper
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:8af87eba5e7cdafb1514d7388be287365da97c132509e84dfe252ffd552398ca
+FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:de0ee358cdd672f7017a003bed21e9ac9ed48a27c922a59b18175b6e82fa7fee
 ENV ASPNETCORE_URLS=http://+:8080
 WORKDIR /app
 COPY --from=signing-helper /aws_signing_helper /usr/local/bin/aws_signing_helper
