@@ -1,8 +1,21 @@
 // BCHAT-008: the native posture of the committed android/ and ios/ folders is a reviewed property, so it is a test. These read the project
-// files (flutter test runs from the package root); the merged release manifest, which also holds what libraries add, is reviewed on release.
+// files (flutter test runs from the package root); the merged release manifest, which also holds what libraries add, is checked in CI after the release build.
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+
+/// Every data domain Android can back up or transfer; the extraction rules must exclude each one.
+const excludedDomains = [
+  'root',
+  'file',
+  'database',
+  'sharedpref',
+  'external',
+  'device_root',
+  'device_file',
+  'device_database',
+  'device_sharedpref',
+];
 
 String read(String path) {
   final f = File(path);
@@ -14,7 +27,8 @@ String read(String path) {
 enum _Build { debug, release, either }
 
 _Build _branchOf(String condition) {
-  final c = condition.replaceAll(RegExp(r'\s+'), '');
+  // A trailing // comment is not part of the condition.
+  final c = condition.split('//').first.replaceAll(RegExp(r'\s+'), '');
   // With an "||" the branch can also hold in a release build.
   if (c.contains('||')) return _Build.either;
   if (c == 'DEBUG' || c.startsWith('DEBUG&&') || c.endsWith('&&DEBUG')) {
@@ -81,6 +95,9 @@ void main() {
     // An "||" can hold in release, so that branch is kept.
     expect(releaseOnly('#if DEBUG && X || os(macOS)\nNSLog(g)\n#endif'),
         contains('NSLog(g)'));
+    // A trailing comment does not change the condition.
+    expect(releaseOnly('#if DEBUG // diagnostics\nNSLog(h)\n#endif'),
+        isNot(contains('NSLog(h)')));
   });
 
   group('Android', () {
@@ -100,17 +117,7 @@ void main() {
       expect(rules, contains('<cloud-backup>'));
       expect(rules, contains('<device-transfer>'));
       expect(RegExp('<include').hasMatch(rules), isFalse);
-      for (final domain in [
-        'root',
-        'file',
-        'database',
-        'sharedpref',
-        'external',
-        'device_root',
-        'device_file',
-        'device_database',
-        'device_sharedpref'
-      ]) {
+      for (final domain in excludedDomains) {
         expect('<exclude domain="$domain" />'.allMatches(rules).length, 2,
             reason: '$domain in cloud-backup and device-transfer');
       }
@@ -291,11 +298,13 @@ void main() {
     });
 
     test('no source file logs', () {
-      final dir = Directory('android/app/src/main/kotlin');
-      for (final f in dir
+      // Kotlin and Java, wherever they sit under src/main. Flutter's generated GeneratedPluginRegistrant is not ours (it is rewritten on
+      // every build, and its Log calls are stripped by R8 with the rest).
+      for (final f in Directory('android/app/src/main')
           .listSync(recursive: true)
           .whereType<File>()
-          .where((f) => f.path.endsWith('.kt'))) {
+          .where((f) => f.path.endsWith('.kt') || f.path.endsWith('.java'))
+          .where((f) => !f.path.endsWith('GeneratedPluginRegistrant.java'))) {
         final code = f.readAsStringSync();
         for (final pattern in [
           r'\bLog\.[a-zA-Z]+\(',
@@ -343,17 +352,7 @@ void main() {
             .firstMatch(rules)
             ?.group(1);
         expect(body, isNotNull, reason: '<$section> is missing');
-        for (final domain in [
-          'root',
-          'file',
-          'database',
-          'sharedpref',
-          'external',
-          'device_root',
-          'device_file',
-          'device_database',
-          'device_sharedpref'
-        ]) {
+        for (final domain in excludedDomains) {
           expect(body, contains('<exclude domain="$domain" />'),
               reason: '$domain in $section');
         }
@@ -370,7 +369,11 @@ void main() {
       expect(delegate, contains('excludeStorageFromBackup()'));
       expect(delegate, contains('isExcludedFromBackup = true'));
       // Library holds Application Support and Caches, so it and Documents cover every app folder.
-      for (final place in ['.libraryDirectory', '.documentDirectory']) {
+      for (final place in [
+        '.libraryDirectory',
+        '.applicationSupportDirectory',
+        '.documentDirectory'
+      ]) {
         expect(delegate, contains(place));
       }
       // A failure is not hidden by try?; it is retried on the next launch, and only a debug build says so.

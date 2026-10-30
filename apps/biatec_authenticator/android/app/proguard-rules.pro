@@ -2,6 +2,8 @@
 # KeystorePlugin is instantiated directly from MainActivity, so it needs no keep rule.
 
 # No Java or Kotlin logging in the release build: calls to android.util.Log (from this app and the libraries it bundles) are removed.
+# Only the call goes: an argument expression R8 cannot prove free of side effects (a library's obj.describe(), say) is still evaluated,
+# though its text never reaches logcat.
 # This does not reach Dart print/debugPrint output or native logging from the Flutter engine and NDK libraries, which go to logcat
 # by their own path; the Dart code is kept free of logging that could carry a secret, code, token or key instead.
 -assumenosideeffects class android.util.Log {

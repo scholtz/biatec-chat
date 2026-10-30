@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS"/>
     <!-- Hardening (BCHAT-008): nothing is backed up or transferred, cleartext traffic is forbidden (the debug manifest allows it for the local
          mock only), and MainActivity, the launcher, is the only component declared here. Libraries add their own components when the
-         manifests are merged; test/platform_hardening_test.dart checks this file, and the merged release manifest is reviewed on release. -->
+         manifests are merged; test/platform_hardening_test.dart checks this file, and CI checks the merged release manifest after the release build. -->
     <application
         android:label="Biatec Authenticator"
         android:name="${applicationName}"
