@@ -21,16 +21,23 @@ import UIKit
   }
 
   /// Nothing the app stores in its own folders goes to an iCloud or iTunes backup (the vault and the history are device-only, BCHAT-009). The flag on a
-  /// directory covers what is inside it. Keychain items are kept off backups by their own accessibility class (ThisDeviceOnly).
+  /// directory covers what is inside it, including what is created later, so Library (which holds Application Support) and Documents are enough.
+  /// Documents is flagged only once something created it; this runs on every launch. Keychain items are kept off backups by their own
+  /// accessibility class (ThisDeviceOnly).
   static func excludeStorageFromBackup() {
     let fm = FileManager.default
-    let places: [FileManager.SearchPathDirectory] = [.applicationSupportDirectory, .documentDirectory, .libraryDirectory]
+    let places: [FileManager.SearchPathDirectory] = [.libraryDirectory, .documentDirectory]
     for place in places {
-      guard var url = fm.urls(for: place, in: .userDomainMask).first else { continue }
-      try? fm.createDirectory(at: url, withIntermediateDirectories: true)
+      guard var url = fm.urls(for: place, in: .userDomainMask).first,
+            fm.fileExists(atPath: url.path) else { continue }
       var values = URLResourceValues()
       values.isExcludedFromBackup = true
-      try? url.setResourceValues(values)
+      do {
+        try url.setResourceValues(values)
+      } catch {
+        // Says which folder only, never what is in it. The next launch tries again.
+        NSLog("Biatec: could not exclude %@ from backup: %@", url.lastPathComponent, error.localizedDescription)
+      }
     }
   }
 

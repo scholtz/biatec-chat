@@ -128,11 +128,30 @@ jobs:
         if: always()
         run: rm -f android/key.properties android/ci-throwaway.jks
       # These symbols belong to this CI build only. A shipped release is built with its own --split-debug-info and keeps its own symbols.
-      - name: Upload debug symbols of this build
+      # The repository is public and so are its workflow artifacts, so the symbols are published only encrypted (OpenPGP, AES-256)
+      # with the AUTHENTICATOR_SYMBOLS_PASSPHRASE secret; without the secret (a fork, or before it is set) they are not published.
+      - name: Encrypt debug symbols of this build
+        id: symbols
+        env:
+          SYMBOLS_PASSPHRASE: ${{ secrets.AUTHENTICATOR_SYMBOLS_PASSPHRASE }}
+        run: |
+          if [ -z "$SYMBOLS_PASSPHRASE" ]; then
+            echo "::notice::AUTHENTICATOR_SYMBOLS_PASSPHRASE is not set: the debug symbols are not published."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tar -C build -czf build/symbols.tar.gz symbols
+          printf '%s' "$SYMBOLS_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 --s2k-digest-algo SHA512 --s2k-count 65011712 \
+            -o build/symbols.tar.gz.gpg build/symbols.tar.gz
+          rm -f build/symbols.tar.gz
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+      - name: Upload encrypted debug symbols of this build
+        if: steps.symbols.outputs.ready == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: authenticator-debug-symbols
-          path: apps/biatec_authenticator/build/symbols
+          path: apps/biatec_authenticator/build/symbols.tar.gz.gpg
           retention-days: 7
           if-no-files-found: error
 

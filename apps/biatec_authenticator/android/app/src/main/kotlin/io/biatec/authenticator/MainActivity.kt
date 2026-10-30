@@ -18,7 +18,9 @@ class MainActivity : FlutterFragmentActivity() {
         if (Build.VERSION.SDK_INT >= 31) window.setHideOverlayWindows(true)
         super.onCreate(savedInstanceState)
         // Android 11 and older cannot hide overlays, so a touch that reaches the window through another app's overlay is dropped (tapjacking).
-        // From Android 12 the overlays are hidden above, and a screen filter or a chat head keeps working everywhere else.
+        // From Android 12 the filter is not needed: other apps' overlays are hidden above, and the system itself blocks touches that pass
+        // through an untrusted window from another app. Accessibility-service windows are trusted by the system and such a service can
+        // dispatch gestures directly, so a touch filter would not stop one; it would only break screen filters and chat heads.
         if (Build.VERSION.SDK_INT < 31) window.decorView.filterTouchesWhenObscured = true
     }
 

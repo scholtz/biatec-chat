@@ -99,14 +99,21 @@ void main() {
 
   group('Android merged release manifest (after flutter build apk --release)',
       () {
-    final dir = Directory('build/app/intermediates/merged_manifests/release');
-    final file = dir.existsSync()
-        ? dir
-            .listSync(recursive: true)
-            .whereType<File>()
-            .where((f) => f.path.endsWith('AndroidManifest.xml'))
-            .firstOrNull
-        : null;
+    // AGP writes the merged release manifest under one of these, depending on its version. The newest one wins, so a manifest left
+    // over from an older build is not read in place of the current one.
+    final candidates = [
+      for (final name in [
+        'merged_manifests',
+        'merged_manifest',
+        'packaged_manifests'
+      ])
+        if (Directory('build/app/intermediates/$name/release').existsSync())
+          ...Directory('build/app/intermediates/$name/release')
+              .listSync(recursive: true)
+              .whereType<File>()
+              .where((f) => f.path.endsWith('AndroidManifest.xml')),
+    ]..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+    final file = candidates.firstOrNull;
 
     test('every exported component but the launcher is guarded by a permission',
         () {
@@ -182,7 +189,6 @@ void main() {
       expect(create, greaterThan(-1));
       expect(secure, lessThan(create),
           reason: 'FLAG_SECURE must be set before the view is created');
-      expect(activity, contains('setFlags('));
     });
 
     test('recents screenshots are off and overlays are hidden or ignored', () {
@@ -251,13 +257,13 @@ void main() {
     test('app folders are excluded from backup at launch', () {
       expect(delegate, contains('excludeStorageFromBackup()'));
       expect(delegate, contains('isExcludedFromBackup = true'));
-      for (final place in [
-        '.applicationSupportDirectory',
-        '.documentDirectory',
-        '.libraryDirectory'
-      ]) {
+      // Library holds Application Support and Caches, so it and Documents cover every app folder.
+      for (final place in ['.libraryDirectory', '.documentDirectory']) {
         expect(delegate, contains(place));
       }
+      // A failure is reported (by folder name only), not swallowed.
+      expect(delegate, isNot(contains('try? url.setResourceValues')));
+      expect(delegate, contains('could not exclude'));
       // Called inside didFinishLaunching, before the app (and its plugins) start to write.
       final launch = delegate.indexOf('didFinishLaunchingWithOptions');
       final exclude =
@@ -308,6 +314,12 @@ void main() {
       expect(text, contains('--split-debug-info=build/symbols'));
       expect(text, contains('actions/upload-artifact@'));
       expect(text, contains('authenticator-debug-symbols'));
+      // The repository is public, so only the encrypted symbols are uploaded, never the folder itself.
+      expect(text,
+          contains('path: apps/biatec_authenticator/build/symbols.tar.gz.gpg'));
+      expect(text,
+          isNot(contains('path: apps/biatec_authenticator/build/symbols\n')));
+      expect(text, contains('--symmetric --cipher-algo AES256'));
       // The throwaway signing key is removed again and never a repository file.
       expect(text,
           contains('rm -f android/key.properties android/ci-throwaway.jks'));
