@@ -2,6 +2,7 @@ package io.biatec.authenticator
 
 import android.os.Build
 import android.os.Bundle
+import android.view.MotionEvent
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -23,6 +24,16 @@ class MainActivity : FlutterFragmentActivity() {
         // app. Accessibility-service windows are trusted by the system and such a service can dispatch gestures directly, so a touch filter
         // would not stop one; it would only break screen filters and chat heads.
         if (Build.VERSION.SDK_INT < 31) window.decorView.filterTouchesWhenObscured = true
+    }
+
+    // Android 10 and 11: the filter above only drops a touch that lands under an overlay. An overlay that paints over other content (a
+    // fake amount next to a real "Approve") leaves the touch partially obscured, which the filter lets through, so it is dropped here.
+    // From Android 12 such overlays are hidden (see onCreate); below Android 10 the system does not report partial occlusion.
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (Build.VERSION.SDK_INT in 29..30 && (ev.flags and MotionEvent.FLAG_WINDOW_IS_PARTIALLY_OBSCURED) != 0) {
+            return false
+        }
+        return super.dispatchTouchEvent(ev)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

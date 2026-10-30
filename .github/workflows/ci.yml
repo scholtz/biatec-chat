@@ -105,6 +105,12 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+          # The release build downloads Gradle, AGP and Kotlin; caching them keeps every run from fetching them again.
+          cache: gradle
+          cache-dependency-path: |
+            apps/biatec_authenticator/android/*.gradle*
+            apps/biatec_authenticator/android/app/*.gradle*
+            apps/biatec_authenticator/android/gradle/wrapper/gradle-wrapper.properties
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test

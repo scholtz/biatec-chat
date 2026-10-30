@@ -10,7 +10,38 @@ String read(String path) {
   return f.readAsStringSync();
 }
 
+/// The Swift lines a release build compiles: the `#if DEBUG` branches are dropped, their `#else` branches kept, and nested `#if` blocks
+/// are followed, so a release-only log in an `#else` is still seen.
+String releaseOnly(String swift) {
+  final branches =
+      <bool>[]; // per open #if: true while in its DEBUG-only branch
+  final kept = <String>[];
+  for (final line in swift.split('\n')) {
+    final t = line.trim();
+    if (t.startsWith('#if')) {
+      branches.add(RegExp(r'^#if\s+DEBUG\b').hasMatch(t));
+    } else if (t.startsWith('#elseif') || t.startsWith('#else')) {
+      if (branches.isNotEmpty) branches[branches.length - 1] = false;
+    } else if (t.startsWith('#endif')) {
+      if (branches.isNotEmpty) branches.removeLast();
+    } else if (!branches.contains(true)) {
+      kept.add(line);
+    }
+  }
+  return kept.join('\n');
+}
+
 void main() {
+  test('releaseOnly keeps #else branches and follows nested blocks', () {
+    const swift = '#if DEBUG\nNSLog(a)\n#if os(iOS)\nx\n#endif\nNSLog(b)\n'
+        '#else\nNSLog(c)\n#endif\nrelease()';
+    final kept = releaseOnly(swift);
+    expect(kept, isNot(contains('NSLog(a)')));
+    expect(kept, isNot(contains('NSLog(b)')));
+    expect(kept, contains('NSLog(c)'));
+    expect(kept, contains('release()'));
+  });
+
   group('Android', () {
     final manifest = read('android/app/src/main/AndroidManifest.xml');
     final debugManifest = read('android/app/src/debug/AndroidManifest.xml');
@@ -100,8 +131,7 @@ void main() {
   group('Android merged release manifest (after flutter build apk --release)',
       () {
     // AGP writes the merged release manifest under merged_manifests or merged_manifest, depending on its version (packaged_manifests is a
-    // different, later artifact and is not read). Within the first layout found, the newest file wins, so a manifest left over from an
-    // older build is not read in place of the current one.
+    // different, later artifact and is not read).
     File? newestManifest(String name) {
       final dir = Directory('build/app/intermediates/$name/release');
       if (!dir.existsSync()) return null;
@@ -114,8 +144,14 @@ void main() {
       return files.firstOrNull;
     }
 
-    final file =
-        newestManifest('merged_manifests') ?? newestManifest('merged_manifest');
+    // The newest of both layouts, so a folder left by an older AGP never wins over the one the current build wrote.
+    final file = ([
+      newestManifest('merged_manifests'),
+      newestManifest('merged_manifest'),
+    ].whereType<File>().toList()
+          ..sort(
+              (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync())))
+        .firstOrNull;
 
     test('every exported component but the launcher is guarded by a permission',
         () {
@@ -208,6 +244,13 @@ void main() {
     test('the touch filter is set after the window exists', () {
       expect(activity.indexOf('window.decorView.filterTouchesWhenObscured'),
           greaterThan(activity.indexOf('super.onCreate(')));
+    });
+
+    test('a partially obscured touch is dropped on Android 10 and 11', () {
+      expect(activity, contains('override fun dispatchTouchEvent('));
+      expect(
+          activity, contains('MotionEvent.FLAG_WINDOW_IS_PARTIALLY_OBSCURED'));
+      expect(activity, contains('SDK_INT in 29..30'));
     });
 
     test('the release build is not debuggable and strips logging', () {
@@ -315,10 +358,7 @@ void main() {
           .listSync(recursive: true)
           .whereType<File>()
           .where((f) => f.path.endsWith('.swift'))) {
-        // Drop every #if DEBUG ... #endif block, then nothing may log.
-        final code = f
-            .readAsStringSync()
-            .replaceAll(RegExp(r'#if DEBUG[\s\S]*?#endif'), '');
+        final code = releaseOnly(f.readAsStringSync());
         for (final pattern in [
           r'\bNSLog\(',
           r'\bprint\(',
@@ -353,7 +393,12 @@ void main() {
 
     test('the keychain items stay on this device', () {
       final storage = read('lib/security/secure_storage.dart');
-      expect(storage, contains('_this_device'));
+      // The code itself, not the doc comment that names the same class.
+      expect(
+          RegExp(r'^[^/\n]*iOptions:\s*IOSOptions\(\s*accessibility:\s*KeychainAccessibility\.unlocked_this_device\s*\)',
+                  multiLine: true)
+              .hasMatch(storage),
+          isTrue);
     });
   });
 
@@ -370,8 +415,16 @@ void main() {
       // The repository is public, so only the encrypted symbols are uploaded, never the folder itself.
       expect(text,
           contains('path: apps/biatec_authenticator/build/symbols.tar.gz.gpg'));
-      expect(text,
-          isNot(contains('path: apps/biatec_authenticator/build/symbols\n')));
+      // Every uploaded path that names the symbols is the encrypted file (whatever the line endings or a trailing slash).
+      final symbolPaths =
+          RegExp(r'^\s*path:\s*(\S*symbols\S*)\s*$', multiLine: true)
+              .allMatches(text)
+              .map((m) => m.group(1)!)
+              .toList();
+      expect(symbolPaths, isNotEmpty);
+      for (final p in symbolPaths) {
+        expect(p, endsWith('.gpg'), reason: 'unencrypted symbols upload: $p');
+      }
       expect(text, contains('--symmetric --cipher-algo AES256'));
       // The throwaway signing key is removed again and never a repository file.
       expect(text,
