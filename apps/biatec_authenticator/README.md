@@ -48,6 +48,25 @@ A Windows build without `OIDC_BASE_URL` (a bare `flutter build windows`) default
 `./build-windows.ps1` passes the same URL explicitly via `--dart-define-from-file=config/local.json`. Put `nuget.exe` on `PATH` to silence the
 `Nuget.exe not found` message from `local_auth_windows`.
 
+### Platform hardening (T-227)
+
+What the committed project files enforce, each with a test in `test/platform_hardening_test.dart` that fails on a regression:
+
+| Setting | Android | iOS |
+| --- | --- | --- |
+| No backup or transfer | `allowBackup=false`, `fullBackupContent=false`, data extraction rules exclude every domain | app folders marked excluded from backup at launch; keychain items `_this_device` |
+| No screenshots or recording | `FLAG_SECURE` set before the first view; recents screenshot off (Android 13+) | cover view when the app is inactive (so the app switcher shows no content) and while the screen is recorded or mirrored. iOS has no way to block a screenshot of the app in front, so a screenshot there is not prevented |
+| Overlay and tapjacking | other apps' overlay windows hidden (Android 12+, `HIDE_OVERLAY_WINDOWS`); on Android 11 and older a touch through another app's overlay is dropped, which also disables a full-screen filter app's taps while it runs | - |
+| No custom keyboard | - | `shouldAllowExtensionPointIdentifier` refuses keyboard extensions |
+| Release build | not debuggable, R8 minify and shrink, every `android.util.Log` call removed (and none in the app's own Kotlin) | - |
+| Privacy | cleartext off (pinned network config: T-229) | `PrivacyInfo.xcprivacy`: no tracking; push token declared |
+
+CI builds the release APK with `--obfuscate --split-debug-info=build/symbols`, signed with a throwaway key that exists only for that job, runs the hardening test against the merged release manifest, and keeps the symbols of that build for 7 days as the `authenticator-debug-symbols` artifact. The repository and its artifacts are public, so the artifact is `symbols.tar.gz.gpg`, encrypted (OpenPGP, AES-256) with the `AUTHENTICATOR_SYMBOLS_PASSPHRASE` repository secret (decrypt with `gpg -d symbols.tar.gz.gpg | tar -xz`). Without that secret (a fork, or before it is set) no symbols are published. Those symbols fit only that CI build: a shipped release is built with its own `--obfuscate --split-debug-info=<dir>`, and that directory must be archived privately with the release to read its crash traces.
+
+To check by hand on a device: open the app and try a screenshot (it must fail or show a black image), look at the recents list (blank), `adb backup -f x.ab io.biatec.authenticator` (must produce an empty archive), and `adb shell run-as io.biatec.authenticator ls` (must be refused on a release build).
+
+Not verified on a device: none of this has been run on a phone; the Swift changes were written without Xcode.
+
 ## Config
 
 The Biatec OIDC base URL comes from `--dart-define=OIDC_BASE_URL=...` and defaults to the mock OIDC

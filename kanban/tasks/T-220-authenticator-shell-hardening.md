@@ -21,7 +21,7 @@ updated: 2026-10-24
 
 ## Context
 
-The T-214 pull request (#356) went through nine rounds of code review. What was still open after the ninth is narrow edge cases, listed below; none blocks the shell. They are collected here so T-214 could merge.
+The T-214 pull request (#356) went through 19 rounds of code review. Rounds 10 to 18 fixed what was listed here before (sign-out in the controller, reload in place, cards never closed by the bar or the notice, one tracker of open cards, store-level handling of failed writes and clears). The user capped the reviews after round 19; what that round still found is listed below. All of it is about storage that fails or hangs, plus small cleanups. They are collected here so T-214 could merge.
 
 ## Goal
 
@@ -38,14 +38,19 @@ Parallel work possible: **no**. Don't run it at the same time as T-222, T-225: t
 
 ## Acceptance criteria
 
-- [ ] `EnrollmentController.refresh()` has no guard against two refreshes running: a stale one that read the record before `acknowledgeRecoveryCode` can set the phase back to `activeRecoveryPending` (banner returns, a second code fetch). Serialise refreshes or drop results older than the last `_set`.
-- [ ] `ObservableEnrollmentStore.clear()` notifies before `SettingsController.cancelDevice` has cleared the alias and deleted the key, and the gate swaps the shell at once, so the 'This enrollment was cancelled' message is never shown and a very quick re-enrollment could race the key delete. Signal from `cancelDevice` after it finishes (or notify after the alias is cleared) and show why the user landed on enrollment.
-- [ ] Sign-out detection is spread over `_check`, `_checkAgain`, `_clearsSeen`, `_attempt`/`_readAttempt` and `EnrollmentController._discarded`. Replace with one monotonic store generation that the controller also reads.
-- [ ] Resume after 30 s or more reloads the showing Settings, Devices or Clients screen under a new key and drops unsaved input; keep the screen while a field is being edited or a request is busy.
-- [ ] `ShellController.select(sameTab)` and `showApprovals()` use `popUntil`, which bypasses `PopScope`, so a card in the middle of a decision can be closed by the bar or the snackbar action. Use `maybePop` once `ApprovalScreen` guards its busy state (after T-216).
-- [ ] `ApprovalScreen` redraws its countdown from a `Timer.periodic` that `TickerMode` does not stop, so a card in a hidden tab keeps rebuilding every second (after T-216).
-- [ ] The mock strip shows only inside the shell. Show it on the startup, retry and enrollment screens too (after T-215).
-- [ ] Push registration is asked for from four places (`main.dart` resume, `AppGate._onPhase`, `PushController.didPush/didPop`, `start`). Pick one owner.
+- [ ] **Store design (root cause).** `ObservableEnrollmentStore` grew six pieces of state over the review rounds (`_unsaved`, `_lastSaveTry`, `_clearFailed`, `_clearQueued`, `_writes`/`_lastWritten`, `_clearCount`). Replace them with one in-memory authoritative state (current record or signed out), loaded once, with the disk as a write-behind. That also covers the next three items.
+- [ ] A write or clear that hangs in the keystore holds up every later write: `write()` awaits the serial queue, so `enroll()` can stay in `enrolling` behind a hung clear. Writes should complete against the in-memory state and persist behind it.
+- [ ] `read()` lets an exception from the inner read escape even when a clear or a write happened meanwhile and the right answer is known ("not enrolled", or the record just written).
+- [ ] `_saveLater` copies the body of `write()`'s serial step; one `_persist(record)` step for both.
+- [ ] `SettingsController.cancelDevice` swallows a failed `enrollment.clear()` and deletes the key, which is only safe when the store is the observable one. Type `SettingsServices.enrollment`/`SettingsController.enrollment` as `ObservableEnrollmentStore`, like `ApprovalServices` and `EnrollmentController` now are.
+- [ ] The gate leaves "Could not read this device" only when a later refresh finds an enrollment; a later successful read that finds none (a device never enrolled) leaves the error up until Retry. Have the gate re-check `readFailed` after a resume refresh.
+- [ ] `PendingScreen._onActive` refreshes even while the app is in the background (`foreground` false).
+- [ ] While covered, the list counts fast ticks to poll at the slow rate; restart the timer at `backgroundEvery` when the list becomes covered instead (needs a route-change signal).
+- [ ] Push registration is asked for from several places (`main.dart` resume, `AppGate._onPhase`, `PushController.didPush/didPop` through every tab's navigator, `start`). Pick one owner.
+- [ ] Carried over: `ApprovalScreen` redraws its countdown from a `Timer.periodic` that `TickerMode` does not stop, so a card in a hidden tab keeps rebuilding every second (after T-216).
+- [ ] Carried over: the mock strip shows only inside the shell. Show it on the startup, retry and enrollment screens too (after T-215).
+- [ ] (From the T-227 review, PR #370.) Android 10 and 11 let a partially obscured touch reach the Approve button (an overlay painting a fake amount next to it). Gating every such touch window-wide locks the whole app when a chat head or screen filter is on screen, so check it on the approve action alone, through a method channel to Dart (`FLAG_WINDOW_IS_PARTIALLY_OBSCURED` of the tap's event).
+- [ ] (From the T-227 review, PR #370.) The authenticator CI job builds an obfuscated, signed release APK on every pull request. Add a path filter (or a changed-files guard) so backend-only and widget-only changes do not wait for it.
 - [ ] `flutter analyze` is clean and `flutter test` passes.
 
 ## Implementation notes
@@ -67,3 +72,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 ## Activity log
 
 - 2026-10-24 17:45 · claude · (new) → blocked · created from the last review round of PR #356
+- 2026-10-29 · claude · blocked · criteria replaced with what review round 19 of PR #356 left open (rounds 10–18 fixed the earlier list); reviews capped there on the user's decision

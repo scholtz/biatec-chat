@@ -1,5 +1,6 @@
 import '../config.dart';
 import '../enrollment/enrollment_store.dart';
+import '../enrollment/observable_enrollment_store.dart';
 import '../keys/device_key_store.dart';
 import '../security/device_proof.dart';
 import 'approval_client.dart';
@@ -22,7 +23,7 @@ class ApprovalServices {
 
   factory ApprovalServices.fromConfig(AppConfig config) {
     const keys = PlatformDeviceKeyStore();
-    final enrollment = SecureEnrollmentStore();
+    final enrollment = ObservableEnrollmentStore(SecureEnrollmentStore());
     // Every device call proves possession of the device key, not only the bearer token (BCHAT-030).
     final proof = KeystoreDeviceProofSigner(keys: keys, enrollment: enrollment);
     return ApprovalServices(
@@ -37,7 +38,8 @@ class ApprovalServices {
 
   final ApprovalClient client;
   final DeviceKeyStore keys;
-  final EnrollmentStore enrollment;
+  /// The app learns of a sign-out from it, and it keeps an enrollment whose write failed, so everything that reads the enrollment shares this one.
+  final ObservableEnrollmentStore enrollment;
   final BiometricGate gate;
   final HistoryStore history;
 

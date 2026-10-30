@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../shell/tab_reload.dart';
+import '../theme.dart';
+import '../ui/ui.dart';
 import 'settings_controller.dart';
 
 /// Loads a [SettingsController] on open and wraps the three settings screens:
@@ -11,56 +14,66 @@ class SettingsFrame extends StatefulWidget {
     required this.title,
     required this.services,
     required this.builder,
+    this.footer,
+    this.controller,
   });
 
   final String title;
   final SettingsServices services;
 
+  /// Shared by the settings tabs of the shell, so the data is loaded once for all of them; the frame makes (and disposes) its own when null.
+  final SettingsController? controller;
+
   /// The screen body once loaded.
   final List<Widget> Function(BuildContext, SettingsController) builder;
+
+  /// Shown below the body whatever state it is in.
+  final Widget? footer;
 
   @override
   State<SettingsFrame> createState() => _SettingsFrameState();
 }
 
-class _SettingsFrameState extends State<SettingsFrame> {
+class _SettingsFrameState extends State<SettingsFrame>
+    with TabReloadListener {
   late final SettingsController _controller;
 
   @override
   void initState() {
     super.initState();
-    _controller = widget.services.controller();
-    if (widget.services.enabled) _controller.load();
+    _controller = widget.controller ?? widget.services.controller();
+    // A shared controller another tab has loaded already is used as it is.
+    if (widget.services.enabled &&
+        _controller.phase == SettingsPhase.loading) {
+      _controller.load();
+    }
+  }
+
+  @override
+  void onReload() {
+    if (widget.services.enabled) _controller.load(quiet: true);
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    if (widget.controller == null) _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final footer = widget.footer;
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
+      bottomNavigationBar:
+          footer == null ? null : SafeArea(top: false, child: footer),
       body: !widget.services.enabled
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.info_outline),
-                    SizedBox(height: 8),
-                    Text(
-                        'Not available yet. This Biatec OIDC does not offer '
-                        'device and settings management; it only runs '
-                        'against the mock for now.',
-                        key: Key('not-available'),
-                        textAlign: TextAlign.center),
-                  ],
-                ),
-              ),
+          ? const EmptyState(
+              key: Key('not-available'),
+              icon: Icons.info_outline,
+              title: 'Not available yet',
+              message: 'This Biatec OIDC does not offer device and settings '
+                  'management; it only runs against the mock for now.',
             )
           : ListenableBuilder(
         listenable: _controller,
@@ -68,73 +81,48 @@ class _SettingsFrameState extends State<SettingsFrame> {
           final c = _controller;
           switch (c.phase) {
             case SettingsPhase.loading:
-              return Center(
-                  child: Semantics(
-                      label: 'Loading',
-                      child: const CircularProgressIndicator()));
+              return const LoadingSkeleton();
             case SettingsPhase.unavailable:
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.cloud_off),
-                      const SizedBox(height: 8),
-                      Text(c.error ?? 'Not available.',
-                          key: const Key('unavailable'),
-                          textAlign: TextAlign.center),
-                      const SizedBox(height: 16),
-                      FilledButton(
-                          key: const Key('retry'),
-                          onPressed: c.load,
-                          child: const Text('Try again')),
-                    ],
-                  ),
-                ),
+              return ErrorState(
+                key: const Key('unavailable'),
+                message: c.error ?? 'Not available.',
+                offline: c.offline,
+                onRetry: c.load,
               );
             case SettingsPhase.ready:
-              return ListView(
-                children: [
-                  if (c.busy) const LinearProgressIndicator(),
-                  if (c.error != null)
-                    _Status(
+              return RefreshIndicator(
+                onRefresh: () => c.load(quiet: true),
+                child: ListView(
+                  children: [
+                    if (c.busy) const LinearProgressIndicator(),
+                    if (c.error != null)
+                      Padding(
                         key: const Key('status-error'),
-                        icon: Icons.error_outline,
-                        label: 'Problem',
-                        text: c.error!),
-                  if (c.notice != null)
-                    _Status(
+                        padding: const EdgeInsets.all(AppSpacing.s),
+                        child: StatusBanner(
+                            severity: StatusSeverity.danger,
+                            title: 'Problem',
+                            message: c.error!),
+                      ),
+                    if (c.notice != null)
+                      Padding(
                         key: const Key('status-notice'),
-                        icon: Icons.check_circle_outline,
-                        label: 'Done',
-                        text: c.notice!),
-                  ...widget.builder(context, c),
-                ],
+                        padding: const EdgeInsets.all(AppSpacing.s),
+                        // Announced like a problem is: the user waits for it.
+                        child: Semantics(
+                          liveRegion: true,
+                          child: StatusBanner(
+                              severity: StatusSeverity.success,
+                              title: 'Done',
+                              message: c.notice!),
+                        ),
+                      ),
+                    ...widget.builder(context, c),
+                  ],
+                ),
               );
           }
         },
-      ),
-    );
-  }
-}
-
-class _Status extends StatelessWidget {
-  const _Status(
-      {super.key, required this.icon, required this.label, required this.text});
-
-  final IconData icon;
-  final String label;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      liveRegion: true,
-      child: ListTile(
-        leading: Icon(icon),
-        title: Text(label, style: Theme.of(context).textTheme.labelLarge),
-        subtitle: Text(text),
       ),
     );
   }

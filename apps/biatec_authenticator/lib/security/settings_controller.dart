@@ -199,23 +199,67 @@ class SettingsController extends ChangeNotifier {
     }
   }
 
-  /// Loads devices and settings. Call on open and to retry.
-  Future<void> load() async {
+  /// The load that is running, if one is.
+  Future<void>? _running;
+
+  /// Bumped when a change starts. A quiet load that began before it drops what it read, which may be older than the change's result.
+  int _changes = 0;
+
+  /// Loads devices and settings. Call on open and to retry. A [quiet] load of a screen that is already showing keeps it (and a dialog open over it) and only swaps the data; the controls stay usable meanwhile.
+  ///
+  /// Asked while a load runs, it waits for that one (a pull to refresh spins until the data is in) instead of starting another: the tabs share this controller, and each would otherwise load again.
+  Future<void> load({bool quiet = false}) async {
     if (_busy) return;
-    _phase = SettingsPhase.loading;
-    _error = null;
-    _notice = null;
-    _changed();
+    final running = _running;
+    if (running != null) return running;
+    final future = _load(quiet);
+    _running = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_running, future)) _running = null;
+    }
+  }
+
+  Future<void> _load(bool quiet) async {
+    final inPlace = quiet && _phase == SettingsPhase.ready;
+    final changes = _changes;
+    if (!inPlace) {
+      _phase = SettingsPhase.loading;
+      _error = null;
+      _notice = null;
+      _changed();
+    }
     try {
       final token = (await _record()).deviceToken;
-      _devices = await client.devices(token);
-      _settings = await client.settings(token);
+      final devices = await client.devices(token);
+      final settings = await client.settings(token);
+      if (inPlace && changes != _changes) return;
+      _devices = devices;
+      _settings = settings;
       _phase = SettingsPhase.ready;
       _offline = false;
+      if (inPlace) {
+        // What the last step did is old news once the data is fresh.
+        _error = null;
+        _notice = null;
+      }
     } on Object catch (e) {
+      if (inPlace && changes != _changes) return;
       _fail(e);
-      _phase = SettingsPhase.unavailable;
+      // What was shown stays, with the problem above it.
+      if (!inPlace) _phase = SettingsPhase.unavailable;
     }
+    _changed();
+  }
+
+  /// Forgets what the last step said. The settings tabs share this controller, so a tab change calls it: "Enrollment cancelled." belongs to Devices, not to the tab shown next.
+  void clearStatus() {
+    if (_busy || (_error == null && _notice == null)) return;
+    // A screen that could not load keeps its reason.
+    if (_phase != SettingsPhase.ready) return;
+    _error = null;
+    _notice = null;
     _changed();
   }
 
@@ -224,6 +268,7 @@ class SettingsController extends ChangeNotifier {
   Future<void> cancelDevice(String kid) async {
     if (_busy) return;
     _busy = true;
+    _changes++;
     _error = null;
     _notice = null;
     _changed();
@@ -231,9 +276,17 @@ class SettingsController extends ChangeNotifier {
       final record = await _record();
       await client.cancelDevice(record.deviceToken, kid);
       if (kid == record.kid) {
-        // This device is the cancelled one: it is signed out for good.
-        await enrollment.clear();
-        await enrollment.clearAlias();
+        // This device is the cancelled one: it is signed out for good. The alias goes first, so a new enrollment started after the sign-out mints a new one and the key deleted last is never its key. The record is cleared before the key goes, so nothing signs with a key that is gone.
+        try {
+          await enrollment.clearAlias();
+        } on Object {
+          // A stale alias would only be reused for the next key.
+        }
+        try {
+          await enrollment.clear();
+        } on Object {
+          // The app's store still signs the device out when the storage did not clear (see ObservableEnrollmentStore.clear).
+        }
         try {
           await keys.delete(record.kid);
         } on Object {
@@ -266,6 +319,7 @@ class SettingsController extends ChangeNotifier {
     final current = _settings;
     if (_busy || current == null) return false;
     _busy = true;
+    _changes++;
     _error = null;
     _notice = null;
     _changed();

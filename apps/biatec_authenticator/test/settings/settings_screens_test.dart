@@ -6,9 +6,14 @@ import 'package:biatec_authenticator/approvals/history_store.dart';
 import 'package:biatec_authenticator/clients/clients_screen.dart';
 import 'package:biatec_authenticator/config.dart';
 import 'package:biatec_authenticator/devices/devices_screen.dart';
+import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/main.dart';
 import 'package:biatec_authenticator/security/security_screen.dart';
 import 'package:biatec_authenticator/security/settings_controller.dart';
+import 'package:biatec_authenticator/security/settings_frame.dart';
+import 'package:biatec_authenticator/shell/tab_reload.dart';
+import 'package:biatec_authenticator/ui/ui.dart';
+import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -108,9 +113,63 @@ void main() {
       await _open(tester, SecurityScreen(services: rig.services));
       expect(find.byKey(const Key('unavailable')), findsOneWidget);
       oidc.offline = false;
-      await tester.tap(find.byKey(const Key('retry')));
+      await tester.tap(find.text('Try again'));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('biometric')), findsOneWidget);
+    });
+
+    testWidgets('names the Biatec OIDC server, whatever state the screen is in',
+        (tester) async {
+      final oidc = FakeSettingsOidc()..offline = true;
+      final rig = SettingsRig(oidc: oidc);
+      await _open(
+          tester,
+          SecurityScreen(
+              services: rig.services, server: 'https://stage.oidc.biatec.io'));
+      expect(find.byKey(const Key('unavailable')), findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byKey(const Key('oidc-server')),
+              matching: find.text('https://stage.oidc.biatec.io')),
+          findsOneWidget);
+    });
+
+    testWidgets('a change made while a quiet reload runs goes through and is not overwritten',
+        (tester) async {
+      final rig = SettingsRig();
+      await _open(tester, SecurityScreen(services: rig.services));
+      final c = rig.services.controller();
+      await c.load();
+      expect(c.settings!.biometricRequired, isTrue);
+      final reloading = c.load(quiet: true);
+      expect(c.busy, isFalse, reason: 'the controls stay usable');
+      final applied = await c.apply({'block_unverified_clients': true});
+      await reloading;
+      expect(applied, isTrue);
+      expect(c.settings!.blockUnverifiedClients, isTrue);
+      c.dispose();
+    });
+
+    testWidgets('a tab reload refreshes in place and keeps the screen',
+        (tester) async {
+      final rig = SettingsRig();
+      final reload = ValueNotifier(0);
+      await _open(
+          tester,
+          TabReload(
+              reload: reload,
+              child: SecurityScreen(services: rig.services)));
+      final before = tester.state(find.byType(SettingsFrame));
+      rig.oidc.settings['biometric_required'] = false;
+      reload.value++;
+      await tester.pump();
+      expect(find.byType(LoadingSkeleton), findsNothing,
+          reason: 'the loaded screen stays while it reloads');
+      await tester.pumpAndSettle();
+      expect(tester.state(find.byType(SettingsFrame)), same(before));
+      expect(
+          tester.widget<SwitchListTile>(find.byKey(const Key('biometric'))).value,
+          isFalse);
     });
   });
 
@@ -235,16 +294,22 @@ void main() {
   });
 
   group('routes', () {
-    testWidgets('home opens the three screens, none of them a placeholder',
+    testWidgets('the tabs open the three screens, none of them a placeholder',
         (tester) async {
       tester.view.physicalSize = const Size(800, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
-      final rig = SettingsRig();
+      final rig = SettingsRig(
+          record: EnrollmentRecord(
+              kid: 'dev-1',
+              deviceToken: FakeSettingsOidc.token,
+              activeAt: DateTime.utc(2020),
+              attestation: 'att',
+              recoveryCodeShown: true));
       final approvals = ApprovalServices(
         client: ApprovalClient(baseUrl: 'http://oidc.test'),
         keys: rig.keys,
-        enrollment: rig.enrollment,
+        enrollment: ObservableEnrollmentStore(rig.enrollment),
         gate: rig.gate,
         history: MemoryHistoryStore(),
       );
@@ -252,22 +317,23 @@ void main() {
           config: AppConfig.resolve(''),
           approvals: approvals,
           settings: rig.services));
+      await tester.pump();
 
-      for (final (title, type) in [
-        ('Device management', DevicesScreen),
-        ('Trusted clients and thresholds', ClientsScreen),
-        ('Security settings', SecurityScreen),
+      for (final (label, type) in [
+        ('Devices', DevicesScreen),
+        ('Clients', ClientsScreen),
+        ('Settings', SecurityScreen),
       ]) {
-        await tester.tap(find.text(title));
+        await tester.tap(find.descendant(
+            of: find.byType(NavigationBar), matching: find.text(label)));
         await tester.pumpAndSettle();
-        expect(find.byType(type), findsOneWidget, reason: title);
-        await tester.pageBack();
-        await tester.pumpAndSettle();
+        expect(find.byType(type), findsOneWidget, reason: label);
       }
+      await tester.pumpWidget(const SizedBox());
     });
 
     test('no source file builds a placeholder screen any more', () {
-      for (final f in ['lib/routes.dart', 'lib/main.dart']) {
+      for (final f in ['lib/main.dart', 'lib/shell/app_shell.dart']) {
         expect(File(f).readAsStringSync(), isNot(contains('PlaceholderScreen')),
             reason: f);
       }
