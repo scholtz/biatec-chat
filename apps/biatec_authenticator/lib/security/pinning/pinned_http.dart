@@ -76,8 +76,10 @@ class _PinnedClient extends http.BaseClient {
   late final IOClient _https;
   http.Client? _plain;
 
-  /// Why the latest handshake with a host was refused, and when (a counter). A request only believes a refusal that happened after it started, so
-  /// requests to the same host running at once cannot take each other's.
+  /// Why the latest handshake with a host was refused, and when (a counter). A request only believes a refusal that happened after it started,
+  /// so an old refusal is never blamed for a new failure. dart:io gives the callback no way to tell which request a handshake was for, so a
+  /// failure of one request can still be taken for a refusal that a concurrent request to the same host just got; the cost is a "could not be
+  /// verified" message instead of "offline" for that one request, and the host being refused at that moment is the thing worth reporting.
   final Map<String, (int, PinDecision)> _refused = {};
   int _clock = 0;
 
