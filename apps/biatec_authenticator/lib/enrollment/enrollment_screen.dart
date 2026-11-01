@@ -69,14 +69,23 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     });
   }
 
-  /// The login token is for one enrollment: once the device is enrolled (or signs out again) it is not kept in memory.
+  /// True once this screen has seen the device enrolled; the next time it is not enrolled, it signed out.
+  bool _wasEnrolled = false;
+
+  /// The login token is for one enrollment: once the device is enrolled (or has signed out again after being so) it is not kept in memory. A refresh that merely finds nothing stored does not touch what the user is typing.
   void _forgetToken() {
     final p = _controller.state.phase;
-    final used = p == EnrollmentPhase.inactive ||
+    final enrolled = p == EnrollmentPhase.inactive ||
         p == EnrollmentPhase.activeRecoveryPending ||
-        p == EnrollmentPhase.active ||
-        p == EnrollmentPhase.notEnrolled && _started;
-    if (used && _token.text.isNotEmpty) _token.clear();
+        p == EnrollmentPhase.active;
+    if (enrolled) {
+      _wasEnrolled = true;
+    } else if (p == EnrollmentPhase.notEnrolled && _wasEnrolled) {
+      _wasEnrolled = false;
+    } else {
+      return;
+    }
+    if (_token.text.isNotEmpty) _token.clear();
   }
 
   @override
@@ -105,12 +114,35 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     return '$h:$m:$s';
   }
 
+  /// [text] with the login token (when it is long enough to be one) replaced; best effort, for a server that echoes what it was sent.
+  String _withoutToken(String text) {
+    final token = _token.text.trim();
+    return token.length < 6 ? text : text.replaceAll(token, '(token)');
+  }
+
+  bool _checking = false;
+
   /// Asks the device what it has stored. When it has nothing, the user is told, instead of the screen looking unchanged.
   Future<void> _checkAgain() async {
-    await _controller.refresh();
-    if (!mounted || _controller.state.phase != EnrollmentPhase.failed) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('This app has no enrollment for this device yet.')));
+    if (_checking) return;
+    setState(() => _checking = true);
+    try {
+      await _controller.refresh();
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+    if (!mounted) return;
+    final String? say;
+    if (_controller.readFailed) {
+      say = 'The storage of this device could not be read. Try again.';
+    } else if (_controller.state.phase == EnrollmentPhase.failed) {
+      say = 'This app has no enrollment for this device yet.';
+    } else {
+      say = null;
+    }
+    if (say != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(say)));
+    }
   }
 
   OnboardingStep _stepFor(EnrollmentState s) => switch (s.phase) {
@@ -223,12 +255,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
   }
 
   List<Widget> _connect(BuildContext context, EnrollmentState s) {
-    // A server's detail text could echo what was sent; the token is never shown back.
-    final token = _token.text.trim();
     final raw = s.error;
-    final error =
-        raw == null || token.isEmpty ? raw : raw.replaceAll(token, '(token)');
-    final problem = error == null ? null : classifyEnrollmentError(error);
+    final problem = raw == null ? null : classifyEnrollmentError(raw);
     final again = problem?.checksAgain ?? false;
     return [
       KeyedSubtree(
@@ -244,7 +272,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
           key: Key('enrollment-problem-${problem.kind.name}'),
           severity: StatusSeverity.danger,
           title: problem.title,
-          message: problem.message,
+          // A server's detail text could echo what was sent; the token is never shown back.
+          message: _withoutToken(problem.message),
         ),
       ],
       const SizedBox(height: AppSpacing.m),
@@ -270,9 +299,15 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
       const SizedBox(height: AppSpacing.m),
       FilledButton(
         key: const Key('enroll-button'),
-        onPressed: () =>
-            again ? _checkAgain() : _controller.enroll(loginToken: _token.text),
-        child: Text(problem?.actionLabel ?? 'Connect and create the key'),
+        // Off while the device is being asked, so a second tap does not start a second check.
+        onPressed: _checking
+            ? null
+            : () => again
+                ? _checkAgain()
+                : _controller.enroll(loginToken: _token.text),
+        child: Text(_checking
+            ? 'Checking…'
+            : problem?.actionLabel ?? 'Connect and create the key'),
       ),
       if (again) ...[
         const SizedBox(height: AppSpacing.s),

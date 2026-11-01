@@ -42,6 +42,19 @@ class _Keys implements DeviceKeyStore {
   Future<void> delete(String alias) async => key = null;
 }
 
+/// A store whose reads can fail or be held back, for the "check again" cases.
+class _Store extends MemoryEnrollmentStore {
+  bool failRead = false;
+  Completer<void>? readGate;
+
+  @override
+  Future<EnrollmentRecord?> read() async {
+    await readGate?.future;
+    if (failRead) throw const FormatException('unreadable');
+    return super.read();
+  }
+}
+
 /// A real controller on a scripted Biatec OIDC, so each step of the onboarding is reached the way a user reaches it.
 class _Rig {
   _Rig({KeySecurityLevel level = KeySecurityLevel.trustedEnvironment})
@@ -57,7 +70,7 @@ class _Rig {
 
   DateTime clock = _t0;
   final _Keys keys;
-  final store = MemoryEnrollmentStore();
+  final store = _Store();
   late final EnrollmentController controller;
 
   /// Thrown by POST /devices (a network failure) when set.
@@ -471,6 +484,68 @@ void main() {
       await tester.pump();
       expect(find.bySemanticsLabel('Activates in 1 minute'), findsOneWidget);
       handle.dispose();
+      await _end(tester);
+    });
+
+    testWidgets(
+        'a refresh that finds nothing does not wipe a token being typed',
+        (tester) async {
+      final rig = _Rig();
+      await _pump(tester, rig);
+      await _start(tester);
+      await tester.enterText(
+          find.byKey(const Key('login-token')), 'my-token-123');
+      await tester.runAsync(rig.controller.refresh);
+      await tester.pump();
+      expect(
+          tester
+              .widget<TextField>(find.byKey(const Key('login-token')))
+              .controller!
+              .text,
+          'my-token-123');
+      await _end(tester);
+    });
+
+    testWidgets('a very short token does not disturb the classification',
+        (tester) async {
+      final rig = _Rig()..devices = (_) => http.Response('{"error":"4"}', 400);
+      await _pump(tester, rig);
+      await _start(tester);
+      await tester.enterText(find.byKey(const Key('login-token')), '4');
+      await _enroll(tester);
+      expect(find.byKey(const Key('enrollment-problem-refusedLogin')),
+          findsOneWidget);
+      expect(find.text('Login token not accepted'), findsOneWidget);
+      await _end(tester);
+    });
+
+    testWidgets(
+        'checking again runs once at a time and says when storage is unreadable',
+        (tester) async {
+      final rig = _Rig()
+        ..devices = (_) => http.Response('{"error":"conflict"}', 409);
+      await _pump(tester, rig);
+      await _start(tester);
+      await _enroll(tester);
+
+      final gate = Completer<void>();
+      rig.store.readGate = gate;
+      rig.store.failRead = true;
+      await tester.tap(find.widgetWithText(FilledButton, 'Check again'));
+      await tester.pump();
+      // While it runs the button says so and is off, so a second tap does nothing.
+      expect(find.widgetWithText(FilledButton, 'Checking…'), findsOneWidget);
+      expect(
+          tester
+              .widget<FilledButton>(find.byKey(const Key('enroll-button')))
+              .onPressed,
+          isNull);
+      gate.complete();
+      await _settle(tester);
+      expect(
+          find.text('The storage of this device could not be read. Try again.'),
+          findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Check again'), findsOneWidget);
       await _end(tester);
     });
 
