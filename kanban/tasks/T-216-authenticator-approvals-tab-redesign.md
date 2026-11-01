@@ -60,7 +60,18 @@ Presentation only: services, controllers, clients and the consent protocol stay 
 
 ## Hand-off
 
-Filled in by the agent when it moves the task to `review`.
+- **Summary:** the Approvals tab and the approval card are redesigned: request cards with the amount first and the time left in words and a ring; a card with the amount as the hero, the recipient before the sender, addresses in full in a fixed-width face, warnings as icon plus words, the binding code as a large field; Approve and Deny in a bar that stays at the bottom. Presentation only: the controller, client, receipts and canonicalisation are unchanged, and so are their tests.
+- **Branch @ commit:** PR #376, merged as 47ebb95 (branch `task/T-216`, last commit 2b4bdd9).
+- **Decisions to know about:**
+  - Offline or expired, both Approve and Deny are off (as the task asks); why is said in a banner at the top of the card, not in the bar, because at large text a reason line plus stacked buttons took the screen.
+  - No first-use warning: the request carries nothing that says a client or recipient is new, so the card does not guess. It can show such a flag once Biatec OIDC sends one.
+  - A limits change says whether it raises, lowers or keeps the limits; a value that cannot be read counts as raising.
+  - The ring is sized by `requested_expiry` (300 s when absent); it is decorative, the time is always written.
+  - The screens pick titles from the controller's error text (a typed error kind would need a controller change, which the task excludes).
+- **How it was verified:** `flutter analyze` clean; `flutter test` passes 546 tests (new `approval_screens_test.dart`: each list and card state, semantics, the bar at 3x text in light and dark, tap-target guidelines, offline and expiry rules, every end state). Two `/code-review` rounds, fixed or answered on the PR. CI green. Not run: `build-windows.ps1` and a manual look at light and dark mode.
+- **Follow-up tasks created:** none. T-220 still carries the `ApprovalScreen` countdown timer that a hidden tab does not stop.
+- **Unblocks:** nothing directly; T-219 still waits on T-217 and T-218, and T-220 becomes ready for review of its remaining items once T-216 is done.
+- **Open questions:** none.
 
 ## Review
 
@@ -75,4 +86,5 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-24 12:05 · scholtz · taken · status stays blocked
 - 2026-10-29 16:26 · kanban-board · blocked → backlog · blockers done: T-214
 - 2026-11-01 13:25 · scholtz · backlog → in-progress · claimed by session-20261101-1325 on task/T-216
+- 2026-11-01 15:00 · claude · done · hand-off filled in after the merge of PR #376 (the sync action had already marked it done)
 - 2026-11-01 18:54 · user · in-progress → done · PR #376 merged into main @ 47ebb95 (synced by kanban-sync)
