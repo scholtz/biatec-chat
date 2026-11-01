@@ -6,10 +6,10 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
 import 'approval_client.dart';
-import 'approval_controller.dart';
 import 'approval_screen.dart';
 import 'approval_services.dart';
 import 'consent_request.dart';
+import 'widgets/request_card.dart';
 
 /// Pending requests for this device's user. Refreshes when [pushes] fires and
 /// polls while open as the fallback for lost pushes.
@@ -61,6 +61,9 @@ class _PendingScreenState extends State<PendingScreen> {
   Timer? _poll;
   StreamSubscription<void>? _pushSub;
 
+  /// Redraws the time left on the cards (see [_tickClock]). Ten seconds keeps "4 min left" within a few seconds of the truth.
+  Timer? _clockTick;
+
   /// A refresh was asked for while one was running (for example a push
   /// arrived mid-request); it runs again once the current one ends.
   bool _again = false;
@@ -70,6 +73,8 @@ class _PendingScreenState extends State<PendingScreen> {
     super.initState();
     _refresh();
     _startPolling();
+    _clockTick =
+        Timer.periodic(const Duration(seconds: 10), (_) => _tickClock());
     _pushSub = widget.pushes?.listen((_) => _refresh());
     widget.active?.addListener(_onActive);
     widget.foreground?.addListener(_startPolling);
@@ -83,6 +88,17 @@ class _PendingScreenState extends State<PendingScreen> {
     } on Object {
       // Ignored on purpose.
     }
+  }
+
+  /// Redraws the time left and drops a request that has run out, so it is not offered after it expired.
+  void _tickClock() {
+    final known = _requests;
+    if (!mounted || known == null || known.isEmpty) return;
+    final now = widget.services.clock();
+    final alive = known.where((r) => !r.isExpired(now)).toList();
+    final changed = alive.length != known.length;
+    setState(() => _requests = alive);
+    if (changed) _tell(alive.length);
   }
 
   /// A card that covers the list asks for nothing; the list loads when the card closes.
@@ -169,6 +185,7 @@ class _PendingScreenState extends State<PendingScreen> {
     widget.foreground?.removeListener(_startPolling);
     widget.refreshOn?.removeListener(_onRefreshSignal);
     _poll?.cancel();
+    _clockTick?.cancel();
     _pushSub?.cancel();
     super.dispose();
   }
@@ -280,18 +297,17 @@ class _PendingScreenState extends State<PendingScreen> {
         onAction: _refresh,
       );
     } else {
-      content = ListView(children: [
+      final now = widget.services.clock();
+      content = ListView(
+        padding: const EdgeInsets.all(AppSpacing.m),
+        children: [
           for (final r in requests)
-            ListTile(
-              key: Key('pending-${r.authReqId}'),
-              leading: Icon(
-                  r.client.verified ? Icons.verified : Icons.warning_amber),
-              title: Text(summarize(r.detail)),
-              subtitle: Text(clientLabel(r.client)),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _open(r),
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.s),
+              child: RequestCard(request: r, now: now, onOpen: () => _open(r)),
             ),
-        ]);
+        ],
+      );
     }
     return Scaffold(
       appBar: AppBar(title: const Text('Pending approvals'), actions: [
