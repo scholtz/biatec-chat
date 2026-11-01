@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -6,19 +6,22 @@ import '../shell/tab_reload.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
 import 'history_store.dart';
+import 'history_widgets/day_groups.dart';
+import 'history_widgets/history_detail.dart';
+import 'history_widgets/history_filters.dart';
+import 'history_widgets/history_status.dart';
+import 'history_widgets/history_tile.dart';
 
-/// Decisions this device signed, newest first, each with its receipt.
+/// Decisions this device signed, newest first and grouped by day, with a filter by status. A decision opens its receipt.
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key, required this.history});
+  const HistoryScreen({super.key, required this.history, this.clock});
 
   final HistoryStore history;
 
-  static String label(String decision) => switch (decision) {
-        'approve' => 'Approved',
-        'deny' => 'Denied',
-        'code_failed' => 'Refused after three wrong codes',
-        _ => decision,
-      };
+  /// The time "Today" is measured from; the system clock when null.
+  final DateTime Function()? clock;
+
+  static String label(String decision) => statusLabel(decision);
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -27,14 +30,42 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
   List<HistoryEntry>? _entries;
   bool _failed = false;
+  HistoryFilter _filter = HistoryFilter.all;
+
+  /// Redraws at midnight, so "Today" does not stay on yesterday's entries while the tab is left open.
+  Timer? _midnight;
+
+  void _watchMidnight() {
+    _midnight?.cancel();
+    final now = (widget.clock ?? DateTime.now)();
+    _midnight = Timer(untilMidnight(now) + const Duration(seconds: 1), () {
+      if (!mounted) return;
+      setState(() {});
+      _watchMidnight();
+    });
+  }
+
+  @override
+  void didUpdateWidget(HistoryScreen old) {
+    super.didUpdateWidget(old);
+    // A different clock changes when midnight is.
+    if (old.clock != widget.clock) _watchMidnight();
+  }
 
   @override
   void initState() {
     super.initState();
     _load();
+    _watchMidnight();
   }
 
-  /// The list that is showing stays (and what is expanded) while it is read again, and also when that read fails.
+  @override
+  void dispose() {
+    _midnight?.cancel();
+    super.dispose();
+  }
+
+  /// The list that is showing stays (and so does the chosen filter) while it is read again, and also when that read fails.
   @override
   void onReload() => _load();
 
@@ -116,25 +147,58 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
           message: 'Requests you approve or deny on this device are '
               'listed here with their receipts.');
     }
-    return ListView(children: [
-            for (final e in list)
-              ExpansionTile(
-                key: Key('history-${e.authReqId}'),
-                leading: Icon(
-                    e.decision == 'approve' ? Icons.check_circle : Icons.block),
-                title: Text('${HistoryScreen.label(e.decision)}: ${e.summary}'),
-                subtitle: Text('${e.clientLabel} · '
-                    '${e.decidedAt.toLocal().toString().substring(0, 16)}'),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: SelectableText(
-                      const JsonEncoder.withIndent('  ').convert(e.receipt),
-                      style: const TextStyle(fontFamily: 'monospace'),
-                    ),
-                  ),
-                ],
+    final shown = list.where(_filter.matches).toList();
+    final now = (widget.clock ?? DateTime.now)();
+    return ListView(
+      padding: const EdgeInsets.only(bottom: AppSpacing.l),
+      children: [
+        HistoryFilterBar(
+          selected: _filter,
+          onSelected: (f) => setState(() => _filter = f),
+        ),
+        if (shown.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(AppSpacing.l),
+            child: Column(children: [
+              Text(_filter.emptyText,
+                  key: const Key('history-filter-empty'),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: AppSpacing.s),
+              const Text('No decision on this device matches this filter.',
+                  textAlign: TextAlign.center),
+              const SizedBox(height: AppSpacing.m),
+              OutlinedButton(
+                key: const Key('history-show-all'),
+                onPressed: () => setState(() => _filter = HistoryFilter.all),
+                child: const Text('Show all'),
               ),
-          ]);
+            ]),
+          )
+        else
+          for (final group in groupByDay(shown, now)) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.m, AppSpacing.m, AppSpacing.m, AppSpacing.xs),
+              child: Semantics(
+                header: true,
+                child: Text(group.label,
+                    key: Key('history-day-${group.label}'),
+                    style: Theme.of(context).textTheme.titleSmall),
+              ),
+            ),
+            for (final e in group.entries)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.m, vertical: AppSpacing.xs),
+                child: HistoryTile(
+                  entry: e,
+                  onOpen: () =>
+                      Navigator.of(context).push(HistoryDetailScreen.route(e)),
+                ),
+              ),
+          ],
+      ],
+    );
   }
 }

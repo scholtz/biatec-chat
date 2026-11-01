@@ -540,7 +540,13 @@ void main() {
       await tester
           .pumpWidget(MaterialApp(home: HistoryScreen(history: h.history)));
       await tester.pump();
-      expect(find.textContaining('Approved: 5000.000000 USDC'), findsOneWidget);
+      // The row says the status in a chip and the action as its headline.
+      final row =
+          find.byKey(Key('history-${h.oidc.request['auth_req_id']}'));
+      expect(find.descendant(of: row, matching: find.textContaining('5000.000000 USDC')),
+          findsOneWidget);
+      expect(find.descendant(of: row, matching: find.text('Approved')),
+          findsOneWidget);
     });
 
     testWidgets('offline approve shows the offline error', (tester) async {
