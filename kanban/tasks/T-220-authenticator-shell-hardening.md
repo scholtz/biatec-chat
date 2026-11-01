@@ -1,7 +1,7 @@
 ---
 id: T-220
 title: "Authenticator: shell hardening leftovers from the T-214 review"
-status: blocked
+status: backlog
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-214, T-215, T-216]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-24
-updated: 2026-10-24
+updated: 2026-11-01
 ---
 
 # T-220 - Authenticator: shell hardening leftovers from the T-214 review
@@ -73,3 +73,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 
 - 2026-10-24 17:45 · claude · (new) → blocked · created from the last review round of PR #356
 - 2026-10-29 · claude · blocked · criteria replaced with what review round 19 of PR #356 left open (rounds 10–18 fixed the earlier list); reviews capped there on the user's decision
+- 2026-11-01 18:54 · kanban-board · blocked → backlog · blockers done: T-214, T-215, T-216
