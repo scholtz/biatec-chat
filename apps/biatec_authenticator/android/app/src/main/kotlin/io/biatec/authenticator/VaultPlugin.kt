@@ -16,7 +16,13 @@ import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import android.os.Handler
+import android.os.Looper
 import java.security.KeyStore
+import java.security.InvalidAlgorithmParameterException
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -52,12 +58,28 @@ class VaultPlugin(private val context: android.content.Context) : FlutterPlugin,
 
     private val ks: KeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
 
+    // Key generation (StrongBox especially) and the AEAD work take a while: they run off the platform thread, and the answer is posted back to it.
+    private var worker: ExecutorService = Executors.newSingleThreadExecutor()
+    private val main = Handler(Looper.getMainLooper())
+
+    // A marker kept next to the app (never in a backup: allowBackup is off) that says the secret key was made here, so a key that is gone
+    // is reported as invalidated instead of being quietly replaced, which would make the vault unreadable.
+    private val markers by lazy { context.getSharedPreferences("biatec_vault_markers", android.content.Context.MODE_PRIVATE) }
+
+    /** Answers the channel call once, whatever the prompt callbacks do afterwards. */
+    private class Once(private val result: MethodChannel.Result, private val main: Handler) {
+        private val done = AtomicBoolean(false)
+        fun success(value: Any?) { if (done.compareAndSet(false, true)) main.post { result.success(value) } }
+        fun error(code: String, message: String) { if (done.compareAndSet(false, true)) main.post { result.error(code, message, null) } }
+    }
+
     private fun alias(purpose: String) = if (purpose == "secret") "biatec.vault.secret" else "biatec.vault.metadata"
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "deleteKeys" -> {
                 listOf("metadata", "secret").forEach { if (ks.containsAlias(alias(it))) ks.deleteEntry(alias(it)) }
+                markers.edit().clear().apply()
                 result.success(null)
             }
             "seal", "open" -> {
@@ -67,20 +89,22 @@ class VaultPlugin(private val context: android.content.Context) : FlutterPlugin,
                 if ((purpose != "metadata" && purpose != "secret") || data == null || aad == null) {
                     return result.error("bad_args", "purpose, data and aad are required", null)
                 }
-                run(call.method == "seal", purpose, data, aad, result)
+                if (worker.isShutdown) worker = Executors.newSingleThreadExecutor()
+                val once = Once(result, main)
+                worker.execute { run(call.method == "seal", purpose, data, aad, once) }
             }
             else -> result.notImplemented()
         }
     }
 
-    private fun run(seal: Boolean, purpose: String, data: ByteArray, aad: ByteArray, result: MethodChannel.Result) {
+    private fun run(seal: Boolean, purpose: String, data: ByteArray, aad: ByteArray, result: Once) {
         try {
             val cipher: Cipher
             if (seal) {
                 cipher = Cipher.getInstance("AES/GCM/NoPadding")
                 cipher.init(Cipher.ENCRYPT_MODE, key(purpose))
             } else {
-                if (data.size < 12 + 16) return result.error("bad_data", "too short", null)
+                if (data.size < 12 + 16) return result.error("bad_data", "too short")
                 cipher = Cipher.getInstance("AES/GCM/NoPadding")
                 cipher.init(Cipher.DECRYPT_MODE, key(purpose), GCMParameterSpec(128, data.copyOfRange(0, 12)))
             }
@@ -90,13 +114,17 @@ class VaultPlugin(private val context: android.content.Context) : FlutterPlugin,
                 finish(cipher, seal, data, aad, result)
             }
         } catch (e: KeyPermanentlyInvalidatedException) {
-            result.error("biometrics_changed", "The vault key was invalidated", null)
+            result.error("biometrics_changed", "The vault key was invalidated")
+        } catch (e: NoBiometricsException) {
+            result.error("auth_failed", "No strong biometric is enrolled")
         } catch (e: Throwable) {
-            result.error("keystore_error", "The keystore could not do that", null)
+            result.error("keystore_error", "The keystore could not do that")
         }
     }
 
-    private fun finish(cipher: Cipher, seal: Boolean, data: ByteArray, aad: ByteArray, result: MethodChannel.Result) {
+    private class NoBiometricsException : Exception()
+
+    private fun finish(cipher: Cipher, seal: Boolean, data: ByteArray, aad: ByteArray, result: Once) {
         try {
             cipher.updateAAD(aad)
             if (seal) {
@@ -105,17 +133,17 @@ class VaultPlugin(private val context: android.content.Context) : FlutterPlugin,
                 result.success(cipher.doFinal(data, 12, data.size - 12))
             }
         } catch (e: javax.crypto.AEADBadTagException) {
-            result.error("bad_data", "A sealed value did not verify", null)
+            result.error("bad_data", "A sealed value did not verify")
         } catch (e: Throwable) {
-            result.error("keystore_error", "The keystore could not do that", null)
+            result.error("keystore_error", "The keystore could not do that")
         }
     }
 
     /** The strong-biometric prompt that unlocks [cipher] (a CryptoObject, so the key is used only after the user is verified). */
-    private fun prompt(cipher: Cipher, result: MethodChannel.Result, then: (Cipher) -> Unit) {
-        val host = activity ?: return result.error("auth_failed", "No screen to ask on", null)
+    private fun prompt(cipher: Cipher, result: Once, then: (Cipher) -> Unit) {
+        val host = activity ?: return result.error("auth_failed", "No screen to ask on")
         if (BiometricManager.from(context).canAuthenticate(BIOMETRIC_STRONG) != BiometricManager.BIOMETRIC_SUCCESS) {
-            return result.error("auth_failed", "No strong biometric is available", null)
+            return result.error("auth_failed", "No strong biometric is available")
         }
         val info = BiometricPrompt.PromptInfo.Builder()
             .setTitle("Unlock your two-factor accounts")
@@ -126,11 +154,11 @@ class VaultPlugin(private val context: android.content.Context) : FlutterPlugin,
         val callback = object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(r: BiometricPrompt.AuthenticationResult) {
                 val authed = r.cryptoObject?.cipher
-                if (authed == null) result.error("auth_failed", "No verified key", null) else then(authed)
+                if (authed == null) result.error("auth_failed", "No verified key") else worker.execute { then(authed) }
             }
 
             override fun onAuthenticationError(code: Int, message: CharSequence) {
-                result.error("auth_failed", "The biometric check did not succeed", null)
+                result.error("auth_failed", "The biometric check did not succeed")
             }
         }
         host.runOnUiThread {
@@ -141,12 +169,20 @@ class VaultPlugin(private val context: android.content.Context) : FlutterPlugin,
     private fun key(purpose: String): SecretKey {
         val existing = ks.getKey(alias(purpose), null) as? SecretKey
         if (existing != null) return existing
+        if (markers.getBoolean(purpose, false)) throw KeyPermanentlyInvalidatedException("The key is gone")
         val hasStrongBox = context.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)
-        return try {
+        val created = try {
             generate(purpose, hasStrongBox)
         } catch (e: StrongBoxUnavailableException) {
             generate(purpose, false)
+        } catch (e: IllegalStateException) {
+            // The secret key needs an enrolled biometric.
+            if (purpose == "secret") throw NoBiometricsException() else throw e
+        } catch (e: InvalidAlgorithmParameterException) {
+            if (purpose == "secret") throw NoBiometricsException() else throw e
         }
+        markers.edit().putBoolean(purpose, true).apply()
+        return created
     }
 
     private fun generate(purpose: String, strongBox: Boolean): SecretKey {

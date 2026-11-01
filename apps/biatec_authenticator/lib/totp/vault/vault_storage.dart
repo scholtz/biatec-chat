@@ -10,7 +10,7 @@ abstract class VaultStorage {
   /// The file as it is, or null when there is none yet.
   Future<Uint8List?> read();
 
-  /// Replaces the file. Atomic: after a crash the old file or the new one is there, never half of either.
+  /// Replaces the file. Atomic as far as the file system makes a rename: the old file or the new one is read back, and a torn file is refused by the vault's own checks.
   Future<void> write(Uint8List bytes);
 }
 
@@ -30,8 +30,14 @@ class FileVaultStorage implements VaultStorage {
   Future<void> write(Uint8List bytes) async {
     await file.parent.create(recursive: true);
     final temp = File('${file.path}.tmp');
-    await temp.writeAsBytes(bytes, flush: true);
-    await temp.rename(file.path);
+    try {
+      await temp.writeAsBytes(bytes, flush: true);
+      await temp.rename(file.path);
+    } on Object {
+      // No half-written copy is left lying around.
+      if (await temp.exists()) await temp.delete();
+      rethrow;
+    }
   }
 }
 

@@ -134,7 +134,12 @@ public class VaultPlugin: NSObject, FlutterPlugin {
         }
         var err: Unmanaged<CFError>?
         guard var plain = SecKeyCreateDecryptedData(key, VaultPlugin.algorithm, sealed as CFData, &err) as Data? else {
-            let code = err.map { CFErrorGetCode($0.takeRetainedValue()) } ?? 0
+            let failure = err?.takeRetainedValue()
+            // LocalAuthentication errors (cancelled, locked out, no biometry) are an auth failure the user can retry, never a damaged vault.
+            if let failure = failure, CFErrorGetDomain(failure) as String == LAError.errorDomain {
+                return FlutterError(code: "auth_failed", message: "The biometric check did not succeed", details: nil)
+            }
+            let code = failure.map { CFErrorGetCode($0) } ?? 0
             switch Int32(truncatingIfNeeded: code) {
             case errSecUserCanceled, errSecAuthFailed, errSecInteractionNotAllowed, errSecNotAvailable:
                 return FlutterError(code: "auth_failed", message: "The biometric check did not succeed", details: nil)

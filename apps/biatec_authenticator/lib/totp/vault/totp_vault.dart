@@ -60,12 +60,16 @@ class TotpVault {
     required this.storage,
     required this.versions,
     Random? random,
+    this.promptTimeout = const Duration(minutes: 2),
   }) : _random = random ?? Random.secure();
 
   final VaultKeyStore keys;
   final VaultStorage storage;
   final VaultVersionStore versions;
   final Random _random;
+
+  /// How long a biometric prompt may stay open. A prompt that never answers (the screen was destroyed under it) must not hold the queue for good, so the metadata calls behind it still run.
+  final Duration promptTimeout;
 
   static const _format = 1;
 
@@ -77,6 +81,11 @@ class TotpVault {
     _tail = done.then<void>((_) {}, onError: (Object _) {});
     return done;
   }
+
+  Future<Uint8List> _prompted(Future<Uint8List> op) => op.timeout(
+        promptTimeout,
+        onTimeout: () => throw const VaultAuthFailed(),
+      );
 
   Uint8List _indexAad(int version) =>
       Uint8List.fromList(utf8.encode('biatec.vault.index.v1|$version'));
@@ -193,15 +202,15 @@ class TotpVault {
   Future<List<VaultAccountInfo>> list() =>
       _serial(() async => [for (final e in (await _load()).entries) e.info]);
 
-  /// Stores [account] (a biometric is asked) and returns what was stored, with its new id. The caller wipes its own account.
+  /// Stores [account] (the secret key is used, which asks for a biometric on Android; iOS seals with the public half and asks only when a secret is read) and returns what was stored, with its new id. The caller wipes its own account.
   Future<VaultAccountInfo> add(OtpAccount account) => _serial(() async {
         final state = await _load();
         final id = _newId();
         final secret = account.copySecret();
         final Uint8List record;
         try {
-          record =
-              await keys.seal(VaultKeyPurpose.secret, secret, _recordAad(id));
+          record = await _prompted(
+              keys.seal(VaultKeyPurpose.secret, secret, _recordAad(id)));
         } finally {
           secret.fillRange(0, secret.length, 0);
         }
@@ -223,8 +232,8 @@ class TotpVault {
   Future<OtpAccount> readSecret(String id) => _serial(() async {
         final state = await _load();
         final entry = _find(state, id);
-        final secret = await keys.open(
-            VaultKeyPurpose.secret, entry.record, _recordAad(id));
+        final secret = await _prompted(
+            keys.open(VaultKeyPurpose.secret, entry.record, _recordAad(id)));
         try {
           final i = entry.info;
           return OtpAccount(

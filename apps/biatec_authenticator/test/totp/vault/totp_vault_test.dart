@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -106,7 +107,8 @@ void main() {
       expect(u.label, 'new name');
       await expectLater(r.vault.update(a.id, label: ' '),
           throwsA(isA<OtpAccountException>()));
-      await expectLater(r.vault.update(a.id, label: 'ev${String.fromCharCode(0x202E)}il'),
+      await expectLater(
+          r.vault.update(a.id, label: 'ev${String.fromCharCode(0x202E)}il'),
           throwsA(isA<OtpAccountException>()));
 
       expect(await r.vault.incrementCounter(b.id), 5);
@@ -324,6 +326,20 @@ void main() {
     });
   });
 
+  group('a prompt that never answers', () {
+    test('does not hold the queue for good', () async {
+      final r = Rig();
+      final slow = TotpVault(
+        keys: _Hanging(r.keys),
+        storage: r.storage,
+        versions: r.versions,
+        promptTimeout: const Duration(milliseconds: 50),
+      );
+      await expectLater(slow.add(account()), throwsA(isA<VaultAuthFailed>()));
+      expect(await slow.list(), isEmpty, reason: 'metadata calls still run');
+    });
+  });
+
   group('secrets are wiped', () {
     test('after add and after read', () async {
       final r = Rig();
@@ -447,6 +463,29 @@ void main() {
       expect(delegate, contains('VaultPlugin.register('));
     });
 
+    test('every object id in the iOS project is defined once', () {
+      final project = read('ios/Runner.xcodeproj/project.pbxproj');
+      final ids = RegExp(r'^		([0-9A-F]{24}) /\*', multiLine: true)
+          .allMatches(project)
+          .map((m) => m.group(1)!)
+          .toList();
+      expect(ids, isNotEmpty);
+      expect(ids.toSet().length, ids.length,
+          reason: 'a repeated id makes Xcode drop one of the objects');
+      expect(read('ios/Runner.xcodeproj/project.pbxproj'),
+          contains('VaultPlugin.swift in Sources'));
+    });
+
+    test('the Android plugin answers once, off the main thread', () {
+      final kt = read(
+          'android/app/src/main/kotlin/io/biatec/authenticator/VaultPlugin.kt');
+      expect(kt, contains('AtomicBoolean'));
+      expect(kt, contains('Executors.newSingleThreadExecutor'));
+      expect(kt, contains('NoBiometricsException'));
+      expect(read('ios/Runner/VaultPlugin.swift'),
+          contains('LAError.errorDomain'));
+    });
+
     test('the vault file is kept out of backups', () {
       final manifest = read('android/app/src/main/AndroidManifest.xml');
       expect(manifest, contains('android:allowBackup="false"'));
@@ -454,4 +493,25 @@ void main() {
           contains('isExcludedFromBackup = true'));
     });
   });
+}
+
+/// A key store whose secret prompt never answers.
+class _Hanging implements VaultKeyStore {
+  _Hanging(this.inner);
+  final FakeVaultKeyStore inner;
+
+  @override
+  Future<Uint8List> seal(
+      VaultKeyPurpose purpose, Uint8List plaintext, Uint8List aad) {
+    if (purpose == VaultKeyPurpose.secret) return Completer<Uint8List>().future;
+    return inner.seal(purpose, plaintext, aad);
+  }
+
+  @override
+  Future<Uint8List> open(
+          VaultKeyPurpose purpose, Uint8List sealed, Uint8List aad) =>
+      inner.open(purpose, sealed, aad);
+
+  @override
+  Future<void> deleteKeys() => inner.deleteKeys();
 }
