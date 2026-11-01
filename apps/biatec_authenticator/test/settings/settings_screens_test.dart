@@ -34,7 +34,10 @@ void main() {
       await _open(tester, SecurityScreen(services: rig.services));
       expect(find.text('Security settings'), findsOneWidget);
       expect(find.textContaining('1000.00 EUR'), findsOneWidget);
-      expect(tester.widget<SwitchListTile>(find.byKey(const Key('biometric'))).value,
+      expect(
+          tester
+              .widget<SwitchListTile>(find.byKey(const Key('biometric')))
+              .value,
           isTrue);
     });
 
@@ -134,7 +137,8 @@ void main() {
           findsOneWidget);
     });
 
-    testWidgets('a change made while a quiet reload runs goes through and is not overwritten',
+    testWidgets(
+        'a change made while a quiet reload runs goes through and is not overwritten',
         (tester) async {
       final rig = SettingsRig();
       await _open(tester, SecurityScreen(services: rig.services));
@@ -157,8 +161,7 @@ void main() {
       await _open(
           tester,
           TabReload(
-              reload: reload,
-              child: SecurityScreen(services: rig.services)));
+              reload: reload, child: SecurityScreen(services: rig.services)));
       final before = tester.state(find.byType(SettingsFrame));
       rig.oidc.settings['biometric_required'] = false;
       reload.value++;
@@ -168,7 +171,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.state(find.byType(SettingsFrame)), same(before));
       expect(
-          tester.widget<SwitchListTile>(find.byKey(const Key('biometric'))).value,
+          tester
+              .widget<SwitchListTile>(find.byKey(const Key('biometric')))
+              .value,
           isFalse);
     });
   });
@@ -216,7 +221,8 @@ void main() {
       expect(find.text('Approved on this device and applied.'), findsOneWidget);
     });
 
-    testWidgets('always ask: on applies at once, off is signed', (tester) async {
+    testWidgets('always ask: on applies at once, off is signed',
+        (tester) async {
       final rig = SettingsRig();
       await _open(tester, ClientsScreen(services: rig.services));
       await tester.tap(find.byKey(const Key('always-ask-biatec-chat')));
@@ -233,21 +239,24 @@ void main() {
     testWidgets('per-client threshold can be set and reset', (tester) async {
       final rig = SettingsRig();
       await _open(tester, ClientsScreen(services: rig.services));
-      expect(find.textContaining('Uses the account threshold'), findsNWidgets(3));
+      expect(
+          find.textContaining('Uses the account threshold'), findsNWidgets(3));
 
       await tester.tap(find.byKey(const Key('threshold-change-bank-example')));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const Key('eur-field')), '100');
       await tester.tap(find.byKey(const Key('eur-save')));
       await tester.pumpAndSettle();
-      expect(rig.oidc.clientById('bank-example')['per_client_threshold_eur'], '100');
+      expect(rig.oidc.clientById('bank-example')['per_client_threshold_eur'],
+          '100');
       expect(rig.gate.asked, 0, reason: 'lower than the account threshold');
       expect(find.textContaining('100 EUR'), findsOneWidget);
 
       // Back to the account threshold (1000) raises 100: signed.
       await tester.tap(find.byKey(const Key('threshold-reset-bank-example')));
       await tester.pumpAndSettle();
-      expect(rig.oidc.clientById('bank-example')['per_client_threshold_eur'], isNull);
+      expect(rig.oidc.clientById('bank-example')['per_client_threshold_eur'],
+          isNull);
       expect(rig.gate.asked, 1);
     });
 
@@ -321,7 +330,6 @@ void main() {
 
       for (final (label, type) in [
         ('Devices', DevicesScreen),
-        ('Clients', ClientsScreen),
         ('Settings', SecurityScreen),
       ]) {
         await tester.tap(find.descendant(
@@ -329,6 +337,15 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(type), findsOneWidget, reason: label);
       }
+      // Trusted clients is a screen inside Settings, with the bar still showing, and back leads to Settings.
+      await tester.tap(find.byKey(const Key('trusted-clients')));
+      await tester.pumpAndSettle();
+      expect(find.byType(ClientsScreen), findsOneWidget);
+      expect(find.byType(NavigationBar), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byType(ClientsScreen), findsNothing);
+      expect(find.byType(SecurityScreen), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
 

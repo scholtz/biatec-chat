@@ -166,10 +166,10 @@ void main() {
     await rig.dispose(tester);
   });
 
-  test('a shell that is gone starts the next one on Approvals', () {
-    final c = ShellController()..select(AppTab.clients);
+  test('a shell that is gone starts the next one on Codes', () {
+    final c = ShellController()..select(AppTab.devices);
     c.reset();
-    expect(c.selected, AppTab.approvals);
+    expect(c.selected, AppTab.codes);
     c.dispose();
   });
 
@@ -218,8 +218,7 @@ void main() {
     ('another card', '${ApprovalScreen.routePrefix}ciba_other'),
     ('a screen not known to reopen', null),
   ]) {
-    testWidgets('a card covered by $what is left where it is',
-        (tester) async {
+    testWidgets('a card covered by $what is left where it is', (tester) async {
       final rig = ShellRig();
       await rig.pump(tester);
       rig.shell.openApproval(rig.approvals, rig.requestId);

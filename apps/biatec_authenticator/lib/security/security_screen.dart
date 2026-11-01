@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../clients/clients_screen.dart';
 import 'settings_controller.dart';
 import 'settings_frame.dart';
 
@@ -44,9 +45,8 @@ class SecurityScreen extends StatelessWidget {
             subtitle: const Text('Asked before this device approves. '
                 'Turning it off needs approval on this device.'),
             value: s.biometricRequired,
-            onChanged: enabled
-                ? (v) => c.apply({'biometric_required': v})
-                : null,
+            onChanged:
+                enabled ? (v) => c.apply({'biometric_required': v}) : null,
           ),
           ListTile(
             key: const Key('threshold'),
@@ -78,6 +78,18 @@ class SecurityScreen extends StatelessWidget {
             onChanged: enabled
                 ? (v) => c.apply({'block_unverified_clients': v})
                 : null,
+          ),
+          // Inside this tab's own stack, so back returns here and the bar stays.
+          ListTile(
+            key: const Key('trusted-clients'),
+            leading: const Icon(Icons.verified_user_outlined),
+            title: const Text('Trusted clients and thresholds'),
+            subtitle: const Text('Per-client limits, "always ask" and pauses.'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              settings: const RouteSettings(name: '/settings/clients'),
+              builder: (_) => ClientsScreen(services: services, controller: c),
+            )),
           ),
         ];
       },
