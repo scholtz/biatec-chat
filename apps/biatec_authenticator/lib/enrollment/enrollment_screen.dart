@@ -4,13 +4,23 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../keys/device_key_store.dart';
+import '../theme.dart';
+import '../ui/ui.dart';
 import 'enrollment_controller.dart';
 import 'enrollment_state.dart';
 import 'enrollment_store.dart';
 import 'observable_enrollment_store.dart';
 import 'oidc_enrollment_client.dart';
+import 'widgets/enrollment_problem.dart';
+import 'widgets/key_protection_card.dart';
+import 'widgets/onboarding_step.dart';
+import 'widgets/recovery_code_view.dart';
 
-/// Enrollment screen: start, inactive countdown, recovery code.
+export 'widgets/recovery_code_view.dart';
+
+/// Enrollment as a guided onboarding: welcome, connect, protect the key (with the activation delay), recovery code, done.
+///
+/// The controller decides where the user is; this screen only adds the welcome step in front of it and says each state in words.
 class EnrollmentScreen extends StatefulWidget {
   const EnrollmentScreen({super.key, required this.config, this.controller});
 
@@ -27,6 +37,9 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
   late final EnrollmentController _controller;
   late final TextEditingController _token;
   Timer? _ticker;
+
+  /// Whether the user left the welcome step. A device that already tried (a failed attempt) is past it.
+  bool _started = false;
 
   @override
   void initState() {
@@ -67,143 +80,271 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     return '$h:$m:$s';
   }
 
-  /// Where the key lives, once known: the app says what the device did.
-  List<Widget> _keyLevelLines() {
-    final level = _controller.keyLevel;
-    if (level == null) return const [];
-    return [
-      const SizedBox(height: 8),
-      Text('Key protection: ${level.label}', textAlign: TextAlign.center),
-    ];
-  }
+  OnboardingStep _stepFor(EnrollmentState s) => switch (s.phase) {
+        EnrollmentPhase.notEnrolled =>
+          _started ? OnboardingStep.connect : OnboardingStep.welcome,
+        EnrollmentPhase.failed => OnboardingStep.connect,
+        EnrollmentPhase.generatingKey ||
+        EnrollmentPhase.enrolling ||
+        EnrollmentPhase.inactive =>
+          OnboardingStep.protect,
+        EnrollmentPhase.activeRecoveryPending => OnboardingStep.recovery,
+        EnrollmentPhase.active => OnboardingStep.done,
+      };
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Enrollment')),
+      appBar: AppBar(title: const Text('Set up this device')),
       body: ListenableBuilder(
         listenable: _controller,
-        builder: (context, _) => Padding(
-          padding: const EdgeInsets.all(24),
-          child: _body(context, _controller.state),
-        ),
+        builder: (context, _) {
+          final s = _controller.state;
+          final step = _stepFor(s);
+          return ScrollableCenter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                StepIndicator(
+                    key: const Key('onboarding-progress'), step: step),
+                const SizedBox(height: AppSpacing.l),
+                ..._content(context, s, step),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _body(BuildContext context, EnrollmentState s) {
-    final style = Theme.of(context).textTheme.titleMedium;
-    switch (s.phase) {
-      case EnrollmentPhase.generatingKey:
-      case EnrollmentPhase.enrolling:
-        return Center(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            Text(
-                s.phase == EnrollmentPhase.generatingKey
-                    ? 'Creating the device key'
-                    : 'Enrolling this device',
-                style: style),
-          ]),
-        );
-      case EnrollmentPhase.inactive:
-        return Center(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.hourglass_top, size: 48),
-            const SizedBox(height: 16),
-            Text('Device inactive', style: style),
-            const SizedBox(height: 8),
-            ..._keyLevelLines(),
-            Text(
-              'Approvals from this device start in '
-              '${_format(s.remaining(_controller.now))}. '
-              'Until then, actions that need phone approval cannot be '
-              'completed.',
-              textAlign: TextAlign.center,
+  Widget _title(BuildContext context, String text) => Semantics(
+        header: true,
+        child: Text(text, style: Theme.of(context).textTheme.titleLarge),
+      );
+
+  /// The key's protection level in words, once the controller knows it.
+  List<Widget> _keyLevel() {
+    final level = _controller.keyLevel;
+    if (level == null) return const [];
+    return [
+      const SizedBox(height: AppSpacing.m),
+      KeyProtectionCard(level: level),
+    ];
+  }
+
+  List<Widget> _content(
+      BuildContext context, EnrollmentState s, OnboardingStep step) {
+    switch (step) {
+      case OnboardingStep.welcome:
+        return _welcome(context);
+      case OnboardingStep.connect:
+        return _connect(context, s);
+      case OnboardingStep.protect:
+        return _protect(context, s);
+      case OnboardingStep.recovery:
+        return _recovery(context);
+      case OnboardingStep.done:
+        return _done(context);
+    }
+  }
+
+  List<Widget> _welcome(BuildContext context) {
+    Widget point(IconData icon, String title, String text) => Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.m),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            ExcludeSemantics(child: Icon(icon)),
+            const SizedBox(width: AppSpacing.m),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: Theme.of(context).textTheme.titleSmall),
+                    Text(text),
+                  ]),
             ),
           ]),
         );
-      case EnrollmentPhase.activeRecoveryPending:
-        final code = _controller.recoveryCodeToShow;
-        if (code == null) {
-          final err = _controller.recoveryCodeError;
-          return Center(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              if (err == null) const CircularProgressIndicator(),
-              if (err != null) ...[
-                Text(err, textAlign: TextAlign.center),
-                const SizedBox(height: 12),
-                OutlinedButton(
-                    onPressed: _controller.loadRecoveryCode,
-                    child: const Text('Try again')),
-              ],
-            ]),
-          );
-        }
-        return RecoveryCodeView(
-          code: code,
-          onSaved: _controller.acknowledgeRecoveryCode,
-        );
-      case EnrollmentPhase.active:
-        return Center(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('This device is enrolled and active.', style: style),
-          ..._keyLevelLines(),
-        ]));
-      case EnrollmentPhase.notEnrolled:
-      case EnrollmentPhase.failed:
-        return ListView(children: [
-          Text(
-              'Enroll this device. Its key is created in secure hardware '
-              'and cannot be exported; if this device cannot do that, '
-              'enrollment is refused.',
-              style: style),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _token,
-            decoration: const InputDecoration(
-                labelText: 'Login token (from a fresh Biatec OIDC login)'),
-          ),
-          if (s.error != null) ...[
-            const SizedBox(height: 12),
-            Text(s.error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
-          ],
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: () => _controller.enroll(loginToken: _token.text),
-            child: const Text('Enroll this device'),
-          ),
-        ]);
-    }
+    return [
+      KeyedSubtree(
+        key: const Key('step-welcome'),
+        child: _title(context, 'Welcome to Biatec Authenticator'),
+      ),
+      const SizedBox(height: AppSpacing.s),
+      const Text('This app is the second factor for your Biatec account: it '
+          'asks you to approve what matters, on this device, with your '
+          'fingerprint or face.'),
+      const SizedBox(height: AppSpacing.l),
+      point(Icons.key_outlined, 'What it holds',
+          'A key that is created in this device\'s secure hardware and never leaves it, and a device token that proves this device to Biatec OIDC.'),
+      point(Icons.block, 'What it never holds',
+          'Your wallet keys, your funds or your passwords. It cannot move money by itself.'),
+      point(Icons.restore, 'If you lose this device',
+          'A recovery code, shown once at the end of setup, activates a replacement device.'),
+      const SizedBox(height: AppSpacing.s),
+      FilledButton(
+        key: const Key('onboarding-start'),
+        onPressed: () => setState(() => _started = true),
+        child: const Text('Get started'),
+      ),
+    ];
   }
-}
 
-/// Shows the recovery code once. Leaving requires confirming it was saved.
-class RecoveryCodeView extends StatelessWidget {
-  const RecoveryCodeView(
-      {super.key, required this.code, required this.onSaved});
+  List<Widget> _connect(BuildContext context, EnrollmentState s) {
+    final error = s.error;
+    final problem = error == null ? null : classifyEnrollmentError(error);
+    final again = problem?.checksAgain ?? false;
+    return [
+      KeyedSubtree(
+        key: const Key('step-connect'),
+        child: _title(context, 'Connect this device to your account'),
+      ),
+      const SizedBox(height: AppSpacing.s),
+      const Text('Paste the login token from a fresh Biatec OIDC login. It is '
+          'used once, to link this device, and is not kept.'),
+      if (problem != null) ...[
+        const SizedBox(height: AppSpacing.m),
+        StatusBanner(
+          key: Key('enrollment-problem-${problem.kind.name}'),
+          severity: StatusSeverity.danger,
+          title: problem.title,
+          message: problem.message,
+        ),
+      ],
+      const SizedBox(height: AppSpacing.m),
+      TextField(
+        key: const Key('login-token'),
+        controller: _token,
+        // A token is a secret: the keyboard does not learn it or suggest it.
+        autocorrect: false,
+        enableSuggestions: false,
+        enableIMEPersonalizedLearning: false,
+        decoration: const InputDecoration(
+          labelText: 'Login token',
+          helperText: 'From a fresh Biatec OIDC login',
+        ),
+      ),
+      const SizedBox(height: AppSpacing.m),
+      FilledButton(
+        key: const Key('enroll-button'),
+        onPressed: () => again
+            ? _controller.refresh()
+            : _controller.enroll(loginToken: _token.text),
+        child: Text(problem?.actionLabel ?? 'Connect and create the key'),
+      ),
+    ];
+  }
 
-  final String code;
-  final VoidCallback onSaved;
+  List<Widget> _protect(BuildContext context, EnrollmentState s) {
+    final theme = Theme.of(context);
+    if (s.phase == EnrollmentPhase.inactive) {
+      final left = s.remaining(_controller.now);
+      return [
+        KeyedSubtree(
+          key: const Key('step-protect'),
+          child: _title(context, 'Device inactive'),
+        ),
+        const SizedBox(height: AppSpacing.s),
+        const Text('A new device can approve requests only after a waiting '
+            'period. It protects your account if someone else gets hold of '
+            'a login. Until then, actions that need phone approval cannot be '
+            'completed here.'),
+        const SizedBox(height: AppSpacing.l),
+        Center(
+          child: Column(children: [
+            const ExcludeSemantics(child: Icon(Icons.hourglass_top, size: 40)),
+            const SizedBox(height: AppSpacing.s),
+            // Spoken once a minute, not every second.
+            Semantics(
+              container: true,
+              label: 'Activates in ${left.inHours} hours and '
+                  '${left.inMinutes.remainder(60)} minutes',
+              child: ExcludeSemantics(
+                child: Text('Time left: ${_format(left)}',
+                    key: const Key('activation-countdown'),
+                    style: theme.textTheme.headlineSmall),
+              ),
+            ),
+          ]),
+        ),
+        ..._keyLevel(),
+      ];
+    }
+    final creating = s.phase == EnrollmentPhase.generatingKey;
+    return [
+      KeyedSubtree(
+        key: const Key('step-protect'),
+        child: _title(context, 'Protecting the key'),
+      ),
+      const SizedBox(height: AppSpacing.s),
+      const Text('The key is created in this device\'s secure hardware. It '
+          'cannot be exported, and it is used only after your fingerprint or '
+          'face.'),
+      const SizedBox(height: AppSpacing.l),
+      Center(
+        child: Column(children: [
+          Semantics(label: 'Working', child: const CircularProgressIndicator()),
+          const SizedBox(height: AppSpacing.m),
+          Text(creating ? 'Creating the device key' : 'Enrolling this device',
+              style: theme.textTheme.titleMedium),
+        ]),
+      ),
+      ..._keyLevel(),
+    ];
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    return ListView(children: [
-      Text('Recovery code', style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 8),
-      const Text('Write this code down and keep it safe. It is shown only '
-          'once and activates a replacement device immediately.'),
-      const SizedBox(height: 16),
-      // Not selectable on purpose: a copied recovery code lands in the clipboard, which other apps and keyboards read (BCHAT-031).
-      Text(code,
-          style: Theme.of(context)
-              .textTheme
-              .headlineMedium
-              ?.copyWith(fontFamily: 'monospace')),
-      const SizedBox(height: 16),
-      FilledButton(onPressed: onSaved, child: const Text('I have saved it')),
-    ]);
+  List<Widget> _recovery(BuildContext context) {
+    final code = _controller.recoveryCodeToShow;
+    if (code == null) {
+      final err = _controller.recoveryCodeError;
+      return [
+        KeyedSubtree(
+          key: const Key('step-recovery'),
+          child: _title(context, 'Your recovery code'),
+        ),
+        const SizedBox(height: AppSpacing.m),
+        if (err == null)
+          const Center(child: CircularProgressIndicator())
+        else
+          ErrorState(
+            offline: err.toLowerCase().contains('could not reach'),
+            title: 'The recovery code could not be loaded',
+            message: err,
+            onRetry: _controller.loadRecoveryCode,
+          ),
+      ];
+    }
+    return [
+      KeyedSubtree(
+        key: const Key('step-recovery'),
+        child: RecoveryCodeView(
+          code: code,
+          error: _controller.recoveryCodeError,
+          onSaved: _controller.acknowledgeRecoveryCode,
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _done(BuildContext context) {
+    final theme = Theme.of(context);
+    return [
+      KeyedSubtree(
+        key: const Key('step-done'),
+        child: Column(children: [
+          const ExcludeSemantics(
+              child: Icon(Icons.check_circle_outline, size: 56)),
+          const SizedBox(height: AppSpacing.m),
+          Semantics(
+            header: true,
+            child: Text('This device is enrolled and active.',
+                textAlign: TextAlign.center, style: theme.textTheme.titleLarge),
+          ),
+          const SizedBox(height: AppSpacing.s),
+          const Text('You can now approve requests from Biatec apps on this '
+              'device.'),
+        ]),
+      ),
+      ..._keyLevel(),
+    ];
   }
 }

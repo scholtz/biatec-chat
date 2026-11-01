@@ -483,6 +483,8 @@ void main() {
       expect(find.text('Recovery code'), findsOneWidget);
       expect(find.text('AAAA-BBBB-CCCC'), findsOneWidget);
 
+      await tester.tap(find.byKey(const Key('recovery-confirm')));
+      await tester.pump();
       await tester.runAsync(() async {
         await tester.tap(find.text('I have saved it'));
         // The acknowledgement is asynchronous (HTTP call, then storage write).
