@@ -63,13 +63,15 @@ EnrollmentProblem classifyEnrollmentError(String error) {
   }
   final refused = RegExp(r'refused \((\d{3})\)').firstMatch(lower);
   final status = refused == null ? null : int.parse(refused.group(1)!);
-  if (status == 409 || lower.contains('already')) {
+  // The status code decides first: a server's own wording ("token already used") must not turn a refused login into "already enrolled".
+  // The server's status for a repeated device key is not fixed (409, or a 400 that says so), and the app mints a random key per attempt.
+  if (status == 409 || (status == 400 && lower.contains('already enrolled'))) {
     return EnrollmentProblem(
         EnrollmentProblemKind.alreadyEnrolled,
         'This device is already enrolled',
-        'Biatec OIDC already has this device. Check again to open it, or '
-            'remove it from your account on another trusted device first to '
-            'enroll it as new.',
+        'Biatec OIDC already has this device. If this app has the enrollment, '
+            'check again to open it. If it does not, remove the device from '
+            'your account on another trusted device, then connect again.',
         'Check again');
   }
   if (status == 400 || status == 401 || status == 403) {

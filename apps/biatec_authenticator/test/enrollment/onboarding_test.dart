@@ -183,6 +183,36 @@ void main() {
       expect(titles, hasLength(3));
     });
 
+    test('the status code decides before the servers own wording', () {
+      // "already" in the detail of a refused login must not read as an enrolled device.
+      expect(kind('Enrollment refused (401): token already used'),
+          EnrollmentProblemKind.refusedLogin);
+      expect(kind('Enrollment refused (409): kid already enrolled'),
+          EnrollmentProblemKind.alreadyEnrolled);
+      expect(kind('Enrollment refused (500): already busy'),
+          EnrollmentProblemKind.other);
+    });
+
+    test('the real client messages map to the kinds they are for', () {
+      String message(int status) {
+        try {
+          OidcEnrollmentClient.parseResponse(status, '{"error":"x"}');
+        } on EnrollmentException catch (e) {
+          return e.message;
+        }
+        throw StateError('no refusal');
+      }
+
+      expect(kind(message(401)), EnrollmentProblemKind.refusedLogin);
+      expect(kind(message(403)), EnrollmentProblemKind.refusedLogin);
+      expect(kind(message(409)), EnrollmentProblemKind.alreadyEnrolled);
+      expect(kind(message(500)), EnrollmentProblemKind.other);
+      expect(
+          kind(const EnrollmentException('Could not reach Biatec OIDC: x')
+              .message),
+          EnrollmentProblemKind.network);
+    });
+
     test('only an already-enrolled device is told to check again', () {
       expect(classifyEnrollmentError('Enrollment refused (409): x').checksAgain,
           isTrue);
@@ -293,6 +323,44 @@ void main() {
       await _end(tester);
     });
 
+    testWidgets('the login token is hidden unless the user asks to see it',
+        (tester) async {
+      final rig = _Rig();
+      await _pump(tester, rig);
+      await _start(tester);
+      TextField field() =>
+          tester.widget<TextField>(find.byKey(const Key('login-token')));
+      expect(field().obscureText, isTrue);
+      expect(field().enableSuggestions, isFalse);
+      expect(field().autocorrect, isFalse);
+      await tester.tap(find.byKey(const Key('login-token-toggle')));
+      await tester.pump();
+      expect(field().obscureText, isFalse);
+      expect(find.byTooltip('Hide the token'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('login-token-toggle')));
+      await tester.pump();
+      expect(field().obscureText, isTrue);
+      await _end(tester);
+    });
+
+    testWidgets(
+        'under a minute left is spoken as such, not as 0 hours 0 minutes',
+        (tester) async {
+      final handle = tester.ensureSemantics();
+      final rig = _Rig();
+      await _pump(tester, rig);
+      await _start(tester);
+      await _enroll(tester);
+      rig.clock = _t0.add(const Duration(hours: 23, minutes: 59, seconds: 30));
+      await tester.runAsync(rig.controller.refresh);
+      await tester.pump();
+      expect(find.text('Time left: 0:00:30'), findsOneWidget);
+      expect(find.bySemanticsLabel('Activates in less than a minute'),
+          findsOneWidget);
+      handle.dispose();
+      await _end(tester);
+    });
+
     testWidgets('a software key is named as such and is not accepted',
         (tester) async {
       await tester.pumpWidget(MaterialApp(
@@ -377,6 +445,8 @@ void main() {
           findsOneWidget);
       expect(find.text('This device is already enrolled'), findsOneWidget);
       expect(find.widgetWithText(FilledButton, 'Check again'), findsOneWidget);
+      // The server has the device but this app may not, so connecting again stays possible.
+      expect(find.byKey(const Key('enroll-again-button')), findsOneWidget);
 
       // The enrollment is in the store after all: checking again opens it.
       await rig.store.write(EnrollmentRecord(

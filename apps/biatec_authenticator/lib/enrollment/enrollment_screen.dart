@@ -41,6 +41,9 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
   /// Whether the user left the welcome step. A device that already tried (a failed attempt) is past it.
   bool _started = false;
 
+  /// Whether the login token is shown in clear.
+  bool _showToken = false;
+
   @override
   void initState() {
     super.initState();
@@ -214,13 +217,20 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
       TextField(
         key: const Key('login-token'),
         controller: _token,
-        // A token is a secret: the keyboard does not learn it or suggest it.
+        // A token is a secret: it is hidden unless the user asks, and the keyboard does not learn it or suggest it.
+        obscureText: !_showToken,
         autocorrect: false,
         enableSuggestions: false,
         enableIMEPersonalizedLearning: false,
-        decoration: const InputDecoration(
+        decoration: InputDecoration(
           labelText: 'Login token',
           helperText: 'From a fresh Biatec OIDC login',
+          suffixIcon: IconButton(
+            key: const Key('login-token-toggle'),
+            tooltip: _showToken ? 'Hide the token' : 'Show the token',
+            icon: Icon(_showToken ? Icons.visibility_off : Icons.visibility),
+            onPressed: () => setState(() => _showToken = !_showToken),
+          ),
         ),
       ),
       const SizedBox(height: AppSpacing.m),
@@ -231,6 +241,15 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
             : _controller.enroll(loginToken: _token.text),
         child: Text(problem?.actionLabel ?? 'Connect and create the key'),
       ),
+      if (again) ...[
+        const SizedBox(height: AppSpacing.s),
+        // The server has the device but this app may not: enrolling again is still possible.
+        OutlinedButton(
+          key: const Key('enroll-again-button'),
+          onPressed: () => _controller.enroll(loginToken: _token.text),
+          child: const Text('Connect again with this token'),
+        ),
+      ],
     ];
   }
 
@@ -253,11 +272,13 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
           child: Column(children: [
             const ExcludeSemantics(child: Icon(Icons.hourglass_top, size: 40)),
             const SizedBox(height: AppSpacing.s),
-            // Spoken once a minute, not every second.
+            // The spoken label only changes when the minute does, so a screen reader is not given a new sentence every second.
             Semantics(
               container: true,
-              label: 'Activates in ${left.inHours} hours and '
-                  '${left.inMinutes.remainder(60)} minutes',
+              label: left.inMinutes < 1
+                  ? 'Activates in less than a minute'
+                  : 'Activates in ${left.inHours} hours and '
+                      '${left.inMinutes.remainder(60)} minutes',
               child: ExcludeSemantics(
                 child: Text('Time left: ${_format(left)}',
                     key: const Key('activation-countdown'),
