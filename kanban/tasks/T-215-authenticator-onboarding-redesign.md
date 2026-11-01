@@ -1,7 +1,7 @@
 ---
 id: T-215
 title: "Authenticator: redesign enrollment into a guided onboarding"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-214]
@@ -9,12 +9,12 @@ area: ["apps/biatec_authenticator/lib/enrollment/enrollment_screen.dart", "apps/
 parallel: yes
 conflicts_with: []
 issue: "#351"
-branch: ""
-owner: ""
+branch: "task/T-215"
+owner: "session-20261101-1057"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-24
-updated: 2026-10-29
+updated: 2026-11-01
 ---
 
 # T-215 - Authenticator: redesign enrollment into a guided onboarding
@@ -71,3 +71,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-24 17:07 · kanban-board · backlog → blocked · waiting on: T-214
 - 2026-10-24 12:05 · scholtz · taken · status stays blocked
 - 2026-10-29 16:26 · kanban-board · blocked → backlog · blockers done: T-214
+- 2026-11-01 10:57 · scholtz · backlog → in-progress · claimed by session-20261101-1057 on task/T-215
