@@ -64,6 +64,16 @@ Presentation only: services, controllers, clients and the consent protocol stay 
 
 Filled in by the agent when it moves the task to `review`.
 
+Implemented in PR #378, branch task/T-218 @ 1ecf984 (squash merged).
+
+- Devices: card per device (This device, Active/Pending badges with icon and word), full key id, key protection card for this device, cancel only for pending enrollments through a confirm sheet (extra warning for this device), note that active devices stay, empty state.
+- Trusted clients: card per client, verified in words, pause banner, loosening changes (lift pause, always ask off, reset threshold) confirmed in a sheet that says the phone asks for fingerprint or face; tightening applies at once; empty state.
+- Shared: `askEur` bottom sheet (unit, live raise/lower hint, inline error) and `confirmSheet`.
+- Not built, the settings API has no such calls: revoking an active device, blocking a client, last seen, key level of other devices.
+- Tests: 608 pass; new `test/settings/devices_clients_screens_test.dart` (states, semantics, 3x text light/dark, tap-target guidelines). One review round, user capped and merged.
+
+**Unblocks:** T-219.
+
 ## Review
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
