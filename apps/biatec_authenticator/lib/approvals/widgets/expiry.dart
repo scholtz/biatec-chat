@@ -63,3 +63,35 @@ class ExpiryRing extends StatelessWidget {
     );
   }
 }
+
+/// Time left on the approval screen as words and a ring, never by the ring alone. A screen reader hears one sentence.
+class ExpiryRow extends StatelessWidget {
+  const ExpiryRow({super.key, required this.request, required this.now});
+
+  final ConsentRequest request;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final left = request.expiresAt.difference(now);
+    final over = left <= Duration.zero;
+    return Semantics(
+      container: true,
+      label: over ? 'Request expired' : 'Request ${spokenLeft(left)}',
+      child: ExcludeSemantics(
+        child: Row(children: [
+          ExpiryRing(fraction: expiryFraction(request, now)),
+          const SizedBox(width: 16),
+          // Flexible: at large text the words wrap instead of running off the screen.
+          Expanded(
+            child: Text(
+              over ? 'Expired' : 'Expires in ${clockLeft(left)}',
+              key: const Key('expires-in'),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}

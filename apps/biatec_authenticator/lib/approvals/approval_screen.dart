@@ -7,7 +7,6 @@ import '../ui/ui.dart';
 import 'approval_card.dart';
 import 'approval_controller.dart';
 import 'approval_services.dart';
-import 'consent_request.dart';
 import 'widgets/approval_actions.dart';
 import 'widgets/binding_code_field.dart';
 import 'widgets/expiry.dart';
@@ -140,7 +139,7 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
           icon: Icons.block,
           title: 'Denied.',
           message:
-              'Nothing was approved. The requester is told it was refused.',
+              'Nothing was approved. Your decision was sent to Biatec OIDC.',
           actionLabel: 'Done',
           onAction: _close,
         );
@@ -195,7 +194,7 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
               onAction: c.load,
             ),
             const SizedBox(height: AppSpacing.m),
-          ] else if (left.isNegative) ...[
+          ] else if (left <= Duration.zero) ...[
             // Both buttons are off; this says why, with the way out.
             const StatusBanner(
               key: Key('approval-expired'),
@@ -212,7 +211,7 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
           ],
           ApprovalCard(request: request),
           const SizedBox(height: AppSpacing.m),
-          _Expiry(request: request, left: left, now: c.now),
+          ExpiryRow(request: request, now: c.now),
           const SizedBox(height: AppSpacing.m),
           BindingCodeField(
             controller: _code,
@@ -240,39 +239,6 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
               ? 'The request changed'
               : 'Could not complete',
       message: retryable ? '$error You can try again.' : error,
-    );
-  }
-}
-
-/// Time left as words and a ring, so it is never shown by the ring alone.
-class _Expiry extends StatelessWidget {
-  const _Expiry({required this.request, required this.left, required this.now});
-
-  final ConsentRequest request;
-  final Duration left;
-  final DateTime now;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      container: true,
-      label:
-          left.isNegative ? 'Request expired' : 'Request ${spokenLeft(left)}',
-      child: ExcludeSemantics(
-        child: Row(children: [
-          ExpiryRing(fraction: expiryFraction(request, now)),
-          const SizedBox(width: AppSpacing.m),
-          // Flexible: at large text the words wrap instead of running off the screen.
-          Expanded(
-            child: Text(
-              left.isNegative ? 'Expired' : 'Expires in ${clockLeft(left)}',
-              key: const Key('expires-in'),
-              style: theme.textTheme.titleMedium,
-            ),
-          ),
-        ]),
-      ),
     );
   }
 }

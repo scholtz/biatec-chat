@@ -372,7 +372,7 @@ void main() {
       await _pumpApproval(tester, h);
       final d =
           ConsentRequest.fromJson(h.oidc.request).detail as LimitsChangeDetail;
-      final raises = ApprovalCard.raisesLimits(d);
+      final raises = ApprovalCard.limitsMove(d) == LimitsMove.raises;
       expect(find.byKey(Key(raises ? 'limits-raised' : 'limits-lowered')),
           findsOneWidget);
       expect(find.byKey(Key(raises ? 'limits-lowered' : 'limits-raised')),
@@ -421,15 +421,25 @@ void main() {
               current: Limits(perTransactionEur: a, perDayEur: b),
               requested: Limits(perTransactionEur: c, perDayEur: d),
               requestHash: 'h');
-      expect(ApprovalCard.raisesLimits(limits('100', '500', '200', '500')),
+      expect(
+          (ApprovalCard.limitsMove(limits('100', '500', '200', '500')) ==
+              LimitsMove.raises),
           isTrue);
-      expect(ApprovalCard.raisesLimits(limits('100', '500', '100', '600')),
+      expect(
+          (ApprovalCard.limitsMove(limits('100', '500', '100', '600')) ==
+              LimitsMove.raises),
           isTrue);
-      expect(ApprovalCard.raisesLimits(limits('100', '500', '50', '400')),
+      expect(
+          (ApprovalCard.limitsMove(limits('100', '500', '50', '400')) ==
+              LimitsMove.raises),
           isFalse);
-      expect(ApprovalCard.raisesLimits(limits('100', '500', '100', '500')),
+      expect(
+          (ApprovalCard.limitsMove(limits('100', '500', '100', '500')) ==
+              LimitsMove.raises),
           isFalse);
-      expect(ApprovalCard.raisesLimits(limits('100', '500', 'many', '500')),
+      expect(
+          (ApprovalCard.limitsMove(limits('100', '500', 'many', '500')) ==
+              LimitsMove.raises),
           isTrue);
     });
   });
@@ -593,6 +603,53 @@ void main() {
       expect(_enabled(tester, 'deny'), isFalse);
       expect(find.byKey(const Key('approval-expired')), findsOneWidget);
       expect(find.text('This request has expired'), findsOneWidget);
+      await _end(tester);
+    });
+
+    testWidgets('at exactly zero seconds left it is expired, not a blank state',
+        (tester) async {
+      final h = Harness(vectorRequest(_stepUp));
+      await _pumpApproval(tester, h);
+      h.now = ConsentRequest.fromJson(h.oidc.request).expiresAt;
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('Expired'), findsOneWidget);
+      expect(find.byKey(const Key('approval-expired')), findsOneWidget);
+      expect(_enabled(tester, 'approve'), isFalse);
+      await _end(tester);
+    });
+
+    testWidgets('the bar sees the keyboard that Scaffold lifts it above',
+        (tester) async {
+      Future<void> pump() => tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: const SizedBox.expand(),
+              bottomNavigationBar: ApprovalActionBar(
+                  busy: true, onApprove: () {}, onDeny: () {}))));
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await pump();
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 250);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pump();
+      expect(find.byType(LinearProgressIndicator), findsNothing,
+          reason: 'the bar knew the keyboard was up');
+      expect(find.byKey(const Key('approve')), findsOneWidget);
+    });
+
+    testWidgets('denying says what the app knows: it sent the decision',
+        (tester) async {
+      final h = Harness(vectorRequest(_stepUp));
+      await _pumpApproval(tester, h);
+      await tester.tap(find.byKey(const Key('deny')));
+      await tester.pump();
+      await tester.pump();
+      expect(
+          find.text(
+              'Nothing was approved. Your decision was sent to Biatec OIDC.'),
+          findsOneWidget);
+      expect(find.textContaining('requester is told'), findsNothing);
       await _end(tester);
     });
 

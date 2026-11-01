@@ -111,10 +111,6 @@ class ApprovalCard extends StatelessWidget {
     return down ? LimitsMove.lowers : LimitsMove.same;
   }
 
-  /// Whether a limit goes up (see [limitsMove]).
-  static bool raisesLimits(LimitsChangeDetail d) =>
-      limitsMove(d) == LimitsMove.raises;
-
   Widget _limitsWarning(LimitsChangeDetail d) => switch (limitsMove(d)) {
         LimitsMove.raises => const StatusBanner(
             key: Key('limits-raised'),
