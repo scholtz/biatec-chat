@@ -1,7 +1,7 @@
 ---
 id: T-225
 title: "Authenticator: navigation with Codes first, Trusted clients inside Settings"
-status: in-progress
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-214]
@@ -62,6 +62,8 @@ Filled in by the agent when it moves the task to `review`.
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
 
+- 2026-11-01 10:56 · approve · PR #374 merged into main @ c73fe53 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-28 09:00 · claude · (new) → blocked · created from the request to add two-factor codes, a biometric lock and industry-standard security
@@ -69,3 +71,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
 - 2026-10-29 16:26 · kanban-board · blocked → backlog · blockers done: T-214
 - 2026-11-01 10:09 · scholtz · backlog → in-progress · claimed by session-20261101-1009 on task/T-225
+- 2026-11-01 10:56 · user · in-progress → done · PR #374 merged into main @ c73fe53 (synced by kanban-sync)
