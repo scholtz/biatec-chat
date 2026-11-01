@@ -76,5 +76,5 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
 - 2026-10-29 16:26 · kanban-board · blocked → backlog · blockers done: T-214
 - 2026-11-01 10:09 · scholtz · backlog → in-progress · claimed by session-20261101-1009 on task/T-225
-- 2026-11-01 10:56 · user · in-progress → done · PR #374 merged into main @ c73fe53 (synced by kanban-sync)
 - 2026-11-01 10:56 · claude · done · hand-off filled in after the merge of PR #374 (the sync action had already marked it done)
+- 2026-11-01 10:56 · user · in-progress → done · PR #374 merged into main @ c73fe53 (synced by kanban-sync)
