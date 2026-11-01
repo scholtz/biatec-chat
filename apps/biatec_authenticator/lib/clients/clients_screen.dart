@@ -213,10 +213,9 @@ class _ClientCard extends StatelessWidget {
               onPressed: enabled
                   ? () => _apply(context, one('per_client_threshold_eur', null),
                       title: 'Use the account threshold for $name?',
-                      message: 'The account threshold of '
-                          '${account.thresholdEur} EUR is higher than '
-                          'this client\'s own. Actions up to it will no '
-                          'longer need your phone.',
+                      message: 'It goes back to the account threshold of '
+                          '${account.thresholdEur} EUR. Actions up to '
+                          'that amount will no longer need your phone.',
                       confirmLabel: 'Use account threshold')
                   : null,
               child: const Text('Use account threshold'),
