@@ -37,24 +37,32 @@ class EnrollmentProblem {
   bool get checksAgain => kind == EnrollmentProblemKind.alreadyEnrolled;
 }
 
+/// The client's own prefix for a request that did not reach Biatec OIDC. Matched at the start, so a server's detail text that happens to say "could not reach" is not taken for it.
+const _unreachablePrefix = 'Could not reach Biatec OIDC';
+
+/// Whether [error] is the client's "could not reach Biatec OIDC" message.
+bool isUnreachableError(String error) => error.startsWith(_unreachablePrefix);
+
 /// Reads the message the controller reports (the client's messages are fixed texts) into something the screen can answer specifically.
 EnrollmentProblem classifyEnrollmentError(String error) {
   final lower = error.toLowerCase();
-  if (lower.contains('could not be verified')) {
+  // The pinning refusal (PinningException.message): "The connection to <host> could not be verified, so nothing was sent."
+  if (error.startsWith('The connection to ') &&
+      lower.contains('could not be verified')) {
     return EnrollmentProblem(
         EnrollmentProblemKind.unverified,
         'The connection could not be verified',
         'Nothing was sent. If this keeps happening, update the app.',
         'Try again');
   }
-  if (lower.contains('could not reach')) {
+  if (isUnreachableError(error)) {
     return EnrollmentProblem(
         EnrollmentProblemKind.network,
         'Cannot reach Biatec OIDC',
         'Check your connection and try again. Nothing was enrolled.',
         'Try again');
   }
-  if (lower.contains('fresh login is required')) {
+  if (error.startsWith('A fresh login is required')) {
     return EnrollmentProblem(
         EnrollmentProblemKind.refusedLogin,
         'Login token needed',
@@ -83,9 +91,9 @@ EnrollmentProblem classifyEnrollmentError(String error) {
             'below and connect.',
         'Connect and create the key');
   }
-  if (lower.contains('not in secure hardware') ||
-      lower.contains('cannot say where it keeps the key') ||
-      lower.contains('enrollment is refused')) {
+  // The controller's refusals of a key that is not in secure hardware.
+  if (error.startsWith('This device keeps the key in') ||
+      error.startsWith('This device cannot say where it keeps the key')) {
     return EnrollmentProblem(
         EnrollmentProblemKind.keyNotHardware,
         'This device cannot protect the key',

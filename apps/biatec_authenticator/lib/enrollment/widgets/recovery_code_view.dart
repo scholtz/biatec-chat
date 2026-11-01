@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
@@ -9,7 +11,9 @@ class RecoveryCodeView extends StatefulWidget {
       {super.key, required this.code, required this.onSaved, this.error});
 
   final String code;
-  final VoidCallback onSaved;
+
+  /// May return a future: the button stays off until it completes, so a double tap confirms once.
+  final FutureOr<void> Function() onSaved;
 
   /// Why the last confirmation did not go through (the code is still shown), or null.
   final String? error;
@@ -20,6 +24,16 @@ class RecoveryCodeView extends StatefulWidget {
 
 class _RecoveryCodeViewState extends State<RecoveryCodeView> {
   bool _written = false;
+  bool _confirming = false;
+
+  Future<void> _save() async {
+    setState(() => _confirming = true);
+    try {
+      await widget.onSaved();
+    } finally {
+      if (mounted) setState(() => _confirming = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -73,7 +87,7 @@ class _RecoveryCodeViewState extends State<RecoveryCodeView> {
         const SizedBox(height: AppSpacing.s),
         FilledButton(
           key: const Key('recovery-saved'),
-          onPressed: _written ? widget.onSaved : null,
+          onPressed: _written && !_confirming ? _save : null,
           child: const Text('I have saved it'),
         ),
       ],

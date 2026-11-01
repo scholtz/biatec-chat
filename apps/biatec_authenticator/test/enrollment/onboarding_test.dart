@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -14,6 +15,7 @@ import 'package:biatec_authenticator/enrollment/widgets/onboarding_step.dart';
 import 'package:biatec_authenticator/keys/device_key_store.dart';
 import 'package:biatec_authenticator/keys/key_security_level.dart';
 import 'package:biatec_authenticator/theme.dart';
+import 'package:biatec_authenticator/ui/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -221,15 +223,16 @@ void main() {
           isFalse);
     });
 
-    test('a message never repeats a login token it was never given', () {
-      for (final e in [
-        'Could not reach Biatec OIDC: x',
-        'Enrollment refused (401): x',
-        'A fresh login is required to enroll.',
-      ]) {
-        expect(
-            classifyEnrollmentError(e).message, isNot(contains('login-alice')));
-      }
+    test(
+        'only the client prefixes count, not a server detail that says the same',
+        () {
+      expect(kind('Enrollment refused (500): could not reach the database'),
+          EnrollmentProblemKind.other);
+      expect(kind('Enrollment refused (500): This device keeps the key in x'),
+          EnrollmentProblemKind.other);
+      expect(isUnreachableError('Could not reach Biatec OIDC: x'), isTrue);
+      expect(isUnreachableError('Enrollment refused (500): could not reach x'),
+          isFalse);
     });
   });
 
@@ -357,6 +360,116 @@ void main() {
       expect(find.text('Time left: 0:00:30'), findsOneWidget);
       expect(find.bySemanticsLabel('Activates in less than a minute'),
           findsOneWidget);
+      handle.dispose();
+      await _end(tester);
+    });
+
+    testWidgets('an error that echoes the login token is shown without it',
+        (tester) async {
+      final rig = _Rig()
+        ..devices = (_) => http.Response(
+            '{"error_description":"cannot use login-alice here"}', 500);
+      await _pump(tester, rig);
+      await _start(tester);
+      await _enroll(tester);
+      final banner = find.byType(StatusBanner);
+      expect(banner, findsOneWidget);
+      expect(
+          find.descendant(
+              of: banner, matching: find.textContaining('login-alice')),
+          findsNothing);
+      expect(
+          find.descendant(of: banner, matching: find.textContaining('(token)')),
+          findsOneWidget);
+      await _end(tester);
+    });
+
+    testWidgets('the login token is not kept once the device is enrolled',
+        (tester) async {
+      final rig = _Rig();
+      await _pump(tester, rig);
+      await _start(tester);
+      TextField field() =>
+          tester.widget<TextField>(find.byKey(const Key('login-token')));
+      expect(field().controller!.text, 'login-alice');
+      await _enroll(tester);
+      expect(find.text('Device inactive'), findsOneWidget);
+      // Back at the connect step (a sign-out), the field is empty.
+      rig.controller.signOut();
+      await tester.pump();
+      expect(field().controller!.text, isEmpty);
+      await _end(tester);
+    });
+
+    testWidgets(
+        'checking again with nothing stored says so instead of looking unchanged',
+        (tester) async {
+      final rig = _Rig()
+        ..devices = (_) => http.Response('{"error":"conflict"}', 409);
+      await _pump(tester, rig);
+      await _start(tester);
+      await _enroll(tester);
+      await tester.tap(find.widgetWithText(FilledButton, 'Check again'));
+      await _settle(tester);
+      expect(find.text('This app has no enrollment for this device yet.'),
+          findsOneWidget);
+      expect(find.byKey(const Key('enrollment-problem-alreadyEnrolled')),
+          findsOneWidget);
+      await _end(tester);
+    });
+
+    testWidgets('a second tap while the confirmation is running confirms once',
+        (tester) async {
+      var calls = 0;
+      final done = Completer<void>();
+      await tester.pumpWidget(MaterialApp(
+          theme: buildTheme(Brightness.light),
+          home: Scaffold(
+              body: RecoveryCodeView(
+                  code: 'AAAA',
+                  onSaved: () {
+                    calls++;
+                    return done.future;
+                  }))));
+      await tester.tap(find.byKey(const Key('recovery-confirm')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('recovery-saved')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('recovery-saved')),
+          warnIfMissed: false);
+      await tester.pump();
+      expect(calls, 1);
+      expect(
+          tester
+              .widget<FilledButton>(find.byKey(const Key('recovery-saved')))
+              .onPressed,
+          isNull);
+      done.complete();
+      await tester.pump();
+      expect(
+          tester
+              .widget<FilledButton>(find.byKey(const Key('recovery-saved')))
+              .onPressed,
+          isNotNull,
+          reason: 'a failed confirmation can be tried again');
+    });
+
+    testWidgets('the time left is spoken with the right singular',
+        (tester) async {
+      final handle = tester.ensureSemantics();
+      final rig = _Rig();
+      await _pump(tester, rig);
+      await _start(tester);
+      await _enroll(tester);
+      rig.clock = _t0.add(const Duration(hours: 22, minutes: 59));
+      await tester.runAsync(rig.controller.refresh);
+      await tester.pump();
+      expect(find.bySemanticsLabel('Activates in 1 hour and 1 minute'),
+          findsOneWidget);
+      rig.clock = _t0.add(const Duration(hours: 23, minutes: 59));
+      await tester.runAsync(rig.controller.refresh);
+      await tester.pump();
+      expect(find.bySemanticsLabel('Activates in 1 minute'), findsOneWidget);
       handle.dispose();
       await _end(tester);
     });

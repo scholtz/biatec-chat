@@ -58,6 +58,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     // from the OIDC login.
     _token =
         TextEditingController(text: widget.config.isMock ? 'login-alice' : '');
+    _controller.addListener(_forgetToken);
     _controller.refresh();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       final s = _controller.state;
@@ -68,12 +69,33 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     });
   }
 
+  /// The login token is for one enrollment: once the device is enrolled (or signs out again) it is not kept in memory.
+  void _forgetToken() {
+    final p = _controller.state.phase;
+    final used = p == EnrollmentPhase.inactive ||
+        p == EnrollmentPhase.activeRecoveryPending ||
+        p == EnrollmentPhase.active ||
+        p == EnrollmentPhase.notEnrolled && _started;
+    if (used && _token.text.isNotEmpty) _token.clear();
+  }
+
   @override
   void dispose() {
+    _controller.removeListener(_forgetToken);
     _ticker?.cancel();
     _token.dispose();
     if (widget.controller == null) _controller.dispose();
     super.dispose();
+  }
+
+  /// Whole hours and minutes, in words, with the right singular ("1 hour"); changes only when the minute does.
+  static String _spokenTimeLeft(Duration d) {
+    if (d.inMinutes < 1) return 'Activates in less than a minute';
+    String unit(int n, String one) => '$n ${n == 1 ? one : '${one}s'}';
+    final m = d.inMinutes.remainder(60);
+    return d.inHours == 0
+        ? 'Activates in ${unit(m, 'minute')}'
+        : 'Activates in ${unit(d.inHours, 'hour')} and ${unit(m, 'minute')}';
   }
 
   String _format(Duration d) {
@@ -81,6 +103,14 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$h:$m:$s';
+  }
+
+  /// Asks the device what it has stored. When it has nothing, the user is told, instead of the screen looking unchanged.
+  Future<void> _checkAgain() async {
+    await _controller.refresh();
+    if (!mounted || _controller.state.phase != EnrollmentPhase.failed) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('This app has no enrollment for this device yet.')));
   }
 
   OnboardingStep _stepFor(EnrollmentState s) => switch (s.phase) {
@@ -193,7 +223,11 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
   }
 
   List<Widget> _connect(BuildContext context, EnrollmentState s) {
-    final error = s.error;
+    // A server's detail text could echo what was sent; the token is never shown back.
+    final token = _token.text.trim();
+    final raw = s.error;
+    final error =
+        raw == null || token.isEmpty ? raw : raw.replaceAll(token, '(token)');
     final problem = error == null ? null : classifyEnrollmentError(error);
     final again = problem?.checksAgain ?? false;
     return [
@@ -236,9 +270,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
       const SizedBox(height: AppSpacing.m),
       FilledButton(
         key: const Key('enroll-button'),
-        onPressed: () => again
-            ? _controller.refresh()
-            : _controller.enroll(loginToken: _token.text),
+        onPressed: () =>
+            again ? _checkAgain() : _controller.enroll(loginToken: _token.text),
         child: Text(problem?.actionLabel ?? 'Connect and create the key'),
       ),
       if (again) ...[
@@ -275,10 +308,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
             // The spoken label only changes when the minute does, so a screen reader is not given a new sentence every second.
             Semantics(
               container: true,
-              label: left.inMinutes < 1
-                  ? 'Activates in less than a minute'
-                  : 'Activates in ${left.inHours} hours and '
-                      '${left.inMinutes.remainder(60)} minutes',
+              label: _spokenTimeLeft(left),
               child: ExcludeSemantics(
                 child: Text('Time left: ${_format(left)}',
                     key: const Key('activation-countdown'),
@@ -327,7 +357,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
           const Center(child: CircularProgressIndicator())
         else
           ErrorState(
-            offline: err.toLowerCase().contains('could not reach'),
+            offline: isUnreachableError(err),
             title: 'The recovery code could not be loaded',
             message: err,
             onRetry: _controller.loadRecoveryCode,
