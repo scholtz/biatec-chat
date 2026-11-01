@@ -183,18 +183,21 @@ void main() {
         (tester) async {
       final rig = SettingsRig();
       await _open(tester, DevicesScreen(services: rig.services));
-      expect(find.text('dev-1 (this device)'), findsOneWidget);
+      expect(find.byKey(const Key('badge-this-device')), findsOneWidget);
+      expect(find.text('dev-1'), findsOneWidget);
       expect(find.text('Active'), findsOneWidget);
       expect(find.textContaining('Pending.'), findsOneWidget);
       // Only a pending enrollment can be cancelled.
       expect(find.byKey(const Key('cancel-dev-1')), findsNothing);
 
+      await tester.ensureVisible(find.byKey(const Key('cancel-dev-2')));
       await tester.tap(find.byKey(const Key('cancel-dev-2')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('keep')));
       await tester.pumpAndSettle();
       expect(rig.oidc.cancelled, isEmpty);
 
+      await tester.ensureVisible(find.byKey(const Key('cancel-dev-2')));
       await tester.tap(find.byKey(const Key('cancel-dev-2')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('confirm-cancel')));
@@ -213,7 +216,10 @@ void main() {
       await _open(tester, ClientsScreen(services: rig.services));
       expect(find.byKey(const Key('paused-bank-example')), findsOneWidget);
 
+      await tester.ensureVisible(find.byKey(const Key('lift-bank-example')));
       await tester.tap(find.byKey(const Key('lift-bank-example')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-change')));
       await tester.pumpAndSettle();
       expect(rig.gate.asked, 1);
       expect(oidc.clientById('bank-example')['paused_until'], isNull);
@@ -231,6 +237,8 @@ void main() {
       expect(rig.gate.asked, 0);
 
       await tester.tap(find.byKey(const Key('always-ask-biatec-chat')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-change')));
       await tester.pumpAndSettle();
       expect(rig.oidc.clientById('biatec-chat')['always_ask'], isFalse);
       expect(rig.gate.asked, 1);
@@ -253,7 +261,11 @@ void main() {
       expect(find.textContaining('100 EUR'), findsOneWidget);
 
       // Back to the account threshold (1000) raises 100: signed.
+      await tester
+          .ensureVisible(find.byKey(const Key('threshold-reset-bank-example')));
       await tester.tap(find.byKey(const Key('threshold-reset-bank-example')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-change')));
       await tester.pumpAndSettle();
       expect(rig.oidc.clientById('bank-example')['per_client_threshold_eur'],
           isNull);

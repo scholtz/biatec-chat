@@ -60,6 +60,7 @@ class SecurityScreen extends StatelessWidget {
                       final v = await askEur(context,
                           title: 'Approval threshold',
                           initial: s.thresholdEur,
+                          current: s.thresholdEur,
                           hint: 'Lowering applies at once. Raising needs '
                               'approval on this device.');
                       if (v != null) await c.apply({'threshold_eur': v});
