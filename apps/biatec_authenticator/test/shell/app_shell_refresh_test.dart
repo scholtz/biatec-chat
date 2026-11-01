@@ -144,6 +144,21 @@ void main() {
     await rig.dispose(tester);
   });
 
+  testWidgets('the Trusted clients screen reloads with its Settings tab',
+      (tester) async {
+    final rig = ShellRig();
+    await rig.pump(tester);
+    await tester.tap(inBar('Settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('trusted-clients')));
+    await tester.pumpAndSettle();
+    final before = rig.settings.oidc.deviceListCalls;
+    rig.shell.reloads[AppTab.settings]!.value++;
+    await tester.pumpAndSettle();
+    expect(rig.settings.oidc.deviceListCalls, greaterThan(before));
+    await rig.dispose(tester);
+  });
+
   testWidgets('tabs that are not showing cannot take the keyboard focus',
       (tester) async {
     final rig = ShellRig();

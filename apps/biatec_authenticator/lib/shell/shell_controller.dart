@@ -54,6 +54,13 @@ class ShellController extends ChangeNotifier {
   /// True once the list has loaded in this session: only its first load may choose the tab.
   bool _loadedOnce = false;
 
+  /// When the shell appeared (see [sessionStarted]); the first load may choose the tab only within [firstLoadWindow] of it, so a failed or very slow first load cannot move the user minutes later.
+  DateTime? _startedAt;
+  static const firstLoadWindow = Duration(seconds: 10);
+
+  /// Called by the shell when it appears, to start the window in which the first load may choose the tab.
+  void sessionStarted() => _startedAt = clock();
+
   final Map<AppTab, GlobalKey<NavigatorState>> navigators = {
     for (final tab in AppTab.values)
       tab: GlobalKey<NavigatorState>(debugLabel: 'tab-${tab.name}'),
@@ -63,7 +70,7 @@ class ShellController extends ChangeNotifier {
   final ValueNotifier<int> pendingCount = ValueNotifier(0);
 
   /// Whether the Approvals tab is the one showing. The pending list polls quickly only while it is.
-  final ValueNotifier<bool> approvalsActive = ValueNotifier(true);
+  final ValueNotifier<bool> approvalsActive = ValueNotifier(false);
 
   /// False while the app is in the background: nothing polls for a screen nobody is looking at.
   final ValueNotifier<bool> foreground = ValueNotifier(true);
@@ -108,9 +115,11 @@ class ShellController extends ChangeNotifier {
     pendingCount.value = count;
     final first = !_loadedOnce;
     _loadedOnce = true;
-    if (first && !_chosen && count > 0 && _selected == AppTab.codes) {
-      _show(AppTab.approvals);
-    }
+    final started = _startedAt;
+    final inTime =
+        started == null || clock().difference(started) <= firstLoadWindow;
+    // _chosen is also true once the selection has moved off Codes, so nothing else needs checking.
+    if (first && inTime && !_chosen && count > 0) _show(AppTab.approvals);
   }
 
   void _show(AppTab tab) {
@@ -178,6 +187,7 @@ class ShellController extends ChangeNotifier {
     _selected = AppTab.codes;
     _chosen = false;
     _loadedOnce = false;
+    _startedAt = null;
     approvalsActive.value = false;
     // A count from the old session is not the next one's.
     pendingCount.value = 0;

@@ -180,6 +180,30 @@ void main() {
       codes.dispose();
     });
 
+    test('a first load that comes after the window does not choose the tab', () {
+      var now = DateTime.utc(2026, 11, 1, 12);
+      final c = ShellController()..clock = () => now;
+      c.sessionStarted();
+      now = now
+          .add(ShellController.firstLoadWindow + const Duration(seconds: 1));
+      c.pendingLoaded(2);
+      expect(c.selected, AppTab.codes);
+      expect(c.pendingCount.value, 2);
+      // Within the window it does.
+      final quick = ShellController()..clock = () => now;
+      quick.sessionStarted();
+      quick.pendingLoaded(2);
+      expect(quick.selected, AppTab.approvals);
+      c.dispose();
+      quick.dispose();
+    });
+
+    test('Approvals is not marked active before it is shown', () {
+      final c = ShellController();
+      expect(c.approvalsActive.value, isFalse);
+      c.dispose();
+    });
+
     testWidgets('a request that arrives later does not pull the user off Codes',
         (tester) async {
       final rig = ShellRig(pending: 0);

@@ -68,6 +68,7 @@ class _AppShellState extends State<AppShell> {
     // The controller may have been told to start on another tab (see ShellController.reset for the rest).
     widget.controller.approvalsActive.value =
         widget.controller.selected == AppTab.approvals;
+    widget.controller.sessionStarted();
     widget.controller.addListener(_onSelect);
     // Once the tab navigators exist, open a card a notification asked for.
     WidgetsBinding.instance
