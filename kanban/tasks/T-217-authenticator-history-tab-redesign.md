@@ -1,7 +1,7 @@
 ---
 id: T-217
 title: "Authenticator: redesign approval history and receipt detail"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-214]
@@ -9,12 +9,12 @@ area: ["apps/biatec_authenticator/lib/approvals/history_screen.dart", "apps/biat
 parallel: yes
 conflicts_with: []
 issue: "#353"
-branch: ""
-owner: ""
+branch: "task/T-217"
+owner: "session-20261101-1855"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-24
-updated: 2026-10-29
+updated: 2026-11-01
 ---
 
 # T-217 - Authenticator: redesign approval history and receipt detail
@@ -70,3 +70,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-24 17:07 · kanban-board · backlog → blocked · waiting on: T-214
 - 2026-10-24 12:05 · scholtz · taken · status stays blocked
 - 2026-10-29 16:26 · kanban-board · blocked → backlog · blockers done: T-214
+- 2026-11-01 18:55 · scholtz · backlog → in-progress · claimed by session-20261101-1855 on task/T-217
