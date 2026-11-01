@@ -1,7 +1,7 @@
 ---
 id: T-223
 title: "Authenticator: hardware-bound encrypted vault for two-factor accounts"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-221, T-227]
@@ -9,12 +9,12 @@ area: ["apps/biatec_authenticator/lib/totp/vault/**", "apps/biatec_authenticator
 parallel: yes
 conflicts_with: []
 issue: "#360"
-branch: ""
-owner: ""
+branch: "task/T-223"
+owner: "session-20261101-2130"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
-updated: 2026-10-30
+updated: 2026-11-01
 ---
 
 # T-223 - Authenticator: hardware-bound encrypted vault for two-factor accounts
@@ -72,3 +72,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:42 · kanban-board · backlog → blocked · waiting on: T-221
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
 - 2026-10-30 16:40 · kanban-board · blocked → backlog · blockers done: T-221, T-227
+- 2026-11-01 21:30 · scholtz · backlog → in-progress · claimed by session-20261101-2130 on task/T-223
