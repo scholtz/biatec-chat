@@ -59,7 +59,18 @@ Presentation only: services, controllers, clients and the consent protocol stay 
 
 ## Hand-off
 
-Filled in by the agent when it moves the task to `review`.
+- **Summary:** enrollment is a guided onboarding: Welcome, Connect, Protect the key, Recovery code, Done, with a progress indicator (segments and words). Presentation only: the controller, client and protocol are unchanged.
+- **Branch @ commit:** PR #375, merged as 31ec79b (branch `task/T-215`, last commit 51a9c13).
+- **Decisions to know about:**
+  - The welcome step is local to the screen; the controller's phases decide every other step.
+  - The recovery button stays off until a checkbox is ticked, and confirming runs once.
+  - Failures are classified from the client's own message prefixes (the status code first); a rewording of those messages is caught by a test that uses the real client.
+  - The login token field is hidden by default, and the one-time token is cleared once the device is enrolled.
+  - An already-enrolled device can check again or connect again.
+- **How it was verified:** `flutter analyze` clean; `flutter test` passes 503 tests (new `onboarding_test.dart`: each step, every failure, tap-target and labelled-target guidelines on every step, 3x text in light and dark). Three `/code-review` rounds, fixed or answered on the PR. CI green. Not run: `build-windows.ps1` and a manual look at light and dark mode.
+- **Follow-up tasks created:** none.
+- **Unblocks:** nothing directly; T-219 still waits on T-216, T-217 and T-218.
+- **Open questions:** none.
 
 ## Review
 
@@ -74,4 +85,5 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-24 12:05 · scholtz · taken · status stays blocked
 - 2026-10-29 16:26 · kanban-board · blocked → backlog · blockers done: T-214
 - 2026-11-01 10:57 · scholtz · backlog → in-progress · claimed by session-20261101-1057 on task/T-215
+- 2026-11-01 13:30 · claude · done · hand-off filled in after the merge of PR #375 (the sync action had already marked it done)
 - 2026-11-01 13:24 · user · in-progress → done · PR #375 merged into main @ 31ec79b (synced by kanban-sync)
