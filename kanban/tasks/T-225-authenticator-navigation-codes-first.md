@@ -1,7 +1,7 @@
 ---
 id: T-225
 title: "Authenticator: navigation with Codes first, Trusted clients inside Settings"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-214]
@@ -9,12 +9,12 @@ area: ["apps/biatec_authenticator/lib/shell/shell_controller.dart", "apps/biatec
 parallel: no
 conflicts_with: [T-220]
 issue: "#362"
-branch: ""
-owner: ""
+branch: "task/T-225"
+owner: "session-20261101-1009"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
-updated: 2026-10-29
+updated: 2026-11-01
 ---
 
 # T-225 - Authenticator: navigation with Codes first, Trusted clients inside Settings
@@ -68,3 +68,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:42 · kanban-board · backlog → blocked · waiting on: T-214
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
 - 2026-10-29 16:26 · kanban-board · blocked → backlog · blockers done: T-214
+- 2026-11-01 10:09 · scholtz · backlog → in-progress · claimed by session-20261101-1009 on task/T-225
