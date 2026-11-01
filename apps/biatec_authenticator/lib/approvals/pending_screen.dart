@@ -6,10 +6,10 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
 import 'approval_client.dart';
-import 'approval_controller.dart';
 import 'approval_screen.dart';
 import 'approval_services.dart';
 import 'consent_request.dart';
+import 'widgets/request_card.dart';
 
 /// Pending requests for this device's user. Refreshes when [pushes] fires and
 /// polls while open as the fallback for lost pushes.
@@ -61,6 +61,9 @@ class _PendingScreenState extends State<PendingScreen> {
   Timer? _poll;
   StreamSubscription<void>? _pushSub;
 
+  /// Redraws the time left on the cards. Half a minute is often enough for words like "4 min left", and a redraw is only asked for when there is a list.
+  Timer? _clockTick;
+
   /// A refresh was asked for while one was running (for example a push
   /// arrived mid-request); it runs again once the current one ends.
   bool _again = false;
@@ -70,6 +73,9 @@ class _PendingScreenState extends State<PendingScreen> {
     super.initState();
     _refresh();
     _startPolling();
+    _clockTick = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted && (_requests?.isNotEmpty ?? false)) setState(() {});
+    });
     _pushSub = widget.pushes?.listen((_) => _refresh());
     widget.active?.addListener(_onActive);
     widget.foreground?.addListener(_startPolling);
@@ -169,6 +175,7 @@ class _PendingScreenState extends State<PendingScreen> {
     widget.foreground?.removeListener(_startPolling);
     widget.refreshOn?.removeListener(_onRefreshSignal);
     _poll?.cancel();
+    _clockTick?.cancel();
     _pushSub?.cancel();
     super.dispose();
   }
@@ -280,18 +287,17 @@ class _PendingScreenState extends State<PendingScreen> {
         onAction: _refresh,
       );
     } else {
-      content = ListView(children: [
+      final now = widget.services.clock();
+      content = ListView(
+        padding: const EdgeInsets.all(AppSpacing.m),
+        children: [
           for (final r in requests)
-            ListTile(
-              key: Key('pending-${r.authReqId}'),
-              leading: Icon(
-                  r.client.verified ? Icons.verified : Icons.warning_amber),
-              title: Text(summarize(r.detail)),
-              subtitle: Text(clientLabel(r.client)),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _open(r),
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.s),
+              child: RequestCard(request: r, now: now, onOpen: () => _open(r)),
             ),
-        ]);
+        ],
+      );
     }
     return Scaffold(
       appBar: AppBar(title: const Text('Pending approvals'), actions: [

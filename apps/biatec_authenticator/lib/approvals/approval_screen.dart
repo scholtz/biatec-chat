@@ -1,13 +1,19 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
+import '../theme.dart';
+import '../ui/ui.dart';
 import 'approval_card.dart';
 import 'approval_controller.dart';
 import 'approval_services.dart';
+import 'consent_request.dart';
+import 'widgets/approval_actions.dart';
+import 'widgets/binding_code_field.dart';
+import 'widgets/expiry.dart';
+import 'widgets/result_view.dart';
 
-/// One request: card, binding code entry, Approve and Deny.
+/// One request: the card, the binding code, and Approve and Deny in a bar that stays at the bottom.
 class ApprovalScreen extends StatefulWidget {
   const ApprovalScreen({
     super.key,
@@ -57,6 +63,28 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
     super.dispose();
   }
 
+  /// Whether the user can act now: a live, current request that is not being worked on. Offline or expired, both buttons are off (a stale card is never signed, and a deny needs the server too).
+  bool _canAct(ApprovalController c) {
+    final request = c.request;
+    if (request == null) return false;
+    return c.phase == ApprovalPhase.ready &&
+        !c.offline &&
+        request.expiresAt.isAfter(c.now);
+  }
+
+  String? _reasonOff(ApprovalController c) {
+    final request = c.request;
+    if (c.phase != ApprovalPhase.ready || request == null) return null;
+    if (c.offline) {
+      return 'Offline: Approve and Deny are off until Biatec OIDC can be '
+          'reached again.';
+    }
+    if (!request.expiresAt.isAfter(c.now)) {
+      return 'Expired: this request can no longer be approved or denied.';
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -65,130 +93,180 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
         listenable: _controller,
         builder: (context, _) => _body(context),
       ),
+      // Outside the scrolling body, so it is on screen whatever the text size.
+      bottomNavigationBar: ListenableBuilder(
+        listenable: _controller,
+        builder: (context, _) {
+          final c = _controller;
+          final shown = c.phase == ApprovalPhase.ready ||
+              c.phase == ApprovalPhase.working;
+          if (!shown) return const SizedBox.shrink();
+          final can = _canAct(c);
+          return ApprovalActionBar(
+            busy: c.phase == ApprovalPhase.working,
+            reason: _reasonOff(c),
+            onApprove: can ? () => c.approve(_code.text) : null,
+            onDeny: can ? c.deny : null,
+          );
+        },
+      ),
     );
   }
 
+  /// Back to the list (or wherever the request was opened from).
+  void _close() => Navigator.of(context).maybePop();
+
   Widget _body(BuildContext context) {
     final c = _controller;
-    final scheme = Theme.of(context).colorScheme;
     switch (c.phase) {
       case ApprovalPhase.loading:
-        return const Center(child: CircularProgressIndicator());
+        return const LoadingSkeleton(key: Key('approval-loading'), rows: 4);
       case ApprovalPhase.unavailable:
-        return _Message(
-          icon: c.offline ? Icons.cloud_off : Icons.error_outline,
-          text: c.offline
+        final error = c.error ?? 'This request is not available.';
+        if (!c.offline && _wasDecided(error)) {
+          return ResultView(
+            icon: Icons.task_alt,
+            title: 'Already decided',
+            message: error,
+            actionLabel: 'Back to approvals',
+            onAction: _close,
+          );
+        }
+        return ErrorState(
+          offline: c.offline,
+          title: c.offline ? null : 'This request is not available',
+          message: c.offline
               ? 'Offline. Approvals need a connection to Biatec OIDC.'
-              : (c.error ?? 'This request is not available.'),
-          action:
-              OutlinedButton(onPressed: c.load, child: const Text('Try again')),
+              : error,
+          onRetry: c.load,
         );
       case ApprovalPhase.approved:
-        return const _Message(icon: Icons.check_circle, text: 'Approved.');
+        return ResultView(
+          icon: Icons.check_circle,
+          title: 'Approved.',
+          message: 'Your approval was sent to Biatec OIDC, which continues '
+              'the action. You can close this screen.',
+          actionLabel: 'Done',
+          onAction: _close,
+        );
       case ApprovalPhase.denied:
-        return const _Message(icon: Icons.block, text: 'Denied.');
+        return ResultView(
+          icon: Icons.block,
+          title: 'Denied.',
+          message:
+              'Nothing was approved. The requester is told it was refused.',
+          actionLabel: 'Done',
+          onAction: _close,
+        );
       case ApprovalPhase.codeFailed:
-        return _Message(
+        return ResultView(
           icon: Icons.gpp_bad,
-          text: 'Three wrong codes. The request was refused.'
-              '${c.error == null ? '' : '\n${c.error}'}',
+          title: 'Three wrong codes. The request was refused.',
+          message: c.error ??
+              'Start the action again to get a new request and a new code.',
+          actionLabel: 'Back to approvals',
+          onAction: _close,
         );
       case ApprovalPhase.expired:
-        return const _Message(
-            icon: Icons.timer_off, text: 'This request has expired.');
+        return ResultView(
+          icon: Icons.timer_off,
+          title: 'This request has expired.',
+          message: 'Nothing was approved. Start the action again to get a new '
+              'request.',
+          actionLabel: 'Back to approvals',
+          onAction: _close,
+        );
       case ApprovalPhase.ready:
       case ApprovalPhase.working:
-        final request = c.request!;
-        final left = request.expiresAt.difference(c.now);
-        final busy = c.phase == ApprovalPhase.working;
-        return ListView(padding: const EdgeInsets.all(16), children: [
-          ApprovalCard(request: request),
-          const SizedBox(height: 8),
-          Text(
-            left.isNegative
-                ? 'Expired'
-                : 'Expires in ${left.inMinutes}:'
-                    '${left.inSeconds.remainder(60).toString().padLeft(2, '0')}',
-            key: const Key('expires-in'),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            key: const Key('binding-code'),
-            controller: _code,
-            enabled: !busy,
-            keyboardType: TextInputType.number,
-            maxLength: 6,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: InputDecoration(
-              labelText: 'Code shown where you started this action',
-              helperText: switch (c.attemptsRemaining) {
-                null => 'Three attempts in total',
-                1 => '1 attempt left',
-                final n => '$n attempts left',
-              },
-            ),
-          ),
-          if (c.error != null) ...[
-            const SizedBox(height: 8),
-            Row(children: [
-              if (c.offline) ...[
-                Icon(Icons.cloud_off, color: scheme.error),
-                const SizedBox(width: 8),
-              ],
-              Expanded(
-                child: Text(
-                  c.offline
-                      ? 'Offline. Nothing was approved. ${c.error}'
-                      : c.error!,
-                  key: const Key('approval-error'),
-                  style: TextStyle(color: scheme.error),
-                ),
-              ),
-            ]),
-          ],
-          const SizedBox(height: 16),
-          if (busy) const Center(child: CircularProgressIndicator()),
-          if (!busy)
-            Row(children: [
-              Expanded(
-                child: OutlinedButton(
-                  key: const Key('deny'),
-                  onPressed: c.deny,
-                  child: const Text('Deny'),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: FilledButton(
-                  key: const Key('approve'),
-                  onPressed: () => c.approve(_code.text),
-                  child: const Text('Approve'),
-                ),
-              ),
-            ]),
-        ]);
+        return _ready(context);
     }
+  }
+
+  static bool _wasDecided(String error) =>
+      error.contains('already decided') || error.contains('no longer pending');
+
+  Widget _ready(BuildContext context) {
+    final c = _controller;
+    final request = c.request!;
+    final left = request.expiresAt.difference(c.now);
+    final busy = c.phase == ApprovalPhase.working;
+    return ListView(padding: const EdgeInsets.all(AppSpacing.m), children: [
+      if (c.offline) ...[
+        StatusBanner(
+          key: const Key('approval-error'),
+          severity: StatusSeverity.warning,
+          icon: Icons.cloud_off,
+          title: 'You are offline',
+          message: 'Offline. Nothing was approved. ${c.error ?? ''}'.trim(),
+          actionLabel: 'Try again',
+          onAction: c.load,
+        ),
+        const SizedBox(height: AppSpacing.m),
+      ] else if (c.error != null) ...[
+        _errorBanner(c.error!),
+        const SizedBox(height: AppSpacing.m),
+      ],
+      ApprovalCard(request: request),
+      const SizedBox(height: AppSpacing.m),
+      _Expiry(request: request, left: left, now: c.now),
+      const SizedBox(height: AppSpacing.m),
+      BindingCodeField(
+        controller: _code,
+        enabled: !busy,
+        attemptsRemaining: c.attemptsRemaining,
+      ),
+      // Room for the keyboard and the bar over the last field.
+      const SizedBox(height: AppSpacing.l),
+    ]);
+  }
+
+  /// A step that did not go through, in words, with what to do next.
+  Widget _errorBanner(String error) {
+    final wrong = error.startsWith('Wrong code');
+    final changed = error.startsWith('The request changed');
+    final retryable = error.startsWith('Could not') ||
+        error.startsWith('Refused') ||
+        error.startsWith('Unexpected');
+    return StatusBanner(
+      key: const Key('approval-error'),
+      severity: StatusSeverity.danger,
+      title: wrong
+          ? 'Wrong code'
+          : changed
+              ? 'The request changed'
+              : 'Could not complete',
+      message: retryable ? '$error You can try again.' : error,
+    );
   }
 }
 
-class _Message extends StatelessWidget {
-  const _Message({required this.icon, required this.text, this.action});
+/// Time left as words and a ring, so it is never shown by the ring alone.
+class _Expiry extends StatelessWidget {
+  const _Expiry({required this.request, required this.left, required this.now});
 
-  final IconData icon;
-  final String text;
-  final Widget? action;
+  final ConsentRequest request;
+  final Duration left;
+  final DateTime now;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 48),
-          const SizedBox(height: 16),
-          Text(text,
-              key: const Key('approval-message'), textAlign: TextAlign.center),
-          if (action != null) ...[const SizedBox(height: 16), action!],
+    final theme = Theme.of(context);
+    return Semantics(
+      container: true,
+      label:
+          left.isNegative ? 'Request expired' : 'Request ${spokenLeft(left)}',
+      child: ExcludeSemantics(
+        child: Row(children: [
+          ExpiryRing(fraction: expiryFraction(request, now)),
+          const SizedBox(width: AppSpacing.m),
+          // Flexible: at large text the words wrap instead of running off the screen.
+          Expanded(
+            child: Text(
+              left.isNegative ? 'Expired' : 'Expires in ${clockLeft(left)}',
+              key: const Key('expires-in'),
+              style: theme.textTheme.titleMedium,
+            ),
+          ),
         ]),
       ),
     );
