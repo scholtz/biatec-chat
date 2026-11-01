@@ -56,8 +56,13 @@ Write the failing test first for every security rule. Never log, print or put in
 
 ## Hand-off
 
-Filled in by the agent when it moves the task to `review`.
-
+- **Summary:** the bar and rail show Codes, Approvals, History, Devices, Settings; Codes has a placeholder root; Trusted clients and thresholds is a row in Settings that opens inside the Settings tab (bar stays, back returns, shared controller).
+- **Branch @ commit:** PR #374, merged as c73fe53 (branch `task/T-225`, last commit 7552049).
+- **Decisions to know about:** the shell starts on Codes; the first list load moves it to Approvals if a request is waiting, only within 10 s of the shell appearing and only if no tab was chosen; back from another tab goes to Codes (it went to Approvals before); push taps and the in-app notice still go to Approvals, and the badge stays on Approvals.
+- **How it was verified:** `flutter analyze` clean; `flutter test` passes 471 tests (new: order and labels, Codes when nothing waits, first-load rule and window, Trusted clients from Settings and back, its reload with the tab). Two `/code-review` rounds: round 1 fixed, round 2's repeats answered on the PR. CI green. Not run on a device.
+- **Follow-up tasks created:** none.
+- **Unblocks:** T-218 (now ready); T-224 and T-219 still wait on others.
+- **Open questions:** none.
 ## Review
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
@@ -72,3 +77,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-29 16:26 · kanban-board · blocked → backlog · blockers done: T-214
 - 2026-11-01 10:09 · scholtz · backlog → in-progress · claimed by session-20261101-1009 on task/T-225
 - 2026-11-01 10:56 · user · in-progress → done · PR #374 merged into main @ c73fe53 (synced by kanban-sync)
+- 2026-11-01 10:56 · claude · done · hand-off filled in after the merge of PR #374 (the sync action had already marked it done)
