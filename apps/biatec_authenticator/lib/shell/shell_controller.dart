@@ -5,6 +5,11 @@ import '../approvals/approval_services.dart';
 
 /// The top-level destinations of the app, in bottom-navigation order.
 enum AppTab {
+  codes(
+    label: 'Codes',
+    icon: Icons.pin_outlined,
+    selectedIcon: Icons.pin,
+  ),
   approvals(
     label: 'Approvals',
     icon: Icons.fact_check_outlined,
@@ -19,11 +24,6 @@ enum AppTab {
     label: 'Devices',
     icon: Icons.phone_android_outlined,
     selectedIcon: Icons.phone_android,
-  ),
-  clients(
-    label: 'Clients',
-    icon: Icons.verified_user_outlined,
-    selectedIcon: Icons.verified_user,
   ),
   settings(
     label: 'Settings',
@@ -44,8 +44,15 @@ enum AppTab {
 
 /// Which tab is showing, one navigator per tab so each keeps its own stack, and the number of pending requests for the badge. Also how the rest of the app (a tapped notification, the in-app notice) reaches the Approvals tab.
 class ShellController extends ChangeNotifier {
-  AppTab _selected = AppTab.approvals;
+  /// The shell starts on Codes, the first destination. It moves to Approvals once, when the first load of the list finds a request waiting (see [pendingLoaded]), unless the user or a notification has already chosen a tab.
+  AppTab _selected = AppTab.codes;
   AppTab get selected => _selected;
+
+  /// True once a tab was shown on purpose (a tap, a notification, the in-app notice): the first load of the list then leaves the tab alone.
+  bool _chosen = false;
+
+  /// True once the list has loaded in this session: only its first load may choose the tab.
+  bool _loadedOnce = false;
 
   final Map<AppTab, GlobalKey<NavigatorState>> navigators = {
     for (final tab in AppTab.values)
@@ -95,15 +102,26 @@ class ShellController extends ChangeNotifier {
   static const queuedOpenTtl = Duration(minutes: 2);
   DateTime Function() clock = DateTime.now;
 
+  /// Called by the pending list each time it loads. Sets the badge, and on the first load of a session, if it finds a request waiting, brings the Approvals tab to the front, because that is what needs the user first. Never after a tab was chosen.
+  void pendingLoaded(int count) {
+    if (_disposed) return;
+    pendingCount.value = count;
+    final first = !_loadedOnce;
+    _loadedOnce = true;
+    if (first && !_chosen && count > 0 && _selected == AppTab.codes) {
+      _show(AppTab.approvals);
+    }
+  }
+
   void _show(AppTab tab) {
+    _chosen = true;
     final now = clock();
     _leftAt[_selected] = now;
     final left = _leftAt[tab];
     // History is read from this device, so it is read again on every visit: a decision just made shows at once.
     if (left != null &&
         (tab == AppTab.history ||
-            (tab != AppTab.approvals &&
-                now.difference(left) >= reloadAfter))) {
+            (tab != AppTab.approvals && now.difference(left) >= reloadAfter))) {
       reloads[tab]!.value++;
     }
     _selected = tab;
@@ -113,6 +131,8 @@ class ShellController extends ChangeNotifier {
 
   /// Shows [tab]. Choosing the tab that is already showing goes back towards its first screen, but never closes an approval card.
   void select(AppTab tab) {
+    // Even tapping the tab that is showing is a choice.
+    _chosen = true;
     if (tab == _selected) {
       _popTowardsRoot(tab);
       return;
@@ -155,8 +175,10 @@ class ShellController extends ChangeNotifier {
   ///
   /// What the shell session saw is reset; whether the app is in the foreground ([foreground], the pause time) belongs to the app, not the session, and stays, as does [canQueue], which the gate sets.
   void reset() {
-    _selected = AppTab.approvals;
-    approvalsActive.value = true;
+    _selected = AppTab.codes;
+    _chosen = false;
+    _loadedOnce = false;
+    approvalsActive.value = false;
     // A count from the old session is not the next one's.
     pendingCount.value = 0;
     _leftAt.clear();

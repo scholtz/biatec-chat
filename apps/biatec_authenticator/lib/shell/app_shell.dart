@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import '../approvals/approval_services.dart';
 import '../approvals/history_screen.dart';
 import '../approvals/pending_screen.dart';
-import '../clients/clients_screen.dart';
+import '../codes/codes_screen.dart';
 import '../config.dart';
 import '../devices/devices_screen.dart';
 import '../push/push_controller.dart';
@@ -57,6 +57,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   /// Tabs are built the first time they are shown, so a tab nobody opened makes no requests.
   late final Set<AppTab> _visited = {
+    // Approvals is always built: its first load decides whether the shell opens on it (ShellController.pendingLoaded).
     AppTab.approvals,
     widget.controller.selected
   };
@@ -83,7 +84,7 @@ class _AppShellState extends State<AppShell> {
         old.push == widget.push);
   }
 
-  /// One for the Devices, Clients and Settings tabs: they show the same data, which is then loaded once.
+  /// One for the Devices and Settings tabs and the Trusted clients screen inside Settings: they show the same data, which is then loaded once.
   SettingsController get _settings =>
       _settingsController ??= widget.settings.controller();
   SettingsController? _settingsController;
@@ -92,7 +93,7 @@ class _AppShellState extends State<AppShell> {
   void dispose() {
     _settingsController?.dispose();
     widget.controller.removeListener(_onSelect);
-    // The next shell (after a sign-out and a new enrollment) starts on Approvals.
+    // The next shell (after a sign-out and a new enrollment) starts on Codes, or Approvals if a request is waiting.
     widget.controller.reset();
     super.dispose();
   }
@@ -108,32 +109,31 @@ class _AppShellState extends State<AppShell> {
   }
 
   Widget _root(AppTab tab) => switch (tab) {
+        AppTab.codes => const CodesScreen(),
         AppTab.approvals => PendingScreen(
             services: widget.approvals,
             pushes: widget.push?.requestArrived,
             active: widget.controller.approvalsActive,
             foreground: widget.controller.foreground,
             refreshOn: widget.controller.requestsChanged,
-            onCount: (n) => widget.controller.pendingCount.value = n,
+            onCount: widget.controller.pendingLoaded,
           ),
         AppTab.history => HistoryScreen(history: widget.approvals.history),
         AppTab.devices =>
           DevicesScreen(services: widget.settings, controller: _settings),
-        AppTab.clients =>
-          ClientsScreen(services: widget.settings, controller: _settings),
         AppTab.settings => SecurityScreen(
             services: widget.settings,
             server: widget.config.oidcBaseUrl,
             controller: _settings),
       };
 
-  /// Back goes up inside the tab first, then to the first tab, and only then leaves the app.
+  /// Back goes up inside the tab first, then to the first tab (Codes), and only then leaves the app.
   Future<void> _back() async {
     final c = widget.controller;
     final navigator = c.navigators[c.selected]?.currentState;
     if (navigator != null && await navigator.maybePop()) return;
-    if (c.selected != AppTab.approvals) {
-      c.select(AppTab.approvals);
+    if (c.selected != AppTab.codes) {
+      c.select(AppTab.codes);
       return;
     }
     await SystemNavigator.pop();
@@ -174,14 +174,15 @@ class _AppShellState extends State<AppShell> {
                   child: ExcludeFocus(
                     excluding: tab != c.selected,
                     child: _TabNavigator(
-                    key: ValueKey(tab),
-                    navigatorKey: c.navigators[tab]!,
-                    push: widget.push,
-                    stack: tab == AppTab.approvals ? c.approvalsObserver : null,
-                    root: _root(tab),
-                    reload: c.reloads[tab]!,
-                    tab: tab,
-                  ),
+                      key: ValueKey(tab),
+                      navigatorKey: c.navigators[tab]!,
+                      push: widget.push,
+                      stack:
+                          tab == AppTab.approvals ? c.approvalsObserver : null,
+                      root: _root(tab),
+                      reload: c.reloads[tab]!,
+                      tab: tab,
+                    ),
                   ),
                 )
               : const SizedBox.shrink(),

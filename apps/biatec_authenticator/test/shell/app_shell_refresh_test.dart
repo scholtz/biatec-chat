@@ -109,8 +109,8 @@ void main() {
     await history.add(_entry('ciba_old'));
     final reload = ValueNotifier(0);
     await tester.pumpWidget(MaterialApp(
-        home: TabReload(
-            reload: reload, child: HistoryScreen(history: history))));
+        home:
+            TabReload(reload: reload, child: HistoryScreen(history: history))));
     await tester.pump();
     expect(find.byKey(const Key('history-ciba_old')), findsOneWidget);
     history.broken = true;
@@ -133,10 +133,13 @@ void main() {
     final rig = ShellRig();
     await rig.pump(tester);
     final before = rig.settings.oidc.deviceListCalls;
-    for (final tab in ['Devices', 'Clients', 'Settings']) {
+    for (final tab in ['Devices', 'Settings']) {
       await tester.tap(inBar(tab));
       await tester.pumpAndSettle();
     }
+    // The Trusted clients screen inside Settings shares it too.
+    await tester.tap(find.byKey(const Key('trusted-clients')));
+    await tester.pumpAndSettle();
     expect(rig.settings.oidc.deviceListCalls - before, 1);
     await rig.dispose(tester);
   });

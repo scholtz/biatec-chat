@@ -70,7 +70,9 @@ class ShellRig {
   ApprovalServices approvalsWith(EnrollmentStore store) => ApprovalServices(
         client: approvals.client,
         keys: approvals.keys,
-        enrollment: store is ObservableEnrollmentStore ? store : ObservableEnrollmentStore(store),
+        enrollment: store is ObservableEnrollmentStore
+            ? store
+            : ObservableEnrollmentStore(store),
         gate: approvals.gate,
         history: approvals.history,
         clock: approvals.clock,
@@ -105,21 +107,86 @@ Finder inBar(String label) =>
 
 void main() {
   group('navigation shell', () {
-    testWidgets('opens on Approvals with five labelled destinations',
+    testWidgets(
+        'shows five labelled destinations in the spec order, and opens on Approvals when a request is waiting',
         (tester) async {
       final rig = ShellRig();
       await rig.pump(tester);
       final bar = tester.widget<NavigationBar>(find.byType(NavigationBar));
       expect(bar.destinations, hasLength(5));
-      expect(bar.selectedIndex, 0);
+      expect(bar.selectedIndex, AppTab.approvals.index);
+      expect(AppTab.values.map((t) => t.label),
+          ['Codes', 'Approvals', 'History', 'Devices', 'Settings']);
+      expect([
+        for (final d in bar.destinations) (d as NavigationDestination).label
+      ], [
+        'Codes',
+        'Approvals',
+        'History',
+        'Devices',
+        'Settings'
+      ]);
       for (final tab in AppTab.values) {
         expect(inBar(tab.label), findsOneWidget, reason: tab.label);
         expect(find.byTooltip(tab.label), findsOneWidget, reason: tab.label);
       }
+      expect(find.byIcon(Icons.pin_outlined), findsOneWidget);
       // The selected destination is also marked by a different (filled) icon, not by color alone.
       expect(find.byIcon(Icons.fact_check), findsOneWidget);
       expect(find.byIcon(Icons.receipt_long_outlined), findsOneWidget);
       expect(find.byType(PendingScreen), findsOneWidget);
+      await rig.dispose(tester);
+    });
+
+    testWidgets('with nothing waiting, the shell opens on Codes',
+        (tester) async {
+      final rig = ShellRig(pending: 0);
+      await rig.pump(tester);
+      expect(rig.shell.selected, AppTab.codes);
+      expect(find.byKey(const Key('codes-placeholder')), findsOneWidget);
+      expect(
+          tester
+              .widget<NavigationBar>(find.byType(NavigationBar))
+              .selectedIndex,
+          0);
+      expect(find.byIcon(Icons.pin), findsOneWidget);
+      await rig.dispose(tester);
+    });
+
+    testWidgets(
+        'the first load moves to Approvals only if nothing was chosen before',
+        (tester) async {
+      final c = ShellController();
+      c.pendingLoaded(2);
+      expect(c.selected, AppTab.approvals);
+      expect(c.pendingCount.value, 2);
+      // Only the first load decides: a later one that finds a request leaves the tab alone.
+      final later = ShellController();
+      later.pendingLoaded(0);
+      later.pendingLoaded(2);
+      expect(later.selected, AppTab.codes);
+      expect(later.pendingCount.value, 2);
+      later.dispose();
+      // A tab the user chose is never taken from them.
+      final chosen = ShellController()..select(AppTab.devices);
+      chosen.pendingLoaded(3);
+      expect(chosen.selected, AppTab.devices);
+      // Tapping Codes on purpose is a choice too.
+      final codes = ShellController()..select(AppTab.codes);
+      codes.pendingLoaded(1);
+      expect(codes.selected, AppTab.codes);
+      c.dispose();
+      chosen.dispose();
+      codes.dispose();
+    });
+
+    testWidgets('a request that arrives later does not pull the user off Codes',
+        (tester) async {
+      final rig = ShellRig(pending: 0);
+      await rig.pump(tester);
+      rig.shell.pendingLoaded(1);
+      await tester.pump();
+      expect(rig.shell.selected, AppTab.codes);
       await rig.dispose(tester);
     });
 
@@ -209,7 +276,7 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       await tester.binding.handlePopRoute();
       await tester.pump(const Duration(seconds: 1));
-      expect(rig.shell.selected, AppTab.approvals);
+      expect(rig.shell.selected, AppTab.codes);
       await rig.dispose(tester);
     });
 
@@ -323,8 +390,8 @@ void main() {
       final c = ShellController();
       var n = 0;
       c.addListener(() => n++);
-      c.select(AppTab.clients);
-      expect(c.selected, AppTab.clients);
+      c.select(AppTab.devices);
+      expect(c.selected, AppTab.devices);
       c.showApprovals();
       expect(c.selected, AppTab.approvals);
       expect(n, 2);
@@ -393,14 +460,17 @@ void main() {
     await large.dispose(tester);
   });
 
-  testWidgets('a new shell after the old one went starts on Approvals',
+  testWidgets('a new shell after the old one went starts on Codes again',
       (tester) async {
     final rig = ShellRig();
     await rig.pump(tester);
     rig.shell.select(AppTab.settings);
     await tester.pump();
     await tester.pumpWidget(const SizedBox());
+    expect(rig.shell.selected, AppTab.codes);
+    expect(rig.shell.approvalsActive.value, isFalse);
+    // And it may move to Approvals again when its own first load finds a request.
+    rig.shell.pendingLoaded(1);
     expect(rig.shell.selected, AppTab.approvals);
-    expect(rig.shell.approvalsActive.value, isTrue);
   });
 }
