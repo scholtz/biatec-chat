@@ -1,7 +1,7 @@
 ---
 id: T-218
 title: "Authenticator: redesign devices and trusted clients tabs"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-214, T-225]
@@ -9,8 +9,8 @@ area: ["apps/biatec_authenticator/lib/devices/**", "apps/biatec_authenticator/li
 parallel: yes
 conflicts_with: []
 issue: "#354"
-branch: ""
-owner: ""
+branch: "task/T-218"
+owner: "session-20261101-2047"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-24
@@ -74,3 +74,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-24 17:07 · kanban-board · backlog → blocked · waiting on: T-214
 - 2026-10-24 12:05 · scholtz · taken · status stays blocked
 - 2026-11-01 10:56 · kanban-board · blocked → backlog · blockers done: T-214, T-225
+- 2026-11-01 20:47 · scholtz · backlog → in-progress · claimed by session-20261101-2047 on task/T-218
