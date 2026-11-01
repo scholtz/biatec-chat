@@ -1,7 +1,7 @@
 ---
 id: T-218
 title: "Authenticator: redesign devices and trusted clients tabs"
-status: in-progress
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-214, T-225]
@@ -68,6 +68,8 @@ Filled in by the agent when it moves the task to `review`.
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
 
+- 2026-11-01 21:20 · approve · PR #378 merged into main @ 1ecf984 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-24 12:00 · claude · (new) → blocked · created from the authenticator redesign request
@@ -75,3 +77,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-24 12:05 · scholtz · taken · status stays blocked
 - 2026-11-01 10:56 · kanban-board · blocked → backlog · blockers done: T-214, T-225
 - 2026-11-01 20:47 · scholtz · backlog → in-progress · claimed by session-20261101-2047 on task/T-218
+- 2026-11-01 21:20 · user · in-progress → done · PR #378 merged into main @ 1ecf984 (synced by kanban-sync)

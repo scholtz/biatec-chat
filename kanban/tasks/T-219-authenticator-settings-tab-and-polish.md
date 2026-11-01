@@ -1,7 +1,7 @@
 ---
 id: T-219
 title: "Authenticator: settings tab, about and final accessibility polish"
-status: blocked
+status: backlog
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-214, T-215, T-216, T-217, T-218, T-225]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-24
-updated: 2026-10-24
+updated: 2026-11-01
 ---
 
 # T-219 - Authenticator: settings tab, about and final accessibility polish
@@ -73,3 +73,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-24 12:00 · claude · (new) → blocked · created from the authenticator redesign request
 - 2026-10-24 17:07 · kanban-board · backlog → blocked · waiting on: T-214, T-215, T-216, T-217, T-218
 - 2026-10-24 12:05 · scholtz · taken · status stays blocked
+- 2026-11-01 21:20 · kanban-board · blocked → backlog · blockers done: T-214, T-215, T-216, T-217, T-218, T-225
