@@ -1,7 +1,7 @@
 ---
 id: T-217
 title: "Authenticator: redesign approval history and receipt detail"
-status: in-progress
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-214]
@@ -64,6 +64,8 @@ Filled in by the agent when it moves the task to `review`.
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
 
+- 2026-11-01 20:47 · approve · PR #377 merged into main @ c1cd508 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-24 12:00 · claude · (new) → blocked · created from the authenticator redesign request
@@ -71,3 +73,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-24 12:05 · scholtz · taken · status stays blocked
 - 2026-10-29 16:26 · kanban-board · blocked → backlog · blockers done: T-214
 - 2026-11-01 18:55 · scholtz · backlog → in-progress · claimed by session-20261101-1855 on task/T-217
+- 2026-11-01 20:47 · user · in-progress → done · PR #377 merged into main @ c1cd508 (synced by kanban-sync)
