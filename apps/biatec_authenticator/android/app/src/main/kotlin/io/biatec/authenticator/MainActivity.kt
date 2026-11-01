@@ -35,5 +35,7 @@ class MainActivity : FlutterFragmentActivity() {
         super.configureFlutterEngine(flutterEngine)
         // The device key lives in the Android Keystore (KeystorePlugin); Dart reaches it over the channel io.biatec.authenticator/keystore.
         flutterEngine.plugins.add(KeystorePlugin(applicationContext))
+        // The two-factor vault keys (AES-256-GCM, biometric-bound) live in the same keystore, behind io.biatec.authenticator/vault.
+        flutterEngine.plugins.add(VaultPlugin(applicationContext))
     }
 }
