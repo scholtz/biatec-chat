@@ -58,7 +58,18 @@ Presentation only: services, controllers, clients and the consent protocol stay 
 
 ## Hand-off
 
-Filled in by the agent when it moves the task to `review`.
+- **Summary:** the history is grouped by day with status filters; each decision is a card (status as icon and word, action, client, time) that opens a receipt screen (decision, client, when, receipt id with copy, device key id, signature algorithm, the stored receipt collapsed). Presentation only: the store, its redaction and its tests are unchanged.
+- **Branch @ commit:** PR #377, merged as c1cd508 (branch `task/T-217`, last commit 6860d99).
+- **Decisions to know about:**
+  - No Expired status or chip: the controller records only posted decisions (approve, deny, code_failed), so an expired request leaves no entry. An Expired status needs the store to record it.
+  - No clear-history action: the task asks for it only if the store supports it, and `HistoryStore` has no clear.
+  - The receipt screen takes the binding code out again before display, so even an entry the store did not build cannot show it.
+  - Day labels use calendar days (a clock change cannot shift them) and the list redraws at midnight.
+  - One assertion in `approval_test.dart` was adapted: it looked for the old single-line title "Approved: 5000.000000 USDC".
+- **How it was verified:** `flutter analyze` clean; `flutter test` passes 581 tests (new `history_screens_test.dart`: grouping, filters, statuses, the receipt and its copy, redaction of a directly built entry, loading, empty, error and stale states, tap-target guidelines, 3x text in light and dark). Two `/code-review` rounds, fixed or answered on the PR. CI green. Not run: `build-windows.ps1` and a manual look at light and dark mode.
+- **Follow-up tasks created:** none.
+- **Unblocks:** nothing directly; T-219 still waits on T-218.
+- **Open questions:** none.
 
 ## Review
 
@@ -73,4 +84,5 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-24 12:05 · scholtz · taken · status stays blocked
 - 2026-10-29 16:26 · kanban-board · blocked → backlog · blockers done: T-214
 - 2026-11-01 18:55 · scholtz · backlog → in-progress · claimed by session-20261101-1855 on task/T-217
+- 2026-11-01 17:00 · claude · done · hand-off filled in after the merge of PR #377 (the sync action had already marked it done)
 - 2026-11-01 20:47 · user · in-progress → done · PR #377 merged into main @ c1cd508 (synced by kanban-sync)
