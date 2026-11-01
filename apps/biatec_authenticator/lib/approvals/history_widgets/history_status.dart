@@ -66,6 +66,9 @@ class StatusChip extends StatelessWidget {
           const SizedBox(width: AppSpacing.xs),
           Flexible(
             child: Text(status?.label ?? decision,
+                // A value from a newer version is shown as it is, but cannot make a row tall.
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.labelMedium
                     ?.copyWith(color: foreground, fontWeight: FontWeight.w700)),
           ),

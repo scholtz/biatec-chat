@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../shell/tab_reload.dart';
@@ -30,13 +32,40 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
   bool _failed = false;
   HistoryFilter _filter = HistoryFilter.all;
 
+  /// Redraws at midnight, so "Today" does not stay on yesterday's entries while the tab is left open.
+  Timer? _midnight;
+
+  void _watchMidnight() {
+    _midnight?.cancel();
+    final now = (widget.clock ?? DateTime.now)();
+    _midnight = Timer(untilMidnight(now) + const Duration(seconds: 1), () {
+      if (!mounted) return;
+      setState(() {});
+      _watchMidnight();
+    });
+  }
+
+  @override
+  void didUpdateWidget(HistoryScreen old) {
+    super.didUpdateWidget(old);
+    // A different clock changes when midnight is.
+    if (old.clock != widget.clock) _watchMidnight();
+  }
+
   @override
   void initState() {
     super.initState();
     _load();
+    _watchMidnight();
   }
 
-  /// The list that is showing stays (and what is expanded) while it is read again, and also when that read fails.
+  @override
+  void dispose() {
+    _midnight?.cancel();
+    super.dispose();
+  }
+
+  /// The list that is showing stays (and so does the chosen filter) while it is read again, and also when that read fails.
   @override
   void onReload() => _load();
 
@@ -131,7 +160,7 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
           Padding(
             padding: const EdgeInsets.all(AppSpacing.l),
             child: Column(children: [
-              Text('Nothing ${_filter.label.toLowerCase()} yet',
+              Text(_filter.emptyText,
                   key: const Key('history-filter-empty'),
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.titleMedium),

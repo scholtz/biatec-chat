@@ -6,14 +6,17 @@ import 'history_status.dart';
 
 /// Which decisions the list shows.
 enum HistoryFilter {
-  all('All', null),
-  approved('Approved', HistoryStatus.approved),
-  denied('Denied', HistoryStatus.denied),
-  refused('Refused', HistoryStatus.refused);
+  all('All', null, 'Nothing here yet'),
+  approved('Approved', HistoryStatus.approved, 'Nothing approved yet'),
+  denied('Denied', HistoryStatus.denied, 'Nothing denied yet'),
+  refused('Refused', HistoryStatus.refused, 'Nothing refused yet');
 
-  const HistoryFilter(this.label, this.status);
+  const HistoryFilter(this.label, this.status, this.emptyText);
 
   final String label;
+
+  /// What the list says when this filter matches nothing.
+  final String emptyText;
 
   /// The status it keeps, or null for everything (including a decision this version does not know).
   final HistoryStatus? status;

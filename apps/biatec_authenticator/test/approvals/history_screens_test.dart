@@ -66,7 +66,8 @@ Future<MemoryHistoryStore> _store(List<HistoryEntry> entries) async {
 Future<void> _pump(WidgetTester tester, HistoryStore history,
     {Size size = const Size(400, 1400),
     Brightness brightness = Brightness.light,
-    double scale = 1}) async {
+    double scale = 1,
+    DateTime Function()? clock}) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -75,7 +76,7 @@ Future<void> _pump(WidgetTester tester, HistoryStore history,
   await tester.pumpWidget(MaterialApp(
     theme: buildTheme(brightness),
     builder: largeTypeBuilder,
-    home: HistoryScreen(history: history, clock: () => _now),
+    home: HistoryScreen(history: history, clock: clock ?? () => _now),
   ));
   await tester.pump();
   await tester.pump();
@@ -121,6 +122,26 @@ void main() {
       expect(clockText(DateTime(2026, 10, 24, 9, 5)), '09:05');
       expect(
           dayAndClock(DateTime(2026, 10, 24, 9, 5)), 'Sat 24 Oct 2026, 09:05');
+    });
+
+    test('a day stays one group even when the entries come out of order', () {
+      final groups = groupByDay([
+        _entry('a', at: DateTime(2026, 10, 24, 14)),
+        _entry('c', at: DateTime(2026, 10, 23, 18)),
+        _entry('b', at: DateTime(2026, 10, 24, 9)),
+      ], _now);
+      expect(groups.map((g) => g.label), ['Today', 'Yesterday']);
+      expect(groups[0].entries.map((e) => e.authReqId), ['a', 'b']);
+    });
+
+    test('a spoken sentence ends in exactly one stop', () {
+      expect(sentence('Send 5 ALGO'), 'Send 5 ALGO.');
+      expect(sentence('Send 5 ALGO.'), 'Send 5 ALGO.');
+      expect(sentence('Send 5 ALGO?'), 'Send 5 ALGO?');
+      expect(sentence('Done!'), 'Done!');
+      expect(sentence('  padded  '), 'padded.');
+      expect(sentence('   '), '');
+      expect(sentence(''), '');
     });
   });
 
@@ -202,11 +223,90 @@ void main() {
       ]);
       await _pump(tester, history);
       expect(
-          find.bySemanticsLabel(RegExp(
-              'Approved\\. 5000\\.000000 USDC.*From Example Bank, at 14:30\\. Double tap to open the receipt')),
+          find.bySemanticsLabel(
+              'Approved. 5000.000000 USDC (4500.00 EUR) on algorand-mainnet. From Example Bank, Sat 24 Oct 2026, 14:30. Double tap to open the receipt.'),
           findsOneWidget);
       handle.dispose();
       await _end(tester);
+    });
+
+    testWidgets('an empty client label is not read as "From ,"',
+        (tester) async {
+      final handle = tester.ensureSemantics();
+      final history = await _store([_entry('a', client: '  ')]);
+      await _pump(tester, history);
+      expect(find.bySemanticsLabel(RegExp(r'From ,')), findsNothing);
+      expect(
+          find.bySemanticsLabel(
+              RegExp(r'\. At Sat 24 Oct 2026, 09:05\. Double')),
+          findsOneWidget);
+      handle.dispose();
+      await _end(tester);
+    });
+
+    testWidgets('a long unknown status cannot make a row tall', (tester) async {
+      final history = await _store([
+        _entry('x', decision: 'a_status_a_newer_version_wrote ' * 6),
+      ]);
+      await _pump(tester, history, size: const Size(320, 568), scale: 3);
+      expect(tester.takeException(), isNull);
+      final chip = tester.getSize(find.byType(StatusChip));
+      // Two lines of the chip's text at most, whatever the value.
+      expect(chip.height, lessThan(300));
+      await _end(tester);
+    });
+
+    testWidgets('a text that ends in a full stop is not read with two',
+        (tester) async {
+      final handle = tester.ensureSemantics();
+      final history = await _store([
+        _entry('a', summary: 'Send 5 ALGO.', client: 'Biatec Chat.'),
+      ]);
+      await _pump(tester, history);
+      expect(
+          find.bySemanticsLabel(
+              RegExp(r'Approved\. Send 5 ALGO\. From Biatec Chat, ')),
+          findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp(r'\.\.')), findsNothing);
+      handle.dispose();
+      await _end(tester);
+    });
+
+    testWidgets(
+        'Today becomes Yesterday when the day turns over while it is open',
+        (tester) async {
+      var now = DateTime(2026, 10, 24, 23, 59, 30);
+      final history = await _store([
+        _entry('a', at: DateTime(2026, 10, 24, 9)),
+      ]);
+      await _pump(tester, history, clock: () => now);
+      expect(find.byKey(const Key('history-day-Today')), findsOneWidget);
+      now = DateTime(2026, 10, 25, 0, 0, 5);
+      await tester.pump(const Duration(seconds: 40));
+      expect(find.byKey(const Key('history-day-Yesterday')), findsOneWidget);
+      expect(find.byKey(const Key('history-day-Today')), findsNothing);
+      await _end(tester);
+    });
+
+    test('midnight is counted to the next calendar day', () {
+      expect(untilMidnight(DateTime(2026, 10, 24, 23, 0)),
+          const Duration(hours: 1));
+      expect(untilMidnight(DateTime(2026, 10, 24, 0, 0)),
+          const Duration(hours: 24));
+      expect(
+          untilMidnight(DateTime(2026, 12, 31, 12)), const Duration(hours: 12));
+    });
+
+    test('calendar days, not 24-hour spans, decide Today and Yesterday', () {
+      // A late evening and an early morning: a day apart on the calendar, an hour apart on the clock.
+      final late = DateTime(2026, 10, 23, 23, 30);
+      final early = DateTime(2026, 10, 24, 0, 30);
+      expect(dayLabel(late, early), 'Yesterday');
+      expect(dayLabel(early, early), 'Today');
+      expect(
+          dayLabel(
+              DateTime(2026, 10, 22, 23, 30), DateTime(2026, 10, 24, 0, 30)),
+          'Thu 22 Oct 2026');
     });
   });
 
@@ -256,6 +356,20 @@ void main() {
       expect(find.byKey(const Key('history-a1')), findsOneWidget);
       expect(find.byKey(const Key('history-filter-empty')), findsNothing);
       await _end(tester);
+    });
+
+    test('every status can be filtered, and each filter says what is empty',
+        () {
+      for (final s in HistoryStatus.values) {
+        expect(HistoryFilter.values.where((f) => f.status == s), hasLength(1),
+            reason: '${s.name} has a filter');
+      }
+      expect(HistoryFilter.values.where((f) => f.status == null), hasLength(1),
+          reason: 'one All');
+      for (final f in HistoryFilter.values) {
+        expect(f.emptyText, isNotEmpty);
+      }
+      expect(HistoryFilter.denied.emptyText, 'Nothing denied yet');
     });
 
     test('each filter matches only its own decision', () {
@@ -499,9 +613,14 @@ void main() {
         await _pump(tester, await many(),
             size: const Size(320, 568), brightness: brightness, scale: 3);
         expect(tester.takeException(), isNull, reason: 'list');
+        await tester
+            .ensureVisible(find.byKey(const Key('history-filter-denied')));
+        await tester.pump();
         await tester.tap(find.byKey(const Key('history-filter-denied')));
         await tester.pump();
         expect(tester.takeException(), isNull, reason: 'filtered');
+        await tester.ensureVisible(find.byKey(const Key('history-filter-all')));
+        await tester.pump();
         await tester.tap(find.byKey(const Key('history-filter-all')));
         await tester.pump();
         await _open(tester, 'a1');
@@ -513,8 +632,11 @@ void main() {
                     of: find.byType(HistoryDetailScreen),
                     matching: find.byType(Scrollable))
                 .first);
-        await tester.tap(find.byKey(const Key('receipt-json-tile')));
+        await tester.tapAt(
+            tester.getTopLeft(find.byKey(const Key('receipt-json-tile'))) +
+                const Offset(24, 24));
         await tester.pumpAndSettle();
+        expect(find.byKey(const Key('receipt-json')), findsOneWidget);
         expect(tester.takeException(), isNull, reason: 'receipt expanded');
         await _end(tester);
       });

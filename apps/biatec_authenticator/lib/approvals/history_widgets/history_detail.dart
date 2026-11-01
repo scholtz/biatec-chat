@@ -88,7 +88,7 @@ class HistoryDetailScreen extends StatelessWidget {
                         key: const Key('receipt-decided')),
                     // The receipt id is the request id: Biatec OIDC serves the verifiable receipt under it.
                     Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
                             child: Fact('Receipt id', entry.authReqId,
