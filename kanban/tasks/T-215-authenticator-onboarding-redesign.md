@@ -1,7 +1,7 @@
 ---
 id: T-215
 title: "Authenticator: redesign enrollment into a guided onboarding"
-status: in-progress
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-214]
@@ -65,6 +65,8 @@ Filled in by the agent when it moves the task to `review`.
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
 
+- 2026-11-01 13:24 · approve · PR #375 merged into main @ 31ec79b (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-24 12:00 · claude · (new) → blocked · created from the authenticator redesign request
@@ -72,3 +74,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-24 12:05 · scholtz · taken · status stays blocked
 - 2026-10-29 16:26 · kanban-board · blocked → backlog · blockers done: T-214
 - 2026-11-01 10:57 · scholtz · backlog → in-progress · claimed by session-20261101-1057 on task/T-215
+- 2026-11-01 13:24 · user · in-progress → done · PR #375 merged into main @ 31ec79b (synced by kanban-sync)
