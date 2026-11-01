@@ -91,33 +91,55 @@ class ApprovalCard extends StatelessWidget {
             mono: true, key: const Key('fact-hash')),
       ];
 
-  /// Whether a limit goes up (or cannot be read as a number, which is treated the same: the careful way).
-  static bool raisesLimits(LimitsChangeDetail d) {
-    bool up(String now, String next) {
+  /// Which way the limits move. A value that cannot be read as a number counts as raising, the careful way.
+  static LimitsMove limitsMove(LimitsChangeDetail d) {
+    var up = false;
+    var down = false;
+    void compare(String now, String next) {
       final a = double.tryParse(now);
       final b = double.tryParse(next);
-      return a == null || b == null || b > a;
+      if (a == null || b == null || b > a) {
+        up = true;
+      } else if (b < a) {
+        down = true;
+      }
     }
 
-    return up(d.current.perTransactionEur, d.requested.perTransactionEur) ||
-        up(d.current.perDayEur, d.requested.perDayEur);
+    compare(d.current.perTransactionEur, d.requested.perTransactionEur);
+    compare(d.current.perDayEur, d.requested.perDayEur);
+    if (up) return LimitsMove.raises;
+    return down ? LimitsMove.lowers : LimitsMove.same;
   }
 
-  Widget _limitsWarning(LimitsChangeDetail d) => raisesLimits(d)
-      ? const StatusBanner(
-          key: Key('limits-raised'),
-          severity: StatusSeverity.warning,
-          title: 'This raises your limits',
-          message: 'More can be moved without asking you again. Approve only '
-              'if you asked for this.',
-        )
-      : const StatusBanner(
-          key: Key('limits-lowered'),
-          severity: StatusSeverity.info,
-          title: 'This lowers your limits',
-          message: 'Less can be moved without asking you.',
-        );
+  /// Whether a limit goes up (see [limitsMove]).
+  static bool raisesLimits(LimitsChangeDetail d) =>
+      limitsMove(d) == LimitsMove.raises;
+
+  Widget _limitsWarning(LimitsChangeDetail d) => switch (limitsMove(d)) {
+        LimitsMove.raises => const StatusBanner(
+            key: Key('limits-raised'),
+            severity: StatusSeverity.warning,
+            title: 'This raises your limits',
+            message: 'More can be moved without asking you again. Approve '
+                'only if you asked for this.',
+          ),
+        LimitsMove.lowers => const StatusBanner(
+            key: Key('limits-lowered'),
+            severity: StatusSeverity.info,
+            title: 'This lowers your limits',
+            message: 'Less can be moved without asking you.',
+          ),
+        LimitsMove.same => const StatusBanner(
+            key: Key('limits-same'),
+            severity: StatusSeverity.info,
+            title: 'These limits stay the same',
+            message: 'The requested limits equal the current ones.',
+          ),
+      };
 }
+
+/// The way a limits change moves the limits.
+enum LimitsMove { raises, lowers, same }
 
 /// Who asks. A verified client shows its name and domain; an unverified one
 /// only a warning and its fingerprint (rule 3).

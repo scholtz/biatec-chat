@@ -5,7 +5,7 @@ import '../consent_request.dart';
 /// The time the request was given, in seconds: what the requester asked for (`requested_expiry`), or five minutes when the request does not say.
 int requestWindowSeconds(ConsentRequest request) {
   final v = request.json['requested_expiry'];
-  return v is int && v > 0 ? v : 300;
+  return v is num && v > 0 ? v.round() : 300;
 }
 
 /// How much of the request's time is left: 1 when it was just issued, 0 when it has expired.

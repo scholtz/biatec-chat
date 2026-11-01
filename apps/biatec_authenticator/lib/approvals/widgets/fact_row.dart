@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
+import 'mono.dart';
 
 /// One labelled fact of the request. The value is shown in full (addresses and hashes are never shortened), can be selected, and with [mono] is set in a fixed-width face so each character can be compared. A screen reader hears the label and the value as one item.
 class Fact extends StatelessWidget {
@@ -24,8 +25,7 @@ class Fact extends StatelessWidget {
             Text(label,
                 style: theme.textTheme.labelMedium
                     ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-            SelectableText(value,
-                style: mono ? const TextStyle(fontFamily: 'monospace') : null),
+            SelectableText(value, style: mono ? monoStyle : null),
           ]),
         ),
       ),

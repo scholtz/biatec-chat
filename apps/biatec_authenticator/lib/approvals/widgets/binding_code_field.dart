@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme.dart';
+import 'mono.dart';
 
 /// Where the user types the binding code: the six digits shown on the screen where they started the action. It never comes from this request, so it proves the person holding the phone is the one who started it. Large and fixed-width, with a reminder never to enter a code someone else sends.
 class BindingCodeField extends StatelessWidget {
@@ -35,7 +36,8 @@ class BindingCodeField extends StatelessWidget {
         enableSuggestions: false,
         enableIMEPersonalizedLearning: false,
         style: theme.textTheme.headlineMedium
-            ?.copyWith(fontFamily: 'monospace', letterSpacing: 8),
+            ?.merge(monoStyle)
+            .copyWith(letterSpacing: 8),
         decoration: InputDecoration(
           labelText: 'Code shown where you started this action',
           helperText: switch (attemptsRemaining) {

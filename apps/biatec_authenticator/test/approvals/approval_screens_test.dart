@@ -2,7 +2,9 @@ import 'package:biatec_authenticator/approvals/approval_card.dart';
 import 'package:biatec_authenticator/approvals/approval_screen.dart';
 import 'package:biatec_authenticator/approvals/consent_request.dart';
 import 'package:biatec_authenticator/approvals/pending_screen.dart';
+import 'package:biatec_authenticator/approvals/widgets/approval_actions.dart';
 import 'package:biatec_authenticator/approvals/widgets/expiry.dart';
+import 'package:biatec_authenticator/approvals/widgets/mono.dart';
 import 'package:biatec_authenticator/theme.dart';
 import 'package:biatec_authenticator/ui/ui.dart';
 import 'package:flutter/material.dart';
@@ -35,7 +37,8 @@ Future<void> _pumpApproval(WidgetTester tester, Harness h,
 Future<void> _pumpPending(WidgetTester tester, Harness h,
     {Size size = const Size(400, 900),
     Brightness brightness = Brightness.light,
-    double scale = 1}) async {
+    double scale = 1,
+    ValueChanged<int>? onCount}) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -45,7 +48,9 @@ Future<void> _pumpPending(WidgetTester tester, Harness h,
     theme: buildTheme(brightness),
     builder: largeTypeBuilder,
     home: PendingScreen(
-        services: h.services, pollEvery: const Duration(hours: 1)),
+        services: h.services,
+        pollEvery: const Duration(hours: 1),
+        onCount: onCount),
   ));
   await tester.pump();
   await tester.pump();
@@ -53,8 +58,16 @@ Future<void> _pumpPending(WidgetTester tester, Harness h,
 
 Future<void> _end(WidgetTester tester) => tester.pumpWidget(const SizedBox());
 
+/// Scrolls the list until the code field exists and is on screen (it is built lazily at large text).
+Future<void> _toCode(WidgetTester tester) =>
+    tester.scrollUntilVisible(find.byKey(const Key('binding-code')), 200,
+        scrollable: find
+            .descendant(
+                of: find.byType(ListView), matching: find.byType(Scrollable))
+            .first);
+
 Future<void> _code(WidgetTester tester, String code) async {
-  await tester.ensureVisible(find.byKey(const Key('binding-code')));
+  await _toCode(tester);
   await tester.enterText(find.byKey(const Key('binding-code')), code);
 }
 
@@ -147,6 +160,24 @@ void main() {
       await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       handle.dispose();
+      await _end(tester);
+    });
+
+    testWidgets('a request that runs out leaves the list without a refresh',
+        (tester) async {
+      final h = Harness(vectorRequest(_stepUp));
+      final counts = <int>[];
+      await _pumpPending(tester, h, onCount: counts.add);
+      expect(counts.last, 1);
+      expect(find.byKey(Key('pending-${h.oidc.request['auth_req_id']}')),
+          findsOneWidget);
+      h.now = ConsentRequest.fromJson(h.oidc.request)
+          .expiresAt
+          .add(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 11));
+      expect(find.byKey(Key('pending-${h.oidc.request['auth_req_id']}')),
+          findsNothing);
+      expect(counts.last, 0, reason: 'the badge follows');
       await _end(tester);
     });
 
@@ -243,6 +274,57 @@ void main() {
       await _end(tester);
     });
 
+    test('the ring is sized by the request window, however the number comes',
+        () {
+      ConsentRequest with_(Object? window) {
+        final json = {...vectorRequest(_stepUp)};
+        if (window == null) {
+          json.remove('requested_expiry');
+        } else {
+          json['requested_expiry'] = window;
+        }
+        return ConsentRequest.fromJson(json);
+      }
+
+      expect(requestWindowSeconds(with_(600)), 600);
+      expect(requestWindowSeconds(with_(600.0)), 600);
+      expect(requestWindowSeconds(with_(null)), 300);
+      expect(requestWindowSeconds(with_('300')), 300);
+      expect(requestWindowSeconds(with_(0)), 300);
+      final r = with_(600);
+      expect(expiryFraction(r, r.expiresAt), 0);
+      expect(
+          expiryFraction(r, r.expiresAt.subtract(const Duration(seconds: 300))),
+          closeTo(0.5, 1e-9));
+      expect(expiryFraction(r, r.expiresAt.add(const Duration(hours: 1))), 0);
+      expect(
+          expiryFraction(r, r.expiresAt.subtract(const Duration(days: 1))), 1);
+    });
+
+    test('the fixed-width face has fallbacks for platforms without monospace',
+        () {
+      expect(monoStyle.fontFamily, 'monospace');
+      expect(monoStyle.fontFamilyFallback, containsAll(['Menlo', 'Consolas']));
+    });
+
+    testWidgets('addresses and hashes use the fixed-width face',
+        (tester) async {
+      final h = Harness(vectorRequest('direct-transaction-approve-verified'));
+      await _pumpApproval(tester, h);
+      for (final key in ['fact-receiver', 'fact-sender', 'fact-hash']) {
+        final text = tester.widget<SelectableText>(find.descendant(
+            of: find.byKey(Key(key)), matching: find.byType(SelectableText)));
+        expect(text.style!.fontFamily, 'monospace', reason: key);
+        expect(text.style!.fontFamilyFallback, contains('Menlo'), reason: key);
+      }
+      // Plain words are not.
+      final network = tester.widget<SelectableText>(find.descendant(
+          of: find.byKey(const Key('fact-network')),
+          matching: find.byType(SelectableText)));
+      expect(network.style, isNull);
+      await _end(tester);
+    });
+
     testWidgets('the binding code is a large fixed-width field with its reason',
         (tester) async {
       final h = Harness(vectorRequest(_stepUp));
@@ -299,6 +381,37 @@ void main() {
           find.text(
               raises ? 'This raises your limits' : 'This lowers your limits'),
           findsOneWidget);
+      await _end(tester);
+    });
+
+    test('equal limits are neither raised nor lowered', () {
+      LimitsChangeDetail limits(String a, String b, String c, String d) =>
+          LimitsChangeDetail(
+              current: Limits(perTransactionEur: a, perDayEur: b),
+              requested: Limits(perTransactionEur: c, perDayEur: d),
+              requestHash: 'h');
+      expect(ApprovalCard.limitsMove(limits('100', '500', '100', '500')),
+          LimitsMove.same);
+      expect(ApprovalCard.limitsMove(limits('100', '500', '50', '500')),
+          LimitsMove.lowers);
+      expect(ApprovalCard.limitsMove(limits('100', '500', '50', '600')),
+          LimitsMove.raises,
+          reason: 'one up is raising, whatever else goes down');
+      expect(ApprovalCard.limitsMove(limits('100', '500', 'x', '500')),
+          LimitsMove.raises);
+    });
+
+    testWidgets('equal limits say so, not that they are lowered',
+        (tester) async {
+      final json = vectorRequest('stepup-limits-change-approve');
+      final detail = ((json['authorization_details'] as List).single as Map)
+          .cast<String, Object?>();
+      detail['requested_limits'] = detail['current_limits'];
+      final h = Harness(json);
+      await _pumpApproval(tester, h);
+      expect(find.byKey(const Key('limits-same')), findsOneWidget);
+      expect(find.text('These limits stay the same'), findsOneWidget);
+      expect(find.byKey(const Key('limits-lowered')), findsNothing);
       await _end(tester);
     });
 
@@ -377,6 +490,50 @@ void main() {
       });
     }
 
+    testWidgets(
+        'with the keyboard up, and the offline banner, both buttons stay and nothing overflows',
+        (tester) async {
+      final h = Harness(vectorRequest(_stepUp));
+      await _pumpApproval(tester, h, size: const Size(360, 640), scale: 3);
+      h.oidc.offline = true;
+      await _code(tester, '483920');
+      await tester.tap(find.byKey(const Key('approve')));
+      await tester.pump();
+      await tester.pump();
+      expect(tester.takeException(), isNull, reason: 'offline at 3x text');
+      final barHeight = tester.getSize(find.byType(ApprovalActionBar)).height;
+
+      // The keyboard opens: the bar is no taller, the buttons stay, the card scrolls in what is left.
+      tester.view.viewInsets = const FakeViewPadding(bottom: 250);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pump();
+      expect(tester.takeException(), isNull, reason: 'keyboard at 3x text');
+      expect(find.byKey(const Key('approve')), findsOneWidget);
+      expect(find.byKey(const Key('deny')), findsOneWidget);
+      expect(tester.getSize(find.byType(ApprovalActionBar)).height,
+          lessThanOrEqualTo(barHeight));
+      await _end(tester);
+    });
+
+    testWidgets(
+        'the bar never takes more than half of a small screen at 3x text',
+        (tester) async {
+      final h = Harness(vectorRequest(_stepUp));
+      await _pumpApproval(tester, h, size: const Size(360, 640), scale: 3);
+      expect(tester.getSize(find.byType(ApprovalActionBar)).height,
+          lessThan(640 / 2));
+      await _end(tester);
+    });
+
+    testWidgets('scrolling the card closes the keyboard', (tester) async {
+      final h = Harness(vectorRequest(_stepUp));
+      await _pumpApproval(tester, h, size: const Size(400, 700));
+      final list = tester.widget<ListView>(find.byType(ListView));
+      expect(list.keyboardDismissBehavior,
+          ScrollViewKeyboardDismissBehavior.onDrag);
+      await _end(tester);
+    });
+
     testWidgets('every control is at least 48 dp and labelled', (tester) async {
       final handle = tester.ensureSemantics();
       final h = Harness(vectorRequest(_stepUp));
@@ -405,7 +562,6 @@ void main() {
           findsOneWidget);
       expect(_enabled(tester, 'approve'), isFalse);
       expect(_enabled(tester, 'deny'), isFalse);
-      expect(find.byKey(const Key('actions-reason')), findsOneWidget);
       expect(find.textContaining('off until Biatec OIDC can be reached'),
           findsOneWidget);
 
@@ -417,7 +573,8 @@ void main() {
       expect(find.text('You are offline'), findsNothing);
       expect(_enabled(tester, 'approve'), isTrue);
       expect(_enabled(tester, 'deny'), isTrue);
-      expect(find.byKey(const Key('actions-reason')), findsNothing);
+      expect(find.textContaining('off until Biatec OIDC can be reached'),
+          findsNothing);
       await _end(tester);
     });
 
@@ -434,10 +591,8 @@ void main() {
       expect(find.text('Expired'), findsOneWidget);
       expect(_enabled(tester, 'approve'), isFalse);
       expect(_enabled(tester, 'deny'), isFalse);
-      expect(
-          find.textContaining(
-              'Expired: this request can no longer be approved'),
-          findsOneWidget);
+      expect(find.byKey(const Key('approval-expired')), findsOneWidget);
+      expect(find.text('This request has expired'), findsOneWidget);
       await _end(tester);
     });
 

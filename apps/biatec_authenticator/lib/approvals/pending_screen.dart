@@ -61,7 +61,7 @@ class _PendingScreenState extends State<PendingScreen> {
   Timer? _poll;
   StreamSubscription<void>? _pushSub;
 
-  /// Redraws the time left on the cards. Half a minute is often enough for words like "4 min left", and a redraw is only asked for when there is a list.
+  /// Redraws the time left on the cards (see [_tickClock]). Ten seconds keeps "4 min left" within a few seconds of the truth.
   Timer? _clockTick;
 
   /// A refresh was asked for while one was running (for example a push
@@ -73,9 +73,8 @@ class _PendingScreenState extends State<PendingScreen> {
     super.initState();
     _refresh();
     _startPolling();
-    _clockTick = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted && (_requests?.isNotEmpty ?? false)) setState(() {});
-    });
+    _clockTick =
+        Timer.periodic(const Duration(seconds: 10), (_) => _tickClock());
     _pushSub = widget.pushes?.listen((_) => _refresh());
     widget.active?.addListener(_onActive);
     widget.foreground?.addListener(_startPolling);
@@ -89,6 +88,17 @@ class _PendingScreenState extends State<PendingScreen> {
     } on Object {
       // Ignored on purpose.
     }
+  }
+
+  /// Redraws the time left and drops a request that has run out, so it is not offered after it expired.
+  void _tickClock() {
+    final known = _requests;
+    if (!mounted || known == null || known.isEmpty) return;
+    final now = widget.services.clock();
+    final alive = known.where((r) => !r.isExpired(now)).toList();
+    final changed = alive.length != known.length;
+    setState(() => _requests = alive);
+    if (changed) _tell(alive.length);
   }
 
   /// A card that covers the list asks for nothing; the list loads when the card closes.

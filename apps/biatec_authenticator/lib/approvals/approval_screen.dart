@@ -72,19 +72,6 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
         request.expiresAt.isAfter(c.now);
   }
 
-  String? _reasonOff(ApprovalController c) {
-    final request = c.request;
-    if (c.phase != ApprovalPhase.ready || request == null) return null;
-    if (c.offline) {
-      return 'Offline: Approve and Deny are off until Biatec OIDC can be '
-          'reached again.';
-    }
-    if (!request.expiresAt.isAfter(c.now)) {
-      return 'Expired: this request can no longer be approved or denied.';
-    }
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -104,7 +91,6 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
           final can = _canAct(c);
           return ApprovalActionBar(
             busy: c.phase == ApprovalPhase.working,
-            reason: _reasonOff(c),
             onApprove: can ? () => c.approve(_code.text) : null,
             onDeny: can ? c.deny : null,
           );
@@ -190,34 +176,52 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
     final request = c.request!;
     final left = request.expiresAt.difference(c.now);
     final busy = c.phase == ApprovalPhase.working;
-    return ListView(padding: const EdgeInsets.all(AppSpacing.m), children: [
-      if (c.offline) ...[
-        StatusBanner(
-          key: const Key('approval-error'),
-          severity: StatusSeverity.warning,
-          icon: Icons.cloud_off,
-          title: 'You are offline',
-          message: 'Offline. Nothing was approved. ${c.error ?? ''}'.trim(),
-          actionLabel: 'Try again',
-          onAction: c.load,
-        ),
-        const SizedBox(height: AppSpacing.m),
-      ] else if (c.error != null) ...[
-        _errorBanner(c.error!),
-        const SizedBox(height: AppSpacing.m),
-      ],
-      ApprovalCard(request: request),
-      const SizedBox(height: AppSpacing.m),
-      _Expiry(request: request, left: left, now: c.now),
-      const SizedBox(height: AppSpacing.m),
-      BindingCodeField(
-        controller: _code,
-        enabled: !busy,
-        attemptsRemaining: c.attemptsRemaining,
-      ),
-      // Room for the keyboard and the bar over the last field.
-      const SizedBox(height: AppSpacing.l),
-    ]);
+    return ListView(
+        padding: const EdgeInsets.all(AppSpacing.m),
+        // Scrolling the card away from the keyboard closes it.
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        children: [
+          if (c.offline) ...[
+            StatusBanner(
+              key: const Key('approval-error'),
+              severity: StatusSeverity.warning,
+              icon: Icons.cloud_off,
+              title: 'You are offline',
+              message: 'Offline. Nothing was approved. ${c.error ?? ''} '
+                      'Approve and Deny are off until Biatec OIDC can be reached '
+                      'again.'
+                  .replaceAll('  ', ' '),
+              actionLabel: 'Try again',
+              onAction: c.load,
+            ),
+            const SizedBox(height: AppSpacing.m),
+          ] else if (left.isNegative) ...[
+            // Both buttons are off; this says why, with the way out.
+            const StatusBanner(
+              key: Key('approval-expired'),
+              severity: StatusSeverity.danger,
+              icon: Icons.timer_off,
+              title: 'This request has expired',
+              message: 'Approve and Deny are off: this request can no longer '
+                  'be approved or denied. Go back and start the action again.',
+            ),
+            const SizedBox(height: AppSpacing.m),
+          ] else if (c.error != null) ...[
+            _errorBanner(c.error!),
+            const SizedBox(height: AppSpacing.m),
+          ],
+          ApprovalCard(request: request),
+          const SizedBox(height: AppSpacing.m),
+          _Expiry(request: request, left: left, now: c.now),
+          const SizedBox(height: AppSpacing.m),
+          BindingCodeField(
+            controller: _code,
+            enabled: !busy,
+            attemptsRemaining: c.attemptsRemaining,
+          ),
+          // Room for the keyboard and the bar over the last field.
+          const SizedBox(height: AppSpacing.l),
+        ]);
   }
 
   /// A step that did not go through, in words, with what to do next.
