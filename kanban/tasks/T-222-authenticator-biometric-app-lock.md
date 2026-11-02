@@ -1,7 +1,7 @@
 ---
 id: T-222
 title: "Authenticator: biometric-only lock for the whole secure area"
-status: in-progress
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-214, T-227]
@@ -66,6 +66,8 @@ Filled in by the agent when it moves the task to `review`.
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
 
+- 2026-11-02 16:12 · approve · PR #381 merged into main @ ed61c5f (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-28 09:00 · claude · (new) → blocked · created from the request to add two-factor codes, a biometric lock and industry-standard security
@@ -73,3 +75,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
 - 2026-10-30 16:40 · kanban-board · blocked → backlog · blockers done: T-214, T-227
 - 2026-11-02 10:00 · scholtz · backlog → in-progress · claimed by session-20261102-1000 on task/T-222
+- 2026-11-02 16:12 · user · in-progress → done · PR #381 merged into main @ ed61c5f (synced by kanban-sync)

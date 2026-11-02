@@ -1,7 +1,7 @@
 ---
 id: T-224
 title: "Authenticator: Codes tab (two-factor codes list, add and edit)"
-status: blocked
+status: backlog
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-221, T-222, T-223, T-225, T-227, T-229]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
-updated: 2026-10-28
+updated: 2026-11-02
 ---
 
 # T-224 - Authenticator: Codes tab (two-factor codes list, add and edit)
@@ -73,3 +73,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:00 · claude · (new) → blocked · created from the request to add two-factor codes, a biometric lock and industry-standard security
 - 2026-10-28 09:42 · kanban-board · backlog → blocked · waiting on: T-221, T-222, T-223, T-225
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
+- 2026-11-02 16:12 · kanban-board · blocked → backlog · blockers done: T-221, T-222, T-223, T-225, T-227, T-229
