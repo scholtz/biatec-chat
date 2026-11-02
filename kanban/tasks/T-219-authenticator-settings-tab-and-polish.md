@@ -64,6 +64,18 @@ Presentation only: services, controllers, clients and the consent protocol stay 
 
 Filled in by the agent when it moves the task to `review`.
 
+Implemented in PR #380, branch task/T-219 (squash merged).
+
+- `lib/settings/settings_screen.dart` is the Settings tab (replaces `lib/security/security_screen.dart`): Security (biometric, threshold, block unverified, Trusted clients row), Appearance (system, light, dark), About (version, Biatec OIDC server with mock, stage or live marking, device key protection, open-source notices). The security group has loading, not available and offline states inline.
+- `ThemeController` and `ThemeScope` (`lib/settings/theme_controller.dart`): applies at once, saved in the device-bound secure storage, read before the first frame in `main`.
+- `applyWithConfirm` and `settingsStatus` in `lib/security/settings_frame.dart` are shared by Settings and Trusted clients.
+- For T-222 and T-226: add their rows (lock timing, backup) to the Security group in `SettingsScreen._security`; keys of existing rows are unchanged.
+- `test/a11y/all_screens_test.dart` covers every tab at 320x568, light and dark, text x1 and x3. README has the navigation structure.
+- Not run: `./build-windows.ps1` and a manual look at light and dark. App version is a constant checked against pubspec by a test (no package_info_plus).
+- Tests: 682 pass. One review round, user capped and merged.
+
+**Unblocks:** none by itself (T-231 still waits on T-224, T-228, T-226).
+
 ## Review
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
