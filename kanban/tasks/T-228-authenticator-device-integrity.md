@@ -1,7 +1,7 @@
 ---
 id: T-228
 title: "Authenticator: device integrity checks that fail closed"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-222, T-227]
@@ -9,8 +9,8 @@ area: ["apps/biatec_authenticator/lib/integrity/**", "apps/biatec_authenticator/
 parallel: yes
 conflicts_with: []
 issue: "#365"
-branch: ""
-owner: ""
+branch: "task/T-228"
+owner: "session-20261102-1800"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
@@ -71,3 +71,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:42 · kanban-board · backlog → blocked · waiting on: T-222
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
 - 2026-11-02 16:12 · kanban-board · blocked → backlog · blockers done: T-222, T-227
+- 2026-11-02 18:00 · scholtz · backlog → in-progress · claimed by session-20261102-1800 on task/T-228
