@@ -1,7 +1,7 @@
 ---
 id: T-224
 title: "Authenticator: Codes tab (two-factor codes list, add and edit)"
-status: in-progress
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-221, T-222, T-223, T-225, T-227, T-229]
@@ -68,6 +68,8 @@ Filled in by the agent when it moves the task to `review`.
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
 
+- 2026-11-02 17:56 · approve · PR #382 merged into main @ 7d30766 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-28 09:00 · claude · (new) → blocked · created from the request to add two-factor codes, a biometric lock and industry-standard security
@@ -75,3 +77,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
 - 2026-11-02 16:12 · kanban-board · blocked → backlog · blockers done: T-221, T-222, T-223, T-225, T-227, T-229
 - 2026-11-02 15:00 · scholtz · backlog → in-progress · claimed by session-20261102-1500 on task/T-224
+- 2026-11-02 17:56 · user · in-progress → done · PR #382 merged into main @ 7d30766 (synced by kanban-sync)

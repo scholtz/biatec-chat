@@ -1,7 +1,7 @@
 ---
 id: T-226
 title: "Authenticator: encrypted backup and restore of two-factor accounts"
-status: blocked
+status: backlog
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-223, T-224]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
-updated: 2026-10-28
+updated: 2026-11-02
 ---
 
 # T-226 - Authenticator: encrypted backup and restore of two-factor accounts
@@ -69,3 +69,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:00 · claude · (new) → blocked · created from the request to add two-factor codes, a biometric lock and industry-standard security
 - 2026-10-28 09:42 · kanban-board · backlog → blocked · waiting on: T-223, T-224
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
+- 2026-11-02 17:56 · kanban-board · blocked → backlog · blockers done: T-223, T-224
