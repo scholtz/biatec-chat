@@ -62,6 +62,16 @@ Write the failing test first for every security rule. Never log, print or put in
 
 Filled in by the agent when it moves the task to `review`.
 
+Implemented in PR #381, branch task/T-222 (squash merged).
+
+- `lib/lock/`: `LockController` (only a strong-biometric success reaches unlocked), `LockBiometricGate`, `LockScope`, lock screens (lock, no biometric, biometrics changed, compromised). `lib/shell/app_lock_gate.dart` builds the shell only while unlocked and reports lifecycle and touches. `lib/security/biometric_policy.dart` is the Dart side of the channel `io.biatec.authenticator/biometric` (`BiometricChannel.kt`, `BiometricChannel.swift`). `local_auth` is removed.
+- For T-223 and T-224: call `LockController.markBiometricsChanged()` when a vault key is invalidated; register memory-clearing hooks with `addLockListener` (the recovery code already does); use `LockBiometricGate` / `LockController.reauthenticate(reason)` for delete, backup and export. The lock is reachable from widgets with `LockScope.maybeOf(context)`.
+- For T-228: `markCompromised()` shows the compromised screen.
+- Settings: the biometric switch is gone (an always-required row); a Lock the app row sets the delay after a fresh biometric. Every security setting change now asks for a biometric, tightening too (stricter reading of rule 4).
+- Not run on a device: Kotlin and Swift; CI builds Android. Tests: 755 pass. One review round, user capped and merged.
+
+**Unblocks:** T-224, T-228.
+
 ## Review
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
