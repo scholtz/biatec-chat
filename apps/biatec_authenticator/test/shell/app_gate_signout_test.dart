@@ -14,6 +14,8 @@ import 'package:biatec_authenticator/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../lock/support.dart';
+
 import 'app_shell_test.dart' show ShellRig;
 
 final _active = EnrollmentRecord(
@@ -83,7 +85,9 @@ ApprovalServices _servicesWith(ShellRig rig, EnrollmentStore store) =>
     ApprovalServices(
       client: rig.approvals.client,
       keys: rig.approvals.keys,
-      enrollment: store is ObservableEnrollmentStore ? store : ObservableEnrollmentStore(store),
+      enrollment: store is ObservableEnrollmentStore
+          ? store
+          : ObservableEnrollmentStore(store),
       gate: rig.approvals.gate,
       history: MemoryHistoryStore(),
       clock: rig.approvals.clock,
@@ -96,6 +100,7 @@ Future<void> _pumpApp(
   addTearDown(tester.view.reset);
   await tester.pumpWidget(AuthenticatorApp(
     config: AppConfig.resolve(''),
+    lock: await unlockedLock(),
     approvals: approvals,
     settings: rig.settings.services,
     shell: rig.shell,
@@ -216,7 +221,8 @@ void main() {
       store.dispose();
     });
 
-    test('an enrollment whose write failed is served from memory and saved later',
+    test(
+        'an enrollment whose write failed is served from memory and saved later',
         () async {
       var now = DateTime.utc(2026, 10, 29, 12);
       final inner = _FlakyWrites();
@@ -244,7 +250,8 @@ void main() {
       store.dispose();
     });
 
-    test('a read that hangs does not hold up the next, and a sign-out during a read wins',
+    test(
+        'a read that hangs does not hold up the next, and a sign-out during a read wins',
         () async {
       final inner = _HangOnce();
       final store = ObservableEnrollmentStore(inner);

@@ -9,6 +9,8 @@ import 'package:biatec_authenticator/shell/shell_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../lock/support.dart';
+
 import 'app_shell_test.dart' show ShellRig;
 
 /// Fails its first refresh, like a keystore that is not ready yet.
@@ -144,6 +146,7 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(AuthenticatorApp(
       config: AppConfig.resolve(''),
+      lock: await unlockedLock(),
       approvals: rig.approvals,
       settings: rig.settings.services,
       shell: rig.shell,

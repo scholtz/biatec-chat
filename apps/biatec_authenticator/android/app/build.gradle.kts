@@ -63,7 +63,7 @@ kotlin {
 }
 
 dependencies {
-    // The strong-biometric prompt of the two-factor vault (VaultPlugin), the same library local_auth uses.
+    // The strong-biometric prompt of the two-factor vault (VaultPlugin), also used by the biometric lock (BiometricChannel).
     implementation("androidx.biometric:biometric:1.1.0")
 }
 

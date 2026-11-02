@@ -18,6 +18,8 @@ import 'package:biatec_authenticator/shell/shell_controller.dart';
 import 'package:biatec_authenticator/ui/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../lock/support.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -87,6 +89,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(
           home: AppGate(
         config: AppConfig.resolve(''),
+        lock: await unlockedLock(),
         approvals: rig.approvalsWith(store),
         settings: rig.settings.services,
         shell: rig.shell,
@@ -121,6 +124,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(
           home: AppGate(
         config: AppConfig.resolve(''),
+        lock: await unlockedLock(),
         approvals: rig.approvals,
         settings: rig.settings.services,
         shell: rig.shell,
@@ -143,6 +147,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(
           home: AppGate(
         config: AppConfig.resolve(''),
+        lock: await unlockedLock(),
         approvals: rig.approvalsWith(store),
         settings: rig.settings.services,
         shell: rig.shell,
@@ -165,6 +170,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(
           home: AppGate(
         config: AppConfig.resolve(''),
+        lock: await unlockedLock(),
         approvals: rig.approvalsWith(store),
         settings: rig.settings.services,
         shell: rig.shell,

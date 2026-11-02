@@ -19,6 +19,8 @@ import 'package:biatec_authenticator/shell/shell_controller.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../lock/support.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -277,6 +279,7 @@ void main() {
       );
       await tester.pumpWidget(AuthenticatorApp(
           config: AppConfig.resolve(''),
+          lock: await unlockedLock(),
           approvals: services,
           push: push,
           shell: shell));
@@ -301,6 +304,7 @@ void main() {
       final messenger = GlobalKey<ScaffoldMessengerState>();
       await tester.pumpWidget(AuthenticatorApp(
           config: AppConfig.resolve(''),
+          lock: await unlockedLock(),
           approvals: services,
           shell: shell,
           messengerKey: messenger));

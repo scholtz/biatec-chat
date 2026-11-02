@@ -176,6 +176,17 @@ void main() {
       expect(c.recoveryCodeToShow, 'AAAA-BBBB-CCCC');
     });
 
+    test('forgetting the recovery code drops it from memory, and it can be fetched again',
+        () async {
+      final c = build((_) => created(activeAt: t0.millisecondsSinceEpoch ~/ 1000));
+      await c.enroll(loginToken: 'login-alice', approvedByKid: 'alice-device');
+      expect(c.recoveryCodeToShow, 'AAAA-BBBB-CCCC');
+      c.forgetRecoveryCode();
+      expect(c.recoveryCodeToShow, isNull);
+      await c.loadRecoveryCode();
+      expect(c.recoveryCodeToShow, 'AAAA-BBBB-CCCC');
+    });
+
     test('approved by an active device is active at once', () async {
       final c =
           build((_) => created(activeAt: t0.millisecondsSinceEpoch ~/ 1000));

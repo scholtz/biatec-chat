@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../clients/clients_screen.dart';
 import '../config.dart';
 import '../keys/device_key_store.dart';
+import '../lock/lock_controller.dart';
 import '../security/settings_controller.dart';
 import '../security/settings_frame.dart';
 import '../shell/tab_reload.dart';
@@ -84,6 +85,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   List<Widget> _security(BuildContext context, SettingsController c) {
+    final lock = LockScope.maybeOf(context);
     if (!widget.services.enabled) {
       return const [
         Padding(
@@ -133,20 +135,14 @@ class _SettingsScreenState extends State<SettingsScreen>
         final s = c.settings!;
         final enabled = !c.busy;
         return [
-          SwitchListTile(
-            key: const Key('biometric'),
-            title: const Text('Require a biometric check'),
-            subtitle: const Text('Asked before this device approves. '
-                'Turning it off needs approval on this device.'),
-            value: s.biometricRequired,
-            onChanged: enabled
-                ? (v) => applyWithConfirm(
-                    context, c, s, {'biometric_required': v},
-                    title: 'Turn off the biometric check?',
-                    message: 'This device will approve without asking for your '
-                        'fingerprint or face first.',
-                    confirmLabel: 'Turn off')
-                : null,
+          // The biometric check is no longer a setting: the app opens and approves only with a fingerprint or face.
+          const ListTile(
+            key: Key('biometric'),
+            leading: Icon(Icons.fingerprint),
+            title: Text('Biometric check'),
+            subtitle: Text(
+                'Always required. Your fingerprint or face opens the '
+                'app and confirms every approval. It cannot be turned off.'),
           ),
           ListTile(
             key: const Key('threshold'),
@@ -185,6 +181,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     confirmLabel: 'Turn off')
                 : null,
           ),
+          if (lock != null) _LockDelayTile(lock: lock),
           // Inside this tab's own stack, so back returns here and the bar stays.
           ListTile(
             key: const Key('trusted-clients'),
@@ -343,6 +340,71 @@ class _DeviceKeyTileState extends State<_DeviceKeyTile> {
           subtitle: Text(text),
         );
       },
+    );
+  }
+}
+
+/// When the app locks after it was left. A change asks for a fresh biometric first.
+class _LockDelayTile extends StatelessWidget {
+  const _LockDelayTile({required this.lock});
+
+  final LockController lock;
+
+  Future<void> _choose(BuildContext context) async {
+    final chosen = await showModalBottomSheet<LockDelay>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.l, 0, AppSpacing.l, AppSpacing.s),
+                child: Semantics(
+                  header: true,
+                  child: Text('Lock the app',
+                      style: Theme.of(context).textTheme.titleLarge),
+                ),
+              ),
+              for (final d in LockDelay.values)
+                ListTile(
+                  key: Key('delay-${d.name}'),
+                  title: Text(d.label),
+                  selected: d == lock.delay,
+                  trailing: d == lock.delay
+                      ? const Icon(Icons.check, semanticLabel: 'Chosen')
+                      : null,
+                  onTap: () => Navigator.of(context).pop(d),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (chosen == null || chosen == lock.delay || !context.mounted) return;
+    final saved = await lock.setDelay(chosen);
+    if (!saved && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Biometric check did not pass. Nothing changed.')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: lock,
+      builder: (context, _) => ListTile(
+        key: const Key('lock-delay'),
+        leading: const Icon(Icons.lock_clock),
+        title: const Text('Lock the app'),
+        subtitle: Text('${lock.delay.label} after you leave it. It also locks '
+            'when the screen locks and after 2 minutes without a touch.'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => _choose(context),
+      ),
     );
   }
 }

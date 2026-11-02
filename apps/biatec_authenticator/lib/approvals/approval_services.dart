@@ -21,7 +21,9 @@ class ApprovalServices {
     DateTime Function()? clock,
   }) : clock = clock ?? DateTime.now;
 
-  factory ApprovalServices.fromConfig(AppConfig config) {
+  /// [gate] is the app's lock: every fresh biometric (an approval, a settings change) goes through it, so none is asked while the app is locked.
+  factory ApprovalServices.fromConfig(AppConfig config,
+      {required BiometricGate gate}) {
     const keys = PlatformDeviceKeyStore();
     final enrollment = ObservableEnrollmentStore(SecureEnrollmentStore());
     // Every device call proves possession of the device key, not only the bearer token (BCHAT-030).
@@ -30,7 +32,7 @@ class ApprovalServices {
       client: ApprovalClient(baseUrl: config.oidcBaseUrl, proof: proof),
       keys: keys,
       enrollment: enrollment,
-      gate: LocalAuthBiometricGate(),
+      gate: gate,
       history: SecureHistoryStore(),
       proof: proof,
     );
@@ -38,6 +40,7 @@ class ApprovalServices {
 
   final ApprovalClient client;
   final DeviceKeyStore keys;
+
   /// The app learns of a sign-out from it, and it keeps an enrollment whose write failed, so everything that reads the enrollment shares this one.
   final ObservableEnrollmentStore enrollment;
   final BiometricGate gate;

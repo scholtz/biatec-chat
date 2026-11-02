@@ -18,6 +18,8 @@ import 'package:biatec_authenticator/ui/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../lock/support.dart';
+
 import 'app_shell_test.dart' show ShellRig, inBar;
 
 HistoryEntry _entry(String id) => HistoryEntry(
@@ -131,13 +133,15 @@ void main() {
   testWidgets('the settings tabs share one controller and load once',
       (tester) async {
     final rig = ShellRig();
-    await rig.pump(tester);
+    await rig.pump(tester, size: const Size(400, 2400));
     final before = rig.settings.oidc.deviceListCalls;
     for (final tab in ['Devices', 'Settings']) {
       await tester.tap(inBar(tab));
       await tester.pumpAndSettle();
     }
     // The Trusted clients screen inside Settings shares it too.
+    await tester.ensureVisible(find.byKey(const Key('trusted-clients')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('trusted-clients')));
     await tester.pumpAndSettle();
     expect(rig.settings.oidc.deviceListCalls - before, 1);
@@ -147,8 +151,10 @@ void main() {
   testWidgets('the Trusted clients screen reloads with its Settings tab',
       (tester) async {
     final rig = ShellRig();
-    await rig.pump(tester);
+    await rig.pump(tester, size: const Size(400, 2400));
     await tester.tap(inBar('Settings'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('trusted-clients')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('trusted-clients')));
     await tester.pumpAndSettle();
@@ -354,6 +360,7 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(AuthenticatorApp(
       config: AppConfig.resolve(''),
+      lock: await unlockedLock(),
       approvals: rig.approvalsWith(store),
       settings: rig.settings.services,
       shell: rig.shell,
@@ -389,6 +396,7 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(AuthenticatorApp(
       config: AppConfig.resolve(''),
+      lock: await unlockedLock(),
       approvals: rig.approvals,
       settings: rig.settings.services,
       shell: rig.shell,
