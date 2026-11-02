@@ -313,6 +313,54 @@ void main() {
     });
   });
 
+  group('late answers and prompts in flight', () {
+    test('a late answer of an earlier prompt is not applied to a newer attempt',
+        () async {
+      final r = make();
+      final first = Completer<BiometricOutcome>();
+      r.auth.pending = first;
+      final a = r.lock.unlock();
+      await Future<void>.delayed(Duration.zero);
+      r.lock.lock(); // the screen turned off under prompt A
+      final second = Completer<BiometricOutcome>();
+      r.auth.pending = second;
+      final b = r.lock.unlock();
+      await Future<void>.delayed(Duration.zero);
+      expect(r.lock.state, AppLockState.unlocking);
+      first.complete(BiometricOutcome.success); // stale
+      await a;
+      expect(r.lock.state, AppLockState.unlocking,
+          reason: 'a stale success opens nothing');
+      second.complete(BiometricOutcome.failed);
+      await b;
+      expect(r.lock.state, AppLockState.locked);
+    });
+
+    test(
+        'leaving for the system prompt does not lock under a re-authentication',
+        () async {
+      final r = make();
+      final lock = await unlockedWith(r, LockDelay.immediately);
+      r.auth.pending = Completer<BiometricOutcome>();
+      final asking = lock.reauthenticate('Approve this action');
+      await Future<void>.delayed(Duration.zero);
+      lock.appPaused();
+      lock.appResumed();
+      expect(lock.state, AppLockState.unlocked);
+      r.auth.pending!.complete(BiometricOutcome.success);
+      expect(await asking, isTrue);
+    });
+
+    test('the last try is forgotten when the app locks', () async {
+      final r = make();
+      r.auth.outcome = BiometricOutcome.failed;
+      await r.lock.unlock();
+      expect(r.lock.lastOutcome, BiometricOutcome.failed);
+      r.lock.lock();
+      expect(r.lock.lastOutcome, isNull);
+    });
+  });
+
   group('the lock delay setting', () {
     test('is saved, and read back at the next start', () async {
       final r = make();

@@ -299,6 +299,13 @@ class EnrollmentController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Drops the recovery code from memory without acknowledging it (the app locked). It is fetched again when the screen needs it.
+  void forgetRecoveryCode() {
+    if (_recoveryCode == null) return;
+    _recoveryCode = null;
+    notifyListeners();
+  }
+
   /// Retry after a failed recovery code fetch.
   Future<void> loadRecoveryCode() => _ensureRecoveryCode();
 

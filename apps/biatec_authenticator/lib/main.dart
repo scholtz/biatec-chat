@@ -41,8 +41,8 @@ Future<void> main() async {
       ApprovalServices.fromConfig(config, gate: LockBiometricGate(lock));
   final firebase = FirebasePushConfig.fromEnvironment();
   if (firebase == null) {
-    runApp(
-        AuthenticatorApp(config: config, approvals: approvals, theme: theme));
+    runApp(AuthenticatorApp(
+        config: config, approvals: approvals, theme: theme, lock: lock));
     return;
   }
   final messenger = GlobalKey<ScaffoldMessengerState>();

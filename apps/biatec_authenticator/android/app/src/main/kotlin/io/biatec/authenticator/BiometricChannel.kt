@@ -34,6 +34,9 @@ class BiometricChannel(private val context: Context) : FlutterPlugin, ActivityAw
     private var activity: FragmentActivity? = null
     private var receiver: BroadcastReceiver? = null
 
+    // One prompt at a time: a second request while one is open is answered at once, so two prompts are never stacked.
+    private val prompting = AtomicBoolean(false)
+
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         val ch = MethodChannel(binding.binaryMessenger, "io.biatec.authenticator/biometric")
         ch.setMethodCallHandler(this)
@@ -44,11 +47,12 @@ class BiometricChannel(private val context: Context) : FlutterPlugin, ActivityAw
                 if (intent.action == Intent.ACTION_SCREEN_OFF) ch.invokeMethod("screenLocked", null)
             }
         }
-        context.registerReceiver(receiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
+        // Not exported: only the system's own screen-off broadcast is wanted.
+        ContextCompat.registerReceiver(context, receiver, IntentFilter(Intent.ACTION_SCREEN_OFF), ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        receiver?.let { context.unregisterReceiver(it) }
+        receiver?.let { try { context.unregisterReceiver(it) } catch (e: IllegalArgumentException) { /* already gone */ } }
         receiver = null
         channel?.setMethodCallHandler(null)
         channel = null
@@ -80,9 +84,10 @@ class BiometricChannel(private val context: Context) : FlutterPlugin, ActivityAw
             "none_enrolled" -> return result.success("none_enrolled")
             "no_hardware", "unavailable" -> return result.success("unavailable")
         }
+        if (!prompting.compareAndSet(false, true)) return result.success("failed")
         // The answer is sent once, whatever the prompt does afterwards.
         val done = AtomicBoolean(false)
-        fun answer(value: String) { if (done.compareAndSet(false, true)) result.success(value) }
+        fun answer(value: String) { if (done.compareAndSet(false, true)) { prompting.set(false); result.success(value) } }
         val info = BiometricPrompt.PromptInfo.Builder()
             .setTitle(reason)
             .setNegativeButtonText("Cancel")

@@ -181,7 +181,11 @@ void main() {
           contains('gate.confirm('));
       expect(read('lib/security/settings_controller.dart'),
           contains('gate.confirm('));
-      expect(read('lib/main.dart'), contains('LockBiometricGate(lock)'));
+      final main = read('lib/main.dart');
+      expect(main, contains('LockBiometricGate(lock)'));
+      expect('lock: lock'.allMatches(main).length, 2,
+          reason: 'both ways of starting the app share the one lock');
+      expect(read('lib/shell/app_gate.dart'), contains('forgetRecoveryCode'));
     });
 
     test('the channel is wired on both platforms', () {

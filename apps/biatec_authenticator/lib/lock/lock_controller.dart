@@ -107,6 +107,19 @@ class LockController extends ChangeNotifier {
   DateTime? _backgroundAt;
   bool _disposed = false;
 
+  /// Counts unlock attempts, so a late answer of an earlier prompt is never applied to a newer attempt.
+  int _attempt = 0;
+
+  /// Re-authentication prompts in flight: the app leaving the screen for the system prompt is not a reason to lock under them.
+  int _reauthenticating = 0;
+
+  /// How long a prompt may stay open before it counts as failed (the screen it was on can be destroyed under it).
+  static const promptTimeout = Duration(minutes: 2);
+
+  Future<BiometricOutcome> _ask(String reason) => authenticator
+      .authenticate(reason)
+      .timeout(promptTimeout, onTimeout: () => BiometricOutcome.failed);
+
   /// Runs [hook] each time the app locks, to clear decrypted seeds, codes and anything else the secure area holds in memory. Returns what removes it.
   VoidCallback addLockListener(VoidCallback hook) {
     _listeners.add(hook);
@@ -142,8 +155,9 @@ class LockController extends ChangeNotifier {
       return;
     }
     _set(AppLockState.unlocking);
+    final attempt = ++_attempt;
     final status = await authenticator.status();
-    if (_disposed) return;
+    if (_disposed || attempt != _attempt) return;
     if (status == BiometricStatus.noneEnrolled ||
         status == BiometricStatus.noHardware) {
       _lastOutcome = null;
@@ -155,9 +169,8 @@ class LockController extends ChangeNotifier {
       _set(AppLockState.locked);
       return;
     }
-    final outcome =
-        await authenticator.authenticate('Unlock Biatec Authenticator');
-    if (_disposed) return;
+    final outcome = await _ask('Unlock Biatec Authenticator');
+    if (_disposed || attempt != _attempt) return;
     // The state may have moved while the prompt was open (the screen locked, biometrics changed): that wins over a late success.
     if (_state != AppLockState.unlocking) return;
     _lastOutcome = outcome;
@@ -179,6 +192,8 @@ class LockController extends ChangeNotifier {
   void lock() {
     if (_disposed) return;
     _backgroundAt = null;
+    _lastOutcome = null;
+    _attempt++;
     final wasOpen = _state != AppLockState.locked;
     if (_state == AppLockState.biometricsChanged ||
         _state == AppLockState.compromised) {
@@ -204,7 +219,13 @@ class LockController extends ChangeNotifier {
   /// A fresh biometric for one action (an approval, deleting an account, a backup, a security setting). True only on success. A refusal does not lock the app, but nothing is done; while the app is locked it is always false.
   Future<bool> reauthenticate(String reason) async {
     if (_state != AppLockState.unlocked) return false;
-    final outcome = await authenticator.authenticate(reason);
+    _reauthenticating++;
+    final BiometricOutcome outcome;
+    try {
+      outcome = await _ask(reason);
+    } finally {
+      _reauthenticating--;
+    }
     if (outcome != BiometricOutcome.success) return false;
     // Locked while the prompt was open: the success does not count.
     if (_state != AppLockState.unlocked) return false;
@@ -221,6 +242,7 @@ class LockController extends ChangeNotifier {
       // The prompt is the system's own; leaving mid-prompt is a cancel.
       return;
     }
+    if (_reauthenticating > 0) return;
     if (_delay == LockDelay.immediately) lock();
   }
 
@@ -228,7 +250,11 @@ class LockController extends ChangeNotifier {
   void appResumed() {
     final at = _backgroundAt;
     _backgroundAt = null;
-    if (at == null || _state == AppLockState.unlocking) return;
+    if (at == null ||
+        _state == AppLockState.unlocking ||
+        _reauthenticating > 0) {
+      return;
+    }
     if (clock().difference(at) >= _delay.duration) lock();
   }
 

@@ -331,7 +331,9 @@ class SettingsController extends ChangeNotifier {
       // An inactive device cannot loosen: said before any prompt.
       if (loosening) _checkActive(record);
       // A fresh biometric for any change to a security setting, tightening included (Secure Area rule 4). One prompt covers the signed consent of a loosening.
-      if (!await gate.confirm('Change a security setting')) {
+      if (!await gate.confirm(loosening
+          ? 'Approve this settings change'
+          : 'Change a security setting')) {
         throw const ApprovalException('Biometric check did not pass.');
       }
       ConsentSettings next;

@@ -56,6 +56,7 @@ enum _Startup { loading, ready, stuck, unreadable }
 class _AppGateState extends State<AppGate> {
   late final EnrollmentController _enrollment;
   late AppLifecycleListener _lifecycle;
+  VoidCallback? _removeLockHook;
   Timer? _timeout;
   _Startup _startup = _Startup.loading;
 
@@ -81,6 +82,9 @@ class _AppGateState extends State<AppGate> {
   void initState() {
     super.initState();
     _enrollment = widget.enrollment ?? _build();
+    // Locking clears what the secure area holds in memory: the recovery code, which is shown once.
+    _removeLockHook =
+        widget.lock.addLockListener(_enrollment.forgetRecoveryCode);
     // Coming back to the app is when a delay that ran out becomes visible, or a cancelled enrollment is noticed.
     _lifecycle = AppLifecycleListener(
       // Hidden comes first on desktop and Android; paused on iOS. Either marks the start of a break.
@@ -179,6 +183,7 @@ class _AppGateState extends State<AppGate> {
   @override
   void dispose() {
     _timeout?.cancel();
+    _removeLockHook?.call();
     _lifecycle.dispose();
     _store.removeListener(_onStoreChanged);
     _enrollment.removeListener(_onPhase);

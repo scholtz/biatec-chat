@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../lock/biometric_authenticator.dart';
 import '../lock/lock_controller.dart';
 import '../lock/lock_screens.dart';
 
@@ -33,8 +34,11 @@ class _AppLockGateState extends State<AppLockGate> {
       onPause: widget.lock.appPaused,
       onResume: () {
         widget.lock.appResumed();
-        // Back to a locked app: ask for the fingerprint straight away.
-        if (widget.lock.state == AppLockState.locked) widget.lock.unlock();
+        // Back to a locked app: ask for the fingerprint straight away (not after a lockout, which only waiting ends).
+        if (widget.lock.state == AppLockState.locked &&
+            widget.lock.lastOutcome != BiometricOutcome.lockout) {
+          widget.lock.unlock();
+        }
       },
     );
     // A start is a locked state: ask once the first frame is up.
