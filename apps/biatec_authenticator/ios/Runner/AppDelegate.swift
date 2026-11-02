@@ -55,5 +55,9 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "KeystorePlugin") {
       KeystorePlugin.register(with: registrar)
     }
+    // The two-factor vault keys (Secure Enclave, biometric-bound) are behind io.biatec.authenticator/vault.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "VaultPlugin") {
+      VaultPlugin.register(with: registrar)
+    }
   }
 }

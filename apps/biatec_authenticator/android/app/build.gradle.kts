@@ -62,6 +62,11 @@ kotlin {
     }
 }
 
+dependencies {
+    // The strong-biometric prompt of the two-factor vault (VaultPlugin), the same library local_auth uses.
+    implementation("androidx.biometric:biometric:1.1.0")
+}
+
 flutter {
     source = "../.."
 }
