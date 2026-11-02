@@ -1,7 +1,7 @@
 ---
 id: T-219
 title: "Authenticator: settings tab, about and final accessibility polish"
-status: in-progress
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-214, T-215, T-216, T-217, T-218, T-225]
@@ -68,6 +68,8 @@ Filled in by the agent when it moves the task to `review`.
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
 
+- 2026-11-02 12:11 · approve · PR #380 merged into main @ 4fb5382 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-24 12:00 · claude · (new) → blocked · created from the authenticator redesign request
@@ -75,3 +77,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-24 12:05 · scholtz · taken · status stays blocked
 - 2026-11-01 21:20 · kanban-board · blocked → backlog · blockers done: T-214, T-215, T-216, T-217, T-218, T-225
 - 2026-11-02 09:00 · scholtz · backlog → in-progress · claimed by session-20261102-0900 on task/T-219
+- 2026-11-02 12:11 · user · in-progress → done · PR #380 merged into main @ 4fb5382 (synced by kanban-sync)
