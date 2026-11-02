@@ -62,6 +62,16 @@ Write the failing test first for every security rule. Never log, print or put in
 
 Filled in by the agent when it moves the task to `review`.
 
+Implemented in PR #379, branch task/T-223 (squash merged).
+
+- `lib/totp/vault/`: `VaultKeyStore` (+ `PlatformVaultKeyStore`, channel `io.biatec.authenticator/vault`), `TotpVault` (add, list, readSecret, update, delete, reorder, incrementCounter), `FileVaultStorage` (atomic), `SecureVaultVersionStore` (rollback counter). Failures: `VaultBiometricsChanged`, `VaultAuthFailed`, `VaultCorrupt`, `VaultRolledBack`.
+- Native: `VaultPlugin.kt` (Keystore AES-256-GCM, StrongBox if present, secret key biometric-bound, strong only, invalidated on enrollment) and `VaultPlugin.swift` (Secure Enclave ECIES, `biometryCurrentSet`, `ThisDeviceOnly`; the AAD hash is a checked plaintext prefix because ECIES has no AAD input).
+- For T-224 and T-222: the vault is constructed with `TotpVault(keys: PlatformVaultKeyStore(), storage: FileVaultStorage(File(<app support dir>/vault.bin)), versions: SecureVaultVersionStore())`; no path_provider dependency was added, the caller supplies the file. `list()` and `incrementCounter` need no biometric; `readSecret` does (wipe the returned `OtpAccount`).
+- Not run: the Kotlin and Swift code on a device; CI compiled the Android side only.
+- Tests: 640 pass; 31 new in `test/totp/vault/` (fake key store with real AES-GCM). One review round, user capped and merged.
+
+**Unblocks:** none by itself; T-224 still waits on T-222.
+
 ## Review
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
