@@ -64,25 +64,12 @@ class _ClientCard extends StatelessWidget {
   final ConsentSettings account;
   final SettingsController controller;
 
-  /// Applies [change], first asking in a sheet when it loosens something.
   Future<void> _apply(BuildContext context, Map<String, Object?> change,
-      {required String title,
-      required String message,
-      required String confirmLabel}) async {
-    if (isLoosening(account, change)) {
-      final yes = await confirmSheet(
-        context,
-        title: title,
-        message: message,
-        confirmLabel: confirmLabel,
-        cancelLabel: 'Keep as it is',
-        biometric: true,
-        icon: Icons.fingerprint,
-      );
-      if (!yes) return;
-    }
-    await controller.apply(change);
-  }
+          {required String title,
+          required String message,
+          required String confirmLabel}) =>
+      applyWithConfirm(context, controller, account, change,
+          title: title, message: message, confirmLabel: confirmLabel);
 
   @override
   Widget build(BuildContext context) {

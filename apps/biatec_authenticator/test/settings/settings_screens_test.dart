@@ -8,9 +8,8 @@ import 'package:biatec_authenticator/config.dart';
 import 'package:biatec_authenticator/devices/devices_screen.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/main.dart';
-import 'package:biatec_authenticator/security/security_screen.dart';
+import 'package:biatec_authenticator/settings/settings_screen.dart';
 import 'package:biatec_authenticator/security/settings_controller.dart';
-import 'package:biatec_authenticator/security/settings_frame.dart';
 import 'package:biatec_authenticator/shell/tab_reload.dart';
 import 'package:biatec_authenticator/ui/ui.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
@@ -18,6 +17,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support.dart';
+
+Widget _settings(SettingsServices services) =>
+    SettingsScreen(services: services, config: AppConfig.resolve(''));
 
 Future<void> _open(WidgetTester tester, Widget screen) async {
   tester.view.physicalSize = const Size(800, 2400);
@@ -31,8 +33,8 @@ void main() {
   group('security settings', () {
     testWidgets('shows the current settings', (tester) async {
       final rig = SettingsRig();
-      await _open(tester, SecurityScreen(services: rig.services));
-      expect(find.text('Security settings'), findsOneWidget);
+      await _open(tester, _settings(rig.services));
+      expect(find.text('Security'), findsOneWidget);
       expect(find.textContaining('1000.00 EUR'), findsOneWidget);
       expect(
           tester
@@ -44,8 +46,16 @@ void main() {
     testWidgets('turning the biometric requirement off asks this device',
         (tester) async {
       final rig = SettingsRig();
-      await _open(tester, SecurityScreen(services: rig.services));
+      await _open(tester, _settings(rig.services));
       await tester.tap(find.byKey(const Key('biometric')));
+      await tester.pumpAndSettle();
+      expect(rig.gate.asked, 0, reason: 'the sheet asks first');
+      await tester.tap(find.byKey(const Key('keep')));
+      await tester.pumpAndSettle();
+      expect(rig.oidc.settings['biometric_required'], isTrue);
+      await tester.tap(find.byKey(const Key('biometric')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-change')));
       await tester.pumpAndSettle();
       expect(rig.gate.asked, 1);
       expect(rig.oidc.settings['biometric_required'], isFalse);
@@ -55,7 +65,7 @@ void main() {
     testWidgets('blocking unverified clients is tightening and needs no check',
         (tester) async {
       final rig = SettingsRig();
-      await _open(tester, SecurityScreen(services: rig.services));
+      await _open(tester, _settings(rig.services));
       await tester.tap(find.byKey(const Key('block-unverified')));
       await tester.pumpAndSettle();
       expect(rig.gate.asked, 0);
@@ -66,7 +76,7 @@ void main() {
     testWidgets('lowering the threshold applies at once, raising is signed',
         (tester) async {
       final rig = SettingsRig();
-      await _open(tester, SecurityScreen(services: rig.services));
+      await _open(tester, _settings(rig.services));
 
       await tester.tap(find.byKey(const Key('threshold-change')));
       await tester.pumpAndSettle();
@@ -89,7 +99,7 @@ void main() {
     testWidgets('an invalid amount is explained in text and nothing is sent',
         (tester) async {
       final rig = SettingsRig();
-      await _open(tester, SecurityScreen(services: rig.services));
+      await _open(tester, _settings(rig.services));
       await tester.tap(find.byKey(const Key('threshold-change')));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const Key('eur-field')), 'lots');
@@ -102,8 +112,10 @@ void main() {
     testWidgets('a refused biometric check is shown as text', (tester) async {
       final rig = SettingsRig();
       rig.gate.pass = false;
-      await _open(tester, SecurityScreen(services: rig.services));
+      await _open(tester, _settings(rig.services));
       await tester.tap(find.byKey(const Key('biometric')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-change')));
       await tester.pumpAndSettle();
       expect(find.text('Biometric check did not pass.'), findsOneWidget);
       expect(find.text('Problem'), findsOneWidget);
@@ -113,7 +125,7 @@ void main() {
     testWidgets('offline shows a retry that recovers', (tester) async {
       final oidc = FakeSettingsOidc()..offline = true;
       final rig = SettingsRig(oidc: oidc);
-      await _open(tester, SecurityScreen(services: rig.services));
+      await _open(tester, _settings(rig.services));
       expect(find.byKey(const Key('unavailable')), findsOneWidget);
       oidc.offline = false;
       await tester.tap(find.text('Try again'));
@@ -127,13 +139,14 @@ void main() {
       final rig = SettingsRig(oidc: oidc);
       await _open(
           tester,
-          SecurityScreen(
-              services: rig.services, server: 'https://stage.oidc.biatec.io'));
+          SettingsScreen(
+              services: rig.services,
+              config: AppConfig.resolve('https://stage.oidc.biatec.io')));
       expect(find.byKey(const Key('unavailable')), findsOneWidget);
       expect(
           find.descendant(
               of: find.byKey(const Key('oidc-server')),
-              matching: find.text('https://stage.oidc.biatec.io')),
+              matching: find.textContaining('https://stage.oidc.biatec.io')),
           findsOneWidget);
     });
 
@@ -141,7 +154,7 @@ void main() {
         'a change made while a quiet reload runs goes through and is not overwritten',
         (tester) async {
       final rig = SettingsRig();
-      await _open(tester, SecurityScreen(services: rig.services));
+      await _open(tester, _settings(rig.services));
       final c = rig.services.controller();
       await c.load();
       expect(c.settings!.biometricRequired, isTrue);
@@ -159,17 +172,15 @@ void main() {
       final rig = SettingsRig();
       final reload = ValueNotifier(0);
       await _open(
-          tester,
-          TabReload(
-              reload: reload, child: SecurityScreen(services: rig.services)));
-      final before = tester.state(find.byType(SettingsFrame));
+          tester, TabReload(reload: reload, child: _settings(rig.services)));
+      final before = tester.state(find.byType(SettingsScreen));
       rig.oidc.settings['biometric_required'] = false;
       reload.value++;
       await tester.pump();
       expect(find.byType(LoadingSkeleton), findsNothing,
           reason: 'the loaded screen stays while it reloads');
       await tester.pumpAndSettle();
-      expect(tester.state(find.byType(SettingsFrame)), same(before));
+      expect(tester.state(find.byType(SettingsScreen)), same(before));
       expect(
           tester
               .widget<SwitchListTile>(find.byKey(const Key('biometric')))
@@ -294,7 +305,7 @@ void main() {
       for (final screen in <Widget>[
         DevicesScreen(services: off),
         ClientsScreen(services: off),
-        SecurityScreen(services: off),
+        _settings(off),
       ]) {
         await _open(tester, screen);
         expect(find.byKey(const Key('not-available')), findsOneWidget);
@@ -342,7 +353,7 @@ void main() {
 
       for (final (label, type) in [
         ('Devices', DevicesScreen),
-        ('Settings', SecurityScreen),
+        ('Settings', SettingsScreen),
       ]) {
         await tester.tap(find.descendant(
             of: find.byType(NavigationBar), matching: find.text(label)));
@@ -357,7 +368,7 @@ void main() {
       await tester.pageBack();
       await tester.pumpAndSettle();
       expect(find.byType(ClientsScreen), findsNothing);
-      expect(find.byType(SecurityScreen), findsOneWidget);
+      expect(find.byType(SettingsScreen), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
 

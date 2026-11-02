@@ -9,6 +9,7 @@ import 'security/pinning/pinned_http.dart';
 import 'security/pinning/pins.dart';
 import 'security/secure_storage.dart';
 import 'security/settings_controller.dart';
+import 'settings/theme_controller.dart';
 import 'shell/app_gate.dart';
 import 'shell/shell_controller.dart';
 import 'theme.dart';
@@ -16,7 +17,8 @@ import 'theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Items stored before the keychain accessibility was set are rewritten once so they stay on this device (BCHAT-009).
-  await rewriteWithDeviceBoundAccessibility().timeout(const Duration(seconds: 3), onTimeout: () => 0);
+  await rewriteWithDeviceBoundAccessibility()
+      .timeout(const Duration(seconds: 3), onTimeout: () => 0);
   final AppConfig config;
   try {
     config = AppConfig.fromEnvironment();
@@ -27,10 +29,14 @@ Future<void> main() async {
     runApp(ConfigErrorApp(message: e.message));
     return;
   }
+  // The saved appearance is read before the first frame, so a saved Dark is not painted Light first. A slow keystore does not hold the app.
+  final theme = ThemeController();
+  await theme.load().timeout(const Duration(seconds: 1), onTimeout: () {});
   final approvals = ApprovalServices.fromConfig(config);
   final firebase = FirebasePushConfig.fromEnvironment();
   if (firebase == null) {
-    runApp(AuthenticatorApp(config: config, approvals: approvals));
+    runApp(
+        AuthenticatorApp(config: config, approvals: approvals, theme: theme));
     return;
   }
   final messenger = GlobalKey<ScaffoldMessengerState>();
@@ -43,6 +49,7 @@ Future<void> main() async {
   runApp(AuthenticatorApp(
       config: config,
       approvals: approvals,
+      theme: theme,
       push: push,
       shell: shell,
       messengerKey: messenger));
@@ -84,9 +91,13 @@ class AuthenticatorApp extends StatefulWidget {
     this.enrollment,
     this.navigatorKey,
     this.messengerKey,
+    this.theme,
   });
 
   final AppConfig config;
+
+  /// The user's system, light or dark choice; made (and saved on this phone) when not given.
+  final ThemeController? theme;
 
   /// Built from [config] when not given.
   final ApprovalServices? approvals;
@@ -115,31 +126,45 @@ class _AuthenticatorAppState extends State<AuthenticatorApp> {
   late final SettingsServices _settings =
       widget.settings ?? SettingsServices.fromConfig(widget.config, _approvals);
   late final ShellController _shell = widget.shell ?? ShellController();
+  late final ThemeController _theme = widget.theme ?? ThemeController();
+
+  @override
+  void initState() {
+    super.initState();
+    // A controller handed in was loaded by the caller (main reads it before the first frame).
+    if (widget.theme == null) _theme.load();
+  }
 
   @override
   void dispose() {
     if (widget.shell == null) _shell.dispose();
+    if (widget.theme == null) _theme.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final push = widget.push;
-    return MaterialApp(
-      navigatorKey: widget.navigatorKey,
-      scaffoldMessengerKey: widget.messengerKey,
-      navigatorObservers: [if (push != null) push],
-      title: 'Biatec Authenticator',
-      theme: buildTheme(Brightness.light),
-      darkTheme: buildTheme(Brightness.dark),
-      builder: largeTypeBuilder,
-      home: AppGate(
-        config: widget.config,
-        approvals: _approvals,
-        settings: _settings,
-        shell: _shell,
-        push: push,
-        enrollment: widget.enrollment,
+    return ListenableBuilder(
+      listenable: _theme,
+      builder: (context, _) => MaterialApp(
+        navigatorKey: widget.navigatorKey,
+        scaffoldMessengerKey: widget.messengerKey,
+        navigatorObservers: [if (push != null) push],
+        title: 'Biatec Authenticator',
+        theme: buildTheme(Brightness.light),
+        darkTheme: buildTheme(Brightness.dark),
+        themeMode: _theme.mode,
+        builder: (context, child) => ThemeScope(
+            controller: _theme, child: largeTypeBuilder(context, child)),
+        home: AppGate(
+          config: widget.config,
+          approvals: _approvals,
+          settings: _settings,
+          shell: _shell,
+          push: push,
+          enrollment: widget.enrollment,
+        ),
       ),
     );
   }

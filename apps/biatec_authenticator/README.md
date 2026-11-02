@@ -163,7 +163,7 @@ settings) are skipped there, because CI starts no mock.
 
 ## Devices, trusted clients and security settings (T-084)
 
-- `lib/devices/`, `lib/clients/`, `lib/security/`: the three screens, one `SettingsController` (`lib/security/settings_controller.dart`)
+- `lib/devices/`, `lib/clients/`, `lib/settings/`: the screens (the Settings tab is `lib/settings/settings_screen.dart`), one `SettingsController` (`lib/security/settings_controller.dart`)
   and `SettingsClient` (`GET /devices`, `POST /devices/{kid}/cancel`, `GET` and `PUT /devices/settings`, all with
   `Authorization: Device <token>`).
 - Tightening (lower a threshold, turn a requirement on) applies at once. Loosening (raise a threshold, turn biometric, blocking or
@@ -174,3 +174,26 @@ settings) are skipped there, because CI starts no mock.
 - Tests: `flutter test test/settings` (scripted OIDC); `test/settings/mock_oidc_settings_contract_test.dart` runs against a started mock
   (`MOCK_OIDC_URL`, fresh mock). The mock's side is tested by `pnpm --filter mock-oidc test`.
 - `flutter analyze` and `flutter test` run in CI (see "Checks"); the contract test needs a started mock and is skipped there.
+
+## Navigation structure (T-219)
+
+A bottom navigation bar (a side rail when the window is short or wide) holds the five top-level destinations, in this order. Each has its own
+navigator, so back goes up inside a tab first, then to Codes, and only then leaves the app (`lib/shell/`).
+
+| Tab | Root screen | What is inside |
+| --- | --- | --- |
+| Codes | `lib/codes/` | Two-factor codes (T-224). |
+| Approvals | `lib/approvals/pending_screen.dart` | Open requests, opening a request card, the result. |
+| History | `lib/approvals/history_screen.dart` | Past decisions by day, a receipt for each. |
+| Devices | `lib/devices/devices_screen.dart` | Enrolled devices, cancelling a pending enrollment. |
+| Settings | `lib/settings/settings_screen.dart` | Security (biometric, threshold, blocked clients, a row that opens Trusted clients), Appearance (system, light, dark), About (version, Biatec OIDC server with mock or stage marking, device key protection, open-source notices). |
+
+- Trusted clients (`lib/clients/`) is not a tab: it opens inside the Settings tab, so back returns to Settings and the bar stays.
+- The Security group needs the consent settings from Biatec OIDC. While they load, or when they are not available or offline, it says so
+  (with a retry) and Appearance and About stay usable.
+- The theme choice is `ThemeController` (`lib/settings/theme_controller.dart`): it applies at once and is saved in the device-bound secure storage.
+- The app version in About is `appVersion` in `lib/settings/app_info.dart`; a test keeps it equal to `version` in `pubspec.yaml`.
+- Accessibility: `test/a11y/all_screens_test.dart` opens every tab at 320x568, in light and dark, at text scale 1 and 3, and checks that nothing
+  overflows, that every control is at least 48 dp, and that every control has a label. The screen tests (`test/settings`, `test/approvals`,
+  `test/shell`) cover the states of each screen the same way. A state is never shown by colour alone: it always has an icon and words.
+
