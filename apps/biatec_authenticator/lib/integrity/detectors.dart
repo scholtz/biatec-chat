@@ -127,13 +127,15 @@ class HookingDetector extends IntegrityDetector {
   const HookingDetector();
 
   static const mapMarkers = [
+    // Names of libraries and files, not bare words: a path such as usb_gadget must not match.
     'frida',
     'gum-js-loop',
-    'gadget',
-    'substrate',
+    'libsubstrate',
+    'substrate.so',
     'xposed',
     'lsposed',
-    'riru',
+    'libriru',
+    '/riru',
     'zygisk',
   ];
 

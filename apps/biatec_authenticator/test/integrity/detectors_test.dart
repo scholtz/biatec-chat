@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:biatec_authenticator/integrity/detectors.dart';
 import 'package:biatec_authenticator/integrity/integrity.dart';
 import 'package:biatec_authenticator/integrity/integrity_checker.dart';
+import 'package:biatec_authenticator/integrity/platform_integrity.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// A phone made of fixtures: which files exist, what can be written, what /proc says, which properties are set.
@@ -73,6 +77,7 @@ FakeEnvironment healthyIos() => FakeEnvironment(IntegrityPlatform.ios)
   ]);
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   group('a healthy phone', () {
     test('Android: no detector fires', () async {
       final result = await DeviceIntegrityChecker(
@@ -181,7 +186,7 @@ void main() {
       'libsubstrate.so',
       'XposedBridge.jar',
       'liblspd.so'.replaceAll('lspd', 'lsposed'),
-      'riru.so',
+      'libriru_core.so',
       'zygisk'
     ]) {
       test('Android: $marker in the process maps', () async {
@@ -218,6 +223,54 @@ void main() {
     test('healthy phones', () async {
       expect(await d.triggered(healthyAndroid()), isFalse);
       expect(await d.triggered(healthyIos()), isFalse);
+    });
+  });
+
+  group('hooking markers are file names, not bare words', () {
+    test('a USB gadget or a word that merely contains a marker is left alone',
+        () async {
+      final env = healthyAndroid()
+        ..contents['/proc/self/maps'] =
+            '7f00-7f01 r-xp /vendor/lib64/libusb_gadget_hal.so\n'
+                '7f02-7f03 r-xp /system/lib64/libspirit.so\n'
+                '7f04-7f05 r-xp /system/lib64/libsubstitute_text.so\n';
+      expect(await const HookingDetector().triggered(env), isFalse);
+    });
+  });
+
+  group('a channel that errors is not a healthy phone', () {
+    test(
+        'the platform environment lets errors through, and the checker counts them',
+        () async {
+      const channel = MethodChannel('io.biatec.authenticator/integrity');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(channel, (c) async {
+        throw PlatformException(code: 'integrity_error');
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      final env =
+          PlatformIntegrityEnvironment(platform: IntegrityPlatform.android);
+      await expectLater(
+          env.property('ro.build.tags'), throwsA(isA<PlatformException>()));
+      final result = await DeviceIntegrityChecker(
+              environment: env, expectedSigningDigest: release)
+          .check();
+      expect(result.compromised, isTrue);
+    });
+
+    test(
+        'an answer that is missing where a yes or no is needed counts as a hit',
+        () async {
+      const channel = MethodChannel('io.biatec.authenticator/integrity');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(channel, (c) async => null);
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      final env =
+          PlatformIntegrityEnvironment(platform: IntegrityPlatform.android);
+      expect(await env.debuggerAttached(), isTrue);
+      expect(await env.classPresent('x'), isTrue);
     });
   });
 
@@ -365,6 +418,23 @@ void main() {
       expect(checker.calls, 1);
     });
 
+    test('an older check that finishes late does not replace a newer answer',
+        () async {
+      final slow = _Gated();
+      final guard = IntegrityGuard(slow);
+      final first = guard.current(force: true);
+      slow.results.add(const IntegrityResult({IntegrityReason.deviceModified}));
+      final second = guard.current(force: true);
+      slow.results.add(const IntegrityResult.healthy());
+      slow.release(1); // the newer check finishes first
+      expect((await second).compromised, isFalse);
+      slow.release(0); // the older one finishes late
+      expect((await first).compromised, isTrue);
+      expect((await guard.current()).compromised, isFalse,
+          reason: 'the cache holds the newer answer');
+      expect(slow.calls, 2);
+    });
+
     test('a checker that fails is a compromised answer, not a healthy one',
         () async {
       final guard = IntegrityGuard(_Failing());
@@ -398,4 +468,21 @@ class _Counting implements IntegrityChecker {
 class _Failing implements IntegrityChecker {
   @override
   Future<IntegrityResult> check() async => throw StateError('broken');
+}
+
+class _Gated implements IntegrityChecker {
+  final results = <IntegrityResult>[];
+  final _gates = <Completer<void>>[];
+  int calls = 0;
+
+  void release(int index) => _gates[index].complete();
+
+  @override
+  Future<IntegrityResult> check() async {
+    final index = calls++;
+    final gate = Completer<void>();
+    _gates.add(gate);
+    await gate.future;
+    return results[index];
+  }
 }

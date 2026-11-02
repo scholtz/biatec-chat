@@ -66,7 +66,18 @@ class _AppLockGateState extends State<AppLockGate> {
       child: ListenableBuilder(
         listenable: widget.lock,
         builder: (context, _) => switch (widget.lock.state) {
-          AppLockState.unlocked => widget.child,
+          AppLockState.unlocked => Stack(children: [
+              widget.child,
+              // After coming back the check runs first: nothing of the secure area can be read meanwhile.
+              if (widget.lock.verifying)
+                Positioned.fill(
+                  child: ColoredBox(
+                    key: const Key('integrity-cover'),
+                    color: Theme.of(context).colorScheme.surface,
+                    child: const Center(child: CircularProgressIndicator()),
+                  ),
+                ),
+            ]),
           AppLockState.noBiometric => NoBiometricScreen(lock: widget.lock),
           AppLockState.biometricsChanged => const BiometricsChangedScreen(),
           AppLockState.compromised => CompromisedScreen(lock: widget.lock),

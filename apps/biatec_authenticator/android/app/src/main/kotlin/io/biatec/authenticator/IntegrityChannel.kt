@@ -62,7 +62,7 @@ class IntegrityChannel(private val context: Context) : FlutterPlugin, MethodChan
         val pm = context.packageManager
         val cert = if (Build.VERSION.SDK_INT >= 28) {
             val info = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES).signingInfo ?: return null
-            // More than one signer, or a signing history that is not just the current key, is not the release.
+            // More than one current signer is not the release. (A key rotation keeps the same current signer, whose certificate is the one compared.)
             if (info.hasMultipleSigners()) return null
             info.apkContentsSigners.singleOrNull()?.toByteArray()
         } else {

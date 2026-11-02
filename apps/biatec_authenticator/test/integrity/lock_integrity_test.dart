@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:biatec_authenticator/integrity/attestation.dart';
@@ -138,6 +139,23 @@ void main() {
     });
   });
 
+  group('states with their own cause are not overwritten', () {
+    test(
+        'a failing check does not turn biometrics-changed into a rechecked state',
+        () async {
+      final r = make(failClosed: true);
+      await r.lock.unlock();
+      r.lock.markBiometricsChanged();
+      r.checker.result = compromised;
+      r.lock.appPaused();
+      r.lock.appResumed();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      expect(r.lock.state, AppLockState.biometricsChanged);
+      expect(r.lock.canRecheckIntegrity, isFalse);
+    });
+  });
+
   group('debug: warns only', () {
     test('a compromised phone opens, with a warning', () async {
       final r = make(failClosed: false);
@@ -207,6 +225,35 @@ void main() {
       expect(find.byKey(const Key('compromised')), findsOneWidget);
       expect(find.text('secure'), findsNothing);
       expect(find.byKey(const Key('integrity-recheck')), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets(
+        'after coming back the secure area is covered until the check answers',
+        (tester) async {
+      final auth = FakeAuthenticator();
+      final gate = Completer<IntegrityResult>();
+      final checker = _Slow(gate);
+      final lock = LockController(
+          authenticator: auth,
+          store: MemoryLockStore(),
+          integrity: IntegrityGuard(checker),
+          failClosed: true);
+      addTearDown(lock.dispose);
+      await pumpGate(tester, lock);
+      await tester.pump();
+      expect(find.text('secure'), findsOneWidget);
+      checker.hold = true;
+      lock.appPaused();
+      lock.appResumed();
+      await tester.pump();
+      expect(find.byKey(const Key('integrity-cover')), findsOneWidget);
+      gate.complete(const IntegrityResult({IntegrityReason.toolsAttached}));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const Key('integrity-cover')), findsNothing);
+      expect(find.byKey(const Key('compromised')), findsOneWidget);
+      expect(find.text('secure'), findsNothing);
       await tester.pumpWidget(const SizedBox());
     });
 
@@ -362,4 +409,15 @@ void main() {
           contains("String.fromEnvironment('RELEASE_CERT_SHA256')"));
     });
   });
+}
+
+/// A checker that waits for [gate] once [hold] is set.
+class _Slow implements IntegrityChecker {
+  _Slow(this.gate);
+  final Completer<IntegrityResult> gate;
+  bool hold = false;
+
+  @override
+  Future<IntegrityResult> check() =>
+      hold ? gate.future : Future.value(const IntegrityResult.healthy());
 }

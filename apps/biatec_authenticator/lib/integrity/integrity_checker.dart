@@ -55,6 +55,7 @@ class IntegrityGuard {
   IntegrityResult? _last;
   DateTime? _at;
   Future<IntegrityResult>? _running;
+  int _generation = 0;
 
   /// How many times the checker really ran (a cached answer does not count).
   int runs = 0;
@@ -71,12 +72,12 @@ class IntegrityGuard {
     // One check at a time: callers that arrive meanwhile share it, unless they asked for a new one after it started.
     final running = _running;
     if (running != null && !force) return running;
-    final run = _run();
+    final run = _run(++_generation);
     _running = run;
     return run;
   }
 
-  Future<IntegrityResult> _run() async {
+  Future<IntegrityResult> _run(int generation) async {
     runs++;
     IntegrityResult result;
     try {
@@ -85,9 +86,12 @@ class IntegrityGuard {
       // A checker that fails is not a healthy phone.
       result = const IntegrityResult({IntegrityReason.deviceModified});
     }
-    _last = result;
-    _at = _clock();
-    _running = null;
+    // Only the newest check writes the cache: an older one that finishes late must not replace a fresher answer.
+    if (generation == _generation) {
+      _last = result;
+      _at = _clock();
+      _running = null;
+    }
     return result;
   }
 }

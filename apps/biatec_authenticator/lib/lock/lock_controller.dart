@@ -240,6 +240,25 @@ class LockController extends ChangeNotifier {
     _set(AppLockState.compromised);
   }
 
+  bool _verifying = false;
+
+  /// True while the check after coming back runs: the app covers the secure area, so nothing is readable before the answer.
+  bool get verifying => _verifying;
+
+  Future<void> _verifyAfterResume() async {
+    if (integrity == null || _state != AppLockState.unlocked) return;
+    _verifying = true;
+    _notify();
+    try {
+      await _integrityAllows(force: true);
+    } on Object {
+      // The guard does not throw; if it ever did, the cover is lifted by the finally and the next check decides.
+    } finally {
+      _verifying = false;
+      _notify();
+    }
+  }
+
   /// Runs the safety check (a cached answer unless [force]). False when the secure area must stay closed: the app then goes to the compromised screen. In a build that only warns the answer is true and the problem is kept in [integrityWarning].
   Future<bool> _integrityAllows({bool force = false}) async {
     final guard = integrity;
@@ -257,6 +276,11 @@ class LockController extends ChangeNotifier {
       _warning = result.reasons;
       _notify();
       return true;
+    }
+    // A closed state with its own cause (the biometrics changed, or another reason) is kept as it is; only a state that is open or waiting becomes closed here.
+    if (_state == AppLockState.biometricsChanged ||
+        _state == AppLockState.compromised) {
+      return false;
     }
     _clearMemory();
     _compromisedByIntegrity = true;
@@ -311,8 +335,8 @@ class LockController extends ChangeNotifier {
 
   /// The app came back: it locks if it was away longer than the delay.
   void appResumed() {
-    // Coming back is when a tool attached in the meantime shows.
-    _integrityAllows(force: true);
+    // Coming back is when a tool attached in the meantime shows. The secure area stays covered until the answer is in.
+    _verifyAfterResume();
     final at = _backgroundAt;
     _backgroundAt = null;
     if (at == null ||

@@ -57,13 +57,9 @@ class PlatformIntegrityEnvironment implements IntegrityEnvironment {
     }
   }
 
-  Future<T?> _ask<T>(String method, [Map<String, Object?>? args]) async {
-    try {
-      return await _channel.invokeMethod<T>(method, args);
-    } on Object {
-      return null;
-    }
-  }
+  /// An error from the native side is not caught: the checker counts a detector that cannot get its answer as a hit, so a hooked or broken channel does not read as a healthy phone.
+  Future<T?> _ask<T>(String method, [Map<String, Object?>? args]) =>
+      _channel.invokeMethod<T>(method, args);
 
   @override
   Future<String?> property(String key) =>
@@ -71,11 +67,11 @@ class PlatformIntegrityEnvironment implements IntegrityEnvironment {
 
   @override
   Future<bool> debuggerAttached() async =>
-      await _ask<bool>('debuggerAttached') ?? false;
+      await _ask<bool>('debuggerAttached') ?? true;
 
   @override
   Future<bool> classPresent(String name) async =>
-      await _ask<bool>('classPresent', {'name': name}) ?? false;
+      await _ask<bool>('classPresent', {'name': name}) ?? true;
 
   @override
   Future<List<String>> loadedImages() async =>
@@ -91,7 +87,7 @@ class PlatformIntegrityEnvironment implements IntegrityEnvironment {
   Future<String?> signingDigest() => _ask<String>('signingDigest');
 }
 
-/// The checker for this build. Only Android and iOS are checked: the same code on a desktop (a developer's Windows build) has no indicators to look for.
+/// The checker for this build. Only Android and iOS are checked: the app is a phone app, and the same code on a desktop (a developer's Windows preview) has no indicators to look for.
 IntegrityChecker platformIntegrityChecker() {
   final supported = defaultTargetPlatform == TargetPlatform.android ||
       defaultTargetPlatform == TargetPlatform.iOS;
