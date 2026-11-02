@@ -1,7 +1,7 @@
 ---
 id: T-223
 title: "Authenticator: hardware-bound encrypted vault for two-factor accounts"
-status: in-progress
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-221, T-227]
@@ -14,7 +14,7 @@ owner: "session-20261101-2130"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
-updated: 2026-11-01
+updated: 2026-11-02
 ---
 
 # T-223 - Authenticator: hardware-bound encrypted vault for two-factor accounts
@@ -66,6 +66,8 @@ Filled in by the agent when it moves the task to `review`.
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
 
+- 2026-11-02 10:17 · approve · PR #379 merged into main @ 5726cf9 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-28 09:00 · claude · (new) → blocked · created from the request to add two-factor codes, a biometric lock and industry-standard security
@@ -73,3 +75,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
 - 2026-10-30 16:40 · kanban-board · blocked → backlog · blockers done: T-221, T-227
 - 2026-11-01 21:30 · scholtz · backlog → in-progress · claimed by session-20261101-2130 on task/T-223
+- 2026-11-02 10:17 · user · in-progress → done · PR #379 merged into main @ 5726cf9 (synced by kanban-sync)
