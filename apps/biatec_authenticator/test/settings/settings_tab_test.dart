@@ -265,6 +265,11 @@ void main() {
           contains('Stage'));
       expect(endpointKind(AppConfig.resolve('https://oidc.biatec.io')),
           contains('Live'));
+      expect(endpointKind(AppConfig.resolve('https://backstage.example.com')),
+          contains('Live'),
+          reason: 'a name that merely contains stage is not the stage server');
+      expect(endpointKind(AppConfig.resolve('http://localhost:5080/x')),
+          contains('Test server'));
     });
 
     testWidgets('shows the version, the server with its kind and the key level',

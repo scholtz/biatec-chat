@@ -29,10 +29,14 @@ Future<void> main() async {
     runApp(ConfigErrorApp(message: e.message));
     return;
   }
+  // The saved appearance is read before the first frame, so a saved Dark is not painted Light first. A slow keystore does not hold the app.
+  final theme = ThemeController();
+  await theme.load().timeout(const Duration(seconds: 1), onTimeout: () {});
   final approvals = ApprovalServices.fromConfig(config);
   final firebase = FirebasePushConfig.fromEnvironment();
   if (firebase == null) {
-    runApp(AuthenticatorApp(config: config, approvals: approvals));
+    runApp(
+        AuthenticatorApp(config: config, approvals: approvals, theme: theme));
     return;
   }
   final messenger = GlobalKey<ScaffoldMessengerState>();
@@ -45,6 +49,7 @@ Future<void> main() async {
   runApp(AuthenticatorApp(
       config: config,
       approvals: approvals,
+      theme: theme,
       push: push,
       shell: shell,
       messengerKey: messenger));
@@ -126,7 +131,8 @@ class _AuthenticatorAppState extends State<AuthenticatorApp> {
   @override
   void initState() {
     super.initState();
-    _theme.load();
+    // A controller handed in was loaded by the caller (main reads it before the first frame).
+    if (widget.theme == null) _theme.load();
   }
 
   @override

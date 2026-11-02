@@ -106,9 +106,9 @@ class _SettingsFrameState extends State<SettingsFrame> with TabReloadListener {
 }
 
 /// The progress bar, the problem and the notice of the last step, each with an icon and words. Shown above the content of every settings screen.
-List<Widget> settingsStatus(SettingsController c) => [
+List<Widget> settingsStatus(SettingsController c, {bool showError = true}) => [
       if (c.busy) const LinearProgressIndicator(),
-      if (c.error != null)
+      if (c.error != null && showError)
         Padding(
           key: const Key('status-error'),
           padding: const EdgeInsets.all(AppSpacing.s),

@@ -65,7 +65,9 @@ class _SettingsScreenState extends State<SettingsScreen>
         listenable: _controller,
         builder: (context, _) => ListView(
           children: [
-            ...settingsStatus(_controller),
+            // A failed load shows its reason in the group itself, once.
+            ...settingsStatus(_controller,
+                showError: _controller.phase != SettingsPhase.unavailable),
             const _SectionHeader('Security'),
             ..._security(context, _controller),
             if (theme != null) ...[
@@ -324,6 +326,9 @@ class _DeviceKeyTileState extends State<_DeviceKeyTile> {
         final String text;
         if (snapshot.connectionState != ConnectionState.done) {
           text = 'Checking.';
+        } else if (snapshot.hasError) {
+          text =
+              'The keystore did not answer. Close and open the app to try again.';
         } else if (key == null) {
           text = 'No key found for this device.';
         } else if (key.securityLevel.isHardware) {
