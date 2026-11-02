@@ -67,5 +67,9 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "ClipboardChannel") {
       ClipboardChannel.register(with: registrar)
     }
+    // Facts for the integrity checks and App Attest (IntegrityChannel).
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "IntegrityChannel") {
+      IntegrityChannel.register(with: registrar)
+    }
   }
 }

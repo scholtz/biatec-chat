@@ -41,5 +41,7 @@ class MainActivity : FlutterFragmentActivity() {
         flutterEngine.plugins.add(BiometricChannel(applicationContext))
         // Copied codes are marked sensitive (ClipboardChannel), over io.biatec.authenticator/clipboard.
         flutterEngine.plugins.add(ClipboardChannel(applicationContext))
+        // Facts for the integrity checks (properties, debugger, signing certificate), over io.biatec.authenticator/integrity.
+        flutterEngine.plugins.add(IntegrityChannel(applicationContext))
     }
 }

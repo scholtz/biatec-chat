@@ -69,7 +69,7 @@ class _AppLockGateState extends State<AppLockGate> {
           AppLockState.unlocked => widget.child,
           AppLockState.noBiometric => NoBiometricScreen(lock: widget.lock),
           AppLockState.biometricsChanged => const BiometricsChangedScreen(),
-          AppLockState.compromised => const CompromisedScreen(),
+          AppLockState.compromised => CompromisedScreen(lock: widget.lock),
           AppLockState.locked ||
           AppLockState.unlocking =>
             LockScreen(lock: widget.lock),

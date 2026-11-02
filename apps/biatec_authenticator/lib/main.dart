@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
 
 import 'approvals/approval_services.dart';
@@ -6,6 +7,8 @@ import 'config.dart';
 import 'enrollment/enrollment_controller.dart';
 import 'push/fcm_push_transport.dart';
 import 'push/push_controller.dart';
+import 'integrity/integrity_checker.dart';
+import 'integrity/platform_integrity.dart';
 import 'lock/lock_controller.dart';
 import 'security/biometric_policy.dart';
 import 'security/pinning/pinned_http.dart';
@@ -36,7 +39,12 @@ Future<void> main() async {
   final theme = ThemeController();
   await theme.load().timeout(const Duration(seconds: 1), onTimeout: () {});
   // The lock decides when the secure area opens; every fresh biometric (an approval, a setting) goes through it. Its delay is read before the first frame.
-  final lock = LockController(authenticator: PlatformBiometricAuthenticator());
+  final lock = LockController(
+    authenticator: PlatformBiometricAuthenticator(),
+    integrity: IntegrityGuard(platformIntegrityChecker()),
+    // A release build fails closed on a compromised phone; a debug build only warns, so it can run on an emulator or under a debugger.
+    failClosed: kReleaseMode,
+  );
   await lock.load().timeout(const Duration(seconds: 1), onTimeout: () {});
   final approvals =
       ApprovalServices.fromConfig(config, gate: LockBiometricGate(lock));
@@ -138,7 +146,11 @@ class AuthenticatorApp extends StatefulWidget {
 
 class _AuthenticatorAppState extends State<AuthenticatorApp> {
   late final LockController _lock = widget.lock ??
-      LockController(authenticator: PlatformBiometricAuthenticator());
+      LockController(
+        authenticator: PlatformBiometricAuthenticator(),
+        integrity: IntegrityGuard(platformIntegrityChecker()),
+        failClosed: kReleaseMode,
+      );
   late final ApprovalServices _approvals = widget.approvals ??
       ApprovalServices.fromConfig(widget.config,
           gate: LockBiometricGate(_lock));

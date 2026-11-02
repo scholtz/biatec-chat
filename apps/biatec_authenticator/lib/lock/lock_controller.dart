@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../approvals/biometric_gate.dart';
+import '../integrity/integrity.dart';
+import '../integrity/integrity_checker.dart';
 import '../security/secure_storage.dart';
 import 'biometric_authenticator.dart';
 
@@ -79,6 +81,8 @@ class LockController extends ChangeNotifier {
     DateTime Function()? clock,
     this.idleTimeout = const Duration(minutes: 2),
     this.idleCheckEvery = const Duration(seconds: 5),
+    this.integrity,
+    this.failClosed = true,
   })  : _store = store ?? const SecureLockSettingsStore(),
         clock = clock ?? DateTime.now {
     _screenLock = authenticator.screenLocked.listen((_) => lock());
@@ -89,6 +93,12 @@ class LockController extends ChangeNotifier {
   final DateTime Function() clock;
   final Duration idleTimeout;
   final Duration idleCheckEvery;
+
+  /// The safety check of the phone and the app. Null only where there is none to run (a screen in a test).
+  final IntegrityGuard? integrity;
+
+  /// True: a failed check keeps the secure area closed and says so. The build decides (a release build fails closed; a debug build only warns, so the app can be developed on an emulator or with a debugger). The default is closed.
+  final bool failClosed;
 
   AppLockState _state = AppLockState.locked;
   AppLockState get state => _state;
@@ -106,6 +116,17 @@ class LockController extends ChangeNotifier {
   DateTime? _lastActivity;
   DateTime? _backgroundAt;
   bool _disposed = false;
+
+  Set<IntegrityReason> _warning = const {};
+
+  /// What a debug build found wrong with the phone, shown as a warning (a release build never gets here: it is closed instead). Empty when healthy.
+  Set<IntegrityReason> get integrityWarning => _warning;
+
+  bool _compromisedByIntegrity = false;
+
+  /// True when the closed state came from the safety check, so checking again can end it (any other cause stays).
+  bool get canRecheckIntegrity =>
+      _state == AppLockState.compromised && _compromisedByIntegrity;
 
   /// Counts unlock attempts, so a late answer of an earlier prompt is never applied to a newer attempt.
   int _attempt = 0;
@@ -156,6 +177,8 @@ class LockController extends ChangeNotifier {
     }
     _set(AppLockState.unlocking);
     final attempt = ++_attempt;
+    if (!await _integrityAllows()) return;
+    if (_disposed || attempt != _attempt) return;
     final status = await authenticator.status();
     if (_disposed || attempt != _attempt) return;
     if (status == BiometricStatus.noneEnrolled ||
@@ -212,12 +235,52 @@ class LockController extends ChangeNotifier {
 
   /// The integrity check found the phone cannot be trusted. Nothing opens.
   void markCompromised() {
+    _compromisedByIntegrity = false;
     _clearMemory();
     _set(AppLockState.compromised);
   }
 
+  /// Runs the safety check (a cached answer unless [force]). False when the secure area must stay closed: the app then goes to the compromised screen. In a build that only warns the answer is true and the problem is kept in [integrityWarning].
+  Future<bool> _integrityAllows({bool force = false}) async {
+    final guard = integrity;
+    if (guard == null) return true;
+    final result = await guard.current(force: force);
+    if (_disposed) return true;
+    if (!result.compromised) {
+      if (_warning.isNotEmpty) {
+        _warning = const {};
+        _notify();
+      }
+      return true;
+    }
+    if (!failClosed) {
+      _warning = result.reasons;
+      _notify();
+      return true;
+    }
+    _clearMemory();
+    _compromisedByIntegrity = true;
+    _set(AppLockState.compromised);
+    return false;
+  }
+
+  /// Checks the phone again from the compromised screen. If it passes now (a debugger was detached), the app asks for the fingerprint as at any start.
+  Future<void> recheckIntegrity() async {
+    if (!canRecheckIntegrity) return;
+    final guard = integrity;
+    if (guard == null) return;
+    final result = await guard.current(force: true);
+    if (_disposed || result.compromised || !canRecheckIntegrity) return;
+    _compromisedByIntegrity = false;
+    _set(AppLockState.locked);
+    await unlock();
+  }
+
   /// A fresh biometric for one action (an approval, deleting an account, a backup, a security setting). True only on success. A refusal does not lock the app, but nothing is done; while the app is locked it is always false.
   Future<bool> reauthenticate(String reason) async {
+    if (_state != AppLockState.unlocked) return false;
+    // The check is run again before every approval, not only at start.
+    if (!await _integrityAllows(force: true)) return false;
     if (_state != AppLockState.unlocked) return false;
     _reauthenticating++;
     final BiometricOutcome outcome;
@@ -248,6 +311,8 @@ class LockController extends ChangeNotifier {
 
   /// The app came back: it locks if it was away longer than the delay.
   void appResumed() {
+    // Coming back is when a tool attached in the meantime shows.
+    _integrityAllows(force: true);
     final at = _backgroundAt;
     _backgroundAt = null;
     if (at == null ||

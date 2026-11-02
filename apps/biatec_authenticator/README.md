@@ -227,3 +227,12 @@ navigator, so back goes up inside a tab first, then to Codes, and only then leav
 - Vault key window: the vault's secret key accepts a strong biometric for 30 seconds (Android `setUserAuthenticationParameters`, iOS `touchIDAuthenticationAllowableReuseDuration`), so the unlock that opened the app also opens every secret instead of one prompt per account. After the window each secret read prompts again.
 - Not run on a device: the scanner, the clipboard channels and the vault window (Kotlin, Swift).
 
+## Device integrity (T-228)
+
+- `lib/integrity/`: `IntegrityDetector`s that are pure functions of an `IntegrityEnvironment` (files, writable folders, `/proc`, properties, debugger, loaded classes and libraries, signing certificate), so each is tested against a fake phone in `test/integrity/`. Android: root (su and manager files, open system folders, test-keys, debuggable or insecure builds), debugger and tracer, hooking (Frida, Substrate, Xposed), emulator, signing certificate. iOS: jailbreak files and an open sandbox, debugger (`P_TRACED`), injected libraries, simulator.
+- `IntegrityGuard` keeps the answer for 30 seconds; the lock asks again (forced) on resume and before every approval (`reauthenticate`). A detector or checker that fails counts as a hit.
+- Policy in `LockController`: `failClosed` (default true; `main.dart` passes `kReleaseMode`). Closed: the phone never gets the fingerprint prompt, the memory is cleared, and `CompromisedScreen` shows. That screen says that a safety check was not passed and names no detector or group; "Check again" runs the check anew and the normal unlock follows if it passes. Open (debug builds): the app opens with a warning on the lock screen.
+- Release signing digest: `--dart-define=RELEASE_CERT_SHA256=<sha-256 of the release certificate>`. On Android a release build without it is not trusted (an unconfigured digest is a compromised result), so set it in the release build step.
+- Attestation hook: `AttestationProvider` over `io.biatec.authenticator/attestation`. iOS implements App Attest (`IntegrityChannel.swift`, entitlement in `Runner.entitlements`; enable the App Attest capability on the App ID). Android Play Integrity needs its dependency and the release's cloud project number in the build and answers "not available" until then; the enrollment call is not wired to it yet. Server-side verification is Biatec OIDC's.
+- Not run on a device: the Kotlin and Swift fact readers and App Attest.
+

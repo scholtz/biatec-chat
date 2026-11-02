@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- App Attest: proof to Biatec OIDC that this is the genuine app (lib/integrity/attestation.dart). Needs the App Attest capability on the App ID. -->
+	<key>com.apple.developer.devicecheck.appattest-environment</key>
+	<string>production</string>
+</dict>
+</plist>
