@@ -1,7 +1,7 @@
 ---
 id: T-219
 title: "Authenticator: settings tab, about and final accessibility polish"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-214, T-215, T-216, T-217, T-218, T-225]
@@ -9,12 +9,12 @@ area: ["apps/biatec_authenticator/lib/security/security_screen.dart", "apps/biat
 parallel: yes
 conflicts_with: []
 issue: "#355"
-branch: ""
-owner: ""
+branch: "task/T-219"
+owner: "session-20261102-0900"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-24
-updated: 2026-11-01
+updated: 2026-11-02
 ---
 
 # T-219 - Authenticator: settings tab, about and final accessibility polish
@@ -74,3 +74,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-24 17:07 · kanban-board · backlog → blocked · waiting on: T-214, T-215, T-216, T-217, T-218
 - 2026-10-24 12:05 · scholtz · taken · status stays blocked
 - 2026-11-01 21:20 · kanban-board · blocked → backlog · blockers done: T-214, T-215, T-216, T-217, T-218, T-225
+- 2026-11-02 09:00 · scholtz · backlog → in-progress · claimed by session-20261102-0900 on task/T-219
