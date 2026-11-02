@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../shell/tab_reload.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
+import 'settings_client.dart';
 import 'settings_controller.dart';
 
 /// Loads a [SettingsController] on open and wraps the three settings screens:
@@ -92,29 +93,7 @@ class _SettingsFrameState extends State<SettingsFrame> with TabReloadListener {
                       onRefresh: () => c.load(quiet: true),
                       child: ListView(
                         children: [
-                          if (c.busy) const LinearProgressIndicator(),
-                          if (c.error != null)
-                            Padding(
-                              key: const Key('status-error'),
-                              padding: const EdgeInsets.all(AppSpacing.s),
-                              child: StatusBanner(
-                                  severity: StatusSeverity.danger,
-                                  title: 'Problem',
-                                  message: c.error!),
-                            ),
-                          if (c.notice != null)
-                            Padding(
-                              key: const Key('status-notice'),
-                              padding: const EdgeInsets.all(AppSpacing.s),
-                              // Announced like a problem is: the user waits for it.
-                              child: Semantics(
-                                liveRegion: true,
-                                child: StatusBanner(
-                                    severity: StatusSeverity.success,
-                                    title: 'Done',
-                                    message: c.notice!),
-                              ),
-                            ),
+                          ...settingsStatus(c),
                           ...widget.builder(context, c),
                         ],
                       ),
@@ -124,6 +103,57 @@ class _SettingsFrameState extends State<SettingsFrame> with TabReloadListener {
             ),
     );
   }
+}
+
+/// The progress bar, the problem and the notice of the last step, each with an icon and words. Shown above the content of every settings screen.
+List<Widget> settingsStatus(SettingsController c) => [
+      if (c.busy) const LinearProgressIndicator(),
+      if (c.error != null)
+        Padding(
+          key: const Key('status-error'),
+          padding: const EdgeInsets.all(AppSpacing.s),
+          child: StatusBanner(
+              severity: StatusSeverity.danger,
+              title: 'Problem',
+              message: c.error!),
+        ),
+      if (c.notice != null)
+        Padding(
+          key: const Key('status-notice'),
+          padding: const EdgeInsets.all(AppSpacing.s),
+          // Announced like a problem is: the user waits for it.
+          child: Semantics(
+            liveRegion: true,
+            child: StatusBanner(
+                severity: StatusSeverity.success,
+                title: 'Done',
+                message: c.notice!),
+          ),
+        ),
+    ];
+
+/// Applies [change] to the settings. A change that loosens protection is first confirmed in a sheet that says the phone will ask for a fingerprint or face; one that tightens applies at once.
+Future<void> applyWithConfirm(
+    BuildContext context,
+    SettingsController controller,
+    ConsentSettings account,
+    Map<String, Object?> change,
+    {required String title,
+    required String message,
+    required String confirmLabel}) async {
+  if (isLoosening(account, change)) {
+    final yes = await confirmSheet(
+      context,
+      title: title,
+      message: message,
+      confirmLabel: confirmLabel,
+      cancelLabel: 'Keep as it is',
+      biometric: true,
+      icon: Icons.fingerprint,
+    );
+    if (!yes) return;
+  }
+  await controller.apply(change);
 }
 
 /// A decimal EUR amount as Biatec OIDC takes it (`250`, `250.50`).

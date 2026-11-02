@@ -11,7 +11,7 @@ import '../codes/codes_screen.dart';
 import '../config.dart';
 import '../devices/devices_screen.dart';
 import '../push/push_controller.dart';
-import '../security/security_screen.dart';
+import '../settings/settings_screen.dart';
 import '../security/settings_controller.dart';
 import '../theme.dart';
 import 'shell_controller.dart';
@@ -122,9 +122,9 @@ class _AppShellState extends State<AppShell> {
         AppTab.history => HistoryScreen(history: widget.approvals.history),
         AppTab.devices =>
           DevicesScreen(services: widget.settings, controller: _settings),
-        AppTab.settings => SecurityScreen(
+        AppTab.settings => SettingsScreen(
             services: widget.settings,
-            server: widget.config.oidcBaseUrl,
+            config: widget.config,
             controller: _settings),
       };
 

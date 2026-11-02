@@ -11,7 +11,7 @@ import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:biatec_authenticator/main.dart';
 import 'package:biatec_authenticator/push/push_controller.dart';
-import 'package:biatec_authenticator/security/security_screen.dart';
+import 'package:biatec_authenticator/settings/settings_screen.dart';
 import 'package:biatec_authenticator/shell/shell_controller.dart';
 import 'package:biatec_authenticator/shell/tab_reload.dart';
 import 'package:biatec_authenticator/ui/ui.dart';
@@ -172,7 +172,7 @@ void main() {
             of: find.byType(screen, skipOffstage: false),
             matching: find.byType(ExcludeFocus, skipOffstage: false)))
         .any((w) => w.excluding);
-    expect(excluded(SecurityScreen), isTrue);
+    expect(excluded(SettingsScreen), isTrue);
     expect(excluded(PendingScreen), isFalse);
     await rig.dispose(tester);
   });
