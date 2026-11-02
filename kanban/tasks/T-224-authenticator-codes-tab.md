@@ -1,7 +1,7 @@
 ---
 id: T-224
 title: "Authenticator: Codes tab (two-factor codes list, add and edit)"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-221, T-222, T-223, T-225, T-227, T-229]
@@ -9,8 +9,8 @@ area: ["apps/biatec_authenticator/lib/totp/ui/**", "apps/biatec_authenticator/li
 parallel: yes
 conflicts_with: []
 issue: "#361"
-branch: ""
-owner: ""
+branch: "task/T-224"
+owner: "session-20261102-1500"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
@@ -74,3 +74,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:42 · kanban-board · backlog → blocked · waiting on: T-221, T-222, T-223, T-225
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
 - 2026-11-02 16:12 · kanban-board · blocked → backlog · blockers done: T-221, T-222, T-223, T-225, T-227, T-229
+- 2026-11-02 15:00 · scholtz · backlog → in-progress · claimed by session-20261102-1500 on task/T-224
