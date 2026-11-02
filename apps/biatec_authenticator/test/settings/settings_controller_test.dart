@@ -188,7 +188,8 @@ void main() {
       await c.load();
       expect(await c.apply({'threshold_eur': '500'}), isTrue, reason: c.error);
       expect(c.settings!.thresholdEur, '500');
-      expect(rig.gate.asked, 1, reason: 'any security change needs a biometric');
+      expect(rig.gate.asked, 1,
+          reason: 'any security change needs a biometric');
       expect(rig.keys.signed, isEmpty);
       expect(rig.oidc.puts.single.containsKey('consent'), isFalse);
       expect(c.notice, 'Applied.');

@@ -33,6 +33,11 @@ public class VaultPlugin: NSObject, FlutterPlugin {
 
     private func run(_ method: String, _ args: [String: Any]?) -> Any? {
         switch method {
+        case "endSession":
+            // The app locked: the authenticated context is dropped, so the next secret read asks for Face ID or Touch ID again.
+            sharedContext?.invalidate()
+            sharedContext = nil
+            return nil
         case "deleteKeys":
             for purpose in ["metadata", "secret"] {
                 SecItemDelete(keyQuery(purpose) as CFDictionary)

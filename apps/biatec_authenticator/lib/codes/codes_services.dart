@@ -73,7 +73,10 @@ class CodesServices {
     CodesPrefs? prefs,
   })  : serverClock = serverClock ?? ServerClock.instance,
         clock = clock ?? DateTime.now,
-        prefs = prefs ?? const SecureCodesPrefs();
+        prefs = prefs ?? const SecureCodesPrefs() {
+    // Locking ends the platform's memory of the last biometric, so the next secret read asks again.
+    lock.addLockListener(() => vault.keys.endSession());
+  }
 
   /// The platform pieces: hardware-backed vault, the app's lock, a sensitive clipboard.
   factory CodesServices.platform(LockController lock) => CodesServices(

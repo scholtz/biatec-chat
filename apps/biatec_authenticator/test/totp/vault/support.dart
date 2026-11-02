@@ -50,6 +50,7 @@ class FakeVaultKeyStore implements VaultKeyStore {
   Future<Uint8List> seal(
       VaultKeyPurpose purpose, Uint8List plaintext, Uint8List aad) async {
     _auth(purpose);
+    if (purpose == VaultKeyPurpose.secret) await sealGate;
     if (purpose == VaultKeyPurpose.secret) sealedPlain.add(plaintext);
     final nonce = _bytes(12);
     nonces.add(nonce.join(','));
@@ -79,6 +80,15 @@ class FakeVaultKeyStore implements VaultKeyStore {
     }
   }
 
+  /// When set, sealing a secret waits for it (a fingerprint prompt that is still open).
+  Future<void>? sealGate;
+
+  /// How many times the app told the key store it locked.
+  int sessionsEnded = 0;
+
+  @override
+  Future<void> endSession() async => sessionsEnded++;
+
   @override
   Future<void> deleteKeys() async {
     _keys.clear();
@@ -88,13 +98,18 @@ class FakeVaultKeyStore implements VaultKeyStore {
 class MemoryVaultStorage implements VaultStorage {
   Uint8List? bytes;
 
+  /// Makes every write fail.
+  bool failWrites = false;
+
   @override
   Future<Uint8List?> read() async =>
       bytes == null ? null : Uint8List.fromList(bytes!);
 
   @override
-  Future<void> write(Uint8List value) async =>
-      bytes = Uint8List.fromList(value);
+  Future<void> write(Uint8List value) async {
+    if (failWrites) throw StateError('disk full');
+    bytes = Uint8List.fromList(value);
+  }
 }
 
 class MemoryVersionStore implements VaultVersionStore {

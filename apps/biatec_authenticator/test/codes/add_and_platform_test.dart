@@ -290,6 +290,22 @@ void main() {
       expect(c.isOff, isFalse);
     });
 
+    test('listeners hear when the verdict changes, even by less than a second',
+        () {
+      final c = ServerClock();
+      var heard = 0;
+      c.addListener(() => heard++);
+      final t = DateTime.utc(2026, 11, 2, 10);
+      c.observe('Mon, 02 Nov 2026 10:00:05 GMT', t, t); // 5.5 s: off
+      expect(c.isOff, isTrue);
+      expect(heard, 1);
+      c.observe('Mon, 02 Nov 2026 10:00:04 GMT', t, t); // 4.5 s: not off
+      expect(c.isOff, isFalse);
+      expect(heard, 2);
+      c.observe('Mon, 02 Nov 2026 10:00:04 GMT', t, t);
+      expect(heard, 2, reason: 'the same answer again is quiet');
+    });
+
     test('a phone ahead is reported as negative', () {
       final c = ServerClock();
       final t = DateTime.utc(2026, 11, 2, 10, 5);
@@ -353,6 +369,9 @@ void main() {
           'android/app/src/main/kotlin/io/biatec/authenticator/ClipboardChannel.kt');
       expect(kt, contains('EXTRA_IS_SENSITIVE'));
       expect(kt, contains('android.content.extra.IS_SENSITIVE'));
+      expect(kt, contains('postDelayed'),
+          reason: 'cleared natively too, not only by a Dart timer');
+      expect(kt, contains('clearPrimaryClip'));
       final sw = read('ios/Runner/ClipboardChannel.swift');
       expect(sw, contains('.localOnly'));
       expect(sw, contains('.expirationDate'));
@@ -378,6 +397,9 @@ void main() {
       expect(kt, contains('UserNotAuthenticatedException'));
       expect(read('ios/Runner/VaultPlugin.swift'),
           contains('touchIDAuthenticationAllowableReuseDuration = 30'));
+      expect(read('ios/Runner/VaultPlugin.swift'),
+          contains('sharedContext?.invalidate()'),
+          reason: 'the authenticated context ends when the app locks');
     });
 
     test('the shared ticker is the only timer of the list', () {

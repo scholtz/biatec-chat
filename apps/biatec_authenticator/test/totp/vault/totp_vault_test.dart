@@ -513,5 +513,8 @@ class _Hanging implements VaultKeyStore {
       inner.open(purpose, sealed, aad);
 
   @override
+  Future<void> endSession() => inner.endSession();
+
+  @override
   Future<void> deleteKeys() => inner.deleteKeys();
 }

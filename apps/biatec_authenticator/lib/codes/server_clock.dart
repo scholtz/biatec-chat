@@ -38,13 +38,15 @@ class ServerClock extends ChangeNotifier {
     final middle = sentAt.add(receivedAt.difference(sentAt) ~/ 2);
     final next =
         server.add(const Duration(milliseconds: 500)).difference(middle);
-    if (_offset != null &&
-        (_offset! - next).abs() < const Duration(seconds: 1)) {
-      _offset = next;
-      return;
-    }
+    final wasOff = isOff;
+    final before = _offset;
     _offset = next;
-    notifyListeners();
+    // Listeners hear of a change of verdict, or of a move of a second or more; a steady stream of the same answer is quiet.
+    if (wasOff != isOff ||
+        before == null ||
+        (before - next).abs() >= const Duration(seconds: 1)) {
+      notifyListeners();
+    }
   }
 
   /// Forgets what was learned (a sign-out).

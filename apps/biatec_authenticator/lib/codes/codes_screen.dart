@@ -141,6 +141,16 @@ class _CodesScreenState extends State<CodesScreen> {
   Future<void> _action(CodeEntry e, TileAction action) async {
     final all = _controller.entries;
     final index = all.indexOf(e);
+    try {
+      await _run(e, action, index);
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('That could not be saved. Nothing was changed.')));
+    }
+  }
+
+  Future<void> _run(CodeEntry e, TileAction action, int index) async {
     switch (action) {
       case TileAction.rename:
         await _rename(e);

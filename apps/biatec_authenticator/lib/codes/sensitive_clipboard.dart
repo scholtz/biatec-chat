@@ -43,7 +43,7 @@ class PlatformSensitiveClipboard implements SensitiveClipboard {
         await Clipboard.setData(const ClipboardData(text: ''));
       }
     } on Object {
-      // The clipboard cannot be read (the app is in the background on a newer system): the native expiry covers it.
+      // The clipboard cannot be read (the app is in the background on a newer system): the native side clears it on its own timer too.
     }
   }
 }

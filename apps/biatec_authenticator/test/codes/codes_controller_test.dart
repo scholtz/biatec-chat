@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:biatec_authenticator/codes/add/account_input.dart';
 import 'package:biatec_authenticator/codes/codes_controller.dart';
+import 'package:biatec_authenticator/codes/codes_services.dart';
 import 'package:biatec_authenticator/lock/biometric_authenticator.dart';
 import 'package:biatec_authenticator/totp/core/base32.dart';
 import 'package:biatec_authenticator/totp/core/otp_account.dart';
@@ -236,6 +239,97 @@ void main() {
     });
   });
 
+  group('races and failures', () {
+    test('a lock while the list is loading does not bring secrets back',
+        () async {
+      final (rig, c) = await open();
+      await rig.addAccount(account(seed: 1));
+      final loading = c.load();
+      rig.lock.lock(); // the lock listener wipes while the vault is read
+      await loading;
+      expect(c.entries, isEmpty);
+    });
+
+    test('an add that was sealing when the app locked is not kept in memory',
+        () async {
+      final (rig, c) = await open();
+      await c.load();
+      final gate = Completer<void>();
+      rig.keys.sealGate = gate.future;
+      final adding = c.add(account(seed: 1));
+      await Future<void>.delayed(Duration.zero);
+      rig.lock.lock();
+      gate.complete();
+      await expectLater(adding, throwsA(isA<AddRefused>()));
+      expect(c.entries, isEmpty);
+      expect(await rig.vault.list(), hasLength(1), reason: 'it was saved');
+    });
+
+    test('nothing is added while the list could not be opened', () async {
+      final (rig, c) = await open();
+      await c.load();
+      await c.add(account(seed: 1));
+      rig.keys.denyAuth = true;
+      await c.load();
+      rig.keys.denyAuth = false;
+      expect(c.phase, CodesPhase.failed);
+      await expectLater(c.add(account(seed: 2)), throwsA(isA<AddRefused>()));
+      expect(await rig.vault.list(), hasLength(1));
+    });
+
+    test('the same account added twice at once is saved once', () async {
+      final (rig, c) = await open();
+      await c.load();
+      final results = await Future.wait([
+        c
+            .add(account(seed: 4))
+            .then<Object>((e) => e)
+            .catchError((Object e) => e),
+        c
+            .add(account(seed: 4))
+            .then<Object>((e) => e)
+            .catchError((Object e) => e),
+      ]);
+      expect(results.whereType<AddRefused>(), hasLength(1));
+      expect(await rig.vault.list(), hasLength(1));
+    });
+
+    test('a reorder that cannot be saved puts the list back', () async {
+      final (rig, c) = await open();
+      await c.load();
+      await c.add(account(issuer: 'A', seed: 1));
+      await c.add(account(issuer: 'B', seed: 2));
+      rig.storage.failWrites = true;
+      await expectLater(c.reorder(0, 1), throwsA(anything));
+      expect(c.entries.map((e) => e.info.issuer), ['A', 'B']);
+    });
+
+    test('the latest time is saved rarely, not every second', () async {
+      final (rig, c) = await open();
+      await c.load();
+      var writes = 0;
+      final counting = _CountingPrefs(rig.prefs, () => writes++);
+      final c2 = CodesController(CodesServicesOf.withPrefs(rig, counting));
+      addTearDown(c2.dispose);
+      await c2.load();
+      for (var i = 0; i < 120; i++) {
+        await c2.noteShownAt(rig.now.add(Duration(seconds: i)));
+      }
+      expect(writes, 1);
+      await c2.noteShownAt(rig.now.add(const Duration(minutes: 11)));
+      expect(writes, 2);
+      expect(c2.latestSeen, rig.now.add(const Duration(minutes: 11)));
+    });
+
+    test('locking tells the key store to forget the last biometric', () async {
+      final (rig, _) = await open();
+      expect(rig.keys.sessionsEnded, 0);
+      rig.services; // built with the lock hook
+      rig.lock.lock();
+      expect(rig.keys.sessionsEnded, 1);
+    });
+  });
+
   group('the latest time seen', () {
     test('a time far ahead of the clock is forgotten, a close one is kept',
         () async {
@@ -260,4 +354,34 @@ void main() {
       expect(rig.prefs.seen, rig.now);
     });
   });
+}
+
+class _CountingPrefs implements CodesPrefs {
+  _CountingPrefs(this.inner, this.onWrite);
+  final CodesPrefs inner;
+  final void Function() onWrite;
+
+  @override
+  Future<bool> readTapToReveal() => inner.readTapToReveal();
+  @override
+  Future<void> writeTapToReveal(bool v) => inner.writeTapToReveal(v);
+  @override
+  Future<DateTime?> readLatestSeen() => inner.readLatestSeen();
+  @override
+  Future<void> writeLatestSeen(DateTime v) {
+    onWrite();
+    return inner.writeLatestSeen(v);
+  }
+}
+
+abstract final class CodesServicesOf {
+  static CodesServices withPrefs(CodesRig rig, CodesPrefs prefs) =>
+      CodesServices(
+        vault: rig.vault,
+        lock: rig.lock,
+        clipboard: rig.clipboard,
+        serverClock: rig.serverClock,
+        clock: () => rig.now,
+        prefs: prefs,
+      );
 }
