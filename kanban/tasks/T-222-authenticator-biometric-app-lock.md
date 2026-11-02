@@ -1,7 +1,7 @@
 ---
 id: T-222
 title: "Authenticator: biometric-only lock for the whole secure area"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-214, T-227]
@@ -9,12 +9,12 @@ area: ["apps/biatec_authenticator/lib/lock/**", "apps/biatec_authenticator/lib/s
 parallel: no
 conflicts_with: [T-220]
 issue: "#359"
-branch: ""
-owner: ""
+branch: "task/T-222"
+owner: "session-20261102-1000"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
-updated: 2026-10-30
+updated: 2026-11-02
 ---
 
 # T-222 - Authenticator: biometric-only lock for the whole secure area
@@ -72,3 +72,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:42 · kanban-board · backlog → blocked · waiting on: T-214
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
 - 2026-10-30 16:40 · kanban-board · blocked → backlog · blockers done: T-214, T-227
+- 2026-11-02 10:00 · scholtz · backlog → in-progress · claimed by session-20261102-1000 on task/T-222
