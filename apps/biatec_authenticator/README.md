@@ -217,3 +217,13 @@ navigator, so back goes up inside a tab first, then to Codes, and only then leav
   screen that says what happened; nothing opens from there.
 - Not run on a device: the Kotlin and Swift code (CI builds Android).
 
+## Codes tab (T-224)
+
+- `lib/codes/codes_screen.dart` is the first tab: the list (issuer, account name, the code in groups of three, a countdown ring with the seconds in text, the next code in the last 5 seconds, tap to copy, a button for counter-based accounts), search, reorder (drag handle, or Move up and Move down in the menu), rename, delete (a confirmation, then a fresh biometric), and an optional "hide codes until tapped" mode kept on this phone.
+- `CodesController` reads the vault (`lib/totp/vault`) when the tab opens and holds the secrets in memory only while the screen exists. The screen exists only while the app is unlocked, and the controller also wipes on the lock listener. One `CodeTicker` drives every countdown; it ticks on the whole second of the clock, and runs only while the tab shows, the app is in front and the list is loaded.
+- Adding (`lib/codes/add/`): QR scanner (`mobile_scanner`; the camera permission is asked when the scanner screen opens, no picture is kept), a pasted `otpauth://` link, or a typed Base32 key. All three end in the same `OtpAccount`; an entry that is refused shows the engine's own message; the account is shown before it is saved; a copy of an account in the list is refused.
+- Copy goes through `io.biatec.authenticator/clipboard` (`ClipboardChannel.kt`: `EXTRA_IS_SENSITIVE`; `ClipboardChannel.swift`: local only, expiring) and is cleared after 30 seconds only if the clipboard still holds that code.
+- Clock: `ServerClock` reads the `Date` header of the calls to Biatec OIDC (the pinned client reports to it) and the tab warns above 5 seconds. A time earlier than the latest time shown (`OtpGenerator.clockIsPlausible`) hides time-based codes; a saved time more than 30 days ahead of the clock is forgotten, so a corrected clock is trusted again.
+- Vault key window: the vault's secret key accepts a strong biometric for 30 seconds (Android `setUserAuthenticationParameters`, iOS `touchIDAuthenticationAllowableReuseDuration`), so the unlock that opened the app also opens every secret instead of one prompt per account. After the window each secret read prompts again.
+- Not run on a device: the scanner, the clipboard channels and the vault window (Kotlin, Swift).
+

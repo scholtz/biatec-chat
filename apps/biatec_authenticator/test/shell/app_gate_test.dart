@@ -19,11 +19,11 @@ import 'package:biatec_authenticator/ui/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lock/support.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import '../approvals/approval_test.dart' show firstVector;
+import '../codes/support.dart';
 import '../settings/support.dart';
 import 'app_shell_test.dart' show ShellRig;
 
@@ -86,10 +86,12 @@ void main() {
       tester.view.physicalSize = const Size(400, 900);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
+      final parts = await appParts();
       await tester.pumpWidget(MaterialApp(
           home: AppGate(
         config: AppConfig.resolve(''),
-        lock: await unlockedLock(),
+        lock: parts.lock,
+        codes: parts.codes,
         approvals: rig.approvalsWith(store),
         settings: rig.settings.services,
         shell: rig.shell,
@@ -121,10 +123,12 @@ void main() {
       tester.view.physicalSize = const Size(400, 900);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
+      final parts = await appParts();
       await tester.pumpWidget(MaterialApp(
           home: AppGate(
         config: AppConfig.resolve(''),
-        lock: await unlockedLock(),
+        lock: parts.lock,
+        codes: parts.codes,
         approvals: rig.approvals,
         settings: rig.settings.services,
         shell: rig.shell,
@@ -144,10 +148,12 @@ void main() {
     testWidgets('start-up reads the stored enrollment once', (tester) async {
       final rig = ShellRig(enrolled: false);
       final store = _CountingReads();
+      final parts = await appParts();
       await tester.pumpWidget(MaterialApp(
           home: AppGate(
         config: AppConfig.resolve(''),
-        lock: await unlockedLock(),
+        lock: parts.lock,
+        codes: parts.codes,
         approvals: rig.approvalsWith(store),
         settings: rig.settings.services,
         shell: rig.shell,
@@ -167,10 +173,12 @@ void main() {
       final rig = ShellRig();
       final store = ObservableEnrollmentStore(rig.settings.enrollment);
       final enrollment = _SlowEnrollment(rig, store: store);
+      final parts = await appParts();
       await tester.pumpWidget(MaterialApp(
           home: AppGate(
         config: AppConfig.resolve(''),
-        lock: await unlockedLock(),
+        lock: parts.lock,
+        codes: parts.codes,
         approvals: rig.approvalsWith(store),
         settings: rig.settings.services,
         shell: rig.shell,

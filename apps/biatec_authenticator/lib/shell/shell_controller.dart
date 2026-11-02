@@ -72,6 +72,9 @@ class ShellController extends ChangeNotifier {
   /// Whether the Approvals tab is the one showing. The pending list polls quickly only while it is.
   final ValueNotifier<bool> approvalsActive = ValueNotifier(false);
 
+  /// Whether the Codes tab is the one showing. The countdowns tick only then.
+  final ValueNotifier<bool> codesActive = ValueNotifier(true);
+
   /// False while the app is in the background: nothing polls for a screen nobody is looking at.
   final ValueNotifier<bool> foreground = ValueNotifier(true);
 
@@ -135,6 +138,7 @@ class ShellController extends ChangeNotifier {
     }
     _selected = tab;
     approvalsActive.value = tab == AppTab.approvals;
+    codesActive.value = tab == AppTab.codes;
     notifyListeners();
   }
 
@@ -189,6 +193,7 @@ class ShellController extends ChangeNotifier {
     _loadedOnce = false;
     _startedAt = null;
     approvalsActive.value = false;
+    codesActive.value = true;
     // A count from the old session is not the next one's.
     pendingCount.value = 0;
     _leftAt.clear();
@@ -257,6 +262,7 @@ class ShellController extends ChangeNotifier {
     _disposed = true;
     pendingCount.dispose();
     approvalsActive.dispose();
+    codesActive.dispose();
     foreground.dispose();
     requestsChanged.dispose();
     for (final n in reloads.values) {

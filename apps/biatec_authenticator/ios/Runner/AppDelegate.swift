@@ -63,5 +63,9 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BiometricChannel") {
       BiometricChannel.register(with: registrar)
     }
+    // Copied codes stay on this device and expire (ClipboardChannel), over io.biatec.authenticator/clipboard.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "ClipboardChannel") {
+      ClipboardChannel.register(with: registrar)
+    }
   }
 }

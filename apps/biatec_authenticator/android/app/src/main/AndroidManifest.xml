@@ -1,5 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- The camera is asked for only when the user opens the QR scanner to add an account; no picture is stored. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
     <!-- Lets MainActivity hide other apps' overlay windows while it is in front (Android 12+, MainActivity.kt). A normal permission. -->
     <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS"/>
     <!-- Hardening (BCHAT-008): nothing is backed up or transferred, cleartext traffic is forbidden (the debug manifest allows it for the local

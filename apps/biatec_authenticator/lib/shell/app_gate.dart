@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../approvals/approval_services.dart';
+import '../codes/codes_services.dart';
 import '../config.dart';
 import '../enrollment/enrollment_controller.dart';
 import '../enrollment/enrollment_screen.dart';
@@ -25,6 +26,7 @@ class AppGate extends StatefulWidget {
     required this.config,
     required this.approvals,
     required this.settings,
+    required this.codes,
     required this.shell,
     required this.lock,
     this.push,
@@ -35,6 +37,7 @@ class AppGate extends StatefulWidget {
   final AppConfig config;
   final ApprovalServices approvals;
   final SettingsServices settings;
+  final CodesServices codes;
   final ShellController shell;
 
   /// Decides when the secure area (the shell) is open. The enrollment screens are the first-run explanation, not the secure area.
@@ -234,6 +237,7 @@ class _AppGateState extends State<AppGate> {
               config: widget.config,
               approvals: widget.approvals,
               settings: widget.settings,
+              codes: widget.codes,
               controller: widget.shell,
               push: widget.push,
               banner: _enrollment.state.phase ==

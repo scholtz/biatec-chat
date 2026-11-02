@@ -8,6 +8,7 @@ import '../approvals/approval_services.dart';
 import '../approvals/history_screen.dart';
 import '../approvals/pending_screen.dart';
 import '../codes/codes_screen.dart';
+import '../codes/codes_services.dart';
 import '../config.dart';
 import '../devices/devices_screen.dart';
 import '../push/push_controller.dart';
@@ -34,6 +35,7 @@ class AppShell extends StatefulWidget {
     required this.config,
     required this.approvals,
     required this.settings,
+    required this.codes,
     required this.controller,
     this.push,
     this.banner,
@@ -42,6 +44,7 @@ class AppShell extends StatefulWidget {
   final AppConfig config;
   final ApprovalServices approvals;
   final SettingsServices settings;
+  final CodesServices codes;
   final ShellController controller;
 
   /// Null when push is not configured; the pending list then polls only.
@@ -110,7 +113,10 @@ class _AppShellState extends State<AppShell> {
   }
 
   Widget _root(AppTab tab) => switch (tab) {
-        AppTab.codes => const CodesScreen(),
+        AppTab.codes => CodesScreen(
+            services: widget.codes,
+            active: widget.controller.codesActive,
+            foreground: widget.controller.foreground),
         AppTab.approvals => PendingScreen(
             services: widget.approvals,
             pushes: widget.push?.requestArrived,

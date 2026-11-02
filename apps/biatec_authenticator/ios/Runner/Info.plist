@@ -43,6 +43,8 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Biatec Authenticator uses the camera only while you scan the QR code of a two-factor account. Nothing is recorded or stored.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Biatec Authenticator asks for Face ID to confirm that it is you before it signs an approval.</string>
 	<key>LSRequiresIPhoneOS</key>

@@ -75,6 +75,20 @@ public class VaultPlugin: NSObject, FlutterPlugin {
         SecItemAdd(item as CFDictionary, nil)
     }
 
+    /// One authenticated context is reused for 30 seconds, so the codes of every account open after a single Face ID or Touch ID check instead of one per account.
+    private var sharedContext: LAContext?
+    private var sharedContextMade = Date.distantPast
+
+    private func currentContext() -> LAContext {
+        if let context = sharedContext, Date().timeIntervalSince(sharedContextMade) < 30 { return context }
+        let context = LAContext()
+        context.localizedReason = "Unlock your two-factor accounts"
+        context.touchIDAuthenticationAllowableReuseDuration = 30
+        sharedContext = context
+        sharedContextMade = Date()
+        return context
+    }
+
     private func existingKey(_ purpose: String, _ context: LAContext?) -> SecKey? {
         var q = keyQuery(purpose)
         q[kSecReturnRef as String] = true
@@ -126,8 +140,7 @@ public class VaultPlugin: NSObject, FlutterPlugin {
     }
 
     private func open(_ purpose: String, _ sealed: Data, _ aad: Data) -> Any? {
-        let context = LAContext()
-        context.localizedReason = "Unlock your two-factor accounts"
+        let context = currentContext()
         guard let key = existingKey(purpose, context) else {
             if markerExists(purpose) { return FlutterError(code: "biometrics_changed", message: "The vault key was invalidated", details: nil) }
             return FlutterError(code: "bad_data", message: "No key for this value", details: nil)

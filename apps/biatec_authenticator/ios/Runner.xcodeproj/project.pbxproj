@@ -12,6 +12,7 @@
 		B10A7EC0000000000000A002 /* KeystorePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10A7EC0000000000000A001 /* KeystorePlugin.swift */; };
 		B10A7EC0000000000000D002 /* VaultPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10A7EC0000000000000D001 /* VaultPlugin.swift */; };
 		B10A7EC0000000000000E002 /* BiometricChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10A7EC0000000000000E001 /* BiometricChannel.swift */; };
+		B10A7EC0000000000000F002 /* ClipboardChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10A7EC0000000000000F001 /* ClipboardChannel.swift */; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
@@ -52,6 +53,7 @@
 		B10A7EC0000000000000A001 /* KeystorePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeystorePlugin.swift; sourceTree = "<group>"; };
 		B10A7EC0000000000000D001 /* VaultPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultPlugin.swift; sourceTree = "<group>"; };
 		B10A7EC0000000000000E001 /* BiometricChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricChannel.swift; sourceTree = "<group>"; };
+		B10A7EC0000000000000F001 /* ClipboardChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardChannel.swift; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
@@ -138,6 +140,7 @@
 				B10A7EC0000000000000A001 /* KeystorePlugin.swift */,
 				B10A7EC0000000000000D001 /* VaultPlugin.swift */,
 				B10A7EC0000000000000E001 /* BiometricChannel.swift */,
+				B10A7EC0000000000000F001 /* ClipboardChannel.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -304,6 +307,7 @@
 				B10A7EC0000000000000A002 /* KeystorePlugin.swift in Sources */,
 				B10A7EC0000000000000D002 /* VaultPlugin.swift in Sources */,
 				B10A7EC0000000000000E002 /* BiometricChannel.swift in Sources */,
+				B10A7EC0000000000000F002 /* ClipboardChannel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
