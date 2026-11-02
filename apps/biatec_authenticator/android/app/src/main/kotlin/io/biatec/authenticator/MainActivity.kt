@@ -39,5 +39,7 @@ class MainActivity : FlutterFragmentActivity() {
         flutterEngine.plugins.add(VaultPlugin(applicationContext))
         // The biometric lock: a strong biometric only, no device PIN (BiometricChannel), reached over io.biatec.authenticator/biometric.
         flutterEngine.plugins.add(BiometricChannel(applicationContext))
+        // Copied codes are marked sensitive (ClipboardChannel), over io.biatec.authenticator/clipboard.
+        flutterEngine.plugins.add(ClipboardChannel(applicationContext))
     }
 }

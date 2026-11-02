@@ -33,6 +33,11 @@ public class VaultPlugin: NSObject, FlutterPlugin {
 
     private func run(_ method: String, _ args: [String: Any]?) -> Any? {
         switch method {
+        case "endSession":
+            // The app locked: the authenticated context is dropped, so the next secret read asks for Face ID or Touch ID again.
+            sharedContext?.invalidate()
+            sharedContext = nil
+            return nil
         case "deleteKeys":
             for purpose in ["metadata", "secret"] {
                 SecItemDelete(keyQuery(purpose) as CFDictionary)
@@ -73,6 +78,20 @@ public class VaultPlugin: NSObject, FlutterPlugin {
         item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         item[kSecValueData as String] = Data([1])
         SecItemAdd(item as CFDictionary, nil)
+    }
+
+    /// One authenticated context is reused for 30 seconds, so the codes of every account open after a single Face ID or Touch ID check instead of one per account.
+    private var sharedContext: LAContext?
+    private var sharedContextMade = Date.distantPast
+
+    private func currentContext() -> LAContext {
+        if let context = sharedContext, Date().timeIntervalSince(sharedContextMade) < 30 { return context }
+        let context = LAContext()
+        context.localizedReason = "Unlock your two-factor accounts"
+        context.touchIDAuthenticationAllowableReuseDuration = 30
+        sharedContext = context
+        sharedContextMade = Date()
+        return context
     }
 
     private func existingKey(_ purpose: String, _ context: LAContext?) -> SecKey? {
@@ -126,8 +145,7 @@ public class VaultPlugin: NSObject, FlutterPlugin {
     }
 
     private func open(_ purpose: String, _ sealed: Data, _ aad: Data) -> Any? {
-        let context = LAContext()
-        context.localizedReason = "Unlock your two-factor accounts"
+        let context = currentContext()
         guard let key = existingKey(purpose, context) else {
             if markerExists(purpose) { return FlutterError(code: "biometrics_changed", message: "The vault key was invalidated", details: nil) }
             return FlutterError(code: "bad_data", message: "No key for this value", details: nil)

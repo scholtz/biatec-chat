@@ -5,6 +5,7 @@ import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
+import android.security.keystore.UserNotAuthenticatedException
 import android.security.keystore.StrongBoxUnavailableException
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
@@ -33,11 +34,12 @@ import javax.crypto.spec.GCMParameterSpec
  *
  * Two non-exportable keys live in the Android Keystore, StrongBox when the device has it:
  *  - metadata: no user authentication, so the account list can be shown before the user proves anything;
- *  - secret: setUserAuthenticationRequired(true) with a strong biometric only (no screen-lock PIN), a prompt for every use through a
- *    CryptoObject, and invalidated when a fingerprint or face is added or removed.
+ *  - secret: setUserAuthenticationRequired(true) with a strong biometric only (no screen-lock PIN), a 30 second window after each strong biometric (the app's own unlock counts), then a prompt, and invalidated when a fingerprint or face is added or removed.
  * seal returns nonce(12) || ciphertext || tag; the platform makes the nonce (randomized encryption is required of the key), and the
  * associated data is authenticated with updateAAD. Nothing here logs: not a key, a secret, an alias or an exception text.
  */
+private const val VAULT_AUTH_SECONDS = 30
+
 class VaultPlugin(private val context: android.content.Context) : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler {
     private var channel: MethodChannel? = null
     private var activity: FragmentActivity? = null
@@ -97,28 +99,44 @@ class VaultPlugin(private val context: android.content.Context) : FlutterPlugin,
         }
     }
 
-    private fun run(seal: Boolean, purpose: String, data: ByteArray, aad: ByteArray, result: Once) {
+    private fun newCipher(seal: Boolean, purpose: String, data: ByteArray): Cipher {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        if (seal) {
+            cipher.init(Cipher.ENCRYPT_MODE, key(purpose))
+        } else {
+            cipher.init(Cipher.DECRYPT_MODE, key(purpose), GCMParameterSpec(128, data.copyOfRange(0, 12)))
+        }
+        return cipher
+    }
+
+    /** Runs [block], turning the failures the keystore can cause into the codes Dart expects. */
+    private fun guarded(result: Once, block: () -> Unit) {
         try {
-            val cipher: Cipher
-            if (seal) {
-                cipher = Cipher.getInstance("AES/GCM/NoPadding")
-                cipher.init(Cipher.ENCRYPT_MODE, key(purpose))
-            } else {
-                if (data.size < 12 + 16) return result.error("bad_data", "too short")
-                cipher = Cipher.getInstance("AES/GCM/NoPadding")
-                cipher.init(Cipher.DECRYPT_MODE, key(purpose), GCMParameterSpec(128, data.copyOfRange(0, 12)))
-            }
-            if (purpose == "secret") {
-                prompt(cipher, result) { authed -> finish(authed, seal, data, aad, result) }
-            } else {
-                finish(cipher, seal, data, aad, result)
-            }
+            block()
         } catch (e: KeyPermanentlyInvalidatedException) {
             result.error("biometrics_changed", "The vault key was invalidated")
         } catch (e: NoBiometricsException) {
             result.error("auth_failed", "No strong biometric is enrolled")
         } catch (e: Throwable) {
             result.error("keystore_error", "The keystore could not do that")
+        }
+    }
+
+    private fun run(seal: Boolean, purpose: String, data: ByteArray, aad: ByteArray, result: Once) {
+        guarded(result) {
+            if (!seal && data.size < 12 + 16) return@guarded result.error("bad_data", "too short")
+            if (purpose != "secret") return@guarded finish(newCipher(seal, purpose, data), seal, data, aad, result)
+            // The secret key accepts a strong biometric for a short window (see generate): the unlock that opened the app counts, so the codes
+            // of every account open without a prompt each. When the window has run out the user is asked once more, then the key is used.
+            val ready = try {
+                newCipher(seal, purpose, data)
+            } catch (e: UserNotAuthenticatedException) {
+                null
+            }
+            if (ready != null) return@guarded finish(ready, seal, data, aad, result)
+            prompt(result) {
+                worker.execute { guarded(result) { finish(newCipher(seal, purpose, data), seal, data, aad, result) } }
+            }
         }
     }
 
@@ -139,8 +157,8 @@ class VaultPlugin(private val context: android.content.Context) : FlutterPlugin,
         }
     }
 
-    /** The strong-biometric prompt that unlocks [cipher] (a CryptoObject, so the key is used only after the user is verified). */
-    private fun prompt(cipher: Cipher, result: Once, then: (Cipher) -> Unit) {
+    /** The strong-biometric prompt that opens the secret key's time window. */
+    private fun prompt(result: Once, then: () -> Unit) {
         val host = activity ?: return result.error("auth_failed", "No screen to ask on")
         if (BiometricManager.from(context).canAuthenticate(BIOMETRIC_STRONG) != BiometricManager.BIOMETRIC_SUCCESS) {
             return result.error("auth_failed", "No strong biometric is available")
@@ -152,17 +170,14 @@ class VaultPlugin(private val context: android.content.Context) : FlutterPlugin,
             .setConfirmationRequired(false)
             .build()
         val callback = object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(r: BiometricPrompt.AuthenticationResult) {
-                val authed = r.cryptoObject?.cipher
-                if (authed == null) result.error("auth_failed", "No verified key") else worker.execute { then(authed) }
-            }
+            override fun onAuthenticationSucceeded(r: BiometricPrompt.AuthenticationResult) = then()
 
             override fun onAuthenticationError(code: Int, message: CharSequence) {
                 result.error("auth_failed", "The biometric check did not succeed")
             }
         }
         host.runOnUiThread {
-            BiometricPrompt(host, ContextCompat.getMainExecutor(context), callback).authenticate(info, BiometricPrompt.CryptoObject(cipher))
+            BiometricPrompt(host, ContextCompat.getMainExecutor(context), callback).authenticate(info)
         }
     }
 
@@ -196,11 +211,11 @@ class VaultPlugin(private val context: android.content.Context) : FlutterPlugin,
             builder.setUserAuthenticationRequired(true)
             builder.setInvalidatedByBiometricEnrollment(true)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                // Timeout 0: a prompt for every operation, strong biometrics only.
-                builder.setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
+                // A strong biometric opens the key for VAULT_AUTH_SECONDS, so the list of codes opens with the unlock instead of one prompt per account.
+                builder.setUserAuthenticationParameters(VAULT_AUTH_SECONDS, KeyProperties.AUTH_BIOMETRIC_STRONG)
             } else {
                 @Suppress("DEPRECATION")
-                builder.setUserAuthenticationValidityDurationSeconds(-1)
+                builder.setUserAuthenticationValidityDurationSeconds(VAULT_AUTH_SECONDS)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) builder.setUnlockedDeviceRequired(true)
         }

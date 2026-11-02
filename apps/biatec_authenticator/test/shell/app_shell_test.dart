@@ -19,11 +19,11 @@ import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lock/support.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import '../approvals/approval_test.dart' show firstVector;
+import '../codes/support.dart';
 import '../settings/support.dart';
 
 /// The app with an enrolled, active device and [pending] open requests.
@@ -82,6 +82,9 @@ class ShellRig {
       );
   final shell = ShellController();
 
+  /// The Codes tab's vault, clipboard and clock; made when the app is pumped.
+  late CodesRig codes;
+
   String get requestId =>
       (firstVector()['request'] as Map)['auth_req_id'] as String;
 
@@ -89,12 +92,14 @@ class ShellRig {
       {Size size = const Size(400, 900),
       AppConfig? config,
       LockController? lock}) async {
+    codes = await CodesRig.create(lock: lock);
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(AuthenticatorApp(
       config: config ?? AppConfig.resolve(''),
-      lock: lock ?? await unlockedLock(),
+      lock: codes.lock,
+      codes: codes.services,
       approvals: approvals,
       settings: settings.services,
       shell: shell,
@@ -149,7 +154,7 @@ void main() {
       final rig = ShellRig(pending: 0);
       await rig.pump(tester);
       expect(rig.shell.selected, AppTab.codes);
-      expect(find.byKey(const Key('codes-placeholder')), findsOneWidget);
+      expect(find.byKey(const Key('codes-empty')), findsOneWidget);
       expect(
           tester
               .widget<NavigationBar>(find.byType(NavigationBar))

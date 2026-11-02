@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'approvals/approval_services.dart';
+import 'codes/codes_services.dart';
 import 'config.dart';
 import 'enrollment/enrollment_controller.dart';
 import 'push/fcm_push_transport.dart';
@@ -100,6 +101,7 @@ class AuthenticatorApp extends StatefulWidget {
     this.messengerKey,
     this.theme,
     this.lock,
+    this.codes,
   });
 
   final AppConfig config;
@@ -109,6 +111,9 @@ class AuthenticatorApp extends StatefulWidget {
 
   /// Opens and locks the secure area; made (with the platform's strong-biometric check) when not given.
   final LockController? lock;
+
+  /// The vault, clipboard and clock of the Codes tab; built on the platform pieces when not given.
+  final CodesServices? codes;
 
   /// Built from [config] when not given.
   final ApprovalServices? approvals;
@@ -139,6 +144,8 @@ class _AuthenticatorAppState extends State<AuthenticatorApp> {
           gate: LockBiometricGate(_lock));
   late final SettingsServices _settings =
       widget.settings ?? SettingsServices.fromConfig(widget.config, _approvals);
+  late final CodesServices _codes =
+      widget.codes ?? CodesServices.platform(_lock);
   late final ShellController _shell = widget.shell ?? ShellController();
   late final ThemeController _theme = widget.theme ?? ThemeController();
 
@@ -178,6 +185,7 @@ class _AuthenticatorAppState extends State<AuthenticatorApp> {
           config: widget.config,
           approvals: _approvals,
           settings: _settings,
+          codes: _codes,
           shell: _shell,
           lock: _lock,
           push: push,

@@ -52,6 +52,9 @@ abstract class VaultKeyStore {
   Future<Uint8List> open(
       VaultKeyPurpose purpose, Uint8List sealed, Uint8List aad);
 
+  /// The app locked: whatever the platform remembers of the last biometric (an authenticated context) is dropped, so the next secret read asks again.
+  Future<void> endSession();
+
   /// Removes both keys, for a reset. The vault file can no longer be opened afterwards.
   Future<void> deleteKeys();
 }
@@ -98,6 +101,15 @@ class PlatformVaultKeyStore implements VaultKeyStore {
   Future<Uint8List> open(
           VaultKeyPurpose purpose, Uint8List sealed, Uint8List aad) =>
       _call('open', purpose, sealed, aad);
+
+  @override
+  Future<void> endSession() async {
+    try {
+      await _channel.invokeMethod('endSession');
+    } on Object {
+      // Nothing to end on a platform without the native side.
+    }
+  }
 
   @override
   Future<void> deleteKeys() async {
