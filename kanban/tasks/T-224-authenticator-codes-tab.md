@@ -64,6 +64,16 @@ Write the failing test first for every security rule. Never log, print or put in
 
 Filled in by the agent when it moves the task to `review`.
 
+Implemented in PR #382, branch task/T-224 (squash merged).
+
+- `lib/codes/`: `CodesScreen` (list, search, reorder, rename, delete, tap-to-reveal, empty state), `CodesController` (secrets in memory only while unlocked, epoch guard against late loads and adds), `CodeTicker` (one clock-aligned ticker), `widgets/code_tile.dart`, `add/` (QR, link, key; preview; duplicates), `sensitive_clipboard.dart` + `ClipboardChannel.kt/.swift`, `server_clock.dart` (Date header of Biatec OIDC calls, fed by `PinnedHttp.clientFor`), `codes_services.dart`.
+- Camera permission strings in the manifest and Info.plist; dependencies `mobile_scanner` and `path_provider`.
+- For T-226 (backup): `CodesServices.vault` and `CodesController` are the access points; export must use `lock.reauthenticate`; `TotpVault.readSecret` returns an `OtpAccount` to wipe. The vault file is `biatec_vault.bin` in the application support folder.
+- Stricter reading to review: the vault's secret key now accepts a strong biometric for 30 s (Android `setUserAuthenticationParameters`, iOS reused `LAContext`), so the list opens with the app's own unlock; `VaultKeyStore.endSession()` ends it when the app locks (iOS; Android's window cannot be ended).
+- Not run on a device: scanner, clipboard channels, vault window. Tests: 821 pass. One review round, user capped and merged.
+
+**Unblocks:** T-226 (T-231 also waits on T-228).
+
 ## Review
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
