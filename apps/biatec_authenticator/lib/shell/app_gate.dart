@@ -9,10 +9,12 @@ import '../enrollment/enrollment_screen.dart';
 import '../enrollment/enrollment_state.dart';
 import '../enrollment/observable_enrollment_store.dart';
 import '../enrollment/oidc_enrollment_client.dart';
+import '../lock/lock_controller.dart';
 import '../push/push_controller.dart';
 import '../security/settings_controller.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
+import 'app_lock_gate.dart';
 import 'app_shell.dart';
 import 'shell_controller.dart';
 
@@ -24,6 +26,7 @@ class AppGate extends StatefulWidget {
     required this.approvals,
     required this.settings,
     required this.shell,
+    required this.lock,
     this.push,
     this.enrollment,
     this.startupTimeout = const Duration(seconds: 8),
@@ -33,6 +36,9 @@ class AppGate extends StatefulWidget {
   final ApprovalServices approvals;
   final SettingsServices settings;
   final ShellController shell;
+
+  /// Decides when the secure area (the shell) is open. The enrollment screens are the first-run explanation, not the secure area.
+  final LockController lock;
   final PushController? push;
 
   /// Injected in tests; built from [approvals] and [config] otherwise.
@@ -216,16 +222,20 @@ class _AppGateState extends State<AppGate> {
       listenable: _enrollment,
       builder: (context, _) {
         if (_usable) {
-          return AppShell(
-            config: widget.config,
-            approvals: widget.approvals,
-            settings: widget.settings,
-            controller: widget.shell,
-            push: widget.push,
-            banner:
-                _enrollment.state.phase == EnrollmentPhase.activeRecoveryPending
-                    ? _recoveryNotice()
-                    : null,
+          // While locked the shell is not built at all: no screen of the secure area exists to read.
+          return AppLockGate(
+            lock: widget.lock,
+            child: AppShell(
+              config: widget.config,
+              approvals: widget.approvals,
+              settings: widget.settings,
+              controller: widget.shell,
+              push: widget.push,
+              banner: _enrollment.state.phase ==
+                      EnrollmentPhase.activeRecoveryPending
+                  ? _recoveryNotice()
+                  : null,
+            ),
           );
         }
         return EnrollmentScreen(config: widget.config, controller: _enrollment);

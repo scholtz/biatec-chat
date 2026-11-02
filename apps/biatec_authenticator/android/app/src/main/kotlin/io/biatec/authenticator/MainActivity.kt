@@ -6,7 +6,7 @@ import android.view.WindowManager
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 
-// FlutterFragmentActivity: the biometric prompt of local_auth needs a FragmentActivity.
+// FlutterFragmentActivity: BiometricPrompt (the lock and the vault) needs a FragmentActivity.
 class MainActivity : FlutterFragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         // No screenshots, screen recordings or app-switcher thumbnails of any screen: the authenticator shows the recovery code,
@@ -37,5 +37,7 @@ class MainActivity : FlutterFragmentActivity() {
         flutterEngine.plugins.add(KeystorePlugin(applicationContext))
         // The two-factor vault keys (AES-256-GCM, biometric-bound) live in the same keystore, behind io.biatec.authenticator/vault.
         flutterEngine.plugins.add(VaultPlugin(applicationContext))
+        // The biometric lock: a strong biometric only, no device PIN (BiometricChannel), reached over io.biatec.authenticator/biometric.
+        flutterEngine.plugins.add(BiometricChannel(applicationContext))
     }
 }

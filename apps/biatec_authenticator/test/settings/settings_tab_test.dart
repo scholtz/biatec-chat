@@ -11,6 +11,7 @@ import 'package:biatec_authenticator/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../lock/support.dart';
 import 'support.dart';
 
 class MemoryThemeStore implements ThemePreferenceStore {
@@ -166,6 +167,7 @@ void main() {
       final theme = ThemeController(store: store);
       await tester.pumpWidget(AuthenticatorApp(
         config: AppConfig.resolve(''),
+        lock: await unlockedLock(),
         settings: rig.services,
         theme: theme,
       ));

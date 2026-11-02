@@ -59,5 +59,9 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "VaultPlugin") {
       VaultPlugin.register(with: registrar)
     }
+    // The biometric lock (Face ID or Touch ID only, no passcode) is behind io.biatec.authenticator/biometric.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BiometricChannel") {
+      BiometricChannel.register(with: registrar)
+    }
   }
 }

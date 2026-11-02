@@ -5,6 +5,8 @@ import 'config.dart';
 import 'enrollment/enrollment_controller.dart';
 import 'push/fcm_push_transport.dart';
 import 'push/push_controller.dart';
+import 'lock/lock_controller.dart';
+import 'security/biometric_policy.dart';
 import 'security/pinning/pinned_http.dart';
 import 'security/pinning/pins.dart';
 import 'security/secure_storage.dart';
@@ -32,7 +34,11 @@ Future<void> main() async {
   // The saved appearance is read before the first frame, so a saved Dark is not painted Light first. A slow keystore does not hold the app.
   final theme = ThemeController();
   await theme.load().timeout(const Duration(seconds: 1), onTimeout: () {});
-  final approvals = ApprovalServices.fromConfig(config);
+  // The lock decides when the secure area opens; every fresh biometric (an approval, a setting) goes through it. Its delay is read before the first frame.
+  final lock = LockController(authenticator: PlatformBiometricAuthenticator());
+  await lock.load().timeout(const Duration(seconds: 1), onTimeout: () {});
+  final approvals =
+      ApprovalServices.fromConfig(config, gate: LockBiometricGate(lock));
   final firebase = FirebasePushConfig.fromEnvironment();
   if (firebase == null) {
     runApp(
@@ -50,6 +56,7 @@ Future<void> main() async {
       config: config,
       approvals: approvals,
       theme: theme,
+      lock: lock,
       push: push,
       shell: shell,
       messengerKey: messenger));
@@ -92,12 +99,16 @@ class AuthenticatorApp extends StatefulWidget {
     this.navigatorKey,
     this.messengerKey,
     this.theme,
+    this.lock,
   });
 
   final AppConfig config;
 
   /// The user's system, light or dark choice; made (and saved on this phone) when not given.
   final ThemeController? theme;
+
+  /// Opens and locks the secure area; made (with the platform's strong-biometric check) when not given.
+  final LockController? lock;
 
   /// Built from [config] when not given.
   final ApprovalServices? approvals;
@@ -121,8 +132,11 @@ class AuthenticatorApp extends StatefulWidget {
 }
 
 class _AuthenticatorAppState extends State<AuthenticatorApp> {
-  late final ApprovalServices _approvals =
-      widget.approvals ?? ApprovalServices.fromConfig(widget.config);
+  late final LockController _lock = widget.lock ??
+      LockController(authenticator: PlatformBiometricAuthenticator());
+  late final ApprovalServices _approvals = widget.approvals ??
+      ApprovalServices.fromConfig(widget.config,
+          gate: LockBiometricGate(_lock));
   late final SettingsServices _settings =
       widget.settings ?? SettingsServices.fromConfig(widget.config, _approvals);
   late final ShellController _shell = widget.shell ?? ShellController();
@@ -139,6 +153,7 @@ class _AuthenticatorAppState extends State<AuthenticatorApp> {
   void dispose() {
     if (widget.shell == null) _shell.dispose();
     if (widget.theme == null) _theme.dispose();
+    if (widget.lock == null) _lock.dispose();
     super.dispose();
   }
 
@@ -156,12 +171,15 @@ class _AuthenticatorAppState extends State<AuthenticatorApp> {
         darkTheme: buildTheme(Brightness.dark),
         themeMode: _theme.mode,
         builder: (context, child) => ThemeScope(
-            controller: _theme, child: largeTypeBuilder(context, child)),
+            controller: _theme,
+            child: LockScope(
+                lock: _lock, child: largeTypeBuilder(context, child))),
         home: AppGate(
           config: widget.config,
           approvals: _approvals,
           settings: _settings,
           shell: _shell,
+          lock: _lock,
           push: push,
           enrollment: widget.enrollment,
         ),

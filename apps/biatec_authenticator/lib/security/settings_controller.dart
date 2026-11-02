@@ -80,7 +80,8 @@ class SettingsServices {
   factory SettingsServices.fromConfig(
           AppConfig config, ApprovalServices approvals) =>
       SettingsServices(
-        client: SettingsClient(baseUrl: config.oidcBaseUrl, proof: approvals.proof),
+        client:
+            SettingsClient(baseUrl: config.oidcBaseUrl, proof: approvals.proof),
         keys: approvals.keys,
         enrollment: approvals.enrollment,
         gate: approvals.gate,
@@ -327,6 +328,12 @@ class SettingsController extends ChangeNotifier {
     try {
       final record = await _record();
       final bool loosening = isLoosening(current, change);
+      // An inactive device cannot loosen: said before any prompt.
+      if (loosening) _checkActive(record);
+      // A fresh biometric for any change to a security setting, tightening included (Secure Area rule 4). One prompt covers the signed consent of a loosening.
+      if (!await gate.confirm('Change a security setting')) {
+        throw const ApprovalException('Biometric check did not pass.');
+      }
       ConsentSettings next;
       if (loosening) {
         next = await _signedChange(record, current, change);
@@ -339,9 +346,7 @@ class SettingsController extends ChangeNotifier {
         }
       }
       _settings = next;
-      _notice = loosening
-          ? 'Approved on this device and applied.'
-          : 'Applied.';
+      _notice = loosening ? 'Approved on this device and applied.' : 'Applied.';
       applied = true;
     } on Object catch (e) {
       _fail(e);
@@ -351,18 +356,21 @@ class SettingsController extends ChangeNotifier {
     return applied;
   }
 
-  Future<ConsentSettings> _signedChange(EnrollmentRecord record,
-      ConsentSettings current, Map<String, Object?> change) async {
+  void _checkActive(EnrollmentRecord record) {
     if (record.activeAt.isAfter(now)) {
       throw const ApprovalException('This device is not active yet, so it '
           'cannot approve a change that lowers your protection. Changes that '
           'raise it still work.');
     }
-    if (!await gate.confirm('Approve this settings change')) {
-      throw const ApprovalException('Biometric check did not pass.');
-    }
+  }
+
+  Future<ConsentSettings> _signedChange(EnrollmentRecord record,
+      ConsentSettings current, Map<String, Object?> change) async {
+    _checkActive(record);
     final key = await keys.load(record.kid);
-    if (key == null) throw const ApprovalException('The device key is missing.');
+    if (key == null) {
+      throw const ApprovalException('The device key is missing.');
+    }
     if (key.securityLevel.blocksSigning) {
       throw const ApprovalException(KeySecurityLevel.softwareKeyMessage);
     }

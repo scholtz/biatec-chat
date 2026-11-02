@@ -16,6 +16,7 @@ import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../lock/support.dart';
 import 'support.dart';
 
 Widget _settings(SettingsServices services) =>
@@ -36,39 +37,54 @@ void main() {
       await _open(tester, _settings(rig.services));
       expect(find.text('Security'), findsOneWidget);
       expect(find.textContaining('1000.00 EUR'), findsOneWidget);
-      expect(
-          tester
-              .widget<SwitchListTile>(find.byKey(const Key('biometric')))
-              .value,
-          isTrue);
+      expect(find.byKey(const Key('biometric')), findsOneWidget);
     });
 
-    testWidgets('turning the biometric requirement off asks this device',
+    testWidgets('the biometric check is always required and has no switch',
         (tester) async {
       final rig = SettingsRig();
       await _open(tester, _settings(rig.services));
+      expect(
+          find
+              .byType(SwitchListTile)
+              .evaluate()
+              .map((e) => (e.widget as SwitchListTile).key),
+          isNot(contains(const Key('biometric'))));
+      expect(find.textContaining('cannot be turned off'), findsOneWidget);
       await tester.tap(find.byKey(const Key('biometric')));
+      await tester.pumpAndSettle();
+      expect(rig.oidc.puts, isEmpty);
+      expect(rig.gate.asked, 0);
+    });
+
+    testWidgets('letting unverified clients ask is confirmed in a sheet first',
+        (tester) async {
+      final rig = SettingsRig();
+      rig.oidc.settings['block_unverified_clients'] = true;
+      await _open(tester, _settings(rig.services));
+      await tester.tap(find.byKey(const Key('block-unverified')));
       await tester.pumpAndSettle();
       expect(rig.gate.asked, 0, reason: 'the sheet asks first');
       await tester.tap(find.byKey(const Key('keep')));
       await tester.pumpAndSettle();
-      expect(rig.oidc.settings['biometric_required'], isTrue);
-      await tester.tap(find.byKey(const Key('biometric')));
+      expect(rig.oidc.settings['block_unverified_clients'], isTrue);
+      await tester.tap(find.byKey(const Key('block-unverified')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('confirm-change')));
       await tester.pumpAndSettle();
       expect(rig.gate.asked, 1);
-      expect(rig.oidc.settings['biometric_required'], isFalse);
+      expect(rig.oidc.settings['block_unverified_clients'], isFalse);
       expect(find.text('Approved on this device and applied.'), findsOneWidget);
     });
 
-    testWidgets('blocking unverified clients is tightening and needs no check',
+    testWidgets(
+        'blocking unverified clients is tightening: no sheet, one biometric',
         (tester) async {
       final rig = SettingsRig();
       await _open(tester, _settings(rig.services));
       await tester.tap(find.byKey(const Key('block-unverified')));
       await tester.pumpAndSettle();
-      expect(rig.gate.asked, 0);
+      expect(rig.gate.asked, 1);
       expect(rig.oidc.settings['block_unverified_clients'], isTrue);
       expect(find.text('Applied.'), findsOneWidget);
     });
@@ -84,7 +100,8 @@ void main() {
       await tester.tap(find.byKey(const Key('eur-save')));
       await tester.pumpAndSettle();
       expect(rig.oidc.settings['threshold_eur'], '250');
-      expect(rig.gate.asked, 0);
+      expect(rig.gate.asked, 1);
+      expect(rig.oidc.puts.last.containsKey('consent'), isFalse);
 
       await tester.tap(find.byKey(const Key('threshold-change')));
       await tester.pumpAndSettle();
@@ -92,7 +109,7 @@ void main() {
       await tester.tap(find.byKey(const Key('eur-save')));
       await tester.pumpAndSettle();
       expect(rig.oidc.settings['threshold_eur'], '900.50');
-      expect(rig.gate.asked, 1);
+      expect(rig.gate.asked, 2);
       expect(rig.oidc.puts.last['consent'], isNotNull);
     });
 
@@ -113,13 +130,14 @@ void main() {
       final rig = SettingsRig();
       rig.gate.pass = false;
       await _open(tester, _settings(rig.services));
-      await tester.tap(find.byKey(const Key('biometric')));
+      await tester.tap(find.byKey(const Key('threshold-change')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('confirm-change')));
+      await tester.enterText(find.byKey(const Key('eur-field')), '2000');
+      await tester.tap(find.byKey(const Key('eur-save')));
       await tester.pumpAndSettle();
       expect(find.text('Biometric check did not pass.'), findsOneWidget);
       expect(find.text('Problem'), findsOneWidget);
-      expect(rig.oidc.settings['biometric_required'], isTrue);
+      expect(rig.oidc.settings['threshold_eur'], '1000.00');
     });
 
     testWidgets('offline shows a retry that recovers', (tester) async {
@@ -174,7 +192,7 @@ void main() {
       await _open(
           tester, TabReload(reload: reload, child: _settings(rig.services)));
       final before = tester.state(find.byType(SettingsScreen));
-      rig.oidc.settings['biometric_required'] = false;
+      rig.oidc.settings['block_unverified_clients'] = true;
       reload.value++;
       await tester.pump();
       expect(find.byType(LoadingSkeleton), findsNothing,
@@ -183,9 +201,9 @@ void main() {
       expect(tester.state(find.byType(SettingsScreen)), same(before));
       expect(
           tester
-              .widget<SwitchListTile>(find.byKey(const Key('biometric')))
+              .widget<SwitchListTile>(find.byKey(const Key('block-unverified')))
               .value,
-          isFalse);
+          isTrue);
     });
   });
 
@@ -245,14 +263,14 @@ void main() {
       await tester.tap(find.byKey(const Key('always-ask-biatec-chat')));
       await tester.pumpAndSettle();
       expect(rig.oidc.clientById('biatec-chat')['always_ask'], isTrue);
-      expect(rig.gate.asked, 0);
+      expect(rig.gate.asked, 1);
 
       await tester.tap(find.byKey(const Key('always-ask-biatec-chat')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('confirm-change')));
       await tester.pumpAndSettle();
       expect(rig.oidc.clientById('biatec-chat')['always_ask'], isFalse);
-      expect(rig.gate.asked, 1);
+      expect(rig.gate.asked, 2);
     });
 
     testWidgets('per-client threshold can be set and reset', (tester) async {
@@ -268,7 +286,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(rig.oidc.clientById('bank-example')['per_client_threshold_eur'],
           '100');
-      expect(rig.gate.asked, 0, reason: 'lower than the account threshold');
+      expect(rig.gate.asked, 1, reason: 'lower than the account threshold');
       expect(find.textContaining('100 EUR'), findsOneWidget);
 
       // Back to the account threshold (1000) raises 100: signed.
@@ -280,7 +298,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(rig.oidc.clientById('bank-example')['per_client_threshold_eur'],
           isNull);
-      expect(rig.gate.asked, 1);
+      expect(rig.gate.asked, 2);
     });
 
     testWidgets('an unverified client is labelled in words', (tester) async {
@@ -347,6 +365,7 @@ void main() {
       );
       await tester.pumpWidget(AuthenticatorApp(
           config: AppConfig.resolve(''),
+          lock: await unlockedLock(),
           approvals: approvals,
           settings: rig.services));
       await tester.pump();

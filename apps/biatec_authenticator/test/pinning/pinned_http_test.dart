@@ -399,7 +399,7 @@ void main() {
           main.indexOf('PinnedHttp.configure(pinPolicyFor(config))');
       expect(configure, greaterThan(-1));
       expect(configure,
-          lessThan(main.indexOf('ApprovalServices.fromConfig(config)')));
+          lessThan(main.indexOf('ApprovalServices.fromConfig(config')));
     });
   });
 }

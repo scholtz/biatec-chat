@@ -197,3 +197,23 @@ navigator, so back goes up inside a tab first, then to Codes, and only then leav
   overflows, that every control is at least 48 dp, and that every control has a label. The screen tests (`test/settings`, `test/approvals`,
   `test/shell`) cover the states of each screen the same way. A state is never shown by colour alone: it always has an icon and words.
 
+## Biometric lock (T-222)
+
+- `lib/lock/lock_controller.dart`: `LockController` (locked, unlocking, unlocked, noBiometric, biometricsChanged, compromised). The only way to
+  `unlocked` is `unlock()` with a `BiometricOutcome.success`; there is no PIN, no fallback and no debug switch. A process start is a locked state.
+- `lib/shell/app_lock_gate.dart`: builds the shell only while unlocked, so while locked the widget tree holds a lock screen and no secure-area
+  screen. It reports the app lifecycle and every touch to the controller. The enrollment screens are the first-run explanation, not the secure area.
+- Strong biometric only: `lib/security/biometric_policy.dart` over the channel `io.biatec.authenticator/biometric`. Android
+  (`BiometricChannel.kt`): `BiometricPrompt` with `BIOMETRIC_STRONG` and no `DEVICE_CREDENTIAL`; iOS (`BiometricChannel.swift`): the policy
+  `deviceOwnerAuthenticationWithBiometrics` with the fallback button hidden. `local_auth` is not used (on Android its biometric-only mode also accepts
+  weak biometrics). `test/lock/biometric_policy_test.dart` greps that no weaker policy appears.
+- When it locks: at start, after the background delay (immediately, 30 seconds, 1 minute or 5 minutes; default 30 seconds; no "never"; stored
+  locally; changed in Settings after a fresh biometric), when the screen locks (native event), and after 2 minutes without a touch. Locking runs the
+  `addLockListener` hooks so decrypted seeds and codes leave memory (T-224 registers its own).
+- A fresh biometric for each action goes through `LockBiometricGate` (approvals) and `SettingsController.apply` (every security setting, tightening
+  too). The biometric requirement is no longer a switch in Settings.
+- A tapped notification while locked is queued by id in `ShellController` (memory only); the card opens after the unlock.
+- `markBiometricsChanged()` (for the vault and key code to call when a key is invalidated, T-223) and `markCompromised()` (T-228) put the app on a
+  screen that says what happened; nothing opens from there.
+- Not run on a device: the Kotlin and Swift code (CI builds Android).
+

@@ -10,6 +10,7 @@ import 'package:biatec_authenticator/config.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_screen.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
+import 'package:biatec_authenticator/lock/lock_controller.dart';
 import 'package:biatec_authenticator/main.dart';
 import 'package:biatec_authenticator/shell/app_shell.dart'
     show kRailMinHeight, railHeightNeeded;
@@ -17,6 +18,8 @@ import 'package:biatec_authenticator/shell/shell_controller.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../lock/support.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -83,12 +86,15 @@ class ShellRig {
       (firstVector()['request'] as Map)['auth_req_id'] as String;
 
   Future<void> pump(WidgetTester tester,
-      {Size size = const Size(400, 900), AppConfig? config}) async {
+      {Size size = const Size(400, 900),
+      AppConfig? config,
+      LockController? lock}) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(AuthenticatorApp(
       config: config ?? AppConfig.resolve(''),
+      lock: lock ?? await unlockedLock(),
       approvals: approvals,
       settings: settings.services,
       shell: shell,
@@ -180,12 +186,13 @@ void main() {
       codes.dispose();
     });
 
-    test('a first load that comes after the window does not choose the tab', () {
+    test('a first load that comes after the window does not choose the tab',
+        () {
       var now = DateTime.utc(2026, 11, 1, 12);
       final c = ShellController()..clock = () => now;
       c.sessionStarted();
-      now = now
-          .add(ShellController.firstLoadWindow + const Duration(seconds: 1));
+      now =
+          now.add(ShellController.firstLoadWindow + const Duration(seconds: 1));
       c.pendingLoaded(2);
       expect(c.selected, AppTab.codes);
       expect(c.pendingCount.value, 2);

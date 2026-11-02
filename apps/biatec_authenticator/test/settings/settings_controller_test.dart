@@ -46,7 +46,9 @@ void main() {
     test('switching a requirement off loosens, on does not', () {
       expect(isLoosening(s, {'biometric_required': false}), isTrue);
       expect(isLoosening(s, {'biometric_required': true}), isFalse);
-      expect(isLoosening(_settings(block: true), {'block_unverified_clients': false}),
+      expect(
+          isLoosening(
+              _settings(block: true), {'block_unverified_clients': false}),
           isTrue);
       expect(isLoosening(s, {'block_unverified_clients': true}), isFalse);
       // Already off: switching it off again changes nothing.
@@ -77,11 +79,13 @@ void main() {
 
     test('anything unreadable or unknown counts as loosening', () {
       expect(isLoosening(s, {'threshold_eur': 'abc'}), isTrue);
-      expect(isLoosening(s, {
-        'clients': {
-          'ghost': {'always_ask': true}
-        }
-      }), isTrue);
+      expect(
+          isLoosening(s, {
+            'clients': {
+              'ghost': {'always_ask': true}
+            }
+          }),
+          isTrue);
     });
 
     test('a mixed change loosens if any part does', () {
@@ -178,13 +182,13 @@ void main() {
       expect(c.error, contains('cancelled'));
     });
 
-    test('tightening applies at once: no biometric, no signature', () async {
+    test('tightening asks for a fresh biometric but signs nothing', () async {
       final rig = SettingsRig();
       final c = rig.controller();
       await c.load();
       expect(await c.apply({'threshold_eur': '500'}), isTrue, reason: c.error);
       expect(c.settings!.thresholdEur, '500');
-      expect(rig.gate.asked, 0);
+      expect(rig.gate.asked, 1, reason: 'any security change needs a biometric');
       expect(rig.keys.signed, isEmpty);
       expect(rig.oidc.puts.single.containsKey('consent'), isFalse);
       expect(c.notice, 'Applied.');
@@ -244,6 +248,7 @@ void main() {
       expect(rig.oidc.puts, isEmpty);
       expect(rig.gate.asked, 0);
       expect(await c.apply({'threshold_eur': '100'}), isTrue, reason: c.error);
+      expect(rig.gate.asked, 1, reason: 'only the change that went through');
     });
 
     test('lifting a pause is a signed consent', () async {
@@ -283,12 +288,13 @@ void main() {
           'biatec-chat': {'always_ask': true}
         }
       });
-      expect(rig.gate.asked, 1, reason: 'tightening needs no biometric');
+      expect(rig.gate.asked, 2, reason: 'every change needs a fresh biometric');
       expect(oidc.puts.last.containsKey('consent'), isFalse);
       expect(c.settings!.client('biatec-chat')!.alwaysAsk, isTrue);
     });
 
-    test('when the server demands consent for a change judged tightening, the '
+    test(
+        'when the server demands consent for a change judged tightening, the '
         'device signs and retries', () async {
       final oidc = FakeSettingsOidc()..alwaysRequireConsent = true;
       final rig = SettingsRig(oidc: oidc);
