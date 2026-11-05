@@ -7,7 +7,7 @@ epic: "Consent & authenticator"
 blocked_by: [T-214, T-215, T-216]
 area: ["apps/biatec_authenticator/lib/shell/**", "apps/biatec_authenticator/lib/enrollment/enrollment_controller.dart", "apps/biatec_authenticator/lib/enrollment/observable_enrollment_store.dart", "apps/biatec_authenticator/lib/push/push_controller.dart", "apps/biatec_authenticator/lib/main.dart", "apps/biatec_authenticator/test/shell/**"]
 parallel: no
-conflicts_with: [T-222, T-225]
+conflicts_with: [T-222, T-225, T-234]
 issue: "#357"
 branch: ""
 owner: ""
@@ -74,3 +74,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-24 17:45 · claude · (new) → blocked · created from the last review round of PR #356
 - 2026-10-29 · claude · blocked · criteria replaced with what review round 19 of PR #356 left open (rounds 10–18 fixed the earlier list); reviews capped there on the user's decision
 - 2026-11-01 18:54 · kanban-board · blocked → backlog · blockers done: T-214, T-215, T-216
+- 2026-11-05 10:25 · claude · conflicts_with T-234 added (enrollment files)
