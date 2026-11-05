@@ -1,15 +1,40 @@
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../security/secure_storage.dart';
+
 /// This build's number: the part after the plus sign of `version` in pubspec.yaml. The build passes it with `--dart-define=APP_BUILD=<n>` (Flutter does not give it to Dart code without a plugin); a test keeps the default equal to pubspec.yaml.
 const int appBuild = int.fromEnvironment('APP_BUILD', defaultValue: 1);
 
 /// An optional date after which this build stops opening, `--dart-define=BUILD_EXPIRES=2027-06-30`. The fallback while Biatec OIDC does not send a minimum build (see [MinimumBuildMonitor]): a build that nobody updates cannot run for ever. Empty means it does not expire.
 const String buildExpires = String.fromEnvironment('BUILD_EXPIRES');
 
+/// Where the highest minimum build is kept on this phone, so closing and reopening the app does not reopen an old build.
+abstract class MinimumBuildStore {
+  Future<int> read();
+  Future<void> write(int value);
+}
+
+class SecureMinimumBuildStore implements MinimumBuildStore {
+  const SecureMinimumBuildStore();
+
+  static const _key = 'biatec.minimumBuild';
+
+  @override
+  Future<int> read() async =>
+      int.tryParse(await deviceBoundStorage.read(key: _key) ?? '') ?? 0;
+
+  @override
+  Future<void> write(int value) =>
+      deviceBoundStorage.write(key: _key, value: '$value');
+}
+
 /// The lowest build number Biatec OIDC accepts, learned from the `X-Biatec-Min-App-Build` header of the calls the app makes anyway (no extra request). Only a higher number is kept: a later answer, or a man in the middle, cannot lower it again until the app restarts.
 class MinimumBuildMonitor extends ChangeNotifier {
-  MinimumBuildMonitor();
+  MinimumBuildMonitor({MinimumBuildStore? store})
+      : _store = store ?? const SecureMinimumBuildStore();
+
+  final MinimumBuildStore _store;
 
   /// The one the whole app reports to; the pinned HTTP client feeds it.
   static final MinimumBuildMonitor instance = MinimumBuildMonitor();
@@ -17,6 +42,19 @@ class MinimumBuildMonitor extends ChangeNotifier {
   static const header = 'x-biatec-min-app-build';
 
   int _required = 0;
+
+  /// Reads the minimum saved by an earlier run. Storage that cannot be read leaves it at 0 (the next answer sets it again).
+  Future<void> load() async {
+    try {
+      final saved = await _store.read();
+      if (saved > _required && saved <= 1000000) {
+        _required = saved;
+        notifyListeners();
+      }
+    } on Object {
+      // Not readable: no saved minimum.
+    }
+  }
 
   /// The highest minimum build seen, or 0 before any answer carried one.
   int get required => _required;
@@ -27,6 +65,7 @@ class MinimumBuildMonitor extends ChangeNotifier {
     if (n == null || n < 0 || n > 1000000 || n <= _required) return;
     _required = n;
     notifyListeners();
+    _store.write(n).catchError((Object _) {});
   }
 
   /// A client that reports every answer's header to this monitor.
@@ -61,7 +100,13 @@ class UpdateGuard {
     String expires = buildExpires,
     DateTime Function()? clock,
   })  : expiresOn = _utc(DateTime.tryParse(expires)),
+        _expiryUnreadable =
+            expires.trim().isNotEmpty && DateTime.tryParse(expires) == null,
         _clock = clock ?? DateTime.now;
+
+  /// The app's own guard: the build number and expiry of this build, and the one monitor every call reports to.
+  factory UpdateGuard.forApp() =>
+      UpdateGuard(monitor: MinimumBuildMonitor.instance);
 
   /// A date or date and time given without a zone is read as UTC, so every phone ends the build at the same moment.
   static DateTime? _utc(DateTime? d) => d == null || d.isUtc
@@ -71,13 +116,17 @@ class UpdateGuard {
   final MinimumBuildMonitor monitor;
   final int build;
 
-  /// The expiry date, or null when the build does not expire (or the text was not a date: a mistake in the build settings does not close every install).
+  /// The expiry date, or null when the build does not expire.
   final DateTime? expiresOn;
+
+  /// An expiry was given but is not a date (a typo in the build settings): the build counts as expired, so the mistake shows at once instead of the build running for ever.
+  final bool _expiryUnreadable;
   final DateTime Function() _clock;
 
   /// Null while the build may open.
   UpdateReason? get blocked {
     if (monitor.required > build) return UpdateReason.tooOld;
+    if (_expiryUnreadable) return UpdateReason.expired;
     final end = expiresOn;
     if (end != null && !_clock().toUtc().isBefore(end.toUtc())) {
       return UpdateReason.expired;

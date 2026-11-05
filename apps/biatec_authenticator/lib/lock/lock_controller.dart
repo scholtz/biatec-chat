@@ -281,8 +281,13 @@ class LockController extends ChangeNotifier {
   bool _updateAllows() {
     final reason = updates?.blocked;
     if (reason == null) return true;
-    if (_state == AppLockState.updateRequired) return false;
+    if (_state == AppLockState.updateRequired ||
+        _state == AppLockState.biometricsChanged ||
+        _state == AppLockState.compromised) {
+      return false;
+    }
     _updateReason = reason;
+    _attempt++;
     _clearMemory();
     _set(AppLockState.updateRequired);
     return false;
@@ -386,6 +391,8 @@ class LockController extends ChangeNotifier {
 
   /// Locks when nothing was touched for [idleTimeout]. The [AppLockGate] calls it every [idleCheckEvery] while it is on screen (the controller owns no timer, so none outlives the screen).
   void checkIdle() {
+    // The expiry date can pass while the app sits open.
+    if (_state == AppLockState.unlocked) _updateAllows();
     final at = _lastActivity;
     if (_state != AppLockState.unlocked || at == null) return;
     if (clock().difference(at) >= idleTimeout) lock();

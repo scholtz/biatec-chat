@@ -22,7 +22,7 @@ android {
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // Android 9 (API 28) at least: it is the first with StrongBox-backed keys, `setUnlockedDeviceRequired`, the signing-certificate API the integrity
         // check reads, and the platform fixes the vault and the biometric lock rely on. A phone older than that is not a safe place for seeds.
-        minSdk = 28
+        minSdk = maxOf(28, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

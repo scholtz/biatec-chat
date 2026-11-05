@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:biatec_authenticator/lock/biometric_authenticator.dart';
 import 'package:biatec_authenticator/lock/lock_controller.dart';
 import 'package:biatec_authenticator/shell/app_lock_gate.dart';
 import 'package:biatec_authenticator/theme.dart';
@@ -112,11 +114,13 @@ void main() {
       expect(g.blocked, UpdateReason.expired);
     });
 
-    test('a date that cannot be read does not close the install', () {
+    test(
+        'a date that cannot be read closes the build at once, so the typo shows',
+        () {
       final g = UpdateGuard(
           monitor: MinimumBuildMonitor(), build: 1, expires: 'soon');
       expect(g.expiresOn, isNull);
-      expect(g.blocked, isNull);
+      expect(g.blocked, UpdateReason.expired);
     });
 
     test('too old comes before expired', () {
@@ -193,7 +197,74 @@ void main() {
       r.lock.markBiometricsChanged();
       r.monitor.observe('8');
       // The update state wins only over open or waiting states; the changed-biometrics screen has its own instructions.
+      expect(r.lock.state, AppLockState.biometricsChanged);
+    });
+
+    test(
+        'an unlock that is waiting is not allowed to replace the update screen',
+        () async {
+      final r = make(build: 5);
+      r.auth.statusResult = BiometricStatus.noneEnrolled;
+      final gate = Completer<void>();
+      final slow = _SlowStatus(r.auth, gate);
+      final lock = LockController(
+        authenticator: slow,
+        store: MemoryLockStore(),
+        updates: UpdateGuard(monitor: r.monitor, build: 5),
+      );
+      addTearDown(lock.dispose);
+      final opening = lock.unlock();
+      await Future<void>.delayed(Duration.zero);
+      expect(lock.state, AppLockState.unlocking);
+      r.monitor.observe('9');
+      expect(lock.state, AppLockState.updateRequired);
+      gate.complete();
+      await opening;
+      expect(lock.state, AppLockState.updateRequired);
+    });
+
+    test(
+        'the expiry date passing while the app sits open closes it on the next idle check',
+        () async {
+      final r = make(build: 5, expires: '2026-11-06');
+      await r.lock.unlock();
+      r.advance(const Duration(days: 2));
+      r.lock.checkIdle();
       expect(r.lock.state, AppLockState.updateRequired);
+    });
+  });
+
+  group('the minimum survives a restart', () {
+    test('a saved minimum is loaded, and a raised one is saved', () async {
+      final store = _MemoryMinStore()..value = 8;
+      final m = MinimumBuildMonitor(store: store);
+      expect(m.required, 0);
+      await m.load();
+      expect(m.required, 8);
+      expect(UpdateGuard(monitor: m, build: 5).blocked, UpdateReason.tooOld);
+      m.observe('11');
+      await Future<void>.delayed(Duration.zero);
+      expect(store.value, 11);
+      m.observe('4');
+      expect(store.value, 11, reason: 'a lower answer is not saved');
+    });
+
+    test('storage that cannot be read or written leaves things as they were',
+        () async {
+      final store = _MemoryMinStore()..fail = true;
+      final m = MinimumBuildMonitor(store: store);
+      await m.load();
+      expect(m.required, 0);
+      m.observe('6');
+      expect(m.required, 6,
+          reason: 'held for this run even if it cannot be saved');
+    });
+
+    test('a garbage saved value is not trusted', () async {
+      final store = _MemoryMinStore()..value = 99999999;
+      final m = MinimumBuildMonitor(store: store);
+      await m.load();
+      expect(m.required, 0);
     });
   });
 
@@ -269,8 +340,7 @@ void main() {
     test('Android requires at least API 28, with the reason in the build file',
         () {
       final gradle = read('android/app/build.gradle.kts');
-      expect(gradle, contains('minSdk = 28'));
-      expect(gradle, isNot(contains('minSdk = flutter.minSdkVersion')));
+      expect(gradle, contains('minSdk = maxOf(28, flutter.minSdkVersion)'));
       expect(gradle, contains('StrongBox'));
     });
 
@@ -290,11 +360,7 @@ void main() {
       expect(read('lib/security/pinning/pinned_http.dart'),
           matches(RegExp(r'MinimumBuildMonitor\.instance\s*\.wrap\(')));
       final main = read('lib/main.dart');
-      expect(
-          'updates: UpdateGuard(monitor: MinimumBuildMonitor.instance)'
-              .allMatches(main)
-              .length,
-          2);
+      expect('updates: UpdateGuard.forApp()'.allMatches(main).length, 2);
     });
 
     test(
@@ -305,4 +371,40 @@ void main() {
       expect(UpdateGuard(monitor: m, build: 5).blocked, UpdateReason.tooOld);
     });
   });
+}
+
+class _SlowStatus implements BiometricAuthenticator {
+  _SlowStatus(this.inner, this.gate);
+  final FakeAuthenticator inner;
+  final Completer<void> gate;
+
+  @override
+  Stream<void> get screenLocked => inner.screenLocked;
+
+  @override
+  Future<BiometricStatus> status() async {
+    await gate.future;
+    return inner.status();
+  }
+
+  @override
+  Future<BiometricOutcome> authenticate(String reason) =>
+      inner.authenticate(reason);
+}
+
+class _MemoryMinStore implements MinimumBuildStore {
+  int value = 0;
+  bool fail = false;
+
+  @override
+  Future<int> read() async {
+    if (fail) throw StateError('unreadable');
+    return value;
+  }
+
+  @override
+  Future<void> write(int v) async {
+    if (fail) throw StateError('full');
+    value = v;
+  }
 }
