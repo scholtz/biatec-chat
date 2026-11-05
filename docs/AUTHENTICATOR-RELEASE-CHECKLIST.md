@@ -16,7 +16,8 @@ in CI ([ci.yml](../.github/workflows/ci.yml), job `authenticator` and `authentic
 
 ## The build
 
-- [ ] Built in CI or on a clean machine from the release tag, never from a working copy.
+- [ ] Built in CI or on a clean machine from the release tag, never from a working copy, with `--dart-define=APP_BUILD=<the number after the plus sign of the version>`
+      and, until Biatec OIDC sends a minimum build, `--dart-define=BUILD_EXPIRES=<a date about a year ahead>` (UTC).
 - [ ] Android: `flutter build appbundle --release --obfuscate --split-debug-info=<folder> --dart-define=OIDC_BASE_URL=<production>
       --dart-define=RELEASE_CERT_SHA256=<digest of the release certificate>`. Without the digest the release build refuses to open.
 - [ ] iOS: archived with the release provisioning profile; the App Attest capability is on the App ID and `Runner.entitlements` says
@@ -48,7 +49,7 @@ in CI ([ci.yml](../.github/workflows/ci.yml), job `authenticator` and `authentic
       stores' own crash reports and the support mailbox are the signal.
 - [ ] The security contact for reports is published in the store listing and in the pen-test brief. (No contact is named yet:
       owner: user.)
-- [ ] A way to withdraw: the previous version is kept, and Biatec OIDC can refuse a build that is too old (T-232).
+- [ ] A way to withdraw: the previous version is kept, and Biatec OIDC can refuse a build that is too old (`X-Biatec-Min-App-Build`, required-changes row 24).
 
 ## After the release
 

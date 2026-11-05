@@ -20,7 +20,9 @@ android {
         applicationId = "io.biatec.authenticator"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // Android 9 (API 28) at least: it is the first with StrongBox-backed keys, `setUnlockedDeviceRequired`, the signing-certificate API the integrity
+        // check reads, and the platform fixes the vault and the biometric lock rely on. A phone older than that is not a safe place for seeds.
+        minSdk = 28
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

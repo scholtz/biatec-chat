@@ -19,6 +19,7 @@ import 'settings/theme_controller.dart';
 import 'shell/app_gate.dart';
 import 'shell/shell_controller.dart';
 import 'theme.dart';
+import 'update/update_guard.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,6 +45,7 @@ Future<void> main() async {
     integrity: IntegrityGuard(platformIntegrityChecker()),
     // A release build fails closed on a compromised phone; a debug build only warns, so it can run on an emulator or under a debugger.
     failClosed: kReleaseMode,
+    updates: UpdateGuard(monitor: MinimumBuildMonitor.instance),
   );
   await lock.load().timeout(const Duration(seconds: 1), onTimeout: () {});
   final approvals =
@@ -150,6 +152,7 @@ class _AuthenticatorAppState extends State<AuthenticatorApp> {
         authenticator: PlatformBiometricAuthenticator(),
         integrity: IntegrityGuard(platformIntegrityChecker()),
         failClosed: kReleaseMode,
+        updates: UpdateGuard(monitor: MinimumBuildMonitor.instance),
       );
   late final ApprovalServices _approvals = widget.approvals ??
       ApprovalServices.fromConfig(widget.config,

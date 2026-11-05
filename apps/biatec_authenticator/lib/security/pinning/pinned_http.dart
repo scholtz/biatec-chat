@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
 import '../../codes/server_clock.dart';
+import '../../update/update_guard.dart';
 import '../../config.dart';
 import 'pin_policy.dart';
 
@@ -39,7 +40,8 @@ abstract final class PinnedHttp {
   /// [baseUrl] is only the address the caller will use; the policy decides per host at send time, so a client built for one host cannot be pointed at another.
   static http.Client clientFor(String baseUrl) =>
       // Every answer's Date header tells the Codes tab whether the phone's clock is right.
-      ServerClock.instance.wrap(_LazyClient(() => create(_policy)));
+      MinimumBuildMonitor.instance
+          .wrap(ServerClock.instance.wrap(_LazyClient(() => create(_policy))));
 
   /// A client that enforces [policy]. Plain `http` is only for a local developer machine in a debug build ([allowLocalHttp]).
   static http.Client create(PinPolicy policy, {bool? allowLocalHttp}) =>
