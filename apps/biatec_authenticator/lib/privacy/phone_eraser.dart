@@ -30,9 +30,9 @@ class EraseResult {
   bool get complete => failed.isEmpty;
 }
 
-/// "Erase everything on this phone": after a fresh biometric, deletes the two-factor accounts and their hardware keys, the device key and the enrollment, the history and every preference, then signs the device out.
+/// "Erase everything on this phone": after a fresh biometric, deletes the two-factor accounts and their hardware keys and the device key; only when those are gone does it wipe the secure storage and sign the device out.
 ///
-/// Every step runs even when an earlier one fails, so a broken keystore does not leave the rest behind; the result says what failed. The enrollment is cleared last, so the app only moves to the enrollment screen once the rest is gone. This removes data on the phone only: Biatec OIDC keeps its record of the device until it is cancelled from the account.
+/// The order is the point. The alias of the device key lives in the storage that is wiped last, so a failure in the first steps leaves everything needed to try again, and the app stays on the Privacy screen to say what failed: it is never signed out with a key or an account still on the phone. Each step has a time limit, and a step that runs out counts as failed. This removes data on the phone only: Biatec OIDC keeps its record of the device until it is cancelled from the account.
 class PhoneEraser {
   PhoneEraser({
     required this.lock,
@@ -41,6 +41,7 @@ class PhoneEraser {
     required this.deviceKeys,
     required this.enrollment,
     required this.secure,
+    this.afterWipe,
     this.stepTimeout = const Duration(seconds: 15),
   });
 
@@ -50,6 +51,9 @@ class PhoneEraser {
   final DeviceKeyStore deviceKeys;
   final EnrollmentStore enrollment;
   final SecureWipe secure;
+
+  /// Runs after the secure storage was wiped, to put back what must outlive an erase (the lowest build Biatec OIDC accepts: erasing must not reopen a build that has to be updated).
+  final Future<void> Function()? afterWipe;
 
   /// How long one step may take. A keystore that never answers must not hold the whole erase (and the screen) for good: the step counts as failed.
   final Duration stepTimeout;
@@ -69,7 +73,11 @@ class PhoneEraser {
     }
 
     // What is shown on screen goes first.
-    lock.clearSecretsFromMemory();
+    try {
+      lock.clearSecretsFromMemory();
+    } on Object {
+      failed.add('The codes shown on screen');
+    }
     await step('The two-factor accounts', vaultStorage.delete);
     await step('The keys that protect the two-factor accounts', () async {
       await vaultKeys.deleteKeys();
@@ -79,7 +87,10 @@ class PhoneEraser {
       final alias = await enrollment.readAlias();
       if (alias != null) await deviceKeys.delete(alias);
     });
+    // Anything left means the alias and the enrollment stay, so that trying again can find the key.
+    if (failed.isNotEmpty) return EraseResult(failed);
     await step('Settings, history and saved data', secure.deleteAll);
+    if (afterWipe != null) await step('Update information', afterWipe!);
     // Last: this is what moves the app to the enrollment screen.
     await step('The enrollment', () async {
       await enrollment.clearAlias();

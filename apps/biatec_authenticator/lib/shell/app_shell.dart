@@ -16,6 +16,7 @@ import '../push/push_controller.dart';
 import '../settings/settings_screen.dart';
 import '../security/settings_controller.dart';
 import '../theme.dart';
+import '../update/update_guard.dart';
 import 'shell_controller.dart';
 import 'tab_reload.dart';
 
@@ -113,6 +114,17 @@ class _AppShellState extends State<AppShell> {
     setState(() => _visited.add(tab));
   }
 
+  /// Built once: the Privacy screen keeps the one it was opened with.
+  late final PhoneEraser _eraser = PhoneEraser(
+    lock: widget.codes.lock,
+    vaultKeys: widget.codes.vault.keys,
+    vaultStorage: widget.codes.vault.storage,
+    deviceKeys: widget.approvals.keys,
+    enrollment: widget.approvals.enrollment,
+    secure: const DeviceBoundSecureWipe(),
+    afterWipe: MinimumBuildMonitor.instance.persist,
+  );
+
   Widget _root(AppTab tab) => switch (tab) {
         AppTab.codes => CodesScreen(
             services: widget.codes,
@@ -133,14 +145,7 @@ class _AppShellState extends State<AppShell> {
             services: widget.settings,
             config: widget.config,
             controller: _settings,
-            eraser: PhoneEraser(
-              lock: widget.codes.lock,
-              vaultKeys: widget.codes.vault.keys,
-              vaultStorage: widget.codes.vault.storage,
-              deviceKeys: widget.approvals.keys,
-              enrollment: widget.approvals.enrollment,
-              secure: const DeviceBoundSecureWipe(),
-            )),
+            eraser: _eraser),
       };
 
   /// Back goes up inside the tab first, then to the first tab (Codes), and only then leaves the app.

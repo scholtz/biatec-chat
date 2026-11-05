@@ -263,17 +263,60 @@ void main() {
       expect(rig.order.calls, ['device-key', 'secure', 'enrollment']);
     });
 
-    test('a step that fails does not stop the others, and is named', () async {
-      final rig = await Rig.create(failKeys: true, failSecure: true);
+    test(
+        'a failure in the first steps leaves the alias and the enrollment, so it can be tried again',
+        () async {
+      final rig = await Rig.create(failKeys: true);
       final result = await rig.eraser.erase();
       expect(result!.complete, isFalse);
-      expect(result.failed,
-          ['The device key', 'Settings, history and saved data']);
-      expect(rig.codes.storage.bytes, isNull);
-      expect(await rig.enrollment.read(), isNull, reason: 'still signed out');
+      expect(result.failed, ['The device key']);
+      expect(rig.codes.storage.bytes, isNull,
+          reason: 'the steps that could run did');
+      expect(rig.order.calls, ['device-key'],
+          reason: 'nothing after the failure ran');
+      expect(await rig.enrollment.readAlias(), 'device-alias');
+      expect(await rig.enrollment.read(), isNotNull,
+          reason: 'not signed out with a key on the phone');
       for (final f in result.failed) {
-        expect(f, isNot(contains('keychain')), reason: 'no platform text');
+        expect(f, isNot(contains('keystore')), reason: 'no platform text');
       }
+    });
+
+    test(
+        'a failure of the storage wipe is named, and the device is signed out anyway',
+        () async {
+      final rig = await Rig.create(failSecure: true);
+      final result = await rig.eraser.erase();
+      expect(result!.failed, ['Settings, history and saved data']);
+      expect(await rig.enrollment.read(), isNull);
+    });
+
+    test('what must outlive an erase is put back after the wipe', () async {
+      final rig = await Rig.create();
+      var restored = 0;
+      final eraser = PhoneEraser(
+        lock: rig.codes.lock,
+        vaultKeys: rig.codes.keys,
+        vaultStorage: rig.codes.storage,
+        deviceKeys: rig.deviceKeys,
+        enrollment: rig.enrollment,
+        secure: rig.wipe,
+        afterWipe: () async {
+          rig.order.calls.add('restore');
+          restored++;
+        },
+      );
+      await eraser.erase();
+      expect(restored, 1);
+      expect(
+          rig.order.calls, ['device-key', 'secure', 'restore', 'enrollment']);
+    });
+
+    test('a hook that throws does not break the erase', () async {
+      final rig = await Rig.create();
+      rig.codes.lock.addLockListener(() => throw StateError('boom'));
+      final result = await rig.eraser.erase();
+      expect(result!.complete, isTrue);
     });
 
     test('a step that never answers is given up on, and the rest still runs',

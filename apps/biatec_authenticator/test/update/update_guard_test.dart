@@ -260,6 +260,15 @@ void main() {
           reason: 'held for this run even if it cannot be saved');
     });
 
+    test('persist writes the current minimum again', () async {
+      final store = _MemoryMinStore();
+      final m = MinimumBuildMonitor(store: store)..observe('6');
+      await Future<void>.delayed(Duration.zero);
+      store.value = 0; // the secure storage was wiped
+      await m.persist();
+      expect(store.value, 6);
+    });
+
     test('a garbage saved value is not trusted', () async {
       final store = _MemoryMinStore()..value = 99999999;
       final m = MinimumBuildMonitor(store: store);
