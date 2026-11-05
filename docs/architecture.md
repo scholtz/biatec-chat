@@ -19,7 +19,7 @@ Status words used below: **built** (code and tests on `main`), **partial** (some
 | Mock Biatec OIDC (consent side) | `packages/consent-protocol/mock-oidc` | built: CIBA, step-up, receipts, enrollment, devices and settings, push outbox, JWKS |
 | Offline evidence verifier | `packages/evidence-verifier` | built: CLI and library that check an export bundle against the JWKS |
 | Builder sidecar for CLAMM, algo-safe and x402 | `builders/sidecar` | built: authenticated `POST /v1/build/{builder}` and `POST /v1/query/{query}`; pool list, pool swap, add and remove liquidity, safe create / list / proposals / propose / approve / execute, x402 payment (only with `X402_ENABLED=true`) |
-| Authenticator (Flutter) | `apps/biatec_authenticator` | built against the mock OIDC: enrollment with a hardware device key, approvals with binding code, biometric check and signed receipts, FCM push, device / trusted-client / security settings screens. The native keystore code has never been compiled or run on a device ([README](../apps/biatec_authenticator/README.md)). Flutter is not needed to read or build the rest |
+| Authenticator (Flutter) | `apps/biatec_authenticator` | built against the mock OIDC: a biometric-only lock for the whole app, enrollment with a hardware device key, approvals with binding code and signed receipts, FCM push, a Codes tab (TOTP and HOTP, a vault sealed under a hardware key), device, trusted-client and settings screens, device integrity checks that fail closed, TLS pinning. Security conformance: [AUTHENTICATOR-SECURITY.md](AUTHENTICATOR-SECURITY.md). The native keystore code has never been compiled or run on a device ([README](../apps/biatec_authenticator/README.md)). Flutter is not needed to read or build the rest |
 | Demo site | `apps/demo` | built, deployed to stage only ([demo-site.md](demo-site.md)) |
 | End-to-end demo test | `e2e` | built: the demo script against the mock OIDC with a scripted phone; no backend, browser or testnet in the loop ([e2e/README.md](../e2e/README.md)) |
 | Containers, Kubernetes, CI/CD | `backend/Dockerfile`, `builders/sidecar/Dockerfile`, `apps/demo/Dockerfile`, `k8s/`, `.github/workflows/` | built: stage deploys on every push to `main`, production by manual promotion ([cicd.md](cicd.md), [k8s/README.md](../k8s/README.md)); AWS is used for Bedrock only ([aws-setup.md](aws-setup.md)) |
@@ -185,8 +185,10 @@ has not shipped a change:
 - **Consent at the real Biatec OIDC.** CIBA, receipts, device enrollment, the device and settings APIs and the valuation
   changes are not in Biatec OIDC yet, so phone approval works only against the mock (see the fallbacks below and
   [required-changes-biatec-oidc.md](required-changes-biatec-oidc.md)).
-- **Authenticator on a device.** The Flutter platform folders are not generated and the native keystore code has never been
-  compiled or run; Firebase push needs per-deployment configuration.
+- **Authenticator on a device.** The native code (keystore, vault, biometric lock, integrity, clipboard and attestation channels)
+  compiles for Android in CI but has never run on a device, and the iOS side has never been compiled; Firebase push needs
+  per-deployment configuration. The open items, each with an owner or a task, are in
+  [AUTHENTICATOR-SECURITY.md](AUTHENTICATOR-SECURITY.md).
 - **The rest of the anchoring wiring.** No `resume` or `end` entries, no inclusion proofs in the export bundle, and no
   recorded testnet run.
 - **x402 end to end.** Tested against a mock facilitator only; no demo seller and no testnet run ([x402-pay.md](x402-pay.md)).

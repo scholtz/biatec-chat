@@ -236,3 +236,8 @@ navigator, so back goes up inside a tab first, then to Codes, and only then leav
 - Attestation hook: `AttestationProvider` over `io.biatec.authenticator/attestation`. iOS implements App Attest (`IntegrityChannel.swift`, entitlement in `Runner.entitlements`; enable the App Attest capability on the App ID). Android Play Integrity needs its dependency and the release's cloud project number in the build and answers "not available" until then; the enrollment call is not wired to it yet. Server-side verification is Biatec OIDC's.
 - Not run on a device: the Kotlin and Swift fact readers and App Attest.
 
+## Security documentation and checks (T-230)
+
+- `docs/AUTHENTICATOR-SECURITY.md` is the OWASP MASVS v2.0 Level 2 conformance matrix: every control, a status (met, partly, open, not applicable) and the evidence. The authenticator section of `docs/threat-model.md` lists the abuse cases; `docs/AUTHENTICATOR-PENTEST-BRIEF.md` is the brief for the independent test; `docs/AUTHENTICATOR-RELEASE-CHECKLIST.md` is the signed-release checklist.
+- `dart run tool/matrix_check.dart` fails when a control is missing, a status is invalid, a `met` row has no evidence, a link points nowhere, or an `open` row names no task or owner. `dart run tool/gates.dart` fails on `print(` and `debugPrint(` in `lib/` and on secret-like strings in the source. Both are tested against seeded violations in `test/tool/`, and run in CI (job `authenticator-security`, which also scans `pubspec.lock` with OSV, checks that `pub get` leaves the lockfile alone, and publishes a CycloneDX SBOM).
+

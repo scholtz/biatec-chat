@@ -168,6 +168,56 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  # The checks that keep docs/AUTHENTICATOR-SECURITY.md true (T-230). Separate from the build job so a failing release build still reports them.
+  authenticator-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          cache: true
+      # The lockfile must be committed, and resolving the dependencies must not change it: what is scanned and listed in the SBOM is what
+      # is built.
+      - name: The lockfile is committed and unchanged by pub get
+        working-directory: apps/biatec_authenticator
+        run: |
+          git ls-files --error-unmatch pubspec.lock
+          flutter pub get
+          git diff --exit-code -- pubspec.lock || { echo "::error::pub get changed pubspec.lock: commit the updated lockfile."; exit 1; }
+      # Known vulnerabilities in the locked dependencies (OSV). Fails the job when it finds one.
+      # The checks after the lockfile step run even when one before them failed, so one failure does not hide the others.
+      - name: OSV scan of pubspec.lock
+        if: ${{ !cancelled() }}
+        uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+        with:
+          scan-args: |-
+            --lockfile=apps/biatec_authenticator/pubspec.lock
+      # A CycloneDX bill of materials of the authenticator's dependencies, kept with the run.
+      - name: SBOM (CycloneDX)
+        if: ${{ !cancelled() }}
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: apps/biatec_authenticator
+          format: cyclonedx-json
+          artifact-name: authenticator-sbom.cdx.json
+          upload-artifact-retention: 30
+      # No print or debugPrint in lib/, no secret-like strings in the app's source.
+      - name: Source gates
+        if: ${{ !cancelled() }}
+        working-directory: apps/biatec_authenticator
+        run: dart run tool/gates.dart
+      # Every MASVS control is in the matrix, with a status, and the evidence it links exists.
+      - name: MASVS matrix
+        if: ${{ !cancelled() }}
+        working-directory: apps/biatec_authenticator
+        run: dart run tool/matrix_check.dart
+      # By name, so a renamed or removed file fails here instead of quietly dropping out of the run.
+      - name: Hardening and pinning tests
+        if: ${{ !cancelled() }}
+        working-directory: apps/biatec_authenticator
+        run: flutter test test/platform_hardening_test.dart test/pinning test/tool
+
   images:
     runs-on: ubuntu-latest
     steps:
