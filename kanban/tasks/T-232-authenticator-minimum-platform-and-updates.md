@@ -1,7 +1,7 @@
 ---
 id: T-232
 title: "Authenticator: minimum platform version and update enforcement"
-status: in-progress
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-230]
@@ -61,6 +61,8 @@ Filled in by the agent when it moves the task to `review`.
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
 
+- 2026-11-05 12:53 · approve · PR #388 merged into main @ 75dcf54 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-05 10:20 · claude · (new) → backlog · created from the MASVS matrix of T-230 (open item)
@@ -68,3 +70,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-11-05 10:04 · kanban-board · backlog → blocked · waiting on: T-230
 - 2026-11-05 11:27 · kanban-board · blocked → backlog · blockers done: T-230
 - 2026-11-05 14:00 · scholtz · backlog → in-progress · claimed by session-20261105-1400 on task/T-232
+- 2026-11-05 12:53 · user · in-progress → done · PR #388 merged into main @ 75dcf54 (synced by kanban-sync)
