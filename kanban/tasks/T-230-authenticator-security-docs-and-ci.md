@@ -1,7 +1,7 @@
 ---
 id: T-230
 title: "Authenticator: security documentation, MASVS matrix and CI checks"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-222, T-223, T-227, T-228, T-229]
@@ -9,8 +9,8 @@ area: ["docs/AUTHENTICATOR-SECURITY.md", "docs/threat-model.md", ".github/workfl
 parallel: yes
 conflicts_with: []
 issue: "#367"
-branch: ""
-owner: ""
+branch: "task/T-230"
+owner: "session-20261105-1000"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
@@ -68,3 +68,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:42 · kanban-board · backlog → blocked · waiting on: T-222, T-223, T-227, T-228, T-229
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
 - 2026-11-05 10:01 · kanban-board · blocked → backlog · blockers done: T-222, T-223, T-227, T-228, T-229
+- 2026-11-05 10:05 · scholtz · backlog → in-progress · claimed by session-20261105-1000 on task/T-230
