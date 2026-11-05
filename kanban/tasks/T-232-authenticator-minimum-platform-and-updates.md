@@ -57,6 +57,16 @@ Write the failing test first for every security rule. Never log, print or put in
 
 Filled in by the agent when it moves the task to `review`.
 
+Implemented in PR #388, branch task/T-232 (squash merged).
+
+- Floors: Android `minSdk = maxOf(28, flutter.minSdkVersion)` with the reason in the build file; iOS 15.0 in every configuration (both tested).
+- `lib/update/update_guard.dart`: `MinimumBuildMonitor` (header `X-Biatec-Min-App-Build` from the pinned client, highest value kept and saved), `UpdateGuard` (older than the minimum, or past `BUILD_EXPIRES`, an unreadable date counts as expired), `appBuild` (`--dart-define=APP_BUILD`). `LockController(updates:)` gets the new state `updateRequired` with `UpdateRequiredScreen`.
+- Mock Biatec OIDC sends the header (`MOCK_MIN_APP_BUILD`); API shape is row 24 of `docs/required-changes-biatec-oidc.md`. The matrix has CODE-1 met and CODE-2 partly (owner: Biatec OIDC team until it sends the header).
+- For releases: pass `APP_BUILD` and, until the header is sent, `BUILD_EXPIRES` (the checklist says so; CI passes `APP_BUILD` from pubspec).
+- Not run on a device. Tests: flutter 991 pass, mock-oidc 33 pass. One review round, user capped and merged.
+
+**Unblocks:** none.
+
 ## Review
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
