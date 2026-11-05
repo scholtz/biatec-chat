@@ -1,7 +1,7 @@
 ---
 id: T-228
 title: "Authenticator: device integrity checks that fail closed"
-status: in-progress
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-222, T-227]
@@ -14,7 +14,7 @@ owner: "session-20261102-1800"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
-updated: 2026-11-02
+updated: 2026-11-05
 ---
 
 # T-228 - Authenticator: device integrity checks that fail closed
@@ -65,6 +65,8 @@ Filled in by the agent when it moves the task to `review`.
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
 
+- 2026-11-05 10:01 · approve · PR #383 merged into main @ 33b6a19 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-28 09:00 · claude · (new) → blocked · created from the request to add two-factor codes, a biometric lock and industry-standard security
@@ -72,3 +74,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
 - 2026-11-02 16:12 · kanban-board · blocked → backlog · blockers done: T-222, T-227
 - 2026-11-02 18:00 · scholtz · backlog → in-progress · claimed by session-20261102-1800 on task/T-228
+- 2026-11-05 10:01 · user · in-progress → done · PR #383 merged into main @ 33b6a19 (synced by kanban-sync)
