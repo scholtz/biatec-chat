@@ -110,6 +110,9 @@ class MemoryVaultStorage implements VaultStorage {
     if (failWrites) throw StateError('disk full');
     bytes = Uint8List.fromList(value);
   }
+
+  @override
+  Future<void> delete() async => bytes = null;
 }
 
 class MemoryVersionStore implements VaultVersionStore {

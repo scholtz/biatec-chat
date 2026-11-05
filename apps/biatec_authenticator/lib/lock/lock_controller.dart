@@ -398,6 +398,9 @@ class LockController extends ChangeNotifier {
     if (clock().difference(at) >= idleTimeout) lock();
   }
 
+  /// Runs the memory-clearing hooks without locking: the codes, the recovery code and anything else the secure area holds in memory go (erase-everything uses it).
+  void clearSecretsFromMemory() => _clearMemory();
+
   void _clearMemory() {
     for (final hook in List.of(_listeners)) {
       try {

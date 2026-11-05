@@ -47,6 +47,7 @@ in CI ([ci.yml](../.github/workflows/ci.yml), job `authenticator` and `authentic
       with an owner.
 - [ ] Staged rollout started at a small percentage; crash and support channels watched. The authenticator has no analytics, so the
       stores' own crash reports and the support mailbox are the signal.
+- [ ] The store privacy forms match [AUTHENTICATOR-STORE-PRIVACY.md](AUTHENTICATOR-STORE-PRIVACY.md) and the app's Privacy screen.
 - [ ] The security contact for reports is published in the store listing and in the pen-test brief. (No contact is named yet:
       owner: user.)
 - [ ] A way to withdraw: the previous version is kept, and Biatec OIDC can refuse a build that is too old (`X-Biatec-Min-App-Build`, required-changes row 24).

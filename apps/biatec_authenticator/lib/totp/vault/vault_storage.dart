@@ -12,6 +12,9 @@ abstract class VaultStorage {
 
   /// Replaces the file. Atomic as far as the file system makes a rename: the old file or the new one is read back, and a torn file is refused by the vault's own checks.
   Future<void> write(Uint8List bytes);
+
+  /// Removes the file (and any half-written copy). Nothing there is not an error.
+  Future<void> delete();
 }
 
 /// A file in the app's private storage. Written to a temporary file in the same folder, flushed, and renamed over the real one, so a crash leaves a whole file.
@@ -37,6 +40,13 @@ class FileVaultStorage implements VaultStorage {
       // No half-written copy is left lying around.
       if (await temp.exists()) await temp.delete();
       rethrow;
+    }
+  }
+
+  @override
+  Future<void> delete() async {
+    for (final f in [file, File('${file.path}.tmp')]) {
+      if (await f.exists()) await f.delete();
     }
   }
 }

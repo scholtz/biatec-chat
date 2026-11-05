@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../clients/clients_screen.dart';
 import '../config.dart';
 import '../keys/device_key_store.dart';
+import '../privacy/phone_eraser.dart';
+import '../privacy/privacy_screen.dart';
 import '../lock/lock_controller.dart';
 import '../security/settings_controller.dart';
 import '../security/settings_frame.dart';
@@ -20,13 +22,17 @@ class SettingsScreen extends StatefulWidget {
       {super.key,
       required this.services,
       required this.config,
-      this.controller});
+      this.controller,
+      this.eraser});
 
   final SettingsServices services;
   final AppConfig config;
 
   /// Shared with the other settings tabs (see [SettingsFrame.controller]); made (and disposed) here when null.
   final SettingsController? controller;
+
+  /// Removes everything from the phone (Privacy screen); the Privacy screen still shows without it.
+  final PhoneEraser? eraser;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -216,6 +222,17 @@ class _SettingsScreenState extends State<SettingsScreen>
         isThreeLine: true,
       ),
       _DeviceKeyTile(services: widget.services),
+      ListTile(
+        key: const Key('about-privacy'),
+        leading: const Icon(Icons.privacy_tip_outlined),
+        title: const Text('Privacy'),
+        subtitle: const Text('What the app stores and sends, and erasing '
+            'everything from this phone.'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+            settings: const RouteSettings(name: '/settings/privacy'),
+            builder: (_) => PrivacyScreen(eraser: widget.eraser))),
+      ),
       ListTile(
         key: const Key('about-licenses'),
         leading: const Icon(Icons.description_outlined),

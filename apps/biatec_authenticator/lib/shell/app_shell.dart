@@ -11,6 +11,7 @@ import '../codes/codes_screen.dart';
 import '../codes/codes_services.dart';
 import '../config.dart';
 import '../devices/devices_screen.dart';
+import '../privacy/phone_eraser.dart';
 import '../push/push_controller.dart';
 import '../settings/settings_screen.dart';
 import '../security/settings_controller.dart';
@@ -131,7 +132,15 @@ class _AppShellState extends State<AppShell> {
         AppTab.settings => SettingsScreen(
             services: widget.settings,
             config: widget.config,
-            controller: _settings),
+            controller: _settings,
+            eraser: PhoneEraser(
+              lock: widget.codes.lock,
+              vaultKeys: widget.codes.vault.keys,
+              vaultStorage: widget.codes.vault.storage,
+              deviceKeys: widget.approvals.keys,
+              enrollment: widget.approvals.enrollment,
+              secure: const DeviceBoundSecureWipe(),
+            )),
       };
 
   /// Back goes up inside the tab first, then to the first tab (Codes), and only then leaves the app.
