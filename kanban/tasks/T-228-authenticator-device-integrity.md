@@ -61,6 +61,16 @@ Write the failing test first for every security rule. Never log, print or put in
 
 Filled in by the agent when it moves the task to `review`.
 
+Implemented in PR #383, branch task/T-228 (squash merged).
+
+- `lib/integrity/`: detectors (`detectors.dart`), `DeviceIntegrityChecker` and `IntegrityGuard` (`integrity_checker.dart`), `PlatformIntegrityEnvironment` and `platformIntegrityChecker()` (`platform_integrity.dart`), `AttestationProvider` (`attestation.dart`). Natives: `IntegrityChannel.kt`, `IntegrityChannel.swift` (facts, and App Attest), `Runner.entitlements`.
+- Policy in `LockController` (`failClosed`, `integrity`, `integrityWarning`, `canRecheckIntegrity`, `recheckIntegrity`, `verifying`): `main` passes `kReleaseMode`; closed means no fingerprint prompt, memory cleared, `CompromisedScreen` (names no detector); resume re-checks with the area covered; every approval and settings change re-checks.
+- For T-230 (MASVS matrix, CI): document these as MASVS-RESILIENCE controls; CI release builds should pass `--dart-define=RELEASE_CERT_SHA256=...` (an Android release build without it is deliberately untrusted); the detectors' tests are in `test/integrity/`.
+- Open: wiring `AttestationProvider` into the enrollment request (server side is Biatec OIDC; Android needs the Play Integrity dependency and project number); App Attest needs the capability on the App ID.
+- Not run on a device: the Kotlin and Swift readers and App Attest. Tests: 921 pass. One review round, user capped and merged.
+
+**Unblocks:** T-230.
+
 ## Review
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
