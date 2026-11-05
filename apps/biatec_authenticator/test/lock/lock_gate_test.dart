@@ -267,7 +267,7 @@ void main() {
             'lock' => LockScreen(lock: lock),
             'no-biometric' => NoBiometricScreen(lock: lock),
             'changed' => const BiometricsChangedScreen(),
-            _ => const CompromisedScreen(),
+            _ => CompromisedScreen(lock: lock),
           };
           await tester.pumpWidget(MaterialApp(
               theme: buildTheme(dark ? Brightness.dark : Brightness.light),

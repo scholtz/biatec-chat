@@ -13,6 +13,7 @@
 		B10A7EC0000000000000D002 /* VaultPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10A7EC0000000000000D001 /* VaultPlugin.swift */; };
 		B10A7EC0000000000000E002 /* BiometricChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10A7EC0000000000000E001 /* BiometricChannel.swift */; };
 		B10A7EC0000000000000F002 /* ClipboardChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10A7EC0000000000000F001 /* ClipboardChannel.swift */; };
+		B10A7EC0000000000000A102 /* IntegrityChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10A7EC0000000000000A101 /* IntegrityChannel.swift */; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
@@ -54,6 +55,7 @@
 		B10A7EC0000000000000D001 /* VaultPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultPlugin.swift; sourceTree = "<group>"; };
 		B10A7EC0000000000000E001 /* BiometricChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricChannel.swift; sourceTree = "<group>"; };
 		B10A7EC0000000000000F001 /* ClipboardChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardChannel.swift; sourceTree = "<group>"; };
+		B10A7EC0000000000000A101 /* IntegrityChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntegrityChannel.swift; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
@@ -141,6 +143,7 @@
 				B10A7EC0000000000000D001 /* VaultPlugin.swift */,
 				B10A7EC0000000000000E001 /* BiometricChannel.swift */,
 				B10A7EC0000000000000F001 /* ClipboardChannel.swift */,
+				B10A7EC0000000000000A101 /* IntegrityChannel.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -308,6 +311,7 @@
 				B10A7EC0000000000000D002 /* VaultPlugin.swift in Sources */,
 				B10A7EC0000000000000E002 /* BiometricChannel.swift in Sources */,
 				B10A7EC0000000000000F002 /* ClipboardChannel.swift in Sources */,
+				B10A7EC0000000000000A102 /* IntegrityChannel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -402,6 +406,7 @@
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -581,6 +586,7 @@
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -603,6 +609,7 @@
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

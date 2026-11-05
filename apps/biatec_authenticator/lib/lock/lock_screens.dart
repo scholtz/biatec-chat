@@ -52,6 +52,17 @@ class LockScreen extends StatelessWidget {
                   Text('Locked. Use your fingerprint or face to open it.',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyLarge),
+                  if (lock.integrityWarning.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.m),
+                    const StatusBanner(
+                      key: Key('integrity-warning'),
+                      severity: StatusSeverity.warning,
+                      title: 'This phone failed a safety check',
+                      message:
+                          'This is a development build, so it opens anyway. '
+                          'A release build would stay closed.',
+                    ),
+                  ],
                   if (problem != null) ...[
                     const SizedBox(height: AppSpacing.m),
                     Semantics(
@@ -183,7 +194,9 @@ class BiometricsChangedScreen extends StatelessWidget {
 
 /// The integrity check found that the phone cannot be trusted.
 class CompromisedScreen extends StatelessWidget {
-  const CompromisedScreen({super.key});
+  const CompromisedScreen({super.key, required this.lock});
+
+  final LockController lock;
 
   @override
   Widget build(BuildContext context) {
@@ -207,10 +220,20 @@ class CompromisedScreen extends StatelessWidget {
                     style: theme.textTheme.headlineSmall),
               ),
               const SizedBox(height: AppSpacing.s),
-              const Text(
-                  'The app found that this phone has been tampered with, '
-                  'so it will not open your codes or approvals here. Use '
-                  'another phone.'),
+              const Text('This phone, or this copy of the app, did not pass a '
+                  'safety check, so the app will not open your codes or '
+                  'approvals here. If you did not change anything, install '
+                  'the app again from the official store, or use another '
+                  'phone.'),
+              if (lock.canRecheckIntegrity) ...[
+                const SizedBox(height: AppSpacing.l),
+                OutlinedButton.icon(
+                  key: const Key('integrity-recheck'),
+                  onPressed: lock.recheckIntegrity,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Check again'),
+                ),
+              ],
             ],
           ),
         ),
