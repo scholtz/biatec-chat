@@ -1,7 +1,7 @@
 ---
 id: T-232
 title: "Authenticator: minimum platform version and update enforcement"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-230]
@@ -9,8 +9,8 @@ area: ["apps/biatec_authenticator/android/app/build.gradle.kts", "apps/biatec_au
 parallel: no
 conflicts_with: [T-234]
 issue: "#384"
-branch: ""
-owner: ""
+branch: "task/T-232"
+owner: "session-20261105-1400"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-11-05
@@ -67,3 +67,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-11-05 10:25 · claude · ordering and file overlap decided: blocked_by T-230 (matrix rows), conflicts_with T-234 (build.gradle.kts)
 - 2026-11-05 10:04 · kanban-board · backlog → blocked · waiting on: T-230
 - 2026-11-05 11:27 · kanban-board · blocked → backlog · blockers done: T-230
+- 2026-11-05 14:00 · scholtz · backlog → in-progress · claimed by session-20261105-1400 on task/T-232
