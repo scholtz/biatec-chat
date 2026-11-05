@@ -58,6 +58,16 @@ Write the failing test first for every security rule. Never log, print or put in
 
 Filled in by the agent when it moves the task to `review`.
 
+Implemented in PR #387, branch task/T-230 (squash merged).
+
+- `docs/AUTHENTICATOR-SECURITY.md` (24 MASVS v2.0 controls, status, evidence, open items O-1 to O-10), `docs/AUTHENTICATOR-PENTEST-BRIEF.md`, `docs/AUTHENTICATOR-RELEASE-CHECKLIST.md`, the authenticator section of `docs/threat-model.md`, updates to `docs/architecture.md` and `docs/cicd.md`.
+- `apps/biatec_authenticator/tool/matrix_check.dart` and `tool/gates.dart`, tested against seeded violations in `test/tool/`; CI job `authenticator-security` (lockfile, OSV, CycloneDX SBOM, gates, matrix, hardening and pinning tests). The seeded violation failed the job in CI (run 42001291965, shown in the PR).
+- Follow-up tasks created from the open rows: T-232 (minimum platform version and update enforcement), T-233 (privacy notice and erase-everything), T-234 (attestation at enrollment). Whoever changes a row updates the matrix in the same PR; the checker enforces the rules.
+- Open and owned by the user: O-1 device verification of all native code, O-2 the independent penetration test, O-9 the 30 s vault key window, O-10 native string protection, and the named security contact in the release checklist.
+- Tests: 963 pass. One review round, user capped and merged.
+
+**Unblocks:** T-232, T-233, T-234.
+
 ## Review
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
