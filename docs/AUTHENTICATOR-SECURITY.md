@@ -1,0 +1,84 @@
+# Biatec Authenticator: security conformance
+
+The authenticator guards authentication secrets, so it is held to **OWASP MASVS v2.0 Level 2** with the resilience controls
+(MASVS-RESILIENCE) applied, as `PRODUCT-DESCRIPTION.md` ("Security Standard For The App") requires. This document maps each
+of the 24 MASVS v2.0 controls to the code, test or document that meets it, and says plainly where it does not. The design aims
+at NIST SP 800-63B authenticator assurance level 2, and at level 3 properties where the platform allows (non-exportable
+hardware keys, number matching and dynamic linking through the binding code and the amount shown).
+
+The PRODUCT-DESCRIPTION wins on any conflict. Related documents: [threat-model.md](threat-model.md) (the authenticator section),
+[AUTHENTICATOR-PINNING.md](AUTHENTICATOR-PINNING.md), [AUTHENTICATOR-PENTEST-BRIEF.md](AUTHENTICATOR-PENTEST-BRIEF.md),
+[AUTHENTICATOR-RELEASE-CHECKLIST.md](AUTHENTICATOR-RELEASE-CHECKLIST.md) and the
+[app README](../apps/biatec_authenticator/README.md).
+
+## Status words
+
+| Status | Meaning |
+| --- | --- |
+| met | Code and a test (or a CI check) on `main` meet it. The evidence column links the files. |
+| partly | The building block is there; what is missing is named, with a task id or an owner. |
+| open | Not met. Names a task or an owner. |
+| not applicable | The app has nothing the control applies to; the notes say why. |
+
+**What "met" does not mean.** The Dart code and its tests run in CI. The native code (Kotlin and Swift: the keystore, vault,
+biometric, integrity, clipboard and attestation channels) is compiled for Android in CI and has **never run on a device**; the
+iOS side has never been compiled. Every row that depends on native code carries that caveat in its notes, and the first open item
+below is the device verification that closes it. A row is `met` when the control is implemented and tested as far as that can be
+done without a device.
+
+## Matrix
+
+| Control | Requirement | Status | Evidence | Notes |
+| --- | --- | --- | --- | --- |
+| MASVS-STORAGE-1 | The app securely stores sensitive data | met | [vault](../apps/biatec_authenticator/lib/totp/vault/totp_vault.dart), [vault tests](../apps/biatec_authenticator/test/totp/vault/totp_vault_test.dart), [secure storage](../apps/biatec_authenticator/lib/security/secure_storage.dart), [storage test](../apps/biatec_authenticator/test/security_storage_test.dart) | Seeds are AES-256-GCM sealed under a hardware key, one record each, with an authenticated index and a rollback counter. Tokens and the enrollment live in the keychain or encrypted preferences, device-bound. Device check: owner: user (O-1) |
+| MASVS-STORAGE-2 | The app prevents leakage of sensitive data | met | [hardening test](../apps/biatec_authenticator/test/platform_hardening_test.dart), [Codes and clipboard tests](../apps/biatec_authenticator/test/codes/add_and_platform_test.dart), [gates](../apps/biatec_authenticator/tool/gates.dart) | No logging anywhere (gate and hardening test), no backups (manifest, data extraction rules, iOS exclusion), screenshots and recents blocked, copied codes marked sensitive and cleared after 30 s, no third-party keyboard on iOS. Device check: owner: user (O-1) |
+| MASVS-CRYPTO-1 | The app employs current strong cryptography | met | [vault key store](../apps/biatec_authenticator/lib/totp/vault/vault_key_store.dart), [OTP generator](../apps/biatec_authenticator/lib/totp/core/otp_generator.dart), [OTP generator tests](../apps/biatec_authenticator/test/totp/core/otp_generator_test.dart) | AES-256-GCM and ECDSA P-256 from the platform keystores, HMAC from the maintained `crypto` package, RFC 4226 and 6238 test vectors, the operating system's random number generator. No homegrown cryptography. Backup (Argon2id) is T-226 |
+| MASVS-CRYPTO-2 | The app performs key management according to industry best practices | partly | [vault plugin](../apps/biatec_authenticator/android/app/src/main/kotlin/io/biatec/authenticator/VaultPlugin.kt), [vault tests](../apps/biatec_authenticator/test/totp/vault/totp_vault_test.dart), [device key store](../apps/biatec_authenticator/lib/keys/device_key_store.dart) | Keys are generated in hardware, never exported, biometric-bound and invalidated when biometrics change; nonces are never chosen by the caller. Missing: the passphrase-derived backup key, T-226 |
+| MASVS-AUTH-1 | The app uses secure authentication and authorization protocols and follows the relevant best practices | met | [approval controller](../apps/biatec_authenticator/lib/approvals/approval_controller.dart), [approval tests](../apps/biatec_authenticator/test/approvals/approval_test.dart), [device proof](../apps/biatec_authenticator/lib/security/device_proof.dart) | The app holds no user password. It authenticates to Biatec OIDC with a device token plus a proof of possession of the device key on every call, and approvals are signed receipts verified by Biatec OIDC |
+| MASVS-AUTH-2 | The app performs local authentication securely according to the platform best practices | met | [lock controller](../apps/biatec_authenticator/lib/lock/lock_controller.dart), [lock tests](../apps/biatec_authenticator/test/lock/lock_controller_test.dart), [policy tests](../apps/biatec_authenticator/test/lock/biometric_policy_test.dart) | Strong biometric only (Android `BIOMETRIC_STRONG`, iOS biometrics-only policy), no PIN fallback, locks at start, after 0, 30 s, 1 or 5 min away, on screen lock and after 2 min idle; the vault keys are biometric-bound. Device check: owner: user (O-1) |
+| MASVS-AUTH-3 | The app secures sensitive operations with additional authentication | met | [lock gate test](../apps/biatec_authenticator/test/lock/lock_gate_test.dart), [settings controller](../apps/biatec_authenticator/lib/security/settings_controller.dart), [codes controller test](../apps/biatec_authenticator/test/codes/codes_controller_test.dart) | A fresh biometric for every approval, every security setting change, deleting an account; approvals also need the binding code. Backup export will too (T-226) |
+| MASVS-NETWORK-1 | The app secures all network traffic according to the current best practices | met | [hardening test](../apps/biatec_authenticator/test/platform_hardening_test.dart), [network security config](../apps/biatec_authenticator/android/app/src/main/res/xml/network_security_config.xml), [pinned client](../apps/biatec_authenticator/lib/security/pinning/pinned_http.dart) | TLS only in release builds, no cleartext, no user-installed certificate authorities in release, iOS App Transport Security without exceptions |
+| MASVS-NETWORK-2 | The app performs identity pinning for all remote endpoints under the developer's control | met | [pinning](../apps/biatec_authenticator/lib/security/pinning/pinned_http.dart), [pinning test](../apps/biatec_authenticator/test/pinning/pinned_http_test.dart), [pinning guide](AUTHENTICATOR-PINNING.md) | Public-key pins to Biatec OIDC with a backup pin and a documented rotation; the app does not start without a policy for its host |
+| MASVS-PLATFORM-1 | The app uses IPC mechanisms securely | met | [hardening test](../apps/biatec_authenticator/test/platform_hardening_test.dart), [manifest](../apps/biatec_authenticator/android/app/src/main/AndroidManifest.xml) | The launcher activity is the only exported component and nothing else is exported without a permission; no iOS URL schemes; the platform channels are in-process |
+| MASVS-PLATFORM-2 | The app uses WebViews securely | not applicable | [pubspec](../apps/biatec_authenticator/pubspec.yaml) | The app has no WebView and no WebView package; the open-source notices page is Flutter's own widget. A dependency check in the hardening test would catch one being added |
+| MASVS-PLATFORM-3 | The app uses the user interface securely | partly | [hardening test](../apps/biatec_authenticator/test/platform_hardening_test.dart), [main activity](../apps/biatec_authenticator/android/app/src/main/kotlin/io/biatec/authenticator/MainActivity.kt), [lock gate test](../apps/biatec_authenticator/test/lock/lock_gate_test.dart) | `FLAG_SECURE`, overlay hiding (Android 12+), a capture-aware cover on iOS, nothing readable while locked. Gap: on Android 10 and 11 a partly covered tap is not stopped, T-220 |
+| MASVS-CODE-1 | The app requires an up-to-date platform version | open | [build file](../apps/biatec_authenticator/android/app/build.gradle.kts) | `minSdk` is the Flutter default and no reason for it is recorded. T-232 |
+| MASVS-CODE-2 | The app has a mechanism for enforcing app updates | open | [CI workflow](../.github/workflows/ci.yml) | Nothing tells an old build to update. T-232 |
+| MASVS-CODE-3 | The app only uses software components without known vulnerabilities | met | [CI workflow](../.github/workflows/ci.yml), [lockfile](../apps/biatec_authenticator/pubspec.lock), [gates test](../apps/biatec_authenticator/test/tool/gates_test.dart) | The lockfile is committed and `pub get` must not change it; OSV scans it on every change; a CycloneDX SBOM is produced per run; Dependabot proposes updates |
+| MASVS-CODE-4 | The app validates and sanitizes all untrusted inputs | met | [otpauth parser](../apps/biatec_authenticator/lib/totp/core/otp_uri.dart), [parser tests](../apps/biatec_authenticator/test/totp/core/otp_uri_test.dart), [account input](../apps/biatec_authenticator/lib/codes/add/account_input.dart), [controller tests](../apps/biatec_authenticator/test/codes/codes_controller_test.dart) | QR codes, links and typed keys go through one strict parser with length limits and refusals of look-alike and direction-changing characters; amounts, names and server answers are validated; a poisoned backup file is T-226 |
+| MASVS-RESILIENCE-1 | The app validates the integrity of the platform | partly | [integrity checker](../apps/biatec_authenticator/lib/integrity/integrity_checker.dart), [detector tests](../apps/biatec_authenticator/test/integrity/detectors_test.dart), [lock policy tests](../apps/biatec_authenticator/test/integrity/lock_integrity_test.dart) | Root, jailbreak, debugger, hooking and emulator detection fail closed in release builds. Missing: the attestation is built but not yet sent at enrollment, T-234 |
+| MASVS-RESILIENCE-2 | The app implements anti-tampering mechanisms | partly | [signing detector](../apps/biatec_authenticator/lib/integrity/detectors.dart), [lock policy tests](../apps/biatec_authenticator/test/integrity/lock_integrity_test.dart), [CI release build](../.github/workflows/ci.yml) | Android compares its signing certificate with the configured release digest. iOS has no local check (App Attest at enrollment, T-234) |
+| MASVS-RESILIENCE-3 | The app implements anti-static analysis mechanisms | partly | [CI release build](../.github/workflows/ci.yml), [hardening test](../apps/biatec_authenticator/test/platform_hardening_test.dart) | Dart is obfuscated and symbols are split off; release builds are R8-shrunk and not debuggable. There is no native string encryption or packing. owner: user (accepted residual risk, review at the pen test) |
+| MASVS-RESILIENCE-4 | The app implements anti-dynamic analysis techniques | met | [detectors](../apps/biatec_authenticator/lib/integrity/detectors.dart), [detector tests](../apps/biatec_authenticator/test/integrity/detectors_test.dart) | Debugger and tracer detection, Frida, Substrate and Xposed indicators, re-checked on resume and before each approval. Detection can be bypassed by a determined attacker; the pen test tries |
+| MASVS-PRIVACY-1 | The app minimizes access to sensitive data and resources | met | [manifest](../apps/biatec_authenticator/android/app/src/main/AndroidManifest.xml), [privacy manifest](../apps/biatec_authenticator/ios/Runner/PrivacyInfo.xcprivacy), [Codes tests](../apps/biatec_authenticator/test/codes/add_and_platform_test.dart) | The camera is asked for only when the scanner opens and nothing is stored; no analytics, no advertising identifier, no location, contacts or storage permissions; a push token only |
+| MASVS-PRIVACY-2 | The app prevents identification of the user | partly | [privacy manifest](../apps/biatec_authenticator/ios/Runner/PrivacyInfo.xcprivacy), [enrollment](../apps/biatec_authenticator/lib/enrollment/enrollment_controller.dart) | No analytics or third-party SDK except push. Biatec OIDC sees a pseudonymous device key id and the push token by design. Pairwise subject identifiers are a Biatec OIDC change, [required-changes](required-changes-biatec-oidc.md). T-233 states this to the user |
+| MASVS-PRIVACY-3 | The app is transparent about data collection and usage | partly | [privacy manifest](../apps/biatec_authenticator/ios/Runner/PrivacyInfo.xcprivacy), [README](../apps/biatec_authenticator/README.md) | The privacy manifest declares no tracking and what is collected. There is no in-app notice yet, T-233 |
+| MASVS-PRIVACY-4 | The app offers user control over their data | partly | [codes controller](../apps/biatec_authenticator/lib/codes/codes_controller.dart), [settings controller](../apps/biatec_authenticator/lib/security/settings_controller.dart) | The user can delete each account and cancel a pending enrollment; backups are user-started and optional. No single erase-everything action yet, T-233 |
+
+## Open items
+
+Everything not met is here with an owner or a task, not hidden.
+
+| Id | Item | Owner or task |
+| --- | --- | --- |
+| O-1 | Run the native code on real devices (Android with and without StrongBox, iPhone with Face ID and Touch ID) and tick the device checks in the [release checklist](AUTHENTICATOR-RELEASE-CHECKLIST.md). Nothing native has run on a device | owner: user |
+| O-2 | The independent penetration test before the first public release, from the [brief](AUTHENTICATOR-PENTEST-BRIEF.md) | owner: user |
+| O-3 | Minimum platform version and update enforcement (CODE-1, CODE-2) | T-232 |
+| O-4 | In-app privacy notice and erase-everything (PRIVACY-3, PRIVACY-4) | T-233 |
+| O-5 | Send the platform attestation at enrollment; Android Play Integrity (RESILIENCE-1, RESILIENCE-2) | T-234 |
+| O-6 | Encrypted backup with Argon2id, and the poisoned-backup defences (CRYPTO-1, CRYPTO-2, CODE-4) | T-226 |
+| O-7 | The Android 10 and 11 partial-occlusion tap gap (PLATFORM-3) | T-220 |
+| O-8 | Server-side verification of attestation, receipts and the settings API in the real Biatec OIDC | owner: Biatec OIDC team, [required-changes](required-changes-biatec-oidc.md) |
+| O-9 | The vault secret key accepts a strong biometric for 30 s, so the Codes list opens with the app's own unlock instead of one prompt per account. This is a deliberate trade-off against per-use prompts; revisit at the pen test | owner: user |
+| O-10 | Native string protection and packing (RESILIENCE-3), accepted as residual risk for now | owner: user |
+
+## How this document is kept true
+
+- `dart run tool/matrix_check.dart` (in `apps/biatec_authenticator`) fails when a control is missing or repeated, a status is not
+  one of the four words, a `met` or `partly` row links nothing, a link points at a file that does not exist, or an `open` row names
+  no task or owner (a named task must have a file in `kanban/tasks`). CI runs it.
+- `dart run tool/gates.dart` fails on `print(` or `debugPrint(` in `lib/` and on secret-like strings in the app's source. CI runs it.
+- CI also scans `pubspec.lock` with OSV, fails when the lockfile is not committed or `pub get` changes it, runs the hardening and
+  pinning tests by name, and publishes a CycloneDX SBOM of each run.
+- The tests in `apps/biatec_authenticator/test/tool` run both tools against seeded violations and show that they fail.
+- Changing a status needs the evidence in the same pull request.

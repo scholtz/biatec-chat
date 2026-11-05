@@ -83,6 +83,41 @@ fallbacks apply:
 | Pairwise `sub` | Public `sub` | Deletion cannot unlink retained receipts |
 | Origin-aware slots | Slots and pauses apply per client for all Biatec sites | One compromised Biatec site can occupy the others' slots |
 
+## The authenticator app
+
+The authenticator (`apps/biatec_authenticator`) is the second factor for fund-moving actions and a general two-factor code
+generator. Conformance to OWASP MASVS v2.0 Level 2 is in [AUTHENTICATOR-SECURITY.md](AUTHENTICATOR-SECURITY.md); the test brief is
+[AUTHENTICATOR-PENTEST-BRIEF.md](AUTHENTICATOR-PENTEST-BRIEF.md). Statuses are the same four words as above, judged on the Dart code and
+its tests: the native code has not run on a device (open item O-1 in the security document).
+
+### Assets
+
+| Asset | Where it lives | Who may touch it |
+| --- | --- | --- |
+| Two-factor seeds | Vault file in the app's private folder, each record sealed with AES-256-GCM under a hardware key that needs a strong biometric | The vault code, after a biometric. Never shown again, never in a backup, never on a server |
+| Device (receipt-signing) key | Secure Enclave or StrongBox, non-exportable | Signs a receipt only after a biometric and the binding code |
+| Device token and enrollment record | Keychain or encrypted preferences, device-bound | The app; sent to Biatec OIDC with a proof of possession of the device key |
+| Approval history | Secure storage on the phone | The app; redacted of anything not needed to read a receipt |
+| The user's attention at the approval card | The screen | What the card shows must be what Biatec OIDC decoded, not what the requester says |
+
+### Attackers and abuse cases
+
+| # | Threat | Control | Status | Where / residual risk |
+| --- | --- | --- | --- | --- |
+| A1 | **Stolen unlocked phone** (the thief gets the app open) | The app locks after 0, 30 s, 1 or 5 min in the background, on screen lock, and after 2 min idle; every approval, deletion and security change asks for a fresh biometric; the vault key opens only for 30 s after one | Implemented | `lib/lock/`, `test/lock/`. Residual: during the 30 s after an unlock the vault key can be used by code in the app process (open item O-9) |
+| A2 | **Stolen locked phone** | Nothing opens without the fingerprint or face: no PIN or password path, no fallback, hardware keys that need the biometric and die when it changes, seeds not in backups | Implemented | `lib/lock/`, `lib/totp/vault/`. Residual: the operating system's lockout policy decides how many biometric tries an attacker gets; a coerced user can be made to unlock |
+| A3 | **Malware with an accessibility service** reads the screen or taps Approve | The approval card shows facts from Biatec OIDC with a binding code the user types; a tap alone cannot approve; the secure area is hidden from other windows (`FLAG_SECURE`, overlay hiding on Android 12+); the unlock and approval need the biometric, which a service cannot supply | Partial | `test/platform_hardening_test.dart`. Residual: a service can read what the card shows and the binding code on screen; Android 10 and 11 cannot hide overlays (T-220) |
+| A4 | **Overlay and tapjacking** over the Approve button | Overlays hidden on Android 12+; touches through an obscuring window dropped on older versions; the amount and recipient sit on the same screen as the button | Partial | `MainActivity.kt`. Residual: a partly covered tap on Android 10 and 11 (T-220) |
+| A5 | **Screen capture and recording**, screen mirroring | `FLAG_SECURE`, no recents thumbnail, a capture-aware cover on iOS; nothing is readable while locked | Implemented | `MainActivity.kt`, `ScreenCover.swift`, hardening test |
+| A6 | **Rooted or jailbroken device**, debugger, Frida, emulator, repackaged app | Detectors fail closed in release builds (the secure area does not open and says a check failed, naming nothing); re-checked on resume and before each approval; the signing certificate is compared with the release digest | Partial | `lib/integrity/`, `test/integrity/`. Residual: a determined attacker bypasses client-side checks; attestation is built but not yet sent (T-234); the real defence is the hardware key and the biometric, not detection |
+| A7 | **Network attacker with a trusted certificate authority** (a corporate or rogue CA, a user-installed CA) | Public-key pinning to Biatec OIDC with a backup pin; user CAs not trusted in release; no cleartext | Implemented | `lib/security/pinning/`, [AUTHENTICATOR-PINNING.md](AUTHENTICATOR-PINNING.md). Residual: a compromised pinned key until rotation |
+| A8 | **Malicious QR code or link** (a crafted `otpauth://` or a QR that is not one) | One strict parser: length limits, only `totp` and `hotp`, bounded digits and periods, weak secrets refused, look-alike and direction-changing characters refused; the account is shown and confirmed before it is saved; duplicates are refused | Implemented | `lib/totp/core/otp_uri.dart`, `lib/codes/add/`. Residual: a QR for the right service but the attacker's seed is indistinguishable from a real one: the user must scan from the service's own page |
+| A9 | **Poisoned backup file** (a crafted file the user is tricked into restoring) | Planned with the backup: authenticated encryption under a passphrase-derived key, a size and count limit, the same account validation as a scan, every account shown before import | Planned | T-226. Not a control until it ships |
+| A10 | **Phishing request that looks like a bank** | Biatec OIDC decodes the request, so the card shows its facts, never the requester's text; the client name is marked unverified unless Biatec OIDC verified it; the binding code ties the card to the session; a first-use and cooling-off policy is Biatec OIDC's | Partial | `lib/approvals/`. Residual: client verification (OpenID Federation) is a Biatec OIDC change, [required-changes](required-changes-biatec-oidc.md); until then every non-Biatec client shows as unverified |
+| A11 | **Clipboard snooping** of a copied code | The clip is marked sensitive (Android 13+), local-only and expiring on iOS, and cleared after 30 s if it still holds the code | Implemented | `lib/codes/sensitive_clipboard.dart`. Residual: other apps on older Android versions can read the clipboard during the 30 s |
+| A12 | **Device clock wrong or set back** to replay or hide codes | The Codes tab warns above 5 s of difference from the server `Date` header, and hides time-based codes when the clock is before the latest time seen | Implemented | `lib/codes/server_clock.dart`, `OtpGenerator.clockIsPlausible` |
+| A13 | **Supply chain**: a vulnerable or malicious dependency | A committed lockfile that `pub get` must not change, an OSV scan and an SBOM in CI, pinned actions, signed release builds | Implemented | `.github/workflows/ci.yml`, `docs/AUTHENTICATOR-RELEASE-CHECKLIST.md` |
+
 ## Out of scope for version 1
 
 `rekey`, asset creation, bridge transactions, and any source address the user's identity does not control are excluded from chat.
@@ -93,3 +128,5 @@ Sender-constrained tokens (DPoP) are a roadmap item, not a current claim.
 - Backend: `dotnet test backend/Biatec.Chat.slnx` (Redis and PostgreSQL via `docker compose up -d`).
 - Widget: `pnpm --filter @biatec/chat-widget test`. Consent protocol and mock OIDC: `pnpm --filter mock-oidc test` and `pnpm --filter @biatec/consent-protocol test`.
 - Each row names the file that implements it; the matching tests sit in `backend/Biatec.Chat.Tests` under the same module name.
+- Authenticator: `cd apps/biatec_authenticator && flutter test`, `dart run tool/gates.dart` and `dart run tool/matrix_check.dart`; the rows of
+  the authenticator section name their files and tests, and the matrix is in [AUTHENTICATOR-SECURITY.md](AUTHENTICATOR-SECURITY.md).
