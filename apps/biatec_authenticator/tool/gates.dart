@@ -1,9 +1,9 @@
 // Source gates for the authenticator, run in CI:
 //
-//   dart run tool/gates.dart
+//   dart run tool/gates.dart [package folder]
 //
-//  1. no `print(` or `debugPrint(` in lib/ (nothing may log: a code, a token or a key could reach a log);
-//  2. no secret-like strings in the app's own source (lib/, android/app/src, ios/Runner, pubspec.yaml).
+//  1. no `print(` or `debugPrint(` in lib/, also not taken as a function value (nothing may log: a code, a token or a key could reach a log);
+//  2. no secret-like strings in the app's own source: lib/, android/ (without build output), ios/Runner and pubspec.yaml.
 import 'dart:io';
 
 class Finding {
@@ -18,7 +18,9 @@ class Finding {
   String toString() => '$file:$line: $rule';
 }
 
-final _logging = RegExp(r'(^|[^A-Za-z0-9_.])(print|debugPrint)\s*\(');
+/// A call, or the name used as a value (`final log = debugPrint;`, `debugPrint = f;`, `x(print)`).
+final _logging = RegExp(
+    r'(^|[^A-Za-z0-9_.])(print|debugPrint)\s*(\(|=[^=>]|;|,|\))|[=(,]\s*(print|debugPrint)\s*[;,)]');
 
 /// Strings that look like credentials. Each has a name for the report.
 final Map<String, RegExp> secretPatterns = {
@@ -31,22 +33,44 @@ final Map<String, RegExp> secretPatterns = {
   'a Slack token': RegExp(r'\bxox[baprs]-[A-Za-z0-9-]{10,}'),
   'a Google API key': RegExp(r'\bAIza[0-9A-Za-z_-]{35}\b'),
   'a credential assigned to a literal': RegExp(
-      r'''(api[_-]?key|secret|passw(or)?d|token)["']?\s*[:=]\s*["'][A-Za-z0-9+/_=-]{20,}["']''',
+      r'''(api[_-]?key|secret|passw(or)?d|token)["']?\s*[:=]\s*["'][A-Za-z0-9+/_=.-]{20,}["']''',
+      caseSensitive: false),
+  'a signing password in a properties file': RegExp(
+      r'''^\s*(store|key)Password\s*=\s*(?:"[^"$]{8,}"|[A-Za-z0-9+/_=!@%^&*-]{6,}\s*$)''',
       caseSensitive: false),
 };
 
-bool _isComment(String line) {
-  final t = line.trimLeft();
-  return t.startsWith('//') || t.startsWith('*') || t.startsWith('/*');
-}
-
-/// Findings in one file's [lines].
+/// Findings in one file's [lines]. Block comments (`/* ... */`) and line comments are not code for the logging rule; the secret rules read the whole line (a key in a comment is still a leaked key).
 List<Finding> scan(String path, List<String> lines,
     {required bool checkLogging}) {
   final out = <Finding>[];
+  var inBlock = false;
   for (var i = 0; i < lines.length; i++) {
     final line = lines[i];
-    if (checkLogging && !_isComment(line) && _logging.hasMatch(line)) {
+    var code = line;
+    if (inBlock) {
+      final end = code.indexOf('*/');
+      if (end < 0) {
+        code = '';
+      } else {
+        code = code.substring(end + 2);
+        inBlock = false;
+      }
+    }
+    while (true) {
+      final start = code.indexOf('/*');
+      if (start < 0) break;
+      final end = code.indexOf('*/', start + 2);
+      if (end < 0) {
+        code = code.substring(0, start);
+        inBlock = true;
+        break;
+      }
+      code = code.substring(0, start) + code.substring(end + 2);
+    }
+    final slashes = code.indexOf('//');
+    if (slashes >= 0) code = code.substring(0, slashes);
+    if (checkLogging && _logging.hasMatch(code)) {
       out.add(Finding(path, i + 1, 'print or debugPrint in lib/'));
     }
     for (final e in secretPatterns.entries) {
@@ -67,36 +91,41 @@ const _sourceExtensions = {
   '.yaml',
   '.gradle',
   '.kts',
-  '.json'
+  '.json',
+  '.properties',
+  '.entitlements',
+  '.pro',
 };
 
-/// Scans the authenticator under [root] (the package folder).
+/// A developer's own local settings and signing material, kept out of the repository by .gitignore.
+const _localOnly = {'local.properties', 'key.properties'};
+
+/// Scans the authenticator under [root] (the package folder), however it is spelled (`.`, `./`, a trailing slash).
 List<Finding> scanPackage(String root) {
+  final base = root.replaceAll('\\', '/').replaceAll(RegExp(r'/+$'), '');
   final findings = <Finding>[];
   void walk(String rel, {required bool logging}) {
-    final dir = Directory('$root/$rel');
-    final entity = FileSystemEntity.typeSync('$root/$rel');
-    if (entity == FileSystemEntityType.file) {
-      findings.addAll(
-          scan(rel, File('$root/$rel').readAsLinesSync(), checkLogging: false));
+    final path = '$base/$rel';
+    final type = FileSystemEntity.typeSync(path);
+    if (type == FileSystemEntityType.file) {
+      findings
+          .addAll(scan(rel, File(path).readAsLinesSync(), checkLogging: false));
       return;
     }
-    if (!dir.existsSync()) return;
-    for (final f in dir.listSync(recursive: true).whereType<File>()) {
-      final path = f.path.replaceAll('\\', '/');
-      final shown = path.substring(root.length + 1);
-      if (shown.contains('/build/') ||
-          shown.contains('/.gradle/') ||
-          shown.contains('/Pods/')) {
+    if (type != FileSystemEntityType.directory) return;
+    for (final f
+        in Directory(path).listSync(recursive: true).whereType<File>()) {
+      final shown = f.path.replaceAll('\\', '/').substring(base.length + 1);
+      final name = shown.split('/').last;
+      if (RegExp(r'(^|/)(build|\.gradle|Pods|\.dart_tool)/').hasMatch(shown)) {
         continue;
       }
-      if (shown.endsWith('GeneratedPluginRegistrant.java') ||
-          shown.endsWith('GeneratedPluginRegistrant.m') ||
-          shown.endsWith('GeneratedPluginRegistrant.h')) {
+      if (name.startsWith('GeneratedPluginRegistrant.') ||
+          _localOnly.contains(name)) {
         continue;
       }
-      final dot = shown.lastIndexOf('.');
-      if (dot < 0 || !_sourceExtensions.contains(shown.substring(dot))) {
+      final dot = name.lastIndexOf('.');
+      if (dot < 0 || !_sourceExtensions.contains(name.substring(dot))) {
         continue;
       }
       findings.addAll(scan(shown, f.readAsLinesSync(),
@@ -105,7 +134,7 @@ List<Finding> scanPackage(String root) {
   }
 
   walk('lib', logging: true);
-  walk('android/app/src', logging: false);
+  walk('android', logging: false);
   walk('ios/Runner', logging: false);
   walk('pubspec.yaml', logging: false);
   return findings;

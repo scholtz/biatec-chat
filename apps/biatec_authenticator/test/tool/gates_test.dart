@@ -20,6 +20,28 @@ void main() {
       expect(inLib('final a = 1;\nprint(a);').single.line, 2);
     });
 
+    test('a function value is caught too', () {
+      expect(inLib('final log = debugPrint;'), isNotEmpty);
+      expect(
+          inLib('debugPrint = (String? m, {int? wrapWidth}) {};'), isNotEmpty);
+      expect(inLib('run(print);'), isNotEmpty);
+    });
+
+    test('a block comment is not code, wherever the line starts', () {
+      final lines = [
+        '/* first line',
+        'say print(x) here',
+        '*/ void f() {}',
+        'void g() { print(1); }'
+      ];
+      final found = scan('lib/x.dart', lines, checkLogging: true);
+      expect(found.single.line, 4);
+      expect(
+          scan('lib/x.dart', ['int a = 1; /* print(x) */ int b = 2;'],
+              checkLogging: true),
+          isEmpty);
+    });
+
     test('but not a word that merely contains print, nor a comment', () {
       expect(inLib('final fingerprint = 1;'), isEmpty);
       expect(inLib('blueprint(1);'), isEmpty);
@@ -76,6 +98,44 @@ void main() {
       ]) {
         expect(scan('lib/x.dart', [ok], checkLogging: false), isEmpty,
             reason: ok);
+      }
+    });
+
+    test('signing passwords in a properties file or a gradle folder are found',
+        () {
+      final dir = Directory.systemTemp.createTempSync('gates');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      Directory('${dir.path}/android/app').createSync(recursive: true);
+      File('${dir.path}/android/gradle.properties')
+          .writeAsStringSync('storePassword=hunter22hunter\n');
+      File('${dir.path}/android/app/signing.gradle')
+          .writeAsStringSync('keyPassword = "abcdefghijklmnopqrstuvwx"\n');
+      final files = scanPackage(dir.path).map((f) => f.file).toSet();
+      expect(
+          files, {'android/gradle.properties', 'android/app/signing.gradle'});
+    });
+
+    test('a developer\'s own key.properties and build output are not scanned',
+        () {
+      final dir = Directory.systemTemp.createTempSync('gates');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      Directory('${dir.path}/android/app/build').createSync(recursive: true);
+      File('${dir.path}/android/key.properties')
+          .writeAsStringSync('storePassword=hunter22hunter\n');
+      File('${dir.path}/android/app/build/x.properties')
+          .writeAsStringSync('storePassword=hunter22hunter\n');
+      expect(scanPackage(dir.path), isEmpty);
+    });
+
+    test('the package folder may be spelled with a trailing slash or a dot',
+        () {
+      final dir = Directory.systemTemp.createTempSync('gates');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      Directory('${dir.path}/lib').createSync();
+      File('${dir.path}/lib/bad.dart')
+          .writeAsStringSync("void bad() { print('x'); }\n");
+      for (final root in [dir.path, '${dir.path}/', '${dir.path}//']) {
+        expect(scanPackage(root).single.file, 'lib/bad.dart', reason: root);
       }
     });
 

@@ -104,7 +104,7 @@ void main() {
       expect(
           check(md),
           contains(
-              'MASVS-AUTH-1: met, but no evidence link to a file or test'));
+              'MASVS-AUTH-1: met, but no evidence link to a file under apps/ or .github/ (code, a test or a workflow)'));
     });
 
     test('a link to a file that does not exist', () {
@@ -135,6 +135,62 @@ void main() {
           replace: {'MASVS-AUTH-1': '| MASVS-AUTH-1 | t | open | | T-999 |'});
       expect(check(md),
           contains('MASVS-AUTH-1: names T-999, which has no task file'));
+    });
+
+    test('met linking only another document is not evidence', () {
+      final md = sound(replace: {
+        'MASVS-AUTH-1':
+            '| MASVS-AUTH-1 | t | met | [doc](AUTHENTICATOR-PINNING.md) | n |'
+      });
+      expect(
+          check(md)
+              .any((p) => p.contains('no evidence link to a file under apps/')),
+          isTrue);
+    });
+
+    test('met linking a folder is not evidence', () {
+      final md = sound(replace: {
+        'MASVS-AUTH-1':
+            '| MASVS-AUTH-1 | t | met | [dir](../apps/biatec_authenticator/test/tool) | n |'
+      });
+      expect(
+          check(md)
+              .any((p) => p.contains('no evidence link to a file under apps/')),
+          isTrue);
+    });
+
+    test(
+        'a relative link that starts with http is a file link, not an external one',
+        () {
+      final md = sound(replace: {
+        'MASVS-AUTH-1': '| MASVS-AUTH-1 | t | met | [x](http-notes.md) | n |'
+      });
+      expect(check(md).any((p) => p.contains('"http-notes.md" does not exist')),
+          isTrue);
+    });
+
+    test('an external link is not looked up on disk', () {
+      final md = sound(replace: {
+        'MASVS-AUTH-1':
+            '| MASVS-AUTH-1 | t | met | [a](../apps/biatec_authenticator/test/tool/matrix_check_test.dart), [b](https://example.com/x) | n |'
+      });
+      expect(check(md), isEmpty);
+    });
+
+    test('an escaped pipe in a cell does not shift the columns', () {
+      final cells =
+          splitRow(r'| MASVS-AUTH-1 | a \| b | met | [t](x.md) | n \| m |');
+      expect(cells, ['MASVS-AUTH-1', 'a | b', 'met', '[t](x.md)', 'n | m']);
+      final md = sound(replace: {
+        'MASVS-AUTH-1':
+            r'| MASVS-AUTH-1 | a \| b | met | [t](../apps/biatec_authenticator/test/tool/matrix_check_test.dart) | n \| m |'
+      });
+      expect(check(md), isEmpty);
+    });
+
+    test('a row without the closing pipe keeps its last cell whole', () {
+      expect(splitRow('| MASVS-AUTH-1 | t | met | e | notes end'),
+          ['MASVS-AUTH-1', 't', 'met', 'e', 'notes end']);
     });
 
     test('open with an owner is accepted', () {
