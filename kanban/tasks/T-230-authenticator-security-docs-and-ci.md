@@ -1,7 +1,7 @@
 ---
 id: T-230
 title: "Authenticator: security documentation, MASVS matrix and CI checks"
-status: in-progress
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-222, T-223, T-227, T-228, T-229]
@@ -62,6 +62,8 @@ Filled in by the agent when it moves the task to `review`.
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
 
+- 2026-11-05 11:27 · approve · PR #387 merged into main @ 5a7448b (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-28 09:00 · claude · (new) → blocked · created from the request to add two-factor codes, a biometric lock and industry-standard security
@@ -69,3 +71,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
 - 2026-11-05 10:01 · kanban-board · blocked → backlog · blockers done: T-222, T-223, T-227, T-228, T-229
 - 2026-11-05 10:05 · scholtz · backlog → in-progress · claimed by session-20261105-1000 on task/T-230
+- 2026-11-05 11:27 · user · in-progress → done · PR #387 merged into main @ 5a7448b (synced by kanban-sync)

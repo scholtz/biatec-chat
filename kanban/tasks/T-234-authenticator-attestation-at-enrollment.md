@@ -1,7 +1,7 @@
 ---
 id: T-234
 title: "Authenticator: send the platform attestation at enrollment"
-status: blocked
+status: backlog
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-230]
@@ -67,3 +67,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-11-05 10:20 · claude · (new) → backlog · created from the MASVS matrix of T-230 (open item)
 - 2026-11-05 10:25 · claude · ordering and file overlap decided: blocked_by T-230 (matrix row), conflicts_with T-220 and T-232
 - 2026-11-05 10:04 · kanban-board · backlog → blocked · waiting on: T-230
+- 2026-11-05 11:27 · kanban-board · blocked → backlog · blockers done: T-230

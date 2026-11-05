@@ -1,7 +1,7 @@
 ---
 id: T-233
 title: "Authenticator: privacy notice and erase-everything"
-status: blocked
+status: backlog
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-230]
@@ -66,3 +66,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-11-05 10:20 · claude · (new) → backlog · created from the MASVS matrix of T-230 (open item)
 - 2026-11-05 10:25 · claude · ordering decided: blocked_by T-230 (matrix rows)
 - 2026-11-05 10:04 · kanban-board · backlog → blocked · waiting on: T-230
+- 2026-11-05 11:27 · kanban-board · blocked → backlog · blockers done: T-230
