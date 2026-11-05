@@ -1,7 +1,7 @@
 ---
 id: T-233
 title: "Authenticator: privacy notice and erase-everything"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-230]
@@ -9,8 +9,8 @@ area: ["apps/biatec_authenticator/lib/privacy/**", "apps/biatec_authenticator/li
 parallel: yes
 conflicts_with: []
 issue: "#385"
-branch: ""
-owner: ""
+branch: "task/T-233"
+owner: "session-20261105-1700"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-11-05
@@ -67,3 +67,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-11-05 10:25 · claude · ordering decided: blocked_by T-230 (matrix rows)
 - 2026-11-05 10:04 · kanban-board · backlog → blocked · waiting on: T-230
 - 2026-11-05 11:27 · kanban-board · blocked → backlog · blockers done: T-230
+- 2026-11-05 17:00 · scholtz · backlog → in-progress · claimed by session-20261105-1700 on task/T-233
