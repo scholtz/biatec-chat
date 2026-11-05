@@ -60,6 +60,11 @@ export interface MockOptions {
    */
   testHelpers?: boolean;
   /**
+   * The lowest authenticator build number the mock accepts, sent on every answer as `X-Biatec-Min-App-Build` (required-changes row 24). An
+   * authenticator older than this opens no secure area and asks the user to update. Defaults to 1 (every build).
+   */
+  minAppBuild?: number;
+  /**
    * Every device call must carry `X-Device-Proof`: a compact ES256 JWS, signed by the device key, with `typ` biatec-device-proof+jwt, `kid` of the
    * device and the claims htm (method), htu (URL), iat, jti (single use) and ath (base64url SHA-256 of the device token). The bearer
    * `Authorization: Device <token>` alone is then not enough (BCHAT-030). Off by default; `server.ts` turns it on with MOCK_DEVICE_PROOF=1.
@@ -122,6 +127,7 @@ export function createMockOidc(options: MockOptions = {}) {
   const now = options.now ?? (() => Math.floor(Date.now() / 1000));
   const issuer = options.issuer ?? ISSUER;
   const testHelpers = options.testHelpers ?? false;
+  const minAppBuild = options.minAppBuild ?? 1;
   const newCode = options.newBindingCode ?? (() => String(randomInt(0, 1_000_000)).padStart(6, "0"));
   const keys = options.oidcKey ? { oidc: options.oidcKey, device: loadJson("vectors", "keys.json").device } : loadJson("vectors", "keys.json");
   const oidcKey = keys.oidc;
@@ -783,7 +789,7 @@ export function createMockOidc(options: MockOptions = {}) {
     );
   });
   function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string>) {
-    res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers });
+    res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Biatec-Min-App-Build": String(minAppBuild), ...headers });
     res.end(JSON.stringify(body));
   }
 

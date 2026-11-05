@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import '../approvals/biometric_gate.dart';
 import '../integrity/integrity.dart';
 import '../integrity/integrity_checker.dart';
+import '../update/update_guard.dart';
 import '../security/secure_storage.dart';
 import 'biometric_authenticator.dart';
 
@@ -27,6 +28,9 @@ enum AppLockState {
 
   /// The phone cannot be trusted (see [LockController.markCompromised]; set by the integrity check, T-228).
   compromised,
+
+  /// This build is older than the minimum Biatec OIDC accepts, or has passed its expiry date: nothing opens until the app is updated.
+  updateRequired,
 }
 
 /// How long the app may stay in the background before it locks. There is no "never".
@@ -83,9 +87,11 @@ class LockController extends ChangeNotifier {
     this.idleCheckEvery = const Duration(seconds: 5),
     this.integrity,
     this.failClosed = true,
+    this.updates,
   })  : _store = store ?? const SecureLockSettingsStore(),
         clock = clock ?? DateTime.now {
     _screenLock = authenticator.screenLocked.listen((_) => lock());
+    updates?.monitor.addListener(_onMinimumBuild);
   }
 
   final BiometricAuthenticator authenticator;
@@ -99,6 +105,9 @@ class LockController extends ChangeNotifier {
 
   /// True: a failed check keeps the secure area closed and says so. The build decides (a release build fails closed; a debug build only warns, so the app can be developed on an emulator or with a debugger). The default is closed.
   final bool failClosed;
+
+  /// Whether this build is still allowed to open (see [UpdateGuard]). Null only where there is nothing to check (a screen in a test).
+  final UpdateGuard? updates;
 
   AppLockState _state = AppLockState.locked;
   AppLockState get state => _state;
@@ -175,6 +184,7 @@ class LockController extends ChangeNotifier {
     if (_state != AppLockState.locked && _state != AppLockState.noBiometric) {
       return;
     }
+    if (!_updateAllows()) return;
     _set(AppLockState.unlocking);
     final attempt = ++_attempt;
     if (!await _integrityAllows()) return;
@@ -219,7 +229,8 @@ class LockController extends ChangeNotifier {
     _attempt++;
     final wasOpen = _state != AppLockState.locked;
     if (_state == AppLockState.biometricsChanged ||
-        _state == AppLockState.compromised) {
+        _state == AppLockState.compromised ||
+        _state == AppLockState.updateRequired) {
       _clearMemory();
       return;
     }
@@ -259,6 +270,29 @@ class LockController extends ChangeNotifier {
     }
   }
 
+  UpdateReason? _updateReason;
+
+  /// Why the update screen shows, or null.
+  UpdateReason? get updateReason => _updateReason;
+
+  void _onMinimumBuild() => _updateAllows();
+
+  /// False when this build must be updated: the app then goes to the update screen, memory cleared, and stays there (also from the unlocked state: an answer from Biatec OIDC can arrive at any time).
+  bool _updateAllows() {
+    final reason = updates?.blocked;
+    if (reason == null) return true;
+    if (_state == AppLockState.updateRequired ||
+        _state == AppLockState.biometricsChanged ||
+        _state == AppLockState.compromised) {
+      return false;
+    }
+    _updateReason = reason;
+    _attempt++;
+    _clearMemory();
+    _set(AppLockState.updateRequired);
+    return false;
+  }
+
   /// Runs the safety check (a cached answer unless [force]). False when the secure area must stay closed: the app then goes to the compromised screen. In a build that only warns the answer is true and the problem is kept in [integrityWarning].
   Future<bool> _integrityAllows({bool force = false}) async {
     final guard = integrity;
@@ -279,7 +313,8 @@ class LockController extends ChangeNotifier {
     }
     // A closed state with its own cause (the biometrics changed, or another reason) is kept as it is; only a state that is open or waiting becomes closed here.
     if (_state == AppLockState.biometricsChanged ||
-        _state == AppLockState.compromised) {
+        _state == AppLockState.compromised ||
+        _state == AppLockState.updateRequired) {
       return false;
     }
     _clearMemory();
@@ -303,6 +338,7 @@ class LockController extends ChangeNotifier {
   /// A fresh biometric for one action (an approval, deleting an account, a backup, a security setting). True only on success. A refusal does not lock the app, but nothing is done; while the app is locked it is always false.
   Future<bool> reauthenticate(String reason) async {
     if (_state != AppLockState.unlocked) return false;
+    if (!_updateAllows()) return false;
     // The check is run again before every approval, not only at start.
     if (!await _integrityAllows(force: true)) return false;
     if (_state != AppLockState.unlocked) return false;
@@ -335,6 +371,7 @@ class LockController extends ChangeNotifier {
 
   /// The app came back: it locks if it was away longer than the delay.
   void appResumed() {
+    _updateAllows();
     // Coming back is when a tool attached in the meantime shows. The secure area stays covered until the answer is in.
     _verifyAfterResume();
     final at = _backgroundAt;
@@ -354,6 +391,8 @@ class LockController extends ChangeNotifier {
 
   /// Locks when nothing was touched for [idleTimeout]. The [AppLockGate] calls it every [idleCheckEvery] while it is on screen (the controller owns no timer, so none outlives the screen).
   void checkIdle() {
+    // The expiry date can pass while the app sits open.
+    if (_state == AppLockState.unlocked) _updateAllows();
     final at = _lastActivity;
     if (_state != AppLockState.unlocked || at == null) return;
     if (clock().difference(at) >= idleTimeout) lock();
@@ -382,6 +421,7 @@ class LockController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    updates?.monitor.removeListener(_onMinimumBuild);
     _screenLock.cancel();
     super.dispose();
   }

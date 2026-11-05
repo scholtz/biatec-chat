@@ -128,8 +128,11 @@ jobs:
             echo "keyAlias=ci"
             echo "keyPassword=$KEYPASS"
           } > android/key.properties
+          # The build number the app reports (the part after the plus sign of the version) must be given, or the update check would compare against 1.
+          APP_BUILD="$(sed -n 's/^version:.*+\([0-9][0-9]*\)$/\1/p' pubspec.yaml)"
+          test -n "$APP_BUILD"
           flutter build apk --release --obfuscate --split-debug-info=build/symbols \
-            --dart-define=OIDC_BASE_URL=https://oidc.example
+            --dart-define=OIDC_BASE_URL=https://oidc.example --dart-define=APP_BUILD="$APP_BUILD"
       # The hardening test again, now with the merged release manifest. REQUIRE_MERGED_MANIFEST makes a missing merged manifest a failure,
       # not a skipped test.
       - name: Hardening checks against the merged release manifest

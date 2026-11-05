@@ -61,6 +61,7 @@ against the mock and cannot be enabled against real Biatec OIDC until the row sh
 | 21 | Device list and cancelling a pending enrollment from a device (`GET /devices`, `POST /devices/{kid}/cancel`) | None. The authenticator's device screen runs only against the mock; `CONSENT_SETTINGS_API` is off for any other Biatec OIDC and the screen then says "not available yet" (T-084) |
 | 22 | Device-side consent settings (`GET` / `PUT /devices/settings`) with device-signed loosening | None. The security and trusted-clients screens run only against the mock, behind the same `CONSENT_SETTINGS_API` flag (T-084) |
 | 23 | Operator identity claim (`biatec_operator` group) for the admin API | Named operator bearer keys: `Admin:Operators:<name>:KeyHash` holds only the SHA-256 of each operator's key, and every admin change records the operator name in the signed admin evidence chain (T-097, docs/admin-api.md). The shared `Onboarding:OperatorKey` is still accepted as the deprecated operator `legacy` |
+| 24 | Minimum authenticator build: every answer carries `X-Biatec-Min-App-Build` | An optional build expiry date compiled into the app (`--dart-define=BUILD_EXPIRES`); without either an old build keeps running. The authenticator reads the header on every call it makes, against the mock only until Biatec OIDC sends it (T-232) |
 
 **Mock status.** Today the mock covers only the authorization-code flow used by `/auth/login`. The CIBA, step-up, receipt and
 settings shapes below are the contract the mock must grow to, as the consent tasks (backend and authenticator) are implemented;
@@ -622,6 +623,26 @@ Content-Type: application/json
   as the deprecated operator `legacy`. Revoking an operator means removing their entry and redeploying.
 - **Mock:** none needed; the fallback does not call Biatec OIDC. When the claim ships, the mock OIDC grows the
   `groups` claim and the admin API gains a token check next to the key check.
+
+## 24. Minimum authenticator build (T-232)
+
+- **Purpose:** MASVS-CODE-2: an authenticator that is too old to be safe stops opening the secure area and asks the user to update, without
+  waiting for a store to remove it.
+- **Needed:** Biatec OIDC sends the lowest accepted build number of the authenticator on **every** answer to a device call, errors
+  included, as a response header:
+
+```
+X-Biatec-Min-App-Build: 7
+```
+
+  A whole number from 0 to 1,000,000, the number after the plus sign of the app's `version` (`0.1.0+7`). Biatec OIDC raises it when a
+  release fixes a vulnerability and lowers it never (the app keeps the highest it has seen, so a later lower answer does not reopen an
+  old build). The header name and the meaning are proposals for the OIDC owners to confirm.
+- **Fallback in use:** an optional expiry date compiled into the build, `--dart-define=BUILD_EXPIRES=2027-06-30` (UTC): after it the app opens
+  nothing and shows the same update screen ("reached the end of its time"). Without the header and without a date an old build keeps running;
+  the release checklist therefore sets a date on every production build.
+- **Mock:** `X-Biatec-Min-App-Build` on every answer, from `MOCK_MIN_APP_BUILD` (default 1) or the `minAppBuild` option; covered by
+  `mock-oidc/test/mock-oidc.test.ts`. The authenticator's tests cover the rest (`apps/biatec_authenticator/test/update/`).
 
 ## Administrator dashboard sign-in (T-126)
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../update/update_guard.dart';
 import '../ui/ui.dart';
 import 'biometric_authenticator.dart';
 import 'lock_controller.dart';
@@ -234,6 +235,58 @@ class CompromisedScreen extends StatelessWidget {
                   label: const Text('Check again'),
                 ),
               ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// This build is too old, or has expired. Says what to do and nothing else: no way in, no data.
+class UpdateRequiredScreen extends StatelessWidget {
+  const UpdateRequiredScreen({super.key, required this.lock});
+
+  final LockController lock;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final store = Theme.of(context).platform == TargetPlatform.iOS
+        ? 'the App Store'
+        : 'Google Play';
+    final expired = lock.updateReason == UpdateReason.expired;
+    return Scaffold(
+      key: const Key('update-required'),
+      body: SafeArea(
+        child: ScrollableCenter(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ExcludeSemantics(
+                  child: Icon(Icons.system_update,
+                      size: 64, color: theme.colorScheme.primary)),
+              const SizedBox(height: AppSpacing.m),
+              Semantics(
+                header: true,
+                child: Text('Please update the app',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.headlineSmall),
+              ),
+              const SizedBox(height: AppSpacing.s),
+              Text(
+                  expired
+                      ? 'This version of Biatec Authenticator has reached the '
+                          'end of its time. For your safety it will not open '
+                          'your codes or approvals any more.'
+                      : 'This version of Biatec Authenticator is older than '
+                          'the oldest one that is still safe to use, so it '
+                          'will not open your codes or approvals.',
+                  key: const Key('update-reason')),
+              const SizedBox(height: AppSpacing.m),
+              Text('Open $store, update Biatec Authenticator, then open it '
+                  'again. Your accounts and approvals stay on this phone.'),
             ],
           ),
         ),

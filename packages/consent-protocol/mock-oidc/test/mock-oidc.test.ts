@@ -776,3 +776,20 @@ test("BCHAT-030: push registration is rate limited per device", async () => {
     clock = start - 61;
   }
 });
+
+test("T-232: every answer carries the lowest accepted authenticator build", async () => {
+  const defaultMock = await call("GET", "/.well-known/jwks.json", {});
+  assert.equal(defaultMock.headers.get("x-biatec-min-app-build"), "1");
+  const strict = createMockOidc({ now: () => clock, minAppBuild: 7 });
+  await new Promise<void>((r) => strict.server.listen(0, "127.0.0.1", r));
+  try {
+    const port = (strict.server.address() as AddressInfo).port;
+    const res = await fetch(`http://127.0.0.1:${port}/.well-known/jwks.json`);
+    assert.equal(res.headers.get("x-biatec-min-app-build"), "7");
+    const bad = await fetch(`http://127.0.0.1:${port}/nowhere`);
+    assert.equal(bad.status, 404);
+    assert.equal(bad.headers.get("x-biatec-min-app-build"), "7", "errors carry it too");
+  } finally {
+    strict.server.close();
+  }
+});
