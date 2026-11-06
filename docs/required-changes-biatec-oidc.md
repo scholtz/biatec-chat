@@ -62,6 +62,7 @@ against the mock and cannot be enabled against real Biatec OIDC until the row sh
 | 22 | Device-side consent settings (`GET` / `PUT /devices/settings`) with device-signed loosening | None. The security and trusted-clients screens run only against the mock, behind the same `CONSENT_SETTINGS_API` flag (T-084) |
 | 23 | Operator identity claim (`biatec_operator` group) for the admin API | Named operator bearer keys: `Admin:Operators:<name>:KeyHash` holds only the SHA-256 of each operator's key, and every admin change records the operator name in the signed admin evidence chain (T-097, docs/admin-api.md). The shared `Onboarding:OperatorKey` is still accepted as the deprecated operator `legacy` |
 | 24 | Minimum authenticator build: every answer carries `X-Biatec-Min-App-Build` | An optional build expiry date compiled into the app (`--dart-define=BUILD_EXPIRES`); without either an old build keeps running. The authenticator reads the header on every call it makes, against the mock only until Biatec OIDC sends it (T-232) |
+| 25 | Platform attestation at enrollment: a challenge endpoint, and Play Integrity and App Attest tokens verified (`POST /devices/challenge`, `attestation_challenge` and `platform_attestation` on `POST /devices`, `PUT /devices/attestation`) | Enroll without an attestation and flag the device; the authenticator sends one when the platform offers it and the mock checks its shape (T-234) |
 
 **Mock status.** Today the mock covers only the authorization-code flow used by `/auth/login`. The CIBA, step-up, receipt and
 settings shapes below are the contract the mock must grow to, as the consent tasks (backend and authenticator) are implemented;
@@ -643,6 +644,42 @@ X-Biatec-Min-App-Build: 7
   the release checklist therefore sets a date on every production build.
 - **Mock:** `X-Biatec-Min-App-Build` on every answer, from `MOCK_MIN_APP_BUILD` (default 1) or the `minAppBuild` option; covered by
   `mock-oidc/test/mock-oidc.test.ts`. The authenticator's tests cover the rest (`apps/biatec_authenticator/test/update/`).
+
+## 25. Platform attestation at enrollment (T-234)
+
+- **Purpose:** MASVS-RESILIENCE-1 and -2: Biatec OIDC learns that an enrollment comes from the genuine app on a genuine device, and can refuse
+  or flag one that does not.
+- **Needed:**
+  1. `POST /devices/challenge` with `Authorization: Bearer <fresh login token>` (enrollment) or `Authorization: Device <token>` (refresh) returns a
+     single-use nonce bound to the user:
+
+```json
+{ "nonce": "Yk5vcmNlLXNvbWV0aGluZy1yYW5kb20", "expires_in": 300 }
+```
+
+  2. `POST /devices` takes two more fields, sent together or not at all:
+
+```json
+{
+  "kid": "biatec-authenticator-…",
+  "public_key": { "kty": "EC", "crv": "P-256", "x": "…", "y": "…" },
+  "attestation_challenge": "Yk5vcmNlLXNvbWV0aGluZy1yYW5kb20",
+  "platform_attestation": { "kind": "play_integrity", "token": "<integrity token>", "key_id": null }
+}
+```
+
+     `kind` is `play_integrity` or `app_attest` (`key_id` is the App Attest key id). For App Attest the client data hash is
+     `SHA-256(nonce)`; for Play Integrity the request nonce is `base64url(SHA-256(nonce))` without padding. Biatec OIDC verifies the token
+     with Google or Apple, checks that the nonce is the one it issued to this user and spends it (also when the rest fails), and stores the result
+     with the device. The answer carries `attestation_refresh_after` (epoch seconds) when an attestation was accepted.
+  3. `PUT /devices/attestation` (device token) sends a fresh `attestation_challenge` and `platform_attestation` and answers
+     `{ "kid": "…", "attestation_refresh_after": 1795017600 }`. The app does it when the date has passed (at the next refresh, on resume).
+- **Fallback in use:** enrollment without an attestation: the authenticator sends none (never a made-up one) when the platform cannot attest or
+  Biatec OIDC offers no challenge, and Biatec OIDC decides what an unattested device may do. A device enrolled that way is never asked to refresh.
+- **Build:** iOS needs the App Attest capability (`Runner.entitlements`); Android needs the release's Google Cloud project number,
+  `-PplayIntegrityProject=<number>` or `gradle.properties` (without it the attestation is not supported there).
+- **Mock:** all three endpoints; it checks the shape of the token, spends the nonce once, binds it to the user, expires it after 300 s and
+  refuses a replay (`mock-oidc/test/mock-oidc.test.ts`); it cannot check a token against Google or Apple.
 
 ## Administrator dashboard sign-in (T-126)
 

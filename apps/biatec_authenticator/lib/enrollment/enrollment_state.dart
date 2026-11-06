@@ -6,6 +6,7 @@ class EnrollmentRecord {
     required this.activeAt,
     this.attestation,
     this.recoveryCodeShown = false,
+    this.attestationRefreshAfter,
   });
 
   final String kid;
@@ -27,12 +28,26 @@ class EnrollmentRecord {
   /// active (rule 7) and the app holds it in memory while it is on screen.
   final bool recoveryCodeShown;
 
+  /// When Biatec OIDC wants the platform attestation (Play Integrity, App Attest) sent again, or null for a device enrolled without one.
+  final DateTime? attestationRefreshAfter;
+
   EnrollmentRecord withCodeShown() => EnrollmentRecord(
         kid: kid,
         deviceToken: deviceToken,
         activeAt: activeAt,
         attestation: attestation,
         recoveryCodeShown: true,
+        attestationRefreshAfter: attestationRefreshAfter,
+      );
+
+  EnrollmentRecord withAttestationRefreshAfter(DateTime when) =>
+      EnrollmentRecord(
+        kid: kid,
+        deviceToken: deviceToken,
+        activeAt: activeAt,
+        attestation: attestation,
+        recoveryCodeShown: recoveryCodeShown,
+        attestationRefreshAfter: when,
       );
 
   Map<String, Object?> toJson() => {
@@ -41,6 +56,9 @@ class EnrollmentRecord {
         'active_at': activeAt.toUtc().millisecondsSinceEpoch,
         if (attestation != null) 'attestation': attestation,
         'recovery_code_shown': recoveryCodeShown,
+        if (attestationRefreshAfter != null)
+          'attestation_refresh_after':
+              attestationRefreshAfter!.toUtc().millisecondsSinceEpoch,
       };
 
   factory EnrollmentRecord.fromJson(Map<String, Object?> json) =>
@@ -51,6 +69,11 @@ class EnrollmentRecord {
             isUtc: true),
         attestation: json['attestation'] as String?,
         recoveryCodeShown: json['recovery_code_shown'] as bool? ?? false,
+        attestationRefreshAfter: json['attestation_refresh_after'] is int
+            ? DateTime.fromMillisecondsSinceEpoch(
+                json['attestation_refresh_after'] as int,
+                isUtc: true)
+            : null,
       );
 }
 

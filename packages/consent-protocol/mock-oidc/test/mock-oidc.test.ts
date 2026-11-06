@@ -793,3 +793,59 @@ test("T-232: every answer carries the lowest accepted authenticator build", asyn
     strict.server.close();
   }
 });
+
+test("T-234: a platform attestation is bound to a single-use challenge", async () => {
+  const { generateKeyPairSync } = await import("node:crypto");
+  const pub = () => generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" }) as Record<string, string>;
+  const ask = async (auth = bearer("login-alice")) => (await call("POST", "/devices/challenge", { auth })).json.nonce as string;
+  const attestation = { kind: "app_attest", token: "dGVzdA==", key_id: "k1" };
+  const enroll = (kid: string, body: Record<string, unknown>, auth = bearer("login-alice")) => call("POST", "/devices", { auth, body: { kid, public_key: pub(), ...body } });
+
+  // A challenge needs a fresh login or an enrolled device, and is new each time.
+  assert.equal((await call("POST", "/devices/challenge")).status, 401);
+  const n1 = await ask();
+  assert.ok(n1.length >= 24);
+  assert.notEqual(await ask(), n1);
+
+  // With a good challenge the enrollment carries the attestation and says when to refresh it.
+  const ok = await enroll("att-1", { attestation_challenge: n1, platform_attestation: attestation });
+  assert.equal(ok.status, 201);
+  assert.ok(ok.json.attestation_refresh_after > clock);
+
+  // The challenge is single use.
+  assert.equal((await enroll("att-2", { attestation_challenge: n1, platform_attestation: attestation })).status, 400, "replayed");
+
+  // A malformed attestation is refused before the challenge is used up; a missing or foreign challenge is refused too.
+  const n2 = await ask();
+  for (const bad of [{ kind: "made_up", token: "x" }, { kind: "app_attest", token: "" }, { kind: "app_attest" }, { kind: "play_integrity", token: "x", key_id: 5 }]) {
+    assert.equal((await enroll("att-bad", { attestation_challenge: n2, platform_attestation: bad })).status, 400, JSON.stringify(bad));
+  }
+  assert.equal((await enroll("att-bad", { platform_attestation: attestation })).status, 400, "no challenge");
+  assert.equal((await enroll("att-bad", { attestation_challenge: "never-issued", platform_attestation: attestation })).status, 400, "unknown challenge");
+  assert.equal((await enroll("att-bad", { attestation_challenge: n2, platform_attestation: attestation }, bearer("login-bob"))).status, 400, "another user's challenge");
+  assert.equal((await enroll("att-3", { attestation_challenge: n2, platform_attestation: attestation })).status, 201, "n2 was never spent by the refused ones");
+
+  // A challenge expires.
+  const n3 = await ask();
+  const before = clock;
+  clock += 301;
+  try {
+    assert.equal((await enroll("att-4", { attestation_challenge: n3, platform_attestation: attestation })).status, 400, "expired");
+  } finally {
+    clock = before;
+  }
+
+  // Enrolling without an attestation still works: Biatec OIDC decides what to do with such a device.
+  const none = await enroll("att-5", {});
+  assert.equal(none.status, 201);
+  assert.equal(none.json.attestation_refresh_after, undefined);
+
+  // The refresh: an enrolled device asks for a challenge with its device token and sends a new attestation.
+  const dev = "Device " + ok.json.device_token;
+  const n4 = await ask(dev);
+  const refreshed = await call("PUT", "/devices/attestation", { auth: dev, body: { attestation_challenge: n4, platform_attestation: attestation } });
+  assert.equal(refreshed.status, 200);
+  assert.ok(refreshed.json.attestation_refresh_after > clock);
+  assert.equal((await call("PUT", "/devices/attestation", { auth: dev, body: { attestation_challenge: n4, platform_attestation: attestation } })).status, 400, "the refresh challenge is single use too");
+  assert.equal((await call("PUT", "/devices/attestation", { body: {} })).status, 401);
+});

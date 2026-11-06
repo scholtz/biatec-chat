@@ -18,17 +18,29 @@ class AttestationToken {
 
 /// Asks the platform for an attestation bound to [nonce] (the server's challenge), so it cannot be replayed.
 abstract class AttestationProvider {
+  /// Whether this build and phone can attest at all. Asked first, so a phone that cannot is not asked for a challenge it would not use.
+  Future<bool> supported();
+
   /// Null when the platform cannot attest (no Play services, an unsupported device, the simulator): the enrollment then goes without one and Biatec OIDC decides.
   Future<AttestationToken?> token(String nonce);
 }
 
-/// Over the channel `io.biatec.authenticator/attestation`: `token` takes `nonce` and answers `{kind, token, keyId?}`. iOS implements App Attest (`IntegrityChannel.swift`). The Android side needs the Play Integrity dependency and the cloud project number of the release, which the build supplies; until it does, it answers that it is not available.
+/// Over the channel `io.biatec.authenticator/attestation`: `token` takes `nonce` and answers `{kind, token, keyId?}`. iOS implements App Attest (`IntegrityChannel.swift`), Android Play Integrity (`AttestationChannel.kt`, which needs the release's Google Cloud project number from the build; without it it is not supported).
 class PlatformAttestationProvider implements AttestationProvider {
   const PlatformAttestationProvider(
       [this._channel =
           const MethodChannel('io.biatec.authenticator/attestation')]);
 
   final MethodChannel _channel;
+
+  @override
+  Future<bool> supported() async {
+    try {
+      return await _channel.invokeMethod<bool>('supported') ?? false;
+    } on Object {
+      return false;
+    }
+  }
 
   @override
   Future<AttestationToken?> token(String nonce) async {

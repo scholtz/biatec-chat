@@ -56,3 +56,5 @@ docker build -f packages/consent-protocol/mock-oidc/Dockerfile -t biatec-mock-oi
 
 The unsigned group is `base64(JSON)` per transaction (`sender`, `receiver`, `asset`, `amount`, `fiat_eur`, optional `application_id`, see `src/group.ts`), not msgpack; the group hash only has the shape of the real one. State is in memory. Nothing is sent to FCM or APNs: each new request queues one message per active device with a push
 token (`GET /mock/push-outbox`), and clients can also poll `GET /devices/requests`. Per-origin pending-request limits and denial pauses (rule 10) are not modelled.
+
+- Platform attestation (T-234): `POST /devices/challenge` (login or device token) issues a single-use nonce; `POST /devices` accepts `attestation_challenge` and `platform_attestation` together, and `PUT /devices/attestation` refreshes it. The mock checks the shape, binds the nonce to the user, spends it once and expires it after 300 s; it cannot verify a token with Google or Apple. `attestation_refresh_after` comes back when one was accepted.
