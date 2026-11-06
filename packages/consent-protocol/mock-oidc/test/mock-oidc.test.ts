@@ -835,6 +835,13 @@ test("T-234: a platform attestation is bound to a single-use challenge", async (
     clock = before;
   }
 
+  // The two fields go together.
+  const n5 = await ask();
+  assert.equal((await enroll("att-orphan", { attestation_challenge: n5 })).status, 400, "a challenge without an attestation");
+  assert.equal((await enroll("att-orphan", { platform_attestation: attestation })).status, 400, "an attestation without a challenge");
+  assert.equal((await enroll("att-orphan", { attestation_challenge: n5, platform_attestation: null })).status, 400, "a null attestation");
+  assert.equal((await enroll("att-6", { attestation_challenge: n5, platform_attestation: attestation })).status, 201, "the orphan did not spend n5");
+
   // Enrolling without an attestation still works: Biatec OIDC decides what to do with such a device.
   const none = await enroll("att-5", {});
   assert.equal(none.status, 201);

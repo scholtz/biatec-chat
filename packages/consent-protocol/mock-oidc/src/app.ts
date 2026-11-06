@@ -484,7 +484,11 @@ export function createMockOidc(options: MockOptions = {}) {
   }
 
   function attestationChallenge(req: IncomingMessage) {
-    const sub = req.headers.authorization?.startsWith("Device ") ? deviceAuth(req).sub : (() => {
+    const sub = req.headers.authorization?.startsWith("Device ") ? (() => {
+      const d = deviceAuth(req);
+      if (d.cancelled) throw new HttpError(403, "access_denied", "this device was cancelled");
+      return d.sub;
+    })() : (() => {
       const t = bearer(req);
       if (t.kind !== "login") throw new HttpError(403, "access_denied", "a challenge needs a fresh full login or an enrolled device");
       return t.sub;
@@ -498,6 +502,7 @@ export function createMockOidc(options: MockOptions = {}) {
 
   function putAttestation(req: IncomingMessage, body: Record<string, any>) {
     const d = deviceAuth(req);
+    if (d.cancelled) throw new HttpError(403, "access_denied", "this device was cancelled");
     d.platformAttestation = takePlatformAttestation(d.sub, body);
     return { status: 200, body: { kid: d.kid, attestation_refresh_after: now() + ATTESTATION_REFRESH_SECONDS } };
   }
@@ -517,6 +522,8 @@ export function createMockOidc(options: MockOptions = {}) {
     }
     const push = body.push === undefined ? undefined : pushTarget(body.push);
     // Without a platform attestation the device is enrolled and flagged; with a malformed or replayed one it is refused.
+    // The two fields go together: one alone is refused (an orphan challenge would otherwise be ignored and left unspent).
+    if ((body.platform_attestation === undefined) !== (body.attestation_challenge === undefined)) throw new HttpError(400, "invalid_request", "attestation_challenge and platform_attestation are sent together");
     const platformAttestation = body.platform_attestation === undefined ? undefined : takePlatformAttestation(t.sub, body);
     const d = addDevice(t.sub, body.kid, { kty: "EC", crv: "P-256", x: pk.x, y: pk.y }, activeAt);
     setPush(d, push);

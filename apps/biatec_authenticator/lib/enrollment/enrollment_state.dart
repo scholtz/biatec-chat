@@ -31,24 +31,22 @@ class EnrollmentRecord {
   /// When Biatec OIDC wants the platform attestation (Play Integrity, App Attest) sent again, or null for a device enrolled without one.
   final DateTime? attestationRefreshAfter;
 
-  EnrollmentRecord withCodeShown() => EnrollmentRecord(
-        kid: kid,
-        deviceToken: deviceToken,
-        activeAt: activeAt,
-        attestation: attestation,
-        recoveryCodeShown: true,
-        attestationRefreshAfter: attestationRefreshAfter,
-      );
-
-  EnrollmentRecord withAttestationRefreshAfter(DateTime when) =>
+  EnrollmentRecord copyWith(
+          {bool? recoveryCodeShown, DateTime? attestationRefreshAfter}) =>
       EnrollmentRecord(
         kid: kid,
         deviceToken: deviceToken,
         activeAt: activeAt,
         attestation: attestation,
-        recoveryCodeShown: recoveryCodeShown,
-        attestationRefreshAfter: when,
+        recoveryCodeShown: recoveryCodeShown ?? this.recoveryCodeShown,
+        attestationRefreshAfter:
+            attestationRefreshAfter ?? this.attestationRefreshAfter,
       );
+
+  EnrollmentRecord withCodeShown() => copyWith(recoveryCodeShown: true);
+
+  EnrollmentRecord withAttestationRefreshAfter(DateTime when) =>
+      copyWith(attestationRefreshAfter: when);
 
   Map<String, Object?> toJson() => {
         'kid': kid,

@@ -20,6 +20,7 @@ class EnrollmentController extends ChangeNotifier {
     DateTime Function()? clock,
     String Function()? newAlias,
     this.attestation = const PlatformAttestationProvider(),
+    this.attestationTimeout = const Duration(seconds: 30),
   })  : _clock = clock ?? DateTime.now,
         _newAlias = newAlias ?? _randomAlias;
 
@@ -43,6 +44,9 @@ class EnrollmentController extends ChangeNotifier {
 
   /// Asks the platform for the proof that this is the real app (Play Integrity, App Attest) at enrollment and when Biatec OIDC asks for a fresh one.
   final AttestationProvider attestation;
+
+  /// How long getting the challenge and the platform's token may take together. The attestation is optional: past this the enrollment goes ahead without one, so a stalled Play service never holds the enrollment (and the login token and the challenge expire).
+  final Duration attestationTimeout;
   final DateTime Function() _clock;
 
   EnrollmentState _state = EnrollmentState.notEnrolled;
@@ -152,28 +156,42 @@ class EnrollmentController extends ChangeNotifier {
 
   bool _attesting = false;
 
-  /// When Biatec OIDC asked for a fresh attestation by a date that has passed, sends one. Best effort and quiet: a platform that cannot attest, or a server that is out of reach, leaves things as they are and the next refresh tries again.
+  /// After a failed attempt the next one waits this long, so a rejected or unavailable attestation does not repeat on every resume (Play Integrity is rate-limited).
+  static const attestationRetryAfter = Duration(hours: 1);
+  DateTime? _attestationRetryAt;
+
+  /// When Biatec OIDC asked for a fresh attestation by a date that has passed, sends one. Best effort and quiet: a platform that cannot attest, or a server that is out of reach, leaves things as they are, and the next try waits [attestationRetryAfter].
   Future<void> _refreshAttestationIfDue(EnrollmentRecord record) async {
     final due = record.attestationRefreshAfter;
-    if (due == null || _clock().isBefore(due) || _attesting) return;
+    final now = _clock();
+    if (due == null || now.isBefore(due) || _attesting) return;
+    final retry = _attestationRetryAt;
+    if (retry != null && now.isBefore(retry)) return;
     _attesting = true;
     final session = _session;
+    var done = false;
     try {
       if (!await attestation.supported()) return;
       final challenge =
           await client.requestChallenge(deviceToken: record.deviceToken);
       if (challenge == null) return;
-      final proof = await attestation.token(challenge);
+      final proof =
+          await attestation.token(challenge).timeout(attestationTimeout);
       if (proof == null) return;
       final next = await client.refreshAttestation(
           deviceToken: record.deviceToken,
           challenge: challenge,
           platformAttestation: proof);
       if (next == null || _disposed || session != _session) return;
-      await store.write(record.withAttestationRefreshAfter(next));
+      // The record may have changed while this waited (the recovery code was confirmed, say): the new date goes on the current one.
+      final current = await store.read();
+      if (current == null || current.kid != record.kid) return;
+      await store.write(current.withAttestationRefreshAfter(next));
+      done = true;
     } on Object {
       // Quiet by design.
     } finally {
+      if (!done) _attestationRetryAt = _clock().add(attestationRetryAfter);
       _attesting = false;
     }
   }
@@ -254,7 +272,10 @@ class EnrollmentController extends ChangeNotifier {
       if (await attestation.supported()) {
         challenge =
             await client.requestChallenge(loginToken: loginToken.trim());
-        if (challenge != null) proof = await attestation.token(challenge);
+        if (challenge != null) {
+          proof =
+              await attestation.token(challenge).timeout(attestationTimeout);
+        }
       }
     } on Object {
       proof = null;

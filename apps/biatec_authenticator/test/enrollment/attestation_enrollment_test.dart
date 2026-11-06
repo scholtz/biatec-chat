@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -39,6 +40,9 @@ class FakeAttestation implements AttestationProvider {
   final nonces = <String>[];
   int supportedCalls = 0;
 
+  /// When set, [token] waits for it (the platform is still working).
+  Completer<void>? gate;
+
   @override
   Future<bool> supported() async {
     supportedCalls++;
@@ -48,6 +52,8 @@ class FakeAttestation implements AttestationProvider {
   @override
   Future<AttestationToken?> token(String nonce) async {
     nonces.add(nonce);
+    final g = gate;
+    if (g != null) await g.future;
     return token_;
   }
 }
@@ -62,7 +68,8 @@ void main() {
   late String lastKid;
 
   EnrollmentController build(AttestationProvider attestation,
-      {EnrollmentStore? store}) {
+      {EnrollmentStore? store,
+      Duration attestationTimeout = const Duration(seconds: 30)}) {
     final client = MockClient((r) async {
       requests.add(r);
       switch ('${r.method} ${r.url.path}') {
@@ -107,6 +114,7 @@ void main() {
       client: OidcEnrollmentClient(baseUrl: 'http://mock', client: client),
       clock: () => clock,
       attestation: attestation,
+      attestationTimeout: attestationTimeout,
     );
   }
 
@@ -174,6 +182,15 @@ void main() {
       expect(a.nonces, isEmpty);
       expect(enrollBody().containsKey('platform_attestation'), isFalse);
       expect(c.state.record, isNotNull);
+    });
+
+    test('a platform that never answers does not hold the enrollment',
+        () async {
+      final a = FakeAttestation(token_: proof)..gate = Completer<void>();
+      final c = build(a, attestationTimeout: const Duration(milliseconds: 50));
+      await c.enroll(loginToken: 'login-alice');
+      expect(c.state.record, isNotNull);
+      expect(enrollBody().containsKey('platform_attestation'), isFalse);
     });
 
     test('a provider that throws does not stop the enrollment', () async {
@@ -250,6 +267,44 @@ void main() {
       await c.refresh();
       expect(
           requests.where((r) => r.url.path == '/devices/attestation'), isEmpty);
+    });
+
+    test('the new date goes on the record as it is now, not as it was',
+        () async {
+      final a = FakeAttestation(token_: proof);
+      final (c, store) = await enrolled(a);
+      a.gate = Completer<void>();
+      clock = t0.add(const Duration(days: 31));
+      final refreshing = c.refresh();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      // While the platform is still working the user confirms the recovery code.
+      final now = (await store.read())!;
+      await store.write(now.withCodeShown());
+      a.gate!.complete();
+      await refreshing;
+      final saved = (await store.read())!;
+      expect(saved.recoveryCodeShown, isTrue,
+          reason: 'not undone by the late write');
+      expect(
+          saved.attestationRefreshAfter, clock.add(const Duration(days: 30)));
+    });
+
+    test('a failed refresh waits an hour before the next try', () async {
+      final a = FakeAttestation(token_: proof);
+      final (c, _) = await enrolled(a);
+      clock = t0.add(const Duration(days: 31));
+      challengeOffered = false;
+      await c.refresh();
+      await c.refresh();
+      expect(requests.where((r) => r.url.path == '/devices/challenge'),
+          hasLength(1),
+          reason: 'the second resume does not ask again');
+      clock = clock.add(const Duration(minutes: 61));
+      challengeOffered = true;
+      await c.refresh();
+      expect(requests.where((r) => r.url.path == '/devices/attestation'),
+          hasLength(1));
     });
 
     test('a failing server leaves things as they were', () async {

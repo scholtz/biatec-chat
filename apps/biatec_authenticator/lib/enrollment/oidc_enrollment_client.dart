@@ -70,6 +70,7 @@ class OidcEnrollmentClient {
   /// A single-use nonce for a platform attestation, from a fresh login (enrollment) or with the device token (refresh). Null when Biatec OIDC does not offer one or cannot be reached: the enrollment then goes without an attestation.
   Future<String?> requestChallenge(
       {String? loginToken, String? deviceToken}) async {
+    if (loginToken == null && deviceToken == null) return null;
     final auth =
         loginToken != null ? 'Bearer $loginToken' : 'Device $deviceToken';
     try {
