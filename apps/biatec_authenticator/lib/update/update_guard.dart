@@ -68,6 +68,11 @@ class MinimumBuildMonitor extends ChangeNotifier {
     _store.write(n).catchError((Object _) {});
   }
 
+  /// Writes the current minimum again (after the secure storage was wiped), so erasing the phone does not reopen a build that has to be updated.
+  Future<void> persist() async {
+    if (_required > 0) await _store.write(_required);
+  }
+
   /// A client that reports every answer's header to this monitor.
   http.Client wrap(http.Client inner) => _MinimumBuildClient(inner, this);
 }

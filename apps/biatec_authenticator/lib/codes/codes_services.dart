@@ -60,6 +60,9 @@ class AppSupportVaultStorage implements VaultStorage {
 
   @override
   Future<void> write(Uint8List bytes) async => (await _open()).write(bytes);
+
+  @override
+  Future<void> delete() async => (await _open()).delete();
 }
 
 /// Everything the Codes tab needs, built once and replaced with fakes in tests.

@@ -247,3 +247,9 @@ navigator, so back goes up inside a tab first, then to Codes, and only then leav
 - `lib/update/update_guard.dart`: `MinimumBuildMonitor` reads `X-Biatec-Min-App-Build` from every answer of the pinned client and keeps the highest value; `UpdateGuard` blocks a build older than it, or past `--dart-define=BUILD_EXPIRES=<date>` (UTC; the fallback while Biatec OIDC does not send the header). `LockController` (`updates:`) then clears memory and shows `UpdateRequiredScreen`, at start, on resume, before an approval, and the moment an answer arrives while the app is open.
 - The build passes its number with `--dart-define=APP_BUILD=<n>` (the number after the plus sign of `version`; a test keeps the default equal to `pubspec.yaml`). The screen does not link to a store (no `url_launcher`); it names the store.
 - The mock sends the header (`MOCK_MIN_APP_BUILD`, default 1). The API shape is row 24 of `docs/required-changes-biatec-oidc.md`.
+
+## Privacy and erase (T-233)
+
+- `lib/privacy/storage_inventory.dart` lists, in words for the user, what the app stores, what it sends to Biatec OIDC and the push service, and what it never collects. `PrivacyScreen` (Settings > About > Privacy) shows it. A test fails when a `'biatec.*'` storage key in `lib/` is not named in the inventory, or a listed key is not used.
+- `PhoneEraser` (`lib/privacy/phone_eraser.dart`) is "Erase everything on this phone": a confirmation that says what is lost, a fresh biometric, then the vault file, the vault keys, the device key, the secure storage and finally the enrollment (which moves the app to the enrollment screen). Every step runs even if an earlier one fails, has a time limit, and a failure is named on the screen. It removes data on the phone only; Biatec OIDC keeps its record of the device until it is cancelled from the account.
+- The answers for the Play Data safety form and the Apple App Privacy labels are in `docs/AUTHENTICATOR-STORE-PRIVACY.md`.
