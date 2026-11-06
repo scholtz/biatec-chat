@@ -58,6 +58,16 @@ Write the failing test first for every security rule. Never log, print or put in
 
 Filled in by the agent when it moves the task to `review`.
 
+Implemented in PR #391, branch task/T-234 (squash merged).
+
+- Enrollment: `AttestationProvider.supported()`, `OidcEnrollmentClient.requestChallenge` and `refreshAttestation`, `EnrollmentController(attestation:, attestationTimeout:)`; the record keeps `attestationRefreshAfter` (`copyWith`). A refresh runs after that date at the next `refresh()`, with an hour's wait after a failure. Without support, a token, a challenge or time, the enrollment goes without an attestation.
+- Android: `AttestationChannel.kt` (Play Integrity), manifest placeholder `playIntegrityProject` from `-PplayIntegrityProject=<number>`, validated numeric in the build. iOS: App Attest from T-228, now with `supported`.
+- Mock Biatec OIDC: `POST /devices/challenge`, the two fields on `POST /devices`, `PUT /devices/attestation`. API shape and fallback: row 25 of `docs/required-changes-biatec-oidc.md`.
+- Matrix: RESILIENCE-1 and -2 stay `partly` until Biatec OIDC verifies the tokens (O-8) and the native code has run on a device (O-1). Release checklist: set `playIntegrityProject`.
+- Not run on a device. Tests: flutter 1029 pass, mock-oidc 34 pass. One review round, user capped and merged.
+
+**Unblocks:** none.
+
 ## Review
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
