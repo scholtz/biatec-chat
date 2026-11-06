@@ -1,7 +1,7 @@
 ---
 id: T-234
 title: "Authenticator: send the platform attestation at enrollment"
-status: in-progress
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-230]
@@ -14,7 +14,7 @@ owner: "session-20261106-0900"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-11-05
-updated: 2026-11-05
+updated: 2026-11-06
 ---
 
 # T-234 - Authenticator: send the platform attestation at enrollment
@@ -62,6 +62,8 @@ Filled in by the agent when it moves the task to `review`.
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
 
+- 2026-11-06 22:26 · approve · PR #391 merged into main @ a45c860 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-05 10:20 · claude · (new) → backlog · created from the MASVS matrix of T-230 (open item)
@@ -69,3 +71,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-11-05 10:04 · kanban-board · backlog → blocked · waiting on: T-230
 - 2026-11-05 11:27 · kanban-board · blocked → backlog · blockers done: T-230
 - 2026-11-06 09:00 · scholtz · backlog → in-progress · claimed by session-20261106-0900 on task/T-234
+- 2026-11-06 22:26 · user · in-progress → done · PR #391 merged into main @ a45c860 (synced by kanban-sync)
