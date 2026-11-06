@@ -1,7 +1,7 @@
 ---
 id: T-226
 title: "Authenticator: encrypted backup and restore of two-factor accounts"
-status: backlog
+status: in-progress
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-223, T-224]
@@ -9,8 +9,8 @@ area: ["apps/biatec_authenticator/lib/totp/backup/**", "apps/biatec_authenticato
 parallel: yes
 conflicts_with: []
 issue: "#363"
-branch: ""
-owner: ""
+branch: "task/T-226"
+owner: "session-20261106-1100"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
@@ -70,3 +70,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:42 · kanban-board · backlog → blocked · waiting on: T-223, T-224
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
 - 2026-11-02 17:56 · kanban-board · blocked → backlog · blockers done: T-223, T-224
+- 2026-11-06 11:00 · scholtz · backlog → in-progress · claimed by session-20261106-1100 on task/T-226
