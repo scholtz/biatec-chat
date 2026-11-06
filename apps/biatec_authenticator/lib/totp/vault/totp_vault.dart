@@ -198,6 +198,14 @@ class TotpVault {
 
   // ---- the API ----
 
+  /// Replaces the vault with an empty one: the file goes, the version counter starts again and both hardware keys are deleted (new ones are made when the first account is added). For restoring a backup after the phone's biometrics changed and the old keys stopped working. Nothing that was in the old vault is kept.
+  Future<void> resetAll() => _serial(() async {
+        await storage.delete();
+        await versions.write(0);
+        await keys.deleteKeys();
+        await keys.endSession();
+      });
+
   /// The accounts in their order, without secrets. Needs no biometric.
   Future<List<VaultAccountInfo>> list() =>
       _serial(() async => [for (final e in (await _load()).entries) e.info]);

@@ -149,7 +149,10 @@ class NoBiometricScreen extends StatelessWidget {
 
 /// The phone's fingerprints or faces changed, so the hardware keys stopped working. Says what happened and what to do; there is no way in from here.
 class BiometricsChangedScreen extends StatelessWidget {
-  const BiometricsChangedScreen({super.key});
+  const BiometricsChangedScreen({super.key, this.restoreBuilder});
+
+  /// Opens the restore-from-backup screen; null hides the action.
+  final WidgetBuilder? restoreBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -185,6 +188,16 @@ class BiometricsChangedScreen extends StatelessWidget {
                   'backup file, or add them again at each service.'),
               const Text('2. Enroll this device again to approve actions. Do '
                   'it from another trusted device if you have one.'),
+              if (restoreBuilder != null) ...[
+                const SizedBox(height: AppSpacing.l),
+                FilledButton.icon(
+                  key: const Key('restore-from-backup'),
+                  onPressed: () => Navigator.of(context)
+                      .push(MaterialPageRoute<void>(builder: restoreBuilder!)),
+                  icon: const Icon(Icons.download),
+                  label: const Text('Restore from a backup file'),
+                ),
+              ],
             ],
           ),
         ),

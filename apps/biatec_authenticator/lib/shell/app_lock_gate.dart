@@ -10,9 +10,16 @@ import '../lock/lock_screens.dart';
 ///
 /// Also reports the app's lifecycle and every touch to the controller (background delay, screen lock, idle time).
 class AppLockGate extends StatefulWidget {
-  const AppLockGate({super.key, required this.lock, required this.child});
+  const AppLockGate(
+      {super.key,
+      required this.lock,
+      required this.child,
+      this.restoreBuilder});
 
   final LockController lock;
+
+  /// The screen that restores a backup after the phone's biometrics changed.
+  final WidgetBuilder? restoreBuilder;
   final Widget child;
 
   @override
@@ -79,7 +86,8 @@ class _AppLockGateState extends State<AppLockGate> {
                 ),
             ]),
           AppLockState.noBiometric => NoBiometricScreen(lock: widget.lock),
-          AppLockState.biometricsChanged => const BiometricsChangedScreen(),
+          AppLockState.biometricsChanged =>
+            BiometricsChangedScreen(restoreBuilder: widget.restoreBuilder),
           AppLockState.compromised => CompromisedScreen(lock: widget.lock),
           AppLockState.updateRequired =>
             UpdateRequiredScreen(lock: widget.lock),
