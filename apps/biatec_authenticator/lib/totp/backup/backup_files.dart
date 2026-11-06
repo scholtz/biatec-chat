@@ -5,6 +5,8 @@ import 'package:file_selector/file_selector.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'backup_format.dart';
+
 /// Where a backup file goes to and comes from. The real one is the system share sheet and the system file picker; tests use a fake.
 abstract class BackupFiles {
   /// Offers [bytes] to the user as a file called [fileName] through the system share sheet. True when the sheet was shown.
@@ -24,12 +26,13 @@ class SystemBackupFiles implements BackupFiles {
     final file = File('${dir.path}/$fileName');
     try {
       await file.writeAsBytes(bytes, flush: true);
-      await SharePlus.instance.share(ShareParams(
+      final result = await SharePlus.instance.share(ShareParams(
         files: [
           XFile(file.path, mimeType: 'application/octet-stream', name: fileName)
         ],
       ));
-      return true;
+      // Some platforms cannot say what the user chose (unavailable); only a closed sheet is a refusal.
+      return result.status != ShareResultStatus.dismissed;
     } finally {
       try {
         if (await file.exists()) await file.delete();
@@ -49,8 +52,11 @@ class SystemBackupFiles implements BackupFiles {
         uniformTypeIdentifiers: ['public.data'],
       ),
     ]);
-    return chosen == null
-        ? null
-        : Uint8List.fromList(await chosen.readAsBytes());
+    if (chosen == null) return null;
+    // A file larger than any backup is not read into memory: empty bytes are refused by the codec like any other bad file.
+    if (await chosen.length() > const BackupPolicy().maxFileBytes) {
+      return Uint8List(0);
+    }
+    return Uint8List.fromList(await chosen.readAsBytes());
   }
 }

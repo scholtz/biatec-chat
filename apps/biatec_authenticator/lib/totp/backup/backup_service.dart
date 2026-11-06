@@ -66,7 +66,11 @@ class BackupService {
         accounts.add(await vault.readSecret(info.id));
       }
       final file = await codec.encrypt(accounts, passphrase);
-      await files.share(file, BackupCodec.fileName(_clock()));
+      final offered = await files.share(file, BackupCodec.fileName(_clock()));
+      if (!offered) {
+        throw const BackupRefused(
+            'The share sheet was closed before the file was saved. No backup was made.');
+      }
       return accounts.length;
     } finally {
       for (final a in accounts) {
@@ -115,17 +119,19 @@ class BackupService {
   }
 
   /// After the biometrics changed: the old vault cannot be opened, so it is replaced by a new one holding [preview]'s accounts, and the app goes back to its lock screen. Returns how many were restored.
+  ///
+  /// The preview is wiped only when every account was saved, so a failure part-way (a cancelled prompt, a full disk) can be retried from the same preview: each try starts again from an empty vault. An empty backup is refused, so it can never leave the user with nothing.
   Future<int> restoreIntoFreshVault(ImportPreview preview) async {
+    if (preview.toAdd.isEmpty) {
+      throw const BackupRefused('This backup has no accounts to restore.');
+    }
     await vault.resetAll();
     var n = 0;
-    try {
-      for (final a in preview.toAdd) {
-        await vault.add(a);
-        n++;
-      }
-    } finally {
-      preview.wipe();
+    for (final a in preview.toAdd) {
+      await vault.add(a);
+      n++;
     }
+    preview.wipe();
     lock.markBiometricsRestored();
     return n;
   }

@@ -23,11 +23,12 @@ class FakeFiles implements BackupFiles {
   final List<(Uint8List, String)> shared = [];
   Uint8List? next;
   int picks = 0;
+  bool offered = true;
 
   @override
   Future<bool> share(Uint8List bytes, String fileName) async {
     shared.add((Uint8List.fromList(bytes), fileName));
-    return true;
+    return offered;
   }
 
   @override
@@ -98,6 +99,14 @@ void main() {
           s.export(pass, '$pass!'), throwsA(isA<BackupRefused>()));
       expect(rig.auth.prompts, before);
       expect(files.shared, isEmpty);
+    });
+
+    test('a closed share sheet is not a finished backup', () async {
+      final rig = await CodesRig.create();
+      final files = FakeFiles()..offered = false;
+      await rig.addAccount(account(seed: 1));
+      await expectLater(serviceOf(rig, files).export(pass, pass),
+          throwsA(isA<BackupRefused>()));
     });
 
     test('no accounts: nothing to back up', () async {
@@ -218,6 +227,37 @@ void main() {
       await expectLater(serviceOf(rig, files).openAfterBiometricsChanged(pass),
           throwsA(isA<BackupRefused>()));
       expect(files.picks, 0);
+      expect(rig.lock.state, AppLockState.biometricsChanged);
+    });
+
+    test('a failure part-way can be retried from the same preview', () async {
+      final rig = await CodesRig.create();
+      await rig.addAccount(account(issuer: 'Old', label: 'o', seed: 1));
+      final files = FakeFiles()
+        ..next = await cheapCodec().encrypt([
+          account(issuer: 'N1', label: 'a', seed: 2),
+          account(issuer: 'N2', label: 'b', seed: 3),
+        ], pass);
+      await loseBiometrics(rig);
+      final s = serviceOf(rig, files);
+      final preview = (await s.openAfterBiometricsChanged(pass))!;
+      rig.storage.failWrites = true;
+      await expectLater(s.restoreIntoFreshVault(preview), throwsA(anything));
+      expect(preview.toAdd.any((a) => a.isWiped), isFalse,
+          reason: 'still there to retry');
+      rig.storage.failWrites = false;
+      expect(await s.restoreIntoFreshVault(preview), 2);
+      expect((await rig.vault.list()).map((i) => i.issuer),
+          unorderedEquals(['N1', 'N2']));
+    });
+
+    test('an empty backup never replaces the vault', () async {
+      final rig = await CodesRig.create();
+      await rig.addAccount(account(seed: 1));
+      await loseBiometrics(rig);
+      final s = serviceOf(rig, FakeFiles());
+      await expectLater(s.restoreIntoFreshVault(ImportPreview([], 0)),
+          throwsA(isA<BackupRefused>()));
       expect(rig.lock.state, AppLockState.biometricsChanged);
     });
 
