@@ -57,6 +57,15 @@ Write the failing test first for every security rule. Never log, print or put in
 
 Filled in by the agent when it moves the task to `review`.
 
+Implemented in PR #389, branch task/T-233 (squash merged).
+
+- `lib/privacy/`: `storage_inventory.dart` (what is stored, sent and never collected), `privacy_screen.dart` (Settings > About > Privacy, with the erase action), `phone_eraser.dart` (`PhoneEraser`: fresh biometric, accounts, vault keys, device key, then storage and enrollment; stops before wiping the alias when an early step fails). `VaultStorage.delete()` and `LockController.clearSecretsFromMemory()` were added; `MinimumBuildMonitor.persist()` keeps the update floor across an erase.
+- A test fails when a `'biatec.*'` storage key in `lib/` is not in the inventory. `docs/AUTHENTICATOR-STORE-PRIVACY.md` has the Play Data safety and Apple App Privacy answers; matrix rows PRIVACY-3 and PRIVACY-4 are met.
+- Not covered: Biatec OIDC's server-side record of the device (cancel it from the account; the screen says so). Not run on a device.
+- Tests: 1012 pass. One review round, user capped and merged.
+
+**Unblocks:** none.
+
 ## Review
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
