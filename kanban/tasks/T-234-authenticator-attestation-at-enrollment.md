@@ -1,7 +1,7 @@
 ---
 id: T-234
 title: "Authenticator: send the platform attestation at enrollment"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-230]
@@ -9,8 +9,8 @@ area: ["apps/biatec_authenticator/lib/enrollment/**", "apps/biatec_authenticator
 parallel: no
 conflicts_with: [T-220, T-232]
 issue: "#386"
-branch: ""
-owner: ""
+branch: "task/T-234"
+owner: "session-20261106-0900"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-11-05
@@ -68,3 +68,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-11-05 10:25 · claude · ordering and file overlap decided: blocked_by T-230 (matrix row), conflicts_with T-220 and T-232
 - 2026-11-05 10:04 · kanban-board · backlog → blocked · waiting on: T-230
 - 2026-11-05 11:27 · kanban-board · blocked → backlog · blockers done: T-230
+- 2026-11-06 09:00 · scholtz · backlog → in-progress · claimed by session-20261106-0900 on task/T-234
