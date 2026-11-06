@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../approvals/approval_services.dart';
+import '../codes/backup_screen.dart';
 import '../codes/codes_services.dart';
 import '../config.dart';
 import '../enrollment/enrollment_controller.dart';
@@ -233,6 +234,8 @@ class _AppGateState extends State<AppGate> {
           // While locked the shell is not built at all: no screen of the secure area exists to read.
           return AppLockGate(
             lock: widget.lock,
+            restoreBuilder: (_) => ImportBackupScreen(
+                service: widget.codes.backup, afterBiometricsChanged: true),
             child: AppShell(
               config: widget.config,
               approvals: widget.approvals,

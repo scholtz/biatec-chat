@@ -323,6 +323,22 @@ class LockController extends ChangeNotifier {
     return false;
   }
 
+  /// A fresh biometric for restoring a backup after the phone's biometrics changed. Only in that state (the app is locked then, so [reauthenticate] refuses), and only a success counts.
+  Future<bool> verifyForRestore() async {
+    if (_state != AppLockState.biometricsChanged) return false;
+    final outcome = await _ask('Restore your accounts from a backup');
+    return outcome == BiometricOutcome.success &&
+        _state == AppLockState.biometricsChanged;
+  }
+
+  /// The accounts were restored into a new vault: the app goes back to its lock screen and asks for the fingerprint as at any start.
+  void markBiometricsRestored() {
+    if (_state != AppLockState.biometricsChanged) return;
+    _lastOutcome = null;
+    _set(AppLockState.locked);
+    unlock();
+  }
+
   /// Checks the phone again from the compromised screen. If it passes now (a debugger was detached), the app asks for the fingerprint as at any start.
   Future<void> recheckIntegrity() async {
     if (!canRecheckIntegrity) return;

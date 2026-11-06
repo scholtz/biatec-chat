@@ -5,6 +5,8 @@ import 'package:path_provider/path_provider.dart';
 
 import '../lock/lock_controller.dart';
 import '../security/secure_storage.dart';
+import '../totp/backup/backup_files.dart';
+import '../totp/backup/backup_service.dart';
 import '../totp/vault/totp_vault.dart';
 import '../totp/vault/vault_key_store.dart';
 import '../totp/vault/vault_storage.dart';
@@ -74,7 +76,9 @@ class CodesServices {
     ServerClock? serverClock,
     DateTime Function()? clock,
     CodesPrefs? prefs,
-  })  : serverClock = serverClock ?? ServerClock.instance,
+    BackupFiles? files,
+  })  : files = files ?? const SystemBackupFiles(),
+        serverClock = serverClock ?? ServerClock.instance,
         clock = clock ?? DateTime.now,
         prefs = prefs ?? const SecureCodesPrefs() {
     // Locking ends the platform's memory of the last biometric, so the next secret read asks again.
@@ -98,4 +102,9 @@ class CodesServices {
   final ServerClock serverClock;
   final DateTime Function() clock;
   final CodesPrefs prefs;
+  final BackupFiles files;
+
+  /// Export and import of the encrypted backup; the one place a saved seed is read for a file.
+  late final BackupService backup =
+      BackupService(lock: lock, vault: vault, files: files, clock: clock);
 }
