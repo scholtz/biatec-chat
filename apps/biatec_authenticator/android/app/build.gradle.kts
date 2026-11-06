@@ -26,6 +26,12 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // The Google Cloud project number of the release, for Play Integrity (AttestationChannel). Given with -PplayIntegrityProject=<number> or in
+        // gradle.properties; without it the attestation is not available and the enrollment goes without one.
+        val integrityProject = (project.findProperty("playIntegrityProject") as String?) ?: "0"
+        // A typo here would ship a release that quietly never attests, so a value that is not a number stops the build.
+        if (!integrityProject.matches(Regex("\\d+"))) throw GradleException("playIntegrityProject must be the numeric Google Cloud project number")
+        manifestPlaceholders["playIntegrityProject"] = integrityProject
     }
 
     // Release signing material is never in the repository: android/key.properties (git-ignored) names the keystore, see the README, "Release
@@ -67,6 +73,8 @@ kotlin {
 dependencies {
     // The strong-biometric prompt of the two-factor vault (VaultPlugin), also used by the biometric lock (BiometricChannel).
     implementation("androidx.biometric:biometric:1.1.0")
+    // Play Integrity, for the platform attestation at enrollment (AttestationChannel).
+    implementation("com.google.android.play:integrity:1.4.0")
 }
 
 flutter {

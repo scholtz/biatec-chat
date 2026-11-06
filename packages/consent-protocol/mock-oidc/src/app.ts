@@ -4,7 +4,8 @@
 //   PUT  /wallet/limits                       step-up entry for loosening limits
 //   POST /token                               CIBA token grant, returns consent_receipt
 //   GET  /consent/receipts/:auth_req_id       receipt retrieval by the owning client
-//   POST /devices                             device enrollment (rule 7)
+//   POST /devices                             device enrollment (rule 7), optionally with a platform attestation
+//   POST /devices/challenge, PUT /devices/attestation   single-use nonce for a platform attestation, and its refresh (T-234)
 //   PUT  /devices/push                        register or replace the device's FCM/APNs token
 //   GET  /devices/requests, GET /consent/requests/:id, POST /consent/requests/:id/receipt   authenticator side
 //   GET  /.well-known/jwks.json, /.well-known/openid-configuration
@@ -72,7 +73,7 @@ export interface MockOptions {
   deviceProof?: boolean;
 }
 
-interface Device { kid: string; sub: string; publicKey: Record<string, string>; token: string; activeAt: number; cancelled: boolean; attestation: string; recoveryCode?: string; recoveryAcknowledged?: boolean; push?: PushTarget }
+interface Device { kid: string; sub: string; publicKey: Record<string, string>; token: string; activeAt: number; cancelled: boolean; attestation: string; recoveryCode?: string; recoveryAcknowledged?: boolean; push?: PushTarget; platformAttestation?: { kind: string; attestedAt: number } }
 interface PushTarget { provider: "fcm" | "apns"; token: string }
 // What a real deployment hands to FCM or APNs. The data payload is the request id and nothing else.
 interface PushMessage { kid: string; provider: PushTarget["provider"]; token: string; data: { auth_req_id: string } }
@@ -123,6 +124,10 @@ function parseForm(text: string): Record<string, unknown> {
   return out;
 }
 
+/** How long an attestation challenge lives, and how long an attestation stays good before the app refreshes it (seconds). */
+export const ATTESTATION_CHALLENGE_SECONDS = 300;
+export const ATTESTATION_REFRESH_SECONDS = 30 * 24 * 3600;
+
 export function createMockOidc(options: MockOptions = {}) {
   const now = options.now ?? (() => Math.floor(Date.now() / 1000));
   const issuer = options.issuer ?? ISSUER;
@@ -149,6 +154,8 @@ export function createMockOidc(options: MockOptions = {}) {
   const clientMap = new Map<string, SeedClient>(clients.map((c) => [c.id, c]));
   const tokens = new Map<string, Token>(Object.entries(staticTokens).map(([k, v]) => [k, { ...v }]));
   const devices = new Map<string, Device>();
+  // Single-use nonces for the platform attestation (required-changes row 25): who asked, and until when.
+  const attestationChallenges = new Map<string, { sub: string; expires: number }>();
   const pending = new Map<string, Pending>();
   const consumed = new Set<string>();
   const pushOutbox: PushMessage[] = [];
@@ -463,6 +470,43 @@ export function createMockOidc(options: MockOptions = {}) {
     d.push = push;
   }
 
+  /** The platform attestation sent with an enrollment or a refresh: a kind this product knows, a token, and the nonce this user was given. */
+  function takePlatformAttestation(sub: string, body: Record<string, any>) {
+    const a = body.platform_attestation;
+    if (!a || (a.kind !== "play_integrity" && a.kind !== "app_attest") || typeof a.token !== "string" || !a.token || a.token.length > 65536 || (a.key_id !== undefined && (typeof a.key_id !== "string" || a.key_id.length > 256))) {
+      throw new HttpError(400, "invalid_request", "platform_attestation needs a kind (play_integrity or app_attest) and a token");
+    }
+    const nonce = body.attestation_challenge;
+    const c = typeof nonce === "string" ? attestationChallenges.get(nonce) : undefined;
+    if (!c || c.sub !== sub || c.expires < now()) throw new HttpError(400, "invalid_request", "attestation_challenge is unknown, used, expired or another user's");
+    attestationChallenges.delete(nonce); // single use, also when the rest of the request fails
+    return { kind: a.kind as string, attestedAt: now() };
+  }
+
+  function attestationChallenge(req: IncomingMessage) {
+    const sub = req.headers.authorization?.startsWith("Device ") ? (() => {
+      const d = deviceAuth(req);
+      if (d.cancelled) throw new HttpError(403, "access_denied", "this device was cancelled");
+      return d.sub;
+    })() : (() => {
+      const t = bearer(req);
+      if (t.kind !== "login") throw new HttpError(403, "access_denied", "a challenge needs a fresh full login or an enrolled device");
+      return t.sub;
+    })();
+    for (const [n, c] of attestationChallenges) if (c.expires < now()) attestationChallenges.delete(n);
+    if (attestationChallenges.size > 1000) throw new HttpError(429, "too_many_requests", "too many open challenges");
+    const nonce = randomBytes(24).toString("base64url");
+    attestationChallenges.set(nonce, { sub, expires: now() + ATTESTATION_CHALLENGE_SECONDS });
+    return { status: 200, body: { nonce, expires_in: ATTESTATION_CHALLENGE_SECONDS } };
+  }
+
+  function putAttestation(req: IncomingMessage, body: Record<string, any>) {
+    const d = deviceAuth(req);
+    if (d.cancelled) throw new HttpError(403, "access_denied", "this device was cancelled");
+    d.platformAttestation = takePlatformAttestation(d.sub, body);
+    return { status: 200, body: { kid: d.kid, attestation_refresh_after: now() + ATTESTATION_REFRESH_SECONDS } };
+  }
+
   function enroll(req: IncomingMessage, body: Record<string, any>) {
     const t = bearer(req);
     if (t.kind !== "login") throw new HttpError(403, "access_denied", "enrollment needs a fresh full login");
@@ -477,9 +521,14 @@ export function createMockOidc(options: MockOptions = {}) {
       activeAt = now();
     }
     const push = body.push === undefined ? undefined : pushTarget(body.push);
+    // Without a platform attestation the device is enrolled and flagged; with a malformed or replayed one it is refused.
+    // The two fields go together: one alone is refused (an orphan challenge would otherwise be ignored and left unspent).
+    if ((body.platform_attestation === undefined) !== (body.attestation_challenge === undefined)) throw new HttpError(400, "invalid_request", "attestation_challenge and platform_attestation are sent together");
+    const platformAttestation = body.platform_attestation === undefined ? undefined : takePlatformAttestation(t.sub, body);
     const d = addDevice(t.sub, body.kid, { kty: "EC", crv: "P-256", x: pk.x, y: pk.y }, activeAt);
     setPush(d, push);
-    return { status: 201, body: { kid: d.kid, active: d.activeAt <= now(), active_at: d.activeAt, attestation: d.attestation, device_token: d.token, cancel_notice_sent_to_existing_devices: hadActive && activeAt > now() } };
+    d.platformAttestation = platformAttestation;
+    return { status: 201, body: { kid: d.kid, active: d.activeAt <= now(), active_at: d.activeAt, attestation: d.attestation, device_token: d.token, cancel_notice_sent_to_existing_devices: hadActive && activeAt > now(), ...(platformAttestation ? { attestation_refresh_after: now() + ATTESTATION_REFRESH_SECONDS } : {}) } };
   }
 
   function deviceView(p: Pending) {
@@ -711,6 +760,8 @@ export function createMockOidc(options: MockOptions = {}) {
     if (m === "PUT" && path === "/wallet/limits") return putLimits(req, await readBody(req));
     if (m === "POST" && (x = path.match(/^\/wallet\/([^/]+)\/([^/]+)\/sign$/))) return sign(req, { network: x[1], address: x[2] }, await readBody(req));
     if (m === "GET" && (x = path.match(/^\/consent\/receipts\/([^/]+)$/))) return getReceipt(req, x[1]);
+    if (m === "POST" && path === "/devices/challenge") return attestationChallenge(req);
+    if (m === "PUT" && path === "/devices/attestation") return putAttestation(req, await readBody(req));
     if (m === "POST" && path === "/devices") return enroll(req, await readBody(req));
     // Rule 7: the recovery code exists only after the device is active, never in the enrollment response.
     if (m === "POST" && path === "/devices/recovery-code") {

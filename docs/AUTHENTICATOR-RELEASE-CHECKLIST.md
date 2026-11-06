@@ -20,6 +20,8 @@ in CI ([ci.yml](../.github/workflows/ci.yml), job `authenticator` and `authentic
       and, until Biatec OIDC sends a minimum build, `--dart-define=BUILD_EXPIRES=<a date about a year ahead>` (UTC).
 - [ ] Android: `flutter build appbundle --release --obfuscate --split-debug-info=<folder> --dart-define=OIDC_BASE_URL=<production>
       --dart-define=RELEASE_CERT_SHA256=<digest of the release certificate>`. Without the digest the release build refuses to open.
+- [ ] Android: `-PplayIntegrityProject=<the release's Google Cloud project number>` is set (Play Integrity needs it; the app is linked to that project in Play
+      Console). Without it the app enrolls without an attestation.
 - [ ] iOS: archived with the release provisioning profile; the App Attest capability is on the App ID and `Runner.entitlements` says
       `production`.
 - [ ] Signed with the **release** key (Play App Signing upload key or the iOS distribution certificate), which exists only in the

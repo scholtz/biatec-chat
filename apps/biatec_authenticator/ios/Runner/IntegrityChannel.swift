@@ -7,13 +7,14 @@ import Foundation
 /// io.biatec.authenticator/attestation). Files are read in Dart; the policy is in Dart; nothing here decides, and nothing is logged.
 ///
 /// integrity: debuggerAttached | loadedImages | isSimulator
-/// attestation: token(nonce) -> {kind: "app_attest", token, keyId}
+/// attestation: supported -> Bool | token(nonce) -> {kind: "app_attest", token, keyId}
 public class IntegrityChannel: NSObject, FlutterPlugin {
     public static func register(with registrar: FlutterPluginRegistrar) {
         let integrity = FlutterMethodChannel(name: "io.biatec.authenticator/integrity", binaryMessenger: registrar.messenger())
         registrar.addMethodCallDelegate(IntegrityChannel(), channel: integrity)
         let attestation = FlutterMethodChannel(name: "io.biatec.authenticator/attestation", binaryMessenger: registrar.messenger())
         attestation.setMethodCallHandler { call, result in
+            if call.method == "supported" { return result(DCAppAttestService.shared.isSupported) }
             guard call.method == "token" else { return result(FlutterMethodNotImplemented) }
             guard let nonce = (call.arguments as? [String: Any])?["nonce"] as? String else {
                 return result(FlutterError(code: "bad_args", message: "nonce is required", details: nil))

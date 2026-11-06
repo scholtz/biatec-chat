@@ -18,6 +18,8 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:usesCleartextTraffic="false"
         android:networkSecurityConfig="@xml/network_security_config">
+        <!-- The release's Google Cloud project number for Play Integrity, from the build (build.gradle.kts). "p" keeps a long number text. -->
+        <meta-data android:name="io.biatec.authenticator.PLAY_INTEGRITY_PROJECT" android:value="p${playIntegrityProject}"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show PlatformException;
 
+import '../integrity/attestation.dart';
 import '../keys/device_key_store.dart';
 import '../keys/key_security_level.dart';
 import 'enrollment_state.dart';
@@ -18,6 +19,8 @@ class EnrollmentController extends ChangeNotifier {
     required this.client,
     DateTime Function()? clock,
     String Function()? newAlias,
+    this.attestation = const PlatformAttestationProvider(),
+    this.attestationTimeout = const Duration(seconds: 30),
   })  : _clock = clock ?? DateTime.now,
         _newAlias = newAlias ?? _randomAlias;
 
@@ -34,9 +37,16 @@ class EnrollmentController extends ChangeNotifier {
   final String Function() _newAlias;
 
   final DeviceKeyStore keys;
+
   /// The observable store: it keeps an enrollment whose write failed, which this controller relies on.
   final ObservableEnrollmentStore store;
   final OidcEnrollmentClient client;
+
+  /// Asks the platform for the proof that this is the real app (Play Integrity, App Attest) at enrollment and when Biatec OIDC asks for a fresh one.
+  final AttestationProvider attestation;
+
+  /// How long getting the challenge and the platform's token may take together. The attestation is optional: past this the enrollment goes ahead without one, so a stalled Play service never holds the enrollment (and the login token and the challenge expire).
+  final Duration attestationTimeout;
   final DateTime Function() _clock;
 
   EnrollmentState _state = EnrollmentState.notEnrolled;
@@ -141,6 +151,49 @@ class EnrollmentController extends ChangeNotifier {
     _set(EnrollmentState.fromRecord(record, _clock()));
     await _ensureRecoveryCode();
     await _loadKeyLevel(record.kid);
+    await _refreshAttestationIfDue(record);
+  }
+
+  bool _attesting = false;
+
+  /// After a failed attempt the next one waits this long, so a rejected or unavailable attestation does not repeat on every resume (Play Integrity is rate-limited).
+  static const attestationRetryAfter = Duration(hours: 1);
+  DateTime? _attestationRetryAt;
+
+  /// When Biatec OIDC asked for a fresh attestation by a date that has passed, sends one. Best effort and quiet: a platform that cannot attest, or a server that is out of reach, leaves things as they are, and the next try waits [attestationRetryAfter].
+  Future<void> _refreshAttestationIfDue(EnrollmentRecord record) async {
+    final due = record.attestationRefreshAfter;
+    final now = _clock();
+    if (due == null || now.isBefore(due) || _attesting) return;
+    final retry = _attestationRetryAt;
+    if (retry != null && now.isBefore(retry)) return;
+    _attesting = true;
+    final session = _session;
+    var done = false;
+    try {
+      if (!await attestation.supported()) return;
+      final challenge =
+          await client.requestChallenge(deviceToken: record.deviceToken);
+      if (challenge == null) return;
+      final proof =
+          await attestation.token(challenge).timeout(attestationTimeout);
+      if (proof == null) return;
+      final next = await client.refreshAttestation(
+          deviceToken: record.deviceToken,
+          challenge: challenge,
+          platformAttestation: proof);
+      if (next == null || _disposed || session != _session) return;
+      // The record may have changed while this waited (the recovery code was confirmed, say): the new date goes on the current one.
+      final current = await store.read();
+      if (current == null || current.kid != record.kid) return;
+      await store.write(current.withAttestationRefreshAfter(next));
+      done = true;
+    } on Object {
+      // Quiet by design.
+    } finally {
+      if (!done) _attestationRetryAt = _clock().add(attestationRetryAfter);
+      _attesting = false;
+    }
   }
 
   /// Reads where the key of [kid] lives, for display (after the rest of the
@@ -212,6 +265,21 @@ class EnrollmentController extends ChangeNotifier {
     _keyLevel = key.securityLevel;
     _keyLevelKid = key.kid;
     _set(const EnrollmentState(EnrollmentPhase.enrolling));
+    // The platform's proof, bound to a nonce from Biatec OIDC. Any failure here means no proof is sent, never a made-up one.
+    String? challenge;
+    AttestationToken? proof;
+    try {
+      if (await attestation.supported()) {
+        challenge =
+            await client.requestChallenge(loginToken: loginToken.trim());
+        if (challenge != null) {
+          proof =
+              await attestation.token(challenge).timeout(attestationTimeout);
+        }
+      }
+    } on Object {
+      proof = null;
+    }
     final EnrollmentRecord record;
     try {
       record = await client.enroll(
@@ -219,6 +287,8 @@ class EnrollmentController extends ChangeNotifier {
         loginToken: loginToken.trim(),
         approvedByKid: approvedByKid,
         name: deviceName,
+        challenge: proof == null ? null : challenge,
+        platformAttestation: proof,
       );
     } on Object catch (e) {
       // Nothing was enrolled, so the unused key and alias are removed.
