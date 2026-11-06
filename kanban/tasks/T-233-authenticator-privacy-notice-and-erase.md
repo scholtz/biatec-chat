@@ -1,7 +1,7 @@
 ---
 id: T-233
 title: "Authenticator: privacy notice and erase-everything"
-status: in-progress
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-230]
@@ -14,7 +14,7 @@ owner: "session-20261105-1700"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-11-05
-updated: 2026-11-05
+updated: 2026-11-06
 ---
 
 # T-233 - Authenticator: privacy notice and erase-everything
@@ -61,6 +61,8 @@ Filled in by the agent when it moves the task to `review`.
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
 
+- 2026-11-06 13:03 · approve · PR #389 merged into main @ b5fcecb (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-05 10:20 · claude · (new) → backlog · created from the MASVS matrix of T-230 (open item)
@@ -68,3 +70,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-11-05 10:04 · kanban-board · backlog → blocked · waiting on: T-230
 - 2026-11-05 11:27 · kanban-board · blocked → backlog · blockers done: T-230
 - 2026-11-05 17:00 · scholtz · backlog → in-progress · claimed by session-20261105-1700 on task/T-233
+- 2026-11-06 13:03 · user · in-progress → done · PR #389 merged into main @ b5fcecb (synced by kanban-sync)
