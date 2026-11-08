@@ -1,7 +1,7 @@
 ---
 id: T-235
 title: "Widget: Cancel button while waiting for sign-in, no longer read popup.closed (BCHAT-028 prerequisite)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -52,6 +52,9 @@ Filled in when the task moves to review.
 
 ## Review
 
+- 2026-11-08 18:35 · approve · PR #395 merged into main @ 0825437 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-08 18:30 · scholtz · (new) → in-progress · created for issue #281 and taken
+- 2026-11-08 18:35 · user · in-progress → done · PR #395 merged into main @ 0825437 (synced by kanban-sync)
