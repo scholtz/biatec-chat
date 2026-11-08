@@ -58,7 +58,11 @@ Write the failing test first for every security rule. Never log, print or put in
 
 ## Hand-off
 
-Filled in by the agent when it moves the task to `review`.
+PR #392 merged @ b034c52 (branch task/T-226).
+
+Encrypted backup (AES-256-GCM, Argon2id floor 64 MiB/3/4, one generic failure), export and import behind a fresh biometric, restore into a fresh vault after a biometric change, passphrase rules, docs and MASVS matrix updated. Four review rounds, record on the PR. Open: O-6 (device verification of share sheet, picker and KDF time).
+
+**Unblocks:** T-231.
 
 ## Review
 
