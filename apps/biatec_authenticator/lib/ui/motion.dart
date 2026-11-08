@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
 /// The one answer to "may anything move?". The system's reduce-motion setting (Android "remove animations", iOS "reduce motion") reaches Flutter as `disableAnimations`; every animation and every haptic in the app asks here and does nothing when it is on.
@@ -40,12 +41,13 @@ class QuietPageTransitions extends PageTransitionsBuilder {
   }
 }
 
-/// Every platform uses [QuietPageTransitions].
+/// Android, Windows and Linux use [QuietPageTransitions]; Apple platforms keep their own.
 const quietPageTransitions = PageTransitionsTheme(builders: {
   TargetPlatform.android: QuietPageTransitions(),
-  TargetPlatform.iOS: QuietPageTransitions(),
+  // iOS and macOS keep the native slide and the swipe back from the edge.
+  TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+  TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
   TargetPlatform.windows: QuietPageTransitions(),
-  TargetPlatform.macOS: QuietPageTransitions(),
   TargetPlatform.linux: QuietPageTransitions(),
   TargetPlatform.fuchsia: QuietPageTransitions(),
 });

@@ -36,7 +36,8 @@ class CountdownRing extends StatelessWidget {
           SizedBox(
             width: 40,
             height: 40,
-            child: Motion.reduced(context)
+            // A new period (the fraction goes up) snaps to full; only the emptying glides.
+            child: Motion.reduced(context) || fraction > 0.9
                 ? ring(fraction)
                 : TweenAnimationBuilder<double>(
                     tween: Tween<double>(end: fraction),

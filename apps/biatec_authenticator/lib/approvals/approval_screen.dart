@@ -48,6 +48,7 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
   void initState() {
     super.initState();
     _controller = widget.services.controllerFor(widget.authReqId)..load();
+    _felt = _controller.phase;
     _controller.addListener(_feel);
     // Redraws the countdown.
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -55,7 +56,7 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
     });
   }
 
-  ApprovalPhase? _felt;
+  late ApprovalPhase _felt = _controller.phase;
 
   /// A touch when the request is decided or fails, once per change of phase.
   void _feel() {
