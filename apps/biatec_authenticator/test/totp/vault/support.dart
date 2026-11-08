@@ -92,6 +92,11 @@ class FakeVaultKeyStore implements VaultKeyStore {
   @override
   Future<void> deleteKeys() async {
     _keys.clear();
+    // The real store makes new keys on first use, and they are not tied to the old biometric set.
+    invalidated = false;
+    for (final p in VaultKeyPurpose.values) {
+      _keys[p] = _bytes(32);
+    }
   }
 }
 

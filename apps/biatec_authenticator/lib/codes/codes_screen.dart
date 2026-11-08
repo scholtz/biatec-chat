@@ -8,6 +8,7 @@ import '../totp/core/otp_account.dart';
 import '../totp/core/otp_generator.dart';
 import '../ui/ui.dart';
 import 'add/add_account_screen.dart';
+import 'backup_screen.dart';
 import 'add/qr_scan_screen.dart';
 import 'code_ticker.dart';
 import 'codes_controller.dart';
@@ -227,6 +228,16 @@ class _CodesScreenState extends State<CodesScreen> {
                 _controller.query = '';
               }
             }),
+          ),
+          IconButton(
+            key: const Key('backup'),
+            tooltip: 'Backup and restore',
+            constraints: const BoxConstraints(
+                minWidth: kMinTapTarget, minHeight: kMinTapTarget),
+            icon: const Icon(Icons.save_alt),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => BackupScreen(
+                    service: widget.services.backup, controller: _controller))),
           ),
           ListenableBuilder(
             listenable: _controller,

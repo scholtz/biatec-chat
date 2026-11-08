@@ -233,8 +233,11 @@ void main() {
           findsOneWidget);
       expect(find.textContaining('Enroll this device again'), findsOneWidget);
       expectNoSecureArea(tester);
-      expect(find.byType(FilledButton), findsNothing,
-          reason: 'no way in from here');
+      // The one action is restoring a backup into a new vault: it opens no
+      // account and shows no code.
+      expect(find.byType(FilledButton), findsOneWidget,
+          reason: 'only restore from a backup');
+      expect(find.byKey(const Key('restore-from-backup')), findsOneWidget);
       await rig.dispose(tester);
     });
 

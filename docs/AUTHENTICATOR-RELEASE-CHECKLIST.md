@@ -40,6 +40,7 @@ in CI ([ci.yml](../.github/workflows/ci.yml), job `authenticator` and `authentic
 - [ ] Screenshots and screen recording show a blank screen on the secure area; the app switcher shows no data.
 - [ ] A rooted or jailbroken phone, a debugger and Frida each close the app (and the same build opens on a healthy phone).
 - [ ] The proxy test: a user-installed CA cannot intercept; the pinned connection fails closed on a wrong pin.
+- [ ] Backup and restore, on a device: create a backup (fingerprint first, then the share sheet), restore it on a second phone or after erasing, the codes match; a wrong passphrase and a file with one changed byte give the same message; after adding a fingerprint in the phone's settings the restore action on the "fingerprints changed" screen brings the accounts back.
 - [ ] No backup contains app data: `adb backup` yields nothing, and a device backup restored elsewhere has no vault or keys.
 - [ ] The clipboard is cleared 30 seconds after a copy, and a clipboard preview shows the code hidden (Android 13 and later).
 

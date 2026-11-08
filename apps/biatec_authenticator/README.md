@@ -67,6 +67,14 @@ To check by hand on a device: open the app and try a screenshot (it must fail or
 
 Not verified on a device: none of this has been run on a phone; the Swift changes were written without Xcode.
 
+### Backup and restore (T-226)
+
+The Codes tab has a backup action (and the "fingerprints changed" screen a restore action). A backup is one file, `biatec-authenticator-backup-YYYYMMDD.biatecbackup`, offered through the system share sheet and read through the system file picker; nothing goes to a server. Both directions first ask for a fresh biometric.
+
+File layout (`lib/totp/backup/backup_format.dart`): `"BTBK"`, version, KDF id, Argon2id memory (KiB), iterations, lanes, a 16-byte random salt, a 12-byte random nonce, then AES-256-GCM of the accounts as JSON padded to a multiple of 4 KiB (the size hides the account count). The header is the associated data, so any changed byte fails authentication. The key is Argon2id (RFC 9106, `pointycastle`) of the passphrase. The floor is 64 MiB, 3 passes, 4 lanes; a file made below it is refused as a downgrade, and one above the ceilings (256 MiB, 12 passes, 16 lanes) or the size and count limits (4 MiB, 1000 accounts) is refused without running the derivation. Every failure (wrong passphrase, damaged or foreign file) gives the same message, and a refused file still costs one derivation at the floor, so a quick refusal is not an oracle (a file that is accepted but fails authentication can take longer; the passphrase is the only secret, and this does not reveal it). Each account in a file goes through the same validation as a scanned QR code.
+
+The passphrase needs at least 12 characters and an estimated 50 bits, is typed twice, and is never stored, logged or kept after use. It cannot be recovered: the screen says so. Restoring adds the accounts that are not already there (duplicates are counted and skipped) after showing them. After the phone's biometrics changed the old vault cannot be opened; restoring then replaces it with a new vault holding the file's accounts and returns to the lock screen. `test/codes/backup_screen_test.dart` also checks that only the vault and the backup code read a saved seed.
+
 ## Config
 
 The Biatec OIDC base URL comes from `--dart-define=OIDC_BASE_URL=...` and defaults to the mock OIDC
