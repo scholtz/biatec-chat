@@ -63,7 +63,11 @@ Presentation and shell wiring only. Each fix gets a test in `test/shell/`.
 
 ## Hand-off
 
-Filled in by the agent when it moves the task to `review`.
+PR #394 merged @ 835e021 (branch task/T-220).
+
+One in-memory authority for the enrollment (disk write-behind, loaded once, timeout and late-write repair), settings typed to the observable store, gate re-check after a resume, no background or covered over-polling, one owner for push registration (with retry), card ticker follows TickerMode, mock strip on startup screens, Android 10/11 touch guard on Approve, CI path filter. Three review rounds, record on the PR. Not run on a device (O-1).
+
+**Unblocks:** nothing.
 
 ## Review
 
