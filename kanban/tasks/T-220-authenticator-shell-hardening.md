@@ -1,7 +1,7 @@
 ---
 id: T-220
 title: "Authenticator: shell hardening leftovers from the T-214 review"
-status: in-progress
+status: done
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-214, T-215, T-216]
@@ -14,7 +14,7 @@ owner: "session-20261108-1600"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-24
-updated: 2026-11-01
+updated: 2026-11-08
 ---
 
 # T-220 - Authenticator: shell hardening leftovers from the T-214 review
@@ -69,6 +69,8 @@ Filled in by the agent when it moves the task to `review`.
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
 
+- 2026-11-08 15:21 · approve · PR #394 merged into main @ 835e021 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-24 17:45 · claude · (new) → blocked · created from the last review round of PR #356
@@ -76,3 +78,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-11-01 18:54 · kanban-board · blocked → backlog · blockers done: T-214, T-215, T-216
 - 2026-11-05 10:25 · claude · conflicts_with T-234 added (enrollment files)
 - 2026-11-08 16:00 · scholtz · backlog → in-progress · claimed by session-20261108-1600 on task/T-220
+- 2026-11-08 15:21 · user · in-progress → done · PR #394 merged into main @ 835e021 (synced by kanban-sync)
