@@ -75,6 +75,12 @@ File layout (`lib/totp/backup/backup_format.dart`): `"BTBK"`, version, KDF id, A
 
 The passphrase needs at least 12 characters and an estimated 50 bits, is typed twice, and is never stored, logged or kept after use. It cannot be recovered: the screen says so. Restoring adds the accounts that are not already there (duplicates are counted and skipped) after showing them. After the phone's biometrics changed the old vault cannot be opened; restoring then replaces it with a new vault holding the file's accounts and returns to the lock screen. `test/codes/backup_screen_test.dart` also checks that only the vault and the backup code read a saved seed.
 
+### Identity, motion and haptics (T-231)
+
+The mark (a shield with a check, blue `#1B5E8C`) is drawn once as a vector in `lib/ui/brand_mark.dart` and once in `tool/make_brand_assets.py`, which writes the iOS icons (light, dark and tinted), the iOS launch image, the legacy Android launcher icons, and the Android vector drawables (adaptive icon with a monochrome layer, splash mark); run `python tool/make_brand_assets.py` after changing the mark (Pillow). Android 12 and newer use the system splash with the mark; older versions and iOS show the mark on the system background colour, light or dark.
+
+`lib/ui/motion.dart` is the one answer to "may anything move": the system's reduce-motion setting (`disableAnimations`) turns off the page transitions and the gliding countdown ring. `Haptics` (`lib/ui/haptics.dart`) is the only code that calls the platform feedback (copy, approve, deny, error), and plays nothing under reduce-motion. The lock screen has no animation. Codes and the countdown use tabular figures. None of this has run on a device.
+
 ## Config
 
 The Biatec OIDC base URL comes from `--dart-define=OIDC_BASE_URL=...` and defaults to the mock OIDC

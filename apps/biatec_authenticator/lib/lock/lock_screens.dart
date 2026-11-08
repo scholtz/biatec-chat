@@ -39,9 +39,7 @@ class LockScreen extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  ExcludeSemantics(
-                      child: Icon(Icons.lock_outline,
-                          size: 64, color: theme.colorScheme.primary)),
+                  const Center(child: BrandMark(size: 72)),
                   const SizedBox(height: AppSpacing.m),
                   Semantics(
                     header: true,

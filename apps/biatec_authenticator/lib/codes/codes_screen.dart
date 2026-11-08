@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -125,6 +127,7 @@ class _CodesScreenState extends State<CodesScreen> {
     final code = OtpGenerator.code(e.account, now);
     await widget.services.clipboard.copy(code);
     if (!mounted) return;
+    unawaited(Haptics.instance.copy(context));
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(const SnackBar(
