@@ -105,7 +105,13 @@ class PushController {
     if (transport == null) return;
     try {
       final record = await enrollment.read();
-      if (record == null) return;
+      if (record == null) {
+        // Signed out: nothing to retry.
+        _retry?.cancel();
+        _retry = null;
+        _retryDelay = null;
+        return;
+      }
       final pushToken = token ?? await transport.token();
       if (pushToken == null || pushToken.isEmpty) return;
       final pair = (record.deviceToken, pushToken);
@@ -116,9 +122,14 @@ class PushController {
       _registeredAt = _clock();
       _retry?.cancel();
       _retry = null;
+      _retryDelay = null;
     } on Object {
       // Polling still finds requests; it is tried again after [retryAfter], and on the next resume, token refresh or enrollment change.
-      _retry ??= Timer(retryAfter, () {
+      // Doubling from [retryAfter] to a quarter of an hour, so a server that keeps refusing is not asked every minute for ever.
+      final delay = _retryDelay = _retryDelay == null
+          ? retryAfter
+          : _min(_retryDelay! * 2, const Duration(minutes: 15));
+      _retry ??= Timer(delay, () {
         _retry = null;
         if (_transport != null) registerIfEnrolled();
       });
@@ -126,6 +137,9 @@ class PushController {
   }
 
   Timer? _retry;
+  Duration? _retryDelay;
+
+  static Duration _min(Duration a, Duration b) => a < b ? a : b;
 
   bool _fresh() {
     final at = _registeredAt;

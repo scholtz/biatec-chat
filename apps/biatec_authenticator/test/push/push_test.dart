@@ -216,6 +216,23 @@ void main() {
       expect(registry.calls, hasLength(settled), reason: 'stops once it works');
     });
 
+    test('a retry stops once the device is signed out', () async {
+      final retrying = PushController(
+        enrollment: store,
+        client: ApprovalClient(baseUrl: 'http://oidc', client: registry.client),
+        onOpenRequest: openedIds.add,
+        retryAfter: const Duration(milliseconds: 20),
+      );
+      addTearDown(retrying.dispose);
+      await store.write(record('dev-token'));
+      registry.status = 503;
+      await retrying.start(transport);
+      final tries = registry.calls.length;
+      await store.clear();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      expect(registry.calls, hasLength(tries), reason: 'nothing to retry');
+    });
+
     test('starting twice leaves one set of listeners', () async {
       await store.write(record('dev-token'));
       await push.start(transport);

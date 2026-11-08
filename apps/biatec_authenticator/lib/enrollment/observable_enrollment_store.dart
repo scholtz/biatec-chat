@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import 'enrollment_state.dart';
@@ -81,15 +83,23 @@ class ObservableEnrollmentStore extends ChangeNotifier
     final version = _version;
     final record = _record;
     try {
-      if (record == null) {
-        await _inner.clear().timeout(persistTimeout);
-      } else {
-        await _inner.write(record).timeout(persistTimeout);
+      final step = record == null ? _inner.clear() : _inner.write(record);
+      try {
+        await step.timeout(persistTimeout);
+      } on TimeoutException {
+        // Abandoned, not cancelled: when it does land (late, and possibly after a newer step) the latest state is written again, so a stale record never stays on the disk.
+        step.then((_) => _writeAgain(), onError: (Object _) {});
+        rethrow;
       }
       if (version == _version) _dirty = false;
     } on Object {
       // Stays dirty: the app works from memory and the next read tries again.
     }
+  }
+
+  void _writeAgain() {
+    _dirty = true;
+    _persistBehind(force: true);
   }
 
   void _persistBehind({bool force = false}) {

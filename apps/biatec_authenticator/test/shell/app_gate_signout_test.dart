@@ -84,6 +84,21 @@ class _CountingReads extends MemoryEnrollmentStore {
   }
 }
 
+/// The first write waits for [late], then lands; every later write is immediate.
+class _LateFirstWrite extends MemoryEnrollmentStore {
+  final late = Completer<void>();
+  bool _first = true;
+
+  @override
+  Future<void> write(EnrollmentRecord record) async {
+    if (_first) {
+      _first = false;
+      await late.future;
+    }
+    return super.write(record);
+  }
+}
+
 /// A write waits for ever while [hang] is set.
 class _HangThenWork extends MemoryEnrollmentStore {
   bool hang = true;
@@ -405,6 +420,27 @@ void main() {
       await store.flush();
       expect(store.unsaved, isFalse, reason: 'the retry reached the disk');
       expect((await inner.read())?.kid, 'dev-1');
+      store.dispose();
+    });
+
+    test(
+        'a write that lands late, after a newer one, does not leave stale data',
+        () async {
+      var now = DateTime.utc(2026, 10, 29, 12);
+      final inner = _LateFirstWrite();
+      final store = ObservableEnrollmentStore(inner,
+          clock: () => now, persistTimeout: const Duration(milliseconds: 30));
+      await store.write(_active); // A: the disk step hangs, then times out
+      await store.flush();
+      final newer = _active.withCodeShown();
+      await store.write(newer); // B: reaches the disk
+      await store.flush();
+      expect((await inner.read())?.recoveryCodeShown, isTrue);
+      inner.late.complete(); // A lands now, over B
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      await store.flush();
+      expect((await inner.read())?.recoveryCodeShown, isTrue,
+          reason: 'the latest state was written again over the late one');
       store.dispose();
     });
 
