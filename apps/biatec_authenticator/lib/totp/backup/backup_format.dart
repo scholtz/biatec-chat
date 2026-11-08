@@ -28,7 +28,7 @@ class BackupPolicy {
   const BackupPolicy({
     this.floor =
         const Argon2idParams(memoryKiB: 64 * 1024, iterations: 3, lanes: 4),
-    this.maxMemoryKiB = 1024 * 1024,
+    this.maxMemoryKiB = 256 * 1024,
     this.maxIterations = 12,
     this.maxLanes = 16,
     this.maxFileBytes = 4 * 1024 * 1024,

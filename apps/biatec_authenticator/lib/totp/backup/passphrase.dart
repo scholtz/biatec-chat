@@ -72,13 +72,19 @@ abstract final class Passphrase {
     final runes = lower.runes.toList();
     final counted = List<bool>.filled(runes.length, true);
     // Common passwords and walks inside it do not count.
+    // (Searched by character, not by UTF-16 unit, so an emoji before a word cannot shift the positions.)
     for (final c in _common) {
-      var at = lower.indexOf(c);
-      while (at >= 0) {
-        for (var i = at; i < at + c.length; i++) {
-          counted[i] = false;
+      final word = c.runes.toList();
+      for (var at = 0; at + word.length <= runes.length; at++) {
+        var match = true;
+        for (var j = 0; j < word.length && match; j++) {
+          match = runes[at + j] == word[j];
         }
-        at = lower.indexOf(c, at + 1);
+        if (match) {
+          for (var i = at; i < at + word.length; i++) {
+            counted[i] = false;
+          }
+        }
       }
     }
     // A character equal to the previous one, or one more or less than it (a run), adds nothing new.

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' show Rect;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:path_provider/path_provider.dart';
@@ -27,6 +28,8 @@ class SystemBackupFiles implements BackupFiles {
     try {
       await file.writeAsBytes(bytes, flush: true);
       final result = await SharePlus.instance.share(ShareParams(
+        // iPad needs somewhere to anchor the share popover.
+        sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
         files: [
           XFile(file.path, mimeType: 'application/octet-stream', name: fileName)
         ],

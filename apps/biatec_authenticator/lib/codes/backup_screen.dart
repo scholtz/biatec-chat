@@ -338,6 +338,7 @@ class _ImportBackupScreenState extends State<ImportBackupScreen> {
     });
     try {
       _preview?.wipe();
+      _preview = null;
       final existing = widget.controller == null
           ? const <OtpAccount>[]
           : [for (final e in widget.controller!.entries) e.account];

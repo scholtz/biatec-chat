@@ -477,5 +477,12 @@ void main() {
           reason: '12 characters but repeated');
       expect(Passphrase.check('Zürich Käse Äpfel Öl 7').accepted, isTrue);
     });
+
+    test('an emoji before a common word does not crash the estimate', () {
+      final v = Passphrase.check('\u{1F600}\u{1F600}password\u{1F600}xyz');
+      expect(v.accepted, isFalse);
+      expect(Passphrase.check('\u{1F600} password staple horse battery').bits,
+          greaterThan(0));
+    });
   });
 }
