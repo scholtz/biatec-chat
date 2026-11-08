@@ -61,7 +61,7 @@ class _FlakyHistory extends MemoryHistoryStore {
   }
 }
 
-/// Counts registrations asked for outside navigation events.
+/// Counts registrations asked for from outside (the controller registers by itself once started).
 class _CountingPush extends PushController {
   _CountingPush(ShellRig rig)
       : super(
@@ -449,7 +449,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('push is registered when the device becomes active',
+  testWidgets('the screens never ask for push registration: the push controller owns it',
       (tester) async {
     final rig = ShellRig();
     final push = _CountingPush(rig);
@@ -466,7 +466,7 @@ void main() {
     ));
     await tester.pump();
     await tester.pump();
-    expect(push.gateCalls, greaterThanOrEqualTo(1));
+    expect(push.gateCalls, 0);
     await tester.pumpWidget(const SizedBox());
   });
 

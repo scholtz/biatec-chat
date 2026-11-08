@@ -304,7 +304,6 @@ class _TabNavigator extends StatefulWidget {
 class _TabNavigatorState extends State<_TabNavigator> {
   /// Made once: a new observer on every rebuild would be detached and attached again, and miss what happened before.
   late final List<NavigatorObserver> _observers = [
-    if (widget.push != null) _ForwardingObserver(widget.push!),
     if (widget.stack != null) widget.stack!,
   ];
 
@@ -322,21 +321,6 @@ class _TabNavigatorState extends State<_TabNavigator> {
       ),
     );
   }
-}
-
-/// A [NavigatorObserver] belongs to one navigator, and the push controller has to hear about every tab's navigator, so each tab gets one of these that passes the events on.
-class _ForwardingObserver extends NavigatorObserver {
-  _ForwardingObserver(this.target);
-
-  final PushController target;
-
-  @override
-  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
-      target.didPush(route, previousRoute);
-
-  @override
-  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) =>
-      target.didPop(route, previousRoute);
 }
 
 /// A strip that marks a build talking to the mock Biatec OIDC, never to a real server.

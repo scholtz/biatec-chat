@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 
 import '../approvals/approval_client.dart';
 import '../enrollment/enrollment_store.dart';
+import '../enrollment/observable_enrollment_store.dart';
 import 'push_payload.dart';
 import 'push_transport.dart';
 
@@ -14,7 +15,12 @@ import 'push_transport.dart';
 ///
 /// It exists before the transport does: the app renders first and [start]
 /// attaches the transport once Firebase is up.
-class PushController extends NavigatorObserver {
+///
+/// It is the one owner of registration: after [start] it registers by itself
+/// when the stored enrollment changes (when the store announces changes), when
+/// the app comes back to the front, and when the push token refreshes. Nothing
+/// else needs to ask.
+class PushController {
   PushController({
     required this.enrollment,
     required this.client,
@@ -58,25 +64,28 @@ class PushController extends NavigatorObserver {
         if (authReqIdFromPush(data) != null) _arrived.add(null);
       }))
       ..add(transport.tokenRefreshes.listen((t) => registerIfEnrolled(t)));
+    // Coming back to the app retries a registration that failed earlier.
+    _lifecycle = AppLifecycleListener(onResume: registerIfEnrolled);
+    // A new, replaced or cleared enrollment is a reason to register (or to stop using the old one).
+    final store = enrollment;
+    if (store is ObservableEnrollmentStore) {
+      _watched = store;
+      store.addListener(_enrollmentChanged);
+    }
     final launch = await transport.launchPayload();
     if (launch != null) _open(launch);
     await registerIfEnrolled();
   }
 
+  AppLifecycleListener? _lifecycle;
+  Listenable? _watched;
+
+  void _enrollmentChanged() => registerIfEnrolled();
+
   void _open(Map<String, Object?> data) {
     final id = authReqIdFromPush(data);
     if (id != null) onOpenRequest(id);
   }
-
-  // Every navigation (for example back from enrollment) is also a chance to
-  // register a device that was not enrolled before, or was re-enrolled.
-  @override
-  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
-      registerIfEnrolled();
-
-  @override
-  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) =>
-      registerIfEnrolled();
 
   /// Registers the push token once this device is enrolled. Safe to call
   /// often; failures are retried on the next call.
@@ -110,6 +119,10 @@ class PushController extends NavigatorObserver {
   }
 
   Future<void> dispose() async {
+    _watched?.removeListener(_enrollmentChanged);
+    _watched = null;
+    _lifecycle?.dispose();
+    _lifecycle = null;
     for (final s in _subs) {
       await s.cancel();
     }
