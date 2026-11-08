@@ -281,9 +281,15 @@ void main() {
 
     test('touches are not gated window-wide on partial occlusion', () {
       // Gating every partially obscured touch locks the whole app on Android 10 and 11 whenever a chat head, a screen filter or even the
-      // app's own toast is on screen; the partial-occlusion gap is documented and left to a check on the approve action.
-      expect(activity, isNot(contains('override fun dispatchTouchEvent(')));
-      expect(activity, contains('Known gap on Android 10 and 11'));
+      // app's own toast is on screen. The activity only notes the flag, and the approve action asks for it (T-220, touch_guard_test.dart).
+      final from = activity.indexOf('override fun dispatchTouchEvent(');
+      expect(from, isNonNegative);
+      final body =
+          activity.substring(from, activity.indexOf('\n    }\n', from));
+      expect(body, contains('return super.dispatchTouchEvent(ev)'));
+      expect(body, isNot(contains('return true')));
+      expect(body, isNot(contains('return false')));
+      expect(activity, contains('asks for it on the approve action'));
     });
 
     test('the release build is not debuggable and strips logging', () {
