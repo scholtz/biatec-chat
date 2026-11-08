@@ -59,7 +59,11 @@ Write the failing test first for every security rule. Never log, print or put in
 
 ## Hand-off
 
-Filled in by the agent when it moves the task to `review`.
+PR #393 merged @ d9a18a5 (branch task/T-231).
+
+Shield mark (Dart vector plus generated icons), Android adaptive and monochrome icon and splash, iOS light/dark/tinted icons and launch image, Motion policy (reduce-motion), quiet page transitions, gliding countdown ring, Haptics helper, empty-state illustration. Three review rounds, record on the PR. Not run on a device (O-1); the iOS dark and tinted icon entries were written without Xcode.
+
+**Unblocks:** nothing.
 
 ## Review
 
