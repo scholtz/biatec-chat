@@ -1,7 +1,7 @@
 ---
 id: T-231
 title: "Authenticator: brand identity, motion and haptics"
-status: blocked
+status: backlog
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-219, T-224, T-227, T-228, T-229, T-226]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
-updated: 2026-10-28
+updated: 2026-11-08
 ---
 
 # T-231 - Authenticator: brand identity, motion and haptics
@@ -70,3 +70,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:00 · claude · (new) → blocked · created from the request to add two-factor codes, a biometric lock and industry-standard security
 - 2026-10-28 09:42 · kanban-board · backlog → blocked · waiting on: T-219, T-224
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
+- 2026-11-08 14:26 · kanban-board · blocked → backlog · blockers done: T-219, T-224, T-227, T-228, T-229, T-226

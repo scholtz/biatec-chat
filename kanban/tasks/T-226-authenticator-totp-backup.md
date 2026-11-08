@@ -1,7 +1,7 @@
 ---
 id: T-226
 title: "Authenticator: encrypted backup and restore of two-factor accounts"
-status: in-progress
+status: done
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-223, T-224]
@@ -14,7 +14,7 @@ owner: "session-20261106-1100"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
-updated: 2026-11-02
+updated: 2026-11-08
 ---
 
 # T-226 - Authenticator: encrypted backup and restore of two-factor accounts
@@ -64,6 +64,8 @@ Filled in by the agent when it moves the task to `review`.
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
 
+- 2026-11-08 14:26 · approve · PR #392 merged into main @ b034c52 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-28 09:00 · claude · (new) → blocked · created from the request to add two-factor codes, a biometric lock and industry-standard security
@@ -71,3 +73,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
 - 2026-11-02 17:56 · kanban-board · blocked → backlog · blockers done: T-223, T-224
 - 2026-11-06 11:00 · scholtz · backlog → in-progress · claimed by session-20261106-1100 on task/T-226
+- 2026-11-08 14:26 · user · in-progress → done · PR #392 merged into main @ b034c52 (synced by kanban-sync)
