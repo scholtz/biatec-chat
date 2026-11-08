@@ -1,7 +1,7 @@
 ---
 id: T-220
 title: "Authenticator: shell hardening leftovers from the T-214 review"
-status: backlog
+status: in-progress
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-214, T-215, T-216]
@@ -9,9 +9,9 @@ area: ["apps/biatec_authenticator/lib/shell/**", "apps/biatec_authenticator/lib/
 parallel: no
 conflicts_with: [T-222, T-225, T-234]
 issue: "#357"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-220"
+owner: "session-20261108-1600"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-24
 updated: 2026-11-01
@@ -75,3 +75,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-29 · claude · blocked · criteria replaced with what review round 19 of PR #356 left open (rounds 10–18 fixed the earlier list); reviews capped there on the user's decision
 - 2026-11-01 18:54 · kanban-board · blocked → backlog · blockers done: T-214, T-215, T-216
 - 2026-11-05 10:25 · claude · conflicts_with T-234 added (enrollment files)
+- 2026-11-08 16:00 · scholtz · backlog → in-progress · claimed by session-20261108-1600 on task/T-220
