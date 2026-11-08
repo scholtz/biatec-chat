@@ -39,7 +39,7 @@ const short = computed(() => shortAddress(props.primaryAddress));
         <template v-else>{{ t("shell.guest") }}</template>
       </p>
     </div>
-    <Button v-if="signingIn" variant="ghost" size="sm" data-testid="cancel-sign-in" @click="emit('cancelSignIn')">
+    <Button v-if="signingIn" variant="ghost" size="sm" data-testid="cancel-sign-in" :aria-label="t('shell.cancelSignInLabel')" @click="emit('cancelSignIn')">
       {{ t("shell.cancelSignIn") }}
     </Button>
     <Button v-else-if="authenticated" variant="ghost" size="sm" data-testid="sign-out" @click="emit('signOut')">

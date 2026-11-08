@@ -395,9 +395,9 @@ export function useChat(svc: ChatServices) {
    * The user's own way out of a sign-in or sign-out that is waiting. The popup's `closed` flag is not a cancel signal:
    * once the identity provider sends Cross-Origin-Opener-Policy the opener reads it as true from the start.
    */
-  let cancelWaiting = false;
+  let waiting: { cancelled: boolean } | null = null;
   function cancelSignIn(): void {
-    if (phase.value === "waiting" || phase.value === "opening") cancelWaiting = true;
+    if (waiting && (phase.value === "waiting" || phase.value === "opening")) waiting.cancelled = true;
   }
 
   const POPUP_FEATURES = "popup=yes,width=480,height=720";
@@ -414,7 +414,7 @@ export function useChat(svc: ChatServices) {
       return false;
     }
     phase.value = "opening";
-    cancelWaiting = false;
+    const mine = (waiting = { cancelled: false });
     const fail = (): false => {
       try {
         popup.close();
@@ -431,7 +431,7 @@ export function useChat(svc: ChatServices) {
       if (cookieOk) await refreshSession();
     }
     const started = opts.scope ? await svc.auth.startElevate(opts.scope) : await svc.auth.startLogin();
-    if (!started || disposed) {
+    if (!started || disposed || mine.cancelled) {
       fail();
       if (!cookieOk && !disposed) phase.value = "no-cookies";
       return false;
@@ -441,9 +441,9 @@ export function useChat(svc: ChatServices) {
 
     const pollMs = svc.pollMs ?? 1000;
     const deadline = Date.now() + (svc.timeoutMs ?? 5 * 60_000);
-    while (!disposed && Date.now() < deadline && !cancelWaiting) {
+    while (!disposed && Date.now() < deadline && !mine.cancelled) {
       await sleep(pollMs);
-      if (cancelWaiting) break;
+      if (mine.cancelled) break;
       const status = await svc.auth.status(started.authRequestId);
       if (status === "Complete") {
         try {
@@ -458,6 +458,8 @@ export function useChat(svc: ChatServices) {
       }
       if (status === "Failed") return fail();
     }
+    // A cancel can race a flow that finished a moment earlier: look at the session once so the header is not stale.
+    if (mine.cancelled && !disposed) await refreshSession();
     return fail();
   }
 
@@ -479,14 +481,14 @@ export function useChat(svc: ChatServices) {
         /* already closed */
       }
     };
-    cancelWaiting = false;
+    const mine = (waiting = { cancelled: false });
     phase.value = "waiting";
     popup.location.href = svc.auth.logoutUrl();
     const pollMs = svc.pollMs ?? 1000;
     const deadline = Date.now() + (svc.timeoutMs ?? 60_000);
-    while (!disposed && Date.now() < deadline && !cancelWaiting) {
+    while (!disposed && Date.now() < deadline && !mine.cancelled) {
       await sleep(pollMs);
-      if (cancelWaiting) break;
+      if (mine.cancelled) break;
       const s = await svc.auth.session();
       if (s && s.tier === "Anonymous") {
         session.value = s;

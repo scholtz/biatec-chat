@@ -27,6 +27,7 @@
     "signedIn": "Signed in",
     "signIn": "Sign in",
     "cancelSignIn": "Cancel",
+    "cancelSignInLabel": "Cancel the sign-in or sign-out in progress",
     "signOut": "Sign out",
     "expand": "Expand to full screen",
     "exitFullScreen": "Exit full screen",

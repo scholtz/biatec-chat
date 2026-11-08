@@ -246,8 +246,10 @@ describe("sign-in popup", () => {
     svc.auth.status = vi.fn(async () => (++polls < 3 ? ("Pending" as const) : ("Complete" as const)));
     const w = await open(svc);
     await w.get("[data-testid=sign-in]").trigger("click");
-    await vi.waitFor(() => expect(polls).toBeGreaterThanOrEqual(3));
-    expect(w.find(".bc-signin-status").exists() && w.get(".bc-signin-status").text().includes("did not complete")).toBe(false);
+    await vi.waitFor(() => expect(w.find("[data-testid=cancel-sign-in]").exists()).toBe(false));
+    expect(polls).toBe(3);
+    expect(w.find(".bc-signin-status").exists()).toBe(false);
+    expect(popup.close).toHaveBeenCalledTimes(1);
     w.unmount();
   });
 

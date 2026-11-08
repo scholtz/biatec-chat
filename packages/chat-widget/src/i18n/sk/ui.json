@@ -27,6 +27,7 @@
     "signedIn": "Prihlásený",
     "signIn": "Prihlásiť sa",
     "cancelSignIn": "Zrušiť",
+    "cancelSignInLabel": "Zrušiť prebiehajúce prihlásenie alebo odhlásenie",
     "signOut": "Odhlásiť sa",
     "expand": "Zväčšiť na celú obrazovku",
     "exitFullScreen": "Ukončiť celú obrazovku",
