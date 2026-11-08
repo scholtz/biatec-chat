@@ -26,6 +26,7 @@
     "guest": "Guest",
     "signedIn": "Signed in",
     "signIn": "Sign in",
+    "cancelSignIn": "Cancel",
     "signOut": "Sign out",
     "expand": "Expand to full screen",
     "exitFullScreen": "Exit full screen",

@@ -391,6 +391,15 @@ export function useChat(svc: ChatServices) {
     return p ? t("chat.previewAnnounce", { intent: p.preview.intent }) : "";
   }
 
+  /**
+   * The user's own way out of a sign-in or sign-out that is waiting. The popup's `closed` flag is not a cancel signal:
+   * once the identity provider sends Cross-Origin-Opener-Policy the opener reads it as true from the start.
+   */
+  let cancelWaiting = false;
+  function cancelSignIn(): void {
+    if (phase.value === "waiting" || phase.value === "opening") cancelWaiting = true;
+  }
+
   const POPUP_FEATURES = "popup=yes,width=480,height=720";
 
   /**
@@ -405,6 +414,7 @@ export function useChat(svc: ChatServices) {
       return false;
     }
     phase.value = "opening";
+    cancelWaiting = false;
     const fail = (): false => {
       try {
         popup.close();
@@ -431,9 +441,9 @@ export function useChat(svc: ChatServices) {
 
     const pollMs = svc.pollMs ?? 1000;
     const deadline = Date.now() + (svc.timeoutMs ?? 5 * 60_000);
-    let closedSeen = false;
-    while (!disposed && Date.now() < deadline) {
+    while (!disposed && Date.now() < deadline && !cancelWaiting) {
       await sleep(pollMs);
+      if (cancelWaiting) break;
       const status = await svc.auth.status(started.authRequestId);
       if (status === "Complete") {
         try {
@@ -447,11 +457,6 @@ export function useChat(svc: ChatServices) {
         return true;
       }
       if (status === "Failed") return fail();
-      // The user closed the popup: allow one more poll for a flow that finished just before, then give up.
-      if (popup.closed) {
-        if (closedSeen) return fail();
-        closedSeen = true;
-      }
     }
     return fail();
   }
@@ -474,13 +479,14 @@ export function useChat(svc: ChatServices) {
         /* already closed */
       }
     };
+    cancelWaiting = false;
     phase.value = "waiting";
     popup.location.href = svc.auth.logoutUrl();
     const pollMs = svc.pollMs ?? 1000;
     const deadline = Date.now() + (svc.timeoutMs ?? 60_000);
-    let closedSeen = false;
-    while (!disposed && Date.now() < deadline) {
+    while (!disposed && Date.now() < deadline && !cancelWaiting) {
       await sleep(pollMs);
+      if (cancelWaiting) break;
       const s = await svc.auth.session();
       if (s && s.tier === "Anonymous") {
         session.value = s;
@@ -489,10 +495,6 @@ export function useChat(svc: ChatServices) {
         phase.value = "idle";
         announce(t("chat.signedOut"));
         return true;
-      }
-      if (popup.closed) {
-        if (closedSeen) break;
-        closedSeen = true;
       }
     }
     closePopup();
@@ -526,5 +528,5 @@ export function useChat(svc: ChatServices) {
     held.clear();
   });
 
-  return { confirmPreview, authorizePreview, cancelPreview, messages, session, tier, busy, phase, announcement, start, send, signIn, signOut, refreshSession, resetConversation };
+  return { confirmPreview, authorizePreview, cancelPreview, messages, session, tier, busy, phase, announcement, start, send, signIn, cancelSignIn, signOut, refreshSession, resetConversation };
 }
