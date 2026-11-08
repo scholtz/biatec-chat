@@ -50,10 +50,20 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
     _controller = widget.services.controllerFor(widget.authReqId)..load();
     _felt = _controller.phase;
     _controller.addListener(_feel);
-    // Redraws the countdown.
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
-    });
+  }
+
+  /// Redraws the countdown once a second, but only while the screen can be seen: a card in a tab that is not showing sits under a [TickerMode] that is off (see the shell), and a timer does not know about that, so this follows it.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (TickerMode.valuesOf(context).enabled) {
+      _ticker ??= Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    } else {
+      _ticker?.cancel();
+      _ticker = null;
+    }
   }
 
   late ApprovalPhase _felt;
@@ -116,12 +126,44 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
           final can = _canAct(c);
           return ApprovalActionBar(
             busy: c.phase == ApprovalPhase.working,
-            onApprove: can ? () => c.approve(_code.text) : null,
+            onApprove: can ? () => _approve(c) : null,
             onDeny: can ? c.deny : null,
           );
         },
       ),
     );
+  }
+
+  /// Approve, unless another app's window was drawn over part of the screen at the touch (Android 10 and 11): then nothing is sent and the user is told.
+  bool _approving = false;
+
+  Future<void> _approve(ApprovalController c) async {
+    // A second tap while the check runs does not start a second approval.
+    if (_approving) return;
+    _approving = true;
+    try {
+      await _approveChecked(c);
+    } finally {
+      _approving = false;
+    }
+  }
+
+  Future<void> _approveChecked(ApprovalController c) async {
+    final obscured = await widget.services.touchGuard.partiallyObscured();
+    // The request may have expired, been decided elsewhere or the screen gone while the platform answered.
+    if (!mounted || !_canAct(c)) return;
+    if (obscured) {
+      unawaited(Haptics.instance.error(context));
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+            key: Key('touch-obscured'),
+            content: Text('Another app is drawing over this screen, so the '
+                'approval was not sent. Close it (a chat bubble or a screen '
+                'filter) and tap Approve again.')));
+      return;
+    }
+    await c.approve(_code.text);
   }
 
   /// Back to the list (or wherever the request was opened from).

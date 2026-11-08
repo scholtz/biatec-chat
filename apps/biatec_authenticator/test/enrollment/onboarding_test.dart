@@ -528,6 +528,7 @@ void main() {
       await _start(tester);
       await _enroll(tester);
 
+      await rig.controller.store.forgetMemory();
       final gate = Completer<void>();
       rig.store.readGate = gate;
       rig.store.failRead = true;
@@ -636,7 +637,8 @@ void main() {
       // The server has the device but this app may not, so connecting again stays possible.
       expect(find.byKey(const Key('enroll-again-button')), findsOneWidget);
 
-      // The enrollment is in the store after all: checking again opens it.
+      // The enrollment is in the store after all (as after a restart): checking again opens it.
+      await rig.controller.store.forgetMemory();
       await rig.store.write(EnrollmentRecord(
           kid: 'dev-1',
           deviceToken: 'tok',

@@ -103,7 +103,7 @@ void main() {
   group('controller', () {
     late FakeTransport transport;
     late FakeRegistry registry;
-    late MemoryEnrollmentStore store;
+    late ObservableEnrollmentStore store;
     late List<String> openedIds;
     late PushController push;
     late DateTime now;
@@ -111,7 +111,7 @@ void main() {
     setUp(() {
       transport = FakeTransport();
       registry = FakeRegistry();
-      store = MemoryEnrollmentStore();
+      store = ObservableEnrollmentStore(MemoryEnrollmentStore());
       openedIds = [];
       now = DateTime.utc(2026, 10, 19, 12);
       push = PushController(
@@ -146,7 +146,7 @@ void main() {
 
       // A new enrollment (new device token) registers again.
       await store.write(record('dev-token-2'));
-      await push.registerIfEnrolled('push-2');
+      await pumpEventQueue(); // the store announced it: no one asks
       expect(registry.calls.last['auth'], 'Device dev-token-2');
       expect(registry.calls, hasLength(3));
 
@@ -156,13 +156,11 @@ void main() {
       expect(registry.calls, hasLength(4));
     });
 
-    test('a re-enrollment registers at once on the next navigation', () async {
+    test('a re-enrollment registers at once, without anyone asking', () async {
       await store.write(record('dev-token'));
       await push.start(transport);
       expect(registry.calls, hasLength(1));
       await store.write(record('dev-token-new'));
-      push.didPop(
-          MaterialPageRoute<void>(builder: (_) => const SizedBox()), null);
       await pumpEventQueue();
       expect(registry.calls.last['auth'], 'Device dev-token-new');
     });
@@ -173,14 +171,76 @@ void main() {
       expect(registry.calls, isEmpty);
     });
 
-    test('navigation registers a device enrolled after start', () async {
+    test('a device enrolled after start is registered when the store says so',
+        () async {
       await push.start(transport);
       expect(registry.calls, isEmpty);
       await store.write(record('dev-token'));
-      final route = MaterialPageRoute<void>(builder: (_) => const SizedBox());
-      push.didPop(route, null);
       await pumpEventQueue();
       expect(registry.calls, hasLength(1));
+    });
+
+    test('a sign-out registers nothing, and stopping listening is clean',
+        () async {
+      await store.write(record('dev-token'));
+      await push.start(transport);
+      await store.clear();
+      await pumpEventQueue();
+      expect(registry.calls, hasLength(1));
+      await push.dispose();
+      await store.write(record('dev-token-2'));
+      await pumpEventQueue();
+      expect(registry.calls, hasLength(1), reason: 'no longer listening');
+    });
+
+    test(
+        'a failed registration is tried again by itself, without anyone asking',
+        () async {
+      final retrying = PushController(
+        enrollment: store,
+        client: ApprovalClient(baseUrl: 'http://oidc', client: registry.client),
+        onOpenRequest: openedIds.add,
+        retryAfter: const Duration(milliseconds: 20),
+      );
+      addTearDown(retrying.dispose);
+      await store.write(record('dev-token'));
+      registry.status = 503;
+      await retrying.start(transport);
+      expect(registry.calls, hasLength(1));
+      registry.status = 200;
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      await pumpEventQueue();
+      expect(registry.calls.length, greaterThanOrEqualTo(2));
+      final settled = registry.calls.length;
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(registry.calls, hasLength(settled), reason: 'stops once it works');
+    });
+
+    test('a retry stops once the device is signed out', () async {
+      final retrying = PushController(
+        enrollment: store,
+        client: ApprovalClient(baseUrl: 'http://oidc', client: registry.client),
+        onOpenRequest: openedIds.add,
+        retryAfter: const Duration(milliseconds: 20),
+      );
+      addTearDown(retrying.dispose);
+      await store.write(record('dev-token'));
+      registry.status = 503;
+      await retrying.start(transport);
+      final tries = registry.calls.length;
+      await store.clear();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      expect(registry.calls, hasLength(tries), reason: 'nothing to retry');
+    });
+
+    test('starting twice leaves one set of listeners', () async {
+      await store.write(record('dev-token'));
+      await push.start(transport);
+      await push.start(transport);
+      expect(registry.calls, hasLength(1));
+      await store.write(record('dev-token-2'));
+      await pumpEventQueue();
+      expect(registry.calls, hasLength(2), reason: 'one registration, not two');
     });
 
     test('a refused registration is retried on the next call', () async {

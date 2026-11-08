@@ -61,7 +61,7 @@ class _FlakyHistory extends MemoryHistoryStore {
   }
 }
 
-/// Counts registrations asked for outside navigation events.
+/// Counts registrations asked for from outside (the controller registers by itself once started).
 class _CountingPush extends PushController {
   _CountingPush(ShellRig rig)
       : super(
@@ -320,6 +320,68 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets(
+      'turning a tab active while the app is in the background loads nothing',
+      (tester) async {
+    final rig = ShellRig();
+    final active = ValueNotifier(false);
+    final foreground = ValueNotifier(true);
+    var loads = 0;
+    await tester.pumpWidget(MaterialApp(
+        home: PendingScreen(
+            services: rig.approvals,
+            pollEvery: const Duration(hours: 1),
+            backgroundEvery: const Duration(hours: 1),
+            active: active,
+            foreground: foreground,
+            onCount: (_) => loads++)));
+    await tester.pump();
+    await tester.pump();
+    foreground.value = false;
+    await tester.pump();
+    final before = loads;
+    active.value = true;
+    await tester.pump();
+    await tester.pump();
+    expect(loads, before, reason: 'nobody can see the list');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+      'a screen on top slows the poll to the background rate at once, and coming off speeds it up',
+      (tester) async {
+    final rig = ShellRig();
+    final navigator = GlobalKey<NavigatorState>();
+    var loads = 0;
+    await tester.pumpWidget(MaterialApp(
+        navigatorKey: navigator,
+        home: PendingScreen(
+            services: rig.approvals,
+            pollEvery: const Duration(seconds: 5),
+            backgroundEvery: const Duration(seconds: 30),
+            onCount: (_) => loads++)));
+    await tester.pump();
+    await tester.pump();
+    navigator.currentState!.push(MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: Text('a card'))));
+    await tester.pumpAndSettle();
+    final covered = loads;
+    await tester.pump(const Duration(seconds: 25));
+    await tester.pump();
+    expect(loads, covered, reason: 'not at the fast rate under a card');
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pump();
+    expect(loads, covered + 1, reason: 'once at the slow rate');
+
+    navigator.currentState!.pop();
+    await tester.pumpAndSettle();
+    final shown = loads;
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pump();
+    expect(loads, greaterThan(shown), reason: 'fast again when uncovered');
+    await tester.pumpWidget(const SizedBox());
+  });
+
   test('the app going to the background and back is passed on', () {
     final c = ShellController();
     c.appPaused();
@@ -387,7 +449,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('push is registered when the device becomes active',
+  testWidgets('the screens never ask for push registration: the push controller owns it',
       (tester) async {
     final rig = ShellRig();
     final push = _CountingPush(rig);
@@ -404,7 +466,7 @@ void main() {
     ));
     await tester.pump();
     await tester.pump();
-    expect(push.gateCalls, greaterThanOrEqualTo(1));
+    expect(push.gateCalls, 0);
     await tester.pumpWidget(const SizedBox());
   });
 

@@ -56,7 +56,7 @@ What the committed project files enforce, each with a test in `test/platform_har
 | --- | --- | --- |
 | No backup or transfer | `allowBackup=false`, `fullBackupContent=false`, data extraction rules exclude every domain | app folders marked excluded from backup at launch; keychain items `_this_device` |
 | No screenshots or recording | `FLAG_SECURE` set before the first view; recents screenshot off (Android 13+) | cover view when the app is inactive (so the app switcher shows no content) and while the screen is recorded or mirrored. iOS has no way to block a screenshot of the app in front, so a screenshot there is not prevented |
-| Overlay and tapjacking | other apps' overlay windows hidden (Android 12+, `HIDE_OVERLAY_WINDOWS`); on Android 11 and older a touch through another app's overlay is dropped, which also disables a full-screen filter app's taps while it runs | - |
+| Overlay and tapjacking | other apps' overlay windows hidden (Android 12+, `HIDE_OVERLAY_WINDOWS`); on Android 11 and older a touch through another app's overlay is dropped, which also disables a full-screen filter app's taps while it runs; on Android 10 and 11 a touch that was only partly covered is checked on the approve action alone (`lib/security/touch_guard.dart`) | - |
 | No custom keyboard | - | `shouldAllowExtensionPointIdentifier` refuses keyboard extensions |
 | Release build | not debuggable, R8 minify and shrink, every `android.util.Log` call removed (and none in the app's own Kotlin) | - |
 | Privacy | cleartext off (pinned network config: T-229) | `PrivacyInfo.xcprivacy`: no tracking; push token declared |

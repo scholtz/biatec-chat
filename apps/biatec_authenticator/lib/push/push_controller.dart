@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 
 import '../approvals/approval_client.dart';
 import '../enrollment/enrollment_store.dart';
+import '../enrollment/observable_enrollment_store.dart';
 import 'push_payload.dart';
 import 'push_transport.dart';
 
@@ -14,13 +15,22 @@ import 'push_transport.dart';
 ///
 /// It exists before the transport does: the app renders first and [start]
 /// attaches the transport once Firebase is up.
-class PushController extends NavigatorObserver {
+///
+/// It is the one owner of registration: after [start] it registers by itself
+/// when the stored enrollment changes (when the store announces changes), when
+/// the app comes back to the front, and when the push token refreshes. Nothing
+/// else needs to ask.
+class PushController {
   PushController({
     required this.enrollment,
     required this.client,
     required this.onOpenRequest,
     DateTime Function()? clock,
+    this.retryAfter = const Duration(minutes: 1),
   }) : _clock = clock ?? DateTime.now;
+
+  /// A registration that failed (offline, a server error) is tried again after this long, until it works: nothing else would, for a user who stays in the app.
+  final Duration retryAfter;
 
   final EnrollmentStore enrollment;
   final ApprovalClient client;
@@ -51,6 +61,8 @@ class PushController extends NavigatorObserver {
   /// Attaches [transport]. Call after the first frame, so a launch payload
   /// finds a mounted navigator.
   Future<void> start(PushTransport transport) async {
+    // Once: a second start would leave the first listeners behind.
+    if (_transport != null) return;
     _transport = transport;
     _subs
       ..add(transport.opened.listen(_open))
@@ -58,25 +70,28 @@ class PushController extends NavigatorObserver {
         if (authReqIdFromPush(data) != null) _arrived.add(null);
       }))
       ..add(transport.tokenRefreshes.listen((t) => registerIfEnrolled(t)));
+    // Coming back to the app retries a registration that failed earlier.
+    _lifecycle = AppLifecycleListener(onResume: registerIfEnrolled);
+    // A new, replaced or cleared enrollment is a reason to register (or to stop using the old one).
+    final store = enrollment;
+    if (store is ObservableEnrollmentStore) {
+      _watched = store;
+      store.addListener(_enrollmentChanged);
+    }
     final launch = await transport.launchPayload();
     if (launch != null) _open(launch);
     await registerIfEnrolled();
   }
 
+  AppLifecycleListener? _lifecycle;
+  Listenable? _watched;
+
+  void _enrollmentChanged() => registerIfEnrolled();
+
   void _open(Map<String, Object?> data) {
     final id = authReqIdFromPush(data);
     if (id != null) onOpenRequest(id);
   }
-
-  // Every navigation (for example back from enrollment) is also a chance to
-  // register a device that was not enrolled before, or was re-enrolled.
-  @override
-  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
-      registerIfEnrolled();
-
-  @override
-  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) =>
-      registerIfEnrolled();
 
   /// Registers the push token once this device is enrolled. Safe to call
   /// often; failures are retried on the next call.
@@ -90,7 +105,13 @@ class PushController extends NavigatorObserver {
     if (transport == null) return;
     try {
       final record = await enrollment.read();
-      if (record == null) return;
+      if (record == null) {
+        // Signed out: nothing to retry.
+        _retry?.cancel();
+        _retry = null;
+        _retryDelay = null;
+        return;
+      }
       final pushToken = token ?? await transport.token();
       if (pushToken == null || pushToken.isEmpty) return;
       final pair = (record.deviceToken, pushToken);
@@ -99,10 +120,26 @@ class PushController extends NavigatorObserver {
           record.deviceToken, transport.provider, pushToken);
       _registered = pair;
       _registeredAt = _clock();
+      _retry?.cancel();
+      _retry = null;
+      _retryDelay = null;
     } on Object {
-      // Polling still finds requests; the next call retries.
+      // Polling still finds requests; it is tried again after [retryAfter], and on the next resume, token refresh or enrollment change.
+      // Doubling from [retryAfter] to a quarter of an hour, so a server that keeps refusing is not asked every minute for ever.
+      final delay = _retryDelay = _retryDelay == null
+          ? retryAfter
+          : _min(_retryDelay! * 2, const Duration(minutes: 15));
+      _retry ??= Timer(delay, () {
+        _retry = null;
+        if (_transport != null) registerIfEnrolled();
+      });
     }
   }
+
+  Timer? _retry;
+  Duration? _retryDelay;
+
+  static Duration _min(Duration a, Duration b) => a < b ? a : b;
 
   bool _fresh() {
     final at = _registeredAt;
@@ -110,6 +147,12 @@ class PushController extends NavigatorObserver {
   }
 
   Future<void> dispose() async {
+    _retry?.cancel();
+    _retry = null;
+    _watched?.removeListener(_enrollmentChanged);
+    _watched = null;
+    _lifecycle?.dispose();
+    _lifecycle = null;
     for (final s in _subs) {
       await s.cancel();
     }

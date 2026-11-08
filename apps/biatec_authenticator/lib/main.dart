@@ -80,8 +80,6 @@ Future<void> main() async {
   await WidgetsBinding.instance.endOfFrame;
   final transport = await FcmPushTransport.create(firebase);
   if (transport == null) return;
-  // Coming back to the app retries a registration that failed earlier.
-  AppLifecycleListener(onResume: push.registerIfEnrolled);
   // The OS shows nothing for a push while the app is open, so say it here.
   push.requestArrived.listen((_) => showRequestArrived(messenger, shell));
   await push.start(transport);
@@ -191,7 +189,6 @@ class _AuthenticatorAppState extends State<AuthenticatorApp> {
       builder: (context, _) => MaterialApp(
         navigatorKey: widget.navigatorKey,
         scaffoldMessengerKey: widget.messengerKey,
-        navigatorObservers: [if (push != null) push],
         title: 'Biatec Authenticator',
         theme: buildTheme(Brightness.light),
         darkTheme: buildTheme(Brightness.dark),

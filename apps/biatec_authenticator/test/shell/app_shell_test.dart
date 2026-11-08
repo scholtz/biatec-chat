@@ -57,7 +57,7 @@ class ShellRig {
             return http.Response('{"error":"not_found"}', 404);
           })),
       keys: settings.keys,
-      enrollment: ObservableEnrollmentStore(settings.enrollment),
+      enrollment: settings.enrollment,
       gate: FakeGate(),
       history: MemoryHistoryStore(),
       clock: () =>

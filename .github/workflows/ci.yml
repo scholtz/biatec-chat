@@ -15,6 +15,36 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Which parts of the repository a pull request touches. The authenticator jobs build an obfuscated, signed release APK, so backend-only and
+  # widget-only changes do not wait for them. Everything that is not a pull request (main through deploy-stage.yml, a manual run) runs them all,
+  # so what is deployed is always fully tested.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      authenticator: ${{ steps.filter.outputs.authenticator }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A pull request is checked out as a merge commit: its first parent is the base, so two commits are enough to see what the PR changes.
+          fetch-depth: 2
+      - id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "authenticator=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED="$(git diff --name-only HEAD^1 HEAD)"
+          echo "$CHANGED"
+          # The app, the consent protocol and mock Biatec OIDC its tests talk to, the documents the MASVS matrix check reads, and this workflow.
+          if echo "$CHANGED" | grep -Eq '^(apps/biatec_authenticator/|packages/consent-protocol/|docs/(AUTHENTICATOR-|threat-model\.md|required-changes-biatec-oidc\.md)|\.github/workflows/ci\.yml)'; then
+            echo "authenticator=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "authenticator=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No authenticator change: its jobs are skipped."
+          fi
+
   backend:
     runs-on: ubuntu-latest
     # Integration tests use the docker-compose dev databases (throwaway CI containers, dev-only password).
@@ -90,6 +120,8 @@ jobs:
           pnpm --filter @biatec/admin build
 
   authenticator:
+    needs: changes
+    if: needs.changes.outputs.authenticator == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -173,6 +205,8 @@ jobs:
 
   # The checks that keep docs/AUTHENTICATOR-SECURITY.md true (T-230). Separate from the build job so a failing release build still reports them.
   authenticator-security:
+    needs: changes
+    if: needs.changes.outputs.authenticator == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

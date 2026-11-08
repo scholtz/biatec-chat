@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import 'enrollment_state.dart';
@@ -5,10 +7,11 @@ import 'enrollment_store.dart';
 
 /// An [EnrollmentStore] that tells listeners when the stored enrollment changed, so the app notices at once when this device signs itself out (cancelling its own enrollment in Devices) instead of at the next tab change.
 ///
-/// It is also the one place that copes with storage that fails: an enrollment whose write failed is kept in memory and saved again later, and a sign-out whose clear failed still holds for the rest of the session. Writes and clears reach the storage one at a time, in the order they were asked for, so a slow write can never land after a sign-out that was asked for later. Reads do not wait in that line: a keystore that hangs on one read must not hold up the next.
+/// The enrollment lives in memory, which is the one authority: it is read from the disk once, and from then on every read answers from memory, every write and clear changes memory first (and tells the listeners), and the disk follows behind. So a keystore that fails or hangs can neither undo a sign-out, nor lose an enrollment the server already has, nor hold up the next write: one persisting step runs at a time, it starts again when something changed while it ran, and after a failure it is tried again when the app next asks (at most once per [saveRetryEvery]).
 class ObservableEnrollmentStore extends ChangeNotifier
     implements EnrollmentStore {
-  ObservableEnrollmentStore(this._inner, {DateTime Function()? clock})
+  ObservableEnrollmentStore(this._inner,
+      {DateTime Function()? clock, this.persistTimeout = defaultPersistTimeout})
       : _clock = clock ?? DateTime.now;
 
   final EnrollmentStore _inner;
@@ -18,127 +21,141 @@ class ObservableEnrollmentStore extends ChangeNotifier
   int get clearCount => _clearCount;
   int _clearCount = 0;
 
-  /// The last enrollment written, when its write failed. It is newer than anything on disk (the server has it), so the whole app works from it until it is saved.
-  EnrollmentRecord? _unsaved;
-  DateTime? _lastSaveTry;
-
-  /// How often a read tries again to save [_unsaved]; reads are frequent (the pending list polls).
+  /// How often a read tries again to persist a change that did not reach the disk; reads are frequent (the pending list polls).
   static const saveRetryEvery = Duration(seconds: 30);
 
-  /// The last clear did not reach the storage: what is on disk is the enrollment that was signed out, so it is never handed out, and the clear is tried again.
-  bool _clearFailed = false;
+  /// A disk step that takes longer than this counts as failed, so a keystore that hangs once does not stop every later save (it is tried again like any failure).
+  static const defaultPersistTimeout = Duration(seconds: 15);
+  final Duration persistTimeout;
 
-  /// The last write or clear asked for, while one is unfinished.
-  Future<void>? _tail;
-  int _queued = 0;
+  /// The enrollment, or null when signed out or never enrolled. Meaningful once [_known].
+  EnrollmentRecord? _record;
 
-  /// Runs [step] after every write or clear asked for before it. With none unfinished it starts at once rather than after an old finished future: such a future calls back in the zone it completed in, which need not be running any more.
-  Future<T> _serial<T>(Future<T> Function() step) {
-    Future<T> run() async {
-      try {
-        return await step();
-      } finally {
-        if (--_queued == 0) _tail = null;
-      }
-    }
+  /// Whether [_record] is the truth: it was loaded from the disk, or written or cleared since.
+  bool _known = false;
 
-    final previous = _tail;
-    _queued++;
-    final result = previous == null ? run() : previous.then((_) => run());
-    _tail = result.then((_) {}, onError: (Object _) {});
-    return result;
-  }
+  /// Counts changes made here; a persisting step or a load that ran across a change knows its answer is stale.
+  int _version = 0;
+
+  /// The disk does not hold [_record] yet.
+  bool _dirty = false;
+  Future<void>? _persisting;
+  DateTime? _lastTry;
+  Future<EnrollmentRecord?>? _loading;
 
   @override
   Future<EnrollmentRecord?> read() async {
-    final unsaved = _unsaved;
-    if (unsaved != null) {
-      _saveLater(unsaved);
-      return unsaved;
+    if (_known) {
+      _persistBehind();
+      return _record;
     }
-    if (_clearFailed) {
-      _clearLater();
-      return null;
-    }
-    final clears = _clearCount;
-    final writes = _writes;
-    final stored = await _inner.read();
-    // Signed out while this read ran: what it found is the old enrollment.
-    if (clears != _clearCount) return null;
-    // Written while this read ran: the write is newer than what the read found.
-    if (writes != _writes) return _unsaved ?? _lastWritten;
-    return _unsaved ?? stored;
+    return _load();
   }
 
-  /// Counts writes asked for, and the record of the latest; a read that ran across one answers with it.
-  int _writes = 0;
-  EnrollmentRecord? _lastWritten;
-
-  /// A retry of a failed clear is waiting in line; one is enough.
-  bool _clearQueued = false;
-
-  void _saveLater(EnrollmentRecord record) {
-    final last = _lastSaveTry;
-    if (last != null && _clock().difference(last) < saveRetryEvery) return;
-    _lastSaveTry = _clock();
-    _serial(() async {
-      if (!identical(_unsaved, record)) return; // replaced or signed out meanwhile
-      await _inner.write(record);
-      if (identical(_unsaved, record)) {
-        _unsaved = null;
-        // It replaced what a failed clear left behind.
-        _clearFailed = false;
-      }
-    }).ignore();
-  }
-
-  void _clearLater() {
-    if (_clearQueued) return;
-    _clearQueued = true;
-    _serial(() async {
+  /// One load at a time. A write or clear that happens meanwhile wins over what the disk said, also when the disk read fails.
+  Future<EnrollmentRecord?> _load() {
+    final running = _loading;
+    if (running != null) return running.then((_) => _answer());
+    final version = _version;
+    final result = () async {
       try {
-        if (!_clearFailed) return;
-        await _inner.clear();
-        _clearFailed = false;
+        final stored = await _inner.read();
+        if (version == _version && !_known) {
+          _record = stored;
+          _known = true;
+        }
+      } on Object {
+        // Changed here meanwhile: the answer is known. Otherwise nothing is, and the error is the caller's.
+        if (version == _version && !_known) rethrow;
       } finally {
-        _clearQueued = false;
+        _loading = null;
       }
-    }).ignore();
+      return _answer();
+    }();
+    _loading = result;
+    return result;
   }
 
+  EnrollmentRecord? _answer() => _record;
+
+  /// The disk takes the latest state. The same step for a write and for a clear, so it is written once.
+  Future<void> _persist() async {
+    final version = _version;
+    final record = _record;
+    try {
+      final step = record == null ? _inner.clear() : _inner.write(record);
+      try {
+        await step.timeout(persistTimeout);
+      } on TimeoutException {
+        // Abandoned, not cancelled: when it does land (late, and possibly after a newer step) the latest state is written again, so a stale record never stays on the disk.
+        step.then((_) => _writeAgain(), onError: (Object _) {});
+        rethrow;
+      }
+      if (version == _version) _dirty = false;
+    } on Object {
+      // Stays dirty: the app works from memory and the next read tries again.
+    }
+  }
+
+  void _writeAgain() {
+    _dirty = true;
+    _persistBehind(force: true);
+  }
+
+  void _persistBehind({bool force = false}) {
+    if (!_dirty || _persisting != null) return;
+    final last = _lastTry;
+    if (!force && last != null && _clock().difference(last) < saveRetryEvery) {
+      return;
+    }
+    _lastTry = _clock();
+    final version = _version;
+    _persisting = _persist().whenComplete(() {
+      _persisting = null;
+      // Changed while it ran: the newest state goes next, at once.
+      if (_dirty && version != _version) _persistBehind(force: true);
+    });
+  }
+
+  /// Memory first, then the disk behind: it completes at once and never waits for, or fails with, the storage.
   @override
   Future<void> write(EnrollmentRecord record) async {
-    _writes++;
-    _lastWritten = record;
-    // The newest enrollment from now on, until a later write or clear.
-    _unsaved = record;
-    _lastSaveTry = _clock();
-    await _serial(() async {
-      if (!identical(_unsaved, record)) return; // signed out meanwhile
-      await _inner.write(record);
-      if (identical(_unsaved, record)) {
-        _unsaved = null;
-        // A new enrollment replaced what a failed clear left behind.
-        _clearFailed = false;
-      }
-    });
+    _change(record);
     notifyListeners();
   }
 
   /// Announced at once, before the storage is cleared and even when that fails: the device was signed out on purpose, and the app must stop using it now. Reads from here on answer "not enrolled".
   @override
-  Future<void> clear() {
+  Future<void> clear() async {
     _clearCount++;
-    _unsaved = null;
-    _lastWritten = null;
-    _clearFailed = true;
-    final done = _serial(() async {
-      await _inner.clear();
-      _clearFailed = false;
-    });
+    _change(null);
     notifyListeners();
-    return done;
   }
+
+  void _change(EnrollmentRecord? record) {
+    _record = record;
+    _known = true;
+    _version++;
+    _dirty = true;
+    _persistBehind(force: true);
+  }
+
+  /// Completes when what was asked for so far has reached the disk, or the step failed (it then stays to be retried). For tests and for shutdown.
+  Future<void> flush() async {
+    while (_persisting != null) {
+      await _persisting;
+    }
+  }
+
+  /// For tests: drops the memory, as a restart does, so the next read goes to the disk.
+  @visibleForTesting
+  Future<void> forgetMemory() async {
+    await flush();
+    _known = false;
+  }
+
+  /// Whether a change is still waiting for the disk.
+  bool get unsaved => _dirty;
 
   @override
   Future<String?> readAlias() => _inner.readAlias();

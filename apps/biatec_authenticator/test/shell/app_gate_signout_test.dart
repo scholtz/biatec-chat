@@ -56,17 +56,57 @@ class _FlakyWrites extends MemoryEnrollmentStore {
   }
 }
 
-/// A read started while [hang] is set waits for [release].
+/// A read started while [hang] is set waits for [release], then fails when [failAfterHang] is set.
 class _HangOnce extends MemoryEnrollmentStore {
   bool hang = false;
+  bool failAfterHang = false;
   final release = Completer<void>();
 
   @override
   Future<EnrollmentRecord?> read() async {
     final hangs = hang;
     final record = await super.read();
-    if (hangs) await release.future;
+    if (hangs) {
+      await release.future;
+      if (failAfterHang) throw StateError('keystore locked');
+    }
     return record;
+  }
+}
+
+class _CountingReads extends MemoryEnrollmentStore {
+  int reads = 0;
+
+  @override
+  Future<EnrollmentRecord?> read() {
+    reads++;
+    return super.read();
+  }
+}
+
+/// The first write waits for [late], then lands; every later write is immediate.
+class _LateFirstWrite extends MemoryEnrollmentStore {
+  final late = Completer<void>();
+  bool _first = true;
+
+  @override
+  Future<void> write(EnrollmentRecord record) async {
+    if (_first) {
+      _first = false;
+      await late.future;
+    }
+    return super.write(record);
+  }
+}
+
+/// A write waits for ever while [hang] is set.
+class _HangThenWork extends MemoryEnrollmentStore {
+  bool hang = true;
+
+  @override
+  Future<void> write(EnrollmentRecord record) {
+    if (hang) return Completer<void>().future;
+    return super.write(record);
   }
 }
 
@@ -116,7 +156,7 @@ void main() {
         'a store that announces its change sends a signed-out device to enrollment at once',
         (tester) async {
       final rig = ShellRig();
-      final store = ObservableEnrollmentStore(rig.settings.enrollment);
+      final store = rig.settings.enrollment;
       await _pumpApp(tester, rig, _servicesWith(rig, store));
       expect(find.byType(NavigationBar), findsOneWidget);
 
@@ -165,6 +205,8 @@ void main() {
           recoveryCodeShown: true));
       await _pumpApp(tester, rig, _servicesWith(rig, broken));
       expect(find.text('Could not read this device'), findsOneWidget);
+      expect(find.byKey(const Key('mock-notice')), findsOneWidget,
+          reason: 'a mock build says so before the shell exists too');
       expect(find.byType(EnrollmentScreen), findsNothing);
 
       broken.broken = false;
@@ -177,6 +219,35 @@ void main() {
     });
   });
 
+  testWidgets('the enrollment screen of a mock build says so too',
+      (tester) async {
+    final rig = ShellRig(enrolled: false);
+    await _pumpApp(tester, rig, rig.approvals);
+    expect(find.byType(EnrollmentScreen), findsOneWidget);
+    expect(find.byKey(const Key('mock-notice')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+      'a resume that reads the store and finds no enrollment leaves the "could not read" screen',
+      (tester) async {
+    final rig = ShellRig(enrolled: false);
+    final broken = _BrokenStore();
+    await _pumpApp(tester, rig, _servicesWith(rig, broken));
+    expect(find.text('Could not read this device'), findsOneWidget);
+
+    // The keystore opens, and the device turns out never to have been enrolled.
+    broken.broken = false;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Could not read this device'), findsNothing);
+    expect(find.byType(EnrollmentScreen), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
       'an enrollment kept in memory after a failed write is not mistaken for a sign-out',
       (tester) async {
@@ -184,7 +255,7 @@ void main() {
     final inner = _FlakyWrites()..failWrites = true;
     final store = ObservableEnrollmentStore(inner);
     // Enrolled, but the write never landed: the store keeps it in memory.
-    await expectLater(store.write(_active), throwsA(anything));
+    await store.write(_active);
     await _pumpApp(tester, rig, _servicesWith(rig, store));
     expect(find.byType(NavigationBar), findsOneWidget);
 
@@ -228,14 +299,18 @@ void main() {
       final inner = _FlakyWrites();
       final store = ObservableEnrollmentStore(inner, clock: () => now);
       inner.failWrites = true;
-      await expectLater(store.write(_active), throwsA(anything));
+      await store.write(_active); // completes against memory, never throws
+      await store.flush();
+      expect(store.unsaved, isTrue);
       expect((await store.read())?.kid, 'dev-1',
           reason: 'the pending list and settings see the device enrolled');
       expect(await inner.read(), isNull);
       inner.failWrites = false;
       now = now.add(ObservableEnrollmentStore.saveRetryEvery);
       expect((await store.read())?.kid, 'dev-1');
+      await store.flush();
       expect((await inner.read())?.kid, 'dev-1', reason: 'saved by the read');
+      expect(store.unsaved, isFalse);
       store.dispose();
     });
 
@@ -243,10 +318,21 @@ void main() {
       final inner = _FlakyWrites();
       final store = ObservableEnrollmentStore(inner);
       await store.write(_active);
+      await store.flush();
       inner.failWrites = true;
       final shown = _active.withCodeShown();
-      await expectLater(store.write(shown), throwsA(anything));
+      await store.write(shown);
       expect((await store.read())?.recoveryCodeShown, isTrue);
+      store.dispose();
+    });
+
+    test('the disk is read once; after that memory answers', () async {
+      final inner = _CountingReads();
+      await inner.write(_active);
+      final store = ObservableEnrollmentStore(inner);
+      expect((await store.read())?.kid, 'dev-1');
+      expect((await store.read())?.kid, 'dev-1');
+      expect(inner.reads, 1);
       store.dispose();
     });
 
@@ -254,34 +340,124 @@ void main() {
         'a read that hangs does not hold up the next, and a sign-out during a read wins',
         () async {
       final inner = _HangOnce();
+      await inner.write(_active);
       final store = ObservableEnrollmentStore(inner);
-      await store.write(_active);
       inner.hang = true;
       final first = store.read();
       inner.hang = false;
-      expect((await store.read())?.kid, 'dev-1');
       await store.clear();
+      expect(await store.read(), isNull,
+          reason: 'known at once, without waiting for the disk');
       inner.release.complete();
       expect(await first, isNull, reason: 'it ran across the sign-out');
       store.dispose();
     });
 
+    test('a failed first read does not escape when a write happened meanwhile',
+        () async {
+      final inner = _HangOnce()..failAfterHang = true;
+      await inner.write(_active);
+      final store = ObservableEnrollmentStore(inner);
+      inner.hang = true;
+      final first = store.read();
+      inner.hang = false;
+      await store.write(_active.withCodeShown());
+      inner.release.complete();
+      expect((await first)?.recoveryCodeShown, isTrue,
+          reason: 'the write is the answer');
+      store.dispose();
+    });
+
+    test('a failed first read with nothing known is the caller\'s error',
+        () async {
+      final inner = _HangOnce()..failAfterHang = true;
+      inner.release.complete();
+      final store = ObservableEnrollmentStore(inner);
+      inner.hang = true;
+      await expectLater(store.read(), throwsA(anything));
+      inner.failAfterHang = false;
+      inner.hang = false;
+      expect(await store.read(), isNull, reason: 'the next read tries again');
+      store.dispose();
+    });
+
     test('a clear that fails still signs the device out, for every reader',
         () async {
+      var now = DateTime.utc(2026, 10, 29, 12);
       final inner = _FlakyWrites();
-      final store = ObservableEnrollmentStore(inner);
+      final store = ObservableEnrollmentStore(inner, clock: () => now);
       await store.write(_active);
+      await store.flush();
       var told = 0;
       store.addListener(() => told++);
       inner.failClear = true;
-      await expectLater(store.clear(), throwsA(anything));
+      await store.clear(); // never throws
       expect(store.clearCount, 1);
       expect(told, 1);
       expect(await store.read(), isNull,
           reason: 'the record left on disk is not handed out');
       inner.failClear = false;
+      now = now.add(ObservableEnrollmentStore.saveRetryEvery);
       expect(await store.read(), isNull);
+      await store.flush();
       expect(await inner.read(), isNull, reason: 'the clear was tried again');
+      store.dispose();
+    });
+
+    test(
+        'a disk step that hangs forever fails after a while and is tried again',
+        () async {
+      var now = DateTime.utc(2026, 10, 29, 12);
+      final inner = _HangThenWork();
+      final store = ObservableEnrollmentStore(inner,
+          clock: () => now, persistTimeout: const Duration(milliseconds: 30));
+      await store.write(_active);
+      await store.flush(); // returns once the step timed out
+      expect(store.unsaved, isTrue, reason: 'timed out, not saved');
+      inner.hang = false;
+      now = now.add(ObservableEnrollmentStore.saveRetryEvery);
+      await store.read();
+      await store.flush();
+      expect(store.unsaved, isFalse, reason: 'the retry reached the disk');
+      expect((await inner.read())?.kid, 'dev-1');
+      store.dispose();
+    });
+
+    test(
+        'a write that lands late, after a newer one, does not leave stale data',
+        () async {
+      var now = DateTime.utc(2026, 10, 29, 12);
+      final inner = _LateFirstWrite();
+      final store = ObservableEnrollmentStore(inner,
+          clock: () => now, persistTimeout: const Duration(milliseconds: 30));
+      await store.write(_active); // A: the disk step hangs, then times out
+      await store.flush();
+      final newer = _active.withCodeShown();
+      await store.write(newer); // B: reaches the disk
+      await store.flush();
+      expect((await inner.read())?.recoveryCodeShown, isTrue);
+      inner.late.complete(); // A lands now, over B
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      await store.flush();
+      expect((await inner.read())?.recoveryCodeShown, isTrue,
+          reason: 'the latest state was written again over the late one');
+      store.dispose();
+    });
+
+    test('a write that hangs does not hold up a later write or a sign-out',
+        () async {
+      final inner = _SlowWrites();
+      final store = ObservableEnrollmentStore(inner);
+      await store.write(_active); // the disk step hangs; this still completes
+      final shown = _active.withCodeShown();
+      await store.write(shown);
+      expect((await store.read())?.recoveryCodeShown, isTrue);
+      await store.clear();
+      expect(await store.read(), isNull);
+      inner.gate.complete();
+      await store.flush();
+      expect(await inner.read(), isNull,
+          reason: 'the newest state is what ends up on disk');
       store.dispose();
     });
 
@@ -289,12 +465,12 @@ void main() {
       final inner = _SlowWrites();
       final store = ObservableEnrollmentStore(inner);
       final writing = store.write(_active);
-      // Asked for while the write runs; done after it, in order.
       final clearing = store.clear();
       expect(store.clearCount, 1, reason: 'announced at once');
       inner.gate.complete();
       await writing;
       await clearing;
+      await store.flush();
       expect(await inner.read(), isNull);
       expect(await store.read(), isNull);
       store.dispose();
@@ -304,14 +480,17 @@ void main() {
       var now = DateTime.utc(2026, 10, 29, 12);
       final inner = _FlakyWrites()..failWrites = true;
       final store = ObservableEnrollmentStore(inner, clock: () => now);
-      await expectLater(store.write(_active), throwsA(anything));
+      await store.write(_active);
+      await store.flush();
       final tries = inner.writes;
       for (var i = 0; i < 5; i++) {
         expect((await store.read())?.kid, 'dev-1');
       }
+      await store.flush();
       expect(inner.writes, tries, reason: 'no write on every read');
       now = now.add(ObservableEnrollmentStore.saveRetryEvery);
       await store.read();
+      await store.flush();
       expect(inner.writes, tries + 1);
       store.dispose();
     });

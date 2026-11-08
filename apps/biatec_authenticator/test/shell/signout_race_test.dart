@@ -59,16 +59,16 @@ void main() {
     await c.refresh();
     expect(c.state.phase, EnrollmentPhase.active);
 
-    await store.clear();
+    await c.store.clear();
     c.signOut();
     expect(c.state.phase, EnrollmentPhase.notEnrolled,
         reason: 'at once, without reading anything');
     await c.refresh();
-    expect(await store.read(), isNull);
+    expect(await c.store.read(), isNull);
     expect(c.state.phase, EnrollmentPhase.notEnrolled);
 
     // A new enrollment in the store is picked up again.
-    await store.write(_record);
+    await c.store.write(_record);
     await c.refresh();
     expect(c.state.phase, EnrollmentPhase.active);
     c.dispose();
@@ -100,6 +100,8 @@ void main() {
     final c = _controller(store);
     await c.refresh();
     expect(c.state.phase, EnrollmentPhase.active);
+    // As after a restart: the next read goes to the disk, and the disk fails.
+    await c.store.forgetMemory();
     store.fail = true;
     await c.refresh();
     expect(c.readFailed, isTrue);

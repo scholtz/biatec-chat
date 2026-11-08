@@ -6,6 +6,7 @@ export 'empty_state.dart';
 export 'error_state.dart';
 export 'haptics.dart';
 export 'loading_skeleton.dart';
+export 'mock_notice.dart';
 export 'motion.dart';
 export 'offline_banner.dart';
 export 'scrollable_center.dart';

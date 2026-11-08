@@ -19,6 +19,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:biatec_authenticator/keys/key_security_level.dart';
+import 'package:biatec_authenticator/security/touch_guard.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 
 import 'support.dart';
@@ -125,7 +126,9 @@ DateTime vectorNow() =>
 
 class Harness {
   Harness(Map<String, Object?> request,
-      {DateTime? activeAt, String? attestation = 'h.p.s'}) {
+      {DateTime? activeAt,
+      String? attestation = 'h.p.s',
+      TouchGuard touchGuard = const NoTouchGuard()}) {
     oidc = FakeOidc(request);
     keys = SoftwareKeyStore(deviceTestKey());
     store = MemoryEnrollmentStore()
@@ -141,6 +144,7 @@ class Harness {
       enrollment: ObservableEnrollmentStore(store),
       gate: gate,
       history: history,
+      touchGuard: touchGuard,
       clock: () => now,
     );
   }

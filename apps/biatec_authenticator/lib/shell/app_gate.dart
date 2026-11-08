@@ -67,9 +67,6 @@ class _AppGateState extends State<AppGate> {
   /// Counts start-ups (the first and each retry), so a slow earlier one cannot cancel or finish a later one.
   int _attempt = 0;
 
-  /// Whether the device was active at the last notification, so push registration is asked for when it becomes so.
-  bool _wasActive = false;
-
   /// The store, which announces changes (see [ObservableEnrollmentStore]).
   ObservableEnrollmentStore get _store => widget.approvals.enrollment;
 
@@ -97,6 +94,7 @@ class _AppGateState extends State<AppGate> {
       onResume: () async {
         widget.shell.appResumed();
         await _refresh();
+        _recheckUnreadable();
       },
     );
     // The store says when the enrollment goes (this device cancelled itself in Devices).
@@ -135,9 +133,6 @@ class _AppGateState extends State<AppGate> {
     if (_enrollment.state.phase == EnrollmentPhase.active) _closeRecoveryCode();
     // The shell (and the screen inside it) is gone when the device is no longer usable.
     if (!active) _recoveryRoute = null;
-    // Enrolling is a swap of widgets, not a navigation, so registering for push is asked for here, once per activation.
-    if (active && !_wasActive) widget.push?.registerIfEnrolled();
-    _wasActive = active;
     // The stored enrollment is known; do not wait for network work in the rest of the refresh (the recovery code) to show it.
     // Also from "still checking" or "could not read": storage answered late or on a later try (a resume after unlocking), but it answered.
     if (_startup != _Startup.ready &&
@@ -159,6 +154,14 @@ class _AppGateState extends State<AppGate> {
       setState(() => _startup = _Startup.unreadable);
       return;
     }
+    setState(() => _startup = _Startup.ready);
+    _onPhase();
+  }
+
+  /// A resume that reads the store successfully and finds nothing means the device was never enrolled: the "could not read" screen goes and enrollment starts. (A resume that finds an enrollment leaves it through [_onPhase].)
+  void _recheckUnreadable() {
+    if (!mounted || _startup != _Startup.unreadable) return;
+    if (_enrollment.readFailed) return;
     setState(() => _startup = _Startup.ready);
     _onPhase();
   }
@@ -195,27 +198,42 @@ class _AppGateState extends State<AppGate> {
     super.dispose();
   }
 
+  /// A build pointed at the mock Biatec OIDC says so on every screen, also before the shell exists.
+  Widget _noticed(Widget screen) {
+    if (!widget.config.isMock) return screen;
+    return Column(children: [
+      // The strip is outside any Scaffold: its own Material keeps its text styled.
+      Material(
+          type: MaterialType.transparency,
+          child: SafeArea(
+              bottom: false, child: MockNotice(config: widget.config))),
+      Expanded(
+          child: MediaQuery.removePadding(
+              context: context, removeTop: true, child: screen)),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     switch (_startup) {
       case _Startup.loading:
-        return Scaffold(
+        return _noticed(Scaffold(
           body: Center(
             child: Semantics(
                 label: 'Loading', child: const CircularProgressIndicator()),
           ),
-        );
+        ));
       case _Startup.stuck:
-        return Scaffold(
+        return _noticed(Scaffold(
           body: ErrorState(
             title: 'Still checking this device',
             message: 'The secure storage on this device is slow to answer. '
                 'Your enrollment is not lost.',
             onRetry: _retry,
           ),
-        );
+        ));
       case _Startup.unreadable:
-        return Scaffold(
+        return _noticed(Scaffold(
           body: ErrorState(
             title: 'Could not read this device',
             message: 'The secure storage on this device did not open. Your '
@@ -223,7 +241,7 @@ class _AppGateState extends State<AppGate> {
                 'keeps failing.',
             onRetry: _retry,
           ),
-        );
+        ));
       case _Startup.ready:
         break;
     }
@@ -250,7 +268,8 @@ class _AppGateState extends State<AppGate> {
             ),
           );
         }
-        return EnrollmentScreen(config: widget.config, controller: _enrollment);
+        return _noticed(
+            EnrollmentScreen(config: widget.config, controller: _enrollment));
       },
     );
   }

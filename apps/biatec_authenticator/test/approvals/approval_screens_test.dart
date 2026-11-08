@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:biatec_authenticator/approvals/approval_card.dart';
 import 'package:biatec_authenticator/approvals/approval_screen.dart';
 import 'package:biatec_authenticator/approvals/consent_request.dart';
@@ -5,6 +7,7 @@ import 'package:biatec_authenticator/approvals/pending_screen.dart';
 import 'package:biatec_authenticator/approvals/widgets/approval_actions.dart';
 import 'package:biatec_authenticator/approvals/widgets/expiry.dart';
 import 'package:biatec_authenticator/approvals/widgets/mono.dart';
+import 'package:biatec_authenticator/security/touch_guard.dart';
 import 'package:biatec_authenticator/theme.dart';
 import 'package:biatec_authenticator/ui/ui.dart';
 import 'package:flutter/material.dart';
@@ -78,6 +81,29 @@ bool _enabled(WidgetTester tester, String key) {
     OutlinedButton(:final onPressed) => onPressed != null,
     _ => throw StateError('not a button: $key'),
   };
+}
+
+class _FlagGuard implements TouchGuard {
+  bool obscured = false;
+  int asked = 0;
+
+  @override
+  Future<bool> partiallyObscured() async {
+    asked++;
+    return obscured;
+  }
+}
+
+class _SlowGuard implements TouchGuard {
+  final release = Completer<void>();
+  int asked = 0;
+
+  @override
+  Future<bool> partiallyObscured() async {
+    asked++;
+    await release.future;
+    return false;
+  }
 }
 
 void main() {
@@ -715,6 +741,38 @@ void main() {
       await _end(tester);
     });
 
+    testWidgets(
+        'a card under a stopped TickerMode does not redraw every second',
+        (tester) async {
+      Future<bool> redraws(bool enabled) async {
+        final h = Harness(vectorRequest(_stepUp));
+        tester.view.physicalSize = const Size(400, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(MaterialApp(
+            home: TickerMode(
+                enabled: enabled,
+                child: ApprovalScreen(
+                    services: h.services,
+                    authReqId: h.oidc.request['auth_req_id'] as String))));
+        await tester.pump();
+        await tester.pump();
+        // The screen's own Scaffold is rebuilt only by the screen's own redraw.
+        var scaffoldBuilds = 0;
+        debugOnRebuildDirtyWidget = (element, builtOnce) {
+          if (element.widget is Scaffold) scaffoldBuilds++;
+        };
+        addTearDown(() => debugOnRebuildDirtyWidget = null);
+        await tester.pump(const Duration(milliseconds: 1100));
+        debugOnRebuildDirtyWidget = null;
+        await tester.pumpWidget(const SizedBox());
+        return scaffoldBuilds > 0;
+      }
+
+      expect(await redraws(true), isTrue, reason: 'a visible card ticks');
+      expect(await redraws(false), isFalse, reason: 'a hidden card does not');
+    });
+
     testWidgets('loading shows a skeleton, not a bare spinner', (tester) async {
       final h = Harness(vectorRequest(_stepUp));
       tester.view.physicalSize = const Size(400, 900);
@@ -742,6 +800,78 @@ void main() {
       expect(find.text('Approved.'), findsOneWidget);
       expect(find.text('Done'), findsOneWidget);
       expect(find.byKey(const Key('approve')), findsNothing);
+      await _end(tester);
+    });
+
+    testWidgets(
+        'a tap that was partly covered by another app sends nothing and says why',
+        (tester) async {
+      final guard = _FlagGuard()..obscured = true;
+      final h = Harness(vectorRequest(_stepUp), touchGuard: guard);
+      await _pumpApproval(tester, h);
+      await _code(tester, '483920');
+      await tester.tap(find.byKey(const Key('approve')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const Key('touch-obscured')), findsOneWidget);
+      expect(h.gate.asked, 0, reason: 'no biometric, no signing');
+      expect(find.text('Approved.'), findsNothing);
+      expect(guard.asked, 1);
+
+      // Closing the overlay and tapping again goes through.
+      guard.obscured = false;
+      await tester.pump(const Duration(seconds: 5));
+      await tester.tap(find.byKey(const Key('approve')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Approved.'), findsOneWidget);
+      await _end(tester);
+    });
+
+    testWidgets('a second tap while the check runs starts no second approval',
+        (tester) async {
+      final guard = _SlowGuard();
+      final h = Harness(vectorRequest(_stepUp), touchGuard: guard);
+      await _pumpApproval(tester, h);
+      await _code(tester, '483920');
+      await tester.tap(find.byKey(const Key('approve')));
+      await tester.tap(find.byKey(const Key('approve')));
+      await tester.pump();
+      expect(guard.asked, 1, reason: 'the second tap is ignored');
+      guard.release.complete();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(h.gate.asked, 1, reason: 'one biometric, one approval');
+      expect(find.text('Approved.'), findsOneWidget);
+      await _end(tester);
+    });
+
+    testWidgets('a request that ran out during the check is not approved',
+        (tester) async {
+      final guard = _SlowGuard();
+      final h = Harness(vectorRequest(_stepUp), touchGuard: guard);
+      await _pumpApproval(tester, h);
+      await _code(tester, '483920');
+      await tester.tap(find.byKey(const Key('approve')));
+      await tester.pump();
+      h.now = h.now.add(const Duration(hours: 1));
+      guard.release.complete();
+      await tester.pump();
+      await tester.pump();
+      expect(h.gate.asked, 0, reason: 'expired while the platform answered');
+      expect(find.text('Approved.'), findsNothing);
+      await _end(tester);
+    });
+
+    testWidgets('denying is not held up by the check', (tester) async {
+      final h = Harness(vectorRequest(_stepUp),
+          touchGuard: _FlagGuard()..obscured = true);
+      await _pumpApproval(tester, h);
+      await tester.tap(find.byKey(const Key('deny')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Denied.'), findsOneWidget);
       await _end(tester);
     });
 

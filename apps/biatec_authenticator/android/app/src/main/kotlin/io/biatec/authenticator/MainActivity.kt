@@ -2,9 +2,11 @@ package io.biatec.authenticator
 
 import android.os.Build
 import android.os.Bundle
+import android.view.MotionEvent
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 
 // FlutterFragmentActivity: BiometricPrompt (the lock and the vault) needs a FragmentActivity.
 class MainActivity : FlutterFragmentActivity() {
@@ -25,14 +27,34 @@ class MainActivity : FlutterFragmentActivity() {
         if (Build.VERSION.SDK_INT < 31) window.decorView.filterTouchesWhenObscured = true
     }
 
-    // Known gap on Android 10 and 11: the filter above drops a touch that lands under an overlay, but not one that is only partially
-    // obscured (an overlay painting a fake amount next to a real "Approve"). Stopping every partially obscured touch in this full-screen
-    // window would lock the whole app whenever a chat head or screen filter is on screen, and on Android 11 even the app's own toast
-    // counts. The fix is a check on the approve action alone, through a channel to Dart (T-220 follow-up); from Android 12 the overlay
-    // is hidden anyway.
+    // Android 10 and 11: the filter above drops a touch that lands under an overlay, but not one that is only partially obscured (an
+    // overlay painting a fake amount next to a real "Approve"). Dropping every partially obscured touch in this full-screen window would
+    // lock the whole app whenever a chat head or screen filter is on screen, and on Android 11 even the app's own toast counts. So the
+    // flag of every gesture is only noted here, and Dart asks for it on the approve action alone (channel io.biatec.authenticator/touch).
+    // From Android 12 the overlay is hidden anyway.
+    private var obscuredGesture = false
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (Build.VERSION.SDK_INT < 31) {
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) obscuredGesture = false
+            if ((ev.flags and MotionEvent.FLAG_WINDOW_IS_PARTIALLY_OBSCURED) != 0) obscuredGesture = true
+        }
+        return super.dispatchTouchEvent(ev)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // Whether the touch behind a tap was partly covered by another app's window (read once, then cleared).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "io.biatec.authenticator/touch")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "partiallyObscured") {
+                    val flagged = obscuredGesture
+                    obscuredGesture = false
+                    result.success(flagged)
+                } else {
+                    result.notImplemented()
+                }
+            }
         // The device key lives in the Android Keystore (KeystorePlugin); Dart reaches it over the channel io.biatec.authenticator/keystore.
         flutterEngine.plugins.add(KeystorePlugin(applicationContext))
         // The two-factor vault keys (AES-256-GCM, biometric-bound) live in the same keystore, behind io.biatec.authenticator/vault.

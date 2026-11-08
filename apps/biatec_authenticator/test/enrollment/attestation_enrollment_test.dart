@@ -202,13 +202,14 @@ void main() {
   });
 
   group('the refresh', () {
-    Future<(EnrollmentController, MemoryEnrollmentStore)> enrolled(
+    Future<(EnrollmentController, ObservableEnrollmentStore)> enrolled(
         FakeAttestation a) async {
       final store = MemoryEnrollmentStore();
       final c = build(a, store: store);
       await c.enroll(loginToken: 'login-alice');
       requests.clear();
-      return (c, store);
+      // The app's store: it is the one authority for the record.
+      return (c, c.store);
     }
 
     test(
