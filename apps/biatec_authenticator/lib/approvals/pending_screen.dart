@@ -118,35 +118,36 @@ class _PendingScreenState extends State<PendingScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _route = ModalRoute.of(context);
+    // The route tells when a screen goes on top of the list or comes off it (this runs on that change): the timer restarts at the rate that fits, instead of counting skipped ticks.
+    final covered = _covered;
+    if (covered != _wasCovered) {
+      _wasCovered = covered;
+      _startPolling();
+    }
   }
+
+  bool _wasCovered = false;
 
   void _onActive() {
     _startPolling();
-    if (_isActive && !_covered) _refresh();
+    // Nothing is loaded for a list nobody sees: another tab, a card on top, or the app in the background.
+    if (_isActive && !_covered && (widget.foreground?.value ?? true)) {
+      _refresh();
+    }
   }
 
-  /// Ticks skipped while the list is covered.
-  int _coveredTicks = 0;
+  /// Under a screen on top, or in a tab that is not showing, nobody sees the list but the badge still counts: it loads at the slower rate.
+  Duration get _rate =>
+      _isActive && !_covered ? widget.pollEvery : widget.backgroundEvery;
 
   void _startPolling() {
     _poll?.cancel();
     _poll = null;
-    _coveredTicks = 0;
     // Coming back after a long break refreshes through [refreshOn]; a short one waits for the next tick.
     if (!(widget.foreground?.value ?? true)) return;
-    _poll = Timer.periodic(
-        _isActive ? widget.pollEvery : widget.backgroundEvery, (_) {
+    _poll = Timer.periodic(_rate, (_) {
       // A tick during a slow load is skipped, not queued: on a slow network the loads would never settle.
       if (_running != null) return;
-      // Under a screen on top nobody sees the list, but the badge still counts: it loads at the slower rate of a tab that is not showing.
-      if (_isActive && _covered) {
-        _coveredTicks++;
-        if (_coveredTicks * widget.pollEvery.inMilliseconds <
-            widget.backgroundEvery.inMilliseconds) {
-          return;
-        }
-      }
-      _coveredTicks = 0;
       _refresh();
     });
   }

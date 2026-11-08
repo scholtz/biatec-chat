@@ -192,6 +192,26 @@ void main() {
   });
 
   testWidgets(
+      'a resume that reads the store and finds no enrollment leaves the "could not read" screen',
+      (tester) async {
+    final rig = ShellRig(enrolled: false);
+    final broken = _BrokenStore();
+    await _pumpApp(tester, rig, _servicesWith(rig, broken));
+    expect(find.text('Could not read this device'), findsOneWidget);
+
+    // The keystore opens, and the device turns out never to have been enrolled.
+    broken.broken = false;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Could not read this device'), findsNothing);
+    expect(find.byType(EnrollmentScreen), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
       'an enrollment kept in memory after a failed write is not mistaken for a sign-out',
       (tester) async {
     final rig = ShellRig();

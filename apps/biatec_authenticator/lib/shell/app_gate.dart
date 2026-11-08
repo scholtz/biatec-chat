@@ -97,6 +97,7 @@ class _AppGateState extends State<AppGate> {
       onResume: () async {
         widget.shell.appResumed();
         await _refresh();
+        _recheckUnreadable();
       },
     );
     // The store says when the enrollment goes (this device cancelled itself in Devices).
@@ -159,6 +160,14 @@ class _AppGateState extends State<AppGate> {
       setState(() => _startup = _Startup.unreadable);
       return;
     }
+    setState(() => _startup = _Startup.ready);
+    _onPhase();
+  }
+
+  /// A resume that reads the store successfully and finds nothing means the device was never enrolled: the "could not read" screen goes and enrollment starts. (A resume that finds an enrollment leaves it through [_onPhase].)
+  void _recheckUnreadable() {
+    if (!mounted || _startup != _Startup.unreadable) return;
+    if (_enrollment.readFailed) return;
     setState(() => _startup = _Startup.ready);
     _onPhase();
   }
