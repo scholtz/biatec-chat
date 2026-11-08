@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'ui/brand_mark.dart' show kBrandBlue;
+import 'ui/motion.dart' show quietPageTransitions;
+
 /// Spacing scale (dp). Use these instead of literals so screens line up.
 abstract final class AppSpacing {
   static const double xs = 4;
@@ -119,7 +122,7 @@ extension AppThemeContext on BuildContext {
 /// Material 3 theme. Type size follows the system scale (see largeTypeBuilder).
 ThemeData buildTheme(Brightness brightness) {
   final scheme = ColorScheme.fromSeed(
-    seedColor: const Color(0xFF1B5E8C),
+    seedColor: kBrandBlue,
     brightness: brightness,
   );
   final base = ThemeData(
@@ -133,6 +136,7 @@ ThemeData buildTheme(Brightness brightness) {
   return base.copyWith(
     scaffoldBackgroundColor: scheme.surface,
     visualDensity: VisualDensity.standard,
+    pageTransitionsTheme: quietPageTransitions,
     materialTapTargetSize: MaterialTapTargetSize.padded,
     textTheme: text.copyWith(
       headlineSmall: text.headlineSmall?.copyWith(fontWeight: FontWeight.w600),

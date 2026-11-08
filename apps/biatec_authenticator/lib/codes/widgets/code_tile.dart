@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme.dart';
 import '../../totp/core/otp_account.dart';
 import '../../totp/core/otp_generator.dart';
+import '../../ui/countdown_ring.dart';
 import '../codes_controller.dart';
 
 /// The words a screen reader says for a code: the digits one by one, in the groups they are shown in, so "123 456" is "1 2 3, 4 5 6".
@@ -129,10 +130,11 @@ class CodeTile extends StatelessWidget {
               ),
             )
           else
-            _Countdown(
+            CountdownRing(
                 key: Key('ring-${info.id}'),
                 fraction: OtpGenerator.fractionLeft(account, now),
-                seconds: left),
+                seconds: left,
+                urgent: left <= nextCodeWithin),
           if (dragHandle != null) dragHandle!,
           PopupMenuButton<TileAction>(
             key: Key('menu-${info.id}'),
@@ -151,45 +153,6 @@ class CodeTile extends StatelessWidget {
                   value: TileAction.delete, child: Text('Delete')),
             ],
           ),
-        ]),
-      ),
-    );
-  }
-}
-
-/// A ring that empties over the period, with the seconds left written inside: the time is never only a colour or a shape.
-class _Countdown extends StatelessWidget {
-  const _Countdown({super.key, required this.fraction, required this.seconds});
-
-  final double fraction;
-  final int seconds;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final urgent = seconds <= CodeTile.nextCodeWithin;
-    final color = urgent ? theme.colorScheme.error : theme.colorScheme.primary;
-    // The seconds are spoken by the screen's own announcements (10 s, 5 s, renewal), not by this node every second.
-    return ExcludeSemantics(
-      child: SizedBox(
-        width: 48,
-        height: 48,
-        child: Stack(alignment: Alignment.center, children: [
-          SizedBox(
-            width: 40,
-            height: 40,
-            child: CircularProgressIndicator(
-              value: fraction,
-              strokeWidth: 4,
-              color: color,
-              backgroundColor: theme.colorScheme.surfaceContainerHighest,
-            ),
-          ),
-          Text('$seconds',
-              style: theme.textTheme.labelLarge?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w700,
-                  fontFeatures: const [FontFeature.tabularFigures()])),
         ]),
       ),
     );

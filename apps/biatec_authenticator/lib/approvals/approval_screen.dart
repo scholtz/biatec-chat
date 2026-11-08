@@ -48,14 +48,36 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
   void initState() {
     super.initState();
     _controller = widget.services.controllerFor(widget.authReqId)..load();
+    _controller.addListener(_feel);
     // Redraws the countdown.
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
   }
 
+  ApprovalPhase? _felt;
+
+  /// A touch when the request is decided or fails, once per change of phase.
+  void _feel() {
+    final phase = _controller.phase;
+    if (phase == _felt || !mounted) return;
+    _felt = phase;
+    final haptics = Haptics.instance;
+    switch (phase) {
+      case ApprovalPhase.approved:
+        unawaited(haptics.approve(context));
+      case ApprovalPhase.denied:
+        unawaited(haptics.deny(context));
+      case ApprovalPhase.unavailable:
+        unawaited(haptics.error(context));
+      default:
+        break;
+    }
+  }
+
   @override
   void dispose() {
+    _controller.removeListener(_feel);
     _ticker?.cancel();
     _code.dispose();
     _controller.dispose();
