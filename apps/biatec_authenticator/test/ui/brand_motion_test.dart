@@ -149,21 +149,38 @@ void main() {
               find.byType(CircularProgressIndicator))
           .value;
 
-      await pumpApp(tester, ring(1));
+      await pumpApp(tester, ring(0.8));
       await tester.pumpAndSettle();
-      await tester.pumpWidget(MaterialApp(home: ring(0.5)));
+      await tester.pumpWidget(MaterialApp(home: ring(0.4)));
       await tester.pump();
       await tester.pump(Motion.ring ~/ 2);
-      expect(value(), allOf(greaterThan(0.5), lessThan(1.0)),
+      expect(value(), allOf(greaterThan(0.4), lessThan(0.8)),
           reason: 'part-way between the two values');
       await tester.pumpAndSettle();
-      expect(value(), 0.5);
+      expect(value(), 0.4);
 
       await pumpApp(tester, ring(1), reduced: true);
       await pumpApp(tester, ring(0.25), reduced: true);
       await tester.pumpAndSettle();
       expect(value(), 0.25, reason: 'immediately');
       expect(tester.hasRunningAnimations, isFalse);
+    });
+
+    testWidgets('a new period snaps the ring to full instead of refilling',
+        (tester) async {
+      Widget ring(double f) => Scaffold(
+          body: Center(
+              child: CountdownRing(fraction: f, seconds: 3, urgent: true)));
+      await pumpApp(tester, ring(0.05));
+      await tester.pumpAndSettle();
+      await pumpApp(tester, ring(1));
+      await tester.pump();
+      expect(
+          tester
+              .widget<CircularProgressIndicator>(
+                  find.byType(CircularProgressIndicator))
+              .value,
+          1.0);
     });
 
     testWidgets('nothing animates on the lock screen', (tester) async {
