@@ -1,7 +1,7 @@
 ---
 id: T-231
 title: "Authenticator: brand identity, motion and haptics"
-status: in-progress
+status: done
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-219, T-224, T-227, T-228, T-229, T-226]
@@ -65,6 +65,8 @@ Filled in by the agent when it moves the task to `review`.
 
 Written only by the user (or by `/kanban-review` on the user's behalf).
 
+- 2026-11-08 14:46 · approve · PR #393 merged into main @ d9a18a5 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-10-28 09:00 · claude · (new) → blocked · created from the request to add two-factor codes, a biometric lock and industry-standard security
@@ -72,3 +74,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
 - 2026-11-08 14:26 · kanban-board · blocked → backlog · blockers done: T-219, T-224, T-227, T-228, T-229, T-226
 - 2026-11-08 15:00 · scholtz · backlog → in-progress · claimed by session-20261108-1500 on task/T-231
+- 2026-11-08 14:46 · user · in-progress → done · PR #393 merged into main @ d9a18a5 (synced by kanban-sync)
