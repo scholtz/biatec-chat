@@ -17,7 +17,7 @@ const props = defineProps<{
   showMinimize: boolean;
   showClose: boolean;
 }>();
-const emit = defineEmits<{ signIn: []; signOut: []; toggleExpand: []; minimize: []; close: [] }>();
+const emit = defineEmits<{ signIn: []; signOut: []; cancelSignIn: []; toggleExpand: []; minimize: []; close: [] }>();
 
 const authenticated = computed(() => props.tier === "Authenticated");
 const short = computed(() => shortAddress(props.primaryAddress));
@@ -39,7 +39,10 @@ const short = computed(() => shortAddress(props.primaryAddress));
         <template v-else>{{ t("shell.guest") }}</template>
       </p>
     </div>
-    <Button v-if="authenticated" variant="ghost" size="sm" data-testid="sign-out" @click="emit('signOut')">
+    <Button v-if="signingIn" variant="ghost" size="sm" data-testid="cancel-sign-in" :aria-label="t('shell.cancelSignInLabel')" @click="emit('cancelSignIn')">
+      {{ t("shell.cancelSignIn") }}
+    </Button>
+    <Button v-else-if="authenticated" variant="ghost" size="sm" data-testid="sign-out" @click="emit('signOut')">
       {{ t("shell.signOut") }}
     </Button>
     <Button v-else variant="ghost" size="sm" data-testid="sign-in" :disabled="signingIn" @click="emit('signIn')">

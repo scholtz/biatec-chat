@@ -696,7 +696,8 @@ X-Biatec-Min-App-Build: 7
 - **Exposure:** the widget opens sign-in, elevation and sign-out in a popup with `window.open`, so every page that popup shows can reach the host page through `window.opener` (reverse tabnabbing: for example `window.opener.location = ...`). The backend's own pages in the flow are a redirect and a fixed close page; the pages that matter are Biatec OIDC's authorization and consent pages.
 - **Needed:** Biatec OIDC sends `Cross-Origin-Opener-Policy: same-origin` on its authorization, login, consent and logout pages. That severs the opener relation for the rest of the popup's life.
 - **Prerequisite in this repository:** with the header on, the opener sees `popup.closed === true` immediately, and `useChat` reads that as "the user closed the popup" and fails the sign-in after one more status poll. Before the header is switched on, the widget must stop using `popup.closed` as the cancel signal (the status polling and the 5 minute timeout already end a flow; a Cancel button while waiting would give the user the quick way out), and a severed popup closes itself through the close page's `window.close()` or is left for the user. Release the widget first, then ask for the header.
-- **Fallback in use:** none; the exposure needs a compromised Biatec OIDC (or backend) page, which is why the finding is rated Low. No change to the popup flow was made.
+- **Widget status (T-235):** the prerequisite is done. The widget no longer reads `popup.closed`; while it waits it shows a Cancel button in the header, and the status poll, the timeout and Cancel are the only ways a wait ends. The header can be switched on once this widget version is released and hosts have taken it (a popup the user closes by hand now ends the wait through Cancel or the timeout).
+- **Fallback in use:** none; the exposure needs a compromised Biatec OIDC (or backend) page, which is why the finding is rated Low.
 
 ## Proof of possession on device calls (BCHAT-030)
 

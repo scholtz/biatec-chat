@@ -34,6 +34,7 @@ const emit = defineEmits<{
   minimize: [];
   toggleExpand: [];
   signIn: [];
+  cancelSignIn: [];
   signOut: [];
   openPermissions: [];
   toggleActivity: [];
@@ -61,6 +62,7 @@ const asideId = `${props.id}-activity`;
       :show-expand="!inline"
       :show-close="!inline"
       @sign-in="emit('signIn')"
+      @cancel-sign-in="emit('cancelSignIn')"
       @sign-out="emit('signOut')"
       @toggle-expand="emit('toggleExpand')"
       @minimize="emit('minimize')"

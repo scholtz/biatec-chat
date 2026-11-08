@@ -225,14 +225,31 @@ describe("sign-in popup", () => {
     w.unmount();
   });
 
-  it("gives up when the user closes the popup", async () => {
+  it("gives up when the user presses Cancel while waiting", async () => {
     const popup = fakePopup();
-    (popup as { closed: boolean }).closed = true;
     const svc = services({ openPopup: () => popup });
     svc.auth.status = vi.fn(async () => "Pending" as const);
     const w = await open(svc);
     await w.get("[data-testid=sign-in]").trigger("click");
+    await vi.waitFor(() => expect(w.find("[data-testid=cancel-sign-in]").exists()).toBe(true));
+    await w.get("[data-testid=cancel-sign-in]").trigger("click");
     await vi.waitFor(() => expect(w.get(".bc-signin-status").text()).toContain("did not complete"));
+    expect(popup.close).toHaveBeenCalled();
+    w.unmount();
+  });
+
+  it("does not read popup.closed as a cancel (the provider may send Cross-Origin-Opener-Policy)", async () => {
+    const popup = fakePopup();
+    (popup as { closed: boolean }).closed = true;
+    const svc = services({ openPopup: () => popup });
+    let polls = 0;
+    svc.auth.status = vi.fn(async () => (++polls < 3 ? ("Pending" as const) : ("Complete" as const)));
+    const w = await open(svc);
+    await w.get("[data-testid=sign-in]").trigger("click");
+    await vi.waitFor(() => expect(w.find("[data-testid=cancel-sign-in]").exists()).toBe(false));
+    expect(polls).toBe(3);
+    expect(w.find(".bc-signin-status").exists()).toBe(false);
+    expect(popup.close).toHaveBeenCalledTimes(1);
     w.unmount();
   });
 
@@ -285,15 +302,14 @@ describe("sign out", () => {
     const svc = services({ sessions: [authed, anon], openPopup: () => popup });
     const w = await open(svc);
     await w.get("[data-testid=sign-out]").trigger("click");
-    await vi.waitFor(() => expect(w.find("[data-testid=sign-out]").exists()).toBe(false));
+    await vi.waitFor(() => expect(popup.close).toHaveBeenCalled());
+    await vi.waitFor(() => expect(w.find("[data-testid=sign-in]").exists()).toBe(true));
     expect(popup.location.href).toBe("https://chat.biatec.io/auth/logout");
-    expect(popup.close).toHaveBeenCalled();
     w.unmount();
   });
 
   it("keeps the session and messages when sign-out does not complete", async () => {
     const popup = fakePopup();
-    (popup as unknown as { closed: boolean }).closed = true;
     const svc = services({ sessions: [authed], openPopup: () => popup });
     const w = await open(svc);
     const chat = (w.vm as unknown as { chat?: { messages: unknown[] } }).chat;
@@ -302,6 +318,8 @@ describe("sign out", () => {
     await flushPromises();
     const before = w.text();
     await w.get("[data-testid=sign-out]").trigger("click");
+    await vi.waitFor(() => expect(w.find("[data-testid=cancel-sign-in]").exists()).toBe(true));
+    await w.get("[data-testid=cancel-sign-in]").trigger("click");
     await vi.waitFor(() => expect(w.text()).toContain("Sign-out did not complete"));
     expect(w.find("[data-testid=sign-out]").exists()).toBe(true);
     expect(w.text()).toContain("hello");

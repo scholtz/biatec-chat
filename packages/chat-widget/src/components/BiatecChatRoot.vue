@@ -283,6 +283,7 @@ onBeforeUnmount(() => {
       @minimize="minimize"
       @toggle-expand="core.toggleExpand()"
       @sign-in="chat.signIn()"
+      @cancel-sign-in="chat.cancelSignIn()"
       @sign-out="chat.signOut()"
       @open-permissions="ui.permissions ? agent.close() : agent.open()"
       @toggle-activity="ui.activity = !ui.activity"
