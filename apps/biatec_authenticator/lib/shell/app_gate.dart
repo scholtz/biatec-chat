@@ -198,27 +198,38 @@ class _AppGateState extends State<AppGate> {
     super.dispose();
   }
 
+  /// A build pointed at the mock Biatec OIDC says so on every screen, also before the shell exists.
+  Widget _noticed(Widget screen) {
+    if (!widget.config.isMock) return screen;
+    return Column(children: [
+      SafeArea(bottom: false, child: MockNotice(config: widget.config)),
+      Expanded(
+          child: MediaQuery.removePadding(
+              context: context, removeTop: true, child: screen)),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     switch (_startup) {
       case _Startup.loading:
-        return Scaffold(
+        return _noticed(Scaffold(
           body: Center(
             child: Semantics(
                 label: 'Loading', child: const CircularProgressIndicator()),
           ),
-        );
+        ));
       case _Startup.stuck:
-        return Scaffold(
+        return _noticed(Scaffold(
           body: ErrorState(
             title: 'Still checking this device',
             message: 'The secure storage on this device is slow to answer. '
                 'Your enrollment is not lost.',
             onRetry: _retry,
           ),
-        );
+        ));
       case _Startup.unreadable:
-        return Scaffold(
+        return _noticed(Scaffold(
           body: ErrorState(
             title: 'Could not read this device',
             message: 'The secure storage on this device did not open. Your '
@@ -226,7 +237,7 @@ class _AppGateState extends State<AppGate> {
                 'keeps failing.',
             onRetry: _retry,
           ),
-        );
+        ));
       case _Startup.ready:
         break;
     }
@@ -253,7 +264,8 @@ class _AppGateState extends State<AppGate> {
             ),
           );
         }
-        return EnrollmentScreen(config: widget.config, controller: _enrollment);
+        return _noticed(
+            EnrollmentScreen(config: widget.config, controller: _enrollment));
       },
     );
   }

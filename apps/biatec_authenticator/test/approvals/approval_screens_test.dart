@@ -715,6 +715,38 @@ void main() {
       await _end(tester);
     });
 
+    testWidgets(
+        'a card under a stopped TickerMode does not redraw every second',
+        (tester) async {
+      Future<bool> redraws(bool enabled) async {
+        final h = Harness(vectorRequest(_stepUp));
+        tester.view.physicalSize = const Size(400, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(MaterialApp(
+            home: TickerMode(
+                enabled: enabled,
+                child: ApprovalScreen(
+                    services: h.services,
+                    authReqId: h.oidc.request['auth_req_id'] as String))));
+        await tester.pump();
+        await tester.pump();
+        // The screen's own Scaffold is rebuilt only by the screen's own redraw.
+        var scaffoldBuilds = 0;
+        debugOnRebuildDirtyWidget = (element, builtOnce) {
+          if (element.widget is Scaffold) scaffoldBuilds++;
+        };
+        addTearDown(() => debugOnRebuildDirtyWidget = null);
+        await tester.pump(const Duration(milliseconds: 1100));
+        debugOnRebuildDirtyWidget = null;
+        await tester.pumpWidget(const SizedBox());
+        return scaffoldBuilds > 0;
+      }
+
+      expect(await redraws(true), isTrue, reason: 'a visible card ticks');
+      expect(await redraws(false), isFalse, reason: 'a hidden card does not');
+    });
+
     testWidgets('loading shows a skeleton, not a bare spinner', (tester) async {
       final h = Harness(vectorRequest(_stepUp));
       tester.view.physicalSize = const Size(400, 900);

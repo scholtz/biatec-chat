@@ -50,10 +50,20 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
     _controller = widget.services.controllerFor(widget.authReqId)..load();
     _felt = _controller.phase;
     _controller.addListener(_feel);
-    // Redraws the countdown.
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
-    });
+  }
+
+  /// Redraws the countdown once a second, but only while the screen can be seen: a card in a tab that is not showing sits under a [TickerMode] that is off (see the shell), and a timer does not know about that, so this follows it.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (TickerMode.valuesOf(context).enabled) {
+      _ticker ??= Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    } else {
+      _ticker?.cancel();
+      _ticker = null;
+    }
   }
 
   late ApprovalPhase _felt;

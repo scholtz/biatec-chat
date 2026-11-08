@@ -179,6 +179,8 @@ void main() {
           recoveryCodeShown: true));
       await _pumpApp(tester, rig, _servicesWith(rig, broken));
       expect(find.text('Could not read this device'), findsOneWidget);
+      expect(find.byKey(const Key('mock-notice')), findsOneWidget,
+          reason: 'a mock build says so before the shell exists too');
       expect(find.byType(EnrollmentScreen), findsNothing);
 
       broken.broken = false;
@@ -189,6 +191,15 @@ void main() {
       expect(find.byType(NavigationBar), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
+  });
+
+  testWidgets('the enrollment screen of a mock build says so too',
+      (tester) async {
+    final rig = ShellRig(enrolled: false);
+    await _pumpApp(tester, rig, rig.approvals);
+    expect(find.byType(EnrollmentScreen), findsOneWidget);
+    expect(find.byKey(const Key('mock-notice')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets(

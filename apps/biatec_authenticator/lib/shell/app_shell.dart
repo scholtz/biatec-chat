@@ -15,7 +15,7 @@ import '../privacy/phone_eraser.dart';
 import '../push/push_controller.dart';
 import '../settings/settings_screen.dart';
 import '../security/settings_controller.dart';
-import '../theme.dart';
+import '../ui/ui.dart';
 import '../update/update_guard.dart';
 import 'shell_controller.dart';
 import 'tab_reload.dart';
@@ -211,7 +211,7 @@ class _AppShellState extends State<AppShell> {
     );
     // A build pointed at the mock Biatec OIDC says so on every screen.
     final header = [
-      if (widget.config.isMock) _MockNotice(config: widget.config),
+      if (widget.config.isMock) MockNotice(config: widget.config),
       if (widget.banner != null) widget.banner!,
     ];
     // The same widgets with and without a header, so a banner that comes or goes does not rebuild the tabs.
@@ -317,44 +317,6 @@ class _TabNavigatorState extends State<_TabNavigator> {
         onGenerateRoute: (settings) => MaterialPageRoute<void>(
           settings: RouteSettings(name: '/${widget.tab.name}'),
           builder: (_) => widget.root,
-        ),
-      ),
-    );
-  }
-}
-
-/// A strip that marks a build talking to the mock Biatec OIDC, never to a real server.
-class _MockNotice extends StatelessWidget {
-  const _MockNotice({required this.config});
-
-  final AppConfig config;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.statusColors;
-    return Semantics(
-      container: true,
-      child: ColoredBox(
-        color: colors.warning,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.m, vertical: AppSpacing.xs),
-          child: Row(children: [
-            Icon(Icons.science_outlined, size: 16, color: colors.onWarning),
-            const SizedBox(width: AppSpacing.s),
-            Expanded(
-              child: Text(
-                'Mock Biatec OIDC \u00b7 ${config.oidcBaseUrl}',
-                key: const Key('mock-notice'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context)
-                    .textTheme
-                    .labelSmall
-                    ?.copyWith(color: colors.onWarning),
-              ),
-            ),
-          ]),
         ),
       ),
     );
