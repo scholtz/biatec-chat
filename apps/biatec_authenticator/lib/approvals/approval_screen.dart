@@ -126,12 +126,29 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
           final can = _canAct(c);
           return ApprovalActionBar(
             busy: c.phase == ApprovalPhase.working,
-            onApprove: can ? () => c.approve(_code.text) : null,
+            onApprove: can ? () => _approve(c) : null,
             onDeny: can ? c.deny : null,
           );
         },
       ),
     );
+  }
+
+  /// Approve, unless another app's window was drawn over part of the screen at the touch (Android 10 and 11): then nothing is sent and the user is told.
+  Future<void> _approve(ApprovalController c) async {
+    if (await widget.services.touchGuard.partiallyObscured()) {
+      if (!mounted) return;
+      unawaited(Haptics.instance.error(context));
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+            key: Key('touch-obscured'),
+            content: Text('Another app is drawing over this screen, so the '
+                'approval was not sent. Close it (a chat bubble or a screen '
+                'filter) and tap Approve again.')));
+      return;
+    }
+    await c.approve(_code.text);
   }
 
   /// Back to the list (or wherever the request was opened from).

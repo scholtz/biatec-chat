@@ -42,7 +42,7 @@ void main() {
           text.split('## Open items').last.split('## How this document').first;
       final lines =
           open.split('\n').where((l) => RegExp(r'^\| O-\d+').hasMatch(l));
-      expect(lines.length, greaterThanOrEqualTo(8));
+      expect(lines.length, greaterThanOrEqualTo(7));
       for (final l in lines) {
         expect(l.contains('owner:') || RegExp(r'T-\d{3}').hasMatch(l), isTrue,
             reason: l);

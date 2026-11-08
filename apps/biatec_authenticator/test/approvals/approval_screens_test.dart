@@ -5,6 +5,7 @@ import 'package:biatec_authenticator/approvals/pending_screen.dart';
 import 'package:biatec_authenticator/approvals/widgets/approval_actions.dart';
 import 'package:biatec_authenticator/approvals/widgets/expiry.dart';
 import 'package:biatec_authenticator/approvals/widgets/mono.dart';
+import 'package:biatec_authenticator/security/touch_guard.dart';
 import 'package:biatec_authenticator/theme.dart';
 import 'package:biatec_authenticator/ui/ui.dart';
 import 'package:flutter/material.dart';
@@ -78,6 +79,17 @@ bool _enabled(WidgetTester tester, String key) {
     OutlinedButton(:final onPressed) => onPressed != null,
     _ => throw StateError('not a button: $key'),
   };
+}
+
+class _FlagGuard implements TouchGuard {
+  bool obscured = false;
+  int asked = 0;
+
+  @override
+  Future<bool> partiallyObscured() async {
+    asked++;
+    return obscured;
+  }
 }
 
 void main() {
@@ -774,6 +786,42 @@ void main() {
       expect(find.text('Approved.'), findsOneWidget);
       expect(find.text('Done'), findsOneWidget);
       expect(find.byKey(const Key('approve')), findsNothing);
+      await _end(tester);
+    });
+
+    testWidgets(
+        'a tap that was partly covered by another app sends nothing and says why',
+        (tester) async {
+      final guard = _FlagGuard()..obscured = true;
+      final h = Harness(vectorRequest(_stepUp), touchGuard: guard);
+      await _pumpApproval(tester, h);
+      await _code(tester, '483920');
+      await tester.tap(find.byKey(const Key('approve')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const Key('touch-obscured')), findsOneWidget);
+      expect(h.gate.asked, 0, reason: 'no biometric, no signing');
+      expect(find.text('Approved.'), findsNothing);
+      expect(guard.asked, 1);
+
+      // Closing the overlay and tapping again goes through.
+      guard.obscured = false;
+      await tester.pump(const Duration(seconds: 5));
+      await tester.tap(find.byKey(const Key('approve')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Approved.'), findsOneWidget);
+      await _end(tester);
+    });
+
+    testWidgets('denying is not held up by the check', (tester) async {
+      final h = Harness(vectorRequest(_stepUp),
+          touchGuard: _FlagGuard()..obscured = true);
+      await _pumpApproval(tester, h);
+      await tester.tap(find.byKey(const Key('deny')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Denied.'), findsOneWidget);
       await _end(tester);
     });
 

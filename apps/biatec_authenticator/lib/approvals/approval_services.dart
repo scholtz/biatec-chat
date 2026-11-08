@@ -3,6 +3,7 @@ import '../enrollment/enrollment_store.dart';
 import '../enrollment/observable_enrollment_store.dart';
 import '../keys/device_key_store.dart';
 import '../security/device_proof.dart';
+import '../security/touch_guard.dart';
 import 'approval_client.dart';
 import 'approval_controller.dart';
 import 'biometric_gate.dart';
@@ -18,6 +19,7 @@ class ApprovalServices {
     required this.gate,
     required this.history,
     this.proof,
+    this.touchGuard = const NoTouchGuard(),
     DateTime Function()? clock,
   }) : clock = clock ?? DateTime.now;
 
@@ -35,6 +37,7 @@ class ApprovalServices {
       gate: gate,
       history: SecureHistoryStore(),
       proof: proof,
+      touchGuard: const PlatformTouchGuard(),
     );
   }
 
@@ -48,6 +51,9 @@ class ApprovalServices {
 
   /// Adds the proof of possession to device calls; null in tests that talk to a fake.
   final DeviceProofSigner? proof;
+
+  /// Checked on the approve action (Android 10 and 11, see [TouchGuard]).
+  final TouchGuard touchGuard;
   final DateTime Function() clock;
 
   ApprovalController controllerFor(String authReqId) => ApprovalController(
