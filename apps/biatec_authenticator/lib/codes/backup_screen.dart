@@ -349,6 +349,8 @@ class _ImportBackupScreenState extends State<ImportBackupScreen> {
         preview?.wipe();
         return;
       }
+      // The passphrase did its one job: it is not kept in the field.
+      if (preview != null) _pass.clear();
       setState(() => _preview = preview);
     } on BackupRefused catch (e) {
       if (mounted) setState(() => _problem = e.message);
@@ -376,15 +378,17 @@ class _ImportBackupScreenState extends State<ImportBackupScreen> {
       if (widget.afterBiometricsChanged) {
         n = await widget.service.restoreIntoFreshVault(preview);
       } else {
-        for (final a in preview.toAdd) {
+        // An account leaves the preview once it is in the list, so a retry after a failure adds only the rest.
+        for (final a in List<OtpAccount>.of(preview.toAdd)) {
           try {
             await widget.controller!.add(a);
             n++;
           } on AddRefused {
             // Added meanwhile by another path: skipped like any duplicate.
           }
+          preview.toAdd.remove(a);
+          a.wipe();
         }
-        preview.wipe();
       }
       if (!mounted) return;
       _pass.clear();

@@ -22,27 +22,28 @@ class SystemBackupFiles implements BackupFiles {
 
   @override
   Future<bool> share(Uint8List bytes, String fileName) async {
-    // The file exists only while the share sheet runs, in the app's temporary folder, and is removed afterwards (the backup is encrypted, but nothing needs to linger).
+    // The file lives in the app's temporary folder. It is not deleted when the sheet returns, because the receiving app may still be reading it (Android reports the sheet as done as soon as it opens); earlier backup files are removed before a new one is written, and the system clears the temporary folder.
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/$fileName');
     try {
-      await file.writeAsBytes(bytes, flush: true);
-      final result = await SharePlus.instance.share(ShareParams(
-        // iPad needs somewhere to anchor the share popover.
-        sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-        files: [
-          XFile(file.path, mimeType: 'application/octet-stream', name: fileName)
-        ],
-      ));
-      // Some platforms cannot say what the user chose (unavailable); only a closed sheet is a refusal.
-      return result.status != ShareResultStatus.dismissed;
-    } finally {
-      try {
-        if (await file.exists()) await file.delete();
-      } on Object {
-        // Left for the system to clear with the temporary folder.
+      await for (final old in dir.list()) {
+        if (old is File && old.path.endsWith('.biatecbackup')) {
+          await old.delete();
+        }
       }
+    } on Object {
+      // Not fatal: the new file overwrites one of the same name.
     }
+    await file.writeAsBytes(bytes, flush: true);
+    final result = await SharePlus.instance.share(ShareParams(
+      // iPad needs somewhere to anchor the share popover.
+      sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+      files: [
+        XFile(file.path, mimeType: 'application/octet-stream', name: fileName)
+      ],
+    ));
+    // Some platforms cannot say what the user chose (unavailable); only a closed sheet is a refusal.
+    return result.status != ShareResultStatus.dismissed;
   }
 
   @override
