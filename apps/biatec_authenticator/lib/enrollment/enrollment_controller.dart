@@ -306,18 +306,14 @@ class EnrollmentController extends ChangeNotifier {
     // retries the write).
     String? warning;
     var saved = false;
-    for (var i = 0; i < 3 && !saved; i++) {
-      try {
-        await store.write(record);
-        // The store works from memory and saves behind it: give the disk a moment to say whether it took it.
-        await store.flush().timeout(storeSettleTime, onTimeout: () {});
-        saved = !store.unsaved;
-        if (!saved) {
-          warning = 'Enrolled, but this device could not save it yet.';
-        }
-      } on Object catch (e) {
-        warning = 'Enrolled, but this device could not save it yet: $e';
-      }
+    try {
+      await store.write(record);
+      // The store works from memory and saves behind it, again and again: give the disk a moment to say whether it took it now.
+      await store.flush().timeout(storeSettleTime, onTimeout: () {});
+      saved = !store.unsaved;
+      if (!saved) warning = 'Enrolled, but this device could not save it yet.';
+    } on Object catch (e) {
+      warning = 'Enrolled, but this device could not save it yet: $e';
     }
     _set(EnrollmentState.fromRecord(record, _clock(),
         error: saved ? null : warning));

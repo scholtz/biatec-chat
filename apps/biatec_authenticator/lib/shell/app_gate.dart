@@ -202,7 +202,11 @@ class _AppGateState extends State<AppGate> {
   Widget _noticed(Widget screen) {
     if (!widget.config.isMock) return screen;
     return Column(children: [
-      SafeArea(bottom: false, child: MockNotice(config: widget.config)),
+      // The strip is outside any Scaffold: its own Material keeps its text styled.
+      Material(
+          type: MaterialType.transparency,
+          child: SafeArea(
+              bottom: false, child: MockNotice(config: widget.config))),
       Expanded(
           child: MediaQuery.removePadding(
               context: context, removeTop: true, child: screen)),

@@ -135,9 +135,24 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
   }
 
   /// Approve, unless another app's window was drawn over part of the screen at the touch (Android 10 and 11): then nothing is sent and the user is told.
+  bool _approving = false;
+
   Future<void> _approve(ApprovalController c) async {
-    if (await widget.services.touchGuard.partiallyObscured()) {
-      if (!mounted) return;
+    // A second tap while the check runs does not start a second approval.
+    if (_approving) return;
+    _approving = true;
+    try {
+      await _approveChecked(c);
+    } finally {
+      _approving = false;
+    }
+  }
+
+  Future<void> _approveChecked(ApprovalController c) async {
+    final obscured = await widget.services.touchGuard.partiallyObscured();
+    // The request may have expired, been decided elsewhere or the screen gone while the platform answered.
+    if (!mounted || !_canAct(c)) return;
+    if (obscured) {
       unawaited(Haptics.instance.error(context));
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()

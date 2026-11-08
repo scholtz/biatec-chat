@@ -26,7 +26,11 @@ class PushController {
     required this.client,
     required this.onOpenRequest,
     DateTime Function()? clock,
+    this.retryAfter = const Duration(minutes: 1),
   }) : _clock = clock ?? DateTime.now;
+
+  /// A registration that failed (offline, a server error) is tried again after this long, until it works: nothing else would, for a user who stays in the app.
+  final Duration retryAfter;
 
   final EnrollmentStore enrollment;
   final ApprovalClient client;
@@ -57,6 +61,8 @@ class PushController {
   /// Attaches [transport]. Call after the first frame, so a launch payload
   /// finds a mounted navigator.
   Future<void> start(PushTransport transport) async {
+    // Once: a second start would leave the first listeners behind.
+    if (_transport != null) return;
     _transport = transport;
     _subs
       ..add(transport.opened.listen(_open))
@@ -108,10 +114,18 @@ class PushController {
           record.deviceToken, transport.provider, pushToken);
       _registered = pair;
       _registeredAt = _clock();
+      _retry?.cancel();
+      _retry = null;
     } on Object {
-      // Polling still finds requests; the next call retries.
+      // Polling still finds requests; it is tried again after [retryAfter], and on the next resume, token refresh or enrollment change.
+      _retry ??= Timer(retryAfter, () {
+        _retry = null;
+        if (_transport != null) registerIfEnrolled();
+      });
     }
   }
+
+  Timer? _retry;
 
   bool _fresh() {
     final at = _registeredAt;
@@ -119,6 +133,8 @@ class PushController {
   }
 
   Future<void> dispose() async {
+    _retry?.cancel();
+    _retry = null;
     _watched?.removeListener(_enrollmentChanged);
     _watched = null;
     _lifecycle?.dispose();

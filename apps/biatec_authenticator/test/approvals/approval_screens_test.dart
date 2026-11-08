@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:biatec_authenticator/approvals/approval_card.dart';
 import 'package:biatec_authenticator/approvals/approval_screen.dart';
 import 'package:biatec_authenticator/approvals/consent_request.dart';
@@ -89,6 +91,18 @@ class _FlagGuard implements TouchGuard {
   Future<bool> partiallyObscured() async {
     asked++;
     return obscured;
+  }
+}
+
+class _SlowGuard implements TouchGuard {
+  final release = Completer<void>();
+  int asked = 0;
+
+  @override
+  Future<bool> partiallyObscured() async {
+    asked++;
+    await release.future;
+    return false;
   }
 }
 
@@ -811,6 +825,42 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(find.text('Approved.'), findsOneWidget);
+      await _end(tester);
+    });
+
+    testWidgets('a second tap while the check runs starts no second approval',
+        (tester) async {
+      final guard = _SlowGuard();
+      final h = Harness(vectorRequest(_stepUp), touchGuard: guard);
+      await _pumpApproval(tester, h);
+      await _code(tester, '483920');
+      await tester.tap(find.byKey(const Key('approve')));
+      await tester.tap(find.byKey(const Key('approve')));
+      await tester.pump();
+      expect(guard.asked, 1, reason: 'the second tap is ignored');
+      guard.release.complete();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(h.gate.asked, 1, reason: 'one biometric, one approval');
+      expect(find.text('Approved.'), findsOneWidget);
+      await _end(tester);
+    });
+
+    testWidgets('a request that ran out during the check is not approved',
+        (tester) async {
+      final guard = _SlowGuard();
+      final h = Harness(vectorRequest(_stepUp), touchGuard: guard);
+      await _pumpApproval(tester, h);
+      await _code(tester, '483920');
+      await tester.tap(find.byKey(const Key('approve')));
+      await tester.pump();
+      h.now = h.now.add(const Duration(hours: 1));
+      guard.release.complete();
+      await tester.pump();
+      await tester.pump();
+      expect(h.gate.asked, 0, reason: 'expired while the platform answered');
+      expect(find.text('Approved.'), findsNothing);
       await _end(tester);
     });
 

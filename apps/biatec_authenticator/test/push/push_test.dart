@@ -193,6 +193,39 @@ void main() {
       expect(registry.calls, hasLength(1), reason: 'no longer listening');
     });
 
+    test(
+        'a failed registration is tried again by itself, without anyone asking',
+        () async {
+      final retrying = PushController(
+        enrollment: store,
+        client: ApprovalClient(baseUrl: 'http://oidc', client: registry.client),
+        onOpenRequest: openedIds.add,
+        retryAfter: const Duration(milliseconds: 20),
+      );
+      addTearDown(retrying.dispose);
+      await store.write(record('dev-token'));
+      registry.status = 503;
+      await retrying.start(transport);
+      expect(registry.calls, hasLength(1));
+      registry.status = 200;
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      await pumpEventQueue();
+      expect(registry.calls.length, greaterThanOrEqualTo(2));
+      final settled = registry.calls.length;
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(registry.calls, hasLength(settled), reason: 'stops once it works');
+    });
+
+    test('starting twice leaves one set of listeners', () async {
+      await store.write(record('dev-token'));
+      await push.start(transport);
+      await push.start(transport);
+      expect(registry.calls, hasLength(1));
+      await store.write(record('dev-token-2'));
+      await pumpEventQueue();
+      expect(registry.calls, hasLength(2), reason: 'one registration, not two');
+    });
+
     test('a refused registration is retried on the next call', () async {
       await store.write(record('dev-token'));
       registry.status = 503;

@@ -8,7 +8,8 @@ import 'enrollment_store.dart';
 /// The enrollment lives in memory, which is the one authority: it is read from the disk once, and from then on every read answers from memory, every write and clear changes memory first (and tells the listeners), and the disk follows behind. So a keystore that fails or hangs can neither undo a sign-out, nor lose an enrollment the server already has, nor hold up the next write: one persisting step runs at a time, it starts again when something changed while it ran, and after a failure it is tried again when the app next asks (at most once per [saveRetryEvery]).
 class ObservableEnrollmentStore extends ChangeNotifier
     implements EnrollmentStore {
-  ObservableEnrollmentStore(this._inner, {DateTime Function()? clock})
+  ObservableEnrollmentStore(this._inner,
+      {DateTime Function()? clock, this.persistTimeout = defaultPersistTimeout})
       : _clock = clock ?? DateTime.now;
 
   final EnrollmentStore _inner;
@@ -20,6 +21,10 @@ class ObservableEnrollmentStore extends ChangeNotifier
 
   /// How often a read tries again to persist a change that did not reach the disk; reads are frequent (the pending list polls).
   static const saveRetryEvery = Duration(seconds: 30);
+
+  /// A disk step that takes longer than this counts as failed, so a keystore that hangs once does not stop every later save (it is tried again like any failure).
+  static const defaultPersistTimeout = Duration(seconds: 15);
+  final Duration persistTimeout;
 
   /// The enrollment, or null when signed out or never enrolled. Meaningful once [_known].
   EnrollmentRecord? _record;
@@ -77,9 +82,9 @@ class ObservableEnrollmentStore extends ChangeNotifier
     final record = _record;
     try {
       if (record == null) {
-        await _inner.clear();
+        await _inner.clear().timeout(persistTimeout);
       } else {
-        await _inner.write(record);
+        await _inner.write(record).timeout(persistTimeout);
       }
       if (version == _version) _dirty = false;
     } on Object {

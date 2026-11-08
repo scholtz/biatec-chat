@@ -84,6 +84,17 @@ class _CountingReads extends MemoryEnrollmentStore {
   }
 }
 
+/// A write waits for ever while [hang] is set.
+class _HangThenWork extends MemoryEnrollmentStore {
+  bool hang = true;
+
+  @override
+  Future<void> write(EnrollmentRecord record) {
+    if (hang) return Completer<void>().future;
+    return super.write(record);
+  }
+}
+
 /// Holds each write until [gate] completes.
 class _SlowWrites extends MemoryEnrollmentStore {
   final gate = Completer<void>();
@@ -375,6 +386,25 @@ void main() {
       expect(await store.read(), isNull);
       await store.flush();
       expect(await inner.read(), isNull, reason: 'the clear was tried again');
+      store.dispose();
+    });
+
+    test(
+        'a disk step that hangs forever fails after a while and is tried again',
+        () async {
+      var now = DateTime.utc(2026, 10, 29, 12);
+      final inner = _HangThenWork();
+      final store = ObservableEnrollmentStore(inner,
+          clock: () => now, persistTimeout: const Duration(milliseconds: 30));
+      await store.write(_active);
+      await store.flush(); // returns once the step timed out
+      expect(store.unsaved, isTrue, reason: 'timed out, not saved');
+      inner.hang = false;
+      now = now.add(ObservableEnrollmentStore.saveRetryEvery);
+      await store.read();
+      await store.flush();
+      expect(store.unsaved, isFalse, reason: 'the retry reached the disk');
+      expect((await inner.read())?.kid, 'dev-1');
       store.dispose();
     });
 
