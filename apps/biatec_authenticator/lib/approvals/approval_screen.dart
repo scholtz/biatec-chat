@@ -56,13 +56,16 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
     });
   }
 
-  late ApprovalPhase _felt = _controller.phase;
+  late ApprovalPhase _felt;
 
   /// A touch when the request is decided or fails, once per change of phase.
   void _feel() {
     final phase = _controller.phase;
     if (phase == _felt || !mounted) return;
+    // Only what follows the user's own action (the work phase) is felt, not a request that was already decided when it loaded.
+    final acted = _felt == ApprovalPhase.working;
     _felt = phase;
+    if (!acted) return;
     final haptics = Haptics.instance;
     switch (phase) {
       case ApprovalPhase.approved:

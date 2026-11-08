@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 
-/// The brand colour: the seed of the theme, the background of the app icon and of the splash.
-const Color kBrandBlue = Color(0xFF1B5E8C);
-
 /// The mark of Biatec Authenticator, drawn as a vector so it is sharp at any size and follows light and dark: a shield with a check. It is decoration (the name is always written next to it), so it is hidden from screen readers.
 class BrandMark extends StatelessWidget {
   const BrandMark({super.key, this.size = 72, this.color, this.onColor});

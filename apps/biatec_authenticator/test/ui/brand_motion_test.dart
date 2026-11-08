@@ -249,7 +249,7 @@ void main() {
         expect(dart, contains(p));
         expect(script, contains(p));
       }
-      expect(dart, contains('0xFF1B5E8C'));
+      expect(File('lib/theme.dart').readAsStringSync(), contains('0xFF1B5E8C'));
       expect(script, contains('0x1B, 0x5E, 0x8C'));
     });
   });

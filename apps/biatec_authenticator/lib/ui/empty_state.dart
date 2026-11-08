@@ -1,3 +1,5 @@
+import 'dart:math' show pi;
+
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
@@ -92,9 +94,9 @@ class _Backdrop extends CustomPainter {
       ..strokeWidth = 2;
     const dashes = 24;
     for (var i = 0; i < dashes; i++) {
-      final start = i * 2 * 3.141592653589793 / dashes;
-      canvas.drawArc(Rect.fromCircle(center: c, radius: r), start,
-          3.141592653589793 / dashes, false, stroke);
+      final start = i * 2 * pi / dashes;
+      canvas.drawArc(Rect.fromCircle(center: c, radius: r), start, pi / dashes,
+          false, stroke);
     }
     final fill = Paint()..color = dot;
     canvas.drawCircle(c + Offset(r * 0.71, -r * 0.71), 5, fill);

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'ui/brand_mark.dart' show kBrandBlue;
 import 'ui/motion.dart' show quietPageTransitions;
+
+/// The brand colour: the seed of the theme, the background of the app icon and of the splash (also in `tool/make_brand_assets.py` and the Android colors.xml).
+const Color kBrandBlue = Color(0xFF1B5E8C);
 
 /// Spacing scale (dp). Use these instead of literals so screens line up.
 abstract final class AppSpacing {
