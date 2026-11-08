@@ -9,10 +9,10 @@ import '../approvals/biometric_gate.dart';
 import '../approvals/jcs.dart';
 import '../config.dart';
 import '../enrollment/enrollment_state.dart';
-import '../enrollment/enrollment_store.dart';
 import '../keys/device_key_store.dart';
 import '../keys/key_security_level.dart';
 import 'settings_client.dart';
+import '../enrollment/observable_enrollment_store.dart';
 
 /// Parses a decimal EUR string; null when it is not a number.
 double? _eur(String? v) => v == null ? null : double.tryParse(v);
@@ -91,7 +91,7 @@ class SettingsServices {
 
   final SettingsClient client;
   final DeviceKeyStore keys;
-  final EnrollmentStore enrollment;
+  final ObservableEnrollmentStore enrollment;
   final BiometricGate gate;
 
   /// False when the Biatec OIDC in use has no device and settings API yet
@@ -136,7 +136,7 @@ class SettingsController extends ChangeNotifier {
 
   final SettingsClient client;
   final DeviceKeyStore keys;
-  final EnrollmentStore enrollment;
+  final ObservableEnrollmentStore enrollment;
   final BiometricGate gate;
   final DateTime Function() _clock;
   final String Function() _nonce;
@@ -283,11 +283,8 @@ class SettingsController extends ChangeNotifier {
         } on Object {
           // A stale alias would only be reused for the next key.
         }
-        try {
-          await enrollment.clear();
-        } on Object {
-          // The app's store still signs the device out when the storage did not clear (see ObservableEnrollmentStore.clear).
-        }
+        // Never fails: the store signs the device out in memory and clears the disk behind (see ObservableEnrollmentStore.clear).
+        await enrollment.clear();
         try {
           await keys.delete(record.kid);
         } on Object {

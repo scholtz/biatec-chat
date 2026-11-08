@@ -171,7 +171,7 @@ void main() {
         'a sign-out while the start-up refresh is still at the network is not a storage problem',
         (tester) async {
       final rig = ShellRig();
-      final store = ObservableEnrollmentStore(rig.settings.enrollment);
+      final store = rig.settings.enrollment;
       final enrollment = _SlowEnrollment(rig, store: store);
       final parts = await appParts();
       await tester.pumpWidget(MaterialApp(
@@ -231,7 +231,7 @@ void main() {
               return http.Response('{"error":"not_found"}', 404);
             })),
         keys: settings.keys,
-        enrollment: ObservableEnrollmentStore(settings.enrollment),
+        enrollment: settings.enrollment,
         gate: settings.gate,
         history: MemoryHistoryStore(),
         clock: () =>

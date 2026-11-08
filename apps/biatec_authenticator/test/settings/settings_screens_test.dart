@@ -12,7 +12,6 @@ import 'package:biatec_authenticator/settings/settings_screen.dart';
 import 'package:biatec_authenticator/security/settings_controller.dart';
 import 'package:biatec_authenticator/shell/tab_reload.dart';
 import 'package:biatec_authenticator/ui/ui.dart';
-import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -359,7 +358,7 @@ void main() {
       final approvals = ApprovalServices(
         client: ApprovalClient(baseUrl: 'http://oidc.test'),
         keys: rig.keys,
-        enrollment: ObservableEnrollmentStore(rig.enrollment),
+        enrollment: rig.enrollment,
         gate: rig.gate,
         history: MemoryHistoryStore(),
       );

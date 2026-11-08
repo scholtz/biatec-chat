@@ -8,6 +8,7 @@ import 'package:biatec_authenticator/approvals/biometric_gate.dart';
 import 'package:biatec_authenticator/approvals/jcs.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
+import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:biatec_authenticator/security/settings_client.dart';
 import 'package:biatec_authenticator/security/settings_controller.dart';
 import 'package:http/http.dart' as http;
@@ -202,7 +203,11 @@ class SettingsRig {
 
   final FakeSettingsOidc oidc;
   final keys = SoftwareKeyStore(deviceTestKey());
-  final enrollment = MemoryEnrollmentStore();
+  /// The disk behind the store.
+  final disk = MemoryEnrollmentStore();
+
+  /// What the app uses: the one authority over the record (loaded from [disk] on first read).
+  late final enrollment = ObservableEnrollmentStore(disk);
   final gate = FakeGate();
   late final SettingsServices services;
   int _nonces = 0;

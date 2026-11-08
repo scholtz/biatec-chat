@@ -11,6 +11,7 @@ import 'dart:convert';
 
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
+import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:biatec_authenticator/security/settings_client.dart';
 import 'package:biatec_authenticator/security/settings_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -40,7 +41,7 @@ void main() {
     final services = SettingsServices(
       client: SettingsClient(baseUrl: baseUrl!),
       keys: SoftwareKeyStore(deviceTestKey()),
-      enrollment: store,
+      enrollment: ObservableEnrollmentStore(store),
       gate: gate,
     );
     final c = services.controller();

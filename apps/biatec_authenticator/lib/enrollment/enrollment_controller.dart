@@ -40,6 +40,9 @@ class EnrollmentController extends ChangeNotifier {
 
   /// The observable store: it keeps an enrollment whose write failed, which this controller relies on.
   final ObservableEnrollmentStore store;
+
+  /// How long enrolling waits for the disk to confirm the new record before it says the save is still pending.
+  static const storeSettleTime = Duration(seconds: 2);
   final OidcEnrollmentClient client;
 
   /// Asks the platform for the proof that this is the real app (Play Integrity, App Attest) at enrollment and when Biatec OIDC asks for a fresh one.
@@ -306,7 +309,12 @@ class EnrollmentController extends ChangeNotifier {
     for (var i = 0; i < 3 && !saved; i++) {
       try {
         await store.write(record);
-        saved = true;
+        // The store works from memory and saves behind it: give the disk a moment to say whether it took it.
+        await store.flush().timeout(storeSettleTime, onTimeout: () {});
+        saved = !store.unsaved;
+        if (!saved) {
+          warning = 'Enrolled, but this device could not save it yet.';
+        }
       } on Object catch (e) {
         warning = 'Enrolled, but this device could not save it yet: $e';
       }
