@@ -1,7 +1,7 @@
 ---
 id: T-231
 title: "Authenticator: brand identity, motion and haptics"
-status: backlog
+status: in-progress
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-219, T-224, T-227, T-228, T-229, T-226]
@@ -9,8 +9,8 @@ area: ["apps/biatec_authenticator/assets/**", "apps/biatec_authenticator/lib/the
 parallel: yes
 conflicts_with: []
 issue: "#368"
-branch: ""
-owner: ""
+branch: "task/T-231"
+owner: "session-20261108-1500"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-10-28
@@ -71,3 +71,4 @@ Written only by the user (or by `/kanban-review` on the user's behalf).
 - 2026-10-28 09:42 · kanban-board · backlog → blocked · waiting on: T-219, T-224
 - 2026-10-28 09:10 · scholtz · taken · status stays blocked
 - 2026-11-08 14:26 · kanban-board · blocked → backlog · blockers done: T-219, T-224, T-227, T-228, T-229, T-226
+- 2026-11-08 15:00 · scholtz · backlog → in-progress · claimed by session-20261108-1500 on task/T-231
