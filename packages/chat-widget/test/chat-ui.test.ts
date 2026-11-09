@@ -366,6 +366,7 @@ describe("sign out", () => {
     const svc = services({ openPopup: () => popup });
     let current = authed;
     svc.auth.session = vi.fn(async () => current);
+    svc.pollMs = 400; // long enough that the press, not the poll, is what ends the wait
     const w = await open(svc);
     await w.get("textarea").setValue("hello");
     await w.get("textarea").trigger("keydown", { key: "Enter" });
@@ -377,6 +378,8 @@ describe("sign out", () => {
     await w.get("[data-testid=cancel-sign-in]").trigger("click");
     await vi.waitFor(() => expect(w.find("[data-testid=sign-in]").exists()).toBe(true));
     expect(w.text()).not.toContain("hello");
+    expect(w.get("[data-testid=announcer]").text()).toBe("Signed out");
+    expect(svc.auth.session).toHaveBeenCalledTimes(2); // the mount read and the one read after the press; the poll never saw it
     w.unmount();
   });
 

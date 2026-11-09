@@ -400,6 +400,10 @@ export function useChat(svc: ChatServices) {
     if (waiting && (phase.value === "waiting" || phase.value === "opening")) waiting.cancelled = true;
   }
 
+  function announceSignedIn(): void {
+    announce(session.value?.email ? t("chat.signedInAs", { email: session.value.email }) : t("chat.signedIn"));
+  }
+
   const POPUP_FEATURES = "popup=yes,width=480,height=720";
 
   /**
@@ -436,9 +440,10 @@ export function useChat(svc: ChatServices) {
       }
       if (disposed) return false;
       await refreshSession();
+      if (disposed) return false;
       phase.value = "idle";
       if (!opts.scope && tier.value === "Authenticated") {
-        announce(session.value?.email ? t("chat.signedInAs", { email: session.value.email }) : t("chat.signedIn"));
+        announceSignedIn();
         return true;
       }
       announce(t("chat.signInCancelled"));
@@ -451,13 +456,14 @@ export function useChat(svc: ChatServices) {
       if (cookieOk) await refreshSession();
     }
     const started = opts.scope ? await svc.auth.startElevate(opts.scope) : await svc.auth.startLogin();
-    // The user pressed Cancel while the flow was still opening: do not send the popup to the login page.
-    if (mine.cancelled && !disposed) return finishCancelled();
+    // A flow that could not start is reported as such (for example blocked cookies), whether or not Cancel was pressed.
     if (!started || disposed) {
       fail();
       if (!cookieOk && !disposed) phase.value = "no-cookies";
       return false;
     }
+    // The user pressed Cancel while the flow was still opening: do not send the popup to the login page.
+    if (mine.cancelled) return finishCancelled();
     popup.location.href = started.loginUrl;
     phase.value = "waiting";
 
@@ -475,7 +481,7 @@ export function useChat(svc: ChatServices) {
         }
         await refreshSession();
         phase.value = "idle";
-        announce(session.value?.email ? t("chat.signedInAs", { email: session.value.email }) : t("chat.signedIn"));
+        announceSignedIn();
         return true;
       }
       if (status === "Failed") return fail();
@@ -523,6 +529,7 @@ export function useChat(svc: ChatServices) {
     closePopup();
     if (!disposed) {
       await refreshSession();
+      if (disposed) return false;
       if (mine.cancelled) {
         // Cancel is not a failure; the logout may have completed a moment before the press.
         if (tier.value === "Anonymous") {
