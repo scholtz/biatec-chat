@@ -57,6 +57,8 @@
     "signedInAs": "Signed in as {email}",
     "signedIn": "Signed in",
     "signedOut": "Signed out",
+    "signInCancelled": "Sign-in cancelled",
+    "signOutCancelled": "Sign-out cancelled. You are still signed in",
     "previewConfirmFailed": "The confirmation could not be sent. Nothing was signed. Please try again.",
     "previewFailed": "The action failed. Nothing was signed.",
     "previewSignInRequired": "Sign in again to confirm this action.",

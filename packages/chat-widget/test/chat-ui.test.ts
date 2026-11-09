@@ -225,7 +225,7 @@ describe("sign-in popup", () => {
     w.unmount();
   });
 
-  it("gives up when the user presses Cancel while waiting", async () => {
+  it("returns to idle, without a failure message, when the user presses Cancel while waiting", async () => {
     const popup = fakePopup();
     const svc = services({ openPopup: () => popup });
     svc.auth.status = vi.fn(async () => "Pending" as const);
@@ -233,8 +233,44 @@ describe("sign-in popup", () => {
     await w.get("[data-testid=sign-in]").trigger("click");
     await vi.waitFor(() => expect(w.find("[data-testid=cancel-sign-in]").exists()).toBe(true));
     await w.get("[data-testid=cancel-sign-in]").trigger("click");
-    await vi.waitFor(() => expect(w.get(".bc-signin-status").text()).toContain("did not complete"));
+    await vi.waitFor(() => expect(w.find("[data-testid=sign-in]").exists()).toBe(true));
     expect(popup.close).toHaveBeenCalled();
+    expect(w.find(".bc-signin-status").exists()).toBe(false);
+    expect(w.get("[data-testid=announcer]").text()).toBe("Sign-in cancelled");
+    w.unmount();
+  });
+
+  it("a Cancel that races a sign-in which just finished reports the sign-in, not a failure", async () => {
+    const popup = fakePopup();
+    const svc = services({ openPopup: () => popup });
+    let current = anon;
+    svc.auth.session = vi.fn(async () => current);
+    svc.auth.status = vi.fn(async () => "Pending" as const);
+    const w = await open(svc);
+    await w.get("[data-testid=sign-in]").trigger("click");
+    await vi.waitFor(() => expect(w.find("[data-testid=cancel-sign-in]").exists()).toBe(true));
+    current = authed; // the backend completed the sign-in a moment before the press
+    await w.get("[data-testid=cancel-sign-in]").trigger("click");
+    await vi.waitFor(() => expect(w.find("[data-testid=sign-out]").exists()).toBe(true));
+    expect(w.find(".bc-signin-status").exists()).toBe(false);
+    expect(w.get("[data-testid=announcer]").text()).toContain("Signed in");
+    w.unmount();
+  });
+
+  it("a Cancel pressed while the flow is still opening never sends the popup to the login page", async () => {
+    const popup = fakePopup();
+    const svc = services({ openPopup: () => popup });
+    let release: (v: { authRequestId: string; loginUrl: string }) => void = () => {};
+    svc.auth.startLogin = vi.fn(() => new Promise<{ authRequestId: string; loginUrl: string } | null>((r) => (release = r)));
+    const w = await open(svc);
+    await w.get("[data-testid=sign-in]").trigger("click");
+    await vi.waitFor(() => expect(w.find("[data-testid=cancel-sign-in]").exists()).toBe(true));
+    await w.get("[data-testid=cancel-sign-in]").trigger("click");
+    release({ authRequestId: "r1", loginUrl: "https://chat.biatec.io/auth/login?req=r1" });
+    await vi.waitFor(() => expect(w.find("[data-testid=sign-in]").exists()).toBe(true));
+    expect(popup.location.href).toBe("");
+    expect(popup.close).toHaveBeenCalled();
+    expect(w.find(".bc-signin-status").exists()).toBe(false);
     w.unmount();
   });
 
@@ -308,23 +344,53 @@ describe("sign out", () => {
     w.unmount();
   });
 
-  it("keeps the session and messages when sign-out does not complete", async () => {
+  it("keeps the session and messages when the user cancels a sign-out", async () => {
     const popup = fakePopup();
     const svc = services({ sessions: [authed], openPopup: () => popup });
     const w = await open(svc);
-    const chat = (w.vm as unknown as { chat?: { messages: unknown[] } }).chat;
     await w.get("textarea").setValue("hello");
     await w.get("textarea").trigger("keydown", { key: "Enter" });
     await flushPromises();
-    const before = w.text();
     await w.get("[data-testid=sign-out]").trigger("click");
     await vi.waitFor(() => expect(w.find("[data-testid=cancel-sign-in]").exists()).toBe(true));
     await w.get("[data-testid=cancel-sign-in]").trigger("click");
+    await vi.waitFor(() => expect(w.find("[data-testid=sign-out]").exists()).toBe(true));
+    expect(w.find(".bc-signin-status").exists()).toBe(false);
+    expect(w.text()).toContain("hello");
+    expect(popup.close).toHaveBeenCalled();
+    w.unmount();
+  });
+
+  it("a Cancel that races a sign-out which just finished clears the conversation", async () => {
+    const popup = fakePopup();
+    const svc = services({ openPopup: () => popup });
+    let current = authed;
+    svc.auth.session = vi.fn(async () => current);
+    svc.pollMs = 400; // long enough that the press, not the poll, is what ends the wait
+    const w = await open(svc);
+    await w.get("textarea").setValue("hello");
+    await w.get("textarea").trigger("keydown", { key: "Enter" });
+    await flushPromises();
+    await w.get("[data-testid=sign-out]").trigger("click");
+    await vi.waitFor(() => expect(w.find("[data-testid=cancel-sign-in]").exists()).toBe(true));
+    // The logout cannot complete in the test until the press, because the session poll still sees the signed-in user.
+    current = anon;
+    await w.get("[data-testid=cancel-sign-in]").trigger("click");
+    await vi.waitFor(() => expect(w.find("[data-testid=sign-in]").exists()).toBe(true));
+    expect(w.text()).not.toContain("hello");
+    expect(w.get("[data-testid=announcer]").text()).toBe("Signed out");
+    expect(svc.auth.session).toHaveBeenCalledTimes(2); // the mount read and the one read after the press; the poll never saw it
+    w.unmount();
+  });
+
+  it("a sign-out that times out is still reported as not completed", async () => {
+    const popup = fakePopup();
+    const svc = services({ sessions: [authed], openPopup: () => popup });
+    svc.timeoutMs = 20;
+    const w = await open(svc);
+    await w.get("[data-testid=sign-out]").trigger("click");
     await vi.waitFor(() => expect(w.text()).toContain("Sign-out did not complete"));
     expect(w.find("[data-testid=sign-out]").exists()).toBe(true);
-    expect(w.text()).toContain("hello");
-    expect(before).toContain("hello");
-    void chat;
     w.unmount();
   });
 });
