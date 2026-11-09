@@ -261,7 +261,7 @@ describe("sign-in popup", () => {
     const popup = fakePopup();
     const svc = services({ openPopup: () => popup });
     let release: (v: { authRequestId: string; loginUrl: string }) => void = () => {};
-    svc.auth.startLogin = vi.fn(() => new Promise((r) => (release = r)));
+    svc.auth.startLogin = vi.fn(() => new Promise<{ authRequestId: string; loginUrl: string } | null>((r) => (release = r)));
     const w = await open(svc);
     await w.get("[data-testid=sign-in]").trigger("click");
     await vi.waitFor(() => expect(w.find("[data-testid=cancel-sign-in]").exists()).toBe(true));
