@@ -5,7 +5,7 @@ version may change the public API. Releases are tagged `chat-widget-v<version>`.
 
 ## Unreleased
 
-- While the widget waits for a sign-in, scope elevation or sign-out in the popup, the header shows a Cancel button. The widget no longer treats a closed popup (`popup.closed`) as a cancel, so the identity provider can send `Cross-Origin-Opener-Policy: same-origin` on its pages; a wait ends by the status poll, the timeout or Cancel.
+- While the widget waits for a sign-in, scope elevation or sign-out in the popup, the header shows a Cancel button. The widget no longer treats a closed popup (`popup.closed`) as a cancel, so the identity provider can send `Cross-Origin-Opener-Policy: same-origin` on its pages; a wait ends by the status poll, the timeout or Cancel. Cancel is not reported as a failure: the widget returns to idle with a neutral announcement, and a sign-in or sign-out that completed just before the press is reported as it really ended.
 
 ## 0.1.0 (2026-10-20, first npm publish)
 

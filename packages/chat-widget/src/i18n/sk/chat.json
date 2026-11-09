@@ -56,6 +56,8 @@
     "sessionExpired": "Vaša relácia skončila po určitom čase nečinnosti, preto ste odhlásený. Prihláste sa znova a pokračujte; vaša správa nebola odoslaná.",
     "signedInAs": "Prihlásený ako {email}",
     "signedIn": "Prihlásený",
+    "signInCancelled": "Prihlásenie zrušené",
+    "signOutCancelled": "Odhlásenie zrušené. Ste stále prihlásený",
     "signedOut": "Odhlásený",
     "previewConfirmFailed": "Potvrdenie sa nepodarilo odoslať. Nič sa nepodpísalo. Skúste to prosím znova.",
     "previewFailed": "Akcia zlyhala. Nič sa nepodpísalo.",
