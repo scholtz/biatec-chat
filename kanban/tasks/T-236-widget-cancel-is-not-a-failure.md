@@ -1,7 +1,7 @@
 ---
 id: T-236
 title: "Widget: a user's Cancel is not a failure, and a sign-in or sign-out that finished before it is honoured (follow-up to T-235)"
-status: in-progress
+status: done
 priority: P3
 epic: "Security"
 blocked_by: []
@@ -49,6 +49,9 @@ Filled in when the task moves to review.
 
 ## Review
 
+- 2026-11-09 18:16 · approve · PR #396 merged into main @ 508ac51 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-09 11:30 · scholtz · (new) → in-progress · created from the T-235 review and taken
+- 2026-11-09 18:16 · user · in-progress → done · PR #396 merged into main @ 508ac51 (synced by kanban-sync)
