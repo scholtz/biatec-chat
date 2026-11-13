@@ -62,7 +62,7 @@ The `group_hash` is the Algorand group ID recomputed from the handed transaction
 
 ### 3.2 `biatec_limits_change`
 
-Describes a change of spending limits (`schemas/authorization-details-limits-change.schema.json`): `current_limits`, `requested_limits` and `request_hash`, the lowercase hex SHA-256 of the RFC 8785 canonical request body of `PUT /wallet/limits`. The vectors include a worked example: the body `{"per_day_eur":"5000","per_transaction_eur":"2000"}` hashes to the `request_hash` in `vectors/receipts.json`.
+Describes a change of spending limits (`schemas/authorization-details-limits-change.schema.json`). It carries no `origin`: for this type the request's `origin` is recorded by Biatec OIDC but is not part of what the device signs. It has `current_limits`, `requested_limits` and `request_hash`, the lowercase hex SHA-256 of the RFC 8785 canonical request body of `PUT /wallet/limits`. The vectors include a worked example: the body `{"per_day_eur":"5000","per_transaction_eur":"2000"}` hashes to the `request_hash` in `vectors/receipts.json`.
 
 ## 4. Step-up entry
 

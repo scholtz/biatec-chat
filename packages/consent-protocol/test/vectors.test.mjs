@@ -450,7 +450,7 @@ test("a settings change without a subject, an approval for another new_kid and a
 test("a settings label is display-safe (NFC, no bidirectional or zero-width characters), and an unlink stands alone", () => {
   assert.equal(isDisplaySafe("My bank"), true);
   assert.equal(isDisplaySafe("Caf\u00e9"), true);
-  for (const bad of ["Bank\u202Eevil", "Bank\u200B", "Cafe\u0301", "two\nlines", "", "x".repeat(41), "tab\t", "\ufeffBank", "lone\ud800"]) assert.equal(isDisplaySafe(bad), false, JSON.stringify(bad));
+  for (const bad of ["Bank\u202Eevil", "Bank\u200B", "Cafe\u0301", "two\nlines", "", "x".repeat(41), "tab\t", "\ufeffBank", "lone\ud800", "   ", "\u3164", " padded", "padded ", "soft\u00ADhyphen", "tag\u{E0041}", "vs\ufe0f", "invisible\u2063sep"]) assert.equal(isDisplaySafe(bad), false, JSON.stringify(bad));
   const base = device.settings_changes.find((x) => x.expected.accepted);
   const resign = (change) => {
     const e = clone(base.envelope);
@@ -467,6 +467,18 @@ test("a settings label is display-safe (NFC, no bidirectional or zero-width char
   assert.equal(resign(c({ paused: false })), false, "a pause without its origin");
   assert.equal(resign(c({ mystery: 1 })), false, "unknown member");
   assert.equal(resign(c({})), false, "empty client change");
+  assert.equal(resign({}), false, "empty change");
+  assert.equal(resign({ mystery: true }), false, "unknown top-level member");
+  assert.equal(resign({ threshold_eur: 5000 }), false, "a number is not an amount string");
+  assert.equal(resign({ threshold_eur: "5000.123" }), false, "at most two decimals");
+  assert.equal(resign({ threshold_eur: "5000.50" }), true);
+  assert.equal(resign({ ask_on_test_networks: "no" }), false, "flags are booleans");
+  assert.equal(resign({ clients: [] }), false, "clients is an object");
+  assert.equal(resign(c({ unlink: false })), false, "unlink is true or absent");
+  assert.equal(resign(c({ paused: "yes", origin: "https://bank.example" })), false);
+  assert.equal(resign(c({ per_client_threshold_eur: null })), true);
+  assert.equal(resign(c({ per_client_threshold_eur: "12" })), true);
+  assert.equal(resign(c({ per_client_threshold_eur: 12 })), false);
 });
 
 test("a settings change is refused for another account, and a receipt of a device known not to be active is not authorized", () => {
@@ -488,7 +500,9 @@ test("canonical origins only, the transaction invariants are in the schema, and 
   const okOrigin = (origin) => valid("authorization-details-transaction", withOrigin(origin));
   assert.equal(okOrigin("https://app.biatec.io"), true);
   assert.equal(okOrigin("http://localhost:5173"), true);
-  for (const bad of ["https://App.Biatec.io", "https://app.biatec.io:99999", "https://app.biatec.io:0", "https://.", "https://-", "https://app.biatec.io/", "https://app.biatec.io:08"]) assert.equal(okOrigin(bad), false, bad);
+  for (const bad of ["https://App.Biatec.io", "https://app.biatec.io:99999", "https://app.biatec.io:0", "https://.", "https://-", "https://app.biatec.io/", "https://app.biatec.io:08", "https://a..b", "https://a.-b", "https://bank.example:443", "http://x:80"]) assert.equal(okOrigin(bad), false, bad);
+  assert.equal(okOrigin("https://bank.example:8443"), true);
+  assert.equal(okOrigin("http://x:443"), true);
   const unpriced = clone(base);
   delete unpriced.transfers[0].fiat_value;
   assert.equal(valid("authorization-details-transaction", unpriced), false, "a known value needs every transfer priced");

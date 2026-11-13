@@ -94,6 +94,7 @@ export function attestationClaims(attestation, jwks, opts = {}) {
     if (!verifyEs256(key, Buffer.from(h + "." + p, "ascii"), s)) return null;
     if (payload.iss !== opts.issuer) return null;
     if (typeof payload.exp !== "number" || payload.exp <= now) return null;
+    if (typeof payload.sub !== "string" || (payload.iat !== undefined && (!Number.isInteger(payload.iat) || payload.iat > now + 300))) return null; // not from the future
     return payload;
   } catch {
     return null;
@@ -182,24 +183,40 @@ const SIGNED_WINDOW_SECONDS = 300;
 /**
  * Text a user types that is shown next to a security decision: Unicode NFC, at most `max` code points, no control characters,
  * no bidirectional controls (U+202A to U+202E, U+2066 to U+2069, U+200E, U+200F, U+061C), no zero-width characters (U+200B to
- * U+200D, U+2060, U+FEFF), no line breaks. A violation is refused, never stripped.
+ * U+200D, U+2060, U+FEFF), no line breaks, no filler or invisible characters (soft hyphen, Hangul fillers, invisible operators,
+ * variation selectors, tag characters), no padding and not blank. A violation is refused, never stripped.
  */
 export function isDisplaySafe(text, max = 40) {
   if (typeof text !== "string" || text.length === 0 || !text.isWellFormed() || text !== text.normalize("NFC")) return false;
-  if ([...text].length > max) return false;
-  return !/[\u0000-\u001F\u007F-\u009F\u2028\u2029\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\u061C\uFEFF]/.test(text);
+  if ([...text].length > max || text.trim() !== text || text.trim() === "") return false; // no padding, not blank
+  return !/[\u00AD\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180E\u2061-\u2064\u3164\uFE00-\uFE0F\uFFA0\uFFF9-\uFFFB]|[\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]/u.test(text) && !/[\u0000-\u001F\u007F-\u009F\u2028\u2029\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\u061C\uFEFF]/.test(text);
 }
 
 const MEMBERS = new Set(["always_ask", "per_client_threshold_eur", "label", "trusted_applications_add", "trusted_applications_remove", "paused", "origin", "unlink"]);
 
-/** No unknown member, no `unlink` mixed with anything else, a pause with its origin, and a display-safe label. */
+const AMOUNT = /^(0|[1-9][0-9]{0,14})(\.[0-9]{1,2})?$/;
+const TOP = new Set(["threshold_eur", "block_unproven_clients", "biometric_required", "ask_on_test_networks", "clients"]);
+
+/**
+ * What the schema requires, which a relying party that uses only this file must not have to take on trust: a non-empty change of
+ * known members of the right types (amounts are strings of at most two decimals, flags are booleans, `unlink` is `true`), then
+ * no unknown member per client, no `unlink` mixed with anything else, a pause with its origin, and a display-safe label.
+ */
 function settingsChangeWellFormed(change) {
-  if (change === null || typeof change !== "object") return false;
+  if (change === null || typeof change !== "object" || Array.isArray(change) || Object.keys(change).length === 0) return false;
+  if (Object.keys(change).some((k) => !TOP.has(k))) return false;
+  if ("threshold_eur" in change && !(typeof change.threshold_eur === "string" && AMOUNT.test(change.threshold_eur))) return false;
+  for (const k of ["block_unproven_clients", "biometric_required", "ask_on_test_networks"]) if (k in change && typeof change[k] !== "boolean") return false;
+  if ("clients" in change && (change.clients === null || typeof change.clients !== "object" || Array.isArray(change.clients) || Object.keys(change.clients).length > 50)) return false;
   for (const c of Object.values(change.clients ?? {})) {
     if (c === null || typeof c !== "object" || Object.keys(c).length === 0) return false;
     if (Object.keys(c).some((k) => !MEMBERS.has(k))) return false;
     if ("unlink" in c && Object.keys(c).length !== 1) return false;
     if ("paused" in c !== "origin" in c) return false;
+    if ("paused" in c && typeof c.paused !== "boolean") return false;
+    if ("always_ask" in c && typeof c.always_ask !== "boolean") return false;
+    if ("unlink" in c && c.unlink !== true) return false;
+    if ("per_client_threshold_eur" in c && c.per_client_threshold_eur !== null && !(typeof c.per_client_threshold_eur === "string" && AMOUNT.test(c.per_client_threshold_eur))) return false;
     if ("label" in c && !isDisplaySafe(c.label)) return false;
   }
   return true;
@@ -250,6 +267,7 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
       // A device never approves itself: the approver is not one of the keys being enrolled.
       const self = thumbprint(envelope.device.public_key);
       if (self === s.new_approval_jwk_thumbprint || self === s.new_presence_jwk_thumbprint || s.approver_kid === s.new_kid) return false;
+      if (s.new_approval_jwk_thumbprint === s.new_presence_jwk_thumbprint) return false; // two keys, not one used twice
       const e = expect.approval;
       if (typeof e.new_kid !== "string" || s.new_kid !== e.new_kid) return false; // the kid being activated is the kid the approver signed
       if (s.new_approval_jwk_thumbprint !== e.new_approval_jwk_thumbprint || s.new_presence_jwk_thumbprint !== e.new_presence_jwk_thumbprint || s.nonce !== e.nonce) return false;
