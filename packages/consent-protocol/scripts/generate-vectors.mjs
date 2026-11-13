@@ -18,6 +18,12 @@ const newKey = (kid) => {
 const publicOf = ({ d, ...pub }) => pub;
 const pubJwk = (k) => ({ kty: "EC", crv: "P-256", x: k.x, y: k.y });
 
+// Refuse before anything is written: a run without --force must leave the working tree alone.
+if (existsSync(join(dir, "receipts.json")) && !process.argv.includes("--force")) {
+  console.error("vectors/receipts.json exists; ECDSA signatures are randomized so regenerating rewrites every vector. Pass --force to overwrite.");
+  process.exit(1);
+}
+
 // ---- keys: the Biatec OIDC key and the approval key of the first device keep their 1.0 values; the rest are added
 let keys = {};
 const keysPath = join(dir, "keys.json");
@@ -27,10 +33,6 @@ const want = { oidc: "oidc-test-key-1", device: "device-test-key-1", presence: "
 for (const [name, kid] of Object.entries(want)) keys[name] ??= newKey(kid);
 write("keys.json", keys);
 
-if (existsSync(join(dir, "receipts.json")) && !process.argv.includes("--force")) {
-  console.error("vectors/receipts.json exists; ECDSA signatures are randomized so regenerating rewrites every vector. Pass --force to overwrite.");
-  process.exit(1);
-}
 const jwks = { keys: [publicOf(keys.oidc)] };
 write("jwks.json", jwks);
 
@@ -169,7 +171,7 @@ const receipts = cases.map((c, i) => {
     sub: SUB,
   };
   const expected = c.expected ?? { accepted: true };
-  const O = { now: NOW + 60, issuer: ISS };
+  const O = { now: NOW + 60, issuer: ISS, deviceActive: true };
   if (verifyReceipt(receipt, jwks, O) !== expected.accepted) throw new Error("self-check failed for " + c.name);
   if (expected.accepted && c.decision === "approve" && !verifyApproval(receipt, jwks, request, c.code, new Set(), O)) throw new Error("approval self-check failed for " + c.name);
   const v = { name: c.name, description: c.note, client_id: c.client.client_id, expected, request, receipt, canonical, canonical_sha256: sha256Hex(canonical) };

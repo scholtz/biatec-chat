@@ -180,6 +180,32 @@ export function pairingCode(newApprovalThumbprint, newPresenceThumbprint, nonce)
 const SIGNED_WINDOW_SECONDS = 300;
 
 /**
+ * Text a user types that is shown next to a security decision: Unicode NFC, at most `max` code points, no control characters,
+ * no bidirectional controls (U+202A to U+202E, U+2066 to U+2069, U+200E, U+200F, U+061C), no zero-width characters (U+200B to
+ * U+200D, U+2060, U+FEFF), no line breaks. A violation is refused, never stripped.
+ */
+export function isDisplaySafe(text, max = 40) {
+  if (typeof text !== "string" || text.length === 0 || !text.isWellFormed() || text !== text.normalize("NFC")) return false;
+  if ([...text].length > max) return false;
+  return !/[\u0000-\u001F\u007F-\u009F\u2028\u2029\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\u061C\uFEFF]/.test(text);
+}
+
+const MEMBERS = new Set(["always_ask", "per_client_threshold_eur", "label", "trusted_applications_add", "trusted_applications_remove", "paused", "origin", "unlink"]);
+
+/** No unknown member, no `unlink` mixed with anything else, a pause with its origin, and a display-safe label. */
+function settingsChangeWellFormed(change) {
+  if (change === null || typeof change !== "object") return false;
+  for (const c of Object.values(change.clients ?? {})) {
+    if (c === null || typeof c !== "object" || Object.keys(c).length === 0) return false;
+    if (Object.keys(c).some((k) => !MEMBERS.has(k))) return false;
+    if ("unlink" in c && Object.keys(c).length !== 1) return false;
+    if ("paused" in c !== "origin" in c) return false;
+    if ("label" in c && !isDisplaySafe(c.label)) return false;
+  }
+  return true;
+}
+
+/**
  * Verifies a settings change or the approval of a new device (spec section 8.2): the signature over JCS(signed) by
  * `device.public_key`, the attestation (binding the device key and, for a settings change, `signed.sub`), the attested
  * `biatec_key_use` = "approve", the signing key named inside the statement, and `issued_at` within 300 seconds of `opts.now`.
@@ -202,6 +228,8 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
     const settings = s.type === "biatec_settings_change";
     const approval = s.type === "biatec_device_approval";
     if (!settings && !approval) return false;
+    // A settings change that cannot be read unambiguously, or whose label is not display-safe, is refused (spec section 8.2).
+    if (settings && !settingsChangeWellFormed(s.change)) return false;
     // A settings change names the subject it is for; the attestation must be for that same subject.
     // ... and it is for the account the caller is changing: `expect.sub` is required and must equal it.
     if (settings && (typeof s.sub !== "string" || s.sub === "" || s.sub !== expect.sub)) return false;
@@ -279,9 +307,10 @@ export function verifyEnrollmentProof(jws, expect = {}) {
 export function verifyApproval(receipt, jwks, request, expectedBindingCode, consumed, opts) {
   try {
     const now = opts.now ?? nowSeconds();
-    // Biatec OIDC authorizes only receipts of devices it holds as ACTIVE; a caller that knows the device is not (pending, revoked)
-    // says so with `opts.deviceActive === false`. (Not required: the receipts of 1.0 flows carry no such lookup.)
-    if (opts.deviceActive === false) return false;
+    // Biatec OIDC authorizes only receipts of devices it holds as ACTIVE (a pending device, such as one an attacker just enrolled, has a
+    // valid attestation too). For a 1.1 receipt the caller MUST say so with `opts.deviceActive === true` and the function fails closed
+    // without it; a caller that knows the device is not active passes false for any version. The 1.0 flows carry no such lookup.
+    if (opts.deviceActive === false || (receipt.version === "1.1" && opts.deviceActive !== true)) return false;
     if (!verifyReceipt(receipt, jwks, { ...opts, now })) return false;
     const s = receipt.signed;
     const d = s.authorization_details?.[0];

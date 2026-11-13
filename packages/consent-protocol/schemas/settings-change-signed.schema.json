@@ -32,7 +32,7 @@
             "properties": {
               "always_ask": { "type": "boolean" },
               "per_client_threshold_eur": { "oneOf": [{ "$ref": "#/$defs/amount" }, { "type": "null" }] },
-              "label": { "type": "string", "maxLength": 40, "description": "The user's own name for the service. Text rules of the spec apply." },
+              "label": { "type": "string", "minLength": 1, "maxLength": 40, "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029\\u200B-\\u200F\\u202A-\\u202E\\u2060\\u2066-\\u2069\\u061C\\uFEFF]+$", "description": "The user's own name for the service. Unicode NFC (checked by the verifier) without control, bidirectional, zero-width or line-break characters (the pattern); see spec section 8.2." },
               "trusted_applications_add": { "$ref": "#/$defs/applicationList" },
               "trusted_applications_remove": { "$ref": "#/$defs/applicationList" },
               "paused": { "type": "boolean" },

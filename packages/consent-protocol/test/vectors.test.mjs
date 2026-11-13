@@ -8,6 +8,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import {
   ENROLL_PROOF_TYP,
   attestedKeyUse,
+  isDisplaySafe,
   jcs,
   pairingCode,
   sha256Hex,
@@ -37,7 +38,7 @@ const valid = (name, data) => schema(name)(data);
 
 const jwks = load("vectors", "jwks.json");
 const keys = load("vectors", "keys.json");
-const O = { now: 1792425700, issuer: "https://oidc.biatec.test" };
+const O = { now: 1792425700, issuer: "https://oidc.biatec.test", deviceActive: true };
 const v10 = load("vectors", "receipts-1.0.json").vectors; // frozen protocol 1.0 set
 const v11 = load("vectors", "receipts.json").vectors; // protocol 1.1 set
 const canon = load("vectors", "canonicalization.json").vectors;
@@ -446,6 +447,28 @@ test("a settings change without a subject, an approval for another new_kid and a
   assert.equal(verifyReceipt(r, jwks, O), false, "1.1 names the key use");
 });
 
+test("a settings label is display-safe (NFC, no bidirectional or zero-width characters), and an unlink stands alone", () => {
+  assert.equal(isDisplaySafe("My bank"), true);
+  assert.equal(isDisplaySafe("Caf\u00e9"), true);
+  for (const bad of ["Bank\u202Eevil", "Bank\u200B", "Cafe\u0301", "two\nlines", "", "x".repeat(41), "tab\t", "\ufeffBank", "lone\ud800"]) assert.equal(isDisplaySafe(bad), false, JSON.stringify(bad));
+  const base = device.settings_changes.find((x) => x.expected.accepted);
+  const resign = (change) => {
+    const e = clone(base.envelope);
+    e.signed.change = change;
+    e.signature = signEs256(keys.device, Buffer.from(jcs(e.signed), "utf8"));
+    return verifyDeviceSigned(e, jwks, DO, ACTIVE);
+  };
+  const c = (m) => ({ clients: { "client-x": m } });
+  assert.equal(resign(c({ label: "My bank" })), true);
+  assert.equal(resign(c({ label: "Bank\u202Eevil" })), false, "bidirectional control");
+  assert.equal(resign(c({ label: "Cafe\u0301" })), false, "not NFC");
+  assert.equal(resign(c({ unlink: true, trusted_applications_add: [{ network: "algorand-mainnet", app_id: 1 }] })), false, "unlink with another change");
+  assert.equal(resign(c({ unlink: true })), true);
+  assert.equal(resign(c({ paused: false })), false, "a pause without its origin");
+  assert.equal(resign(c({ mystery: 1 })), false, "unknown member");
+  assert.equal(resign(c({})), false, "empty client change");
+});
+
 test("a settings change is refused for another account, and a receipt of a device known not to be active is not authorized", () => {
   const s = device.settings_changes.find((x) => x.expected.accepted);
   assert.equal(verifyDeviceSigned(s.envelope, jwks, DO, { approverActive: true, sub: "pw_another_account" }), false);
@@ -454,6 +477,9 @@ test("a settings change is refused for another account, and a receipt of a devic
   const o = { ...O, now: v.receipt.signed.expiry - 100 };
   assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, new Set(), o), true);
   assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, new Set(), { ...o, deviceActive: false }), false);
+  for (const missing of [undefined, null, "yes", 1]) assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, new Set(), { ...o, deviceActive: missing }), false, "fails closed for " + String(missing));
+  const old = v10.find((x) => x.receipt.signed.decision === "approve");
+  assert.equal(verifyApproval(old.receipt, jwks, old.request, old.receipt.signed.binding_code, new Set(), { ...o, deviceActive: undefined, now: old.receipt.signed.expiry - 100 }), true, "1.0 receipts carry no such lookup");
 });
 
 test("canonical origins only, the transaction invariants are in the schema, and a pause names its origin", () => {

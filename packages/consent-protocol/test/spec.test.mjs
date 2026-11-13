@@ -83,7 +83,7 @@ test("no operator-vouched client identity and no third-party push relay outside 
   for (const f of readdirSync(join(root, "schemas"))) {
     const s = JSON.parse(readFileSync(join(root, "schemas", f), "utf8"));
     // The 1.0 branches are the only place the 1.0 members may stay.
-    for (const k of ["v1_0", "clientV1_0"]) if (s.$defs) delete s.$defs[k];
+    for (const k of ["v1_0", "clientV1_0", "legacyClientNoText_v1_0"]) if (s.$defs) delete s.$defs[k];
     const text = JSON.stringify(s);
     assert.equal(banned.test(text), false, f + ": " + (text.match(banned) ?? [""])[0]);
   }
