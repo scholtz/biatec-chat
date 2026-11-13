@@ -374,7 +374,7 @@ export function useChat(svc: ChatServices) {
         return;
       }
       svc.onConfirmResponse?.(r.raw);
-      rounds.delete(previewId);
+      resetRounds(previewId);
       elevate = settleResult(entry, previewId, hash, r, retried);
     } finally {
       entry.submitting = false;
@@ -467,10 +467,29 @@ export function useChat(svc: ChatServices) {
   }
 
   // ---- Following a phone approval (T-237) ----
-  /** One follower per preview, at most. Aborting its controller stops every request and timer it holds. */
-  const followers = new Map<string, AbortController>();
-  /** Consent rounds opened for a preview, so a backend that keeps asking again cannot keep the widget polling forever. */
-  const rounds = new Map<string, number>();
+  /** Everything the consent side keeps for one preview, in one place so it is created, stopped and dropped together. */
+  interface PreviewConsentState {
+    /** The running follower's controller (aborting it stops every request and timer it holds), or null when none runs. At most one. */
+    follower: AbortController | null;
+    /** When the follower started: a consent without a usable expiry (never expected) is given up five minutes after it. */
+    startedAt: number;
+    /** Consent rounds opened for the preview, so a backend that keeps asking again cannot keep the widget polling forever. */
+    rounds: number;
+    /** The prediction was asked for (once per preview, so a failing endpoint is not asked again for every re-sent card). */
+    predictionAsked: boolean;
+    /** The newest prediction request: an older answer that arrives later is dropped. */
+    predictionSeq: number;
+  }
+  const consentState = new Map<string, PreviewConsentState>();
+  function stateOf(previewId: string): PreviewConsentState {
+    let s = consentState.get(previewId);
+    if (!s) consentState.set(previewId, (s = { follower: null, startedAt: 0, rounds: 0, predictionAsked: false, predictionSeq: 0 }));
+    return s;
+  }
+  const runningFollowers = (): number => [...consentState.values()].filter((s) => s.follower).length;
+  function resetRounds(previewId: string): void {
+    stateOf(previewId).rounds = 0;
+  }
   /** Aborted on dispose and reset: no prediction request is sent after them. */
   let lifetime = new AbortController();
   let hiddenSince: number | null = null;
@@ -496,54 +515,46 @@ export function useChat(svc: ChatServices) {
     return e.preview.status === "AwaitingApproval" && (e.consent === null || (e.consent.state !== "Denied" && e.consent.state !== "TimedOut"));
   }
 
-  /** When each follower started: a consent without a usable expiry (never expected) is given up five minutes after it. */
-  const followStarted = new Map<string, number>();
-
   /** When the consent is given up: its own expiry (the preview's, if it has none) plus a short grace. */
   function consentDeadline(e: PreviewEntry): number {
     const end = Date.parse(e.consent?.expiresAt ?? e.preview.expiresAt);
-    return (Number.isNaN(end) ? (followStarted.get(e.preview.previewId) ?? Date.now()) + 300_000 : end) + CONSENT_GRACE_MS;
+    const started = stateOf(e.preview.previewId).startedAt || Date.now();
+    return (Number.isNaN(end) ? started + 300_000 : end) + CONSENT_GRACE_MS;
   }
 
   function stopFollower(previewId: string): void {
-    followers.get(previewId)?.abort();
-    followers.delete(previewId);
-    followStarted.delete(previewId);
-    if (followers.size === 0) watchVisibility(false);
+    const s = consentState.get(previewId);
+    s?.follower?.abort();
+    if (s) s.follower = null;
+    if (runningFollowers() === 0) watchVisibility(false);
   }
   function stopAllFollowers(): void {
-    for (const ctl of followers.values()) ctl.abort();
-    followers.clear();
-    followStarted.clear();
+    for (const s of consentState.values()) s.follower?.abort();
+    consentState.clear();
     visibleWaiters.clear();
     watchVisibility(false);
     lifetime.abort();
     lifetime = new AbortController();
-    predictionAsked.clear();
-    predictionSeq.clear();
   }
 
-  /** The card's line about phone approval, asked once when the card is first shown. A failure shows nothing. */
-  const predictionAsked = new Set<string>();
-  /** The newest prediction request per preview: an older answer that arrives later is dropped. */
-  const predictionSeq = new Map<string, number>();
   /** The card is back to awaiting confirmation (a step settled, or a recoverable refusal): the old prediction is stale, ask again. */
   function refreshPrediction(entry: PreviewEntry): void {
+    const s = stateOf(entry.preview.previewId);
     entry.prediction = null;
-    predictionSeq.set(entry.preview.previewId, (predictionSeq.get(entry.preview.previewId) ?? 0) + 1); // drops an answer still on its way
-    predictionAsked.delete(entry.preview.previewId);
+    s.predictionSeq++; // drops an answer still on its way
+    s.predictionAsked = false;
     if (entry.preview.status === "AwaitingConfirmation") void loadPrediction(entry.preview.previewId);
   }
+  /** The card's line about phone approval, asked once when the card is first shown. A failure shows nothing. */
   async function loadPrediction(previewId: string): Promise<void> {
     const api = svc.consent;
-    // Once per preview: a failing endpoint is not asked again for every re-sent card.
-    if (!api || disposed || predictionAsked.has(previewId)) return;
-    predictionAsked.add(previewId);
-    const seq = (predictionSeq.get(previewId) ?? 0) + 1;
-    predictionSeq.set(previewId, seq);
+    const s = stateOf(previewId);
+    if (!api || disposed || s.predictionAsked) return;
+    s.predictionAsked = true;
+    const seq = ++s.predictionSeq;
     const known = findPreview(previewId);
     const text = await api.prediction(previewId, lifetime.signal, known ? previewValueEur(known.preview) : null).catch(() => null);
-    if (!text || disposed || predictionSeq.get(previewId) !== seq) return;
+    if (!text || disposed || consentState.get(previewId)?.predictionSeq !== seq) return;
     const entry = findPreview(previewId);
     if (entry && entry.preview.status === "AwaitingConfirmation") entry.prediction = text;
   }
@@ -636,23 +647,23 @@ export function useChat(svc: ChatServices) {
    */
   function followConsent(previewId: string, pollFirst = false, newRound = false): void {
     const api = svc.consent;
-    if (!api || disposed || followers.has(previewId)) return;
+    const s = api && !disposed ? stateOf(previewId) : null;
+    if (!api || !s || s.follower) return;
     const entry = findPreview(previewId);
     if (!entry || !isWaitingForPhone(entry)) return;
     if (newRound) {
-      const n = (rounds.get(previewId) ?? 0) + 1;
-      if (n > MAX_CONSENT_ROUNDS) {
+      if (s.rounds + 1 > MAX_CONSENT_ROUNDS) {
         // The backend keeps asking again: stop following and say so, rather than leave the card waiting for nothing.
         entry.consent = null;
         closeWithoutSignature(entry, "Expired", t("consent.lost"));
         return;
       }
-      rounds.set(previewId, n);
+      s.rounds++;
     }
-    if (followers.size === 0) watchVisibility(true);
+    if (runningFollowers() === 0) watchVisibility(true);
     const ctl = new AbortController();
-    followers.set(previewId, ctl);
-    if (!followStarted.has(previewId)) followStarted.set(previewId, Date.now());
+    s.follower = ctl;
+    s.startedAt = Date.now();
     void runFollower(previewId, api, ctl, pollFirst)
       .catch(() => {
         // Something unexpected threw while applying an answer: the card must not wait for a follower that is gone.
@@ -666,11 +677,9 @@ export function useChat(svc: ChatServices) {
         }
       })
       .finally(() => {
-        if (followers.get(previewId) === ctl) {
-          followers.delete(previewId);
-          followStarted.delete(previewId);
-        }
-        if (followers.size === 0) watchVisibility(false);
+        const mine = consentState.get(previewId);
+        if (mine && mine.follower === ctl) mine.follower = null;
+        if (runningFollowers() === 0) watchVisibility(false);
         // The outcome was a new round of consent: follow that one too.
         const again = findPreview(previewId);
         if (!ctl.signal.aborted && !disposed && again && isWaitingForPhone(again)) followConsent(previewId, false, true);
@@ -1021,7 +1030,6 @@ export function useChat(svc: ChatServices) {
     abort = null;
     messages.splice(0, messages.length);
     stopAllFollowers();
-    rounds.clear();
     for (const reason of held) svc.keepalive?.release(reason);
     held.clear();
     announcement.value = "";
