@@ -370,7 +370,7 @@ test("backchannel request schema ties scope to the request kind and forbids clie
 
 // ---- device-signed statements: settings changes, device approvals, enrollment proofs, pairing code
 const DO = { now: device.now, issuer: device.issuer, usedNonces: new Set() };
-const ACTIVE = { approverActive: true };
+const ACTIVE = { approverActive: true, sub: device.enrollment_sub };
 
 for (const s of device.settings_changes) {
   test(`device-signed ${s.name}: schema, canonical form and verdict`, () => {
@@ -444,6 +444,38 @@ test("a settings change without a subject, an approval for another new_kid and a
   const r = clone(v11[0].receipt);
   delete r.device.key_use;
   assert.equal(verifyReceipt(r, jwks, O), false, "1.1 names the key use");
+});
+
+test("a settings change is refused for another account, and a receipt of a device known not to be active is not authorized", () => {
+  const s = device.settings_changes.find((x) => x.expected.accepted);
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, DO, { approverActive: true, sub: "pw_another_account" }), false);
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, DO, { approverActive: true }), false, "the account being changed is required");
+  const v = v11.find((x) => accepted(x) && x.receipt.signed.decision === "approve");
+  const o = { ...O, now: v.receipt.signed.expiry - 100 };
+  assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, new Set(), o), true);
+  assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, new Set(), { ...o, deviceActive: false }), false);
+});
+
+test("canonical origins only, the transaction invariants are in the schema, and a pause names its origin", () => {
+  const base = clone(v11[0].request.authorization_details[0]);
+  const withOrigin = (origin) => ({ ...clone(base), origin });
+  const okOrigin = (origin) => valid("authorization-details-transaction", withOrigin(origin));
+  assert.equal(okOrigin("https://app.biatec.io"), true);
+  assert.equal(okOrigin("http://localhost:5173"), true);
+  for (const bad of ["https://App.Biatec.io", "https://app.biatec.io:99999", "https://app.biatec.io:0", "https://.", "https://-", "https://app.biatec.io/", "https://app.biatec.io:08"]) assert.equal(okOrigin(bad), false, bad);
+  const unpriced = clone(base);
+  delete unpriced.transfers[0].fiat_value;
+  assert.equal(valid("authorization-details-transaction", unpriced), false, "a known value needs every transfer priced");
+  const untrusted = clone(base);
+  untrusted.applications = [{ id: 1, trusted: false }];
+  assert.equal(valid("authorization-details-transaction", untrusted), false, "an untrusted application makes the value unknown");
+  const empty = { ...clone(base), transfers: [], applications: [], value_known: false };
+  delete empty.fiat_value;
+  assert.equal(valid("authorization-details-transaction", empty), false, "an empty group");
+  const change = (c) => valid("settings-change-signed", { ...clone(device.settings_changes[0].envelope.signed), change: { clients: { x: c } } });
+  assert.equal(change({ paused: false }), false, "a pause needs its origin");
+  assert.equal(change({ origin: "https://bank.example", always_ask: false }), false, "an origin without a pause");
+  assert.equal(change({ paused: false, origin: "https://bank.example" }), true);
 });
 
 test("remember: only on an approve of a 1.1 receipt, non-empty and without duplicates", () => {

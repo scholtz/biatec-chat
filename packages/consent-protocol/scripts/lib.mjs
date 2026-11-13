@@ -185,7 +185,8 @@ const SIGNED_WINDOW_SECONDS = 300;
  * `biatec_key_use` = "approve", the signing key named inside the statement, and `issued_at` within 300 seconds of `opts.now`.
  * With `expect.approval` ({ new_kid, new_approval_jwk_thumbprint, new_presence_jwk_thumbprint, nonce }) a device approval must
  * name exactly that `new_kid`, those keys and that nonce and carry the pairing code derived from them. For a device approval both `expect.sub`
- * (the approver's attestation must be for that subject: the account of the device being enrolled) and `expect.approval` are REQUIRED.
+ * (the approver's attestation must be for that subject: the account of the device being enrolled) and `expect.approval` are REQUIRED;
+ * for a settings change `expect.sub` is REQUIRED too and must equal the statement's `sub` (the account the caller is changing).
  * For every statement `expect.approverActive === true` (the caller looked up that the signing device is ACTIVE: a pending
  * device cannot loosen settings or approve another device) is REQUIRED; without it the function returns false, and an approver that is
  * one of the keys being enrolled is refused. For every statement `opts.usedNonces`
@@ -202,7 +203,8 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
     const approval = s.type === "biatec_device_approval";
     if (!settings && !approval) return false;
     // A settings change names the subject it is for; the attestation must be for that same subject.
-    if (settings && (typeof s.sub !== "string" || s.sub === "")) return false;
+    // ... and it is for the account the caller is changing: `expect.sub` is required and must equal it.
+    if (settings && (typeof s.sub !== "string" || s.sub === "" || s.sub !== expect.sub)) return false;
     const payload = boundClaims(envelope.device, settings ? s.sub : approval ? expect.sub : undefined, jwks, { ...opts, now });
     if (!payload || payload.biatec_key_use !== "approve" || envelope.device.key_use !== "approve") return false;
     if ((settings ? s.kid : s.approver_kid) !== envelope.device.kid) return false;
@@ -256,7 +258,8 @@ export function verifyEnrollmentProof(jws, expect = {}) {
     // The key ids the device is registered under are the ones the proof names (the caller says which: both are required).
     if (typeof expect.kid !== "string" || expect.kid === "" || payload.kid !== expect.kid) return false;
     if (typeof expect.presence_kid !== "string" || expect.presence_kid === "" || payload.presence_kid !== expect.presence_kid) return false;
-    if (typeof expect.nonce !== "string" || payload.nonce !== expect.nonce || expect.usedNonces.has(payload.nonce)) return false;
+    if (typeof expect.nonce !== "string" || expect.nonce.length < 16 || expect.nonce.length > 128) return false; // the shape the schema requires
+    if (payload.nonce !== expect.nonce || expect.usedNonces.has(payload.nonce)) return false;
     if (!expect.presence_public_key || payload.presence_jwk_thumbprint !== thumbprint(expect.presence_public_key)) return false;
     return Number.isInteger(payload.iat) && Math.abs(now - payload.iat) <= SIGNED_WINDOW_SECONDS;
   } catch {
@@ -276,6 +279,9 @@ export function verifyEnrollmentProof(jws, expect = {}) {
 export function verifyApproval(receipt, jwks, request, expectedBindingCode, consumed, opts) {
   try {
     const now = opts.now ?? nowSeconds();
+    // Biatec OIDC authorizes only receipts of devices it holds as ACTIVE; a caller that knows the device is not (pending, revoked)
+    // says so with `opts.deviceActive === false`. (Not required: the receipts of 1.0 flows carry no such lookup.)
+    if (opts.deviceActive === false) return false;
     if (!verifyReceipt(receipt, jwks, { ...opts, now })) return false;
     const s = receipt.signed;
     const d = s.authorization_details?.[0];

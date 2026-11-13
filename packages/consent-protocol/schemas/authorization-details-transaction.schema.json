@@ -13,8 +13,21 @@
       "allOf": [
         {
           "if": { "required": ["value_known"], "properties": { "value_known": { "const": true } } },
-          "then": { "required": ["fiat_value"], "properties": { "fiat_value": true } },
+          "then": {
+            "required": ["fiat_value"],
+            "properties": { "fiat_value": true, "transfers": { "type": "array", "items": { "type": "object", "required": ["fiat_value"], "properties": { "fiat_value": true } } } }
+          },
           "else": { "properties": { "fiat_value": false } }
+        },
+        {
+          "if": { "required": ["applications"], "properties": { "applications": { "type": "array", "contains": { "type": "object", "required": ["trusted"], "properties": { "trusted": { "const": false } } } } } },
+          "then": { "properties": { "value_known": { "const": false } } }
+        },
+        {
+          "anyOf": [
+            { "required": ["transfers"], "properties": { "transfers": { "type": "array", "minItems": 1 } } },
+            { "required": ["applications"], "properties": { "applications": { "type": "array", "minItems": 1 } } }
+          ]
         }
       ],
       "properties": {
@@ -52,7 +65,7 @@
             }
           }
         },
-        "value_known": { "type": "boolean", "description": "False when any part of the value could not be priced or an application is not trusted: the card then says \"Value unknown\"." },
+        "value_known": { "type": "boolean", "description": "False when any part of the value could not be priced or an application is not trusted: the card then says \"Value unknown\". True only when every transfer carries its fiat_value and every application is trusted. A group has at least one transfer or application." },
         "fiat_value": { "$ref": "#/$defs/fiatValue", "description": "The group total. Present exactly when value_known is true." },
         "origin": { "$ref": "#/$defs/origin", "description": "The site the request came from, as the client reported it. Part of the signed object, so a receipt proves which origin the user saw; it does not say the client is who it claims to be (only a proven domain does)." }
       }
@@ -83,8 +96,8 @@
     "origin": {
       "type": "string",
       "maxLength": 253,
-      "pattern": "^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$",
-      "description": "An absolute origin: scheme, host and optional port, nothing else."
+      "pattern": "^https?://[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$",
+      "description": "An absolute origin in canonical form: scheme, a lower-case host and an optional port from 1 to 65535, nothing else."
     },
     "fiatValue": {
       "type": "object",
