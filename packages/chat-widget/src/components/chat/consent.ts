@@ -1,6 +1,7 @@
 import type { ConsentStatus } from "@biatec/chat-protocol";
 import { isConsentStatus, readNamedEvents } from "../../transport/sse";
 import { CLIENT_KEY_HEADER, CSRF_HEADER, TransportError, type TransportConfig } from "../../transport/types";
+import { DECIMAL_AMOUNT, isObj, str } from "./guards";
 import { toConfirmResult, type ConfirmResult } from "./previews";
 
 /** What the consent stream says, in order: a status per poll, then (once the consent has ended) the confirm result. */
@@ -29,9 +30,6 @@ export const CONSENT_PATHS = {
   stream: (id: string) => `/chat/previews/${encodeURIComponent(id)}/consent/stream`,
   prediction: (id: string) => `/chat/previews/${encodeURIComponent(id)}/consent/prediction`,
 } as const;
-
-const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
-const str = (v: unknown) => (typeof v === "string" ? v : "");
 
 /** Longest prediction text the card shows; a real one is a sentence. */
 const MAX_PREDICTION_CHARS = 300;

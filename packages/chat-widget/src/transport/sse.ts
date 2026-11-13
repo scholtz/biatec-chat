@@ -214,11 +214,15 @@ export class SseParser {
   }
 }
 
+/** Marks the end of a stream that went over the bounds (a frame, the whole stream, or the number of events). */
+const STREAM_TOO_BIG = Symbol("stream too big");
+
 /**
- * Read a fetch response body as named events (the consent stream: `consent_status`, `confirm_result`, `error`).
- * Bounded like the chat stream: an oversized frame or too many events ends the stream.
+ * The one reader both streams share: frames in order, bounded as a whole (not just per frame: endless comment lines, or
+ * endless small events, end the stream), and the reader is released however it ends. An over-bound stream yields the
+ * marker after the frames completed before the bound was hit, and its body is cancelled.
  */
-export async function* readNamedEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<SseFrame> {
+async function* readFrames(body: ReadableStream<Uint8Array>): AsyncGenerator<SseFrame | typeof STREAM_TOO_BIG> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   const parser = new SseParser();
@@ -234,6 +238,7 @@ export async function* readNamedEvents(body: ReadableStream<Uint8Array>): AsyncG
       const tooBig = parser.overflowed || total > MAX_STREAM_CHARS || events > MAX_STREAM_EVENTS;
       yield* frames;
       if (tooBig) {
+        yield STREAM_TOO_BIG;
         await reader.cancel().catch(() => undefined);
         return;
       }
@@ -246,38 +251,29 @@ export async function* readNamedEvents(body: ReadableStream<Uint8Array>): AsyncG
 
 /** Read a fetch response body as typed chat events. Malformed or unknown payloads are skipped, and an incomplete final frame is discarded (SSE spec). */
 export async function* readChatEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<ChatEvent> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  const parser = new SseParser();
-  let total = 0;
-  let events = 0;
-  try {
-    for (;;) {
-      const { value, done } = await reader.read();
-      const chunk = done ? "" : decoder.decode(value, { stream: true });
-      total += chunk.length;
-      const payloads = done ? [] : parser.push(chunk);
-      events += payloads.length;
-      // Bounded as a whole too (not just per frame): endless comment lines, or endless small events, end the stream.
-      const tooBig = parser.overflowed || total > MAX_STREAM_CHARS || events > MAX_STREAM_EVENTS;
-      for (const p of payloads) {
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(p);
-        } catch {
-          continue;
-        }
-        if (isChatEvent(parsed)) yield parsed;
-      }
-      if (tooBig) {
-        // End the stream with an error the UI shows in the user's language, and stop reading the rest of the body.
-        yield { type: "error", code: "stream_too_large", message: "", retryable: false } as ChatEvent;
-        await reader.cancel().catch(() => undefined);
-        return;
-      }
-      if (done) return;
+  for await (const frame of readFrames(body)) {
+    if (frame === STREAM_TOO_BIG) {
+      // End the stream with an error the UI shows in the user's language.
+      yield { type: "error", code: "stream_too_large", message: "", retryable: false } as ChatEvent;
+      return;
     }
-  } finally {
-    reader.releaseLock();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(frame.data);
+    } catch {
+      continue;
+    }
+    if (isChatEvent(parsed)) yield parsed;
+  }
+}
+
+/**
+ * Read a fetch response body as named events (the consent stream: `consent_status`, `confirm_result`, `error`).
+ * An over-bound stream simply ends; the consent follower then falls back to polling.
+ */
+export async function* readNamedEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<SseFrame> {
+  for await (const frame of readFrames(body)) {
+    if (frame === STREAM_TOO_BIG) return;
+    yield frame;
   }
 }

@@ -620,13 +620,32 @@ describe("when the stream fails", () => {
     await m.chat.confirmPreview("p1");
     await advance(29_000);
     expect(m.entry().preview.status).toBe("AwaitingApproval");
-    await advance(2_000); // past expiry + 10 s
+    await advance(2_000); // past expiry + 10 s: the last look at the backend, which still says pending
     expect(m.entry().preview.status).toBe("Expired");
     expect(m.entry().consent).toMatchObject({ state: "TimedOut", bindingCode: null });
     expect(m.entry().note).toContain("timed out");
     const polls = consent.poll.mock.calls.length;
     await advance(60_000);
     expect(consent.poll.mock.calls.length).toBe(polls);
+  });
+
+  it("at the deadline the backend gets one last look: an approval finished at the last moment is not reported as a time-out", async () => {
+    const expiresAt = iso(Date.now() + 20_000);
+    let call = 0;
+    const consent = fakeConsent({
+      stream: vi.fn(async function* () {
+        throw new TransportError("down", 503);
+      }),
+      poll: vi.fn(async (): Promise<ConsentPoll> =>
+        ++call < 5 ? { ok: true, consent: pending({ expiresAt }), result: null } : { ok: true, consent: ended("Approved"), result: result("submitted", { txIds: ["TXL"] }) },
+      ),
+    });
+    const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);
+    wrapper = m.wrapper;
+    m.confirm.mockResolvedValueOnce(result("consent_pending", { consent: pending({ expiresAt }) }));
+    await m.chat.confirmPreview("p1");
+    await advance(31_000);
+    expect(m.entry().preview.status).toBe("Submitted");
   });
 
   it("a stream that goes quiet is cut at the consent's deadline", async () => {

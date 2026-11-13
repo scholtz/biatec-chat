@@ -703,19 +703,21 @@ export function useChat(svc: ChatServices) {
     };
 
     /**
-     * One plain poll. True when the follower is done. A consent past its deadline is not asked about: its approval can
-     * no longer be redeemed (the backend only signs inside a poll or stream, and Biatec OIDC has expired the request),
-     * so nothing was signed and the answer is known without a request.
+     * One plain poll. True when the follower is done. At the consent's deadline this is the last look: the backend is asked
+     * once more (so a clock that runs fast, or an approval finished at the last moment, is not misreported) and the card
+     * times out only if that answer is still not final. The one case that makes no request is a card found already past
+     * its deadline on a reload (`restoring`): its approval can no longer be redeemed, so nothing was signed.
      */
-    const pollStep = async (): Promise<boolean> => {
+    const pollStep = async (restoring = false): Promise<boolean> => {
       const entry = gone();
       if (!entry) return true;
-      if (Date.now() >= consentDeadline(entry)) return timeOutIfWaiting(entry);
+      const late = Date.now() >= consentDeadline(entry);
+      if (late && restoring) return timeOutIfWaiting(entry);
       let answer: Awaited<ReturnType<ConsentApi["poll"]>>;
       try {
         answer = await api.poll(previewId, signal);
       } catch {
-        return false;
+        return late ? timeOutIfWaiting(entry) : false;
       }
       if (!live()) return true;
       const now = findPreview(previewId);
@@ -725,9 +727,9 @@ export function useChat(svc: ChatServices) {
           lostConsent(now, answer.status);
           return true;
         }
-        return false;
+        return late ? timeOutIfWaiting(now) : false;
       }
-      return take(now, answer.consent, answer.result);
+      return take(now, answer.consent, answer.result) || (late && timeOutIfWaiting(now));
     };
 
     const timeOutIfWaiting = (entry: PreviewEntry): true => {
@@ -743,7 +745,7 @@ export function useChat(svc: ChatServices) {
       const entry = gone();
       if (!entry) return true;
       const wait = consentDeadline(entry) - Date.now();
-      if (wait <= 0) return timeOutIfWaiting(entry);
+      if (wait <= 0) return pollStep();
       // The stream is also cut at the consent's deadline, in case the connection goes quiet without closing.
       const step = new AbortController();
       let cutByDeadline = false;
@@ -781,7 +783,7 @@ export function useChat(svc: ChatServices) {
           lostConsent(now, status);
           return true;
         }
-        if (cutByDeadline) return timeOutIfWaiting(now);
+        if (cutByDeadline) return pollStep();
         return false;
       } finally {
         clearTimeout(timer);
@@ -797,7 +799,7 @@ export function useChat(svc: ChatServices) {
         finishConsent(now, ended, null);
         return true;
       }
-      if (cutByDeadline) return timeOutIfWaiting(now);
+      if (cutByDeadline) return pollStep();
       return false;
     };
 
@@ -820,7 +822,7 @@ export function useChat(svc: ChatServices) {
       });
     };
 
-    if (pollFirst && (await pollStep())) return;
+    if (pollFirst && (await pollStep(true))) return;
     let firstStream = true;
     while (live()) {
       // A retry of the stream makes the server poll for as long as it is open: not from a tab nobody is looking at.
