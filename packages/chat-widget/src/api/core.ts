@@ -76,7 +76,10 @@ export function createCore(options: ResolvedOptions, services?: WidgetServices) 
     keepalive: svc.keepalive ?? (base instanceof TransportManager ? base.keepalive : undefined),
     // Phone approval is followed only with a real backend; injected test services opt in by passing their own.
     consent: svc.consent ?? (services ? undefined : new ConsentClient(cfg)),
-    onEvent: (e) => activity.record(e),
+    onEvent: (e) => {
+      activity.record(e);
+      svc.onEvent?.(e);
+    },
     onConfirmed: (id) => activity.recordConfirm(id),
     onCancelled: (id) => activity.markCancelled(id),
     onConfirmResponse: (body) => void agent.reportRefusal(body),

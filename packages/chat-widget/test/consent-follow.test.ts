@@ -220,7 +220,7 @@ describe("following a phone approval", () => {
     expect(m.entry().note).toBe("The backend says so");
   });
 
-  it("a second round of consent (the first approval could not be used) is followed, up to three rounds", async () => {
+  it("a second round of consent (the first approval could not be used) is followed, three more rounds at most", async () => {
     let round = 0;
     const consent = fakeConsent({
       stream: vi.fn(async function* () {
@@ -234,9 +234,9 @@ describe("following a phone approval", () => {
     wrapper = m.wrapper;
     await m.chat.confirmPreview("p1");
     await advance(1_000);
-    expect(round).toBe(3);
-    expect(consent.stream).toHaveBeenCalledTimes(3);
-    // A fourth round is not followed: the card stops waiting and says it cannot be followed any more.
+    expect(round).toBe(4); // the first, then three more rounds
+    expect(consent.stream).toHaveBeenCalledTimes(4);
+    // A fourth new round is not followed: the card stops waiting and says it cannot be followed any more.
     expect(m.entry().preview.status).toBe("Expired");
     expect(m.entry().note).toContain("can no longer be followed");
   });
@@ -261,6 +261,9 @@ describe("following a phone approval", () => {
   it("the backend's phone-approval prediction is loaded once when the card is shown; a failure shows nothing", async () => {
     const ok = fakeConsent({ prediction: vi.fn(async () => "Above your threshold: approval on your phone is needed") });
     const a = await mountChat(ok, [{ type: "preview_card", preview: preview() }]);
+    expect(ok.prediction).toHaveBeenCalledTimes(1);
+    // A card re-sent while still awaiting confirmation does not ask again once it has the text.
+    await a.chat.send("again");
     expect(ok.prediction).toHaveBeenCalledTimes(1);
     expect(a.entry().prediction).toBe("Above your threshold: approval on your phone is needed");
     a.wrapper.unmount();
@@ -303,6 +306,37 @@ describe("following a phone approval", () => {
     await m.chat.confirmPreview("p1");
     await settle();
     expect(m.entry().preview.status).not.toBe("AwaitingApproval");
+  });
+
+  it("an outcome that is not about the action (sign-in lost, agent paused) leaves the card confirmable, not failed", async () => {
+    const consent = fakeConsent({
+      stream: vi.fn(async function* () {
+        yield status(ended("Approved"));
+        yield done(result("sign_in_required"));
+      }),
+    });
+    const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);
+    wrapper = m.wrapper;
+    await m.chat.confirmPreview("p1");
+    await settle();
+    expect(m.entry().preview.status).toBe("AwaitingConfirmation");
+    expect(m.entry().needsSignIn).toBe(true);
+    expect(m.entry().consent).toBeNull();
+  });
+
+  it("failed cancels do not use up the rounds of consent", async () => {
+    const consent = fakeConsent();
+    const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);
+    wrapper = m.wrapper;
+    await m.chat.confirmPreview("p1");
+    await settle();
+    for (let i = 0; i < 5; i++) {
+      m.cancelPreview.mockResolvedValueOnce(false);
+      await m.chat.cancelPreview("p1");
+      await settle();
+    }
+    expect(m.entry().preview.status).toBe("AwaitingApproval");
+    expect(m.entry().note).not.toContain("can no longer be followed");
   });
 
   it("an approval that ends needing the signing scope starts the authorize step", async () => {
