@@ -511,13 +511,17 @@ export function useChat(svc: ChatServices) {
     lifetime.abort();
     lifetime = new AbortController();
     predictionAsked.clear();
+    predictionSeq.clear();
   }
 
   /** The card's line about phone approval, asked once when the card is first shown. A failure shows nothing. */
   const predictionAsked = new Set<string>();
+  /** The newest prediction request per preview: an older answer that arrives later is dropped. */
+  const predictionSeq = new Map<string, number>();
   /** The card is back to awaiting confirmation (a step settled, or a recoverable refusal): the old prediction is stale, ask again. */
   function refreshPrediction(entry: PreviewEntry): void {
     entry.prediction = null;
+    predictionSeq.set(entry.preview.previewId, (predictionSeq.get(entry.preview.previewId) ?? 0) + 1); // drops an answer still on its way
     predictionAsked.delete(entry.preview.previewId);
     if (entry.preview.status === "AwaitingConfirmation") void loadPrediction(entry.preview.previewId);
   }
@@ -526,9 +530,11 @@ export function useChat(svc: ChatServices) {
     // Once per preview: a failing endpoint is not asked again for every re-sent card.
     if (!api || disposed || predictionAsked.has(previewId)) return;
     predictionAsked.add(previewId);
+    const seq = (predictionSeq.get(previewId) ?? 0) + 1;
+    predictionSeq.set(previewId, seq);
     const known = findPreview(previewId);
     const text = await api.prediction(previewId, lifetime.signal, known ? previewValueEur(known.preview) : null).catch(() => null);
-    if (!text || disposed) return;
+    if (!text || disposed || predictionSeq.get(previewId) !== seq) return;
     const entry = findPreview(previewId);
     if (entry && entry.preview.status === "AwaitingConfirmation") entry.prediction = text;
   }
@@ -548,7 +554,8 @@ export function useChat(svc: ChatServices) {
     cancelOpenSteps(entry, to);
     entry.note = earlierSigned ? t("consent.partial") : note;
     syncKeepalive(entry);
-    svc.onEvent?.({ type: "preview_card", preview: entry.preview });
+    // With earlier steps signed the preview's status is theirs ("Completed"): that is not an event of this close.
+    if (!earlierSigned) svc.onEvent?.({ type: "preview_card", preview: entry.preview });
   }
 
   /** The consent ended: apply the backend's outcome (or the bare consent state when no outcome came with it). */
@@ -562,8 +569,8 @@ export function useChat(svc: ChatServices) {
       if (elevate && !disposed) void authorizePreview(entry.preview.previewId, entry.scope ?? "sign");
       // A new round of consent (the approval could not be used): the follower goes on with the new one.
       if (result.status === "consent_pending") {
-        // The new round must have a consent to follow; without one the card would wait for nothing.
-        if (!isWaitingForPhone(entry)) {
+        // The new round must bring a pending consent of its own; without one the card would wait for nothing.
+        if (result.consent?.state !== "Pending") {
           entry.consent = null;
           closeWithoutSignature(entry, "Expired", t("consent.lost"));
         }
@@ -734,7 +741,7 @@ export function useChat(svc: ChatServices) {
           if (!now) return true;
           if (ev.kind === "status") {
             showConsent(now, ev.consent);
-            if (ev.consent.state !== "Pending" && ev.consent.state !== "NotRequired") ended = ev.consent;
+            ended = ev.consent.state !== "Pending" && ev.consent.state !== "NotRequired" ? ev.consent : null;
           } else if (ev.kind === "result") {
             finishConsent(now, ended ?? now.consent ?? { previewId, stepId: "", state: "Approved" }, ev.result);
             return true;

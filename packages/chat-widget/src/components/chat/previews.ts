@@ -38,6 +38,7 @@ export function previewValueEur(p: ActionPreview): string | null {
   let total = 0;
   let any = false;
   for (const s of p.steps) {
+    if (s.status === "Completed" || s.status === "Submitted") continue; // already signed: not part of what is still to be approved
     const a = s.assets?.[0];
     // A step that states nothing it spends has an unknown value, not a zero one.
     if (!a) return null;
@@ -45,7 +46,8 @@ export function previewValueEur(p: ActionPreview): string | null {
     total += Number(a.fiatValue);
     any = true;
   }
-  return any ? total.toFixed(2) : null;
+  // Rounded up to the cent, so a small non-zero amount is never sent as zero.
+  return any ? (Math.ceil(total * 100 - 1e-6) / 100).toFixed(2) : null;
 }
 
 /** Same shape as the backend's ConfirmResponse; any other JSON body (409, 410, 404) carries `error` and `message`. */

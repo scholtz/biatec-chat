@@ -356,8 +356,32 @@ describe("following a phone approval", () => {
     await m.chat.confirmPreview("p1");
     await settle();
     expect(m.entry().note).toContain("Steps that already completed stay completed");
+    // Activity is not told this was a receipt.
+    expect(m.onEvent).not.toHaveBeenCalledWith(expect.objectContaining({ type: "preview_card", preview: expect.objectContaining({ status: "Completed" }) }));
     expect(m.entry().note).not.toContain("Nothing was signed");
     expect(m.entry().preview.steps[0]!.status).toBe("Completed");
+  });
+
+  it("an older prediction answer that arrives late does not overwrite the refreshed one", async () => {
+    const answers: Array<(v: string) => void> = [];
+    const consent = fakeConsent({ prediction: vi.fn(() => new Promise<string | null>((r) => answers.push(r))) });
+    const twoSteps = preview("AwaitingConfirmation", {
+      steps: [
+        { stepId: "s1", index: 0, title: "One", status: "AwaitingConfirmation", groupHash: "H1" },
+        { stepId: "s2", index: 1, title: "Two", status: "AwaitingConfirmation", groupHash: "H2" },
+      ],
+    });
+    const m = await mountChat(consent, [{ type: "preview_card", preview: twoSteps }]);
+    wrapper = m.wrapper;
+    m.confirm.mockResolvedValueOnce(result("landed", { txIds: ["T1"] }));
+    await m.chat.confirmPreview("p1"); // step one lands, the card asks again
+    await settle();
+    expect(answers).toHaveLength(2);
+    answers[1]!("fresh text");
+    await settle();
+    answers[0]!("old text");
+    await settle();
+    expect(m.entry().prediction).toBe("fresh text");
   });
 
   it("a new round announced without a consent to follow closes the card instead of leaving it waiting", async () => {
@@ -417,6 +441,10 @@ describe("following a phone approval", () => {
     expect(consent.prediction).toHaveBeenCalledTimes(1);
     expect(consent.prediction.mock.calls[0]![2]).toBe("92.50");
     expect(previewValueEur(preview())).toBeNull(); // no fiat value
+    // Only what is still to be signed counts, and a small amount is rounded up to the cent, never down to zero.
+    const eurStep = (id: string, status: ActionPreviewStatus, fiat: string) => ({ stepId: id, index: 0, title: id, status, groupHash: id, assets: [{ assetId: "1", symbol: "A", amount: "1", decimals: 6, fiatValue: fiat, fiatCurrency: "EUR" }] });
+    expect(previewValueEur({ ...eur, steps: [eurStep("a", "Completed", "100"), eurStep("b", "AwaitingConfirmation", "100")] })).toBe("100.00");
+    expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0.004")] })).toBe("0.01");
     // A step that states no asset has an unknown value, so the whole value is unknown.
     expect(previewValueEur({ ...eur, steps: [...eur.steps, { stepId: "s2", index: 1, title: "Opt in", status: "AwaitingConfirmation", groupHash: "H2" }] })).toBeNull();
     expect(previewValueEur({ ...eur, steps: [{ ...eur.steps[0]!, assets: [{ ...eur.steps[0]!.assets![0]!, fiatCurrency: "USD" }] }] })).toBeNull();
