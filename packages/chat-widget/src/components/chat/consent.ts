@@ -76,7 +76,7 @@ export class ConsentClient implements ConsentApi {
 
   async prediction(previewId: string, signal?: AbortSignal, valueEur?: string | null): Promise<string | null> {
     try {
-      const query = valueEur && /^\d{1,15}(?:\.\d{1,18})?$/.test(valueEur) ? `?valueEur=${valueEur}` : "";
+      const query = valueEur && DECIMAL_AMOUNT.test(valueEur) ? `?valueEur=${valueEur}` : "";
       const res = await this.f(this.cfg.backendUrl + CONSENT_PATHS.prediction(previewId) + query, {
         method: "GET",
         credentials: "include",

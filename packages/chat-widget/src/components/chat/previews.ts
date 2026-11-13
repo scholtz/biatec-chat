@@ -1,5 +1,6 @@
 import type { ActionPreview, ActionPreviewStatus, ConsentStatus } from "@biatec/chat-protocol";
 import { CLIENT_KEY_HEADER, CSRF_HEADER, type TransportConfig } from "../../transport/types";
+import { DECIMAL_AMOUNT, str } from "./guards";
 
 /** A preview card in the conversation: the latest `preview_card` for its id plus the widget's own state. */
 export interface PreviewEntry {
@@ -43,7 +44,7 @@ export function previewValueEur(p: ActionPreview): string | null {
     const a = s.assets?.[0];
     // A step that states nothing it spends has an unknown value, not a zero one.
     if (!a) return null;
-    if (a.fiatCurrency !== "EUR" || !a.fiatValue || !/^\d{1,15}(?:\.\d{1,18})?$/.test(a.fiatValue)) return null;
+    if (a.fiatCurrency !== "EUR" || !a.fiatValue || !DECIMAL_AMOUNT.test(a.fiatValue)) return null;
     total += Number(a.fiatValue);
     any = true;
   }
@@ -71,7 +72,6 @@ export interface ConfirmResult {
  * A 401 without our body means the session is gone; other bodies without `status` carry an `error` code.
  */
 export function toConfirmResult(j: Record<string, unknown> | null, httpStatus: number): ConfirmResult {
-  const str = (v: unknown) => (typeof v === "string" ? v : "");
   const status = str(j?.status) || (httpStatus === 401 ? "sign_in_required" : str(j?.error) ? `error:${str(j?.error)}` : "failed");
   return {
     status,
