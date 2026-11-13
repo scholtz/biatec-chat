@@ -324,6 +324,20 @@ describe("following a phone approval", () => {
     expect(m.entry().consent).toBeNull();
   });
 
+  it("a NotRequired consent state does not close the card: it keeps being followed", async () => {
+    const consent = fakeConsent({
+      stream: vi.fn(async function* () {
+        yield status(ended("NotRequired"));
+      }),
+      poll: vi.fn(async (): Promise<ConsentPoll> => ({ ok: true, consent: ended("Approved"), result: result("submitted", { txIds: ["TXN"] }) })),
+    });
+    const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);
+    wrapper = m.wrapper;
+    await m.chat.confirmPreview("p1");
+    await advance(2_000);
+    expect(m.entry().preview.status).toBe("Submitted");
+  });
+
   it("failed cancels do not use up the rounds of consent", async () => {
     const consent = fakeConsent();
     const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);
@@ -366,6 +380,8 @@ describe("following a phone approval", () => {
     expect(consent.prediction).toHaveBeenCalledTimes(1);
     expect(consent.prediction.mock.calls[0]![2]).toBe("92.50");
     expect(previewValueEur(preview())).toBeNull(); // no fiat value
+    // A step that states no asset has an unknown value, so the whole value is unknown.
+    expect(previewValueEur({ ...eur, steps: [...eur.steps, { stepId: "s2", index: 1, title: "Opt in", status: "AwaitingConfirmation", groupHash: "H2" }] })).toBeNull();
     expect(previewValueEur({ ...eur, steps: [{ ...eur.steps[0]!, assets: [{ ...eur.steps[0]!.assets![0]!, fiatCurrency: "USD" }] }] })).toBeNull();
   });
 

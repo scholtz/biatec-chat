@@ -195,7 +195,7 @@ export class SseParser {
         if (this.dataChars > MAX_FRAME_CHARS) return this.overflow(out);
         this.data.push(line.slice(5).replace(/^ /, ""));
       } else if (line.startsWith("event:")) {
-        this.event = line.slice(6).trim().slice(0, 64);
+        this.event = line.slice(6).replace(/^ /, "").slice(0, 64);
       }
       // id:, retry: and comment lines carry nothing we need.
     }

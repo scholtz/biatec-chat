@@ -31,14 +31,16 @@ export function decisionHash(p: ActionPreview): string {
 
 /**
  * What the action spends, in EUR, as a decimal string, when every step states the asset it spends (assets[0]) with a fiat
- * value in EUR. Otherwise null: a value in another currency is not converted here, and the backend then answers cautiously.
+ * value in EUR. Otherwise null (a step with no asset, or a value in another currency, is not guessed at), and the backend
+ * then answers cautiously.
  */
 export function previewValueEur(p: ActionPreview): string | null {
   let total = 0;
   let any = false;
   for (const s of p.steps) {
     const a = s.assets?.[0];
-    if (!a) continue;
+    // A step that states nothing it spends has an unknown value, not a zero one.
+    if (!a) return null;
     if (a.fiatCurrency !== "EUR" || !a.fiatValue || !/^\d{1,15}(?:\.\d{1,18})?$/.test(a.fiatValue)) return null;
     total += Number(a.fiatValue);
     any = true;

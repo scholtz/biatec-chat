@@ -335,6 +335,7 @@ export function useChat(svc: ChatServices) {
    * into a receipt only when no step is still waiting for the user; otherwise the card stays open for the next step.
    */
   function settleStep(e: PreviewEntry, groupHash: string, status: ActionPreview["status"], txIds: string[]): void {
+    e.prediction = null; // it was made for the whole action before this step settled
     let hit = false;
     const steps = e.preview.steps.map((s) => {
       if (hit || s.groupHash !== groupHash) return s;
@@ -558,6 +559,7 @@ export function useChat(svc: ChatServices) {
       // Not a failure of the action: sign-in lost, or the agent paused. The card goes back to where Confirm would leave it.
       if (RECOVERABLE.includes(result.status)) {
         entry.consent = null;
+        entry.prediction = null;
         entry.preview = { ...entry.preview, status: "AwaitingConfirmation" };
         syncKeepalive(entry);
         svc.onEvent?.({ type: "preview_card", preview: entry.preview });
@@ -642,7 +644,7 @@ export function useChat(svc: ChatServices) {
     /** Applies what one answer says. True when the follower is done. */
     const take = (entry: PreviewEntry, consent: ConsentStatus, result: ConfirmResult | null): boolean => {
       showConsent(entry, consent);
-      if (consent.state === "Pending") return false;
+      if (consent.state === "Pending" || consent.state === "NotRequired") return false;
       // Approved and the outcome is still on its way (another tab or poll is finishing it): keep asking.
       if (consent.state === "Approved" && !result) return false;
       finishConsent(entry, consent, result);
@@ -717,7 +719,7 @@ export function useChat(svc: ChatServices) {
           if (!now) return true;
           if (ev.kind === "status") {
             showConsent(now, ev.consent);
-            if (ev.consent.state !== "Pending") ended = ev.consent;
+            if (ev.consent.state !== "Pending" && ev.consent.state !== "NotRequired") ended = ev.consent;
           } else if (ev.kind === "result") {
             finishConsent(now, ended ?? now.consent ?? { previewId, stepId: "", state: "Approved" }, ev.result);
             return true;
