@@ -271,7 +271,61 @@ describe("following a phone approval", () => {
     expect(b.entry().prediction ?? null).toBeNull();
   });
 
-  it("the card shows the prediction in place of the generic line", () => {
+  it("an approval whose outcome has not arrived yet keeps being followed, and the poll brings the outcome", async () => {
+    const consent = fakeConsent({
+      stream: vi.fn(async function* () {
+        yield status(ended("Approved")); // the stream drops before confirm_result
+      }),
+      poll: vi.fn(async (): Promise<ConsentPoll> => ({ ok: true, consent: ended("Approved"), result: result("submitted", { txIds: ["TXA"] }) })),
+    });
+    const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);
+    wrapper = m.wrapper;
+    await m.chat.confirmPreview("p1");
+    await advance(2_000);
+    expect(consent.poll).toHaveBeenCalledTimes(1);
+    expect(m.entry().preview.status).toBe("Submitted");
+  });
+
+  it("something unexpected thrown while applying an answer does not leave the card waiting", async () => {
+    const consent = fakeConsent({
+      stream: vi.fn(async function* () {
+        yield status(ended("Approved"));
+        yield done(result("submitted", { txIds: ["TX"] }));
+      }),
+    });
+    let calls = 0;
+    const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }], {
+      onEvent: vi.fn(() => {
+        if (++calls > 1) throw new Error("subscriber broke"); // the first call is the earlier preview card
+      }),
+    });
+    wrapper = m.wrapper;
+    await m.chat.confirmPreview("p1");
+    await settle();
+    expect(m.entry().preview.status).not.toBe("AwaitingApproval");
+  });
+
+  it("an approval that ends needing the signing scope starts the authorize step", async () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const consent = fakeConsent({
+      stream: vi.fn(async function* () {
+        yield status(ended("Approved"));
+        yield done(result("scope_required", { reauthorizeScope: "sign" }));
+      }),
+    });
+    const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);
+    wrapper = m.wrapper;
+    await m.chat.confirmPreview("p1");
+    await settle();
+    expect(m.entry().preview.status).toBe("AwaitingScope");
+    expect(open).toHaveBeenCalled();
+    expect(m.chat.phase.value).toBe("blocked");
+  });
+
+  it("the card shows the prediction in place of the generic line, only while awaiting confirmation", () => {
+    const later = mount(ActionPreviewCard, { props: { preview: preview("AwaitingApproval"), prediction: "Probably needs your phone" } });
+    expect(later.get("[data-test=phone-line]").text()).not.toContain("Probably needs your phone");
+    later.unmount();
     const w = mount(ActionPreviewCard, { props: { preview: preview(), prediction: "Probably needs your phone" } });
     expect(w.get("[data-test=phone-line]").text()).toContain("Probably needs your phone");
     const plain = mount(ActionPreviewCard, { props: { preview: preview() } });

@@ -476,24 +476,30 @@ export function useChat(svc: ChatServices) {
     } else document.removeEventListener("visibilitychange", onVisibility);
   }
 
+  /** Waiting for the phone, or approved and waiting for the outcome of the approval (still being finished). */
   function isWaitingForPhone(e: PreviewEntry): boolean {
-    return e.preview.status === "AwaitingApproval" && (e.consent === null || e.consent.state === "Pending");
+    return e.preview.status === "AwaitingApproval" && (e.consent === null || e.consent.state === "Pending" || e.consent.state === "Approved");
   }
+
+  /** When each follower started: a consent without a usable expiry (never expected) is given up five minutes after it. */
+  const followStarted = new Map<string, number>();
 
   /** When the consent is given up: its own expiry (the preview's, if it has none) plus a short grace. */
   function consentDeadline(e: PreviewEntry): number {
     const end = Date.parse(e.consent?.expiresAt ?? e.preview.expiresAt);
-    return (Number.isNaN(end) ? Date.now() : end) + CONSENT_GRACE_MS;
+    return (Number.isNaN(end) ? (followStarted.get(e.preview.previewId) ?? Date.now()) + 300_000 : end) + CONSENT_GRACE_MS;
   }
 
   function stopFollower(previewId: string): void {
     followers.get(previewId)?.abort();
     followers.delete(previewId);
+    followStarted.delete(previewId);
     if (followers.size === 0) watchVisibility(false);
   }
   function stopAllFollowers(): void {
     for (const ctl of followers.values()) ctl.abort();
     followers.clear();
+    followStarted.clear();
     visibleWaiters.clear();
     watchVisibility(false);
     lifetime.abort();
@@ -531,8 +537,10 @@ export function useChat(svc: ChatServices) {
     if (result) {
       svc.onConfirmResponse?.(result.raw);
       const hash = entry.preview.steps.find((s) => s.stepId === consent.stepId)?.groupHash ?? decisionHash(entry.preview);
-      settleResult(entry, entry.preview.previewId, hash, result);
+      const elevate = settleResult(entry, entry.preview.previewId, hash, result, false);
       svc.onEvent?.({ type: "preview_card", preview: entry.preview });
+      // The approval could not be used because signing needs one more permission: ask for it, then confirm again.
+      if (elevate && !disposed) void authorizePreview(entry.preview.previewId, entry.scope ?? "sign");
       // A new round of consent (the approval could not be used): the follower goes on with the new one.
       if (result.status === "consent_pending") return;
       // The outcome moved the card on (landed, submitted, a scope to elevate): nothing more to do.
@@ -582,8 +590,19 @@ export function useChat(svc: ChatServices) {
     if (followers.size === 0) watchVisibility(true);
     const ctl = new AbortController();
     followers.set(previewId, ctl);
+    if (!followStarted.has(previewId)) followStarted.set(previewId, Date.now());
     void runFollower(previewId, api, ctl, pollFirst)
-      .catch(() => undefined)
+      .catch(() => {
+        // Something unexpected threw while applying an answer: the card must not wait for a follower that is gone.
+        const stuck = findPreview(previewId);
+        if (!stuck || disposed || ctl.signal.aborted || !isWaitingForPhone(stuck)) return;
+        try {
+          stuck.consent = null;
+          closeWithoutSignature(stuck, "Failed", t("consent.lost"));
+        } catch {
+          /* nothing more can be done for this card */
+        }
+      })
       .finally(() => {
         if (followers.get(previewId) === ctl) followers.delete(previewId);
         if (followers.size === 0) watchVisibility(false);
@@ -656,9 +675,13 @@ export function useChat(svc: ChatServices) {
       if (wait <= 0) return timeOutIfWaiting(entry);
       // The stream is also cut at the consent's deadline, in case the connection goes quiet without closing.
       const step = new AbortController();
+      let cutByDeadline = false;
       const cut = () => step.abort();
       signal.addEventListener("abort", cut, { once: true });
-      const timer = setTimeout(cut, wait);
+      const timer = setTimeout(() => {
+        cutByDeadline = true;
+        step.abort();
+      }, wait);
       let ended: ConsentStatus | null = null;
       try {
         for await (const ev of api.stream(previewId, step.signal)) {
@@ -682,7 +705,7 @@ export function useChat(svc: ChatServices) {
           lostConsent(now, status);
           return true;
         }
-        if (step.signal.aborted && Date.now() >= consentDeadline(now)) return timeOutIfWaiting(now);
+        if (cutByDeadline) return timeOutIfWaiting(now);
         return false;
       } finally {
         clearTimeout(timer);
@@ -698,7 +721,7 @@ export function useChat(svc: ChatServices) {
         finishConsent(now, ended, null);
         return true;
       }
-      if (step.signal.aborted && Date.now() >= consentDeadline(now)) return timeOutIfWaiting(now);
+      if (cutByDeadline) return timeOutIfWaiting(now);
       return false;
     };
 
@@ -706,8 +729,13 @@ export function useChat(svc: ChatServices) {
     const visibleGate = async (): Promise<void> => {
       if (hiddenSince === null || Date.now() - hiddenSince <= HIDDEN_PAUSE_MS) return;
       await new Promise<void>((resolve) => {
-        visibleWaiters.add(resolve);
-        signal.addEventListener("abort", () => resolve(), { once: true });
+        const wake = () => {
+          visibleWaiters.delete(wake);
+          signal.removeEventListener("abort", wake);
+          resolve();
+        };
+        visibleWaiters.add(wake);
+        signal.addEventListener("abort", wake, { once: true });
       });
     };
 
