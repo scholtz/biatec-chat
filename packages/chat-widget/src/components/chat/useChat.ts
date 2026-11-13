@@ -311,7 +311,12 @@ export function useChat(svc: ChatServices) {
       } else {
         // The card moved on (settled, cancelled, expired, back to confirmable): nothing is left to follow.
         stopFollower(preview.previewId);
-        if (preview.status === "AwaitingConfirmation") void loadPrediction(preview.previewId);
+        if (preview.status === "AwaitingConfirmation") {
+          // Asked once, but again when the card comes back with another value (the old answer was for the old one).
+          const s = stateOf(preview.previewId);
+          if (s.predictionAsked && s.predictionValue !== previewValueEur(preview)) refreshPrediction(existing);
+          else void loadPrediction(preview.previewId);
+        }
       }
       return;
     }
@@ -500,11 +505,13 @@ export function useChat(svc: ChatServices) {
     predictionAsked: boolean;
     /** The newest prediction request: an older answer that arrives later is dropped. */
     predictionSeq: number;
+    /** The EUR value the prediction was asked for, so a card re-sent with another value asks again. */
+    predictionValue: string | null;
   }
   const consentState = new Map<string, PreviewConsentState>();
   function stateOf(previewId: string): PreviewConsentState {
     let s = consentState.get(previewId);
-    if (!s) consentState.set(previewId, (s = { follower: null, startedAt: 0, rounds: 0, predictionAsked: false, predictionSeq: 0 }));
+    if (!s) consentState.set(previewId, (s = { follower: null, startedAt: 0, rounds: 0, predictionAsked: false, predictionSeq: 0, predictionValue: null }));
     return s;
   }
   const runningFollowers = (): number => [...consentState.values()].filter((s) => s.follower).length;
@@ -574,7 +581,8 @@ export function useChat(svc: ChatServices) {
     s.predictionAsked = true;
     const seq = ++s.predictionSeq;
     const known = findPreview(previewId);
-    const text = await api.prediction(previewId, lifetime.signal, known ? previewValueEur(known.preview) : null).catch(() => null);
+    s.predictionValue = known ? previewValueEur(known.preview) : null;
+    const text = await api.prediction(previewId, lifetime.signal, s.predictionValue).catch(() => null);
     if (!text || disposed || consentState.get(previewId)?.predictionSeq !== seq) return;
     const entry = findPreview(previewId);
     if (entry && entry.preview.status === "AwaitingConfirmation") entry.prediction = text;
@@ -590,16 +598,23 @@ export function useChat(svc: ChatServices) {
   }
 
   /** Everything that follows a consent that ended without a signature: the card stops waiting and says why. */
-  function closeWithoutSignature(entry: PreviewEntry, to: "Cancelled" | "Expired" | "Failed", note: string): void {
-    // A multi-step action whose earlier steps already landed must not be told "nothing was signed".
+  function closeWithoutSignature(entry: PreviewEntry, to: "Cancelled" | "Expired" | "Failed", note: string, outcomeUnknown = false): void {
+    // A multi-step action whose earlier steps already landed must not be told "nothing was signed" (when the step is known
+    // not to have been signed) - but an unknown outcome keeps its own wording, which makes no claim either way.
     const earlierSigned = entry.preview.steps.some((s) => s.status === "Completed" || s.status === "Submitted");
     cancelOpenSteps(entry, to);
-    entry.note = earlierSigned ? t("consent.partial") : note;
+    entry.note = earlierSigned && !outcomeUnknown ? t("consent.partial") : note;
     syncKeepalive(entry);
     // Denied on the phone is the user's own action: Activity records it as theirs, before the card's change is logged.
-    if (to === "Cancelled") svc.onCancelled?.(entry.preview.previewId);
+    if (to === "Cancelled" && !earlierSigned) svc.onCancelled?.(entry.preview.previewId);
     // With earlier steps signed the preview's status is theirs ("Completed"): that is not an event of this close.
     if (!earlierSigned) svc.onEvent?.({ type: "preview_card", preview: entry.preview });
+  }
+
+  /** The consent can no longer be followed and what became of it is not known: the card stops waiting and makes no claim about signing. */
+  function abandonConsent(entry: PreviewEntry, to: "Expired" | "Failed" = "Expired"): void {
+    entry.consent = null;
+    closeWithoutSignature(entry, to, t("consent.lost"), true);
   }
 
   /** The consent ended: apply the backend's outcome (or the bare consent state when no outcome came with it). */
@@ -614,10 +629,7 @@ export function useChat(svc: ChatServices) {
       // A new round of consent (the approval could not be used): the follower goes on with the new one.
       if (result.status === "consent_pending") {
         // The new round must bring a pending consent of its own; without one the card would wait for nothing.
-        if (result.consent?.state !== "Pending") {
-          entry.consent = null;
-          closeWithoutSignature(entry, "Expired", t("consent.lost"));
-        }
+        if (result.consent?.state !== "Pending") abandonConsent(entry);
         return;
       }
       // The outcome moved the card on (landed, submitted, a scope to elevate): nothing more to do.
@@ -660,7 +672,7 @@ export function useChat(svc: ChatServices) {
       svc.onEvent?.({ type: "preview_card", preview: entry.preview });
       return;
     }
-    closeWithoutSignature(entry, "Expired", t("consent.lost"));
+    abandonConsent(entry);
   }
 
   /**
@@ -678,8 +690,7 @@ export function useChat(svc: ChatServices) {
     if (newRound) {
       if (s.rounds + 1 > MAX_CONSENT_ROUNDS) {
         // The backend keeps asking again: stop following and say so, rather than leave the card waiting for nothing.
-        entry.consent = null;
-        closeWithoutSignature(entry, "Expired", t("consent.lost"));
+        abandonConsent(entry);
         return;
       }
       s.rounds++;
@@ -694,8 +705,7 @@ export function useChat(svc: ChatServices) {
         const stuck = findPreview(previewId);
         if (!stuck || disposed || ctl.signal.aborted || !isWaitingForPhone(stuck)) return;
         try {
-          stuck.consent = null;
-          closeWithoutSignature(stuck, "Failed", t("consent.lost"));
+          abandonConsent(stuck, "Failed");
         } catch {
           /* nothing more can be done for this card */
         }
@@ -716,6 +726,7 @@ export function useChat(svc: ChatServices) {
 
     /** Applies what one answer says. True when the follower is done. */
     const take = (entry: PreviewEntry, consent: ConsentStatus, result: ConfirmResult | null): boolean => {
+      if (isEarlierRound(consent, entry.consent)) return false; // a late answer about a round the card has already left
       showConsent(entry, consent);
       if (!result && (consent.state === "Pending" || consent.state === "NotRequired")) return false;
       // Approved and the outcome is still on its way (another tab or poll is finishing it): keep asking.
@@ -770,15 +781,14 @@ export function useChat(svc: ChatServices) {
 
     /** The last look at the deadline got no answer: the outcome is unknown, so the card does not claim that nothing was signed. */
     const unknownAtDeadline = (entry: PreviewEntry): true => {
-      entry.consent = null;
-      closeWithoutSignature(entry, "Expired", t("consent.lost"));
+      abandonConsent(entry);
       return true;
     };
 
     const timeOutIfWaiting = (entry: PreviewEntry): true => {
       if (entry.consent?.state === "Approved") {
         // Approved, but the outcome never reached this tab: do not claim a time-out that did not happen.
-        closeWithoutSignature(entry, "Failed", t("consent.lost"));
+        abandonConsent(entry, "Failed");
       } else timeOut(entry);
       return true;
     };
@@ -810,6 +820,7 @@ export function useChat(svc: ChatServices) {
           // The card moved on under this stream (another tab, the chat stream): a late event does not apply to it.
           if (!now || now.preview.status !== "AwaitingApproval") return true;
           if (ev.kind === "status") {
+            if (isEarlierRound(ev.consent, now.consent)) continue; // a late status of a round the card has already left
             showConsent(now, ev.consent);
             ended = ev.consent.state !== "Pending" && ev.consent.state !== "NotRequired" ? ev.consent : null;
           } else if (ev.kind === "result") {

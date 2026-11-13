@@ -501,6 +501,66 @@ describe("following a phone approval", () => {
     m2.wrapper.unmount();
   });
 
+  it("an unknown outcome after an earlier step landed keeps its own wording, and is not recorded as the user's cancel", async () => {
+    const twoSteps = preview("AwaitingConfirmation", {
+      steps: [
+        { stepId: "s1", index: 0, title: "One", status: "Completed", groupHash: "H1", transactionId: "TX1" },
+        { stepId: "s2", index: 1, title: "Two", status: "AwaitingConfirmation", groupHash: "H2" },
+      ],
+    });
+    const consent = fakeConsent({
+      stream: vi.fn(async function* () {
+        throw new TransportError("gone", 409);
+      }),
+    });
+    const onCancelled = vi.fn();
+    const m = await mountChat(consent, [{ type: "preview_card", preview: twoSteps }], { onCancelled });
+    wrapper = m.wrapper;
+    await m.chat.confirmPreview("p1");
+    await settle();
+    expect(m.entry().note).toContain("can no longer be followed");
+    expect(m.entry().note).not.toContain("was not approved");
+    expect(onCancelled).not.toHaveBeenCalled();
+  });
+
+  it("a late answer about an earlier round (a poll) does not close the card of the newer round", async () => {
+    const newer = iso(Date.now() + 300_000);
+    const consent = fakeConsent({
+      stream: vi.fn(async function* () {
+        throw new TransportError("down", 503);
+      }),
+      poll: vi.fn(async (): Promise<ConsentPoll> => ({ ok: true, consent: { ...ended("TimedOut"), expiresAt: iso(Date.now() - 100_000) }, result: result("failed") })),
+    });
+    const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);
+    wrapper = m.wrapper;
+    m.confirm.mockResolvedValueOnce(result("consent_pending", { consent: pending({ expiresAt: newer }) }));
+    await m.chat.confirmPreview("p1");
+    await advance(2_000);
+    expect(consent.poll).toHaveBeenCalled();
+    expect(m.entry().preview.status).toBe("AwaitingApproval");
+    expect(m.entry().consent!.state).toBe("Pending");
+  });
+
+  it("a card re-sent with another value asks for a new prediction; with the same value it does not", async () => {
+    const withValue = (v: string) =>
+      preview("AwaitingConfirmation", {
+        steps: [{ stepId: "s1", index: 0, title: "Swap", status: "AwaitingConfirmation", groupHash: "H", assets: [{ assetId: "1", symbol: "USDC", amount: "1", decimals: 6, fiatValue: v, fiatCurrency: "EUR" }] }],
+      });
+    const consent = fakeConsent({ prediction: vi.fn(async () => "Text") });
+    const events: ChatEvent[] = [{ type: "preview_card", preview: withValue("10.00") }];
+    const m = await mountChat(consent, events);
+    wrapper = m.wrapper;
+    expect(consent.prediction).toHaveBeenCalledTimes(1);
+    await m.chat.send("same");
+    expect(consent.prediction).toHaveBeenCalledTimes(1);
+    events.length = 0;
+    events.push({ type: "preview_card", preview: withValue("5000.00") });
+    await m.chat.send("changed");
+    await settle();
+    expect(consent.prediction).toHaveBeenCalledTimes(2);
+    expect(consent.prediction.mock.calls[1]![2]).toBe("5000.00");
+  });
+
   it("a card whose consent already ended (the status came first) closes at once instead of waiting forever", async () => {
     const consent = fakeConsent();
     const m = await mountChat(consent, [
