@@ -32,7 +32,6 @@ export interface OpenPreview {
   groupHash: string;
 }
 
-const OPEN = OPEN_STEP_STATUSES;
 const PREVIEW_EVENT: Partial<Record<ActionPreviewStatus, { kind: ActivityKind; title: string }>> = {
   Submitted: { kind: "execution", title: "submitted" },
   Completed: { kind: "execution", title: "receipt" },
@@ -83,7 +82,7 @@ export function useActivity(now: () => number = Date.now) {
       previews.set(p.previewId, { status: p.status, intent: p.intent, groupHash: decisionHash(p) });
       if (before?.status === p.status) return;
       const detail = clip(p.intent);
-      if (!before && OPEN.includes(p.status)) log({ kind: "preview", title: "previewPrepared", detail, by: "ai" });
+      if (!before && OPEN_STEP_STATUSES.includes(p.status)) log({ kind: "preview", title: "previewPrepared", detail, by: "ai" });
       if (before && CONFIRMED.includes(p.status)) recordConfirm(p.previewId);
       const ev = PREVIEW_EVENT[p.status];
       if (ev) log({ ...ev, detail, by: "ai" });
@@ -112,7 +111,7 @@ export function useActivity(now: () => number = Date.now) {
 
   const openPreviews = computed<OpenPreview[]>(() =>
     [...previews.entries()]
-      .filter(([, v]) => OPEN.includes(v.status) && v.groupHash)
+      .filter(([, v]) => OPEN_STEP_STATUSES.includes(v.status) && v.groupHash)
       .map(([previewId, v]) => ({ previewId, groupHash: v.groupHash })),
   );
 

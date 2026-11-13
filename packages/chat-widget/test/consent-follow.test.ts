@@ -644,10 +644,12 @@ describe("following a phone approval", () => {
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0.000000001")] })).toBe("0.01");
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0")] })).toBe("0.00");
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "1.000000001")] })).toBe("1.01"); // just over a cent boundary rounds up
-    expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0.1"), eurStep("b", "AwaitingConfirmation", "0.2")] })).toBe("0.30"); // no float drift
+    expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0.3")] })).toBe("0.30"); // no float drift
+    // Confirm acts on one step: the first open one, not the sum of the rest.
+    expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "20"), eurStep("b", "AwaitingConfirmation", "20"), eurStep("c", "AwaitingConfirmation", "500")] })).toBe("20.00");
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "Cancelled", "999"), eurStep("b", "AwaitingConfirmation", "5")] })).toBe("5.00");
-    // A step that states no asset has an unknown value, so the whole value is unknown.
-    expect(previewValueEur({ ...eur, steps: [...eur.steps, { stepId: "s2", index: 1, title: "Opt in", status: "AwaitingConfirmation", groupHash: "H2" }] })).toBeNull();
+    // The step being decided on is the first open one; if it states no asset its value is unknown.
+    expect(previewValueEur({ ...eur, steps: [{ stepId: "s0", index: 0, title: "Opt in", status: "AwaitingConfirmation", groupHash: "H0" }, ...eur.steps] })).toBeNull();
     expect(previewValueEur({ ...eur, steps: [{ ...eur.steps[0]!, assets: [{ ...eur.steps[0]!.assets![0]!, fiatCurrency: "USD" }] }] })).toBeNull();
   });
 

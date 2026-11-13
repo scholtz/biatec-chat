@@ -352,14 +352,13 @@ export function useChat(svc: ChatServices) {
     } else if (held.delete(reason)) svc.keepalive?.release(reason);
   }
 
-  const OPEN_STEP = OPEN_STEP_STATUSES;
 
   /**
    * Cancel closes only the steps still open; steps that already landed or were submitted keep their status. The
    * preview as a whole is Cancelled only when nothing settled, otherwise it reflects the partial completion.
    */
   function cancelOpenSteps(e: PreviewEntry, to: "Cancelled" | "Expired" | "Failed" = "Cancelled"): void {
-    const steps = e.preview.steps.map((s) => (OPEN_STEP.includes(s.status) ? { ...s, status: to } : s));
+    const steps = e.preview.steps.map((s) => (OPEN_STEP_STATUSES.includes(s.status) ? { ...s, status: to } : s));
     const settled = steps.filter((s) => s.status === "Completed" || s.status === "Submitted");
     const status: ActionPreview["status"] = settled.length === 0 ? to : settled.some((s) => s.status === "Submitted") ? "Submitted" : "Completed";
     e.preview = { ...e.preview, steps, status };
@@ -376,7 +375,7 @@ export function useChat(svc: ChatServices) {
       hit = true;
       return { ...s, status, transactionId: txIds[0] ?? s.transactionId };
     });
-    const stillOpen = steps.some((s) => OPEN_STEP.includes(s.status));
+    const stillOpen = steps.some((s) => OPEN_STEP_STATUSES.includes(s.status));
     e.preview = { ...e.preview, steps, status: stillOpen ? "AwaitingConfirmation" : status };
     if (stillOpen) refreshPrediction(e); // the one made for the whole action no longer applies
   }
@@ -653,7 +652,7 @@ export function useChat(svc: ChatServices) {
 
   /** The consent ran out on this side (its expiry and the grace have passed with no answer). */
   function timeOut(entry: PreviewEntry): void {
-    const step = entry.preview.steps.find((s) => OPEN_STEP.includes(s.status)) ?? entry.preview.steps[0];
+    const step = entry.preview.steps.find((s) => OPEN_STEP_STATUSES.includes(s.status)) ?? entry.preview.steps[0];
     const c: ConsentStatus = { previewId: entry.preview.previewId, stepId: entry.consent?.stepId ?? step?.stepId ?? "", state: "TimedOut", expiresAt: entry.consent?.expiresAt ?? null };
     showConsent(entry, c);
     closeWithoutSignature(entry, "Expired", t("consent.timedOut"));
@@ -714,6 +713,9 @@ export function useChat(svc: ChatServices) {
         const mine = consentState.get(previewId);
         if (mine && mine.follower === ctl) mine.follower = null;
         if (runningFollowers() === 0) watchVisibility(false);
+        // A card that has left the consent states keeps no record: nothing more will be followed or predicted for it.
+        const left = findPreview(previewId);
+        if (mine && !mine.follower && left && !["AwaitingApproval", "AwaitingConfirmation", "AwaitingScope"].includes(left.preview.status)) consentState.delete(previewId);
         // The outcome was a new round of consent: follow that one too.
         const again = findPreview(previewId);
         if (!ctl.signal.aborted && !disposed && again && isWaitingForPhone(again)) followConsent(previewId, false, true);

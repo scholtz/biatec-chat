@@ -34,18 +34,18 @@ export function decisionHash(p: ActionPreview): string {
 }
 
 /**
- * What the action spends, in EUR, as a decimal string, when every step states the asset it spends (assets[0]) with a fiat
- * value in EUR. Otherwise null (a step with no asset, or a value in another currency, is not guessed at), and the backend
- * then answers cautiously.
+ * What the step the user is deciding on (the first one still to be approved, as decisionHash picks it) spends, in EUR, as a
+ * decimal string, when that step states the asset it spends (assets[0]) with a fiat value in EUR. Otherwise null (no asset,
+ * or a value in another currency, is not guessed at), and the backend then answers cautiously.
  */
 export function previewValueEur(p: ActionPreview): string | null {
-  // Exact: every value is a decimal string with at most 18 fractional digits, summed as integers of 10^-18.
+  // Exact: the value is a decimal string with at most 18 fractional digits, held as an integer of 10^-18.
   const SCALE = 18;
   let total = 0n;
   let any = false;
-  for (const s of p.steps) {
-    // Only the steps still to be approved count: signed ones are done, cancelled, expired and failed ones will not be signed.
-    if (!OPEN_STEP_STATUSES.includes(s.status)) continue;
+  // Confirm acts on one step at a time: the first one still to be approved. Signed, cancelled, expired and failed steps are not it.
+  const s = p.steps.find((x) => OPEN_STEP_STATUSES.includes(x.status));
+  if (s) {
     const a = s.assets?.[0];
     // A step that states nothing it spends has an unknown value, not a zero one.
     if (!a) return null;
