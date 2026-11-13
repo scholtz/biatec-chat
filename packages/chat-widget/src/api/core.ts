@@ -6,6 +6,7 @@ import { useChat, type ChatServices } from "../components/chat/useChat";
 import { TransportManager } from "../transport";
 import { AgentClient, type AgentApi } from "../components/agent/api";
 import { PreviewClient } from "../components/chat/previews";
+import { ConsentClient } from "../components/chat/consent";
 import { useAgent } from "../components/agent/useAgent";
 import { useActivity } from "../components/activity/model";
 import { RetentionClient, type RetentionApi } from "../components/export/api";
@@ -73,6 +74,9 @@ export function createCore(options: ResolvedOptions, services?: WidgetServices) 
     previews: svc.previews ?? new PreviewClient(cfg),
     cancelPreview: svc.cancelPreview ?? ((id, hash) => agentApi.cancelPreview(id, hash)),
     keepalive: svc.keepalive ?? (base instanceof TransportManager ? base.keepalive : undefined),
+    // Phone approval is followed only with a real backend; injected test services opt in by passing their own.
+    consent: svc.consent ?? (services ? undefined : new ConsentClient(cfg)),
+    onEvent: (e) => activity.record(e),
     onConfirmed: (id) => activity.recordConfirm(id),
     onCancelled: (id) => activity.markCancelled(id),
     onConfirmResponse: (body) => void agent.reportRefusal(body),

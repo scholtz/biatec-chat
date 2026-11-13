@@ -25,6 +25,8 @@ import {
 const props = defineProps<{
   preview: ActionPreview;
   consent?: ConsentStatus | null;
+  /** The backend's own line about phone approval for this action; replaces the generic expected/not expected line. */
+  prediction?: string | null;
   /** The session's absolute expiry (SessionState.expiresAt). */
   sessionExpiresAt?: string | null;
   /** True while the confirm call is in flight; locks Confirm. */
@@ -188,7 +190,7 @@ function onConfirm() {
         <dd class="bc-num">{{ t("cards.preview.limitRemaining", { bucket: preview.limit.bucket, remaining: preview.limit.remaining, currency: preview.limit.currency }) }}</dd>
       </template>
     </dl>
-    <p class="bc-phone">{{ t(preview.expectsAuthenticatorApproval ? "cards.preview.phoneYes" : "cards.preview.phoneNo") }}<template v-if="preview.approvalReason"> · {{ preview.approvalReason }}</template></p>
+    <p class="bc-phone" data-test="phone-line">{{ prediction || t(preview.expectsAuthenticatorApproval ? "cards.preview.phoneYes" : "cards.preview.phoneNo") }}<template v-if="preview.approvalReason"> · {{ preview.approvalReason }}</template></p>
     <p v-if="fall" class="bc-downside" data-test="downside">{{ t("cards.preview.downside", fall) }}</p>
 
     <button type="button" class="bc-linkbtn" :aria-expanded="expanded" @click="expanded = !expanded">

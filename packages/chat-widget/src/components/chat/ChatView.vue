@@ -208,6 +208,7 @@ const showThinking = (m: ChatMessage) => m.role === "assistant" && m.streaming &
                 v-else
                 :preview="pv.preview"
                 :consent="pv.consent"
+                :prediction="pv.prediction"
                 :session-expires-at="sessionExpiresAt"
                 :submitting="pv.submitting"
                 @confirm="emit('confirmPreview', $event)"

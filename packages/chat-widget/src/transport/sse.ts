@@ -153,18 +153,31 @@ export const MAX_STREAM_EVENTS = 5_000;
 /** Largest SSE frame (one event's data) or unterminated line the widget buffers. A real event is a few KiB (BCHAT-025). */
 export const MAX_FRAME_CHARS = 1_000_000;
 
-/** Incremental server-sent-events parser. Feed text chunks; it returns the data payloads completed so far. */
+/** One completed server-sent event: the `event:` name (empty when the frame had none) and its joined `data:` lines. */
+export interface SseFrame {
+  event: string;
+  data: string;
+}
+
+/** Incremental server-sent-events parser. Feed text chunks; it returns the events completed so far. */
 export class SseParser {
   private buffer = "";
   private data: string[] = [];
+  private event = "";
   private dataChars = 0;
   /** Set when a frame or line exceeded {@link MAX_FRAME_CHARS}; the parser then buffers nothing more. */
   overflowed = false;
 
+  /** The data payloads completed so far (the event name is ignored: the chat stream's JSON carries its own `type`). */
   push(chunk: string): string[] {
+    return this.pushFrames(chunk).map((f) => f.data);
+  }
+
+  /** The events completed so far, with their `event:` name (the consent stream names its events that way). */
+  pushFrames(chunk: string): SseFrame[] {
     if (this.overflowed) return [];
     this.buffer += chunk;
-    const out: string[] = [];
+    const out: SseFrame[] = [];
     for (;;) {
       const m = /\r\n|\n|\r/.exec(this.buffer);
       if (!m) break;
@@ -173,15 +186,18 @@ export class SseParser {
       const line = this.buffer.slice(0, m.index);
       this.buffer = this.buffer.slice(m.index + m[0].length);
       if (line === "") {
-        if (this.data.length) out.push(this.data.join("\n"));
+        if (this.data.length) out.push({ event: this.event, data: this.data.join("\n") });
         this.data = [];
+        this.event = "";
         this.dataChars = 0;
       } else if (line.startsWith("data:")) {
         this.dataChars += line.length;
         if (this.dataChars > MAX_FRAME_CHARS) return this.overflow(out);
         this.data.push(line.slice(5).replace(/^ /, ""));
+      } else if (line.startsWith("event:")) {
+        this.event = line.slice(6).trim().slice(0, 64);
       }
-      // event:, id:, retry: and comment lines carry nothing we need: the JSON payload holds its own `type`.
+      // id:, retry: and comment lines carry nothing we need.
     }
     // No line break yet and already too long: nothing legitimate looks like this.
     if (this.buffer.length > MAX_FRAME_CHARS) return this.overflow(out);
@@ -189,11 +205,42 @@ export class SseParser {
   }
 
   /** Events completed before the oversized frame are still returned; nothing after it is read. */
-  private overflow(out: string[]): string[] {
+  private overflow(out: SseFrame[]): SseFrame[] {
     this.overflowed = true;
     this.buffer = "";
     this.data = [];
+    this.event = "";
     return out;
+  }
+}
+
+/**
+ * Read a fetch response body as named events (the consent stream: `consent_status`, `confirm_result`, `error`).
+ * Bounded like the chat stream: an oversized frame or too many events ends the stream.
+ */
+export async function* readNamedEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<SseFrame> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  const parser = new SseParser();
+  let total = 0;
+  let events = 0;
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      const chunk = done ? "" : decoder.decode(value, { stream: true });
+      total += chunk.length;
+      const frames = done ? [] : parser.pushFrames(chunk);
+      events += frames.length;
+      const tooBig = parser.overflowed || total > MAX_STREAM_CHARS || events > MAX_STREAM_EVENTS;
+      yield* frames;
+      if (tooBig) {
+        await reader.cancel().catch(() => undefined);
+        return;
+      }
+      if (done) return;
+    }
+  } finally {
+    reader.releaseLock();
   }
 }
 

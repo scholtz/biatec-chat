@@ -3,7 +3,8 @@ import type { ActionPreview, ChatEvent, ConsentStatus, DataCardEvent, SafeCard, 
 import { t } from "../../i18n";
 import { SESSION_EXPIRED, TransportError, type TransportManager } from "../../transport";
 import type { AuthClient } from "./auth";
-import { PENDING_STATUSES, decisionHash, type PreviewApi, type PreviewEntry } from "./previews";
+import type { ConsentApi } from "./consent";
+import { PENDING_STATUSES, decisionHash, type ConfirmResult, type PreviewApi, type PreviewEntry } from "./previews";
 
 export interface ToolLine {
   id: string;
@@ -60,9 +61,53 @@ export interface ChatServices {
   onConfirmResponse?: (body: unknown) => void;
   /** The visible conversation was reset (sign-out, erase): clear what was derived from it (Activity, refusals). */
   onReset?: () => void;
+  /** Phone approval: follow a pending consent to its end and show the prediction. Without it a card is not followed. */
+  consent?: ConsentApi;
+  /** An event the widget itself derived (a consent result, a preview that settled), so Activity logs it like a stream event. */
+  onEvent?: (e: ChatEvent) => void;
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Resolves after `ms`, or as soon as `signal` aborts. */
+function sleepUnlessAborted(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (signal.aborted) return resolve();
+    const done = () => {
+      clearTimeout(id);
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    const id = setTimeout(done, ms);
+    signal.addEventListener("abort", done, { once: true });
+  });
+}
+
+// Following a phone approval (T-237).
+/** The stream is retried this often while the single-poll fallback is running. */
+const STREAM_RETRY_MS = 60_000;
+/** Delays of the single-poll fallback; the last value repeats. Each gets up to 20 percent jitter. */
+const POLL_BACKOFF_MS = [2_000, 4_000, 8_000, 15_000];
+/** A consent is given up this long after its own expiry, so the backend's last answer can still arrive. */
+const CONSENT_GRACE_MS = 10_000;
+/** A tab hidden this long stops the fallback polling until it is visible again. */
+const HIDDEN_PAUSE_MS = 30_000;
+/** A confirm may open a new consent round (a lapsed approval); never more than this many for one preview. */
+const MAX_CONSENT_ROUNDS = 3;
+
+/** Machine-readable reasons the backend may send, and the text each one gets. */
+const CODE_TEXT: Record<string, string> = {
+  no_active_device: "consent.noDevice",
+  no_device_daily_cap: "consent.noDeviceCap",
+  code_failed: "consent.codeFailed",
+  preview_expired: "consent.previewExpired",
+  resume_failed: "consent.resumeFailed",
+  receipt_missing: "consent.receiptMissing",
+};
+const codeText = (code: string | null | undefined): string | null => (code && Object.prototype.hasOwnProperty.call(CODE_TEXT, code) ? t(CODE_TEXT[code]!) : null);
+const jitter = (ms: number): number => ms + Math.random() * ms * 0.2;
+/** The binding code is shown only while the consent is pending; it is dropped from memory the moment it ends. */
+const noCodeUnlessPending = (c: ConsentStatus): ConsentStatus => (c.state === "Pending" ? c : { ...c, bindingCode: null });
 
 /** Longest assistant reply the widget keeps (characters). A real reply is a few thousand. */
 export const MAX_REPLY_CHARS = 200_000;
@@ -201,10 +246,10 @@ export function useChat(svc: ChatServices) {
       case "consent_status": {
         const entry = findPreview(e.consent.previewId);
         if (entry) {
-          entry.consent = e.consent;
+          entry.consent = noCodeUnlessPending(e.consent);
           syncKeepalive(entry);
         } else {
-          orphanConsent.set(e.consent.previewId, e.consent);
+          orphanConsent.set(e.consent.previewId, noCodeUnlessPending(e.consent));
           // Bounded: only a handful can legitimately arrive before their preview_card.
           if (orphanConsent.size > MAX_ORPHAN_CONSENTS) orphanConsent.delete(orphanConsent.keys().next().value as string);
         }
@@ -237,6 +282,8 @@ export function useChat(svc: ChatServices) {
       existing.preview = preview;
       if (preview.status !== "AwaitingConfirmation") existing.note = "";
       syncKeepalive(existing);
+      // A card the backend says is awaiting the phone (a reload, a restored session): one poll, then the stream.
+      if (preview.status === "AwaitingApproval") followConsent(preview.previewId, true);
       return;
     }
     const list = (m.previews ??= []);
@@ -250,6 +297,8 @@ export function useChat(svc: ChatServices) {
     });
     orphanConsent.delete(preview.previewId);
     syncKeepalive(list[list.length - 1]!);
+    if (preview.status === "AwaitingApproval") followConsent(preview.previewId, true);
+    else if (preview.status === "AwaitingConfirmation") void loadPrediction(preview.previewId);
   }
 
   function isPending(e: PreviewEntry): boolean {
@@ -271,10 +320,10 @@ export function useChat(svc: ChatServices) {
    * Cancel closes only the steps still open; steps that already landed or were submitted keep their status. The
    * preview as a whole is Cancelled only when nothing settled, otherwise it reflects the partial completion.
    */
-  function cancelOpenSteps(e: PreviewEntry): void {
-    const steps = e.preview.steps.map((s) => (OPEN_STEP.includes(s.status) ? { ...s, status: "Cancelled" as const } : s));
+  function cancelOpenSteps(e: PreviewEntry, to: "Cancelled" | "Expired" | "Failed" = "Cancelled"): void {
+    const steps = e.preview.steps.map((s) => (OPEN_STEP.includes(s.status) ? { ...s, status: to } : s));
     const settled = steps.filter((s) => s.status === "Completed" || s.status === "Submitted");
-    const status: ActionPreview["status"] = settled.length === 0 ? "Cancelled" : settled.some((s) => s.status === "Submitted") ? "Submitted" : "Completed";
+    const status: ActionPreview["status"] = settled.length === 0 ? to : settled.some((s) => s.status === "Submitted") ? "Submitted" : "Completed";
     e.preview = { ...e.preview, steps, status };
   }
 
@@ -312,44 +361,54 @@ export function useChat(svc: ChatServices) {
         return;
       }
       svc.onConfirmResponse?.(r.raw);
-      switch (r.status) {
-        case "landed":
-          settleStep(entry, hash, "Completed", r.txIds);
-          svc.onConfirmed?.(previewId);
-          break;
-        case "submitted":
-          settleStep(entry, hash, "Submitted", r.txIds);
-          svc.onConfirmed?.(previewId);
-          break;
-        case "consent_pending":
-          entry.consent = r.consent ?? entry.consent;
-          entry.preview = { ...entry.preview, status: "AwaitingApproval" };
-          svc.onConfirmed?.(previewId);
-          break;
-        case "scope_required":
-          entry.scope = r.reauthorizeScope ?? "sign";
-          entry.preview = { ...entry.preview, status: "AwaitingScope" };
-          elevate = !retried;
-          break;
-        case "sign_in_required":
-          entry.note = t("chat.previewSignInRequired");
-          entry.needsSignIn = true;
-          break;
-        case "sign_in_unavailable":
-          entry.note = t("chat.previewSignInUnavailable");
-          break;
-        case "agent_paused":
-        case "agent_analyze_only":
-          break; // shown through core.agent.reportRefusal with Resume / Change mode
-        default:
-          entry.note = r.message || t("chat.previewFailed");
-      }
+      rounds.delete(previewId);
+      elevate = settleResult(entry, previewId, hash, r, retried);
     } finally {
       entry.submitting = false;
       syncKeepalive(entry);
     }
     // Elevate the scope in a popup, then retry the confirm once.
     if (elevate && !disposed) await authorizePreview(previewId, entry.scope ?? "sign");
+  }
+
+  /**
+   * One ConfirmResponse applied to the card, whether it came from the confirm call or from the end of a consent.
+   * Returns true when the scope must be elevated and the confirm retried.
+   */
+  function settleResult(entry: PreviewEntry, previewId: string, hash: string, r: ConfirmResult, retried = true): boolean {
+    switch (r.status) {
+      case "landed":
+        settleStep(entry, hash, "Completed", r.txIds);
+        svc.onConfirmed?.(previewId);
+        break;
+      case "submitted":
+        settleStep(entry, hash, "Submitted", r.txIds);
+        svc.onConfirmed?.(previewId);
+        break;
+      case "consent_pending":
+        entry.consent = r.consent ? noCodeUnlessPending(r.consent) : entry.consent;
+        entry.preview = { ...entry.preview, status: "AwaitingApproval" };
+        svc.onConfirmed?.(previewId);
+        followConsent(previewId);
+        break;
+      case "scope_required":
+        entry.scope = r.reauthorizeScope ?? "sign";
+        entry.preview = { ...entry.preview, status: "AwaitingScope" };
+        return !retried;
+      case "sign_in_required":
+        entry.note = t("chat.previewSignInRequired");
+        entry.needsSignIn = true;
+        break;
+      case "sign_in_unavailable":
+        entry.note = t("chat.previewSignInUnavailable");
+        break;
+      case "agent_paused":
+      case "agent_analyze_only":
+        break; // shown through core.agent.reportRefusal with Resume / Change mode
+      default:
+        entry.note = codeText(r.errorCode) ?? (r.message || t("chat.previewFailed"));
+    }
+    return false;
   }
 
   /** Runs the elevate popup for the scope, then retries the confirm once. Also the card's Authorize button. */
@@ -367,6 +426,8 @@ export function useChat(svc: ChatServices) {
     if (entry.preview.status === "Cancelled") return;
     // `submitting` also locks Confirm and Cancel while the cancel call is in flight.
     entry.submitting = true;
+    // The user is ending the consent: nothing is polled or streamed for it any more (resumed below if the cancel fails).
+    stopFollower(previewId);
     syncKeepalive(entry);
     try {
       let ok = false;
@@ -377,12 +438,285 @@ export function useChat(svc: ChatServices) {
       }
       if (ok) {
         cancelOpenSteps(entry);
+        if (entry.consent) entry.consent = noCodeUnlessPending({ ...entry.consent, state: "Denied" });
         entry.note = "";
         svc.onCancelled?.(previewId);
-      } else entry.note = t("chat.previewCancelFailed");
+      } else {
+        entry.note = t("chat.previewCancelFailed");
+        if (!disposed && isWaitingForPhone(entry)) followConsent(previewId, true);
+      }
     } finally {
       entry.submitting = false;
       syncKeepalive(entry);
+    }
+  }
+
+  // ---- Following a phone approval (T-237) ----
+  /** One follower per preview, at most. Aborting its controller stops every request and timer it holds. */
+  const followers = new Map<string, AbortController>();
+  /** Consent rounds opened for a preview, so a backend that keeps asking again cannot keep the widget polling forever. */
+  const rounds = new Map<string, number>();
+  /** Aborted on dispose and reset: no prediction request is sent after them. */
+  let lifetime = new AbortController();
+  let hiddenSince: number | null = null;
+  const visibleWaiters = new Set<() => void>();
+
+  function onVisibility(): void {
+    hiddenSince = document.visibilityState === "hidden" ? Date.now() : null;
+    if (hiddenSince === null) {
+      for (const wake of [...visibleWaiters]) wake();
+      visibleWaiters.clear();
+    }
+  }
+  function watchVisibility(on: boolean): void {
+    if (typeof document === "undefined") return;
+    if (on) {
+      hiddenSince = document.visibilityState === "hidden" ? Date.now() : null;
+      document.addEventListener("visibilitychange", onVisibility);
+    } else document.removeEventListener("visibilitychange", onVisibility);
+  }
+
+  function isWaitingForPhone(e: PreviewEntry): boolean {
+    return e.preview.status === "AwaitingApproval" && (e.consent === null || e.consent.state === "Pending");
+  }
+
+  /** When the consent is given up: its own expiry (the preview's, if it has none) plus a short grace. */
+  function consentDeadline(e: PreviewEntry): number {
+    const end = Date.parse(e.consent?.expiresAt ?? e.preview.expiresAt);
+    return (Number.isNaN(end) ? Date.now() : end) + CONSENT_GRACE_MS;
+  }
+
+  function stopFollower(previewId: string): void {
+    followers.get(previewId)?.abort();
+    followers.delete(previewId);
+    if (followers.size === 0) watchVisibility(false);
+  }
+  function stopAllFollowers(): void {
+    for (const ctl of followers.values()) ctl.abort();
+    followers.clear();
+    visibleWaiters.clear();
+    watchVisibility(false);
+    lifetime.abort();
+    lifetime = new AbortController();
+  }
+
+  /** The card's line about phone approval, asked once when the card is first shown. A failure shows nothing. */
+  async function loadPrediction(previewId: string): Promise<void> {
+    const api = svc.consent;
+    if (!api || disposed) return;
+    const text = await api.prediction(previewId, lifetime.signal).catch(() => null);
+    if (!text || disposed) return;
+    const entry = findPreview(previewId);
+    if (entry && entry.preview.status === "AwaitingConfirmation") entry.prediction = text;
+  }
+
+  /** Shows a consent status on the card. The code is only kept while pending, and Activity logs the change. */
+  function showConsent(entry: PreviewEntry, c: ConsentStatus): void {
+    const shown = noCodeUnlessPending(c);
+    entry.consent = shown;
+    syncKeepalive(entry);
+    svc.onEvent?.({ type: "consent_status", consent: shown });
+  }
+
+  /** Everything that follows a consent that ended without a signature: the card stops waiting and says why. */
+  function closeWithoutSignature(entry: PreviewEntry, to: "Cancelled" | "Expired" | "Failed", note: string): void {
+    cancelOpenSteps(entry, to);
+    entry.note = note;
+    syncKeepalive(entry);
+    svc.onEvent?.({ type: "preview_card", preview: entry.preview });
+  }
+
+  /** The consent ended: apply the backend's outcome (or the bare consent state when no outcome came with it). */
+  function finishConsent(entry: PreviewEntry, consent: ConsentStatus, result: ConfirmResult | null): void {
+    if (result) {
+      svc.onConfirmResponse?.(result.raw);
+      const hash = entry.preview.steps.find((s) => s.stepId === consent.stepId)?.groupHash ?? decisionHash(entry.preview);
+      settleResult(entry, entry.preview.previewId, hash, result);
+      svc.onEvent?.({ type: "preview_card", preview: entry.preview });
+      // A new round of consent (the approval could not be used): the follower goes on with the new one.
+      if (result.status === "consent_pending") return;
+      // The outcome moved the card on (landed, submitted, a scope to elevate): nothing more to do.
+      if (entry.preview.status !== "AwaitingApproval") return;
+    }
+    // Nothing was signed: the card leaves the waiting state, with the reason.
+    const known = codeText(result?.errorCode);
+    if (consent.state === "Denied") closeWithoutSignature(entry, "Cancelled", known ?? t("consent.denied"));
+    else if (consent.state === "TimedOut") closeWithoutSignature(entry, "Expired", known ?? t("consent.timedOut"));
+    else closeWithoutSignature(entry, "Failed", known ?? (entry.note || result?.message || t("chat.previewFailed")));
+  }
+
+  /** The consent ran out on this side (its expiry and the grace have passed with no answer). */
+  function timeOut(entry: PreviewEntry): void {
+    const step = entry.preview.steps.find((s) => OPEN_STEP.includes(s.status)) ?? entry.preview.steps[0];
+    const c: ConsentStatus = { previewId: entry.preview.previewId, stepId: entry.consent?.stepId ?? step?.stepId ?? "", state: "TimedOut", expiresAt: entry.consent?.expiresAt ?? null };
+    showConsent(entry, c);
+    closeWithoutSignature(entry, "Expired", t("consent.timedOut"));
+  }
+
+  /** The backend says this consent cannot be followed (sign-in gone, preview or consent not there any more). */
+  function lostConsent(entry: PreviewEntry, status: number): void {
+    entry.consent = null;
+    entry.needsSignIn = status === 401;
+    closeWithoutSignature(entry, "Expired", t(status === 401 ? "chat.previewSignInRequired" : "consent.lost"));
+  }
+
+  /**
+   * Follows the consent of a preview to its end. Only one follower runs per preview. It opens the consent stream; if
+   * that fails or ends early it polls once per backoff step and retries the stream every minute, until the consent
+   * ends, the user cancels, the widget goes away, or the consent's expiry (plus ten seconds) has passed.
+   * `pollFirst` is for a card that is found already waiting (a reload): one plain poll before the stream.
+   */
+  function followConsent(previewId: string, pollFirst = false): void {
+    const api = svc.consent;
+    if (!api || disposed || followers.has(previewId)) return;
+    const entry = findPreview(previewId);
+    if (!entry || !isWaitingForPhone(entry)) return;
+    const n = (rounds.get(previewId) ?? 0) + 1;
+    if (n > MAX_CONSENT_ROUNDS) return;
+    rounds.set(previewId, n);
+    if (followers.size === 0) watchVisibility(true);
+    const ctl = new AbortController();
+    followers.set(previewId, ctl);
+    void runFollower(previewId, api, ctl, pollFirst)
+      .catch(() => undefined)
+      .finally(() => {
+        if (followers.get(previewId) === ctl) followers.delete(previewId);
+        if (followers.size === 0) watchVisibility(false);
+        // The outcome was a new round of consent: follow that one too.
+        const again = findPreview(previewId);
+        if (!ctl.signal.aborted && !disposed && again && isWaitingForPhone(again) && again.consent?.state === "Pending") followConsent(previewId);
+      });
+  }
+
+  async function runFollower(previewId: string, api: ConsentApi, ctl: AbortController, pollFirst: boolean): Promise<void> {
+    const signal = ctl.signal;
+    const live = () => !signal.aborted && !disposed;
+
+    /** Applies what one answer says. True when the follower is done. */
+    const take = (entry: PreviewEntry, consent: ConsentStatus, result: ConfirmResult | null): boolean => {
+      showConsent(entry, consent);
+      if (consent.state === "Pending") return false;
+      // Approved and the outcome is still on its way (another tab or poll is finishing it): keep asking.
+      if (consent.state === "Approved" && !result) return false;
+      finishConsent(entry, consent, result);
+      return true;
+    };
+
+    const gone = (): PreviewEntry | null => {
+      const entry = findPreview(previewId);
+      return entry && isWaitingForPhone(entry) ? entry : null;
+    };
+
+    /** One plain poll. True when the follower is done. */
+    const pollStep = async (): Promise<boolean> => {
+      const entry = gone();
+      if (!entry) return true;
+      if (Date.now() >= consentDeadline(entry)) return timeOutIfWaiting(entry);
+      let answer: Awaited<ReturnType<ConsentApi["poll"]>>;
+      try {
+        answer = await api.poll(previewId, signal);
+      } catch {
+        return false;
+      }
+      if (!live()) return true;
+      const now = findPreview(previewId);
+      if (!now) return true;
+      if (!answer.ok) {
+        if (answer.status === 401 || answer.status === 404 || answer.status === 409) {
+          lostConsent(now, answer.status);
+          return true;
+        }
+        return false;
+      }
+      return take(now, answer.consent, answer.result);
+    };
+
+    const timeOutIfWaiting = (entry: PreviewEntry): true => {
+      if (entry.consent?.state === "Approved") {
+        // Approved, but the outcome never reached this tab: do not claim a time-out that did not happen.
+        closeWithoutSignature(entry, "Failed", t("consent.lost"));
+      } else timeOut(entry);
+      return true;
+    };
+
+    /** One stream attempt. True when the follower is done. */
+    const streamStep = async (): Promise<boolean> => {
+      const entry = gone();
+      if (!entry) return true;
+      const wait = consentDeadline(entry) - Date.now();
+      if (wait <= 0) return timeOutIfWaiting(entry);
+      // The stream is also cut at the consent's deadline, in case the connection goes quiet without closing.
+      const step = new AbortController();
+      const cut = () => step.abort();
+      signal.addEventListener("abort", cut, { once: true });
+      const timer = setTimeout(cut, wait);
+      let ended: ConsentStatus | null = null;
+      try {
+        for await (const ev of api.stream(previewId, step.signal)) {
+          if (!live()) return true;
+          const now = findPreview(previewId);
+          if (!now) return true;
+          if (ev.kind === "status") {
+            showConsent(now, ev.consent);
+            if (ev.consent.state !== "Pending") ended = ev.consent;
+          } else if (ev.kind === "result") {
+            finishConsent(now, ended ?? now.consent ?? { previewId, stepId: "", state: "Approved" }, ev.result);
+            return true;
+          } else break;
+        }
+      } catch (err) {
+        if (!live()) return true;
+        const status = (err as { status?: number } | null)?.status;
+        const now = findPreview(previewId);
+        if (!now) return true;
+        if (status === 401 || status === 404 || status === 409) {
+          lostConsent(now, status);
+          return true;
+        }
+        if (step.signal.aborted && Date.now() >= consentDeadline(now)) return timeOutIfWaiting(now);
+        return false;
+      } finally {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", cut);
+      }
+      if (!live()) return true;
+      const now = findPreview(previewId);
+      if (!now) return true;
+      // The stream ended after a final status but without an outcome: that status is the outcome.
+      if (ended && ended.state !== "Approved") {
+        finishConsent(now, ended, null);
+        return true;
+      }
+      if (step.signal.aborted && Date.now() >= consentDeadline(now)) return timeOutIfWaiting(now);
+      return false;
+    };
+
+    /** A tab hidden for a while does not poll; the poll happens once it is visible again. */
+    const visibleGate = async (): Promise<void> => {
+      if (hiddenSince === null || Date.now() - hiddenSince <= HIDDEN_PAUSE_MS) return;
+      await new Promise<void>((resolve) => {
+        visibleWaiters.add(resolve);
+        signal.addEventListener("abort", () => resolve(), { once: true });
+      });
+    };
+
+    if (pollFirst && (await pollStep())) return;
+    while (live()) {
+      if (await streamStep()) return;
+      // The stream failed or ended early: single polls with backoff until it is time to try the stream again.
+      const retryAt = Date.now() + STREAM_RETRY_MS;
+      for (let i = 0; live() && Date.now() < retryAt; i++) {
+        // Never sleep past the consent's deadline: the time-out is shown when it is due.
+        const left = (() => {
+          const e = findPreview(previewId);
+          return e ? consentDeadline(e) - Date.now() : 0;
+        })();
+        await sleepUnlessAborted(Math.max(0, Math.min(jitter(POLL_BACKOFF_MS[Math.min(i, POLL_BACKOFF_MS.length - 1)]!), left)), signal);
+        if (!live()) return;
+        await visibleGate();
+        if (!live()) return;
+        if (await pollStep()) return;
+      }
     }
   }
 
@@ -557,6 +891,8 @@ export function useChat(svc: ChatServices) {
     abort?.abort();
     abort = null;
     messages.splice(0, messages.length);
+    stopAllFollowers();
+    rounds.clear();
     for (const reason of held) svc.keepalive?.release(reason);
     held.clear();
     announcement.value = "";
@@ -566,6 +902,7 @@ export function useChat(svc: ChatServices) {
   onBeforeUnmount(() => {
     disposed = true;
     abort?.abort();
+    stopAllFollowers();
     for (const reason of held) svc.keepalive?.release(reason);
     held.clear();
   });

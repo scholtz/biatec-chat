@@ -13,6 +13,8 @@ export interface PreviewEntry {
   needsSignIn: boolean;
   /** Scope the backend asked to elevate (scope_required). */
   scope: string | null;
+  /** The backend's one-line prediction about phone approval (GET .../consent/prediction), shown before Confirm. */
+  prediction?: string | null;
 }
 
 /** The statuses in which the user still has something pending (keepalive holds while any is true). */
@@ -35,8 +37,28 @@ export interface ConfirmResult {
   txIds: string[];
   consent: ConsentStatus | null;
   reauthorizeScope: string | null;
+  /** A machine-readable reason (no_active_device, code_failed, ...) when the backend sends one; the message is the fallback. */
+  errorCode?: string | null;
   /** The raw body, for the agent refusal check. */
   raw: unknown;
+}
+
+/**
+ * The widget's view of a ConfirmResponse body, from the confirm call and from the consent stream's `confirm_result`.
+ * A 401 without our body means the session is gone; other bodies without `status` carry an `error` code.
+ */
+export function toConfirmResult(j: Record<string, unknown> | null, httpStatus: number): ConfirmResult {
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const status = str(j?.status) || (httpStatus === 401 ? "sign_in_required" : str(j?.error) ? `error:${str(j?.error)}` : "failed");
+  return {
+    status,
+    message: str(j?.message),
+    txIds: Array.isArray(j?.txIds) ? (j.txIds as unknown[]).filter((x): x is string => typeof x === "string") : [],
+    consent: j?.consent && typeof j.consent === "object" ? (j.consent as ConsentStatus) : null,
+    reauthorizeScope: str(j?.reauthorizeScope) || null,
+    errorCode: str(j?.errorCode) || null,
+    raw: j,
+  };
 }
 
 export interface PreviewApi {
@@ -63,16 +85,6 @@ export class PreviewClient implements PreviewApi {
       body: JSON.stringify({ groupHash }),
     });
     const j = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-    const str = (v: unknown) => (typeof v === "string" ? v : "");
-    // A 401 without our body means the session is gone; other bodies without `status` carry an `error` code.
-    const status = str(j?.status) || (res.status === 401 ? "sign_in_required" : str(j?.error) ? `error:${str(j?.error)}` : "failed");
-    return {
-      status,
-      message: str(j?.message),
-      txIds: Array.isArray(j?.txIds) ? (j.txIds as unknown[]).filter((x): x is string => typeof x === "string") : [],
-      consent: j?.consent && typeof j.consent === "object" ? (j.consent as ConsentStatus) : null,
-      reauthorizeScope: str(j?.reauthorizeScope) || null,
-      raw: j,
-    };
+    return toConfirmResult(j, res.status);
   }
 }
