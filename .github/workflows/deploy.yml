@@ -50,7 +50,7 @@ jobs:
 
       - name: Install cosign
         continue-on-error: ${{ vars.IMAGE_SIGNING_REQUIRED != 'true' }}
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
 
       # Before anything is written to the cluster. Deploy the digest that was verified, not the tag (BCHAT-018): resolve each image of the overlay to its digest, check the
       # keyless signature (certificate identity: deploy-stage.yml on main, the workflow that built it; production images are the same
@@ -258,7 +258,7 @@ jobs:
 
       # The backend migrates only in Development; elsewhere the schema is a deploy step. The idempotent script applies
       # just the migrations missing from __EFMigrationsHistory, so it is safe on every deploy.
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 10.0.x
 
