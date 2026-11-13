@@ -445,6 +445,27 @@ describe("following a phone approval", () => {
     expect(consent.prediction).toHaveBeenCalledTimes(2);
   });
 
+  it("a replayed pending status does not revive a card that has already ended", async () => {
+    const consent = fakeConsent({
+      stream: vi.fn(async function* () {
+        yield status(ended("Denied"));
+        yield done(result("failed"));
+      }),
+    });
+    const events: ChatEvent[] = [{ type: "preview_card", preview: preview() }];
+    const m = await mountChat(consent, events);
+    wrapper = m.wrapper;
+    await m.chat.confirmPreview("p1");
+    await settle();
+    expect(m.entry().preview.status).toBe("Cancelled");
+    events.length = 0;
+    events.push({ type: "consent_status", consent: pending() });
+    await m.chat.send("replay");
+    await settle();
+    expect(m.entry().consent!.state).toBe("Denied");
+    expect(m.entry().consent!.bindingCode).toBeNull();
+  });
+
   it("a confirm answer that carries an already ended consent closes the card at once", async () => {
     const consent = fakeConsent();
     const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);
@@ -733,6 +754,7 @@ describe("following a phone approval", () => {
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0.00")] })).toBeNull();
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "1.000000001")] })).toBe("1.01"); // just over a cent boundary rounds up
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0.3")] })).toBe("0.30"); // no float drift
+    expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "999999999999999.999")] })).toBeNull(); // rounding up would pass 15 digits
     // Confirm acts on one step: the first open one, not the sum of the rest.
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "20"), eurStep("b", "AwaitingConfirmation", "20"), eurStep("c", "AwaitingConfirmation", "500")] })).toBe("20.00");
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "Cancelled", "999"), eurStep("b", "AwaitingConfirmation", "5")] })).toBe("5.00");

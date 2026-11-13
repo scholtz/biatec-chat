@@ -109,6 +109,10 @@ const CODE_TEXT: Record<string, string> = {
   receipt_missing: "consent.receiptMissing",
 };
 const codeText = (code: string | null | undefined): string | null => (code && Object.prototype.hasOwnProperty.call(CODE_TEXT, code) ? t(CODE_TEXT[code]!) : null);
+/** Preview statuses after which nothing is pending any more. */
+const ENDED_PREVIEW: ActionPreview["status"][] = ["Submitted", "Completed", "Cancelled", "Expired", "Failed"];
+/** Longest delay setTimeout takes (about 24 days); longer waits are not armed. */
+const MAX_TIMER_MS = 2_000_000_000;
 /** The consent ended without an approval (denied on the phone, or timed out). */
 const consentEnded = (c: ConsentStatus | null | undefined): boolean => c?.state === "Denied" || c?.state === "TimedOut";
 /** A status of an earlier round of consent for the same step: its expiry is older than the round the card now shows. */
@@ -261,8 +265,8 @@ export function useChat(svc: ChatServices) {
         break;
       case "consent_status": {
         const entry = findPreview(e.consent.previewId);
-        if (entry && isEarlierRound(e.consent, entry.consent)) {
-          // A late or replayed status of an earlier round: the card shows the round it is in.
+        if (entry && (isEarlierRound(e.consent, entry.consent) || (e.consent.state === "Pending" && ENDED_PREVIEW.includes(entry.preview.status)))) {
+          // A late or replayed status of an earlier round, or a pending one for a card that has already ended: not shown.
         } else if (entry) {
           entry.consent = noCodeUnlessPending(e.consent);
           syncKeepalive(entry);
@@ -314,6 +318,7 @@ export function useChat(svc: ChatServices) {
       } else {
         // The card moved on (settled, cancelled, expired, back to confirmable): nothing is left to follow.
         stopFollower(preview.previewId);
+        if (ENDED_PREVIEW.includes(preview.status)) consentState.delete(preview.previewId);
         if (preview.status === "AwaitingConfirmation" && svc.consent) {
           // Asked once, but again when the card comes back with another value (the old answer was for the old one).
           const s = stateOf(preview.previewId);
@@ -595,12 +600,13 @@ export function useChat(svc: ChatServices) {
   }
 
   /** Shows a consent status on the card. The code is only kept while pending, and Activity logs the change. */
-  function showConsent(entry: PreviewEntry, c: ConsentStatus): void {
-    if (isEarlierRound(c, entry.consent)) return; // a late answer about a round the card has already left
+  function showConsent(entry: PreviewEntry, c: ConsentStatus): boolean {
+    if (isEarlierRound(c, entry.consent)) return false; // a late answer about a round the card has already left
     const shown = noCodeUnlessPending(c);
     entry.consent = shown;
     syncKeepalive(entry);
     svc.onEvent?.({ type: "consent_status", consent: shown });
+    return true;
   }
 
   /** Everything that follows a consent that ended without a signature: the card stops waiting and says why. */
@@ -737,8 +743,7 @@ export function useChat(svc: ChatServices) {
 
     /** Applies what one answer says. True when the follower is done. */
     const take = (entry: PreviewEntry, consent: ConsentStatus, result: ConfirmResult | null): boolean => {
-      if (isEarlierRound(consent, entry.consent)) return false; // a late answer about a round the card has already left
-      showConsent(entry, consent);
+      if (!showConsent(entry, consent)) return false; // a late answer about a round the card has already left
       if (!result && (consent.state === "Pending" || consent.state === "NotRequired")) return false;
       // Approved and the outcome is still on its way (another tab or poll is finishing it): keep asking.
       if (consent.state === "Approved" && !result) return false;
@@ -817,7 +822,7 @@ export function useChat(svc: ChatServices) {
       signal.addEventListener("abort", cut, { once: true });
       // A delay past about 24 days overflows setTimeout and would fire at once: such a consent is never cut by the timer.
       const timer =
-        wait < 2_000_000_000
+        wait < MAX_TIMER_MS
           ? setTimeout(() => {
               cutByDeadline = true;
               step.abort();
@@ -831,8 +836,7 @@ export function useChat(svc: ChatServices) {
         // The card moved on under this stream (another tab, the chat stream): a late event does not apply to it.
         if (!now || now.preview.status !== "AwaitingApproval") return true;
         if (ev.kind === "status") {
-          if (isEarlierRound(ev.consent, now.consent)) return null; // a late status of a round the card has already left
-          showConsent(now, ev.consent);
+          if (!showConsent(now, ev.consent)) return null; // a late status of a round the card has already left
           ended = ev.consent.state !== "Pending" && ev.consent.state !== "NotRequired" ? ev.consent : null;
           return null;
         }
@@ -892,7 +896,7 @@ export function useChat(svc: ChatServices) {
       if (hiddenSince === null || Date.now() - hiddenSince <= HIDDEN_PAUSE_MS) return;
       const entry = findPreview(previewId);
       // Also wakes at the consent's deadline, so the time-out is shown even in a tab nobody is looking at.
-      const left = entry ? Math.min(Math.max(0, consentDeadline(entry) - Date.now()), 2_000_000_000) : 0;
+      const left = entry ? Math.min(Math.max(0, consentDeadline(entry) - Date.now()), MAX_TIMER_MS) : 0;
       await new Promise<void>((resolve) => {
         const wake = () => {
           clearTimeout(timer);

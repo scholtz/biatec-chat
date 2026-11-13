@@ -239,8 +239,9 @@ async function* readFrames(body: ReadableStream<Uint8Array>): AsyncGenerator<Sse
       const tooBig = parser.overflowed || total > MAX_STREAM_CHARS || events > MAX_STREAM_EVENTS;
       yield* frames;
       if (tooBig) {
-        yield STREAM_TOO_BIG;
+        // Cancelled before the marker is handed over: the consumer returns at the marker, so nothing after it would run.
         await reader.cancel().catch(() => undefined);
+        yield STREAM_TOO_BIG;
         return;
       }
       if (done) return;

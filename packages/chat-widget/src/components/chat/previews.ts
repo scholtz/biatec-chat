@@ -54,6 +54,7 @@ export function previewValueEur(p: ActionPreview): string | null {
   const value = BigInt(whole) * 10n ** BigInt(SCALE) + BigInt(fraction.padEnd(SCALE, "0"));
   const cent = 10n ** BigInt(SCALE - 2);
   const cents = (value + cent - 1n) / cent;
+  if (cents >= 10n ** 17n) return null; // rounding up must not leave the 15 whole digits the query accepts
   return `${cents / 100n}.${String(cents % 100n).padStart(2, "0")}`;
 }
 
