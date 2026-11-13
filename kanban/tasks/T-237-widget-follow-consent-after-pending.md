@@ -1,7 +1,7 @@
 ---
 id: T-237
 title: "Widget: follow the phone approval after consent_pending (consent stream, result, resume after reload)"
-status: review
+status: done
 priority: P0
 epic: "Consent & authenticator"
 blocked_by: []
@@ -95,8 +95,11 @@ Parallel work possible: **yes**.
 
 ## Review
 
+- 2026-11-13 15:10 · approve · PR #408 merged into main @ 22fea54 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-12 18:43 · scholtz · (new) → backlog · created from the consent architecture record (AlgorandGoogleDriveAccount issue 23)
 - 2026-11-13 13:44 · scholtz · backlog → in-progress · taken and claimed (session-20261113-1344), branch task/T-237
 - 2026-11-13 14:05 · scholtz · in-progress → review · PR for task/T-237
+- 2026-11-13 15:10 · user · review → done · PR #408 merged into main @ 22fea54 (synced by kanban-sync)
