@@ -2,14 +2,15 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.biatec.io/consent/v1/consent-request.schema.json",
   "title": "Consent request object",
-  "description": "The one request object produced by both entry points and fetched by the authenticator over its authenticated channel. The binding code is deliberately absent: the authenticator never displays it (rule 2).",
+  "description": "The one request object produced by both entry points and fetched by the authenticator over its authenticated channel. The binding code is deliberately absent: the authenticator never displays it (rule 2). The `client` object has two shapes: protocol 1.1 (the only shape implementations produce) names a client by its fingerprint and, when proven, its domain; the 1.0 shape with an operator-asserted name is accepted so that 1.0 requests keep validating.",
   "type": "object",
   "additionalProperties": false,
   "required": ["auth_req_id", "entry", "authorization_details", "client", "binding_message", "requested_expiry", "expiry", "bound_hash", "origin", "sub"],
   "allOf": [
     { "if": { "required": ["entry"], "properties": { "entry": { "const": "step-up" } } }, "then": { "properties": { "binding_message": { "type": "string", "maxLength": 0 } } } },
+    { "$ref": "#/$defs/v1_0" },
     {
-      "if": { "required": ["client"], "properties": { "client": { "type": "object", "required": ["verified"], "properties": { "verified": { "const": false } } } } },
+      "if": { "required": ["client"], "properties": { "client": { "type": "object", "required": ["domain_proven"], "properties": { "domain_proven": { "const": false } } } } },
       "then": { "properties": { "binding_message": { "type": "string", "maxLength": 0 } } }
     }
   ],
@@ -17,7 +18,43 @@
     "auth_req_id": { "type": "string", "minLength": 16 },
     "entry": { "enum": ["step-up", "direct"] },
     "authorization_details": { "$ref": "authorization-details.schema.json" },
-    "client": {
+    "client": { "oneOf": [{ "$ref": "#/$defs/clientV1_1" }, { "$ref": "#/$defs/clientV1_0" }] },
+    "binding_message": { "type": "string", "maxLength": 140, "description": "As it will be rendered and signed: the empty string for step-up entry and for a client without a proven domain." },
+    "requested_expiry": { "type": "integer", "minimum": 1, "maximum": 300 },
+    "expiry": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "Unix time in seconds after which the request is void." },
+    "bound_hash": { "type": "string", "minLength": 1, "description": "group_hash or request_hash the consent is bound to." },
+    "origin": { "type": "string", "minLength": 1 },
+    "sub": { "type": "string", "minLength": 1, "description": "Pairwise subject of the requesting client." }
+  },
+  "$defs": {
+    "v1_0": {
+      "title": "Protocol 1.0 rule: a 1.0 client that was not verified has no text channel",
+      "type": "object",
+      "if": { "required": ["client"], "properties": { "client": { "type": "object", "required": ["verified"], "properties": { "verified": { "const": false } } } } },
+      "then": { "properties": { "binding_message": { "type": "string", "maxLength": 0 } } }
+    },
+    "clientV1_1": {
+      "title": "Requesting client, protocol 1.1",
+      "description": "Biatec OIDC vouches for no client. The user sees the proven domain, or \"Unproven application\" with the fingerprint, never a name taken from the operator or from the client.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fingerprint", "domain_proven", "linked"],
+      "allOf": [
+        {
+          "if": { "required": ["domain_proven"], "properties": { "domain_proven": { "const": true } } },
+          "then": { "required": ["domain"], "properties": { "domain": true } },
+          "else": { "properties": { "domain": false } }
+        }
+      ],
+      "properties": {
+        "fingerprint": { "type": "string", "pattern": "^[0-9a-f]{8}$", "description": "8 lowercase hex characters of the SHA-256 of the client_id, shown as xxxx-xxxx." },
+        "domain_proven": { "type": "boolean", "description": "True when the client proved control of its domain by serving /.well-known/biatec-client.json that lists its client_id." },
+        "domain": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9.-]+$", "description": "The proven domain in ASCII (A-label) form. Present exactly when domain_proven is true." },
+        "linked": { "type": "boolean", "description": "Whether this user already linked this client on their phone (first use of any client always asks)." }
+      }
+    },
+    "clientV1_0": {
+      "title": "Requesting client, protocol 1.0",
       "type": "object",
       "additionalProperties": false,
       "required": ["entity_id", "verified"],
@@ -42,12 +79,6 @@
           }
         }
       ]
-    },
-    "binding_message": { "type": "string", "maxLength": 140, "description": "As it will be rendered and signed: the empty string for step-up entry and for unverified clients." },
-    "requested_expiry": { "type": "integer", "minimum": 1, "maximum": 300 },
-    "expiry": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "Unix time in seconds after which the request is void." },
-    "bound_hash": { "type": "string", "minLength": 1, "description": "group_hash or request_hash the consent is bound to." },
-    "origin": { "type": "string", "minLength": 1 },
-    "sub": { "type": "string", "minLength": 1, "description": "Pairwise subject." }
+    }
   }
 }

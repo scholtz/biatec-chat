@@ -1,10 +1,26 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
-import { jcs, sha256Hex, verifyApproval, verifyReceipt, verifyReceiptSignature, verifyAttestation, signEs256 } from "../scripts/lib.mjs";
+import {
+  ENROLL_PROOF_TYP,
+  attestedKeyUse,
+  jcs,
+  pairingCode,
+  sha256Hex,
+  signCompactJws,
+  signEs256,
+  thumbprint,
+  verifyApproval,
+  verifyAttestation,
+  verifyDeviceSigned,
+  verifyEnrollmentProof,
+  verifyReceipt,
+  verifyReceiptSignature,
+} from "../scripts/lib.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const load = (...p) => JSON.parse(readFileSync(join(root, ...p), "utf8"));
@@ -20,69 +36,160 @@ const schema = (name) => {
 const valid = (name, data) => schema(name)(data);
 
 const jwks = load("vectors", "jwks.json");
+const keys = load("vectors", "keys.json");
 const O = { now: 1792425700, issuer: "https://oidc.biatec.test" };
-const { vectors } = load("vectors", "receipts.json");
+const v10 = load("vectors", "receipts-1.0.json").vectors; // frozen protocol 1.0 set
+const v11 = load("vectors", "receipts.json").vectors; // protocol 1.1 set
 const canon = load("vectors", "canonicalization.json").vectors;
+const device = load("vectors", "device-signed.json");
+const accepted = (v) => (v.expected ?? { accepted: true }).accepted;
 
 test("every schema compiles", () => {
   for (const f of readdirSync(join(root, "schemas"))) assert.ok(ajv.getSchema(load("schemas", f).$id), f);
 });
 
-for (const v of vectors) {
-  test(`vector ${v.name}: schemas validate`, () => {
-    assert.ok(valid("consent-request", v.request), JSON.stringify(schema("consent-request").errors));
-    assert.ok(valid("consent-receipt", v.receipt), JSON.stringify(schema("consent-receipt").errors));
-    assert.ok(valid("consent-receipt-signed", v.receipt.signed));
-    assert.ok(valid("authorization-details", v.request.authorization_details));
-    assert.ok(valid("token-response", { access_token: "x", token_type: "Bearer", expires_in: 300, consent_receipt: v.receipt }));
-  });
+// ---- per-vector checks, for the frozen 1.0 set and the 1.1 set alike
+for (const [label, vectors] of [["1.0", v10], ["1.1", v11]]) {
+  const is11 = label === "1.1";
+  for (const v of vectors) {
+    test(`[${label}] vector ${v.name}: schemas validate`, () => {
+      assert.equal(v.receipt.version, is11 ? "1.1" : "1");
+      assert.ok(valid("consent-request", v.request), JSON.stringify(schema("consent-request").errors));
+      assert.ok(valid("consent-receipt", v.receipt), JSON.stringify(schema("consent-receipt").errors));
+      assert.ok(valid("consent-receipt-signed", v.receipt.signed));
+      assert.ok(valid("authorization-details", v.request.authorization_details));
+      assert.ok(valid("token-response", { access_token: "x", token_type: "Bearer", expires_in: 300, consent_receipt: v.receipt }));
+    });
 
-  test(`vector ${v.name}: canonical form, hash and signatures verify`, () => {
-    assert.equal(jcs(v.receipt.signed), v.canonical);
-    assert.equal(sha256Hex(v.canonical), v.canonical_sha256);
-    assert.ok(verifyReceiptSignature(v.receipt), "device signature");
-    assert.ok(verifyAttestation(v.receipt, jwks, O), "attestation");
-    assert.ok(verifyReceipt(v.receipt, jwks, O));
-  });
+    test(`[${label}] vector ${v.name}: canonical form, hash and signatures verify as the vector says`, () => {
+      assert.equal(jcs(v.receipt.signed), v.canonical);
+      assert.equal(sha256Hex(v.canonical), v.canonical_sha256);
+      assert.ok(verifyReceiptSignature(v.receipt), "device signature is valid, also for a vector that must be refused");
+      assert.ok(verifyAttestation(v.receipt, jwks, O), "attestation");
+      assert.equal(verifyReceipt(v.receipt, jwks, O), accepted(v));
+    });
 
-  test(`vector ${v.name}: receipt matches its request (what you see is what you sign)`, () => {
-    const s = v.receipt.signed;
-    assert.deepEqual(s.authorization_details, v.request.authorization_details);
-    assert.equal(s.auth_req_id, v.request.auth_req_id);
-    assert.equal(s.client_entity_id, v.request.client.entity_id);
-    assert.equal(s.binding_message, v.request.binding_message);
-    assert.equal(s.expiry, v.request.expiry);
-    assert.equal(s.sub, v.request.sub);
-    const d = s.authorization_details[0];
-    assert.equal(v.request.bound_hash, d.group_hash ?? d.request_hash);
-  });
+    test(`[${label}] vector ${v.name}: receipt matches its request (what you see is what you sign)`, () => {
+      const s = v.receipt.signed;
+      assert.deepEqual(s.authorization_details, v.request.authorization_details);
+      assert.equal(s.auth_req_id, v.request.auth_req_id);
+      if (is11) assert.equal(s.client_fingerprint, v.request.client.fingerprint);
+      else assert.equal(s.client_entity_id, v.request.client.entity_id);
+      assert.equal(s.binding_message, v.request.binding_message);
+      assert.equal(s.expiry, v.request.expiry);
+      assert.equal(s.sub, v.request.sub);
+      const d = s.authorization_details[0];
+      assert.equal(v.request.bound_hash, d.group_hash ?? d.request_hash);
+      if (is11 && d.type === "biatec_transaction") assert.equal(d.origin, v.request.origin, "the signed details name the site that asked");
+    });
 
-  test(`vector ${v.name}: any changed signed member invalidates the signature`, () => {
-    const mutations = {
-      authorization_details: (s) => {
-        const d = s.authorization_details[0];
-        if (d.amount) d.amount = "5000.000001";
-        else d.requested_limits.per_day_eur = "50000";
-      },
-      auth_req_id: (s) => (s.auth_req_id += "0"),
-      client_entity_id: (s) => (s.client_entity_id = "https://evil.example"),
-      binding_code: (s) => (s.binding_code = "000000"),
-      decision: (s) => (s.decision = s.decision === "approve" ? "deny" : "approve"),
-      expiry: (s) => (s.expiry += 1),
-      sub: (s) => (s.sub += "x"),
-      binding_message: (s) => (s.binding_message += "!"),
-    };
-    assert.deepEqual(Object.keys(mutations).sort(), Object.keys(v.receipt.signed).sort());
-    for (const [k, m] of Object.entries(mutations)) {
-      const r = clone(v.receipt);
-      m(r.signed);
-      assert.equal(verifyReceiptSignature(r), false, k);
-    }
-  });
+    test(`[${label}] vector ${v.name}: any changed signed member invalidates the signature`, () => {
+      const mutations = {
+        authorization_details: (s) => {
+          const d = s.authorization_details[0];
+          if (d.transfers) d.transfers[0] ? (d.transfers[0].amount = "5000.000001") : (d.origin = "https://evil.example");
+          else if (d.amount) d.amount = "5000.000001";
+          else d.requested_limits.per_day_eur = "50000";
+        },
+        auth_req_id: (s) => (s.auth_req_id += "0"),
+        client_entity_id: (s) => (s.client_entity_id = "https://evil.example"),
+        client_fingerprint: (s) => (s.client_fingerprint = "00000000"),
+        binding_code: (s) => (s.binding_code = "000000"),
+        decision: (s) => (s.decision = s.decision === "approve" ? "deny" : "approve"),
+        expiry: (s) => (s.expiry += 1),
+        sub: (s) => (s.sub += "x"),
+        binding_message: (s) => (s.binding_message += "!"),
+        remember: (s) => (s.remember.applications.push(1)),
+      };
+      const members = Object.keys(v.receipt.signed);
+      for (const k of members) assert.ok(mutations[k], "a mutation exists for " + k);
+      for (const k of members) {
+        const r = clone(v.receipt);
+        mutations[k](r.signed);
+        assert.equal(verifyReceiptSignature(r), false, k);
+      }
+    });
+  }
 }
 
-test("attestation is bound to sub and device key", () => {
-  const v = vectors[0];
+// ---- 1.1 specifics
+test("1.1 receipt vectors cover both entries, all decisions, both keys and every shape of details", () => {
+  assert.deepEqual([...new Set(v11.map((v) => v.request.entry))].sort(), ["direct", "step-up"]);
+  assert.deepEqual([...new Set(v11.map((v) => v.receipt.signed.decision))].sort(), ["approve", "code_failed", "deny"]);
+  assert.deepEqual([...new Set(v11.map((v) => v.receipt.device.key_use))].sort(), ["approve", "presence"]);
+  assert.deepEqual([...new Set(v11.map((v) => v.request.authorization_details[0].type))].sort(), ["biatec_limits_change", "biatec_transaction"]);
+  const tx = v11.map((v) => v.request.authorization_details[0]).filter((d) => d.type === "biatec_transaction");
+  assert.ok(tx.some((d) => d.transfers.length === 2), "a two-transfer group");
+  assert.ok(tx.some((d) => d.transfers.length === 1 && d.applications.some((a) => a.trusted)), "a transfer plus a trusted application");
+  assert.ok(tx.some((d) => d.applications.some((a) => !a.trusted)), "an untrusted application");
+  assert.ok(tx.some((d) => d.value_known === false && !("fiat_value" in d)), "a value-unknown group");
+  assert.ok(v11.some((v) => v.receipt.signed.remember), "an approval that remembers an application");
+  assert.ok(v11.some((v) => !accepted(v)), "a negative vector");
+});
+
+test("a group's fiat_value is present exactly when its value is known; the total is the sum of the priced transfers", () => {
+  for (const v of v11) {
+    const d = v.request.authorization_details[0];
+    if (d.type !== "biatec_transaction") continue;
+    assert.equal("fiat_value" in d, d.value_known, v.name);
+    if (d.value_known && d.transfers.every((t) => t.fiat_value)) {
+      const cents = d.transfers.reduce((n, t) => n + Math.round(Number(t.fiat_value.amount) * 100), 0);
+      assert.equal(Math.round(Number(d.fiat_value.amount) * 100), cents, v.name);
+    }
+    if (d.applications.some((a) => !a.trusted)) assert.equal(d.value_known, false, v.name + ": an untrusted application makes the value unknown");
+  }
+});
+
+test("the approval-key rule: an approve receipt needs biatec_key_use approve; deny and code_failed accept either key", () => {
+  for (const v of v11) {
+    const use = attestedKeyUse(v.receipt, jwks, O);
+    assert.equal(use, v.receipt.device.key_use, v.name);
+    if (v.receipt.signed.decision === "approve") assert.equal(verifyReceipt(v.receipt, jwks, O), use === "approve", v.name);
+    else assert.equal(verifyReceipt(v.receipt, jwks, O), true, v.name);
+  }
+  const negative = v11.find((v) => !accepted(v));
+  assert.equal(negative.receipt.signed.decision, "approve");
+  assert.equal(negative.receipt.device.key_use, "presence");
+  assert.ok(verifyReceiptSignature(negative.receipt) && verifyAttestation(negative.receipt, jwks, O), "everything but the key use is valid");
+  assert.equal(verifyApproval(negative.receipt, jwks, negative.request, negative.receipt.signed.binding_code, new Set(), { ...O, now: negative.receipt.signed.expiry - 100 }), false);
+  // The informational member cannot be used to talk a verifier into it, nor can a missing attestation claim.
+  const lie = clone(negative.receipt);
+  lie.device.key_use = "approve";
+  assert.equal(verifyReceipt(lie, jwks, O), false, "device.key_use must agree with the attested claim");
+});
+
+test("a 1.1 receipt whose attestation has no biatec_key_use is refused", () => {
+  const v = clone(v11[0]);
+  const [h, p] = v.receipt.device.attestation.split(".");
+  const payload = JSON.parse(Buffer.from(p, "base64url").toString());
+  delete payload.biatec_key_use;
+  v.receipt.device.attestation = signCompactJws(keys.oidc, JSON.parse(Buffer.from(h, "base64url").toString()), payload);
+  assert.equal(verifyReceipt(v.receipt, jwks, O), false);
+});
+
+test("the client is its fingerprint: 8 hex characters of SHA-256(client_id); the domain appears only when proven", () => {
+  for (const v of v11) {
+    const c = v.request.client;
+    assert.equal(c.fingerprint, createHash("sha256").update(v.client_id).digest("hex").slice(0, 8), v.name);
+    assert.equal("domain" in c, c.domain_proven, v.name);
+    if (!c.domain_proven) assert.equal(v.request.binding_message, "", v.name + ": no text channel without a proven domain");
+    if (v.request.entry === "step-up") assert.equal(v.receipt.signed.binding_message, "", v.name);
+  }
+  const unproven = v11.find((v) => v.unsigned_client_binding_message);
+  assert.ok(unproven && unproven.receipt.signed.binding_message === "" && !unproven.request.client.domain_proven);
+  assert.ok(v11.some((v) => v.request.entry === "direct" && v.request.client.domain_proven && v.receipt.signed.binding_message !== ""));
+});
+
+test("limits change request_hash is SHA-256 of the JCS request body (1.0 and 1.1)", () => {
+  for (const set of [v10, v11]) {
+    const v = set.find((x) => x.limits_request_body);
+    assert.equal(v.request.authorization_details[0].request_hash, sha256Hex(jcs(v.limits_request_body)));
+  }
+});
+
+// ---- 1.0 specifics (frozen)
+test("1.0: attestation is bound to sub and device key", () => {
+  const v = v10[0];
   const otherSub = clone(v.receipt);
   otherSub.signed.sub = "pw_other";
   assert.equal(verifyAttestation(otherSub, jwks, O), false);
@@ -93,34 +200,19 @@ test("attestation is bound to sub and device key", () => {
 });
 
 test("a signature by a different device key is rejected", () => {
-  const keys = load("vectors", "keys.json");
-  const v = clone(vectors[0]);
-  v.receipt.signature = signEs256({ ...keys.oidc }, Buffer.from(v.canonical, "utf8"));
-  assert.equal(verifyReceiptSignature(v.receipt), false);
-});
-
-test("receipt vectors cover both entries, all decisions and both detail types", () => {
-  const entries = new Set(vectors.map((v) => v.request.entry));
-  assert.deepEqual([...entries].sort(), ["direct", "step-up"]);
-  assert.deepEqual([...new Set(vectors.map((v) => v.receipt.signed.decision))].sort(), ["approve", "code_failed", "deny"]);
-  assert.deepEqual(
-    [...new Set(vectors.map((v) => v.request.authorization_details[0].type))].sort(),
-    ["biatec_limits_change", "biatec_transaction"],
-  );
-});
-
-test("step-up and unverified-client receipts sign an empty binding_message; verified direct text is signed", () => {
-  for (const v of vectors) {
-    if (v.request.entry === "step-up" || !v.request.client.verified) assert.equal(v.receipt.signed.binding_message, "", v.name);
+  for (const v0 of [v10[0], v11[0]]) {
+    const v = clone(v0);
+    v.receipt.signature = signEs256({ ...keys.oidc }, Buffer.from(v.canonical, "utf8"));
+    assert.equal(verifyReceiptSignature(v.receipt), false);
   }
-  const unverified = vectors.find((v) => v.unsigned_client_binding_message);
-  assert.ok(unverified && unverified.receipt.signed.binding_message === "");
-  assert.ok(vectors.some((v) => v.request.entry === "direct" && v.request.client.verified && v.receipt.signed.binding_message !== ""));
 });
 
-test("limits change request_hash is SHA-256 of the JCS request body", () => {
-  const v = vectors.find((x) => x.limits_request_body);
-  assert.equal(v.request.authorization_details[0].request_hash, sha256Hex(jcs(v.limits_request_body)));
+test("1.0 receipt vectors cover both entries, all decisions and both detail types; unverified clients sign an empty message", () => {
+  assert.deepEqual([...new Set(v10.map((v) => v.request.entry))].sort(), ["direct", "step-up"]);
+  assert.deepEqual([...new Set(v10.map((v) => v.receipt.signed.decision))].sort(), ["approve", "code_failed", "deny"]);
+  assert.deepEqual([...new Set(v10.map((v) => v.request.authorization_details[0].type))].sort(), ["biatec_limits_change", "biatec_transaction"]);
+  for (const v of v10) if (v.request.entry === "step-up" || !v.request.client.verified) assert.equal(v.receipt.signed.binding_message, "", v.name);
+  assert.ok(v10.some((v) => v.request.entry === "direct" && v.request.client.verified && v.receipt.signed.binding_message !== ""));
 });
 
 test("canonicalization vectors (RFC 8785)", () => {
@@ -130,88 +222,128 @@ test("canonicalization vectors (RFC 8785)", () => {
 });
 
 test("schemas reject malformed objects", () => {
-  const v = vectors[0];
   const bad = (name, mutate, target) => {
     const d = clone(target);
     mutate(d);
     assert.equal(valid(name, d), false, name);
   };
-  bad("consent-receipt", (r) => (r.signed.amount = 1), v.receipt);
-  bad("consent-receipt", (r) => (r.signed.binding_code = "12345"), v.receipt);
-  bad("consent-receipt", (r) => (r.signed.decision = "maybe"), v.receipt);
-  bad("consent-receipt", (r) => delete r.signed.binding_message, v.receipt);
-  bad("consent-receipt", (r) => (r.alg = "none"), v.receipt);
-  bad("consent-receipt", (r) => (r.signed.authorization_details[0].amount = 5000), v.receipt);
-  bad("consent-receipt", (r) => (r.signed.authorization_details[0].type = "biatec_other"), v.receipt);
-  bad("consent-request", (r) => (r.binding_code = "483920"), v.request);
-  const unverified = vectors.find((x) => !x.request.client.verified).request;
+  const r10 = v10[0];
+  bad("consent-receipt", (r) => (r.signed.amount = 1), r10.receipt);
+  bad("consent-receipt", (r) => (r.signed.binding_code = "12345"), r10.receipt);
+  bad("consent-receipt", (r) => (r.signed.decision = "maybe"), r10.receipt);
+  bad("consent-receipt", (r) => delete r.signed.binding_message, r10.receipt);
+  bad("consent-receipt", (r) => (r.alg = "none"), r10.receipt);
+  bad("consent-receipt", (r) => (r.signed.authorization_details[0].amount = 5000), r10.receipt);
+  bad("consent-receipt", (r) => (r.signed.authorization_details[0].type = "biatec_other"), r10.receipt);
+  bad("consent-receipt", (r) => (r.device.key_use = "approve"), r10.receipt); // a 1.0 receipt has no key use
+  bad("consent-request", (r) => (r.binding_code = "483920"), r10.request);
+  const unverified = v10.find((x) => !x.request.client.verified).request;
   bad("consent-request", (r) => (r.client.display_name = "Example Bank"), unverified);
   bad("consent-request", (r) => delete r.client.fingerprint, unverified);
+
+  const r11 = v11[0];
+  bad("consent-receipt", (r) => (r.version = "2"), r11.receipt);
+  bad("consent-receipt", (r) => delete r.device.key_use, r11.receipt); // 1.1 says which key signed
+  bad("consent-receipt", (r) => (r.signed.client_entity_id = "https://chat.biatec.io"), r11.receipt); // 1.0 member in a 1.1 receipt
+  bad("consent-receipt", (r) => (r.signed.client_fingerprint = "3F9A-1C77"), r11.receipt); // wire form is 8 lowercase hex
+  bad("consent-receipt", (r) => (r.signed.authorization_details[0].amount = "1"), r11.receipt); // single-transfer members are 1.0
+  bad("consent-receipt", (r) => (r.signed.authorization_details[0].origin = "https://x.example/path"), r11.receipt);
+  bad("consent-receipt", (r) => delete r.signed.authorization_details[0].origin, r11.receipt);
+  bad("consent-receipt", (r) => delete r.signed.authorization_details[0].applications, r11.receipt);
+  bad("consent-receipt", (r) => delete r.signed.authorization_details[0].fiat_value, r11.receipt); // known value needs a total
+  bad("consent-receipt", (r) => (r.signed.authorization_details[0].transfers = Array.from({ length: 17 }, () => r.signed.authorization_details[0].transfers[0])), r11.receipt);
+  const deny = v11.find((v) => v.receipt.signed.decision === "deny").receipt;
+  bad("consent-receipt", (r) => (r.signed.remember = { applications: [1] }), deny); // never on a deny
+  const unknown = v11.find((v) => v.request.authorization_details[0].value_known === false && !v.request.authorization_details[0].applications.length);
+  bad("consent-receipt", (r) => (r.signed.authorization_details[0].fiat_value = { amount: "1", currency: "EUR" }), unknown.receipt); // unknown value has no total
+  bad("consent-request", (r) => (r.client.display_name = "Example Bank"), r11.request); // no names in 1.1
+  bad("consent-request", (r) => (r.client.verified = true), r11.request);
+  const unproven = v11.find((x) => !x.request.client.domain_proven).request;
+  bad("consent-request", (r) => (r.client.domain = "bank.example"), unproven);
+  bad("consent-request", (r) => (r.binding_message = "Example Bank refund"), unproven);
+  bad("consent-request", (r) => delete r.client.domain, r11.request);
 });
 
-test("verifyApproval accepts the matching approve once and rejects deny, code_failed, expiry, replay and mismatches", () => {
-  const o = { ...O, now: vectors[0].receipt.signed.expiry - 100 };
-  const v = vectors.find((x) => x.receipt.signed.decision === "approve");
-  const consumed = new Set();
-  assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, consumed, o), true);
-  assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, consumed, o), true, "still unspent: a failed signing call must not burn the consent");
-  consumed.add(v.receipt.signed.auth_req_id);
-  assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, consumed, o), false, "replay after spending");
-  assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, new Set(), { ...o, now: v.receipt.signed.expiry }), false, "expired");
-  for (const d of ["deny", "code_failed"]) {
-    const x = vectors.find((y) => y.receipt.signed.decision === d);
-    assert.ok(verifyReceipt(x.receipt, jwks, o), d + " signatures are valid");
-    assert.equal(verifyApproval(x.receipt, jwks, x.request, x.receipt.signed.binding_code || "123456", new Set(), o), false, d);
+test("verifyApproval accepts the matching approve once and rejects deny, code_failed, expiry, replay and mismatches (1.0 and 1.1)", () => {
+  for (const set of [v10, v11]) {
+    const o = { ...O, now: set[0].receipt.signed.expiry - 100 };
+    const v = set.find((x) => x.receipt.signed.decision === "approve" && accepted(x));
+    const code = v.receipt.signed.binding_code;
+    const consumed = new Set();
+    assert.equal(verifyApproval(v.receipt, jwks, v.request, code, consumed, o), true);
+    assert.equal(verifyApproval(v.receipt, jwks, v.request, code, consumed, o), true, "still unspent: a failed signing call must not burn the consent");
+    consumed.add(v.receipt.signed.auth_req_id);
+    assert.equal(verifyApproval(v.receipt, jwks, v.request, code, consumed, o), false, "replay after spending");
+    assert.equal(verifyApproval(v.receipt, jwks, v.request, code, new Set(), { ...o, now: v.receipt.signed.expiry }), false, "expired");
+    for (const d of ["deny", "code_failed"]) {
+      const x = set.find((y) => y.receipt.signed.decision === d);
+      assert.ok(verifyReceipt(x.receipt, jwks, o), d + " signatures are valid");
+      assert.equal(verifyApproval(x.receipt, jwks, x.request, x.receipt.signed.binding_code || "123456", new Set(), o), false, d);
+    }
+    const other = set.find((x) => x !== v && x.receipt.signed.decision === "approve" && accepted(x));
+    assert.equal(verifyApproval(v.receipt, jwks, other.request, code, new Set(), o), false, "different request");
+    assert.equal(verifyApproval(v.receipt, jwks, v.request, "000000", new Set(), o), false, "number matching: wrong code");
+    assert.equal(verifyApproval(v.receipt, jwks, {}, code, new Set(), o), false, "malformed request does not throw");
+    const changed = clone(v.request);
+    changed.bound_hash = other.request.bound_hash;
+    assert.equal(verifyApproval(v.receipt, jwks, changed, code, new Set(), o), false, "different bound hash");
   }
-  // A genuine approval for another request must not satisfy this one.
-  const other = vectors.find((x) => x !== v && x.receipt.signed.decision === "approve");
-  assert.equal(verifyApproval(v.receipt, jwks, other.request, v.receipt.signed.binding_code, new Set(), o), false, "different request");
-  assert.equal(verifyApproval(v.receipt, jwks, v.request, "000000", new Set(), o), false, "number matching: wrong code");
-  assert.equal(verifyApproval(v.receipt, jwks, {}, v.receipt.signed.binding_code, new Set(), o), false, "malformed request does not throw");
-  const changed = clone(v.request);
-  changed.bound_hash = other.request.bound_hash;
-  assert.equal(verifyApproval(v.receipt, jwks, changed, v.receipt.signed.binding_code, new Set(), o), false, "different bound hash");
+  // 1.1: the client named in the receipt must be the one that asked, and the origin is part of what was approved
+  const v = v11[0];
+  const o = { ...O, now: v.receipt.signed.expiry - 100 };
+  const otherClient = clone(v.request);
+  otherClient.client.fingerprint = "00000000";
+  assert.equal(verifyApproval(v.receipt, jwks, otherClient, v.receipt.signed.binding_code, new Set(), o), false, "another client");
+  const otherOrigin = clone(v.request);
+  otherOrigin.authorization_details[0].origin = "https://evil.example";
+  assert.equal(verifyApproval(v.receipt, jwks, otherOrigin, v.receipt.signed.binding_code, new Set(), o), false, "another origin");
 });
 
 test("attestation checks fail closed", () => {
-  const r = vectors[0].receipt;
-  assert.equal(verifyReceipt(r, jwks, { ...O, now: 4102444800 }), false, "expired attestation");
-  assert.equal(verifyReceipt(r, jwks, { ...O, issuer: "https://evil.example" }), false, "issuer");
-  assert.equal(verifyReceipt(r, jwks, { now: O.now }), false, "issuer is required");
-  const enc = { keys: [{ ...jwks.keys[0], use: "enc" }] };
-  assert.equal(verifyAttestation(r, enc, O), false, "key must be a signature key");
+  for (const r of [v10[0].receipt, v11[0].receipt]) {
+    assert.equal(verifyReceipt(r, jwks, { ...O, now: 4102444800 }), false, "expired attestation");
+    assert.equal(verifyReceipt(r, jwks, { ...O, issuer: "https://evil.example" }), false, "issuer");
+    assert.equal(verifyReceipt(r, jwks, { now: O.now }), false, "issuer is required");
+    const enc = { keys: [{ ...jwks.keys[0], use: "enc" }] };
+    assert.equal(verifyAttestation(r, enc, O), false, "key must be a signature key");
+  }
 });
 
 test("non-canonical base64url signatures are rejected", () => {
-  const r = clone(vectors[0].receipt);
+  const r = clone(v11[0].receipt);
   const last = r.signature.slice(-1);
   const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
   const alt = A[(A.indexOf(last) & ~15) | ((A.indexOf(last) + 1) & 15)];
   assert.notEqual(alt, last);
   r.signature = r.signature.slice(0, -1) + alt;
   assert.equal(verifyReceiptSignature(r), false);
-  assert.equal(verifyReceiptSignature({ ...vectors[0].receipt, signature: vectors[0].receipt.signature + "=" }), false);
+  assert.equal(verifyReceiptSignature({ ...v11[0].receipt, signature: v11[0].receipt.signature + "=" }), false);
 });
 
 test("verifiers return false instead of throwing on malformed input", () => {
-  const r = clone(vectors[0].receipt);
+  const r = clone(v11[0].receipt);
   r.device.attestation = "garbage";
   assert.equal(verifyAttestation(r, jwks, O), false);
   r.device.attestation = "a.b.c";
   assert.equal(verifyReceipt(r, jwks, O), false);
   assert.equal(verifyReceipt({}, jwks, O), false);
-  assert.equal(verifyReceipt(vectors[0].receipt, { keys: [{ kid: "oidc-test-key-1", kty: "oct" }] }, O), false);
+  assert.equal(verifyReceipt(v11[0].receipt, { keys: [{ kid: "oidc-test-key-1", kty: "oct" }] }, O), false);
+  assert.equal(attestedKeyUse({}, jwks, O), null);
+  assert.equal(verifyDeviceSigned({}, jwks, O), false);
+  assert.equal(verifyDeviceSigned(null, jwks, O), false);
+  assert.equal(verifyEnrollmentProof("a.b", {}), false);
+  assert.equal(verifyEnrollmentProof(undefined, {}), false);
 });
 
 test("schemas enforce cross-field rules", () => {
-  const approve = vectors[0].receipt;
+  const approve = v10[0].receipt;
   const r = clone(approve);
   r.signed.binding_code = "";
   assert.equal(valid("consent-receipt", r), false, "approve needs a code");
-  const stepUp = clone(vectors[0].request);
+  const stepUp = clone(v10[0].request);
   stepUp.binding_message = "Pay me";
   assert.equal(valid("consent-request", stepUp), false, "step-up has no client text");
-  const unverified = clone(vectors.find((v) => !v.request.client.verified).request);
+  const unverified = clone(v10.find((v) => !v.request.client.verified).request);
   unverified.binding_message = "Example Bank refund";
   assert.equal(valid("consent-request", unverified), false, "unverified client has no text channel");
   const big = clone(approve);
@@ -231,4 +363,99 @@ test("backchannel request schema ties scope to the request kind and forbids clie
   assert.equal(valid("backchannel-authentication-request", { ...ok, limits_request: {} }), false, "both kinds");
   assert.equal(valid("backchannel-authentication-request", { scope: "sign", resource: "r", login_hint: "u", origin: "o", limits_request: {} }), false, "sign needs a group");
   assert.equal(valid("backchannel-authentication-request", { ...ok, authorization_details: [] }), false, "client details");
+});
+
+// ---- device-signed statements: settings changes, device approvals, enrollment proofs, pairing code
+const DO = { now: device.now, issuer: device.issuer };
+
+for (const s of device.settings_changes) {
+  test(`device-signed ${s.name}: schema, canonical form and verdict`, () => {
+    assert.ok(valid("device-signed", s.envelope), JSON.stringify(schema("device-signed").errors));
+    assert.ok(valid("settings-change-signed", s.envelope.signed));
+    assert.equal(jcs(s.envelope.signed), s.canonical);
+    assert.equal(sha256Hex(s.canonical), s.canonical_sha256);
+    assert.equal(verifyDeviceSigned(s.envelope, jwks, DO), s.expected.accepted);
+  });
+}
+
+for (const a of device.device_approvals) {
+  test(`device-signed ${a.name}: schema, canonical form and verdict`, () => {
+    assert.ok(valid("device-signed", a.envelope), JSON.stringify(schema("device-signed").errors));
+    assert.ok(valid("device-approval-signed", a.envelope.signed));
+    assert.equal(jcs(a.envelope.signed), a.canonical);
+    assert.equal(sha256Hex(a.canonical), a.canonical_sha256);
+    assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { approval: a.expected_inputs }), a.expected.accepted);
+  });
+}
+
+test("any changed member of a device-signed statement invalidates its signature", () => {
+  for (const s of [...device.settings_changes, ...device.device_approvals].filter((x) => x.expected.accepted)) {
+    for (const k of Object.keys(s.envelope.signed)) {
+      const e = clone(s.envelope);
+      if (k === "change") e.signed.change = { threshold_eur: "999999" };
+      else if (typeof e.signed[k] === "number") e.signed[k] += 1;
+      else e.signed[k] += "x";
+      assert.equal(verifyDeviceSigned(e, jwks, DO, { approval: s.expected_inputs }), false, s.name + " " + k);
+    }
+  }
+});
+
+test("a device-signed statement is refused when stale, replayed with other expectations, or signed for another subject", () => {
+  const s = device.device_approvals.find((x) => x.expected.accepted);
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, { ...DO, now: DO.now + 301 }, { approval: s.expected_inputs }), false, "older than 300 s");
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, { ...DO, now: s.envelope.signed.issued_at - 301 }, { approval: s.expected_inputs }), false, "from the future");
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, DO, { approval: { ...s.expected_inputs, nonce: "another-enrollment-nonce-0000" } }), false, "another enrollment");
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, DO, { approval: { ...s.expected_inputs, new_presence_jwk_thumbprint: thumbprint(keys.presence) } }), false, "another presence key");
+  const settings = device.settings_changes.find((x) => x.expected.accepted);
+  const otherSub = clone(settings.envelope);
+  otherSub.signed.sub = "pw_other";
+  assert.equal(verifyDeviceSigned(otherSub, jwks, DO), false);
+  const otherKid = clone(settings.envelope);
+  otherKid.signed.kid = "someone-else";
+  assert.equal(verifyDeviceSigned(otherKid, jwks, DO), false, "the statement names the key that signs it");
+});
+
+test("pairing code: first four bytes of SHA-256(approval thumbprint . presence thumbprint . nonce), big-endian, mod 10^6, six digits", () => {
+  const p = device.pairing_code;
+  assert.equal(p.new_approval_jwk_thumbprint, thumbprint(keys.new_approval));
+  assert.equal(p.new_presence_jwk_thumbprint, thumbprint(keys.new_presence));
+  assert.equal(p.input, `${p.new_approval_jwk_thumbprint}.${p.new_presence_jwk_thumbprint}.${p.nonce}`);
+  const digest = createHash("sha256").update(p.input, "utf8").digest();
+  assert.equal(digest.toString("hex"), p.sha256_hex);
+  assert.equal(digest.readUInt32BE(0), p.first_four_bytes_uint32);
+  assert.equal(String(p.first_four_bytes_uint32 % 1_000_000).padStart(6, "0"), p.code);
+  assert.equal(pairingCode(p.new_approval_jwk_thumbprint, p.new_presence_jwk_thumbprint, p.nonce), p.code);
+  assert.match(p.code, /^[0-9]{6}$/);
+  // Different keys or nonce give another code (not guaranteed for every input, but for this vector).
+  assert.notEqual(pairingCode(p.new_presence_jwk_thumbprint, p.new_approval_jwk_thumbprint, p.nonce), p.code);
+  // Zero padding.
+  assert.equal(String(42 % 1_000_000).padStart(6, "0"), "000042");
+});
+
+for (const e of device.enrollment_proofs) {
+  test(`enrollment proof ${e.name}`, () => {
+    assert.ok(valid("device-enroll-proof", { header: e.header, payload: e.payload }), JSON.stringify(schema("device-enroll-proof").errors));
+    assert.equal(e.header.typ, ENROLL_PROOF_TYP);
+    const parts = e.jws.split(".");
+    assert.deepEqual(JSON.parse(Buffer.from(parts[0], "base64url").toString()), e.header);
+    assert.deepEqual(JSON.parse(Buffer.from(parts[1], "base64url").toString()), e.payload);
+    assert.equal(verifyEnrollmentProof(e.jws, { nonce: e.payload.nonce, presence_public_key: e.presence_public_key, now: e.payload.iat + 5 }), e.expected.accepted);
+  });
+}
+
+test("an enrollment proof is refused for another nonce, another presence key or a stale iat", () => {
+  const e = device.enrollment_proofs.find((x) => x.expected.accepted);
+  const ok = { nonce: e.payload.nonce, presence_public_key: e.presence_public_key, now: e.payload.iat + 5 };
+  assert.equal(verifyEnrollmentProof(e.jws, ok), true);
+  assert.equal(verifyEnrollmentProof(e.jws, { ...ok, nonce: "x".repeat(24) }), false);
+  assert.equal(verifyEnrollmentProof(e.jws, { ...ok, presence_public_key: keys.presence }), false);
+  assert.equal(verifyEnrollmentProof(e.jws, { ...ok, now: e.payload.iat + 301 }), false);
+  const wrongTyp = signCompactJws(keys.new_approval, { ...e.header, typ: "JWT" }, e.payload);
+  assert.equal(verifyEnrollmentProof(wrongTyp, ok), false, "typ");
+});
+
+test("test-only keys are the only private keys in the vectors", () => {
+  const text = readFileSync(join(root, "vectors", "keys.json"), "utf8");
+  assert.ok(JSON.parse(text)._warning.includes("TEST-ONLY"));
+  for (const f of readdirSync(join(root, "vectors")).filter((n) => n !== "keys.json")) assert.equal(/"d"\s*:/.test(readFileSync(join(root, "vectors", f), "utf8")), false, f + " holds no private key");
 });

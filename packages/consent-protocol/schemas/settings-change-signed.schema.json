@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/settings-change-signed.schema.json",
+  "title": "Signed settings change",
+  "description": "The object the approval key of an active device signs (RFC 8785 canonical form) to change the user's consent settings. Needed for every change that loosens protection; Biatec OIDC classifies each change itself and a tightening change needs no signature. The threshold belongs to the user: there is no schema ceiling.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "sub", "kid", "nonce", "issued_at", "change"],
+  "properties": {
+    "type": { "const": "biatec_settings_change" },
+    "sub": { "type": "string", "minLength": 1, "description": "The device's enrollment subject." },
+    "kid": { "type": "string", "minLength": 1, "description": "The approval key's id: the device that signs." },
+    "nonce": { "type": "string", "minLength": 16, "maxLength": 128, "description": "Single use per device." },
+    "issued_at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "Unix time in seconds; accepted within 300 seconds of the server's clock." },
+    "change": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "threshold_eur": { "$ref": "#/$defs/amount", "description": "The amount above which every request asks. 0 asks for everything." },
+        "block_unproven_clients": { "type": "boolean" },
+        "biometric_required": { "type": "boolean" },
+        "ask_on_test_networks": { "type": "boolean" },
+        "clients": {
+          "type": "object",
+          "maxProperties": 50,
+          "description": "Per linked client, keyed by client_id.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "minProperties": 1,
+            "properties": {
+              "always_ask": { "type": "boolean" },
+              "per_client_threshold_eur": { "oneOf": [{ "$ref": "#/$defs/amount" }, { "type": "null" }] },
+              "label": { "type": "string", "maxLength": 40, "description": "The user's own name for the service. Text rules of the spec apply." },
+              "trusted_applications_add": { "$ref": "#/$defs/applicationList" },
+              "trusted_applications_remove": { "$ref": "#/$defs/applicationList" },
+              "paused": { "type": "boolean" },
+              "origin": { "type": "string", "maxLength": 253, "pattern": "^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$", "description": "With `paused`: the origin the pause applies to." },
+              "unlink": { "const": true }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "amount": { "type": "string", "pattern": "^(0|[1-9][0-9]{0,14})(\\.[0-9]{1,2})?$", "description": "EUR, at most two decimals, as a string." },
+    "applicationList": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["network", "app_id"],
+        "properties": {
+          "network": { "enum": ["algorand-mainnet", "algorand-testnet"] },
+          "app_id": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        }
+      }
+    }
+  }
+}

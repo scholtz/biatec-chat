@@ -2,24 +2,91 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.biatec.io/consent/v1/authorization-details-transaction.schema.json",
   "title": "biatec_transaction authorization detail",
-  "description": "RFC 9396 authorization_details object describing one signing call. Every field is decoded by Biatec OIDC from the unsigned group itself; client-supplied amounts or payees are never accepted.",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["type", "network", "group_hash", "sender", "asset", "amount", "fiat_value"],
-  "properties": {
-    "type": { "const": "biatec_transaction" },
+  "description": "RFC 9396 authorization_details object describing one signing call. Every field is decoded by Biatec OIDC from the unsigned group itself; client-supplied amounts or payees are never accepted. Protocol 1.1 (the only shape implementations produce) describes every outgoing transfer and every application of the group; the single-transfer shape of 1.0 is accepted so that 1.0 receipts keep validating.",
+  "oneOf": [{ "$ref": "#/$defs/v1_1" }, { "$ref": "#/$defs/v1_0" }],
+  "$defs": {
+    "v1_1": {
+      "title": "biatec_transaction, protocol 1.1",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "network", "group_hash", "sender", "transfers", "applications", "value_known", "origin"],
+      "allOf": [
+        {
+          "if": { "required": ["value_known"], "properties": { "value_known": { "const": true } } },
+          "then": { "required": ["fiat_value"], "properties": { "fiat_value": true } },
+          "else": { "properties": { "fiat_value": false } }
+        }
+      ],
+      "properties": {
+        "type": { "const": "biatec_transaction" },
+        "network": { "$ref": "#/$defs/network" },
+        "group_hash": { "$ref": "#/$defs/groupHash" },
+        "sender": { "type": "string", "minLength": 1, "description": "Address that signs." },
+        "transfers": {
+          "type": "array",
+          "maxItems": 16,
+          "description": "Everything the sender sends out, one entry per payment or asset transfer, in group order. Transfers of other senders in the group are not listed.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["receiver", "asset", "amount"],
+            "properties": {
+              "receiver": { "type": "string", "minLength": 1 },
+              "asset": { "$ref": "#/$defs/asset" },
+              "amount": { "$ref": "#/$defs/decimalString" },
+              "fiat_value": { "$ref": "#/$defs/fiatValue" }
+            }
+          }
+        },
+        "applications": {
+          "type": "array",
+          "maxItems": 16,
+          "description": "Every application the group calls. `trusted` is true only when the user trusted this application for this client on their own phone; there is no operator list.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "trusted"],
+            "properties": {
+              "id": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "trusted": { "type": "boolean" }
+            }
+          }
+        },
+        "value_known": { "type": "boolean", "description": "False when any part of the value could not be priced or an application is not trusted: the card then says \"Value unknown\"." },
+        "fiat_value": { "$ref": "#/$defs/fiatValue", "description": "The group total. Present exactly when value_known is true." },
+        "origin": { "$ref": "#/$defs/origin", "description": "The site the request came from, as the client reported it. Part of the signed object, so a receipt proves which site asked." }
+      }
+    },
+    "v1_0": {
+      "title": "biatec_transaction, protocol 1.0 (single transfer)",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "network", "group_hash", "sender", "asset", "amount", "fiat_value"],
+      "properties": {
+        "type": { "const": "biatec_transaction" },
+        "network": { "$ref": "#/$defs/network" },
+        "group_hash": { "$ref": "#/$defs/groupHash" },
+        "sender": { "type": "string", "minLength": 1, "description": "Address that signs." },
+        "receiver": { "type": "string", "minLength": 1, "description": "Payee address. Absent when the group is an application call without a single payee." },
+        "application_id": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "Application called, when the group is an app call." },
+        "asset": { "$ref": "#/$defs/asset" },
+        "amount": { "$ref": "#/$defs/decimalString" },
+        "fiat_value": { "$ref": "#/$defs/fiatValue" }
+      }
+    },
     "network": { "enum": ["algorand-mainnet", "algorand-testnet", "bitcoin-mainnet", "bitcoin-testnet"] },
-    "group_hash": {
+    "groupHash": {
       "type": "string",
-      "description": "Algorand: the base32 group ID (grp) recomputed by Biatec OIDC. Bitcoin: lowercase hex SHA-256 intent hash derived from the PSBT with prevout data.",
+      "description": "Algorand: the base32 group ID (grp) recomputed by Biatec OIDC from the handed transactions, 52 characters; for one ungrouped transaction its transaction id. Bitcoin: lowercase hex SHA-256 intent hash derived from the PSBT with prevout data.",
       "pattern": "^([A-Z2-7]{52}|[0-9a-f]{64})$"
     },
-    "sender": { "type": "string", "minLength": 1, "description": "Address that signs." },
-    "receiver": { "type": "string", "minLength": 1, "description": "Payee address. Absent when the group is an application call without a single payee." },
-    "application_id": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "Application called, when the group is an app call." },
-    "asset": { "$ref": "#/$defs/asset" },
-    "amount": { "$ref": "#/$defs/decimalString" },
-    "fiat_value": {
+    "origin": {
+      "type": "string",
+      "maxLength": 253,
+      "pattern": "^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$",
+      "description": "An absolute origin: scheme, host and optional port, nothing else."
+    },
+    "fiatValue": {
       "type": "object",
       "additionalProperties": false,
       "required": ["amount", "currency"],
@@ -27,9 +94,7 @@
         "amount": { "$ref": "#/$defs/decimalString" },
         "currency": { "const": "EUR" }
       }
-    }
-  },
-  "$defs": {
+    },
     "decimalString": {
       "type": "string",
       "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$",

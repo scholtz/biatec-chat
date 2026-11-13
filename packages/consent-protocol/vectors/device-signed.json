@@ -1,0 +1,323 @@
+{
+  "_comment": "Settings changes, device approvals and enrollment proofs of protocol 1.1, with the pairing code worked example. Regenerate with scripts/generate-vectors.mjs.",
+  "now": 1792425660,
+  "issuer": "https://oidc.biatec.test",
+  "enrollment_sub": "pw_a9e3c0417b5d2f86",
+  "settings_changes": [
+    {
+      "name": "settings-raise-threshold-and-trust-application",
+      "description": "Loosening: the threshold is raised to 5000 EUR and an application is trusted for one service. Signed by the approval key of an active device.",
+      "envelope": {
+        "signed": {
+          "type": "biatec_settings_change",
+          "sub": "pw_a9e3c0417b5d2f86",
+          "kid": "device-test-key-1",
+          "nonce": "n-7eb064c2a94489ba608c95cf3aaf54",
+          "issued_at": 1792425630,
+          "change": {
+            "threshold_eur": "5000",
+            "clients": {
+              "bank-example-client": {
+                "trusted_applications_add": [
+                  {
+                    "network": "algorand-mainnet",
+                    "app_id": 1234567
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "alg": "ES256",
+        "signature": "ZbcsR8IGXquU0VNRVdpOIBKBkdTKLaOEe4zJ1HEY2wGlYw6LKn7tl8iR5AHLDycJwJkOUeqNxrlvIhqQ61TE-Q",
+        "device": {
+          "kid": "device-test-key-1",
+          "key_use": "approve",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
+            "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd19hOWUzYzA0MTdiNWQyZjg2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.8tYVzmh4wGopSWHbmgSTCzMBQrEPFqaU7AD4EM-eNTzSF_Q8CPtjALOSnkVMDh4LXXAbnTHzkrFEiuCHlb7mCg"
+        }
+      },
+      "canonical": "{\"change\":{\"clients\":{\"bank-example-client\":{\"trusted_applications_add\":[{\"app_id\":1234567,\"network\":\"algorand-mainnet\"}]}},\"threshold_eur\":\"5000\"},\"issued_at\":1792425630,\"kid\":\"device-test-key-1\",\"nonce\":\"n-7eb064c2a94489ba608c95cf3aaf54\",\"sub\":\"pw_a9e3c0417b5d2f86\",\"type\":\"biatec_settings_change\"}",
+      "canonical_sha256": "9c98768a614db23618a9658b2f1111670b7bb062233213ba952d82012c748f61",
+      "expected": {
+        "accepted": true
+      }
+    },
+    {
+      "name": "settings-lift-pause-set-label-clear-client-threshold",
+      "description": "Loosening: a pause is lifted for one origin, the user's own label is set and the per-client threshold is cleared (null).",
+      "envelope": {
+        "signed": {
+          "type": "biatec_settings_change",
+          "sub": "pw_a9e3c0417b5d2f86",
+          "kid": "device-test-key-1",
+          "nonce": "n-164e313187cc3c6cc541136ddd889f",
+          "issued_at": 1792425630,
+          "change": {
+            "clients": {
+              "bank-example-client": {
+                "paused": false,
+                "origin": "https://bank.example",
+                "label": "My bank",
+                "per_client_threshold_eur": null
+              }
+            }
+          }
+        },
+        "alg": "ES256",
+        "signature": "pXlPpxQmmGGn8qIu9I0C4ngVola6xtW0kh_FvMfMXIt4x9AFnMr3P7OvZ_RiAJjL2Ktii5ps-YjmtHm8SG_W8A",
+        "device": {
+          "kid": "device-test-key-1",
+          "key_use": "approve",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
+            "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd19hOWUzYzA0MTdiNWQyZjg2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.RhWat0czA21lLVW6jibL0o9JJBkUywNFyKWFVt8Amy9a8wOaTx9SWIscaW9vUvM_bI1-c4jpVSQL2_cXm2iW_A"
+        }
+      },
+      "canonical": "{\"change\":{\"clients\":{\"bank-example-client\":{\"label\":\"My bank\",\"origin\":\"https://bank.example\",\"paused\":false,\"per_client_threshold_eur\":null}}},\"issued_at\":1792425630,\"kid\":\"device-test-key-1\",\"nonce\":\"n-164e313187cc3c6cc541136ddd889f\",\"sub\":\"pw_a9e3c0417b5d2f86\",\"type\":\"biatec_settings_change\"}",
+      "canonical_sha256": "1437acf5c4a39e0303dd663754b9d15c2c5d67082e8214600a887be5a9a6c529",
+      "expected": {
+        "accepted": true
+      }
+    },
+    {
+      "name": "settings-signed-by-presence-key-REFUSED",
+      "description": "NEGATIVE: a settings change signed by the presence key. The attestation says presence, so verifiers MUST refuse it.",
+      "envelope": {
+        "signed": {
+          "type": "biatec_settings_change",
+          "sub": "pw_a9e3c0417b5d2f86",
+          "kid": "device-test-key-1",
+          "nonce": "n-c5ff9a00bdf79f56816af0c9c494dc",
+          "issued_at": 1792425630,
+          "change": {
+            "block_unproven_clients": false
+          }
+        },
+        "alg": "ES256",
+        "signature": "yOsW9iA9z8REdkz4enmwooEoow2bfYeg8Uwm_hWy_U7dk5VNrBdWeQxMwrL1csvagOdDJ90o3bKD-NdaTKNhaA",
+        "device": {
+          "kid": "presence-test-key-1",
+          "key_use": "presence",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "nZQI_ShNEIOy_-Pb6TPa8LOaCyDengdDzBlg0cOhD7w",
+            "y": "kTQ5sb0lNB760k-c7T8v3yVvGikDQpORyXnLjldhgCQ"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd19hOWUzYzA0MTdiNWQyZjg2IiwiZGV2aWNlX2tpZCI6InByZXNlbmNlLXRlc3Qta2V5LTEiLCJkZXZpY2VfandrX3RodW1icHJpbnQiOiIyZjB2dWwzdGJ5S0Y2S3R2V3VRYUVBWnVCano1aHUxeS15QUlEVWswNXpJIiwiYmlhdGVjX2tleV91c2UiOiJwcmVzZW5jZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.Nk73ae_Zxo2glWFt3G1x3iXcvdhIUfM_1ccgaFJJG-4TeSU5NZWbadm4e64958AYPJCGUlMyGhrI8vU9xhciEA"
+        }
+      },
+      "canonical": "{\"change\":{\"block_unproven_clients\":false},\"issued_at\":1792425630,\"kid\":\"device-test-key-1\",\"nonce\":\"n-c5ff9a00bdf79f56816af0c9c494dc\",\"sub\":\"pw_a9e3c0417b5d2f86\",\"type\":\"biatec_settings_change\"}",
+      "canonical_sha256": "4c7f6d946be67d808486ce840392f3cae6573fe39cf62ade93ef59f5e0048893",
+      "expected": {
+        "accepted": false,
+        "reason": "requires_approval_key"
+      }
+    }
+  ],
+  "device_approvals": [
+    {
+      "name": "device-approval-valid",
+      "description": "An active device's approval key activates the new device after the user compared the pairing code on both phones.",
+      "envelope": {
+        "signed": {
+          "type": "biatec_device_approval",
+          "approver_kid": "device-test-key-1",
+          "new_kid": "new-approval-test-key-1",
+          "new_approval_jwk_thumbprint": "cpXj3K7c4_bBd9lXxKoO8aZPwTwuPMGzwnYgg3rG_jY",
+          "new_presence_jwk_thumbprint": "hOlyodNi_jjK_piu5kSIQkvt2q5zwnCUtO8iVYQtwlw",
+          "pairing_code": "102716",
+          "nonce": "enroll-nonce-53bcbb91525547bf679e9d4f",
+          "issued_at": 1792425640
+        },
+        "alg": "ES256",
+        "signature": "dEuczH5PyorvKuoJt8LOS_HBQSv6ubvwDOlfgi_XQNSW-1o3Kvt8u6PtGZz57AWGxJAw88RibKxfI8PhWSBveA",
+        "device": {
+          "kid": "device-test-key-1",
+          "key_use": "approve",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
+            "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd19hOWUzYzA0MTdiNWQyZjg2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.WsnZApQg4dtWtrHqrQgYopXp8JsEViFoRzurP_BlKqG-dCPtA8FD3CY9GwPDKIVWsRJbMcVrnGmiF8MmIwkxEg"
+        }
+      },
+      "canonical": "{\"approver_kid\":\"device-test-key-1\",\"issued_at\":1792425640,\"new_approval_jwk_thumbprint\":\"cpXj3K7c4_bBd9lXxKoO8aZPwTwuPMGzwnYgg3rG_jY\",\"new_kid\":\"new-approval-test-key-1\",\"new_presence_jwk_thumbprint\":\"hOlyodNi_jjK_piu5kSIQkvt2q5zwnCUtO8iVYQtwlw\",\"nonce\":\"enroll-nonce-53bcbb91525547bf679e9d4f\",\"pairing_code\":\"102716\",\"type\":\"biatec_device_approval\"}",
+      "canonical_sha256": "424905370f1aab74f8d96629d303401a5c0900660a0c5a65387ba2bc75a19d27",
+      "expected": {
+        "accepted": true
+      },
+      "expected_inputs": {
+        "new_approval_jwk_thumbprint": "cpXj3K7c4_bBd9lXxKoO8aZPwTwuPMGzwnYgg3rG_jY",
+        "new_presence_jwk_thumbprint": "hOlyodNi_jjK_piu5kSIQkvt2q5zwnCUtO8iVYQtwlw",
+        "nonce": "enroll-nonce-53bcbb91525547bf679e9d4f"
+      }
+    },
+    {
+      "name": "device-approval-wrong-pairing-code-REFUSED",
+      "description": "NEGATIVE: the signature is valid but the pairing code is not the one derived from the new device's keys and nonce.",
+      "envelope": {
+        "signed": {
+          "type": "biatec_device_approval",
+          "approver_kid": "device-test-key-1",
+          "new_kid": "new-approval-test-key-1",
+          "new_approval_jwk_thumbprint": "cpXj3K7c4_bBd9lXxKoO8aZPwTwuPMGzwnYgg3rG_jY",
+          "new_presence_jwk_thumbprint": "hOlyodNi_jjK_piu5kSIQkvt2q5zwnCUtO8iVYQtwlw",
+          "pairing_code": "000000",
+          "nonce": "enroll-nonce-53bcbb91525547bf679e9d4f",
+          "issued_at": 1792425640
+        },
+        "alg": "ES256",
+        "signature": "XGv4povjzG7k9LDJW4cq0AYaujLPHint2HvvXDTvcd9affArJF24F9bfLSOPn4i-rRdKqg3igSt4Vqlp3HiJ5g",
+        "device": {
+          "kid": "device-test-key-1",
+          "key_use": "approve",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
+            "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd19hOWUzYzA0MTdiNWQyZjg2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.2MPTBIHMATouwXyFRD-XEgCc7MFpCSRFoftPDaz_4NJLR0_Hggp0I_ezPNoPVEn1TFJcpMmtQdDIHzE9MlFPMA"
+        }
+      },
+      "canonical": "{\"approver_kid\":\"device-test-key-1\",\"issued_at\":1792425640,\"new_approval_jwk_thumbprint\":\"cpXj3K7c4_bBd9lXxKoO8aZPwTwuPMGzwnYgg3rG_jY\",\"new_kid\":\"new-approval-test-key-1\",\"new_presence_jwk_thumbprint\":\"hOlyodNi_jjK_piu5kSIQkvt2q5zwnCUtO8iVYQtwlw\",\"nonce\":\"enroll-nonce-53bcbb91525547bf679e9d4f\",\"pairing_code\":\"000000\",\"type\":\"biatec_device_approval\"}",
+      "canonical_sha256": "a3f61603f95413bf95fd0eabdab312c00d3152b6e83e893dd7a24d82ee1b1209",
+      "expected": {
+        "accepted": false,
+        "reason": "pairing_code_mismatch"
+      },
+      "expected_inputs": {
+        "new_approval_jwk_thumbprint": "cpXj3K7c4_bBd9lXxKoO8aZPwTwuPMGzwnYgg3rG_jY",
+        "new_presence_jwk_thumbprint": "hOlyodNi_jjK_piu5kSIQkvt2q5zwnCUtO8iVYQtwlw",
+        "nonce": "enroll-nonce-53bcbb91525547bf679e9d4f"
+      }
+    },
+    {
+      "name": "device-approval-signed-by-presence-key-REFUSED",
+      "description": "NEGATIVE: signed by the presence key of the approver, whose attestation says presence.",
+      "envelope": {
+        "signed": {
+          "type": "biatec_device_approval",
+          "approver_kid": "presence-test-key-1",
+          "new_kid": "new-approval-test-key-1",
+          "new_approval_jwk_thumbprint": "cpXj3K7c4_bBd9lXxKoO8aZPwTwuPMGzwnYgg3rG_jY",
+          "new_presence_jwk_thumbprint": "hOlyodNi_jjK_piu5kSIQkvt2q5zwnCUtO8iVYQtwlw",
+          "pairing_code": "102716",
+          "nonce": "enroll-nonce-53bcbb91525547bf679e9d4f",
+          "issued_at": 1792425640
+        },
+        "alg": "ES256",
+        "signature": "Oa2_kED7fiBHE2wDwi2rUDpnsEkOArzAp7xojDYQCV0gqA5I2lxmzhiNYRHAjx1VEBcsLhZgFbjtZBOZ7toJug",
+        "device": {
+          "kid": "presence-test-key-1",
+          "key_use": "presence",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "nZQI_ShNEIOy_-Pb6TPa8LOaCyDengdDzBlg0cOhD7w",
+            "y": "kTQ5sb0lNB760k-c7T8v3yVvGikDQpORyXnLjldhgCQ"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd19hOWUzYzA0MTdiNWQyZjg2IiwiZGV2aWNlX2tpZCI6InByZXNlbmNlLXRlc3Qta2V5LTEiLCJkZXZpY2VfandrX3RodW1icHJpbnQiOiIyZjB2dWwzdGJ5S0Y2S3R2V3VRYUVBWnVCano1aHUxeS15QUlEVWswNXpJIiwiYmlhdGVjX2tleV91c2UiOiJwcmVzZW5jZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.r-d1Kixab48CWAjs5YcNoIpmFOIE9LloQPaa5MvndBNZjiezmyVotHYTi9LjWRfUB_17G9DdEVSKyakHLkBRXw"
+        }
+      },
+      "canonical": "{\"approver_kid\":\"presence-test-key-1\",\"issued_at\":1792425640,\"new_approval_jwk_thumbprint\":\"cpXj3K7c4_bBd9lXxKoO8aZPwTwuPMGzwnYgg3rG_jY\",\"new_kid\":\"new-approval-test-key-1\",\"new_presence_jwk_thumbprint\":\"hOlyodNi_jjK_piu5kSIQkvt2q5zwnCUtO8iVYQtwlw\",\"nonce\":\"enroll-nonce-53bcbb91525547bf679e9d4f\",\"pairing_code\":\"102716\",\"type\":\"biatec_device_approval\"}",
+      "canonical_sha256": "2dd1af6cf03d196f39c94eafe0c8172f5c1f72d3b3f7fc20af82f01d104d378e",
+      "expected": {
+        "accepted": false,
+        "reason": "requires_approval_key"
+      },
+      "expected_inputs": {
+        "new_approval_jwk_thumbprint": "cpXj3K7c4_bBd9lXxKoO8aZPwTwuPMGzwnYgg3rG_jY",
+        "new_presence_jwk_thumbprint": "hOlyodNi_jjK_piu5kSIQkvt2q5zwnCUtO8iVYQtwlw",
+        "nonce": "enroll-nonce-53bcbb91525547bf679e9d4f"
+      }
+    }
+  ],
+  "pairing_code": {
+    "new_approval_jwk_thumbprint": "cpXj3K7c4_bBd9lXxKoO8aZPwTwuPMGzwnYgg3rG_jY",
+    "new_presence_jwk_thumbprint": "hOlyodNi_jjK_piu5kSIQkvt2q5zwnCUtO8iVYQtwlw",
+    "nonce": "enroll-nonce-53bcbb91525547bf679e9d4f",
+    "input": "cpXj3K7c4_bBd9lXxKoO8aZPwTwuPMGzwnYgg3rG_jY.hOlyodNi_jjK_piu5kSIQkvt2q5zwnCUtO8iVYQtwlw.enroll-nonce-53bcbb91525547bf679e9d4f",
+    "sha256_hex": "5969c03c8789e9dfc7c532ebd67bdd77dc384b9bd84399d68bdccb06bee32c28",
+    "first_four_bytes_uint32": 1500102716,
+    "code": "102716"
+  },
+  "enrollment_proofs": [
+    {
+      "name": "enrollment-proof-valid",
+      "description": "Signed by the new approval key; names the presence key by thumbprint and carries the server's nonce.",
+      "jws": "eyJhbGciOiJFUzI1NiIsInR5cCI6ImJpYXRlYy1kZXZpY2UtZW5yb2xsK2p3dCIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IndCcjZpR0NWRGpHcVJBRW51b1o3M2dPTDFoTWdaRDhtOEQ0RVVVVDgyNnMiLCJ5IjoiUlU2bG81VGlYU2M2T3lENnlaVmx3QTMxN0xnOThiQnpjSW1SWnZaZFF5OCJ9fQ.eyJraWQiOiJuZXctYXBwcm92YWwtdGVzdC1rZXktMSIsInByZXNlbmNlX2tpZCI6Im5ldy1wcmVzZW5jZS10ZXN0LWtleS0xIiwicHJlc2VuY2VfandrX3RodW1icHJpbnQiOiJoT2x5b2ROaV9qaktfcGl1NWtTSVFrdnQycTV6d25DVXRPOGlWWVF0d2x3Iiwibm9uY2UiOiJlbnJvbGwtbm9uY2UtNTNiY2JiOTE1MjU1NDdiZjY3OWU5ZDRmIiwiaWF0IjoxNzkyNDI1NjEwfQ.ZoZSjbP_NtbD2rX0QkwxONDa4FZqFQPQTMm3JxuiuApw57aWLWpgo_p5CuF8UfodKYveALcbw8teLnHWncPRhA",
+      "header": {
+        "alg": "ES256",
+        "typ": "biatec-device-enroll+jwt",
+        "jwk": {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "wBr6iGCVDjGqRAEnuoZ73gOL1hMgZD8m8D4EUUT826s",
+          "y": "RU6lo5TiXSc6OyD6yZVlwA317Lg98bBzcImRZvZdQy8"
+        }
+      },
+      "payload": {
+        "kid": "new-approval-test-key-1",
+        "presence_kid": "new-presence-test-key-1",
+        "presence_jwk_thumbprint": "hOlyodNi_jjK_piu5kSIQkvt2q5zwnCUtO8iVYQtwlw",
+        "nonce": "enroll-nonce-53bcbb91525547bf679e9d4f",
+        "iat": 1792425610
+      },
+      "presence_public_key": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "XGsG0011wazq1ooVHyxB4bGsGUaW_zWCQpJC2OFIbAQ",
+        "y": "3nwoRWO3GXFOfMHKH7t1mobVPMuJDPZZvab9JPyGlB8"
+      },
+      "expected": {
+        "accepted": true
+      }
+    },
+    {
+      "name": "enrollment-proof-signed-by-presence-key-REFUSED",
+      "description": "NEGATIVE: signed by the presence key although the header names the approval key: the signature does not verify under the header's jwk.",
+      "jws": "eyJhbGciOiJFUzI1NiIsInR5cCI6ImJpYXRlYy1kZXZpY2UtZW5yb2xsK2p3dCIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IndCcjZpR0NWRGpHcVJBRW51b1o3M2dPTDFoTWdaRDhtOEQ0RVVVVDgyNnMiLCJ5IjoiUlU2bG81VGlYU2M2T3lENnlaVmx3QTMxN0xnOThiQnpjSW1SWnZaZFF5OCJ9fQ.eyJraWQiOiJuZXctYXBwcm92YWwtdGVzdC1rZXktMSIsInByZXNlbmNlX2tpZCI6Im5ldy1wcmVzZW5jZS10ZXN0LWtleS0xIiwicHJlc2VuY2VfandrX3RodW1icHJpbnQiOiJoT2x5b2ROaV9qaktfcGl1NWtTSVFrdnQycTV6d25DVXRPOGlWWVF0d2x3Iiwibm9uY2UiOiJlbnJvbGwtbm9uY2UtNTNiY2JiOTE1MjU1NDdiZjY3OWU5ZDRmIiwiaWF0IjoxNzkyNDI1NjEwfQ.PtGlC0-UDvPprYosFLF1nbfY--ma33MquRYXuTgMkcxKOKIGCTKvTippsBCCZ3SWH2xVvdK5DkJq5S8T-u5oZg",
+      "header": {
+        "alg": "ES256",
+        "typ": "biatec-device-enroll+jwt",
+        "jwk": {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "wBr6iGCVDjGqRAEnuoZ73gOL1hMgZD8m8D4EUUT826s",
+          "y": "RU6lo5TiXSc6OyD6yZVlwA317Lg98bBzcImRZvZdQy8"
+        }
+      },
+      "payload": {
+        "kid": "new-approval-test-key-1",
+        "presence_kid": "new-presence-test-key-1",
+        "presence_jwk_thumbprint": "hOlyodNi_jjK_piu5kSIQkvt2q5zwnCUtO8iVYQtwlw",
+        "nonce": "enroll-nonce-53bcbb91525547bf679e9d4f",
+        "iat": 1792425610
+      },
+      "presence_public_key": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "XGsG0011wazq1ooVHyxB4bGsGUaW_zWCQpJC2OFIbAQ",
+        "y": "3nwoRWO3GXFOfMHKH7t1mobVPMuJDPZZvab9JPyGlB8"
+      },
+      "expected": {
+        "accepted": false,
+        "reason": "signature"
+      }
+    }
+  ]
+}

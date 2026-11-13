@@ -61,3 +61,30 @@ test("every schema is referenced by the spec by file name or example tag", () =>
     assert.ok(spec.includes(f) || spec.includes("schema=" + name), f);
   }
 });
+
+test("the spec has a Changes from 1.0 section and names the 1.1 vectors", () => {
+  assert.ok(headings.includes("13-changes-from-10"));
+  for (const f of ["receipts.json", "receipts-1.0.json", "device-signed.json", "keys.json"]) assert.ok(spec.includes("vectors/" + f), f);
+});
+
+test("worked examples of the device-signed statements equal the vectors", () => {
+  const dev = JSON.parse(readFileSync(join(root, "vectors", "device-signed.json"), "utf8"));
+  const block = (name) => JSON.parse(spec.match(new RegExp("```json schema=" + name + "\\n([\\s\\S]*?)```"))[1]);
+  assert.deepEqual(block("settings-change-signed"), dev.settings_changes[0].envelope.signed);
+  assert.deepEqual(block("device-approval-signed"), dev.device_approvals[0].envelope.signed);
+  const p = dev.pairing_code;
+  for (const part of [p.input, p.sha256_hex, String(p.first_four_bytes_uint32), p.code]) assert.ok(spec.includes(part), part);
+});
+
+test("no operator-vouched client identity and no third-party push relay outside the 1.0 branches and Changes from 1.0", () => {
+  const banned = /verified|entity_id|display_name|logo_uri|firebase|fcm/i;
+  const body = spec.split("## 13. Changes from 1.0")[0];
+  assert.equal(banned.test(body), false, "spec text before section 13: " + (body.match(banned) ?? [""])[0]);
+  for (const f of readdirSync(join(root, "schemas"))) {
+    const s = JSON.parse(readFileSync(join(root, "schemas", f), "utf8"));
+    // The 1.0 branches are the only place the 1.0 members may stay.
+    for (const k of ["v1_0", "clientV1_0"]) if (s.$defs) delete s.$defs[k];
+    const text = JSON.stringify(s);
+    assert.equal(banned.test(text), false, f + ": " + (text.match(banned) ?? [""])[0]);
+  }
+});

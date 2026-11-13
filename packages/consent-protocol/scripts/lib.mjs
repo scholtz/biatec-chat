@@ -68,45 +68,151 @@ export function signCompactJws(privateJwk, header, payload) {
 }
 
 export const ATTESTATION_TYP = "biatec-device-attestation+jwt";
+export const ENROLL_PROOF_TYP = "biatec-device-enroll+jwt";
+export const KEY_USES = ["approve", "presence"];
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 /**
- * Verifies the attestation JWS with the Biatec OIDC JWKS and that it binds this receipt's sub and device key.
- * Fails closed: the attestation must not be expired at `opts.now` (Unix seconds, default the current time),
- * its `iss` must equal `opts.issuer` (required), and the signing key must be
- * an EC P-256 signature key. Returns false (never throws) on malformed input.
+ * Verifies the attestation JWS with the Biatec OIDC JWKS: the key must be an EC P-256 signature key, `typ` and `alg`
+ * must be right, `iss` must equal `opts.issuer` (required) and `exp` must be in the future at `opts.now`.
+ * Returns the payload, or null. Never throws. It says nothing yet about what the attestation is bound to.
  */
-export function verifyAttestation(receipt, jwks, opts = {}) {
+export function attestationClaims(attestation, jwks, opts = {}) {
   try {
     const now = opts.now ?? nowSeconds();
-    if (typeof opts.issuer !== "string" || opts.issuer === "") return false;
-    const parts = receipt.device.attestation.split(".");
-    if (parts.length !== 3) return false;
+    if (typeof opts.issuer !== "string" || opts.issuer === "") return null;
+    const parts = attestation.split(".");
+    if (parts.length !== 3) return null;
     const [h, p, s] = parts;
     const header = JSON.parse(decodeB64u(h).toString("utf8"));
     const payload = JSON.parse(decodeB64u(p).toString("utf8"));
-    if (typeof header.kid !== "string" || header.kid === "") return false;
+    if (typeof header.kid !== "string" || header.kid === "") return null;
     const key = jwks.keys.find((k) => k.kid === header.kid);
-    if (!key || key.kty !== "EC" || key.crv !== "P-256" || (key.use !== undefined && key.use !== "sig")) return false;
-    if (header.alg !== "ES256" || header.typ !== ATTESTATION_TYP) return false;
-    if (!verifyEs256(key, Buffer.from(h + "." + p, "ascii"), s)) return false;
-    if (payload.iss !== opts.issuer) return false;
-    if (typeof payload.exp !== "number" || payload.exp <= now) return false;
-    return (
-      payload.sub === receipt.signed.sub &&
-      payload.device_kid === receipt.device.kid &&
-      payload.device_jwk_thumbprint === thumbprint(receipt.device.public_key)
-    );
+    if (!key || key.kty !== "EC" || key.crv !== "P-256" || (key.use !== undefined && key.use !== "sig")) return null;
+    if (header.alg !== "ES256" || header.typ !== ATTESTATION_TYP) return null;
+    if (!verifyEs256(key, Buffer.from(h + "." + p, "ascii"), s)) return null;
+    if (payload.iss !== opts.issuer) return null;
+    if (typeof payload.exp !== "number" || payload.exp <= now) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+/** The attestation payload when it also binds this device key (kid and thumbprint) and, if `sub` is given, that subject. */
+function boundClaims(device, sub, jwks, opts) {
+  const payload = attestationClaims(device.attestation, jwks, opts);
+  if (!payload) return null;
+  if (sub !== undefined && payload.sub !== sub) return null;
+  if (payload.device_kid !== device.kid || payload.device_jwk_thumbprint !== thumbprint(device.public_key)) return null;
+  return payload;
+}
+
+/**
+ * Verifies the attestation JWS with the Biatec OIDC JWKS and that it binds this receipt's sub and device key
+ * (see attestationClaims for the checks on the JWS itself). For a 1.1 receipt it also requires a valid attested
+ * `biatec_key_use`, and the informational `device.key_use` must agree with it. Returns false (never throws) on malformed input.
+ */
+export function verifyAttestation(receipt, jwks, opts = {}) {
+  try {
+    const payload = boundClaims(receipt.device, receipt.signed.sub, jwks, opts);
+    if (!payload) return false;
+    if (receipt.version === "1.1") {
+      if (!KEY_USES.includes(payload.biatec_key_use)) return false;
+      if (receipt.device.key_use !== undefined && receipt.device.key_use !== payload.biatec_key_use) return false;
+    }
+    return true;
   } catch {
     return false;
   }
 }
 
-/** Both signatures (rule 9) with the attestation checks above. Says nothing about decision or expiry. Never throws. */
+/** The attested `biatec_key_use` of a receipt's device key, or null when the attestation does not verify. */
+export function attestedKeyUse(receipt, jwks, opts = {}) {
+  try {
+    const payload = boundClaims(receipt.device, receipt.signed.sub, jwks, opts);
+    return payload && KEY_USES.includes(payload.biatec_key_use) ? payload.biatec_key_use : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Both signatures (rule 9) with the attestation checks above. Says nothing about decision or expiry. Never throws.
+ * From version 1.1 on, an `approve` receipt MUST be signed by an approval key (attested `biatec_key_use` "approve");
+ * `deny` and `code_failed` accept either key. Version 1 receipts predate the two keys and carry no key use.
+ */
 export function verifyReceipt(receipt, jwks, opts = {}) {
   try {
-    return verifyReceiptSignature(receipt) && verifyAttestation(receipt, jwks, opts);
+    if (!(verifyReceiptSignature(receipt) && verifyAttestation(receipt, jwks, opts))) return false;
+    if (receipt.version === "1.1" && receipt.signed.decision === "approve") return attestedKeyUse(receipt, jwks, opts) === "approve";
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The six digit pairing code both phones show when a new device is enrolled: the first four bytes of
+ * SHA-256(newApprovalThumbprint + "." + newPresenceThumbprint + "." + nonce) as a big-endian unsigned integer,
+ * modulo 10^6, zero padded to six digits.
+ */
+export function pairingCode(newApprovalThumbprint, newPresenceThumbprint, nonce) {
+  const d = createHash("sha256").update(`${newApprovalThumbprint}.${newPresenceThumbprint}.${nonce}`, "utf8").digest();
+  return String(d.readUInt32BE(0) % 1_000_000).padStart(6, "0");
+}
+
+const SIGNED_WINDOW_SECONDS = 300;
+
+/**
+ * Verifies a settings change or the approval of a new device (spec section 8.2): the signature over JCS(signed) by
+ * `device.public_key`, the attestation (binding the device key and, for a settings change, `signed.sub`), the attested
+ * `biatec_key_use` = "approve", the signing key named inside the statement, and `issued_at` within 300 seconds of `opts.now`.
+ * With `expect.approval` ({ new_approval_jwk_thumbprint, new_presence_jwk_thumbprint, nonce }) a device approval must
+ * name exactly those keys and nonce and carry the pairing code derived from them. Never throws.
+ */
+export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
+  try {
+    const now = opts.now ?? nowSeconds();
+    const s = envelope.signed;
+    if (envelope.alg !== "ES256") return false;
+    if (!verifyEs256(envelope.device.public_key, Buffer.from(jcs(s), "utf8"), envelope.signature)) return false;
+    const settings = s.type === "biatec_settings_change";
+    const approval = s.type === "biatec_device_approval";
+    if (!settings && !approval) return false;
+    const payload = boundClaims(envelope.device, settings ? s.sub : undefined, jwks, { ...opts, now });
+    if (!payload || payload.biatec_key_use !== "approve" || envelope.device.key_use !== "approve") return false;
+    if ((settings ? s.kid : s.approver_kid) !== envelope.device.kid) return false;
+    if (!Number.isInteger(s.issued_at) || Math.abs(now - s.issued_at) > SIGNED_WINDOW_SECONDS) return false;
+    if (approval && expect.approval) {
+      const e = expect.approval;
+      if (s.new_approval_jwk_thumbprint !== e.new_approval_jwk_thumbprint || s.new_presence_jwk_thumbprint !== e.new_presence_jwk_thumbprint || s.nonce !== e.nonce) return false;
+      if (!timingSafeEqualStr(s.pairing_code, pairingCode(e.new_approval_jwk_thumbprint, e.new_presence_jwk_thumbprint, e.nonce))) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Verifies an enrollment proof JWS (spec section 8.2): typ, ES256 under the header's own `jwk`, `presence_jwk_thumbprint`
+ * equals the thumbprint of `expect.presence_public_key`, `nonce` equals `expect.nonce`, and `iat` is within 300 seconds of
+ * `expect.now`. Never throws.
+ */
+export function verifyEnrollmentProof(jws, expect = {}) {
+  try {
+    const now = expect.now ?? nowSeconds();
+    const parts = jws.split(".");
+    if (parts.length !== 3) return false;
+    const header = JSON.parse(decodeB64u(parts[0]).toString("utf8"));
+    const payload = JSON.parse(decodeB64u(parts[1]).toString("utf8"));
+    if (header.alg !== "ES256" || header.typ !== ENROLL_PROOF_TYP || header.jwk?.kty !== "EC" || header.jwk?.crv !== "P-256") return false;
+    if (!verifyEs256(header.jwk, Buffer.from(parts[0] + "." + parts[1], "ascii"), parts[2])) return false;
+    if (typeof expect.nonce !== "string" || payload.nonce !== expect.nonce) return false;
+    if (!expect.presence_public_key || payload.presence_jwk_thumbprint !== thumbprint(expect.presence_public_key)) return false;
+    return Number.isInteger(payload.iat) && Math.abs(now - payload.iat) <= SIGNED_WINDOW_SECONDS;
   } catch {
     return false;
   }
@@ -134,7 +240,7 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
       typeof request.auth_req_id !== "string" ||
       typeof request.bound_hash !== "string" ||
       s.auth_req_id !== request.auth_req_id ||
-      s.client_entity_id !== request.client.entity_id ||
+      (receipt.version === "1.1" ? s.client_fingerprint !== request.client.fingerprint : s.client_entity_id !== request.client.entity_id) ||
       s.binding_message !== request.binding_message ||
       s.expiry !== request.expiry ||
       s.sub !== request.sub ||
