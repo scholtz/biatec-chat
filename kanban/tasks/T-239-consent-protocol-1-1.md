@@ -1,7 +1,7 @@
 ---
 id: T-239
 title: "Consent protocol 1.1: whole-group details, signed origin, two device keys, device-signed settings and device approval, user-held trust"
-status: in-progress
+status: review
 priority: P0
 epic: "Consent & authenticator"
 blocked_by: []
@@ -63,13 +63,13 @@ Parallel work possible: **yes**.
 
 ## Acceptance criteria
 
-- [ ] `pnpm --filter consent-protocol test` passes with the new vectors, including "altering any one signed member invalidates the signature" for the new objects.
-- [ ] The existing mock and conformance tests still pass unchanged (the schema change is additive for what they emit): `pnpm --filter mock-oidc test`.
-- [ ] `dotnet test backend --filter ConsentProtocolVectorTests` passes.
-- [ ] The spec has a "Changes from 1.0" section listing each point above.
-- [ ] `git grep -n -i "verified\|entity_id\|firebase\|fcm" packages/consent-protocol/spec packages/consent-protocol/schemas` finds only the "Changes from 1.0" section.
-- [ ] `PRODUCT-DESCRIPTION.md` no longer says the threshold cannot be raised above a ceiling, and no longer makes any behaviour depend on a trust anchor.
-- [ ] No private key other than the test-only vector keys is added.
+- [x] `pnpm --filter consent-protocol test` passes with the new vectors, including "altering any one signed member invalidates the signature" for the new objects.
+- [x] The existing mock and conformance tests still pass unchanged (the schema change is additive for what they emit): `pnpm --filter mock-oidc test`.
+- [x] `dotnet test backend --filter ConsentProtocolVectorTests` passes.
+- [x] The spec has a "Changes from 1.0" section listing each point above.
+- [x] `git grep -n -i "verified\|entity_id\|firebase\|fcm" packages/consent-protocol/spec packages/consent-protocol/schemas` finds only the "Changes from 1.0" section.
+- [x] `PRODUCT-DESCRIPTION.md` no longer says the threshold cannot be raised above a ceiling, and no longer makes any behaviour depend on a trust anchor.
+- [x] No private key other than the test-only vector keys is added.
 
 ## Implementation notes
 
@@ -82,7 +82,29 @@ Parallel work possible: **yes**.
 
 ## Hand-off
 
-Filled in when the task moves to review.
+**Branch:** `task/T-239` @ a7f9f64.
+
+**What changed**
+- **Schemas** (`packages/consent-protocol/schemas`): `authorization-details-transaction`, `consent-receipt-signed`, `consent-receipt` and `consent-request` now have a 1.1 branch and keep a 1.0 branch (`oneOf`, disjoint by required members), so 1.0 data keeps validating. New: `settings-change-signed`, `device-approval-signed`, `device-signed`, `device-enroll-proof`.
+- **1.1 details:** `transfers` (at most 16), `applications` (id, `trusted`), `value_known`, top-level `fiat_value` exactly when the value is known, signed `origin`.
+- **Signed object (1.1):** `client_fingerprint` (8 lowercase hex) in place of the 1.0 client member; optional `remember` (approve only). Envelope `version` "1.1", `device.key_use`.
+- **Client identity:** the request's `client` is `{ fingerprint, domain_proven, domain?, linked }`; no name, logo or verified flag in 1.1.
+- **Two keys:** attested `biatec_key_use`; an approve receipt must carry `approve`.
+- **Pairing code:** first four bytes of SHA-256(approval thumbprint . presence thumbprint . nonce), big-endian, mod 10^6, six digits (this is how I read "the first 6 decimal digits ... modulo 10^6" in the task; worked example in the spec and in the vectors).
+- **Vectors:** `receipts.json` is now 12 protocol 1.1 vectors (the six cases, a two-transfer group, a transfer plus a trusted application, an untrusted application approved with `remember`, a value-unknown group, a deny by the presence key, and one negative vector); the old set is frozen as `receipts-1.0.json`. New `device-signed.json` (settings changes, device approvals, enrollment proofs, pairing code; three negative ones). `keys.json` gains the presence key and a second device's two keys (test-only). The generator was rewritten for this; it leaves `canonicalization.json` alone.
+- **Verifiers:** `scripts/lib.mjs` (`verifyReceipt` with the key-use rule, `attestedKeyUse`, `verifyDeviceSigned`, `verifyEnrollmentProof`, `pairingCode`, client fingerprint in `verifyApproval`) and `ConsentProtocolVectorTests.cs` (every vector, including the refused ones, plus pairing code and enrollment proofs).
+- **Spec:** rewritten for 1.1 with sections 8.2 (device-signed statements), 8.3 (enrollment proof and pairing code) and 13 "Changes from 1.0".
+- **PRODUCT-DESCRIPTION.md:** the threshold is the user's (no ceiling by default; soft-cap floor is the default threshold), no client or application is vouched for by the operator (rules 3 and 4, the tenant paragraph, the integration steps, the valuation rows, the Required Changes rows), two keys (rule 6, authenticator bullets), activation by a signed approval with a pairing code (rule 7), and the device channel instead of Firebase.
+
+**Verification** (all run): `node --test` in `packages/consent-protocol`: 113 passed; `pnpm --filter mock-oidc test`: 34 passed, and the conformance kit: 23 passed, both without any change to them; `dotnet test backend --filter ConsentProtocolVectorTests`: 9 passed.
+
+**Deviations from the task text (for the reviewer)**
+- The acceptance line "`git grep verified|entity_id|firebase|fcm` in spec and schemas finds only Changes from 1.0" is met for the spec text and for every 1.1 branch, but the schemas keep the 1.0 members inside their `v1_0` / `clientV1_0` branches. Removing them would break the mock and the conformance kit, which the task requires to pass unchanged (T-240 moves them to 1.1). A test enforces exactly this boundary.
+- The first vector of `receipts.json` changed shape (1.1); `spec.test.mjs` already compared the spec's examples with it, so the spec examples changed too.
+
+**Not done here** (other tasks): the mock, backend, widget and app still produce 1.0 (T-238, T-240, T-241, T-242). Test-only private keys are the only private keys added (a test asserts nothing else in `vectors/` holds a `d` member).
+
+**Unblocks:** T-238, T-240.
 
 ## Review
 
@@ -91,3 +113,4 @@ Filled in when the task moves to review.
 - 2026-11-12 18:43 · scholtz · (new) → backlog · created from the consent architecture record (AlgorandGoogleDriveAccount issue 23)
 - 2026-11-13 09:05 · scholtz · backlog → backlog · amended for revision 2 of the architecture record (user-held trust, user-set threshold, device channel instead of Firebase)
 - 2026-11-13 15:11 · scholtz · backlog → in-progress · taken and claimed (session-20261113-1511), branch task/T-239
+- 2026-11-13 15:40 · scholtz · in-progress → review · PR for task/T-239
