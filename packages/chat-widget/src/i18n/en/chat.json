@@ -66,5 +66,17 @@
     "previewCancelFailed": "The action could not be cancelled. Please try again.",
     "previewSignIn": "Sign in",
     "previewAnnounce": "Action ready to review: {intent}"
+  },
+  "consent": {
+    "denied": "You rejected this on your phone. Nothing was signed.",
+    "timedOut": "The approval timed out. Nothing was signed. Ask for a fresh preview.",
+    "codeFailed": "The binding code was entered wrongly too many times on your phone. Nothing was signed.",
+    "noDevice": "This action needs approval on your phone, and no phone is set up. Install Biatec Authenticator and enroll it, then try again. Nothing was signed.",
+    "noDeviceCap": "Without a phone set up, this site's daily limit for actions has been reached. Enroll Biatec Authenticator to continue. Nothing was signed.",
+    "previewExpired": "The preview expired before it could be approved. Nothing was signed. Ask for a fresh one.",
+    "resumeFailed": "The approval could not be used to complete the action. Nothing was signed. Ask for a fresh preview.",
+    "receiptMissing": "The approval did not arrive complete, so it was not used. Nothing was signed.",
+    "partial": "This step was not approved, so it was not signed. Steps that already completed stay completed.",
+    "lost": "This approval can no longer be followed here. Nothing is signed unless a receipt appears. Ask for a fresh preview."
   }
 }

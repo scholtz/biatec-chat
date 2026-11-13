@@ -1,5 +1,7 @@
 import type { ActionPreviewStatus, ChatEvent, ConsentState } from "@biatec/chat-protocol";
 
+import { isObj } from "./guards";
+
 export const CHAT_EVENT_TYPES = [
   "text_delta",
   "tool_status",
@@ -12,7 +14,6 @@ export const CHAT_EVENT_TYPES = [
 ] as const;
 
 const isStr = (v: unknown): v is string => typeof v === "string";
-const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 const isInt = (v: unknown): boolean => (typeof v === "number" && Number.isFinite(v)) || (isStr(v) && /^-?\d+$/.test(v));
 /** Absent, or an array whose every element passes `ok`. */
 const optArray = (v: unknown, ok: (x: unknown) => boolean): boolean => v === undefined || v === null || (Array.isArray(v) && v.every(ok));
@@ -153,18 +154,31 @@ export const MAX_STREAM_EVENTS = 5_000;
 /** Largest SSE frame (one event's data) or unterminated line the widget buffers. A real event is a few KiB (BCHAT-025). */
 export const MAX_FRAME_CHARS = 1_000_000;
 
-/** Incremental server-sent-events parser. Feed text chunks; it returns the data payloads completed so far. */
+/** One completed server-sent event: the `event:` name (empty when the frame had none) and its joined `data:` lines. */
+export interface SseFrame {
+  event: string;
+  data: string;
+}
+
+/** Incremental server-sent-events parser. Feed text chunks; it returns the events completed so far. */
 export class SseParser {
   private buffer = "";
   private data: string[] = [];
+  private event = "";
   private dataChars = 0;
   /** Set when a frame or line exceeded {@link MAX_FRAME_CHARS}; the parser then buffers nothing more. */
   overflowed = false;
 
+  /** The data payloads completed so far (the event name is ignored: the chat stream's JSON carries its own `type`). */
   push(chunk: string): string[] {
+    return this.pushFrames(chunk).map((f) => f.data);
+  }
+
+  /** The events completed so far, with their `event:` name (the consent stream names its events that way). */
+  pushFrames(chunk: string): SseFrame[] {
     if (this.overflowed) return [];
     this.buffer += chunk;
-    const out: string[] = [];
+    const out: SseFrame[] = [];
     for (;;) {
       const m = /\r\n|\n|\r/.exec(this.buffer);
       if (!m) break;
@@ -173,15 +187,18 @@ export class SseParser {
       const line = this.buffer.slice(0, m.index);
       this.buffer = this.buffer.slice(m.index + m[0].length);
       if (line === "") {
-        if (this.data.length) out.push(this.data.join("\n"));
+        if (this.data.length) out.push({ event: this.event, data: this.data.join("\n") });
         this.data = [];
+        this.event = "";
         this.dataChars = 0;
       } else if (line.startsWith("data:")) {
         this.dataChars += line.length;
         if (this.dataChars > MAX_FRAME_CHARS) return this.overflow(out);
         this.data.push(line.slice(5).replace(/^ /, ""));
+      } else if (line.startsWith("event:")) {
+        this.event = line.slice(6).replace(/^ /, "").slice(0, 64);
       }
-      // event:, id:, retry: and comment lines carry nothing we need: the JSON payload holds its own `type`.
+      // id:, retry: and comment lines carry nothing we need.
     }
     // No line break yet and already too long: nothing legitimate looks like this.
     if (this.buffer.length > MAX_FRAME_CHARS) return this.overflow(out);
@@ -189,16 +206,24 @@ export class SseParser {
   }
 
   /** Events completed before the oversized frame are still returned; nothing after it is read. */
-  private overflow(out: string[]): string[] {
+  private overflow(out: SseFrame[]): SseFrame[] {
     this.overflowed = true;
     this.buffer = "";
     this.data = [];
+    this.event = "";
     return out;
   }
 }
 
-/** Read a fetch response body as typed chat events. Malformed or unknown payloads are skipped, and an incomplete final frame is discarded (SSE spec). */
-export async function* readChatEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<ChatEvent> {
+/** Marks the end of a stream that went over the bounds (a frame, the whole stream, or the number of events). */
+const STREAM_TOO_BIG = Symbol("stream too big");
+
+/**
+ * The one reader both streams share: frames in order, bounded as a whole (not just per frame: endless comment lines, or
+ * endless small events, end the stream), and the reader is released however it ends. An over-bound stream yields the
+ * marker after the frames completed before the bound was hit, and its body is cancelled.
+ */
+async function* readFrames(body: ReadableStream<Uint8Array>): AsyncGenerator<SseFrame | typeof STREAM_TOO_BIG> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   const parser = new SseParser();
@@ -209,28 +234,48 @@ export async function* readChatEvents(body: ReadableStream<Uint8Array>): AsyncGe
       const { value, done } = await reader.read();
       const chunk = done ? "" : decoder.decode(value, { stream: true });
       total += chunk.length;
-      const payloads = done ? [] : parser.push(chunk);
-      events += payloads.length;
-      // Bounded as a whole too (not just per frame): endless comment lines, or endless small events, end the stream.
+      const frames = done ? [] : parser.pushFrames(chunk);
+      events += frames.length;
       const tooBig = parser.overflowed || total > MAX_STREAM_CHARS || events > MAX_STREAM_EVENTS;
-      for (const p of payloads) {
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(p);
-        } catch {
-          continue;
-        }
-        if (isChatEvent(parsed)) yield parsed;
-      }
+      yield* frames;
       if (tooBig) {
-        // End the stream with an error the UI shows in the user's language, and stop reading the rest of the body.
-        yield { type: "error", code: "stream_too_large", message: "", retryable: false } as ChatEvent;
+        // Cancelled before the marker is handed over: the consumer returns at the marker, so nothing after it would run.
         await reader.cancel().catch(() => undefined);
+        yield STREAM_TOO_BIG;
         return;
       }
       if (done) return;
     }
   } finally {
     reader.releaseLock();
+  }
+}
+
+/** Read a fetch response body as typed chat events. Malformed or unknown payloads are skipped, and an incomplete final frame is discarded (SSE spec). */
+export async function* readChatEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<ChatEvent> {
+  for await (const frame of readFrames(body)) {
+    if (frame === STREAM_TOO_BIG) {
+      // End the stream with an error the UI shows in the user's language.
+      yield { type: "error", code: "stream_too_large", message: "", retryable: false } as ChatEvent;
+      return;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(frame.data);
+    } catch {
+      continue;
+    }
+    if (isChatEvent(parsed)) yield parsed;
+  }
+}
+
+/**
+ * Read a fetch response body as named events (the consent stream: `consent_status`, `confirm_result`, `error`).
+ * An over-bound stream simply ends; the consent follower then falls back to polling.
+ */
+export async function* readNamedEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<SseFrame> {
+  for await (const frame of readFrames(body)) {
+    if (frame === STREAM_TOO_BIG) return;
+    yield frame;
   }
 }

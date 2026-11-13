@@ -66,5 +66,17 @@
     "previewCancelFailed": "Akciu sa nepodarilo zrušiť. Skúste to prosím znova.",
     "previewSignIn": "Prihlásiť sa",
     "previewAnnounce": "Akcia je pripravená na kontrolu: {intent}"
+  },
+  "consent": {
+    "denied": "Zamietli ste to v telefóne. Nič sa nepodpísalo.",
+    "timedOut": "Schválenie vypršalo. Nič sa nepodpísalo. Požiadajte o nový náhľad.",
+    "codeFailed": "Párovací kód ste v telefóne zadali príliš veľa ráz nesprávne. Nič sa nepodpísalo.",
+    "noDevice": "Táto akcia vyžaduje schválenie v telefóne a žiadny telefón nie je nastavený. Nainštalujte Biatec Authenticator a zaregistrujte ho, potom to skúste znova. Nič sa nepodpísalo.",
+    "noDeviceCap": "Bez nastaveného telefónu bol dosiahnutý denný limit akcií pre túto stránku. Na pokračovanie zaregistrujte Biatec Authenticator. Nič sa nepodpísalo.",
+    "previewExpired": "Náhľad vypršal skôr, než ho bolo možné schváliť. Nič sa nepodpísalo. Požiadajte o nový.",
+    "resumeFailed": "Schválenie sa nepodarilo použiť na dokončenie akcie. Nič sa nepodpísalo. Požiadajte o nový náhľad.",
+    "receiptMissing": "Schválenie neprišlo úplné, preto sa nepoužilo. Nič sa nepodpísalo.",
+    "partial": "Tento krok nebol schválený, preto sa nepodpísal. Kroky, ktoré sa už dokončili, zostávajú dokončené.",
+    "lost": "Toto schválenie tu už nemožno sledovať. Nič sa nepodpíše, kým sa neobjaví potvrdenka. Požiadajte o nový náhľad."
   }
 }

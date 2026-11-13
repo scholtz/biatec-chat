@@ -39,6 +39,9 @@ export interface TransportConfig {
 export const CSRF_HEADER = "X-Biatec-Chat";
 export const CLIENT_KEY_HEADER = "X-Biatec-Client-Key";
 
+/** The headers of a cookie-session call from script: the CSRF header and the client key (the session cookie is HttpOnly). */
+export const sessionCallHeaders = (cfg: Pick<TransportConfig, "clientKey">): Record<string, string> => ({ [CSRF_HEADER]: "1", [CLIENT_KEY_HEADER]: cfg.clientKey });
+
 /** Problem code of a cookie chat call whose session has ended; the response already set a fresh anonymous cookie. */
 export const SESSION_EXPIRED = "session_expired";
 

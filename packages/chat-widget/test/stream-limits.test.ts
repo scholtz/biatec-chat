@@ -4,7 +4,7 @@ import type { ChatEvent, SessionState } from "@biatec/chat-protocol";
 import BiatecChatRoot from "../src/components/BiatecChatRoot.vue";
 import { resolveOptions } from "../src/options";
 import { MAX_REPLY_CHARS, type ChatServices } from "../src/components/chat/useChat";
-import { isChatEvent, MAX_FRAME_CHARS, MAX_STREAM_EVENTS, SseParser, readChatEvents } from "../src/transport/sse";
+import { isChatEvent, MAX_FRAME_CHARS, MAX_STREAM_EVENTS, SseParser, readChatEvents, readNamedEvents } from "../src/transport/sse";
 
 // BCHAT-025: preview_card and consent_status frames are validated like every other card, and nothing grows without bound.
 
@@ -155,6 +155,24 @@ describe("size limits", () => {
     expect(events.map((e) => e.type)).toEqual(["text_delta", "error"]);
     expect((events[1] as { code: string; retryable: boolean }).code).toBe("stream_too_large");
     expect((events[1] as { retryable: boolean }).retryable).toBe(false);
+  });
+
+  it("an over-bound stream's connection is cancelled, for the chat stream and the named-event stream alike", async () => {
+    for (const read of [readChatEvents, readNamedEvents] as const) {
+      let cancelled = false;
+      const enc = new TextEncoder();
+      const source = new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(enc.encode("data: " + "x".repeat(MAX_FRAME_CHARS + 10)));
+        },
+        cancel() {
+          cancelled = true;
+        },
+      });
+      // The consumer stops at the end of the reply, as the widget's own readers do: the cancel must already have happened.
+      for await (const _e of read(source as ReadableStream<Uint8Array>)) void _e;
+      expect(cancelled).toBe(true);
+    }
   });
 });
 

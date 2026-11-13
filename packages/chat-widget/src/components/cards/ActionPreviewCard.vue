@@ -25,6 +25,8 @@ import {
 const props = defineProps<{
   preview: ActionPreview;
   consent?: ConsentStatus | null;
+  /** The backend's own sentence about phone approval for this user's settings; shown as its own line beside the localized one. */
+  prediction?: string | null;
   /** The session's absolute expiry (SessionState.expiresAt). */
   sessionExpiresAt?: string | null;
   /** True while the confirm call is in flight; locks Confirm. */
@@ -56,6 +58,8 @@ const acknowledged = ref(false);
 const confirmed = ref(false);
 const expanded = ref(false);
 
+/** The prediction was made for a card still awaiting confirmation; once the card moves on it no longer applies. */
+const shownPrediction = computed(() => (props.preview.status === "AwaitingConfirmation" ? props.prediction : null));
 const activeConsent = computed(() => consentFor(props.preview, props.consent));
 const key = computed(() => statusKey(props.preview.status, activeConsent.value?.state));
 const waitingForPhone = computed(
@@ -188,7 +192,9 @@ function onConfirm() {
         <dd class="bc-num">{{ t("cards.preview.limitRemaining", { bucket: preview.limit.bucket, remaining: preview.limit.remaining, currency: preview.limit.currency }) }}</dd>
       </template>
     </dl>
-    <p class="bc-phone">{{ t(preview.expectsAuthenticatorApproval ? "cards.preview.phoneYes" : "cards.preview.phoneNo") }}<template v-if="preview.approvalReason"> · {{ preview.approvalReason }}</template></p>
+    <p class="bc-phone" data-test="phone-line">{{ t(preview.expectsAuthenticatorApproval ? "cards.preview.phoneYes" : "cards.preview.phoneNo") }}<template v-if="preview.approvalReason"> · {{ preview.approvalReason }}</template></p>
+    <!-- The backend's own sentence about this user's settings (not localized by the widget): shown as text, never as markup. -->
+    <p v-if="shownPrediction" class="bc-phone" data-test="prediction">{{ shownPrediction }}</p>
     <p v-if="fall" class="bc-downside" data-test="downside">{{ t("cards.preview.downside", fall) }}</p>
 
     <button type="button" class="bc-linkbtn" :aria-expanded="expanded" @click="expanded = !expanded">

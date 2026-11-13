@@ -1,5 +1,6 @@
 import { computed, reactive } from "vue";
 import type { ActionPreview, ActionPreviewStatus, ChatEvent, ConsentState } from "@biatec/chat-protocol";
+import { OPEN_STEP_STATUSES, decisionHash } from "../chat/previews";
 
 /** Filter groups of the timeline (User Experience 9). */
 export type ActivityKind = "analysis" | "preview" | "execution" | "permission";
@@ -31,7 +32,6 @@ export interface OpenPreview {
   groupHash: string;
 }
 
-const OPEN: ActionPreviewStatus[] = ["AwaitingConfirmation", "AwaitingScope", "AwaitingApproval"];
 const PREVIEW_EVENT: Partial<Record<ActionPreviewStatus, { kind: ActivityKind; title: string }>> = {
   Submitted: { kind: "execution", title: "submitted" },
   Completed: { kind: "execution", title: "receipt" },
@@ -59,11 +59,6 @@ export function localDay(ms: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** The step a decision applies to: the first one still waiting for the user, else the first step. */
-function decisionHash(p: ActionPreview): string {
-  return (p.steps.find((s) => OPEN.includes(s.status)) ?? p.steps[0])?.groupHash ?? "";
-}
-
 /**
  * The session's activity, per page load: built from the chat stream's events and the user's own actions in the
  * widget. The signed evidence export stays the durable record.
@@ -87,7 +82,7 @@ export function useActivity(now: () => number = Date.now) {
       previews.set(p.previewId, { status: p.status, intent: p.intent, groupHash: decisionHash(p) });
       if (before?.status === p.status) return;
       const detail = clip(p.intent);
-      if (!before && OPEN.includes(p.status)) log({ kind: "preview", title: "previewPrepared", detail, by: "ai" });
+      if (!before && OPEN_STEP_STATUSES.includes(p.status)) log({ kind: "preview", title: "previewPrepared", detail, by: "ai" });
       if (before && CONFIRMED.includes(p.status)) recordConfirm(p.previewId);
       const ev = PREVIEW_EVENT[p.status];
       if (ev) log({ ...ev, detail, by: "ai" });
@@ -116,7 +111,7 @@ export function useActivity(now: () => number = Date.now) {
 
   const openPreviews = computed<OpenPreview[]>(() =>
     [...previews.entries()]
-      .filter(([, v]) => OPEN.includes(v.status) && v.groupHash)
+      .filter(([, v]) => OPEN_STEP_STATUSES.includes(v.status) && v.groupHash)
       .map(([previewId, v]) => ({ previewId, groupHash: v.groupHash })),
   );
 
