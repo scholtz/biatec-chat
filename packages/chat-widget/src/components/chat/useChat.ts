@@ -284,8 +284,12 @@ export function useChat(svc: ChatServices) {
       existing.preview = preview;
       if (preview.status !== "AwaitingConfirmation") existing.note = "";
       syncKeepalive(existing);
-      // A card the backend says is awaiting the phone (a reload, a restored session): one poll, then the stream.
-      if (preview.status === "AwaitingApproval") followConsent(preview.previewId, true);
+      // A card the backend says is awaiting the phone (a reload, a restored session): one poll, then the stream. A consent
+      // this widget ended on its own clock does not stand against it: the poll asks the backend what really happened.
+      if (preview.status === "AwaitingApproval") {
+        if (existing.consent && (existing.consent.state === "TimedOut" || existing.consent.state === "Denied")) existing.consent = null;
+        followConsent(preview.previewId, true);
+      }
       else if (preview.status === "AwaitingConfirmation") void loadPrediction(preview.previewId);
       return;
     }
@@ -606,8 +610,17 @@ export function useChat(svc: ChatServices) {
   /** The backend says this consent cannot be followed (sign-in gone, preview or consent not there any more). */
   function lostConsent(entry: PreviewEntry, status: number): void {
     entry.consent = null;
-    entry.needsSignIn = status === 401;
-    closeWithoutSignature(entry, "Expired", t(status === 401 ? "chat.previewSignInRequired" : "consent.lost"));
+    if (status === 401) {
+      // Same as a confirm that answers sign_in_required: the card goes back to where Confirm would leave it.
+      entry.needsSignIn = true;
+      entry.preview = { ...entry.preview, status: "AwaitingConfirmation" };
+      entry.note = t("chat.previewSignInRequired");
+      refreshPrediction(entry);
+      syncKeepalive(entry);
+      svc.onEvent?.({ type: "preview_card", preview: entry.preview });
+      return;
+    }
+    closeWithoutSignature(entry, "Expired", t("consent.lost"));
   }
 
   /**

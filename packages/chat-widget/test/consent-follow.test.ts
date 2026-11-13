@@ -384,6 +384,29 @@ describe("following a phone approval", () => {
     expect(m.entry().prediction).toBe("fresh text");
   });
 
+  it("a card the backend re-sends as awaiting the phone after this widget timed it out is asked about, not left half-closed", async () => {
+    const shortExpiry = iso(Date.now() + 1_000);
+    const consent = fakeConsent({
+      stream: vi.fn(async function* () {
+        throw new TransportError("down", 503);
+      }),
+      poll: vi.fn(async (): Promise<ConsentPoll> => ({ ok: true, consent: pending({ expiresAt: shortExpiry }), result: null })),
+    });
+    const events: ChatEvent[] = [{ type: "preview_card", preview: preview() }];
+    const m = await mountChat(consent, events);
+    wrapper = m.wrapper;
+    m.confirm.mockResolvedValueOnce(result("consent_pending", { consent: pending({ expiresAt: shortExpiry }) }));
+    await m.chat.confirmPreview("p1");
+    await advance(12_000); // past the consent's expiry and the grace: timed out on this side's clock
+    expect(m.entry().preview.status).toBe("Expired");
+    const polls = consent.poll.mock.calls.length;
+    events.length = 0;
+    events.push({ type: "preview_card", preview: preview("AwaitingApproval") }); // the backend still says it is waiting
+    await m.chat.send("again");
+    await settle();
+    expect(consent.poll.mock.calls.length).toBeGreaterThan(polls);
+  });
+
   it("a new round announced without a consent to follow closes the card instead of leaving it waiting", async () => {
     const consent = fakeConsent({
       stream: vi.fn(async function* () {
@@ -445,6 +468,8 @@ describe("following a phone approval", () => {
     const eurStep = (id: string, status: ActionPreviewStatus, fiat: string) => ({ stepId: id, index: 0, title: id, status, groupHash: id, assets: [{ assetId: "1", symbol: "A", amount: "1", decimals: 6, fiatValue: fiat, fiatCurrency: "EUR" }] });
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "Completed", "100"), eurStep("b", "AwaitingConfirmation", "100")] })).toBe("100.00");
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0.004")] })).toBe("0.01");
+    expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0.000000001")] })).toBe("0.01");
+    expect(previewValueEur({ ...eur, steps: [eurStep("a", "Cancelled", "999"), eurStep("b", "AwaitingConfirmation", "5")] })).toBe("5.00");
     // A step that states no asset has an unknown value, so the whole value is unknown.
     expect(previewValueEur({ ...eur, steps: [...eur.steps, { stepId: "s2", index: 1, title: "Opt in", status: "AwaitingConfirmation", groupHash: "H2" }] })).toBeNull();
     expect(previewValueEur({ ...eur, steps: [{ ...eur.steps[0]!, assets: [{ ...eur.steps[0]!.assets![0]!, fiatCurrency: "USD" }] }] })).toBeNull();
@@ -534,7 +559,8 @@ describe("when the stream fails", () => {
       const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);
       await m.chat.confirmPreview("p1");
       await settle();
-      expect(m.entry().preview.status).toBe("Expired");
+      // A lost sign-in leaves the card confirmable (like a confirm that says sign_in_required); a gone consent ends it.
+      expect(m.entry().preview.status).toBe(http === 401 ? "AwaitingConfirmation" : "Expired");
       expect(m.entry().note).toContain(text);
       expect(m.entry().needsSignIn).toBe(http === 401);
       expect(consent.poll).not.toHaveBeenCalled();
