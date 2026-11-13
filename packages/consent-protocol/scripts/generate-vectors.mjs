@@ -245,7 +245,7 @@ const approvals = [
   { name: "device-approval-wrong-pairing-code-REFUSED", description: "NEGATIVE: the signature is valid but the pairing code is not the one derived from the new device's keys and nonce.", ...wrap(approvalBase({ pairing_code: pairing.code === "000000" ? "000001" : "000000" }), approver, "approve", ENROLL_SUB), expected: { accepted: false, reason: "pairing_code_mismatch" } },
   { name: "device-approval-signed-by-presence-key-REFUSED", description: "NEGATIVE: signed by the presence key of the approver, whose attestation says presence.", ...wrap(approvalBase({ approver_kid: keys.presence.kid }), keys.presence, "presence", ENROLL_SUB), expected: { accepted: false, reason: "requires_approval_key" } },
 ];
-const expectedApproval = { new_approval_jwk_thumbprint: pairing.new_approval_jwk_thumbprint, new_presence_jwk_thumbprint: pairing.new_presence_jwk_thumbprint, nonce: pairing.nonce };
+const expectedApproval = { new_kid: keys.new_approval.kid, new_approval_jwk_thumbprint: pairing.new_approval_jwk_thumbprint, new_presence_jwk_thumbprint: pairing.new_presence_jwk_thumbprint, nonce: pairing.nonce };
 for (const a of approvals) if (verifyDeviceSigned(a.envelope, jwks, OPTS, { approval: expectedApproval, sub: ENROLL_SUB, approverActive: true }) !== a.expected.accepted) throw new Error("self-check failed for " + a.name);
 
 const proofHeader = { alg: "ES256", typ: ENROLL_PROOF_TYP, jwk: newApproval };

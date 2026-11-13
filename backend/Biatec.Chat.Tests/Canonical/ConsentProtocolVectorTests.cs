@@ -200,12 +200,21 @@ public class ConsentProtocolVectorTests
             var verdict = signatureValid && (string)payload["biatec_key_use"]! == "approve" && signer == (string)dev["kid"]!;
             // Attestation not expired, and the statement fresh (within 300 seconds of the verifier's clock), as the JavaScript verifier requires.
             verdict &= (long)payload["exp"]! > now && Math.Abs(now - (long)envelope["signed"]!["issued_at"]!) <= 300;
+            // The informational key use agrees with the attested one, and the nonce has the shape the schema requires.
+            verdict &= (string)dev["key_use"]! == (string)payload["biatec_key_use"]!;
+            var nonceLength = ((string)envelope["signed"]!["nonce"]!).Length;
+            verdict &= nonceLength >= 16 && nonceLength <= 128;
             // A settings change is for the subject the attestation was minted for; an approval names the keys and nonce of the enrollment it covers.
             if ((string)envelope["signed"]!["type"]! == "biatec_settings_change")
                 verdict &= (string)envelope["signed"]!["sub"]! == (string)payload["sub"]!;
             else
             {
                 var expectedInputs = v["expected_inputs"]!;
+                // The approver is none of the keys being enrolled, and the kid it signed is the kid being activated.
+                var self = Thumbprint(dev["public_key"]!);
+                verdict &= self != (string)envelope["signed"]!["new_approval_jwk_thumbprint"]! && self != (string)envelope["signed"]!["new_presence_jwk_thumbprint"]!
+                    && (string)envelope["signed"]!["approver_kid"]! != (string)envelope["signed"]!["new_kid"]!
+                    && (string)envelope["signed"]!["new_kid"]! == (string)expectedInputs["new_kid"]!;
                 verdict &= (string)envelope["signed"]!["new_approval_jwk_thumbprint"]! == (string)expectedInputs["new_approval_jwk_thumbprint"]!
                     && (string)envelope["signed"]!["new_presence_jwk_thumbprint"]! == (string)expectedInputs["new_presence_jwk_thumbprint"]!
                     && (string)envelope["signed"]!["nonce"]! == (string)expectedInputs["nonce"]!

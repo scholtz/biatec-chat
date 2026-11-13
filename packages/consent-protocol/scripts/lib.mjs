@@ -110,36 +110,38 @@ function boundClaims(device, sub, jwks, opts) {
 }
 
 /**
- * Verifies the attestation JWS with the Biatec OIDC JWKS and that it binds this receipt's sub and device key
- * (see attestationClaims for the checks on the JWS itself). For a 1.1 receipt it also requires a valid attested
- * `biatec_key_use`, and the informational `device.key_use` must agree with it. Returns false (never throws) on malformed input.
+ * The verified attestation payload of a receipt, or null: the JWS (see attestationClaims), its binding to this receipt's sub
+ * and device key, and the version rules. `version` is not signed, so nothing may depend on it alone: the shape of the signed
+ * object has to agree with it (`client_fingerprint` for 1.1, the 1.0 client member for 1.0), an attested key use is honoured
+ * whatever the version says, a 1.1 device must be attested for a key use and name the same one in `device.key_use`, and a
+ * device that names a key use but is attested for none is refused. Never throws.
  */
-export function verifyAttestation(receipt, jwks, opts = {}) {
+function receiptClaims(receipt, jwks, opts) {
   try {
     const payload = boundClaims(receipt.device, receipt.signed.sub, jwks, opts);
-    if (!payload) return false;
-    // `version` is not signed, so nothing may depend on it alone: the shape of the signed object has to agree with it ...
+    if (!payload) return null;
     const s = receipt.signed;
-    if (receipt.version === "1.1" ? !("client_fingerprint" in s) || "client_entity_id" in s : receipt.version === "1" ? !("client_entity_id" in s) || "client_fingerprint" in s : true) return false;
-    if (receipt.version !== "1.1" && receipt.version !== "1") return false;
-    // ... and an attested key use is honoured whatever the version says, so a 1.1 device cannot pass as a 1.0 one.
-    if (payload.biatec_key_use !== undefined && !KEY_USES.includes(payload.biatec_key_use)) return false;
-    if (receipt.version === "1.1" && payload.biatec_key_use === undefined) return false;
-    if (receipt.device.key_use !== undefined && receipt.device.key_use !== payload.biatec_key_use) return false;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** The attested `biatec_key_use` of a receipt's device key, or null when the attestation does not verify. */
-export function attestedKeyUse(receipt, jwks, opts = {}) {
-  try {
-    const payload = boundClaims(receipt.device, receipt.signed.sub, jwks, opts);
-    return payload && KEY_USES.includes(payload.biatec_key_use) ? payload.biatec_key_use : null;
+    const is11 = receipt.version === "1.1";
+    if (!is11 && receipt.version !== "1") return null;
+    if (is11 ? !("client_fingerprint" in s) || "client_entity_id" in s : !("client_entity_id" in s) || "client_fingerprint" in s) return null;
+    if (payload.biatec_key_use !== undefined && !KEY_USES.includes(payload.biatec_key_use)) return null;
+    if (is11 && payload.biatec_key_use === undefined) return null;
+    if (receipt.device.key_use !== payload.biatec_key_use && (is11 || receipt.device.key_use !== undefined)) return null;
+    return payload;
   } catch {
     return null;
   }
+}
+
+/** True when the attestation verifies and binds this receipt's sub and device key, with the version rules of receiptClaims. */
+export function verifyAttestation(receipt, jwks, opts = {}) {
+  return receiptClaims(receipt, jwks, opts) !== null;
+}
+
+/** The attested `biatec_key_use` of a receipt's device key, or null when the attestation does not verify or names none. */
+export function attestedKeyUse(receipt, jwks, opts = {}) {
+  const payload = receiptClaims(receipt, jwks, opts);
+  return payload && KEY_USES.includes(payload.biatec_key_use) ? payload.biatec_key_use : null;
 }
 
 /**
@@ -151,12 +153,12 @@ export function attestedKeyUse(receipt, jwks, opts = {}) {
  */
 export function verifyReceipt(receipt, jwks, opts = {}) {
   try {
-    if (!(verifyReceiptSignature(receipt) && verifyAttestation(receipt, jwks, opts))) return false;
+    if (!verifyReceiptSignature(receipt)) return false;
+    const payload = receiptClaims(receipt, jwks, opts);
+    if (!payload) return false;
     // An approve needs an approval key. A device that is attested for a key use (every 1.1 device is) can never approve with another one,
     // whatever `version` the receipt wears; only a 1.0 device, whose attestation carries no key use, approves without one.
-    const use = attestedKeyUse(receipt, jwks, opts);
-    if (receipt.signed.decision === "approve" && receipt.version !== "1" && use !== "approve") return false;
-    if (receipt.signed.decision === "approve" && receipt.version === "1" && use !== null && use !== "approve") return false;
+    if (receipt.signed.decision === "approve" && payload.biatec_key_use !== undefined && payload.biatec_key_use !== "approve") return false;
     return true;
   } catch {
     return false;
@@ -179,8 +181,8 @@ const SIGNED_WINDOW_SECONDS = 300;
  * Verifies a settings change or the approval of a new device (spec section 8.2): the signature over JCS(signed) by
  * `device.public_key`, the attestation (binding the device key and, for a settings change, `signed.sub`), the attested
  * `biatec_key_use` = "approve", the signing key named inside the statement, and `issued_at` within 300 seconds of `opts.now`.
- * With `expect.approval` ({ new_approval_jwk_thumbprint, new_presence_jwk_thumbprint, nonce }) a device approval must
- * name exactly those keys and nonce and carry the pairing code derived from them. For a device approval both `expect.sub`
+ * With `expect.approval` ({ new_kid, new_approval_jwk_thumbprint, new_presence_jwk_thumbprint, nonce }) a device approval must
+ * name exactly that `new_kid`, those keys and that nonce and carry the pairing code derived from them. For a device approval both `expect.sub`
  * (the approver's attestation must be for that subject: the account of the device being enrolled), `expect.approval` and
  * `expect.approverActive === true` (the caller looked up that the approver is an active device) are REQUIRED; without them it
  * returns false, and an approver that is one of the keys being enrolled is refused. For every statement `opts.usedNonces`
@@ -196,6 +198,8 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
     const settings = s.type === "biatec_settings_change";
     const approval = s.type === "biatec_device_approval";
     if (!settings && !approval) return false;
+    // A settings change names the subject it is for; the attestation must be for that same subject.
+    if (settings && (typeof s.sub !== "string" || s.sub === "")) return false;
     const payload = boundClaims(envelope.device, settings ? s.sub : approval ? expect.sub : undefined, jwks, { ...opts, now });
     if (!payload || payload.biatec_key_use !== "approve" || envelope.device.key_use !== "approve") return false;
     if ((settings ? s.kid : s.approver_kid) !== envelope.device.kid) return false;
@@ -213,6 +217,7 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
       const self = thumbprint(envelope.device.public_key);
       if (self === s.new_approval_jwk_thumbprint || self === s.new_presence_jwk_thumbprint || s.approver_kid === s.new_kid) return false;
       const e = expect.approval;
+      if (typeof e.new_kid !== "string" || s.new_kid !== e.new_kid) return false; // the kid being activated is the kid the approver signed
       if (s.new_approval_jwk_thumbprint !== e.new_approval_jwk_thumbprint || s.new_presence_jwk_thumbprint !== e.new_presence_jwk_thumbprint || s.nonce !== e.nonce) return false;
       if (!timingSafeEqualStr(s.pairing_code, pairingCode(e.new_approval_jwk_thumbprint, e.new_presence_jwk_thumbprint, e.nonce))) return false;
     }
@@ -224,7 +229,7 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
 
 /**
  * Verifies an enrollment proof JWS (spec section 8.3): typ, ES256 under the header's own `jwk`, which MUST be the approval key
- * the request carries (`expect.approval_public_key`, required; `expect.kid` optional), `presence_jwk_thumbprint`
+ * the request carries (`expect.approval_public_key`, with `expect.kid` and `expect.presence_kid`, all required), `presence_jwk_thumbprint`
  * equals the thumbprint of `expect.presence_public_key`, `nonce` equals `expect.nonce`, and `iat` is within 300 seconds of
  * `expect.now`. Never throws.
  */
@@ -242,7 +247,9 @@ export function verifyEnrollmentProof(jws, expect = {}) {
     if (thumbprint(header.jwk) !== thumbprint(expect.approval_public_key)) return false;
     // Two keys, not one used twice: the presence key is another key than the approval key.
     if (payload.presence_jwk_thumbprint === thumbprint(header.jwk) || payload.presence_kid === payload.kid) return false;
-    if (typeof payload.kid !== "string" || payload.kid === "" || (expect.kid !== undefined && payload.kid !== expect.kid)) return false;
+    // The key ids the device is registered under are the ones the proof names (the caller says which: both are required).
+    if (typeof expect.kid !== "string" || expect.kid === "" || payload.kid !== expect.kid) return false;
+    if (typeof expect.presence_kid !== "string" || expect.presence_kid === "" || payload.presence_kid !== expect.presence_kid) return false;
     if (typeof expect.nonce !== "string" || payload.nonce !== expect.nonce) return false;
     if (!expect.presence_public_key || payload.presence_jwk_thumbprint !== thumbprint(expect.presence_public_key)) return false;
     return Number.isInteger(payload.iat) && Math.abs(now - payload.iat) <= SIGNED_WINDOW_SECONDS;
@@ -282,7 +289,7 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
     )
       return false;
     // The origin the server recorded is the origin the user saw and signed (a transaction of 1.1 carries it in its details).
-    if (receipt.version === "1.1" && d?.type === "biatec_transaction" && d.origin !== request.origin) return false;
+    if (receipt.version === "1.1" && d?.type === "biatec_transaction" && (typeof d.origin !== "string" || d.origin !== request.origin || !Array.isArray(d.transfers))) return false;
     if (s.remember !== undefined) {
       // Each id MUST be an application of the request (section 8): the user can only trust what the card showed.
       const shown = new Set((d?.applications ?? []).map((a) => a.id));
