@@ -190,7 +190,7 @@ const wrap = (signedObj, key, use, sub) => {
   };
 };
 const settingsBase = (extra) => ({ type: "biatec_settings_change", sub: ENROLL_SUB, kid: approver.kid, nonce: "n-" + digest(JSON.stringify(extra)).toString("hex").slice(0, 30), issued_at: NOW + 30, change: extra });
-const OPTS = { now: NOW + 60, issuer: ISS };
+const OPTS = { now: NOW + 60, issuer: ISS, usedNonces: new Set() };
 
 const settings = [
   {
@@ -246,7 +246,7 @@ const approvals = [
   { name: "device-approval-signed-by-presence-key-REFUSED", description: "NEGATIVE: signed by the presence key of the approver, whose attestation says presence.", ...wrap(approvalBase({ approver_kid: keys.presence.kid }), keys.presence, "presence", ENROLL_SUB), expected: { accepted: false, reason: "requires_approval_key" } },
 ];
 const expectedApproval = { new_approval_jwk_thumbprint: pairing.new_approval_jwk_thumbprint, new_presence_jwk_thumbprint: pairing.new_presence_jwk_thumbprint, nonce: pairing.nonce };
-for (const a of approvals) if (verifyDeviceSigned(a.envelope, jwks, OPTS, { approval: expectedApproval, sub: ENROLL_SUB }) !== a.expected.accepted) throw new Error("self-check failed for " + a.name);
+for (const a of approvals) if (verifyDeviceSigned(a.envelope, jwks, OPTS, { approval: expectedApproval, sub: ENROLL_SUB, approverActive: true }) !== a.expected.accepted) throw new Error("self-check failed for " + a.name);
 
 const proofHeader = { alg: "ES256", typ: ENROLL_PROOF_TYP, jwk: newApproval };
 const proofPayload = { kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, presence_jwk_thumbprint: pairing.new_presence_jwk_thumbprint, nonce: enrollNonce, iat: NOW + 10 };

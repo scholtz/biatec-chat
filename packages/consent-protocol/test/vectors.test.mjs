@@ -369,7 +369,7 @@ test("backchannel request schema ties scope to the request kind and forbids clie
 });
 
 // ---- device-signed statements: settings changes, device approvals, enrollment proofs, pairing code
-const DO = { now: device.now, issuer: device.issuer };
+const DO = { now: device.now, issuer: device.issuer, usedNonces: new Set() };
 
 for (const s of device.settings_changes) {
   test(`device-signed ${s.name}: schema, canonical form and verdict`, () => {
@@ -387,9 +387,10 @@ for (const a of device.device_approvals) {
     assert.ok(valid("device-approval-signed", a.envelope.signed));
     assert.equal(jcs(a.envelope.signed), a.canonical);
     assert.equal(sha256Hex(a.canonical), a.canonical_sha256);
-    assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { approval: a.expected_inputs, sub: device.enrollment_sub }), a.expected.accepted);
+    assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { approval: a.expected_inputs, sub: device.enrollment_sub, approverActive: true }), a.expected.accepted);
     assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { approval: a.expected_inputs }), false, "without whose approval it accepts, a device approval is refused");
-    assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { sub: device.enrollment_sub }), false, "without the enrollment it covers, a device approval is refused");
+    assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { sub: device.enrollment_sub, approverActive: true }), false, "without the enrollment it covers, a device approval is refused");
+    assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { approval: a.expected_inputs, sub: device.enrollment_sub }), false, "the caller must say the approver is an active device");
   });
 }
 
@@ -400,7 +401,7 @@ test("any changed member of a device-signed statement invalidates its signature"
       if (k === "change") e.signed.change = { threshold_eur: "999999" };
       else if (typeof e.signed[k] === "number") e.signed[k] += 1;
       else e.signed[k] += "x";
-      assert.equal(verifyDeviceSigned(e, jwks, DO, { approval: s.expected_inputs, sub: device.enrollment_sub }), false, s.name + " " + k);
+      assert.equal(verifyDeviceSigned(e, jwks, DO, { approval: s.expected_inputs, sub: device.enrollment_sub, approverActive: true }), false, s.name + " " + k);
     }
   }
 });
@@ -408,13 +409,14 @@ test("any changed member of a device-signed statement invalidates its signature"
 test("a device-signed statement is refused when stale, replayed with other expectations, or signed for another subject", () => {
   const s = device.device_approvals.find((x) => x.expected.accepted);
   const sub = device.enrollment_sub;
-  assert.equal(verifyDeviceSigned(s.envelope, jwks, { ...DO, now: DO.now + 301 }, { approval: s.expected_inputs, sub }), false, "older than 300 s");
-  assert.equal(verifyDeviceSigned(s.envelope, jwks, { ...DO, now: s.envelope.signed.issued_at - 301 }, { approval: s.expected_inputs, sub }), false, "from the future");
-  assert.equal(verifyDeviceSigned(s.envelope, jwks, DO, { approval: { ...s.expected_inputs, nonce: "another-enrollment-nonce-0000" }, sub }), false, "another enrollment");
-  assert.equal(verifyDeviceSigned(s.envelope, jwks, DO, { approval: { ...s.expected_inputs, new_presence_jwk_thumbprint: thumbprint(keys.presence) }, sub }), false, "another presence key");
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, { ...DO, now: DO.now + 301 }, { approval: s.expected_inputs, sub, approverActive: true }), false, "older than 300 s");
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, { ...DO, now: s.envelope.signed.issued_at - 301 }, { approval: s.expected_inputs, sub, approverActive: true }), false, "from the future");
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, DO, { approval: { ...s.expected_inputs, nonce: "another-enrollment-nonce-0000" }, sub, approverActive: true }), false, "another enrollment");
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, DO, { approval: { ...s.expected_inputs, new_presence_jwk_thumbprint: thumbprint(keys.presence) }, sub, approverActive: true }), false, "another presence key");
   // Single use: the caller's set of accepted nonces makes a replay refused.
-  assert.equal(verifyDeviceSigned(s.envelope, jwks, { ...DO, usedNonces: new Set() }, { approval: s.expected_inputs, sub }), true);
-  assert.equal(verifyDeviceSigned(s.envelope, jwks, { ...DO, usedNonces: new Set([s.envelope.signed.nonce]) }, { approval: s.expected_inputs, sub }), false, "replayed approval");
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, { ...DO, usedNonces: new Set() }, { approval: s.expected_inputs, sub, approverActive: true }), true);
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, { ...DO, usedNonces: new Set([s.envelope.signed.nonce]) }, { approval: s.expected_inputs, sub, approverActive: true }), false, "replayed approval");
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, { now: DO.now, issuer: DO.issuer }, { approval: s.expected_inputs, sub, approverActive: true }), false, "without the set of used nonces a replay cannot be told");
   const settingsVec = device.settings_changes.find((x) => x.expected.accepted);
   assert.equal(verifyDeviceSigned(settingsVec.envelope, jwks, { ...DO, usedNonces: new Set([settingsVec.envelope.signed.nonce]) }), false, "replayed settings change");
   const settings = device.settings_changes.find((x) => x.expected.accepted);
@@ -424,6 +426,29 @@ test("a device-signed statement is refused when stale, replayed with other expec
   const otherKid = clone(settings.envelope);
   otherKid.signed.kid = "someone-else";
   assert.equal(verifyDeviceSigned(otherKid, jwks, DO), false, "the statement names the key that signs it");
+});
+
+test("a device cannot approve itself, and a nonce of the wrong shape is refused", () => {
+  const a = device.device_approvals.find((x) => x.expected.accepted);
+  const ok = { approval: a.expected_inputs, sub: device.enrollment_sub, approverActive: true };
+  assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, ok), true);
+  // The approver names itself as the new device: the approval key being enrolled signs its own approval.
+  const self = clone(a.envelope);
+  self.signed.new_approval_jwk_thumbprint = thumbprint(self.device.public_key);
+  self.signed.pairing_code = pairingCode(self.signed.new_approval_jwk_thumbprint, self.signed.new_presence_jwk_thumbprint, self.signed.nonce);
+  self.signature = signEs256(keys.device, Buffer.from(jcs(self.signed), "utf8"));
+  assert.equal(verifyDeviceSigned(self, jwks, DO, { ...ok, approval: { ...a.expected_inputs, new_approval_jwk_thumbprint: self.signed.new_approval_jwk_thumbprint } }), false);
+  const shortNonce = clone(a.envelope);
+  shortNonce.signed.nonce = "short";
+  shortNonce.signature = signEs256(keys.device, Buffer.from(jcs(shortNonce.signed), "utf8"));
+  assert.equal(verifyDeviceSigned(shortNonce, jwks, DO, { ...ok, approval: { ...a.expected_inputs, nonce: "short" } }), false);
+});
+
+test("an enrollment proof whose approval and presence key are the same key is refused", () => {
+  const e = device.enrollment_proofs.find((x) => x.expected.accepted);
+  const payload = { ...e.payload, presence_jwk_thumbprint: thumbprint(keys.new_approval), presence_kid: e.payload.kid };
+  const jws = signCompactJws(keys.new_approval, e.header, payload);
+  assert.equal(verifyEnrollmentProof(jws, { approval_public_key: keys.new_approval, kid: e.payload.kid, nonce: payload.nonce, presence_public_key: keys.new_approval, now: payload.iat + 5 }), false);
 });
 
 test("pairing code: first four bytes of SHA-256(approval thumbprint . presence thumbprint . nonce), big-endian, mod 10^6, six digits", () => {
@@ -545,6 +570,6 @@ test("a 1.1 document cannot carry the single-transfer details of 1.0, nor a 1.0 
 
 test("a device approval is bound to the subject of the account being enrolled", () => {
   const a = device.device_approvals.find((x) => x.expected.accepted);
-  assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { approval: a.expected_inputs, sub: device.enrollment_sub }), true);
-  assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { approval: a.expected_inputs, sub: "pw_another_account" }), false, "an active device of another account cannot approve");
+  assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { approval: a.expected_inputs, sub: device.enrollment_sub, approverActive: true }), true);
+  assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { approval: a.expected_inputs, sub: "pw_another_account", approverActive: true }), false, "an active device of another account cannot approve");
 });

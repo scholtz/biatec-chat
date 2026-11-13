@@ -7,6 +7,23 @@ Examples are illustrative: names the spec fixes are normative (`insufficient_use
 `auth_req_id`, `consent_receipt`, `requireConsent`, `valuedEur`, `maxConsentSeconds`, `authorization_details`, the
 `biatec_transaction` and `biatec_limits_change` types); other names are proposals for the OIDC owners to confirm.
 
+## Protocol 1.1 (T-239): what Biatec OIDC must provide
+
+The consent protocol is now version 1.1 (`packages/consent-protocol/spec/biatec-consent-protocol.md`, "Changes from 1.0"). Where an older row below
+shows a 1.0 shape (the `sha256:` form of `group_hash`, a `verified` client with a display name, a single transfer with one `fiat_value`, one device key),
+the 1.1 shape in the spec and the schemas wins. The implementation plans are the issues of ludovit-scholtz/AlgorandGoogleDriveAccount#23 (CONSENT-01 to
+CONSENT-15); biatec-chat's T-240 brings this document row by row up to date.
+
+| Biatec OIDC must provide | Issue |
+| --- | --- |
+| `group_hash` as the recomputed Algorand group id; `transfers`, `applications`, `value_known`, signed `origin` in `authorization_details` | #26, #28 |
+| Client identity as `{ fingerprint, domain_proven, domain?, linked }`; the domain proof `/.well-known/biatec-client.json`; no operator-vouched name | #25, #27 |
+| Two attested device keys (`biatec_key_use` `approve` / `presence`); an approve receipt refused unless its attestation says `approve` | #32 |
+| Enrollment proof (`biatec-device-enroll+jwt`), pairing code, `POST /devices/{kid}/activate` with a signed `biatec_device_approval` | #31 |
+| Settings changes signed by the approval key (`biatec_settings_change`), threshold with no ceiling, trusted applications, `remember` on an approve receipt | #27, #30 |
+| Device channel (SignalR) instead of a third-party push; email through Azure Communication Services | #29, #37 |
+| Relying parties (self-registration, linking, payment and login requests) | #38 |
+
 Today Biatec OIDC provides: authorization code with PKCE, dynamic client registration (public clients only), resource indicators,
 the `sign` / `manage-limits` / `rekey` scopes, `POST /wallet/{network}/{address}/sign` with spending limits, and transaction
 decoding for limit enforcement.

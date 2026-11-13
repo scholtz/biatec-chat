@@ -181,9 +181,11 @@ const SIGNED_WINDOW_SECONDS = 300;
  * `biatec_key_use` = "approve", the signing key named inside the statement, and `issued_at` within 300 seconds of `opts.now`.
  * With `expect.approval` ({ new_approval_jwk_thumbprint, new_presence_jwk_thumbprint, nonce }) a device approval must
  * name exactly those keys and nonce and carry the pairing code derived from them. For a device approval both `expect.sub`
- * (the approver's attestation must be for that subject: the account of the device being enrolled) and `expect.approval` are
- * REQUIRED; without them it returns false. `opts.usedNonces` is the set of nonces the caller has already accepted from this
- * device (a statement is single use; this function only reads the set). Never throws.
+ * (the approver's attestation must be for that subject: the account of the device being enrolled), `expect.approval` and
+ * `expect.approverActive === true` (the caller looked up that the approver is an active device) are REQUIRED; without them it
+ * returns false, and an approver that is one of the keys being enrolled is refused. For every statement `opts.usedNonces`
+ * (a Set of nonces already accepted from this device) is REQUIRED and must not hold the statement's nonce: a statement is single
+ * use and this function only reads the set. Never throws.
  */
 export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
   try {
@@ -198,12 +200,18 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
     if (!payload || payload.biatec_key_use !== "approve" || envelope.device.key_use !== "approve") return false;
     if ((settings ? s.kid : s.approver_kid) !== envelope.device.kid) return false;
     if (!Number.isInteger(s.issued_at) || Math.abs(now - s.issued_at) > SIGNED_WINDOW_SECONDS) return false;
-    // A device approval carries no subject and names no enrollment on its own: the verifier MUST say whose approval it accepts
-    // and for which keys and nonce. Without both it fails closed.
-    if (approval && (typeof expect.sub !== "string" || !expect.approval)) return false;
-    // A nonce that was already used (the caller keeps the set, as for receipts) is a replay.
-    if (opts.usedNonces?.has(s.nonce)) return false;
+    // A statement is single use: the nonce has the shape the schema requires and the caller's set of nonces already accepted from this
+    // device (it keeps the set, as for receipts) does not hold it. Without the set the verifier cannot tell a replay and fails closed.
+    if (typeof s.nonce !== "string" || s.nonce.length < 16 || s.nonce.length > 128) return false;
+    if (!(opts.usedNonces instanceof Set) || opts.usedNonces.has(s.nonce)) return false;
+    // A device approval carries no subject and names no enrollment on its own: the verifier MUST say whose approval it accepts, for
+    // which keys and nonce, and that the approver is an ACTIVE device (the caller looked that up; an inactive device, including the
+    // one being enrolled, cannot approve). Without all of it the verifier fails closed.
+    if (approval && (typeof expect.sub !== "string" || !expect.approval || expect.approverActive !== true)) return false;
     if (approval) {
+      // A device never approves itself: the approver is not one of the keys being enrolled.
+      const self = thumbprint(envelope.device.public_key);
+      if (self === s.new_approval_jwk_thumbprint || self === s.new_presence_jwk_thumbprint || s.approver_kid === s.new_kid) return false;
       const e = expect.approval;
       if (s.new_approval_jwk_thumbprint !== e.new_approval_jwk_thumbprint || s.new_presence_jwk_thumbprint !== e.new_presence_jwk_thumbprint || s.nonce !== e.nonce) return false;
       if (!timingSafeEqualStr(s.pairing_code, pairingCode(e.new_approval_jwk_thumbprint, e.new_presence_jwk_thumbprint, e.nonce))) return false;
@@ -232,6 +240,8 @@ export function verifyEnrollmentProof(jws, expect = {}) {
     if (header.alg !== "ES256" || header.typ !== ENROLL_PROOF_TYP || header.jwk?.kty !== "EC" || header.jwk?.crv !== "P-256") return false;
     if (!verifyEs256(header.jwk, Buffer.from(parts[0] + "." + parts[1], "ascii"), parts[2])) return false;
     if (thumbprint(header.jwk) !== thumbprint(expect.approval_public_key)) return false;
+    // Two keys, not one used twice: the presence key is another key than the approval key.
+    if (payload.presence_jwk_thumbprint === thumbprint(header.jwk) || payload.presence_kid === payload.kid) return false;
     if (typeof payload.kid !== "string" || payload.kid === "" || (expect.kid !== undefined && payload.kid !== expect.kid)) return false;
     if (typeof expect.nonce !== "string" || payload.nonce !== expect.nonce) return false;
     if (!expect.presence_public_key || payload.presence_jwk_thumbprint !== thumbprint(expect.presence_public_key)) return false;

@@ -96,7 +96,7 @@
           "binding_message": ""
         },
         "alg": "ES256",
-        "signature": "OL7HzRDOwtvlPQWI3h4dYfUg4bal_hUipqLOEF8R33yQarDas8NRF9O33McjfMeLYd0jrsdyODzSpyhJkmIDvg",
+        "signature": "SAetqtErczO3_smJVJggo9q_6E5-Av37xTjYkQdTAaN5x-6CtFBMvuOUEqYHOVUIcBOQKkiS0BrA202Gnh0NtQ",
         "issued_at": 1792425620,
         "device": {
           "kid": "device-test-key-1",
@@ -107,7 +107,7 @@
             "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
             "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
           },
-          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.bqbXOw9hlWmgoB6jB2CjSYNpI8wM34tpFHscuCg6w5GySxHvrmSyI2qYT_e8-2imJ02BmGoyd8XPuvYU0CeOBQ"
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.OQlfRAs5tjLDFfhCeYsTTocw3rnf5LaRctqyRJgHOy1TkUxX7eM1K131cEuWNHNFqw8wuBGYI165mINKeuAEzg"
         }
       },
       "canonical": "{\"auth_req_id\":\"ciba_8257c10231dd9b46e2f877484cf0b2a3\",\"authorization_details\":[{\"applications\":[],\"fiat_value\":{\"amount\":\"4612.50\",\"currency\":\"EUR\"},\"group_hash\":\"BJPMYYUBSMQWYXMEBZT2ZHFZTWCIJAFAIMUZEGOJZKJPRBKU5KNA\",\"network\":\"algorand-mainnet\",\"origin\":\"https://app.biatec.io\",\"sender\":\"YKBLPFVKZFZFGOVHQK6L63YX67B76YBZCSYYGU4WD7QC3PRRP4U7Q2DCWE\",\"transfers\":[{\"amount\":\"5000.000000\",\"asset\":{\"decimals\":6,\"id\":\"31566704\",\"symbol\":\"USDC\"},\"fiat_value\":{\"amount\":\"4612.50\",\"currency\":\"EUR\"},\"receiver\":\"WSNJGAWN52IJMHAEFZIOPCS3IXSHS4C46QDNSKWDEWQ3E6M4HUNLYTHJXE\"}],\"type\":\"biatec_transaction\",\"value_known\":true}],\"binding_code\":\"483920\",\"binding_message\":\"\",\"client_fingerprint\":\"68dcf7ce89a943b0\",\"decision\":\"approve\",\"expiry\":1792425900,\"sub\":\"pw_7c1f0a52e9b34d68\"}",
@@ -208,7 +208,7 @@
           "binding_message": "Invoice 2026-0042"
         },
         "alg": "ES256",
-        "signature": "Eierq69oHByjrsLFZY7uSZrSSlZ3YEWvDGSBXEgzmqWgyfhXWjAQ_YjBpeisA_e2ZykHEKUiKEHPLutVrPruPQ",
+        "signature": "QjYTqCFaFOi3YEdjAlnyf_70vDSwlt89iIjt3ZqCV6ESucuOMjVl1U5GAz1wF7WpFdBE4aSYa2nLqDI3IY0HPQ",
         "issued_at": 1792425621,
         "device": {
           "kid": "device-test-key-1",
@@ -219,7 +219,7 @@
             "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
             "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
           },
-          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.jB6Cur2ViOHI5L9TmJ3IGpPsRqXE9nIwUUzdrgYsi5cOlX9Nchq-iR6AokkjfPc34qgTzMFIa1p7XL_-pNTYoQ"
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.vR2fZ2MiRKyFBx5kLUx53zKMCb6Y9FRc9hYPyo1ny7Z-7Sk2LWQgYCLWL479GwD2Fbox0RDrogl3Fgd463CuQg"
         }
       },
       "canonical": "{\"auth_req_id\":\"ciba_ce4e73292ad62fb71eba78ca718f3350\",\"authorization_details\":[{\"applications\":[],\"fiat_value\":{\"amount\":\"4612.50\",\"currency\":\"EUR\"},\"group_hash\":\"23B3EFAFKNM6M25AY45DFMNLS5X5KMC7SDMSJHPOG74KUBNQIGEA\",\"network\":\"algorand-mainnet\",\"origin\":\"https://app.biatec.io\",\"sender\":\"YKBLPFVKZFZFGOVHQK6L63YX67B76YBZCSYYGU4WD7QC3PRRP4U7Q2DCWE\",\"transfers\":[{\"amount\":\"5000.000000\",\"asset\":{\"decimals\":6,\"id\":\"31566704\",\"symbol\":\"USDC\"},\"fiat_value\":{\"amount\":\"4612.50\",\"currency\":\"EUR\"},\"receiver\":\"4E4JPC4YKK3NBXFGZRL77BC76VWPIX7JKOZYCDTULY23AVLVGQPVVEKFDQ\"}],\"type\":\"biatec_transaction\",\"value_known\":true}],\"binding_code\":\"120934\",\"binding_message\":\"Invoice 2026-0042\",\"client_fingerprint\":\"b70156d0932b8095\",\"decision\":\"approve\",\"expiry\":1792425900,\"sub\":\"pw_7c1f0a52e9b34d68\"}",
@@ -319,7 +319,7 @@
           "binding_message": ""
         },
         "alg": "ES256",
-        "signature": "tsooLmwz0l0IvfFBcde8Y0rg_js5R7r3zWBXY1uyrDlW3m46Wkbt8V9zPj-6VXBNcqgO0nfnZus6uuHSLUwttw",
+        "signature": "2o4Y-VBlnZ9Ib2S4Nu1bLm1QdAT4KoiSX-8DfGOD64IGkh4aX7lK23JN6BXoVuVlerv0ygB-GfSyDnTHk8PA7w",
         "issued_at": 1792425622,
         "device": {
           "kid": "device-test-key-1",
@@ -330,7 +330,7 @@
             "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
             "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
           },
-          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.AqAMFzh1JLUrN3twgrENvOe19WzBEHkVsdCznoqvt4GupEVwYzVies0ch6DNN1oJ75yQ2Y9_ntfTubBSv--_zg"
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.0B56iFlwBU28r3dbEK1LhtBclws3RKCY46ipDQsMX9hnqU7dnVNBj3sFmua8rvtNQ-vToHx8CXop7V4nKGluyw"
         }
       },
       "canonical": "{\"auth_req_id\":\"ciba_75cdbb119f30c16f2090bdc69187789f\",\"authorization_details\":[{\"applications\":[],\"fiat_value\":{\"amount\":\"4612.50\",\"currency\":\"EUR\"},\"group_hash\":\"3SOEPQ4XFO5HQO4WUMWN2RDYZEUJIB4STIAVYDF5HFIJMY356Y6A\",\"network\":\"algorand-mainnet\",\"origin\":\"https://app.biatec.io\",\"sender\":\"YKBLPFVKZFZFGOVHQK6L63YX67B76YBZCSYYGU4WD7QC3PRRP4U7Q2DCWE\",\"transfers\":[{\"amount\":\"5000.000000\",\"asset\":{\"decimals\":6,\"id\":\"31566704\",\"symbol\":\"USDC\"},\"fiat_value\":{\"amount\":\"4612.50\",\"currency\":\"EUR\"},\"receiver\":\"NSF4KM4M7GVFIL65BCJEGIY4J2HFA3QEZDTPVGWU2J52OF7QZJNUE7SOYE\"}],\"type\":\"biatec_transaction\",\"value_known\":true}],\"binding_code\":\"775201\",\"binding_message\":\"\",\"client_fingerprint\":\"d32ecead7b25bdf3\",\"decision\":\"approve\",\"expiry\":1792425900,\"sub\":\"pw_7c1f0a52e9b34d68\"}",
@@ -400,7 +400,7 @@
           "binding_message": ""
         },
         "alg": "ES256",
-        "signature": "P4pc8PaVlM9pyMbHSLbrRU3A5lMatZag-quxNoBaRbnO45ip5FSG_EyDcOywPi35y4MGZdGi_WWPEm5NB14Azg",
+        "signature": "4bhCxyTV8P39dCgXgLhBLF8MA5yKm1rJFG2VNMhSb9AyFrR12dNVwQ5sfqr9NvalrrcgA05wgWSyIT06KhmFZA",
         "issued_at": 1792425623,
         "device": {
           "kid": "device-test-key-1",
@@ -411,7 +411,7 @@
             "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
             "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
           },
-          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.1EsfnBGqeJtNrr5Cj6utqf4kw1xmHXB2wQgtpxxtjnMBmm4Hpirq0esYRXmMgwzueOWDhMf0MXSdHujMqbJR4g"
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.X88b0VOUEcoCdr--dhcBuxK9xDVNu_RhsaZnUIBGXt6OmZ7AD9Yxk8dP0cRXmCsnToQM2rh3jOJEDTgTNFGOGA"
         }
       },
       "canonical": "{\"auth_req_id\":\"ciba_4fbfcfaa9d401aff6e014a99e9142e2a\",\"authorization_details\":[{\"current_limits\":{\"per_day_eur\":\"3000\",\"per_transaction_eur\":\"1000\"},\"request_hash\":\"22091d0dfc4ee5068e79431862533b695bb5f70ec0f4a6ccb01b870541deaf90\",\"requested_limits\":{\"per_day_eur\":\"5000\",\"per_transaction_eur\":\"2000\"},\"type\":\"biatec_limits_change\"}],\"binding_code\":\"905512\",\"binding_message\":\"\",\"client_fingerprint\":\"68dcf7ce89a943b0\",\"decision\":\"approve\",\"expiry\":1792425900,\"sub\":\"pw_7c1f0a52e9b34d68\"}",
@@ -516,7 +516,7 @@
           "binding_message": "Invoice 2026-0043"
         },
         "alg": "ES256",
-        "signature": "6fBDmYBuhRyXNGlncY2BxYmfS2t0lpBCyQ1XyP0tQZrsBuTzQXVmL0pCNzwuk583M2i8S97ej2yuNAVY-NG3Bw",
+        "signature": "k-JMV8-ohpJIeksnLAXc_oqnf1wiMdK8vJSNHZNpHI-uNe8HlpJbft59tHQ9F1mBWslZPX4Q5zvyVdAJHt_few",
         "issued_at": 1792425624,
         "device": {
           "kid": "device-test-key-1",
@@ -527,7 +527,7 @@
             "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
             "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
           },
-          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.5iqAY3GhCjLCMgvaYi5FtSmrioS2e0FWavs4G6sixrSLt8SzVXslkM-S1ZNtoXdKNncFdQERR9O54OWZzMVL-Q"
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.ESuVQKMb0SKnFz7e5niYQ-giEzZfdseb2Cj7be34VNRkmijEEQk7JQ3HwJ-oB-LEMXoLedSyzrZmOsDPIvtUUw"
         }
       },
       "canonical": "{\"auth_req_id\":\"ciba_4274be16f641fc76bc418e1803e3f2c2\",\"authorization_details\":[{\"applications\":[],\"fiat_value\":{\"amount\":\"4612.50\",\"currency\":\"EUR\"},\"group_hash\":\"WRWOBA3Y7ZSUXIXAATHUDWOV4TLZ2HNOAVOU45WLFPT457QV546A\",\"network\":\"algorand-mainnet\",\"origin\":\"https://app.biatec.io\",\"sender\":\"YKBLPFVKZFZFGOVHQK6L63YX67B76YBZCSYYGU4WD7QC3PRRP4U7Q2DCWE\",\"transfers\":[{\"amount\":\"5000.000000\",\"asset\":{\"decimals\":6,\"id\":\"31566704\",\"symbol\":\"USDC\"},\"fiat_value\":{\"amount\":\"4612.50\",\"currency\":\"EUR\"},\"receiver\":\"2RHTIWFMARFVAR76UAYQYOGZNYO4IVKKLKR7B5K43GHFPCUTRYCPIGM5NI\"}],\"type\":\"biatec_transaction\",\"value_known\":true}],\"binding_code\":\"\",\"binding_message\":\"Invoice 2026-0043\",\"client_fingerprint\":\"b70156d0932b8095\",\"decision\":\"deny\",\"expiry\":1792425900,\"sub\":\"pw_7c1f0a52e9b34d68\"}",
@@ -628,7 +628,7 @@
           "binding_message": ""
         },
         "alg": "ES256",
-        "signature": "IdFtF1LiQJUPnwI4RiQrqyOoj0vbf-GN45_pjvI84pg5IjCXuqD0EO64kOAcfrk2kNQLpgJay6TFTT_KNTfVFg",
+        "signature": "eU8HVzr-EP2xlUOSuqssvMsdSwf9Xm1kt4ye5i2__cO7JNy1YHUcG__v-ahLerYPLYC3ba5EUPpPxb5i-4P0gg",
         "issued_at": 1792425625,
         "device": {
           "kid": "device-test-key-1",
@@ -639,7 +639,7 @@
             "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
             "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
           },
-          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.-vUtnts6iljHdaWqk5pdHO4BiMgL546jGyxuJ1ai1t42Ba-bZ10Rpt7VM2wmDi89nuHBRVzhGJl_7BeStUkj4A"
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ._EYO4zgCWRDg9dIcUoJedXcIkLwJNvsoUo1KEki9Ld-DczB6vcCwUEbVgOoG8N5GTvuCdJzgyKXF1pnSkG1sDQ"
         }
       },
       "canonical": "{\"auth_req_id\":\"ciba_b642083e279a81e2bf6fb7f4b15c8cc8\",\"authorization_details\":[{\"applications\":[],\"fiat_value\":{\"amount\":\"4612.50\",\"currency\":\"EUR\"},\"group_hash\":\"XIHPCD45SSOGFFAPJJXDNIBS7T3SCVTE6OZ3N7VM3EXFTXW3EHYA\",\"network\":\"algorand-mainnet\",\"origin\":\"https://app.biatec.io\",\"sender\":\"YKBLPFVKZFZFGOVHQK6L63YX67B76YBZCSYYGU4WD7QC3PRRP4U7Q2DCWE\",\"transfers\":[{\"amount\":\"5000.000000\",\"asset\":{\"decimals\":6,\"id\":\"31566704\",\"symbol\":\"USDC\"},\"fiat_value\":{\"amount\":\"4612.50\",\"currency\":\"EUR\"},\"receiver\":\"AB5EYGE7QZOXJZZBAFOGOBLFPN7N5DCFDMJA5ISMEQA6MM4HKYIMXHJYUM\"}],\"type\":\"biatec_transaction\",\"value_known\":true}],\"binding_code\":\"111111\",\"binding_message\":\"\",\"client_fingerprint\":\"68dcf7ce89a943b0\",\"decision\":\"code_failed\",\"expiry\":1792425900,\"sub\":\"pw_7c1f0a52e9b34d68\"}",
@@ -766,7 +766,7 @@
           "binding_message": ""
         },
         "alg": "ES256",
-        "signature": "aP0dS3fIMGgBK1JNQNRlRSihrDBjqjY-7vuEHl2ECgdRDGprzJ6Sx-qlofxsTc6zsar-6x54BkgRRvtCShgCrg",
+        "signature": "ShLmfi56usX0Yf0zFjUWExNH1Qvwfn2z30x1fBoTm1y9GjblfkkeWne8CrHKNMTfdCyOOGoIS0cEgm-VvKq9Dg",
         "issued_at": 1792425626,
         "device": {
           "kid": "device-test-key-1",
@@ -777,7 +777,7 @@
             "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
             "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
           },
-          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.a3kzHT1zvOZNFxDPdXbAbXLNNw-FCoyMMJpuNYCTBfAd2euh-YaKPCd1X105QFrSWzfHwDI9Sns0rQQIPUX9hQ"
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.hnjvMpB38JUHsVO4rBA0wIe-oBKgoq7KC5mu4g3C_j6jRHqDQq-EXnc1w--P0zhxNkhIdes3BnFLl4OvsIG9XA"
         }
       },
       "canonical": "{\"auth_req_id\":\"ciba_d5d501c8ee8c3e1274edb5836d02213d\",\"authorization_details\":[{\"applications\":[],\"fiat_value\":{\"amount\":\"100.35\",\"currency\":\"EUR\"},\"group_hash\":\"ZI47TBAWGHJSRMQJVKYEY2EWSY7V2N6XKI4KIZZUZ5MGYAMW66BQ\",\"network\":\"algorand-mainnet\",\"origin\":\"https://app.biatec.io\",\"sender\":\"YKBLPFVKZFZFGOVHQK6L63YX67B76YBZCSYYGU4WD7QC3PRRP4U7Q2DCWE\",\"transfers\":[{\"amount\":\"100.000000\",\"asset\":{\"decimals\":6,\"id\":\"31566704\",\"symbol\":\"USDC\"},\"fiat_value\":{\"amount\":\"92.25\",\"currency\":\"EUR\"},\"receiver\":\"DY6RCC5WXHJSOYBCSD5UCXKL2LDE6EVW747ETWUL4VTFLQ7VKDQ2KULD34\"},{\"amount\":\"50.500000\",\"asset\":{\"decimals\":6,\"id\":\"0\",\"symbol\":\"ALGO\"},\"fiat_value\":{\"amount\":\"8.10\",\"currency\":\"EUR\"},\"receiver\":\"MXRQVF5XJZWE6HVMET226IEPM62TC4YFIGBFH3NMNWF6WEMPWFD7N2T4H4\"}],\"type\":\"biatec_transaction\",\"value_known\":true}],\"binding_code\":\"246810\",\"binding_message\":\"\",\"client_fingerprint\":\"68dcf7ce89a943b0\",\"decision\":\"approve\",\"expiry\":1792425900,\"sub\":\"pw_7c1f0a52e9b34d68\"}",
@@ -888,7 +888,7 @@
           "binding_message": ""
         },
         "alg": "ES256",
-        "signature": "7lY_ydzWixxzbhuS56_hbz2qzYw7Cm60MdfTEzJdSCR7gyFclMihO1LHzxJfdyHeNKR0t6bhUvkycLYXESRmmg",
+        "signature": "TIHxjYemrTat0IE1ISLZE3faHQbbOdQiRoPnW_yTAglL0xwcBhCLYcyctktI8rfbUNLv9DQVK7uVVOB81pZT_w",
         "issued_at": 1792425627,
         "device": {
           "kid": "device-test-key-1",
@@ -899,7 +899,7 @@
             "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
             "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
           },
-          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.eRix5qbX3_d6LpjTI1FZ-89FJXZM4f0nUfGXdAduxMMCO1CU_Wu_VJ1C_4JCsFFaQkV1pZvvHpRmZlmtkwzyLA"
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.n8DCSAT99D0OFGSYul3dGPWxLn3vIw4D5OLwXcLcRO0HvoGCib0ND-5c8SUXfKl3KtIc1bcGcr5Ezz2TwuLTFg"
         }
       },
       "canonical": "{\"auth_req_id\":\"ciba_f28c0a5ff361833f43096ec7daa8bf59\",\"authorization_details\":[{\"applications\":[{\"id\":1234567,\"trusted\":true}],\"fiat_value\":{\"amount\":\"230.60\",\"currency\":\"EUR\"},\"group_hash\":\"OCQE2BT7AJEI7FKXW5JSCHZMFVZMKGY4VYB763ZRLV6QTDB7H5WQ\",\"network\":\"algorand-mainnet\",\"origin\":\"https://app.biatec.io\",\"sender\":\"YKBLPFVKZFZFGOVHQK6L63YX67B76YBZCSYYGU4WD7QC3PRRP4U7Q2DCWE\",\"transfers\":[{\"amount\":\"250.000000\",\"asset\":{\"decimals\":6,\"id\":\"31566704\",\"symbol\":\"USDC\"},\"fiat_value\":{\"amount\":\"230.60\",\"currency\":\"EUR\"},\"receiver\":\"WYFCFCYV5YQEO3PQI53GXQS2RMAQDNCVDYLHN5K6MN6J4XKL5IB7MLQYEQ\"}],\"type\":\"biatec_transaction\",\"value_known\":true}],\"binding_code\":\"135790\",\"binding_message\":\"\",\"client_fingerprint\":\"68dcf7ce89a943b0\",\"decision\":\"approve\",\"expiry\":1792425900,\"sub\":\"pw_7c1f0a52e9b34d68\"}",
@@ -1007,7 +1007,7 @@
           }
         },
         "alg": "ES256",
-        "signature": "TezDBX3O5XpjXSkqh_ZPUPZ2iyykkPIXYzL0FXPmlu1jkiaCJ7i5cab8itovNey-i2i7ZT3xf-QOpkDFvi-pdg",
+        "signature": "wLqE2w8eQhRqMCSkofmeFu08l0TF5YRlwnNNU_Su1ojYk5txk3rNmVVxSQRPQsZCfFJV2717G5hsalqCq-kCUA",
         "issued_at": 1792425628,
         "device": {
           "kid": "device-test-key-1",
@@ -1018,7 +1018,7 @@
             "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
             "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
           },
-          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.PWxlCw72qGFKkFgSbutBvbfaKaLRXjLnOf-hT4dF3qsFhFC1stP1iHoufYEE8UopMGoMPlG0bzqt6iZa-Op23w"
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.ziaUnMBlNdXEW_WbT-1xwJ7Q4vPUoLXYoIQ4Y5fyk3qMuCLIiBxsGwBCJ4oJOilRyv02wgmCCQe6dMf0y2alaw"
         }
       },
       "canonical": "{\"auth_req_id\":\"ciba_474eba677779660f65db4b54c774feb2\",\"authorization_details\":[{\"applications\":[{\"id\":7654321,\"trusted\":false}],\"group_hash\":\"X27U4UOYGJNKZOEAYYOINF6HW4W47XQQUFYU4O7EQ5NWHU2AY24Q\",\"network\":\"algorand-mainnet\",\"origin\":\"https://app.biatec.io\",\"sender\":\"YKBLPFVKZFZFGOVHQK6L63YX67B76YBZCSYYGU4WD7QC3PRRP4U7Q2DCWE\",\"transfers\":[{\"amount\":\"75.000000\",\"asset\":{\"decimals\":6,\"id\":\"31566704\",\"symbol\":\"USDC\"},\"fiat_value\":{\"amount\":\"69.20\",\"currency\":\"EUR\"},\"receiver\":\"WJAEU6QBISGMI6UE6ZQ5YRP3CJQOMN5O65XRK525TSO3O5OFZJWN3CQ75I\"}],\"type\":\"biatec_transaction\",\"value_known\":false}],\"binding_code\":\"864209\",\"binding_message\":\"\",\"client_fingerprint\":\"68dcf7ce89a943b0\",\"decision\":\"approve\",\"expiry\":1792425900,\"remember\":{\"applications\":[7654321]},\"sub\":\"pw_7c1f0a52e9b34d68\"}",
@@ -1103,7 +1103,7 @@
           "binding_message": ""
         },
         "alg": "ES256",
-        "signature": "H_FjSCxoLduTXc51VR13nuZQPn8BrYrWoi91sWr4PZQYYwIfhLc1h7oi424QuxX1WTZB7dvC6cvZrEplRwyOaQ",
+        "signature": "rMgdifeKFhPs_PuXIq3Br78Hv2z1oE_KqwhjAe-YL_bT-VGSj04xxrfaI7_lOHTGy3NveHub5q5w7KxcubRbjA",
         "issued_at": 1792425629,
         "device": {
           "kid": "device-test-key-1",
@@ -1114,7 +1114,7 @@
             "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
             "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
           },
-          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.p3W9Y5fkW6BQRARbaRMvLbtq0edre_88HdsT3y-hCQEe0onaTgNreS5GAA1u5-BDlTObjJDE9HfllYIhf1u6Ww"
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.Cfrr8-htE5S_521bPTARW8kdQDIju1Y0uFb0NlwlojiKx7EZ6YbXshE2HwHIKlRqkihDQsCs-WJTGiY151K68g"
         }
       },
       "canonical": "{\"auth_req_id\":\"ciba_23e5fc17b966158cd91861db51603cd0\",\"authorization_details\":[{\"applications\":[],\"group_hash\":\"E56FLO3YXM4RLOHPMJJULJEMNLR5B4PXX2HKDL5R3YGSK3HRDQHQ\",\"network\":\"algorand-mainnet\",\"origin\":\"https://app.biatec.io\",\"sender\":\"YKBLPFVKZFZFGOVHQK6L63YX67B76YBZCSYYGU4WD7QC3PRRP4U7Q2DCWE\",\"transfers\":[{\"amount\":\"10.00\",\"asset\":{\"decimals\":2,\"id\":\"99999999\",\"symbol\":\"ASA 99999999\"},\"receiver\":\"GILZSS3CU7SUJEUATMRB3HQ6YZQ5BJ5NNU7DNJVBN3D72G5BJ4ICBUBQZU\"}],\"type\":\"biatec_transaction\",\"value_known\":false}],\"binding_code\":\"314159\",\"binding_message\":\"\",\"client_fingerprint\":\"68dcf7ce89a943b0\",\"decision\":\"approve\",\"expiry\":1792425900,\"sub\":\"pw_7c1f0a52e9b34d68\"}",
@@ -1215,7 +1215,7 @@
           "binding_message": ""
         },
         "alg": "ES256",
-        "signature": "_rgqkVtS2r1zpkE2JmoSRZqxpJGNK4vPPvgtKU3LORkPTO4TUR_p77nbz8e7LuMLJj7G5mnuwZRU_zktHvoNCA",
+        "signature": "n9YGR5nWs_VYONDpaQyhUtAV7wbDtlb3lxSYDFyUei2FZwy2abkTVSIyE4cAM-03McYCnxs2OZIVinfljs5_ag",
         "issued_at": 1792425630,
         "device": {
           "kid": "presence-test-key-1",
@@ -1226,7 +1226,7 @@
             "x": "nZQI_ShNEIOy_-Pb6TPa8LOaCyDengdDzBlg0cOhD7w",
             "y": "kTQ5sb0lNB760k-c7T8v3yVvGikDQpORyXnLjldhgCQ"
           },
-          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6InByZXNlbmNlLXRlc3Qta2V5LTEiLCJkZXZpY2VfandrX3RodW1icHJpbnQiOiIyZjB2dWwzdGJ5S0Y2S3R2V3VRYUVBWnVCano1aHUxeS15QUlEVWswNXpJIiwiYmlhdGVjX2tleV91c2UiOiJwcmVzZW5jZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.7xEjVbgj9vxhmO9MwDnSwYcTIj32Erf-Apibzr1wmMFzxkKU3W17-qSAld4DvVfKPniQU-ZXPTJ8rUvs22WILQ"
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6InByZXNlbmNlLXRlc3Qta2V5LTEiLCJkZXZpY2VfandrX3RodW1icHJpbnQiOiIyZjB2dWwzdGJ5S0Y2S3R2V3VRYUVBWnVCano1aHUxeS15QUlEVWswNXpJIiwiYmlhdGVjX2tleV91c2UiOiJwcmVzZW5jZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.bxWqbWPDEPMZojEvNzhe_hIeTQZaENYT5ztzK1oBADkqLrI71TimXrHADdRVZrVyrYv4Lgs0JvsJj3juCva0Fw"
         }
       },
       "canonical": "{\"auth_req_id\":\"ciba_f3090d937007e3700686cb7bd364242e\",\"authorization_details\":[{\"applications\":[],\"fiat_value\":{\"amount\":\"4612.50\",\"currency\":\"EUR\"},\"group_hash\":\"66RSPWJWAMOTJM7K3MC5TORFFDDOO3MWJUKPF7OVRTD4CLHAVLWA\",\"network\":\"algorand-mainnet\",\"origin\":\"https://app.biatec.io\",\"sender\":\"YKBLPFVKZFZFGOVHQK6L63YX67B76YBZCSYYGU4WD7QC3PRRP4U7Q2DCWE\",\"transfers\":[{\"amount\":\"5000.000000\",\"asset\":{\"decimals\":6,\"id\":\"31566704\",\"symbol\":\"USDC\"},\"fiat_value\":{\"amount\":\"4612.50\",\"currency\":\"EUR\"},\"receiver\":\"YOKJ77PUEEMPEIITWT4WEJDHKGXECNQLB32RCEIJRG74FQWO5AHSKHZLEQ\"}],\"type\":\"biatec_transaction\",\"value_known\":true}],\"binding_code\":\"\",\"binding_message\":\"\",\"client_fingerprint\":\"b70156d0932b8095\",\"decision\":\"deny\",\"expiry\":1792425900,\"sub\":\"pw_7c1f0a52e9b34d68\"}",
@@ -1328,7 +1328,7 @@
           "binding_message": ""
         },
         "alg": "ES256",
-        "signature": "0bIr82VOzBHFEHPJtGamRfbCXSfILAQ-FySQT6TefPR2DxV2ouT_b8mClCPv6_J6Z7t72Jcy05fNakoBmc7-Vg",
+        "signature": "L6ZzrsKbkqngCtnm9p4Lys7jfVPxFxATov-7idQzxCw01vYNfXiVX5r4aeZoA1F53U8HiikU3yWeeMWjeyQV0w",
         "issued_at": 1792425631,
         "device": {
           "kid": "presence-test-key-1",
@@ -1339,7 +1339,7 @@
             "x": "nZQI_ShNEIOy_-Pb6TPa8LOaCyDengdDzBlg0cOhD7w",
             "y": "kTQ5sb0lNB760k-c7T8v3yVvGikDQpORyXnLjldhgCQ"
           },
-          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6InByZXNlbmNlLXRlc3Qta2V5LTEiLCJkZXZpY2VfandrX3RodW1icHJpbnQiOiIyZjB2dWwzdGJ5S0Y2S3R2V3VRYUVBWnVCano1aHUxeS15QUlEVWswNXpJIiwiYmlhdGVjX2tleV91c2UiOiJwcmVzZW5jZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.QUqkKNIzT2FLBAhdvJNdQfpgveLfAwBkDEFqA0NSXwyPMqsRtBPxra-W-d6AzNO9ZXskP1FzihUwvFbOsUn9hw"
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd183YzFmMGE1MmU5YjM0ZDY4IiwiZGV2aWNlX2tpZCI6InByZXNlbmNlLXRlc3Qta2V5LTEiLCJkZXZpY2VfandrX3RodW1icHJpbnQiOiIyZjB2dWwzdGJ5S0Y2S3R2V3VRYUVBWnVCano1aHUxeS15QUlEVWswNXpJIiwiYmlhdGVjX2tleV91c2UiOiJwcmVzZW5jZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.feJ-mc8N3RIoh3cUqbTx2PtxgD1I-PvZ2TGzzHw8pMu38uYLpSrrlki1XHellECb2166PZ61HPEuQoISnqXoXg"
         }
       },
       "canonical": "{\"auth_req_id\":\"ciba_642edf7cdeff6dbc52a0cf33441c9551\",\"authorization_details\":[{\"applications\":[],\"fiat_value\":{\"amount\":\"4612.50\",\"currency\":\"EUR\"},\"group_hash\":\"VN7IRIXF7W2EC4IV6NQDIYRV7TSFDDWEGHZGPFVPUZXWJNSX3N2A\",\"network\":\"algorand-mainnet\",\"origin\":\"https://app.biatec.io\",\"sender\":\"YKBLPFVKZFZFGOVHQK6L63YX67B76YBZCSYYGU4WD7QC3PRRP4U7Q2DCWE\",\"transfers\":[{\"amount\":\"5000.000000\",\"asset\":{\"decimals\":6,\"id\":\"31566704\",\"symbol\":\"USDC\"},\"fiat_value\":{\"amount\":\"4612.50\",\"currency\":\"EUR\"},\"receiver\":\"4QMNQ4HMRSL6H6CDZIRJPX277CLHF7TTJPNXAYAZOYRNPGVAOZT6A3RU5E\"}],\"type\":\"biatec_transaction\",\"value_known\":true}],\"binding_code\":\"271828\",\"binding_message\":\"\",\"client_fingerprint\":\"68dcf7ce89a943b0\",\"decision\":\"approve\",\"expiry\":1792425900,\"sub\":\"pw_7c1f0a52e9b34d68\"}",
