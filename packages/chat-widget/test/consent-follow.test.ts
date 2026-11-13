@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { defineComponent, h } from "vue";
 import { mount, type VueWrapper } from "@vue/test-utils";
 import type { ActionPreview, ActionPreviewStatus, ChatEvent, ConsentStatus } from "@biatec/chat-protocol";
@@ -37,19 +37,20 @@ const done = (r: ConfirmResult): ConsentStreamEvent => ({ kind: "result", result
 /** Resolves when the signal aborts: a stream that stays open. */
 const open = (signal?: AbortSignal) => new Promise<void>((r) => signal?.addEventListener("abort", () => r(), { once: true }));
 
+/** A ConsentApi whose three calls are mocks typed with the calls' own signatures (so it is assignable to ConsentApi). */
 interface Fake extends ConsentApi {
-  poll: ReturnType<typeof vi.fn>;
-  stream: ReturnType<typeof vi.fn>;
-  prediction: ReturnType<typeof vi.fn>;
+  poll: Mock<ConsentApi["poll"]>;
+  stream: Mock<ConsentApi["stream"]>;
+  prediction: Mock<ConsentApi["prediction"]>;
 }
 function fakeConsent(over: Partial<ConsentApi> = {}): Fake {
   return {
-    poll: vi.fn(async (): Promise<ConsentPoll> => ({ ok: true, consent: pending(), result: null })),
-    stream: vi.fn(async function* (_id: string, signal?: AbortSignal) {
+    poll: vi.fn<ConsentApi["poll"]>(async () => ({ ok: true, consent: pending(), result: null })),
+    stream: vi.fn<ConsentApi["stream"]>(async function* (_id: string, signal?: AbortSignal) {
       yield status(pending());
       await open(signal);
     }),
-    prediction: vi.fn(async () => null),
+    prediction: vi.fn<ConsentApi["prediction"]>(async () => null),
     ...over,
   } as Fake;
 }
