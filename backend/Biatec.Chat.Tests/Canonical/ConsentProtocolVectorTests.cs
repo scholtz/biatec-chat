@@ -136,9 +136,15 @@ public class ConsentProtocolVectorTests
         {
             var receipt = v["receipt"]!;
             var payload = VerifiedAttestation((string)receipt["device"]!["attestation"]!, jwks);
-            var is11 = (string)receipt["version"]! == "1.1";
-            // The rule of spec section 8.1, step 3: from 1.1 on an approve receipt MUST carry the attested use "approve".
-            var accepted = !(is11 && (string)receipt["signed"]!["decision"]! == "approve" && (string?)payload["biatec_key_use"] != "approve");
+            var version = (string)receipt["version"]!;
+            var signed = receipt["signed"]!;
+            // `version` is not signed: the signed shape has to agree with it (spec section 8.1) ...
+            var shapeAgrees = version == "1.1" ? signed["client_fingerprint"] is not null && signed["client_entity_id"] is null
+                : version == "1" && signed["client_entity_id"] is not null && signed["client_fingerprint"] is null;
+            Assert.True(shapeAgrees, file + " " + (string)v["name"]! + ": version and signed shape agree");
+            // ... and an attested key use is honoured whatever the version says: an approve needs "approve" (a 1.0 device has no attested use).
+            var use = (string?)payload["biatec_key_use"];
+            var accepted = !((string)signed["decision"]! == "approve" && (version == "1.1" ? use != "approve" : use is not null && use != "approve"));
             var expected = v["expected"]?["accepted"]?.GetValue<bool>() ?? true;
             Assert.True(expected == accepted, file + " " + (string)v["name"]! + ": expected verdict");
             if (!accepted) refused++;
@@ -154,7 +160,7 @@ public class ConsentProtocolVectorTests
             var signed = v!["receipt"]!["signed"]!;
             Assert.Null(signed["client_entity_id"]);
             Assert.Equal((string)v["request"]!["client"]!["fingerprint"]!, (string)signed["client_fingerprint"]!);
-            Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes((string)v["client_id"]!)))[..8], (string)signed["client_fingerprint"]!);
+            Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes((string)v["client_id"]!)))[..16], (string)signed["client_fingerprint"]!);
         }
     }
 

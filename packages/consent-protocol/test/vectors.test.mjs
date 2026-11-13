@@ -93,7 +93,7 @@ for (const [label, vectors] of [["1.0", v10], ["1.1", v11]]) {
         },
         auth_req_id: (s) => (s.auth_req_id += "0"),
         client_entity_id: (s) => (s.client_entity_id = "https://evil.example"),
-        client_fingerprint: (s) => (s.client_fingerprint = "00000000"),
+        client_fingerprint: (s) => (s.client_fingerprint = "0000000000000000"),
         binding_code: (s) => (s.binding_code = "000000"),
         decision: (s) => (s.decision = s.decision === "approve" ? "deny" : "approve"),
         expiry: (s) => (s.expiry += 1),
@@ -167,10 +167,10 @@ test("a 1.1 receipt whose attestation has no biatec_key_use is refused", () => {
   assert.equal(verifyReceipt(v.receipt, jwks, O), false);
 });
 
-test("the client is its fingerprint: 8 hex characters of SHA-256(client_id); the domain appears only when proven", () => {
+test("the client is its fingerprint: 16 hex characters of SHA-256(client_id); the domain appears only when proven", () => {
   for (const v of v11) {
     const c = v.request.client;
-    assert.equal(c.fingerprint, createHash("sha256").update(v.client_id).digest("hex").slice(0, 8), v.name);
+    assert.equal(c.fingerprint, createHash("sha256").update(v.client_id).digest("hex").slice(0, 16), v.name);
     assert.equal("domain" in c, c.domain_proven, v.name);
     if (!c.domain_proven) assert.equal(v.request.binding_message, "", v.name + ": no text channel without a proven domain");
     if (v.request.entry === "step-up") assert.equal(v.receipt.signed.binding_message, "", v.name);
@@ -245,7 +245,7 @@ test("schemas reject malformed objects", () => {
   bad("consent-receipt", (r) => (r.version = "2"), r11.receipt);
   bad("consent-receipt", (r) => delete r.device.key_use, r11.receipt); // 1.1 says which key signed
   bad("consent-receipt", (r) => (r.signed.client_entity_id = "https://chat.biatec.io"), r11.receipt); // 1.0 member in a 1.1 receipt
-  bad("consent-receipt", (r) => (r.signed.client_fingerprint = "3F9A-1C77"), r11.receipt); // wire form is 8 lowercase hex
+  bad("consent-receipt", (r) => (r.signed.client_fingerprint = "3F9A-1C77"), r11.receipt); // wire form is 16 lowercase hex
   bad("consent-receipt", (r) => (r.signed.authorization_details[0].amount = "1"), r11.receipt); // single-transfer members are 1.0
   bad("consent-receipt", (r) => (r.signed.authorization_details[0].origin = "https://x.example/path"), r11.receipt);
   bad("consent-receipt", (r) => delete r.signed.authorization_details[0].origin, r11.receipt);
@@ -292,8 +292,11 @@ test("verifyApproval accepts the matching approve once and rejects deny, code_fa
   const v = v11[0];
   const o = { ...O, now: v.receipt.signed.expiry - 100 };
   const otherClient = clone(v.request);
-  otherClient.client.fingerprint = "00000000";
+  otherClient.client.fingerprint = "0000000000000000";
   assert.equal(verifyApproval(v.receipt, jwks, otherClient, v.receipt.signed.binding_code, new Set(), o), false, "another client");
+  const loggedOrigin = clone(v.request);
+  loggedOrigin.origin = "https://evil.example";
+  assert.equal(verifyApproval(v.receipt, jwks, loggedOrigin, v.receipt.signed.binding_code, new Set(), o), false, "the recorded origin must be the signed one");
   const otherOrigin = clone(v.request);
   otherOrigin.authorization_details[0].origin = "https://evil.example";
   assert.equal(verifyApproval(v.receipt, jwks, otherOrigin, v.receipt.signed.binding_code, new Set(), o), false, "another origin");
@@ -384,7 +387,9 @@ for (const a of device.device_approvals) {
     assert.ok(valid("device-approval-signed", a.envelope.signed));
     assert.equal(jcs(a.envelope.signed), a.canonical);
     assert.equal(sha256Hex(a.canonical), a.canonical_sha256);
-    assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { approval: a.expected_inputs }), a.expected.accepted);
+    assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { approval: a.expected_inputs, sub: device.enrollment_sub }), a.expected.accepted);
+    assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { approval: a.expected_inputs }), false, "without whose approval it accepts, a device approval is refused");
+    assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { sub: device.enrollment_sub }), false, "without the enrollment it covers, a device approval is refused");
   });
 }
 
@@ -395,17 +400,23 @@ test("any changed member of a device-signed statement invalidates its signature"
       if (k === "change") e.signed.change = { threshold_eur: "999999" };
       else if (typeof e.signed[k] === "number") e.signed[k] += 1;
       else e.signed[k] += "x";
-      assert.equal(verifyDeviceSigned(e, jwks, DO, { approval: s.expected_inputs }), false, s.name + " " + k);
+      assert.equal(verifyDeviceSigned(e, jwks, DO, { approval: s.expected_inputs, sub: device.enrollment_sub }), false, s.name + " " + k);
     }
   }
 });
 
 test("a device-signed statement is refused when stale, replayed with other expectations, or signed for another subject", () => {
   const s = device.device_approvals.find((x) => x.expected.accepted);
-  assert.equal(verifyDeviceSigned(s.envelope, jwks, { ...DO, now: DO.now + 301 }, { approval: s.expected_inputs }), false, "older than 300 s");
-  assert.equal(verifyDeviceSigned(s.envelope, jwks, { ...DO, now: s.envelope.signed.issued_at - 301 }, { approval: s.expected_inputs }), false, "from the future");
-  assert.equal(verifyDeviceSigned(s.envelope, jwks, DO, { approval: { ...s.expected_inputs, nonce: "another-enrollment-nonce-0000" } }), false, "another enrollment");
-  assert.equal(verifyDeviceSigned(s.envelope, jwks, DO, { approval: { ...s.expected_inputs, new_presence_jwk_thumbprint: thumbprint(keys.presence) } }), false, "another presence key");
+  const sub = device.enrollment_sub;
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, { ...DO, now: DO.now + 301 }, { approval: s.expected_inputs, sub }), false, "older than 300 s");
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, { ...DO, now: s.envelope.signed.issued_at - 301 }, { approval: s.expected_inputs, sub }), false, "from the future");
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, DO, { approval: { ...s.expected_inputs, nonce: "another-enrollment-nonce-0000" }, sub }), false, "another enrollment");
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, DO, { approval: { ...s.expected_inputs, new_presence_jwk_thumbprint: thumbprint(keys.presence) }, sub }), false, "another presence key");
+  // Single use: the caller's set of accepted nonces makes a replay refused.
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, { ...DO, usedNonces: new Set() }, { approval: s.expected_inputs, sub }), true);
+  assert.equal(verifyDeviceSigned(s.envelope, jwks, { ...DO, usedNonces: new Set([s.envelope.signed.nonce]) }, { approval: s.expected_inputs, sub }), false, "replayed approval");
+  const settingsVec = device.settings_changes.find((x) => x.expected.accepted);
+  assert.equal(verifyDeviceSigned(settingsVec.envelope, jwks, { ...DO, usedNonces: new Set([settingsVec.envelope.signed.nonce]) }), false, "replayed settings change");
   const settings = device.settings_changes.find((x) => x.expected.accepted);
   const otherSub = clone(settings.envelope);
   otherSub.signed.sub = "pw_other";
@@ -439,14 +450,17 @@ for (const e of device.enrollment_proofs) {
     const parts = e.jws.split(".");
     assert.deepEqual(JSON.parse(Buffer.from(parts[0], "base64url").toString()), e.header);
     assert.deepEqual(JSON.parse(Buffer.from(parts[1], "base64url").toString()), e.payload);
-    assert.equal(verifyEnrollmentProof(e.jws, { nonce: e.payload.nonce, presence_public_key: e.presence_public_key, now: e.payload.iat + 5 }), e.expected.accepted);
+    assert.equal(verifyEnrollmentProof(e.jws, { approval_public_key: keys.new_approval, kid: keys.new_approval.kid, nonce: e.payload.nonce, presence_public_key: e.presence_public_key, now: e.payload.iat + 5 }), e.expected.accepted);
   });
 }
 
 test("an enrollment proof is refused for another nonce, another presence key or a stale iat", () => {
   const e = device.enrollment_proofs.find((x) => x.expected.accepted);
-  const ok = { nonce: e.payload.nonce, presence_public_key: e.presence_public_key, now: e.payload.iat + 5 };
+  const ok = { approval_public_key: keys.new_approval, kid: keys.new_approval.kid, nonce: e.payload.nonce, presence_public_key: e.presence_public_key, now: e.payload.iat + 5 };
   assert.equal(verifyEnrollmentProof(e.jws, ok), true);
+  assert.equal(verifyEnrollmentProof(e.jws, { ...ok, approval_public_key: undefined }), false, "the approval key the server received is required");
+  assert.equal(verifyEnrollmentProof(e.jws, { ...ok, approval_public_key: keys.new_presence }), false, "the proof must be signed by the approval key that was sent");
+  assert.equal(verifyEnrollmentProof(e.jws, { ...ok, kid: "another-kid" }), false);
   assert.equal(verifyEnrollmentProof(e.jws, { ...ok, nonce: "x".repeat(24) }), false);
   assert.equal(verifyEnrollmentProof(e.jws, { ...ok, presence_public_key: keys.presence }), false);
   assert.equal(verifyEnrollmentProof(e.jws, { ...ok, now: e.payload.iat + 301 }), false);

@@ -1,6 +1,6 @@
 # Biatec Consent Protocol, version 1.1
 
-Status: draft. This document is the integrator-facing specification. `PRODUCT-DESCRIPTION.md` ("Biatec Authenticator And The Biatec Consent Protocol") is the product source of truth and wins on any conflict. Version 1.1 replaces 1.0 as the only version implementations produce; [13. Changes from 1.0](#13-changes-from-10) lists what changed.
+Status: draft. This document is the integrator-facing specification. `PRODUCT-DESCRIPTION.md` ("Biatec Authenticator And The Biatec Consent Protocol") is the product source of truth and wins on any conflict. Version 1.1 replaces 1.0 as the only version new implementations produce (the mock Biatec OIDC, the widget's backend and the authenticator of this repository still produce 1.0 and move to 1.1 in their own tasks; the schemas and verifiers accept both meanwhile); [13. Changes from 1.0](#13-changes-from-10) lists what changed.
 
 The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 
@@ -168,7 +168,7 @@ The authenticator learns of a request as a hint over its device channel (or a pu
     }
   ],
   "client": {
-    "fingerprint": "68dcf7ce",
+    "fingerprint": "68dcf7ce89a943b0",
     "domain_proven": true,
     "domain": "chat.biatec.io",
     "linked": true
@@ -184,7 +184,7 @@ The authenticator learns of a request as a hint over its device channel (or a pu
 
 **Who is asking.** Biatec OIDC vouches for no client. The `client` object has exactly:
 
-- `fingerprint`: 8 lowercase hex characters, the first four bytes of the SHA-256 of the `client_id`, shown to the user as `xxxx-xxxx`.
+- `fingerprint`: 16 lowercase hex characters, the first eight bytes (64 bits) of the SHA-256 of the `client_id`, shown to the user as `xxxx-xxxx-xxxx-xxxx`. The fingerprint is for the user's eyes: a client is linked and trusted by its full `client_id` at Biatec OIDC, never by this value alone, and 64 bits cannot be ground to collide with a chosen client in any practical time.
 - `domain_proven` and `domain`: true, and the ASCII (A-label) host, when the client proved control of that domain by serving `/.well-known/biatec-client.json` that lists its `client_id`; otherwise false and no `domain`.
 - `linked`: whether this user already linked this client on their phone.
 
@@ -223,7 +223,7 @@ The receipt envelope (`schemas/consent-receipt.schema.json`) adds `version` (`"1
 Worked example, the first vector in `vectors/receipts.json` (canonical bytes, one line):
 
 ```
-{"auth_req_id":"ciba_8257c10231dd9b46e2f877484cf0b2a3","authorization_details":[{"applications":[],"fiat_value":{"amount":"4612.50","currency":"EUR"},"group_hash":"BJPMYYUBSMQWYXMEBZT2ZHFZTWCIJAFAIMUZEGOJZKJPRBKU5KNA","network":"algorand-mainnet","origin":"https://app.biatec.io","sender":"YKBLPFVKZFZFGOVHQK6L63YX67B76YBZCSYYGU4WD7QC3PRRP4U7Q2DCWE","transfers":[{"amount":"5000.000000","asset":{"decimals":6,"id":"31566704","symbol":"USDC"},"fiat_value":{"amount":"4612.50","currency":"EUR"},"receiver":"WSNJGAWN52IJMHAEFZIOPCS3IXSHS4C46QDNSKWDEWQ3E6M4HUNLYTHJXE"}],"type":"biatec_transaction","value_known":true}],"binding_code":"483920","binding_message":"","client_fingerprint":"68dcf7ce","decision":"approve","expiry":1792425900,"sub":"pw_7c1f0a52e9b34d68"}
+{"auth_req_id":"ciba_8257c10231dd9b46e2f877484cf0b2a3","authorization_details":[{"applications":[],"fiat_value":{"amount":"4612.50","currency":"EUR"},"group_hash":"BJPMYYUBSMQWYXMEBZT2ZHFZTWCIJAFAIMUZEGOJZKJPRBKU5KNA","network":"algorand-mainnet","origin":"https://app.biatec.io","sender":"YKBLPFVKZFZFGOVHQK6L63YX67B76YBZCSYYGU4WD7QC3PRRP4U7Q2DCWE","transfers":[{"amount":"5000.000000","asset":{"decimals":6,"id":"31566704","symbol":"USDC"},"fiat_value":{"amount":"4612.50","currency":"EUR"},"receiver":"WSNJGAWN52IJMHAEFZIOPCS3IXSHS4C46QDNSKWDEWQ3E6M4HUNLYTHJXE"}],"type":"biatec_transaction","value_known":true}],"binding_code":"483920","binding_message":"","client_fingerprint":"68dcf7ce89a943b0","decision":"approve","expiry":1792425900,"sub":"pw_7c1f0a52e9b34d68"}
 ```
 
 ### 8.1 Offline verification
@@ -371,6 +371,6 @@ Version 1.1 is additive where it can be and replaces 1.0 as the only version imp
 5. **Subject.** `signed.sub` is the pairwise subject of the requesting client; the attestation is minted for that subject when the receipt is stored; the device does not compare it with its own.
 6. **Two keys.** An approval key (biometric-bound) and a presence key, each with its own attestation carrying `biatec_key_use`. Verification step 3 gains the key-use rule: an `approve` receipt MUST carry `approve`. Device proofs and `deny` / `code_failed` receipts may use the presence key. The envelope carries `version` `"1.1"` and `device.key_use`.
 7. **New signed objects.** `biatec_settings_change`, `biatec_device_approval` and the enrollment proof (sections 8.2 and 8.3), with schemas and vectors, and the pairing code definition with a worked example.
-8. **The client is not vouched for.** The request's `client` object is `{ fingerprint, domain_proven, domain?, linked }`; the 1.0 members that asserted an operator-vouched name, a verified flag or a federation entity id are 1.0 only. The signed object names the client by `client_fingerprint` instead of the 1.0 entity member. The fingerprint is 8 lowercase hex characters (shown `xxxx-xxxx`). `binding_message` is rendered only when the domain is proven.
+8. **The client is not vouched for.** The request's `client` object is `{ fingerprint, domain_proven, domain?, linked }`; the 1.0 members that asserted an operator-vouched name, a verified flag or a federation entity id are 1.0 only. The signed object names the client by `client_fingerprint` instead of the 1.0 entity member. The fingerprint is 16 lowercase hex characters (shown `xxxx-xxxx-xxxx-xxxx`). `binding_message` is rendered only when the domain is proven.
 9. **User-held trust.** `remember` in an approve receipt trusts applications for a client; the user sets the threshold (no ceiling), links clients, and trusts applications on their own phone (rules 3, 4 and section 12). There is no operator list of clients, applications or test-network prices.
 10. **Device channel.** The authenticator learns of a request from a hint over Biatec OIDC's own device channel (or a platform push); no third-party push relay is part of the protocol.

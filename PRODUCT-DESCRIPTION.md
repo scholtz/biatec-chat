@@ -455,7 +455,7 @@ sequenceDiagram
     O-->>A: push notification (request id only, no amounts)
     A->>O: fetch pending request over an authenticated channel with the device key
     A->>U: card rendered from OIDC's decoded fields: the client's proven domain or fingerprint, every transfer, every application, destination
-    U->>A: type the binding code shown in the widget, approve with biometric, device key signs the receipt, which is the RFC 8785 canonical JSON of {authorization_details, auth_req_id, client fingerprint (8 hex characters of the SHA-256 of the `client_id`), binding code, decision, expiry, sub, binding_message}, signed with the approval key
+    U->>A: type the binding code shown in the widget, approve with biometric, device key signs the receipt, which is the RFC 8785 canonical JSON of {authorization_details, auth_req_id, client fingerprint (16 hex characters of the SHA-256 of the `client_id`), binding code, decision, expiry, sub, binding_message}, signed with the approval key
     A->>O: POST receipt (signed, attested)
     API->>O: POST /token (grant_type = urn:openid:params:grant-type:ciba, auth_req_id, resource)
     O-->>API: access token with acr = biatec:consent, same scopes and audience as the challenged token, bound to the group hash, 300 s, plus consent_receipt

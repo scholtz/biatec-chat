@@ -62,6 +62,6 @@
         "binding_message": { "type": "string", "maxLength": 140, "description": "Text as rendered on the card, or the empty string if none was rendered." }
       }
     },
-    "fingerprint": { "type": "string", "pattern": "^[0-9a-f]{8}$", "description": "8 lowercase hex characters of the SHA-256 of the client_id, shown to the user as xxxx-xxxx." }
+    "fingerprint": { "type": "string", "pattern": "^[0-9a-f]{16}$", "description": "16 lowercase hex characters (64 bits) of the SHA-256 of the client_id, shown to the user as xxxx-xxxx-xxxx-xxxx." }
   }
 }

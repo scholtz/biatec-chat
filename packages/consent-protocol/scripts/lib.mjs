@@ -180,9 +180,10 @@ const SIGNED_WINDOW_SECONDS = 300;
  * `device.public_key`, the attestation (binding the device key and, for a settings change, `signed.sub`), the attested
  * `biatec_key_use` = "approve", the signing key named inside the statement, and `issued_at` within 300 seconds of `opts.now`.
  * With `expect.approval` ({ new_approval_jwk_thumbprint, new_presence_jwk_thumbprint, nonce }) a device approval must
- * name exactly those keys and nonce and carry the pairing code derived from them. With `expect.sub` the approver's
- * attestation must be for that subject: the account of the device being enrolled (a device approval carries no subject of its own,
- * so the verifier has to say whose approval it accepts). Never throws.
+ * name exactly those keys and nonce and carry the pairing code derived from them. For a device approval both `expect.sub`
+ * (the approver's attestation must be for that subject: the account of the device being enrolled) and `expect.approval` are
+ * REQUIRED; without them it returns false. `opts.usedNonces` is the set of nonces the caller has already accepted from this
+ * device (a statement is single use; this function only reads the set). Never throws.
  */
 export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
   try {
@@ -197,7 +198,12 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
     if (!payload || payload.biatec_key_use !== "approve" || envelope.device.key_use !== "approve") return false;
     if ((settings ? s.kid : s.approver_kid) !== envelope.device.kid) return false;
     if (!Number.isInteger(s.issued_at) || Math.abs(now - s.issued_at) > SIGNED_WINDOW_SECONDS) return false;
-    if (approval && expect.approval) {
+    // A device approval carries no subject and names no enrollment on its own: the verifier MUST say whose approval it accepts
+    // and for which keys and nonce. Without both it fails closed.
+    if (approval && (typeof expect.sub !== "string" || !expect.approval)) return false;
+    // A nonce that was already used (the caller keeps the set, as for receipts) is a replay.
+    if (opts.usedNonces?.has(s.nonce)) return false;
+    if (approval) {
       const e = expect.approval;
       if (s.new_approval_jwk_thumbprint !== e.new_approval_jwk_thumbprint || s.new_presence_jwk_thumbprint !== e.new_presence_jwk_thumbprint || s.nonce !== e.nonce) return false;
       if (!timingSafeEqualStr(s.pairing_code, pairingCode(e.new_approval_jwk_thumbprint, e.new_presence_jwk_thumbprint, e.nonce))) return false;
@@ -209,11 +215,14 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
 }
 
 /**
- * Verifies an enrollment proof JWS (spec section 8.2): typ, ES256 under the header's own `jwk`, `presence_jwk_thumbprint`
+ * Verifies an enrollment proof JWS (spec section 8.3): typ, ES256 under the header's own `jwk`, which MUST be the approval key
+ * the request carries (`expect.approval_public_key`, required; `expect.kid` optional), `presence_jwk_thumbprint`
  * equals the thumbprint of `expect.presence_public_key`, `nonce` equals `expect.nonce`, and `iat` is within 300 seconds of
  * `expect.now`. Never throws.
  */
 export function verifyEnrollmentProof(jws, expect = {}) {
+  // The approval key the server received and the key that signed the proof must be the same: it is the proof of possession.
+  if (!expect.approval_public_key) return false;
   try {
     const now = expect.now ?? nowSeconds();
     const parts = jws.split(".");
@@ -222,6 +231,8 @@ export function verifyEnrollmentProof(jws, expect = {}) {
     const payload = JSON.parse(decodeB64u(parts[1]).toString("utf8"));
     if (header.alg !== "ES256" || header.typ !== ENROLL_PROOF_TYP || header.jwk?.kty !== "EC" || header.jwk?.crv !== "P-256") return false;
     if (!verifyEs256(header.jwk, Buffer.from(parts[0] + "." + parts[1], "ascii"), parts[2])) return false;
+    if (thumbprint(header.jwk) !== thumbprint(expect.approval_public_key)) return false;
+    if (typeof payload.kid !== "string" || payload.kid === "" || (expect.kid !== undefined && payload.kid !== expect.kid)) return false;
     if (typeof expect.nonce !== "string" || payload.nonce !== expect.nonce) return false;
     if (!expect.presence_public_key || payload.presence_jwk_thumbprint !== thumbprint(expect.presence_public_key)) return false;
     return Number.isInteger(payload.iat) && Math.abs(now - payload.iat) <= SIGNED_WINDOW_SECONDS;
@@ -260,6 +271,8 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
       (d?.group_hash ?? d?.request_hash) !== request.bound_hash
     )
       return false;
+    // The origin the server recorded is the origin the user saw and signed (a transaction of 1.1 carries it in its details).
+    if (receipt.version === "1.1" && d?.type === "biatec_transaction" && d.origin !== request.origin) return false;
     if (s.remember !== undefined) {
       // Each id MUST be an application of the request (section 8): the user can only trust what the card showed.
       const shown = new Set((d?.applications ?? []).map((a) => a.id));

@@ -28,7 +28,7 @@
     "requested_expiry": { "type": "integer", "minimum": 1, "maximum": 300 },
     "expiry": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "Unix time in seconds after which the request is void." },
     "bound_hash": { "type": "string", "minLength": 1, "description": "group_hash or request_hash the consent is bound to." },
-    "origin": { "type": "string", "minLength": 1 },
+    "origin": { "type": "string", "maxLength": 253, "pattern": "^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$", "description": "The reporting origin: scheme, host and optional port. It MUST equal the origin inside a 1.1 transaction's details." },
     "sub": { "type": "string", "minLength": 1, "description": "Pairwise subject of the requesting client." }
   },
   "$defs": {
@@ -52,7 +52,7 @@
         }
       ],
       "properties": {
-        "fingerprint": { "type": "string", "pattern": "^[0-9a-f]{8}$", "description": "8 lowercase hex characters of the SHA-256 of the client_id, shown as xxxx-xxxx." },
+        "fingerprint": { "type": "string", "pattern": "^[0-9a-f]{16}$", "description": "16 lowercase hex characters (64 bits) of the SHA-256 of the client_id, shown as xxxx-xxxx-xxxx-xxxx." },
         "domain_proven": { "type": "boolean", "description": "True when the client proved control of its domain by serving /.well-known/biatec-client.json that lists its client_id." },
         "domain": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9.-]+$", "description": "The proven domain in ASCII (A-label) form. Present exactly when domain_proven is true." },
         "linked": { "type": "boolean", "description": "Whether this user already linked this client on their phone (first use of any client always asks)." }

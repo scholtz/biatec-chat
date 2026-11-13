@@ -46,7 +46,7 @@ const b32 = (buf) => {
 const digest = (s) => createHash("sha256").update(s).digest();
 const groupHash = (s) => b32(digest("group:" + s)); // 32 bytes -> 52 chars, same shape as an Algorand grp
 const address = (s) => b32(Buffer.concat([digest("addr:" + s), digest("addr2:" + s).subarray(0, 4)])).slice(0, 58); // illustrative, not checksummed
-const fingerprintOf = (clientId) => digest(clientId).toString("hex").slice(0, 8);
+const fingerprintOf = (clientId) => digest(clientId).toString("hex").slice(0, 16);
 
 const ISS = "https://oidc.biatec.test";
 const NOW = 1792425600; // 2026-10-19T16:00:00Z
@@ -246,7 +246,7 @@ const approvals = [
   { name: "device-approval-signed-by-presence-key-REFUSED", description: "NEGATIVE: signed by the presence key of the approver, whose attestation says presence.", ...wrap(approvalBase({ approver_kid: keys.presence.kid }), keys.presence, "presence", ENROLL_SUB), expected: { accepted: false, reason: "requires_approval_key" } },
 ];
 const expectedApproval = { new_approval_jwk_thumbprint: pairing.new_approval_jwk_thumbprint, new_presence_jwk_thumbprint: pairing.new_presence_jwk_thumbprint, nonce: pairing.nonce };
-for (const a of approvals) if (verifyDeviceSigned(a.envelope, jwks, OPTS, { approval: expectedApproval }) !== a.expected.accepted) throw new Error("self-check failed for " + a.name);
+for (const a of approvals) if (verifyDeviceSigned(a.envelope, jwks, OPTS, { approval: expectedApproval, sub: ENROLL_SUB }) !== a.expected.accepted) throw new Error("self-check failed for " + a.name);
 
 const proofHeader = { alg: "ES256", typ: ENROLL_PROOF_TYP, jwk: newApproval };
 const proofPayload = { kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, presence_jwk_thumbprint: pairing.new_presence_jwk_thumbprint, nonce: enrollNonce, iat: NOW + 10 };
