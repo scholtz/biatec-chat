@@ -25,7 +25,7 @@ import {
 const props = defineProps<{
   preview: ActionPreview;
   consent?: ConsentStatus | null;
-  /** The backend's own line about phone approval for this action; replaces the generic expected/not expected line. */
+  /** The backend's own sentence about phone approval for this user's settings; shown as its own line beside the localized one. */
   prediction?: string | null;
   /** The session's absolute expiry (SessionState.expiresAt). */
   sessionExpiresAt?: string | null;

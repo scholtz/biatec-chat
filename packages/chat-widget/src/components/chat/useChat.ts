@@ -762,7 +762,8 @@ export function useChat(svc: ChatServices) {
         for await (const ev of api.stream(previewId, step.signal)) {
           if (!live()) return true;
           const now = findPreview(previewId);
-          if (!now) return true;
+          // The card moved on under this stream (another tab, the chat stream): a late event does not apply to it.
+          if (!now || now.preview.status !== "AwaitingApproval") return true;
           if (ev.kind === "status") {
             showConsent(now, ev.consent);
             ended = ev.consent.state !== "Pending" && ev.consent.state !== "NotRequired" ? ev.consent : null;
