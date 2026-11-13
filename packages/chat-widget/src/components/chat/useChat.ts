@@ -250,6 +250,11 @@ export function useChat(svc: ChatServices) {
         if (entry) {
           entry.consent = noCodeUnlessPending(e.consent);
           syncKeepalive(entry);
+          // The chat stream says the consent ended without approval while the card waits: the follower is not needed any more.
+          if (entry.preview.status === "AwaitingApproval" && (e.consent.state === "Denied" || e.consent.state === "TimedOut")) {
+            stopFollower(entry.preview.previewId);
+            finishConsent(entry, entry.consent, null);
+          }
         } else {
           orphanConsent.set(e.consent.previewId, noCodeUnlessPending(e.consent));
           // Bounded: only a handful can legitimately arrive before their preview_card.
@@ -679,7 +684,7 @@ export function useChat(svc: ChatServices) {
     /** Applies what one answer says. True when the follower is done. */
     const take = (entry: PreviewEntry, consent: ConsentStatus, result: ConfirmResult | null): boolean => {
       showConsent(entry, consent);
-      if (consent.state === "Pending" || consent.state === "NotRequired") return false;
+      if (!result && (consent.state === "Pending" || consent.state === "NotRequired")) return false;
       // Approved and the outcome is still on its way (another tab or poll is finishing it): keep asking.
       if (consent.state === "Approved" && !result) return false;
       finishConsent(entry, consent, result);
@@ -688,7 +693,13 @@ export function useChat(svc: ChatServices) {
 
     const gone = (): PreviewEntry | null => {
       const entry = findPreview(previewId);
-      return entry && isWaitingForPhone(entry) ? entry : null;
+      if (!entry) return null;
+      // The chat stream said the consent ended (denied, timed out) while this follower was running: the card closes now.
+      if (entry.preview.status === "AwaitingApproval" && entry.consent && (entry.consent.state === "Denied" || entry.consent.state === "TimedOut")) {
+        finishConsent(entry, entry.consent, null);
+        return null;
+      }
+      return isWaitingForPhone(entry) ? entry : null;
     };
 
     /**

@@ -475,16 +475,54 @@ describe("following a phone approval", () => {
     expect(previewValueEur({ ...eur, steps: [{ ...eur.steps[0]!, assets: [{ ...eur.steps[0]!.assets![0]!, fiatCurrency: "USD" }] }] })).toBeNull();
   });
 
-  it("the card shows the prediction in place of the generic line, only while awaiting confirmation", () => {
+  it("the card shows the prediction as its own line beside the localized one, only while awaiting confirmation", () => {
     const later = mount(ActionPreviewCard, { props: { preview: preview("AwaitingApproval"), prediction: "Probably needs your phone" } });
-    expect(later.get("[data-test=phone-line]").text()).not.toContain("Probably needs your phone");
+    expect(later.find("[data-test=prediction]").exists()).toBe(false);
     later.unmount();
     const w = mount(ActionPreviewCard, { props: { preview: preview(), prediction: "Probably needs your phone" } });
-    expect(w.get("[data-test=phone-line]").text()).toContain("Probably needs your phone");
+    expect(w.get("[data-test=prediction]").text()).toBe("Probably needs your phone");
+    expect(w.get("[data-test=phone-line]").text()).toContain("Approval on your phone is expected"); // the localized line stays
     const plain = mount(ActionPreviewCard, { props: { preview: preview() } });
-    expect(plain.get("[data-test=phone-line]").text()).toContain("Approval on your phone is expected");
+    expect(plain.find("[data-test=prediction]").exists()).toBe(false);
     w.unmount();
     plain.unmount();
+  });
+
+  it("a final outcome in the stream is applied even beside a NotRequired consent, and the chat stream can end the consent under a running follower", async () => {
+    const consent = fakeConsent({
+      poll: vi.fn(async (): Promise<ConsentPoll> => ({ ok: true, consent: ended("NotRequired"), result: result("landed", { txIds: ["TXN"] }) })),
+      stream: vi.fn(async function* () {
+        throw new TransportError("down", 503);
+      }),
+    });
+    const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);
+    wrapper = m.wrapper;
+    await m.chat.confirmPreview("p1");
+    await advance(2_000);
+    expect(m.entry().preview.status).toBe("Completed");
+
+    // The chat stream says the consent was denied while another card's follower runs.
+    const consent2 = fakeConsent({
+      stream: vi.fn(async function* (_id: string, signal?: AbortSignal) {
+        yield status(pending());
+        await open(signal);
+      }),
+    });
+    const events: ChatEvent[] = [{ type: "preview_card", preview: preview() }];
+    const m2 = await mountChat(consent2, events);
+    await m2.chat.confirmPreview("p1");
+    await settle();
+    events.length = 0;
+    events.push({ type: "consent_status", consent: { previewId: "p1", stepId: "s1", state: "Denied" } });
+    await m2.chat.send("again");
+    await settle();
+    expect(m2.entry().preview.status).toBe("Cancelled");
+    expect(m2.entry().note).toContain("You rejected this on your phone");
+    expect(m2.entry().consent!.bindingCode).toBeNull();
+    const streams = consent2.stream.mock.calls.length;
+    await advance(120_000);
+    expect(consent2.stream.mock.calls.length).toBe(streams); // the follower is gone
+    m2.wrapper.unmount();
   });
 });
 

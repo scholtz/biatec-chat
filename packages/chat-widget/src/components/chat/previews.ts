@@ -48,7 +48,8 @@ export function previewValueEur(p: ActionPreview): string | null {
     any = true;
   }
   // Rounded up to the cent, so a small non-zero amount is never sent as zero.
-  return any ? Math.max(0.01, Math.ceil(total * 100 - 1e-6) / 100).toFixed(2) : null;
+  if (!any) return null;
+  return total === 0 ? "0.00" : Math.max(0.01, Math.ceil(total * 100 - 1e-6) / 100).toFixed(2);
 }
 
 /** Same shape as the backend's ConfirmResponse; any other JSON body (409, 410, 404) carries `error` and `message`. */
