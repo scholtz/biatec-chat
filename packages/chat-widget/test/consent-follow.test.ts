@@ -236,6 +236,26 @@ describe("following a phone approval", () => {
     await advance(1_000);
     expect(round).toBe(3);
     expect(consent.stream).toHaveBeenCalledTimes(3);
+    // A fourth round is not followed: the card stops waiting and says it cannot be followed any more.
+    expect(m.entry().preview.status).toBe("Expired");
+    expect(m.entry().note).toContain("can no longer be followed");
+  });
+
+  it("closes the connection of a stream attempt when it ends, however it ends", async () => {
+    let signalSeen: AbortSignal | undefined;
+    const consent = fakeConsent({
+      stream: vi.fn(async function* (_id: string, signal?: AbortSignal) {
+        signalSeen = signal;
+        yield status(ended("Approved"));
+        yield done(result("submitted", { txIds: ["TX"] }));
+      }),
+    });
+    const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);
+    wrapper = m.wrapper;
+    await m.chat.confirmPreview("p1");
+    await settle();
+    expect(m.entry().preview.status).toBe("Submitted");
+    expect(signalSeen?.aborted).toBe(true);
   });
 
   it("the backend's phone-approval prediction is loaded once when the card is shown; a failure shows nothing", async () => {

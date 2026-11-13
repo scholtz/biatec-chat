@@ -572,7 +572,12 @@ export function useChat(svc: ChatServices) {
     const entry = findPreview(previewId);
     if (!entry || !isWaitingForPhone(entry)) return;
     const n = (rounds.get(previewId) ?? 0) + 1;
-    if (n > MAX_CONSENT_ROUNDS) return;
+    if (n > MAX_CONSENT_ROUNDS) {
+      // The backend keeps asking again: stop following and say so, rather than leave the card waiting for nothing.
+      entry.consent = null;
+      closeWithoutSignature(entry, "Expired", t("consent.lost"));
+      return;
+    }
     rounds.set(previewId, n);
     if (followers.size === 0) watchVisibility(true);
     const ctl = new AbortController();
@@ -584,7 +589,7 @@ export function useChat(svc: ChatServices) {
         if (followers.size === 0) watchVisibility(false);
         // The outcome was a new round of consent: follow that one too.
         const again = findPreview(previewId);
-        if (!ctl.signal.aborted && !disposed && again && isWaitingForPhone(again) && again.consent?.state === "Pending") followConsent(previewId);
+        if (!ctl.signal.aborted && !disposed && again && isWaitingForPhone(again)) followConsent(previewId);
       });
   }
 
@@ -607,7 +612,11 @@ export function useChat(svc: ChatServices) {
       return entry && isWaitingForPhone(entry) ? entry : null;
     };
 
-    /** One plain poll. True when the follower is done. */
+    /**
+     * One plain poll. True when the follower is done. A consent past its deadline is not asked about: its approval can
+     * no longer be redeemed (the backend only signs inside a poll or stream, and Biatec OIDC has expired the request),
+     * so nothing was signed and the answer is known without a request.
+     */
     const pollStep = async (): Promise<boolean> => {
       const entry = gone();
       if (!entry) return true;
@@ -678,6 +687,8 @@ export function useChat(svc: ChatServices) {
       } finally {
         clearTimeout(timer);
         signal.removeEventListener("abort", cut);
+        // Whichever way this attempt ended, its connection ends with it (a stream the server keeps open must not linger).
+        step.abort();
       }
       if (!live()) return true;
       const now = findPreview(previewId);
