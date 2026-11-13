@@ -118,10 +118,14 @@ export function verifyAttestation(receipt, jwks, opts = {}) {
   try {
     const payload = boundClaims(receipt.device, receipt.signed.sub, jwks, opts);
     if (!payload) return false;
-    if (receipt.version === "1.1") {
-      if (!KEY_USES.includes(payload.biatec_key_use)) return false;
-      if (receipt.device.key_use !== undefined && receipt.device.key_use !== payload.biatec_key_use) return false;
-    }
+    // `version` is not signed, so nothing may depend on it alone: the shape of the signed object has to agree with it ...
+    const s = receipt.signed;
+    if (receipt.version === "1.1" ? !("client_fingerprint" in s) || "client_entity_id" in s : receipt.version === "1" ? !("client_entity_id" in s) || "client_fingerprint" in s : true) return false;
+    if (receipt.version !== "1.1" && receipt.version !== "1") return false;
+    // ... and an attested key use is honoured whatever the version says, so a 1.1 device cannot pass as a 1.0 one.
+    if (payload.biatec_key_use !== undefined && !KEY_USES.includes(payload.biatec_key_use)) return false;
+    if (receipt.version === "1.1" && payload.biatec_key_use === undefined) return false;
+    if (receipt.device.key_use !== undefined && receipt.device.key_use !== payload.biatec_key_use) return false;
     return true;
   } catch {
     return false;
@@ -141,12 +145,18 @@ export function attestedKeyUse(receipt, jwks, opts = {}) {
 /**
  * Both signatures (rule 9) with the attestation checks above. Says nothing about decision or expiry. Never throws.
  * From version 1.1 on, an `approve` receipt MUST be signed by an approval key (attested `biatec_key_use` "approve");
- * `deny` and `code_failed` accept either key. Version 1 receipts predate the two keys and carry no key use.
+ * `deny` and `code_failed` accept either key. Version 1 receipts predate the two keys and carry no key use; the
+ * unsigned `version` can neither relabel a 1.1 receipt as 1.0 (the signed shape must agree, and an attested key use is
+ * always honoured) nor the other way round.
  */
 export function verifyReceipt(receipt, jwks, opts = {}) {
   try {
     if (!(verifyReceiptSignature(receipt) && verifyAttestation(receipt, jwks, opts))) return false;
-    if (receipt.version === "1.1" && receipt.signed.decision === "approve") return attestedKeyUse(receipt, jwks, opts) === "approve";
+    // An approve needs an approval key. A device that is attested for a key use (every 1.1 device is) can never approve with another one,
+    // whatever `version` the receipt wears; only a 1.0 device, whose attestation carries no key use, approves without one.
+    const use = attestedKeyUse(receipt, jwks, opts);
+    if (receipt.signed.decision === "approve" && receipt.version !== "1" && use !== "approve") return false;
+    if (receipt.signed.decision === "approve" && receipt.version === "1" && use !== null && use !== "approve") return false;
     return true;
   } catch {
     return false;
@@ -170,7 +180,9 @@ const SIGNED_WINDOW_SECONDS = 300;
  * `device.public_key`, the attestation (binding the device key and, for a settings change, `signed.sub`), the attested
  * `biatec_key_use` = "approve", the signing key named inside the statement, and `issued_at` within 300 seconds of `opts.now`.
  * With `expect.approval` ({ new_approval_jwk_thumbprint, new_presence_jwk_thumbprint, nonce }) a device approval must
- * name exactly those keys and nonce and carry the pairing code derived from them. Never throws.
+ * name exactly those keys and nonce and carry the pairing code derived from them. With `expect.sub` the approver's
+ * attestation must be for that subject: the account of the device being enrolled (a device approval carries no subject of its own,
+ * so the verifier has to say whose approval it accepts). Never throws.
  */
 export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
   try {
@@ -181,7 +193,7 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
     const settings = s.type === "biatec_settings_change";
     const approval = s.type === "biatec_device_approval";
     if (!settings && !approval) return false;
-    const payload = boundClaims(envelope.device, settings ? s.sub : undefined, jwks, { ...opts, now });
+    const payload = boundClaims(envelope.device, settings ? s.sub : approval ? expect.sub : undefined, jwks, { ...opts, now });
     if (!payload || payload.biatec_key_use !== "approve" || envelope.device.key_use !== "approve") return false;
     if ((settings ? s.kid : s.approver_kid) !== envelope.device.kid) return false;
     if (!Number.isInteger(s.issued_at) || Math.abs(now - s.issued_at) > SIGNED_WINDOW_SECONDS) return false;
@@ -240,7 +252,7 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
       typeof request.auth_req_id !== "string" ||
       typeof request.bound_hash !== "string" ||
       s.auth_req_id !== request.auth_req_id ||
-      (receipt.version === "1.1" ? s.client_fingerprint !== request.client.fingerprint : s.client_entity_id !== request.client.entity_id) ||
+      !clientMatches(receipt, s, request) ||
       s.binding_message !== request.binding_message ||
       s.expiry !== request.expiry ||
       s.sub !== request.sub ||
@@ -248,10 +260,26 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
       (d?.group_hash ?? d?.request_hash) !== request.bound_hash
     )
       return false;
+    if (s.remember !== undefined) {
+      // Each id MUST be an application of the request (section 8): the user can only trust what the card showed.
+      const shown = new Set((d?.applications ?? []).map((a) => a.id));
+      if (!Array.isArray(s.remember.applications) || !s.remember.applications.every((id) => shown.has(id))) return false;
+    }
     return !consumed.has(s.auth_req_id);
   } catch {
     return false;
   }
+}
+
+/**
+ * The stored request decides which version applies, never the receipt: a request opened under 1.1 (its client has a
+ * fingerprint and `domain_proven`) is answered by a 1.1 receipt naming that fingerprint, a 1.0 request by a 1.0 receipt.
+ */
+function clientMatches(receipt, s, request) {
+  const c = request.client;
+  if (c && typeof c.fingerprint === "string" && typeof c.domain_proven === "boolean")
+    return receipt.version === "1.1" && typeof s.client_fingerprint === "string" && s.client_fingerprint === c.fingerprint;
+  return receipt.version === "1" && typeof c?.entity_id === "string" && s.client_entity_id === c.entity_id;
 }
 
 function timingSafeEqualStr(a, b) {

@@ -459,3 +459,78 @@ test("test-only keys are the only private keys in the vectors", () => {
   assert.ok(JSON.parse(text)._warning.includes("TEST-ONLY"));
   for (const f of readdirSync(join(root, "vectors")).filter((n) => n !== "keys.json")) assert.equal(/"d"\s*:/.test(readFileSync(join(root, "vectors", f), "utf8")), false, f + " holds no private key");
 });
+
+// ---- the unsigned `version` cannot be used to get around a rule
+
+/** A receipt the presence key signs over `signed`, with the attestation of the REFUSED vector (which says "presence"). */
+function presenceApprove(signed, version) {
+  const base = v11.find((v) => !accepted(v)).receipt;
+  return { ...clone(base), version, signed, signature: signEs256(keys.presence, Buffer.from(jcs(signed), "utf8")) };
+}
+
+test("a presence-key approve cannot pass as a 1.0 receipt: version is not signed, the attested key use is honoured regardless", () => {
+  const neg = v11.find((v) => !accepted(v));
+  const old = v10.find((v) => v.receipt.signed.decision === "approve").receipt.signed;
+  // The same approval re-labelled "1", with a 1.0-shaped signed object: the signature is valid, the attestation is the real one.
+  const signed10 = { ...clone(old), auth_req_id: neg.receipt.signed.auth_req_id, sub: neg.receipt.signed.sub, binding_code: neg.receipt.signed.binding_code };
+  const relabelled = presenceApprove(signed10, "1");
+  delete relabelled.device.key_use;
+  assert.ok(verifyReceiptSignature(relabelled), "the signature is valid");
+  assert.equal(verifyReceipt(relabelled, jwks, O), false, "refused: the attestation says presence");
+  // Relabelling the 1.1 receipt itself (signed object unchanged) is refused too: the version must agree with the signed shape.
+  const asV1 = { ...clone(neg.receipt), version: "1" };
+  assert.equal(verifyReceipt(asV1, jwks, O), false);
+  // And a 1.0 receipt relabelled "1.1" (no key use attested, wrong shape) is refused.
+  const asV11 = { ...clone(v10[0].receipt), version: "1.1" };
+  assert.equal(verifyReceipt(asV11, jwks, O), false);
+  assert.equal(verifyReceipt({ ...clone(v10[0].receipt), version: "2" }, jwks, O), false, "unknown version");
+});
+
+test("verifyApproval: the stored request decides the version; a receipt of the other version is refused", () => {
+  const v = v11.find((x) => accepted(x) && x.receipt.signed.decision === "approve");
+  const o = { ...O, now: v.receipt.signed.expiry - 100 };
+  assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, new Set(), o), true);
+  // A 1.1 request and a receipt wearing version "1": refused (also: both sides' undefined client_entity_id must not "match").
+  const relabelled = { ...clone(v.receipt), version: "1" };
+  assert.equal(verifyApproval(relabelled, jwks, v.request, v.receipt.signed.binding_code, new Set(), o), false);
+  // A 1.0 request answered by a 1.1 receipt is refused as well.
+  const old = v10.find((x) => x.receipt.signed.decision === "approve");
+  assert.equal(verifyApproval(v.receipt, jwks, old.request, v.receipt.signed.binding_code, new Set(), o), false);
+  // A request with no client at all matches nothing.
+  const bare = clone(v.request);
+  delete bare.client;
+  assert.equal(verifyApproval(v.receipt, jwks, bare, v.receipt.signed.binding_code, new Set(), o), false);
+});
+
+test("verifyApproval: remember may only name applications of the request", () => {
+  const v = v11.find((x) => x.receipt.signed.remember);
+  const o = { ...O, now: v.receipt.signed.expiry - 100 };
+  assert.equal(verifyApproval(v.receipt, jwks, v.request, v.receipt.signed.binding_code, new Set(), o), true, "the vector remembers an application it showed");
+  const forged = clone(v.receipt);
+  forged.signed.remember = { applications: [v.receipt.signed.remember.applications[0], 999999] };
+  forged.signature = signEs256(keys.device, Buffer.from(jcs(forged.signed), "utf8")); // validly signed by the approval key
+  assert.ok(verifyReceipt(forged, jwks, O), "the receipt itself verifies");
+  assert.equal(verifyApproval(forged, jwks, v.request, forged.signed.binding_code, new Set(), o), false, "an application the card never showed");
+});
+
+test("a 1.1 document cannot carry the single-transfer details of 1.0, nor a 1.0 document the 1.1 details", () => {
+  const r11 = clone(v11[0]);
+  const old = v10[0].request.authorization_details[0];
+  r11.receipt.signed.authorization_details = [old];
+  assert.equal(valid("consent-receipt", r11.receipt), false, "1.1 receipt with 1.0 details");
+  const req11 = clone(v11[0].request);
+  req11.authorization_details = [old];
+  assert.equal(valid("consent-request", req11), false, "1.1 request with 1.0 details");
+  const req10 = clone(v10[0].request);
+  req10.authorization_details = clone(v11[0].request.authorization_details);
+  assert.equal(valid("consent-request", req10), false, "1.0 request with 1.1 details");
+  const rec10 = clone(v10[0].receipt);
+  rec10.signed.authorization_details = clone(v11[0].request.authorization_details);
+  assert.equal(valid("consent-receipt", rec10), false, "1.0 receipt with 1.1 details");
+});
+
+test("a device approval is bound to the subject of the account being enrolled", () => {
+  const a = device.device_approvals.find((x) => x.expected.accepted);
+  assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { approval: a.expected_inputs, sub: device.enrollment_sub }), true);
+  assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { approval: a.expected_inputs, sub: "pw_another_account" }), false, "an active device of another account cannot approve");
+});

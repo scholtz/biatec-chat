@@ -25,7 +25,7 @@
         "transfers": {
           "type": "array",
           "maxItems": 16,
-          "description": "Everything the sender sends out, one entry per payment or asset transfer, in group order. Transfers of other senders in the group are not listed.",
+          "description": "Everything the sender sends out, one entry per payment or asset transfer, in group order. Transfers of other senders in the group are not listed. A group with a close-to address, a clawback or a rekey is not described here and is not consentable (spec section 3.1).",
           "items": {
             "type": "object",
             "additionalProperties": false,

@@ -10,6 +10,11 @@
     { "if": { "required": ["entry"], "properties": { "entry": { "const": "step-up" } } }, "then": { "properties": { "binding_message": { "type": "string", "maxLength": 0 } } } },
     { "$ref": "#/$defs/v1_0" },
     {
+      "if": { "required": ["client"], "properties": { "client": { "type": "object", "required": ["domain_proven"], "properties": { "domain_proven": true } } } },
+      "then": { "properties": { "authorization_details": { "$ref": "authorization-details.schema.json#/$defs/v1_1" } } },
+      "else": { "properties": { "authorization_details": { "$ref": "authorization-details.schema.json#/$defs/v1_0" } } }
+    },
+    {
       "if": { "required": ["client"], "properties": { "client": { "type": "object", "required": ["domain_proven"], "properties": { "domain_proven": { "const": false } } } } },
       "then": { "properties": { "binding_message": { "type": "string", "maxLength": 0 } } }
     }

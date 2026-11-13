@@ -1,5 +1,5 @@
-// Regenerates vectors/keys.json (adds any missing test key), vectors/receipts.json (protocol 1.1), vectors/device-signed.json
-// and vectors/canonicalization.json. vectors/receipts-1.0.json is the frozen protocol 1.0 set and is never regenerated.
+// Regenerates vectors/keys.json (adds any missing test key), vectors/receipts.json (protocol 1.1) and vectors/device-signed.json,
+// and vectors/canonicalization.json only when it is missing (it has no signatures, so it never needs rewriting). vectors/receipts-1.0.json is the frozen protocol 1.0 set and is never regenerated.
 // ECDSA signatures are randomized, so vectors are committed; rerun only to extend them.
 // All keys are TEST-ONLY and exist solely so the vectors can be reproduced. They protect nothing.
 import { generateKeyPairSync, createHash } from "node:crypto";
@@ -181,7 +181,6 @@ write("receipts.json", { _comment: "Protocol 1.1 signed receipt vectors. Verify 
 
 // ---- device-signed statements: settings changes, approval of a new device, enrollment proof, pairing code
 const approver = keys.device; // the approval key of the active device
-const approverBlock = (sub) => deviceBlock(approver, "approve", sub);
 const wrap = (signedObj, key, use, sub) => {
   const canonical = jcs(signedObj);
   return {
@@ -273,7 +272,7 @@ write("device-signed.json", {
 
 const canon = [
   { name: "sorted-members-and-no-whitespace", input: { b: 2, a: 1, c: { z: true, y: null, x: [3, 2, 1] } } },
-  { name: "utf16-code-unit-order", input: { "€": "euro", "\r": "cr", "דּ": "hebrew", "1": "one", "😀": "emoji", "\u0080": "c1", "ö": "o-umlaut" } },
+  { name: "utf16-code-unit-order", input: { "\u20ac": "euro", "\r": "cr", "\uFB33": "hebrew", "1": "one", "\u{1F600}": "emoji", "\u0080": "c1", "\u00f6": "o-umlaut" } },
   { name: "string-escapes", input: { s: "tab\t nl\n quote\" backslash\\ bell\u0007 slash/ del\u007f", e: "€😀" } },
   { name: "ecmascript-numbers", input: [333333333.33333329, 1e30, 4.5, 0.002, 1e-9, 0, -0.0, 123456789012, 1e21, 1e-7] },
   { name: "decimal-strings-stay-strings", input: { amount: "5000.000000", fiat: "4612.50" } },

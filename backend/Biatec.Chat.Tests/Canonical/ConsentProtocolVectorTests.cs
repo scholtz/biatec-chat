@@ -54,11 +54,11 @@ public class ConsentProtocolVectorTests
         return sig.Length == 64 && key.VerifyData(data, sig, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
     }
 
-    /// <summary>RFC 7638 thumbprint of an EC P-256 public key: SHA-256 over the members in lexicographic order.</summary>
+    /// <summary>RFC 7638 thumbprint of an EC P-256 public key: SHA-256 over the canonical JSON of crv, kty, x and y (the backend's RFC 8785 canonicalizer).</summary>
     private static string Thumbprint(JsonNode pk)
     {
-        var input = $"{{\"crv\":\"{(string)pk["crv"]!}\",\"kty\":\"{(string)pk["kty"]!}\",\"x\":\"{(string)pk["x"]!}\",\"y\":\"{(string)pk["y"]!}\"}}";
-        return B64UrlEncode(SHA256.HashData(Encoding.UTF8.GetBytes(input)));
+        var members = new JsonObject { ["crv"] = (string)pk["crv"]!, ["kty"] = (string)pk["kty"]!, ["x"] = (string)pk["x"]!, ["y"] = (string)pk["y"]! };
+        return B64UrlEncode(SHA256.HashData(Encoding.UTF8.GetBytes(JsonCanonicalizer.Canonicalize(members))));
     }
 
     /// <summary>The attestation JWS verified with the JWKS key it names; returns its payload.</summary>
@@ -175,6 +175,7 @@ public class ConsentProtocolVectorTests
     {
         var jwks = Load("jwks.json")["keys"]!.AsArray();
         var file = Load("device-signed.json");
+        var now = (long)file["now"]!;
         var all = file["settings_changes"]!.AsArray().Concat(file["device_approvals"]!.AsArray()).ToList();
         Assert.True(all.Count >= 6);
         foreach (var v in all)
@@ -191,6 +192,19 @@ public class ConsentProtocolVectorTests
             Assert.Equal(Thumbprint(dev["public_key"]!), (string)payload["device_jwk_thumbprint"]!);
             var signer = (string?)envelope["signed"]!["kid"] ?? (string)envelope["signed"]!["approver_kid"]!;
             var verdict = signatureValid && (string)payload["biatec_key_use"]! == "approve" && signer == (string)dev["kid"]!;
+            // Attestation not expired, and the statement fresh (within 300 seconds of the verifier's clock), as the JavaScript verifier requires.
+            verdict &= (long)payload["exp"]! > now && Math.Abs(now - (long)envelope["signed"]!["issued_at"]!) <= 300;
+            // A settings change is for the subject the attestation was minted for; an approval names the keys and nonce of the enrollment it covers.
+            if ((string)envelope["signed"]!["type"]! == "biatec_settings_change")
+                verdict &= (string)envelope["signed"]!["sub"]! == (string)payload["sub"]!;
+            else
+            {
+                var expectedInputs = v["expected_inputs"]!;
+                verdict &= (string)envelope["signed"]!["new_approval_jwk_thumbprint"]! == (string)expectedInputs["new_approval_jwk_thumbprint"]!
+                    && (string)envelope["signed"]!["new_presence_jwk_thumbprint"]! == (string)expectedInputs["new_presence_jwk_thumbprint"]!
+                    && (string)envelope["signed"]!["nonce"]! == (string)expectedInputs["nonce"]!
+                    && (string)payload["sub"]! == (string)file["enrollment_sub"]!;
+            }
             // The pairing code a device approval carries must be the one derived from the keys and nonce it names.
             if ((string)envelope["signed"]!["type"]! == "biatec_device_approval")
                 verdict &= (string)envelope["signed"]!["pairing_code"]! == PairingCode((string)envelope["signed"]!["new_approval_jwk_thumbprint"]!, (string)envelope["signed"]!["new_presence_jwk_thumbprint"]!, (string)envelope["signed"]!["nonce"]!);
@@ -219,7 +233,10 @@ public class ConsentProtocolVectorTests
     [Fact]
     public void EnrollmentProofVectors_SignatureUnderTheHeaderKey_AndPresenceThumbprint()
     {
-        foreach (var v in Load("device-signed.json")["enrollment_proofs"]!.AsArray())
+        var file = Load("device-signed.json");
+        var now = (long)file["now"]!;
+        var nonce = (string)file["pairing_code"]!["nonce"]!;
+        foreach (var v in file["enrollment_proofs"]!.AsArray())
         {
             var name = (string)v!["name"]!;
             var parts = ((string)v["jws"]!).Split('.');
@@ -230,7 +247,9 @@ public class ConsentProtocolVectorTests
             var signatureValid = VerifyEs256(header["jwk"]!, Encoding.ASCII.GetBytes(parts[0] + "." + parts[1]), parts[2]);
             var presenceBound = (string)payload["presence_jwk_thumbprint"]! == Thumbprint(v["presence_public_key"]!);
             Assert.True(presenceBound, name + ": the proof names the presence key by thumbprint");
-            Assert.True((bool)v["expected"]!["accepted"]! == signatureValid, name + ": expected verdict");
+            // The server's nonce and a fresh `iat`, as the JavaScript verifier requires.
+            var verdict = signatureValid && (string)payload["nonce"]! == nonce && Math.Abs(now - (long)payload["iat"]!) <= 300;
+            Assert.True((bool)v["expected"]!["accepted"]! == verdict, name + ": expected verdict");
         }
     }
 }

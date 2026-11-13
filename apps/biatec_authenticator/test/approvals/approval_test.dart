@@ -113,10 +113,10 @@ class FakeOidc {
 
 typedef Response = http.Response;
 
-Map<String, Object?> firstVector() => vectors('receipts.json').first;
+Map<String, Object?> firstVector() => vectors('receipts-1.0.json').first;
 
 Map<String, Object?> vectorRequest(String name) =>
-    (vectors('receipts.json').firstWhere((v) => v['name'] == name)['request']
+    (vectors('receipts-1.0.json').firstWhere((v) => v['name'] == name)['request']
             as Map)
         .cast<String, Object?>();
 
@@ -180,7 +180,7 @@ void main() {
   });
 
   group('receipt', () {
-    for (final v in vectors('receipts.json')) {
+    for (final v in vectors('receipts-1.0.json')) {
       final signed =
           (((v['receipt'] as Map)['signed']) as Map).cast<String, Object?>();
       test('${v['name']}: rebuilds the signed bytes of the vector', () async {

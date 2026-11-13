@@ -21,7 +21,7 @@
         }
       ],
       "properties": {
-        "authorization_details": { "$ref": "authorization-details.schema.json" },
+        "authorization_details": { "$ref": "authorization-details.schema.json#/$defs/v1_1" },
         "auth_req_id": { "type": "string", "minLength": 16, "description": "Single-use nonce." },
         "client_fingerprint": { "$ref": "#/$defs/fingerprint", "description": "Fingerprint of the requesting client's client_id. Biatec OIDC vouches for no client: the receipt names the client by this value and the user decides on the phone." },
         "binding_code": { "type": "string", "pattern": "^([0-9]{6})?$", "description": "The code the user typed; the empty string for an explicit Deny before any code was typed." },
@@ -52,7 +52,7 @@
         }
       ],
       "properties": {
-        "authorization_details": { "$ref": "authorization-details.schema.json" },
+        "authorization_details": { "$ref": "authorization-details.schema.json#/$defs/v1_0" },
         "auth_req_id": { "type": "string", "minLength": 16, "description": "Single-use nonce." },
         "client_entity_id": { "type": "string", "minLength": 1 },
         "binding_code": { "type": "string", "pattern": "^([0-9]{6})?$", "description": "The code the user typed; the empty string for an explicit Deny before any code was typed." },
