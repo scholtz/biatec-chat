@@ -1,5 +1,6 @@
 import type { ActionPreview, ActionPreviewStatus, ConsentStatus } from "@biatec/chat-protocol";
-import { CLIENT_KEY_HEADER, CSRF_HEADER, type TransportConfig } from "../../transport/types";
+import { sessionCallHeaders, type TransportConfig } from "../../transport/types";
+import { isConsentStatus } from "../../transport/sse";
 import { DECIMAL_AMOUNT, str } from "./guards";
 
 /** A preview card in the conversation: the latest `preview_card` for its id plus the widget's own state. */
@@ -24,10 +25,12 @@ export const PENDING_STATUSES: ActionPreviewStatus[] = ["AwaitingConfirmation", 
 /** Receipt statuses: the action was handed to the network. */
 export const RECEIPT_STATUSES: ActionPreviewStatus[] = ["Submitted", "Completed"];
 
+/** The step statuses in which the user still has to act (confirm, authorize, approve on the phone). */
+export const OPEN_STEP_STATUSES: ActionPreviewStatus[] = ["AwaitingConfirmation", "AwaitingScope", "AwaitingApproval"];
+
 /** The group hash the user is deciding on: the first step still waiting for them, else the first step. */
 export function decisionHash(p: ActionPreview): string {
-  const open: ActionPreviewStatus[] = ["AwaitingConfirmation", "AwaitingScope", "AwaitingApproval"];
-  return (p.steps.find((s) => open.includes(s.status)) ?? p.steps[0])?.groupHash ?? "";
+  return (p.steps.find((s) => OPEN_STEP_STATUSES.includes(s.status)) ?? p.steps[0])?.groupHash ?? "";
 }
 
 /**
@@ -40,7 +43,7 @@ export function previewValueEur(p: ActionPreview): string | null {
   let any = false;
   for (const s of p.steps) {
     // Only the steps still to be approved count: signed ones are done, cancelled, expired and failed ones will not be signed.
-    if (!["AwaitingConfirmation", "AwaitingScope", "AwaitingApproval"].includes(s.status)) continue;
+    if (!OPEN_STEP_STATUSES.includes(s.status)) continue;
     const a = s.assets?.[0];
     // A step that states nothing it spends has an unknown value, not a zero one.
     if (!a) return null;
@@ -77,7 +80,7 @@ export function toConfirmResult(j: Record<string, unknown> | null, httpStatus: n
     status,
     message: str(j?.message),
     txIds: Array.isArray(j?.txIds) ? (j.txIds as unknown[]).filter((x): x is string => typeof x === "string") : [],
-    consent: j?.consent && typeof j.consent === "object" ? (j.consent as ConsentStatus) : null,
+    consent: isConsentStatus(j?.consent) ? (j!.consent as ConsentStatus) : null,
     reauthorizeScope: str(j?.reauthorizeScope) || null,
     errorCode: str(j?.errorCode) || null,
     raw: j,
@@ -104,7 +107,7 @@ export class PreviewClient implements PreviewApi {
     const res = await this.f(this.cfg.backendUrl + PREVIEW_PATHS.confirm(previewId), {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json", [CSRF_HEADER]: "1", [CLIENT_KEY_HEADER]: this.cfg.clientKey },
+      headers: { "Content-Type": "application/json", ...sessionCallHeaders(this.cfg) },
       body: JSON.stringify({ groupHash }),
     });
     const j = (await res.json().catch(() => null)) as Record<string, unknown> | null;

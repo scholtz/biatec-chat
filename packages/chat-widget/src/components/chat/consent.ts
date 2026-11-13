@@ -1,6 +1,6 @@
 import type { ConsentStatus } from "@biatec/chat-protocol";
 import { isConsentStatus, readNamedEvents } from "../../transport/sse";
-import { CLIENT_KEY_HEADER, CSRF_HEADER, TransportError, type TransportConfig } from "../../transport/types";
+import { TransportError, sessionCallHeaders, type TransportConfig } from "../../transport/types";
 import { DECIMAL_AMOUNT, isObj, str } from "./guards";
 import { toConfirmResult, type ConfirmResult } from "./previews";
 
@@ -42,7 +42,7 @@ export class ConsentClient implements ConsentApi {
   }
 
   private headers(): Record<string, string> {
-    return { "Content-Type": "application/json", [CSRF_HEADER]: "1", [CLIENT_KEY_HEADER]: this.cfg.clientKey };
+    return { "Content-Type": "application/json", ...sessionCallHeaders(this.cfg) };
   }
 
   async poll(previewId: string, signal?: AbortSignal): Promise<ConsentPoll> {
@@ -80,7 +80,7 @@ export class ConsentClient implements ConsentApi {
       const res = await this.f(this.cfg.backendUrl + CONSENT_PATHS.prediction(previewId) + query, {
         method: "GET",
         credentials: "include",
-        headers: { [CSRF_HEADER]: "1", [CLIENT_KEY_HEADER]: this.cfg.clientKey },
+        headers: sessionCallHeaders(this.cfg),
         signal,
       });
       if (!res.ok) return null;

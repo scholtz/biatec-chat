@@ -407,6 +407,25 @@ describe("following a phone approval", () => {
     expect(consent.poll.mock.calls.length).toBeGreaterThan(polls);
   });
 
+  it("a card whose consent already ended (the status came first) closes at once instead of waiting forever", async () => {
+    const consent = fakeConsent();
+    const m = await mountChat(consent, [
+      { type: "consent_status", consent: { previewId: "p1", stepId: "s1", state: "Denied", bindingCode: CODE } },
+      { type: "preview_card", preview: preview("AwaitingApproval") },
+    ]);
+    wrapper = m.wrapper;
+    expect(m.entry().preview.status).toBe("Cancelled");
+    expect(m.entry().consent!.bindingCode).toBeNull();
+    expect(consent.poll).not.toHaveBeenCalled();
+    expect(consent.stream).not.toHaveBeenCalled();
+  });
+
+  it("a confirm result's consent object is validated like the stream's", () => {
+    expect(toConfirmResult({ status: "consent_pending", consent: {} }, 200).consent).toBeNull();
+    expect(toConfirmResult({ status: "consent_pending", consent: { previewId: "p", stepId: "s", state: "Bogus" } }, 200).consent).toBeNull();
+    expect(toConfirmResult({ status: "consent_pending", consent: { previewId: "p", stepId: "s", state: "Pending" } }, 200).consent).toMatchObject({ state: "Pending" });
+  });
+
   it("a new round announced without a consent to follow closes the card instead of leaving it waiting", async () => {
     const consent = fakeConsent({
       stream: vi.fn(async function* () {

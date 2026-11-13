@@ -4,7 +4,7 @@ import { t } from "../../i18n";
 import { SESSION_EXPIRED, TransportError, type TransportManager } from "../../transport";
 import type { AuthClient } from "./auth";
 import type { ConsentApi } from "./consent";
-import { PENDING_STATUSES, decisionHash, previewValueEur, type ConfirmResult, type PreviewApi, type PreviewEntry } from "./previews";
+import { OPEN_STEP_STATUSES, PENDING_STATUSES, decisionHash, previewValueEur, type ConfirmResult, type PreviewApi, type PreviewEntry } from "./previews";
 
 export interface ToolLine {
   id: string;
@@ -309,8 +309,12 @@ export function useChat(svc: ChatServices) {
     });
     orphanConsent.delete(preview.previewId);
     syncKeepalive(list[list.length - 1]!);
-    if (preview.status === "AwaitingApproval") followConsent(preview.previewId, true);
-    else if (preview.status === "AwaitingConfirmation") void loadPrediction(preview.previewId);
+    const fresh = list[list.length - 1]!;
+    if (preview.status === "AwaitingApproval") {
+      // The consent's end arrived before its card (parked in orphanConsent): the card closes now, nothing is left to follow.
+      if (fresh.consent && (fresh.consent.state === "Denied" || fresh.consent.state === "TimedOut")) finishConsent(fresh, fresh.consent, null);
+      else followConsent(preview.previewId, true);
+    } else if (preview.status === "AwaitingConfirmation") void loadPrediction(preview.previewId);
   }
 
   function isPending(e: PreviewEntry): boolean {
@@ -326,7 +330,7 @@ export function useChat(svc: ChatServices) {
     } else if (held.delete(reason)) svc.keepalive?.release(reason);
   }
 
-  const OPEN_STEP: ActionPreview["status"][] = ["AwaitingConfirmation", "AwaitingScope", "AwaitingApproval"];
+  const OPEN_STEP = OPEN_STEP_STATUSES;
 
   /**
    * Cancel closes only the steps still open; steps that already landed or were submitted keep their status. The
