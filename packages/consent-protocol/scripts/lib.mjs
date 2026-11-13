@@ -189,12 +189,16 @@ const SIGNED_WINDOW_SECONDS = 300;
 export function isDisplaySafe(text, max = 40) {
   if (typeof text !== "string" || text.length === 0 || !text.isWellFormed() || text !== text.normalize("NFC")) return false;
   if ([...text].length > max || text.trim() !== text || text.trim() === "") return false; // no padding, not blank
-  return !/[\u00AD\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180E\u2061-\u2064\u3164\uFE00-\uFE0F\uFFA0\uFFF9-\uFFFB]|[\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]/u.test(text) && !/[\u0000-\u001F\u007F-\u009F\u2028\u2029\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\u061C\uFEFF]/.test(text);
+  return !/[\u00AD\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180E\u2061-\u2065\u206A-\u206F\u2800\u3164\uFE00-\uFE0F\uFFA0\uFFF9-\uFFFC]|[\u{1D173}-\u{1D17A}\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]/u.test(text) && !/[\u0000-\u001F\u007F-\u009F\u2028\u2029\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\u061C\uFEFF]/.test(text);
 }
 
 const MEMBERS = new Set(["always_ask", "per_client_threshold_eur", "label", "trusted_applications_add", "trusted_applications_remove", "paused", "origin", "unlink"]);
 
 const AMOUNT = /^(0|[1-9][0-9]{0,14})(\.[0-9]{1,2})?$/;
+/** A canonical origin: scheme, lower-case host of well-formed labels, optional port 1-65535 that is not the scheme's default. */
+const ORIGIN = /^(?!https:\/\/[^/]*:443$)(?!http:\/\/[^/]*:80$)https?:\/\/[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$/;
+const isApplicationList = (l) =>
+  Array.isArray(l) && l.length >= 1 && l.length <= 16 && l.every((a) => a && typeof a === "object" && (a.network === "algorand-mainnet" || a.network === "algorand-testnet") && Number.isSafeInteger(a.app_id) && a.app_id >= 0 && Object.keys(a).length === 2);
 const TOP = new Set(["threshold_eur", "block_unproven_clients", "biometric_required", "ask_on_test_networks", "clients"]);
 
 /**
@@ -214,6 +218,8 @@ function settingsChangeWellFormed(change) {
     if ("unlink" in c && Object.keys(c).length !== 1) return false;
     if ("paused" in c !== "origin" in c) return false;
     if ("paused" in c && typeof c.paused !== "boolean") return false;
+    if ("origin" in c && !(typeof c.origin === "string" && c.origin.length <= 253 && ORIGIN.test(c.origin))) return false;
+    for (const k of ["trusted_applications_add", "trusted_applications_remove"]) if (k in c && !isApplicationList(c[k])) return false;
     if ("always_ask" in c && typeof c.always_ask !== "boolean") return false;
     if ("unlink" in c && c.unlink !== true) return false;
     if ("per_client_threshold_eur" in c && c.per_client_threshold_eur !== null && !(typeof c.per_client_threshold_eur === "string" && AMOUNT.test(c.per_client_threshold_eur))) return false;
@@ -351,7 +357,8 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
     if (receipt.version === "1.1" && d?.type === "biatec_transaction" && (typeof d.origin !== "string" || d.origin !== request.origin || !Array.isArray(d.transfers))) return false;
     if (s.remember !== undefined) {
       // Each id MUST be an application of the request (section 8): the user can only trust what the card showed.
-      const shown = new Set((d?.applications ?? []).map((a) => a.id));
+      // Only applications the card offered to trust (the untrusted ones): an already trusted one has nothing to remember.
+      const shown = new Set((d?.applications ?? []).filter((a) => a.trusted === false).map((a) => a.id));
       const ids = s.remember.applications;
       if (!Array.isArray(ids) || ids.length === 0 || new Set(ids).size !== ids.length || !ids.every((id) => shown.has(id))) return false;
     }

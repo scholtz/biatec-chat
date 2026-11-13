@@ -450,7 +450,7 @@ test("a settings change without a subject, an approval for another new_kid and a
 test("a settings label is display-safe (NFC, no bidirectional or zero-width characters), and an unlink stands alone", () => {
   assert.equal(isDisplaySafe("My bank"), true);
   assert.equal(isDisplaySafe("Caf\u00e9"), true);
-  for (const bad of ["Bank\u202Eevil", "Bank\u200B", "Cafe\u0301", "two\nlines", "", "x".repeat(41), "tab\t", "\ufeffBank", "lone\ud800", "   ", "\u3164", " padded", "padded ", "soft\u00ADhyphen", "tag\u{E0041}", "vs\ufe0f", "invisible\u2063sep"]) assert.equal(isDisplaySafe(bad), false, JSON.stringify(bad));
+  for (const bad of ["Bank\u202Eevil", "Bank\u200B", "Cafe\u0301", "two\nlines", "", "x".repeat(41), "tab\t", "\ufeffBank", "lone\ud800", "   ", "\u3164", " padded", "padded ", "soft\u00ADhyphen", "tag\u{E0041}", "vs\ufe0f", "invisible\u2063sep", "braille\u2800", "format\u206F", "obj\ufffc", "music\u{1D173}"]) assert.equal(isDisplaySafe(bad), false, JSON.stringify(bad));
   const base = device.settings_changes.find((x) => x.expected.accepted);
   const resign = (change) => {
     const e = clone(base.envelope);
@@ -479,6 +479,13 @@ test("a settings label is display-safe (NFC, no bidirectional or zero-width char
   assert.equal(resign(c({ per_client_threshold_eur: null })), true);
   assert.equal(resign(c({ per_client_threshold_eur: "12" })), true);
   assert.equal(resign(c({ per_client_threshold_eur: 12 })), false);
+  assert.equal(resign(c({ paused: true, origin: "HTTPS://Evil.Example:443/" })), false, "a non-canonical origin");
+  assert.equal(resign(c({ paused: true, origin: {} })), false);
+  assert.equal(resign(c({ trusted_applications_add: "x" })), false, "an application list");
+  assert.equal(resign(c({ trusted_applications_add: [{ network: "algorand-mainnet", app_id: 1.5 }] })), false);
+  assert.equal(resign(c({ trusted_applications_remove: [{ network: "bitcoin-mainnet", app_id: 1 }] })), false);
+  assert.equal(resign(c({ trusted_applications_add: [{ network: "algorand-testnet", app_id: 7 }] })), true);
+  assert.equal(valid("settings-change-signed", { ...clone(device.settings_changes[0].envelope.signed), change: { clients: { x: { unlink: true, always_ask: false } } } }), false, "the schema also refuses a mixed unlink");
 });
 
 test("a settings change is refused for another account, and a receipt of a device known not to be active is not authorized", () => {
@@ -516,6 +523,15 @@ test("canonical origins only, the transaction invariants are in the schema, and 
   assert.equal(change({ paused: false }), false, "a pause needs its origin");
   assert.equal(change({ origin: "https://bank.example", always_ask: false }), false, "an origin without a pause");
   assert.equal(change({ paused: false, origin: "https://bank.example" }), true);
+});
+
+test("remember names only applications the card offered to trust (not already trusted ones)", () => {
+  const v = v11.find((x) => x.request.authorization_details[0].applications?.some((a) => a.trusted) && accepted(x) && x.receipt.signed.decision === "approve");
+  const o = { ...O, now: v.receipt.signed.expiry - 100 };
+  const forged = clone(v.receipt);
+  forged.signed.remember = { applications: [v.request.authorization_details[0].applications.find((a) => a.trusted).id] };
+  forged.signature = signEs256(keys.device, Buffer.from(jcs(forged.signed), "utf8"));
+  assert.equal(verifyApproval(forged, jwks, v.request, forged.signed.binding_code, new Set(), o), false);
 });
 
 test("remember: only on an approve of a 1.1 receipt, non-empty and without duplicates", () => {

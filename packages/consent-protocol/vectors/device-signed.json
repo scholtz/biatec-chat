@@ -29,7 +29,7 @@
           }
         },
         "alg": "ES256",
-        "signature": "3ohxM1J2IyIj0b65ejExuiC1gr6F4aQwvrQs6HKp6tKDJZ02euwkn1APzeMJDZ_7HcUMAKO3OM98V2zu7S03ng",
+        "signature": "GjbePMJEY2JvkE8De0tYrNdsfMJlaor29ipxJmPvO0MhWOsjGirJruLuNtIs-HYzUZoj3MsJaDuM1Ny5l-3FNg",
         "device": {
           "kid": "device-test-key-1",
           "key_use": "approve",
@@ -39,7 +39,7 @@
             "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
             "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
           },
-          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd19hOWUzYzA0MTdiNWQyZjg2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.R4sfe8QRr9g5bJEvPghYZJt-umeQ-2i5_Ijf_G5I0lP1GPjzASfO71GlEg2ZUWsAUNR8CrDB_mqO2RC5esiVsg"
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd19hOWUzYzA0MTdiNWQyZjg2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.4E2hrzaUkIc0Thkk-PC6buX4SWHZxRx8q2cNpi6Az41g6UDyWEVA6FvcNbvWP-hqwcY6Y2jYJ-llsO7Op-DhYQ"
         }
       },
       "canonical": "{\"change\":{\"clients\":{\"bank-example-client\":{\"trusted_applications_add\":[{\"app_id\":1234567,\"network\":\"algorand-mainnet\"}]}},\"threshold_eur\":\"5000\"},\"issued_at\":1792425630,\"kid\":\"device-test-key-1\",\"nonce\":\"n-7eb064c2a94489ba608c95cf3aaf54\",\"sub\":\"pw_a9e3c0417b5d2f86\",\"type\":\"biatec_settings_change\"}",
@@ -70,7 +70,7 @@
           }
         },
         "alg": "ES256",
-        "signature": "uxqakOD7CpXCTShnD-2KqK5WW2CuVeO3p31afurNPWIzmm0rMpMw8mfAarkcAyQlxyAwhq_kXapgDhyb-6jXTQ",
+        "signature": "1rMEZ87zOeGZVG03qCXM_2xdXomuWYVkhbAYWVLnVFyBpkuLY9YY5OuzRY4z0lJpiZo4w2z8SmY-Pk6ud8WNcA",
         "device": {
           "kid": "device-test-key-1",
           "key_use": "approve",
@@ -80,7 +80,7 @@
             "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
             "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
           },
-          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd19hOWUzYzA0MTdiNWQyZjg2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.1Gfb3GWHf6z3_W9yTBEaWdV4f73xXYulnoPSt4ZMaF7W_B46MAO_CYTjPCwIsCvqF0yAHBboyanw7r_tOWLgsQ"
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd19hOWUzYzA0MTdiNWQyZjg2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.7h7HsSylkTQZYH9m21Y08iBsv86s_nu298Ye5jS53lXIrZgaOS3Rf391UvrBNWNYqB-QPPlR_FcHNBl5qpmxvQ"
         }
       },
       "canonical": "{\"change\":{\"clients\":{\"bank-example-client\":{\"label\":\"My bank\",\"origin\":\"https://bank.example\",\"paused\":false,\"per_client_threshold_eur\":null}}},\"issued_at\":1792425630,\"kid\":\"device-test-key-1\",\"nonce\":\"n-164e313187cc3c6cc541136ddd889f\",\"sub\":\"pw_a9e3c0417b5d2f86\",\"type\":\"biatec_settings_change\"}",
@@ -104,7 +104,7 @@
           }
         },
         "alg": "ES256",
-        "signature": "XExCzk5UgmAlPh4CdiVViI0D4mASPlEzw_za2E8sfhGOlkLr6DXw5-8b3wy5ijU5fVtpTKDlMHL5SgzdpO2OTQ",
+        "signature": "WqvnVmd1uzn2Ua3BsCubRSdR-5ckK6iEElCi8fm6vyNoVeliczYWwfq_mxu12jNPFJbkW86sTeuJUSi2RUjLpQ",
         "device": {
           "kid": "presence-test-key-1",
           "key_use": "presence",
@@ -114,7 +114,7 @@
             "x": "nZQI_ShNEIOy_-Pb6TPa8LOaCyDengdDzBlg0cOhD7w",
             "y": "kTQ5sb0lNB760k-c7T8v3yVvGikDQpORyXnLjldhgCQ"
           },
-          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd19hOWUzYzA0MTdiNWQyZjg2IiwiZGV2aWNlX2tpZCI6InByZXNlbmNlLXRlc3Qta2V5LTEiLCJkZXZpY2VfandrX3RodW1icHJpbnQiOiIyZjB2dWwzdGJ5S0Y2S3R2V3VRYUVBWnVCano1aHUxeS15QUlEVWswNXpJIiwiYmlhdGVjX2tleV91c2UiOiJwcmVzZW5jZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.rq7HZtrHTWcTRwW8Gro328_yKHKGAadMouKDRtQ4kMG7Ak2JRvMNq-mdwPWIhwWOnsr4_BaEoZH2Ma_PhpSy_A"
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd19hOWUzYzA0MTdiNWQyZjg2IiwiZGV2aWNlX2tpZCI6InByZXNlbmNlLXRlc3Qta2V5LTEiLCJkZXZpY2VfandrX3RodW1icHJpbnQiOiIyZjB2dWwzdGJ5S0Y2S3R2V3VRYUVBWnVCano1aHUxeS15QUlEVWswNXpJIiwiYmlhdGVjX2tleV91c2UiOiJwcmVzZW5jZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.KfO1HX_p_s1hoFs7dN_uoE3uTalgCH0eDBYDRHTzyaj9HW8SgYntsjbAtDWrpHPqN2O5baz8nL2t9WMx4qo1yg"
         }
       },
       "canonical": "{\"change\":{\"block_unproven_clients\":false},\"issued_at\":1792425630,\"kid\":\"device-test-key-1\",\"nonce\":\"n-c5ff9a00bdf79f56816af0c9c494dc\",\"sub\":\"pw_a9e3c0417b5d2f86\",\"type\":\"biatec_settings_change\"}",
@@ -141,7 +141,7 @@
           "issued_at": 1792425640
         },
         "alg": "ES256",
-        "signature": "tai65Fv1qrmjsupsSvnuiu3KywwUVdwKyOUMmWCRrDlZhmKbVNc01ZbE5N8JsxEe7mKRm-3IEXu6h959uAzrKA",
+        "signature": "n1-IJny7d8cHSyDJYwo9SuV8FFNaOmOA-zZF24Mlu0TyLV7TvvOjjn1OkrbaAhYpns1lK7j0WzaU_8_nDBr8gA",
         "device": {
           "kid": "device-test-key-1",
           "key_use": "approve",
@@ -151,7 +151,7 @@
             "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
             "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
           },
-          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd19hOWUzYzA0MTdiNWQyZjg2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.Cig-iRxzukmCOCpVzc-yQeQX7XmC1YLjOLh9puoX1tzdTw51cn2IqZt4BHwfZCor3uS7BL18OCqyybkE1T7Ipg"
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd19hOWUzYzA0MTdiNWQyZjg2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.htI46ZaYUh9H1S2m0re4OlNlWvpgPaZvREp83WNwwKCBvyfRYWeyS1oD79F0zqnk-vSZSb0uIM98kmWTmYmIzA"
         }
       },
       "canonical": "{\"approver_kid\":\"device-test-key-1\",\"issued_at\":1792425640,\"new_approval_jwk_thumbprint\":\"cpXj3K7c4_bBd9lXxKoO8aZPwTwuPMGzwnYgg3rG_jY\",\"new_kid\":\"new-approval-test-key-1\",\"new_presence_jwk_thumbprint\":\"hOlyodNi_jjK_piu5kSIQkvt2q5zwnCUtO8iVYQtwlw\",\"nonce\":\"enroll-nonce-53bcbb91525547bf679e9d4f\",\"pairing_code\":\"102716\",\"type\":\"biatec_device_approval\"}",
@@ -181,7 +181,7 @@
           "issued_at": 1792425640
         },
         "alg": "ES256",
-        "signature": "2vIXcbITPJ5xN4zN3Tc0XX6Z54IBIKBIL9JJj57--O7qSnZDMl3lXOUUQ6B2McmOdeg73sHglHi3-IjZxb6i_g",
+        "signature": "qETV3jP4SX87RBwrSAFzTlECM--9J48tzq0v3MmutG2ez9NW4nMlffUMfun-pH_B6e7WOSufSuNnFy3_15yC0w",
         "device": {
           "kid": "device-test-key-1",
           "key_use": "approve",
@@ -191,7 +191,7 @@
             "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
             "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
           },
-          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd19hOWUzYzA0MTdiNWQyZjg2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.9ZJEpZA-4jC-AmQ-6WNtufgptlZZT2HY2o8bh6vfmfuLc1lT9eMltWrohQfCOQAGilmhd8mzK_brDs_-yCebLw"
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd19hOWUzYzA0MTdiNWQyZjg2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.R00FjbkTzMuVVjCjlgaqHK9wdC4V7fWdqo-b_2bK_TqGbELLqSMYnZIXkGIRCYwF-sk_oaas-ETwJ5H4vNW1Dw"
         }
       },
       "canonical": "{\"approver_kid\":\"device-test-key-1\",\"issued_at\":1792425640,\"new_approval_jwk_thumbprint\":\"cpXj3K7c4_bBd9lXxKoO8aZPwTwuPMGzwnYgg3rG_jY\",\"new_kid\":\"new-approval-test-key-1\",\"new_presence_jwk_thumbprint\":\"hOlyodNi_jjK_piu5kSIQkvt2q5zwnCUtO8iVYQtwlw\",\"nonce\":\"enroll-nonce-53bcbb91525547bf679e9d4f\",\"pairing_code\":\"000000\",\"type\":\"biatec_device_approval\"}",
@@ -222,7 +222,7 @@
           "issued_at": 1792425640
         },
         "alg": "ES256",
-        "signature": "tG82oZsbC7x7sy2XFj7ZwrB8JUluMJV3MBH-FJ-clNlmw2VnN9wpqE39N4_cSZCQgU1dCfAR0f_VJacyOB3NYA",
+        "signature": "vzN5F8Nl31nLHXcferW6QBf_WZfXi4XjdPJinSh7zJweubdc-UoiAwt7pmpcyYtrrzk07wyCq7ig4S2CzOHuOw",
         "device": {
           "kid": "presence-test-key-1",
           "key_use": "presence",
@@ -232,7 +232,7 @@
             "x": "nZQI_ShNEIOy_-Pb6TPa8LOaCyDengdDzBlg0cOhD7w",
             "y": "kTQ5sb0lNB760k-c7T8v3yVvGikDQpORyXnLjldhgCQ"
           },
-          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd19hOWUzYzA0MTdiNWQyZjg2IiwiZGV2aWNlX2tpZCI6InByZXNlbmNlLXRlc3Qta2V5LTEiLCJkZXZpY2VfandrX3RodW1icHJpbnQiOiIyZjB2dWwzdGJ5S0Y2S3R2V3VRYUVBWnVCano1aHUxeS15QUlEVWswNXpJIiwiYmlhdGVjX2tleV91c2UiOiJwcmVzZW5jZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.qVoiZt-CDR6VIYvf56mUJl8ulcE2unFR3VeXClJ2KDsM5AHJDUFCto4Xj0sZZy_GRbaQtS-qoTohI9vZaKNqCQ"
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd19hOWUzYzA0MTdiNWQyZjg2IiwiZGV2aWNlX2tpZCI6InByZXNlbmNlLXRlc3Qta2V5LTEiLCJkZXZpY2VfandrX3RodW1icHJpbnQiOiIyZjB2dWwzdGJ5S0Y2S3R2V3VRYUVBWnVCano1aHUxeS15QUlEVWswNXpJIiwiYmlhdGVjX2tleV91c2UiOiJwcmVzZW5jZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.gXLn10zqjKNaiPRK3-oGO53KOsb6zOTZv2-TuQyCGiwsgmpT8FXFUwNJ515BlvUAAYCrOsc_hbhcxjHnMb0X4A"
         }
       },
       "canonical": "{\"approver_kid\":\"presence-test-key-1\",\"issued_at\":1792425640,\"new_approval_jwk_thumbprint\":\"cpXj3K7c4_bBd9lXxKoO8aZPwTwuPMGzwnYgg3rG_jY\",\"new_kid\":\"new-approval-test-key-1\",\"new_presence_jwk_thumbprint\":\"hOlyodNi_jjK_piu5kSIQkvt2q5zwnCUtO8iVYQtwlw\",\"nonce\":\"enroll-nonce-53bcbb91525547bf679e9d4f\",\"pairing_code\":\"102716\",\"type\":\"biatec_device_approval\"}",
@@ -262,7 +262,7 @@
     {
       "name": "enrollment-proof-valid",
       "description": "Signed by the new approval key; names the presence key by thumbprint and carries the server's nonce.",
-      "jws": "eyJhbGciOiJFUzI1NiIsInR5cCI6ImJpYXRlYy1kZXZpY2UtZW5yb2xsK2p3dCIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IndCcjZpR0NWRGpHcVJBRW51b1o3M2dPTDFoTWdaRDhtOEQ0RVVVVDgyNnMiLCJ5IjoiUlU2bG81VGlYU2M2T3lENnlaVmx3QTMxN0xnOThiQnpjSW1SWnZaZFF5OCJ9fQ.eyJraWQiOiJuZXctYXBwcm92YWwtdGVzdC1rZXktMSIsInByZXNlbmNlX2tpZCI6Im5ldy1wcmVzZW5jZS10ZXN0LWtleS0xIiwicHJlc2VuY2VfandrX3RodW1icHJpbnQiOiJoT2x5b2ROaV9qaktfcGl1NWtTSVFrdnQycTV6d25DVXRPOGlWWVF0d2x3Iiwibm9uY2UiOiJlbnJvbGwtbm9uY2UtNTNiY2JiOTE1MjU1NDdiZjY3OWU5ZDRmIiwiaWF0IjoxNzkyNDI1NjEwfQ.60QD28m0k4IA-ChkVVvejAT4CCqGkVFtBU_Gg51_s0UYGnTT6VNujkpXzxoZO_2jZh6Vh3YqV1BfJvD6Gb7org",
+      "jws": "eyJhbGciOiJFUzI1NiIsInR5cCI6ImJpYXRlYy1kZXZpY2UtZW5yb2xsK2p3dCIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IndCcjZpR0NWRGpHcVJBRW51b1o3M2dPTDFoTWdaRDhtOEQ0RVVVVDgyNnMiLCJ5IjoiUlU2bG81VGlYU2M2T3lENnlaVmx3QTMxN0xnOThiQnpjSW1SWnZaZFF5OCJ9fQ.eyJraWQiOiJuZXctYXBwcm92YWwtdGVzdC1rZXktMSIsInByZXNlbmNlX2tpZCI6Im5ldy1wcmVzZW5jZS10ZXN0LWtleS0xIiwicHJlc2VuY2VfandrX3RodW1icHJpbnQiOiJoT2x5b2ROaV9qaktfcGl1NWtTSVFrdnQycTV6d25DVXRPOGlWWVF0d2x3Iiwibm9uY2UiOiJlbnJvbGwtbm9uY2UtNTNiY2JiOTE1MjU1NDdiZjY3OWU5ZDRmIiwiaWF0IjoxNzkyNDI1NjEwfQ.-7XxU2qZqqjlwU2-QCN8FyLzWeg5X2HRxZ2xljyuHGvGXWli0xmNUm7WYpStPvNWiZ4gSH8-7ewrLXfSnhLsPw",
       "header": {
         "alg": "ES256",
         "typ": "biatec-device-enroll+jwt",
@@ -293,7 +293,7 @@
     {
       "name": "enrollment-proof-signed-by-presence-key-REFUSED",
       "description": "NEGATIVE: signed by the presence key although the header names the approval key: the signature does not verify under the header's jwk.",
-      "jws": "eyJhbGciOiJFUzI1NiIsInR5cCI6ImJpYXRlYy1kZXZpY2UtZW5yb2xsK2p3dCIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IndCcjZpR0NWRGpHcVJBRW51b1o3M2dPTDFoTWdaRDhtOEQ0RVVVVDgyNnMiLCJ5IjoiUlU2bG81VGlYU2M2T3lENnlaVmx3QTMxN0xnOThiQnpjSW1SWnZaZFF5OCJ9fQ.eyJraWQiOiJuZXctYXBwcm92YWwtdGVzdC1rZXktMSIsInByZXNlbmNlX2tpZCI6Im5ldy1wcmVzZW5jZS10ZXN0LWtleS0xIiwicHJlc2VuY2VfandrX3RodW1icHJpbnQiOiJoT2x5b2ROaV9qaktfcGl1NWtTSVFrdnQycTV6d25DVXRPOGlWWVF0d2x3Iiwibm9uY2UiOiJlbnJvbGwtbm9uY2UtNTNiY2JiOTE1MjU1NDdiZjY3OWU5ZDRmIiwiaWF0IjoxNzkyNDI1NjEwfQ.Qtls8iLolZmKmWjjIM1A4EvUOgKvf874MFjrkGbQ8AXn2N3TS7b4hpMro4gF84WIwlTaz33uQTwRGYakbWPriQ",
+      "jws": "eyJhbGciOiJFUzI1NiIsInR5cCI6ImJpYXRlYy1kZXZpY2UtZW5yb2xsK2p3dCIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IndCcjZpR0NWRGpHcVJBRW51b1o3M2dPTDFoTWdaRDhtOEQ0RVVVVDgyNnMiLCJ5IjoiUlU2bG81VGlYU2M2T3lENnlaVmx3QTMxN0xnOThiQnpjSW1SWnZaZFF5OCJ9fQ.eyJraWQiOiJuZXctYXBwcm92YWwtdGVzdC1rZXktMSIsInByZXNlbmNlX2tpZCI6Im5ldy1wcmVzZW5jZS10ZXN0LWtleS0xIiwicHJlc2VuY2VfandrX3RodW1icHJpbnQiOiJoT2x5b2ROaV9qaktfcGl1NWtTSVFrdnQycTV6d25DVXRPOGlWWVF0d2x3Iiwibm9uY2UiOiJlbnJvbGwtbm9uY2UtNTNiY2JiOTE1MjU1NDdiZjY3OWU5ZDRmIiwiaWF0IjoxNzkyNDI1NjEwfQ.3IbYnAChdlAzI1o1Ur_FzZ5t2S_Nf4nloB8z1CuFWa8NTVcX5Q_Pnfb_1uj6Q8NUNJlPrgu48C2-zTKEtDAzLg",
       "header": {
         "alg": "ES256",
         "typ": "biatec-device-enroll+jwt",
