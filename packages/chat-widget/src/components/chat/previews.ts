@@ -39,25 +39,19 @@ export function decisionHash(p: ActionPreview): string {
  * or a value in another currency, is not guessed at), and the backend then answers cautiously.
  */
 export function previewValueEur(p: ActionPreview): string | null {
-  // Exact: the value is a decimal string with at most 18 fractional digits, held as an integer of 10^-18.
-  const SCALE = 18;
-  let total = 0n;
-  let any = false;
   // Confirm acts on one step at a time: the first one still to be approved. Signed, cancelled, expired and failed steps are not it.
-  const s = p.steps.find((x) => OPEN_STEP_STATUSES.includes(x.status));
-  if (s) {
-    const a = s.assets?.[0];
-    // A step that states nothing it spends has an unknown value, not a zero one.
-    if (!a) return null;
-    if (a.fiatCurrency !== "EUR" || !a.fiatValue || !DECIMAL_AMOUNT.test(a.fiatValue)) return null;
-    const [whole = "0", fraction = ""] = a.fiatValue.split(".");
-    total += BigInt(whole) * 10n ** BigInt(SCALE) + BigInt(fraction.padEnd(SCALE, "0"));
-    any = true;
-  }
-  if (!any) return null;
-  // Rounded up to the cent, so a small non-zero amount is never sent as zero.
+  const step = p.steps.find((x) => OPEN_STEP_STATUSES.includes(x.status));
+  // assets[0] is the asset the step spends (the convention of the card's downside line). A step that states nothing it spends
+  // has an unknown value, not a zero one; so has one valued in another currency.
+  const spent = step?.assets?.[0];
+  if (!spent || spent.fiatCurrency !== "EUR" || !spent.fiatValue || !DECIMAL_AMOUNT.test(spent.fiatValue)) return null;
+  // Exact: at most 18 fractional digits, held as an integer of 10^-18, then rounded up to the cent so a small non-zero
+  // amount is never sent as zero.
+  const SCALE = 18;
+  const [whole = "0", fraction = ""] = spent.fiatValue.split(".");
+  const value = BigInt(whole) * 10n ** BigInt(SCALE) + BigInt(fraction.padEnd(SCALE, "0"));
   const cent = 10n ** BigInt(SCALE - 2);
-  const cents = (total + cent - 1n) / cent;
+  const cents = (value + cent - 1n) / cent;
   return `${cents / 100n}.${String(cents % 100n).padStart(2, "0")}`;
 }
 

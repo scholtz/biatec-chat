@@ -523,6 +523,21 @@ describe("following a phone approval", () => {
     expect(onCancelled).not.toHaveBeenCalled();
   });
 
+  it("a final status for another step does not close the step the card is waiting on", async () => {
+    const consent = fakeConsent();
+    const events: ChatEvent[] = [{ type: "preview_card", preview: preview() }];
+    const m = await mountChat(consent, events);
+    wrapper = m.wrapper;
+    await m.chat.confirmPreview("p1");
+    await settle();
+    events.length = 0;
+    events.push({ type: "consent_status", consent: { previewId: "p1", stepId: "other-step", state: "Denied" } });
+    await m.chat.send("replay");
+    await settle();
+    expect(m.entry().preview.status).toBe("AwaitingApproval");
+    expect(m.entry().consent!.state).toBe("Pending");
+  });
+
   it("a late answer about an earlier round (a poll) does not close the card of the newer round", async () => {
     const newer = iso(Date.now() + 300_000);
     const consent = fakeConsent({

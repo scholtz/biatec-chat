@@ -113,6 +113,8 @@ const codeText = (code: string | null | undefined): string | null => (code && Ob
 const consentEnded = (c: ConsentStatus | null | undefined): boolean => c?.state === "Denied" || c?.state === "TimedOut";
 /** A status of an earlier round of consent for the same step: its expiry is older than the round the card now shows. */
 const isEarlierRound = (incoming: ConsentStatus, current: ConsentStatus | null): boolean => {
+  // A final answer about another step while this one is still pending is not about the step the card waits on.
+  if (current?.state === "Pending" && incoming.state !== "Pending" && incoming.stepId !== current.stepId) return true;
   const a = incoming.expiresAt ? Date.parse(incoming.expiresAt) : Number.NaN;
   const b = current?.expiresAt ? Date.parse(current.expiresAt) : Number.NaN;
   return !Number.isNaN(a) && !Number.isNaN(b) && a < b;
@@ -311,7 +313,7 @@ export function useChat(svc: ChatServices) {
       } else {
         // The card moved on (settled, cancelled, expired, back to confirmable): nothing is left to follow.
         stopFollower(preview.previewId);
-        if (preview.status === "AwaitingConfirmation") {
+        if (preview.status === "AwaitingConfirmation" && svc.consent) {
           // Asked once, but again when the card comes back with another value (the old answer was for the old one).
           const s = stateOf(preview.previewId);
           if (s.predictionAsked && s.predictionValue !== previewValueEur(preview)) refreshPrediction(existing);
@@ -545,7 +547,7 @@ export function useChat(svc: ChatServices) {
   /** When the consent is given up: its own expiry (the preview's, if it has none) plus a short grace. */
   function consentDeadline(e: PreviewEntry): number {
     const end = Date.parse(e.consent?.expiresAt ?? e.preview.expiresAt);
-    const started = stateOf(e.preview.previewId).startedAt || Date.now();
+    const started = consentState.get(e.preview.previewId)?.startedAt || Date.now();
     return (Number.isNaN(end) ? started + 300_000 : end) + CONSENT_GRACE_MS;
   }
 
@@ -575,8 +577,9 @@ export function useChat(svc: ChatServices) {
   /** The card's line about phone approval, asked once when the card is first shown. A failure shows nothing. */
   async function loadPrediction(previewId: string): Promise<void> {
     const api = svc.consent;
+    if (!api || disposed) return;
     const s = stateOf(previewId);
-    if (!api || disposed || s.predictionAsked) return;
+    if (s.predictionAsked) return;
     s.predictionAsked = true;
     const seq = ++s.predictionSeq;
     const known = findPreview(previewId);
@@ -715,7 +718,7 @@ export function useChat(svc: ChatServices) {
         if (runningFollowers() === 0) watchVisibility(false);
         // A card that has left the consent states keeps no record: nothing more will be followed or predicted for it.
         const left = findPreview(previewId);
-        if (mine && !mine.follower && left && !["AwaitingApproval", "AwaitingConfirmation", "AwaitingScope"].includes(left.preview.status)) consentState.delete(previewId);
+        if (mine && !mine.follower && left && !OPEN_STEP_STATUSES.includes(left.preview.status)) consentState.delete(previewId);
         // The outcome was a new round of consent: follow that one too.
         const again = findPreview(previewId);
         if (!ctl.signal.aborted && !disposed && again && isWaitingForPhone(again)) followConsent(previewId, false, true);
@@ -788,8 +791,8 @@ export function useChat(svc: ChatServices) {
     };
 
     const timeOutIfWaiting = (entry: PreviewEntry): true => {
-      if (entry.consent?.state === "Approved") {
-        // Approved, but the outcome never reached this tab: do not claim a time-out that did not happen.
+      if (entry.consent?.state === "Approved" || entry.consent?.state === "NotRequired") {
+        // Approved (or never needed), but the outcome never reached this tab: do not claim a time-out that did not happen.
         abandonConsent(entry, "Failed");
       } else timeOut(entry);
       return true;
