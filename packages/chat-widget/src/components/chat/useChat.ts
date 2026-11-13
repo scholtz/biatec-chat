@@ -4,7 +4,7 @@ import { t } from "../../i18n";
 import { SESSION_EXPIRED, TransportError, type TransportManager } from "../../transport";
 import type { AuthClient } from "./auth";
 import type { ConsentApi } from "./consent";
-import { PENDING_STATUSES, decisionHash, type ConfirmResult, type PreviewApi, type PreviewEntry } from "./previews";
+import { PENDING_STATUSES, decisionHash, previewValueEur, type ConfirmResult, type PreviewApi, type PreviewEntry } from "./previews";
 
 export interface ToolLine {
   id: string;
@@ -286,7 +286,7 @@ export function useChat(svc: ChatServices) {
       syncKeepalive(existing);
       // A card the backend says is awaiting the phone (a reload, a restored session): one poll, then the stream.
       if (preview.status === "AwaitingApproval") followConsent(preview.previewId, true);
-      else if (preview.status === "AwaitingConfirmation" && !existing.prediction) void loadPrediction(preview.previewId);
+      else if (preview.status === "AwaitingConfirmation") void loadPrediction(preview.previewId);
       return;
     }
     const list = (m.previews ??= []);
@@ -392,6 +392,8 @@ export function useChat(svc: ChatServices) {
         entry.consent = r.consent ? noCodeUnlessPending(r.consent) : entry.consent;
         entry.preview = { ...entry.preview, status: "AwaitingApproval" };
         svc.onConfirmed?.(previewId);
+        // From a confirm call this starts the follower. At the end of a consent the old follower is still registered, so this
+        // does nothing and the follower's own finish starts the next round (counted against the cap).
         followConsent(previewId);
         break;
       case "scope_required":
@@ -507,16 +509,18 @@ export function useChat(svc: ChatServices) {
     watchVisibility(false);
     lifetime.abort();
     lifetime = new AbortController();
+    predictionAsked.clear();
   }
 
   /** The card's line about phone approval, asked once when the card is first shown. A failure shows nothing. */
-  const predicting = new Set<string>();
+  const predictionAsked = new Set<string>();
   async function loadPrediction(previewId: string): Promise<void> {
     const api = svc.consent;
-    if (!api || disposed || predicting.has(previewId)) return;
-    predicting.add(previewId);
-    const text = await api.prediction(previewId, lifetime.signal).catch(() => null);
-    predicting.delete(previewId);
+    // Once per preview: a failing endpoint is not asked again for every re-sent card.
+    if (!api || disposed || predictionAsked.has(previewId)) return;
+    predictionAsked.add(previewId);
+    const known = findPreview(previewId);
+    const text = await api.prediction(previewId, lifetime.signal, known ? previewValueEur(known.preview) : null).catch(() => null);
     if (!text || disposed) return;
     const entry = findPreview(previewId);
     if (entry && entry.preview.status === "AwaitingConfirmation") entry.prediction = text;
@@ -751,19 +755,31 @@ export function useChat(svc: ChatServices) {
     /** A tab hidden for a while does not poll; the poll happens once it is visible again. */
     const visibleGate = async (): Promise<void> => {
       if (hiddenSince === null || Date.now() - hiddenSince <= HIDDEN_PAUSE_MS) return;
+      const entry = findPreview(previewId);
+      // Also wakes at the consent's deadline, so the time-out is shown even in a tab nobody is looking at.
+      const left = entry ? Math.min(Math.max(0, consentDeadline(entry) - Date.now()), 2_000_000_000) : 0;
       await new Promise<void>((resolve) => {
         const wake = () => {
+          clearTimeout(timer);
           visibleWaiters.delete(wake);
           signal.removeEventListener("abort", wake);
           resolve();
         };
+        const timer = setTimeout(wake, left);
         visibleWaiters.add(wake);
         signal.addEventListener("abort", wake, { once: true });
       });
     };
 
     if (pollFirst && (await pollStep())) return;
+    let firstStream = true;
     while (live()) {
+      // A retry of the stream makes the server poll for as long as it is open: not from a tab nobody is looking at.
+      if (!firstStream) {
+        await visibleGate();
+        if (!live()) return;
+      }
+      firstStream = false;
       if (await streamStep()) return;
       // The stream failed or ended early: single polls with backoff until it is time to try the stream again.
       const retryAt = Date.now() + STREAM_RETRY_MS;

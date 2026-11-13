@@ -4,7 +4,7 @@ import { mount, type VueWrapper } from "@vue/test-utils";
 import type { ActionPreview, ActionPreviewStatus, ChatEvent, ConsentStatus } from "@biatec/chat-protocol";
 import ActionPreviewCard from "../src/components/cards/ActionPreviewCard.vue";
 import { ConsentClient, type ConsentApi, type ConsentPoll, type ConsentStreamEvent } from "../src/components/chat/consent";
-import { toConfirmResult, type ConfirmResult } from "../src/components/chat/previews";
+import { previewValueEur, toConfirmResult, type ConfirmResult } from "../src/components/chat/previews";
 import { useChat, type ChatServices } from "../src/components/chat/useChat";
 import { SseParser, TransportError } from "../src/transport";
 
@@ -262,7 +262,7 @@ describe("following a phone approval", () => {
     const ok = fakeConsent({ prediction: vi.fn(async () => "Above your threshold: approval on your phone is needed") });
     const a = await mountChat(ok, [{ type: "preview_card", preview: preview() }]);
     expect(ok.prediction).toHaveBeenCalledTimes(1);
-    // A card re-sent while still awaiting confirmation does not ask again once it has the text.
+    // A card re-sent while still awaiting confirmation is not asked about again.
     await a.chat.send("again");
     expect(ok.prediction).toHaveBeenCalledTimes(1);
     expect(a.entry().prediction).toBe("Above your threshold: approval on your phone is needed");
@@ -354,6 +354,19 @@ describe("following a phone approval", () => {
     expect(m.entry().preview.status).toBe("AwaitingScope");
     expect(open).toHaveBeenCalled();
     expect(m.chat.phase.value).toBe("blocked");
+  });
+
+  it("the prediction request carries the value when the card states it in EUR, and is asked only once even when it fails", async () => {
+    const eur = preview("AwaitingConfirmation", {
+      steps: [{ stepId: "s1", index: 0, title: "Swap", status: "AwaitingConfirmation", groupHash: "H", assets: [{ assetId: "1", symbol: "USDC", amount: "100", decimals: 6, fiatValue: "92.50", fiatCurrency: "EUR" }] }],
+    });
+    const consent = fakeConsent({ prediction: vi.fn(async () => null) });
+    const m = await mountChat(consent, [{ type: "preview_card", preview: eur }, { type: "preview_card", preview: eur }]);
+    wrapper = m.wrapper;
+    expect(consent.prediction).toHaveBeenCalledTimes(1);
+    expect(consent.prediction.mock.calls[0]![2]).toBe("92.50");
+    expect(previewValueEur(preview())).toBeNull(); // no fiat value
+    expect(previewValueEur({ ...eur, steps: [{ ...eur.steps[0]!, assets: [{ ...eur.steps[0]!.assets![0]!, fiatCurrency: "USD" }] }] })).toBeNull();
   });
 
   it("the card shows the prediction in place of the generic line, only while awaiting confirmation", () => {
@@ -503,10 +516,29 @@ describe("when the stream fails", () => {
     const whileHidden = consent.poll.mock.calls.length;
     await advance(120_000);
     expect(consent.poll.mock.calls.length).toBe(whileHidden); // nothing more once the pause began
+    expect(consent.stream.mock.calls.length).toBe(1); // no stream retry from a hidden tab either
     Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
     document.dispatchEvent(new Event("visibilitychange"));
     await settle();
     expect(consent.poll.mock.calls.length).toBe(whileHidden + 1);
+  });
+
+  it("a hidden tab still shows the time-out when the consent's deadline passes", async () => {
+    const expiresAt = iso(Date.now() + 100_000);
+    const consent = fakeConsent({
+      stream: vi.fn(async function* () {
+        throw new TransportError("down", 503);
+      }),
+      poll: vi.fn(async (): Promise<ConsentPoll> => ({ ok: true, consent: pending({ expiresAt }), result: null })),
+    });
+    const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);
+    wrapper = m.wrapper;
+    m.confirm.mockResolvedValueOnce(result("consent_pending", { consent: pending({ expiresAt }) }));
+    await m.chat.confirmPreview("p1");
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await advance(125_000); // past the expiry and the grace
+    expect(m.entry().preview.status).toBe("Expired");
   });
 });
 
@@ -744,6 +776,11 @@ describe("ConsentClient", () => {
     vi.useRealTimers();
     const text = new ConsentClient(cfg((async () => json({ text: "  Phone approval likely  " })) as unknown as typeof fetch));
     expect(await text.prediction("p1")).toBe("Phone approval likely");
+    const seen: string[] = [];
+    const withValue = new ConsentClient(cfg((async (u: string) => (seen.push(u), json({ text: "x" }))) as unknown as typeof fetch));
+    await withValue.prediction("p1", undefined, "92.50");
+    await withValue.prediction("p1", undefined, "9 2; drop");
+    expect(seen).toEqual(["https://api.test/chat/previews/p1/consent/prediction?valueEur=92.50", "https://api.test/chat/previews/p1/consent/prediction"]);
     const long = new ConsentClient(cfg((async () => json({ text: "x".repeat(5000) })) as unknown as typeof fetch));
     expect((await long.prediction("p1"))!.length).toBe(300);
     expect(await new ConsentClient(cfg((async () => json({}, 401)) as unknown as typeof fetch)).prediction("p1")).toBeNull();

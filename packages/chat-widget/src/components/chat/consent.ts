@@ -21,7 +21,7 @@ export interface ConsentApi {
   /** POST .../consent/stream: server-sent events until the consent ends. Throws TransportError for a non-2xx answer. */
   stream(previewId: string, signal?: AbortSignal): AsyncGenerator<ConsentStreamEvent>;
   /** GET .../consent/prediction: the card's line about phone approval, or null when there is none. Never rejects. */
-  prediction(previewId: string, signal?: AbortSignal): Promise<string | null>;
+  prediction(previewId: string, signal?: AbortSignal, valueEur?: string | null): Promise<string | null>;
 }
 
 export const CONSENT_PATHS = {
@@ -76,9 +76,10 @@ export class ConsentClient implements ConsentApi {
     }
   }
 
-  async prediction(previewId: string, signal?: AbortSignal): Promise<string | null> {
+  async prediction(previewId: string, signal?: AbortSignal, valueEur?: string | null): Promise<string | null> {
     try {
-      const res = await this.f(this.cfg.backendUrl + CONSENT_PATHS.prediction(previewId), {
+      const query = valueEur && /^\d{1,15}(?:\.\d{1,18})?$/.test(valueEur) ? `?valueEur=${valueEur}` : "";
+      const res = await this.f(this.cfg.backendUrl + CONSENT_PATHS.prediction(previewId) + query, {
         method: "GET",
         credentials: "include",
         headers: { [CSRF_HEADER]: "1", [CLIENT_KEY_HEADER]: this.cfg.clientKey },
