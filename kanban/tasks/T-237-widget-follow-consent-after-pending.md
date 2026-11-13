@@ -1,7 +1,7 @@
 ---
 id: T-237
 title: "Widget: follow the phone approval after consent_pending (consent stream, result, resume after reload)"
-status: backlog
+status: in-progress
 priority: P0
 epic: "Consent & authenticator"
 blocked_by: []
@@ -9,12 +9,12 @@ area: ["packages/chat-widget/src/components/chat/**", "packages/chat-widget/src/
 parallel: yes
 conflicts_with: []
 issue: "#397"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-237"
+owner: "session-20261113-1344"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#biatec-authenticator-and-the-biatec-consent-protocol"
 created: 2026-11-12
-updated: 2026-11-12
+updated: 2026-11-13
 ---
 
 # T-237 - Widget: follow the phone approval after consent_pending
@@ -81,3 +81,4 @@ Filled in when the task moves to review.
 ## Activity log
 
 - 2026-11-12 18:43 · scholtz · (new) → backlog · created from the consent architecture record (AlgorandGoogleDriveAccount issue 23)
+- 2026-11-13 13:44 · scholtz · backlog → in-progress · taken and claimed (session-20261113-1344), branch task/T-237
