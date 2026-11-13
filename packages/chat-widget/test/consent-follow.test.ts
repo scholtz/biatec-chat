@@ -408,6 +408,43 @@ describe("following a phone approval", () => {
     expect(consent.poll.mock.calls.length).toBeGreaterThan(polls);
   });
 
+  it("an error in our own handling of a stream event is not treated as a broken stream: no second stream, the card is closed", async () => {
+    const consent = fakeConsent({
+      stream: vi.fn(async function* () {
+        yield status(ended("Approved"));
+        yield done(result("submitted", { txIds: ["TX"] }));
+      }),
+    });
+    let calls = 0;
+    const onConfirmed = vi.fn();
+    const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }], {
+      onConfirmed,
+      onEvent: vi.fn(() => {
+        if (++calls > 1) throw new Error("subscriber broke"); // the first call is the earlier preview card
+      }),
+    });
+    wrapper = m.wrapper;
+    await m.chat.confirmPreview("p1");
+    await advance(60_000);
+    expect(consent.stream).toHaveBeenCalledTimes(1);
+    expect(consent.poll).not.toHaveBeenCalled();
+    expect(onConfirmed).toHaveBeenCalledTimes(2); // once at confirm, once for the submitted result: never applied twice
+    expect(m.entry().preview.status).not.toBe("AwaitingApproval");
+  });
+
+  it("a card that comes back from a refusal asks for a new prediction", async () => {
+    const consent = fakeConsent({ prediction: vi.fn(async () => "Text") });
+    const events: ChatEvent[] = [{ type: "preview_card", preview: preview() }];
+    const m = await mountChat(consent, events);
+    wrapper = m.wrapper;
+    expect(consent.prediction).toHaveBeenCalledTimes(1);
+    events.length = 0;
+    events.push({ type: "preview_card", preview: preview("AwaitingApproval") }, { type: "preview_card", preview: preview() });
+    await m.chat.send("again");
+    await settle();
+    expect(consent.prediction).toHaveBeenCalledTimes(2);
+  });
+
   it("a confirm answer that carries an already ended consent closes the card at once", async () => {
     const consent = fakeConsent();
     const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);

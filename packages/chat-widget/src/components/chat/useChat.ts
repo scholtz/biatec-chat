@@ -3,7 +3,7 @@ import type { ActionPreview, ChatEvent, ConsentStatus, DataCardEvent, SafeCard, 
 import { t } from "../../i18n";
 import { SESSION_EXPIRED, TransportError, type TransportManager } from "../../transport";
 import type { AuthClient } from "./auth";
-import type { ConsentApi } from "./consent";
+import type { ConsentApi, ConsentStreamEvent } from "./consent";
 import { OPEN_STEP_STATUSES, PENDING_STATUSES, decisionHash, previewValueEur, type ConfirmResult, type PreviewApi, type PreviewEntry } from "./previews";
 
 export interface ToolLine {
@@ -302,6 +302,7 @@ export function useChat(svc: ChatServices) {
   function applyPreview(m: ChatMessage, preview: ActionPreview): void {
     const existing = findPreview(preview.previewId);
     if (existing) {
+      const before = existing.preview.status;
       existing.preview = preview;
       if (preview.status !== "AwaitingConfirmation") existing.note = "";
       syncKeepalive(existing);
@@ -316,7 +317,8 @@ export function useChat(svc: ChatServices) {
         if (preview.status === "AwaitingConfirmation" && svc.consent) {
           // Asked once, but again when the card comes back with another value (the old answer was for the old one).
           const s = stateOf(preview.previewId);
-          if (s.predictionAsked && s.predictionValue !== previewValueEur(preview)) refreshPrediction(existing);
+          // Asked once, but again when the card comes back from another state (a refusal, a new step) or with another value.
+          if (s.predictionAsked && (before !== "AwaitingConfirmation" || s.predictionValue !== previewValueEur(preview))) refreshPrediction(existing);
           else void loadPrediction(preview.previewId);
         }
       }
@@ -821,21 +823,39 @@ export function useChat(svc: ChatServices) {
               step.abort();
             }, wait)
           : undefined;
-      let ended: ConsentStatus | null = null;
+      let ended = null as ConsentStatus | null; // (assigned in `handle`, which the compiler does not follow)
+      /** Applies one stream event: true when the follower is done, false to stop reading (an error event), null to read on. */
+      const handle = (ev: ConsentStreamEvent): boolean | null => {
+        if (!live()) return true;
+        const now = findPreview(previewId);
+        // The card moved on under this stream (another tab, the chat stream): a late event does not apply to it.
+        if (!now || now.preview.status !== "AwaitingApproval") return true;
+        if (ev.kind === "status") {
+          if (isEarlierRound(ev.consent, now.consent)) return null; // a late status of a round the card has already left
+          showConsent(now, ev.consent);
+          ended = ev.consent.state !== "Pending" && ev.consent.state !== "NotRequired" ? ev.consent : null;
+          return null;
+        }
+        if (ev.kind === "result") {
+          finishConsent(now, ended ?? now.consent ?? { previewId, stepId: "", state: "Approved" }, ev.result);
+          return true;
+        }
+        return false;
+      };
+      // A failure of our own code while applying an event is not a failure of the stream: it is kept apart and rethrown below,
+      // so the stream is not retried (which would apply the same event twice) and the card is closed by the follower's handler.
+      let ours: { error: unknown } | null = null;
       try {
         for await (const ev of api.stream(previewId, step.signal)) {
-          if (!live()) return true;
-          const now = findPreview(previewId);
-          // The card moved on under this stream (another tab, the chat stream): a late event does not apply to it.
-          if (!now || now.preview.status !== "AwaitingApproval") return true;
-          if (ev.kind === "status") {
-            if (isEarlierRound(ev.consent, now.consent)) continue; // a late status of a round the card has already left
-            showConsent(now, ev.consent);
-            ended = ev.consent.state !== "Pending" && ev.consent.state !== "NotRequired" ? ev.consent : null;
-          } else if (ev.kind === "result") {
-            finishConsent(now, ended ?? now.consent ?? { previewId, stepId: "", state: "Approved" }, ev.result);
-            return true;
-          } else break;
+          let verdict: boolean | null;
+          try {
+            verdict = handle(ev);
+          } catch (error) {
+            ours = { error };
+            break;
+          }
+          if (verdict === true) return true;
+          if (verdict === false) break;
         }
       } catch (err) {
         if (!live()) return true;
@@ -854,6 +874,7 @@ export function useChat(svc: ChatServices) {
         // Whichever way this attempt ended, its connection ends with it (a stream the server keeps open must not linger).
         step.abort();
       }
+      if (ours) throw ours.error;
       if (!live()) return true;
       const now = findPreview(previewId);
       if (!now) return true;
