@@ -212,7 +212,7 @@ const settings = [
     expected: { accepted: false, reason: "requires_approval_key" },
   },
 ];
-for (const s of settings) if (verifyDeviceSigned(s.envelope, jwks, OPTS) !== s.expected.accepted) throw new Error("self-check failed for " + s.name);
+for (const s of settings) if (verifyDeviceSigned(s.envelope, jwks, OPTS, { approverActive: true }) !== s.expected.accepted) throw new Error("self-check failed for " + s.name);
 
 const newApproval = pubJwk(keys.new_approval);
 const newPresence = pubJwk(keys.new_presence);

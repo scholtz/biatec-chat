@@ -370,6 +370,7 @@ test("backchannel request schema ties scope to the request kind and forbids clie
 
 // ---- device-signed statements: settings changes, device approvals, enrollment proofs, pairing code
 const DO = { now: device.now, issuer: device.issuer, usedNonces: new Set() };
+const ACTIVE = { approverActive: true };
 
 for (const s of device.settings_changes) {
   test(`device-signed ${s.name}: schema, canonical form and verdict`, () => {
@@ -377,7 +378,8 @@ for (const s of device.settings_changes) {
     assert.ok(valid("settings-change-signed", s.envelope.signed));
     assert.equal(jcs(s.envelope.signed), s.canonical);
     assert.equal(sha256Hex(s.canonical), s.canonical_sha256);
-    assert.equal(verifyDeviceSigned(s.envelope, jwks, DO), s.expected.accepted);
+    assert.equal(verifyDeviceSigned(s.envelope, jwks, DO, ACTIVE), s.expected.accepted);
+    assert.equal(verifyDeviceSigned(s.envelope, jwks, DO), false, "a settings change is refused unless the caller says the device is active");
   });
 }
 
@@ -418,14 +420,15 @@ test("a device-signed statement is refused when stale, replayed with other expec
   assert.equal(verifyDeviceSigned(s.envelope, jwks, { ...DO, usedNonces: new Set([s.envelope.signed.nonce]) }, { approval: s.expected_inputs, sub, approverActive: true }), false, "replayed approval");
   assert.equal(verifyDeviceSigned(s.envelope, jwks, { now: DO.now, issuer: DO.issuer }, { approval: s.expected_inputs, sub, approverActive: true }), false, "without the set of used nonces a replay cannot be told");
   const settingsVec = device.settings_changes.find((x) => x.expected.accepted);
-  assert.equal(verifyDeviceSigned(settingsVec.envelope, jwks, { ...DO, usedNonces: new Set([settingsVec.envelope.signed.nonce]) }), false, "replayed settings change");
+  assert.equal(verifyDeviceSigned(settingsVec.envelope, jwks, { ...DO, usedNonces: new Set([settingsVec.envelope.signed.nonce]) }, ACTIVE), false, "replayed settings change");
+  assert.equal(verifyDeviceSigned(settingsVec.envelope, jwks, DO, ACTIVE), true);
   const settings = device.settings_changes.find((x) => x.expected.accepted);
   const otherSub = clone(settings.envelope);
   otherSub.signed.sub = "pw_other";
-  assert.equal(verifyDeviceSigned(otherSub, jwks, DO), false);
+  assert.equal(verifyDeviceSigned(otherSub, jwks, DO, ACTIVE), false);
   const otherKid = clone(settings.envelope);
   otherKid.signed.kid = "someone-else";
-  assert.equal(verifyDeviceSigned(otherKid, jwks, DO), false, "the statement names the key that signs it");
+  assert.equal(verifyDeviceSigned(otherKid, jwks, DO, ACTIVE), false, "the statement names the key that signs it");
 });
 
 test("a settings change without a subject, an approval for another new_kid and a 1.1 receipt without device.key_use are refused", () => {
@@ -433,7 +436,7 @@ test("a settings change without a subject, an approval for another new_kid and a
   const noSub = clone(settings.envelope);
   delete noSub.signed.sub;
   noSub.signature = signEs256(keys.device, Buffer.from(jcs(noSub.signed), "utf8"));
-  assert.equal(verifyDeviceSigned(noSub, jwks, DO), false);
+  assert.equal(verifyDeviceSigned(noSub, jwks, DO, ACTIVE), false);
   const a = device.device_approvals.find((x) => x.expected.accepted);
   const ok = { approval: a.expected_inputs, sub: device.enrollment_sub, approverActive: true };
   assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { ...ok, approval: { ...a.expected_inputs, new_kid: "another-device" } }), false, "the kid being activated is the kid the approver signed");
@@ -441,6 +444,21 @@ test("a settings change without a subject, an approval for another new_kid and a
   const r = clone(v11[0].receipt);
   delete r.device.key_use;
   assert.equal(verifyReceipt(r, jwks, O), false, "1.1 names the key use");
+});
+
+test("remember: only on an approve of a 1.1 receipt, non-empty and without duplicates", () => {
+  const v = v11.find((x) => x.receipt.signed.remember);
+  const o = { ...O, now: v.receipt.signed.expiry - 100 };
+  const resign = (r, key = keys.device) => ((r.signature = signEs256(key, Buffer.from(jcs(r.signed), "utf8"))), r);
+  const dup = resign(clone(v.receipt));
+  dup.signed.remember = { applications: [v.receipt.signed.remember.applications[0], v.receipt.signed.remember.applications[0]] };
+  assert.equal(verifyApproval(resign(dup), jwks, v.request, dup.signed.binding_code, new Set(), o), false, "duplicates");
+  const empty = clone(v.receipt);
+  empty.signed.remember = { applications: [] };
+  assert.equal(verifyApproval(resign(empty), jwks, v.request, empty.signed.binding_code, new Set(), o), false, "empty");
+  const onDeny = clone(v11.find((x) => x.receipt.signed.decision === "deny").receipt);
+  onDeny.signed.remember = { applications: [1] };
+  assert.equal(verifyReceipt(resign(onDeny), jwks, O), false, "never on a denial");
 });
 
 test("a 1.1 transaction approval whose stored request carries no origin is refused", () => {
@@ -475,7 +493,7 @@ test("an enrollment proof whose approval and presence key are the same key is re
   const e = device.enrollment_proofs.find((x) => x.expected.accepted);
   const payload = { ...e.payload, presence_jwk_thumbprint: thumbprint(keys.new_approval), presence_kid: e.payload.kid };
   const jws = signCompactJws(keys.new_approval, e.header, payload);
-  assert.equal(verifyEnrollmentProof(jws, { approval_public_key: keys.new_approval, kid: e.payload.kid, presence_kid: e.payload.kid, nonce: payload.nonce, presence_public_key: keys.new_approval, now: payload.iat + 5 }), false);
+  assert.equal(verifyEnrollmentProof(jws, { approval_public_key: keys.new_approval, kid: e.payload.kid, presence_kid: e.payload.kid, usedNonces: new Set(), nonce: payload.nonce, presence_public_key: keys.new_approval, now: payload.iat + 5 }), false);
 });
 
 test("pairing code: first four bytes of SHA-256(approval thumbprint . presence thumbprint . nonce), big-endian, mod 10^6, six digits", () => {
@@ -502,18 +520,20 @@ for (const e of device.enrollment_proofs) {
     const parts = e.jws.split(".");
     assert.deepEqual(JSON.parse(Buffer.from(parts[0], "base64url").toString()), e.header);
     assert.deepEqual(JSON.parse(Buffer.from(parts[1], "base64url").toString()), e.payload);
-    assert.equal(verifyEnrollmentProof(e.jws, { approval_public_key: keys.new_approval, kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, nonce: e.payload.nonce, presence_public_key: e.presence_public_key, now: e.payload.iat + 5 }), e.expected.accepted);
+    assert.equal(verifyEnrollmentProof(e.jws, { approval_public_key: keys.new_approval, kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, usedNonces: new Set(), nonce: e.payload.nonce, presence_public_key: e.presence_public_key, now: e.payload.iat + 5 }), e.expected.accepted);
   });
 }
 
 test("an enrollment proof is refused for another nonce, another presence key or a stale iat", () => {
   const e = device.enrollment_proofs.find((x) => x.expected.accepted);
-  const ok = { approval_public_key: keys.new_approval, kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, nonce: e.payload.nonce, presence_public_key: e.presence_public_key, now: e.payload.iat + 5 };
+  const ok = { approval_public_key: keys.new_approval, kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, usedNonces: new Set(), nonce: e.payload.nonce, presence_public_key: e.presence_public_key, now: e.payload.iat + 5 };
   assert.equal(verifyEnrollmentProof(e.jws, ok), true);
   assert.equal(verifyEnrollmentProof(e.jws, { ...ok, approval_public_key: undefined }), false, "the approval key the server received is required");
   assert.equal(verifyEnrollmentProof(e.jws, { ...ok, approval_public_key: keys.new_presence }), false, "the proof must be signed by the approval key that was sent");
   assert.equal(verifyEnrollmentProof(e.jws, { ...ok, kid: "another-kid" }), false);
   assert.equal(verifyEnrollmentProof(e.jws, { ...ok, kid: undefined }), false, "the key id is required");
+  assert.equal(verifyEnrollmentProof(e.jws, { ...ok, usedNonces: new Set([e.payload.nonce]) }), false, "a proof is single use");
+  assert.equal(verifyEnrollmentProof(e.jws, { ...ok, usedNonces: undefined }), false, "the set of consumed nonces is required");
   assert.equal(verifyEnrollmentProof(e.jws, { ...ok, presence_kid: "another-presence-kid" }), false);
   assert.equal(verifyEnrollmentProof(e.jws, { ...ok, presence_kid: undefined }), false, "the presence key id is required");
   assert.equal(verifyEnrollmentProof(e.jws, { ...ok, nonce: "x".repeat(24) }), false);

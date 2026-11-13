@@ -159,6 +159,8 @@ export function verifyReceipt(receipt, jwks, opts = {}) {
     // An approve needs an approval key. A device that is attested for a key use (every 1.1 device is) can never approve with another one,
     // whatever `version` the receipt wears; only a 1.0 device, whose attestation carries no key use, approves without one.
     if (receipt.signed.decision === "approve" && payload.biatec_key_use !== undefined && payload.biatec_key_use !== "approve") return false;
+    // `remember` trusts applications: only an approval of a 1.1 receipt may carry it, never a denial.
+    if (receipt.signed.remember !== undefined && (receipt.signed.decision !== "approve" || receipt.version !== "1.1")) return false;
     return true;
   } catch {
     return false;
@@ -183,9 +185,10 @@ const SIGNED_WINDOW_SECONDS = 300;
  * `biatec_key_use` = "approve", the signing key named inside the statement, and `issued_at` within 300 seconds of `opts.now`.
  * With `expect.approval` ({ new_kid, new_approval_jwk_thumbprint, new_presence_jwk_thumbprint, nonce }) a device approval must
  * name exactly that `new_kid`, those keys and that nonce and carry the pairing code derived from them. For a device approval both `expect.sub`
- * (the approver's attestation must be for that subject: the account of the device being enrolled), `expect.approval` and
- * `expect.approverActive === true` (the caller looked up that the approver is an active device) are REQUIRED; without them it
- * returns false, and an approver that is one of the keys being enrolled is refused. For every statement `opts.usedNonces`
+ * (the approver's attestation must be for that subject: the account of the device being enrolled) and `expect.approval` are REQUIRED.
+ * For every statement `expect.approverActive === true` (the caller looked up that the signing device is ACTIVE: a pending
+ * device cannot loosen settings or approve another device) is REQUIRED; without it the function returns false, and an approver that is
+ * one of the keys being enrolled is refused. For every statement `opts.usedNonces`
  * (a Set of nonces already accepted from this device) is REQUIRED and must not hold the statement's nonce: a statement is single
  * use and this function only reads the set. Never throws.
  */
@@ -211,7 +214,8 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
     // A device approval carries no subject and names no enrollment on its own: the verifier MUST say whose approval it accepts, for
     // which keys and nonce, and that the approver is an ACTIVE device (the caller looked that up; an inactive device, including the
     // one being enrolled, cannot approve). Without all of it the verifier fails closed.
-    if (approval && (typeof expect.sub !== "string" || !expect.approval || expect.approverActive !== true)) return false;
+    if (expect.approverActive !== true) return false; // a pending device (the first 24 hours, or one just enrolled by an attacker) cannot loosen anything
+    if (approval && (typeof expect.sub !== "string" || !expect.approval)) return false;
     if (approval) {
       // A device never approves itself: the approver is not one of the keys being enrolled.
       const self = thumbprint(envelope.device.public_key);
@@ -229,13 +233,15 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
 
 /**
  * Verifies an enrollment proof JWS (spec section 8.3): typ, ES256 under the header's own `jwk`, which MUST be the approval key
- * the request carries (`expect.approval_public_key`, with `expect.kid` and `expect.presence_kid`, all required), `presence_jwk_thumbprint`
+ * the request carries (`expect.approval_public_key`, with `expect.kid`, `expect.presence_kid` and `expect.usedNonces`, all required), `presence_jwk_thumbprint`
  * equals the thumbprint of `expect.presence_public_key`, `nonce` equals `expect.nonce`, and `iat` is within 300 seconds of
  * `expect.now`. Never throws.
  */
 export function verifyEnrollmentProof(jws, expect = {}) {
   // The approval key the server received and the key that signed the proof must be the same: it is the proof of possession.
   if (!expect.approval_public_key) return false;
+  // A proof is single use: the caller's set of enrollment nonces already consumed (the server consumes the nonce of its challenge once).
+  if (!(expect.usedNonces instanceof Set)) return false;
   try {
     const now = expect.now ?? nowSeconds();
     const parts = jws.split(".");
@@ -250,7 +256,7 @@ export function verifyEnrollmentProof(jws, expect = {}) {
     // The key ids the device is registered under are the ones the proof names (the caller says which: both are required).
     if (typeof expect.kid !== "string" || expect.kid === "" || payload.kid !== expect.kid) return false;
     if (typeof expect.presence_kid !== "string" || expect.presence_kid === "" || payload.presence_kid !== expect.presence_kid) return false;
-    if (typeof expect.nonce !== "string" || payload.nonce !== expect.nonce) return false;
+    if (typeof expect.nonce !== "string" || payload.nonce !== expect.nonce || expect.usedNonces.has(payload.nonce)) return false;
     if (!expect.presence_public_key || payload.presence_jwk_thumbprint !== thumbprint(expect.presence_public_key)) return false;
     return Number.isInteger(payload.iat) && Math.abs(now - payload.iat) <= SIGNED_WINDOW_SECONDS;
   } catch {
@@ -293,7 +299,8 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
     if (s.remember !== undefined) {
       // Each id MUST be an application of the request (section 8): the user can only trust what the card showed.
       const shown = new Set((d?.applications ?? []).map((a) => a.id));
-      if (!Array.isArray(s.remember.applications) || !s.remember.applications.every((id) => shown.has(id))) return false;
+      const ids = s.remember.applications;
+      if (!Array.isArray(ids) || ids.length === 0 || new Set(ids).size !== ids.length || !ids.every((id) => shown.has(id))) return false;
     }
     return !consumed.has(s.auth_req_id);
   } catch {

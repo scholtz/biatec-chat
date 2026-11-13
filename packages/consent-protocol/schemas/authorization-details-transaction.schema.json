@@ -54,7 +54,7 @@
         },
         "value_known": { "type": "boolean", "description": "False when any part of the value could not be priced or an application is not trusted: the card then says \"Value unknown\"." },
         "fiat_value": { "$ref": "#/$defs/fiatValue", "description": "The group total. Present exactly when value_known is true." },
-        "origin": { "$ref": "#/$defs/origin", "description": "The site the request came from, as the client reported it. Part of the signed object, so a receipt proves which site asked." }
+        "origin": { "$ref": "#/$defs/origin", "description": "The site the request came from, as the client reported it. Part of the signed object, so a receipt proves which origin the user saw; it does not say the client is who it claims to be (only a proven domain does)." }
       }
     },
     "v1_0": {

@@ -22,6 +22,7 @@ CONSENT-15); biatec-chat's T-240 brings this document row by row up to date.
 | Enrollment proof (`biatec-device-enroll+jwt`), pairing code, `POST /devices/{kid}/activate` with a signed `biatec_device_approval` | #31 | None: mock only (T-242); against real Biatec OIDC enrollment keeps the 24 hour delay |
 | Settings changes signed by the approval key (`biatec_settings_change`), threshold with no ceiling, trusted applications, `remember` on an approve receipt | #27, #30 | None: mock only (T-245); the chat backend keeps its own `GET /consent/settings` fallback |
 | Device channel (SignalR) instead of a third-party push; email through Azure Communication Services | #29, #37 | None: the app polls every 5 seconds while open; no email is sent |
+| Tenant fields `consentThresholdCeilingEur` and `TrustAnchorVerified` keep their names until T-240 renames them (they now mean the deployment's default consent threshold and "the domain proof was seen"; the admin API and the deploy workflow expose them) | none | Keep the names; the specification's wording wins |
 | Relying parties (self-registration, linking, payment and login requests) | #38 | None: mock only (T-246, T-247); disabled by configuration against real Biatec OIDC |
 
 Today Biatec OIDC provides: authorization code with PKCE, dynamic client registration (public clients only), resource indicators,
