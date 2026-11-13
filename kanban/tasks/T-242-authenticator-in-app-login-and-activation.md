@@ -14,7 +14,7 @@ owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-11-12
-updated: 2026-11-12
+updated: 2026-11-13
 ---
 
 # T-242 - Authenticator: in-app login for enrollment, and activation by an existing device (BCHAT-033)
@@ -35,7 +35,7 @@ A device is enrolled only by a person who just logged in inside the app, and bec
   - **Login.** Authorization code with PKCE through the system browser (`flutter_appauth`: Custom Tabs on Android, `ASWebAuthenticationSession` on iOS; never an embedded web view). Client `OIDC_CLIENT_ID` (dart-define), redirect by app link / universal link with a custom-scheme fallback only for debug builds, scope `openid enroll-device`, `prompt=login`, `max_age=0`. The access token is held in memory for the one `POST /devices/challenge` and `POST /devices` and then dropped; nothing from the login is stored. No refresh token is requested.
   - The paste field stays only when the app targets the mock in a debug build; it is not compiled into release builds (assert with a test on the release configuration flag).
   - **Server refusals.** `401` with `insufficient_user_authentication` and `max_age` → "Sign in again" and restart the login once.
-  - **Activation by an existing device.** The new device enrolls (inactive) and shows the 6 digit pairing code computed as T-239 defines. Each active device of the account gets the push `device_enrolled` (and sees pending devices in `GET /devices`): the Devices screen shows "Activate <name>?" with the pairing code the server data yields. The user compares the two phones; on confirm the existing device signs `biatec_device_approval` with its approval key (one biometric prompt) and calls `POST /devices/{new_kid}/activate`. The new device polls `GET /devices` (5 s, while the screen is open) and moves to active. Mismatch or doubt → "Cancel this device" (`POST /devices/{kid}/cancel`).
+  - **Activation by an existing device.** The new device enrolls (inactive) and shows the 6 digit pairing code computed as T-239 defines. Each active device of the account gets the `device_enrolled` event over the device channel (T-244; no Firebase) (and sees pending devices in `GET /devices`): the Devices screen shows "Activate <name>?" with the pairing code the server data yields. The user compares the two phones; on confirm the existing device signs `biatec_device_approval` with its approval key (one biometric prompt) and calls `POST /devices/{new_kid}/activate`. The new device polls `GET /devices` (5 s, while the screen is open) and moves to active. Mismatch or doubt → "Cancel this device" (`POST /devices/{kid}/cancel`).
   - **Activation by recovery code.** A field on the enrollment screen; the code goes in `POST /devices` as `activation: { kind: "recovery_code", code }`; wrong code and lockout (`429`) have their own texts.
   - **No activation** → the existing 24 hour waiting state, with the text that an email with a cancel link was sent to the account's address.
   - **Mock.** `enroll-device` scope and `auth_time` check on `POST /devices` (seed login tokens gain both; `login-alice-stale` for the refusal), `POST /devices/{kid}/activate` verifying the signed approval with the approval key and the pairing code, recovery-code activation, `approved_by_kid` removed (`400`), a `device_enrolled` entry in the push outbox, and a minimal authorize/token pair for the PKCE flow so the app's flow can be tested against it.
@@ -75,3 +75,4 @@ Filled in when the task moves to review.
 
 - 2026-11-12 18:43 · scholtz · (new) → blocked · created from the consent architecture record (AlgorandGoogleDriveAccount issue 23)
 - 2026-11-12 18:43 · kanban-board · backlog → blocked · waiting on: T-241
+- 2026-11-13 09:05 · scholtz · blocked → blocked · wording: device channel instead of push (revision 2)

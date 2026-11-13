@@ -1,6 +1,6 @@
 ---
 id: T-239
-title: "Consent protocol 1.1: whole-group details, signed origin, two device keys, device-signed settings and device approval"
+title: "Consent protocol 1.1: whole-group details, signed origin, two device keys, device-signed settings and device approval, user-held trust"
 status: backlog
 priority: P0
 epic: "Consent & authenticator"
@@ -14,7 +14,7 @@ owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#biatec-authenticator-and-the-biatec-consent-protocol"
 created: 2026-11-12
-updated: 2026-11-12
+updated: 2026-11-13
 ---
 
 # T-239 - Consent protocol 1.1
@@ -31,6 +31,7 @@ Version 1.0 cannot say what the real server needs to say:
 4. One device key cannot be both biometric-bound (audit finding BCHAT-007) and usable for per-call proofs and Deny (decision D9).
 5. Settings loosening and approving a new device are signed by the device, with no schema or vector.
 6. The docs disagree on `group_hash` (`sha256:…` in `docs/required-changes-biatec-oidc.md`, the group id in the spec).
+7. Revision 2 of the architecture record (owner decisions of 2026-11-13): the operator vouches for no client and no application id, the user sets the threshold, and push is not Firebase. 1.0 has `verified`, an entity id and a display name on the client, and no way for the user to trust an application.
 
 No production receipt exists, so 1.1 is additive where it can be and replaces 1.0 as the only version implementations produce.
 
@@ -41,16 +42,19 @@ Spec, schemas, vectors and both reference verifiers describe protocol 1.1, and C
 ## Scope
 
 - In:
-  - **`biatec_transaction` (additive):** new optional members `transfers` (array, at most 16, each `{ receiver, asset, amount, fiat_value? }`, only what the sender sends out), `applications` (array, at most 16, each `{ id: integer, known: boolean }`), `value_known` (boolean), `origin` (absolute origin). `receiver`, `asset`, `amount` and `fiat_value` at the top level become optional. Rule in the spec (and an `anyOf` in the schema): a 1.1 producer always sends `transfers`, `applications`, `value_known` and `origin`; top-level `fiat_value` is the group total and is present exactly when `value_known` is true; the top-level single-transfer members are not produced any more. A renderer shows every transfer and every application, and "Value unknown" in the warning style when `value_known` is false.
+  - **`biatec_transaction` (additive):** new optional members `transfers` (array, at most 16, each `{ receiver, asset, amount, fiat_value? }`, only what the sender sends out), `applications` (array, at most 16, each `{ id: integer, trusted: boolean }`; `trusted` means the **user** trusted this application for this client on their phone (decision D16); there is no operator list), `value_known` (boolean), `origin` (absolute origin). `receiver`, `asset`, `amount` and `fiat_value` at the top level become optional. Rule in the spec (and an `anyOf` in the schema): a 1.1 producer always sends `transfers`, `applications`, `value_known` and `origin`; top-level `fiat_value` is the group total and is present exactly when `value_known` is true; the top-level single-transfer members are not produced any more. A renderer shows every transfer and every application, and "Value unknown" in the warning style when `value_known` is false.
   - **`group_hash`:** the Algorand group id recomputed from the handed transactions, base32 without padding, 52 characters; for one ungrouped transaction, its transaction id. State it in section 3.1.
   - **Subject:** section 8: `signed.sub` is the pairwise subject of the requesting client. The stored receipt's attestation is minted by Biatec OIDC for that subject at receipt time; the device presents its enrollment attestation and does not compare the request's `sub` with its own.
   - **Two keys (section 11.3 and 8.1):** approval key and presence key, each with a `kid` and an attestation carrying `biatec_key_use` (`approve` | `presence`). Verification step 3 gains: an `approve` receipt MUST carry an attestation with `biatec_key_use: "approve"`; `deny` and `code_failed` accept either. Device proofs are signed by the presence key.
   - **New signed objects** with schemas and vectors: `biatec_settings_change` (`{ type, sub, kid, nonce, issued_at, change }`, as in required-changes section 22), `biatec_device_approval` (`{ type, approver_kid, new_kid, new_approval_jwk_thumbprint, new_presence_jwk_thumbprint, pairing_code, nonce, issued_at }`), and the enrollment proof JWS `typ biatec-device-enroll+jwt` (`{ kid, presence_kid, presence_jwk_thumbprint, nonce, iat }`). Define the pairing code: the first 6 decimal digits of `SHA-256(new_approval_jwk_thumbprint | "." | new_presence_jwk_thumbprint | "." | nonce)` read as a big-endian number modulo 10^6, zero padded; give a worked example.
-  - **Unverified clients:** `client.fingerprint` format: 8 lowercase hex characters of SHA-256 of the `client_id`, shown `xxxx-xxxx`.
+  - **Client identity (decision D13, revision 2):** the request's `client` object is exactly `{ fingerprint, domain_proven, domain?, linked }`. `fingerprint`: 8 lowercase hex characters of SHA-256 of the `client_id`, shown `xxxx-xxxx`. `domain`: present only when `domain_proven` is true; the ASCII host the client proved by serving `/.well-known/biatec-client.json` with its `client_id`. `linked`: whether the user already linked this client. Remove `verified`, `entity_id`, the display name and the logo from `consent-request.schema.json`, from the signed object and from the spec text; the spec states that Biatec OIDC vouches for no client and that a renderer shows the domain or "Unproven application" with the fingerprint, never a name.
+  - **`remember` (decision D16):** the signed object of an `approve` receipt may carry `remember: { applications: [integer] }` (1 to 16 entries, each an application id of the request's `applications`). Verifiers refuse it on `deny` and `code_failed` and when an id is not in the request.
+  - **Settings change members:** `biatec_settings_change.change` allows exactly `threshold_eur` (decimal string, at most 2 decimals, 0 or more; the schema has no ceiling, the threshold is the user's), `block_unproven_clients`, `biometric_required`, `ask_on_test_networks`, and under `clients.{client_id}`: `always_ask`, `per_client_threshold_eur` (string or null), `label` (at most 40 characters), `trusted_applications_add` and `trusted_applications_remove` (`[ { network, app_id } ]`), `paused` with `origin`, `unlink`. This is the list of AlgorandGoogleDriveAccount issue 30.
+  - **Device channel (decision D12):** section on push: the server sends hints over its own SignalR hub (`consent_request`, `consent_closed`, `device_enrolled`, `settings_changed`, each with ids only); no Firebase. Shapes as AlgorandGoogleDriveAccount issue 29.
   - **Envelope `version`:** `"1.1"`.
-  - **Vectors:** regenerate `vectors/receipts.json` in the 1.1 shape (keep the six cases, add: a two-transfer group, a transfer plus a known application, a value-unknown group, a deny signed by the presence key, and one negative vector: an approval signed by the presence key that verifiers must refuse). Add `vectors/device-signed.json` for the three new signed objects. Extend `vectors/keys.json` with a presence key (test-only).
+  - **Vectors:** regenerate `vectors/receipts.json` in the 1.1 shape (keep the six cases, add: a two-transfer group, a transfer plus an application the user trusted, a transfer plus an untrusted application approved with `remember`, a value-unknown group, a deny signed by the presence key, and one negative vector: an approval signed by the presence key that verifiers must refuse). Add `vectors/device-signed.json` for the three new signed objects. Extend `vectors/keys.json` with a presence key (test-only).
   - **Reference verifiers:** `scripts/lib.mjs` (`verifyReceipt`, `verifyApproval`) and `backend/Biatec.Chat.Tests/Canonical/ConsentProtocolVectorTests.cs` enforce the key-use rule and pass every vector, including the negative one.
-  - **`PRODUCT-DESCRIPTION.md`:** amend rule 6 and rule 7 and the Secure Area text for the two keys and for activation by a device-signed approval with a pairing code (the mock's `approved_by_kid` is not a proof); it is the specification, so the change is stated there first.
+  - **`PRODUCT-DESCRIPTION.md`:** amend rule 6 and rule 7 and the Secure Area text for the two keys and for activation by a device-signed approval with a pairing code (the mock's `approved_by_kid` is not a proof); it is the specification, so the change is stated there first. Revision 2 amendments go into the same file in this task: (a) the threshold is the user's choice, 1000 EUR is the starting value and there is no deployment ceiling (the paragraph "The default policy is that any single action valued above 1000 EUR…", and "Tenant-level soft cap", whose floor becomes the default threshold); (b) no client is verified by a trust anchor or by the operator: the card shows the proven domain or the fingerprint, the 24 hour cooling-off applies to every newly registered client, the user links clients and trusts applications on the phone (rules 3 and 4, the tenant paragraph, the threat table rows that mention a trust anchor); (c) test networks have no operator price table and unknown application calls ask unless the user trusted the application (the Required Changes rows on valuation); (d) push is the SignalR device channel hosted by Biatec OIDC, not Firebase; (e) email notices go through Azure Communication Services.
 - Out: the mock, backend, widget and app (T-237, T-238, T-240, T-241, T-242).
 
 ## Parallel work
@@ -63,6 +67,8 @@ Parallel work possible: **yes**.
 - [ ] The existing mock and conformance tests still pass unchanged (the schema change is additive for what they emit): `pnpm --filter mock-oidc test`.
 - [ ] `dotnet test backend --filter ConsentProtocolVectorTests` passes.
 - [ ] The spec has a "Changes from 1.0" section listing each point above.
+- [ ] `git grep -n -i "verified\|entity_id\|firebase\|fcm" packages/consent-protocol/spec packages/consent-protocol/schemas` finds only the "Changes from 1.0" section.
+- [ ] `PRODUCT-DESCRIPTION.md` no longer says the threshold cannot be raised above a ceiling, and no longer makes any behaviour depend on a trust anchor.
 - [ ] No private key other than the test-only vector keys is added.
 
 ## Implementation notes
@@ -83,3 +89,4 @@ Filled in when the task moves to review.
 ## Activity log
 
 - 2026-11-12 18:43 · scholtz · (new) → backlog · created from the consent architecture record (AlgorandGoogleDriveAccount issue 23)
+- 2026-11-13 09:05 · scholtz · backlog → backlog · amended for revision 2 of the architecture record (user-held trust, user-set threshold, device channel instead of Firebase)

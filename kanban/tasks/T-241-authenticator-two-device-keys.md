@@ -4,7 +4,7 @@ title: "Authenticator: two device keys - approval key bound to biometrics in the
 status: blocked
 priority: P1
 epic: "Consent & authenticator"
-blocked_by: [T-239, T-240]
+blocked_by: [T-239, T-240, T-244]
 area: ["apps/biatec_authenticator/lib/keys/**", "apps/biatec_authenticator/lib/approvals/**", "apps/biatec_authenticator/lib/security/**", "apps/biatec_authenticator/lib/enrollment/**", "apps/biatec_authenticator/android/app/src/main/kotlin/**", "apps/biatec_authenticator/ios/Runner/**", "apps/biatec_authenticator/test/**", "apps/biatec_authenticator/README.md", "packages/consent-protocol/mock-oidc/**"]
 parallel: yes
 conflicts_with: []
@@ -14,7 +14,7 @@ owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#secure-area"
 created: 2026-11-12
-updated: 2026-11-12
+updated: 2026-11-13
 ---
 
 # T-241 - Authenticator: two device keys (BCHAT-007)
@@ -45,7 +45,7 @@ An approval can only be signed after the operating system itself verified a stro
 
 ## Parallel work
 
-Parallel work possible: **yes** (after its blockers; T-242 waits for this task).
+Parallel work possible: **yes** (after its blockers; T-244 changes the same Android and iOS projects first; T-242 waits for this task).
 
 ## Acceptance criteria
 
@@ -75,3 +75,4 @@ Filled in when the task moves to review.
 
 - 2026-11-12 18:43 · scholtz · (new) → blocked · created from the consent architecture record (AlgorandGoogleDriveAccount issue 23)
 - 2026-11-12 18:43 · kanban-board · backlog → blocked · waiting on: T-239, T-240
+- 2026-11-13 09:05 · scholtz · blocked → blocked · waits for T-244 too (both change the Android and iOS projects)
