@@ -353,6 +353,7 @@ describe("following a phone approval", () => {
     });
     const m = await mountChat(consent, [{ type: "preview_card", preview: twoSteps }]);
     wrapper = m.wrapper;
+    m.confirm.mockResolvedValueOnce(result("consent_pending", { consent: pending({ stepId: "s2" }) }));
     await m.chat.confirmPreview("p1");
     await settle();
     expect(m.entry().note).toContain("Steps that already completed stay completed");
@@ -405,6 +406,40 @@ describe("following a phone approval", () => {
     await m.chat.send("again");
     await settle();
     expect(consent.poll.mock.calls.length).toBeGreaterThan(polls);
+  });
+
+  it("a confirm answer that carries an already ended consent closes the card at once", async () => {
+    const consent = fakeConsent();
+    const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);
+    wrapper = m.wrapper;
+    m.confirm.mockResolvedValueOnce(result("consent_pending", { consent: { previewId: "p1", stepId: "s1", state: "Denied", bindingCode: CODE } }));
+    await m.chat.confirmPreview("p1");
+    await settle();
+    expect(m.entry().preview.status).toBe("Cancelled");
+    expect(m.entry().consent!.bindingCode).toBeNull();
+    expect(consent.stream).not.toHaveBeenCalled();
+  });
+
+  it("a named reason keeps its own wording after an earlier step landed", async () => {
+    const twoSteps = preview("AwaitingConfirmation", {
+      steps: [
+        { stepId: "s1", index: 0, title: "One", status: "Completed", groupHash: "H1", transactionId: "TX1" },
+        { stepId: "s2", index: 1, title: "Two", status: "AwaitingConfirmation", groupHash: "H2" },
+      ],
+    });
+    const consent = fakeConsent({
+      stream: vi.fn(async function* () {
+        yield status({ ...ended("Approved"), stepId: "s2" });
+        yield done(result("failed", { errorCode: "resume_failed" }));
+      }),
+    });
+    const m = await mountChat(consent, [{ type: "preview_card", preview: twoSteps }]);
+    wrapper = m.wrapper;
+    m.confirm.mockResolvedValueOnce(result("consent_pending", { consent: pending({ stepId: "s2" }) }));
+    await m.chat.confirmPreview("p1");
+    await settle();
+    expect(m.entry().note).toContain("could not be used");
+    expect(m.entry().note).not.toContain("was not approved");
   });
 
   it("a late status of an earlier round does not close the card that is in a newer round", async () => {
@@ -657,7 +692,8 @@ describe("following a phone approval", () => {
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "Completed", "100"), eurStep("b", "AwaitingConfirmation", "100")] })).toBe("100.00");
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0.004")] })).toBe("0.01");
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0.000000001")] })).toBe("0.01");
-    expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0")] })).toBe("0.00");
+    expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0")] })).toBeNull(); // a zero price is an unknown one
+    expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0.00")] })).toBeNull();
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "1.000000001")] })).toBe("1.01"); // just over a cent boundary rounds up
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0.3")] })).toBe("0.30"); // no float drift
     // Confirm acts on one step: the first open one, not the sum of the rest.

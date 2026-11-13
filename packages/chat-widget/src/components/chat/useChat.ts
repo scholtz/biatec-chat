@@ -403,6 +403,8 @@ export function useChat(svc: ChatServices) {
       svc.onConfirmResponse?.(r.raw);
       resetRounds(previewId);
       elevate = settleResult(entry, previewId, hash, r, retried);
+      // consent_pending with a consent that has already ended: there is nothing to follow, the card closes now.
+      if (entry.preview.status === "AwaitingApproval" && entry.consent && consentEnded(entry.consent)) finishConsent(entry, entry.consent, null);
     } finally {
       entry.submitting = false;
       syncKeepalive(entry);
@@ -600,17 +602,27 @@ export function useChat(svc: ChatServices) {
   }
 
   /** Everything that follows a consent that ended without a signature: the card stops waiting and says why. */
-  function closeWithoutSignature(entry: PreviewEntry, to: "Cancelled" | "Expired" | "Failed", note: string, outcomeUnknown = false): void {
-    // A multi-step action whose earlier steps already landed must not be told "nothing was signed" (when the step is known
-    // not to have been signed) - but an unknown outcome keeps its own wording, which makes no claim either way.
+  function closeWithoutSignature(entry: PreviewEntry, to: "Cancelled" | "Expired" | "Failed", note: string, keepNote = false): void {
+    // A multi-step action whose earlier steps already landed must not be told "nothing was signed". The plain "not approved"
+    // case says so for the step; a note that names its own reason or makes no claim (`keepNote`) is kept as it is.
     const earlierSigned = entry.preview.steps.some((s) => s.status === "Completed" || s.status === "Submitted");
     cancelOpenSteps(entry, to);
-    entry.note = earlierSigned && !outcomeUnknown ? t("consent.partial") : note;
+    entry.note = earlierSigned && !keepNote ? t("consent.partial") : note;
     syncKeepalive(entry);
     // Denied on the phone is the user's own action: Activity records it as theirs, before the card's change is logged.
     if (to === "Cancelled" && !earlierSigned) svc.onCancelled?.(entry.preview.previewId);
     // With earlier steps signed the preview's status is theirs ("Completed"): that is not an event of this close.
     if (!earlierSigned) svc.onEvent?.({ type: "preview_card", preview: entry.preview });
+  }
+
+  /** The card goes back to where Confirm would leave it (a refusal that is not about the action, a lost sign-in). */
+  function returnToConfirmable(entry: PreviewEntry, note?: string): void {
+    entry.consent = null;
+    entry.preview = { ...entry.preview, status: "AwaitingConfirmation" };
+    if (note !== undefined) entry.note = note;
+    refreshPrediction(entry);
+    syncKeepalive(entry);
+    svc.onEvent?.({ type: "preview_card", preview: entry.preview });
   }
 
   /** The consent can no longer be followed and what became of it is not known: the card stops waiting and makes no claim about signing. */
@@ -638,19 +650,16 @@ export function useChat(svc: ChatServices) {
       if (entry.preview.status !== "AwaitingApproval") return;
       // Not a failure of the action: sign-in lost, or the agent paused. The card goes back to where Confirm would leave it.
       if (RECOVERABLE.includes(result.status)) {
-        entry.consent = null;
-        entry.preview = { ...entry.preview, status: "AwaitingConfirmation" };
-        refreshPrediction(entry);
-        syncKeepalive(entry);
-        svc.onEvent?.({ type: "preview_card", preview: entry.preview });
+        returnToConfirmable(entry);
         return;
       }
     }
     // Nothing was signed: the card leaves the waiting state, with the reason.
     const known = codeText(result?.errorCode);
-    if (consent.state === "Denied") closeWithoutSignature(entry, "Cancelled", known ?? t("consent.denied"));
-    else if (consent.state === "TimedOut") closeWithoutSignature(entry, "Expired", known ?? t("consent.timedOut"));
-    else closeWithoutSignature(entry, "Failed", known ?? ((result ? entry.note || result.message : "") || t("chat.previewFailed")));
+    // A reason the backend named keeps its own wording, also when an earlier step landed (it says more than "not approved").
+    if (consent.state === "Denied") closeWithoutSignature(entry, "Cancelled", known ?? t("consent.denied"), known !== null);
+    else if (consent.state === "TimedOut") closeWithoutSignature(entry, "Expired", known ?? t("consent.timedOut"), known !== null);
+    else closeWithoutSignature(entry, "Failed", known ?? ((result ? entry.note || result.message : "") || t("chat.previewFailed")), true);
   }
 
   /** The consent ran out on this side (its expiry and the grace have passed with no answer). */
@@ -663,15 +672,10 @@ export function useChat(svc: ChatServices) {
 
   /** The backend says this consent cannot be followed (sign-in gone, preview or consent not there any more). */
   function lostConsent(entry: PreviewEntry, status: number): void {
-    entry.consent = null;
     if (status === 401) {
       // Same as a confirm that answers sign_in_required: the card goes back to where Confirm would leave it.
       entry.needsSignIn = true;
-      entry.preview = { ...entry.preview, status: "AwaitingConfirmation" };
-      entry.note = t("chat.previewSignInRequired");
-      refreshPrediction(entry);
-      syncKeepalive(entry);
-      svc.onEvent?.({ type: "preview_card", preview: entry.preview });
+      returnToConfirmable(entry, t("chat.previewSignInRequired"));
       return;
     }
     abandonConsent(entry);

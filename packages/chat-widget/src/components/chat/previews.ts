@@ -45,6 +45,8 @@ export function previewValueEur(p: ActionPreview): string | null {
   // has an unknown value, not a zero one; so has one valued in another currency.
   const spent = step?.assets?.[0];
   if (!spent || spent.fiatCurrency !== "EUR" || !spent.fiatValue || !DECIMAL_AMOUNT.test(spent.fiatValue)) return null;
+  // A value of zero for something that is spent is a price that could not be had, not a free action: unknown.
+  if (/^0+(?:\.0+)?$/.test(spent.fiatValue)) return null;
   // Exact: at most 18 fractional digits, held as an integer of 10^-18, then rounded up to the cent so a small non-zero
   // amount is never sent as zero.
   const SCALE = 18;
