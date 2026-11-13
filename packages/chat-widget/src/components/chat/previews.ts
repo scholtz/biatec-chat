@@ -39,7 +39,9 @@ export function decisionHash(p: ActionPreview): string {
  * then answers cautiously.
  */
 export function previewValueEur(p: ActionPreview): string | null {
-  let total = 0;
+  // Exact: every value is a decimal string with at most 18 fractional digits, summed as integers of 10^-18.
+  const SCALE = 18;
+  let total = 0n;
   let any = false;
   for (const s of p.steps) {
     // Only the steps still to be approved count: signed ones are done, cancelled, expired and failed ones will not be signed.
@@ -48,12 +50,15 @@ export function previewValueEur(p: ActionPreview): string | null {
     // A step that states nothing it spends has an unknown value, not a zero one.
     if (!a) return null;
     if (a.fiatCurrency !== "EUR" || !a.fiatValue || !DECIMAL_AMOUNT.test(a.fiatValue)) return null;
-    total += Number(a.fiatValue);
+    const [whole = "0", fraction = ""] = a.fiatValue.split(".");
+    total += BigInt(whole) * 10n ** BigInt(SCALE) + BigInt(fraction.padEnd(SCALE, "0"));
     any = true;
   }
-  // Rounded up to the cent, so a small non-zero amount is never sent as zero.
   if (!any) return null;
-  return total === 0 ? "0.00" : Math.max(0.01, Math.ceil(total * 100 - 1e-6) / 100).toFixed(2);
+  // Rounded up to the cent, so a small non-zero amount is never sent as zero.
+  const cent = 10n ** BigInt(SCALE - 2);
+  const cents = (total + cent - 1n) / cent;
+  return `${cents / 100n}.${String(cents % 100n).padStart(2, "0")}`;
 }
 
 /** Same shape as the backend's ConfirmResponse; any other JSON body (409, 410, 404) carries `error` and `message`. */

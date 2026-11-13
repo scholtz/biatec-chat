@@ -105,6 +105,14 @@ const CODE_TEXT: Record<string, string> = {
   receipt_missing: "consent.receiptMissing",
 };
 const codeText = (code: string | null | undefined): string | null => (code && Object.prototype.hasOwnProperty.call(CODE_TEXT, code) ? t(CODE_TEXT[code]!) : null);
+/** The consent ended without an approval (denied on the phone, or timed out). */
+const consentEnded = (c: ConsentStatus | null | undefined): c is ConsentStatus => c?.state === "Denied" || c?.state === "TimedOut";
+/** A status of an earlier round of consent for the same step: its expiry is older than the round the card now shows. */
+const isEarlierRound = (incoming: ConsentStatus, current: ConsentStatus | null): boolean => {
+  const a = incoming.expiresAt ? Date.parse(incoming.expiresAt) : Number.NaN;
+  const b = current?.expiresAt ? Date.parse(current.expiresAt) : Number.NaN;
+  return !Number.isNaN(a) && !Number.isNaN(b) && a < b;
+};
 /** Confirm outcomes that say nothing is wrong with the action itself: the card stays confirmable. */
 const RECOVERABLE = ["sign_in_required", "sign_in_unavailable", "agent_paused", "agent_analyze_only"];
 const jitter = (ms: number): number => ms + Math.random() * ms * 0.2;
@@ -247,11 +255,13 @@ export function useChat(svc: ChatServices) {
         break;
       case "consent_status": {
         const entry = findPreview(e.consent.previewId);
-        if (entry) {
+        if (entry && isEarlierRound(e.consent, entry.consent)) {
+          // A late or replayed status of an earlier round: the card shows the round it is in.
+        } else if (entry) {
           entry.consent = noCodeUnlessPending(e.consent);
           syncKeepalive(entry);
           // The chat stream says the consent ended without approval while the card waits: the follower is not needed any more.
-          if (entry.preview.status === "AwaitingApproval" && (e.consent.state === "Denied" || e.consent.state === "TimedOut")) {
+          if (entry.preview.status === "AwaitingApproval" && consentEnded(e.consent)) {
             stopFollower(entry.preview.previewId);
             finishConsent(entry, entry.consent, null);
           }
@@ -292,10 +302,9 @@ export function useChat(svc: ChatServices) {
       // A card the backend says is awaiting the phone (a reload, a restored session): one poll, then the stream. A consent
       // this widget ended on its own clock does not stand against it: the poll asks the backend what really happened.
       if (preview.status === "AwaitingApproval") {
-        if (existing.consent && (existing.consent.state === "TimedOut" || existing.consent.state === "Denied")) existing.consent = null;
+        if (consentEnded(existing.consent)) existing.consent = null;
         followConsent(preview.previewId, true);
-      }
-      else if (preview.status === "AwaitingConfirmation") void loadPrediction(preview.previewId);
+      } else if (preview.status === "AwaitingConfirmation") void loadPrediction(preview.previewId);
       return;
     }
     const list = (m.previews ??= []);
@@ -312,7 +321,7 @@ export function useChat(svc: ChatServices) {
     const fresh = list[list.length - 1]!;
     if (preview.status === "AwaitingApproval") {
       // The consent's end arrived before its card (parked in orphanConsent): the card closes now, nothing is left to follow.
-      if (fresh.consent && (fresh.consent.state === "Denied" || fresh.consent.state === "TimedOut")) finishConsent(fresh, fresh.consent, null);
+      if (consentEnded(fresh.consent)) finishConsent(fresh, fresh.consent, null);
       else followConsent(preview.previewId, true);
     } else if (preview.status === "AwaitingConfirmation") void loadPrediction(preview.previewId);
   }
@@ -462,7 +471,7 @@ export function useChat(svc: ChatServices) {
         svc.onCancelled?.(previewId);
       } else {
         entry.note = t("chat.previewCancelFailed");
-        if (!disposed && isWaitingForPhone(entry)) followConsent(previewId, true);
+        if (!disposed && isWaitingForPhone(entry)) followConsent(previewId);
       }
     } finally {
       entry.submitting = false;
@@ -516,7 +525,7 @@ export function useChat(svc: ChatServices) {
 
   /** Waiting for the phone, or approved and waiting for the outcome of the approval (still being finished). */
   function isWaitingForPhone(e: PreviewEntry): boolean {
-    return e.preview.status === "AwaitingApproval" && (e.consent === null || (e.consent.state !== "Denied" && e.consent.state !== "TimedOut"));
+    return e.preview.status === "AwaitingApproval" && !consentEnded(e.consent);
   }
 
   /** When the consent is given up: its own expiry (the preview's, if it has none) plus a short grace. */
@@ -708,7 +717,7 @@ export function useChat(svc: ChatServices) {
       const entry = findPreview(previewId);
       if (!entry) return null;
       // The chat stream said the consent ended (denied, timed out) while this follower was running: the card closes now.
-      if (entry.preview.status === "AwaitingApproval" && entry.consent && (entry.consent.state === "Denied" || entry.consent.state === "TimedOut")) {
+      if (entry.preview.status === "AwaitingApproval" && consentEnded(entry.consent)) {
         finishConsent(entry, entry.consent, null);
         return null;
       }
@@ -725,11 +734,14 @@ export function useChat(svc: ChatServices) {
       const entry = gone();
       if (!entry) return true;
       const late = Date.now() >= consentDeadline(entry);
+      // Task T-237: a card found already past its deadline after a reload shows "timed out" without a request.
       if (late && restoring) return timeOutIfWaiting(entry);
       let answer: Awaited<ReturnType<ConsentApi["poll"]>>;
       try {
         answer = await api.poll(previewId, signal);
       } catch {
+        // Stopped (Cancel, reset, dispose) while the request was out: that says nothing about the consent.
+        if (!live()) return true;
         return late ? timeOutIfWaiting(entry) : false;
       }
       if (!live()) return true;

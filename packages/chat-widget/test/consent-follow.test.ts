@@ -407,6 +407,48 @@ describe("following a phone approval", () => {
     expect(consent.poll.mock.calls.length).toBeGreaterThan(polls);
   });
 
+  it("a late status of an earlier round does not close the card that is in a newer round", async () => {
+    const newer = iso(Date.now() + 300_000);
+    const consent = fakeConsent({
+      stream: vi.fn(async function* (_id: string, signal?: AbortSignal) {
+        yield status(pending({ expiresAt: newer }));
+        await open(signal);
+      }),
+    });
+    const events: ChatEvent[] = [{ type: "preview_card", preview: preview() }];
+    const m = await mountChat(consent, events);
+    wrapper = m.wrapper;
+    m.confirm.mockResolvedValueOnce(result("consent_pending", { consent: pending({ expiresAt: newer }) }));
+    await m.chat.confirmPreview("p1");
+    await settle();
+    events.length = 0;
+    events.push({ type: "consent_status", consent: { previewId: "p1", stepId: "s1", state: "TimedOut", expiresAt: iso(Date.now() - 100_000) } });
+    await m.chat.send("replay");
+    await settle();
+    expect(m.entry().preview.status).toBe("AwaitingApproval");
+    expect(m.entry().consent!.state).toBe("Pending");
+  });
+
+  it("stopping the follower while a poll is out, past the deadline, does not close the card", async () => {
+    const expiresAt = iso(Date.now() + 1_000);
+    const consent = fakeConsent({
+      stream: vi.fn(async function* () {
+        throw new TransportError("down", 503);
+      }),
+      poll: vi.fn((_id: string, signal?: AbortSignal) => new Promise<ConsentPoll>((_r, rej) => signal?.addEventListener("abort", () => rej(new DOMException("aborted", "AbortError"))))),
+    });
+    const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);
+    wrapper = m.wrapper;
+    m.confirm.mockResolvedValueOnce(result("consent_pending", { consent: pending({ expiresAt }) }));
+    await m.chat.confirmPreview("p1");
+    await advance(12_000); // past the deadline, with a poll in flight
+    expect(consent.poll).toHaveBeenCalled();
+    m.cancelPreview.mockResolvedValueOnce(false);
+    await m.chat.cancelPreview("p1"); // aborts the poll; the cancel then fails
+    await settle();
+    expect(m.entry().preview.status).not.toBe("Expired"); // the abort did not close the card
+  });
+
   it("a card whose consent already ended (the status came first) closes at once instead of waiting forever", async () => {
     const consent = fakeConsent();
     const m = await mountChat(consent, [
@@ -488,6 +530,9 @@ describe("following a phone approval", () => {
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "Completed", "100"), eurStep("b", "AwaitingConfirmation", "100")] })).toBe("100.00");
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0.004")] })).toBe("0.01");
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0.000000001")] })).toBe("0.01");
+    expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0")] })).toBe("0.00");
+    expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "1.000000001")] })).toBe("1.01"); // just over a cent boundary rounds up
+    expect(previewValueEur({ ...eur, steps: [eurStep("a", "AwaitingConfirmation", "0.1"), eurStep("b", "AwaitingConfirmation", "0.2")] })).toBe("0.30"); // no float drift
     expect(previewValueEur({ ...eur, steps: [eurStep("a", "Cancelled", "999"), eurStep("b", "AwaitingConfirmation", "5")] })).toBe("5.00");
     // A step that states no asset has an unknown value, so the whole value is unknown.
     expect(previewValueEur({ ...eur, steps: [...eur.steps, { stepId: "s2", index: 1, title: "Opt in", status: "AwaitingConfirmation", groupHash: "H2" }] })).toBeNull();
@@ -791,7 +836,7 @@ describe("the follower stops", () => {
     m.cancelPreview.mockResolvedValueOnce(false);
     await m.chat.cancelPreview("p1");
     await settle();
-    expect(consent.poll).toHaveBeenCalled(); // one poll, then the stream again
+    expect(consent.stream).toHaveBeenCalledTimes(2); // the stream is opened again
     expect(m.entry().preview.status).toBe("AwaitingApproval");
   });
 
