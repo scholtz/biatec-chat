@@ -61,7 +61,11 @@ export interface ChatServices {
   onConfirmResponse?: (body: unknown) => void;
   /** The visible conversation was reset (sign-out, erase): clear what was derived from it (Activity, refusals). */
   onReset?: () => void;
-  /** Phone approval: follow a pending consent to its end and show the prediction. Without it a card is not followed. */
+  /**
+   * Phone approval: follow a pending consent to its end and show the prediction. Without it a card is not followed.
+   * The widget builds the real client itself when no services are injected; a host or test that injects `services`
+   * (a test seam, see WidgetServices) passes its own `consent` to opt in.
+   */
   consent?: ConsentApi;
   /** An event the widget itself derived (a consent result, a preview that settled), so Activity logs it like a stream event. */
   onEvent?: (e: ChatEvent) => void;
@@ -106,7 +110,7 @@ const CODE_TEXT: Record<string, string> = {
 };
 const codeText = (code: string | null | undefined): string | null => (code && Object.prototype.hasOwnProperty.call(CODE_TEXT, code) ? t(CODE_TEXT[code]!) : null);
 /** The consent ended without an approval (denied on the phone, or timed out). */
-const consentEnded = (c: ConsentStatus | null | undefined): c is ConsentStatus => c?.state === "Denied" || c?.state === "TimedOut";
+const consentEnded = (c: ConsentStatus | null | undefined): boolean => c?.state === "Denied" || c?.state === "TimedOut";
 /** A status of an earlier round of consent for the same step: its expiry is older than the round the card now shows. */
 const isEarlierRound = (incoming: ConsentStatus, current: ConsentStatus | null): boolean => {
   const a = incoming.expiresAt ? Date.parse(incoming.expiresAt) : Number.NaN;
@@ -304,7 +308,11 @@ export function useChat(svc: ChatServices) {
       if (preview.status === "AwaitingApproval") {
         if (consentEnded(existing.consent)) existing.consent = null;
         followConsent(preview.previewId, true);
-      } else if (preview.status === "AwaitingConfirmation") void loadPrediction(preview.previewId);
+      } else {
+        // The card moved on (settled, cancelled, expired, back to confirmable): nothing is left to follow.
+        stopFollower(preview.previewId);
+        if (preview.status === "AwaitingConfirmation") void loadPrediction(preview.previewId);
+      }
       return;
     }
     const list = (m.previews ??= []);
@@ -321,7 +329,7 @@ export function useChat(svc: ChatServices) {
     const fresh = list[list.length - 1]!;
     if (preview.status === "AwaitingApproval") {
       // The consent's end arrived before its card (parked in orphanConsent): the card closes now, nothing is left to follow.
-      if (consentEnded(fresh.consent)) finishConsent(fresh, fresh.consent, null);
+      if (fresh.consent && consentEnded(fresh.consent)) finishConsent(fresh, fresh.consent, null);
       else followConsent(preview.previewId, true);
     } else if (preview.status === "AwaitingConfirmation") void loadPrediction(preview.previewId);
   }
@@ -574,6 +582,7 @@ export function useChat(svc: ChatServices) {
 
   /** Shows a consent status on the card. The code is only kept while pending, and Activity logs the change. */
   function showConsent(entry: PreviewEntry, c: ConsentStatus): void {
+    if (isEarlierRound(c, entry.consent)) return; // a late answer about a round the card has already left
     const shown = noCodeUnlessPending(c);
     entry.consent = shown;
     syncKeepalive(entry);
@@ -587,6 +596,8 @@ export function useChat(svc: ChatServices) {
     cancelOpenSteps(entry, to);
     entry.note = earlierSigned ? t("consent.partial") : note;
     syncKeepalive(entry);
+    // Denied on the phone is the user's own action: Activity records it as theirs, before the card's change is logged.
+    if (to === "Cancelled") svc.onCancelled?.(entry.preview.previewId);
     // With earlier steps signed the preview's status is theirs ("Completed"): that is not an event of this close.
     if (!earlierSigned) svc.onEvent?.({ type: "preview_card", preview: entry.preview });
   }
@@ -625,7 +636,7 @@ export function useChat(svc: ChatServices) {
     const known = codeText(result?.errorCode);
     if (consent.state === "Denied") closeWithoutSignature(entry, "Cancelled", known ?? t("consent.denied"));
     else if (consent.state === "TimedOut") closeWithoutSignature(entry, "Expired", known ?? t("consent.timedOut"));
-    else closeWithoutSignature(entry, "Failed", known ?? (entry.note || result?.message || t("chat.previewFailed")));
+    else closeWithoutSignature(entry, "Failed", known ?? ((result ? entry.note || result.message : "") || t("chat.previewFailed")));
   }
 
   /** The consent ran out on this side (its expiry and the grace have passed with no answer). */
@@ -717,7 +728,7 @@ export function useChat(svc: ChatServices) {
       const entry = findPreview(previewId);
       if (!entry) return null;
       // The chat stream said the consent ended (denied, timed out) while this follower was running: the card closes now.
-      if (entry.preview.status === "AwaitingApproval" && consentEnded(entry.consent)) {
+      if (entry.preview.status === "AwaitingApproval" && entry.consent && consentEnded(entry.consent)) {
         finishConsent(entry, entry.consent, null);
         return null;
       }
@@ -742,7 +753,7 @@ export function useChat(svc: ChatServices) {
       } catch {
         // Stopped (Cancel, reset, dispose) while the request was out: that says nothing about the consent.
         if (!live()) return true;
-        return late ? timeOutIfWaiting(entry) : false;
+        return late ? unknownAtDeadline(entry) : false;
       }
       if (!live()) return true;
       const now = findPreview(previewId);
@@ -752,9 +763,16 @@ export function useChat(svc: ChatServices) {
           lostConsent(now, answer.status);
           return true;
         }
-        return late ? timeOutIfWaiting(now) : false;
+        return late ? unknownAtDeadline(now) : false;
       }
       return take(now, answer.consent, answer.result) || (late && timeOutIfWaiting(now));
+    };
+
+    /** The last look at the deadline got no answer: the outcome is unknown, so the card does not claim that nothing was signed. */
+    const unknownAtDeadline = (entry: PreviewEntry): true => {
+      entry.consent = null;
+      closeWithoutSignature(entry, "Expired", t("consent.lost"));
+      return true;
     };
 
     const timeOutIfWaiting = (entry: PreviewEntry): true => {

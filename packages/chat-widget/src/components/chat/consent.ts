@@ -1,7 +1,7 @@
 import type { ConsentStatus } from "@biatec/chat-protocol";
 import { isConsentStatus, readNamedEvents } from "../../transport/sse";
 import { TransportError, sessionCallHeaders, type TransportConfig } from "../../transport/types";
-import { DECIMAL_AMOUNT, isObj, str } from "./guards";
+import { DECIMAL_AMOUNT, isObj, str } from "../../transport/guards";
 import { toConfirmResult, type ConfirmResult } from "./previews";
 
 /** What the consent stream says, in order: a status per poll, then (once the consent has ended) the confirm result. */

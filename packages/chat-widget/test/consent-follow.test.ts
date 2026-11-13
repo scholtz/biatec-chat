@@ -449,6 +449,58 @@ describe("following a phone approval", () => {
     expect(m.entry().preview.status).not.toBe("Expired"); // the abort did not close the card
   });
 
+  it("a last look that gets no answer does not claim that nothing was signed", async () => {
+    const expiresAt = iso(Date.now() + 1_000);
+    const consent = fakeConsent({
+      stream: vi.fn(async function* () {
+        throw new TransportError("down", 503);
+      }),
+      poll: vi.fn(async (): Promise<ConsentPoll> => Promise.reject(new Error("network"))),
+    });
+    const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);
+    wrapper = m.wrapper;
+    m.confirm.mockResolvedValueOnce(result("consent_pending", { consent: pending({ expiresAt }) }));
+    await m.chat.confirmPreview("p1");
+    await advance(12_000);
+    expect(m.entry().preview.status).toBe("Expired");
+    expect(m.entry().note).toContain("can no longer be followed");
+    expect(m.entry().note).not.toContain("Nothing was signed.");
+  });
+
+  it("a user's rejection on the phone is recorded as the user's, and a card that moved on stops its follower", async () => {
+    const consent = fakeConsent({
+      stream: vi.fn(async function* () {
+        yield status(ended("Denied"));
+        yield done(result("failed"));
+      }),
+    });
+    const onCancelled = vi.fn();
+    const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }], { onCancelled });
+    wrapper = m.wrapper;
+    await m.chat.confirmPreview("p1");
+    await settle();
+    expect(onCancelled).toHaveBeenCalledWith("p1");
+
+    let aborted = false;
+    const live = fakeConsent({
+      stream: vi.fn(async function* (_id: string, signal?: AbortSignal) {
+        yield status(pending());
+        signal?.addEventListener("abort", () => (aborted = true));
+        await open(signal);
+      }),
+    });
+    const events: ChatEvent[] = [{ type: "preview_card", preview: preview() }];
+    const m2 = await mountChat(live, events);
+    await m2.chat.confirmPreview("p1");
+    await settle();
+    events.length = 0;
+    events.push({ type: "preview_card", preview: preview("Completed") });
+    await m2.chat.send("again");
+    await settle();
+    expect(aborted).toBe(true);
+    m2.wrapper.unmount();
+  });
+
   it("a card whose consent already ended (the status came first) closes at once instead of waiting forever", async () => {
     const consent = fakeConsent();
     const m = await mountChat(consent, [

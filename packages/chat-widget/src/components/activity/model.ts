@@ -1,5 +1,6 @@
 import { computed, reactive } from "vue";
 import type { ActionPreview, ActionPreviewStatus, ChatEvent, ConsentState } from "@biatec/chat-protocol";
+import { OPEN_STEP_STATUSES, decisionHash } from "../chat/previews";
 
 /** Filter groups of the timeline (User Experience 9). */
 export type ActivityKind = "analysis" | "preview" | "execution" | "permission";
@@ -31,7 +32,7 @@ export interface OpenPreview {
   groupHash: string;
 }
 
-const OPEN: ActionPreviewStatus[] = ["AwaitingConfirmation", "AwaitingScope", "AwaitingApproval"];
+const OPEN = OPEN_STEP_STATUSES;
 const PREVIEW_EVENT: Partial<Record<ActionPreviewStatus, { kind: ActivityKind; title: string }>> = {
   Submitted: { kind: "execution", title: "submitted" },
   Completed: { kind: "execution", title: "receipt" },
@@ -57,11 +58,6 @@ export function localDay(ms: number): string {
   const d = new Date(ms);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-/** The step a decision applies to: the first one still waiting for the user, else the first step. */
-function decisionHash(p: ActionPreview): string {
-  return (p.steps.find((s) => OPEN.includes(s.status)) ?? p.steps[0])?.groupHash ?? "";
 }
 
 /**

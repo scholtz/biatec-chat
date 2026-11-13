@@ -1,7 +1,7 @@
 import type { ActionPreview, ActionPreviewStatus, ConsentStatus } from "@biatec/chat-protocol";
 import { sessionCallHeaders, type TransportConfig } from "../../transport/types";
 import { isConsentStatus } from "../../transport/sse";
-import { DECIMAL_AMOUNT, str } from "./guards";
+import { DECIMAL_AMOUNT, str } from "../../transport/guards";
 
 /** A preview card in the conversation: the latest `preview_card` for its id plus the widget's own state. */
 export interface PreviewEntry {

@@ -1,5 +1,7 @@
 import type { ActionPreviewStatus, ChatEvent, ConsentState } from "@biatec/chat-protocol";
 
+import { isObj } from "./guards";
+
 export const CHAT_EVENT_TYPES = [
   "text_delta",
   "tool_status",
@@ -12,7 +14,6 @@ export const CHAT_EVENT_TYPES = [
 ] as const;
 
 const isStr = (v: unknown): v is string => typeof v === "string";
-const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 const isInt = (v: unknown): boolean => (typeof v === "number" && Number.isFinite(v)) || (isStr(v) && /^-?\d+$/.test(v));
 /** Absent, or an array whose every element passes `ok`. */
 const optArray = (v: unknown, ok: (x: unknown) => boolean): boolean => v === undefined || v === null || (Array.isArray(v) && v.every(ok));
