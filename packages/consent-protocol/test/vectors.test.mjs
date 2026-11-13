@@ -486,6 +486,13 @@ test("a settings label is display-safe (NFC, no bidirectional or zero-width char
   assert.equal(resign(c({ trusted_applications_add: [{ network: "algorand-mainnet", app_id: 1.5 }] })), false);
   assert.equal(resign(c({ trusted_applications_remove: [{ network: "bitcoin-mainnet", app_id: 1 }] })), false);
   assert.equal(resign(c({ trusted_applications_add: [{ network: "algorand-testnet", app_id: 7 }] })), true);
+  const app = { network: "algorand-testnet", app_id: 7 };
+  assert.equal(resign(c({ trusted_applications_add: [app, app] })), false, "a duplicate in one list");
+  assert.equal(resign(c({ trusted_applications_add: [app], trusted_applications_remove: [app] })), false, "added and removed in one change");
+  assert.equal(resign(c({ trusted_applications_add: [app], trusted_applications_remove: [{ ...app, app_id: 8 }] })), true);
+  assert.equal(resign({ clients: { "": { always_ask: true } } }), false, "an empty client id");
+  assert.equal(resign({ clients: { ["x".repeat(201)]: { always_ask: true } } }), false, "an oversized client id");
+  assert.equal(resign({ clients: { "bad\nid": { always_ask: true } } }), false, "a control character in a client id");
   assert.equal(valid("settings-change-signed", { ...clone(device.settings_changes[0].envelope.signed), change: { clients: { x: { unlink: true, always_ask: false } } } }), false, "the schema also refuses a mixed unlink");
 });
 
@@ -607,6 +614,15 @@ test("a device cannot approve itself, and a nonce of the wrong shape is refused"
   shortNonce.signed.nonce = "short";
   shortNonce.signature = signEs256(keys.device, Buffer.from(jcs(shortNonce.signed), "utf8"));
   assert.equal(verifyDeviceSigned(shortNonce, jwks, DO, { ...ok, approval: { ...a.expected_inputs, nonce: "short" } }), false);
+});
+
+test("an enrollment proof is refused for keys that are not P-256 public keys", () => {
+  const e = device.enrollment_proofs.find((x) => x.expected.accepted);
+  const ok = { approval_public_key: keys.new_approval, kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, usedNonces: new Set(), nonce: e.payload.nonce, presence_public_key: e.presence_public_key, now: e.payload.iat + 5 };
+  assert.equal(verifyEnrollmentProof(e.jws, ok), true);
+  assert.equal(verifyEnrollmentProof(e.jws, { ...ok, presence_public_key: { kty: "EC", crv: "P-256", x: e.presence_public_key.x } }), false, "missing y");
+  assert.equal(verifyEnrollmentProof(e.jws, { ...ok, presence_public_key: { ...e.presence_public_key, y: e.presence_public_key.x } }), false, "not on the curve");
+  assert.equal(verifyEnrollmentProof(e.jws, { ...ok, approval_public_key: { kty: "EC", crv: "P-256", x: "AA", y: "AA" } }), false);
 });
 
 test("an enrollment proof whose approval and presence key are the same key is refused", () => {

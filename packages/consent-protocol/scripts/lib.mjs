@@ -198,8 +198,9 @@ const MEMBERS = new Set(["always_ask", "per_client_threshold_eur", "label", "tru
 const AMOUNT = /^(0|[1-9][0-9]{0,14})(\.[0-9]{1,2})?$/;
 /** A canonical origin: scheme, lower-case host of well-formed labels, optional port 1-65535 that is not the scheme's default. */
 const ORIGIN = /^(?!https:\/\/[^/]*:443$)(?!http:\/\/[^/]*:80$)https?:\/\/[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$/;
+const appKey = (a) => a.network + ":" + a.app_id;
 const isApplicationList = (l) =>
-  Array.isArray(l) && l.length >= 1 && l.length <= 16 && l.every((a) => a && typeof a === "object" && (a.network === "algorand-mainnet" || a.network === "algorand-testnet") && Number.isSafeInteger(a.app_id) && a.app_id >= 0 && Object.keys(a).length === 2);
+  Array.isArray(l) && l.length >= 1 && l.length <= 16 && new Set(l.map((a) => a && appKey(a))).size === l.length && l.every((a) => a && typeof a === "object" && (a.network === "algorand-mainnet" || a.network === "algorand-testnet") && Number.isSafeInteger(a.app_id) && a.app_id >= 0 && Object.keys(a).length === 2);
 const TOP = new Set(["threshold_eur", "block_unproven_clients", "biometric_required", "ask_on_test_networks", "clients"]);
 
 /**
@@ -213,6 +214,7 @@ function settingsChangeWellFormed(change) {
   if ("threshold_eur" in change && !(typeof change.threshold_eur === "string" && AMOUNT.test(change.threshold_eur))) return false;
   for (const k of ["block_unproven_clients", "biometric_required", "ask_on_test_networks"]) if (k in change && typeof change[k] !== "boolean") return false;
   if ("clients" in change && (change.clients === null || typeof change.clients !== "object" || Array.isArray(change.clients) || Object.keys(change.clients).length === 0 || Object.keys(change.clients).length > 50)) return false;
+  if (Object.keys(change.clients ?? {}).some((id) => id.length === 0 || id.length > 200 || /[\u0000-\u001F\u007F-\u009F]/.test(id))) return false; // a client id is a bounded printable key
   for (const c of Object.values(change.clients ?? {})) {
     if (c === null || typeof c !== "object" || Object.keys(c).length === 0) return false;
     if (Object.keys(c).some((k) => !MEMBERS.has(k))) return false;
@@ -221,6 +223,11 @@ function settingsChangeWellFormed(change) {
     if ("paused" in c && typeof c.paused !== "boolean") return false;
     if ("origin" in c && !(typeof c.origin === "string" && c.origin.length <= 253 && ORIGIN.test(c.origin))) return false;
     for (const k of ["trusted_applications_add", "trusted_applications_remove"]) if (k in c && !isApplicationList(c[k])) return false;
+    // Adding and removing the same application in one change is ambiguous (and its direction, loosening or tightening, with it).
+    if (c.trusted_applications_add && c.trusted_applications_remove) {
+      const removed = new Set(c.trusted_applications_remove.map(appKey));
+      if (c.trusted_applications_add.some((a) => removed.has(appKey(a)))) return false;
+    }
     if ("always_ask" in c && typeof c.always_ask !== "boolean") return false;
     if ("unlink" in c && c.unlink !== true) return false;
     if ("per_client_threshold_eur" in c && c.per_client_threshold_eur !== null && !(typeof c.per_client_threshold_eur === "string" && AMOUNT.test(c.per_client_threshold_eur))) return false;
@@ -298,11 +305,23 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
  * equals the thumbprint of `expect.presence_public_key`, `nonce` equals `expect.nonce`, and `iat` is within 300 seconds of
  * `expect.now`. Never throws.
  */
+/** An EC P-256 public JWK with its coordinates: a real point (Node refuses to import one that is not on the curve). */
+function isP256PublicJwk(jwk) {
+  try {
+    if (!jwk || jwk.kty !== "EC" || jwk.crv !== "P-256" || typeof jwk.x !== "string" || typeof jwk.y !== "string") return false;
+    pub(jwk);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function verifyEnrollmentProof(jws, expect = {}) {
   // The approval key the server received and the key that signed the proof must be the same: it is the proof of possession.
   if (!expect.approval_public_key) return false;
   // A proof is single use: the caller's set of enrollment nonces already consumed (the server consumes the nonce of its challenge once).
   if (!(expect.usedNonces instanceof Set)) return false;
+  if (![expect.approval_public_key, expect.presence_public_key].every(isP256PublicJwk)) return false;
   try {
     const now = expect.now ?? nowSeconds();
     const parts = jws.split(".");
@@ -311,7 +330,7 @@ export function verifyEnrollmentProof(jws, expect = {}) {
     const payload = JSON.parse(decodeB64u(parts[1]).toString("utf8"));
     if (header.alg !== "ES256" || header.typ !== ENROLL_PROOF_TYP || header.jwk?.kty !== "EC" || header.jwk?.crv !== "P-256") return false;
     if (!verifyEs256(header.jwk, Buffer.from(parts[0] + "." + parts[1], "ascii"), parts[2])) return false;
-    if (thumbprint(header.jwk) !== thumbprint(expect.approval_public_key)) return false;
+    if (!isP256PublicJwk(header.jwk) || thumbprint(header.jwk) !== thumbprint(expect.approval_public_key)) return false;
     // Two keys, not one used twice: the presence key is another key than the approval key.
     if (payload.presence_jwk_thumbprint === thumbprint(header.jwk) || payload.presence_kid === payload.kid) return false;
     // The key ids the device is registered under are the ones the proof names (the caller says which: both are required).

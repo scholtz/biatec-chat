@@ -11,7 +11,7 @@ declare module "*/scripts/lib.mjs" {
     issuer: string;
     now?: number;
     /** Read by verifyApproval only: the caller looked up that the signing device is active. A device attested for a key use (every 1.1 device) fails closed without `true`; verifyReceipt and verifyAttestation do not read it. */
-    deviceActive?: boolean;
+    deviceActive?: boolean; // required by verifyApproval for any device attested for a key use (every 1.1 device)
     /** Read by verifyDeviceSigned only: statement nonces already accepted from the device (single use). */
     usedNonces?: Set<string>;
   };
@@ -23,8 +23,8 @@ declare module "*/scripts/lib.mjs" {
   export function verifyDeviceSigned(
     envelope: any,
     jwks: { keys: any[] },
-    opts: VerifyOptions,
-    expect?: { approverActive?: boolean; sub?: string; approval?: { new_kid: string; new_approval_jwk_thumbprint: string; new_presence_jwk_thumbprint: string; nonce: string } },
+    opts: VerifyOptions & { usedNonces: Set<string> },
+    expect: { approverActive: true; sub?: string; approval?: { new_kid: string; new_approval_jwk_thumbprint: string; new_presence_jwk_thumbprint: string; nonce: string } },
   ): boolean;
   export function verifyEnrollmentProof(
     jws: string,
