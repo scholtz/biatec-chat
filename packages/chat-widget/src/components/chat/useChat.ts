@@ -335,7 +335,6 @@ export function useChat(svc: ChatServices) {
    * into a receipt only when no step is still waiting for the user; otherwise the card stays open for the next step.
    */
   function settleStep(e: PreviewEntry, groupHash: string, status: ActionPreview["status"], txIds: string[]): void {
-    e.prediction = null; // it was made for the whole action before this step settled
     let hit = false;
     const steps = e.preview.steps.map((s) => {
       if (hit || s.groupHash !== groupHash) return s;
@@ -344,6 +343,7 @@ export function useChat(svc: ChatServices) {
     });
     const stillOpen = steps.some((s) => OPEN_STEP.includes(s.status));
     e.preview = { ...e.preview, steps, status: stillOpen ? "AwaitingConfirmation" : status };
+    if (stillOpen) refreshPrediction(e); // the one made for the whole action no longer applies
   }
 
   /** Confirm posts the group hash the card showed; every ConfirmResponse.status has its own outcome. */
@@ -515,6 +515,12 @@ export function useChat(svc: ChatServices) {
 
   /** The card's line about phone approval, asked once when the card is first shown. A failure shows nothing. */
   const predictionAsked = new Set<string>();
+  /** The card is back to awaiting confirmation (a step settled, or a recoverable refusal): the old prediction is stale, ask again. */
+  function refreshPrediction(entry: PreviewEntry): void {
+    entry.prediction = null;
+    predictionAsked.delete(entry.preview.previewId);
+    if (entry.preview.status === "AwaitingConfirmation") void loadPrediction(entry.preview.previewId);
+  }
   async function loadPrediction(previewId: string): Promise<void> {
     const api = svc.consent;
     // Once per preview: a failing endpoint is not asked again for every re-sent card.
@@ -537,8 +543,10 @@ export function useChat(svc: ChatServices) {
 
   /** Everything that follows a consent that ended without a signature: the card stops waiting and says why. */
   function closeWithoutSignature(entry: PreviewEntry, to: "Cancelled" | "Expired" | "Failed", note: string): void {
+    // A multi-step action whose earlier steps already landed must not be told "nothing was signed".
+    const earlierSigned = entry.preview.steps.some((s) => s.status === "Completed" || s.status === "Submitted");
     cancelOpenSteps(entry, to);
-    entry.note = note;
+    entry.note = earlierSigned ? t("consent.partial") : note;
     syncKeepalive(entry);
     svc.onEvent?.({ type: "preview_card", preview: entry.preview });
   }
@@ -553,14 +561,21 @@ export function useChat(svc: ChatServices) {
       // The approval could not be used because signing needs one more permission: ask for it, then confirm again.
       if (elevate && !disposed) void authorizePreview(entry.preview.previewId, entry.scope ?? "sign");
       // A new round of consent (the approval could not be used): the follower goes on with the new one.
-      if (result.status === "consent_pending") return;
+      if (result.status === "consent_pending") {
+        // The new round must have a consent to follow; without one the card would wait for nothing.
+        if (!isWaitingForPhone(entry)) {
+          entry.consent = null;
+          closeWithoutSignature(entry, "Expired", t("consent.lost"));
+        }
+        return;
+      }
       // The outcome moved the card on (landed, submitted, a scope to elevate): nothing more to do.
       if (entry.preview.status !== "AwaitingApproval") return;
       // Not a failure of the action: sign-in lost, or the agent paused. The card goes back to where Confirm would leave it.
       if (RECOVERABLE.includes(result.status)) {
         entry.consent = null;
-        entry.prediction = null;
         entry.preview = { ...entry.preview, status: "AwaitingConfirmation" };
+        refreshPrediction(entry);
         syncKeepalive(entry);
         svc.onEvent?.({ type: "preview_card", preview: entry.preview });
         return;

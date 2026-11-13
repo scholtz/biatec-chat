@@ -338,6 +338,43 @@ describe("following a phone approval", () => {
     expect(m.entry().preview.status).toBe("Submitted");
   });
 
+  it("a denial after an earlier step already landed does not say nothing was signed", async () => {
+    const twoSteps = preview("AwaitingConfirmation", {
+      steps: [
+        { stepId: "s1", index: 0, title: "One", status: "Completed", groupHash: "H1", transactionId: "TX1" },
+        { stepId: "s2", index: 1, title: "Two", status: "AwaitingConfirmation", groupHash: "H2" },
+      ],
+    });
+    const consent = fakeConsent({
+      stream: vi.fn(async function* () {
+        yield status({ ...ended("Denied"), stepId: "s2" });
+        yield done(result("failed"));
+      }),
+    });
+    const m = await mountChat(consent, [{ type: "preview_card", preview: twoSteps }]);
+    wrapper = m.wrapper;
+    await m.chat.confirmPreview("p1");
+    await settle();
+    expect(m.entry().note).toContain("Steps that already completed stay completed");
+    expect(m.entry().note).not.toContain("Nothing was signed");
+    expect(m.entry().preview.steps[0]!.status).toBe("Completed");
+  });
+
+  it("a new round announced without a consent to follow closes the card instead of leaving it waiting", async () => {
+    const consent = fakeConsent({
+      stream: vi.fn(async function* () {
+        yield status(ended("Denied"));
+        yield done(result("consent_pending"));
+      }),
+    });
+    const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);
+    wrapper = m.wrapper;
+    await m.chat.confirmPreview("p1");
+    await settle();
+    expect(m.entry().preview.status).toBe("Expired");
+    expect(m.entry().note).toContain("can no longer be followed");
+  });
+
   it("failed cancels do not use up the rounds of consent", async () => {
     const consent = fakeConsent();
     const m = await mountChat(consent, [{ type: "preview_card", preview: preview() }]);
