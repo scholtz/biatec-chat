@@ -449,8 +449,9 @@ test("a settings change without a subject, an approval for another new_kid and a
 
 test("a settings label is display-safe (NFC, no bidirectional or zero-width characters), and an unlink stands alone", () => {
   assert.equal(isDisplaySafe("My bank"), true);
+  assert.equal(isDisplaySafe("My very own bank"), true);
   assert.equal(isDisplaySafe("Caf\u00e9"), true);
-  for (const bad of ["Bank\u202Eevil", "Bank\u200B", "Cafe\u0301", "two\nlines", "", "x".repeat(41), "tab\t", "\ufeffBank", "lone\ud800", "   ", "\u3164", " padded", "padded ", "soft\u00ADhyphen", "tag\u{E0041}", "vs\ufe0f", "invisible\u2063sep", "braille\u2800", "format\u206F", "obj\ufffc", "music\u{1D173}"]) assert.equal(isDisplaySafe(bad), false, JSON.stringify(bad));
+  for (const bad of ["Bank\u202Eevil", "Bank\u200B", "Cafe\u0301", "two\nlines", "", "x".repeat(41), "tab\t", "\ufeffBank", "lone\ud800", "   ", "\u3164", " padded", "padded ", "soft\u00ADhyphen", "tag\u{E0041}", "vs\ufe0f", "invisible\u2063sep", "braille\u2800", "format\u206F", "obj\ufffc", "music\u{1D173}", "wide\u3000\u3000gap", "no\u00A0break", "thin\u2009space", "double  space", "bcd\u{1BCA0}", "egy\u{13430}"]) assert.equal(isDisplaySafe(bad), false, JSON.stringify(bad));
   const base = device.settings_changes.find((x) => x.expected.accepted);
   const resign = (change) => {
     const e = clone(base.envelope);
@@ -523,6 +524,37 @@ test("canonical origins only, the transaction invariants are in the schema, and 
   assert.equal(change({ paused: false }), false, "a pause needs its origin");
   assert.equal(change({ origin: "https://bank.example", always_ask: false }), false, "an origin without a pause");
   assert.equal(change({ paused: false, origin: "https://bank.example" }), true);
+});
+
+test("a pending 1.1 device cannot approve by relabelling its receipt version 1", () => {
+  const v = v11.find((x) => accepted(x) && x.receipt.signed.decision === "approve");
+  const old = v10.find((x) => x.receipt.signed.decision === "approve");
+  const signed = { ...clone(old.receipt.signed), auth_req_id: v.receipt.signed.auth_req_id, sub: v.receipt.signed.sub };
+  const relabelled = { ...clone(v.receipt), version: "1", signed, signature: signEs256(keys.device, Buffer.from(jcs(signed), "utf8")) };
+  delete relabelled.device.key_use;
+  const request = { ...clone(old.request), auth_req_id: signed.auth_req_id, sub: signed.sub, expiry: signed.expiry };
+  const o = { ...O, now: signed.expiry - 100 };
+  assert.equal(verifyReceipt(relabelled, jwks, o), true, "the receipt itself verifies: key use approve, shape 1.0");
+  assert.equal(verifyApproval(relabelled, jwks, request, signed.binding_code, new Set(), { ...o, deviceActive: undefined }), false, "no active lookup: refused");
+  assert.equal(verifyApproval(relabelled, jwks, request, signed.binding_code, new Set(), { ...o, deviceActive: true }), true);
+});
+
+test("the signed object of a device statement has exactly its members, and a settings change touches at least one client", () => {
+  const base = device.settings_changes.find((x) => x.expected.accepted);
+  const extra = clone(base.envelope);
+  extra.signed.approver_note = "x";
+  extra.signature = signEs256(keys.device, Buffer.from(jcs(extra.signed), "utf8"));
+  assert.equal(verifyDeviceSigned(extra, jwks, DO, ACTIVE), false);
+  const empty = clone(base.envelope);
+  empty.signed.change = { clients: {} };
+  empty.signature = signEs256(keys.device, Buffer.from(jcs(empty.signed), "utf8"));
+  assert.equal(verifyDeviceSigned(empty, jwks, DO, ACTIVE), false);
+  const a = device.device_approvals.find((x) => x.expected.accepted);
+  const same = clone(a.envelope);
+  same.signed.new_presence_jwk_thumbprint = same.signed.new_approval_jwk_thumbprint;
+  same.signed.pairing_code = pairingCode(same.signed.new_approval_jwk_thumbprint, same.signed.new_presence_jwk_thumbprint, same.signed.nonce);
+  same.signature = signEs256(keys.device, Buffer.from(jcs(same.signed), "utf8"));
+  assert.equal(verifyDeviceSigned(same, jwks, DO, { approval: { ...a.expected_inputs, new_presence_jwk_thumbprint: same.signed.new_presence_jwk_thumbprint }, sub: device.enrollment_sub, approverActive: true }), false, "two keys, not one");
 });
 
 test("remember names only applications the card offered to trust (not already trusted ones)", () => {

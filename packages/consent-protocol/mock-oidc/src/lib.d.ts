@@ -10,9 +10,9 @@ declare module "*/scripts/lib.mjs" {
   export type VerifyOptions = {
     issuer: string;
     now?: number;
-    /** Protocol 1.1: the caller looked up that the signing device is active. A 1.1 receipt fails closed without `true`. */
+    /** Read by verifyApproval only: the caller looked up that the signing device is active. A device attested for a key use (every 1.1 device) fails closed without `true`; verifyReceipt and verifyAttestation do not read it. */
     deviceActive?: boolean;
-    /** Statement nonces already accepted from the device (single use). */
+    /** Read by verifyDeviceSigned only: statement nonces already accepted from the device (single use). */
     usedNonces?: Set<string>;
   };
   export function verifyReceipt(receipt: any, jwks: { keys: any[] }, opts: VerifyOptions): boolean;

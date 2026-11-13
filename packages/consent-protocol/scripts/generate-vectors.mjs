@@ -6,7 +6,7 @@ import { generateKeyPairSync, createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ATTESTATION_TYP, ENROLL_PROOF_TYP, jcs, pairingCode, sha256Hex, signEs256, signCompactJws, thumbprint, verifyApproval, verifyDeviceSigned, verifyReceipt } from "./lib.mjs";
+import { ATTESTATION_TYP, ENROLL_PROOF_TYP, jcs, pairingCode, sha256Hex, signEs256, signCompactJws, thumbprint, verifyApproval, verifyDeviceSigned, verifyEnrollmentProof, verifyReceipt } from "./lib.mjs";
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "vectors");
 const write = (name, v) => writeFileSync(join(dir, name), JSON.stringify(v, null, 2) + "\n");
@@ -191,7 +191,7 @@ const wrap = (signedObj, key, use, sub) => {
     canonical_sha256: sha256Hex(canonical),
   };
 };
-const settingsBase = (extra) => ({ type: "biatec_settings_change", sub: ENROLL_SUB, kid: approver.kid, nonce: "n-" + digest(JSON.stringify(extra)).toString("hex").slice(0, 30), issued_at: NOW + 30, change: extra });
+const settingsBase = (extra, kid = approver.kid) => ({ type: "biatec_settings_change", sub: ENROLL_SUB, kid, nonce: "n-" + digest(JSON.stringify(extra)).toString("hex").slice(0, 30), issued_at: NOW + 30, change: extra });
 const OPTS = { now: NOW + 60, issuer: ISS, usedNonces: new Set() };
 
 const settings = [
@@ -210,7 +210,7 @@ const settings = [
   {
     name: "settings-signed-by-presence-key-REFUSED",
     description: "NEGATIVE: a settings change signed by the presence key. The attestation says presence, so verifiers MUST refuse it.",
-    ...wrap(settingsBase({ block_unproven_clients: false }), keys.presence, "presence", ENROLL_SUB),
+    ...wrap(settingsBase({ block_unproven_clients: false }, keys.presence.kid), keys.presence, "presence", ENROLL_SUB),
     expected: { accepted: false, reason: "requires_approval_key" },
   },
 ];
@@ -260,6 +260,11 @@ const enrollmentProofs = [
     jws: signCompactJws(keys.new_presence, proofHeader, proofPayload), header: proofHeader, payload: proofPayload, presence_public_key: newPresence, expected: { accepted: false, reason: "signature" },
   },
 ];
+
+for (const e of enrollmentProofs) {
+  const verdict = verifyEnrollmentProof(e.jws, { approval_public_key: newApproval, kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, presence_public_key: newPresence, nonce: enrollNonce, usedNonces: new Set(), now: NOW + 15 });
+  if (verdict !== e.expected.accepted) throw new Error("self-check failed for " + e.name);
+}
 
 write("device-signed.json", {
   _comment: "Settings changes, device approvals and enrollment proofs of protocol 1.1, with the pairing code worked example. Regenerate with scripts/generate-vectors.mjs.",

@@ -189,6 +189,7 @@ const SIGNED_WINDOW_SECONDS = 300;
 export function isDisplaySafe(text, max = 40) {
   if (typeof text !== "string" || text.length === 0 || !text.isWellFormed() || text !== text.normalize("NFC")) return false;
   if ([...text].length > max || text.trim() !== text || text.trim() === "") return false; // no padding, not blank
+  if (/[\p{Cf}\p{Cc}\p{Zl}\p{Zp}]|[^\S ]|  /u.test(text) || /[\p{Zs}]/u.test(text.replaceAll(" ", ""))) return false; // no format characters, no other white space, no runs of spaces
   return !/[\u00AD\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180E\u2061-\u2065\u206A-\u206F\u2800\u3164\uFE00-\uFE0F\uFFA0\uFFF9-\uFFFC]|[\u{1D173}-\u{1D17A}\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]/u.test(text) && !/[\u0000-\u001F\u007F-\u009F\u2028\u2029\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\u061C\uFEFF]/.test(text);
 }
 
@@ -211,7 +212,7 @@ function settingsChangeWellFormed(change) {
   if (Object.keys(change).some((k) => !TOP.has(k))) return false;
   if ("threshold_eur" in change && !(typeof change.threshold_eur === "string" && AMOUNT.test(change.threshold_eur))) return false;
   for (const k of ["block_unproven_clients", "biometric_required", "ask_on_test_networks"]) if (k in change && typeof change[k] !== "boolean") return false;
-  if ("clients" in change && (change.clients === null || typeof change.clients !== "object" || Array.isArray(change.clients) || Object.keys(change.clients).length > 50)) return false;
+  if ("clients" in change && (change.clients === null || typeof change.clients !== "object" || Array.isArray(change.clients) || Object.keys(change.clients).length === 0 || Object.keys(change.clients).length > 50)) return false;
   for (const c of Object.values(change.clients ?? {})) {
     if (c === null || typeof c !== "object" || Object.keys(c).length === 0) return false;
     if (Object.keys(c).some((k) => !MEMBERS.has(k))) return false;
@@ -253,6 +254,12 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
     if (!settings && !approval) return false;
     // A settings change that cannot be read unambiguously, or whose label is not display-safe, is refused (spec section 8.2).
     if (settings && !settingsChangeWellFormed(s.change)) return false;
+    // The signed object has exactly the members the schema allows: nothing rides along unsigned-looking but signed.
+    const MEMBERS_OF = {
+      biatec_settings_change: ["type", "sub", "kid", "nonce", "issued_at", "change"],
+      biatec_device_approval: ["type", "approver_kid", "new_kid", "new_approval_jwk_thumbprint", "new_presence_jwk_thumbprint", "pairing_code", "nonce", "issued_at"],
+    }[s.type];
+    if (Object.keys(s).length !== MEMBERS_OF.length || !MEMBERS_OF.every((k) => k in s)) return false;
     // A settings change names the subject it is for; the attestation must be for that same subject.
     // ... and it is for the account the caller is changing: `expect.sub` is required and must equal it.
     if (settings && (typeof s.sub !== "string" || s.sub === "" || s.sub !== expect.sub)) return false;
@@ -332,10 +339,13 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
   try {
     const now = opts.now ?? nowSeconds();
     // Biatec OIDC authorizes only receipts of devices it holds as ACTIVE (a pending device, such as one an attacker just enrolled, has a
-    // valid attestation too). For a 1.1 receipt the caller MUST say so with `opts.deviceActive === true` and the function fails closed
-    // without it; a caller that knows the device is not active passes false for any version. The 1.0 flows carry no such lookup.
-    if (opts.deviceActive === false || (receipt.version === "1.1" && opts.deviceActive !== true)) return false;
+    // valid attestation too). A caller that knows the device is not active passes `opts.deviceActive === false`; a device attested for a
+    // key use (every 1.1 device) needs `true`, as checked below. The 1.0 flows, whose devices have no attested use, carry no such lookup.
+    if (opts.deviceActive === false) return false;
     if (!verifyReceipt(receipt, jwks, { ...opts, now })) return false;
+    // A device attested for a key use is a 1.1 device whatever `version` the receipt wears (a pending one has a valid attestation too):
+    // it is authorized only with the caller's `deviceActive === true`. Only a 1.0 device, with no attested use, needs no lookup.
+    if (attestedKeyUse(receipt, jwks, { ...opts, now }) !== null && opts.deviceActive !== true) return false;
     const s = receipt.signed;
     const d = s.authorization_details?.[0];
     if (typeof expectedBindingCode !== "string" || !/^[0-9]{6}$/.test(expectedBindingCode)) return false;
@@ -358,7 +368,9 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
     if (s.remember !== undefined) {
       // Each id MUST be an application of the request (section 8): the user can only trust what the card showed.
       // Only applications the card offered to trust (the untrusted ones): an already trusted one has nothing to remember.
-      const shown = new Set((d?.applications ?? []).filter((a) => a.trusted === false).map((a) => a.id));
+      const all = d?.applications ?? [];
+      if (new Set(all.map((a) => a.id)).size !== all.length) return false; // `remember` names bare ids: the same id twice would be ambiguous
+      const shown = new Set(all.filter((a) => a.trusted === false).map((a) => a.id));
       const ids = s.remember.applications;
       if (!Array.isArray(ids) || ids.length === 0 || new Set(ids).size !== ids.length || !ids.every((id) => shown.has(id))) return false;
     }
