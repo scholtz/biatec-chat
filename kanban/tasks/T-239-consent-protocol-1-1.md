@@ -1,7 +1,7 @@
 ---
 id: T-239
 title: "Consent protocol 1.1: whole-group details, signed origin, two device keys, device-signed settings and device approval, user-held trust"
-status: backlog
+status: in-progress
 priority: P0
 epic: "Consent & authenticator"
 blocked_by: []
@@ -9,9 +9,9 @@ area: ["packages/consent-protocol/spec/**", "packages/consent-protocol/schemas/*
 parallel: yes
 conflicts_with: []
 issue: "#399"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-239"
+owner: "session-20261113-1511"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#biatec-authenticator-and-the-biatec-consent-protocol"
 created: 2026-11-12
 updated: 2026-11-13
@@ -90,3 +90,4 @@ Filled in when the task moves to review.
 
 - 2026-11-12 18:43 · scholtz · (new) → backlog · created from the consent architecture record (AlgorandGoogleDriveAccount issue 23)
 - 2026-11-13 09:05 · scholtz · backlog → backlog · amended for revision 2 of the architecture record (user-held trust, user-set threshold, device channel instead of Firebase)
+- 2026-11-13 15:11 · scholtz · backlog → in-progress · taken and claimed (session-20261113-1511), branch task/T-239
