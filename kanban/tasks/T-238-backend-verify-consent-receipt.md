@@ -1,7 +1,7 @@
 ---
 id: T-238
 title: "Backend: verify the consent receipt before resuming, and keep denial receipts as evidence"
-status: in-progress
+status: review
 priority: P0
 epic: "Consent & authenticator"
 blocked_by: [T-239]
@@ -50,11 +50,11 @@ Parallel work possible: **yes**.
 
 ## Acceptance criteria
 
-- [ ] Every 1.1 vector verifies; each of these alterations is refused with its own failure code: one changed signed member, a signature by another key, an attestation for another `sub`, an expired attestation, an attestation signed by a key not in the JWKS, `biatec_key_use: "presence"` on an approval, another `auth_req_id`, another group hash, another sender, another origin, a wrong binding code, `decision: "deny"` on the approval path.
-- [ ] `ConsentOrchestratorTests`: a valid receipt resumes; each invalid receipt ends the step as `receipt_invalid`, the signer is not called again, and the evidence event is written.
-- [ ] A denial records a verified denial receipt; an unfetchable one records `consent_denied_unverified` and still cancels.
-- [ ] The test fakes build real signed receipts with the vector test keys (`packages/consent-protocol/vectors/keys.json`); no dummy receipt strings remain in the consent tests.
-- [ ] `dotnet test backend` passes.
+- [x] Every 1.1 vector verifies; each of these alterations is refused with its own failure code: one changed signed member, a signature by another key, an attestation for another `sub`, an expired attestation, an attestation signed by a key not in the JWKS, `biatec_key_use: "presence"` on an approval, another `auth_req_id`, another group hash, another sender, another origin, a wrong binding code, `decision: "deny"` on the approval path.
+- [x] `ConsentOrchestratorTests`: a valid receipt resumes; each invalid receipt ends the step as `receipt_invalid`, the signer is not called again, and the evidence event is written.
+- [x] A denial records a verified denial receipt; an unfetchable one records `consent_denied_unverified` and still cancels.
+- [x] The test fakes build real signed receipts with the vector test keys (`packages/consent-protocol/vectors/keys.json`); no dummy receipt strings remain in the consent tests.
+- [x] `dotnet test backend` passes.
 
 ## Implementation notes
 
@@ -67,7 +67,14 @@ Parallel work possible: **yes**.
 
 ## Hand-off
 
-Filled in when the task moves to review.
+PR #410, `task/T-238` @ b105aef. `dotnet test backend` passes (CI `backend` green).
+
+- `ConsentReceiptVerifier` (Tools) verifies shape, attestation against the Biatec OIDC JWKS, device signature and the match against the stored request; both receipt versions ("1.1" and the frozen "1") because the mock and real OIDC emit 1.0 until T-240. `ConsentReceiptService` (Api) builds the expectation, refetches the JWKS once on an unknown `kid`, fetches denial receipts.
+- A bad approval receipt ends the step as `receipt_invalid` with a hash-only `consent_receipt_rejected` event; a denial records a verified receipt or `consent_denied_unverified` and always cancels. `Consent:VerifyReceipts` (default true). Tenant `OidcClientEntityId` (nullable column + migration).
+- Known limits: no active-device lookup (the backend has none; a pending device's receipt verifies); `remember` is checked for shape only; expiry (nobody decided) records no receipt; `OidcClientEntityId` has no admin UI yet (set in the database; the 1.1 fingerprint uses the `client_id`); the receipt expiry has a grace of one poll interval.
+- Review: 6 rounds of `/code-review high`; real defects fixed (1.1 fingerprint input, expiry grace scope, denial claim race, cancellation after the one-time token is spent, redirect handling on the receipt client).
+
+**Unblocks:** T-243 still waits on T-240.
 
 ## Review
 
@@ -77,3 +84,4 @@ Filled in when the task moves to review.
 - 2026-11-12 18:43 · kanban-board · backlog → blocked · waiting on: T-239
 - 2026-11-14 13:21 · kanban-board · blocked → backlog · blockers done: T-239
 - 2026-11-14 08:30 · scholtz · backlog → in-progress · claimed by session-20261114-0830 on task/T-238
+- 2026-11-14 14:20 · scholtz · in-progress → review · PR #410 @ b105aef
