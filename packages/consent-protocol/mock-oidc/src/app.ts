@@ -31,7 +31,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020Module from "ajv/dist/2020.js";
-import { jcs, pairingCode, sha256Hex, signCompactJws, thumbprint, verifyApproval, verifyDeviceSigned, verifyEnrollmentProof, verifyEs256, verifyReceipt, ATTESTATION_TYP } from "../../scripts/lib.mjs";
+import { isDisplaySafe, jcs, pairingCode, sha256Hex, signCompactJws, thumbprint, verifyApproval, verifyDeviceSigned, verifyEnrollmentProof, verifyEs256, verifyReceipt, ATTESTATION_TYP } from "../../scripts/lib.mjs";
 import { GroupError, decodeGroup, decimalToCents, describeAlgorandGroup, describeJsonGroup, mockSigned, transactionDetails, type Described } from "./group.ts";
 import { clients, staticTokens, users, type SeedClient, type SeedUser } from "./seed.ts";
 
@@ -116,6 +116,8 @@ export interface MockOptions {
   hubLifetimeSeconds?: number;
   /** Seconds between pings the channel sends (default 15). */
   hubPingSeconds?: number;
+  /** An operator ceiling for the user's own threshold, in EUR (MOCK_MAX_THRESHOLD_EUR in `server.ts`). Unset: no operator ceiling, only the technical one of 1000000000 EUR. */
+  maxThresholdEur?: number;
 }
 
 /** A device has an approval key (its `kid`, `publicKey`, `attestation`) and optionally a presence key; each is attested for its own use. */
@@ -185,6 +187,7 @@ export function createMockOidc(options: MockOptions = {}) {
   const maxPending = options.maxPendingPerClientOrigin ?? MAX_PENDING_PER_CLIENT_ORIGIN;
   const maxPerHour = options.maxRequestsPerHour ?? MAX_REQUESTS_PER_HOUR;
   const minAppBuild = options.minAppBuild ?? 1;
+  const maxThresholdEur = options.maxThresholdEur;
   const newCode = options.newBindingCode ?? (() => String(randomInt(0, 1_000_000)).padStart(6, "0"));
   const keys = options.oidcKey ? { oidc: options.oidcKey, device: loadJson("vectors", "keys.json").device } : loadJson("vectors", "keys.json");
   const oidcKey = keys.oidc;
@@ -225,8 +228,9 @@ export function createMockOidc(options: MockOptions = {}) {
   }
   // Consent settings beyond what the seed holds (T-084). Keys: sub, or sub|clientId.
   const accountSettings = new Map<string, { biometricRequired: boolean; blockUnverified: boolean; askOnTestNetworks: boolean }>();
-  const clientSettings = new Map<string, { perClientThresholdEur?: number; pausedUntil?: number }>();
-  const settingsNonces = new Set<string>();
+  const clientSettings = new Map<string, { perClientThresholdEur?: number; pausedUntil?: number; pausedOrigin?: string; label?: string }>();
+  // When the user linked each client (key sub|clientId): the first approved request, or the start of the mock for a seeded client.
+  const linkedAt = new Map<string, number>();
   // The user's own trust, kept per user and client: applications trusted by approving with `remember` (key: `network:app_id`).
   const trustedApplications = new Map<string, Set<string>>();
   // When the user first got a signature from a client (rule 4's first day with the client; 0 for a seeded client used long ago), and what
@@ -261,7 +265,7 @@ export function createMockOidc(options: MockOptions = {}) {
     addDevice(u.sub, name + "-device", devicePub, 0, testHelpers ? "device-token-" + name : undefined, { kid: name + "-device-presence", publicKey: presencePub });
   }
   for (const u of users) {
-    for (const c of u.usedClients) firstSigned.set(u.sub + "|" + c, 0);
+    for (const c of u.usedClients) { firstSigned.set(u.sub + "|" + c, 0); linkedAt.set(u.sub + "|" + c, now()); }
     for (const c of u.pausedClients ?? []) clientSettings.set(u.sub + "|" + c, { pausedUntil: now() + 10 * 365 * 86400 });
     if (u.blockUnprovenClients) accountSettings.set(u.sub, { biometricRequired: true, blockUnverified: true, askOnTestNetworks: true });
   }
@@ -932,7 +936,9 @@ export function createMockOidc(options: MockOptions = {}) {
     announceClosed(p);
     // Approving links the client (rule 4: only a client the user approved before is not asked again for a value below the threshold),
     // and `remember` is the user's own trust in the applications of this request, kept for this client.
-    userMap.get(p.request.sub)!.used.add(p.clientId);
+    const approvedUser = userMap.get(p.request.sub)!;
+    if (!approvedUser.used.has(p.clientId)) linkedAt.set(p.request.sub + "|" + p.clientId, now());
+    approvedUser.used.add(p.clientId);
     const trustedKey = p.request.sub + "|" + p.clientId;
     for (const id of s.remember?.applications ?? []) trustedApplications.set(trustedKey, (trustedApplications.get(trustedKey) ?? new Set()).add(`${r.authorization_details[0].network}:${id}`));
     return { status: 200, body: { status: "approved" } };
@@ -952,60 +958,126 @@ export function createMockOidc(options: MockOptions = {}) {
   };
   const money = (v: number) => v.toFixed(2);
 
+  const appList = (sub: string, clientId: string) =>
+    [...(trustedApplications.get(sub + "|" + clientId) ?? [])].map((k) => {
+      const i = k.lastIndexOf(":");
+      return { network: k.slice(0, i), app_id: Number(k.slice(i + 1)) };
+    });
+  /** The origin the mock reports for a client's pause when the helper gave none: the client's own domain. */
+  const defaultOrigin = (c: SeedClient) => "https://" + (c.domain ?? "client.invalid");
+
+  /**
+   * `GET /devices/settings` (issue 30, item 3). `clients` lists the clients that are linked or hold any setting of the user's (a label, a trusted application, "always ask",
+   * a threshold of their own, a pause); the app shows the linked ones. The mock vouches for no name: `label` is the user's own text or null, and the client is told
+   * apart by its `fingerprint` and, when proven, its `domain`.
+   */
   function settingsView(sub: string) {
     const user = userMap.get(sub)!;
     return {
       sub,
       biometric_required: acct(sub).biometricRequired,
       threshold_eur: money(user.thresholdEur),
-      block_unverified_clients: acct(sub).blockUnverified,
-      clients: clients.map((c) => {
-        const s = cs(sub, c.id);
-        const paused = s.pausedUntil !== undefined && s.pausedUntil > now();
-        return {
-          client_id: c.id,
-          verified: c.verified,
-          label: c.verified ? c.displayName : "Unverified application " + c.fingerprint,
-          always_ask: user.alwaysAsk.includes(c.id),
-          per_client_threshold_eur: s.perClientThresholdEur === undefined ? null : money(s.perClientThresholdEur),
-          paused_until: paused ? s.pausedUntil : null,
-        };
-      }),
+      default_threshold_eur: money(DEFAULT_THRESHOLD_EUR),
+      ...(maxThresholdEur !== undefined ? { max_threshold_eur: money(maxThresholdEur) } : {}),
+      block_unproven_clients: acct(sub).blockUnverified,
+      ask_on_test_networks: acct(sub).askOnTestNetworks,
+      clients: clients
+        .filter((c) => {
+          const s = cs(sub, c.id);
+          return user.used.has(c.id) || user.alwaysAsk.includes(c.id) || s.label !== undefined || s.perClientThresholdEur !== undefined || (s.pausedUntil !== undefined && s.pausedUntil > now()) || appList(sub, c.id).length > 0;
+        })
+        .map((c) => {
+          const s = cs(sub, c.id);
+          const paused = s.pausedUntil !== undefined && s.pausedUntil > now();
+          return {
+            client_id: c.id,
+            label: s.label ?? null,
+            fingerprint: fingerprintOf(c.id),
+            domain_proven: c.verified,
+            ...(c.verified && c.domain ? { domain: c.domain } : {}),
+            linked: user.used.has(c.id),
+            linked_at: user.used.has(c.id) ? linkedAt.get(sub + "|" + c.id) ?? null : null,
+            always_ask: user.alwaysAsk.includes(c.id),
+            per_client_threshold_eur: s.perClientThresholdEur === undefined ? null : money(s.perClientThresholdEur),
+            paused_until: paused ? s.pausedUntil : null,
+            pauses: paused ? [{ origin: s.pausedOrigin ?? defaultOrigin(c), paused_until: s.pausedUntil }] : [],
+            trusted_applications: appList(sub, c.id),
+          };
+        }),
     };
   }
 
-  const isDecimal = (v: unknown) => typeof v === "string" && /^(0|[1-9][0-9]*)(\.[0-9]+)?$/.test(v);
+  /** A decimal string of at most two decimals (the schema's amount). */
+  const isAmount = (v: unknown): v is string => typeof v === "string" && /^(0|[1-9][0-9]{0,14})(\.[0-9]{1,2})?$/.test(v);
+  const MAX_TECHNICAL_THRESHOLD_EUR = 1_000_000_000;
 
-  /** Validates the change shape and reports whether it loosens anything (raise a threshold, drop a requirement, lift a pause). */
+  /**
+   * Validates the change shape and reports whether it loosens anything. The shape is the one of the signed `settings-change-signed` schema (spec 8.2):
+   * a rule broken answers 400, never a partial change. Loosening is decided here, by the server, not by the app: raising a threshold, setting a per-client
+   * threshold above the effective one (or `null` when that raises it), turning off `always_ask`, `block_unproven_clients`, `biometric_required` or
+   * `ask_on_test_networks`, adding a trusted application, lifting a pause. Removing a trusted application, unlinking and a label are tightening. A mixed change is loosening.
+   */
   function classifyChange(sub: string, change: any): { loosening: boolean } {
     const user = userMap.get(sub)!;
     const bad = (m: string) => new HttpError(400, "invalid_request", m);
     if (!change || typeof change !== "object" || Array.isArray(change)) throw bad("change must be an object");
-    const allowed = new Set(["threshold_eur", "biometric_required", "block_unverified_clients", "clients"]);
+    const allowed = new Set(["threshold_eur", "biometric_required", "block_unproven_clients", "ask_on_test_networks", "clients"]);
     for (const k of Object.keys(change)) if (!allowed.has(k)) throw bad("unknown setting " + k);
     if (Object.keys(change).length === 0) throw bad("change is empty");
+    const ceiling = maxThresholdEur ?? MAX_TECHNICAL_THRESHOLD_EUR;
+    const checkAmount = (name: string, v: unknown) => {
+      if (!isAmount(v)) throw bad(name + " must be a decimal string of at most two decimals");
+      if (Number(v) > ceiling) throw bad(`${name} must not be more than ${money(ceiling)} EUR${maxThresholdEur !== undefined ? " (the limit of this service)" : ""}`);
+    };
     let loosening = false;
     if ("threshold_eur" in change) {
-      if (!isDecimal(change.threshold_eur)) throw bad("threshold_eur must be a decimal string");
+      checkAmount("threshold_eur", change.threshold_eur);
       if (Number(change.threshold_eur) > user.thresholdEur) loosening = true;
     }
-    for (const k of ["biometric_required", "block_unverified_clients"]) {
+    for (const k of ["biometric_required", "block_unproven_clients", "ask_on_test_networks"]) {
       if (k in change && typeof change[k] !== "boolean") throw bad(k + " must be a boolean");
     }
     if (change.biometric_required === false && acct(sub).biometricRequired) loosening = true;
-    if (change.block_unverified_clients === false && acct(sub).blockUnverified) loosening = true;
+    if (change.block_unproven_clients === false && acct(sub).blockUnverified) loosening = true;
+    if (change.ask_on_test_networks === false && acct(sub).askOnTestNetworks) loosening = true;
     if ("clients" in change) {
-      if (!change.clients || typeof change.clients !== "object" || Array.isArray(change.clients)) throw bad("clients must be an object");
+      if (!change.clients || typeof change.clients !== "object" || Array.isArray(change.clients) || Object.keys(change.clients).length === 0) throw bad("clients must be a non-empty object");
       for (const [id, c] of Object.entries<any>(change.clients)) {
-        if (!clientMap.has(id)) throw bad("unknown client " + id);
-        if (!c || typeof c !== "object" || Object.keys(c).length === 0) throw bad("empty change for " + id);
-        for (const k of Object.keys(c)) if (!["always_ask", "per_client_threshold_eur", "paused"].includes(k)) throw bad("unknown client setting " + k);
-        if ("always_ask" in c && typeof c.always_ask !== "boolean") throw bad("always_ask must be a boolean");
-        if ("paused" in c && c.paused !== false) throw bad("a client can only be unpaused here");
-        if ("per_client_threshold_eur" in c && c.per_client_threshold_eur !== null && !isDecimal(c.per_client_threshold_eur)) throw bad("per_client_threshold_eur must be a decimal string or null");
+        const client = clientMap.get(id);
+        if (!client) throw bad("unknown client " + id);
+        if (!c || typeof c !== "object" || Array.isArray(c) || Object.keys(c).length === 0) throw bad("empty change for " + id);
+        for (const k of Object.keys(c)) if (!["always_ask", "per_client_threshold_eur", "label", "trusted_applications_add", "trusted_applications_remove", "paused", "origin", "unlink"].includes(k)) throw bad("unknown client setting " + k);
         const s = cs(sub, id);
+        if ("unlink" in c) {
+          if (c.unlink !== true || Object.keys(c).length !== 1) throw bad("unlink must be true and the only member of the change for the client");
+          continue; // tightening
+        }
+        if ("always_ask" in c && typeof c.always_ask !== "boolean") throw bad("always_ask must be a boolean");
+        if ("paused" in c !== "origin" in c) throw bad("paused and origin are given together");
+        if ("paused" in c && c.paused !== false) throw bad("a client can only be unpaused here (a pause is set by the user's denials, POST /devices/pauses)");
+        if ("origin" in c && !(typeof c.origin === "string" && c.origin.length <= 253 && ORIGIN.test(c.origin))) throw bad("origin must be a canonical http(s) origin");
+        if ("per_client_threshold_eur" in c && c.per_client_threshold_eur !== null) checkAmount("per_client_threshold_eur", c.per_client_threshold_eur);
+        if ("label" in c) {
+          if (!isDisplaySafe(c.label)) throw bad("label must be 1 to 40 characters of plain text (Unicode NFC, no control, bidirectional, zero-width or invisible characters, no padding)");
+          if (!user.used.has(id)) throw bad("only a linked client can be labelled");
+        }
+        for (const k of ["trusted_applications_add", "trusted_applications_remove"]) {
+          if (!(k in c)) continue;
+          const l = c[k];
+          const key = (a: any) => a.network + ":" + a.app_id;
+          if (!Array.isArray(l) || l.length < 1 || l.length > 16 || !l.every((a) => a && typeof a === "object" && ["algorand-mainnet", "algorand-testnet"].includes(a.network) && Number.isSafeInteger(a.app_id) && a.app_id >= 1 && Object.keys(a).length === 2) || new Set(l.map(key)).size !== l.length) {
+            throw bad(k + " must be 1 to 16 unique { network, app_id } entries of an Algorand network");
+          }
+          if (k === "trusted_applications_add" && !user.used.has(id)) throw bad("only a linked client can have trusted applications");
+        }
+        if (c.trusted_applications_add && c.trusted_applications_remove) {
+          const removed = new Set(c.trusted_applications_remove.map((a: any) => a.network + ":" + a.app_id));
+          if (c.trusted_applications_add.some((a: any) => removed.has(a.network + ":" + a.app_id))) throw bad("the same application cannot be added and removed in one change");
+        }
+        if ("paused" in c && !(s.pausedUntil !== undefined && s.pausedUntil > now() && c.origin === (s.pausedOrigin ?? defaultOrigin(client)))) throw bad("this client has no pause for that origin");
         if (c.always_ask === false && user.alwaysAsk.includes(id)) loosening = true;
-        if (c.paused === false && s.pausedUntil !== undefined && s.pausedUntil > now()) loosening = true;
+        if (c.paused === false) loosening = true;
+        if (c.trusted_applications_add) loosening = true;
         if ("per_client_threshold_eur" in c) {
           const next = c.per_client_threshold_eur === null ? user.thresholdEur : Number(c.per_client_threshold_eur);
           if (next > (s.perClientThresholdEur ?? user.thresholdEur)) loosening = true;
@@ -1019,12 +1091,30 @@ export function createMockOidc(options: MockOptions = {}) {
     const user = userMap.get(sub)!;
     if ("threshold_eur" in change) user.thresholdEur = Number(change.threshold_eur);
     if ("biometric_required" in change) acct(sub).biometricRequired = change.biometric_required;
-    if ("block_unverified_clients" in change) acct(sub).blockUnverified = change.block_unverified_clients;
+    if ("block_unproven_clients" in change) acct(sub).blockUnverified = change.block_unproven_clients;
+    if ("ask_on_test_networks" in change) acct(sub).askOnTestNetworks = change.ask_on_test_networks;
     for (const [id, c] of Object.entries<any>(change.clients ?? {})) {
       const s = cs(sub, id);
+      const key = sub + "|" + id;
+      if (c.unlink === true) {
+        // Unlinking forgets everything the user held for the client except a running pause: the next request is first use again.
+        user.used.delete(id);
+        user.alwaysAsk = user.alwaysAsk.filter((x) => x !== id);
+        trustedApplications.delete(key);
+        linkedAt.delete(key);
+        s.label = undefined;
+        s.perClientThresholdEur = undefined;
+        continue;
+      }
       if ("always_ask" in c) user.alwaysAsk = c.always_ask ? [...new Set([...user.alwaysAsk, id])] : user.alwaysAsk.filter((x) => x !== id);
       if ("per_client_threshold_eur" in c) s.perClientThresholdEur = c.per_client_threshold_eur === null ? undefined : Number(c.per_client_threshold_eur);
-      if (c.paused === false) s.pausedUntil = undefined;
+      if ("label" in c) s.label = c.label;
+      if (c.paused === false) { s.pausedUntil = undefined; s.pausedOrigin = undefined; }
+      const set = trustedApplications.get(key) ?? new Set<string>();
+      for (const a of c.trusted_applications_add ?? []) set.add(`${a.network}:${a.app_id}`);
+      for (const a of c.trusted_applications_remove ?? []) set.delete(`${a.network}:${a.app_id}`);
+      if (set.size > 0) trustedApplications.set(key, set);
+      else trustedApplications.delete(key);
     }
   }
 
@@ -1034,24 +1124,21 @@ export function createMockOidc(options: MockOptions = {}) {
     if (d.activeAt > now()) throw new HttpError(403, "access_denied", "this device is not active yet (rule 7)");
     const { loosening } = classifyChange(d.sub, body.change);
     if (loosening) {
-      // Loosening is a consent from an active device: a signed biatec_settings_change (required changes, section 19).
-      if (d.activeAt > now()) throw new HttpError(403, "access_denied", "this device is not active yet (rule 7)");
+      // Loosening is a consent from an active device: a `biatec_settings_change` signed with the APPROVAL key (spec 8.2, `verifyDeviceSigned`).
       const c = body.consent;
       const refuse = (m: string) => new HttpError(403, "insufficient_user_authentication", m, { acr_values: "biatec:consent", reason: "consent_required" });
-      if (!c || typeof c !== "object" || !c.signed || typeof c.signature !== "string") throw refuse("loosening needs a device-signed biatec_settings_change");
-      const s = c.signed;
-      if (s.type !== "biatec_settings_change" || s.sub !== d.sub || s.kid !== d.kid || typeof s.nonce !== "string" || !s.nonce || typeof s.issued_at !== "number") throw refuse("the signed change is malformed");
-      if (jcs(s.change) !== jcs(body.change)) throw refuse("the signed change differs from the requested one");
-      if (Math.abs(now() - s.issued_at) > CONSENT_VALIDITY_SECONDS) throw refuse("the signed change expired");
-      let ok = false;
-      try {
-        ok = verifyEs256(d.publicKey, Buffer.from(jcs(s), "utf8"), c.signature);
-      } catch {
-        ok = false;
+      if (!c || typeof c !== "object" || !c.signed || typeof c.signature !== "string" || !c.device || typeof c.device.public_key !== "object" || c.device.public_key === null) throw refuse("loosening needs a device-signed biatec_settings_change");
+      // The statement is the caller's: its key is this device's approval key (the key in the envelope is checked against the stored one, not trusted).
+      let sameKey = false;
+      try { sameKey = c.device.kid === d.kid && thumbprint(c.device.public_key) === thumbprint(d.publicKey as never); } catch { sameKey = false; }
+      if (!sameKey) throw refuse("the statement is not signed by the approval key of the calling device");
+      if (jcs(c.signed.change) !== jcs(body.change)) throw refuse("the signed change differs from the requested one");
+      const used = statementNonces.get(d.kid) ?? new Set<string>();
+      if (!verifyDeviceSigned(c, jwks, { issuer, now: now(), usedNonces: used }, { approverActive: true, sub: d.sub })) {
+        throw refuse("the signed change does not verify (approval key, attestation, subject, nonce, issued_at, well-formed change)");
       }
-      if (!ok) throw refuse("the signature does not verify");
-      if (settingsNonces.has(d.kid + "|" + s.nonce)) throw refuse("this signed change was already used");
-      settingsNonces.add(d.kid + "|" + s.nonce);
+      used.add(c.signed.nonce); // one atomic step in this single-threaded mock: checked above, recorded now
+      statementNonces.set(d.kid, used);
     }
     applyChange(d.sub, body.change);
     hub.notify(d.sub, "settings_changed", {});
@@ -1067,10 +1154,7 @@ export function createMockOidc(options: MockOptions = {}) {
     const origin = url.searchParams.get("origin");
     if (origin !== null && !ORIGIN.test(origin)) throw new HttpError(400, "invalid_request", "origin must be an absolute http(s) origin in canonical form");
     const coolingOffUntil = registeredAt(client) + COOLING_OFF_SECONDS;
-    const apps = [...(trustedApplications.get(t.sub + "|" + client.id) ?? [])].map((k) => {
-      const i = k.lastIndexOf(":");
-      return { network: k.slice(0, i), app_id: Number(k.slice(i + 1)) };
-    });
+    const apps = appList(t.sub, client.id);
     const owned = [...devices.values()].filter((d) => d.sub === t.sub && !d.cancelled);
     return {
       status: 200,
@@ -1251,6 +1335,7 @@ export function createMockOidc(options: MockOptions = {}) {
       if (!userMap.has(x[1]) || !clientMap.has(x[2])) throw new HttpError(404, "not_found");
       const s = cs(x[1], x[2]);
       s.pausedUntil = now() + 24 * 3600;
+      s.pausedOrigin = undefined;
       return { status: 200, body: { paused_until: s.pausedUntil } };
     }
     if (m === "GET" && path === "/mock/push-outbox") {

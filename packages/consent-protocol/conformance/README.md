@@ -24,6 +24,7 @@ needs, and a case whose needs this run cannot offer is reported as **skipped wit
 | `clientSecret` | `CONFORMANCE_CLIENT_SECRET` is set (direct entry) |
 | `userToken` | `CONFORMANCE_USER_TOKEN` is set (the access token of the client and user under test; `CONFORMANCE_STEPUP_BEARER` is the older name) |
 | `deviceKey` | `CONFORMANCE_DEVICE_PRIVATE_JWK` and `CONFORMANCE_DEVICE_TOKEN` are set |
+| `settingsUser` | `CONFORMANCE_SETTINGS_BEARER`, `CONFORMANCE_SETTINGS_DEVICE_TOKEN` and `CONFORMANCE_SETTINGS_DEVICE_KID` are set: an account of its own with an active device (its approval key is `CONFORMANCE_DEVICE_PRIVATE_JWK`) and the verified client linked. The settings cases change its threshold, trust and links and put them back, so no other case may use it (the mock's `hank@example.com`, tokens `hank-chat-sign` and `device-token-hank`, `hank-device`). |
 | `bearer:<name>` | the matching `CONFORMANCE_BEARER_*` variable is set |
 
 ```
@@ -62,6 +63,8 @@ recomputed (`400 group_hash_mismatch`), `403 consent_unsupported_operation` (rek
 `consent_hash_mismatch` (one byte changed after approval, the consent stays usable), `401 consent not usable` on a second use, the consent
 token refused on another endpoint, `valuedEur`, `429 too_many_pending_requests`, `429 rate_limited`, the user's own threshold (5000 EUR) and
 `GET /consent/settings`. The receipts are protocol 1.1 (`client_fingerprint`, `device.key_use` approve) and every group is a real unsigned Algorand group.
+
+`tests/settings.conformance.test.ts` covers the settings of Biatec OIDC issue 30 (the mock README, "Settings", has the shapes): tightening without and loosening with the approval key's `biatec_settings_change` (`403 insufficient_user_authentication` with `reason: consent_required` otherwise; replay, other change, other account, presence key and stale statements refused), the threshold with no ceiling and a 2000 EUR transfer signed under 5000, `ask_on_test_networks`, `block_unproven_clients`, a display-safe `label`, trusted applications (add loosens, remove tightens, the policy follows), `unlink` (first use again) and `remember` on the receipt. Each needs `settingsUser`, `deviceKey` and `mockHelpers`.
 
 `tests/detection.test.ts` proves the suite fails on a bad receipt: it alters a signed member, the signature, the
 device key, the binding code, the decision and the schema, and it runs both entries through a proxy that tampers with

@@ -24,5 +24,8 @@ for (const n of [maxPendingPerClientOrigin, maxRequestsPerHour]) if (n !== undef
 const hubLifetimeSeconds = process.env.MOCK_HUB_LIFETIME_SECONDS ? Number(process.env.MOCK_HUB_LIFETIME_SECONDS) : undefined;
 const hubPingSeconds = process.env.MOCK_HUB_PING_SECONDS ? Number(process.env.MOCK_HUB_PING_SECONDS) : undefined;
 for (const n of [hubLifetimeSeconds, hubPingSeconds]) if (n !== undefined && !(n > 0)) throw new Error("MOCK_HUB_LIFETIME_SECONDS and MOCK_HUB_PING_SECONDS must be positive numbers");
-const { server, issuer } = createMockOidc({ hubLifetimeSeconds, hubPingSeconds, testHelpers, deviceProof, twoKeys, minAppBuild, jsonGroups, maxPendingPerClientOrigin, maxRequestsPerHour });
+// MOCK_MAX_THRESHOLD_EUR=<n>: an operator ceiling for the user's own approval threshold (unset: none, only the technical 1000000000 EUR).
+const maxThresholdEur = process.env.MOCK_MAX_THRESHOLD_EUR ? Number(process.env.MOCK_MAX_THRESHOLD_EUR) : undefined;
+if (maxThresholdEur !== undefined && !(maxThresholdEur >= 0 && maxThresholdEur <= 1_000_000_000)) throw new Error("MOCK_MAX_THRESHOLD_EUR must be an amount from 0 to 1000000000");
+const { server, issuer } = createMockOidc({ maxThresholdEur, hubLifetimeSeconds, hubPingSeconds, testHelpers, deviceProof, twoKeys, minAppBuild, jsonGroups, maxPendingPerClientOrigin, maxRequestsPerHour });
 server.listen(port, host, () => console.log(`mock-oidc (${issuer}) listening on http://${host}:${port}${testHelpers ? " with test helpers (MOCK_TEST_HELPERS=1)" : ""}`));

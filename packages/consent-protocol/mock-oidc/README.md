@@ -31,7 +31,7 @@ docker build -f packages/consent-protocol/mock-oidc/Dockerfile -t biatec-mock-oi
 | `POST /devices/hub-ticket` | `Authorization: Device <token>` (and the device proof where required); answers `{ "ticket": "...", "expires_in": 30 }`. The ticket is single use and lives 30 seconds |
 | `WS /hubs/device?access_token=<ticket>` | The device channel, SignalR JSON hub protocol, server to client only (`src/device-hub.ts`). A used, expired or unknown ticket is refused with HTTP 401 at the upgrade. See "Device channel" below |
 | `GET /devices`, `POST /devices/{kid}/cancel` | Device list (with `name`, and `pairing` for a pending device that has two keys); cancelling a pending enrollment (T-084) |
-| `GET /devices/settings`, `PUT /devices/settings` | Consent settings; loosening needs a device-signed `biatec_settings_change` (T-084) |
+| `GET /devices/settings`, `PUT /devices/settings` | The user's own consent settings, set on the phone (issue 30). Exact shapes, the classifier and the 403 body: see "Settings (issue 30)" below |
 | `POST /mock/hub/close` | Test helper, body `{ "kid": "...", "allow_reconnect": false }`: sends the close message to the device's channel connections and closes them |
 | `GET /mock/devices/{kid}` (the answer also carries the device's `presence` key and its attestation), `POST /mock/devices/{kid}/activate`, `GET /mock/push-outbox?kid=...` | Test helpers, served only with `MOCK_TEST_HELPERS=1` (always on when the mock is embedded in tests); the outbox shows the push messages that would be sent. Without the flag the seeded devices also get random tokens, because `device-token-<user>` is predictable (BCHAT-006) |
 
@@ -56,8 +56,8 @@ docker build -f packages/consent-protocol/mock-oidc/Dockerfile -t biatec-mock-oi
 
 - Issuer `https://oidc.biatec.test`; signing key and device key are the test-only keys in `../vectors/keys.json`.
 - Clients (Basic auth): `biatec-chat` / `biatec-chat-secret` (proven domain `chat.biatec.io`, may use `manage-limits`), `bank-example` / `bank-example-secret` (proven domain; first use needs the phone), `new-app` / `new-app-secret` (proven domain, registered an hour ago: cooling-off), `unverified-app` / `unverified-app-secret` (no proven domain). A client's fingerprint is the first 16 hex characters of the SHA-256 of its id.
-- Users: `alice@example.com` (active device `alice-device`, 1000 EUR threshold), `carol@example.com` (active device, always asks for `biatec-chat`), `bob@example.com` (no device), `dave@example.com` (active device, paused `biatec-chat`: `client_paused`), `erin@example.com` (no device and no earlier signature: the reduced cap, `daily_cap_exceeded`), `frank@example.com` (active device, threshold 5000 EUR), `gina@example.com` (active device, blocks clients without a proven domain). A device has an approval key (`<name>-device`, the vector `device` key) and a presence key (`<name>-device-presence`, the vector `presence` key), each attested for its own use.
-- Bearer tokens: `alice-chat-sign`, `alice-chat-limits`, `alice-bank-sign`, `alice-new-sign`, `alice-unverified-sign`, `carol-chat-sign`, `bob-chat-sign`, `dave-chat-sign`, `erin-chat-sign`, `frank-chat-sign`, `gina-chat-sign`, `gina-unverified-sign`, `alice-chat-nosign`; login tokens `login-alice`, `login-bob`, `login-carol` (scope `openid enroll-device`, authenticated just now) and `login-alice-stale` (authenticated an hour ago: refused for enrollment). Seeded device tokens: `Device device-token-<name>`.
+- Users: `alice@example.com` (active device `alice-device`, 1000 EUR threshold), `carol@example.com` (active device, always asks for `biatec-chat`), `bob@example.com` (no device), `dave@example.com` (active device, paused `biatec-chat`: `client_paused`), `erin@example.com` (no device and no earlier signature: the reduced cap, `daily_cap_exceeded`), `frank@example.com` (active device, threshold 5000 EUR), `gina@example.com` (active device, blocks clients without a proven domain), `hank@example.com` (active device, `biatec-chat` linked; nothing else uses it: the conformance settings cases change its settings). A device has an approval key (`<name>-device`, the vector `device` key) and a presence key (`<name>-device-presence`, the vector `presence` key), each attested for its own use.
+- Bearer tokens: `alice-chat-sign`, `alice-chat-limits`, `alice-bank-sign`, `alice-new-sign`, `alice-unverified-sign`, `carol-chat-sign`, `bob-chat-sign`, `dave-chat-sign`, `erin-chat-sign`, `frank-chat-sign`, `gina-chat-sign`, `gina-unverified-sign`, `hank-chat-sign`, `alice-chat-nosign`; login tokens `login-alice`, `login-bob`, `login-carol` (scope `openid enroll-device`, authenticated just now) and `login-alice-stale` (authenticated an hour ago: refused for enrollment). Seeded device tokens: `Device device-token-<name>`.
 
 ## Mocked simplifications
 
@@ -67,6 +67,73 @@ docker build -f packages/consent-protocol/mock-oidc/Dockerfile -t biatec-mock-oi
 - State is in memory. Nothing is sent to APNs: each new request queues one message per active device with a push token (`GET /mock/push-outbox`), and clients can also poll `GET /devices/requests`.
 
 - Platform attestation (T-234): `POST /devices/challenge` (login or device token) issues a single-use nonce; `POST /devices` accepts `attestation_challenge` and `platform_attestation` together, and `PUT /devices/attestation` refreshes it. The mock checks the shape, binds the nonce to the user, spends it once and expires it after 300 s; it cannot verify a token with Google or Apple. `attestation_refresh_after` comes back when one was accepted.
+
+## Settings (issue 30, T-245): the source of truth for the authenticator
+
+All trust is the user's, set on the phone; the mock trusts no client and no application id. Every call here: `Authorization: Device <token>` (plus the device proof when `MOCK_DEVICE_PROOF=1`). The device must be **active** (an inactive one gets `403 access_denied`, tightening included; `GET` is open to it). Env switch: `MOCK_MAX_THRESHOLD_EUR=<n>` (option `maxThresholdEur`) sets an operator ceiling for the threshold; unset there is none except the technical 1000000000 EUR.
+
+**`GET /devices/settings`** answers 200:
+
+```json
+{
+  "sub": "pw_alice",
+  "biometric_required": true,
+  "threshold_eur": "1000.00",
+  "default_threshold_eur": "1000.00",
+  "max_threshold_eur": "5000.00",
+  "block_unproven_clients": false,
+  "ask_on_test_networks": true,
+  "clients": [
+    {
+      "client_id": "biatec-chat", "label": null, "fingerprint": "a1b2c3d4e5f60718", "domain_proven": true, "domain": "chat.biatec.io",
+      "linked": true, "linked_at": 1792425600, "always_ask": false, "per_client_threshold_eur": null,
+      "paused_until": null, "pauses": [],
+      "trusted_applications": [ { "network": "algorand-testnet", "app_id": 777 } ]
+    }
+  ]
+}
+```
+
+- Amounts are decimal strings with two decimals. `max_threshold_eur` is present only when the operator set a ceiling. `block_unverified_clients` is gone (renamed `block_unproven_clients`); the members `verified` and a server-asserted name are gone too: a client is told apart by its `fingerprint` (16 hex characters) and, when `domain_proven`, its `domain` (absent otherwise). `label` is the user's own text or `null`.
+- `clients` lists the clients that are linked or hold any setting of the user's (a label, a trusted application, "always ask", a threshold of their own, a running pause). `linked_at` is epoch seconds (`null` when not linked; a seeded client counts from the start of the mock). `paused_until` is epoch seconds while the 24 hour pause runs, else `null`; `pauses` lists `{ "origin", "paused_until" }` (the mock models one pause per client; its origin is the client's own `https://<domain>`). `per_client_threshold_eur` `null` follows `threshold_eur`.
+
+**`PUT /devices/settings`**, body `{ "change": { ... }, "consent": { ... }? }`. Answers 200 `{ "applied": true, "loosened": <bool>, "settings": <the GET body> }`, and sends `settings_changed` on the device channel.
+
+`change` has at least one member, all optional; unknown members are `400 invalid_request`:
+
+| Member | Type and rule | Direction |
+| --- | --- | --- |
+| `threshold_eur` | decimal string, at most two decimals, `0` (always ask) up to the ceiling | raising is loosening |
+| `biometric_required`, `block_unproven_clients`, `ask_on_test_networks` | boolean | turning off is loosening |
+| `clients.{client_id}.always_ask` | boolean | off is loosening |
+| `clients.{client_id}.per_client_threshold_eur` | amount, or `null` (follow `threshold_eur`) | raising it above the effective one (or `null` when that raises it) is loosening |
+| `clients.{client_id}.label` | 1 to 40 characters, `isDisplaySafe` (NFC, no control, bidirectional, zero-width or invisible characters, no padding); only for a linked client | tightening |
+| `clients.{client_id}.trusted_applications_add` | 1 to 16 unique `{ "network": "algorand-mainnet" or "algorand-testnet", "app_id": <integer >= 1> }`; only for a linked client | loosening |
+| `clients.{client_id}.trusted_applications_remove` | same list shape; not the same application as `_add` | tightening |
+| `clients.{client_id}.paused: false` with `origin` | the canonical origin of a running pause (only `false`: a pause is set by denials) | lifting is loosening |
+| `clients.{client_id}.unlink: true` | the only member for that client; forgets the link, label, trusted applications, own threshold and "always ask" (a running pause stays) | tightening |
+
+Loosening versus tightening is decided here, by the mock, never by the app; a change that mixes both is loosening as a whole. Send the change; if it is a loosening and carries no valid `consent`, nothing changes and the answer is
+
+```
+403 { "error": "insufficient_user_authentication", "error_description": "<why>", "acr_values": "biatec:consent", "reason": "consent_required" }
+```
+
+The app then signs the same `change` and resends it. `consent` is the device-signed envelope of spec 8.2 (`device-signed.schema.json`), checked with `verifyDeviceSigned`:
+
+```json
+{ "signed": { "type": "biatec_settings_change", "sub": "pw_alice", "kid": "alice-device", "nonce": "<16 to 128 characters, unused>", "issued_at": 1792425600, "change": { "...": "equal to change" } },
+  "alg": "ES256", "signature": "<base64url r||s over JCS(signed), by the APPROVAL key>",
+  "device": { "kid": "alice-device", "key_use": "approve", "public_key": { "kty": "EC", "crv": "P-256", "x": "...", "y": "..." }, "attestation": "<the approval key's attestation JWS>" } }
+```
+
+It must be signed by the approval key of the calling (active) device (`device.kid` is the caller's; a presence-key signature is refused), `signed.sub` is the caller's account, `signed.change` equals `change` (canonically), `issued_at` is within 300 seconds, the nonce is new for that device (spent on success only), and the change must be well formed (a display-safe label and so on). Anything else is the same `403` and nothing changes. A `400` (bad shape, amount over the ceiling) is answered before the signature is looked at.
+
+The `400` for an amount over the ceiling carries the text the app shows: `{ "error": "invalid_request", "error_description": "threshold_eur must not be more than 5000.00 EUR (the limit of this service)" }` (with no operator ceiling the text ends `... 1000000000.00 EUR` without the bracket). The same ceiling applies to `per_client_threshold_eur`.
+
+**Linking and remembering.** A client is linked by the user's first approved request for it; before that `first_use` (in `GET /consent/settings`) is true, the consent request's `client.linked` is false, and every request asks the phone whatever the amount. An `approve` receipt may carry the signed member `remember: { "applications": [ids] }` (protocol 1.1): each id must be an application of that request that the card offered as untrusted (`trusted: false`), 1 to 16 unique; otherwise `400 invalid_receipt` and the request stays pending (a `deny` receipt with `remember` is refused too). The ids become the trusted applications of that client on the request's network; the signing policy then treats them as known (the value counts, nothing is asked below the user's threshold). `unlink` makes the next request first use again.
+
+**Policy.** The signing policy uses the user's `threshold_eur` (or the client's own), `always_ask`, `ask_on_test_networks` (off: a test network no longer asks because of the value, every other reason still applies), `block_unproven_clients` and the trusted applications. `POST /mock/users/{sub}/clients/{client_id}/pause` (test helper) starts a 24 hour pause.
 
 ## Device channel (T-244)
 

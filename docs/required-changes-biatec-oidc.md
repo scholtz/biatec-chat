@@ -668,9 +668,7 @@ needs no consent.
 
 ## 22. Device-side consent settings with device-signed loosening (T-084)
 
-- **Biatec OIDC issue:** AlgorandGoogleDriveAccount#30. The members below are the mock's current subset (T-084); the 1.1 statement of specification 8.2 adds `block_unproven_clients` (the name
-  used here before, `block_unverified_clients`, is replaced), `ask_on_test_networks`, `trusted_applications_add` / `_remove`, `label`, `paused` with its `origin`, and `unlink`; the settings
-  screens adopt them in T-245.
+- **Biatec OIDC issue:** AlgorandGoogleDriveAccount#30. The exact, current request and response shapes (revision 2: `block_unproven_clients`, `ask_on_test_networks`, `label`, `trusted_applications_add` / `_remove`, `paused` with its `origin`, `unlink`, the `device` member of the signed `consent`, no threshold ceiling unless the operator sets one) are in `packages/consent-protocol/mock-oidc/README.md`, "Settings (issue 30)"; the example below is the T-084 subset, kept for orientation only.
 - **Purpose:** the security settings and trusted-clients screens, and row 19: loosening needs a receipt from an active device.
   **Fallback:** none; same `CONSENT_SETTINGS_API` flag as above.
 - The CIBA request model with a `biatec_settings_change` type (row 19) is the web-initiated path. On the device's own screen the

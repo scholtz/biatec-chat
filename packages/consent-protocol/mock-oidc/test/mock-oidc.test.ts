@@ -902,10 +902,14 @@ test("push: the payload is the request id only, sent to active devices with a re
 
 // --- T-084: device list, cancelling a pending enrollment, consent settings ------------------------------------------
 
-/** What the authenticator does for a loosening: sign JCS(biatec_settings_change) with the device key. */
-function settingsConsent(dev: { kid: string }, change: unknown, nonce: string, overrides: Record<string, unknown> = {}, signingKey = keys.device) {
-  const signed = { type: "biatec_settings_change", sub: "pw_alice", kid: dev.kid, nonce, issued_at: clock, change, ...overrides };
-  return { signed, alg: "ES256", signature: signEs256(signingKey, Buffer.from(jcs(signed), "utf8")) };
+/** What the authenticator does for a loosening: sign JCS(biatec_settings_change) with the approval key and send it with the key's attestation (spec 8.2). */
+async function settingsConsent(dev: { kid: string }, change: unknown, nonce: string, overrides: Record<string, unknown> = {}, signingKey = keys.device, sub = "pw_alice") {
+  const signed = { type: "biatec_settings_change", sub, kid: dev.kid, nonce, issued_at: clock, change, ...overrides };
+  const info = (await call("GET", `/mock/devices/${dev.kid}`)).json;
+  return {
+    signed, alg: "ES256", signature: signEs256(signingKey, Buffer.from(jcs(signed), "utf8")),
+    device: { kid: dev.kid, key_use: "approve", public_key: info.public_key, attestation: info.attestation },
+  };
 }
 const freshJwk = async () => (await import("node:crypto")).generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" }) as Record<string, string>;
 
@@ -946,14 +950,14 @@ test("T-084: tightening settings applies at once; loosening needs a fresh device
   const up = { threshold_eur: "800" };
   assert.equal((await put(up)).status, 403);
   assert.equal((await put(up)).json.reason, "consent_required");
-  assert.equal((await put(up, settingsConsent(alice, { threshold_eur: "900" }, "n1"))).status, 403, "signed another change");
-  assert.equal((await put(up, settingsConsent(alice, up, "n2", {}, keys.oidc))).status, 403, "signed by the wrong key");
-  assert.equal((await put(up, settingsConsent(alice, up, "n3", { issued_at: clock - 301 }))).status, 403, "stale");
-  assert.equal((await put(up, settingsConsent(alice, up, "n4", { sub: "pw_carol" }))).status, 403, "another user");
+  assert.equal((await put(up, await settingsConsent(alice, { threshold_eur: "900" }, "n1-0123456789abcdef"))).status, 403, "signed another change");
+  assert.equal((await put(up, await settingsConsent(alice, up, "n2-0123456789abcdef", {}, keys.oidc))).status, 403, "signed by the wrong key");
+  assert.equal((await put(up, await settingsConsent(alice, up, "n3-0123456789abcdef", { issued_at: clock - 301 }))).status, 403, "stale");
+  assert.equal((await put(up, await settingsConsent(alice, up, "n4-0123456789abcdef", { sub: "pw_carol" }))).status, 403, "another user");
   assert.equal((await view()).threshold_eur, "500.00");
 
   // A valid consent works once.
-  const good = settingsConsent(alice, up, "n5");
+  const good = await settingsConsent(alice, up, "n5-0123456789abcdef");
   r = await put(up, good);
   assert.equal(r.status, 200);
   assert.equal(r.json.loosened, true);
@@ -965,10 +969,10 @@ test("T-084: tightening settings applies at once; loosening needs a fresh device
   for (const change of [{ clients: { "biatec-chat": { always_ask: false } } }, { biometric_required: false }, { clients: { "bank-example": { per_client_threshold_eur: "5000" } } }]) {
     assert.equal((await put(change)).status, 403, JSON.stringify(change));
   }
-  assert.equal((await put({ block_unverified_clients: true })).status, 200, "blocking is tightening");
-  assert.equal((await put({ block_unverified_clients: false })).status, 403, "unblocking is loosening");
+  assert.equal((await put({ block_unproven_clients: true })).status, 200, "blocking is tightening");
+  assert.equal((await put({ block_unproven_clients: false })).status, 403, "unblocking is loosening");
   const off = { clients: { "biatec-chat": { always_ask: false } } };
-  assert.equal((await put(off, settingsConsent(alice, off, "n6"))).status, 200);
+  assert.equal((await put(off, await settingsConsent(alice, off, "n6-0123456789abcdef"))).status, 200);
   assert.equal((await put({ clients: { "bank-example": { per_client_threshold_eur: "50" } } })).status, 200, "lower per-client threshold is tightening");
 
   // Bad shapes.
@@ -976,8 +980,8 @@ test("T-084: tightening settings applies at once; loosening needs a fresh device
     assert.equal((await put(change)).status, 400, JSON.stringify(change));
   }
   // Restore for the tests that follow.
-  const back = { threshold_eur: "1000", block_unverified_clients: false, clients: { "bank-example": { per_client_threshold_eur: null } } };
-  assert.equal((await put(back, settingsConsent(alice, back, "n7"))).status, 200);
+  const back = { threshold_eur: "1000", block_unproven_clients: false, clients: { "bank-example": { per_client_threshold_eur: null } } };
+  assert.equal((await put(back, await settingsConsent(alice, back, "n7-0123456789abcdef"))).status, 200);
   assert.equal((await view()).threshold_eur, "1000.00");
 });
 
@@ -986,10 +990,10 @@ test("T-084: a client pause is lifted only with a device-signed consent", async 
   assert.equal((await call("POST", "/mock/users/pw_alice/clients/bank-example/pause")).status, 200);
   const find = async () => ((await call("GET", "/devices/settings", { auth: alice.auth })).json.clients as any[]).find((c) => c.client_id === "bank-example");
   assert.equal((await find()).paused_until, clock + 86400);
-  const lift = { clients: { "bank-example": { paused: false } } };
+  const lift = { clients: { "bank-example": { paused: false, origin: "https://bank.example" } } };
   assert.equal((await call("PUT", "/devices/settings", { auth: alice.auth, body: { change: lift } })).status, 403);
   assert.equal((await find()).paused_until, clock + 86400);
-  assert.equal((await call("PUT", "/devices/settings", { auth: alice.auth, body: { change: lift, consent: settingsConsent(alice, lift, "p1") } })).status, 200);
+  assert.equal((await call("PUT", "/devices/settings", { auth: alice.auth, body: { change: lift, consent: await settingsConsent(alice, lift, "p1-0123456789abcdef") } })).status, 200);
   assert.equal((await find()).paused_until, null);
 });
 
@@ -997,7 +1001,7 @@ test("T-084 / BCHAT-024: an inactive device changes no settings (tightening incl
   const e = await call("POST", "/devices", { auth: bearer("login-alice"), body: { kid: "alice-inactive", public_key: await freshJwk() } });
   const auth = "Device " + e.json.device_token;
   const change = { threshold_eur: "2000" };
-  const r = await call("PUT", "/devices/settings", { auth, body: { change, consent: settingsConsent({ kid: "alice-inactive" }, change, "i1") } });
+  const r = await call("PUT", "/devices/settings", { auth, body: { change, consent: await settingsConsent({ kid: "alice-inactive" }, change, "i1-0123456789abcdef") } });
   assert.equal(r.status, 403);
   assert.equal((await call("PUT", "/devices/settings", { auth, body: { change: { threshold_eur: "100" } } })).status, 403, "tightening needs an active device too (rule 7)");
   const other = await call("POST", "/devices", { auth: bearer("login-alice"), body: { kid: "alice-inactive-2", public_key: await freshJwk() } });
@@ -1009,7 +1013,7 @@ test("T-084 / BCHAT-024: an inactive device changes no settings (tightening incl
   const alice = await device(ALICE);
   assert.equal((await call("PUT", "/devices/settings", { auth: alice.auth, body: { change: { threshold_eur: "100" } } })).status, 200, "an active device can tighten");
   const back = { threshold_eur: "1000" };
-  assert.equal((await call("PUT", "/devices/settings", { auth: alice.auth, body: { change: back, consent: settingsConsent(alice, back, "i2") } })).status, 200);
+  assert.equal((await call("PUT", "/devices/settings", { auth: alice.auth, body: { change: back, consent: await settingsConsent(alice, back, "i2-0123456789abcdef") } })).status, 200);
   assert.equal((await call("POST", "/devices/alice-inactive-2/cancel", { auth: alice.auth })).status, 200, "an active device cancels a pending enrollment");
   assert.equal((await call("POST", "/devices/alice-inactive-3/cancel", { auth: alice.auth })).status, 200);
 });
@@ -1271,4 +1275,242 @@ test("T-241: MOCK_TWO_KEYS: enrollment needs the enrollment proof, and the devic
   } finally {
     strict.server.close();
   }
+});
+
+// --- T-245: the settings members of Biatec OIDC issue 30 (the user's own trust, all set on the phone) -------------------------
+
+let nonceSeq = 0;
+const nn = () => `t245-nonce-${++nonceSeq}-0123456789`;
+const putAs = async (dev: Dev, change: unknown, signed = false, over: Record<string, unknown> = {}) =>
+  call("PUT", "/devices/settings", { auth: dev.auth, body: { change, ...(signed ? { consent: await settingsConsent(dev, change, nn(), over) } : {}) } });
+const settingsOf = async (dev: Dev) => (await call("GET", "/devices/settings", { auth: dev.auth })).json;
+const clientOf = async (dev: Dev, id: string) => (await settingsOf(dev)).clients.find((c: any) => c.client_id === id);
+const app = (id: number, network = "algorand-testnet") => ({ network, app_id: id });
+
+test("T-245: GET /devices/settings shows the user's own settings and never a name the server asserts", async () => {
+  const alice = await device(ALICE);
+  const s = await settingsOf(alice);
+  assert.equal(s.block_unproven_clients, false);
+  assert.equal("block_unverified_clients" in s, false, "renamed");
+  assert.equal(s.ask_on_test_networks, true);
+  assert.equal(s.default_threshold_eur, "1000.00");
+  assert.equal("max_threshold_eur" in s, false, "no operator ceiling");
+  const chat = s.clients.find((c: any) => c.client_id === "biatec-chat");
+  assert.equal(chat.label, null, "the user's own label, null until set");
+  assert.equal(chat.linked, true);
+  assert.equal(typeof chat.linked_at, "number");
+  assert.match(chat.fingerprint, /^[0-9a-f]{16}$/);
+  assert.equal(chat.domain_proven, true);
+  assert.equal(chat.domain, "chat.biatec.io");
+  assert.ok(Array.isArray(chat.trusted_applications));
+  assert.deepEqual(chat.pauses, []);
+  for (const c of s.clients) for (const forbidden of ["verified", "display_name", "entity_id"]) assert.equal(forbidden in c, false, forbidden);
+  assert.equal((s.clients as any[]).some((c) => c.client_id === "unverified-app"), false, "a client the user never linked or set anything for is not listed");
+});
+
+test("T-245: the threshold has no ceiling; an operator ceiling (MOCK_MAX_THRESHOLD_EUR) answers 400 with the text the app shows", async () => {
+  const alice = await device(ALICE);
+  assert.equal((await putAs(alice, { threshold_eur: "250000" })).status, 403, "raising is loosening");
+  assert.equal((await putAs(alice, { threshold_eur: "250000" }, true)).status, 200, "250000 EUR: no ceiling");
+  assert.equal((await settingsOf(alice)).threshold_eur, "250000.00");
+  assert.equal((await putAs(alice, { threshold_eur: "1000000000" }, true)).status, 200, "the technical limit");
+  const over = await putAs(alice, { threshold_eur: "1000000000.01" }, true);
+  assert.equal(over.status, 400);
+  assert.match(over.json.error_description, /1000000000\.00 EUR/);
+  assert.equal((await putAs(alice, { threshold_eur: "10.123" }, true)).status, 400, "at most two decimals");
+  assert.equal((await putAs(alice, { threshold_eur: "0" })).status, 200, "0 asks for everything: tightening");
+  assert.equal((await settingsOf(alice)).threshold_eur, "0.00");
+  assert.equal((await putAs(alice, { threshold_eur: "1000" }, true)).status, 200);
+
+  const capped = createMockOidc({ now: () => clock, testHelpers: true, maxThresholdEur: 5000 });
+  await new Promise<void>((r) => capped.server.listen(0, "127.0.0.1", r));
+  const b = `http://127.0.0.1:${(capped.server.address() as AddressInfo).port}`;
+  try {
+    const info = (await (await fetch(`${b}/mock/devices/alice-device`)).json()) as any;
+    const change = { threshold_eur: "6000" };
+    const signed = { type: "biatec_settings_change", sub: "pw_alice", kid: "alice-device", nonce: nn(), issued_at: clock, change };
+    const consent = { signed, alg: "ES256", signature: signEs256(keys.device, Buffer.from(jcs(signed), "utf8")), device: { kid: "alice-device", key_use: "approve", public_key: info.public_key, attestation: info.attestation } };
+    const r = await fetch(`${b}/devices/settings`, { method: "PUT", headers: { Authorization: "Device " + info.device_token, "Content-Type": "application/json" }, body: JSON.stringify({ change, consent }) });
+    const body = (await r.json()) as any;
+    assert.equal(r.status, 400);
+    assert.equal(body.error, "invalid_request");
+    assert.equal(body.error_description, "threshold_eur must not be more than 5000.00 EUR (the limit of this service)");
+    assert.equal(((await (await fetch(`${b}/devices/settings`, { headers: { Authorization: "Device " + info.device_token } })).json()) as any).max_threshold_eur, "5000.00");
+  } finally {
+    capped.server.close();
+  }
+});
+
+test("T-245: ask_on_test_networks and block_unproven_clients: turning either off is loosening; the policy follows", async () => {
+  const alice = await device(ALICE);
+  // A transfer worth about 4600 EUR asks the phone on a test network while the setting is on, and does not once it is off.
+  const big = group(tx(5000));
+  assert.equal((await sign("alice-chat-sign", big)).status, 401);
+  assert.equal((await putAs(alice, { ask_on_test_networks: false })).status, 403, "off is loosening");
+  assert.equal((await putAs(alice, { ask_on_test_networks: false }, true)).status, 200);
+  assert.equal((await sign("alice-chat-sign", big)).status, 200, "testnet value no longer asks");
+  assert.equal((await sign("alice-chat-sign", big, {}, "algorand-mainnet")).status, 401, "mainnet still asks");
+  assert.equal((await putAs(alice, { ask_on_test_networks: true })).status, 200, "on is tightening");
+  assert.equal((await sign("alice-chat-sign", big)).status, 401);
+
+  assert.equal((await putAs(alice, { block_unproven_clients: true })).status, 200, "on is tightening");
+  assert.equal((await sign("alice-unverified-sign", group(tx(5)))).json.error, "unproven_client_blocked");
+  assert.equal((await putAs(alice, { block_unproven_clients: false })).status, 403);
+  assert.equal((await putAs(alice, { block_unproven_clients: false }, true)).status, 200);
+  assert.equal((await putAs(alice, { block_unverified_clients: true })).status, 400, "the old name is gone");
+});
+
+test("T-245: a label is the user's own text with the display-safety rules; tightening, no signature", async () => {
+  const alice = await device(ALICE);
+  const label = (l: unknown) => ({ clients: { "biatec-chat": { label: l } } });
+  assert.equal((await putAs(alice, label("My assistant"))).status, 200);
+  assert.equal((await clientOf(alice, "biatec-chat")).label, "My assistant");
+  for (const bad of ["", " padded ", "a‮b", "zero​width", "line\nbreak", "x".repeat(41), "Café", 5, null]) {
+    assert.equal((await putAs(alice, label(bad))).status, 400, JSON.stringify(bad));
+  }
+  assert.equal((await putAs(alice, label("x".repeat(40)))).status, 200, "40 characters");
+  assert.equal((await putAs(alice, { clients: { "unverified-app": { label: "Other" } } })).status, 400, "a client that is not linked has no label");
+  assert.equal((await putAs(alice, label("My assistant"))).json.loosened, false);
+  await putAs(alice, { clients: { "biatec-chat": { unlink: true } } });
+  assert.equal((await clientOf(alice, "biatec-chat"))?.label ?? null, null, "unlinking forgets the label");
+  // Restore the link for the tests that follow.
+  codes = ["483920"];
+  const c = await challenge(group(tx(5)), "alice-chat-sign");
+  const dev = await device(ALICE);
+  assert.equal((await postReceipt(dev, c.json.auth_req_id, receiptFor(dev, await fetchRequest(dev, c.json.auth_req_id), "483920"))).status, 200);
+  assert.equal((await clientOf(alice, "biatec-chat")).linked, true);
+});
+
+test("T-245: trusted_applications_add is loosening and needs the signature; remove is tightening; the policy uses the user's list", async () => {
+  const alice = await device(ALICE);
+  const add = { clients: { "biatec-chat": { trusted_applications_add: [app(4242)] } } };
+  const withApp = (note: string) => buildGroup([tx(10, { note }), { sender: ALICE_ADDR, appId: 4242 }]).items;
+  assert.equal((await sign("alice-chat-sign", withApp("a"))).status, 401, "an untrusted application makes the value unknown: the phone is asked");
+  const denied = await putAs(alice, add);
+  assert.equal(denied.status, 403);
+  assert.deepEqual(denied.json, { error: "insufficient_user_authentication", error_description: denied.json.error_description, acr_values: "biatec:consent", reason: "consent_required" });
+  assert.equal((await putAs(alice, add, true)).status, 200);
+  assert.deepEqual((await clientOf(alice, "biatec-chat")).trusted_applications.filter((a: any) => a.app_id === 4242), [app(4242)]);
+  assert.equal((await sign("alice-chat-sign", withApp("b"))).status, 200, "trusted: priced, under the threshold, nothing asked");
+  assert.equal((await sign("alice-bank-sign", withApp("c"))).status, 401, "trust is per client");
+  assert.equal((await putAs(alice, { clients: { "biatec-chat": { trusted_applications_remove: [app(4242)] } } })).json.loosened, false);
+  assert.equal((await clientOf(alice, "biatec-chat")).trusted_applications.some((a: any) => a.app_id === 4242), false);
+  assert.equal((await sign("alice-chat-sign", withApp("d"))).status, 401, "removed: unknown value again");
+  // Shapes: 1..16 unique entries, an Algorand network, a real id; a mixed change is loosening as a whole.
+  for (const list of [[], Array.from({ length: 17 }, (_, i) => app(i + 1)), [app(1), app(1)], [{ network: "bitcoin-mainnet", app_id: 1 }], [app(0)], [{ network: "algorand-testnet", app_id: 1.5 }], [{ ...app(1), extra: 1 }]]) {
+    assert.equal((await putAs(alice, { clients: { "biatec-chat": { trusted_applications_add: list } } }, true)).status, 400, JSON.stringify(list).slice(0, 60));
+  }
+  assert.equal((await putAs(alice, { clients: { "biatec-chat": { trusted_applications_add: [app(1)], trusted_applications_remove: [app(1)] } } }, true)).status, 400, "the same application added and removed");
+  const mixed = { threshold_eur: "100", clients: { "biatec-chat": { trusted_applications_add: [app(9)] } } };
+  assert.equal((await putAs(alice, mixed)).status, 403, "a mixed change is loosening as a whole");
+  assert.equal((await settingsOf(alice)).threshold_eur, "1000.00", "nothing changed");
+});
+
+test("T-245: a loosening needs the approval key, a fresh one-time nonce, the same account; the presence key and a replay are refused", async () => {
+  const alice = await device(ALICE);
+  const up = { threshold_eur: "1500" };
+  const before = (await settingsOf(alice)).threshold_eur;
+  const info = (await call("GET", `/mock/devices/alice-device`)).json;
+  const presSigned = { type: "biatec_settings_change", sub: "pw_alice", kid: info.presence.kid, nonce: nn(), issued_at: clock, change: up };
+  const presenceEnvelope = { signed: presSigned, alg: "ES256", signature: signEs256(keys.presence, Buffer.from(jcs(presSigned), "utf8")), device: { kid: info.presence.kid, key_use: "presence", public_key: info.presence.public_key, attestation: info.presence.attestation } };
+  const viaPresence = await call("PUT", "/devices/settings", { auth: alice.auth, body: { change: up, consent: presenceEnvelope } });
+  assert.equal(viaPresence.status, 403, "the presence key never loosens");
+  assert.equal(viaPresence.json.reason, "consent_required");
+  const noDevice = await settingsConsent(alice, up, nn());
+  delete (noDevice as any).device;
+  assert.equal((await call("PUT", "/devices/settings", { auth: alice.auth, body: { change: up, consent: noDevice } })).status, 403, "no attested device");
+  const another = await settingsConsent(alice, up, nn(), {}, keys.device, "pw_carol");
+  assert.equal((await call("PUT", "/devices/settings", { auth: alice.auth, body: { change: up, consent: another } })).status, 403, "another account");
+  const extra = await settingsConsent(alice, up, nn(), { extra: 1 });
+  assert.equal((await call("PUT", "/devices/settings", { auth: alice.auth, body: { change: up, consent: extra } })).status, 403, "an unknown signed member");
+  assert.equal((await call("PUT", "/devices/settings", { auth: alice.auth, body: { change: up, consent: await settingsConsent(alice, up, "short") } })).status, 403, "a nonce that is too short");
+  assert.equal((await settingsOf(alice)).threshold_eur, before, "nothing changed");
+  const good = await settingsConsent(alice, up, nn());
+  assert.equal((await call("PUT", "/devices/settings", { auth: alice.auth, body: { change: up, consent: good } })).status, 200);
+  await putAs(alice, { threshold_eur: "1000" });
+  assert.equal((await call("PUT", "/devices/settings", { auth: alice.auth, body: { change: up, consent: good } })).status, 403, "a spent nonce");
+  // Another device's call cannot use this device's envelope.
+  assert.equal((await call("PUT", "/devices/settings", { auth: deviceAuth("carol"), body: { change: up, consent: await settingsConsent(alice, up, nn()) } })).status, 403);
+});
+
+test("T-245: pauses: lifting one is loosening and names the origin of the pause", async () => {
+  const alice = await device(ALICE);
+  await call("POST", "/mock/users/pw_alice/clients/bank-example/pause");
+  const c = await clientOf(alice, "bank-example");
+  assert.deepEqual(c.pauses, [{ origin: "https://bank.example", paused_until: c.paused_until }]);
+  const wrongOrigin = { clients: { "bank-example": { paused: false, origin: "https://other.example" } } };
+  assert.equal((await putAs(alice, wrongOrigin, true)).status, 400, "no pause for that origin");
+  assert.equal((await putAs(alice, { clients: { "bank-example": { paused: false } } }, true)).status, 400, "paused needs its origin");
+  const lift = { clients: { "bank-example": { paused: false, origin: "https://bank.example" } } };
+  assert.equal((await putAs(alice, lift)).status, 403);
+  assert.equal((await putAs(alice, lift, true)).status, 200);
+  assert.deepEqual((await clientOf(alice, "bank-example"))?.pauses ?? [], []);
+});
+
+test("T-245: linking on the first approved request; unlink makes the next request first use again", async () => {
+  const alice = await device(ALICE);
+  await putAs(alice, { clients: { "bank-example": { unlink: true } } });
+  const bankSettings = async () => (await call("GET", "/consent/settings", { auth: bearer("alice-bank-sign") })).json;
+  assert.equal((await bankSettings()).client.first_use, true);
+  assert.equal((await bankSettings()).client.linked, false);
+  codes = ["246810"];
+  const first = await sign("alice-bank-sign", group(tx(5)));
+  assert.equal(first.status, 401, "first use asks the phone whatever the amount");
+  const req = await fetchRequest(alice, first.json.auth_req_id);
+  assert.equal(req.client.linked, false);
+  assert.equal((await clientOf(alice, "bank-example"))?.linked ?? false, false, "not linked before approval");
+  assert.equal((await postReceipt(alice, first.json.auth_req_id, receiptFor(alice, req, "246810"))).status, 200);
+  const linked = await bankSettings();
+  assert.equal(linked.client.first_use, false);
+  assert.equal(linked.client.linked, true);
+  assert.equal((await clientOf(alice, "bank-example")).linked_at, clock);
+  assert.equal((await sign("alice-bank-sign", buildGroup([tx(5, { note: "t245-2" })]).items)).status, 200, "linked and under the threshold: signed without a request");
+  // Unlink: tightening, no signature, the next request is first use again.
+  const unlink = await putAs(alice, { clients: { "bank-example": { unlink: true } } });
+  assert.equal(unlink.status, 200);
+  assert.equal(unlink.json.loosened, false);
+  assert.equal((await bankSettings()).client.first_use, true);
+  assert.equal((await sign("alice-bank-sign", buildGroup([tx(5, { note: "t245-3" })]).items)).status, 401);
+  assert.equal((await putAs(alice, { clients: { "bank-example": { unlink: true, always_ask: true } } })).status, 400, "unlink stands alone");
+  assert.equal((await putAs(alice, { clients: { "bank-example": { unlink: false } } })).status, 400);
+});
+
+test("T-245: remember needs ids of the request offered as untrusted, one to sixteen, unique; a denial never carries it; unlink forgets what was remembered", async () => {
+  const alice = await device(ALICE);
+  const g = buildGroup([tx(10, { note: "t245-r" }), { sender: ALICE_ADDR, appId: 5151 }, { sender: ALICE_ADDR, appId: 5152 }]);
+  const open = async (code: string) => {
+    codes = [code];
+    const c = await challenge(g.items, "alice-chat-sign", { grp: g.grp, requireConsent: true });
+    return { id: c.json.auth_req_id as string, req: await fetchRequest(alice, c.json.auth_req_id), code };
+  };
+  let r = await open("111111");
+  for (const remember of [[9999], [5151, 5151], [], [0]]) {
+    const res = await postReceipt(alice, r.id, receiptFor(alice, r.req, r.code, "approve", keys.device, { remember }));
+    assert.equal(res.status, 400, JSON.stringify(remember));
+  }
+  assert.equal((await postReceipt(alice, r.id, receiptFor(alice, r.req, r.code, "deny", keys.device, { remember: [5151] }))).status, 400, "deny never carries remember");
+  assert.equal((await postReceipt(alice, r.id, receiptFor(alice, r.req, r.code, "approve", keys.device, { remember: [5151] }))).status, 200, "the request stayed open");
+  const trusted = (await clientOf(alice, "biatec-chat")).trusted_applications.map((a: any) => a.app_id);
+  assert.ok(trusted.includes(5151) && !trusted.includes(5152), "only the ticked application");
+  // Remembering one that is already trusted is refused: nothing to remember.
+  r = await open("222222");
+  assert.equal((await postReceipt(alice, r.id, receiptFor(alice, r.req, r.code, "approve", keys.device, { remember: [5151] }))).status, 400);
+  assert.equal((await postReceipt(alice, r.id, receiptFor(alice, r.req, r.code, "approve", keys.device, { remember: [5152] }))).status, 200);
+  await putAs(alice, { clients: { "biatec-chat": { unlink: true } } });
+  assert.equal(((await clientOf(alice, "biatec-chat"))?.trusted_applications ?? []).length, 0, "unlink forgets the trusted applications");
+  // Link again for the tests that follow.
+  codes = ["333333"];
+  const c = await challenge(group(tx(5)), "alice-chat-sign");
+  assert.equal((await postReceipt(alice, c.json.auth_req_id, receiptFor(alice, await fetchRequest(alice, c.json.auth_req_id), "333333"))).status, 200);
+});
+
+test("T-245: with the user's threshold raised to 5000 a 2000 EUR transfer is signed without a request; 0 asks for everything", async () => {
+  const alice = await device(ALICE);
+  const two = group(tx(2200)); // about 2029 EUR
+  assert.equal((await sign("alice-chat-sign", two)).status, 401, "above 1000");
+  assert.equal((await putAs(alice, { threshold_eur: "5000" }, true)).status, 200);
+  assert.equal((await sign("alice-chat-sign", two)).status, 200, "under 5000");
+  assert.equal((await putAs(alice, { threshold_eur: "0" })).status, 200);
+  assert.equal((await sign("alice-chat-sign", group(tx(1)))).status, 401, "0: every action asks");
+  assert.equal((await putAs(alice, { threshold_eur: "1000" }, true)).status, 200);
 });

@@ -8,6 +8,7 @@ export type Need =
   | "clientSecret" // the verified client's secret (CONFORMANCE_CLIENT_SECRET)
   | "userToken" // access token of the user and client under test (CONFORMANCE_USER_TOKEN)
   | "deviceKey" // an enrolled device whose private key signs receipts (CONFORMANCE_DEVICE_PRIVATE_JWK + CONFORMANCE_DEVICE_TOKEN)
+  | "settingsUser" // an account of its own with an active device and the verified client linked, whose settings the cases change (CONFORMANCE_SETTINGS_BEARER, _DEVICE_TOKEN, _DEVICE_KID)
   | "bearer:noDevice"
   | "bearer:paused"
   | "bearer:capped"
@@ -37,6 +38,7 @@ const variables = (need: Need): string[] => {
   if (need === "mockHelpers") return ["CONFORMANCE_MOCK_HELPERS=1"];
   if (need === "clientSecret") return ["CONFORMANCE_CLIENT_SECRET"];
   if (need === "userToken") return ["CONFORMANCE_USER_TOKEN"];
+  if (need === "settingsUser") return ["CONFORMANCE_SETTINGS_BEARER", "CONFORMANCE_SETTINGS_DEVICE_TOKEN", "CONFORMANCE_SETTINGS_DEVICE_KID"];
   if (need === "deviceKey") return ["CONFORMANCE_DEVICE_PRIVATE_JWK", "CONFORMANCE_DEVICE_TOKEN"];
   return [bearerVars[need.slice("bearer:".length)]];
 };
@@ -47,6 +49,7 @@ export function have(need: Need, env: Env = process.env): boolean {
     case "mockHelpers": return offersHelpers(env);
     case "clientSecret": return !!env.CONFORMANCE_CLIENT_SECRET;
     case "userToken": return !!(env.CONFORMANCE_USER_TOKEN || env.CONFORMANCE_STEPUP_BEARER);
+    case "settingsUser": return !!(env.CONFORMANCE_SETTINGS_BEARER && env.CONFORMANCE_SETTINGS_DEVICE_TOKEN && env.CONFORMANCE_SETTINGS_DEVICE_KID);
     case "deviceKey": return !!(env.CONFORMANCE_DEVICE_PRIVATE_JWK && env.CONFORMANCE_DEVICE_TOKEN);
     default: return !!env[bearerVars[need.slice("bearer:".length)]];
   }
@@ -59,7 +62,7 @@ export function missing(needs: Need[], env: Env = process.env): string | null {
   return "needs " + absent.map((n) => n + (n === "mockHelpers" ? " (the server is not a mock with test helpers)" : ` (set ${variables(n).join(" and ")})`)).join("; ");
 }
 
-const secretNames = (env: Env) => Object.keys(env).filter((n) => /^CONFORMANCE_(CLIENT_SECRET|USER_TOKEN|STEPUP_BEARER|DEVICE_TOKEN|DEVICE_PRIVATE_JWK|BEARER_.+)$/.test(n));
+const secretNames = (env: Env) => Object.keys(env).filter((n) => /^CONFORMANCE_(CLIENT_SECRET|USER_TOKEN|STEPUP_BEARER|DEVICE_TOKEN|DEVICE_PRIVATE_JWK|BEARER_.+|SETTINGS_BEARER|SETTINGS_DEVICE_TOKEN)$/.test(n));
 
 /** Every secret value the run was given (any CONFORMANCE_ secret variable, value of 4 characters or more), for redaction. */
 export function secretValues(env: Env = process.env): string[] {
