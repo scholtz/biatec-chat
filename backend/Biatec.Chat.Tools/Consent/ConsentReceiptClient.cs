@@ -25,12 +25,21 @@ public sealed class ConsentReceiptClient(HttpClient http) : IConsentReceiptClien
             using var res = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
             if (!res.IsSuccessStatusCode) return null;
             if (res.Content.Headers.ContentLength is > MaxBytes) return null;
-            var text = await res.Content.ReadAsStringAsync(ct);
-            if (text.Length > MaxBytes) return null;
+            // A bounded read: a body without Content-Length is cut off at the cap instead of being buffered whole.
+            await using var stream = await res.Content.ReadAsStreamAsync(ct);
+            using var buffer = new MemoryStream();
+            var chunk = new byte[8192];
+            int n;
+            while ((n = await stream.ReadAsync(chunk, ct)) > 0)
+            {
+                if (buffer.Length + n > MaxBytes) return null;
+                buffer.Write(chunk, 0, n);
+            }
+            var text = System.Text.Encoding.UTF8.GetString(buffer.ToArray());
             using var doc = JsonDocument.Parse(text);
             return doc.RootElement.ValueKind == JsonValueKind.Object ? doc.RootElement.GetRawText() : null;
         }
-        catch (Exception ex) when ((ex is HttpRequestException or TaskCanceledException or IOException or JsonException or InvalidOperationException) && !ct.IsCancellationRequested)
+        catch (Exception ex) when ((ex is HttpRequestException or TaskCanceledException or IOException or JsonException or InvalidOperationException or OperationCanceledException))
         {
             return null;
         }

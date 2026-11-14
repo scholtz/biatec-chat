@@ -645,13 +645,13 @@ public sealed class ConfirmService(
         }, ct);
         return denied
             ? new ConfirmResult(ConfirmOutcome.Failed, "You declined the action on your phone. Nothing was signed.", [], ErrorCode: "consent_denied")
-            : new ConfirmResult(ConfirmOutcome.Failed, errorCode == "preview_expired"
-                ? "The preview expired before the approval arrived. Nothing was signed; the preview must be rebuilt."
-                : errorCode == "receipt_missing"
-                    ? "The approval came back without its signed receipt. Nothing was signed; the preview must be rebuilt."
-                    : errorCode == "receipt_invalid"
-                        ? "The approval's signed receipt could not be verified. Nothing was signed; the preview must be rebuilt."
-                    : "The approval request expired. Nothing was signed; the preview must be rebuilt.", [], ErrorCode: errorCode ?? "consent_expired");
+            : new ConfirmResult(ConfirmOutcome.Failed, errorCode switch
+            {
+                "preview_expired" => "The preview expired before the approval arrived. Nothing was signed; the preview must be rebuilt.",
+                "receipt_missing" => "The approval came back without its signed receipt. Nothing was signed; the preview must be rebuilt.",
+                "receipt_invalid" => "The approval's signed receipt could not be verified. Nothing was signed; the preview must be rebuilt.",
+                _ => "The approval request expired. Nothing was signed; the preview must be rebuilt.",
+            }, [], ErrorCode: errorCode ?? "consent_expired");
     }
 
     private async Task<ConfirmResult> TrackAsync(ChatSession session, ActionPreview preview, ActionStep step, IReadOnlyList<string> txIds, bool unknownSubmit, CancellationToken ct)

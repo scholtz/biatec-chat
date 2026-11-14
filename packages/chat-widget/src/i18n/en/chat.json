@@ -76,6 +76,7 @@
     "previewExpired": "The preview expired before it could be approved. Nothing was signed. Ask for a fresh one.",
     "resumeFailed": "The approval could not be used to complete the action. Nothing was signed. Ask for a fresh preview.",
     "receiptMissing": "The approval did not arrive complete, so it was not used. Nothing was signed.",
+    "receiptInvalid": "The approval could not be verified, so it was not used. Nothing was signed. Ask for the preview again.",
     "partial": "This step was not approved, so it was not signed. Steps that already completed stay completed.",
     "lost": "This approval can no longer be followed here. Nothing is signed unless a receipt appears. Ask for a fresh preview."
   }
