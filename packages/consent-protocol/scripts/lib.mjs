@@ -74,6 +74,9 @@ export const KEY_USES = ["approve", "presence"];
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
+/** The freshness window of a device-signed statement and an enrollment proof, and the clock skew tolerated on an attestation's `iat`. */
+const SIGNED_WINDOW_SECONDS = 300;
+
 /**
  * Verifies the attestation JWS with the Biatec OIDC JWKS: the key must be an EC P-256 signature key, `typ` and `alg`
  * must be right, `iss` must equal `opts.issuer` (required) and `exp` must be in the future at `opts.now`.
@@ -190,8 +193,6 @@ export function pairingCode(newApprovalThumbprint, newPresenceThumbprint, nonce)
   return String(d.readUInt32BE(0) % 1_000_000).padStart(6, "0");
 }
 
-const SIGNED_WINDOW_SECONDS = 300;
-
 /** A statement or enrollment nonce: 16 to 128 characters of base64url alphabet (no dot, so the pairing code input has one reading). */
 const NONCE_SHAPE = /^[A-Za-z0-9_-]{16,128}$/;
 const isNonce = (n) => typeof n === "string" && NONCE_SHAPE.test(n);
@@ -301,6 +302,9 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
     // Cheap preconditions first, so an envelope that fails them costs nothing more.
     if (expect.approverActive !== true) return false; // a pending device (the first 24 hours, or one just enrolled by an attacker) cannot loosen anything
     if (!(opts.usedNonces instanceof Set)) return false; // without the set of used nonces a replay cannot be told
+    // A device approval says whose approval it accepts and for which enrollment (checked before any signature work).
+    if (approval && (typeof expect.sub !== "string" || !expect.approval)) return false;
+    if (approval && (s.pairing_code !== pairingCode(expect.approval.new_approval_jwk_thumbprint, expect.approval.new_presence_jwk_thumbprint, expect.approval.nonce))) return false;
     if (!isNonce(s.nonce) || opts.usedNonces.has(s.nonce)) return false;
     if (!Number.isInteger(s.issued_at) || Math.abs(now - s.issued_at) > SIGNED_WINDOW_SECONDS) return false;
     // The signed object has exactly the members the schema allows: nothing rides along unsigned-looking but signed.
@@ -337,6 +341,7 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
 /** An EC P-256 public JWK with its coordinates: a real point (Node refuses to import one that is not on the curve). */
 function isP256PublicJwk(jwk) {
   try {
+    // (The proof's own header keys are checked for public members only by the callers; the caller's expected keys may carry a kid.)
     if (!jwk || jwk.kty !== "EC" || jwk.crv !== "P-256" || typeof jwk.x !== "string" || typeof jwk.y !== "string") return false;
     pub(jwk);
     return true;
@@ -354,7 +359,7 @@ function isP256PublicJwk(jwk) {
  */
 export function verifyEnrollmentProof(jws, expect = {}) {
   // The approval key the server received and the key that signed the proof must be the same: it is the proof of possession.
-  if (!expect.approval_public_key) return false;
+  if (!expect || typeof expect !== "object" || !expect.approval_public_key) return false;
   // A proof is single use: the caller's set of enrollment nonces already consumed (the server consumes the nonce of its challenge once).
   if (!(expect.usedNonces instanceof Set)) return false;
   if (![expect.approval_public_key, expect.presence_public_key].every(isP256PublicJwk)) return false;
