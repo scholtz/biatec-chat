@@ -180,6 +180,9 @@ function verifiedClaims(receipt, jwks, opts = {}) {
  * modulo 10^6, zero padded to six digits.
  */
 export function pairingCode(newApprovalThumbprint, newPresenceThumbprint, nonce) {
+  // Fixed shapes, so the input cannot be split two ways: two 43-character thumbprints and a nonce without a dot.
+  const thumb = /^[A-Za-z0-9_-]{43}$/;
+  if (!thumb.test(newApprovalThumbprint) || !thumb.test(newPresenceThumbprint) || typeof nonce !== "string" || nonce.length < 16 || nonce.length > 128 || nonce.includes(".")) throw new Error("invalid pairing code input");
   const d = createHash("sha256").update(`${newApprovalThumbprint}.${newPresenceThumbprint}.${nonce}`, "utf8").digest();
   return String(d.readUInt32BE(0) % 1_000_000).padStart(6, "0");
 }
@@ -193,7 +196,7 @@ const MEMBERS_OF = {
 };
 
 /** Format, control, line and paragraph separators; white space other than a plain space; a run of spaces. */
-const NOT_ALLOWED_SPACE_OR_FORMAT = /[\p{Cf}\p{Cc}\p{Co}\p{Cn}\p{Zl}\p{Zp}]|[^\S ]|  /u;
+const NOT_ALLOWED_SPACE_OR_FORMAT = /[\p{Cf}\p{Cc}\p{Co}\p{Zl}\p{Zp}]|[^\S ]|  /u;
 /** Invisible or filler characters outside the general categories above (soft hyphen, fillers, invisible operators, variation selectors, tags). */
 const INVISIBLE = /[\u00AD\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180E\u2061-\u2065\u206A-\u206F\u2800\u3164\uFE00-\uFE0F\uFFA0\uFFF9-\uFFFC]|[\u{1D173}-\u{1D17A}\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]/u;
 
@@ -289,26 +292,24 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
     const settings = s.type === "biatec_settings_change";
     const approval = s.type === "biatec_device_approval";
     if (!settings && !approval) return false;
-    // A settings change that cannot be read unambiguously, or whose label is not display-safe, is refused (spec section 8.2).
-    if (settings && !settingsChangeWellFormed(s.change)) return false;
+    // Cheap preconditions first, so an envelope that fails them costs nothing more.
+    if (expect.approverActive !== true) return false; // a pending device (the first 24 hours, or one just enrolled by an attacker) cannot loosen anything
+    if (!(opts.usedNonces instanceof Set)) return false; // without the set of used nonces a replay cannot be told
+    if (typeof s.nonce !== "string" || s.nonce.length < 16 || s.nonce.length > 128 || opts.usedNonces.has(s.nonce)) return false;
+    if (!Number.isInteger(s.issued_at) || Math.abs(now - s.issued_at) > SIGNED_WINDOW_SECONDS) return false;
     // The signed object has exactly the members the schema allows: nothing rides along unsigned-looking but signed.
     const memberList = MEMBERS_OF[s.type];
     if (Object.keys(s).length !== memberList.length || !memberList.every((k) => k in s)) return false;
-    // A settings change names the subject it is for; the attestation must be for that same subject.
-    // ... and it is for the account the caller is changing: `expect.sub` is required and must equal it.
+    // A settings change names the subject it is for; the attestation must be for that same subject, and it is for the account the
+    // caller is changing: `expect.sub` is required and must equal it.
     if (settings && (typeof s.sub !== "string" || s.sub === "" || s.sub !== expect.sub)) return false;
+    // A settings change that cannot be read unambiguously, or whose label is not display-safe, is refused (spec section 8.2).
+    if (settings && !settingsChangeWellFormed(s.change)) return false;
     const payload = boundClaims(envelope.device, settings ? s.sub : approval ? expect.sub : undefined, jwks, { ...opts, now });
     if (!payload || payload.biatec_key_use !== "approve" || envelope.device.key_use !== "approve") return false;
     if ((settings ? s.kid : s.approver_kid) !== envelope.device.kid) return false;
-    if (!Number.isInteger(s.issued_at) || Math.abs(now - s.issued_at) > SIGNED_WINDOW_SECONDS) return false;
-    // A statement is single use: the nonce has the shape the schema requires and the caller's set of nonces already accepted from this
-    // device (it keeps the set, as for receipts) does not hold it. Without the set the verifier cannot tell a replay and fails closed.
-    if (typeof s.nonce !== "string" || s.nonce.length < 16 || s.nonce.length > 128) return false;
-    if (!(opts.usedNonces instanceof Set) || opts.usedNonces.has(s.nonce)) return false;
-    // A device approval carries no subject and names no enrollment on its own: the verifier MUST say whose approval it accepts, for
-    // which keys and nonce, and that the approver is an ACTIVE device (the caller looked that up; an inactive device, including the
-    // one being enrolled, cannot approve). Without all of it the verifier fails closed.
-    if (expect.approverActive !== true) return false; // a pending device (the first 24 hours, or one just enrolled by an attacker) cannot loosen anything
+    // A device approval carries no subject and names no enrollment on its own: the verifier MUST say whose approval it accepts and for
+    // which keys and nonce. A statement is single use (the nonce checks above; the caller records it, atomically, see the spec).
     if (approval && (typeof expect.sub !== "string" || !expect.approval)) return false;
     if (approval) {
       // A device never approves itself: the approver is not one of the keys being enrolled.
@@ -424,7 +425,7 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
     )
       return false;
     // The origin the server recorded is the origin the user saw and signed (a transaction of 1.1 carries it in its details).
-    if (receipt.version === "1.1" && d?.type === "biatec_transaction" && (typeof d.origin !== "string" || d.origin !== request.origin || d.origin.length > 253 || !ORIGIN.test(d.origin) || !Array.isArray(d.transfers))) return false;
+    if (receipt.version === "1.1" && d?.type === "biatec_transaction" && (typeof d.origin !== "string" || d.origin !== request.origin || d.origin.length > 253 || !ORIGIN.test(d.origin) || !Array.isArray(d.transfers) || !Array.isArray(d.applications) || !detailsConsistent(d))) return false;
     if (s.remember !== undefined) {
       // Each id MUST be an application of the request (section 8): the user can only trust what the card showed.
       // Only applications the card offered to trust (the untrusted ones): an already trusted one has nothing to remember.
@@ -438,6 +439,14 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
   } catch {
     return false;
   }
+}
+
+/** The schema's invariants for a 1.1 transaction: a known value has a total and a priced transfer each; an untrusted application makes it unknown. */
+function detailsConsistent(d) {
+  if (typeof d.value_known !== "boolean" || d.transfers.length + d.applications.length === 0) return false;
+  if (d.applications.some((a) => a.trusted === false) && d.value_known) return false;
+  if (d.value_known) return d.fiat_value !== undefined && d.transfers.every((x) => x.fiat_value !== undefined);
+  return d.fiat_value === undefined;
 }
 
 /**

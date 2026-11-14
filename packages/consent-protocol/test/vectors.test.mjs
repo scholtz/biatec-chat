@@ -589,6 +589,31 @@ test("the settings schema accepts a label with ZWNJ, ZWJ and VS16 (the verifier 
   assert.equal(valid("settings-change-signed", base), true);
 });
 
+test("the pairing helper refuses ambiguous input", () => {
+  const p = device.pairing_code;
+  assert.throws(() => pairingCode(p.new_approval_jwk_thumbprint, p.new_presence_jwk_thumbprint, "enroll.nonce.with.dots.0000"));
+  assert.throws(() => pairingCode("short", p.new_presence_jwk_thumbprint, p.nonce));
+  assert.throws(() => pairingCode(p.new_approval_jwk_thumbprint, p.new_presence_jwk_thumbprint, undefined));
+});
+
+test("a 1.1 transaction approval whose stored details break the schema's value invariants is refused", () => {
+  const v = v11.find((x) => x.request.authorization_details[0].applications?.length === 0 && x.request.authorization_details[0].value_known === true);
+  const o = { ...O, now: v.receipt.signed.expiry - 100 };
+  const mutate = (fn) => {
+    const req = clone(v.request);
+    const r = clone(v.receipt);
+    fn(req.authorization_details[0]);
+    fn(r.signed.authorization_details[0]);
+    r.signature = signEs256(keys.device, Buffer.from(jcs(r.signed), "utf8"));
+    return verifyApproval(r, jwks, req, r.signed.binding_code, new Set(), o);
+  };
+  assert.equal(mutate(() => {}), true);
+  assert.equal(mutate((d) => (d.applications = [{ id: 5, trusted: false }])), false, "untrusted application with a known value");
+  assert.equal(mutate((d) => delete d.transfers[0].fiat_value), false, "a priced total with an unpriced transfer");
+  assert.equal(mutate((d) => delete d.fiat_value), false, "a known value without a total");
+  assert.equal(mutate((d) => ((d.transfers = []), (d.applications = []))), false, "an empty group");
+});
+
 test("a pairing code that is not a string is refused even if its digits match", () => {
   const a = device.device_approvals.find((x) => x.expected.accepted);
   const e = clone(a.envelope);
