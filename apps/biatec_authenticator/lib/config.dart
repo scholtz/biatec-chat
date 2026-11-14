@@ -26,8 +26,15 @@ class AppConfig {
   static const String defaultOidcClientId = 'biatec-authenticator';
 
   /// The redirect of a release build (an app link: the OS opens the app for it, no other app can claim it) and of a debug build (a custom scheme, so a developer needs no hosted `assetlinks.json`). Required changes, "App links".
-  static const String appLinkRedirectUri =
-      'https://oidc.biatec.io/app/authenticator/callback';
+  ///
+  /// The release redirect is `https://<host of OIDC_BASE_URL>/app/authenticator/callback`, and only the hosts that have an app link in the Android manifest and the iOS
+  /// entitlements ([appLinkHosts]) can have one. On iOS the https callback of `ASWebAuthenticationSession` needs iOS 17.4 or later (the deployment target is 15.0, so an older
+  /// phone is told so by `AppAuthClient` instead of the login hanging; see the README); Android has no such minimum.
+  static const String appLinkPath = '/app/authenticator/callback';
+  static const Set<String> appLinkHosts = {'oidc.biatec.io', 'stage.oidc.biatec.io'};
+
+  /// The production app link, the redirect when the URL is not one with app links and the in-app login is off (it is not used then).
+  static const String appLinkRedirectUri = 'https://oidc.biatec.io$appLinkPath';
   static const String debugRedirectUri = 'io.biatec.authenticator:/oauth2redirect';
 
   /// Default points at the mock Biatec OIDC. 10.0.2.2 is the host machine
@@ -138,7 +145,7 @@ class AppConfig {
           twoKeys: true,
           inAppLogin: true,
           oidcClientId: _clientId(clientId),
-          redirectUri: _redirect(redirectUri, isRelease),
+          redirectUri: _redirect(redirectUri, false, null, true),
           release: false);
     }
     // The mock is the same endpoint however the URL is spelled (scheme and host are case-insensitive).
@@ -156,7 +163,7 @@ class AppConfig {
         twoKeys: isMock || twoKeys,
         inAppLogin: isMock || inAppLogin,
         oidcClientId: _clientId(clientId),
-        redirectUri: _redirect(redirectUri, isRelease),
+        redirectUri: _redirect(redirectUri, isRelease, url, isMock || inAppLogin),
         release: isRelease);
   }
 
@@ -169,20 +176,34 @@ class AppConfig {
     return id;
   }
 
-  /// The redirect: what is defined, else the app link (release) or the custom scheme (debug). A release build accepts an https redirect only, so the
-  /// custom scheme, which any app may register, is never used outside a debug build.
-  static String _redirect(String defined, bool release) {
+  /// The redirect: what is defined, else the app link on the host of [baseUrl] (release) or the custom scheme (debug). A release build accepts an https redirect only,
+  /// so the custom scheme, which any app may register, is never used outside a debug build, and the host must be one that has app links ([appLinkHosts]); with the
+  /// in-app login on ([login]) anything else is a [ConfigException], with it off the redirect is never used and the production link stands in.
+  static String _redirect(String defined, bool release, String? baseUrl, bool login) {
     final value = defined.trim();
-    if (value.isEmpty) return release ? appLinkRedirectUri : debugRedirectUri;
-    final uri = Uri.tryParse(value);
-    if (uri == null || uri.scheme.isEmpty || uri.hasFragment) {
-      throw const ConfigException('OIDC_REDIRECT_URI is not a valid redirect URI.');
+    if (value.isNotEmpty) {
+      final uri = Uri.tryParse(value);
+      if (uri == null || uri.scheme.isEmpty || uri.hasFragment) {
+        throw const ConfigException('OIDC_REDIRECT_URI is not a valid redirect URI.');
+      }
+      if (release && uri.scheme != 'https') {
+        throw const ConfigException(
+            'OIDC_REDIRECT_URI must be an https app link in a release build.');
+      }
+      if (release && login && !appLinkHosts.contains(uri.host.toLowerCase())) {
+        throw ConfigException(
+            'OIDC_REDIRECT_URI must be on a host that has an app link (${appLinkHosts.join(', ')}), not ${uri.host}.');
+      }
+      return value;
     }
-    if (release && uri.scheme != 'https') {
-      throw const ConfigException(
-          'OIDC_REDIRECT_URI must be an https app link in a release build.');
+    if (!release) return debugRedirectUri;
+    final host = Uri.tryParse(baseUrl ?? '')?.host.toLowerCase() ?? '';
+    if (appLinkHosts.contains(host)) return 'https://$host$appLinkPath';
+    if (login) {
+      throw ConfigException(
+          'The in-app login of a release build needs an app link, and only ${appLinkHosts.join(' and ')} have one (the manifest and the entitlements list them); OIDC_BASE_URL is on $host.');
     }
-    return value;
+    return appLinkRedirectUri;
   }
 
   /// Device tokens, binding codes and receipts travel to this URL, so it must be https. The one exception is local development

@@ -4,19 +4,15 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../keys/device_key_store.dart';
-import '../security/device_proof.dart';
-import '../security/settings_client.dart';
 import '../security/settings_frame.dart' show confirmSheet;
 import '../theme.dart';
 import '../ui/ui.dart';
-import 'auth_client.dart';
 import 'enrollment_controller.dart';
 import 'enrollment_state.dart';
 import 'enrollment_strings.dart';
 import 'pairing_code.dart';
 import 'enrollment_store.dart';
 import 'observable_enrollment_store.dart';
-import 'oidc_enrollment_client.dart';
 import 'widgets/enrollment_problem.dart';
 import 'widgets/key_protection_card.dart';
 import 'widgets/onboarding_step.dart';
@@ -76,24 +72,12 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     });
   }
 
-  EnrollmentController _buildController() {
-    const keys = PlatformDeviceKeyStore();
-    // The observable store keeps an enrollment whose write failed (the controller relies on it).
-    final store = ObservableEnrollmentStore(SecureEnrollmentStore());
-    final config = widget.config;
-    return EnrollmentController(
-      keys: keys,
-      store: store,
-      client: OidcEnrollmentClient(baseUrl: config.oidcBaseUrl),
-      twoKeys: config.twoKeys,
-      // The in-app login exists only against a Biatec OIDC that has it (`AppConfig.inAppLogin`).
-      auth: config.inAppLogin ? AppAuthClient() : null,
-      loginRequest: config.inAppLogin ? AuthRequest.forConfig(config) : null,
-      devices: SettingsClient(
-          baseUrl: config.oidcBaseUrl,
-          proof: KeystoreDeviceProofSigner(keys: keys, enrollment: store)),
-    );
-  }
+  EnrollmentController _buildController() => EnrollmentController.forConfig(
+        widget.config,
+        keys: const PlatformDeviceKeyStore(),
+        // The observable store keeps an enrollment whose write failed (the controller relies on it).
+        store: ObservableEnrollmentStore(SecureEnrollmentStore()),
+      );
 
   /// True once this screen has seen the device enrolled; the next time it is not enrolled, it signed out.
   bool _wasEnrolled = false;

@@ -207,3 +207,26 @@ test("recovery code: activates a new device at once, once; a wrong code is refus
     clock -= RECOVERY_LOCKOUT_SECONDS + 1;
   }
 });
+
+test("recovery code: a refusal for any other reason leaves the code usable and the failure counter untouched", async () => {
+  const r = await call("POST", "/devices/recovery-code", { auth: "Device device-token-frank" });
+  await call("POST", "/devices/recovery-code/ack", { auth: "Device device-token-frank" });
+  const code = r.json.recovery_code as string;
+  for (let i = 0; i < RECOVERY_CODE_MAX_FAILURES - 1; i++) {
+    assert.equal((await enroll("login-frank", { activation: { kind: "recovery_code", code: "1111-1111-1111" } })).res.status, 403);
+  }
+  // The right code, but the request is refused for another reason (an unsupported push provider): 400, nothing burnt, nothing reset.
+  const bad = await enroll("login-frank", { activation: { kind: "recovery_code", code }, push: { provider: "fcm", token: "x" } });
+  assert.equal(bad.res.status, 400);
+  // One more wrong code reaches the limit: the counter was not reset by the refused request.
+  assert.equal((await enroll("login-frank", { activation: { kind: "recovery_code", code: "1111-1111-1111" } })).res.status, 403);
+  assert.equal((await enroll("login-frank", { activation: { kind: "recovery_code", code } })).res.status, 429, "locked: the counter had kept its count");
+  clock += RECOVERY_LOCKOUT_SECONDS + 1;
+  try {
+    const ok = await enroll("login-frank", { activation: { kind: "recovery_code", code } });
+    assert.equal(ok.res.status, 201, "the code was not burnt by the refused request");
+    assert.equal(ok.res.json.active, true);
+  } finally {
+    clock -= RECOVERY_LOCKOUT_SECONDS + 1;
+  }
+});

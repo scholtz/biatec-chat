@@ -73,6 +73,7 @@ export const staticTokens: Record<string, { sub: string; clientId: string; scope
   "login-alice": { sub: "pw_alice", clientId: "biatec-authenticator", scope: "openid enroll-device", kind: "login" },
   "login-bob": { sub: "pw_bob", clientId: "biatec-authenticator", scope: "openid enroll-device", kind: "login" },
   "login-carol": { sub: "pw_carol", clientId: "biatec-authenticator", scope: "openid enroll-device", kind: "login" },
+  "login-frank": { sub: "pw_frank", clientId: "biatec-authenticator", scope: "openid enroll-device", kind: "login" },
   "login-alice-stale": { sub: "pw_alice", clientId: "biatec-authenticator", scope: "openid enroll-device", kind: "login", authAgeSeconds: 3600 },
 };
 

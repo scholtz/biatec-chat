@@ -2,7 +2,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show PlatformException;
 
 import '../integrity/attestation.dart';
+import '../config.dart';
 import '../keys/device_key_store.dart';
+import '../security/device_proof.dart';
 import '../keys/key_security_level.dart';
 import '../keys/prompt_free_key.dart';
 import '../security/settings_client.dart';
@@ -44,6 +46,29 @@ class EnrollmentController extends ChangeNotifier {
     this.loginRequest,
     this.devices,
   }) : _clock = clock ?? DateTime.now;
+
+  /// The one way the app builds its controller from [config] (the app gate and the enrollment screen both use it): the in-app login and the waiting device's calls exist
+  /// only against a Biatec OIDC that has them (`AppConfig.inAppLogin`), and the calls carry the proof of possession of the device key ([proof], by default the keystore's).
+  factory EnrollmentController.forConfig(
+    AppConfig config, {
+    required DeviceKeyStore keys,
+    required ObservableEnrollmentStore store,
+    DeviceProofSigner? proof,
+    AuthClient? authClient,
+    bool? twoKeys,
+  }) =>
+      EnrollmentController(
+        keys: keys,
+        store: store,
+        client: OidcEnrollmentClient(baseUrl: config.oidcBaseUrl),
+        twoKeys: twoKeys ?? config.twoKeys,
+        auth: config.inAppLogin ? (authClient ?? AppAuthClient()) : null,
+        loginRequest:
+            config.inAppLogin ? AuthRequest.forConfig(config) : null,
+        devices: SettingsClient(
+            baseUrl: config.oidcBaseUrl,
+            proof: proof ?? KeystoreDeviceProofSigner(keys: keys, enrollment: store)),
+      );
 
   /// The system browser login (null: no in-app login, `AppConfig.inAppLogin` is off and the token comes from outside) and what it asks for.
   final AuthClient? auth;
@@ -633,8 +658,17 @@ class EnrollmentController extends ChangeNotifier {
     } on Object {
       // A stale alias would only be reused for the next key.
     }
-    await store.clear();
-    await deleteDeviceKeys(keys, record);
+    // The server cancelled it: whatever the local clean-up meets, the device ends signed out (the store signs out in memory first, see ObservableEnrollmentStore.clear).
+    try {
+      await store.clear();
+    } on Object {
+      // Cleared in memory; the disk is retried by the store.
+    }
+    try {
+      await deleteDeviceKeys(keys, record);
+    } on Object {
+      // The keys are useless without the enrollment; a new enrollment removes them again.
+    }
     signOut();
     return true;
   }

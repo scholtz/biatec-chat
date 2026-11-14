@@ -74,6 +74,7 @@ class SettingsServices {
     required this.gate,
     this.enabled = true,
     this.twoKeys = true,
+    this.activationByDevice = true,
     DateTime Function()? clock,
     String Function()? nonce,
   })  : clock = clock ?? DateTime.now,
@@ -90,6 +91,7 @@ class SettingsServices {
         gate: approvals.gate,
         enabled: config.settingsApi,
         twoKeys: approvals.twoKeys,
+        activationByDevice: config.activationByDevice,
         clock: approvals.clock,
       );
 
@@ -106,6 +108,9 @@ class SettingsServices {
 
   /// `AppConfig.twoKeys`.
   final bool twoKeys;
+
+  /// `AppConfig.activationByDevice` (the in-app login AND two keys): the Devices screen offers "Activate" only then.
+  final bool activationByDevice;
 
   SettingsController controller() => SettingsController(
         client: client,

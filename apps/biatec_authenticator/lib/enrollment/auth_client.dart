@@ -1,3 +1,6 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_appauth/flutter_appauth.dart';
 
@@ -49,6 +52,17 @@ class AuthRequest {
   final bool allowInsecure;
 }
 
+/// Whether the system browser session can return through an `https` callback (an app link): Android always; iOS from 17.4 (`ASWebAuthenticationSession` with an https
+/// callback). [osVersion] is `Platform.operatingSystemVersion` (`Version 17.4 (Build ...)`); one that cannot be read fails closed.
+bool httpsCallbackSupported(TargetPlatform platform, String osVersion) {
+  if (platform != TargetPlatform.iOS) return true;
+  final m = RegExp(r'(\d+)\.(\d+)').firstMatch(osVersion);
+  if (m == null) return false;
+  final major = int.parse(m.group(1)!);
+  final minor = int.parse(m.group(2)!);
+  return major > 17 || (major == 17 && minor >= 4);
+}
+
 /// The user closed the browser or cancelled: nothing happened.
 class LoginCancelled implements Exception {
   const LoginCancelled();
@@ -78,6 +92,11 @@ class AppAuthClient implements AuthClient {
 
   @override
   Future<String> signIn(AuthRequest r) async {
+    if (r.redirectUri.startsWith('https:') &&
+        !httpsCallbackSupported(defaultTargetPlatform, Platform.operatingSystemVersion)) {
+      throw const LoginFailed(
+          'Signing in from this app needs iOS 17.4 or later. Update this phone, or enroll from a newer one.');
+    }
     try {
       final response = await _appAuth.authorizeAndExchangeCode(
         AuthorizationTokenRequest(

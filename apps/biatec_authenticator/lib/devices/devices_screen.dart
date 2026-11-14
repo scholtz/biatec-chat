@@ -123,7 +123,7 @@ class _DeviceCard extends StatelessWidget {
     final busy = controller.busy;
     final strings = EnrollStrings.of();
     // Another device's enrollment that waits for this one: its pairing code, computed here from the keys Biatec OIDC lists for it. Only when the activation flow exists (the server sends the pairing data) and this device can sign it.
-    final code = d.pending && !d.current && services.twoKeys
+    final code = d.pending && !d.current && services.twoKeys && services.activationByDevice
         ? SettingsController.pairingCodeOf(d)
         : null;
     final name = d.name ?? strings.newDeviceName;

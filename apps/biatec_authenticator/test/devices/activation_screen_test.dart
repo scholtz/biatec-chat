@@ -35,7 +35,8 @@ Map<String, Object?> _pending({String? serverCode = '102716', String? name = 'Te
 
 /// The settings rig with `POST /devices/dev-2/activate` answered like the mock (the device becomes active) and recorded.
 class _Rig {
-  _Rig({Map<String, Object?>? pending}) : rig = SettingsRig() {
+  _Rig({Map<String, Object?>? pending, this.activationByDevice = true})
+      : rig = SettingsRig() {
     rig.oidc.devices = [
       {'kid': 'dev-1', 'current': true, 'active': true, 'active_at': 0},
       pending ?? _pending(),
@@ -69,6 +70,7 @@ class _Rig {
       clock: () => DateTime.fromMillisecondsSinceEpoch(rig.oidc.nowSeconds * 1000,
           isUtc: true),
       nonce: () => 'n',
+      activationByDevice: activationByDevice,
     );
   }
 
@@ -76,6 +78,7 @@ class _Rig {
   late final SettingsServices services;
   final List<Map<String, Object?>> activations = [];
   bool refuse = false;
+  final bool activationByDevice;
 }
 
 Future<void> _open(WidgetTester tester, _Rig r) async {
@@ -101,6 +104,17 @@ void main() {
     expect(find.byKey(const Key('activate-dev-1')), findsNothing);
     // The cancel button is there, worded for this case.
     expect(find.text('Cancel this device'), findsOneWidget);
+  });
+
+  testWidgets('without the activation flow (IN_APP_LOGIN off) nothing is offered for activation',
+      (tester) async {
+    final r = _Rig(activationByDevice: false);
+    await _open(tester, r);
+    expect(find.byKey(const Key('activate-dev-2')), findsNothing);
+    expect(find.byKey(const Key('pairing-code-dev-2')), findsNothing);
+    // The pending enrollment can still be cancelled, as before.
+    expect(find.byKey(const Key('cancel-dev-2')), findsOneWidget);
+    expect(find.text('Cancel enrollment'), findsOneWidget);
   });
 
   testWidgets('a device with no name is called "a new device"', (tester) async {

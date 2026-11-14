@@ -47,6 +47,7 @@ class FakeAuth implements AuthClient {
 class _Storage extends FlutterSecureStorage {
   final Map<String, String> items = {};
   final List<String> everWritten = [];
+  bool failDelete = false;
 
   @override
   Future<String?> read(
@@ -86,8 +87,15 @@ class _Storage extends FlutterSecureStorage {
       webOptions,
       mOptions,
       wOptions}) async {
+    if (failDelete) throw StateError('keychain locked');
     items.remove(key);
   }
+}
+
+/// A keystore that cannot delete.
+class _StuckKeys extends FakeTwoKeyStore {
+  @override
+  Future<void> deleteKeys() async => throw StateError('keystore busy');
 }
 
 void main() {
@@ -196,12 +204,12 @@ void main() {
       expect(mock.discoveryUrl, isNull);
       expect(mock.allowInsecure, isTrue);
       final real = AuthRequest.forConfig(AppConfig.resolve(
-          'https://oidc.example',
+          'https://oidc.biatec.io',
           release: true,
           inAppLogin: true,
           clientId: 'my-client'));
       expect(real.discoveryUrl,
-          'https://oidc.example/.well-known/openid-configuration');
+          'https://oidc.biatec.io/.well-known/openid-configuration');
       expect(real.authorizationEndpoint, isNull);
       expect(real.allowInsecure, isFalse);
       expect(real.clientId, 'my-client');
@@ -352,6 +360,38 @@ void main() {
     });
   });
 
+  group('cancelling this device', () {
+    test('ends signed out even when the local clean-up fails', () async {
+      keys = _StuckKeys();
+      final c = build();
+      await c.signInAndEnroll();
+      storage.failDelete = true;
+      expect(await c.cancelThisDevice(), isTrue);
+      expect(c.state.phase, EnrollmentPhase.notEnrolled);
+      expect(c.cancelError, isNull);
+    });
+
+    test('says so only when the server could not cancel it, and stays enrolled',
+        () async {
+      final c = build();
+      await c.signInAndEnroll();
+      final kid = c.state.record!.kid;
+      // Biatec OIDC unreachable: swap the clients' answer by cancelling a device of the wrong state is not needed, an unknown token is enough.
+      final broken = EnrollmentController(
+        keys: keys,
+        store: c.store,
+        client: OidcEnrollmentClient(baseUrl: 'http://oidc'),
+        devices: SettingsClient(
+            baseUrl: 'http://oidc',
+            client: MockClient((_) async => http.Response('{}', 500))),
+      );
+      await broken.refresh();
+      expect(await broken.cancelThisDevice(), isFalse);
+      expect(broken.cancelError, isNotNull);
+      expect(broken.state.record!.kid, kid);
+    });
+  });
+
   group('the recovery code at enrollment', () {
     test('goes in activation, and the device is active at once', () async {
       final c = build(activeAt: t0);
@@ -374,6 +414,23 @@ void main() {
       final p = classifyEnrollmentError(c.state.error!);
       expect(p.kind, EnrollmentProblemKind.wrongRecoveryCode);
       expect(storage.items, isEmpty);
+    });
+
+    test('a plain 429 (a rate limit) is not the recovery lockout, with or without a code',
+        () async {
+      for (final code in [null, 'AAAA-BBBB-CCCC']) {
+        auth = FakeAuth(['good-token']);
+        final c = build(enrollStatus: 429, enrollBody: {'error': 'rate_limited'});
+        await c.signInAndEnroll(recoveryCode: code);
+        expect(c.state.error, isNot(EnrollmentController.recoveryLockedError));
+      }
+      // The lockout needs both the code in the request and the server's error code.
+      auth = FakeAuth(['good-token']);
+      final noCode = build(
+          enrollStatus: 429, enrollBody: {'error': 'too_many_attempts'});
+      await noCode.signInAndEnroll();
+      expect(noCode.state.error,
+          isNot(EnrollmentController.recoveryLockedError));
     });
 
     test('too many wrong codes (429) have their own text', () async {

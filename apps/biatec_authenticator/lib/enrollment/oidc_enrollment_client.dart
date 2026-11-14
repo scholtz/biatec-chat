@@ -9,7 +9,8 @@ import 'enrollment_proof.dart';
 import 'enrollment_state.dart';
 
 class EnrollmentException implements Exception {
-  const EnrollmentException(this.message, {this.code, this.status});
+  const EnrollmentException(this.message,
+      {this.code, this.status, this.recoveryCodeSent = false});
   final String message;
 
   /// The HTTP status, when the server answered.
@@ -21,8 +22,12 @@ class EnrollmentException implements Exception {
   /// `403 invalid_recovery_code`: the recovery code at enrollment is wrong.
   bool get isWrongRecoveryCode => code == 'invalid_recovery_code';
 
-  /// `429`: too many wrong recovery codes, activation by recovery code is locked for a while.
-  bool get isRecoveryLocked => status == 429;
+  /// A recovery code was part of the request that was refused.
+  final bool recoveryCodeSent;
+
+  /// `429 too_many_attempts` for a request that carried a recovery code: too many wrong codes, activation by recovery code is locked for a while. Any other 429 (a rate limit, too many open challenges) is not this.
+  bool get isRecoveryLocked =>
+      recoveryCodeSent && status == 429 && code == 'too_many_attempts';
 
   /// The server's `error` member (machine readable), when it sent one: `invalid_challenge` and `invalid_proof` are the ones the app acts on.
   final String? code;
@@ -84,7 +89,7 @@ class OidcEnrollmentClient {
       throw EnrollmentException('Could not reach Biatec OIDC: $e');
     }
     return parseResponse(res.statusCode, res.body,
-        twoKeys: presenceKey != null);
+        twoKeys: presenceKey != null, recoverySent: recoveryCode != null);
   }
 
   static Map<String, Object?> _attestationJson(AttestationToken t) => {
@@ -156,13 +161,15 @@ class OidcEnrollmentClient {
   }
 
   static EnrollmentRecord parseResponse(int status, String body,
-      {bool twoKeys = true}) {
+      {bool twoKeys = true, bool recoverySent = false}) {
     final json = _decodeObject(body, status);
     if (status != 201) {
       final detail = json['error_description'] ?? json['error'] ?? 'error';
       final code = json['error'];
       throw EnrollmentException('Enrollment refused ($status): $detail',
-          code: code is String ? code : null, status: status);
+          code: code is String ? code : null,
+          status: status,
+          recoveryCodeSent: recoverySent);
     }
     // The recovery code is deliberately not read here: rule 7 issues it only
     // once the device is active, through [requestRecoveryCode].

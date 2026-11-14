@@ -24,7 +24,6 @@ class EnrollStrings {
   String get staleLoginAgain => _get('staleLoginAgain');
   String get loginCancelled => _get('loginCancelled');
   String loginFailed(String why) => _get('loginFailed').replaceAll('{why}', why);
-  String get signInUnavailableTitle => _get('signInUnavailableTitle');
   String get signInUnavailable => _get('signInUnavailable');
 
   // Recovery code at enrollment
@@ -76,7 +75,6 @@ class EnrollStrings {
         'Biatec OIDC still says the sign-in is too old. Check the clock of this phone and sign in again.',
     'loginCancelled': 'Sign-in was cancelled. Nothing was enrolled.',
     'loginFailed': 'Sign-in failed: {why}',
-    'signInUnavailableTitle': 'Sign-in is not available yet',
     'signInUnavailable':
         'This Biatec OIDC does not support signing in from the app yet, so this device cannot be enrolled here.',
     'recoveryFieldLabel': 'Recovery code (optional)',
@@ -129,7 +127,6 @@ class EnrollStrings {
         'Biatec OIDC stále hlási, že prihlásenie je príliš staré. Skontrolujte hodiny telefónu a prihláste sa znova.',
     'loginCancelled': 'Prihlásenie bolo zrušené. Nič sa nezaregistrovalo.',
     'loginFailed': 'Prihlásenie zlyhalo: {why}',
-    'signInUnavailableTitle': 'Prihlásenie zatiaľ nie je dostupné',
     'signInUnavailable':
         'Tento Biatec OIDC zatiaľ nepodporuje prihlásenie z aplikácie, preto sa toto zariadenie tu nemôže zaregistrovať.',
     'recoveryFieldLabel': 'Obnovovací kód (voliteľné)',

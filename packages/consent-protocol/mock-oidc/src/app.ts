@@ -811,10 +811,7 @@ export function createMockOidc(options: MockOptions = {}) {
         recoveryFailures.set(t.sub, next);
         throw new HttpError(403, "invalid_recovery_code", "the recovery code is wrong");
       }
-      recoveryFailures.delete(t.sub);
-      // Used up: a recovery code activates one device.
-      recoveryFrom.recoveryCodeKept = undefined;
-      recoveryFrom.recoveryCode = undefined;
+      // The code is burnt and the failure counter reset only once the device was added (below): any other refusal leaves both untouched.
       activeAt = now();
     }
     const push = body.push === undefined ? undefined : pushTarget(body.push);
@@ -855,6 +852,12 @@ export function createMockOidc(options: MockOptions = {}) {
       presence = { kid: body.presence_kid, publicKey: { kty: "EC", crv: "P-256", x: pp.x, y: pp.y } };
     }
     const d = addDevice(t.sub, body.kid, { kty: "EC", crv: "P-256", x: pk.x, y: pk.y }, activeAt, undefined, presence);
+    if (recoveryFrom) {
+      // Used up: a recovery code activates one device.
+      recoveryFailures.delete(t.sub);
+      recoveryFrom.recoveryCodeKept = undefined;
+      recoveryFrom.recoveryCode = undefined;
+    }
     if (typeof body.name === "string") d.name = body.name;
     d.enrollNonce = enrollNonce;
     setPush(d, push);
