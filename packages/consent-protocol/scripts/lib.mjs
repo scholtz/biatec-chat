@@ -354,7 +354,7 @@ function isP256PublicJwk(jwk) {
  * payload signed by the presence key (both are required: a key named only by its thumbprint has not proven possession). The first JWS: typ, ES256 under the header's own `jwk`, which MUST be the approval key
  * the request carries (`expect.approval_public_key`, with `expect.kid`, `expect.presence_kid` and `expect.usedNonces`, all required), `presence_jwk_thumbprint`
  * equals the thumbprint of `expect.presence_public_key`, `nonce` equals `expect.nonce`, and `iat` is within 300 seconds of
- * `expect.now`. Never throws.
+ * `expect.now`. `expect.usedNonces` is the set of ENROLLMENT challenge nonces; the activation approval reuses that nonce but is checked against the separate set of statement nonces (`verifyDeviceSigned`), so keep two sets. Never throws.
  */
 export function verifyEnrollmentProof(jws, expect = {}) {
   // The approval key the server received and the key that signed the proof must be the same: it is the proof of possession.
@@ -404,7 +404,6 @@ export function verifyEnrollmentProof(jws, expect = {}) {
  * - `expectedBindingCode` is the binding code Biatec OIDC issued for that request (number matching, rule 2).
  * - `consumed` is a Set of already spent `auth_req_id` values owned by the caller. This function only reads it:
  *   a consent is spent when Biatec OIDC actually signs (rule 5), so the caller adds the id after a successful sign.
- * - `opts.issuer` (required) is the expected Biatec OIDC issuer; `opts.now` defaults to the current time.
  * - `opts.issuer` (required) is the expected Biatec OIDC issuer; `opts.now` defaults to the current time. `opts.deviceActive` (the caller looked up that the signing device is ACTIVE) is `=== true` REQUIRED for any device attested for a key use (every 1.1 device); `false` refuses always; only a 1.0 device with no attested use may omit it. Do not hard-code `true`: that defeats the pending-device protection.
  * - Nonce sets: the enrollment challenge nonce is consumed once at enrollment (`verifyEnrollmentProof`) and the same nonce appears in the activation approval, so keep one set per step (enrollment nonces, statement nonces) and make the approval refuse a nonce already activated.
  */
