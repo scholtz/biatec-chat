@@ -104,6 +104,8 @@ export function attestationClaims(attestation, jwks, opts = {}) {
 
 /** The attestation payload when it also binds this device key (kid and thumbprint) and, if `sub` is given, that subject. */
 function boundClaims(device, sub, jwks, opts) {
+  const k = device.public_key;
+  if (!k || Object.keys(k).length !== 4 || !["kty", "crv", "x", "y"].every((m) => typeof k[m] === "string")) return null; // public members only: a leaked private `d` is refused
   const payload = attestationClaims(device.attestation, jwks, opts);
   if (!payload) return null;
   if (sub !== undefined && payload.sub !== sub) return null;
@@ -207,7 +209,7 @@ const INVISIBLE = /[\u00AD\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180E\u2061-\u20
 
 /**
  * ZWNJ and ZWJ (U+200C, U+200D) are part of ordinary text in several scripts (Persian, Indic) and of emoji sequences, and U+FE0F makes a
- * symbol an emoji: they are allowed after a letter, mark, symbol or digit and before a letter, symbol or digit (ZWNJ, ZWJ; never before a mark or a selector) and right after a symbol or digit (U+FE0F),
+ * symbol an emoji: they are allowed after a letter, mark, symbol or digit and before a letter, symbol or digit (ZWNJ, ZWJ; never before a mark or a selector) and right after a symbol, a digit, '#' or '*' (U+FE0F, the keycap bases),
  * never at an end or next to white space, and at most one in a row. Everything else in the format class stays refused.
  */
 function withoutJoiners(text) {
@@ -301,8 +303,6 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
     if (!(opts.usedNonces instanceof Set)) return false; // without the set of used nonces a replay cannot be told
     if (!isNonce(s.nonce) || opts.usedNonces.has(s.nonce)) return false;
     if (!Number.isInteger(s.issued_at) || Math.abs(now - s.issued_at) > SIGNED_WINDOW_SECONDS) return false;
-    // The signature, once the cheap preconditions above held (a replayed or stale statement costs no P-256 verification).
-    if (!verifyEs256(envelope.device.public_key, Buffer.from(jcs(s), "utf8"), envelope.signature)) return false;
     // The signed object has exactly the members the schema allows: nothing rides along unsigned-looking but signed.
     const memberList = MEMBERS_OF[s.type];
     if (Object.keys(s).length !== memberList.length || !memberList.every((k) => k in s)) return false;
@@ -327,7 +327,8 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
       if (s.new_approval_jwk_thumbprint !== e.new_approval_jwk_thumbprint || s.new_presence_jwk_thumbprint !== e.new_presence_jwk_thumbprint || s.nonce !== e.nonce) return false;
       if (typeof s.pairing_code !== "string" || !timingSafeEqualStr(s.pairing_code, pairingCode(e.new_approval_jwk_thumbprint, e.new_presence_jwk_thumbprint, e.nonce))) return false;
     }
-    return true;
+    // The statement's own signature last: everything cheap, and the attestation, held (a replayed, stale or malformed statement never reaches it).
+    return verifyEs256(envelope.device.public_key, Buffer.from(jcs(s), "utf8"), envelope.signature);
   } catch {
     return false;
   }
@@ -454,6 +455,7 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
 /** The schema's invariants for a 1.1 transaction: a known value has a total and a priced transfer each; an untrusted application makes it unknown. */
 function detailsConsistent(d) {
   if (typeof d.value_known !== "boolean" || d.transfers.length + d.applications.length === 0) return false;
+  if (!d.applications.every((a) => a && Number.isSafeInteger(a.id) && a.id >= 0 && typeof a.trusted === "boolean")) return false;
   if (d.applications.some((a) => a.trusted === false) && d.value_known) return false;
   if (d.applications.some((a) => a.id === 0 && a.trusted !== false)) return false; // id 0 is an application creation: never trusted
   if (d.value_known) return d.fiat_value !== undefined && d.transfers.every((x) => x.fiat_value !== undefined);

@@ -924,9 +924,18 @@ test("a device approval is bound to the subject of the account being enrolled", 
 
 test("the generator refuses to run without --force and leaves the vectors alone", async () => {
   const { spawnSync } = await import("node:child_process");
-  const before = readFileSync(new URL("../vectors/device-signed.json", import.meta.url), "utf8");
-  const r = spawnSync(process.execPath, [new URL("../scripts/generate-vectors.mjs", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")], { encoding: "utf8" });
+  const { cpSync, mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  // A temp copy of scripts and vectors: if the guard ever regresses, the committed vectors are not touched.
+  const root = mkdtempSync(join(tmpdir(), "gen-guard-"));
+  const src = fileURLToPath(new URL("..", import.meta.url));
+  cpSync(join(src, "scripts"), join(root, "scripts"), { recursive: true });
+  cpSync(join(src, "vectors"), join(root, "vectors"), { recursive: true });
+  const before = readFileSync(join(root, "vectors", "device-signed.json"), "utf8");
+  const r = spawnSync(process.execPath, [join(root, "scripts", "generate-vectors.mjs")], { encoding: "utf8" });
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /--force/);
-  assert.equal(readFileSync(new URL("../vectors/device-signed.json", import.meta.url), "utf8"), before);
+  assert.equal(readFileSync(join(root, "vectors", "device-signed.json"), "utf8"), before);
 });
