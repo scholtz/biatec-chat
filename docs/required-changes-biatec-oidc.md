@@ -7,6 +7,24 @@ Examples are illustrative: names the spec fixes are normative (`insufficient_use
 `auth_req_id`, `consent_receipt`, `requireConsent`, `valuedEur`, `maxConsentSeconds`, `authorization_details`, the
 `biatec_transaction` and `biatec_limits_change` types); other names are proposals for the OIDC owners to confirm.
 
+## Protocol 1.1 (T-239): what Biatec OIDC must provide
+
+The consent protocol is now version 1.1 (`packages/consent-protocol/spec/biatec-consent-protocol.md`, "Changes from 1.0"). Where an older row below
+shows a 1.0 shape (the `sha256:` form of `group_hash`, a `verified` client with a display name, a single transfer with one `fiat_value`, one device key),
+the 1.1 shape in the spec and the schemas wins. The implementation plans are the issues of ludovit-scholtz/AlgorandGoogleDriveAccount#23 (CONSENT-01 to
+CONSENT-15); biatec-chat's T-240 brings this document row by row up to date.
+
+| Biatec OIDC must provide | Issue | Fallback in this repository |
+| --- | --- | --- |
+| `group_hash` as the recomputed Algorand group id; `transfers`, `applications`, `value_known`, signed `origin` in `authorization_details` | #26, #28 | None: build against the mock only (T-240); against real Biatec OIDC the feature is disabled by configuration: keep consent enforcement off against real Biatec OIDC (the switch `Consent:Enforcement`, default `Off`, is added by T-243 together with the code that reads it; until then nothing enforces anything and the backend's own caps and no-device rules apply) |
+| Client identity as `{ fingerprint, domain_proven, domain?, linked }`; the domain proof `/.well-known/biatec-client.json`; no operator-vouched name | #25, #27 | None: mock only (T-240), disabled by configuration against real Biatec OIDC (the switch is added by that task); the backend serves the well-known file so the proof works when Biatec OIDC checks it |
+| Two attested device keys (`biatec_key_use` `approve` / `presence`); an approve receipt refused unless its attestation says `approve` | #32 | None: mock only (T-241), disabled by configuration against real Biatec OIDC (a build flag added by that task keeps the app on one key); the real server keeps accepting 1.0 single-key receipts until it ships |
+| Enrollment proof (`biatec-device-enroll+jwt`), pairing code, `POST /devices/{kid}/activate` with a signed `biatec_device_approval` | #31 | None: mock only (T-242), disabled by configuration against real Biatec OIDC (the in-app login and the activation by another device are off; enrollment keeps the 24 hour delay) |
+| Settings changes signed by the approval key (`biatec_settings_change`), threshold with no ceiling, trusted applications, `remember` on an approve receipt | #27, #30 | None: mock only (T-245), disabled by configuration against real Biatec OIDC (the settings screens stay read-only); the chat backend keeps its own `GET /consent/settings` fallback |
+| Device channel (SignalR) instead of a third-party push; email through Azure Communication Services | #29, #37 | None: the device channel and the email are switched off by configuration until Biatec OIDC provides them; the app polls every 5 seconds while open and no email is sent |
+| Tenant fields `consentThresholdCeilingEur` and `TrustAnchorVerified` keep their names until T-240 renames them (they now mean the deployment's default consent threshold and "the domain proof was seen"; the admin API and the deploy workflow expose them) | none | Keep the names; the specification's wording wins |
+| Relying parties (self-registration, linking, payment and login requests) | #38 | None: mock only (T-246, T-247); disabled by configuration against real Biatec OIDC |
+
 Today Biatec OIDC provides: authorization code with PKCE, dynamic client registration (public clients only), resource indicators,
 the `sign` / `manage-limits` / `rekey` scopes, `POST /wallet/{network}/{address}/sign` with spending limits, and transaction
 decoding for limit enforcement.

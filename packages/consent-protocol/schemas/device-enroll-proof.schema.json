@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/device-enroll-proof.schema.json",
+  "title": "Enrollment proof (decoded)",
+  "description": "The decoded form of the enrollment proof JWS (header and payload) a new device sends in POST /devices. It is signed by the new device's APPROVAL key, carries that key as the header `jwk`, and names the presence key by its thumbprint, so the two keys are tied to one enrollment and to the server's nonce.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["header", "payload"],
+  "properties": {
+    "header": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alg", "typ", "jwk"],
+      "properties": {
+        "alg": { "const": "ES256" },
+        "typ": { "const": "biatec-device-enroll+jwt" },
+        "jwk": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kty", "crv", "x", "y"],
+          "properties": {
+            "kty": { "const": "EC" },
+            "crv": { "const": "P-256" },
+            "x": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+            "y": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" }
+          }
+        }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kid", "presence_kid", "presence_jwk_thumbprint", "nonce", "iat"],
+      "properties": {
+        "kid": { "type": "string", "minLength": 1, "description": "The approval key's id." },
+        "presence_kid": { "type": "string", "minLength": 1 },
+        "presence_jwk_thumbprint": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+        "nonce": { "type": "string", "pattern": "^[A-Za-z0-9_-]{16,128}$", "minLength": 16, "maxLength": 128, "description": "The server's enrollment challenge nonce." },
+        "iat": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+      }
+    }
+  }
+}

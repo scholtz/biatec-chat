@@ -2,12 +2,24 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.biatec.io/consent/v1/consent-receipt.schema.json",
   "title": "Consent receipt",
-  "description": "Signed receipt as returned in consent_receipt and at GET /consent/receipts/{auth_req_id}. Verifiable offline with the Biatec OIDC JWKS.",
+  "description": "Signed receipt as returned in consent_receipt and at GET /consent/receipts/{auth_req_id}. Verifiable offline with the Biatec OIDC JWKS. `version` 1.1 is the only version implementations produce; 1.0 receipts predate the split of the device key in two and are still accepted.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "signed", "alg", "signature", "device", "issued_at"],
+  "allOf": [
+    {
+      "if": { "required": ["version"], "properties": { "version": { "const": "1.1" } } },
+      "then": {
+        "properties": {
+          "signed": { "$ref": "consent-receipt-signed.schema.json#/$defs/v1_1" },
+          "device": { "type": "object", "required": ["key_use"], "properties": { "key_use": true } }
+        }
+      },
+      "else": { "properties": { "signed": { "$ref": "consent-receipt-signed.schema.json#/$defs/v1_0" }, "device": { "type": "object", "properties": { "key_use": false } } } }
+    }
+  ],
   "properties": {
-    "version": { "const": "1" },
+    "version": { "enum": ["1", "1.1"] },
     "signed": { "$ref": "consent-receipt-signed.schema.json" },
     "alg": { "const": "ES256" },
     "signature": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$", "description": "base64url of the 64-byte IEEE P1363 (r || s) ES256 signature over the UTF-8 bytes of JCS(signed)." },
@@ -18,6 +30,7 @@
       "required": ["kid", "public_key", "attestation"],
       "properties": {
         "kid": { "type": "string", "minLength": 1 },
+        "key_use": { "enum": ["approve", "presence"], "description": "Informational copy of the attestation's biatec_key_use. Verifiers MUST read the attested claim, never this member." },
         "public_key": {
           "type": "object",
           "additionalProperties": false,
@@ -32,7 +45,7 @@
         "attestation": {
           "type": "string",
           "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
-          "description": "Compact JWS (ES256) signed by a Biatec OIDC JWKS key; the payload binds sub, device kid and the device public key thumbprint."
+          "description": "Compact JWS (ES256) signed by a Biatec OIDC JWKS key; the payload binds sub, device kid, the device public key thumbprint and (1.1) biatec_key_use."
         }
       }
     }

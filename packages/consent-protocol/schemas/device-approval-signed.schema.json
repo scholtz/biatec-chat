@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/device-approval-signed.schema.json",
+  "title": "Signed approval of a new device",
+  "description": "The object the approval key of an ACTIVE device signs (RFC 8785 canonical form) to activate a device that was just enrolled. Naming a kid proves nothing; this statement does, because it covers both thumbprints of the new device, the enrollment nonce and the pairing code the user compared on both phones.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "approver_kid", "new_kid", "new_approval_jwk_thumbprint", "new_presence_jwk_thumbprint", "pairing_code", "nonce", "issued_at"],
+  "properties": {
+    "type": { "const": "biatec_device_approval" },
+    "approver_kid": { "type": "string", "minLength": 1, "description": "The approval key that signs." },
+    "new_kid": { "type": "string", "minLength": 1, "description": "The new device's approval key id." },
+    "new_approval_jwk_thumbprint": { "$ref": "#/$defs/thumbprint" },
+    "new_presence_jwk_thumbprint": { "$ref": "#/$defs/thumbprint" },
+    "pairing_code": { "type": "string", "pattern": "^[0-9]{6}$", "description": "The six digit code both phones showed; defined in the spec, section 8.3." },
+    "nonce": { "type": "string", "pattern": "^[A-Za-z0-9_-]{16,128}$", "minLength": 16, "maxLength": 128, "description": "The enrollment nonce of the new device." },
+    "issued_at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "Unix time in seconds; accepted within 300 seconds of the server's clock." }
+  },
+  "$defs": {
+    "thumbprint": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$", "description": "RFC 7638 thumbprint of an EC P-256 public JWK, base64url of the SHA-256." }
+  }
+}

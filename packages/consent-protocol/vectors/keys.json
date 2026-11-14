@@ -19,5 +19,35 @@
     "kid": "device-test-key-1",
     "alg": "ES256",
     "use": "sig"
+  },
+  "presence": {
+    "kty": "EC",
+    "x": "nZQI_ShNEIOy_-Pb6TPa8LOaCyDengdDzBlg0cOhD7w",
+    "y": "kTQ5sb0lNB760k-c7T8v3yVvGikDQpORyXnLjldhgCQ",
+    "crv": "P-256",
+    "d": "JrMwGIGECO5l8kkjpWumcqekEkHr-gQcjR_uVH8uegI",
+    "kid": "presence-test-key-1",
+    "alg": "ES256",
+    "use": "sig"
+  },
+  "new_approval": {
+    "kty": "EC",
+    "x": "wBr6iGCVDjGqRAEnuoZ73gOL1hMgZD8m8D4EUUT826s",
+    "y": "RU6lo5TiXSc6OyD6yZVlwA317Lg98bBzcImRZvZdQy8",
+    "crv": "P-256",
+    "d": "jPXEOmsj3rwi0LnK1mtvkxl8QUkqKBUOItMOBaLIMZg",
+    "kid": "new-approval-test-key-1",
+    "alg": "ES256",
+    "use": "sig"
+  },
+  "new_presence": {
+    "kty": "EC",
+    "x": "XGsG0011wazq1ooVHyxB4bGsGUaW_zWCQpJC2OFIbAQ",
+    "y": "3nwoRWO3GXFOfMHKH7t1mobVPMuJDPZZvab9JPyGlB8",
+    "crv": "P-256",
+    "d": "_oRHxLj6p670DjkElcOVHXWh5n3fJyGt1keFscdMXK8",
+    "kid": "new-presence-test-key-1",
+    "alg": "ES256",
+    "use": "sig"
   }
 }

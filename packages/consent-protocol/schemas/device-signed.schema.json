@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/device-signed.schema.json",
+  "title": "Device-signed statement",
+  "description": "A settings change or the approval of a new device, signed by the approval key of an active device, with that key's attestation. Checked like a receipt (spec section 8.1): signature over JCS(signed), attestation by the Biatec OIDC JWKS, and the attested biatec_key_use must be `approve`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["signed", "alg", "signature", "device"],
+  "properties": {
+    "signed": {
+      "oneOf": [{ "$ref": "settings-change-signed.schema.json" }, { "$ref": "device-approval-signed.schema.json" }]
+    },
+    "alg": { "const": "ES256" },
+    "signature": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$" },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kid", "key_use", "public_key", "attestation"],
+      "properties": {
+        "kid": { "type": "string", "minLength": 1 },
+        "key_use": { "enum": ["approve", "presence"], "description": "Informational copy of the attested biatec_key_use. Verifiers read the attested claim and MUST refuse anything but `approve`." },
+        "public_key": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kty", "crv", "x", "y"],
+          "properties": {
+            "kty": { "const": "EC" },
+            "crv": { "const": "P-256" },
+            "x": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+            "y": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" }
+          }
+        },
+        "attestation": { "type": "string", "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$" }
+      }
+    }
+  }
+}
