@@ -1,7 +1,7 @@
 // Contract test: the real enrollment client and controller against a running
 // packages/consent-protocol/mock-oidc server (no hand-written responses).
 //
-//   pnpm --filter mock-oidc start            # listens on 127.0.0.1:8089
+//   MOCK_JSON_GROUPS=1 MOCK_TEST_HELPERS=1 MOCK_MAX_PENDING=1000 PORT=8089 pnpm --filter mock-oidc start   # from the repo root; 127.0.0.1:8089
 //   flutter test --dart-define=MOCK_OIDC_URL=http://127.0.0.1:8089 test/enrollment/mock_oidc_contract_test.dart
 //
 // Skipped when MOCK_OIDC_URL is not set.

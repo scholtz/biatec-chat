@@ -2,11 +2,12 @@
 // packages/consent-protocol/mock-oidc server, and the payload the mock would
 // hand to FCM for a new request.
 //
-//   pnpm --filter mock-oidc start            # listens on 127.0.0.1:8089
+//   MOCK_JSON_GROUPS=1 MOCK_TEST_HELPERS=1 MOCK_MAX_PENDING=1000 PORT=8089 pnpm --filter mock-oidc start   # from the repo root; 127.0.0.1:8089
 //   flutter test --dart-define=MOCK_OIDC_URL=http://127.0.0.1:8089 test/push/mock_oidc_push_contract_test.dart
 //
 // Skipped when MOCK_OIDC_URL is not set.
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
@@ -18,6 +19,9 @@ import 'package:http/http.dart' as http;
 import 'push_test.dart' show FakeTransport;
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  // The test binding blocks real HTTP; the mock is on localhost.
+  HttpOverrides.global = null;
   const url = String.fromEnvironment('MOCK_OIDC_URL');
   final baseUrl = url.isNotEmpty ? url : null;
   final skip = baseUrl == null ? 'set MOCK_OIDC_URL to run' : false;

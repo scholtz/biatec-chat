@@ -2,7 +2,7 @@
 // against a running packages/consent-protocol/mock-oidc server. The mock
 // verifies every receipt with its JWKS, exactly as Biatec OIDC would.
 //
-//   pnpm --filter mock-oidc start            # listens on 127.0.0.1:8089
+//   MOCK_JSON_GROUPS=1 MOCK_TEST_HELPERS=1 MOCK_MAX_PENDING=1000 PORT=8089 pnpm --filter mock-oidc start   # from the repo root; 127.0.0.1:8089
 //   flutter test --dart-define=MOCK_OIDC_URL=http://127.0.0.1:8089 test/approvals/mock_oidc_approval_contract_test.dart
 //
 // Skipped when MOCK_OIDC_URL is not set.
@@ -110,8 +110,14 @@ void main() {
 
     final t = await token(r.id);
     expect(t['status'], 200, reason: '$t');
+    // The history keeps the receipt with the binding code redacted (1.1); the
+    // mock returns it in full.
+    final theirs =
+        jsonDecode(jsonEncode(t['consent_receipt'])) as Map<String, Object?>;
+    (theirs['signed'] as Map).remove('binding_code');
+    theirs['redacted'] = ['signed.binding_code'];
     final mine = (await phone.history.read()).single.receipt;
-    expect(jsonEncode(t['consent_receipt']), jsonEncode(mine));
+    expect(jsonEncode(theirs), jsonEncode(mine));
   }, skip: skip);
 
   test('third wrong code yields code_failed', () async {

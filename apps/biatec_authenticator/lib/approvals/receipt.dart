@@ -92,6 +92,9 @@ Future<Map<String, Object?>> signReceipt({
     'issued_at': now.toUtc().millisecondsSinceEpoch ~/ 1000,
     'device': {
       'kid': device.key.kid,
+      // 1.1: informational copy of the attestation's biatec_key_use; this is
+      // the approval key (presence keys are not used by this app).
+      if (!request.client.legacy) 'key_use': 'approve',
       'public_key': device.key.toJwk(),
       'attestation': device.attestation,
     },

@@ -2,7 +2,7 @@
 // packages/consent-protocol/mock-oidc server, which verifies the device
 // signature of every loosening as Biatec OIDC would.
 //
-//   pnpm --filter mock-oidc start            # listens on 127.0.0.1:8089
+//   MOCK_JSON_GROUPS=1 MOCK_TEST_HELPERS=1 MOCK_MAX_PENDING=1000 PORT=8089 pnpm --filter mock-oidc start   # from the repo root; 127.0.0.1:8089
 //   flutter test --dart-define=MOCK_OIDC_URL=http://127.0.0.1:8089 test/settings/mock_oidc_settings_contract_test.dart
 //
 // Skipped when MOCK_OIDC_URL is not set. Run it against a fresh mock: it
@@ -82,14 +82,16 @@ void main() {
     final (c, _, gate) = await alicePhone();
     final original = c.settings!.thresholdEur;
     expect(await c.apply({'threshold_eur': '500'}), isTrue, reason: c.error);
-    expect(gate.asked, 0);
+    // Any security change needs a fresh biometric, tightening included.
+    expect(gate.asked, 1);
     expect(c.settings!.thresholdEur, '500.00');
 
     expect(await c.apply({'threshold_eur': '800'}), isTrue, reason: c.error);
-    expect(gate.asked, 1);
+    expect(gate.asked, 2);
     expect(c.settings!.thresholdEur, '800.00');
 
     expect(await c.apply({'threshold_eur': original}), isTrue, reason: c.error);
+    expect(gate.asked, 3);
     expect(c.settings!.thresholdEur, original);
   }, skip: skip);
 
