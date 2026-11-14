@@ -115,9 +115,25 @@ typedef Response = http.Response;
 
 Map<String, Object?> firstVector() => vectors('receipts-1.0.json').first;
 
-Map<String, Object?> vectorRequest(String name) =>
-    (vectors('receipts-1.0.json').firstWhere((v) => v['name'] == name)['request']
-            as Map)
+/// A protocol 1.1 request of `receipts.json`. The 1.0 names of the two direct
+/// vectors still work.
+Map<String, Object?> vectorRequest(String name) {
+  const renamed = {
+    'direct-transaction-approve-verified':
+        'direct-transaction-approve-domain-proven',
+    'direct-transaction-approve-unverified':
+        'direct-transaction-approve-domain-unproven',
+  };
+  final wanted = renamed[name] ?? name;
+  return (vectors('receipts.json')
+          .firstWhere((v) => v['name'] == wanted)['request'] as Map)
+      .cast<String, Object?>();
+}
+
+/// A protocol 1.0 request of the frozen `receipts-1.0.json`: the app refuses it.
+Map<String, Object?> vectorRequest10(String name) =>
+    (vectors('receipts-1.0.json')
+            .firstWhere((v) => v['name'] == name)['request'] as Map)
         .cast<String, Object?>();
 
 /// A clock well before the vectors' expiry (1792425900).
@@ -257,13 +273,15 @@ void main() {
           throwsFormatException);
     });
 
-    test('an unverified client never gets a display name', () {
+    test('an unproven client never gets a name or a domain', () {
       final json = vectorRequest('direct-transaction-approve-unverified');
       final client = Map<String, Object?>.from(json['client'] as Map)
-        ..['display_name'] = 'Your Bank';
+        ..['display_name'] = 'Your Bank'
+        ..['domain'] = 'bank.example';
       final r = ConsentRequest.fromJson({...json, 'client': client});
       expect(r.client.displayName, isNull);
-      expect(clientLabel(r.client), startsWith('Unverified application'));
+      expect(r.client.domain, isNull);
+      expect(clientLabel(r.client), startsWith('Unproven application'));
     });
   });
 
@@ -355,13 +373,20 @@ void main() {
       final details =
           jsonDecode(jsonEncode(h.oidc.request['authorization_details']))
               as List;
-      (details.single as Map)['amount'] = '9000.000000';
+      ((details.single as Map)['transfers'] as List).first['amount'] =
+          '9000.000000';
       h.oidc.request = {...h.oidc.request, 'authorization_details': details};
       await c.approve('483920');
       expect(c.phase, ApprovalPhase.ready);
       expect(c.error, contains('changed'));
       expect(h.keys.signed, isEmpty);
-      expect((c.request!.detail as TransactionDetail).amount, '9000.000000');
+      expect(
+          (c.request!.detail as TransactionDetail)
+              .group!
+              .transfers
+              .first
+              .amount,
+          '9000.000000');
     });
 
     test('failed biometric check signs nothing', () async {
@@ -477,19 +502,15 @@ void main() {
       final d = ((json['authorization_details'] as List).single as Map);
       await tester.pumpWidget(card(json));
       expect(find.byKey(const Key('client-verified')), findsOneWidget);
-      expect(find.text('Example Bank'), findsOneWidget);
       expect(find.text('bank.example'), findsOneWidget);
-      final asset = d['asset'] as Map;
-      final fiat = d['fiat_value'] as Map;
-      expect(find.text('${d['amount']} ${asset['symbol']}'), findsOneWidget);
-      expect(
-          find.text('${fiat['amount']} ${fiat['currency']}'), findsOneWidget);
+      final g = ConsentRequest.fromJson(json).detail as TransactionDetail;
+      final t = g.group!.transfers.single;
+      expect(find.text('${t.amount} ${t.asset.symbol}'), findsWidgets);
+      expect(find.text('${g.group!.total}'), findsWidgets);
       expect(textOf(tester, 'fact-network'), d['network']);
       expect(textOf(tester, 'fact-sender'), d['sender']);
-      expect(textOf(tester, 'fact-receiver'), d['receiver']);
+      expect(textOf(tester, 'transfer-0-receiver'), t.receiver);
       expect(textOf(tester, 'fact-hash'), d['group_hash']);
-      expect(textOf(tester, 'fact-asset'),
-          '${asset['symbol']} (id ${asset['id']}, ${asset['decimals']} decimals)');
       expect(textOf(tester, 'fact-origin'), json['origin']);
       expect(find.byKey(const Key('binding-message')), findsOneWidget);
       expect(find.text('Invoice 2026-0042'), findsOneWidget);
@@ -518,7 +539,7 @@ void main() {
       expect(find.byKey(const Key('client-unverified')), findsOneWidget);
       expect(
           find.text(
-              'Unverified application ${(json['client'] as Map)['fingerprint']}'),
+              'Unproven application ${ConsentRequest.fromJson(json).client.fingerprintShown}'),
           findsOneWidget);
       expect(find.byKey(const Key('binding-message')), findsNothing);
       expect(find.text('trust me'), findsNothing);
@@ -545,9 +566,10 @@ void main() {
           .pumpWidget(MaterialApp(home: HistoryScreen(history: h.history)));
       await tester.pump();
       // The row says the status in a chip and the action as its headline.
-      final row =
-          find.byKey(Key('history-${h.oidc.request['auth_req_id']}'));
-      expect(find.descendant(of: row, matching: find.textContaining('5000.000000 USDC')),
+      final row = find.byKey(Key('history-${h.oidc.request['auth_req_id']}'));
+      expect(
+          find.descendant(
+              of: row, matching: find.textContaining('5000.000000 USDC')),
           findsOneWidget);
       expect(find.descendant(of: row, matching: find.text('Approved')),
           findsOneWidget);

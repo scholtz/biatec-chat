@@ -1,4 +1,7 @@
 import 'jcs.dart';
+import 'models/transfer_models.dart';
+
+export 'models/transfer_models.dart';
 
 /// The consent request object fetched from Biatec OIDC
 /// (`schemas/consent-request.schema.json`). It never carries the binding code.
@@ -45,6 +48,15 @@ class ConsentRequest {
 
   DateTime get expiresAt =>
       DateTime.fromMillisecondsSinceEpoch(expiry * 1000, isUtc: true);
+
+  /// Whether the card can show this request in full: a protocol 1.1 request
+  /// (transfers, applications, value). A 1.0 request, or any request whose
+  /// client or detail is of the 1.0 shape, is refused and never approvable.
+  bool get isShowable {
+    if (client.legacy) return false;
+    final d = detail;
+    return d is LimitsChangeDetail || (d is TransactionDetail && !d.isLegacy);
+  }
 
   bool isExpired(DateTime now) => !expiresAt.isAfter(now);
 
@@ -97,29 +109,48 @@ class ConsentRequest {
   }
 }
 
-/// The requesting client. Display name and domain exist only for verified
-/// clients (rule 3); an unverified one is shown by its fingerprint.
+/// The requesting client. Protocol 1.1: `{ fingerprint, domain_proven,
+/// domain?, linked }`; only a proven domain says who it is, and nothing here
+/// is a name (rule 3). The 1.0 shape (`entity_id`, `verified`, `display_name`)
+/// still parses so an old request can be recognised and refused.
 class ConsentClient {
   const ConsentClient({
-    required this.entityId,
+    this.entityId,
     required this.verified,
     this.displayName,
     this.domain,
     this.fingerprint,
+    this.linked = false,
+    this.legacy = false,
   });
 
-  final String entityId;
+  /// 1.0 only.
+  final String? entityId;
+
+  /// 1.1: the domain is proven. 1.0: the operator vouched for the client.
   final bool verified;
+
+  /// 1.0 only; never shown.
   final String? displayName;
+
+  /// The proven ASCII host, only when [verified] in 1.1.
   final String? domain;
   final String? fingerprint;
+  final bool linked;
+
+  /// A 1.0 client object.
+  final bool legacy;
+
+  bool get domainProven => !legacy && verified;
+
+  /// `xxxx-xxxx-xxxx-xxxx` for the 16 hex characters, otherwise as received.
+  String? get fingerprintShown {
+    final f = fingerprint;
+    if (f == null || f.length != 16) return f;
+    return [for (var i = 0; i < 16; i += 4) f.substring(i, i + 4)].join('-');
+  }
 
   factory ConsentClient.fromJson(Map<String, Object?> json) {
-    final entityId = json['entity_id'];
-    final verified = json['verified'];
-    if (entityId is! String || verified is! bool) {
-      throw const FormatException('consent request: client');
-    }
     String? opt(String key) {
       final v = json[key];
       if (v != null && v is! String) {
@@ -128,13 +159,40 @@ class ConsentClient {
       return v as String?;
     }
 
+    if (json.containsKey('domain_proven')) {
+      final proven = json['domain_proven'];
+      final linked = json['linked'];
+      final fingerprint = json['fingerprint'];
+      if (proven is! bool ||
+          linked is! bool ||
+          fingerprint is! String ||
+          fingerprint.isEmpty) {
+        throw const FormatException('consent request: client');
+      }
+      final domain = opt('domain');
+      if (proven && (domain == null || domain.isEmpty)) {
+        throw const FormatException('consent request: client.domain');
+      }
+      return ConsentClient(
+        verified: proven,
+        // No domain claim is taken from a client that did not prove it.
+        domain: proven ? domain : null,
+        fingerprint: fingerprint,
+        linked: linked,
+      );
+    }
+    final entityId = json['entity_id'];
+    final verified = json['verified'];
+    if (entityId is! String || verified is! bool) {
+      throw const FormatException('consent request: client');
+    }
     return ConsentClient(
       entityId: entityId,
       verified: verified,
-      // Never take identity claims from an unverified client.
       displayName: verified ? opt('display_name') : null,
       domain: verified ? opt('domain') : null,
       fingerprint: opt('fingerprint'),
+      legacy: true,
     );
   }
 }
@@ -176,34 +234,69 @@ class TransactionDetail extends AuthorizationDetail {
     required this.network,
     required this.groupHash,
     required this.sender,
+    this.group,
     this.receiver,
     this.applicationId,
-    required this.assetId,
-    required this.assetSymbol,
-    required this.assetDecimals,
-    required this.amount,
-    required this.fiatAmount,
-    required this.fiatCurrency,
+    this.assetId,
+    this.assetSymbol,
+    this.assetDecimals,
+    this.amount,
+    this.fiatAmount,
+    this.fiatCurrency,
   });
 
   final String network;
   final String groupHash;
   final String sender;
+
+  /// Protocol 1.1: every transfer and application. Null for a 1.0 detail,
+  /// which this app cannot show and therefore refuses.
+  final GroupFacts? group;
+
+  // The 1.0 single-transfer members.
   final String? receiver;
   final int? applicationId;
-  final String assetId;
-  final String assetSymbol;
-  final int assetDecimals;
+  final String? assetId;
+  final String? assetSymbol;
+  final int? assetDecimals;
+  final String? amount;
+  final String? fiatAmount;
+  final String? fiatCurrency;
 
-  /// Decimal string, shown verbatim.
-  final String amount;
-  final String fiatAmount;
-  final String fiatCurrency;
+  /// A 1.0 detail: no `transfers`.
+  bool get isLegacy => group == null;
 
   @override
   String get boundHash => groupHash;
 
+  /// The amount line for lists and history.
+  String get headline {
+    final g = group;
+    if (g == null) return '$amount $assetSymbol';
+    if (g.transfers.length == 1) {
+      final t = g.transfers.single;
+      return '${t.amount} ${t.asset.symbol}';
+    }
+    if (g.transfers.isEmpty) return 'No transfers';
+    return '${g.transfers.length} transfers';
+  }
+
+  /// The value line: the group total, or "Value unknown".
+  String get valueText {
+    final g = group;
+    if (g == null) return '$fiatAmount $fiatCurrency';
+    return g.valueKnown ? '${g.total}' : 'Value unknown';
+  }
+
   factory TransactionDetail.fromJson(Map<String, Object?> json) {
+    if (json.containsKey('transfers')) {
+      return TransactionDetail(
+        network: _req(json, 'network'),
+        groupHash: _req(json, 'group_hash'),
+        sender: _req(json, 'sender'),
+        group: GroupFacts.fromJson(json),
+      );
+    }
     final asset = _obj(json, 'asset');
     final fiat = _obj(json, 'fiat_value');
     final receiver = json['receiver'];

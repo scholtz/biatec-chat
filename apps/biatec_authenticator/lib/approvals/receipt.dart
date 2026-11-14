@@ -32,7 +32,11 @@ Map<String, Object?> signedObject(
     {
       'authorization_details': request.authorizationDetails,
       'auth_req_id': request.authReqId,
-      'client_entity_id': request.client.entityId,
+      // 1.1 names the client by fingerprint; 1.0 by its entity id.
+      if (request.client.legacy)
+        'client_entity_id': request.client.entityId
+      else
+        'client_fingerprint': request.client.fingerprint,
       'binding_code': code,
       'decision': decision.wire,
       'expiry': request.expiry,
@@ -81,7 +85,7 @@ Future<Map<String, Object?>> signReceipt({
         'signature; ES256 r||s is 64 bytes');
   }
   return {
-    'version': '1',
+    'version': request.client.legacy ? '1' : '1.1',
     'signed': signed,
     'alg': 'ES256',
     'signature': base64Url.encode(signature).replaceAll('=', ''),
