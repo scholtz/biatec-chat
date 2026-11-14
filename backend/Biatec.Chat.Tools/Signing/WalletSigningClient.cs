@@ -102,8 +102,6 @@ public sealed class WalletSigningClient(HttpClient http) : IWalletSigningClient
                     : new WalletSignOutcome.StepUp(id, ReadString(text, "binding_code"), ReadInt(text, "expires_in") ?? 300, ReadInt(text, "interval") ?? 2);
             }
             var error = ReadString(text, "error");
-            if (res.StatusCode == HttpStatusCode.Unauthorized && string.Equals(ReadString(text, "error_description"), "consent not usable", StringComparison.OrdinalIgnoreCase))
-                return new WalletSignOutcome.Rejected(code, ConsentNotUsableError);
             if (res.StatusCode == HttpStatusCode.TooManyRequests && error is not null && RateRefusals.Contains(error))
                 return new WalletSignOutcome.Rejected(code, error);
             if (code >= 500 || res.StatusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests)

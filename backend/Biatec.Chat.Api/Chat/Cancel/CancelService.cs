@@ -60,7 +60,8 @@ public sealed class CancelService(ChatDbContext db, TimeProvider clock, ILogger<
 
         // An approved consent is being redeemed (signing may already be under way on the resumed path): too late to cancel.
         var awaitingIds = open.Where(s => s.Status == StepStatus.AwaitingConsent).Select(s => s.Id).ToList();
-        if (awaitingIds.Count > 0 && await db.ConsentRequests.AnyAsync(c => awaitingIds.Contains(c.StepId) && c.Status == ConsentStatus.Approved, ct))
+        if (awaitingIds.Count > 0 && await db.ConsentRequests.AnyAsync(c => awaitingIds.Contains(c.StepId) && c.Status == ConsentStatus.Approved
+                && !db.ConsentRequests.Any(p => p.StepId == c.StepId && p.Status == ConsentStatus.Pending), ct)) // a second round that is still pending can be cancelled
             return new CancelResult(CancelOutcome.NotCancellable, "The approval was already given; signing is in progress.");
 
         // A step awaiting consent is claimed by the resume path with the same conditional update: whoever flips the row first

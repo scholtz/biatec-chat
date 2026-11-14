@@ -201,7 +201,7 @@ public sealed class ConfirmService(
             return new ConfirmResult(ConfirmOutcome.SignInRequired, "Sign in to continue.", [], ErrorCode: "sign_in_required");
         }
 
-        var remaining = (int)Math.Max(1, (step.ExpiresAt - clock.GetUtcNow()).TotalSeconds);
+        var remaining = (int)Math.Max(30, (step.ExpiresAt - clock.GetUtcNow()).TotalSeconds); // Biatec OIDC refuses a consent window under 30 seconds
         // T-025: reserve against the tenant soft cap / safe caps before signing; over a cap, ask Biatec OIDC for consent.
         var capRequest = CapRequestFor(tenant, session, preview, step);
         // T-061: a user without an active device (rule 4 / rule 8 fallback, required-changes row 10) gets the reduced
@@ -586,7 +586,7 @@ public sealed class ConfirmService(
 
         try
         {
-            var remaining = (int)Math.Max(1, (step.ExpiresAt - clock.GetUtcNow()).TotalSeconds);
+            var remaining = (int)Math.Max(30, (step.ExpiresAt - clock.GetUtcNow()).TotalSeconds); // Biatec OIDC refuses a consent window under 30 seconds
             // The approval completes the request the user confirmed, so it reports the origin that consent was requested under.
             var origin = await ConsentOriginAsync(tenant, step, ct);
             var outcome = await signer.SignAsync(elevatedBearer, new WalletSignRequest(step.Network!, address, step.UnsignedGroupList(), Convert.FromHexString(step.SubjectHash),
@@ -612,13 +612,15 @@ public sealed class ConfirmService(
                     return again;
                 default:
                     // A second challenge, or a refusal after approval, ends this preview; it is rebuilt.
-                    var error = outcome is WalletSignOutcome.Rejected r ? r.Error : "consent_not_accepted";
+                    // The approval is spent, so the preview ends whatever the refusal; a refusal Biatec OIDC names gets the same user code and text as before the approval.
+                    var known = outcome is WalletSignOutcome.Rejected named ? UserRefusal(named) : null;
+                    var error = known?.Code ?? (outcome is WalletSignOutcome.Rejected r ? r.Error : "consent_not_accepted");
                     await FailAsync(preview, step, ct);
                     await RecordAsync(session, "signing_refused", new JsonObject
                     {
                         ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["error"] = error,
                     }, ct);
-                    return new ConfirmResult(ConfirmOutcome.Failed, "Biatec OIDC did not accept the approval. Nothing was signed; the preview must be rebuilt.", [], ErrorCode: error);
+                    return new ConfirmResult(ConfirmOutcome.Failed, known?.Message ?? "Biatec OIDC did not accept the approval. Nothing was signed; the preview must be rebuilt.", [], ErrorCode: error);
             }
         }
         catch (Exception ex)
