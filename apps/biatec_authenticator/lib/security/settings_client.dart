@@ -112,6 +112,10 @@ class TrustedApplication {
 String fingerprintOfClientId(String clientId) =>
     sha256.convert(utf8.encode(clientId)).toString().substring(0, 16);
 
+/// A canonical origin as the signed schema and `lib.mjs` define it: scheme, lower-case host of well-formed labels, a port 1 to 65535 that is not the scheme's default.
+final RegExp canonicalOrigin = RegExp(
+    r'^(?!https://[^/]*:443$)(?!http://[^/]*:80$)https?://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$');
+
 final RegExp _fingerprintShape = RegExp(r'^[0-9a-f]{16}$');
 
 DateTime? _epochOrIso(Object? v) {
@@ -188,7 +192,7 @@ class ClientSetting {
         if (p is! Map) continue;
         final until = _epochOrIso(p['paused_until']);
         final origin = p['origin'];
-        if (until != null && origin is String) {
+        if (until != null && origin is String && canonicalOrigin.hasMatch(origin)) {
           pauses.add(PausedOrigin(origin: origin, pausedUntil: until));
         }
       }

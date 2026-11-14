@@ -177,6 +177,38 @@ void main() {
       });
     });
 
+    testWidgets('a server that lists no pauses is asked as before: lift without an origin', (tester) async {
+      final oidc = FakeSettingsOidc();
+      oidc.clientById('bank-example')['paused_until'] = oidc.nowSeconds + 3600;
+      final rig = SettingsRig(oidc: oidc);
+      await _open(tester, LegacyClientsScreen(services: rig.services),
+          size: const Size(400, 2400));
+      await tester.ensureVisible(find.byKey(const Key('lift-bank-example')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('lift-bank-example')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-change')));
+      await tester.pumpAndSettle();
+      expect((oidc.puts.first['change'] as Map)['clients'], {
+        'bank-example': {'paused': false}
+      });
+    });
+
+    testWidgets('a label that breaks the rules is not used in the confirm title', (tester) async {
+      final oidc = FakeSettingsOidc();
+      oidc.clientById('bank-example')
+        ..['label'] = 'Bank\u202E'
+        ..['paused_until'] = oidc.nowSeconds + 3600;
+      final rig = SettingsRig(oidc: oidc);
+      await _open(tester, LegacyClientsScreen(services: rig.services),
+          size: const Size(400, 2400));
+      await tester.ensureVisible(find.byKey(const Key('lift-bank-example')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('lift-bank-example')));
+      await tester.pumpAndSettle();
+      expect(find.text('Lift the pause for this service?'), findsOneWidget);
+    });
+
     testWidgets('turning always-ask off can be declined', (tester) async {
       final rig = SettingsRig();
       rig.oidc.clientById('biatec-chat')['always_ask'] = true;

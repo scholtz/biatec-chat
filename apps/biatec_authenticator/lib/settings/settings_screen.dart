@@ -196,7 +196,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             value: s.blockUnprovenClients,
             onChanged: enabled
                 ? (v) => applyWithConfirm(
-                    context, c, s, {'block_unproven_clients': v},
+                    context, c, s, {'block_unverified_clients': v},
                     title: 'Let applications without a proven domain ask?',
                     message: 'Applications that have not proven their domain '
                         'will be able to ask for approvals.',

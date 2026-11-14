@@ -5,6 +5,7 @@ import '../security/settings_controller.dart';
 import '../security/settings_frame.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
+import 'label_rules.dart';
 import 'service_identity.dart';
 
 /// The clients screen of before the user-held trust settings (T-245), shown while `AppConfig.trustSettings` is off. A service is drawn by the one identity widget like everywhere else;
@@ -82,7 +83,7 @@ class _ClientCard extends StatelessWidget {
     final enabled = !controller.busy;
     final until = client.pausedUntil;
     final own = client.perClientThresholdEur;
-    final name = client.label ?? (client.domain ?? 'this service');
+    final name = displaySafeLabel(client.label) ?? (client.domain ?? 'this service');
     Map<String, Object?> one(String key, Object? value) => {
           'clients': {
             id: {key: value}
@@ -109,15 +110,16 @@ class _ClientCard extends StatelessWidget {
             const SizedBox(height: AppSpacing.s),
             FilledButton(
               key: Key('lift-$id'),
-              onPressed: enabled && client.pauses.isNotEmpty
+              onPressed: enabled
                   ? () => _apply(
                       context,
                       {
                         'clients': {
                           id: {
                             'paused': false,
-                            // The signed schema wants the origin of the pause with `paused: false`.
-                            'origin': client.pauses.first.origin
+                            // The signed schema wants the origin of the pause with `paused: false`; a server that lists no pauses (only `paused_until`) is asked as before.
+                            if (client.pauses.isNotEmpty)
+                              'origin': client.pauses.first.origin
                           }
                         }
                       },

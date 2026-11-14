@@ -80,7 +80,7 @@ class _Detail extends StatelessWidget {
       };
 
   Future<void> _editLabel(BuildContext context) async {
-    final value = await _askLabel(context, client.label ?? '');
+    final value = await _askLabel(context, displaySafeLabel(client.label) ?? '');
     if (value == null) return;
     await controller.apply(_one({'label': value}));
   }
@@ -132,7 +132,7 @@ class _Detail extends StatelessWidget {
         // The user's own label.
         Text(s.t('yourLabel'), style: theme.textTheme.titleSmall),
         const SizedBox(height: AppSpacing.xs),
-        Text(client.label == null ? s.t('noLabel') : client.label!,
+        Text(displaySafeLabel(client.label) ?? s.t('noLabel'),
             key: const Key('label-value'),
             style: theme.textTheme.bodyMedium),
         const SizedBox(height: AppSpacing.s),

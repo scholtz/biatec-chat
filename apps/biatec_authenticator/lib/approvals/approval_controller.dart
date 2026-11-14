@@ -4,6 +4,7 @@ import '../enrollment/enrollment_store.dart';
 import '../keys/device_key_store.dart';
 import '../keys/key_security_level.dart';
 import '../enrollment/enrollment_state.dart';
+import '../clients/service_identity.dart';
 import 'approval_client.dart';
 import 'biometric_gate.dart';
 import 'consent_request.dart';
@@ -321,6 +322,8 @@ class ApprovalController extends ChangeNotifier {
       final fresh = await client.fetch(token, authReqId);
       if (canonicalize(fresh.json) != canonicalize(shown.json)) {
         _request = fresh;
+        // Nothing is ticked for the user after a review again.
+        _remembered.clear();
         _set(ApprovalPhase.ready,
             error: 'The request changed. Review it again before approving.');
         return;
@@ -516,6 +519,7 @@ String summarize(AuthorizationDetail d) => switch (d) {
     };
 
 /// The client as rule 3 allows it to be named: its proven domain, or "Unproven application" and the fingerprint.
-String clientLabel(ConsentClient c) => c.domainProven
-    ? c.domain!
-    : 'Unproven application ${c.fingerprintShown ?? ''}'.trim();
+String clientLabel(ConsentClient c) {
+  final host = provenDomainOf(c.domainProven, c.domain);
+  return host ?? 'Unproven application ${formatFingerprint(c.fingerprint)}'.trim();
+}

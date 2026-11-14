@@ -16,6 +16,12 @@ String formatFingerprint(String? fingerprint) {
 
 bool _ascii(String s) => s.codeUnits.every((u) => u > 0x20 && u < 0x7F);
 
+/// The domain to draw as a proven one: only a proven, non-empty, plain ASCII (A-label) host. Everything that names a client (the card, the list, the prompt of the operating system) uses this rule, so they agree.
+String? provenDomainOf(bool domainProven, String? domain) =>
+    domainProven && domain != null && domain.isNotEmpty && _ascii(domain)
+        ? domain
+        : null;
+
 /// How a service is shown, everywhere (the approval card, the list of linked services, its detail): ONE widget, so nothing draws a service another way.
 ///
 /// - Its proven domain, in the ASCII (punycode) form Biatec OIDC checked, or "Unproven application" in the warning style with the fingerprint. A domain that is not plain ASCII is not
@@ -69,10 +75,7 @@ class ServiceIdentity extends StatelessWidget {
   final bool compact;
 
   /// What is drawn as the proven domain, or null when the service is drawn as unproven.
-  String? get _provenDomain {
-    final d = domain;
-    return domainProven && d != null && d.isNotEmpty && _ascii(d) ? d : null;
-  }
+  String? get _provenDomain => provenDomainOf(domainProven, domain);
 
   @override
   Widget build(BuildContext context) {

@@ -16,9 +16,9 @@ class TrustStrings {
 
   /// The text for [key] with each `{name}` of it replaced from [args].
   String t(String key, [Map<String, String> args = const {}]) {
-    var text = _t[key]!;
-    args.forEach((name, value) => text = text.replaceAll('{$name}', value));
-    return text;
+    // One pass over the template: a value that itself holds `{name}` is never substituted again.
+    return _t[key]!.replaceAllMapped(
+        RegExp(r'\{([A-Za-z]+)\}'), (m) => args[m[1]] ?? m[0]!);
   }
 
   /// Every key, so a test can check that both languages have all of them.

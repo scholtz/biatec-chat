@@ -52,11 +52,11 @@ void main() {
       expect(isLoosening(s, {'biometric_required': true}), isFalse);
       expect(
           isLoosening(
-              _settings(block: true), {'block_unproven_clients': false}),
+              _settings(block: true), {'block_unverified_clients': false}),
           isTrue);
-      expect(isLoosening(s, {'block_unproven_clients': true}), isFalse);
+      expect(isLoosening(s, {'block_unverified_clients': true}), isFalse);
       // Already off: switching it off again changes nothing.
-      expect(isLoosening(s, {'block_unproven_clients': false}), isFalse);
+      expect(isLoosening(s, {'block_unverified_clients': false}), isFalse);
     });
 
     test('per-client changes', () {

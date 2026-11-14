@@ -67,9 +67,11 @@ class _ThresholdFormState extends State<_ThresholdForm> {
   }
 
   /// The threshold changed (another device, a refresh, this screen's own save): an untouched field follows it; one the user had edited is reset to it with a notice, so a stale amount is never saved.
-  void _sync() {
+  ///
+  /// True when this call found the amount typed against another threshold (the field was reset and the warning is up).
+  bool _sync() {
     final now = widget.controller.settings?.thresholdEur;
-    if (now == null || now == _shown || !mounted) return;
+    if (now == null || now == _shown || !mounted) return false;
     final dirty = _text.text.trim() != _shown;
     _shown = now;
     setState(() {
@@ -77,6 +79,7 @@ class _ThresholdFormState extends State<_ThresholdForm> {
       _problem = null;
       _changedUnderneath = dirty;
     });
+    return dirty;
   }
 
   @override
@@ -95,8 +98,9 @@ class _ThresholdFormState extends State<_ThresholdForm> {
 
   Future<void> _save(SettingsController c) async {
     // The amount in the field was typed against another threshold: nothing is sent.
-    _sync();
-    if (_changedUnderneath) return;
+    if (_sync()) return;
+    // The warning (if still up) was about an earlier reset; this amount is the user's own now.
+    if (_changedUnderneath) setState(() => _changedUnderneath = false);
     final v = _typed;
     if (v == null) {
       setState(() => _problem = TrustStrings.of().t('amountProblem'));
@@ -179,6 +183,7 @@ class _ThresholdFormState extends State<_ThresholdForm> {
                   ? (_) => setState(() {
                         _text.text = choice;
                         _problem = null;
+                        _changedUnderneath = false;
                       })
                   : null,
             ),
@@ -196,7 +201,10 @@ class _ThresholdFormState extends State<_ThresholdForm> {
           focusNode: _focus,
           enabled: enabled,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          onChanged: (_) => setState(() => _problem = null),
+          onChanged: (_) => setState(() {
+            _problem = null;
+            _changedUnderneath = false;
+          }),
           onSubmitted: (_) => _save(c),
           decoration: InputDecoration(
             labelText: s.t('amount'),

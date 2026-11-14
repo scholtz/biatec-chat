@@ -166,6 +166,29 @@ void main() {
       expect(rig.oidc.puts, isEmpty);
     });
 
+    testWidgets('the warning clears when the user types again, and Save then sends', (tester) async {
+      final rig = TrustRig();
+      final reload = ValueNotifier<int>(0);
+      await _open(tester, ThresholdScreen(services: rig.services), reload: reload);
+      await _type(tester, 'threshold-field', '777');
+      rig.oidc.settings['threshold_eur'] = '400.00';
+      reload.value++;
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('threshold-changed')), findsOneWidget);
+      await _type(tester, 'threshold-field', '250');
+      expect(find.byKey(const Key('threshold-changed')), findsNothing);
+      await _tap(tester, 'threshold-save');
+      expect(rig.oidc.puts.single['change'], {'threshold_eur': '250'});
+      // A chip also clears it.
+      rig.oidc.settings['threshold_eur'] = '260.00';
+      await _type(tester, 'threshold-field', '1');
+      reload.value++;
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('threshold-changed')), findsOneWidget);
+      await _tap(tester, 'threshold-choice-100');
+      expect(find.byKey(const Key('threshold-changed')), findsNothing);
+    });
+
     testWidgets('an inactive device reads everything and changes nothing, with the reason',
         (tester) async {
       final rig = TrustRig(activeAt: DateTime.utc(2030));
@@ -356,6 +379,20 @@ void main() {
       });
       expect(rig.keys.signed, isEmpty);
       expect(rig.oidc.clients.map((c) => c['client_id']), isNot(contains('bank-example')));
+    });
+
+    testWidgets('a label that breaks the rules is neither drawn nor pre-filled', (tester) async {
+      final oidc = FakeTrustOidc();
+      oidc.clientById('bank-example')['label'] = 'Bank\u202E';
+      final rig = await detail(tester, 'bank-example', rig: TrustRig(oidc: oidc));
+      expect(find.byKey(const Key('service-label')), findsNothing);
+      expect(find.textContaining('Bank'), findsNothing,
+          reason: 'only the domain is drawn; not even the label value row');
+      expect(tester.widget<Text>(find.byKey(const Key('label-value'))).data,
+          startsWith('None.'));
+      await _tap(tester, 'label-edit');
+      expect(tester.widget<TextField>(find.byKey(const Key('label-field'))).controller!.text, '');
+      expect(rig.oidc.puts, isEmpty);
     });
 
     testWidgets('an inactive device sees the detail read-only', (tester) async {

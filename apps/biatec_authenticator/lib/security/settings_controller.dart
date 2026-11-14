@@ -33,7 +33,9 @@ bool isLoosening(ConsentSettings current, Map<String, Object?> change) {
   if (change['biometric_required'] == false && current.biometricRequired) {
     loosening = true;
   }
-  if (change['block_unproven_clients'] == false &&
+  // The one name Biatec OIDC knew before the trust settings (`block_unverified_clients`) and the name since.
+  if ((change['block_unproven_clients'] == false ||
+          change['block_unverified_clients'] == false) &&
       current.blockUnprovenClients) {
     loosening = true;
   }

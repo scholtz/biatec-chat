@@ -138,6 +138,26 @@ void main() {
     expect(find.textContaining('Trusted'), findsNothing);
   });
 
+  test('a pause with an origin that is not canonical is dropped', () {
+    final c = ClientSetting.fromJson({
+      'client_id': 'x',
+      'always_ask': false,
+      'pauses': [
+        {'origin': 'https://ok.example', 'paused_until': 1792429200},
+        {'origin': 'https://EVIL.example', 'paused_until': 1792429200},
+        {'origin': 'https://ok.example:443', 'paused_until': 1792429200},
+        {'origin': 'javascript:alert(1)', 'paused_until': 1792429200},
+        {'origin': 'https://a.example/path', 'paused_until': 1792429200},
+      ],
+    });
+    expect(c.pauses.map((p) => p.origin), ['https://ok.example']);
+  });
+
+  test('placeholders are substituted in one pass', () {
+    expect(TrustStrings.en.t('pausedOrigin', {'origin': 'https://{when}.example', 'when': 'X'}),
+        'https://{when}.example is paused until X');
+  });
+
   group('label rules (the server\'s isDisplaySafe)', () {
     test('accepts ordinary text, Slovak letters, emoji', () {
       for (final ok in ['My chat', 'Banka čistá', 'Work \u{1F4BC}', 'a' * 40]) {

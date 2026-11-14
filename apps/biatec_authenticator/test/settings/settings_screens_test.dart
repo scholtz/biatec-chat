@@ -59,20 +59,20 @@ void main() {
     testWidgets('letting unverified clients ask is confirmed in a sheet first',
         (tester) async {
       final rig = SettingsRig();
-      rig.oidc.settings['block_unproven_clients'] = true;
+      rig.oidc.settings['block_unverified_clients'] = true;
       await _open(tester, _settings(rig.services));
       await tester.tap(find.byKey(const Key('block-unverified')));
       await tester.pumpAndSettle();
       expect(rig.gate.asked, 0, reason: 'the sheet asks first');
       await tester.tap(find.byKey(const Key('keep')));
       await tester.pumpAndSettle();
-      expect(rig.oidc.settings['block_unproven_clients'], isTrue);
+      expect(rig.oidc.settings['block_unverified_clients'], isTrue);
       await tester.tap(find.byKey(const Key('block-unverified')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('confirm-change')));
       await tester.pumpAndSettle();
       expect(rig.keys.prompts, hasLength(1));
-      expect(rig.oidc.settings['block_unproven_clients'], isFalse);
+      expect(rig.oidc.settings['block_unverified_clients'], isFalse);
       expect(find.text('Approved on this device and applied.'), findsOneWidget);
     });
 
@@ -84,7 +84,7 @@ void main() {
       await tester.tap(find.byKey(const Key('block-unverified')));
       await tester.pumpAndSettle();
       expect(rig.gate.asked, 1);
-      expect(rig.oidc.settings['block_unproven_clients'], isTrue);
+      expect(rig.oidc.settings['block_unverified_clients'], isTrue);
       expect(find.text('Applied.'), findsOneWidget);
     });
 
@@ -178,7 +178,7 @@ void main() {
       expect(c.settings!.biometricRequired, isTrue);
       final reloading = c.load(quiet: true);
       expect(c.busy, isFalse, reason: 'the controls stay usable');
-      final applied = await c.apply({'block_unproven_clients': true});
+      final applied = await c.apply({'block_unverified_clients': true});
       await reloading;
       expect(applied, isTrue);
       expect(c.settings!.blockUnprovenClients, isTrue);
@@ -192,7 +192,7 @@ void main() {
       await _open(
           tester, TabReload(reload: reload, child: _settings(rig.services)));
       final before = tester.state(find.byType(SettingsScreen));
-      rig.oidc.settings['block_unproven_clients'] = true;
+      rig.oidc.settings['block_unverified_clients'] = true;
       reload.value++;
       await tester.pump();
       expect(find.byType(LoadingSkeleton), findsNothing,

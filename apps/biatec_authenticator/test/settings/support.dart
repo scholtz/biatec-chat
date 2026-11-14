@@ -47,7 +47,7 @@ class FakeSettingsOidc {
       'sub': 'pw_alice',
       'biometric_required': true,
       'threshold_eur': '1000.00',
-      'block_unproven_clients': false,
+      'block_unverified_clients': false,
       'clients': [
         clientJson('biatec-chat'),
         clientJson('bank-example', label: 'Example Bank'),
@@ -161,7 +161,7 @@ class FakeSettingsOidc {
   }
 
   void _apply(Map<String, Object?> change) {
-    for (final k in ['threshold_eur', 'biometric_required', 'block_unproven_clients']) {
+    for (final k in ['threshold_eur', 'biometric_required', 'block_unverified_clients']) {
       if (change.containsKey(k)) settings[k] = change[k];
     }
     final clients = (change['clients'] as Map?)?.cast<String, Object?>() ?? {};

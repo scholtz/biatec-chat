@@ -230,6 +230,32 @@ void main() {
       expect(r.canRemember(const ApplicationEntry(id: '20', trusted: false)), isFalse);
     });
 
+    test('a request that changed before approving clears what was ticked', () async {
+      final json = vectorRequest(_remember);
+      final rig = _Rig(json);
+      final c = rig.services.controllerFor(json['auth_req_id'] as String);
+      await c.load();
+      c.setRemember('7654321', true);
+      expect(c.remembered, {'7654321'});
+      rig.oidc.request = {...json, 'binding_message': 'changed text'};
+      await c.approve('864209');
+      expect(c.error, contains('changed'));
+      expect(c.remembered, isEmpty);
+      expect(rig.oidc.receipts, isEmpty);
+    });
+
+    test('the prompt label and the card agree: a non-ASCII proven domain is unproven', () {
+      final json = (jsonDecode(jsonEncode(vectorRequest(_remember))) as Map).cast<String, Object?>();
+      json['client'] = {
+        'fingerprint': '68dcf7ce89a943b0',
+        'domain_proven': true,
+        'domain': 'bücher.example',
+        'linked': true
+      };
+      final c = ConsentRequest.fromJson(json).client;
+      expect(clientLabel(c), 'Unproven application 68dc-f7ce-89a9-43b0');
+    });
+
     test('an application creation (id 0) is never offered', () {
       final json = (jsonDecode(jsonEncode(vectorRequest(_remember))) as Map)
           .cast<String, Object?>();
