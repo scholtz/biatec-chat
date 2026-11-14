@@ -15,6 +15,7 @@ declare module "*/scripts/lib.mjs" {
     /** Read by verifyDeviceSigned only: statement nonces already accepted from the device (single use). */
     usedNonces?: Set<string>;
   };
+  export function verifyReceiptSignature(receipt: any): boolean;
   export function verifyReceipt(receipt: any, jwks: { keys: any[] }, opts: VerifyOptions): boolean;
   export function verifyAttestation(receipt: any, jwks: { keys: any[] }, opts: VerifyOptions): boolean;
   export function attestedKeyUse(receipt: any, jwks: { keys: any[] }, opts: VerifyOptions): "approve" | "presence" | null;

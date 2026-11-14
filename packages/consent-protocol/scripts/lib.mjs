@@ -304,7 +304,7 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
     if (!(opts.usedNonces instanceof Set)) return false; // without the set of used nonces a replay cannot be told
     // A device approval says whose approval it accepts and for which enrollment (checked before any signature work).
     if (approval && (typeof expect.sub !== "string" || !expect.approval)) return false;
-    if (approval && (s.pairing_code !== pairingCode(expect.approval.new_approval_jwk_thumbprint, expect.approval.new_presence_jwk_thumbprint, expect.approval.nonce))) return false;
+    if (approval && (typeof s.pairing_code !== "string" || !timingSafeEqualStr(s.pairing_code, pairingCode(expect.approval.new_approval_jwk_thumbprint, expect.approval.new_presence_jwk_thumbprint, expect.approval.nonce)))) return false;
     if (!isNonce(s.nonce) || opts.usedNonces.has(s.nonce)) return false;
     if (!Number.isInteger(s.issued_at) || Math.abs(now - s.issued_at) > SIGNED_WINDOW_SECONDS) return false;
     // The signed object has exactly the members the schema allows: nothing rides along unsigned-looking but signed.
@@ -320,7 +320,6 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
     if ((settings ? s.kid : s.approver_kid) !== envelope.device.kid) return false;
     // A device approval carries no subject and names no enrollment on its own: the verifier MUST say whose approval it accepts and for
     // which keys and nonce. A statement is single use (the nonce checks above; the caller records it, atomically, see the spec).
-    if (approval && (typeof expect.sub !== "string" || !expect.approval)) return false;
     if (approval) {
       // A device never approves itself: the approver is not one of the keys being enrolled.
       const self = thumbprint(envelope.device.public_key);
@@ -329,7 +328,7 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
       const e = expect.approval;
       if (typeof e.new_kid !== "string" || s.new_kid !== e.new_kid) return false; // the kid being activated is the kid the approver signed
       if (s.new_approval_jwk_thumbprint !== e.new_approval_jwk_thumbprint || s.new_presence_jwk_thumbprint !== e.new_presence_jwk_thumbprint || s.nonce !== e.nonce) return false;
-      if (typeof s.pairing_code !== "string" || !timingSafeEqualStr(s.pairing_code, pairingCode(e.new_approval_jwk_thumbprint, e.new_presence_jwk_thumbprint, e.nonce))) return false;
+      if (typeof s.pairing_code !== "string") return false; // (the code itself was compared above, before any signature work)
     }
     // The statement's own signature last: everything cheap, and the attestation, held (a replayed, stale or malformed statement never reaches it).
     return verifyEs256(envelope.device.public_key, Buffer.from(jcs(s), "utf8"), envelope.signature);
@@ -406,7 +405,8 @@ export function verifyEnrollmentProof(jws, expect = {}) {
  * - `consumed` is a Set of already spent `auth_req_id` values owned by the caller. This function only reads it:
  *   a consent is spent when Biatec OIDC actually signs (rule 5), so the caller adds the id after a successful sign.
  * - `opts.issuer` (required) is the expected Biatec OIDC issuer; `opts.now` defaults to the current time.
- * The receipt must match the request member for member, carry decision "approve" and not be expired.
+ * - `opts.issuer` (required) is the expected Biatec OIDC issuer; `opts.now` defaults to the current time. `opts.deviceActive` (the caller looked up that the signing device is ACTIVE) is `=== true` REQUIRED for any device attested for a key use (every 1.1 device); `false` refuses always; only a 1.0 device with no attested use may omit it. Do not hard-code `true`: that defeats the pending-device protection.
+ * - Nonce sets: the enrollment challenge nonce is consumed once at enrollment (`verifyEnrollmentProof`) and the same nonce appears in the activation approval, so keep one set per step (enrollment nonces, statement nonces) and make the approval refuse a nonce already activated.
  */
 export function verifyApproval(receipt, jwks, request, expectedBindingCode, consumed, opts) {
   try {
