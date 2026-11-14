@@ -523,9 +523,26 @@ test("the canonical-origin pattern is the same in the three schemas and in the v
   assert.equal(src, a);
 });
 
+test("an enrollment proof needs the presence key's own signature over the same payload", () => {
+  const e = device.enrollment_proofs.find((x) => x.expected.accepted);
+  const ok = { approval_public_key: keys.new_approval, kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, usedNonces: new Set(), nonce: e.payload.nonce, presence_public_key: e.presence_public_key, presence_proof: e.presence_proof, now: e.payload.iat + 5 };
+  assert.equal(verifyEnrollmentProof(e.jws, ok), true);
+  assert.equal(verifyEnrollmentProof(e.jws, { ...ok, presence_proof: undefined }), false, "required");
+  // Naming a key that the device does not hold: the second signature is made by another key.
+  const other = signCompactJws(keys.presence, { ...e.header, typ: "biatec-device-enroll-presence+jwt", jwk: { kty: "EC", crv: "P-256", x: keys.presence.x, y: keys.presence.y } }, e.payload);
+  assert.equal(verifyEnrollmentProof(e.jws, { ...ok, presence_proof: other }), false, "signed by a key that is not the presence key");
+  // The approval key cannot sign the presence proof, and the proof must cover the same payload.
+  const byApproval = signCompactJws(keys.new_approval, { alg: "ES256", typ: "biatec-device-enroll-presence+jwt", jwk: e.presence_public_key }, e.payload);
+  assert.equal(verifyEnrollmentProof(e.jws, { ...ok, presence_proof: byApproval }), false);
+  const otherPayload = signCompactJws(keys.new_presence, { alg: "ES256", typ: "biatec-device-enroll-presence+jwt", jwk: e.presence_public_key }, { ...e.payload, iat: e.payload.iat + 1 });
+  assert.equal(verifyEnrollmentProof(e.jws, { ...ok, presence_proof: otherPayload }), false);
+  const wrongTyp = signCompactJws(keys.new_presence, { alg: "ES256", typ: "JWT", jwk: e.presence_public_key }, e.payload);
+  assert.equal(verifyEnrollmentProof(e.jws, { ...ok, presence_proof: wrongTyp }), false);
+});
+
 test("an enrollment proof with extra members (a private key in the header jwk, an extra claim) is refused", () => {
   const e = device.enrollment_proofs.find((x) => x.expected.accepted);
-  const ok = { approval_public_key: keys.new_approval, kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, usedNonces: new Set(), nonce: e.payload.nonce, presence_public_key: e.presence_public_key, now: e.payload.iat + 5 };
+  const ok = { approval_public_key: keys.new_approval, kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, usedNonces: new Set(), nonce: e.payload.nonce, presence_public_key: e.presence_public_key, presence_proof: e.presence_proof, now: e.payload.iat + 5 };
   const withD = signCompactJws(keys.new_approval, { ...e.header, jwk: { ...e.header.jwk, d: keys.new_approval.d } }, e.payload);
   assert.equal(verifyEnrollmentProof(withD, ok), false);
   const extra = signCompactJws(keys.new_approval, e.header, { ...e.payload, note: "x" });
@@ -666,7 +683,7 @@ test("a device cannot approve itself, and a nonce of the wrong shape is refused"
 
 test("an enrollment proof is refused for keys that are not P-256 public keys", () => {
   const e = device.enrollment_proofs.find((x) => x.expected.accepted);
-  const ok = { approval_public_key: keys.new_approval, kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, usedNonces: new Set(), nonce: e.payload.nonce, presence_public_key: e.presence_public_key, now: e.payload.iat + 5 };
+  const ok = { approval_public_key: keys.new_approval, kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, usedNonces: new Set(), nonce: e.payload.nonce, presence_public_key: e.presence_public_key, presence_proof: e.presence_proof, now: e.payload.iat + 5 };
   assert.equal(verifyEnrollmentProof(e.jws, ok), true);
   assert.equal(verifyEnrollmentProof(e.jws, { ...ok, presence_public_key: { kty: "EC", crv: "P-256", x: e.presence_public_key.x } }), false, "missing y");
   assert.equal(verifyEnrollmentProof(e.jws, { ...ok, presence_public_key: { ...e.presence_public_key, y: e.presence_public_key.x } }), false, "not on the curve");
@@ -677,7 +694,7 @@ test("an enrollment proof whose approval and presence key are the same key is re
   const e = device.enrollment_proofs.find((x) => x.expected.accepted);
   const payload = { ...e.payload, presence_jwk_thumbprint: thumbprint(keys.new_approval), presence_kid: e.payload.kid };
   const jws = signCompactJws(keys.new_approval, e.header, payload);
-  assert.equal(verifyEnrollmentProof(jws, { approval_public_key: keys.new_approval, kid: e.payload.kid, presence_kid: e.payload.kid, usedNonces: new Set(), nonce: payload.nonce, presence_public_key: keys.new_approval, now: payload.iat + 5 }), false);
+  assert.equal(verifyEnrollmentProof(jws, { approval_public_key: keys.new_approval, kid: e.payload.kid, presence_kid: e.payload.kid, usedNonces: new Set(), nonce: payload.nonce, presence_public_key: keys.new_approval, presence_proof: jws, now: payload.iat + 5 }), false);
 });
 
 test("pairing code: first four bytes of SHA-256(approval thumbprint . presence thumbprint . nonce), big-endian, mod 10^6, six digits", () => {
@@ -704,13 +721,13 @@ for (const e of device.enrollment_proofs) {
     const parts = e.jws.split(".");
     assert.deepEqual(JSON.parse(Buffer.from(parts[0], "base64url").toString()), e.header);
     assert.deepEqual(JSON.parse(Buffer.from(parts[1], "base64url").toString()), e.payload);
-    assert.equal(verifyEnrollmentProof(e.jws, { approval_public_key: keys.new_approval, kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, usedNonces: new Set(), nonce: e.payload.nonce, presence_public_key: e.presence_public_key, now: e.payload.iat + 5 }), e.expected.accepted);
+    assert.equal(verifyEnrollmentProof(e.jws, { approval_public_key: keys.new_approval, kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, usedNonces: new Set(), nonce: e.payload.nonce, presence_public_key: e.presence_public_key, presence_proof: e.presence_proof, now: e.payload.iat + 5 }), e.expected.accepted);
   });
 }
 
 test("an enrollment proof is refused for another nonce, another presence key or a stale iat", () => {
   const e = device.enrollment_proofs.find((x) => x.expected.accepted);
-  const ok = { approval_public_key: keys.new_approval, kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, usedNonces: new Set(), nonce: e.payload.nonce, presence_public_key: e.presence_public_key, now: e.payload.iat + 5 };
+  const ok = { approval_public_key: keys.new_approval, kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, usedNonces: new Set(), nonce: e.payload.nonce, presence_public_key: e.presence_public_key, presence_proof: e.presence_proof, now: e.payload.iat + 5 };
   assert.equal(verifyEnrollmentProof(e.jws, ok), true);
   assert.equal(verifyEnrollmentProof(e.jws, { ...ok, approval_public_key: undefined }), false, "the approval key the server received is required");
   assert.equal(verifyEnrollmentProof(e.jws, { ...ok, approval_public_key: keys.new_presence }), false, "the proof must be signed by the approval key that was sent");

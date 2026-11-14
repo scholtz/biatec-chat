@@ -6,7 +6,7 @@ import { generateKeyPairSync, createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ATTESTATION_TYP, ENROLL_PROOF_TYP, jcs, pairingCode, sha256Hex, signEs256, signCompactJws, thumbprint, verifyApproval, verifyDeviceSigned, verifyEnrollmentProof, verifyReceipt } from "./lib.mjs";
+import { ATTESTATION_TYP, ENROLL_PRESENCE_PROOF_TYP, ENROLL_PROOF_TYP, jcs, pairingCode, sha256Hex, signEs256, signCompactJws, thumbprint, verifyApproval, verifyDeviceSigned, verifyEnrollmentProof, verifyReceipt } from "./lib.mjs";
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "vectors");
 const write = (name, v) => writeFileSync(join(dir, name), JSON.stringify(v, null, 2) + "\n");
@@ -252,17 +252,18 @@ for (const a of approvals) if (verifyDeviceSigned(a.envelope, jwks, OPTS, { appr
 
 const proofHeader = { alg: "ES256", typ: ENROLL_PROOF_TYP, jwk: newApproval };
 const proofPayload = { kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, presence_jwk_thumbprint: pairing.new_presence_jwk_thumbprint, nonce: enrollNonce, iat: NOW + 10 };
+const presenceHeader = { alg: "ES256", typ: ENROLL_PRESENCE_PROOF_TYP, jwk: newPresence };
 const enrollmentProofs = [
-  { name: "enrollment-proof-valid", description: "Signed by the new approval key; names the presence key by thumbprint and carries the server's nonce.", jws: signCompactJws(keys.new_approval, proofHeader, proofPayload), header: proofHeader, payload: proofPayload, presence_public_key: newPresence, expected: { accepted: true } },
+  { name: "enrollment-proof-valid", description: "Signed by the new approval key; names the presence key by thumbprint and carries the server's nonce.", jws: signCompactJws(keys.new_approval, proofHeader, proofPayload), presence_proof: signCompactJws(keys.new_presence, presenceHeader, proofPayload), header: proofHeader, payload: proofPayload, presence_public_key: newPresence, expected: { accepted: true } },
   {
     name: "enrollment-proof-signed-by-presence-key-REFUSED",
     description: "NEGATIVE: signed by the presence key although the header names the approval key: the signature does not verify under the header's jwk.",
-    jws: signCompactJws(keys.new_presence, proofHeader, proofPayload), header: proofHeader, payload: proofPayload, presence_public_key: newPresence, expected: { accepted: false, reason: "signature" },
+    jws: signCompactJws(keys.new_presence, proofHeader, proofPayload), presence_proof: signCompactJws(keys.new_presence, presenceHeader, proofPayload), header: proofHeader, payload: proofPayload, presence_public_key: newPresence, expected: { accepted: false, reason: "signature" },
   },
 ];
 
 for (const e of enrollmentProofs) {
-  const verdict = verifyEnrollmentProof(e.jws, { approval_public_key: newApproval, kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, presence_public_key: newPresence, nonce: enrollNonce, usedNonces: new Set(), now: NOW + 15 });
+  const verdict = verifyEnrollmentProof(e.jws, { approval_public_key: newApproval, kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, presence_public_key: newPresence, presence_proof: e.presence_proof, nonce: enrollNonce, usedNonces: new Set(), now: NOW + 15 });
   if (verdict !== e.expected.accepted) throw new Error("self-check failed for " + e.name);
 }
 

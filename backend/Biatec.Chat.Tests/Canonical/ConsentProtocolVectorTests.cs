@@ -263,7 +263,13 @@ public class ConsentProtocolVectorTests
             var presenceBound = (string)payload["presence_jwk_thumbprint"]! == Thumbprint(v["presence_public_key"]!);
             Assert.True(presenceBound, name + ": the proof names the presence key by thumbprint");
             // The server's nonce and a fresh `iat`, as the JavaScript verifier requires.
-            var verdict = signatureValid && (string)payload["nonce"]! == nonce && Math.Abs(now - (long)payload["iat"]!) <= 300;
+            // The presence key proves possession too: a second JWS over the same payload, signed by the presence key it carries.
+            var pp = ((string)v["presence_proof"]!).Split('.');
+            var presenceHeader = JsonNode.Parse(B64Url(pp[0]))!;
+            var presenceProof = pp[1] == parts[1] && (string)presenceHeader["typ"]! == "biatec-device-enroll-presence+jwt"
+                && Thumbprint(presenceHeader["jwk"]!) == (string)payload["presence_jwk_thumbprint"]!
+                && VerifyEs256(presenceHeader["jwk"]!, Encoding.ASCII.GetBytes(pp[0] + "." + pp[1]), pp[2]);
+            var verdict = signatureValid && presenceProof && (string)payload["nonce"]! == nonce && Math.Abs(now - (long)payload["iat"]!) <= 300;
             Assert.True((bool)v["expected"]!["accepted"]! == verdict, name + ": expected verdict");
         }
     }
