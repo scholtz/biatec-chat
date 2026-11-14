@@ -8,7 +8,10 @@ public static class CapDefaults
 {
     /// <summary>Cumulative below-threshold spend of the user's own funds per rolling hour.</summary>
     public const decimal SoftCapEurPerHour = 1500m;
-    /// <summary>The deployment's consent threshold ceiling: the soft cap may never be set below it.</summary>
+    /// <summary>
+    /// The default consent threshold (the name is historical): used when Biatec OIDC has no settings endpoint or the user has no threshold of their own,
+    /// and the floor of the soft cap. A user's own threshold is never clamped to it.
+    /// </summary>
     public const decimal ConsentThresholdCeilingEur = 1000m;
     public const int SafeApprovalsPerHour = 5;
     public const decimal SafeApprovalEurPerHour = 2000m;

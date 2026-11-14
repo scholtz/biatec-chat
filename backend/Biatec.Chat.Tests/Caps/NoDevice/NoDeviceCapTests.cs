@@ -278,12 +278,10 @@ public sealed class NoDeviceCapTests : IAsyncLifetime
     [InlineData("always_ask")]
     [InlineData("preview_flag")]
     [InlineData("inactive_device")]
-    [InlineData("threshold_above_ceiling")]
     public async Task NoDevice_above_threshold_action_is_refused_with_an_enrollment_hint(string kind)
     {
-        decimal? value = kind switch { "above" or "inactive_device" => 300m, "unknown_value" => null, "threshold_above_ceiling" => 1200m, _ => 10m };
+        decimal? value = kind switch { "above" or "inactive_device" => 300m, "unknown_value" => null, _ => 10m };
         if (kind == "always_ask") _settings.Value = _settings.Value! with { AlwaysAsk = true };
-        if (kind == "threshold_above_ceiling") { _settings.Value = _settings.Value! with { ThresholdEur = 5000m }; _noDeviceOptions.DailyCapEur = 5000m; } // clamped to 1000
         if (kind == "inactive_device") _settings.Value = _settings.Value! with { DeviceEnrolled = true }; // enrolled, still in its 24 h delay
         var b = await BuildPreviewAsync(value, canonical: kind == "preview_flag" ? "{\"intent\":\"send\",\"requireConsent\":true}" : "{\"intent\":\"send\"}");
 

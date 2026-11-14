@@ -20,14 +20,21 @@ namespace Biatec.Chat.Api.Consent;
 /// </summary>
 public sealed class ConsentPredictor(ITokenVault vault, IConsentSettingsClient settings, IOptions<OidcOptions> oidc, ILogger<ConsentPredictor> log)
 {
-    public async Task<string> PredictAsync(ChatSession session, decimal? valueEur, CancellationToken ct)
+    /// <param name="defaultThresholdEur">
+    /// The tenant's default threshold: used when the settings endpoint answers 404 / 501 (Biatec OIDC without the endpoint), so a value above it still
+    /// predicts the phone and one at or below it says no approval is expected. Never less consent than that: any other failure keeps the fallback text.
+    /// </param>
+    public async Task<string> PredictAsync(ChatSession session, decimal? valueEur, CancellationToken ct, decimal? defaultThresholdEur = null)
     {
         try
         {
             var bearer = await vault.GetAccessTokenAsync(session.Id.ToString("N"), ct);
             if (bearer is null) return ConsentPrediction.FallbackText;
             var endpoint = new Uri(oidc.Value.Issuer.TrimEnd('/') + "/consent/settings");
-            return ConsentPrediction.Describe(await settings.GetAsync(endpoint, bearer, ct), valueEur);
+            var fetched = await settings.FetchAsync(endpoint, bearer, ct);
+            if (fetched.Settings is null && fetched.EndpointMissing && defaultThresholdEur is { } fallback)
+                return ConsentPrediction.Describe(new ConsentSettings(fallback, DeviceEnrolled: true, DeviceActive: true, AlwaysAsk: false, CoolingOff: false, FirstUse: false), valueEur);
+            return ConsentPrediction.Describe(fetched.Settings, valueEur);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -136,7 +143,7 @@ public static class ConsentEndpoints
             var tenant = ctx.GetTenant()!;
             var session = await AuthEndpoints.FindLiveAsync(db, tenant, SessionEndpoints.ReadCookie(ctx.Request), clock.GetUtcNow(), ctx.RequestAborted);
             if (session is null || session.Tier == Biatec.Chat.Core.Data.SessionTier.Anonymous) return Results.Unauthorized();
-            return Results.Json(new { text = await predictor.PredictAsync(session, valueEur, ctx.RequestAborted) }, Json);
+            return Results.Json(new { text = await predictor.PredictAsync(session, valueEur, ctx.RequestAborted, tenant.ConsentThresholdCeilingEur) }, Json);
         }).WithName("ConsentPrediction");
 
         return app;
@@ -145,7 +152,7 @@ public static class ConsentEndpoints
     private static IResult Problem(PreviewException ex) => Results.Json(new { error = ex.Error.ToString(), message = ex.Message },
         statusCode: ex.Error == PreviewError.NotFound ? StatusCodes.Status404NotFound : StatusCodes.Status409Conflict);
 
-    internal static ConfirmResponse ToResponse(ConfirmResult r) => new()
+    public static ConfirmResponse ToResponse(ConfirmResult r) => new()
     {
         Status = r.Outcome switch
         {
@@ -158,7 +165,7 @@ public static class ConsentEndpoints
             ConfirmOutcome.SignInRequired => "sign_in_required",
             _ => "failed",
         },
-        Message = r.Message, TxIds = r.TxIds, Consent = r.Consent, ReauthorizeScope = r.ReauthorizeScope, ResourceContent = r.ResourceContent,
+        Message = r.Message, TxIds = r.TxIds, Consent = r.Consent, ReauthorizeScope = r.ReauthorizeScope, ResourceContent = r.ResourceContent, ErrorCode = r.ErrorCode,
     };
 
     private static async Task WriteAsync(HttpResponse res, string type, object payload, CancellationToken ct)

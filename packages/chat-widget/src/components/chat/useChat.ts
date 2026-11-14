@@ -108,6 +108,10 @@ const CODE_TEXT: Record<string, string> = {
   resume_failed: "consent.resumeFailed",
   receipt_missing: "consent.receiptMissing",
   receipt_invalid: "consent.receiptInvalid",
+  client_paused: "consent.clientPaused",
+  unproven_client_blocked: "consent.unprovenClientBlocked",
+  consent_unsupported: "consent.consentUnsupported",
+  too_many_pending: "consent.tooManyPending",
 };
 const codeText = (code: string | null | undefined): string | null => (code && Object.prototype.hasOwnProperty.call(CODE_TEXT, code) ? t(CODE_TEXT[code]!) : null);
 /** Preview statuses after which nothing is pending any more. */

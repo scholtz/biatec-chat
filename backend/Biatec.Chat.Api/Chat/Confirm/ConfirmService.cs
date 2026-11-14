@@ -307,6 +307,19 @@ public sealed class ConfirmService(
                 }, ct);
                 return new ConfirmResult(ConfirmOutcome.SignInRequired, "Your sign-in is no longer valid. Please sign in again.", [], ErrorCode: "sign_in_required");
 
+            case WalletSignOutcome.Rejected r when UserRefusal(r) is { } known:
+            {
+                // A refusal Biatec OIDC names: the user gets a code the widget has text for. Refusals the user can lift (no phone, paused,
+                // too many requests) keep the preview confirmable; the others end it so it is rebuilt.
+                if (known.KeepConfirmable) await RevertAsync(preview, ct); else await FailAsync(preview, step, ct);
+                await RecordAsync(session, "signing_refused", new JsonObject
+                {
+                    ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["status"] = r.Status, ["error"] = r.Error,
+                    ["reason"] = r.Reason, ["capEur"] = r.CapEur, ["userCode"] = known.Code,
+                }, ct);
+                return new ConfirmResult(ConfirmOutcome.Failed, known.Message, [], ErrorCode: known.Code);
+            }
+
             case WalletSignOutcome.Rejected r:
                 await FailAsync(preview, step, ct);
                 await RecordAsync(session, "signing_refused", new JsonObject
@@ -595,6 +608,8 @@ public sealed class ConfirmService(
                     step.Status = StepStatus.Pending;
                     preview.Status = ActionPreviewStatus.Confirmed;
                     return await OutageAsync(session, preview, step, u.Reason, ct);
+                case WalletSignOutcome.Rejected { Error: WalletSigningClient.ConsentNotUsableError } when await TryNewConsentRoundAsync(session, preview, step, origin, remaining, ct) is { } again:
+                    return again;
                 default:
                     // A second challenge, or a refusal after approval, ends this preview; it is rebuilt.
                     var error = outcome is WalletSignOutcome.Rejected r ? r.Error : "consent_not_accepted";
@@ -628,6 +643,31 @@ public sealed class ConfirmService(
     }
 
     /// <summary>
+    /// The approved token was refused as "consent not usable" (already spent, or not valid for this group). Exactly one new consent round is asked for:
+    /// when the step already has two consent requests the second approval failed the same way, and the preview ends instead of looping.
+    /// Null means no new round (the caller ends the preview).
+    /// </summary>
+    private async Task<ConfirmResult?> TryNewConsentRoundAsync(ChatSession session, ActionPreview preview, ActionStep step, string origin, int remaining, CancellationToken ct)
+    {
+        var rounds = await db.ConsentRequests.CountAsync(c => c.StepId == step.Id, ct);
+        if (rounds >= 2) return null;
+        string? bearer;
+        try { bearer = await vault.GetAccessTokenAsync(session.Id.ToString("N"), ct); }
+        catch (VaultRefreshException) { return null; }
+        if (bearer is null) return null;
+
+        var outcome = await signer.SignAsync(bearer, new WalletSignRequest(step.Network!, step.SenderAddress!, step.UnsignedGroupList(), Convert.FromHexString(step.SubjectHash),
+            RequireConsent: true, MaxConsentSeconds: remaining, Origin: origin), ct);
+        await RecordExtraAsync(session, EvidenceKinds.SigningOutcome, SigningOutcomePayload(preview.Id, step, outcome), CancellationToken.None);
+        if (outcome is not WalletSignOutcome.StepUp s) return null; // anything else (even a signature without a challenge) is not taken
+        // The claim (Signed) was made in SQL while the tracked row still remembers AwaitingConsent: hand the row back explicitly, the same way it was claimed.
+        var reopened = await db.ActionSteps.Where(x => x.Id == step.Id && x.Status == StepStatus.Signed)
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.Status, StepStatus.AwaitingConsent), CancellationToken.None);
+        if (reopened == 0) return null;
+        return await ConsentPendingAsync(session, preview, step, s, origin, ct, "The first approval could not be used, so a new one is needed.");
+    }
+
+    /// <summary>
     /// Consent orchestrator hook (T-049): the consent ended without approval. A denial cancels the action; an expired
     /// or lapsed consent expires it so the widget asks the assistant to rebuild the preview. Nothing was signed.
     /// </summary>
@@ -644,7 +684,9 @@ public sealed class ConfirmService(
             ["previewId"] = previewId.ToString(), ["stepId"] = step.Id.ToString(), ["groupHash"] = step.SubjectHash, ["reason"] = reason,
         }, ct);
         return denied
-            ? new ConfirmResult(ConfirmOutcome.Failed, "You declined the action on your phone. Nothing was signed.", [], ErrorCode: "consent_denied")
+            ? (reason == "code_failed"
+                ? new ConfirmResult(ConfirmOutcome.Failed, "The binding code was entered wrongly too many times on your phone. Nothing was signed.", [], ErrorCode: "code_failed")
+                : new ConfirmResult(ConfirmOutcome.Failed, "You declined the action on your phone. Nothing was signed.", [], ErrorCode: "consent_denied"))
             : new ConfirmResult(ConfirmOutcome.Failed, errorCode switch
             {
                 "preview_expired" => "The preview expired before the approval arrived. Nothing was signed; the preview must be rebuilt.",
@@ -845,6 +887,31 @@ public sealed class ConfirmService(
     /// <summary>Hooks added by T-035; separate from <see cref="RecordAsync"/>, which writes the original confirm kinds.</summary>
     private Task RecordExtraAsync(ChatSession session, string kind, JsonObject payload, CancellationToken ct) =>
         recorder is null ? Task.CompletedTask : recorder.RecordAsync(session.ConversationId, kind, payload, ct);
+
+    /// <summary>
+    /// Biatec OIDC's named refusals as the user-facing code the widget renders (<c>no_active_device</c>, <c>no_device_daily_cap</c>,
+    /// <c>client_paused</c>, <c>unproven_client_blocked</c>, <c>consent_unsupported</c>, <c>too_many_pending</c>), or null for any other.
+    /// </summary>
+    private static (string Code, string Message, bool KeepConfirmable)? UserRefusal(WalletSignOutcome.Rejected r)
+    {
+        const string nothing = " Nothing was signed.";
+        var noDevice = Biatec.Chat.Tools.Caps.NoDevice.NoDevicePolicy.NeedsDeviceReason;
+        return r.Error switch
+        {
+            "consent_unavailable" when r.Reason == "no_active_device" =>
+                (noDevice, Biatec.Chat.Tools.Caps.NoDevice.NoDevicePolicy.Message(noDevice), true),
+            "daily_cap_exceeded" => (Biatec.Chat.Tools.Caps.NoDevice.NoDevicePolicy.DailyCapReason,
+                (r.CapEur is { Length: > 0 } cap ? $"You have reached the daily limit of {cap} EUR for accounts without an active authenticator." : "You have reached the daily limit for accounts without an active authenticator.")
+                + nothing + " " + Biatec.Chat.Tools.Caps.NoDevice.NoDevicePolicy.EnrollHint, true),
+            "client_paused" => ("client_paused", "You paused this site in your Biatec authenticator, so it cannot sign for you." + nothing, true),
+            "unproven_client_blocked" => ("unproven_client_blocked", "This site could not prove its domain, and your settings block unproven applications." + nothing, false),
+            "consent_unsupported_operation" or "consent_unsupported_network" =>
+                ("consent_unsupported", "This action cannot be approved on your phone, so it cannot be signed." + nothing, false),
+            "too_many_pending_requests" or "rate_limited" =>
+                ("too_many_pending", "Too many approvals are waiting or requests are coming too fast. Please try again later." + nothing, true),
+            _ => null,
+        };
+    }
 
     private static string RejectionMessage(WalletSignOutcome.Rejected r) => r.Error switch
     {

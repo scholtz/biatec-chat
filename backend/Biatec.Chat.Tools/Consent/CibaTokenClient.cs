@@ -173,7 +173,7 @@ public static class ConsentPrediction
         if (s is null) return FallbackText;
         if (s.AlwaysAsk || s.CoolingOff || s.FirstUse) return s.DeviceActive ? AskedText : NoDeviceText;
         if (s.ThresholdEur is { } threshold && valueEur is { } v)
-            return v > threshold ? (s.DeviceActive ? AskedText : NoDeviceText) : NotExpectedText;
+            return v > threshold || threshold <= 0 ? (s.DeviceActive ? AskedText : NoDeviceText) : NotExpectedText;
         return FallbackText;
     }
 }

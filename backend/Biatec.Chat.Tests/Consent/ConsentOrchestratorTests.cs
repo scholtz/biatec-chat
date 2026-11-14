@@ -456,7 +456,7 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
 
         Assert.Equal(ConsentState.Denied, r.Status.State);
         Assert.Equal(ConfirmOutcome.Failed, r.Result!.Outcome);
-        Assert.Equal("consent_denied", r.Result.ErrorCode);
+        Assert.Equal(reason == "code_failed" ? "code_failed" : "consent_denied", r.Result.ErrorCode); // a wrong-code denial carries its reason (T-240)
         Assert.Single(_wallet.Calls);
         Assert.Empty(_mcp.Submits);
 

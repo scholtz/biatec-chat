@@ -100,6 +100,7 @@ Biatec.Chat.Api.Admin.AdminEndpoints.MapAdmin(app);
 
 app.MapElevation();
 app.MapConfirm();
+app.MapClientProof();
 app.MapCancel();
 app.MapConsent();
 app.MapLogout();
