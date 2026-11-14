@@ -1,7 +1,7 @@
 ---
 id: T-240
 title: "Align the mock, the backend's signing path and the authenticator card with protocol 1.1 and the real Biatec OIDC"
-status: blocked
+status: backlog
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-239]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#biatec-authenticator-and-the-biatec-consent-protocol"
 created: 2026-11-12
-updated: 2026-11-13
+updated: 2026-11-14
 ---
 
 # T-240 - Align the mock, the backend's signing path and the authenticator card
@@ -85,3 +85,4 @@ Filled in when the task moves to review.
 - 2026-11-12 18:43 · kanban-board · backlog → blocked · waiting on: T-239
 - 2026-11-13 09:05 · scholtz · blocked → blocked · amended for revision 2 of the architecture record (user's threshold not clamped, proven domain instead of verified, well-known file)
 - 2026-11-13 14:20 · scholtz · scope note · added the errorCode on ConfirmResponse (found while merging T-237)
+- 2026-11-14 13:21 · kanban-board · blocked → backlog · blockers done: T-239

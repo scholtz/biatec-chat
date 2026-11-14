@@ -1,7 +1,7 @@
 ---
 id: T-238
 title: "Backend: verify the consent receipt before resuming, and keep denial receipts as evidence"
-status: blocked
+status: backlog
 priority: P0
 epic: "Consent & authenticator"
 blocked_by: [T-239]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#biatec-authenticator-and-the-biatec-consent-protocol"
 created: 2026-11-12
-updated: 2026-11-12
+updated: 2026-11-14
 ---
 
 # T-238 - Backend: verify the consent receipt before resuming
@@ -75,3 +75,4 @@ Filled in when the task moves to review.
 
 - 2026-11-12 18:43 · scholtz · (new) → blocked · created from the consent architecture record (AlgorandGoogleDriveAccount issue 23)
 - 2026-11-12 18:43 · kanban-board · backlog → blocked · waiting on: T-239
+- 2026-11-14 13:21 · kanban-board · blocked → backlog · blockers done: T-239
