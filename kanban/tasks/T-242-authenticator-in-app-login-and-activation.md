@@ -1,7 +1,7 @@
 ---
 id: T-242
 title: "Authenticator: enroll through an in-app Biatec OIDC login, activate a new device from an existing one with a pairing code (BCHAT-033)"
-status: review
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-241]
@@ -79,6 +79,8 @@ PR #415, `task/T-242` @ 1175270. Local: `flutter test` 1296 pass, mock-oidc 67, 
 
 ## Review
 
+- 2026-11-14 23:55 · approve · PR #415 merged into main @ 8a1bcf5 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-12 18:43 · scholtz · (new) → blocked · created from the consent architecture record (AlgorandGoogleDriveAccount issue 23)
@@ -87,3 +89,4 @@ PR #415, `task/T-242` @ 1175270. Local: `flutter test` 1296 pass, mock-oidc 67, 
 - 2026-11-14 23:02 · kanban-board · blocked → backlog · blockers done: T-241
 - 2026-11-15 00:00 · scholtz · backlog → in-progress · claimed by session-20261115-0000 on task/T-242
 - 2026-11-15 02:10 · scholtz · in-progress → review · PR #415 @ 1175270
+- 2026-11-14 23:55 · user · review → done · PR #415 merged into main @ 8a1bcf5 (synced by kanban-sync)
