@@ -219,6 +219,13 @@ public class Tenant
     public bool LimitsUpdateEnabled { get; set; }
     public bool X402Enabled { get; set; }
     public string OidcClientId { get; set; } = "";
+    /// <summary>
+    /// How Biatec OIDC names this tenant's client inside a consent receipt (T-238): protocol 1.0 receipts carry it as <c>client_entity_id</c>, 1.1 receipts the
+    /// fingerprint of it. Null means the <see cref="OidcClientId"/>.
+    /// </summary>
+    public string? OidcClientEntityId { get; set; }
+    /// <summary>The client entity id a consent receipt must name: the configured one, else the OIDC client id.</summary>
+    public string ClientEntityId => string.IsNullOrWhiteSpace(OidcClientEntityId) ? OidcClientId : OidcClientEntityId;
     /// <summary>Pointer into the secret store, never the secret.</summary>
     public string ClientSecretRef { get; set; } = "";
     public string RedirectUri { get; set; } = "";

@@ -18,6 +18,10 @@ public static class EvidenceKinds
     public const string SigningRequested = "signing_requested";
     public const string SigningOutcome = "signing_outcome";
     public const string ConsentReceipt = "consent_receipt";
+    /// <summary>T-238: a receipt that failed verification. Carries the failure code and the receipt's SHA-256, never the receipt.</summary>
+    public const string ConsentReceiptRejected = "consent_receipt_rejected";
+    /// <summary>T-238: the consent was denied, but no verified denial receipt could be had. The action is cancelled all the same.</summary>
+    public const string ConsentDeniedUnverified = "consent_denied_unverified";
 }
 
 /// <summary>

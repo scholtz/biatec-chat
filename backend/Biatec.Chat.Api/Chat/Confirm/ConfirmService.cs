@@ -649,6 +649,8 @@ public sealed class ConfirmService(
                 ? "The preview expired before the approval arrived. Nothing was signed; the preview must be rebuilt."
                 : errorCode == "receipt_missing"
                     ? "The approval came back without its signed receipt. Nothing was signed; the preview must be rebuilt."
+                    : errorCode == "receipt_invalid"
+                        ? "The approval's signed receipt could not be verified. Nothing was signed; the preview must be rebuilt."
                     : "The approval request expired. Nothing was signed; the preview must be rebuilt.", [], ErrorCode: errorCode ?? "consent_expired");
     }
 
@@ -825,7 +827,7 @@ public sealed class ConfirmService(
     /// The origin reported to Biatec OIDC: the page origin when it canonicalizes to one of the tenant's registered
     /// origins (never free text from the page or the model), otherwise the tenant's backend origin.
     /// </summary>
-    private static string ReportedOrigin(Tenant tenant, string? pageOrigin) =>
+    public static string ReportedOrigin(Tenant tenant, string? pageOrigin) =>
         Security.OriginPolicy.AllowedOrigin(tenant, pageOrigin) ?? BackendOrigin(tenant);
 
     /// <summary>
