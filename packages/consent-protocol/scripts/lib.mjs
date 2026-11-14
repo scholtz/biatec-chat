@@ -128,7 +128,8 @@ function receiptClaims(receipt, jwks, opts) {
     if (is11 ? !("client_fingerprint" in s) || "client_entity_id" in s : !("client_entity_id" in s) || "client_fingerprint" in s) return null;
     if (payload.biatec_key_use !== undefined && !KEY_USES.includes(payload.biatec_key_use)) return null;
     if (is11 && payload.biatec_key_use === undefined) return null;
-    if (receipt.device.key_use !== payload.biatec_key_use && (is11 || receipt.device.key_use !== undefined)) return null;
+    // 1.1 names the attested use in `device.key_use`; a version "1" receipt has none (the schema forbids it).
+    if (is11 ? receipt.device.key_use !== payload.biatec_key_use : receipt.device.key_use !== undefined) return null;
     return payload;
   } catch {
     return null;
@@ -190,7 +191,8 @@ export function pairingCode(newApprovalThumbprint, newPresenceThumbprint, nonce)
 const SIGNED_WINDOW_SECONDS = 300;
 
 /** A statement or enrollment nonce: 16 to 128 characters of base64url alphabet (no dot, so the pairing code input has one reading). */
-const NONCE = /^[A-Za-z0-9_-]{16,128}$/;
+const NONCE_SHAPE = /^[A-Za-z0-9_-]{16,128}$/;
+const NONCE = { test: (n) => typeof n === "string" && NONCE_SHAPE.test(n) };
 
 /** The exact members of each device-signed statement (the schemas set additionalProperties false). */
 const MEMBERS_OF = {
@@ -210,7 +212,7 @@ const INVISIBLE = /[\u00AD\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180E\u2061-\u20
  */
 function withoutJoiners(text) {
   return text
-    .replace(/(?<=[\p{L}\p{M}\p{S}\p{N}\uFE0F])[\u200C\u200D](?=[\p{L}\p{M}\p{S}\p{N}])/gu, "")
+    .replace(/(?<=[\p{L}\p{M}\p{S}\p{N}\uFE0F])[\u200C\u200D](?=[\p{L}\p{S}\p{N}])/gu, "")
     .replace(/(?<=[\p{S}\p{N}#*])\uFE0F/gu, "");
 }
 
@@ -224,7 +226,7 @@ export function isDisplaySafe(text, max = 40) {
   if (typeof text !== "string" || text.length === 0 || !text.isWellFormed() || text !== text.normalize("NFC")) return false;
   if ([...text].length > max || text.trim() !== text || text.trim() === "") return false; // no padding, not blank
   if (/[\u200C\u200D]{2,}/.test(text)) return false; // never several joiners in a row (a variation selector before a joiner is the normal emoji form)
-  if (/^\p{M}|\p{M}{4}/u.test(text)) return false; // a mark needs a base character; stacks are limited
+  if (/(?:^|\s)\p{M}|\p{M}{4}/u.test(text)) return false; // a mark needs a base character; stacks are limited
   const plain = withoutJoiners(text); // the allowed joiners and emoji selectors removed, once
   return !NOT_ALLOWED_SPACE_OR_FORMAT.test(plain) && !INVISIBLE.test(plain);
 }
@@ -236,7 +238,7 @@ const AMOUNT = /^(0|[1-9][0-9]{0,14})(\.[0-9]{1,2})?$/;
 const ORIGIN = /^(?!https:\/\/[^/]*:443$)(?!http:\/\/[^/]*:80$)https?:\/\/[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$/;
 const appKey = (a) => a.network + ":" + a.app_id;
 const isApplicationList = (l) =>
-  Array.isArray(l) && l.length >= 1 && l.length <= 16 && new Set(l.map((a) => a && appKey(a))).size === l.length && l.every((a) => a && typeof a === "object" && (a.network === "algorand-mainnet" || a.network === "algorand-testnet") && Number.isSafeInteger(a.app_id) && a.app_id >= 0 && Object.keys(a).length === 2);
+  Array.isArray(l) && l.length >= 1 && l.length <= 16 && new Set(l.map((a) => a && appKey(a))).size === l.length && l.every((a) => a && typeof a === "object" && (a.network === "algorand-mainnet" || a.network === "algorand-testnet") && Number.isSafeInteger(a.app_id) && a.app_id >= 1 && Object.keys(a).length === 2);
 const TOP = new Set(["threshold_eur", "block_unproven_clients", "biometric_required", "ask_on_test_networks", "clients"]);
 
 /**
@@ -428,6 +430,8 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
       (d?.group_hash ?? d?.request_hash) !== request.bound_hash
     )
       return false;
+    // Every 1.1 request has a canonical origin (the request schema requires it), a transaction also signs it in its details.
+    if (receipt.version === "1.1" && (typeof request.origin !== "string" || request.origin.length > 253 || !ORIGIN.test(request.origin))) return false;
     // The origin the server recorded is the origin the user saw and signed (a transaction of 1.1 carries it in its details).
     if (receipt.version === "1.1" && d?.type === "biatec_transaction" && (typeof d.origin !== "string" || d.origin !== request.origin || d.origin.length > 253 || !ORIGIN.test(d.origin) || !Array.isArray(d.transfers) || !Array.isArray(d.applications) || !detailsConsistent(d))) return false;
     if (s.remember !== undefined) {
@@ -437,7 +441,7 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
       if (new Set(all.map((a) => a.id)).size !== all.length) return false; // `remember` names bare ids: the same id twice would be ambiguous
       const shown = new Set(all.filter((a) => a.trusted === false).map((a) => a.id));
       const ids = s.remember.applications;
-      if (!Array.isArray(ids) || ids.length === 0 || new Set(ids).size !== ids.length || !ids.every((id) => shown.has(id))) return false;
+      if (!Array.isArray(ids) || ids.length === 0 || new Set(ids).size !== ids.length || !ids.every((id) => id !== 0 && shown.has(id))) return false;
     }
     return !consumed.has(s.auth_req_id);
   } catch {
@@ -449,6 +453,7 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
 function detailsConsistent(d) {
   if (typeof d.value_known !== "boolean" || d.transfers.length + d.applications.length === 0) return false;
   if (d.applications.some((a) => a.trusted === false) && d.value_known) return false;
+  if (d.applications.some((a) => a.id === 0 && a.trusted !== false)) return false; // id 0 is an application creation: never trusted
   if (d.value_known) return d.fiat_value !== undefined && d.transfers.every((x) => x.fiat_value !== undefined);
   return d.fiat_value === undefined;
 }

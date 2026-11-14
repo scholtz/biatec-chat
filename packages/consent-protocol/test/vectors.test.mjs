@@ -606,6 +606,28 @@ test("client ids are keys in NFC, and a nonce has the base64url alphabet only", 
   assert.equal(valid("settings-change-signed", dotted.signed), false, "the schema says so too");
 });
 
+test("round 19: joiners before marks, bare marks after space, array nonces, application id 0, the origin pattern is one", () => {
+  assert.equal(isDisplaySafe("a\u2764\u200D\uFE0F"), false);
+  assert.equal(isDisplaySafe("ab\u200D\u0301c"), false);
+  assert.equal(isDisplaySafe("a \u0301b"), false);
+  const base = device.settings_changes.find((x) => x.expected.accepted);
+  const arr = clone(base.envelope);
+  arr.signed.nonce = [arr.signed.nonce];
+  arr.signature = signEs256(keys.device, Buffer.from(jcs(arr.signed), "utf8"));
+  assert.equal(verifyDeviceSigned(arr, jwks, DO, ACTIVE), false);
+  assert.throws(() => pairingCode("a".repeat(43), "b".repeat(43), ["n".repeat(20)]));
+  const add0 = clone(base.envelope);
+  add0.signed.change = { clients: { c1: { trusted_applications_add: [{ network: "algorand-mainnet", app_id: 0 }] } } };
+  assert.equal(valid("settings-change-signed", add0.signed), false, "app_id 0 is refused by the schema");
+  const details = { type: "biatec_transaction", network: "algorand-mainnet", group_hash: "a".repeat(64), sender: "A".repeat(52), transfers: [], applications: [{ id: 0, trusted: true }], value_known: false, origin: "https://app.example.com" };
+  assert.equal(valid("authorization-details-transaction", details), false, "a trusted creation");
+  details.applications[0].trusted = false;
+  assert.equal(valid("authorization-details-transaction", details), true);
+  // The origin pattern is the same in the verifier and in the schemas that carry it.
+  const src = JSON.parse(readFileSync(new URL("../schemas/authorization-details-transaction.schema.json", import.meta.url), "utf8")).$defs.origin.pattern;
+  for (const f of ["consent-request", "settings-change-signed"]) assert.ok(readFileSync(new URL("../schemas/" + f + ".schema.json", import.meta.url), "utf8").includes(JSON.stringify(src).slice(1, -1)), f);
+});
+
 test("the pairing helper refuses ambiguous input", () => {
   const p = device.pairing_code;
   assert.throws(() => pairingCode(p.new_approval_jwk_thumbprint, p.new_presence_jwk_thumbprint, "enroll.nonce.with.dots.0000"));

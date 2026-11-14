@@ -60,9 +60,11 @@
             "additionalProperties": false,
             "required": ["id", "trusted"],
             "properties": {
-              "id": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "id": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "0 is an application creation." },
               "trusted": { "type": "boolean" }
-            }
+            },
+            "if": { "properties": { "id": { "const": 0 } } },
+            "then": { "properties": { "trusted": { "const": false } } }
           }
         },
         "value_known": { "type": "boolean", "description": "False when any part of the value could not be priced or an application is not trusted: the card then says \"Value unknown\". True only when every transfer carries its fiat_value and every application is trusted. A group has at least one transfer or application." },
