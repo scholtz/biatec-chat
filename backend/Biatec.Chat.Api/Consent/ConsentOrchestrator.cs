@@ -109,8 +109,12 @@ public sealed class ConsentOrchestrator(
                 catch
                 {
                     // Ending failed (for example the database): hand the request back, so a later poll finishes the denial instead of finding it claimed and never ended.
-                    await db.ConsentRequests.Where(c => c.Id == request.Id && c.Status == ConsentRequestStatus.Denied)
-                        .ExecuteUpdateAsync(u => u.SetProperty(c => c.Status, ConsentRequestStatus.Pending), CancellationToken.None);
+                    try
+                    {
+                        await db.ConsentRequests.Where(c => c.Id == request.Id && c.Status == ConsentRequestStatus.Denied)
+                            .ExecuteUpdateAsync(u => u.SetProperty(c => c.Status, ConsentRequestStatus.Pending), CancellationToken.None);
+                    }
+                    catch (Exception) { /* the original failure is the one to surface */ }
                     throw;
                 }
             }
@@ -137,7 +141,7 @@ public sealed class ConsentOrchestrator(
     {
         // Biatec OIDC always returns the signed receipt with the token. Without it there is nothing to keep as proof.
         if (string.IsNullOrEmpty(approved.Receipt))
-            return await EndAsync(session, previewId, request, ConsentRequestStatus.Cancelled, denied: false, "receipt_missing", ct, "receipt_missing");
+            return await EndAsync(session, previewId, request, ConsentRequestStatus.Cancelled, denied: false, "receipt_missing", CancellationToken.None, "receipt_missing");
 
         // The receipt is checked against what this backend asked for before anything resumes (T-238). A receipt that does not verify is not consent:
         // the elevated token that came with it is dropped unused, and the step ends like a missing receipt.
@@ -149,7 +153,7 @@ public sealed class ConsentOrchestrator(
                 log.LogWarning("A consent receipt was refused: {FailureCode}", verdict.Code());
                 await RecordAsync(session, EvidenceKinds.ConsentReceiptRejected,
                     EvidencePayloads.ConsentReceiptRejected(previewId, step.Id, request.AuthReqId, step.SubjectHash, verdict.Code(), Sha256Hex(approved.Receipt)));
-                return await EndAsync(session, previewId, request, ConsentRequestStatus.Cancelled, denied: false, "receipt_invalid", ct, "receipt_invalid");
+                return await EndAsync(session, previewId, request, ConsentRequestStatus.Cancelled, denied: false, "receipt_invalid", CancellationToken.None, "receipt_invalid");
             }
         }
 
