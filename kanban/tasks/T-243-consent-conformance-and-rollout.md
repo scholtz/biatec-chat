@@ -1,7 +1,7 @@
 ---
 id: T-243
 title: "Run the conformance kit against a real Biatec OIDC, and write the consent rollout checklist (flags, stage test script)"
-status: review
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-237, T-238, T-240]
@@ -76,6 +76,8 @@ PR #413, `task/T-243` @ 8159e14. `pnpm --filter @biatec/consent-protocol conform
 
 ## Review
 
+- 2026-11-14 17:02 · approve · PR #413 merged into main @ b5d457c (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-12 18:43 · scholtz · (new) → blocked · created from the consent architecture record (AlgorandGoogleDriveAccount issue 23)
@@ -84,3 +86,4 @@ PR #413, `task/T-243` @ 8159e14. `pnpm --filter @biatec/consent-protocol conform
 - 2026-11-14 15:18 · kanban-board · blocked → backlog · blockers done: T-237, T-238, T-240
 - 2026-11-14 18:30 · scholtz · backlog → in-progress · claimed by session-20261114-1830 on task/T-243
 - 2026-11-14 19:20 · scholtz · in-progress → review · PR #413 @ 8159e14
+- 2026-11-14 17:02 · user · review → done · PR #413 merged into main @ b5d457c (synced by kanban-sync)
