@@ -147,6 +147,10 @@ public class ConsentProtocolVectorTests
             var accepted = !((string)signed["decision"]! == "approve" && (version == "1.1" ? use != "approve" : use is not null && use != "approve"));
             var expected = v["expected"]?["accepted"]?.GetValue<bool>() ?? true;
             Assert.True(expected == accepted, file + " " + (string)v["name"]! + ": expected verdict");
+            // The production verifier (T-238) agrees with this independent re-implementation, vector by vector.
+            var verdict = Biatec.Chat.Tools.Consent.ConsentReceiptVerifier.VerifyAuthenticity(receipt.ToJsonString(), Biatec.Chat.Tests.Consent.ConsentTestKit.OidcKeys(), Issuer,
+                DateTimeOffset.FromUnixTimeSeconds((long)receipt["issued_at"]! + 60));
+            Assert.True(expected == (verdict == Biatec.Chat.Tools.Consent.ReceiptVerdict.Valid), file + " " + (string)v["name"]! + ": production verifier " + verdict);
             if (!accepted) refused++;
         }
         Assert.True(refused >= 1, "the 1.1 set contains a vector that must be refused");
