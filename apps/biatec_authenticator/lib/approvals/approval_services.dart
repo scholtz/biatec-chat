@@ -19,6 +19,7 @@ class ApprovalServices {
     required this.gate,
     required this.history,
     this.twoKeys = true,
+    this.trustSettings = false,
     this.proof,
     this.touchGuard = const NoTouchGuard(),
     DateTime Function()? clock,
@@ -38,6 +39,7 @@ class ApprovalServices {
       gate: gate,
       history: SecureHistoryStore(),
       twoKeys: config.twoKeys,
+      trustSettings: config.trustSettings,
       proof: proof,
       touchGuard: const PlatformTouchGuard(),
     );
@@ -54,6 +56,9 @@ class ApprovalServices {
   /// `AppConfig.twoKeys`; off against a Biatec OIDC without the two device keys.
   final bool twoKeys;
 
+  /// `AppConfig.trustSettings`: the approval card offers "don't ask again" and says when a service is new.
+  final bool trustSettings;
+
   /// Adds the proof of possession to device calls; null in tests that talk to a fake.
   final DeviceProofSigner? proof;
 
@@ -69,6 +74,7 @@ class ApprovalServices {
         history: history,
         gate: gate,
         twoKeys: twoKeys,
+        trustSettings: trustSettings,
         clock: clock,
       );
 }

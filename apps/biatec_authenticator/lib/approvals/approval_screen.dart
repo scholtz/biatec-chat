@@ -304,7 +304,12 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
               const SizedBox(height: AppSpacing.m),
             ],
           ],
-          ApprovalCard(request: request),
+          ApprovalCard(
+            request: request,
+            trust: widget.services.trustSettings,
+            remembered: c.remembered,
+            onRemember: busy ? null : c.setRemember,
+          ),
           const SizedBox(height: AppSpacing.m),
           ExpiryRow(request: request, now: c.now),
           const SizedBox(height: AppSpacing.m),

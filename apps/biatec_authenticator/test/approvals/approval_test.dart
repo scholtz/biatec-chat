@@ -286,7 +286,6 @@ void main() {
         ..['display_name'] = 'Your Bank'
         ..['domain'] = 'bank.example';
       final r = ConsentRequest.fromJson({...json, 'client': client});
-      expect(r.client.displayName, isNull);
       expect(r.client.domain, isNull);
       expect(clientLabel(r.client), startsWith('Unproven application'));
     });

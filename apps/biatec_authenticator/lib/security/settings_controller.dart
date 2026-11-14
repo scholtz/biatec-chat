@@ -20,9 +20,8 @@ import '../enrollment/observable_enrollment_store.dart';
 double? _eur(String? v) => v == null ? null : double.tryParse(v);
 
 /// True when [change] loosens anything in [current]: a higher threshold, a
-/// requirement switched off, or a pause lifted. Loosening needs a consent
-/// signed on this device; tightening applies at once. Anything this cannot
-/// read counts as loosening, so the safe path is taken.
+/// requirement switched off, or a pause lifted. Only the screens that run without the user-held trust settings ([SettingsServices.trustSettings] off) use it; with them on
+/// Biatec OIDC's own answer decides (`403 consent_required`), and the app does not repeat its classifier.
 bool isLoosening(ConsentSettings current, Map<String, Object?> change) {
   var loosening = false;
   final threshold = change['threshold_eur'];
@@ -34,8 +33,11 @@ bool isLoosening(ConsentSettings current, Map<String, Object?> change) {
   if (change['biometric_required'] == false && current.biometricRequired) {
     loosening = true;
   }
-  if (change['block_unverified_clients'] == false &&
-      current.blockUnverifiedClients) {
+  if (change['block_unproven_clients'] == false &&
+      current.blockUnprovenClients) {
+    loosening = true;
+  }
+  if (change['ask_on_test_networks'] == false && current.askOnTestNetworks) {
     loosening = true;
   }
   final clients = change['clients'];
@@ -75,6 +77,7 @@ class SettingsServices {
     this.enabled = true,
     this.twoKeys = true,
     this.activationByDevice = true,
+    this.trustSettings = false,
     DateTime Function()? clock,
     String Function()? nonce,
   })  : clock = clock ?? DateTime.now,
@@ -92,6 +95,7 @@ class SettingsServices {
         enabled: config.settingsApi,
         twoKeys: approvals.twoKeys,
         activationByDevice: config.activationByDevice,
+        trustSettings: config.trustSettings,
         clock: approvals.clock,
       );
 
@@ -112,6 +116,9 @@ class SettingsServices {
   /// `AppConfig.activationByDevice` (the in-app login AND two keys): the Devices screen offers "Activate" only then.
   final bool activationByDevice;
 
+  /// `AppConfig.trustSettings`: the user-held trust settings (threshold choices, linked services, trusted applications, the server decides loosening). Off: the screens of before T-245.
+  final bool trustSettings;
+
   SettingsController controller() => SettingsController(
         client: client,
         keys: keys,
@@ -120,6 +127,7 @@ class SettingsServices {
         clock: clock,
         nonce: nonce,
         twoKeys: twoKeys,
+        trustSettings: trustSettings,
       );
 }
 
@@ -143,6 +151,7 @@ class SettingsController extends ChangeNotifier {
     required this.enrollment,
     required this.gate,
     this.twoKeys = true,
+    this.trustSettings = false,
     DateTime Function()? clock,
     String Function()? nonce,
   })  : _clock = clock ?? DateTime.now,
@@ -155,8 +164,20 @@ class SettingsController extends ChangeNotifier {
 
   /// `AppConfig.twoKeys`. Off: the prompt-free key signs and the app's gate asks first (the behaviour before T-241).
   final bool twoKeys;
+
+  /// `AppConfig.trustSettings`. On, a change is sent as it is and Biatec OIDC says whether it loosens (`403 consent_required`): then, and only then, the approval key signs it
+  /// (one biometric prompt) and it is sent again. Nothing in the app classifies a change.
+  final bool trustSettings;
   final DateTime Function() _clock;
   final String Function() _nonce;
+
+  DateTime? _activeAt;
+
+  /// False while this device is inactive (rule 7: the first 24 hours): it can read everything and change nothing. True until a load says otherwise.
+  bool get deviceActive => _activeAt == null || !_activeAt!.isAfter(now);
+
+  /// When this device becomes active, for the reason shown on a read-only screen.
+  DateTime? get activeAt => _activeAt;
 
   SettingsPhase _phase = SettingsPhase.loading;
   SettingsPhase get phase => _phase;
@@ -249,12 +270,14 @@ class SettingsController extends ChangeNotifier {
       _changed();
     }
     try {
-      final token = (await _record()).deviceToken;
+      final record = await _record();
+      final token = record.deviceToken;
       final devices = await client.devices(token);
       final settings = await client.settings(token);
       if (inPlace && changes != _changes) return;
       _devices = devices;
       _settings = settings;
+      _activeAt = record.activeAt;
       _phase = SettingsPhase.ready;
       _offline = false;
       if (inPlace) {
@@ -436,36 +459,63 @@ class SettingsController extends ChangeNotifier {
     var applied = false;
     try {
       final record = await _record();
-      final bool loosening = isLoosening(current, change);
-      // An inactive device cannot loosen: said before any prompt.
-      if (loosening) _checkActive(record);
-      // A fresh biometric for any change to a security setting, tightening included (Secure Area rule 4). A loosening is signed by the approval key, whose OS prompt is that biometric (one prompt, no separate gate); a tightening is not signed, so the app's gate asks.
-      if ((!loosening || !twoKeys) &&
-          !await gate.confirm(loosening
-              ? 'Approve this settings change'
-              : 'Change a security setting')) {
-        throw const ApprovalException('Biometric check did not pass.');
-      }
-      ConsentSettings next;
-      if (loosening) {
-        next = await _signedChange(record, current, change);
+      if (trustSettings) {
+        applied = await _applyServerDecides(record, current, change);
       } else {
-        try {
-          next = await client.change(record.deviceToken, change);
-        } on ConsentRequiredException {
-          // Biatec OIDC judged it a loosening after all: ask the device.
-          next = await _signedChange(record, current, change);
+        final bool loosening = isLoosening(current, change);
+        // An inactive device cannot loosen: said before any prompt.
+        if (loosening) _checkActive(record);
+        // A fresh biometric for any change to a security setting, tightening included (Secure Area rule 4). A loosening is signed by the approval key, whose OS prompt is that biometric (one prompt, no separate gate); a tightening is not signed, so the app's gate asks.
+        if ((!loosening || !twoKeys) &&
+            !await gate.confirm(loosening
+                ? 'Approve this settings change'
+                : 'Change a security setting')) {
+          throw const ApprovalException('Biometric check did not pass.');
         }
+        ConsentSettings next;
+        if (loosening) {
+          next = await _signedChange(record, current, change);
+        } else {
+          try {
+            next = await client.change(record.deviceToken, change);
+          } on ConsentRequiredException {
+            // Biatec OIDC judged it a loosening after all: ask the device.
+            next = await _signedChange(record, current, change);
+          }
+        }
+        _settings = next;
+        _notice =
+            loosening ? 'Approved on this device and applied.' : 'Applied.';
+        applied = true;
       }
-      _settings = next;
-      _notice = loosening ? 'Approved on this device and applied.' : 'Applied.';
-      applied = true;
     } on Object catch (e) {
       _fail(e);
     }
     _busy = false;
     _changed();
     return applied;
+  }
+
+  /// The change goes to Biatec OIDC as it is. Only `403 consent_required` makes the approval key sign it (one prompt) and send it again; whatever else Biatec OIDC says (a refusal
+  /// of the amount, an unknown member, an inactive device) is shown as it is said.
+  Future<bool> _applyServerDecides(EnrollmentRecord record,
+      ConsentSettings current, Map<String, Object?> change) async {
+    // Single-key mode signs without a prompt of its own, so the app's gate asks first. With two keys the signature's own prompt is the one biometric, and a change that tightens
+    // asks for none (it cannot be told in advance without repeating the server's classifier).
+    if (!twoKeys && !await gate.confirm('Change a security setting')) {
+      throw const ApprovalException('Biometric check did not pass.');
+    }
+    var signed = false;
+    ConsentSettings next;
+    try {
+      next = await client.change(record.deviceToken, change);
+    } on ConsentRequiredException {
+      next = await _signedChange(record, current, change);
+      signed = true;
+    }
+    _settings = next;
+    _notice = signed ? 'Approved on this device and applied.' : 'Applied.';
+    return true;
   }
 
   void _checkActive(EnrollmentRecord record) {
@@ -522,6 +572,14 @@ class SettingsController extends ChangeNotifier {
       'signed': signed,
       'alg': 'ES256',
       'signature': base64Url.encode(signature).replaceAll('=', ''),
+      // The full envelope of specification 8.2: the device block with the approval key's attestation, which Biatec OIDC verifies with the statement.
+      if (record.attestation != null)
+        'device': {
+          'kid': record.kid,
+          'key_use': 'approve',
+          'public_key': key.toJwk(),
+          'attestation': record.attestation,
+        },
     });
   }
 }

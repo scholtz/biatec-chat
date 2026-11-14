@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../channel/stay_connected.dart';
 import '../clients/clients_screen.dart';
+import '../clients/legacy_clients_screen.dart';
+import '../clients/trust_strings.dart';
+import '../clients/trust_widgets.dart';
 import '../config.dart';
 import '../keys/device_key_store.dart';
 import '../keys/prompt_free_key.dart';
@@ -16,6 +19,7 @@ import '../ui/ui.dart';
 import 'app_info.dart';
 import 'channel_strings.dart';
 import 'theme_controller.dart';
+import 'threshold_screen.dart';
 
 /// The Settings tab: Security, Appearance and About, each a labelled group.
 ///
@@ -151,6 +155,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       case SettingsPhase.ready:
         final s = c.settings!;
         final enabled = !c.busy;
+        if (widget.services.trustSettings) return _trustSecurity(context, c, lock);
         return [
           // The biometric check is no longer a setting: the app opens and approves only with a fingerprint or face.
           const ListTile(
@@ -184,17 +189,17 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
           SwitchListTile(
             key: const Key('block-unverified'),
-            title: const Text('Block unverified clients'),
-            subtitle: const Text('Applications whose identity is not '
-                'verified cannot ask for approvals. Turning it off needs '
+            title: const Text('Block applications without a proven domain'),
+            subtitle: const Text('Applications that have not proven their '
+                'domain cannot ask for approvals. Turning it off needs '
                 'approval on this device.'),
-            value: s.blockUnverifiedClients,
+            value: s.blockUnprovenClients,
             onChanged: enabled
                 ? (v) => applyWithConfirm(
-                    context, c, s, {'block_unverified_clients': v},
-                    title: 'Let unverified clients ask?',
-                    message: 'Applications whose name is not confirmed will be '
-                        'able to ask for approvals.',
+                    context, c, s, {'block_unproven_clients': v},
+                    title: 'Let applications without a proven domain ask?',
+                    message: 'Applications that have not proven their domain '
+                        'will be able to ask for approvals.',
                     confirmLabel: 'Turn off')
                 : null,
           ),
@@ -208,12 +213,55 @@ class _SettingsScreenState extends State<SettingsScreen>
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
               settings: const RouteSettings(name: '/settings/clients'),
-              builder: (_) => ClientsScreen(
+              builder: (_) => LegacyClientsScreen(
                   services: widget.services, controller: _controller),
             )),
           ),
         ];
     }
+  }
+
+  /// Security with the user-held trust settings (`AppConfig.trustSettings`): the threshold and the linked services are screens of their own, inside this tab's stack so back returns here and the bar stays.
+  List<Widget> _trustSecurity(
+      BuildContext context, SettingsController c, LockController? lock) {
+    final s = TrustStrings.of();
+    final settings = c.settings!;
+    return [
+      ...inactiveBanner(c),
+      const ListTile(
+        key: Key('biometric'),
+        leading: Icon(Icons.fingerprint),
+        title: Text('Biometric check'),
+        subtitle: Text('Always required. Your fingerprint or face opens the '
+            'app and confirms every approval. It cannot be turned off.'),
+      ),
+      ListTile(
+        key: const Key('threshold'),
+        leading: const Icon(Icons.tune),
+        title: Text(s.t('thresholdTitle')),
+        subtitle: Text(s.t('thresholdTileSubtitle',
+            {'amount': thresholdText(settings.thresholdEur)})),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+          settings: const RouteSettings(name: '/settings/threshold'),
+          builder: (_) =>
+              ThresholdScreen(services: widget.services, controller: _controller),
+        )),
+      ),
+      if (lock != null) _LockDelayTile(lock: lock),
+      ListTile(
+        key: const Key('linked-services'),
+        leading: const Icon(Icons.link),
+        title: Text(s.t('linkedServicesTile')),
+        subtitle: Text(s.t('linkedServicesSubtitle')),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+          settings: const RouteSettings(name: '/settings/clients'),
+          builder: (_) =>
+              ClientsScreen(services: widget.services, controller: _controller),
+        )),
+      ),
+    ];
   }
 
   List<Widget> _about(BuildContext context) {

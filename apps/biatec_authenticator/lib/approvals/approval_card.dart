@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../clients/service_identity.dart';
+import '../clients/trust_strings.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
 import 'consent_request.dart';
@@ -13,9 +15,25 @@ import 'widgets/fact_row.dart';
 ///
 /// The amount is the hero, then who it goes to and who asks; the details follow. A warning is always an icon and words.
 class ApprovalCard extends StatelessWidget {
-  const ApprovalCard({super.key, required this.request});
+  const ApprovalCard({
+    super.key,
+    required this.request,
+    this.trust = false,
+    this.remembered = const {},
+    this.onRemember,
+  });
 
   final ConsentRequest request;
+
+  /// The user-held trust settings are on (`AppConfig.trustSettings`): the card says when approving links a new service and offers "don't ask again" per untrusted application. Off, it shows
+  /// neither, and the receipt never carries `remember`.
+  final bool trust;
+
+  /// The application ids the user ticked.
+  final Set<String> remembered;
+
+  /// A box was ticked or cleared.
+  final void Function(String id, bool on)? onRemember;
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +48,16 @@ class ApprovalCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ClientBanner(client: request.client),
+            if (trust && !request.client.linked) ...[
+              const SizedBox(height: AppSpacing.s),
+              StatusBanner(
+                key: const Key('new-service'),
+                severity: StatusSeverity.info,
+                icon: Icons.add_link,
+                title: TrustStrings.of().t('newServiceTitle'),
+                message: TrustStrings.of().t('newServiceBody'),
+              ),
+            ],
             const SizedBox(height: AppSpacing.m),
             ...switch (detail) {
               TransactionDetail() => _transaction(theme, detail),
@@ -84,7 +112,7 @@ class ApprovalCard extends StatelessWidget {
       if (g.transfers.isEmpty)
         const Fact('Transfers', 'None', key: Key('fact-no-transfers')),
       for (var i = 0; i < g.applications.length; i++)
-        _application(i, g.applications[i]),
+        ..._applicationRow(i, g.applications),
       Fact('From', d.sender, mono: true, key: const Key('fact-sender')),
       Fact('Network', d.network, key: const Key('fact-network')),
       Fact('Group hash', d.groupHash, mono: true, key: const Key('fact-hash')),
@@ -109,6 +137,33 @@ class ApprovalCard extends StatelessWidget {
                   '${t.asset.decimals} decimals)'),
             ]),
       );
+
+  /// The application, and for an untrusted one that can be remembered the box "don't ask again" (unticked: the user decides, nothing is ticked for them).
+  List<Widget> _applicationRow(int i, List<ApplicationEntry> all) {
+    final a = all[i];
+    final offered = trust && request.canRemember(a);
+    return [
+      _application(i, a),
+      if (offered) _rememberBox(a),
+    ];
+  }
+
+  Widget _rememberBox(ApplicationEntry a) {
+    final c = request.client;
+    final who = c.domainProven && c.domain != null
+        ? c.domain!
+        : formatFingerprint(c.fingerprint);
+    return CheckboxListTile(
+      key: Key('remember-${a.id}'),
+      contentPadding: EdgeInsets.zero,
+      controlAffinity: ListTileControlAffinity.leading,
+      value: remembered.contains(a.id),
+      onChanged:
+          onRemember == null ? null : (v) => onRemember!(a.id, v ?? false),
+      title: Text(TrustStrings.of()
+          .t('dontAskAgain', {'id': a.id, 'who': who})),
+    );
+  }
 
   Widget _application(int i, ApplicationEntry a) => a.trusted
       ? Fact('Calls application', a.id, key: Key('application-$i'))
@@ -207,42 +262,12 @@ class UnsupportedRequestCard extends StatelessWidget {
       );
 }
 
-/// Who asks. Only a proven domain says who it is; otherwise "Unproven
-/// application" and the fingerprint. Never a name (rule 3).
+/// Who asks: the one service-identity widget (the proven domain, or "Unproven application" and the fingerprint; never a name).
 class ClientBanner extends StatelessWidget {
   const ClientBanner({super.key, required this.client});
 
   final ConsentClient client;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final fingerprint = client.fingerprintShown ?? '';
-    if (!client.domainProven) {
-      return StatusBanner(
-        key: const Key('client-unverified'),
-        severity: StatusSeverity.warning,
-        icon: Icons.warning_amber_rounded,
-        title: 'Unproven application $fingerprint'.trim(),
-        message: 'Biatec cannot confirm who this is. Approve only if you '
-            'started this action yourself.',
-      );
-    }
-    return MergeSemantics(
-      child: Row(key: const Key('client-verified'), children: [
-        Icon(Icons.verified,
-            color: theme.colorScheme.primary, semanticLabel: 'Proven domain'),
-        const SizedBox(width: AppSpacing.s),
-        Expanded(
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(client.domain!, style: theme.textTheme.titleMedium),
-            Text('Proven domain, application $fingerprint'.trim(),
-                style: theme.textTheme.labelSmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-          ]),
-        ),
-      ]),
-    );
-  }
+  Widget build(BuildContext context) => ServiceIdentity.client(client);
 }

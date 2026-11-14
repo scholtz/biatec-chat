@@ -32,7 +32,7 @@ class RequestCard extends StatelessWidget {
       LimitsChangeDetail() => ('Change spending limits', summarize(detail)),
     };
     final spoken = 'Request from $who: $headline, $sub, ${spokenLeft(left)}. '
-        '${request.client.verified ? '' : 'Unproven application. '}'
+        '${request.client.domainProven ? '' : 'Unproven application. '}'
         'Double tap to open.';
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -51,11 +51,11 @@ class RequestCard extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 2),
                 child: Icon(
-                    request.client.verified
+                    request.client.domainProven
                         ? Icons.verified
                         : Icons.warning_amber_rounded,
                     semanticLabel:
-                        request.client.verified ? 'Proven domain' : 'Unproven'),
+                        request.client.domainProven ? 'Proven domain' : 'Unproven'),
               ),
               const SizedBox(width: AppSpacing.m),
               Expanded(

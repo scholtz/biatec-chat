@@ -23,11 +23,12 @@ enum Decision {
 }
 
 /// The member set the device signs, built only from the fetched [request] and
-/// the [code] the user typed.
+/// the [code] the user typed. [remember] (application ids the user ticked) is signed into an approve only.
 Map<String, Object?> signedObject(
   ConsentRequest request, {
   required String code,
   required Decision decision,
+  List<int> remember = const [],
 }) =>
     {
       'authorization_details': request.authorizationDetails,
@@ -44,11 +45,16 @@ Map<String, Object?> signedObject(
       // Only what was rendered is signed (rule 3): nothing for unverified
       // clients.
       'binding_message': renderedBindingMessage(request),
+      // Only an approval carries it (a deny and a code_failed never do): the applications the user ticked "don't ask again" for, signed with the approval itself.
+      if (decision == Decision.approve && remember.isNotEmpty)
+        'remember': {'applications': remember},
     };
 
 /// The binding message as the card shows it.
 String renderedBindingMessage(ConsentRequest request) =>
-    request.client.verified ? request.bindingMessage : '';
+    (request.client.domainProven || request.client.legacyVerified)
+        ? request.bindingMessage
+        : '';
 
 /// What the device needs to sign a receipt: both public keys with the attestation Biatec OIDC issued for each (protocol 1.1: each key has its own, naming its use).
 class DeviceIdentity {
@@ -99,8 +105,10 @@ Future<Map<String, Object?>> signReceipt({
   ApprovalPrompt? prompt,
   DateTime Function()? clock,
   bool singleKey = false,
+  List<int> remember = const [],
 }) async {
-  final signed = signedObject(request, code: code, decision: decision);
+  final signed =
+      signedObject(request, code: code, decision: decision, remember: remember);
   final bytes = Uint8List.fromList(canonicalBytes(signed));
   final approving = decision == Decision.approve && !singleKey;
   // Before anything is signed, so the user is never asked for a biometric that cannot lead to a receipt.
