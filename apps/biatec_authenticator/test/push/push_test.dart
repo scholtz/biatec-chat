@@ -55,7 +55,7 @@ class FakeRegistry {
       calls.where((c) => c['path'] == '/devices/push').toList();
 }
 
-EnrollmentRecord record(String token) => EnrollmentRecord(
+EnrollmentRecord record(String token) => EnrollmentRecord(presenceKid: 'p-kid', presenceAttestation: 'p.p.s', 
     kid: 'alice-device',
     deviceToken: token,
     activeAt: DateTime.utc(2020),

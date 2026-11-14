@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:biatec_authenticator/enrollment/enrollment_controller.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
@@ -9,29 +8,10 @@ import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/integrity/attestation.dart';
-import 'package:biatec_authenticator/keys/device_key_store.dart';
-import 'package:biatec_authenticator/keys/key_security_level.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../keys/fake_two_keys.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-
-class Keys implements DeviceKeyStore {
-  @override
-  Future<DeviceKey> generate(String alias) async => DeviceKey(
-      kid: alias,
-      x: 'xx',
-      y: 'yy',
-      securityLevel: KeySecurityLevel.trustedEnvironment);
-
-  @override
-  Future<DeviceKey?> load(String alias) async => null;
-
-  @override
-  Future<Uint8List> sign(String alias, Uint8List data) async => data;
-
-  @override
-  Future<void> delete(String alias) async {}
-}
 
 class FakeAttestation implements AttestationProvider {
   FakeAttestation({this.canAttest = true, this.token_});
@@ -79,6 +59,8 @@ void main() {
               : http.Response('{"error":"not_found"}', 404);
         case 'POST /devices':
           lastKid = (jsonDecode(r.body) as Map)['kid'] as String;
+          final presenceKid =
+              (jsonDecode(r.body) as Map)['presence_kid'] as String;
           final attested =
               (jsonDecode(r.body) as Map).containsKey('platform_attestation');
           return http.Response(
@@ -88,6 +70,9 @@ void main() {
                     t0.add(const Duration(hours: 24)).millisecondsSinceEpoch ~/
                         1000,
                 'device_token': 'tok',
+                'attestation': 'a.b.c',
+                'presence_kid': presenceKid,
+                'presence_attestation': 'p.b.c',
                 if (attested)
                   'attestation_refresh_after':
                       t0.add(const Duration(days: 30)).millisecondsSinceEpoch ~/
@@ -108,7 +93,7 @@ void main() {
       return http.Response('{"error":"not_found"}', 404);
     });
     return EnrollmentController(
-      keys: Keys(),
+      keys: FakeTwoKeyStore(),
       store: ObservableEnrollmentStore(store ?? MemoryEnrollmentStore(),
           clock: () => clock),
       client: OidcEnrollmentClient(baseUrl: 'http://mock', client: client),
@@ -150,7 +135,7 @@ void main() {
     });
 
     test(
-        'sends none when the platform cannot attest, and does not ask for a challenge',
+        'sends no platform attestation when the platform cannot attest (the challenge is still asked for: the enrollment proof needs its nonce)',
         () async {
       final a = FakeAttestation(canAttest: false);
       final c = build(a);
@@ -158,8 +143,8 @@ void main() {
       final body = enrollBody();
       expect(body.containsKey('platform_attestation'), isFalse);
       expect(body.containsKey('attestation_challenge'), isFalse);
-      expect(
-          requests.where((r) => r.url.path == '/devices/challenge'), isEmpty);
+      expect(body['approval_proof'], isA<String>());
+      expect(body['presence_proof'], isA<String>());
       expect(c.state.record, isNotNull);
       expect(c.state.record!.attestationRefreshAfter, isNull);
     });
@@ -174,14 +159,16 @@ void main() {
       expect(c.state.record, isNotNull);
     });
 
-    test('enrolls without one when Biatec OIDC offers no challenge', () async {
+    test('does not enroll when Biatec OIDC offers no challenge (no nonce for the proofs)',
+        () async {
       challengeOffered = false;
       final a = FakeAttestation(token_: proof);
       final c = build(a);
       await c.enroll(loginToken: 'login-alice');
       expect(a.nonces, isEmpty);
-      expect(enrollBody().containsKey('platform_attestation'), isFalse);
-      expect(c.state.record, isNotNull);
+      expect(c.state.phase, EnrollmentPhase.failed);
+      expect(c.state.error, contains('challenge'));
+      expect(requests.where((r) => r.url.path == '/devices'), isEmpty);
     });
 
     test('a platform that never answers does not hold the enrollment',

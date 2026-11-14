@@ -71,7 +71,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('confirm-change')));
       await tester.pumpAndSettle();
-      expect(rig.gate.asked, 1);
+      expect(rig.keys.prompts, hasLength(1));
       expect(rig.oidc.settings['block_unverified_clients'], isFalse);
       expect(find.text('Approved on this device and applied.'), findsOneWidget);
     });
@@ -108,7 +108,8 @@ void main() {
       await tester.tap(find.byKey(const Key('eur-save')));
       await tester.pumpAndSettle();
       expect(rig.oidc.settings['threshold_eur'], '900.50');
-      expect(rig.gate.asked, 2);
+      expect(rig.gate.asked, 1);
+      expect(rig.keys.prompts, hasLength(1));
       expect(rig.oidc.puts.last['consent'], isNotNull);
     });
 
@@ -127,14 +128,14 @@ void main() {
 
     testWidgets('a refused biometric check is shown as text', (tester) async {
       final rig = SettingsRig();
-      rig.gate.pass = false;
+      rig.keys.cancelNextPrompt = true;
       await _open(tester, _settings(rig.services));
       await tester.tap(find.byKey(const Key('threshold-change')));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const Key('eur-field')), '2000');
       await tester.tap(find.byKey(const Key('eur-save')));
       await tester.pumpAndSettle();
-      expect(find.text('Biometric check did not pass.'), findsOneWidget);
+      expect(find.text('Approval cancelled. Nothing was changed.'), findsOneWidget);
       expect(find.text('Problem'), findsOneWidget);
       expect(rig.oidc.settings['threshold_eur'], '1000.00');
     });
@@ -249,7 +250,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('confirm-change')));
       await tester.pumpAndSettle();
-      expect(rig.gate.asked, 1);
+      expect(rig.keys.prompts, hasLength(1));
       expect(oidc.clientById('bank-example')['paused_until'], isNull);
       expect(find.byKey(const Key('paused-bank-example')), findsNothing);
       expect(find.text('Approved on this device and applied.'), findsOneWidget);
@@ -269,7 +270,8 @@ void main() {
       await tester.tap(find.byKey(const Key('confirm-change')));
       await tester.pumpAndSettle();
       expect(rig.oidc.clientById('biatec-chat')['always_ask'], isFalse);
-      expect(rig.gate.asked, 2);
+      expect(rig.gate.asked, 1);
+      expect(rig.keys.prompts, hasLength(1));
     });
 
     testWidgets('per-client threshold can be set and reset', (tester) async {
@@ -297,7 +299,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(rig.oidc.clientById('bank-example')['per_client_threshold_eur'],
           isNull);
-      expect(rig.gate.asked, 2);
+      expect(rig.gate.asked, 1);
+      expect(rig.keys.prompts, hasLength(1));
     });
 
     testWidgets('an unverified client is labelled in words', (tester) async {
@@ -349,7 +352,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
       final rig = SettingsRig(
-          record: EnrollmentRecord(
+          record: EnrollmentRecord(presenceKid: 'p-kid', presenceAttestation: 'p.p.s', 
               kid: 'dev-1',
               deviceToken: FakeSettingsOidc.token,
               activeAt: DateTime.utc(2020),

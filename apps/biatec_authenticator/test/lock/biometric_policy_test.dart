@@ -178,7 +178,9 @@ void main() {
       expect(read('lib/approvals/approval_services.dart'),
           isNot(contains('LocalAuth')));
       expect(read('lib/approvals/approval_controller.dart'),
-          contains('gate.confirm('));
+          allOf(contains('!twoKeys && !await gate.confirm('), isNot(contains('if (!await gate.confirm('))),
+          reason: 'the OS prompt of the approval key is the gate; the app gate asks only without the two keys');
+      expect(read('lib/approvals/receipt.dart'), contains('signApproval('));
       expect(read('lib/security/settings_controller.dart'),
           contains('gate.confirm('));
       final main = read('lib/main.dart');

@@ -53,6 +53,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
           // The observable store keeps an enrollment whose write failed (the controller relies on it).
           store: ObservableEnrollmentStore(SecureEnrollmentStore()),
           client: OidcEnrollmentClient(baseUrl: widget.config.oidcBaseUrl),
+          twoKeys: widget.config.twoKeys,
         );
     // The mock accepts the seeded login token; a real build gets the token
     // from the OIDC login.
@@ -201,7 +202,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
       BuildContext context, EnrollmentState s, OnboardingStep step) {
     switch (step) {
       case OnboardingStep.welcome:
-        return _welcome(context);
+        return _welcome(context, s);
       case OnboardingStep.connect:
         return _connect(context, s);
       case OnboardingStep.protect:
@@ -213,7 +214,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     }
   }
 
-  List<Widget> _welcome(BuildContext context) {
+  List<Widget> _welcome(BuildContext context, EnrollmentState s) {
     Widget point(IconData icon, String title, String text) => Padding(
           padding: const EdgeInsets.only(bottom: AppSpacing.m),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -238,9 +239,19 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
       const Text('This app is the second factor for your Biatec account: it '
           'asks you to approve what matters, on this device, with your '
           'fingerprint or face.'),
+      if (s.error == EnrollmentController.legacyKeyNotice) ...[
+        const SizedBox(height: AppSpacing.m),
+        const StatusBanner(
+          key: Key('legacy-key-notice'),
+          severity: StatusSeverity.warning,
+          icon: Icons.fingerprint,
+          title: 'Set this device up again',
+          message: EnrollmentController.legacyKeyNotice,
+        ),
+      ],
       const SizedBox(height: AppSpacing.l),
       point(Icons.key_outlined, 'What it holds',
-          'A key that is created in this device\'s secure hardware and never leaves it, and a device token that proves this device to Biatec OIDC.'),
+          'Two keys created in this device\'s secure hardware that never leave it (the one that approves needs your fingerprint or face every time), and a device token that proves this device to Biatec OIDC.'),
       point(Icons.block, 'What it never holds',
           'Your wallet keys, your funds or your passwords. It cannot move money by itself.'),
       point(Icons.restore, 'If you lose this device',

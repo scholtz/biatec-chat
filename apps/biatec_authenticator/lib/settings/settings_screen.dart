@@ -390,7 +390,7 @@ class _DeviceKeyTileState extends State<_DeviceKeyTile> {
   Future<DeviceKey?> _load() async {
     final record = await widget.services.enrollment.read();
     if (record == null) return null;
-    return widget.services.keys.load(record.kid);
+    return widget.services.keys.loadApproval();
   }
 
   @override

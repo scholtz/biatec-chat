@@ -31,7 +31,7 @@ class ShellRig {
   ShellRig({this.pending = 1, bool enrolled = true})
       : settings = SettingsRig(
             record: enrolled
-                ? EnrollmentRecord(
+                ? EnrollmentRecord(presenceKid: 'p-kid', presenceAttestation: 'p.p.s', 
                     kid: 'dev-1',
                     deviceToken: FakeSettingsOidc.token,
                     activeAt: DateTime.utc(2020),
@@ -371,7 +371,7 @@ void main() {
         'a device that has not saved its recovery code is usable, with a notice that opens the code',
         (tester) async {
       final rig = ShellRig();
-      await rig.settings.enrollment.write(EnrollmentRecord(
+      await rig.settings.enrollment.write(EnrollmentRecord(presenceKid: 'p-kid', presenceAttestation: 'p.p.s', 
           kid: 'dev-1',
           deviceToken: FakeSettingsOidc.token,
           activeAt: DateTime.utc(2020),
@@ -393,7 +393,7 @@ void main() {
         'the notice opens the code screen once, however often it is tapped',
         (tester) async {
       final rig = ShellRig();
-      await rig.settings.enrollment.write(EnrollmentRecord(
+      await rig.settings.enrollment.write(EnrollmentRecord(presenceKid: 'p-kid', presenceAttestation: 'p.p.s', 
           kid: 'dev-1',
           deviceToken: FakeSettingsOidc.token,
           activeAt: DateTime.utc(2020),

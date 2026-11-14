@@ -5,6 +5,8 @@ class EnrollmentRecord {
     required this.deviceToken,
     required this.activeAt,
     this.attestation,
+    this.presenceKid,
+    this.presenceAttestation,
     this.recoveryCodeShown = false,
     this.attestationRefreshAfter,
   });
@@ -23,6 +25,13 @@ class EnrollmentRecord {
   /// approve.
   final String? attestation;
 
+  /// The presence key (protocol 1.1: the second device key, usable without a prompt) and its attestation. [kid] and [attestation] are the approval key's. Null for a record saved before the two keys: such an install has only the one unprotected key and must enroll again (no silent migration).
+  final String? presenceKid;
+  final String? presenceAttestation;
+
+  /// Both keys are enrolled. A record without them is not usable: the device enrolls again.
+  bool get hasTwoKeys => presenceKid != null && presenceAttestation != null;
+
   /// Whether the user has confirmed saving the recovery code. The code itself
   /// is never part of the record: the server issues it only once the device is
   /// active (rule 7) and the app holds it in memory while it is on screen.
@@ -38,6 +47,8 @@ class EnrollmentRecord {
         deviceToken: deviceToken,
         activeAt: activeAt,
         attestation: attestation,
+        presenceKid: presenceKid,
+        presenceAttestation: presenceAttestation,
         recoveryCodeShown: recoveryCodeShown ?? this.recoveryCodeShown,
         attestationRefreshAfter:
             attestationRefreshAfter ?? this.attestationRefreshAfter,
@@ -53,6 +64,9 @@ class EnrollmentRecord {
         'device_token': deviceToken,
         'active_at': activeAt.toUtc().millisecondsSinceEpoch,
         if (attestation != null) 'attestation': attestation,
+        if (presenceKid != null) 'presence_kid': presenceKid,
+        if (presenceAttestation != null)
+          'presence_attestation': presenceAttestation,
         'recovery_code_shown': recoveryCodeShown,
         if (attestationRefreshAfter != null)
           'attestation_refresh_after':
@@ -66,6 +80,8 @@ class EnrollmentRecord {
         activeAt: DateTime.fromMillisecondsSinceEpoch(json['active_at'] as int,
             isUtc: true),
         attestation: json['attestation'] as String?,
+        presenceKid: json['presence_kid'] as String?,
+        presenceAttestation: json['presence_attestation'] as String?,
         recoveryCodeShown: json['recovery_code_shown'] as bool? ?? false,
         attestationRefreshAfter: json['attestation_refresh_after'] is int
             ? DateTime.fromMillisecondsSinceEpoch(

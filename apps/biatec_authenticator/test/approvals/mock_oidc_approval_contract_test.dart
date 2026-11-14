@@ -2,7 +2,7 @@
 // against a running packages/consent-protocol/mock-oidc server. The mock
 // verifies every receipt with its JWKS, exactly as Biatec OIDC would.
 //
-//   MOCK_JSON_GROUPS=1 MOCK_TEST_HELPERS=1 MOCK_MAX_PENDING=1000 PORT=8089 pnpm --filter mock-oidc start   # from the repo root; 127.0.0.1:8089
+//   MOCK_JSON_GROUPS=1 MOCK_TWO_KEYS=1 MOCK_TEST_HELPERS=1 MOCK_MAX_PENDING=1000 PORT=8089 pnpm --filter mock-oidc start   # from the repo root; 127.0.0.1:8089
 //   flutter test --dart-define=MOCK_OIDC_URL=http://127.0.0.1:8089 test/approvals/mock_oidc_approval_contract_test.dart
 //
 // Skipped when MOCK_OIDC_URL is not set.
@@ -85,6 +85,8 @@ void main() {
       deviceToken: d['device_token'] as String,
       activeAt: DateTime.utc(2020),
       attestation: d['attestation'] as String,
+      presenceKid: (d['presence'] as Map)['kid'] as String,
+      presenceAttestation: (d['presence'] as Map)['attestation'] as String,
     ));
     return ApprovalServices(
       client: ApprovalClient(baseUrl: baseUrl!),

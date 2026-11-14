@@ -97,9 +97,9 @@ default counts as a real Biatec OIDC, so the settings screens are off unless `--
 
 ## Enrollment and device key (T-051)
 
-- `lib/keys/device_key_store.dart`: `DeviceKeyStore` is the hardware key (no export method, only `sign`).
-  `PlatformDeviceKeyStore` calls the method channel `io.biatec.authenticator/keystore` (`generate`, `load`, `sign`,
-  `delete`, each with an `alias`; `generate`/`load` return `{x, y}` base64url P-256). The native side is in
+- `lib/keys/device_key_store.dart`: `DeviceKeyStore` is the two hardware keys (no export method, only signing; see "Two device keys" below).
+  `PlatformDeviceKeyStore` calls the method channel `io.biatec.authenticator/keystore` (`generateKeys`, `load`, `keysState`, `signPresence`,
+  `signApproval`, `deleteKeys`, `delete` for the single key of an old install; a key is `{x, y, securityLevel, authBound}`, P-256 base64url). The native side is in
   `android/app/src/main/kotlin/io/biatec/authenticator/KeystorePlugin.kt` (Android Keystore, StrongBox with fallback to the TEE; registered in
   `MainActivity.configureFlutterEngine`) and `ios/Runner/KeystorePlugin.swift` (Secure Enclave, `kSecAttrTokenIDSecureEnclave`; registered in
   `AppDelegate`).
@@ -109,11 +109,10 @@ default counts as a real Biatec OIDC, so the settings screens are off unless `--
   says nothing), and the enrollment screen shows "Key protection: ...". The Kotlin side is compiled, the Swift side is not.
 - `lib/enrollment/`: `EnrollmentController` state machine (`notEnrolled`, `generatingKey`, `enrolling`, `inactive`,
   `activeRecoveryPending`, `active`, `failed`), `OidcEnrollmentClient` (`POST /devices`), secure-storage record, and
-  the enrollment and recovery-code screen. Attestation is stubbed by the mock (not sent).
+  the enrollment and recovery-code screen. The platform attestation (Play Integrity, App Attest, T-234) is sent when the platform can make one.
 - The mock `POST /devices` takes a `login-*` bearer token (`login-alice` is prefilled against the mock) and
-  returns `active_at` in epoch seconds. The kid is a random per-install alias (`biatec-authenticator-<hex>`),
-  persisted before the key is created and used as both keystore alias and kid, because the server rejects a kid it
-  has already seen.
+  returns `active_at` in epoch seconds. The kids are derived from the keys (`biatec-approve-<32 characters of the RFC 7638 thumbprint>` and
+  `biatec-presence-<...>`), so they are unique per key, stable and need no storage; the keystore aliases are fixed. The server rejects a kid it has already seen.
 - Recovery code (rule 7): never part of the enrollment response and never stored on the device. Once the device is
   active the app calls `POST /devices/recovery-code` (`Authorization: Device <token>`, refused with 403 while
   inactive), holds the code in memory while it is shown, and confirms with `POST /devices/recovery-code/ack`. These
@@ -136,17 +135,71 @@ default counts as a real Biatec OIDC, so the settings screens are off unless `--
   fetched, canonicalized with `jcs.dart` (RFC 8785, checked against `packages/consent-protocol/vectors`), with ES256
   by the device key, and carries the enrollment attestation (now kept in the enrollment record; a record saved before
   this change has none and must re-enroll).
-- Approve: six-digit binding code, biometric check (`local_auth`, biometric only, fails closed), then a fresh fetch
-  of the request. If that fetch fails the device is offline and nothing is signed; if the request differs from the
-  card, the new one is shown and nothing is signed. Biatec OIDC counts the three attempts; after the third wrong
-  code the app signs and posts a `code_failed` receipt.
-- Deny is signed too, needs neither code nor biometric check, and signs the last typed code or the empty string.
+- Approve: six-digit binding code, then a fresh fetch of the request. If that fetch fails the device is offline and
+  nothing is signed; if the request differs from the card, the new one is shown and nothing is signed. Then the approval key signs, and the
+  operating system's own biometric prompt (one operation with the signature, see "Two device keys") is the only check: there is no separate Dart
+  biometric gate for it. A dismissed prompt leaves the request pending and uses no code attempt. Biatec OIDC counts the three attempts; after the third wrong
+  code the app signs (presence key) and posts a `code_failed` receipt.
+- Deny is signed too (presence key, no prompt), needs no code, and signs the last typed code or the empty string.
 - Unverified clients: warning banner with fingerprint only; their `binding_message` is never rendered or signed.
-- `local_auth` needs `FlutterFragmentActivity` as the Android `MainActivity` and `NSFaceIDUsageDescription` in the
-  iOS `Info.plist` once the platform folders exist.
+- `local_auth` is not used anywhere (T-222; `test/lock/biometric_policy_test.dart` checks it). The Android approval prompt (`BiometricPrompt`) needs
+  `FlutterFragmentActivity` as `MainActivity` (it is) and the iOS prompt needs `NSFaceIDUsageDescription` in `Info.plist` (it is there).
 - Contract test against the real mock (it verifies signature and attestation with its JWKS): start the mock, then
   `flutter test --dart-define=MOCK_OIDC_URL=http://127.0.0.1:8089 test/approvals/mock_oidc_approval_contract_test.dart`.
   On Node older than 22.18 start it with `node --experimental-strip-types src/server.ts`.
+
+## Two device keys (T-241, audit finding BCHAT-007)
+
+Protocol 1.1 splits the device key in two. Both are P-256, generated in hardware, never exportable, and each has its own `kid` and its own attestation
+(`biatec_key_use` is `approve` or `presence`).
+
+| | Approval key | Presence key |
+| --- | --- | --- |
+| Signs | `approve` receipts, `biatec_settings_change`, `biatec_device_approval` (T-242), the approval half of the enrollment proof | device proofs (`X-Device-Proof`, every HTTP call), `deny` and `code_failed` receipts, the presence half of the enrollment proof |
+| Prompt | the OS asks for a strong biometric for EVERY signature | none |
+| Android | `setUserAuthenticationRequired(true)`, `setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)` (per use, no PIN), `setInvalidatedByBiometricEnrollment(true)`, `setUnlockedDeviceRequired(true)`, StrongBox when present. Signing is `BiometricPrompt` with a `CryptoObject` that wraps the `Signature`: the prompt and the signature are one operation | `setUnlockedDeviceRequired(true)`, no user authentication |
+| iOS | Secure Enclave, access control `.privateKeyUsage` + `.biometryCurrentSet` (`kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`), signed with an `LAContext` (fixed prompt text, no passcode fallback button) | Secure Enclave, `.privateKeyUsage`, `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` |
+
+- Channel API (`lib/keys/device_key_store.dart`): `generateKeys()`, `signPresence(bytes)`, `signApproval(bytes, promptTitle, promptSubtitle)` (the only call that
+  prompts; throws `KeyPromptCancelled`, `ApprovalKeyInvalidated` or `KeyPromptFailed`), `keysState()` (`ok`, `approvalKeyInvalidated`, `missing`, no prompt).
+  There is no fallback to a software key or to the device credential for the approval key.
+- After the approval key is created the plugin reads `KeyInfo` back (hardware, user authentication required, per use, invalidated by biometric enrollment) and
+  refuses to enroll otherwise ("This phone cannot protect approvals"); the Dart side refuses it too (`DeviceKey.authBound`). A phone with no enrolled strong
+  biometric cannot make the key: the app says to set one up first.
+- Enrollment (`lib/enrollment/enrollment_proof.dart`) asks for the server's nonce (`POST /devices/challenge`; no nonce, no enrollment), signs the enrollment proof with the
+  approval key (this is the one biometric prompt of an enrollment) and a `presence_proof` over the same payload with the presence key, and sends
+  `presence_kid`, `presence_public_key`, `approval_proof` and `presence_proof` in `POST /devices`. The record keeps both attestations.
+- Approvals: the prompt title is fixed ("Approve this action"); the subtitle names the client and the total from the request that was just fetched.
+- Invalidation: adding or removing a fingerprint or face invalidates the approval key (`KeyPermanentlyInvalidatedException`, or the iOS key disappearing). The state becomes
+  `approvalKeyInvalidated`: Approve and signed settings changes are off with an explanation, Deny still works (presence key), and "Enroll this device again"
+  clears this install's enrollment and keys so the enrollment flow starts. Biatec OIDC keeps the old device record until it is cancelled from the account.
+- An install from before the two keys (a record without `presence_kid`) is treated as having no keys: it is shown the enrollment flow with a notice, and its old key is deleted when
+  the new enrollment starts. No silent migration.
+- Known trade-off: the presence key needs an unlocked phone (`setUnlockedDeviceRequired`), so while the phone is locked the foreground service cannot sign the ticket request
+  of a new device channel connection. A connection that was made while unlocked is not affected, and a reconnect waits until the phone is unlocked.
+- Tests: `test/keys/device_key_store_test.dart` (channel), `test/approvals/approval_test.dart` group "two keys" (a fake keystore: approve signs with the approval
+  key exactly once and nothing else prompts; deny, `code_failed` and proofs use the presence key; a cancelled prompt leaves the request pending and uses no attempt; an invalidated
+  key turns Approve off and keeps Deny), `test/settings/settings_controller_test.dart`, and the contract tests against the mock with `MOCK_TWO_KEYS=1`
+  (the mock verifies receipts, attestations, enrollment proofs and device proofs with `packages/consent-protocol/scripts/lib.mjs`; it refuses an approve signed by the presence key and a proof signed by the approval key).
+- Android instrumented test: `android/app/src/androidTest/kotlin/io/biatec/authenticator/ApprovalKeyInstrumentedTest.kt` (`cd android && ./gradlew :app:connectedDebugAndroidTest`, needs
+  a phone or emulator with a fingerprint enrolled). It checks `authBound`, hardware backing, that the approval key cannot sign outside a `BiometricPrompt`
+  (`UserNotAuthenticatedException`) and that the presence key signs without a prompt. NOT run yet.
+
+### Manual device checklist (two keys; to be run by a person, NOT run: no phone was available when this was written)
+
+Real Android phone (with a fingerprint or face enrolled), then a real iPhone (Secure Enclave; not the simulator):
+
+1. Enroll: the enrollment shows the biometric prompt once ("Enroll this phone"); the device key card says secure hardware. A phone with no biometric enrolled says to set one up and enrolls nothing.
+2. Approve: open a request, type the code, tap Approve: the OS prompt appears once, with the client and the total in it; after the fingerprint the request is approved. Dismiss the prompt: the request stays pending and the attempts left do not drop.
+3. Deny: tap Deny: no prompt appears and the request is denied.
+4. Settings: raise a threshold: one prompt. Lower it: no OS prompt (the app's own check only).
+5. Add a fingerprint (or a face) in the phone's settings, open the app: the approval screen says approvals are off, Deny still works, Approve is off, "Enroll this device again" leads to the enrollment flow.
+6. Android only: with the phone locked, the stay-connected service keeps its connection but cannot make a new one until the phone is unlocked (see the trade-off above).
+7. iOS only: the passcode never approves (no "Enter passcode" button on the prompt).
+
+### Certificate pinning (T-229)
+
+Every call to Biatec OIDC goes through `PinnedHttp` (`lib/security/pinning/`): the leaf certificate's public key must be one of the host's pins (`pins.dart`, a backup key is mandatory); the system's list of trusted certificate authorities is not used; there is no revocation check, so a compromised key is replaced by an app update.
 
 ## Device channel and notifications (T-244)
 
@@ -263,8 +316,8 @@ settings) are skipped there, because CI starts no mock.
   and `SettingsClient` (`GET /devices`, `POST /devices/{kid}/cancel`, `GET` and `PUT /devices/settings`, all with
   `Authorization: Device <token>`).
 - Tightening (lower a threshold, turn a requirement on) applies at once. Loosening (raise a threshold, turn biometric, blocking or
-  always-ask off, lift a client pause) first passes the biometric check, then the device key signs a `biatec_settings_change`
-  (`isLoosening` decides). Biatec OIDC verifies it; an inactive device cannot loosen.
+  always-ask off, lift a client pause) is signed by the approval key as a `biatec_settings_change` (`isLoosening` decides); the OS prompt of that
+  signature is the biometric check. A change that only tightens is not signed and asks the app's own gate (`LockBiometricGate`). Biatec OIDC verifies it; an inactive device cannot loosen.
 - Biatec OIDC has none of these APIs yet (`docs/required-changes-biatec-oidc.md` rows 21 and 22, fallback none). `AppConfig.settingsApi` is on
   for the mock URL and off otherwise; override with `--dart-define=CONSENT_SETTINGS_API=true`. When off, the screens say "Not available yet".
 - Tests: `flutter test test/settings` (scripted OIDC); `test/settings/mock_oidc_settings_contract_test.dart` runs against a started mock

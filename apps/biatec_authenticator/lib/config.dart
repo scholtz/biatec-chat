@@ -15,7 +15,8 @@ class AppConfig {
       {required this.oidcBaseUrl,
       required this.isMock,
       this.settingsApi = false,
-      this.deviceChannel = false});
+      this.deviceChannel = false,
+      this.twoKeys = false});
 
   /// Default points at the mock Biatec OIDC. 10.0.2.2 is the host machine
   /// seen from the Android emulator.
@@ -28,6 +29,8 @@ class AppConfig {
       String.fromEnvironment('OIDC_BASE_URL');
 
   static const bool _definedDeviceChannel = bool.fromEnvironment('DEVICE_CHANNEL');
+
+  static const bool _definedTwoKeys = bool.fromEnvironment('TWO_KEY_DEVICE');
 
   static const bool _definedSettingsApi =
       bool.fromEnvironment('CONSENT_SETTINGS_API');
@@ -49,10 +52,17 @@ class AppConfig {
   /// never started and the "Stay connected" setting is not shown; the app polls.
   final bool deviceChannel;
 
+  /// Whether Biatec OIDC has the two device keys (protocol 1.1, D9): `POST /devices` with the second key and the enrollment proofs, `POST /devices/challenge`, the
+  /// presence key for device proofs. Real Biatec OIDC has none yet, so this is on for the mock only until `--dart-define=TWO_KEY_DEVICE=true` says otherwise. Off, the
+  /// app enrolls ONE key (the one that needs no prompt), asks for a server challenge only when the platform attestation needs one, and an approval is gated by the app's biometric check
+  /// as before T-241 (the keystore binding of the approval key is not used until the server side exists).
+  final bool twoKeys;
+
   factory AppConfig.fromEnvironment() =>
       AppConfig.resolve(_definedOidcBaseUrl,
           settingsApi: _definedSettingsApi,
-          deviceChannel: _definedDeviceChannel);
+          deviceChannel: _definedDeviceChannel,
+          twoKeys: _definedTwoKeys);
 
   /// Hosts that mean "this machine" for a developer: plain http is acceptable to them in a build that is not a release build.
   static const localHosts = {'localhost', '127.0.0.1', '::1', '10.0.2.2'};
@@ -61,6 +71,7 @@ class AppConfig {
   factory AppConfig.resolve(String defined,
       {bool settingsApi = false,
       bool deviceChannel = false,
+      bool twoKeys = false,
       bool? release,
       bool? windows}) {
     final isRelease = release ?? !kDebugMode;
@@ -78,7 +89,8 @@ class AppConfig {
           oidcBaseUrl: mockOidcBaseUrl,
           isMock: true,
           settingsApi: true,
-          deviceChannel: true);
+          deviceChannel: true,
+          twoKeys: true);
     }
     // The mock is the same endpoint however the URL is spelled (scheme and host are case-insensitive).
     final isMock = Uri.tryParse(url)?.toString() == mockOidcBaseUrl;
@@ -91,7 +103,8 @@ class AppConfig {
         oidcBaseUrl: isMock ? mockOidcBaseUrl : url,
         isMock: isMock,
         settingsApi: isMock || settingsApi,
-        deviceChannel: isMock || deviceChannel);
+        deviceChannel: isMock || deviceChannel,
+        twoKeys: isMock || twoKeys);
   }
 
   /// Device tokens, binding codes and receipts travel to this URL, so it must be https. The one exception is local development

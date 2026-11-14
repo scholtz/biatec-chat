@@ -54,7 +54,7 @@ class FakeStayConnected implements StayConnectedPlatform {
   Future<void> requestNotificationPermission() async => notificationAsks++;
 }
 
-EnrollmentRecord record() => EnrollmentRecord(
+EnrollmentRecord record() => EnrollmentRecord(presenceKid: 'p-kid', presenceAttestation: 'p.p.s', 
     kid: 'alice-device',
     deviceToken: 'dev-token',
     activeAt: DateTime.utc(2020),
