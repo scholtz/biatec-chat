@@ -1,7 +1,7 @@
 ---
 id: T-245
 title: "Authenticator: the user's own threshold, linked services, trusted applications (all trust is set on the phone)"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-242]
@@ -9,9 +9,9 @@ area: ["apps/biatec_authenticator/lib/settings/**", "apps/biatec_authenticator/l
 parallel: no
 conflicts_with: [T-243]
 issue: "#405"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-245"
+owner: "session-20261115-0215"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#biatec-authenticator-and-the-biatec-consent-protocol"
 created: 2026-11-13
 updated: 2026-11-14
@@ -75,3 +75,4 @@ Filled in when the task moves to review.
 
 - 2026-11-13 09:05 · scholtz · (new) → blocked · created from revision 2 of the consent architecture record (AlgorandGoogleDriveAccount issue 23): all trust is the user's, threshold is the user's
 - 2026-11-14 23:55 · kanban-board · blocked → backlog · blockers done: T-242
+- 2026-11-15 02:15 · scholtz · backlog → in-progress · claimed by session-20261115-0215 on task/T-245
