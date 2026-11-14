@@ -18,6 +18,7 @@ abstract class HubSocket {
   /// Text messages. Binary messages are dropped. Ends when the socket closes; an error ends it too.
   Stream<String> get messages;
   void send(String text);
+  /// Closes the socket. The channel closes through its own guard, so an implementation need not time out or swallow errors.
   Future<void> close();
 }
 
@@ -35,13 +36,8 @@ class _IoHubSocket implements HubSocket {
   @override
   void send(String text) => _channel.sink.add(text);
   @override
-  Future<void> close() async {
-    try {
-      await _channel.sink.close().timeout(const Duration(seconds: 2));
-    } on Object {
-      // Closing a socket that is already gone is not an error worth reporting.
-    }
-  }
+  // Never throws or waits for ever is guaranteed by the one caller, DeviceChannel._closeQuietly.
+  Future<void> close() => _channel.sink.close();
 }
 
 /// Opens the real WebSocket. `wss` goes through the pinned client (no system authorities, a certificate must match a pin); plain `ws` is for a developer's machine in a debug build only, like the HTTPS calls.
@@ -59,9 +55,12 @@ HubSocket connectHubSocket(Uri uri) {
 }
 
 /// Thrown by the ticket function when Biatec OIDC refuses this device for good (401 or 403: the device was revoked or cancelled). The channel stops
-/// and makes no more attempts until the enrollment or the network changes, or the app starts again.
+/// and makes no attempts until the enrollment or the network changes, the app starts again, or [DeviceChannel.stoppedRetry] has passed (a refusal can be a wrong clock, which a user fixes).
 class ChannelRefused implements Exception {
-  const ChannelRefused();
+  const ChannelRefused([this.status]);
+
+  /// The HTTP status that refused the ticket, when there was one.
+  final int? status;
 }
 
 /// Whether the phone has a network, so no attempt is made while it has none.
@@ -96,6 +95,7 @@ class DeviceChannel implements DeviceEventSource {
     this.handshakeTimeout = const Duration(seconds: 15),
     this.stableAfter = const Duration(seconds: 60),
     this.backoff = defaultBackoff,
+    this.stoppedRetry = const Duration(minutes: 15),
   })  : _connector = connector ?? connectHubSocket,
         _random = random ?? Random(),
         _now = now ?? DateTime.now;
@@ -116,6 +116,9 @@ class DeviceChannel implements DeviceEventSource {
         scheme: base.scheme == 'https' ? 'wss' : 'ws',
         path: '${base.path}/hubs/device');
   }
+
+  /// The most that is kept of a message that has not ended yet.
+  static const maxBuffered = 16 * 1024;
 
   /// Without a query: the ticket is added per connection.
   final Uri hubUri;
@@ -140,6 +143,9 @@ class DeviceChannel implements DeviceEventSource {
   /// The delay before the next attempt after n consecutive failures; the last one repeats.
   final List<Duration> backoff;
 
+  /// How long the channel stays stopped after a refused ticket or a close that forbids reconnecting, before it tries again by itself.
+  final Duration stoppedRetry;
+
   final _events = StreamController<DeviceEvent>.broadcast();
   final _subs = <StreamSubscription<Object?>>[];
   bool _running = false;
@@ -148,7 +154,11 @@ class DeviceChannel implements DeviceEventSource {
 
   /// Counts wake-ups. A sleep started with an older count than this returns at once, so a wake that came in before the sleep began is not lost.
   int _wakes = 0;
+
+  /// Counts changes of the enrollment: a session or ticket that began before one is never used.
+  int _enrollmentChanges = 0;
   _Sleep? _sleeping;
+  DateTime? _lastSkip;
 
   @override
   Stream<DeviceEvent> get events => _events.stream;
@@ -159,7 +169,14 @@ class DeviceChannel implements DeviceEventSource {
     _running = true;
     final generation = ++_generation;
     final w = wake;
-    if (w != null) _subs.add(w.listen((_) => _wake()));
+    if (w != null) {
+      _subs.add(w.listen((_) {
+        // The enrollment changed (unenrolled, erased, enrolled again): a live connection was authorised for the old one, so it ends now.
+        _enrollmentChanges++;
+        unawaited(_closeSocket());
+        _wake();
+      }));
+    }
     final n = network;
     if (n != null) {
       _subs.add(n.changes.listen((online) {
@@ -198,7 +215,7 @@ class DeviceChannel implements DeviceEventSource {
     await _closeQuietly(s);
   }
 
-  /// Closing never throws and never waits for ever: a socket that will not close is left behind.
+  /// The one place where closing never throws and never waits for ever: a socket that will not close is left behind.
   static Future<void> _closeQuietly(HubSocket? socket) async {
     try {
       await socket?.close().timeout(const Duration(seconds: 2));
@@ -214,7 +231,15 @@ class DeviceChannel implements DeviceEventSource {
 
   /// Sleeps for [d], or until woken; with a null [d] until woken. [seen] is the wake count the caller saw before it decided to sleep.
   Future<void> _sleep(int seen, Duration? d) {
-    if (seen != _wakes) return Future.value();
+    if (seen != _wakes) {
+      // A wake came in after the caller looked: do not wait. At most once a second, so wakes that keep coming cannot make a loop that never rests.
+      final now = _now();
+      final last = _lastSkip;
+      if (last == null || now.difference(last) >= const Duration(seconds: 1)) {
+        _lastSkip = now;
+        return Future.value();
+      }
+    }
     final sleep = _Sleep();
     _sleeping = sleep;
     if (d != null) sleep.timer = Timer(d, sleep.end);
@@ -236,6 +261,7 @@ class DeviceChannel implements DeviceEventSource {
   Future<void> _run(int generation) async {
     var failures = 0;
     while (_alive(generation)) {
+      // The wake count before anything of this round starts: a wake that arrives during the ticket request or the connection is not lost.
       final seen = _wakes;
       if (!await _ready()) {
         // Not enrolled or offline: wait for a change, make no attempt, and do not count it as a failure.
@@ -249,13 +275,13 @@ class DeviceChannel implements DeviceEventSource {
       if (!end.allowReconnect) {
         // The server asked for the end: wait for the enrollment or the network to change (or a new start) instead of asking again.
         failures = 0;
-        await _sleep(_wakes, null);
+        await _sleep(seen, stoppedRetry);
         continue;
       }
       final base = backoff[min(failures, backoff.length - 1)];
       failures++;
       final jitter = base.inMilliseconds * 0.2 * _random.nextDouble();
-      await _sleep(_wakes, base + Duration(milliseconds: jitter.round()));
+      await _sleep(seen, base + Duration(milliseconds: jitter.round()));
     }
   }
 
@@ -270,6 +296,7 @@ class DeviceChannel implements DeviceEventSource {
     HubSocket? socket;
     var buffer = '';
     var handshaken = false;
+    final epoch = _enrollmentChanges;
 
     void finish({bool allowReconnect = true}) {
       if (end.isCompleted) return;
@@ -327,7 +354,10 @@ class DeviceChannel implements DeviceEventSource {
 
     try {
       final t = await ticket();
-      if (!_alive(generation)) return const _End(Duration.zero, true);
+      // The enrollment changed while the ticket was asked for: it belongs to the old one.
+      if (!_alive(generation) || epoch != _enrollmentChanges) {
+        return const _End(Duration.zero, true);
+      }
       socket = _connector(hubUri.replace(queryParameters: {'access_token': t}));
       _socket = socket;
       await socket.ready;
@@ -340,6 +370,8 @@ class DeviceChannel implements DeviceEventSource {
         buffer += text;
         final parts = buffer.split('\x1e');
         buffer = parts.removeLast(); // a message cut short waits for its end
+        // A server that never ends a record is not one to listen to.
+        if (buffer.length > maxBuffered) finish();
         for (final part in parts) {
           if (part.isEmpty || end.isCompleted) continue;
           handle(part);

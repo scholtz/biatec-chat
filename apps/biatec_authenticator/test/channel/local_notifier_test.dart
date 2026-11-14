@@ -61,11 +61,21 @@ void main() {
         notificationIdFor('ciba_1'));
   });
 
-  test('notification ids are stable, positive and keep 1 free', () {
+  test('device ids are in their own range, apart from request ids', () {
+    for (final id in ['a', 'ciba_1', 'x' * 128, '']) {
+      expect(notificationIdFor(id), lessThan(0x40000000));
+      final d = deviceNotificationIdFor(id);
+      expect(d, greaterThanOrEqualTo(0x40000000));
+      expect(d, lessThan(0x80000000));
+    }
+    expect(deviceNotificationIdFor('a'), isNot(deviceNotificationIdFor('b')));
+  });
+
+  test('notification ids are stable and positive', () {
     expect(notificationIdFor('a'), notificationIdFor('a'));
     expect(notificationIdFor('a'), isNot(notificationIdFor('b')));
     for (final id in ['a', 'ciba_1', 'x' * 128, '']) {
-      expect(notificationIdFor(id), greaterThan(1));
+      expect(notificationIdFor(id), greaterThanOrEqualTo(0));
       expect(notificationIdFor(id), lessThan(0x80000000));
     }
   });

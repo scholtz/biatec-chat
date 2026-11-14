@@ -54,6 +54,10 @@ Future<void> stayConnectedMain() async {
     client: client,
     enrollment: enrollment,
     onNotEnrolled: stopSelf,
+    // A 403 means the device was revoked or cancelled: nothing to stay connected to. A 401 may be a wrong clock, so the channel only waits longer.
+    onRefused: (status) async {
+      if (status == 403) await stopSelf();
+    },
   );
   final controller = DeviceEventController(
     enrollment: enrollment,

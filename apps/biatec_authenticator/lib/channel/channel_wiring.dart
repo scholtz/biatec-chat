@@ -20,6 +20,7 @@ DeviceChannel buildDeviceChannel({
   Stream<void>? wake,
   NetworkStatus? network,
   FutureOr<void> Function()? onNotEnrolled,
+  FutureOr<void> Function(int status)? onRefused,
 }) =>
     DeviceChannel(
       hubUri: DeviceChannel.hubUriFor(config.oidcBaseUrl),
@@ -36,8 +37,12 @@ DeviceChannel buildDeviceChannel({
         try {
           return (await client.hubTicket(record.deviceToken)).ticket;
         } on ApprovalException catch (e) {
-          // 401 or 403: the device was revoked or cancelled. Retrying every 30 seconds for ever would only add load.
-          if (e.status == 401 || e.status == 403) throw const ChannelRefused();
+          // 401 or 403: the device was revoked or cancelled (or, for 401, the phone's clock is off). The channel stops and tries again only much later.
+          final status = e.status;
+          if (status == 401 || status == 403) {
+            await onRefused?.call(status!);
+            throw ChannelRefused(status);
+          }
           rethrow;
         }
       },

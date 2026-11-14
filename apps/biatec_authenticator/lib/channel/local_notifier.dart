@@ -3,13 +3,19 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../push/device_event_controller.dart';
 import '../settings/channel_strings.dart';
 
-/// The notification id of a request: a stable 31-bit number from the id (FNV-1a), so the notification of one request can be removed without keeping a list. The id itself is never shown.
-int notificationIdFor(String authReqId) {
-  var h = 0x811c9dc5 & 0x7fffffff;
-  for (final unit in authReqId.codeUnits) {
-    h = ((h ^ unit) * 0x01000193) & 0x7fffffff;
+/// The notification id of a request: a stable 30-bit number from the id (FNV-1a), so the notification of one request can be removed without keeping a list. The id itself is never shown.
+int notificationIdFor(String authReqId) => _fnv(authReqId);
+
+/// The notification id of an added device: the same hash in its own range (bit 30 set), so it can never be a request's id.
+int deviceNotificationIdFor(String kid) => 0x40000000 | _fnv('device:$kid');
+
+/// 30 bits, so request ids stay below 0x40000000.
+int _fnv(String text) {
+  var h = 0x811c9dc5 & 0x3fffffff;
+  for (final unit in text.codeUnits) {
+    h = ((h ^ unit) * 0x01000193) & 0x3fffffff;
   }
-  return h < 2 ? h + 2 : h;
+  return h;
 }
 
 /// Local notifications through `flutter_local_notifications`, with the fixed texts of [ChannelStrings].
@@ -81,7 +87,7 @@ class LocalDeviceNotifier implements DeviceNotifier {
     await initialize();
     final s = _strings();
     // One notification per added device, with an id in its own range (the kid picks it and is never shown), so it replaces neither a request's nor another device's.
-    await _plugin.show(notificationIdFor('device:$kid'), s.deviceTitle,
+    await _plugin.show(deviceNotificationIdFor(kid), s.deviceTitle,
         s.deviceBody, _details(s));
   }
 

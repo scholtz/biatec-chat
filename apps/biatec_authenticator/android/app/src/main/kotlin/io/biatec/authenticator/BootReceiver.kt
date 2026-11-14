@@ -14,6 +14,12 @@ class BootReceiver : BroadcastReceiver() {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         val prefs = StayConnectedPrefs(context)
         if (!prefs.enabled || !prefs.active) return
-        ContextCompat.startForegroundService(context, Intent(context, StayConnectedService::class.java))
+        try {
+            ContextCompat.startForegroundService(context, Intent(context, StayConnectedService::class.java))
+        } catch (e: Exception) {
+            // Not allowed to start it now (background start restrictions, a revoked permission): the app must not crash from a broadcast. The service is
+            // not running, so it is not marked active; the app starts it again when it is opened.
+            prefs.active = false
+        }
     }
 }

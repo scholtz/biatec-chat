@@ -605,6 +605,104 @@ void main() {
   group('refusal and wake-ups', () {
     final epoch = DateTime.utc(2026, 11, 14);
 
+    test('a wake that arrives during a session is not lost', () {
+      fakeAsync((fa) {
+        var asked = 0;
+        final wake = StreamController<void>.broadcast();
+        final sockets = <FakeHubSocket>[];
+        final channel = DeviceChannel(
+          hubUri: Uri.parse('wss://oidc.example/hubs/device'),
+          ticket: () async => 't${++asked}',
+          enrolled: () async => true,
+          wake: wake.stream,
+          backoff: const [Duration(seconds: 30)],
+          random: _Fixed(0),
+          now: () => epoch.add(fa.elapsed),
+          silenceLimit: const Duration(days: 1),
+          connector: (uri) {
+            final s = FakeHubSocket();
+            sockets.add(s);
+            return s;
+          },
+        );
+        channel.start();
+        fa.elapse(const Duration(seconds: 1));
+        expect(asked, 1);
+        // The enrollment changes while connected: the live connection ends at once, and the channel connects again without the 30 second wait.
+        wake.add(null);
+        fa.elapse(const Duration(milliseconds: 100));
+        expect(sockets.first.closedByClient, isTrue);
+        expect(asked, 2);
+        channel.stop();
+        fa.flushMicrotasks();
+      });
+    });
+
+    test('a ticket asked for before an enrollment change is not used', () {
+      fakeAsync((fa) {
+        final wake = StreamController<void>.broadcast();
+        final gate = Completer<String>();
+        var connects = 0;
+        var calls = 0;
+        final channel = DeviceChannel(
+          hubUri: Uri.parse('wss://oidc.example/hubs/device'),
+          ticket: () {
+            calls++;
+            return calls == 1 ? gate.future : Future.value('new');
+          },
+          enrolled: () async => true,
+          wake: wake.stream,
+          random: _Fixed(0),
+          now: () => epoch.add(fa.elapsed),
+          connector: (uri) {
+            connects++;
+            expect(uri.queryParameters['access_token'], 'new');
+            return FakeHubSocket();
+          },
+        );
+        channel.start();
+        fa.elapse(const Duration(seconds: 1));
+        wake.add(null);
+        gate.complete('old');
+        fa.elapse(const Duration(seconds: 1));
+        expect(connects, 1);
+        channel.stop();
+        fa.flushMicrotasks();
+      });
+    });
+
+    test('a record that never ends ends the session', () {
+      fakeAsync((fa) {
+        var n = 0;
+        final sockets = <FakeHubSocket>[];
+        final channel = DeviceChannel(
+          hubUri: Uri.parse('wss://oidc.example/hubs/device'),
+          ticket: () async => 't${++n}',
+          enrolled: () async => true,
+          random: _Fixed(0),
+          now: () => epoch.add(fa.elapsed),
+          silenceLimit: const Duration(days: 1),
+          connector: (uri) {
+            final s = FakeHubSocket();
+            sockets.add(s);
+            return s;
+          },
+        );
+        channel.start();
+        fa.elapse(const Duration(seconds: 1));
+        sockets.first.serverSends('x' * (DeviceChannel.maxBuffered ~/ 2));
+        fa.elapse(const Duration(milliseconds: 10));
+        expect(sockets.first.closedByClient, isFalse);
+        sockets.first.serverSends('x' * (DeviceChannel.maxBuffered ~/ 2 + 10));
+        fa.elapse(const Duration(milliseconds: 10));
+        expect(sockets.first.closedByClient, isTrue);
+        fa.elapse(const Duration(seconds: 2));
+        expect(sockets, hasLength(2));
+        channel.stop();
+        fa.flushMicrotasks();
+      });
+    });
+
     test('a refused device (ChannelRefused) is not retried until something changes',
         () {
       fakeAsync((fa) {
@@ -622,12 +720,16 @@ void main() {
           now: () => epoch.add(fa.elapsed),
         );
         channel.start();
-        fa.elapse(const Duration(hours: 5));
-        expect(asked, 1, reason: 'no retry every 30 seconds for ever');
+        fa.elapse(const Duration(minutes: 14));
+        expect(asked, 1, reason: 'no retry every 30 seconds');
+        // Recoverable: a wrong clock that was fixed is picked up without a restart.
+        fa.elapse(const Duration(minutes: 2));
+        expect(asked, 2);
+        asked = 0;
         // A new enrollment (the wake) tries again.
         wake.add(null);
         fa.elapse(const Duration(seconds: 1));
-        expect(asked, 2);
+        expect(asked, 1);
         channel.stop();
         fa.flushMicrotasks();
       });
@@ -654,7 +756,7 @@ void main() {
           },
         );
         channel.start();
-        fa.elapse(const Duration(hours: 3));
+        fa.elapse(const Duration(minutes: 14));
         expect(asked, 1);
         wake.add(null);
         fa.elapse(const Duration(seconds: 1));
@@ -677,11 +779,13 @@ void main() {
           },
           enrolled: () async {
             final was = enrolled;
-            // The enrollment happens and announces itself after the answer is known, before the channel starts to sleep.
-            scheduleMicrotask(() {
-              enrolled = true;
-              wake.add(null);
-            });
+            // The enrollment happens and announces itself after the answer is known, before the channel starts to sleep (once).
+            if (!enrolled) {
+              scheduleMicrotask(() {
+                enrolled = true;
+                wake.add(null);
+              });
+            }
             return was;
           },
           wake: wake.stream,
