@@ -1,7 +1,7 @@
 ---
 id: T-243
 title: "Run the conformance kit against a real Biatec OIDC, and write the consent rollout checklist (flags, stage test script)"
-status: blocked
+status: backlog
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-237, T-238, T-240]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#required-changes-to-biatec-oidc"
 created: 2026-11-12
-updated: 2026-11-13
+updated: 2026-11-14
 ---
 
 # T-243 - Conformance against the real Biatec OIDC, and the rollout checklist
@@ -74,3 +74,4 @@ Filled in when the task moves to review.
 - 2026-11-12 18:43 · scholtz · (new) → blocked · created from the consent architecture record (AlgorandGoogleDriveAccount issue 23)
 - 2026-11-12 18:43 · kanban-board · backlog → blocked · waiting on: T-237, T-238, T-240
 - 2026-11-13 09:05 · scholtz · blocked → blocked · amended for revision 2 (proven domain, user-set threshold and trusted application in the stage script)
+- 2026-11-14 15:18 · kanban-board · blocked → backlog · blockers done: T-237, T-238, T-240

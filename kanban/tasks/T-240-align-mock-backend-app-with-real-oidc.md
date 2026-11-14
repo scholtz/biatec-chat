@@ -1,7 +1,7 @@
 ---
 id: T-240
 title: "Align the mock, the backend's signing path and the authenticator card with protocol 1.1 and the real Biatec OIDC"
-status: review
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-239]
@@ -87,6 +87,8 @@ PR #411, `task/T-240` @ 59c42ef. Local: `dotnet test backend` 1746+ pass, mock-o
 
 ## Review
 
+- 2026-11-14 15:18 · approve · PR #411 merged into main @ d5ef783 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-12 18:43 · scholtz · (new) → blocked · created from the consent architecture record (AlgorandGoogleDriveAccount issue 23)
@@ -96,3 +98,4 @@ PR #411, `task/T-240` @ 59c42ef. Local: `dotnet test backend` 1746+ pass, mock-o
 - 2026-11-14 13:21 · kanban-board · blocked → backlog · blockers done: T-239
 - 2026-11-14 14:30 · scholtz · backlog → in-progress · claimed by session-20261114-1430 on task/T-240
 - 2026-11-14 16:00 · scholtz · in-progress → review · PR #411 @ 59c42ef
+- 2026-11-14 15:18 · user · review → done · PR #411 merged into main @ d5ef783 (synced by kanban-sync)
