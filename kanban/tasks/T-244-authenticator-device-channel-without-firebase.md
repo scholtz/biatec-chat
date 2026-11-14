@@ -1,7 +1,7 @@
 ---
 id: T-244
 title: "Authenticator: device channel over SignalR (no Firebase), Android stay-connected service, optional Apple wake"
-status: in-progress
+status: review
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-240]
@@ -53,13 +53,13 @@ Parallel work possible: **yes** (after T-240, which also changes the mock; T-241
 
 ## Acceptance criteria
 
-- [ ] `git grep -i "firebase\|fcm" apps/biatec_authenticator` finds nothing except the mock's refusal test and a changelog line.
-- [ ] Dart tests against a local WebSocket test server: handshake, an invocation delivered to the controller, two messages in one frame, ping answered, close with and without reconnect, backoff sequence with a fake clock, a new ticket for every connection, an unknown target ignored, a malformed `auth_req_id` ignored.
-- [ ] Controller tests: each event has the effect above; the notification text contains nothing from the payload.
-- [ ] Contract test against the mock: a request opened in the mock arrives over the channel.
-- [ ] Setting off → no service is started (test on the service starter fake); setting on → started, and stopped when the device is unenrolled.
-- [ ] `flutter analyze` and `flutter test` pass; `./gradlew :app:compileDebugKotlin` compiles; `pnpm --filter mock-oidc test` passes.
-- [ ] Manual checklist in the README for a person with an Android phone (request arrives with the app in the background and the setting on; nothing arrives with it off until the app is opened) and an iPhone (arrives in the foreground). The Hand-off says which were run.
+- [x] `git grep -i "firebase\|fcm" apps/biatec_authenticator` finds nothing except the mock's refusal test and a changelog line.
+- [x] Dart tests against a local WebSocket test server: handshake, an invocation delivered to the controller, two messages in one frame, ping answered, close with and without reconnect, backoff sequence with a fake clock, a new ticket for every connection, an unknown target ignored, a malformed `auth_req_id` ignored.
+- [x] Controller tests: each event has the effect above; the notification text contains nothing from the payload.
+- [x] Contract test against the mock: a request opened in the mock arrives over the channel.
+- [x] Setting off → no service is started (test on the service starter fake); setting on → started, and stopped when the device is unenrolled.
+- [x] `flutter analyze` and `flutter test` pass; `./gradlew :app:compileDebugKotlin` compiles; `pnpm --filter mock-oidc test` passes.
+- [x] Manual checklist in the README for a person with an Android phone (request arrives with the app in the background and the setting on; nothing arrives with it off until the app is opened) and an iPhone (arrives in the foreground). The Hand-off says which were run.
 
 ## Implementation notes
 
@@ -73,7 +73,15 @@ Parallel work possible: **yes** (after T-240, which also changes the mock; T-241
 
 ## Hand-off
 
-Filled in when the task moves to review.
+PR #412, `task/T-244` @ 04f23eb. Local: `flutter test` 1203 pass, mock-oidc 59, conformance 41, e2e 10, the channel contract test passes against the mock (`MOCK_JSON_GROUPS=1 MOCK_TEST_HELPERS=1 MOCK_MAX_PENDING=1000 PORT=8089`). CI: backend, js, images, authenticator-security pass; `authenticator` fails only on the Flutter SDK drift (79 deprecation infos against a baseline of 77 on main).
+
+- Firebase is gone from the app; `git grep -i "firebase\|fcm" apps/biatec_authenticator` finds only README/Swift comments saying "no Firebase".
+- `lib/channel/device_channel.dart` (SignalR JSON hub over the pinned TLS client), `DeviceEventSource`/`DeviceEventController`, Android "Stay connected" Kotlin foreground service (own engine with the keystore plugin, so the ticket is still signed with the device key), optional Apple wake behind `APNS_ENABLED`, mock hub (`/devices/hub-ticket`, `/hubs/device`).
+- The channel is OFF against real Biatec OIDC unless `--dart-define=DEVICE_CHANNEL=true` (on for the mock), as AGENTS.md requires.
+- NOT verified on a device: the Android service, notifications, the Swift code and the Xcode project edit (no emulator or Xcode here); no device criterion is ticked. `./gradlew :app:compileDebugKotlin` and `:app:assembleDebug` compile only with `-PskipDependencyChecks=true` (the wrapper's Gradle is older than the installed Flutter requires: existing drift). The Play Console `specialUse` declaration text in the README was written from memory: check it before a release.
+- Known limits: with "Stay connected" on, the app and the service each run a channel; the mock hub notifies pending devices too (the real server must not); tapping a notification opens the app, not the specific request.
+
+**Unblocks:** T-241 (waits for T-244 and T-240, both done after merge).
 
 ## Review
 
@@ -82,3 +90,4 @@ Filled in when the task moves to review.
 - 2026-11-13 09:05 · scholtz · (new) → blocked · created from revision 2 of the consent architecture record (AlgorandGoogleDriveAccount issue 23): no Firebase
 - 2026-11-14 15:18 · kanban-board · blocked → backlog · blockers done: T-240
 - 2026-11-14 16:30 · scholtz · backlog → in-progress · claimed by session-20261114-1630 on task/T-244
+- 2026-11-14 18:00 · scholtz · in-progress → review · PR #412 @ 04f23eb
