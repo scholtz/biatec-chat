@@ -83,9 +83,9 @@ against the mock and cannot be enabled against real Biatec OIDC until the row sh
 | 24 | Minimum authenticator build: every answer carries `X-Biatec-Min-App-Build` | #30 | An optional build expiry date compiled into the app (`--dart-define=BUILD_EXPIRES`); without either an old build keeps running. The authenticator reads the header on every call it makes, against the mock only until Biatec OIDC sends it (T-232) |
 | 25 | Platform attestation at enrollment: a challenge endpoint, and Play Integrity and App Attest tokens verified (`POST /devices/challenge`, `attestation_challenge` and `platform_attestation` on `POST /devices`, `PUT /devices/attestation`) | #36 (verification), #31 (the challenge endpoint) | Enroll without an attestation and flag the device; the authenticator sends one when the platform offers it and the mock checks its shape (T-234) |
 
-## Status on Biatec OIDC (T-243, 2026-11-14)
+## Status on Biatec OIDC (T-243, as of 2026-11-14)
 
-Row by row: whether the change is implemented in Biatec OIDC, and whether it is enabled on stage. The source is the issue list of
+Refresh it with `gh issue list -R ludovit-scholtz/AlgorandGoogleDriveAccount --state all --limit 60` (and `git log` of that repository's `master`). Row by row: whether the change is implemented in Biatec OIDC, and whether it is enabled on stage. The source is the issue list of
 `ludovit-scholtz/AlgorandGoogleDriveAccount` (`gh issue list --state all`: issues 23 to 38 are all open, nothing of the consent architecture is closed) and the
 commits on that repository's `master`, which holds part of the foundation: the consent protocol primitives (PR 19), consent requests, device endpoints and
 receipt verification (PR 20), consent polling with `slow_down` and `access_denied` (PR 21), the CIBA token grant with the elevated consent token (PR 22, for

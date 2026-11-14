@@ -10,6 +10,12 @@ import { redact, seeded, serverUrl } from "./needs.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
+/** Paths of this package that differ from the commit, so unrelated dirty files elsewhere do not mark the report. */
+const dirtyPaths = () => {
+  const out = git("status", "--porcelain", "--", ".");
+  return out === "unknown" || !out ? [] : out.split(/\r?\n/).map((l) => l.replace(/^\s*\S+\s+/, "").trim()).filter((p) => p && !/(^|\/)report\//.test(p));
+};
+
 const git = (...args: string[]) => {
   try { return execFileSync("git", args, { cwd: here, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { return "unknown"; }
 };
@@ -20,28 +26,34 @@ export const publicUrl = (raw: string) => {
 };
 
 export default class ConformanceReport implements Reporter {
-  onTestRunEnd(testModules: ReadonlyArray<any>) {
-    const cases: { name: string; file: string; status: "passed" | "failed" | "skipped"; reason?: string; error?: string }[] = [];
+  onTestRunEnd(testModules: ReadonlyArray<any>, unhandledErrors: ReadonlyArray<unknown> = [], reason: string = "passed") {
+    const cases: { name: string; file: string; status: "passed" | "failed" | "skipped" | "not_run"; reason?: string; error?: string }[] = [];
     for (const mod of testModules) {
       for (const t of mod.children.allTests() as Iterable<any>) {
         const r = t.result();
-        const status = r.state === "passed" ? "passed" : r.state === "failed" ? "failed" : "skipped";
+        // "skipped" is a case that declared it could not run here; "not_run" is one that never ran (aborted or cancelled run).
+        const status = r.state === "passed" ? "passed" : r.state === "failed" ? "failed" : r.state === "skipped" ? "skipped" : "not_run";
         const c: (typeof cases)[number] = { name: redact(t.fullName), file: String(mod.relativeModuleId ?? mod.moduleId).split(/[\/]/).pop()!, status };
         if (status === "skipped") c.reason = redact(r.note ?? "skipped without a reason");
+        if (status === "not_run") c.reason = "the run ended before this case started";
         if (status === "failed") c.error = redact(String(r.errors?.[0]?.message ?? "failed").slice(0, 1500));
         cases.push(c);
       }
     }
     const count = (s: string) => cases.filter((c) => c.status === s).length;
     const url = serverUrl();
-    const dirty = git("status", "--porcelain").length > 0;
+    const dirty = dirtyPaths();
+    const modulesFailed = testModules.some((m: any) => (m.errors?.() ?? []).length > 0); // a setup or collection error in a file
+    const runState = reason === "interrupted" ? "cancelled" : unhandledErrors.length || modulesFailed || cases.some((c) => c.status === "not_run") ? "aborted" : "completed";
     const report = {
       generatedAt: new Date().toISOString(),
       server: url ? publicUrl(url) : "in-process mock",
       mockHelpers: seeded(),
-      commit: git("rev-parse", "HEAD") + (dirty ? " (uncommitted changes)" : ""),
-      totals: { passed: count("passed"), failed: count("failed"), skipped: count("skipped") },
-      note: "Skipped cases did not run and prove nothing. Tokens, secrets, codes and request ids are redacted.",
+      commit: git("rev-parse", "HEAD"),
+      dirtyPaths: dirty,
+      runState,
+      totals: { passed: count("passed"), failed: count("failed"), skipped: count("skipped"), not_run: count("not_run") },
+      note: "Skipped and not_run cases did not run and prove nothing. Tokens, secrets, codes and request ids are redacted.",
       cases,
     };
     const dir = process.env.CONFORMANCE_REPORT_DIR || join(here, "..", "report");
@@ -49,7 +61,7 @@ export default class ConformanceReport implements Reporter {
     const host = url ? new URL(url).host.replace(/[^A-Za-z0-9.-]/g, "_") : "mock";
     const file = join(dir, `run-${report.generatedAt.replace(/[:.]/g, "-")}-${host}.json`);
     writeFileSync(file, JSON.stringify(report, null, 2) + "\n");
-    console.log(`\nconformance report: ${file}  (${report.totals.passed} passed, ${report.totals.failed} failed, ${report.totals.skipped} skipped)`);
+    console.log(`\nconformance report: ${file}  (${runState}: ${report.totals.passed} passed, ${report.totals.failed} failed, ${report.totals.skipped} skipped, ${report.totals.not_run} not run)`);
     for (const c of cases.filter((x) => x.status === "skipped")) console.log(`  SKIPPED ${c.name}: ${c.reason}`);
   }
 }

@@ -20,7 +20,7 @@ needs, and a case whose needs this run cannot offer is reported as **skipped wit
 
 | Need | Available when |
 | --- | --- |
-| `mockHelpers` | the in-process mock, or a mock that offers `/mock/*` and was announced with `CONFORMANCE_MOCK_HELPERS=1`. Never against a real server, so every case that plays the authenticator (the receipt cases) is skipped there: a real receipt needs a real phone. |
+| `mockHelpers` | the in-process mock, or a standalone mock that offers `/mock/*` and was announced with `CONFORMANCE_MOCK_HELPERS=1` (the flag only says the helpers exist: it supplies no secret, token or key). Never against a real server, so every case that plays the authenticator (the receipt cases) is skipped there: a real receipt needs a real phone. |
 | `clientSecret` | `CONFORMANCE_CLIENT_SECRET` is set (direct entry) |
 | `userToken` | `CONFORMANCE_USER_TOKEN` is set (the access token of the client and user under test; `CONFORMANCE_STEPUP_BEARER` is the older name) |
 | `deviceKey` | `CONFORMANCE_DEVICE_PRIVATE_JWK` and `CONFORMANCE_DEVICE_TOKEN` are set |
@@ -32,13 +32,13 @@ read -rs CONFORMANCE_CLIENT_SECRET; read -rs CONFORMANCE_USER_TOKEN; export CONF
 pnpm --filter @biatec/consent-protocol conformance
 ```
 
-Against another server the seed data of the mock are not defaults: unset secrets stay empty. The cases that open a dozen or two hundred
+Seed users, tokens and the vector device key are defaults only for the in-process mock. Against any server named by `CONFORMANCE_OIDC_URL`, `CONFORMANCE_MOCK_HELPERS=1` included, an unset secret stays empty and the cases that need it are skipped with the reason. `tests/report.test.ts` is excluded whenever `CONFORMANCE_OIDC_URL` is set, so its cases never count as results of that server; its nested run starts from a clean environment. The cases that open a dozen or two hundred
 requests (`too_many_pending_requests`, `rate_limited`) need `mockHelpers` so that they never flood a real person's phone.
 
 `report/run-<time>-<host>.json` is written for every run: the server URL (without credentials or query), the commit of this repository, and
 pass, fail and skip per case with the reason. Supplied secrets, `Bearer`/`Basic`/`Device` values, JWTs, binding codes and auth request ids are
 redacted (`src/needs.ts`, asserted by `tests/report.test.ts`). The console output of vitest is not redacted: do not paste it into a ticket.
-Against a real server the vitest JSON and JUnit files are not written, because they hold raw failure messages.
+Whenever `CONFORMANCE_OIDC_URL` is set the vitest JSON and JUnit files are not written, because they hold raw failure messages. The report also records `runState` (completed, aborted or cancelled), marks cases that never ran as `not_run` (not `skipped`) and lists `dirtyPaths` of this package that differ from the commit.
 
 ## What it checks
 

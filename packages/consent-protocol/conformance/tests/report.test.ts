@@ -11,7 +11,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { missing, redact } from "../src/needs.ts";
+import { have, missing, redact } from "../src/needs.ts";
 import { publicUrl } from "../src/report.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -56,8 +56,9 @@ describe("the kit against a server without the mock's helpers", () => {
     const child = spawn(process.execPath, [vitest, "run", "--config", join(here, "..", "vitest.config.ts")], {
       cwd: join(here, ".."),
       stdio: "ignore",
+      // A clean environment: only what a process needs to start, plus the markers. A person's real CONFORMANCE_* secrets never reach the child.
       env: {
-        ...process.env,
+        ...Object.fromEntries(["PATH", "Path", "HOME", "USERPROFILE", "SystemRoot", "TEMP", "TMP", "TMPDIR", "APPDATA", "LOCALAPPDATA", "COMSPEC", "PATHEXT", "windir"].filter((k) => process.env[k] !== undefined).map((k) => [k, process.env[k]!])),
         CONFORMANCE_NESTED: "1",
         CONFORMANCE_OIDC_URL: url,
         CONFORMANCE_REPORT_DIR: dir,
@@ -94,10 +95,13 @@ describe("the kit against a server without the mock's helpers", () => {
 
   it("names the server, the commit of this repository and a result per case", () => {
     expect(report.server).toBe(url);
-    expect(report.commit).toMatch(/^([0-9a-f]{40}( \(uncommitted changes\))?|unknown)$/);
+    expect(report.commit).toMatch(/^([0-9a-f]{40}|unknown)$/);
     expect(report.cases.length).toBeGreaterThan(20);
-    for (const c of report.cases) expect(["passed", "failed", "skipped"]).toContain(c.status);
-    expect(report.totals.passed + report.totals.failed + report.totals.skipped).toBe(report.cases.length);
+    expect(report.runState).toBe("completed");
+    expect(Array.isArray(report.dirtyPaths)).toBe(true);
+    expect(report.totals.not_run).toBe(0);
+    for (const c of report.cases) expect(["passed", "failed", "skipped", "not_run"]).toContain(c.status);
+    expect(report.totals.passed + report.totals.failed + report.totals.skipped + report.totals.not_run).toBe(report.cases.length);
   });
 
   it("lists the cases that need a mock helper as skipped, each with its reason, never as passed", () => {
@@ -130,6 +134,22 @@ describe("what the report may say", () => {
     expect(missing(["mockHelpers", "userToken"], env)).toMatch(/mockHelpers.*userToken.*CONFORMANCE_USER_TOKEN/);
     expect(missing(["userToken"], { ...env, CONFORMANCE_USER_TOKEN: "x" })).toBeNull();
     expect(missing(["mockHelpers"], {})).toBeNull(); // in-process mock
+  });
+
+  it("the mock-helpers flag never supplies a secret nobody supplied, and seeds apply only to the in-process mock", () => {
+    const env = { CONFORMANCE_OIDC_URL: "https://stage.example", CONFORMANCE_MOCK_HELPERS: "1" };
+    expect(have("mockHelpers", env)).toBe(true);
+    for (const n of ["clientSecret", "userToken", "deviceKey", "bearer:noDevice", "bearer:threshold5000"] as const) expect(have(n, env), n).toBe(false);
+    expect(missing(["userToken"], env)).toMatch(/CONFORMANCE_USER_TOKEN/);
+    expect(have("userToken", { ...env, CONFORMANCE_USER_TOKEN: "x" })).toBe(true);
+    expect(have("userToken", {})).toBe(true); // in-process mock
+  });
+
+  it("keeps ordinary words and redacts credentials, whatever the variable and the shape", () => {
+    expect(redact("Device attestation lookup failed: Basic authentication is required", {})).toBe("Device attestation lookup failed: Basic authentication is required");
+    const env = { CONFORMANCE_BEARER_PAUSED: "abcd", CONFORMANCE_CLIENT_SECRET: "s3cr3t-value" };
+    const text = redact("paused abcd, secret s3cr3t-value, Device abc123xyz, Basic dXNlcjpw0YXNz, Bearer 0123456789klmnopqrst", env);
+    for (const leak of ["abcd", "s3cr3t-value", "abc123xyz", "dXNlcjpw0YXNz", "0123456789klmnopqrst"]) expect(text).not.toContain(leak);
   });
 
   it("redacts supplied secrets and token-shaped values", () => {

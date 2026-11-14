@@ -115,7 +115,8 @@ Watch (the security events and metrics of issue 35 of the Biatec OIDC repository
 Emergency rollback (in this order; each step is independent, stop when the problem is gone):
 
 1. In `k8s/stage/backend-config.patch.yaml` set `Caps__NoDevice__Enabled: "true"` and `Caps__OidcHonoursRequireConsent: "false"`, deploy (or edit the
-   ConfigMap and `kubectl rollout restart deployment/biatec-chat-backend -n biatec-chat-stage`). The backend is back at the fallbacks of today: no user
+   ConfigMap and `kubectl rollout restart deployment/biatec-chat-backend -n biatec-chat-stage`). **Stage deploys on every push to `main`, so an emergency
+   `kubectl edit` of the ConfigMap must be mirrored in `k8s/stage/backend-config.patch.yaml` (committed to `main`) within the hour; otherwise the next deploy reverts it.** The backend is back at the fallbacks of today: no user
    without a device signs anything that needs the phone, and a cap is a hard stop.
 2. If Biatec OIDC itself misbehaves, set `Consent__Enforcement=Off` there (Biatec OIDC owners). The client is then treated as before; the backend, with step 1
    done, does not depend on it.

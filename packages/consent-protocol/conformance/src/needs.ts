@@ -19,8 +19,10 @@ type Env = Record<string, string | undefined>;
 
 /** The server under test; empty when the in-process mock is started. The deprecated CONFORMANCE_BASE_URL still works. */
 export const serverUrl = (env: Env = process.env) => (env.CONFORMANCE_OIDC_URL || env.CONFORMANCE_BASE_URL || "").replace(/\/+$/, "");
-/** True when the suite may use the mock's seed data and helpers: the in-process mock, or a mock that was told so. */
-export const seeded = (env: Env = process.env) => !serverUrl(env) || env.CONFORMANCE_MOCK_HELPERS === "1";
+/** True only for the in-process mock: its seed users, tokens and the vector device key are defaults nowhere else. */
+export const seeded = (env: Env = process.env) => !serverUrl(env);
+/** The server offers the mock's /mock/* helpers: the in-process mock, or a standalone mock announced with CONFORMANCE_MOCK_HELPERS=1. */
+export const offersHelpers = (env: Env = process.env) => seeded(env) || env.CONFORMANCE_MOCK_HELPERS === "1";
 
 export const bearerVars: Record<string, string> = {
   noDevice: "CONFORMANCE_BEARER_NO_DEVICE",
@@ -42,7 +44,7 @@ const variables = (need: Need): string[] => {
 export function have(need: Need, env: Env = process.env): boolean {
   if (seeded(env)) return true;
   switch (need) {
-    case "mockHelpers": return false;
+    case "mockHelpers": return offersHelpers(env);
     case "clientSecret": return !!env.CONFORMANCE_CLIENT_SECRET;
     case "userToken": return !!(env.CONFORMANCE_USER_TOKEN || env.CONFORMANCE_STEPUP_BEARER);
     case "deviceKey": return !!(env.CONFORMANCE_DEVICE_PRIVATE_JWK && env.CONFORMANCE_DEVICE_TOKEN);
@@ -57,28 +59,32 @@ export function missing(needs: Need[], env: Env = process.env): string | null {
   return "needs " + absent.map((n) => n + (n === "mockHelpers" ? " (the server is not a mock with test helpers)" : ` (set ${variables(n).join(" and ")})`)).join("; ");
 }
 
-/** Every secret value the run was given, for redaction. */
+const secretNames = (env: Env) => Object.keys(env).filter((n) => /^CONFORMANCE_(CLIENT_SECRET|USER_TOKEN|STEPUP_BEARER|DEVICE_TOKEN|DEVICE_PRIVATE_JWK|BEARER_.+)$/.test(n));
+
+/** Every secret value the run was given (any CONFORMANCE_ secret variable, value of 4 characters or more), for redaction. */
 export function secretValues(env: Env = process.env): string[] {
-  const names = ["CONFORMANCE_CLIENT_SECRET", "CONFORMANCE_USER_TOKEN", "CONFORMANCE_STEPUP_BEARER", "CONFORMANCE_DEVICE_TOKEN", "CONFORMANCE_DEVICE_PRIVATE_JWK", ...Object.values(bearerVars)];
   const out = new Set<string>();
-  for (const n of names) {
+  for (const n of secretNames(env)) {
     const v = env[n];
-    if (!v) continue;
+    if (!v || v.length < 4) continue;
     out.add(v);
     try { // the private JWK's members individually
       const j = JSON.parse(v);
-      if (j && typeof j === "object") for (const m of Object.values(j)) if (typeof m === "string" && m.length >= 8) out.add(m);
+      if (j && typeof j === "object") for (const m of Object.values(j)) if (typeof m === "string" && m.length >= 4) out.add(m);
     } catch { /* not JSON */ }
   }
   return [...out].sort((a, b) => b.length - a.length);
 }
 
-/** Replaces the supplied secrets and anything shaped like a token, a code or an auth request id. */
+/** A string that looks like a credential: a digit, a dot, or 16 characters or more (so "attestation" and "authentication" are not). */
+const tokenLike = "(?=[A-Za-z0-9._~+/=-]*[0-9.])[A-Za-z0-9._~+/=-]{6,}|[A-Za-z0-9._~+/=-]{16,}";
+
+/** Replaces every supplied secret (exact value) and anything shaped like a token, a code or an auth request id. */
 export function redact(text: string, env: Env = process.env): string {
   let t = text;
   for (const s of secretValues(env)) t = t.split(s).join("[redacted]");
   return t
-    .replace(/(Bearer|Basic|Device)\s+[A-Za-z0-9._~+/=-]{6,}/gi, "$1 [redacted]")
+    .replace(new RegExp(String.raw`\b(Bearer|Basic|Device)\s+(?:${tokenLike})`, "g"), "$1 [redacted]")
     .replace(/eyJ[A-Za-z0-9_-]{8,}(\.[A-Za-z0-9_-]+){1,2}/g, "[redacted-jwt]")
     .replace(/(\b(?:access_token|refresh_token|id_token|binding_code|code|auth_req_id|client_secret|signature|token|private_key|d)\b"?\s*[:=]\s*)("[^"]*"|[A-Za-z0-9._~+/=-]+)/gi, (_m, k) => `${k}"[redacted]"`)
     .replace(/\b(ciba_[A-Za-z0-9_-]+)\b/g, "[redacted-auth-req]");
