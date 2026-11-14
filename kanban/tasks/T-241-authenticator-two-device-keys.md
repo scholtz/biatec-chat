@@ -1,7 +1,7 @@
 ---
 id: T-241
 title: "Authenticator: two device keys - approval key bound to biometrics in the keystore, presence key for proofs and Deny (BCHAT-007)"
-status: in-progress
+status: review
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-239, T-240, T-244]
@@ -49,8 +49,8 @@ Parallel work possible: **yes** (after its blockers; T-244 changes the same Andr
 
 ## Acceptance criteria
 
-- [ ] Dart tests with a fake channel: approve uses `signApproval` exactly once and nothing else prompts; deny, `code_failed` and proofs use `signPresence`; a cancelled prompt leaves the request pending and consumes no code attempt; `approvalKeyInvalidated` disables Approve and keeps Deny.
-- [ ] Receipts produced by the app's code verify with `packages/consent-protocol/scripts/lib.mjs` (contract test against the mock with `MOCK_TWO_KEYS=1`).
+- [x] Dart tests with a fake channel: approve uses `signApproval` exactly once and nothing else prompts; deny, `code_failed` and proofs use `signPresence`; a cancelled prompt leaves the request pending and consumes no code attempt; `approvalKeyInvalidated` disables Approve and keeps Deny.
+- [x] Receipts produced by the app's code verify with `packages/consent-protocol/scripts/lib.mjs` (contract test against the mock with `MOCK_TWO_KEYS=1`).
 - [ ] Android instrumented test (or a documented manual run when no device is available to the agent): the approval key reports `isUserAuthenticationRequired == true`, hardware backed, and `Signature.initSign` outside a `BiometricPrompt` throws `UserNotAuthenticatedException`.
 - [ ] `flutter analyze` and `flutter test` pass; the Kotlin compiles (`./gradlew :app:compileDebugKotlin`).
 - [ ] Manual device checklist in the README, to be run by a person on a real Android phone and a real iPhone: enroll, approve (prompt appears once), deny (no prompt), add a fingerprint (approval key invalidated, re-enroll). The Hand-off states plainly which of these were run and which were not.
@@ -67,7 +67,14 @@ Parallel work possible: **yes** (after its blockers; T-244 changes the same Andr
 
 ## Hand-off
 
-Filled in when the task moves to review.
+PR #414, `task/T-241` @ b025d55. Local: `flutter test` 1235 pass, mock-oidc 60, the contract tests (approvals, enrollment, settings, channel) pass against a mock started with `MOCK_TWO_KEYS=1`, the device-proof test against a mock with `MOCK_DEVICE_PROOF=1`. CI: backend, js, images, authenticator-security pass; `authenticator` fails only on the Flutter SDK drift that also fails on main.
+
+- Two keys: approval key bound to a strong biometric per use (Android `BiometricPrompt` + `CryptoObject`, invalidated on new biometric enrollment, StrongBox when available; iOS `.biometryCurrentSet`), presence key for device proofs, Deny and `code_failed`. `lib/keys/device_key_store.dart` channel API with one wire vocabulary pinned by tests (a mismatch found in review would have broken approving on a device). Enrollment sends `presence_kid`, `presence_public_key`, `approval_proof`, `presence_proof`.
+- The two-key flow is behind `AppConfig.twoKeys` (on for the mock, off against real Biatec OIDC unless `--dart-define=TWO_KEY_DEVICE=true`). Single-key mode keeps old installs working (legacy keystore alias) and creates only the prompt-free key.
+- NOT verified on a device or in Xcode: `BiometricPrompt` with a `CryptoObject`, invalidation handling, StrongBox, `UserNotAuthenticatedException` outside a prompt, all Swift code (never compiled), the Android instrumented test (compiles only). No device criterion is ticked; the manual checklist is in the README. `./gradlew :app:compileDebugKotlin` builds only with `-PskipDependencyChecks=true` (existing Gradle drift).
+- Known limits: with the two-key flag on, the presence key requires an unlocked device, so the stay-connected service cannot sign the ticket request for a NEW hub connection while the phone is locked; tightening settings changes are unsigned (the app's gate); `keysState` on Android is cached for 5 minutes (each probe leaves a keymaster operation open); `approval_proof`/`presence_proof` field names are chosen here and documented in the mock README, not in the spec; `biatec_device_approval` signing is T-242.
+
+**Unblocks:** T-242 (in-app login and activation of a new device).
 
 ## Review
 
@@ -78,3 +85,4 @@ Filled in when the task moves to review.
 - 2026-11-13 09:05 · scholtz · blocked → blocked · waits for T-244 too (both change the Android and iOS projects)
 - 2026-11-14 16:36 · kanban-board · blocked → backlog · blockers done: T-239, T-240, T-244
 - 2026-11-14 19:30 · scholtz · backlog → in-progress · claimed by session-20261114-1930 on task/T-241
+- 2026-11-14 22:40 · scholtz · in-progress → review · PR #414 @ b025d55
