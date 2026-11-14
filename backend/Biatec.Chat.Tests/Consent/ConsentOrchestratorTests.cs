@@ -635,7 +635,7 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
             "decision_not_allowed" => s => { s.Decision = "deny"; s.BindingCode = ""; },
             "approval_key_required" => s => s.DeviceKey = "presence",
             "attestation_subject_mismatch" => s => s.MutateAttestation = c => c["sub"] = "someone-else",
-            "attestation_expired" => s => s.MutateAttestation = c => c["exp"] = _clock.Now.ToUnixTimeSeconds() - 120,
+            "attestation_expired" => s => s.MutateAttestation = c => c["exp"] = _clock.Now.ToUnixTimeSeconds() - 1,
             "attestation_unknown_key" => s => { s.AttestationKid = "rogue-key-1"; s.AttestationSigningKey = "new_presence"; },
             "device_signature_invalid" => s => s.TamperSigned = o => o["expiry"] = s.Expiry + 1,
             "auth_req_id_mismatch" => s => s.AuthReqId = "ciba_00000000000000000000000000000000",

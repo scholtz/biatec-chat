@@ -83,9 +83,11 @@ public static class ReceiptVerdictExtensions
 /// <param name="GroupHash">The group id of the previewed group, base32 without padding.</param>
 /// <param name="Origin">The origin stored with the consent request (compared in protocol 1.1, whose transaction details sign it).</param>
 /// <param name="Decisions">The decisions that are acceptable on this path.</param>
+/// <param name="ClientId">The OAuth <c>client_id</c> of the tenant: the schema defines the 1.1 <c>client_fingerprint</c> as the SHA-256 of it (null: use <paramref name="ClientEntityId"/>).</param>
+/// <param name="ExpiryGraceSeconds">How long after its <c>expiry</c> an approval is still accepted: the approval happened inside the window, the poll that redeemed it may come one poll interval later. Applies to the receipt expiry only, never to the attestation.</param>
 /// <param name="CheckExpiry">Whether a receipt whose <c>expiry</c> has passed is refused (approvals; a denial stays a denial).</param>
 public sealed record ConsentReceiptExpectation(string Issuer, DateTimeOffset Now, string AuthReqId, string ClientEntityId, string Sub, string? BindingCode,
-    string BindingMessage, string GroupHash, string Network, string Sender, string Origin, IReadOnlyCollection<string> Decisions, bool CheckExpiry);
+    string BindingMessage, string GroupHash, string Network, string Sender, string Origin, IReadOnlyCollection<string> Decisions, bool CheckExpiry, string? ClientId = null, int ExpiryGraceSeconds = 0);
 
 /// <summary>
 /// Verifies a Biatec consent receipt (spec section 8.1) in a way that never throws: any malformed input is a verdict. Both receipt versions are
@@ -269,7 +271,7 @@ public static class ConsentReceiptVerifier
         // The stored request decides what names the client, with the version agreeing with the signed shape: 1.1 a fingerprint, 1.0 the entity id.
         if (string.IsNullOrEmpty(e.ClientEntityId)) return ReceiptVerdict.ClientMismatch;
         var client = is11 ? Str(signed["client_fingerprint"]) : Str(signed["client_entity_id"]);
-        if (client != (is11 ? ClientFingerprint(e.ClientEntityId) : e.ClientEntityId)) return ReceiptVerdict.ClientMismatch;
+        if (client != (is11 ? ClientFingerprint(e.ClientId ?? e.ClientEntityId) : e.ClientEntityId)) return ReceiptVerdict.ClientMismatch;
 
         if (string.IsNullOrEmpty(e.Sub) || Str(signed["sub"]) != e.Sub) return ReceiptVerdict.SubjectMismatch;
         if (e.BindingCode is not null)
@@ -278,7 +280,7 @@ public static class ConsentReceiptVerifier
             var expectedCode = Encoding.UTF8.GetBytes(e.BindingCode);
             if (expectedCode.Length == 0 || !CryptographicOperations.FixedTimeEquals(expectedCode, Encoding.UTF8.GetBytes(Str(signed["binding_code"])!))) return ReceiptVerdict.BindingCodeMismatch;
         }
-        if (e.CheckExpiry && (Int(signed["expiry"]) is not { } expiry || expiry <= e.Now.ToUnixTimeSeconds())) return ReceiptVerdict.ReceiptExpired;
+        if (e.CheckExpiry && (Int(signed["expiry"]) is not { } expiry || expiry + e.ExpiryGraceSeconds <= e.Now.ToUnixTimeSeconds())) return ReceiptVerdict.ReceiptExpired;
         if (Str(signed["binding_message"]) != e.BindingMessage) return ReceiptVerdict.BindingMessageMismatch;
 
         // Exactly one detail, a biatec_transaction, for the group, network, sender (and, in 1.1, origin) that was previewed.

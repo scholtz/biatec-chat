@@ -213,6 +213,17 @@ public class ConsentReceiptVerifierTests
         Assert.Equal(ReceiptVerdict.ReceiptExpired, Check(Spec().With(s => s.Expiry = Unix - 1)));
 
     [Fact]
+    public void TheGrace_AppliesToTheReceiptExpiryOnly_AndTheFingerprintIsOfTheClientId()
+    {
+        // Expired 30 s ago, 60 s of grace: accepted. Expired 90 s ago: refused.
+        Assert.Equal(ReceiptVerdict.Valid, Check(Spec().With(s => s.Expiry = Unix - 30), e => e with { ExpiryGraceSeconds = 60 }));
+        Assert.Equal(ReceiptVerdict.ReceiptExpired, Check(Spec().With(s => s.Expiry = Unix - 90), e => e with { ExpiryGraceSeconds = 60 }));
+        // The 1.1 fingerprint is of the client_id, whatever the entity id says.
+        Assert.Equal(ReceiptVerdict.Valid, Check(Spec(), e => e with { ClientEntityId = "some-entity", ClientId = "biatec-chat" }));
+        Assert.Equal(ReceiptVerdict.ClientMismatch, Check(Spec(), e => e with { ClientId = "another-client" }));
+    }
+
+    [Fact]
     public void OtherClient_OtherSubject_AndAMessageThatWasShown_AreRefused()
     {
         Assert.Equal(ReceiptVerdict.ClientMismatch, Check(Spec(), e => e with { ClientEntityId = "another-client" }));

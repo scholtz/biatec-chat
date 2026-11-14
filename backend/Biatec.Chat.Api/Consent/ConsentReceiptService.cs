@@ -91,9 +91,9 @@ public sealed class ConsentReceiptService(IOidcMetadataProvider metadata, IConse
             if (string.IsNullOrEmpty(step.SubjectHash) || step.Network is null || step.SenderAddress is null) return ReceiptVerdict.DetailsMismatch;
             // Everything below is what the backend itself asked for: the stored request, the session and the previewed group.
             var expected = new ConsentReceiptExpectation(
-                Issuer: oidc.Value.Issuer, Now: checkExpiry ? clock.GetUtcNow() - TimeSpan.FromSeconds(ConsentOrchestrator.MaxPollIntervalSeconds) : clock.GetUtcNow(), AuthReqId: request.AuthReqId, ClientEntityId: tenant.ClientEntityId, Sub: session.OidcSub ?? "",
+                Issuer: oidc.Value.Issuer, Now: clock.GetUtcNow(), AuthReqId: request.AuthReqId, ClientEntityId: tenant.ClientEntityId, Sub: session.OidcSub ?? "",
                 BindingCode: bindingCode, BindingMessage: "", GroupHash: ConsentReceiptVerifier.GroupHash(System.Convert.FromHexString(step.SubjectHash)),
-                Network: step.Network, Sender: step.SenderAddress, Origin: ConfirmService.ReportedOrigin(tenant, request.Origin), Decisions: decisions, CheckExpiry: checkExpiry);
+                Network: step.Network, Sender: step.SenderAddress, Origin: ConfirmService.ReportedOrigin(tenant, request.Origin), Decisions: decisions, CheckExpiry: checkExpiry, ClientId: tenant.OidcClientId, ExpiryGraceSeconds: ConsentOrchestrator.MaxPollIntervalSeconds);
 
             var verdict = ConsentReceiptVerifier.Verify(receipt, ToSigningKeys(await metadata.GetSigningKeysAsync(false, ct)), expected);
             // A key the cache does not know may be a rotation: refetch once (the provider rate limits it) and try again.
@@ -121,7 +121,7 @@ public sealed class ConsentReceiptService(IOidcMetadataProvider metadata, IConse
                     break;
                 case ECDsaSecurityKey { KeyId: { Length: > 0 } kid } ec:
                     var p = ec.ECDsa.ExportParameters(false);
-                    if (p.Q.X is { } qx && p.Q.Y is { } qy && p.Curve.Oid?.FriendlyName is "nistP256" or "ECDSA_P256")
+                    if (p.Q.X is { } qx && p.Q.Y is { } qy && p.Curve.Oid?.Value == "1.2.840.10045.3.1.7")
                         result.Add(new OidcSigningKey(kid, "EC", "P-256", null, Base64UrlEncoder.Encode(qx), Base64UrlEncoder.Encode(qy)));
                     break;
             }
