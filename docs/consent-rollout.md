@@ -44,6 +44,14 @@ All of these are settings or deployments in the Biatec OIDC repository; this rep
    pass, fail and skip per case. Cases that need the mock's helpers (the ones that play the phone) are reported as skipped with the reason and prove nothing;
    the phone half is covered by the manual script of part 3. Attach the report to the task; failures are a stop.
 
+   **Minimum a stage run must show.** The report says `runState: completed`, has no failed case and no `not_run` case, and these groups PASS (not skipped):
+   the canonical-form vectors; every refusal case that needs only a user token (inconsistent or missing group id `400 group_hash_mismatch`, rekey, close-to and
+   clawback `403 consent_unsupported_operation`, `403 consent_unsupported_network`); and each user-bound refusal and settings case for which you supplied a
+   `CONFORMANCE_BEARER_*` token (no device, paused client, unproven client blocked, first-day cap, the user's 5000 EUR threshold, `GET /consent/settings`).
+   A run whose consent and receipt cases (the step-up and direct entries, receipt conformance, reserve-then-spend) are all skipped does **not** satisfy the
+   gate for the receipt and spend behaviour: those need the phone, so the manual script of part 3 (scenarios 2 to 7) is the evidence for them, and the
+   Hand-off says which cases were skipped. A case that was skipped for a missing variable you could have supplied is a gap to fill, not a pass.
+
 ## 2. Backend settings to change, in order, each with its rollback
 
 The settings are keys of the `biatec-chat-backend` ConfigMap, in `k8s/stage/backend-config.patch.yaml`, where they are already written out at the

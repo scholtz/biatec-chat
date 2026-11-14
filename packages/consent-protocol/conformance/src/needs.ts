@@ -86,6 +86,10 @@ export function redact(text: string, env: Env = process.env): string {
   return t
     .replace(new RegExp(String.raw`\b(Bearer|Basic|Device)\s+(?:${tokenLike})`, "g"), "$1 [redacted]")
     .replace(/eyJ[A-Za-z0-9_-]{8,}(\.[A-Za-z0-9_-]+){1,2}/g, "[redacted-jwt]")
-    .replace(/(\b(?:access_token|refresh_token|id_token|binding_code|code|auth_req_id|client_secret|signature|token|private_key|d)\b"?\s*[:=]\s*)("[^"]*"|[A-Za-z0-9._~+/=-]+)/gi, (_m, k) => `${k}"[redacted]"`)
+    // Named credentials, in plain, JSON, escaped-JSON (\x5c" is a backslash then a quote) and single-quoted forms.
+    .replace(/(\b(?:access_token|refresh_token|id_token|binding_code|auth_req_id|client_secret|signature|private_key)\b\x5c?["']?\s*[:=]\s*)(\x5c?"[^"\x5c]*\x5c?"|'[^']*'|[A-Za-z0-9._~+/=-]+)/gi, (_m, k) => `${k}"[redacted]"`)
+    // Words that are ordinary in prose (code, token, d): only as a quoted JSON key or as key=value, so "status code: 401" survives.
+    .replace(/(\x5c?["'](?:code|token|d)\x5c?["']\s*:\s*)(\x5c?"[^"\x5c]*\x5c?"|'[^']*'|[A-Za-z0-9._~+/=-]+)/gi, (_m, k) => `${k}"[redacted]"`)
+    .replace(/\b((?:code|token|d)=)([A-Za-z0-9._~+/=-]+)/gi, (_m, k) => `${k}"[redacted]"`)
     .replace(/\b(ciba_[A-Za-z0-9_-]+)\b/g, "[redacted-auth-req]");
 }

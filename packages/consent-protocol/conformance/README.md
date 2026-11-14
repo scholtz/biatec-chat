@@ -6,7 +6,7 @@ that the receipts they produce share one schema, one canonical form and the same
 the real Biatec OIDC.
 
 ```
-pnpm --filter consent-protocol conformance                                       # against the bundled mock
+pnpm --filter @biatec/consent-protocol conformance                                     # against the bundled mock
 CONFORMANCE_OIDC_URL=https://oidc.example.test pnpm --filter @biatec/consent-protocol conformance   # against your server
 ```
 
@@ -69,11 +69,11 @@ the receipt on the wire.
 
 ## Pointing it at your implementation
 
-Defaults are the mock's public seed data. Override with environment variables:
+Defaults are the mock's public seed data and apply **only to the in-process mock** (no `CONFORMANCE_OIDC_URL`); against any other server every secret, token and key comes from your environment. Override with environment variables:
 
 | Variable | Meaning | Default |
 | --- | --- | --- |
-| `CONFORMANCE_BASE_URL` | Server under test (unset starts the mock) | mock |
+| `CONFORMANCE_OIDC_URL` | The main variable: server under test (unset starts the in-process mock). `CONFORMANCE_BASE_URL` is the old alias. | mock |
 | `CONFORMANCE_ISSUER` | Expected `iss` of the device attestation | `https://oidc.biatec.test` |
 | `CONFORMANCE_CLIENT_ID`, `CONFORMANCE_CLIENT_SECRET` | Verified client (HTTP Basic) for direct entry and token redemption | `biatec-chat` |
 | `CONFORMANCE_LOGIN_HINT` | User for the direct entry | `alice@example.com` |

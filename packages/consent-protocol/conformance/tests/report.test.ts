@@ -11,7 +11,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { have, missing, redact } from "../src/needs.ts";
+import { have, missing, offersHelpers, redact } from "../src/needs.ts";
 import { publicUrl } from "../src/report.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -150,6 +150,22 @@ describe("what the report may say", () => {
     const env = { CONFORMANCE_BEARER_PAUSED: "abcd", CONFORMANCE_CLIENT_SECRET: "s3cr3t-value" };
     const text = redact("paused abcd, secret s3cr3t-value, Device abc123xyz, Basic dXNlcjpw0YXNz, Bearer 0123456789klmnopqrst", env);
     for (const leak of ["abcd", "s3cr3t-value", "abc123xyz", "dXNlcjpw0YXNz", "0123456789klmnopqrst"]) expect(text).not.toContain(leak);
+  });
+
+  it("keeps prose that uses a credential's name, and redacts quoted and escaped forms", () => {
+    const keep = "HTTP status code: 401, token endpoint refused, d: next, code=";
+    expect(redact(keep.replace("code=", "decoded"), {})).toBe(keep.replace("code=", "decoded"));
+    const bs = String.fromCharCode(92);
+    const forms = [
+      `{"access_token":"leakA1"}`, `{'id_token': 'leakB2'}`, `${bs}"refresh_token${bs}":${bs}"leakC3${bs}"`, `binding_code=leakD4`,
+      `{"auth_req_id": "leakE5"}`, `client_secret: 'leakF6'`, `{"code":"leakG7"}`, `token=leakH8`, `{"d":"leakI9"}`,
+    ];
+    for (const f of forms) expect(redact(f, {}), f).not.toMatch(/leak[A-I]\d/);
+  });
+
+  it("names a standalone mock's helpers truthfully in the report", () => {
+    expect(offersHelpers({ CONFORMANCE_OIDC_URL: "https://x.example", CONFORMANCE_MOCK_HELPERS: "1" })).toBe(true);
+    expect(offersHelpers({ CONFORMANCE_OIDC_URL: "https://x.example" })).toBe(false);
   });
 
   it("redacts supplied secrets and token-shaped values", () => {

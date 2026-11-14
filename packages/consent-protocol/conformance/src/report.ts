@@ -6,13 +6,14 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Reporter } from "vitest/node";
-import { redact, seeded, serverUrl } from "./needs.ts";
+import { offersHelpers, redact, serverUrl } from "./needs.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-/** Paths of this package that differ from the commit, so unrelated dirty files elsewhere do not mark the report. */
+/** Everything the run depends on (this package, the mock, the schemas, the scripts and the vectors); unrelated dirty files elsewhere do not mark the report. `here` is src/, so the paths climb. */
+const dependsOn = ["..", "../../mock-oidc", "../../schemas", "../../scripts", "../../vectors", "../../spec"];
 const dirtyPaths = () => {
-  const out = git("status", "--porcelain", "--", ".");
+  const out = git("status", "--porcelain", "--", ...dependsOn);
   return out === "unknown" || !out ? [] : out.split(/\r?\n/).map((l) => l.replace(/^\s*\S+\s+/, "").trim()).filter((p) => p && !/(^|\/)report\//.test(p));
 };
 
@@ -48,7 +49,7 @@ export default class ConformanceReport implements Reporter {
     const report = {
       generatedAt: new Date().toISOString(),
       server: url ? publicUrl(url) : "in-process mock",
-      mockHelpers: seeded(),
+      mockHelpers: offersHelpers(),
       commit: git("rev-parse", "HEAD"),
       dirtyPaths: dirty,
       runState,
@@ -58,7 +59,8 @@ export default class ConformanceReport implements Reporter {
     };
     const dir = process.env.CONFORMANCE_REPORT_DIR || join(here, "..", "report");
     mkdirSync(dir, { recursive: true });
-    const host = url ? new URL(url).host.replace(/[^A-Za-z0-9.-]/g, "_") : "mock";
+    let host = "mock";
+    if (url) { try { host = new URL(url).host.replace(/[^A-Za-z0-9.-]/g, "_") || "server"; } catch { host = "server"; } }
     const file = join(dir, `run-${report.generatedAt.replace(/[:.]/g, "-")}-${host}.json`);
     writeFileSync(file, JSON.stringify(report, null, 2) + "\n");
     console.log(`\nconformance report: ${file}  (${runState}: ${report.totals.passed} passed, ${report.totals.failed} failed, ${report.totals.skipped} skipped, ${report.totals.not_run} not run)`);
