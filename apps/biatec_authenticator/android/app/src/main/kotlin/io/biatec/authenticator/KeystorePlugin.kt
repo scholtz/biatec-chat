@@ -107,6 +107,7 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
         val once = Once(result, main, if (flight) ({ promptActive.set(false) }) else null)
         // Created again after a detach (the plugin instance can be attached to another engine).
         if (worker.isShutdown) worker = Executors.newSingleThreadExecutor()
+        try {
         worker.execute {
             try {
                 when (method) {
@@ -141,6 +142,10 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
                 once.error("keystore_error", "The keystore could not do that")
             }
         }
+        } catch (e: Throwable) {
+            // The worker refused the job: answer, and (through Once) release the single prompt flag.
+            once.error("keystore_error", "The keystore could not do that")
+        }
     }
 
     // --- Presence key -------------------------------------------------------------------------------------------------------------------
@@ -153,7 +158,8 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
 
     private fun generatePresence(): Map<String, Any> {
         publicOf(PRESENCE_ALIAS, false)?.let { return it }
-        make(PRESENCE_ALIAS, false)
+        // unlocked = false: single-key mode keeps the key usable while the phone is locked (no setUnlockedDeviceRequired).
+        make(PRESENCE_ALIAS, false, unlocked = false)
         val presence = publicOf(PRESENCE_ALIAS, false)!!
         if (presence["securityLevel"] == "software") {
             if (ks.containsAlias(PRESENCE_ALIAS)) ks.deleteEntry(PRESENCE_ALIAS)
@@ -192,6 +198,7 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
         try {
             signature.initSign(key)
         } catch (e: KeyPermanentlyInvalidatedException) {
+            stateCache = Pair("approval_key_invalidated", System.currentTimeMillis())
             return result.error("approval_key_invalidated", "The approval key was invalidated")
         }
         val info = BiometricPrompt.PromptInfo.Builder()
@@ -250,12 +257,13 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
 
     private fun hasStrongBox() = context.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)
 
-    private fun spec(alias: String, approval: Boolean, strongBox: Boolean): KeyGenParameterSpec {
+    private fun spec(alias: String, approval: Boolean, strongBox: Boolean, unlocked: Boolean): KeyGenParameterSpec {
         val b = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
             .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
             .setDigests(KeyProperties.DIGEST_SHA256)
         if (strongBox) b.setIsStrongBoxBacked(true)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) b.setUnlockedDeviceRequired(true)
+        // Two-key keys need an unlocked phone (the spec). The single-key-mode key does NOT: it is usable while locked, as before T-241, so the stay-connected service keeps working.
+        if (unlocked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) b.setUnlockedDeviceRequired(true)
         if (approval) {
             b.setUserAuthenticationRequired(true)
             // Per use (timeout 0), strong biometric only: no device credential.
@@ -270,18 +278,18 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
         return b.build()
     }
 
-    private fun make(alias: String, approval: Boolean) {
+    private fun make(alias: String, approval: Boolean, unlocked: Boolean = true) {
         val gen = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore")
         val strongBox = hasStrongBox()
         try {
-            gen.initialize(spec(alias, approval, strongBox))
+            gen.initialize(spec(alias, approval, strongBox, unlocked))
             gen.generateKeyPair()
         } catch (e: Exception) {
             // Devices that advertise StrongBox can still refuse the key: fall back to the TEE, but only for the failures StrongBox is known to
             // cause. Anything else, or no StrongBox at all, is a real error.
             if (strongBox && (e is StrongBoxUnavailableException || e is ProviderException || e is InvalidAlgorithmParameterException)) {
                 try {
-                    gen.initialize(spec(alias, approval, false))
+                    gen.initialize(spec(alias, approval, false, unlocked))
                     gen.generateKeyPair()
                     return
                 } catch (e2: Exception) {
@@ -304,6 +312,8 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
     }
 
     private fun generateKeys(): Map<String, Any> {
+        // Reuse needs a fresh probe, not the cached state.
+        stateCache = null
         val existingApproval = publicOf(APPROVAL_ALIAS, true)
         val existingPresence = publicOf(PRESENCE_ALIAS, false)
         // KeyInfo still says authBound for a key that a biometric change invalidated: reuse the keys only when the approval key can start a signature.
@@ -331,13 +341,29 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
     }
 
     private fun deleteKeys() {
+        stateCache = null
         if (ks.containsAlias(APPROVAL_ALIAS)) ks.deleteEntry(APPROVAL_ALIAS)
         if (ks.containsAlias(PRESENCE_ALIAS)) ks.deleteEntry(PRESENCE_ALIAS)
         markers.edit().clear().apply()
     }
 
     /** Without a prompt: both keys there and the approval key still usable (initSign throws when the biometrics changed), invalidated, or missing. */
+    // keysState is read from a cache. An initSign probe leaves a keymaster operation open until it is garbage collected (the keystore has a small
+    // number of them), so the probe runs at most once per STATE_TTL_MS, and never on a call that follows a signApproval outcome: signApproval's own initSign
+    // (the only long-lived operation) updates the cache (an invalidated key is seen there before any prompt). Dart reads the state once when the approval
+    // card loads. deleteKeys and generateKeys clear it.
+    @Volatile private var stateCache: Pair<String, Long>? = null
+    private val STATE_TTL_MS = 5 * 60 * 1000L
+
     private fun keysState(): String {
+        val cached = stateCache
+        if (cached != null && System.currentTimeMillis() - cached.second < STATE_TTL_MS) return cached.first
+        val state = probeKeysState()
+        stateCache = Pair(state, System.currentTimeMillis())
+        return state
+    }
+
+    private fun probeKeysState(): String {
         val gone = if (markers.getBoolean(MARKER, false)) "approval_key_invalidated" else "missing"
         if (!ks.containsAlias(APPROVAL_ALIAS)) return gone
         // "ok" only when the approval key was really loaded and a signature can be started with it. A key that cannot be recovered is invalidated.

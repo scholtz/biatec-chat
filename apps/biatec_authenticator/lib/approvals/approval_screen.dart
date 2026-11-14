@@ -294,12 +294,12 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
               _keysBanner(
                   const Key('approval-keys-missing'),
                   'This phone has no device keys',
-                  'The keys that sign approvals are not on this phone (it was '
-                      'restored, or the keys were removed), so it cannot '
-                      'approve or deny. Enroll this device again.',
+                  '${ApprovalKeysMissing.message} It cannot approve or deny '
+                      'until then.',
                   c),
             if (c.error != null &&
-                c.error != ApprovalKeyInvalidated.message) ...[
+                c.error != ApprovalKeyInvalidated.message &&
+                c.error != ApprovalKeysMissing.message) ...[
               _errorBanner(c.error!),
               const SizedBox(height: AppSpacing.m),
             ],

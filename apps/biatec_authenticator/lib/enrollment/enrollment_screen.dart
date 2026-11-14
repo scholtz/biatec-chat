@@ -383,6 +383,11 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
           const SizedBox(height: AppSpacing.m),
           Text(creating ? 'Creating the device key' : 'Enrolling this device',
               style: theme.textTheme.titleMedium),
+          if (s.notice != null)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.s),
+              child: Text(s.notice!, key: const Key('enrollment-notice')),
+            ),
         ]),
       ),
       ..._keyLevel(),

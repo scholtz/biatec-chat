@@ -151,8 +151,7 @@ void main() {
       }
       for (final arg in ['use', 'data', 'title', 'subtitle', 'alias']) {
         expect(kt, contains('"$arg"'), reason: 'Kotlin argument $arg');
-        // iOS shows the fixed title only; the subtitle is an Android prompt field.
-        if (arg != 'subtitle') expect(swift, contains('"$arg"'), reason: 'Swift argument $arg');
+        expect(swift, contains('"$arg"'), reason: 'Swift argument $arg');
       }
       // What the plugins answer: the keys state, the key map and the error codes Dart maps.
       for (final wire in ['ok', 'approval_key_invalidated', 'missing']) {
@@ -165,6 +164,12 @@ void main() {
       expect(ktGen.substring(0, ktGen.indexOf('private fun signWith')), isNot(contains('APPROVAL_ALIAS')));
       final swGen = swift.substring(swift.indexOf('private func generatePresence'));
       expect(swGen.substring(0, swGen.indexOf('// One approval prompt at a time')), isNot(contains('approvalTag')));
+      // Single-key mode keeps the key usable while the phone is locked (the stay-connected service signs then); the two-key keys need an unlocked phone.
+      expect(ktGen.substring(0, ktGen.indexOf('private fun signWith')), contains('unlocked = false'));
+      expect(kt, contains('if (unlocked && Build.VERSION.SDK_INT'));
+      expect(kt, contains('make(PRESENCE_ALIAS, false)\n'), reason: 'the two-key presence key keeps the default (unlocked required)');
+      // keysState does not leave a probe operation open on every call (it is cached).
+      expect(kt, contains('STATE_TTL_MS'));
       // One approval prompt at a time, on both platforms.
       expect(kt, contains('promptActive'));
       expect(swift, contains('promptActive'));

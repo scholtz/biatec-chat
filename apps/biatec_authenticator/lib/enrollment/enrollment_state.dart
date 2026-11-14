@@ -116,11 +116,14 @@ enum EnrollmentPhase {
 }
 
 class EnrollmentState {
-  const EnrollmentState(this.phase, {this.record, this.error});
+  const EnrollmentState(this.phase, {this.record, this.error, this.notice});
 
   final EnrollmentPhase phase;
   final EnrollmentRecord? record;
   final String? error;
+
+  /// What the app is doing that the user should know (not an error): "Confirming again..." when the biometric prompt is asked a second time.
+  final String? notice;
 
   static const notEnrolled = EnrollmentState(EnrollmentPhase.notEnrolled);
 

@@ -41,3 +41,22 @@ class PromptFreeKey {
   Future<Uint8List> sign(DeviceKeyStore keys, Uint8List data) =>
       legacy ? keys.signLegacy(kid, data) : keys.signPresence(data);
 }
+
+/// Removes every device key of this install: the new aliases (`deleteKeys`) AND, for a single-key record from before the two keys, the key under its old alias
+/// (`deleteKeys` does not touch that one). Used when the device signs out, is cancelled or enrolls again. Each step is best effort.
+Future<void> deleteDeviceKeys(
+    DeviceKeyStore keys, EnrollmentRecord? record) async {
+  try {
+    await keys.deleteKeys();
+  } on Object {
+    // Best effort.
+  }
+  if (record == null) return;
+  final key = PromptFreeKey.of(record);
+  if (!key.legacy) return;
+  try {
+    await keys.deleteLegacyKey(key.kid);
+  } on Object {
+    // Best effort.
+  }
+}

@@ -125,6 +125,15 @@ class ApprovalKeyInvalidated implements Exception {
   String toString() => message;
 }
 
+/// The device keys are not on this phone (a restore, or something removed them): nothing can be signed.
+class ApprovalKeysMissing implements Exception {
+  const ApprovalKeysMissing();
+  static const message = 'The device keys are gone from this phone. Enroll '
+      'this device again.';
+  @override
+  String toString() => message;
+}
+
 /// The two hardware-backed device keys (Secure Enclave on iOS, StrongBox or the TEE on Android).
 ///
 /// The private keys are generated inside the keystore and are never readable: the interface has no way to export them, only to sign.

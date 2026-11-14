@@ -559,6 +559,48 @@ void main() {
       expect((h.oidc.receipts.single['device'] as Map)['key_use'], 'presence');
     });
 
+    test('missing keys and an invalidated key are told apart', () async {
+      final h = Harness(vectorRequest('stepup-transaction-approve'));
+      h.keys.state = KeysState.missing;
+      final c = await h.open();
+      await c.approve('483920');
+      expect(c.error, ApprovalKeysMissing.message);
+      expect(c.error, isNot(ApprovalKeyInvalidated.message));
+      expect(h.keys.prompts, isEmpty);
+
+      final h2 = Harness(vectorRequest('stepup-transaction-approve'));
+      h2.keys.state = KeysState.approvalKeyInvalidated;
+      final c2 = await h2.open();
+      await c2.approve('483920');
+      expect(c2.error, ApprovalKeyInvalidated.message);
+      expect(c2.error, contains('fingerprint or face'));
+      expect(ApprovalKeysMissing.message, isNot(contains('fingerprint')));
+    });
+
+    test('approving does not probe the keystore again (the state is read when the card loads)',
+        () async {
+      final h = Harness(vectorRequest('stepup-transaction-approve'));
+      final c = await h.open();
+      final after = h.keys.stateReads;
+      await c.approve('483920');
+      expect(h.keys.stateReads, after);
+    });
+
+    test('enrolling again deletes the old keys, also the one under an old alias',
+        () async {
+      final h = Harness(vectorRequest('stepup-transaction-approve'));
+      h.store.write(EnrollmentRecord(
+          kid: 'biatec-authenticator-old',
+          deviceToken: 'dev-token',
+          activeAt: DateTime.utc(2020),
+          attestation: 'h.p.s'));
+      final c = await h.open();
+      await c.startReenrollment();
+      expect(h.keys.keysDeleted, 1);
+      expect(h.keys.legacyDeleted, ['biatec-authenticator-old']);
+      expect(await h.store.read(), isNull);
+    });
+
     test('an approval key that is not bound to the biometrics cannot approve',
         () async {
       final h = Harness(vectorRequest('stepup-transaction-approve'));

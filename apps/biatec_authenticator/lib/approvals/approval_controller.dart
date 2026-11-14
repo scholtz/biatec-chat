@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../enrollment/enrollment_store.dart';
 import '../keys/device_key_store.dart';
 import '../keys/key_security_level.dart';
+import '../enrollment/enrollment_state.dart';
 import 'approval_client.dart';
 import 'biometric_gate.dart';
 import 'consent_request.dart';
@@ -242,9 +243,12 @@ class ApprovalController extends ChangeNotifier {
           ? 'This enrollment has no attestation. Enroll the device again.'
           : null;
     }
-    if (_keysState == KeysState.approvalKeyInvalidated || key == null) {
+    if (_keysState == KeysState.missing) return ApprovalKeysMissing.message;
+    if (_keysState == KeysState.approvalKeyInvalidated) {
       return ApprovalKeyInvalidated.message;
     }
+    // The state says ok but the key cannot be loaded: it is gone.
+    if (key == null) return ApprovalKeysMissing.message;
     if (device.approvalAttestation == null) {
       return 'This enrollment has no attestation. Enroll the device again.';
     }
@@ -273,7 +277,7 @@ class ApprovalController extends ChangeNotifier {
     _set(ApprovalPhase.working);
     try {
       final (token, device) = await _device();
-      await _checkKeys();
+      // No keystore probe here: the state was read when the card loaded, and the signature itself reports an invalidated key before any prompt is shown.
       final blocked = _cannotApprove(device);
       if (blocked != null) {
         _set(ApprovalPhase.ready, error: blocked);
@@ -433,11 +437,14 @@ class ApprovalController extends ChangeNotifier {
   /// The approval key is invalidated or gone: this device drops its keys and its enrollment, so the app leads to the enrollment screen. Biatec OIDC keeps the old device record until it is cancelled from the account (or its own rules end it).
   Future<void> startReenrollment() async {
     if (_phase == ApprovalPhase.working) return;
+    EnrollmentRecord? record;
     try {
-      await keys.deleteKeys();
+      record = await enrollment.read();
     } on Object {
-      // The keys are useless once the enrollment is gone.
+      record = null;
     }
+    // Also the key under the old alias of an install from before the two keys.
+    await deleteDeviceKeys(keys, record);
     await enrollment.clear();
   }
 

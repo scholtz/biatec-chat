@@ -129,8 +129,10 @@ public class KeystorePlugin: NSObject, FlutterPlugin {
             KeystorePlugin.promptLock.unlock()
         }
         let context = LAContext()
-        // The app's fixed text (the title it passes), not text a request supplies; the client and total are in the card the user just read.
-        context.localizedReason = (args["title"] as? String).flatMap { $0.isEmpty ? nil : String($0.prefix(80)) } ?? "Approve this action"
+        // The app's fixed title plus the subtitle that names the client and the total (parity with the Android prompt).
+        let title = (args["title"] as? String).flatMap { $0.isEmpty ? nil : String($0.prefix(80)) } ?? "Approve this action"
+        let subtitle = (args["subtitle"] as? String).flatMap { $0.isEmpty ? nil : String($0.prefix(160)) }
+        context.localizedReason = subtitle.map { "\(title)\n\($0)" } ?? title
         context.localizedFallbackTitle = ""      // no "Enter passcode" button: the passcode cannot approve
         context.localizedCancelTitle = "Cancel"
         guard let key = privateKey(KeystorePlugin.approvalTag, context: context) else {

@@ -342,9 +342,8 @@ void main() {
         if (posts == 1) {
           return http.Response(
               jsonEncode({
-                'error': 'invalid_request',
-                'error_description':
-                    'the enrollment challenge in the proof is expired'
+                'error': 'invalid_challenge',
+                'error_description': 'the enrollment challenge is expired'
               }),
               400);
         }
@@ -357,11 +356,43 @@ void main() {
         clock: () => t0,
         attestation: _NoAttestation(),
       );
+      final notices = <String?>[];
+      c.addListener(() => notices.add(c.state.notice));
       await c.enroll(loginToken: 'login-alice');
       expect(c.state.phase, EnrollmentPhase.inactive, reason: c.state.error);
       expect(challenges, 2);
       expect(posts, 2);
       expect(keys.prompts, 2);
+      expect(notices, contains('Confirming again...'),
+          reason: 'the user is told before the biometric is asked again');
+    });
+
+    test('an error with the same words but another code is not retried', () async {
+      var posts = 0;
+      final keys = FakeTwoKeyStore();
+      final client = MockClient((r) async {
+        if (r.url.path == '/devices/challenge') {
+          return http.Response(jsonEncode({'nonce': 'n' * 32}), 200);
+        }
+        posts++;
+        return http.Response(
+            jsonEncode({
+              'error': 'conflict',
+              'error_description': 'the challenge proof of this kid is taken'
+            }),
+            409);
+      });
+      final c = EnrollmentController(
+        keys: keys,
+        store: ObservableEnrollmentStore(MemoryEnrollmentStore()),
+        client: OidcEnrollmentClient(baseUrl: 'http://oidc', client: client),
+        clock: () => t0,
+        attestation: _NoAttestation(),
+      );
+      await c.enroll(loginToken: 'login-alice');
+      expect(c.state.phase, EnrollmentPhase.failed);
+      expect(posts, 1);
+      expect(keys.prompts, 1);
     });
   });
 

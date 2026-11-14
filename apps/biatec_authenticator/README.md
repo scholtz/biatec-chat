@@ -175,6 +175,7 @@ Protocol 1.1 splits the device key in two. Both are P-256, generated in hardware
   clears this install's enrollment and keys so the enrollment flow starts. Biatec OIDC keeps the old device record until it is cancelled from the account.
 - An install from before the two keys (a record without `presence_kid`) is treated as having no keys: it is shown the enrollment flow with a notice, and its old key is deleted when
   the new enrollment starts. No silent migration.
+- `keysState` on Android is cached for 5 minutes: probing the approval key with `initSign` leaves a keymaster operation open, so the probe runs at most once per 5 minutes, `signApproval`'s own `initSign` (the only long-lived operation) updates the cache, and the approval card reads the state once when it loads. In single-key mode (`AppConfig.twoKeys` off) the one key is made without `setUnlockedDeviceRequired`, so it works while the phone is locked as before.
 - Known trade-off: the presence key needs an unlocked phone (`setUnlockedDeviceRequired`), so while the phone is locked the foreground service cannot sign the ticket request
   of a new device channel connection. A connection that was made while unlocked is not affected, and a reconnect waits until the phone is unlocked.
 - Tests: `test/keys/device_key_store_test.dart` (channel), `test/approvals/approval_test.dart` group "two keys" (a fake keystore: approve signs with the approval

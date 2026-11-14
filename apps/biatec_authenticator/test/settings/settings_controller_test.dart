@@ -1,3 +1,4 @@
+import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/keys/device_key_store.dart';
 import 'package:biatec_authenticator/security/settings_client.dart';
 import 'package:biatec_authenticator/security/settings_controller.dart';
@@ -161,6 +162,31 @@ void main() {
       expect(c.error, 'Only a pending enrollment can be cancelled.');
       expect(rig.oidc.cancelled, isEmpty);
       expect(c.devices, hasLength(2));
+    });
+
+    test('cancelling this device deletes the key under the old alias of an install from before the two keys',
+        () async {
+      final oidc = FakeSettingsOidc()
+        ..devices = [
+          {
+            'kid': 'biatec-authenticator-old',
+            'current': true,
+            'active': false,
+            'active_at': 1792425600 + 3600
+          }
+        ];
+      final rig = SettingsRig(
+          oidc: oidc,
+          record: EnrollmentRecord(
+              kid: 'biatec-authenticator-old',
+              deviceToken: FakeSettingsOidc.token,
+              activeAt: DateTime.utc(2020),
+              attestation: 'att'));
+      final c = rig.controller();
+      await c.load();
+      await c.cancelDevice('biatec-authenticator-old');
+      expect(rig.keys.keysDeleted, 1);
+      expect(rig.keys.legacyDeleted, ['biatec-authenticator-old']);
     });
 
     test('cancelling this device signs it out and deletes its enrollment',

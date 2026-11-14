@@ -747,7 +747,7 @@ export function createMockOidc(options: MockOptions = {}) {
       let nonce: unknown;
       try { nonce = JSON.parse(Buffer.from(body.approval_proof.split(".")[1] ?? "", "base64url").toString("utf8")).nonce; } catch { nonce = undefined; }
       const c = typeof nonce === "string" ? attestationChallenges.get(nonce) : undefined;
-      if (!c || c.sub !== t.sub || c.expires < now()) throw new HttpError(400, "invalid_request", "the enrollment challenge in the proof is unknown, used, expired or another user's");
+      if (!c || c.sub !== t.sub || c.expires < now()) throw new HttpError(400, "invalid_challenge", "the enrollment challenge in the proof is unknown, used, expired or another user's");
       enrollNonce = nonce as string;
       attestationChallenges.delete(enrollNonce); // single use, also when the proof fails
       let ok = false;

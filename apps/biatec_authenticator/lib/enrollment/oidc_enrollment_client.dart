@@ -9,8 +9,11 @@ import 'enrollment_proof.dart';
 import 'enrollment_state.dart';
 
 class EnrollmentException implements Exception {
-  const EnrollmentException(this.message);
+  const EnrollmentException(this.message, {this.code});
   final String message;
+
+  /// The server's `error` member (machine readable), when it sent one: `invalid_challenge` and `invalid_proof` are the ones the app acts on.
+  final String? code;
   @override
   String toString() => message;
 }
@@ -134,7 +137,9 @@ class OidcEnrollmentClient {
     final json = _decodeObject(body, status);
     if (status != 201) {
       final detail = json['error_description'] ?? json['error'] ?? 'error';
-      throw EnrollmentException('Enrollment refused ($status): $detail');
+      final code = json['error'];
+      throw EnrollmentException('Enrollment refused ($status): $detail',
+          code: code is String ? code : null);
     }
     // The recovery code is deliberately not read here: rule 7 issues it only
     // once the device is active, through [requestRecoveryCode].

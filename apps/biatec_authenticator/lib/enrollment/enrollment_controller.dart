@@ -92,7 +92,6 @@ class EnrollmentController extends ChangeNotifier {
     _fetchingCode = false;
     _keyLevel = null;
     _keyLevelKid = null;
-    _keysState = null;
     _set(EnrollmentState.notEnrolled);
   }
 
@@ -144,7 +143,6 @@ class EnrollmentController extends ChangeNotifier {
     }
     if (twoKeys && !record.hasTwoKeys) {
       // From before the two keys: its one key is not bound to the biometrics. Treated as having no keys; the device enrolls again (no silent migration). A failed attempt keeps its own error.
-      _keysState = KeysState.missing;
       if (p != EnrollmentPhase.failed) {
         _set(const EnrollmentState(EnrollmentPhase.notEnrolled,
             error: legacyKeyNotice));
@@ -152,7 +150,6 @@ class EnrollmentController extends ChangeNotifier {
       return;
     }
     _set(EnrollmentState.fromRecord(record, _clock()));
-    if (twoKeys) await _checkKeys();
     await _ensureRecoveryCode();
     await _loadKeyLevel(record.kid);
     await _refreshAttestationIfDue(record);
@@ -161,24 +158,6 @@ class EnrollmentController extends ChangeNotifier {
   /// Said on the enrollment screen for an install from before the two keys.
   static const legacyKeyNotice = 'This phone has an older device key that is '
       'not protected by your fingerprint or face. Enroll it again to approve.';
-
-  KeysState? _keysState;
-
-  /// What the keystore said about the two keys at the last [refresh] (null before it, or when it did not answer). `approvalKeyInvalidated` means approvals are off until the device enrolls again; `missing` means this install has no keys.
-  KeysState? get keysState => _keysState;
-
-  Future<void> _checkKeys() async {
-    try {
-      final state = await keys.keysState();
-      if (_disposed) return;
-      if (state != _keysState) {
-        _keysState = state;
-        notifyListeners();
-      }
-    } on Object {
-      // The state is for display; an unreadable keystore does not stop the app.
-    }
-  }
 
   bool _attesting = false;
 
@@ -415,7 +394,7 @@ class EnrollmentController extends ChangeNotifier {
       } on Object {
         proof = null;
       }
-      // A slow platform: the nonce may be too old to use now.
+      // A slow platform: the nonce may be too old to use now (nothing was signed yet, so no prompt has been shown).
       if (_clock().difference(challengeAt) > challengeMaxAge && attempt == 0) {
         continue;
       }
@@ -436,9 +415,13 @@ class EnrollmentController extends ChangeNotifier {
         } on Object catch (e) {
           throw _ProofFailed(e);
         }
-        // The user took long at the prompt: the nonce may have expired.
+        // The user took long at the prompt. The proof's `iat` is set when it is built, BEFORE the prompt (signing and then stamping is impossible: the
+        // iat is part of what is signed), so it is only good for the server's window. Only when more than [challengeMaxAge] passed is it made again with a fresh
+        // challenge, and the user is told that the biometric is asked a second time.
         if (_clock().difference(challengeAt) > challengeMaxAge &&
             attempt == 0) {
+          _set(const EnrollmentState(EnrollmentPhase.enrolling,
+              notice: 'Confirming again...'));
           continue;
         }
       }
@@ -454,11 +437,13 @@ class EnrollmentController extends ChangeNotifier {
           platformAttestation: proof,
         );
       } on EnrollmentException catch (e) {
-        // The server says the challenge or the proof is no good (expired, used): one more try with a fresh challenge.
-        final lower = e.message.toLowerCase();
+        // The server says, by its machine-readable error code, that the challenge or the proof is no good (expired, used): one more try with a fresh
+        // challenge. The user is told that the biometric is asked again (never silently).
         if (twoKeys &&
             attempt == 0 &&
-            (lower.contains('challenge') || lower.contains('proof'))) {
+            (e.code == 'invalid_challenge' || e.code == 'invalid_proof')) {
+          _set(const EnrollmentState(EnrollmentPhase.enrolling,
+              notice: 'Confirming again...'));
           continue;
         }
         rethrow;

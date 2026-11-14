@@ -295,11 +295,8 @@ class SettingsController extends ChangeNotifier {
         }
         // Never fails: the store signs the device out in memory and clears the disk behind (see ObservableEnrollmentStore.clear).
         await enrollment.clear();
-        try {
-          await keys.deleteKeys();
-        } on Object {
-          // The key is useless without an enrollment.
-        }
+        // The new aliases and, for an install from before the two keys, the key under its old alias.
+        await deleteDeviceKeys(keys, record);
         _devices = const [];
         _settings = null;
         _phase = SettingsPhase.unavailable;

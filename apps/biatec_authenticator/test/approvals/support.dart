@@ -113,8 +113,13 @@ class SoftwareKeyStore implements DeviceKeyStore {
   Future<DeviceKey?> loadPresence() async =>
       _key(presenceJwk, presenceKid, bound: false);
 
+  int stateReads = 0;
+
   @override
-  Future<KeysState> keysState() async => state;
+  Future<KeysState> keysState() async {
+    stateReads++;
+    return state;
+  }
 
   Uint8List _sign(Map<String, Object?> k, Uint8List data) {
     final signer = Signer('SHA-256/DET-ECDSA')
@@ -148,11 +153,14 @@ class SoftwareKeyStore implements DeviceKeyStore {
     return _sign(jwk, data);
   }
 
-  @override
-  Future<void> deleteKeys() async {}
+  int keysDeleted = 0;
+  final List<String> legacyDeleted = [];
 
   @override
-  Future<void> deleteLegacyKey(String alias) async {}
+  Future<void> deleteKeys() async => keysDeleted++;
+
+  @override
+  Future<void> deleteLegacyKey(String alias) async => legacyDeleted.add(alias);
 }
 
 Map<String, Object?> _readJson(String name) =>
