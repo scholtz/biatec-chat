@@ -11,6 +11,7 @@ import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
 import android.util.Base64
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
+import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
@@ -173,8 +174,11 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
             .build()
         val callback = object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(r: BiometricPrompt.AuthenticationResult) {
-                // Signing is the keystore's work again: off the platform thread.
-                worker.execute {
+                // Signing is the keystore's work again: off the platform thread. The worker is made again if the plugin was detached meanwhile, and
+                // whatever happens the Dart call is answered.
+                try {
+                    if (worker.isShutdown) worker = Executors.newSingleThreadExecutor()
+                    worker.execute {
                     try {
                         val s = r.cryptoObject?.signature ?: return@execute result.error("auth_failed", "The biometric check gave no signature")
                         s.update(data)
@@ -184,6 +188,9 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
                     } catch (e: Throwable) {
                         result.error("auth_failed", "The signature could not be made")
                     }
+                    }
+                } catch (e: Throwable) {
+                    result.error("auth_failed", "The signature could not be made")
                 }
             }
 
@@ -256,15 +263,21 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
     }
 
     /** A key with user authentication needs an enrolled biometric: the keystore refuses without one. */
-    private fun mapCreateError(e: Exception, approval: Boolean): Exception =
+    private fun mapCreateError(e: Exception, approval: Boolean): Exception {
         if (approval && (e is IllegalStateException || e is InvalidAlgorithmParameterException || e is ProviderException)) {
-            PluginError("no_biometrics", "A strong biometric (fingerprint or face) must be set up on this phone first")
-        } else e
+            // Only a phone that really has no strong biometric enrolled is told to set one up; any other refusal is a key generation failure.
+            val none = BiometricManager.from(context).canAuthenticate(BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED
+            return if (none) PluginError("no_biometrics", "A strong biometric (fingerprint or face) must be set up on this phone first")
+            else PluginError("key_generation_failed", "The keystore could not create the key")
+        }
+        return e
+    }
 
     private fun generateKeys(): Map<String, Any> {
         val existingApproval = publicOf(APPROVAL_ALIAS, true)
         val existingPresence = publicOf(PRESENCE_ALIAS, false)
-        if (existingApproval != null && existingPresence != null && existingApproval["authBound"] == true) {
+        // KeyInfo still says authBound for a key that a biometric change invalidated: reuse the keys only when the approval key can start a signature.
+        if (existingApproval != null && existingPresence != null && existingApproval["authBound"] == true && keysState() == "ok") {
             return mapOf("approval" to existingApproval, "presence" to existingPresence)
         }
         // Both or neither: a half set (an interrupted enrollment, an invalidated key) is removed and made again.

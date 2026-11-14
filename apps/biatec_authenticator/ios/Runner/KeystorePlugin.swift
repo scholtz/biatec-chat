@@ -145,9 +145,14 @@ public class KeystorePlugin: NSObject, FlutterPlugin {
             kSecPrivateKeyAttrs as String: [kSecAttrIsPermanent as String: true, kSecAttrApplicationTag as String: tag(alias), kSecAttrAccessControl as String: access],
         ]
         guard let key = SecKeyCreateRandomKey(attrs as CFDictionary, &err) else {
-            // `.biometryCurrentSet` needs an enrolled biometric and a passcode: without them the key cannot be made.
+            // `.biometryCurrentSet` needs an enrolled biometric and a passcode: without them the key cannot be made. Any other refusal is a generation failure.
             _ = err?.takeRetainedValue()
-            return (nil, approval ? "no_biometrics" : "no_secure_enclave")
+            if approval {
+                var laError: NSError?
+                let enrolled = LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &laError)
+                return (nil, enrolled ? "key_generation_failed" : "no_biometrics")
+            }
+            return (nil, "no_secure_enclave")
         }
         return (key, nil)
     }

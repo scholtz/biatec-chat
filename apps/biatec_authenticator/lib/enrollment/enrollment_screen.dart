@@ -53,6 +53,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
           // The observable store keeps an enrollment whose write failed (the controller relies on it).
           store: ObservableEnrollmentStore(SecureEnrollmentStore()),
           client: OidcEnrollmentClient(baseUrl: widget.config.oidcBaseUrl),
+          twoKeys: widget.config.twoKeys,
         );
     // The mock accepts the seeded login token; a real build gets the token
     // from the OIDC login.

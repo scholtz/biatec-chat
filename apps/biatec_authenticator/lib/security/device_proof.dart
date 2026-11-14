@@ -37,12 +37,22 @@ class KeystoreDeviceProofSigner implements DeviceProofSigner {
   final EnrollmentStore enrollment;
   final DateTime Function() _clock;
   final Random _random;
+  final Map<String, String> _kids = {};
 
   static String _b64(List<int> bytes) => base64Url.encode(bytes).replaceAll('=', '');
 
   @override
   Future<Map<String, String>> headers(String method, Uri url, String deviceToken) async {
-    final presenceKid = (await enrollment.read())?.presenceKid;
+    // The kid is cached by device token (a new enrollment has a new token), so the record is not decoded on every call.
+    var presenceKid = _kids[deviceToken];
+    if (presenceKid == null) {
+      final record = await enrollment.read();
+      // Two-key record: the presence key's kid. Single-key record: the one enrolled key is the prompt-free key, under the record's kid.
+      presenceKid = record?.presenceKid ?? record?.kid;
+      if (presenceKid != null && record?.deviceToken == deviceToken) {
+        _kids[deviceToken] = presenceKid;
+      }
+    }
     // No presence key means no device key to prove with (a new install, or one from before the two keys): a configured signer never silently falls back to the bearer token alone.
     if (presenceKid == null) throw StateError('this install has no device key to prove with');
     final header = {'alg': 'ES256', 'typ': deviceProofType, 'kid': presenceKid};

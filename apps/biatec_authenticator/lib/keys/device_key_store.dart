@@ -160,6 +160,10 @@ abstract class DeviceKeyStore {
   Future<void> deleteLegacyKey(String alias);
 }
 
+/// The value of the `use` argument of the channel call `load`: `approval` or `presence`. This is the CHANNEL vocabulary, which KeystorePlugin.kt and
+/// KeystorePlugin.swift read; it is not the protocol's `biatec_key_use` ([KeyUse.wire] is `approve` or `presence`). `test/keys/device_key_store_test.dart` pins it.
+String channelUse(KeyUse use) => use == KeyUse.approve ? 'approval' : 'presence';
+
 /// Talks to the native keystore code over a platform channel.
 ///
 /// The native side (`KeystorePlugin` for Android and iOS) implements `generateKeys`, `load` (argument `use`), `keysState`, `signPresence`, `signApproval` (arguments `data`, `title`, `subtitle`), `deleteKeys` and `delete` (argument `alias`, for the single key of old installs). A key is `{x, y, securityLevel, authBound}` (coordinates base64url, level as in [KeySecurityLevel.wire]).
@@ -203,7 +207,8 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
   }
 
   Future<DeviceKey?> _load(KeyUse use) async {
-    final raw = await _channel.invokeMethod<Object?>('load', {'use': use.wire});
+    final raw =
+        await _channel.invokeMethod<Object?>('load', {'use': channelUse(use)});
     return raw == null ? null : _parse(raw, use);
   }
 

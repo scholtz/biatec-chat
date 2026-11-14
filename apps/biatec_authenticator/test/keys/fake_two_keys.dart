@@ -20,6 +20,7 @@ class FakeTwoKeyStore implements DeviceKeyStore {
   /// The plugin refuses with `insecure_key` / `no_biometrics`.
   bool pluginRefuses = false;
   bool noBiometrics = false;
+  bool generationFailed = false;
   bool throwTypeError = false;
   bool cancelPrompt = false;
   KeysState state = KeysState.ok;
@@ -45,6 +46,9 @@ class FakeTwoKeyStore implements DeviceKeyStore {
     }
     if (noBiometrics) {
       throw PlatformException(code: 'no_biometrics', message: 'none');
+    }
+    if (generationFailed) {
+      throw PlatformException(code: 'key_generation_failed', message: 'x');
     }
     if (throwTypeError) {
       final Object? bad = null;

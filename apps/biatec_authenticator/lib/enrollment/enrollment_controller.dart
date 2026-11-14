@@ -19,9 +19,13 @@ class EnrollmentController extends ChangeNotifier {
     DateTime Function()? clock,
     this.attestation = const PlatformAttestationProvider(),
     this.attestationTimeout = const Duration(seconds: 30),
+    this.twoKeys = true,
   }) : _clock = clock ?? DateTime.now;
 
   final DeviceKeyStore keys;
+
+  /// Two-key enrollment (`AppConfig.twoKeys`): both keys, the server's nonce and the enrollment proofs. Off (against a Biatec OIDC without them) one key is enrolled, the one that needs no prompt, and a challenge is asked for only when the platform attestation needs one.
+  final bool twoKeys;
 
   /// The observable store: it keeps an enrollment whose write failed, which this controller relies on.
   final ObservableEnrollmentStore store;
@@ -137,15 +141,17 @@ class EnrollmentController extends ChangeNotifier {
       if (p != EnrollmentPhase.failed) _set(EnrollmentState.notEnrolled);
       return;
     }
-    if (!record.hasTwoKeys) {
-      // From before the two keys: its one key is not bound to the biometrics. Treated as having no keys; the device enrolls again (no silent migration).
+    if (twoKeys && !record.hasTwoKeys) {
+      // From before the two keys: its one key is not bound to the biometrics. Treated as having no keys; the device enrolls again (no silent migration). A failed attempt keeps its own error.
       _keysState = KeysState.missing;
-      _set(const EnrollmentState(EnrollmentPhase.notEnrolled,
-          error: legacyKeyNotice));
+      if (p != EnrollmentPhase.failed) {
+        _set(const EnrollmentState(EnrollmentPhase.notEnrolled,
+            error: legacyKeyNotice));
+      }
       return;
     }
     _set(EnrollmentState.fromRecord(record, _clock()));
-    await _checkKeys();
+    if (twoKeys) await _checkKeys();
     await _ensureRecoveryCode();
     await _loadKeyLevel(record.kid);
     await _refreshAttestationIfDue(record);
@@ -224,7 +230,9 @@ class EnrollmentController extends ChangeNotifier {
     }
     final session = _session;
     try {
-      final level = (await keys.loadApproval())?.securityLevel;
+      final level =
+          (twoKeys ? await keys.loadApproval() : await keys.loadPresence())
+              ?.securityLevel;
       if (_disposed || session != _session) return;
       _keyLevel = level;
       _keyLevelKid = kid;
@@ -263,8 +271,9 @@ class EnrollmentController extends ChangeNotifier {
         await store.clearAlias();
       }
       deviceKeys = await keys.generateKeys();
-      if (!deviceKeys.approval.securityLevel.isHardware ||
-          !deviceKeys.approval.authBound) {
+      if (twoKeys &&
+          (!deviceKeys.approval.securityLevel.isHardware ||
+              !deviceKeys.approval.authBound)) {
         throw const _CannotProtectApprovals();
       }
       if (!deviceKeys.presence.securityLevel.isHardware) {
@@ -287,7 +296,10 @@ class EnrollmentController extends ChangeNotifier {
                   'need one.'
               : e.code == 'insecure_key'
                   ? const _CannotProtectApprovals().message
-                  : 'Could not create the device keys: $e'));
+                  : e.code == 'key_generation_failed'
+                      ? 'This phone could not create the device keys. Restart '
+                          'the phone and try again.'
+                      : 'Could not create the device keys: $e'));
       return;
     } on Object catch (e) {
       await _discardKeys();
@@ -295,42 +307,57 @@ class EnrollmentController extends ChangeNotifier {
           error: 'Could not create the device keys: $e'));
       return;
     }
-    _keyLevel = deviceKeys.approval.securityLevel;
-    _keyLevelKid = deviceKeys.approval.kid;
+    // The key that is enrolled as the device key: the approval key in two-key mode, the prompt-free key otherwise.
+    final enrolled = twoKeys ? deviceKeys.approval : deviceKeys.presence;
+    _keyLevel = enrolled.securityLevel;
+    _keyLevelKid = enrolled.kid;
     _set(const EnrollmentState(EnrollmentPhase.enrolling));
     // The server's nonce: the enrollment proof is bound to it, and so is the platform's proof when there is one. Without a nonce there is no enrollment.
     String? challenge;
+    var attest = false;
     try {
-      challenge = await client.requestChallenge(loginToken: loginToken.trim());
+      attest = await attestation.supported();
     } on Object {
-      challenge = null;
+      attest = false;
     }
-    if (challenge == null) {
+    // Single-key mode asks for a challenge only when the platform attestation needs one (a Biatec OIDC without the two keys has no use for it otherwise).
+    if (twoKeys || attest) {
+      try {
+        challenge =
+            await client.requestChallenge(loginToken: loginToken.trim());
+      } on Object {
+        challenge = null;
+      }
+    }
+    if (twoKeys && challenge == null) {
       await _discardKeys();
       _set(const EnrollmentState(EnrollmentPhase.failed,
-          error: 'Biatec OIDC did not give an enrollment challenge. Try again.'));
+          error:
+              'Biatec OIDC did not give an enrollment challenge. Try again.'));
       return;
     }
     // The platform's proof, bound to the nonce. Any failure here means no proof is sent, never a made-up one.
     AttestationToken? proof;
     try {
-      if (await attestation.supported()) {
+      if (attest && challenge != null) {
         proof = await attestation.token(challenge).timeout(attestationTimeout);
       }
     } on Object {
       proof = null;
     }
-    final EnrollmentProofs proofs;
+    EnrollmentProofs? proofs;
     try {
       // The one biometric prompt of an enrollment: the approval key signs the proof.
-      proofs = await buildEnrollmentProofs(
-        keys: keys,
-        deviceKeys: deviceKeys,
-        nonce: challenge,
-        now: _clock(),
-        promptTitle: 'Enroll this phone',
-        promptSubtitle: 'Approvals will need your fingerprint or face',
-      );
+      if (twoKeys) {
+        proofs = await buildEnrollmentProofs(
+          keys: keys,
+          deviceKeys: deviceKeys,
+          nonce: challenge!,
+          now: _clock(),
+          promptTitle: 'Enroll this phone',
+          promptSubtitle: 'Approvals will need your fingerprint or face',
+        );
+      }
     } on KeyPromptCancelled {
       await _discardKeys();
       _set(const EnrollmentState(EnrollmentPhase.failed,
@@ -345,7 +372,8 @@ class EnrollmentController extends ChangeNotifier {
     final EnrollmentRecord record;
     try {
       record = await client.enroll(
-        keys: deviceKeys,
+        key: enrolled,
+        presenceKey: twoKeys ? deviceKeys.presence : null,
         proofs: proofs,
         loginToken: loginToken.trim(),
         approvedByKid: approvedByKid,

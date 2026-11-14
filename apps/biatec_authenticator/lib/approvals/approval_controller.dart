@@ -4,6 +4,7 @@ import '../enrollment/enrollment_store.dart';
 import '../keys/device_key_store.dart';
 import '../keys/key_security_level.dart';
 import 'approval_client.dart';
+import 'biometric_gate.dart';
 import 'consent_request.dart';
 import 'history_store.dart';
 import 'jcs.dart';
@@ -44,6 +45,8 @@ class ApprovalController extends ChangeNotifier {
     required this.keys,
     required this.enrollment,
     required this.history,
+    required this.gate,
+    this.twoKeys = true,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
@@ -52,6 +55,12 @@ class ApprovalController extends ChangeNotifier {
   final DeviceKeyStore keys;
   final EnrollmentStore enrollment;
   final HistoryStore history;
+
+  /// Single-key mode only (`AppConfig.twoKeys` off): the app's own biometric check before the approval is signed. In two-key mode the OS prompt of the approval key is the gate and this is never asked.
+  final BiometricGate gate;
+
+  /// `AppConfig.twoKeys`: the two device keys. Off, the one prompt-free key signs everything and [gate] asks first (the behaviour before T-241).
+  final bool twoKeys;
   final DateTime Function() _clock;
 
   ApprovalPhase _phase = ApprovalPhase.loading;
@@ -153,6 +162,7 @@ class ApprovalController extends ChangeNotifier {
 
   /// Asks the keystore whether the keys are usable (no prompt). An answer that cannot be had leaves the state as it was.
   Future<void> _checkKeys() async {
+    if (!twoKeys) return;
     try {
       _keysState = await keys.keysState();
     } on Object {
@@ -169,6 +179,25 @@ class ApprovalController extends ChangeNotifier {
     if (record.activeAt.isAfter(now)) {
       throw const ApprovalException(
           'This device is not active yet, so it cannot decide.');
+    }
+    if (!twoKeys) {
+      // The single enrolled key is the prompt-free key, under the record's kid.
+      final key = await keys.loadPresence();
+      if (key == null || key.kid != record.kid) {
+        throw const ApprovalException(
+            'The device key is missing. Enroll this device again.');
+      }
+      if (key.securityLevel.blocksSigning) {
+        throw const ApprovalException(KeySecurityLevel.softwareKeyMessage);
+      }
+      return (
+        record.deviceToken,
+        DeviceIdentity(
+            approvalKey: key,
+            approvalAttestation: record.attestation,
+            presenceKey: key,
+            presenceAttestation: record.attestation ?? ''),
+      );
     }
     final presenceKid = record.presenceKid;
     final presenceAttestation = record.presenceAttestation;
@@ -201,6 +230,11 @@ class ApprovalController extends ChangeNotifier {
   /// Why this device cannot approve, if it cannot: an approval needs the approval key, in hardware and bound to the biometrics.
   String? _cannotApprove(DeviceIdentity device) {
     final key = device.approvalKey;
+    if (!twoKeys) {
+      return device.approvalAttestation == null
+          ? 'This enrollment has no attestation. Enroll the device again.'
+          : null;
+    }
     if (_keysState == KeysState.approvalKeyInvalidated || key == null) {
       return ApprovalKeyInvalidated.message;
     }
@@ -238,6 +272,11 @@ class ApprovalController extends ChangeNotifier {
         _set(ApprovalPhase.ready, error: blocked);
         return;
       }
+      // Single-key mode: the app's own biometric check (two-key mode: the OS prompt of the signature is the check).
+      if (!twoKeys && !await gate.confirm('Approve this action')) {
+        _set(ApprovalPhase.ready, error: 'Biometric check did not pass.');
+        return;
+      }
       // Never approve from a cached card: fetch again, and stop if anything
       // differs from what the user looked at.
       final fresh = await client.fetch(token, authReqId);
@@ -266,7 +305,9 @@ class ApprovalController extends ChangeNotifier {
           code: code,
           decision: Decision.approve,
           now: now,
+          clock: () => now,
           prompt: prompt,
+          singleKey: !twoKeys,
         );
       } on KeyPromptCancelled {
         // Nothing was signed or sent: the request stays pending and no code attempt is used.
@@ -321,6 +362,7 @@ class ApprovalController extends ChangeNotifier {
         code: _lastCode,
         decision: Decision.codeFailed,
         now: now,
+        singleKey: !twoKeys,
       );
       final outcome = await client.postReceipt(token, authReqId, receipt);
       if (outcome is ReceiptAccepted) {
@@ -356,6 +398,7 @@ class ApprovalController extends ChangeNotifier {
         code: _lastCode,
         decision: Decision.deny,
         now: now,
+        singleKey: !twoKeys,
       );
       final outcome = await client.postReceipt(token, authReqId, receipt);
       switch (outcome) {

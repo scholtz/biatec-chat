@@ -60,7 +60,8 @@ class HistoryEntry {
             json['decided_at'] as int,
             isUtc: true),
         // Entries written before the code was dropped lose it here, and on disk at the next write.
-        receipt: redactReceipt((json['receipt'] as Map).cast<String, Object?>()),
+        receipt:
+            redactReceipt((json['receipt'] as Map).cast<String, Object?>()),
       );
 
   /// This entry with the binding code removed from its receipt.

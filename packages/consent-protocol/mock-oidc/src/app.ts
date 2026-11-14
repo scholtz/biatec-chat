@@ -681,12 +681,17 @@ export function createMockOidc(options: MockOptions = {}) {
   }
 
   /** The platform attestation sent with an enrollment or a refresh: a kind this product knows, a token, and the nonce this user was given. */
-  function takePlatformAttestation(sub: string, body: Record<string, any>) {
+  function takePlatformAttestation(sub: string, body: Record<string, any>, spentNonce?: string) {
     const a = body.platform_attestation;
     if (!a || (a.kind !== "play_integrity" && a.kind !== "app_attest") || typeof a.token !== "string" || !a.token || a.token.length > 65536 || (a.key_id !== undefined && (typeof a.key_id !== "string" || a.key_id.length > 256))) {
       throw new HttpError(400, "invalid_request", "platform_attestation needs a kind (play_integrity or app_attest) and a token");
     }
     const nonce = body.attestation_challenge;
+    if (spentNonce !== undefined) {
+      // Two keys: the enrollment proof already consumed this challenge (it stays consumed); the platform attestation must be bound to the same nonce.
+      if (nonce !== spentNonce) throw new HttpError(400, "invalid_request", "attestation_challenge must be the nonce of the enrollment proof");
+      return { kind: a.kind as string, attestedAt: now() };
+    }
     const c = typeof nonce === "string" ? attestationChallenges.get(nonce) : undefined;
     if (!c || c.sub !== sub || c.expires < now()) throw new HttpError(400, "invalid_request", "attestation_challenge is unknown, used, expired or another user's");
     attestationChallenges.delete(nonce); // single use, also when the rest of the request fails
@@ -753,13 +758,11 @@ export function createMockOidc(options: MockOptions = {}) {
         });
       } catch { ok = false; }
       if (!ok) throw new HttpError(400, "invalid_proof", "the enrollment proof does not verify (approval key, presence key, nonce and iat)");
-      // The platform attestation, when sent, is bound to the same nonce: put it back for takePlatformAttestation.
-      attestationChallenges.set(enrollNonce, c);
     }
     // Without a platform attestation the device is enrolled and flagged; with a malformed or replayed one it is refused.
     // The two fields go together: one alone is refused (an orphan challenge would otherwise be ignored and left unspent).
     if ((body.platform_attestation === undefined) !== (body.attestation_challenge === undefined)) throw new HttpError(400, "invalid_request", "attestation_challenge and platform_attestation are sent together");
-    const platformAttestation = body.platform_attestation === undefined ? undefined : takePlatformAttestation(t.sub, body);
+    const platformAttestation = body.platform_attestation === undefined ? undefined : takePlatformAttestation(t.sub, body, enrollNonce);
     // A device with a second, presence key sends it with its kid; its own attestation then says `presence`. (The enrollment proof, the pairing
     // code and activation by another device are T-242's; the mock only models the keys and their attested use.)
     let presence: { kid: string; publicKey: Record<string, string> } | undefined;
@@ -769,7 +772,6 @@ export function createMockOidc(options: MockOptions = {}) {
       if (deviceOfKey(body.presence_kid)) throw new HttpError(409, "conflict", "presence_kid already enrolled");
       presence = { kid: body.presence_kid, publicKey: { kty: "EC", crv: "P-256", x: pp.x, y: pp.y } };
     }
-    if (enrollNonce) attestationChallenges.delete(enrollNonce);
     const d = addDevice(t.sub, body.kid, { kty: "EC", crv: "P-256", x: pk.x, y: pk.y }, activeAt, undefined, presence);
     setPush(d, push);
     hub.notify(d.sub, "device_enrolled", { kid: d.kid });

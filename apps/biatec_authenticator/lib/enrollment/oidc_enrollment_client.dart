@@ -27,8 +27,9 @@ class OidcEnrollmentClient {
   /// [approvedByKid] names an already active device that approved this one,
   /// which makes the new device active at once.
   Future<EnrollmentRecord> enroll({
-    required DeviceKeys keys,
-    required EnrollmentProofs proofs,
+    required DeviceKey key,
+    DeviceKey? presenceKey,
+    EnrollmentProofs? proofs,
     required String loginToken,
     String? approvedByKid,
     String? name,
@@ -44,13 +45,15 @@ class OidcEnrollmentClient {
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
-          'kid': keys.approval.kid,
-          'public_key': keys.approval.toJwk(),
-          // The second key and the proof of possession of both (protocol 1.1): the approval proof is signed by the approval key, the presence proof by the presence key, over the same payload and the server's nonce.
-          'presence_kid': keys.presence.kid,
-          'presence_public_key': keys.presence.toJwk(),
-          'approval_proof': proofs.approvalProof,
-          'presence_proof': proofs.presenceProof,
+          'kid': key.kid,
+          'public_key': key.toJwk(),
+          // Two-key mode (protocol 1.1): the second key and the proof of possession of both. The approval proof is signed by the approval key, the presence proof by the presence key, over the same payload and the server's nonce.
+          if (presenceKey != null && proofs != null) ...{
+            'presence_kid': presenceKey.kid,
+            'presence_public_key': presenceKey.toJwk(),
+            'approval_proof': proofs.approvalProof,
+            'presence_proof': proofs.presenceProof,
+          },
           if (approvedByKid != null) 'approved_by_kid': approvedByKid,
           if (name != null) 'name': name,
           // The platform's proof that this is the real app on a real device, bound to the nonce Biatec OIDC gave. Sent only when there is one: a missing proof is not replaced by a made-up one.
@@ -65,7 +68,8 @@ class OidcEnrollmentClient {
     } on Object catch (e) {
       throw EnrollmentException('Could not reach Biatec OIDC: $e');
     }
-    return parseResponse(res.statusCode, res.body);
+    return parseResponse(res.statusCode, res.body,
+        twoKeys: presenceKey != null);
   }
 
   static Map<String, Object?> _attestationJson(AttestationToken t) => {
@@ -125,7 +129,8 @@ class OidcEnrollmentClient {
         : null;
   }
 
-  static EnrollmentRecord parseResponse(int status, String body) {
+  static EnrollmentRecord parseResponse(int status, String body,
+      {bool twoKeys = true}) {
     final json = _decodeObject(body, status);
     if (status != 201) {
       final detail = json['error_description'] ?? json['error'] ?? 'error';
@@ -139,7 +144,7 @@ class OidcEnrollmentClient {
     final attestation = json['attestation'];
     final presenceKid = json['presence_kid'];
     final presenceAttestation = json['presence_attestation'];
-    if (presenceKid is! String || presenceAttestation is! String) {
+    if (twoKeys && (presenceKid is! String || presenceAttestation is! String)) {
       throw const EnrollmentException(
           'Biatec OIDC did not enroll both device keys.');
     }
@@ -153,8 +158,9 @@ class OidcEnrollmentClient {
       kid: kid,
       deviceToken: token,
       attestation: attestation as String?,
-      presenceKid: presenceKid,
-      presenceAttestation: presenceAttestation,
+      presenceKid: presenceKid is String ? presenceKid : null,
+      presenceAttestation:
+          presenceAttestation is String ? presenceAttestation : null,
       // The mock reports epoch seconds.
       activeAt: DateTime.fromMillisecondsSinceEpoch((activeAt * 1000).round(),
           isUtc: true),

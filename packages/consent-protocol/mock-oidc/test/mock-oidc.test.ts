@@ -1237,6 +1237,19 @@ test("T-241: MOCK_TWO_KEYS: enrollment needs the enrollment proof, and the devic
     assert.equal((await post("/devices", "Bearer login-alice", { kid: "x1", public_key: pub(keys.new_approval) })).status, 400, "a single key is refused");
     assert.equal((await post("/devices", "Bearer login-alice", await enrollBody({ presenceSigner: keys.device }))).status, 400, "the presence proof must be signed by the presence key");
     assert.equal((await post("/devices", "Bearer login-alice", await enrollBody({ nonce: "A".repeat(32) }))).status, 400, "an unknown nonce");
+    // The nonce is spent when the proof verifies, and stays spent: a later refusal (the presence kid is taken) does not give it back.
+    const taken = await enrollBody();
+    const takenBody = { ...taken, presence_kid: "alice-device-presence" };
+    // (the proof names new-presence, so rebuild it for the taken kid)
+    const nonceTaken = JSON.parse(Buffer.from(taken.approval_proof.split(".")[1], "base64url").toString()).nonce;
+    const payloadTaken = { kid: "new-approval", presence_kid: "alice-device-presence", presence_jwk_thumbprint: thumb(keys.new_presence), nonce: nonceTaken, iat: clock };
+    const aT = jws("biatec-device-enroll+jwt", keys.new_approval, payloadTaken);
+    const pT = jws("biatec-device-enroll-presence+jwt", keys.new_presence, payloadTaken, pub(keys.new_presence));
+    Object.assign(takenBody, { approval_proof: aT.input + "." + aT.sig, presence_proof: pT.input + "." + pT.sig });
+    assert.equal((await post("/devices", "Bearer login-alice", takenBody)).status, 409, "presence kid already enrolled");
+    const again = await post("/devices", "Bearer login-alice", takenBody);
+    assert.equal(again.status, 400, "the nonce was spent by the first try: " + (await again.text()));
+
     const ok = await post("/devices", "Bearer login-alice", await enrollBody());
     assert.equal(ok.status, 201, await ok.clone().text());
     const enrolled = (await ok.json()) as any;

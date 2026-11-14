@@ -93,10 +93,12 @@ Future<Map<String, Object?>> signReceipt({
   required Decision decision,
   required DateTime now,
   ApprovalPrompt? prompt,
+  DateTime Function()? clock,
+  bool singleKey = false,
 }) async {
   final signed = signedObject(request, code: code, decision: decision);
   final bytes = Uint8List.fromList(canonicalBytes(signed));
-  final approving = decision == Decision.approve;
+  final approving = decision == Decision.approve && !singleKey;
   // Before anything is signed, so the user is never asked for a biometric that cannot lead to a receipt.
   if (approving &&
       (device.approvalKey == null || device.approvalAttestation == null)) {
@@ -117,6 +119,8 @@ Future<Map<String, Object?>> signReceipt({
         'signature; ES256 r||s is 64 bytes');
   }
   final key = approving ? device.approvalKey : device.presenceKey;
+  // The time is read after the signature (an approval waits for the user at the prompt), so `issued_at` is when it was made.
+  final issued = (clock?.call() ?? now).toUtc().millisecondsSinceEpoch ~/ 1000;
   final attestation =
       approving ? device.approvalAttestation : device.presenceAttestation;
   if (key == null || attestation == null) {
@@ -127,11 +131,13 @@ Future<Map<String, Object?>> signReceipt({
     'signed': signed,
     'alg': 'ES256',
     'signature': base64Url.encode(signature).replaceAll('=', ''),
-    'issued_at': now.toUtc().millisecondsSinceEpoch ~/ 1000,
+    'issued_at': issued,
     'device': {
       'kid': key.kid,
       // 1.1: informational copy of the attestation's biatec_key_use.
-      if (!request.client.legacy) 'key_use': approving ? 'approve' : 'presence',
+      // Single-key mode: the one key is the pre-two-keys device key, which the server knows as the approval key.
+      if (!request.client.legacy)
+        'key_use': approving || singleKey ? 'approve' : 'presence',
       'public_key': key.toJwk(),
       'attestation': attestation,
     },

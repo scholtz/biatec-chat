@@ -1,4 +1,6 @@
 // BCHAT-032: the key store reads where the native keystore says the key lives, and a missing or unknown value is never read as hardware.
+import 'dart:io';
+
 import 'package:biatec_authenticator/keys/device_key_store.dart';
 import 'package:biatec_authenticator/keys/key_security_level.dart';
 import 'package:flutter/services.dart';
@@ -96,7 +98,72 @@ void main() {
       });
       expect(await store.loadApproval(), isNull);
       expect(await store.loadPresence(), isNull);
-      expect(asked, ['approve', 'presence']);
+      // The CHANNEL vocabulary (approval, presence), not the protocol's key use (approve, presence).
+      expect(asked, ['approval', 'presence']);
+    });
+
+    test('the exact method names and arguments the Dart side sends', () async {
+      final calls = <MethodCall>[];
+      answer((call) {
+        calls.add(call);
+        switch (call.method) {
+          case 'generateKeys':
+            return {'approval': part('tee', bound: true), 'presence': part('tee')};
+          case 'keysState':
+            return 'ok';
+          case 'signPresence':
+          case 'signApproval':
+            return Uint8List(64);
+        }
+        return null;
+      });
+      await store.generateKeys();
+      await store.loadApproval();
+      await store.loadPresence();
+      await store.keysState();
+      await store.signPresence(Uint8List(1));
+      await store.signApproval(Uint8List(1), promptTitle: 't', promptSubtitle: 's');
+      await store.deleteKeys();
+      await store.deleteLegacyKey('old-alias');
+      expect([for (final c in calls) '${c.method} ${c.arguments is Map ? ((c.arguments as Map).keys.toList()..sort()).join(',') : ''}'], [
+        'generateKeys ',
+        'load use',
+        'load use',
+        'keysState ',
+        'signPresence data',
+        'signApproval data,subtitle,title',
+        'deleteKeys ',
+        'delete alias',
+      ]);
+      expect([for (final c in calls.where((c) => c.method == 'load')) (c.arguments as Map)['use']], ['approval', 'presence']);
+    });
+
+    test('KeystorePlugin.kt and KeystorePlugin.swift understand every name and value the Dart side sends', () {
+      final kt = File('android/app/src/main/kotlin/io/biatec/authenticator/KeystorePlugin.kt').readAsStringSync();
+      final swift = File('ios/Runner/KeystorePlugin.swift').readAsStringSync();
+      for (final method in ['generateKeys', 'load', 'keysState', 'signPresence', 'signApproval', 'deleteKeys', 'delete']) {
+        expect(kt, contains('"$method"'), reason: 'Kotlin: $method');
+        expect(swift, contains('"$method"'), reason: 'Swift: $method');
+      }
+      for (final use in [channelUse(KeyUse.approve), channelUse(KeyUse.presence)]) {
+        expect(kt, contains('"$use" ->'), reason: 'Kotlin load use $use');
+        expect(swift, contains('case "$use"'), reason: 'Swift load use $use');
+      }
+      for (final arg in ['use', 'data', 'title', 'subtitle', 'alias']) {
+        expect(kt, contains('"$arg"'), reason: 'Kotlin argument $arg');
+        // iOS shows the fixed title only; the subtitle is an Android prompt field.
+        if (arg != 'subtitle') expect(swift, contains('"$arg"'), reason: 'Swift argument $arg');
+      }
+      // What the plugins answer: the keys state, the key map and the error codes Dart maps.
+      for (final wire in ['ok', 'approval_key_invalidated', 'missing']) {
+        expect(KeysState.fromWire(wire).wire, wire);
+        expect(kt, contains('"$wire"'));
+        expect(swift, contains('"$wire"'));
+      }
+      for (final code in ['cancelled', 'approval_key_invalidated', 'no_biometrics', 'locked_out', 'auth_failed', 'key_generation_failed', 'insecure_key']) {
+        expect(kt, contains('"$code"'), reason: 'Kotlin error $code');
+        expect(swift, contains('"$code"'), reason: 'Swift error $code');
+      }
     });
 
     test('keysState maps the plugin answer and fails closed', () async {

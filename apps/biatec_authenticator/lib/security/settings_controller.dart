@@ -70,6 +70,7 @@ class SettingsServices {
     required this.enrollment,
     required this.gate,
     this.enabled = true,
+    this.twoKeys = true,
     DateTime Function()? clock,
     String Function()? nonce,
   })  : clock = clock ?? DateTime.now,
@@ -85,6 +86,7 @@ class SettingsServices {
         enrollment: approvals.enrollment,
         gate: approvals.gate,
         enabled: config.settingsApi,
+        twoKeys: approvals.twoKeys,
         clock: approvals.clock,
       );
 
@@ -99,6 +101,9 @@ class SettingsServices {
   final DateTime Function() clock;
   final String Function() nonce;
 
+  /// `AppConfig.twoKeys`.
+  final bool twoKeys;
+
   SettingsController controller() => SettingsController(
         client: client,
         keys: keys,
@@ -106,6 +111,7 @@ class SettingsServices {
         gate: gate,
         clock: clock,
         nonce: nonce,
+        twoKeys: twoKeys,
       );
 }
 
@@ -128,6 +134,7 @@ class SettingsController extends ChangeNotifier {
     required this.keys,
     required this.enrollment,
     required this.gate,
+    this.twoKeys = true,
     DateTime Function()? clock,
     String Function()? nonce,
   })  : _clock = clock ?? DateTime.now,
@@ -137,6 +144,9 @@ class SettingsController extends ChangeNotifier {
   final DeviceKeyStore keys;
   final ObservableEnrollmentStore enrollment;
   final BiometricGate gate;
+
+  /// `AppConfig.twoKeys`. Off: the prompt-free key signs and the app's gate asks first (the behaviour before T-241).
+  final bool twoKeys;
   final DateTime Function() _clock;
   final String Function() _nonce;
 
@@ -327,7 +337,10 @@ class SettingsController extends ChangeNotifier {
       // An inactive device cannot loosen: said before any prompt.
       if (loosening) _checkActive(record);
       // A fresh biometric for any change to a security setting, tightening included (Secure Area rule 4). A loosening is signed by the approval key, whose OS prompt is that biometric (one prompt, no separate gate); a tightening is not signed, so the app's gate asks.
-      if (!loosening && !await gate.confirm('Change a security setting')) {
+      if ((!loosening || !twoKeys) &&
+          !await gate.confirm(loosening
+              ? 'Approve this settings change'
+              : 'Change a security setting')) {
         throw const ApprovalException('Biometric check did not pass.');
       }
       ConsentSettings next;
@@ -363,11 +376,11 @@ class SettingsController extends ChangeNotifier {
   Future<ConsentSettings> _signedChange(EnrollmentRecord record,
       ConsentSettings current, Map<String, Object?> change) async {
     _checkActive(record);
-    final key = await keys.loadApproval();
+    final key = twoKeys ? await keys.loadApproval() : await keys.loadPresence();
     if (key == null || key.kid != record.kid) {
       throw const ApprovalException(ApprovalKeyInvalidated.message);
     }
-    if (key.securityLevel.blocksSigning || !key.authBound) {
+    if (key.securityLevel.blocksSigning || (twoKeys && !key.authBound)) {
       throw const ApprovalException('This phone cannot protect approvals.');
     }
     final signed = <String, Object?>{
@@ -380,11 +393,16 @@ class SettingsController extends ChangeNotifier {
     };
     final Uint8List signature;
     try {
-      // The operating system asks for a strong biometric for this one signature.
-      signature = await keys.signApproval(
-          Uint8List.fromList(canonicalBytes(signed)),
-          promptTitle: 'Approve this settings change',
-          promptSubtitle: 'Lowers a protection on your Biatec account');
+      if (!twoKeys) {
+        signature =
+            await keys.signPresence(Uint8List.fromList(canonicalBytes(signed)));
+      } else {
+        // The operating system asks for a strong biometric for this one signature.
+        signature = await keys.signApproval(
+            Uint8List.fromList(canonicalBytes(signed)),
+            promptTitle: 'Approve this settings change',
+            promptSubtitle: 'Lowers a protection on your Biatec account');
+      }
     } on KeyPromptCancelled {
       throw const ApprovalException('Approval cancelled. Nothing was changed.');
     } on ApprovalKeyInvalidated {
