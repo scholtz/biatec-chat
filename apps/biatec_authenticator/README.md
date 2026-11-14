@@ -12,15 +12,14 @@ then hardened; BCHAT-008). The application id and bundle identifier are `io.biat
 `test/platform_hardening_test.dart`:
 
 - **Android:** no backup or device transfer (`allowBackup="false"`, `data_extraction_rules.xml`), no cleartext traffic (the debug manifest alone allows
-  it, for the local mock), `MainActivity` (the launcher) is the only component of the app's own manifest, the window is `FLAG_SECURE`, `KeystorePlugin`
-  is registered in `MainActivity`, release builds are minified and signed with your own key (below). Libraries add three receivers when the manifests
-  merge (Firebase messaging twice, protected by `com.google.android.c2dm.permission.SEND`; the AndroidX profile installer, protected by
-  `android.permission.DUMP`); review the merged manifest (`build/app/intermediates/merged_manifests/release/`) on each release.
+  it, for the local mock), `MainActivity` (the launcher) is the only exported component and the only activity; the one service (`StayConnectedService`) and the
+  boot receiver are not exported (T-244); the window is `FLAG_SECURE`, `KeystorePlugin` is registered in `MainActivity` (and in the service's engine), release builds are
+  minified and signed with your own key (below). Libraries add receivers and services when the manifests merge (the notifications plugin's, and the AndroidX profile
+  installer, protected by `android.permission.DUMP`); review the merged manifest (`build/app/intermediates/merged_manifests/release/`) on each release.
 - **iOS:** App Transport Security at its default (no exceptions), no URL schemes, a Face ID usage string, `KeystorePlugin` (Secure Enclave) registered in
   `AppDelegate`, and `ScreenCover` hides the content from the app switcher and while the screen is recorded or mirrored.
-- **Push on iOS is not enabled yet:** the Push Notifications capability (a `Runner.entitlements` with `aps-environment`, per build configuration) needs the Apple
-  developer account, and `GoogleService-Info.plist` / `android/app/google-services.json` are not committed; until then approval pushes do not arrive.
-  The deployment target is iOS 15 (Firebase iOS SDK 12); `UIBackgroundModes` `remote-notification` is added together with the capability.
+- **Push on iOS is optional and off:** there is no push entitlement in the committed project; the optional Apple wake and its entitlements file are described under "Device channel and
+  notifications (T-244)". The deployment target is iOS 15.
 - **Not verified:** the Kotlin plugin compiles (`flutter build apk --debug` and `--release` were run), but nothing was run on a device or an emulator.
   The Swift files (`KeystorePlugin.swift`, `ScreenCover.swift`, `AppDelegate.swift`) and the Xcode project edits were written without Xcode: build them
   on a Mac before the first iOS release.
@@ -149,24 +148,107 @@ default counts as a real Biatec OIDC, so the settings screens are off unless `--
   `flutter test --dart-define=MOCK_OIDC_URL=http://127.0.0.1:8089 test/approvals/mock_oidc_approval_contract_test.dart`.
   On Node older than 22.18 start it with `node --experimental-strip-types src/server.ts`.
 
-## Push notifications (T-053)
+## Device channel and notifications (T-244)
 
-- `lib/push/`: `PushController` keeps the push token registered at Biatec OIDC (`PUT /devices/push`,
-  `Authorization: Device <token>`) on start, on token rotation, on app resume and on navigation, re-sent at most every 10 minutes; a tapped
-  notification opens the approval screen for its `auth_req_id` (not a second time if it is already open), and a push
-  received in the foreground refreshes the pending list and shows an in-app "New approval request" notice. The payload is read only for `auth_req_id` (`push_payload.dart`); the request itself is always
-  fetched from Biatec OIDC, so a forged or altered push can at most open a request the device's user really has.
-- FCM through `firebase_messaging` (`FcmPushTransport`, token = the Firebase Installation ID from `register()`).
-  Push is off unless all four Firebase options are passed, so nothing per deployment is committed:
+There is no Firebase and no Google push code in this app (changelog: T-244 removed `firebase_core`, `firebase_messaging` and the FCM transport). The app learns about
+a request at once while it is connected, over a SignalR hub hosted inside Biatec OIDC. Nothing we host can wake an app that is not running; that limit is stated
+here instead of being hidden.
 
-      flutter run --dart-define=FIREBASE_API_KEY=... --dart-define=FIREBASE_APP_ID=... \
-        --dart-define=FIREBASE_SENDER_ID=... --dart-define=FIREBASE_PROJECT_ID=...
+### What the code is
 
-  Without them the app polls exactly as before. Android also needs the Google services Gradle setup and iOS the
-  push capability once the platform folders exist.
-- The mock never calls FCM; it records what it would send. Every new request queues one message per active device
-  with a token, data `{ "auth_req_id": "..." }` only (`GET /mock/push-outbox?kid=...`). Contract test:
-  `flutter test --dart-define=MOCK_OIDC_URL=http://127.0.0.1:8089 test/push/mock_oidc_push_contract_test.dart`.
+- `lib/channel/device_channel.dart` (`DeviceChannel`, a `DeviceEventSource`): a minimal SignalR JSON hub-protocol client over `web_socket_channel`, server to
+  client only, no SignalR package. For every connection it fetches a fresh single-use ticket with `POST /devices/hub-ticket` (signed with the device token and the
+  device proof, like every device call), connects `wss://<oidc>/hubs/device?access_token=<ticket>` through the pinned TLS client (`PinnedHttp.webSocketClient`),
+  sends the handshake, and handles invocations (type 1), pings (type 6, answered and sent every 15 s) and close (type 7: reconnect unless `allowReconnect` is
+  `false`). Unknown message types and targets are ignored and an invocation is never sent. It reconnects after 1, 2, 5, 10, then 30 seconds plus up to 20 percent
+  jitter, starting again at 1 second after a connection that lived 60 seconds, makes no attempt while there is no network or the device is not enrolled, and never
+  logs the URL (it holds the ticket).
+- `lib/push/device_event.dart`, `device_event_controller.dart` (`DeviceEventController`): the four events (`consent_request`, `consent_closed`, `device_enrolled`,
+  `settings_changed`) carry ids only, validated by charset and length before use. A request refreshes the pending list and, when the app is not in front, fetches
+  the pending requests and shows a local notification with fixed text ("Approval requested" / "Open Biatec Authenticator to review"; nothing from the payload is
+  in it). A closed request drops its card and notification, an enrolled device refreshes the device list and notifies (fixed text), changed settings reload. The
+  Approvals screen still polls every 5 seconds while it is open, and the list is fetched on resume, so a missed event only delays a request.
+- The app keeps its channel open while it is in front and closes it when it goes to the background. Texts are in `lib/settings/channel_strings.dart`
+  (English and Slovak, chosen by the phone's language).
+
+### What wakes the phone, and what does not
+
+| Situation | A new request is seen |
+| --- | --- |
+| App open | At once (the channel), and the list polls every 5 seconds as well |
+| Android, app in the background or closed, "Stay connected for approvals" **on** | At once: the foreground service keeps the process and the channel alive, and a notification is shown |
+| Android, app in the background or closed, setting **off** (the default) | Not until the app is opened: nothing can wake it |
+| Android, after a reboot, setting on | The service is restarted after boot (and after an app update) only when the setting is on and the device is enrolled |
+| iPhone, app in front | At once (the channel) |
+| iPhone, app in the background or closed | Not until the app is opened, unless the optional Apple wake is built in (below) |
+| Any phone, no network | When the network returns and the app is open or connected; the channel makes no attempts without a network |
+
+A swiped-away app, "force stop", aggressive battery managers of some phone makers and a device that is switched off all stop the channel. The service's
+battery cost is why the setting is off by default and says so.
+
+### Stay connected on Android
+
+- Settings, group Notifications: **Stay connected for approvals** (Android only, default off, English and Slovak). It says what happens when it is off ("you will see
+  requests when you open the app") and that it keeps the app running with a permanent notification, which uses battery. Turning it on asks for the notification
+  permission (Android 13+), saves the choice, and starts `StayConnectedService`; the choice and whether the service should run are kept in the app's private
+  `SharedPreferences` (`StayConnectedPrefs`) because the boot receiver needs them without Dart. The battery optimisation exemption is offered once, after the first
+  time it is turned on, through the system's battery optimisation list (`ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS`, no special permission).
+- `StayConnectedService` is a small Kotlin service rather than `flutter_foreground_task`: it has to host the channel in its own headless Flutter engine and register
+  `KeystorePlugin` on that engine, so that the ticket request is signed with the device key exactly as in the app (the device proof is not skipped or weakened; without
+  the keystore plugin nothing would connect). Its Dart entry point is `stayConnectedMain` in `lib/channel/background_main.dart`; it uses the same pinned client, secure
+  storage and `KeystoreDeviceProofSigner`. A request that arrives while the window is in front is left to the app (`UiState`).
+- The service is not exported, runs with `android:foregroundServiceType="specialUse"` and a `PROPERTY_SPECIAL_USE_FGS_SUBTYPE`; `BootReceiver` (not exported) restarts it after
+  `BOOT_COMPLETED` or `MY_PACKAGE_REPLACED` only when the setting is on and the device is enrolled. It is stopped when the setting is turned off or the device is unenrolled
+  (the app watches the enrollment; the service also stops itself when it finds none).
+- **Play Console declaration.** `specialUse` is the type Android's documentation prescribes for a long-running foreground service that fits none of the other types
+  (there is no "remote notification channel" type; `dataSync` is for transfers and is time-limited on Android 15). The permission `FOREGROUND_SERVICE_SPECIAL_USE` requires, in
+  Play Console under App content, "Foreground service permissions": choose **Special use**, describe the use as in the manifest property (keeps a connection to the user's
+  Biatec OIDC server so that a request to approve a high-value action reaches the phone at once, turned on by the user in Settings), explain that there is no alternative
+  that wakes an app without a third-party push service, and attach a short video that shows the setting being turned on and the permanent notification. Without the declaration Play will not
+  accept a release that has the permission. (This was written from memory of the current Android and Play documentation and was not checked against the live pages: check them
+  before the first release.)
+
+### The optional Apple wake (iOS)
+
+Off by default. With `--dart-define=APNS_ENABLED=true` the app asks for notification permission, registers for remote notifications through `ApplePushChannel.swift`
+(a small Swift method channel; the token as hex) and calls `PUT /devices/push` with `{ "provider": "apns", "token": ... }`; Biatec OIDC may then wake the app with a push that
+carries no content. With the flag off nothing runs: the Dart code never calls the channel, and the committed project has no push entitlement or `UIBackgroundModes`. For a build
+with the flag, set `CODE_SIGN_ENTITLEMENTS` to `ios/Runner/Runner-APNs.entitlements` (it adds `aps-environment`), enable the Push Notifications capability on the App ID, and add
+`UIBackgroundModes` `remote-notification` to `Info.plist` for that build. The server side (APNs key, `provider: apns`) is Biatec OIDC's, not this repository's.
+
+### Tests
+
+- `test/channel/device_channel_test.dart`: against a local WebSocket server (handshake, an invocation delivered, two messages in one frame, a message cut across frames, ping
+  answered, close with and without reconnect, a new ticket for every connection, unknown targets ignored, a malformed `auth_req_id` ignored, no attempts when not enrolled) and with a
+  fake clock (backoff 1, 2, 5, 10, 30 s, jitter at most 20 percent, reset after a 60 s connection, no attempts offline, silence timeout).
+- `test/push/push_test.dart`: the controller's effect for each event, the optional Apple registration, the in-app notice and the 5-second poll.
+  `test/channel/local_notifier_test.dart`: the notification text is fixed and contains nothing from the payload. `test/channel/stay_connected_test.dart`: off starts no service,
+  on starts it, unenrolled stops it (against a fake service starter).
+- Contract test against the mock: `test/channel/mock_oidc_channel_contract_test.dart` (a request opened in the mock arrives over the channel). Start the mock as for the other contract
+  tests (`MOCK_JSON_GROUPS=1 MOCK_TEST_HELPERS=1 MOCK_MAX_PENDING=1000 PORT=8089 pnpm --filter mock-oidc start`), then
+  `flutter test --dart-define=MOCK_OIDC_URL=http://127.0.0.1:8089 test/channel/mock_oidc_channel_contract_test.dart`. It needs the mock's device hub (`POST /devices/hub-ticket`,
+  WebSocket `/hubs/device`). Skipped without `MOCK_OIDC_URL`.
+
+### Manual checklist (not run: no phone was available; native code has never run on a device)
+
+Android phone, a build against the mock or a real Biatec OIDC, device enrolled:
+
+1. Settings > Notifications shows "Stay connected for approvals", off. With it off, put the app in the background (home, then swipe it away), open a request from the web: **nothing arrives**;
+   open the app: the request is in Approvals.
+2. Turn it on: the notification permission is asked (Android 13+), a permanent low-priority notification appears, and the battery exemption is offered once (not again after turning it off and on).
+3. Swipe the app away, open a request from the web: a notification "Approval requested" arrives within seconds and contains nothing about the request. Tap it: the app opens; the request is
+   listed. Decide it on another device: the notification disappears.
+4. Reboot the phone with the setting on and unlock it: the permanent notification is back and step 3 works. Reboot with it off: no service.
+5. Unenroll this device (Devices): the permanent notification goes away and the service does not return after a reboot.
+6. With the app in front and the setting on, a request appears at once and no notification is shown.
+
+iPhone (a device build, not the simulator):
+
+1. With the app in front, open a request from the web: the pending list updates at once (the in-app notice appears).
+2. With the app in the background: nothing arrives until it is opened (unless a build with `APNS_ENABLED=true` and the capability is used, in which case a content-free push wakes it; the
+   `PUT /devices/push` call with `provider: apns` can be seen at the server).
+
+Nothing in this checklist has been ticked: the unit tests above use fakes and a local server.
 
 ## Checks
 

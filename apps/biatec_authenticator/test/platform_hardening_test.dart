@@ -132,12 +132,22 @@ void main() {
     });
 
     test(
-        'the launcher activity is the only component, and it is the only exported one',
+        'the launcher activity is the only exported component; the one service and the boot receiver are not exported',
         () {
       expect('android:exported="true"'.allMatches(manifest).length, 1);
-      for (final tag in ['<service', '<receiver', '<provider']) {
-        expect(manifest, isNot(contains(tag)), reason: '$tag in the manifest');
-      }
+      expect(manifest, isNot(contains('<provider')),
+          reason: 'a provider in the manifest');
+      // T-244: the "Stay connected for approvals" service and its boot receiver, nothing else.
+      expect('<service'.allMatches(manifest).length, 1);
+      expect('<receiver'.allMatches(manifest).length, 1);
+      final service = RegExp(r'<service[^>]*>').firstMatch(manifest)!.group(0)!;
+      expect(service, contains('android:name=".StayConnectedService"'));
+      expect(service, contains('android:exported="false"'));
+      expect(service, contains('android:foregroundServiceType="specialUse"'));
+      final receiver =
+          RegExp(r'<receiver[^>]*>').firstMatch(manifest)!.group(0)!;
+      expect(receiver, contains('android:name=".BootReceiver"'));
+      expect(receiver, contains('android:exported="false"'));
       expect('<activity'.allMatches(manifest).length, 1);
       expect(manifest, contains('android:name=".MainActivity"'));
       expect(manifest, isNot(contains('android:debuggable')));

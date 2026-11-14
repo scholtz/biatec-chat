@@ -49,6 +49,13 @@ class ReceiptRefused extends ReceiptOutcome {
   final String description;
 }
 
+/// A single-use ticket for the device channel. [expiresIn] is in seconds, when the server said.
+class HubTicket {
+  const HubTicket(this.ticket, this.expiresIn);
+  final String ticket;
+  final int? expiresIn;
+}
+
 /// The authenticator side of Biatec OIDC (the mock in development), using
 /// `Authorization: Device <token>`.
 class ApprovalClient {
@@ -155,8 +162,30 @@ class ApprovalClient {
     }
   }
 
-  /// `PUT /devices/push`: where Biatec OIDC sends this device's
-  /// notifications (T-053).
+  /// `POST /devices/hub-ticket`: a single-use ticket for one connection of the device channel. It is signed like every device call (device token and device proof), so the channel never opens without the device key. The ticket is short-lived and goes in the WebSocket URL, so it is never logged.
+  Future<HubTicket> hubTicket(String deviceToken) async {
+    final url = Uri.parse('$baseUrl/devices/hub-ticket');
+    final res = await _send(() async => _client.post(
+          url,
+          headers: await _auth('POST', url, deviceToken,
+              {'Content-Type': 'application/json'}),
+          body: '{}',
+        ));
+    final json = _object(res.body, res.statusCode);
+    if (res.statusCode != 200) {
+      throw ApprovalException(
+          'No channel ticket (${res.statusCode}): ${_detail(json)}');
+    }
+    final ticket = json['ticket'];
+    final expires = json['expires_in'];
+    if (ticket is! String || ticket.isEmpty) {
+      throw const ApprovalException('Malformed channel ticket.');
+    }
+    return HubTicket(ticket, expires is int ? expires : null);
+  }
+
+  /// `PUT /devices/push`: the Apple push token (provider `apns`), which only
+  /// wakes an iPhone whose app is not running. The channel itself needs none.
   Future<void> registerPush(
       String deviceToken, String provider, String pushToken) async {
     final url = Uri.parse('$baseUrl/devices/push');

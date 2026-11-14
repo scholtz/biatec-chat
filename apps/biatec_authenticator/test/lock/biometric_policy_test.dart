@@ -183,8 +183,8 @@ void main() {
           contains('gate.confirm('));
       final main = read('lib/main.dart');
       expect(main, contains('LockBiometricGate(lock)'));
-      expect('lock: lock'.allMatches(main).length, 2,
-          reason: 'both ways of starting the app share the one lock');
+      expect('lock: lock'.allMatches(main).length, 1,
+          reason: 'the app is started once, with the one lock');
       expect(read('lib/shell/app_gate.dart'), contains('forgetRecoveryCode'));
     });
 

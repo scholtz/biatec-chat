@@ -6,6 +6,14 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
     <!-- Lets MainActivity hide other apps' overlay windows while it is in front (Android 12+, MainActivity.kt). A normal permission. -->
     <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS"/>
+    <!-- "Stay connected for approvals" (off by default, StayConnectedService): a foreground service of type specialUse keeps the device channel to
+         Biatec OIDC open while the app is closed. FOREGROUND_SERVICE_SPECIAL_USE needs a declaration in the Play Console (README, "Stay connected on Android").
+         POST_NOTIFICATIONS: the permanent notification and the approval notifications (Android 13+). RECEIVE_BOOT_COMPLETED: restart after a boot, only when the
+         setting is on. The battery optimisation exemption is offered through the system settings list, which needs no permission. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <!-- Hardening (BCHAT-008): nothing is backed up or transferred, cleartext traffic is forbidden (the debug manifest allows it for the local
          mock only), and MainActivity, the launcher, is the only component declared here. Libraries add their own components when the
          manifests are merged; test/platform_hardening_test.dart checks this file, and CI checks the merged release manifest after the release build. -->
@@ -42,6 +50,23 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Not exported: only the app starts it (StayConnectedPlugin) and the boot receiver below restarts it. -->
+        <service
+            android:name=".StayConnectedService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:stopWithTask="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps a connection to the user's Biatec OIDC server open so that a request to approve a high-value action reaches the phone at once; the user turns it on in Settings."/>
+        </service>
+        <!-- Not exported: the system still delivers BOOT_COMPLETED to it. Starts the service only when the setting is on and the device is enrolled. -->
+        <receiver android:name=".BootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+        </receiver>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

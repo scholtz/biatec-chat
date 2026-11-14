@@ -10,7 +10,7 @@ import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:biatec_authenticator/main.dart';
-import 'package:biatec_authenticator/push/push_controller.dart';
+import 'package:biatec_authenticator/push/device_event_controller.dart';
 import 'package:biatec_authenticator/settings/settings_screen.dart';
 import 'package:biatec_authenticator/shell/shell_controller.dart';
 import 'package:biatec_authenticator/shell/tab_reload.dart';
@@ -61,13 +61,22 @@ class _FlakyHistory extends MemoryHistoryStore {
   }
 }
 
+class _NoNotifier implements DeviceNotifier {
+  @override
+  Future<void> requestArrived(String authReqId) async {}
+  @override
+  Future<void> deviceEnrolled() async {}
+  @override
+  Future<void> cancelRequest(String authReqId) async {}
+}
+
 /// Counts registrations asked for from outside (the controller registers by itself once started).
-class _CountingPush extends PushController {
+class _CountingPush extends DeviceEventController {
   _CountingPush(ShellRig rig)
       : super(
           enrollment: rig.approvals.enrollment,
           client: rig.approvals.client,
-          onOpenRequest: (_) {},
+          notifier: _NoNotifier(),
         );
 
   int gateCalls = 0;

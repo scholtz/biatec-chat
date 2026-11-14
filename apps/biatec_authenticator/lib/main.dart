@@ -5,8 +5,14 @@ import 'approvals/approval_services.dart';
 import 'codes/codes_services.dart';
 import 'config.dart';
 import 'enrollment/enrollment_controller.dart';
-import 'push/fcm_push_transport.dart';
-import 'push/push_controller.dart';
+// Imported so the Android service's entry point is part of the program (it is run by name from StayConnectedService.kt).
+// ignore: unused_import
+import 'channel/background_main.dart';
+import 'channel/channel_wiring.dart';
+import 'channel/local_notifier.dart';
+import 'channel/stay_connected.dart';
+import 'push/apple_push.dart';
+import 'push/device_event_controller.dart';
 import 'integrity/integrity_checker.dart';
 import 'integrity/platform_integrity.dart';
 import 'lock/lock_controller.dart';
@@ -54,38 +60,53 @@ Future<void> main() async {
   await lock.load().timeout(const Duration(seconds: 1), onTimeout: () {});
   final approvals =
       ApprovalServices.fromConfig(config, gate: LockBiometricGate(lock));
-  final firebase = FirebasePushConfig.fromEnvironment();
-  if (firebase == null) {
-    runApp(AuthenticatorApp(
-        config: config, approvals: approvals, theme: theme, lock: lock));
-    return;
-  }
   final messenger = GlobalKey<ScaffoldMessengerState>();
   final shell = ShellController();
-  final push = PushController(
+  final notifier = LocalDeviceNotifier();
+  final stayConnected = StayConnectedController(
+    platform: MethodChannelStayConnected(
+        notificationPermission: () async {
+      await notifier.requestPermission();
+    }),
+    enrollment: approvals.enrollment,
+  );
+  // The device channel: a SignalR connection to Biatec OIDC while the app is in front. The Android service (if the user turned it on) keeps one while the app is closed.
+  final channel = buildDeviceChannel(
+    config: config,
+    client: approvals.client,
+    enrollment: approvals.enrollment,
+    wake: changesOf(approvals.enrollment),
+  );
+  final events = DeviceEventController(
     enrollment: approvals.enrollment,
     client: approvals.client,
-    onOpenRequest: (id) => shell.openApproval(approvals, id),
+    notifier: notifier,
+    isForeground: () => shell.foreground.value,
+    onRequestClosed: (_) => shell.requestsChanged.value++,
+    onDevicesChanged: () => shell.reloads[AppTab.devices]!.value++,
+    onSettingsChanged: () => shell.reloads[AppTab.settings]!.value++,
+    // The optional Apple wake: nothing registers unless the build says so.
+    apple: apnsEnabled ? MethodChannelApplePush() : null,
   );
   runApp(AuthenticatorApp(
       config: config,
       approvals: approvals,
       theme: theme,
       lock: lock,
-      push: push,
+      push: events,
+      stayConnected: stayConnected,
       shell: shell,
       messengerKey: messenger));
-  // Firebase starts after the first frame: the UI never waits for it, and a
-  // tapped notification that launched the app finds a mounted navigator.
+  // Everything below starts after the first frame: the UI never waits for it, and a tapped notification that launched the app finds a mounted navigator.
   await WidgetsBinding.instance.endOfFrame;
-  final transport = await FcmPushTransport.create(firebase);
-  if (transport == null) return;
-  // The OS shows nothing for a push while the app is open, so say it here.
-  push.requestArrived.listen((_) => showRequestArrived(messenger, shell));
-  await push.start(transport);
+  await notifier.initialize(onTap: shell.showApprovals);
+  // The channel's events are not shown by the OS while the app is open, so say it here.
+  events.requestArrived.listen((_) => showRequestArrived(messenger, shell));
+  await events.start(channel);
+  await stayConnected.load();
 }
 
-/// In-app notice for a push received in the foreground. It names no detail:
+/// In-app notice for a request that arrived over the channel while the app is open. It names no detail:
 /// the list is fetched from Biatec OIDC when opened.
 void showRequestArrived(
     GlobalKey<ScaffoldMessengerState> messenger, ShellController shell) {
@@ -107,6 +128,7 @@ class AuthenticatorApp extends StatefulWidget {
     this.approvals,
     this.settings,
     this.push,
+    this.stayConnected,
     this.shell,
     this.enrollment,
     this.navigatorKey,
@@ -133,8 +155,11 @@ class AuthenticatorApp extends StatefulWidget {
   /// Built from [config] and the approval services when not given.
   final SettingsServices? settings;
 
-  /// Null when push is not configured; the pending list then polls only.
-  final PushController? push;
+  /// Null when the device channel is not wired (tests); the pending list then polls only.
+  final DeviceEventController? push;
+
+  /// The Android "Stay connected for approvals" setting; null when not wired (tests).
+  final StayConnectedController? stayConnected;
 
   /// Created (and disposed) by the app when not given.
   final ShellController? shell;
@@ -205,6 +230,7 @@ class _AuthenticatorAppState extends State<AuthenticatorApp> {
           shell: _shell,
           lock: _lock,
           push: push,
+          stayConnected: widget.stayConnected,
           enrollment: widget.enrollment,
         ),
       ),

@@ -12,7 +12,8 @@ import '../enrollment/enrollment_state.dart';
 import '../enrollment/observable_enrollment_store.dart';
 import '../enrollment/oidc_enrollment_client.dart';
 import '../lock/lock_controller.dart';
-import '../push/push_controller.dart';
+import '../channel/stay_connected.dart';
+import '../push/device_event_controller.dart';
 import '../security/settings_controller.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
@@ -31,6 +32,7 @@ class AppGate extends StatefulWidget {
     required this.shell,
     required this.lock,
     this.push,
+    this.stayConnected,
     this.enrollment,
     this.startupTimeout = const Duration(seconds: 8),
   });
@@ -43,7 +45,10 @@ class AppGate extends StatefulWidget {
 
   /// Decides when the secure area (the shell) is open. The enrollment screens are the first-run explanation, not the secure area.
   final LockController lock;
-  final PushController? push;
+  final DeviceEventController? push;
+
+  /// The Android "Stay connected for approvals" setting; null when not wired (tests).
+  final StayConnectedController? stayConnected;
 
   /// Injected in tests; built from [approvals] and [config] otherwise.
   final EnrollmentController? enrollment;
@@ -261,6 +266,7 @@ class _AppGateState extends State<AppGate> {
               codes: widget.codes,
               controller: widget.shell,
               push: widget.push,
+              stayConnected: widget.stayConnected,
               banner: _enrollment.state.phase ==
                       EnrollmentPhase.activeRecoveryPending
                   ? _recoveryNotice()

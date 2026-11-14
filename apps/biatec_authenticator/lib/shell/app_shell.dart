@@ -7,12 +7,13 @@ import 'package:flutter/services.dart';
 import '../approvals/approval_services.dart';
 import '../approvals/history_screen.dart';
 import '../approvals/pending_screen.dart';
+import '../channel/stay_connected.dart';
 import '../codes/codes_screen.dart';
 import '../codes/codes_services.dart';
 import '../config.dart';
 import '../devices/devices_screen.dart';
 import '../privacy/phone_eraser.dart';
-import '../push/push_controller.dart';
+import '../push/device_event_controller.dart';
 import '../settings/settings_screen.dart';
 import '../security/settings_controller.dart';
 import '../ui/ui.dart';
@@ -40,6 +41,7 @@ class AppShell extends StatefulWidget {
     required this.codes,
     required this.controller,
     this.push,
+    this.stayConnected,
     this.banner,
   });
 
@@ -49,8 +51,11 @@ class AppShell extends StatefulWidget {
   final CodesServices codes;
   final ShellController controller;
 
-  /// Null when push is not configured; the pending list then polls only.
-  final PushController? push;
+  /// Null when the device channel is not wired (tests); the pending list then polls only.
+  final DeviceEventController? push;
+
+  /// The Android "Stay connected for approvals" setting, shown in Settings; null when not wired.
+  final StayConnectedController? stayConnected;
 
   /// A notice shown above every tab (for example that the recovery code has not been saved), or null.
   final Widget? banner;
@@ -145,6 +150,7 @@ class _AppShellState extends State<AppShell> {
             services: widget.settings,
             config: widget.config,
             controller: _settings,
+            stayConnected: widget.stayConnected,
             eraser: _eraser),
       };
 
@@ -292,7 +298,7 @@ class _TabNavigator extends StatefulWidget {
   /// Changes when the tab is shown after a while away; the first screen reloads its data then (see [TabReload]).
   final ValueListenable<int> reload;
   final AppTab tab;
-  final PushController? push;
+  final DeviceEventController? push;
 
   /// Follows this tab's stack, for the Approvals tab.
   final NavigatorObserver? stack;

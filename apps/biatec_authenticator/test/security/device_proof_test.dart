@@ -77,16 +77,17 @@ void main() {
     final seen = <String, Map<String, String>>{};
     final fake = MockClient((req) async {
       seen['${req.method} ${req.url.path}'] = req.headers;
-      return http.Response('{"requests":[],"status":"approved","devices":[],"sub":"s","biometric_required":false,"threshold_eur":"1","block_unverified_clients":false,"clients":[]}', 200);
+      return http.Response('{"requests":[],"ticket":"tk","expires_in":30,"status":"approved","devices":[],"sub":"s","biometric_required":false,"threshold_eur":"1","block_unverified_clients":false,"clients":[]}', 200);
     });
     final signer = await _signer(keys);
     final approvals = ApprovalClient(baseUrl: 'https://oidc.example', client: fake, proof: signer);
     await approvals.pending(token);
-    await approvals.registerPush(token, 'fcm', 'push-token');
+    await approvals.registerPush(token, 'apns', 'push-token');
+    expect((await approvals.hubTicket(token)).ticket, 'tk');
     final settings = SettingsClient(baseUrl: 'https://oidc.example', client: fake, proof: signer);
     await settings.devices(token);
     await settings.settings(token);
-    expect(seen.keys, containsAll(['GET /devices/requests', 'PUT /devices/push', 'GET /devices', 'GET /devices/settings']));
+    expect(seen.keys, containsAll(['GET /devices/requests', 'PUT /devices/push', 'POST /devices/hub-ticket', 'GET /devices', 'GET /devices/settings']));
     for (final e in seen.entries) {
       expect(e.value['Authorization'], 'Device $token', reason: e.key);
       expect(e.value.containsKey(deviceProofHeader), isTrue, reason: e.key);

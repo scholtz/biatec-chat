@@ -49,6 +49,18 @@ import UIKit
     }
   }
 
+  /// The optional Apple wake (ApplePushChannel): the token Apple issued, or its refusal. Only reached after the Dart side asked to register, which a build without
+  /// `--dart-define=APNS_ENABLED=true` never does.
+  override func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+    ApplePushChannel.didRegister(deviceToken: deviceToken)
+    super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
+  }
+
+  override func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+    ApplePushChannel.didFail()
+    super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
+  }
+
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     // The device key lives in the Secure Enclave (KeystorePlugin); Dart reaches it over the channel io.biatec.authenticator/keystore.
@@ -66,6 +78,10 @@ import UIKit
     // Copied codes stay on this device and expire (ClipboardChannel), over io.biatec.authenticator/clipboard.
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "ClipboardChannel") {
       ClipboardChannel.register(with: registrar)
+    }
+    // The optional Apple wake (ApplePushChannel), over io.biatec.authenticator/apns. It does nothing until Dart asks, and Dart asks only with APNS_ENABLED.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "ApplePushChannel") {
+      ApplePushChannel.register(with: registrar)
     }
     // Facts for the integrity checks and App Attest (IntegrityChannel).
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "IntegrityChannel") {

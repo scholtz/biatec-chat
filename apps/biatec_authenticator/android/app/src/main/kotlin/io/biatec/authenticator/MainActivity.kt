@@ -67,5 +67,18 @@ class MainActivity : FlutterFragmentActivity() {
         flutterEngine.plugins.add(IntegrityChannel(applicationContext))
         // The platform attestation at enrollment: Play Integrity here, App Attest on iOS, over io.biatec.authenticator/attestation.
         flutterEngine.plugins.add(AttestationChannel(applicationContext))
+        // The "Stay connected for approvals" setting and its foreground service (StayConnectedService), over io.biatec.authenticator/stay_connected.
+        flutterEngine.plugins.add(StayConnectedPlugin(applicationContext))
+    }
+
+    // Whether the window is in front, for the foreground service: a request that arrives then is shown by the app, not by a notification.
+    override fun onStart() {
+        super.onStart()
+        UiState.visible = true
+    }
+
+    override fun onStop() {
+        UiState.visible = false
+        super.onStop()
     }
 }

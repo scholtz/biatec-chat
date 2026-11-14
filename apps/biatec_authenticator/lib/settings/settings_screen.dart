@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../channel/stay_connected.dart';
 import '../clients/clients_screen.dart';
 import '../config.dart';
 import '../keys/device_key_store.dart';
@@ -12,6 +13,7 @@ import '../shell/tab_reload.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
 import 'app_info.dart';
+import 'channel_strings.dart';
 import 'theme_controller.dart';
 
 /// The Settings tab: Security, Appearance and About, each a labelled group.
@@ -23,6 +25,7 @@ class SettingsScreen extends StatefulWidget {
       required this.services,
       required this.config,
       this.controller,
+      this.stayConnected,
       this.eraser});
 
   final SettingsServices services;
@@ -30,6 +33,9 @@ class SettingsScreen extends StatefulWidget {
 
   /// Shared with the other settings tabs (see [SettingsFrame.controller]); made (and disposed) here when null.
   final SettingsController? controller;
+
+  /// The Android "Stay connected for approvals" setting; the row is shown only where it can work (Android).
+  final StayConnectedController? stayConnected;
 
   /// Removes everything from the phone (Privacy screen); the Privacy screen still shows without it.
   final PhoneEraser? eraser;
@@ -77,6 +83,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                 showError: _controller.phase != SettingsPhase.unavailable),
             const _SectionHeader('Security'),
             ..._security(context, _controller),
+            if (widget.stayConnected?.supported ?? false) ...[
+              const _SectionHeader('Notifications'),
+              _StayConnectedTile(controller: widget.stayConnected!),
+            ],
             if (theme != null) ...[
               const _SectionHeader('Appearance'),
               _AppearanceChoice(controller: theme),
@@ -246,6 +256,58 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
       ),
     ];
+  }
+}
+
+/// "Stay connected for approvals" (Android, default off): says what on and off mean and what it costs, and offers the battery exemption once, after the first time it is turned on.
+class _StayConnectedTile extends StatelessWidget {
+  const _StayConnectedTile({required this.controller});
+
+  final StayConnectedController controller;
+
+  Future<void> _toggle(BuildContext context, bool value) async {
+    final strings = ChannelStrings.of();
+    await controller.setEnabled(value);
+    if (!value || !context.mounted) return;
+    if (!await controller.shouldOfferBatteryExemption()) return;
+    if (!context.mounted) return;
+    final open = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key('battery-offer'),
+        title: Text(strings.batteryTitle),
+        content: Text(strings.batteryBody),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(strings.notNow)),
+          FilledButton(
+              key: const Key('battery-open'),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(strings.batteryOpen)),
+        ],
+      ),
+    );
+    if (open ?? false) await controller.openBatterySettings();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = ChannelStrings.of();
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) => SwitchListTile(
+        key: const Key('stay-connected'),
+        secondary: const Icon(Icons.notifications_active_outlined),
+        title: Text(strings.stayTitle),
+        subtitle: Text(
+            '${controller.enabled ? strings.stayOn : strings.stayOff}'
+            '\n${strings.stayBattery}'),
+        isThreeLine: true,
+        value: controller.enabled,
+        onChanged: controller.loaded ? (v) => _toggle(context, v) : null,
+      ),
+    );
   }
 }
 

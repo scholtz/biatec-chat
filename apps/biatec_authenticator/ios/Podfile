@@ -1,4 +1,4 @@
-# The iOS deployment target is 15.0: the Firebase iOS SDK that firebase_messaging builds on needs it. The rest is Flutter's standard Podfile.
+# The iOS deployment target is 15.0 (the plugins in pubspec.yaml need it). The rest is Flutter's standard Podfile.
 platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
