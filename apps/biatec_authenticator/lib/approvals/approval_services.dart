@@ -18,6 +18,7 @@ class ApprovalServices {
     required this.enrollment,
     required this.gate,
     required this.history,
+    this.twoKeys = true,
     this.proof,
     this.touchGuard = const NoTouchGuard(),
     DateTime Function()? clock,
@@ -36,6 +37,7 @@ class ApprovalServices {
       enrollment: enrollment,
       gate: gate,
       history: SecureHistoryStore(),
+      twoKeys: config.twoKeys,
       proof: proof,
       touchGuard: const PlatformTouchGuard(),
     );
@@ -49,6 +51,9 @@ class ApprovalServices {
   final BiometricGate gate;
   final HistoryStore history;
 
+  /// `AppConfig.twoKeys`; off against a Biatec OIDC without the two device keys.
+  final bool twoKeys;
+
   /// Adds the proof of possession to device calls; null in tests that talk to a fake.
   final DeviceProofSigner? proof;
 
@@ -61,8 +66,9 @@ class ApprovalServices {
         client: client,
         keys: keys,
         enrollment: enrollment,
-        gate: gate,
         history: history,
+        gate: gate,
+        twoKeys: twoKeys,
         clock: clock,
       );
 }

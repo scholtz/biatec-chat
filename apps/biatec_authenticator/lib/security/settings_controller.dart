@@ -10,7 +10,7 @@ import '../approvals/jcs.dart';
 import '../config.dart';
 import '../enrollment/enrollment_state.dart';
 import '../keys/device_key_store.dart';
-import '../keys/key_security_level.dart';
+import '../keys/prompt_free_key.dart';
 import 'settings_client.dart';
 import '../enrollment/observable_enrollment_store.dart';
 
@@ -71,6 +71,7 @@ class SettingsServices {
     required this.enrollment,
     required this.gate,
     this.enabled = true,
+    this.twoKeys = true,
     DateTime Function()? clock,
     String Function()? nonce,
   })  : clock = clock ?? DateTime.now,
@@ -86,6 +87,7 @@ class SettingsServices {
         enrollment: approvals.enrollment,
         gate: approvals.gate,
         enabled: config.settingsApi,
+        twoKeys: approvals.twoKeys,
         clock: approvals.clock,
       );
 
@@ -100,6 +102,9 @@ class SettingsServices {
   final DateTime Function() clock;
   final String Function() nonce;
 
+  /// `AppConfig.twoKeys`.
+  final bool twoKeys;
+
   SettingsController controller() => SettingsController(
         client: client,
         keys: keys,
@@ -107,6 +112,7 @@ class SettingsServices {
         gate: gate,
         clock: clock,
         nonce: nonce,
+        twoKeys: twoKeys,
       );
 }
 
@@ -129,6 +135,7 @@ class SettingsController extends ChangeNotifier {
     required this.keys,
     required this.enrollment,
     required this.gate,
+    this.twoKeys = true,
     DateTime Function()? clock,
     String Function()? nonce,
   })  : _clock = clock ?? DateTime.now,
@@ -138,6 +145,9 @@ class SettingsController extends ChangeNotifier {
   final DeviceKeyStore keys;
   final ObservableEnrollmentStore enrollment;
   final BiometricGate gate;
+
+  /// `AppConfig.twoKeys`. Off: the prompt-free key signs and the app's gate asks first (the behaviour before T-241).
+  final bool twoKeys;
   final DateTime Function() _clock;
   final String Function() _nonce;
 
@@ -285,11 +295,8 @@ class SettingsController extends ChangeNotifier {
         }
         // Never fails: the store signs the device out in memory and clears the disk behind (see ObservableEnrollmentStore.clear).
         await enrollment.clear();
-        try {
-          await keys.delete(record.kid);
-        } on Object {
-          // The key is useless without an enrollment.
-        }
+        // The new aliases and, for an install from before the two keys, the key under its old alias.
+        await deleteDeviceKeys(keys, record);
         _devices = const [];
         _settings = null;
         _phase = SettingsPhase.unavailable;
@@ -327,10 +334,11 @@ class SettingsController extends ChangeNotifier {
       final bool loosening = isLoosening(current, change);
       // An inactive device cannot loosen: said before any prompt.
       if (loosening) _checkActive(record);
-      // A fresh biometric for any change to a security setting, tightening included (Secure Area rule 4). One prompt covers the signed consent of a loosening.
-      if (!await gate.confirm(loosening
-          ? 'Approve this settings change'
-          : 'Change a security setting')) {
+      // A fresh biometric for any change to a security setting, tightening included (Secure Area rule 4). A loosening is signed by the approval key, whose OS prompt is that biometric (one prompt, no separate gate); a tightening is not signed, so the app's gate asks.
+      if ((!loosening || !twoKeys) &&
+          !await gate.confirm(loosening
+              ? 'Approve this settings change'
+              : 'Change a security setting')) {
         throw const ApprovalException('Biometric check did not pass.');
       }
       ConsentSettings next;
@@ -366,12 +374,13 @@ class SettingsController extends ChangeNotifier {
   Future<ConsentSettings> _signedChange(EnrollmentRecord record,
       ConsentSettings current, Map<String, Object?> change) async {
     _checkActive(record);
-    final key = await keys.load(record.kid);
-    if (key == null) {
-      throw const ApprovalException('The device key is missing.');
+    final promptFree = PromptFreeKey.of(record);
+    final key = twoKeys ? await keys.loadApproval() : await promptFree.load(keys);
+    if (key == null || key.kid != record.kid) {
+      throw const ApprovalException(ApprovalKeyInvalidated.message);
     }
-    if (key.securityLevel.blocksSigning) {
-      throw const ApprovalException(KeySecurityLevel.softwareKeyMessage);
+    if (key.securityLevel.blocksSigning || (twoKeys && !key.authBound)) {
+      throw const ApprovalException('This phone cannot protect approvals.');
     }
     final signed = <String, Object?>{
       'type': 'biatec_settings_change',
@@ -381,8 +390,25 @@ class SettingsController extends ChangeNotifier {
       'issued_at': now.toUtc().millisecondsSinceEpoch ~/ 1000,
       'change': change,
     };
-    final signature =
-        await keys.sign(record.kid, Uint8List.fromList(canonicalBytes(signed)));
+    final Uint8List signature;
+    try {
+      if (!twoKeys) {
+        signature = await promptFree
+            .sign(keys, Uint8List.fromList(canonicalBytes(signed)));
+      } else {
+        // The operating system asks for a strong biometric for this one signature.
+        signature = await keys.signApproval(
+            Uint8List.fromList(canonicalBytes(signed)),
+            promptTitle: 'Approve this settings change',
+            promptSubtitle: 'Lowers a protection on your Biatec account');
+      }
+    } on KeyPromptCancelled {
+      throw const ApprovalException('Approval cancelled. Nothing was changed.');
+    } on ApprovalKeyInvalidated {
+      throw const ApprovalException(ApprovalKeyInvalidated.message);
+    } on KeyPromptFailed catch (e) {
+      throw ApprovalException('Could not approve: ${e.message}');
+    }
     if (signature.length != 64) {
       throw StateError('the keystore returned a ${signature.length}-byte '
           'signature; ES256 r||s is 64 bytes');

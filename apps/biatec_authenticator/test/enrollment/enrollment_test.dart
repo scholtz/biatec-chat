@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:biatec_authenticator/config.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_controller.dart';
@@ -8,51 +7,12 @@ import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
-import 'package:biatec_authenticator/keys/device_key_store.dart';
 import 'package:biatec_authenticator/keys/key_security_level.dart';
+import '../keys/fake_two_keys.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-
-class FakeKeyStore implements DeviceKeyStore {
-  bool failGenerate = false;
-  bool pluginRefuses = false;
-  KeySecurityLevel level = KeySecurityLevel.trustedEnvironment;
-  bool throwTypeError = false;
-  final List<String> generated = [];
-  final List<String> deleted = [];
-  DeviceKey? key;
-
-  @override
-  Future<DeviceKey> generate(String alias) async {
-    if (failGenerate) throw Exception('no secure hardware');
-    if (pluginRefuses) {
-      throw PlatformException(code: 'insecure_key', message: 'software');
-    }
-    if (throwTypeError) {
-      // Like a malformed platform channel payload.
-      final Object? bad = null;
-      return DeviceKey(
-          kid: alias, x: bad as String, y: 'yy', securityLevel: level);
-    }
-    generated.add(alias);
-    return key = DeviceKey(kid: alias, x: 'xx', y: 'yy', securityLevel: level);
-  }
-
-  @override
-  Future<DeviceKey?> load(String alias) async => key;
-
-  @override
-  Future<Uint8List> sign(String alias, Uint8List data) async => data;
-
-  @override
-  Future<void> delete(String alias) async {
-    deleted.add(alias);
-    key = null;
-  }
-}
 
 /// A store whose reads and writes can be made to fail.
 class FlakyStore extends MemoryEnrollmentStore {
@@ -75,10 +35,11 @@ class FlakyStore extends MemoryEnrollmentStore {
 void main() {
   final t0 = DateTime.utc(2026, 10, 19, 9);
   late DateTime clock;
-  late FakeKeyStore keys;
+  late FakeTwoKeyStore keys;
   late FlakyStore store;
   late List<http.Request> requests;
   late String lastKid;
+  late String lastPresenceKid;
   late int activeAtSeconds;
   var acknowledged = false;
 
@@ -98,8 +59,12 @@ void main() {
         acknowledged = true;
         return http.Response('{"acknowledged":true}', 200);
       }
+      if (r.url.path == '/devices/challenge') {
+        return http.Response(jsonEncode({'nonce': 'n' * 32}), 200);
+      }
       if (r.url.path == '/devices') {
         lastKid = (jsonDecode(r.body) as Map)['kid'] as String;
+        lastPresenceKid = (jsonDecode(r.body) as Map)['presence_kid'] as String;
       }
       return respond(r);
     });
@@ -121,6 +86,9 @@ void main() {
         'active': false,
         'active_at': activeAtSeconds,
         'device_token': 'tok',
+        'attestation': 'a.b.c',
+        'presence_kid': lastPresenceKid,
+        'presence_attestation': 'p.b.c',
         if (recovery != null) 'recovery_code': recovery,
       }),
       201,
@@ -129,7 +97,7 @@ void main() {
 
   setUp(() {
     clock = t0;
-    keys = FakeKeyStore();
+    keys = FakeTwoKeyStore();
     store = FlakyStore();
     requests = [];
     acknowledged = false;
@@ -152,13 +120,23 @@ void main() {
         EnrollmentPhase.enrolling,
         EnrollmentPhase.inactive,
       ]);
-      final req = requests.single;
+      expect(requests.first.url.toString(), 'http://mock/devices/challenge');
+      final req = requests.last;
       expect(req.url.toString(), 'http://mock/devices');
       expect(req.headers['Authorization'], 'Bearer login-alice');
       final body = jsonDecode(req.body) as Map<String, Object?>;
-      expect(body['public_key'],
-          {'kty': 'EC', 'crv': 'P-256', 'x': 'xx', 'y': 'yy'});
+      expect(body['public_key'], keys.keys!.approval.toJwk());
+      expect(body['presence_public_key'], keys.keys!.presence.toJwk());
+      expect(body['presence_kid'], keys.keys!.presence.kid);
+      final jws = RegExp(r'^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$');
+      expect(body['approval_proof'], matches(jws));
+      expect(body['presence_proof'], matches(jws));
       expect(body.containsKey('d'), isFalse);
+      // One biometric prompt (the approval proof); the presence proof needs none.
+      expect(keys.prompts, 1);
+      expect(keys.presenceSigns, 1);
+      expect(c.state.record!.presenceKid, keys.keys!.presence.kid);
+      expect(c.state.record!.presenceAttestation, 'p.b.c');
       expect(c.state.remaining(clock), const Duration(hours: 24));
     });
 
@@ -196,7 +174,9 @@ void main() {
       // The code is fetched after activation, also for an approved device.
       expect(c.state.phase, EnrollmentPhase.activeRecoveryPending);
       expect(c.recoveryCodeToShow, 'AAAA-BBBB-CCCC');
-      expect((jsonDecode(requests.first.body) as Map)['approved_by_kid'],
+      expect(
+          (jsonDecode(requests.firstWhere((r) => r.url.path == '/devices').body)
+              as Map)['approved_by_kid'],
           'alice-device');
     });
 
@@ -223,7 +203,8 @@ void main() {
       final c = build((_) => created());
       await c.enroll(loginToken: 'login-alice');
       await c.refresh();
-      expect(requests.map((r) => r.url.path), ['/devices']);
+      expect(requests.map((r) => r.url.path),
+          ['/devices/challenge', '/devices']);
     });
 
     test('a recovery code in the enrollment response is ignored, not stored',
@@ -267,7 +248,8 @@ void main() {
       await c.enroll(loginToken: 'bad');
       expect(c.state.phase, EnrollmentPhase.failed);
       expect(c.state.error, contains('403'));
-      expect(keys.deleted, [keys.generated.single]);
+      expect(keys.deleteCalls, 1);
+      expect(keys.generated, hasLength(1));
 
       await c.enroll(loginToken: 'login-alice');
       expect(c.state.phase, EnrollmentPhase.inactive);
@@ -288,11 +270,11 @@ void main() {
         final c = build((_) => created());
         await c.enroll(loginToken: 'login-alice');
         expect(c.state.phase, EnrollmentPhase.failed);
-        expect(c.state.error, contains('Enrollment is refused'));
+        expect(c.state.error, contains('cannot protect approvals'));
         expect(requests, isEmpty,
             reason: 'the server never sees a software key');
-        expect(keys.deleted, isNotEmpty);
-        expect(keys.key, isNull);
+        expect(keys.deleteCalls, greaterThan(0));
+        expect(keys.keys, isNull);
         expect(c.keyLevel, isNull);
       });
     }
@@ -319,7 +301,7 @@ void main() {
       final c = build((_) => created());
       await c.enroll(loginToken: 'login-alice');
       expect(c.state.phase, EnrollmentPhase.failed);
-      expect(c.state.error, contains('not in secure hardware'));
+      expect(c.state.error, contains('cannot protect approvals'));
       expect(c.state.error, isNot(contains('Bad state')));
       expect(requests, isEmpty);
     });
@@ -330,7 +312,8 @@ void main() {
       keys.level = KeySecurityLevel.unknown;
       final c = build((_) => created());
       await c.enroll(loginToken: 'login-alice');
-      expect(c.state.error, contains('cannot say where it keeps the key'));
+      // The approval key is refused whatever the reason.
+      expect(c.state.error, contains('cannot protect approvals'));
     });
 
     test('a refused enrollment leaves no level behind for the next key',
@@ -367,22 +350,24 @@ void main() {
 
       final otherStore = FlakyStore();
       final b = EnrollmentController(
-        keys: FakeKeyStore(),
+        keys: FakeTwoKeyStore(KeySecurityLevel.trustedEnvironment, 10),
         store: ObservableEnrollmentStore(otherStore),
         client: OidcEnrollmentClient(
             baseUrl: 'http://mock',
             client: MockClient((r) async {
+              if (r.url.path == '/devices/challenge') {
+                return http.Response(jsonEncode({'nonce': 'n' * 32}), 200);
+              }
               lastKid = (jsonDecode(r.body) as Map)['kid'] as String;
+              lastPresenceKid =
+                  (jsonDecode(r.body) as Map)['presence_kid'] as String;
               return created();
             })),
         clock: () => clock,
       );
       await b.enroll(loginToken: 'login-bob');
       expect(lastKid, isNot(kidA));
-      expect(kidA, startsWith('biatec-authenticator-'));
-      expect(kidA, isNot('biatec-authenticator-device-key'));
-      expect(await store.readAlias(), kidA);
-      expect(await otherStore.readAlias(), lastKid);
+      expect(kidA, startsWith('biatec-approve-'));
     });
 
     test('a refusal discards the alias and a retry mints a new one', () async {
@@ -420,7 +405,7 @@ void main() {
       await c.enroll(loginToken: 'login-alice');
       expect(c.state.phase, EnrollmentPhase.inactive);
       expect(c.state.error, contains('could not save'));
-      expect(keys.deleted, isEmpty);
+      expect(keys.deleteCalls, 0);
 
       store.failWrite = false;
       await c.refresh();
@@ -461,7 +446,7 @@ void main() {
       final c = build((_) => created());
       await c.enroll(loginToken: 'login-alice');
       await c.enroll(loginToken: 'login-alice');
-      expect(requests, hasLength(1));
+      expect(requests.where((r) => r.url.path == '/devices'), hasLength(1));
     });
   });
 

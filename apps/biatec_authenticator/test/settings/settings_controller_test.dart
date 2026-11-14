@@ -1,3 +1,5 @@
+import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
+import 'package:biatec_authenticator/keys/device_key_store.dart';
 import 'package:biatec_authenticator/security/settings_client.dart';
 import 'package:biatec_authenticator/security/settings_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -162,6 +164,31 @@ void main() {
       expect(c.devices, hasLength(2));
     });
 
+    test('cancelling this device deletes the key under the old alias of an install from before the two keys',
+        () async {
+      final oidc = FakeSettingsOidc()
+        ..devices = [
+          {
+            'kid': 'biatec-authenticator-old',
+            'current': true,
+            'active': false,
+            'active_at': 1792425600 + 3600
+          }
+        ];
+      final rig = SettingsRig(
+          oidc: oidc,
+          record: EnrollmentRecord(
+              kid: 'biatec-authenticator-old',
+              deviceToken: FakeSettingsOidc.token,
+              activeAt: DateTime.utc(2020),
+              attestation: 'att'));
+      final c = rig.controller();
+      await c.load();
+      await c.cancelDevice('biatec-authenticator-old');
+      expect(rig.keys.keysDeleted, 1);
+      expect(rig.keys.legacyDeleted, ['biatec-authenticator-old']);
+    });
+
     test('cancelling this device signs it out and deletes its enrollment',
         () async {
       final oidc = FakeSettingsOidc()
@@ -202,7 +229,10 @@ void main() {
       await c.load();
       expect(await c.apply({'threshold_eur': '2000'}), isTrue, reason: c.error);
       expect(c.settings!.thresholdEur, '2000');
-      expect(rig.gate.asked, 1);
+      // The approval key's OS prompt is the biometric: one prompt, no separate gate.
+      expect(rig.gate.asked, 0);
+      expect(rig.keys.prompts, hasLength(1));
+      expect(rig.keys.presenceSigned, isEmpty);
       expect(rig.keys.signed, hasLength(1));
       final consent =
           (rig.oidc.puts.single['consent'] as Map).cast<String, Object?>();
@@ -234,10 +264,33 @@ void main() {
       rig.gate.pass = false;
       final c = rig.controller();
       await c.load();
-      expect(await c.apply({'threshold_eur': '2000'}), isFalse);
+      expect(await c.apply({'threshold_eur': '500'}), isFalse);
       expect(c.error, 'Biometric check did not pass.');
       expect(rig.oidc.puts, isEmpty);
       expect(c.settings!.thresholdEur, '1000.00');
+    });
+
+    test('a cancelled approval prompt sends nothing', () async {
+      final rig = SettingsRig();
+      rig.keys.cancelNextPrompt = true;
+      final c = rig.controller();
+      await c.load();
+      expect(await c.apply({'threshold_eur': '2000'}), isFalse);
+      expect(c.error, contains('cancelled'));
+      expect(rig.oidc.puts, isEmpty);
+      expect(c.settings!.thresholdEur, '1000.00');
+    });
+
+    test('an invalidated approval key cannot loosen, but tightening still works',
+        () async {
+      final rig = SettingsRig();
+      rig.keys.state = KeysState.approvalKeyInvalidated;
+      final c = rig.controller();
+      await c.load();
+      expect(await c.apply({'threshold_eur': '2000'}), isFalse);
+      expect(c.error, ApprovalKeyInvalidated.message);
+      expect(rig.oidc.puts, isEmpty);
+      expect(await c.apply({'threshold_eur': '100'}), isTrue, reason: c.error);
     });
 
     test('an inactive device cannot loosen but can still tighten', () async {
@@ -268,7 +321,7 @@ void main() {
           isTrue,
           reason: c.error);
       expect(c.settings!.client('bank-example')!.pausedUntil, isNull);
-      expect(rig.gate.asked, 1);
+      expect(rig.keys.prompts, hasLength(1));
       expect(oidc.puts.single['consent'], isNotNull);
     });
 
@@ -283,13 +336,15 @@ void main() {
           'biatec-chat': {'always_ask': false}
         }
       });
-      expect(rig.gate.asked, 1);
+      expect(rig.keys.prompts, hasLength(1));
       await c.apply({
         'clients': {
           'biatec-chat': {'always_ask': true}
         }
       });
-      expect(rig.gate.asked, 2, reason: 'every change needs a fresh biometric');
+      expect(rig.keys.prompts, hasLength(1));
+      expect(rig.gate.asked, 1,
+          reason: 'a change that is not signed asks the app gate');
       expect(oidc.puts.last.containsKey('consent'), isFalse);
       expect(c.settings!.client('biatec-chat')!.alwaysAsk, isTrue);
     });
@@ -306,6 +361,7 @@ void main() {
       expect(oidc.puts.first.containsKey('consent'), isFalse);
       expect(oidc.puts.last['consent'], isNotNull);
       expect(rig.gate.asked, 1);
+      expect(rig.keys.prompts, hasLength(1));
     });
 
     test('a refused change leaves the settings as they were', () async {

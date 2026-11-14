@@ -28,6 +28,8 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // The instrumented test of the device keys (androidTest/.../ApprovalKeyInstrumentedTest.kt).
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The Google Cloud project number of the release, for Play Integrity (AttestationChannel). Given with -PplayIntegrityProject=<number> or in
         // gradle.properties; without it the attestation is not available and the enrollment goes without one.
         val integrityProject = (project.findProperty("playIntegrityProject") as String?) ?: "0"
@@ -79,6 +81,8 @@ dependencies {
     implementation("androidx.biometric:biometric:1.1.0")
     // Play Integrity, for the platform attestation at enrollment (AttestationChannel).
     implementation("com.google.android.play:integrity:1.4.0")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 }
 
 flutter {

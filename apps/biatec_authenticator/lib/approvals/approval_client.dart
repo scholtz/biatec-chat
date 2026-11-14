@@ -83,7 +83,8 @@ class ApprovalClient {
 
   /// The proof of possession, or null when none is configured. A proof that cannot be made is a refusal of the call, not an unexplained crash
   /// and not a silent fall back to the bearer token alone.
-  Future<Map<String, String>?> _proof(String method, Uri url, String token) async {
+  Future<Map<String, String>?> _proof(
+      String method, Uri url, String token) async {
     final signer = proof;
     if (signer == null) return null;
     try {
@@ -170,8 +171,8 @@ class ApprovalClient {
     final url = Uri.parse('$baseUrl/devices/hub-ticket');
     final res = await _send(() async => _client.post(
           url,
-          headers: await _auth('POST', url, deviceToken,
-              {'Content-Type': 'application/json'}),
+          headers: await _auth(
+              'POST', url, deviceToken, {'Content-Type': 'application/json'}),
           body: '{}',
         ));
     // The status first: a bare 401 or 403 (no body, or not JSON, as ASP.NET Core sends) is still a refusal with a status.
@@ -202,8 +203,8 @@ class ApprovalClient {
     final url = Uri.parse('$baseUrl/devices/push');
     final res = await _send(() async => _client.put(
           url,
-          headers: await _auth('PUT', url, deviceToken,
-              {'Content-Type': 'application/json'}),
+          headers: await _auth(
+              'PUT', url, deviceToken, {'Content-Type': 'application/json'}),
           body: jsonEncode({'provider': provider, 'token': pushToken}),
         ));
     if (res.statusCode != 200) {
@@ -220,8 +221,8 @@ class ApprovalClient {
           '${Uri.encodeComponent(authReqId)}/receipt');
       res = await _send(() async => _client.post(
             url,
-            headers: await _auth('POST', url, deviceToken,
-                {'Content-Type': 'application/json'}),
+            headers: await _auth(
+                'POST', url, deviceToken, {'Content-Type': 'application/json'}),
             body: jsonEncode(receipt),
           ));
     } on ApprovalException catch (e) {

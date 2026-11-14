@@ -30,7 +30,7 @@ HistoryEntry _entry(String id) => HistoryEntry(
     decidedAt: DateTime.utc(2026, 10, 24, 12),
     receipt: const {'signed': {}});
 
-final _record = EnrollmentRecord(
+final _record = EnrollmentRecord(presenceKid: 'p-kid', presenceAttestation: 'p.p.s', 
     kid: 'dev-1',
     deviceToken: 'dev-token',
     activeAt: DateTime.utc(2020),

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:biatec_authenticator/config.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_controller.dart';
@@ -12,35 +11,16 @@ import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/enrollment/widgets/enrollment_problem.dart';
 import 'package:biatec_authenticator/enrollment/widgets/key_protection_card.dart';
 import 'package:biatec_authenticator/enrollment/widgets/onboarding_step.dart';
-import 'package:biatec_authenticator/keys/device_key_store.dart';
 import 'package:biatec_authenticator/keys/key_security_level.dart';
 import 'package:biatec_authenticator/theme.dart';
 import 'package:biatec_authenticator/ui/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../keys/fake_two_keys.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 final _t0 = DateTime.utc(2026, 11, 1, 9);
-
-class _Keys implements DeviceKeyStore {
-  _Keys(this.level);
-  KeySecurityLevel level;
-  DeviceKey? key;
-
-  @override
-  Future<DeviceKey> generate(String alias) async =>
-      key = DeviceKey(kid: alias, x: 'xx', y: 'yy', securityLevel: level);
-
-  @override
-  Future<DeviceKey?> load(String alias) async => key;
-
-  @override
-  Future<Uint8List> sign(String alias, Uint8List data) async => data;
-
-  @override
-  Future<void> delete(String alias) async => key = null;
-}
 
 /// A store whose reads can fail or be held back, for the "check again" cases.
 class _Store extends MemoryEnrollmentStore {
@@ -58,7 +38,7 @@ class _Store extends MemoryEnrollmentStore {
 /// A real controller on a scripted Biatec OIDC, so each step of the onboarding is reached the way a user reaches it.
 class _Rig {
   _Rig({KeySecurityLevel level = KeySecurityLevel.trustedEnvironment})
-      : keys = _Keys(level) {
+      : keys = FakeTwoKeyStore(level) {
     controller = EnrollmentController(
       keys: keys,
       store: ObservableEnrollmentStore(store, clock: () => clock),
@@ -69,7 +49,7 @@ class _Rig {
   }
 
   DateTime clock = _t0;
-  final _Keys keys;
+  final FakeTwoKeyStore keys;
   final store = _Store();
   late final EnrollmentController controller;
 
@@ -84,6 +64,8 @@ class _Rig {
 
   Future<http.Response> _handle(http.Request r) async {
     switch (r.url.path) {
+      case '/devices/challenge':
+        return http.Response('{"nonce":"${'n' * 32}"}', 200);
       case '/devices':
         tokens.add(r.headers['Authorization'] ?? '');
         if (networkError != null) throw networkError!;
@@ -96,6 +78,9 @@ class _Rig {
                   _t0.add(const Duration(hours: 24)).millisecondsSinceEpoch ~/
                       1000,
               'device_token': 'tok',
+              'attestation': 'a.b.c',
+              'presence_kid': (jsonDecode(r.body) as Map)['presence_kid'],
+              'presence_attestation': 'p.b.c',
             }),
             201);
       case '/devices/recovery-code':
@@ -639,7 +624,7 @@ void main() {
 
       // The enrollment is in the store after all (as after a restart): checking again opens it.
       await rig.controller.store.forgetMemory();
-      await rig.store.write(EnrollmentRecord(
+      await rig.store.write(EnrollmentRecord(presenceKid: 'p-kid', presenceAttestation: 'p.p.s', 
           kid: 'dev-1',
           deviceToken: 'tok',
           activeAt: _t0.subtract(const Duration(days: 1)),
@@ -661,7 +646,7 @@ void main() {
       expect(find.byKey(const Key('enrollment-problem-keyNotHardware')),
           findsOneWidget);
       expect(find.text('This device cannot protect the key'), findsOneWidget);
-      expect(find.textContaining('software only'), findsWidgets);
+      expect(find.textContaining('cannot protect approvals'), findsWidgets);
       await _end(tester);
     });
 

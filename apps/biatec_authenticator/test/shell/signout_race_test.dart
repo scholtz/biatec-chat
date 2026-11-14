@@ -14,7 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../approvals/support.dart';
 import 'app_shell_test.dart' show ShellRig;
 
-final _record = EnrollmentRecord(
+final _record = EnrollmentRecord(presenceKid: 'p-kid', presenceAttestation: 'p.p.s', 
     kid: 'dev-1',
     deviceToken: 'dev-token',
     activeAt: DateTime.utc(2020),

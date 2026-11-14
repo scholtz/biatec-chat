@@ -18,7 +18,7 @@ import '../lock/support.dart';
 
 import 'app_shell_test.dart' show ShellRig;
 
-final _active = EnrollmentRecord(
+final _active = EnrollmentRecord(presenceKid: 'p-kid', presenceAttestation: 'p.p.s', 
     kid: 'dev-1',
     deviceToken: 'dev-token',
     activeAt: DateTime.utc(2020),
@@ -197,7 +197,7 @@ void main() {
         (tester) async {
       final rig = ShellRig();
       final broken = _BrokenStore();
-      await broken.write(EnrollmentRecord(
+      await broken.write(EnrollmentRecord(presenceKid: 'p-kid', presenceAttestation: 'p.p.s', 
           kid: 'dev-1',
           deviceToken: 'dev-token',
           activeAt: DateTime.utc(2020),
@@ -275,7 +275,7 @@ void main() {
       final store = ObservableEnrollmentStore(MemoryEnrollmentStore());
       var n = 0;
       store.addListener(() => n++);
-      final record = EnrollmentRecord(
+      final record = EnrollmentRecord(presenceKid: 'p-kid', presenceAttestation: 'p.p.s', 
           kid: 'k', deviceToken: 't', activeAt: DateTime.utc(2020));
       await store.write(record);
       expect(n, 1);

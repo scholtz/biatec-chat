@@ -4,6 +4,7 @@ import '../channel/stay_connected.dart';
 import '../clients/clients_screen.dart';
 import '../config.dart';
 import '../keys/device_key_store.dart';
+import '../keys/prompt_free_key.dart';
 import '../privacy/phone_eraser.dart';
 import '../privacy/privacy_screen.dart';
 import '../lock/lock_controller.dart';
@@ -390,7 +391,10 @@ class _DeviceKeyTileState extends State<_DeviceKeyTile> {
   Future<DeviceKey?> _load() async {
     final record = await widget.services.enrollment.read();
     if (record == null) return null;
-    return widget.services.keys.load(record.kid);
+    final key = widget.services.twoKeys
+        ? await widget.services.keys.loadApproval()
+        : await PromptFreeKey.of(record).load(widget.services.keys);
+    return key != null && key.kid == record.kid ? key : null;
   }
 
   @override

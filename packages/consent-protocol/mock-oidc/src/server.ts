@@ -7,6 +7,8 @@ const host = process.env.HOST ?? "127.0.0.1";
 const testHelpers = process.env.MOCK_TEST_HELPERS === "1";
 // MOCK_DEVICE_PROOF=1: device calls need a signed proof of possession on top of the bearer token (BCHAT-030).
 const deviceProof = process.env.MOCK_DEVICE_PROOF === "1";
+// MOCK_TWO_KEYS=1: enroll only devices with two keys and their enrollment proofs, and take the device proof from the presence key (T-241).
+const twoKeys = process.env.MOCK_TWO_KEYS === "1";
 // MOCK_MIN_APP_BUILD=<n>: the lowest authenticator build number accepted (header X-Biatec-Min-App-Build; default 1).
 const minAppBuild = Number(process.env.MOCK_MIN_APP_BUILD ?? 1);
 if (!Number.isInteger(minAppBuild) || minAppBuild < 0 || minAppBuild > 1_000_000) {
@@ -22,5 +24,5 @@ for (const n of [maxPendingPerClientOrigin, maxRequestsPerHour]) if (n !== undef
 const hubLifetimeSeconds = process.env.MOCK_HUB_LIFETIME_SECONDS ? Number(process.env.MOCK_HUB_LIFETIME_SECONDS) : undefined;
 const hubPingSeconds = process.env.MOCK_HUB_PING_SECONDS ? Number(process.env.MOCK_HUB_PING_SECONDS) : undefined;
 for (const n of [hubLifetimeSeconds, hubPingSeconds]) if (n !== undefined && !(n > 0)) throw new Error("MOCK_HUB_LIFETIME_SECONDS and MOCK_HUB_PING_SECONDS must be positive numbers");
-const { server, issuer } = createMockOidc({ hubLifetimeSeconds, hubPingSeconds, testHelpers, deviceProof, minAppBuild, jsonGroups, maxPendingPerClientOrigin, maxRequestsPerHour });
+const { server, issuer } = createMockOidc({ hubLifetimeSeconds, hubPingSeconds, testHelpers, deviceProof, twoKeys, minAppBuild, jsonGroups, maxPendingPerClientOrigin, maxRequestsPerHour });
 server.listen(port, host, () => console.log(`mock-oidc (${issuer}) listening on http://${host}:${port}${testHelpers ? " with test helpers (MOCK_TEST_HELPERS=1)" : ""}`));

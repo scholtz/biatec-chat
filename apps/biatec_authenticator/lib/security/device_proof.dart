@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 
 import '../enrollment/enrollment_store.dart';
 import '../keys/device_key_store.dart';
+import '../keys/prompt_free_key.dart';
 
 /// Header that carries the proof of possession of the device key.
 const deviceProofHeader = 'X-Device-Proof';
@@ -23,7 +24,7 @@ abstract class DeviceProofSigner {
   Future<Map<String, String>> headers(String method, Uri url, String deviceToken);
 }
 
-/// Signs the proof with the key in the keystore, under the alias of this install.
+/// Signs the proof with the presence key in the keystore (protocol 1.1): it needs no prompt, which a proof on every HTTP call could not have. The approval key never signs a proof.
 class KeystoreDeviceProofSigner implements DeviceProofSigner {
   KeystoreDeviceProofSigner({
     required this.keys,
@@ -37,15 +38,30 @@ class KeystoreDeviceProofSigner implements DeviceProofSigner {
   final EnrollmentStore enrollment;
   final DateTime Function() _clock;
   final Random _random;
+  // One entry is enough: the key that signs for the current device token. A new enrollment has a new token and replaces it.
+  String? _cachedToken;
+  PromptFreeKey? _cachedKey;
 
   static String _b64(List<int> bytes) => base64Url.encode(bytes).replaceAll('=', '');
 
   @override
   Future<Map<String, String>> headers(String method, Uri url, String deviceToken) async {
-    final alias = await enrollment.readAlias();
-    // No alias means no device key: a configured signer never silently falls back to the bearer token alone.
-    if (alias == null) throw StateError('this install has no device key to prove with');
-    final header = {'alg': 'ES256', 'typ': deviceProofType, 'kid': alias};
+    // The kid is cached by device token (a new enrollment has a new token), so the record is not decoded on every call.
+    var key = _cachedToken == deviceToken ? _cachedKey : null;
+    if (key == null) {
+      final record = await enrollment.read();
+      // The one rule for which key signs without a prompt (two-key record, single-key record, or the old alias of an install from before the two keys).
+      if (record != null) {
+        key = PromptFreeKey.of(record);
+        if (record.deviceToken == deviceToken) {
+          _cachedToken = deviceToken;
+          _cachedKey = key;
+        }
+      }
+    }
+    // No record means no device key to prove with: a configured signer never silently falls back to the bearer token alone.
+    if (key == null) throw StateError('this install has no device key to prove with');
+    final header = {'alg': 'ES256', 'typ': deviceProofType, 'kid': key.kid};
     final payload = {
       'htm': method.toUpperCase(),
       'htu': url.toString(),
@@ -54,7 +70,7 @@ class KeystoreDeviceProofSigner implements DeviceProofSigner {
       'ath': _b64(sha256.convert(utf8.encode(deviceToken)).bytes),
     };
     final input = '${_b64(utf8.encode(jsonEncode(header)))}.${_b64(utf8.encode(jsonEncode(payload)))}';
-    final signature = await keys.sign(alias, Uint8List.fromList(utf8.encode(input)));
+    final signature = await key.sign(keys, Uint8List.fromList(utf8.encode(input)));
     if (signature.length != 64) {
       throw StateError('the keystore returned a ${signature.length}-byte signature, expected r||s of 64');
     }
