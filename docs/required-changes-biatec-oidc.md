@@ -316,9 +316,9 @@ POST /devices
     `consent_closed` `{ "auth_req_id" }`, `device_enrolled` `{ "kid" }` and `settings_changed` `{}`; never an amount, asset, address, client, code or user identifier. The app fetches the request
     with its device token as above. Without a platform push service nothing wakes an app that is not running: an optional Apple wake sender (off unless the owner configures it) is the only
     wake mechanism on iOS, and `PUT /devices/push` with `{ "provider": "apns", "token": "..." }` registers its target (re-sent at most every 10 minutes, T-053). `fcm` and the Firebase
-    installation id are gone from the real server. Until the channel ships the app polls every 5 seconds while its Approvals screen is open.
+    installation id are gone from the real server. The app also polls every 5 seconds while its Approvals screen is open.
 - Delivery in the mock: when a consent request opens, the mock records one message per active device that has a push token, whose data is `{ "auth_req_id": "<id>" }` and nothing else
-  (`GET /mock/push-outbox`); it still accepts `provider` `fcm` or `apns` and has no SignalR hub. The visible text of a platform notification is a fixed, localizable string with no amount,
+  (`GET /mock/push-outbox`); it accepts `provider` `apns` and refuses `fcm` with `400 unsupported_push_provider`. The mock also hosts the device channel: `POST /devices/hub-ticket` (single use, 30 seconds) and the SignalR JSON hub at `/hubs/device`, which sends the four hints above (see the mock README). The visible text of a platform notification is a fixed, localizable string with no amount,
   asset, address or client name.
 - Receipt retrieval, by the client that opened the request (direct entry) or whose token was challenged (step-up):
 
