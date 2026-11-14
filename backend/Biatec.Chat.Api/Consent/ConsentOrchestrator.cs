@@ -99,9 +99,10 @@ public sealed class ConsentOrchestrator(
                 var won = await db.ConsentRequests.Where(c => c.Id == request.Id && c.Status == ConsentRequestStatus.Pending)
                     .ExecuteUpdateAsync(u => u.SetProperty(c => c.Status, ConsentRequestStatus.Denied), CancellationToken.None);
                 if (won == 0)
-                    return new ConsentAdvance(StatusOf(previewId, step.Id, ConsentState.Pending, request.BindingCode, request.ExpiresAt), null, TimeSpan.FromSeconds(request.PollIntervalSeconds));
+                    return new ConsentAdvance(StatusOf(previewId, step.Id, ConsentState.Denied, null, request.ExpiresAt), null); // another poll took the denial and ends it
                 await RecordDenialAsync(tenant, session, previewId, request, step, d.Reason, ct);
-                return await EndAsync(session, previewId, request, ConsentRequestStatus.Denied, denied: true, d.Reason ?? "deny", ct);
+                // The claim is made: the consent MUST now be ended whatever happened to the evidence or to this request, so it is not tied to the caller token.
+                return await EndAsync(session, previewId, request, ConsentRequestStatus.Denied, denied: true, d.Reason ?? "deny", CancellationToken.None);
             }
             case CibaPollOutcome.Expired:
                 return await EndAsync(session, previewId, request, ConsentRequestStatus.Expired, denied: false, "expired_token", ct);
@@ -182,7 +183,7 @@ public sealed class ConsentOrchestrator(
                 await RecordAsync(session, EvidenceKinds.ConsentDeniedUnverified,
                     EvidencePayloads.ConsentDeniedUnverified(previewId, step.Id, request.AuthReqId, step.SubjectHash, reason, denial.FailureCode));
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) // the claim is made, so the denial is ended whatever happens to the evidence (cancellation included)
         {
             log.LogWarning("The denial receipt could not be recorded: {ErrorType}", ex.GetType().Name);
         }

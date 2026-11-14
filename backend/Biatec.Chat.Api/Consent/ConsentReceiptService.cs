@@ -88,7 +88,7 @@ public sealed class ConsentReceiptService(IOidcMetadataProvider metadata, IConse
     {
         try
         {
-            if (string.IsNullOrEmpty(step.SubjectHash) || step.Network is null || step.SenderAddress is null) return ReceiptVerdict.DetailsMismatch;
+            if (string.IsNullOrEmpty(step.SubjectHash) || step.Network is null || step.SenderAddress is null || !System.Text.RegularExpressions.Regex.IsMatch(step.SubjectHash, "^([0-9a-fA-F]{2})+$")) return ReceiptVerdict.DetailsMismatch;
             // Everything below is what the backend itself asked for: the stored request, the session and the previewed group.
             var expected = new ConsentReceiptExpectation(
                 Issuer: oidc.Value.Issuer, Now: clock.GetUtcNow(), AuthReqId: request.AuthReqId, ClientEntityId: tenant.ClientEntityId, Sub: session.OidcSub ?? "",
