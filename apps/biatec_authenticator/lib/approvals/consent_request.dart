@@ -60,23 +60,35 @@ class ConsentRequest {
 
   bool isExpired(DateTime now) => !expiresAt.isAfter(now);
 
-  /// The applications of this request the card may offer to trust ("don't ask again"): the untrusted ones with an id of 1 or more (0 is an application creation, never trusted) that
-  /// appear once (a verifier refuses an id that is ambiguous), at most 16. A 1.0 request offers none.
-  List<ApplicationEntry> get rememberable {
+  /// A receipt's `remember` holds at most this many application ids (the schema's `maxItems`).
+  static const maxRemembered = 16;
+
+  /// Every application of this request that could be offered, before the cap: untrusted, id 1 or more (0 is an application creation, never trusted), and listed once (a verifier refuses an id
+  /// that is ambiguous). A 1.0 request offers none.
+  late final List<ApplicationEntry> _offerable = () {
     final d = detail;
-    if (!isShowable || d is! TransactionDetail) return const [];
+    if (!isShowable || d is! TransactionDetail) return const <ApplicationEntry>[];
     final apps = d.group!.applications;
-    return [for (final a in apps) if (canRemember(a)) a];
-  }
+    return [
+      for (final a in apps)
+        if (!a.trusted &&
+            (int.tryParse(a.id) ?? 0) >= 1 &&
+            apps.where((o) => o.id == a.id).length == 1)
+          a
+    ];
+  }();
+
+  /// What the card offers to trust ("don't ask again"): at most [maxRemembered] applications. Computed once.
+  late final List<ApplicationEntry> rememberable =
+      _offerable.length <= maxRemembered
+          ? _offerable
+          : _offerable.sublist(0, maxRemembered);
+
+  /// More applications could be trusted than the card offers (the cap); the card says so.
+  bool get rememberableTruncated => _offerable.length > maxRemembered;
 
   /// Whether [a] is one the card offers to trust.
-  bool canRemember(ApplicationEntry a) {
-    final d = detail;
-    if (!isShowable || d is! TransactionDetail || a.trusted) return false;
-    final id = int.tryParse(a.id);
-    if (id == null || id < 1) return false;
-    return d.group!.applications.where((o) => o.id == a.id).length == 1;
-  }
+  bool canRemember(ApplicationEntry a) => rememberable.any((o) => o.id == a.id);
 
   /// The single detail, parsed for display.
   late final AuthorizationDetail detail = AuthorizationDetail.parse(

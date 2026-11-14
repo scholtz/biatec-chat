@@ -112,6 +112,8 @@ class TrustedApplication {
 String fingerprintOfClientId(String clientId) =>
     sha256.convert(utf8.encode(clientId)).toString().substring(0, 16);
 
+final RegExp _fingerprintShape = RegExp(r'^[0-9a-f]{16}$');
+
 DateTime? _epochOrIso(Object? v) {
   if (v is num) {
     return DateTime.fromMillisecondsSinceEpoch(v.toInt() * 1000, isUtc: true);
@@ -143,6 +145,7 @@ class ClientSetting {
     this.label,
     this.domain,
     this.linkedAt,
+    this.linked = true,
     this.pauses = const [],
     this.trustedApplications = const [],
   });
@@ -159,6 +162,9 @@ class ClientSetting {
   /// The proven ASCII host, only when [domainProven].
   final String? domain;
   final DateTime? linkedAt;
+
+  /// The user linked the service (approved its first request). A service can be listed without it, because it holds a setting (a label, a threshold, a running pause).
+  final bool linked;
   final bool alwaysAsk;
 
   /// Decimal EUR string, or null to follow the account threshold.
@@ -198,13 +204,16 @@ class ClientSetting {
     return ClientSetting(
       clientId: id,
       label: label is String && label.isNotEmpty ? label : null,
-      fingerprint: fingerprint is String && fingerprint.isNotEmpty
+      // Only 16 lowercase hex characters is a fingerprint; anything else the server sends is never drawn as an identity.
+      fingerprint: fingerprint is String && _fingerprintShape.hasMatch(fingerprint)
           ? fingerprint
           : fingerprintOfClientId(id),
       domainProven: proven && domain is String && domain.isNotEmpty,
       // A domain is taken only from a service that proved it.
       domain: proven && domain is String && domain.isNotEmpty ? domain : null,
       linkedAt: _epochOrIso(json['linked_at']),
+      // An older server sends no `linked`: it listed linked clients only.
+      linked: json['linked'] is bool ? json['linked'] as bool : true,
       alwaysAsk: json['always_ask'] as bool? ?? false,
       perClientThresholdEur: json['per_client_threshold_eur'] as String?,
       pausedUntil: _epochOrIso(json['paused_until']),

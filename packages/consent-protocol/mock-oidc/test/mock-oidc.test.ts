@@ -1475,6 +1475,25 @@ test("T-245: linking on the first approved request; unlink makes the next reques
   assert.equal((await putAs(alice, { clients: { "bank-example": { unlink: false } } })).status, 400);
 });
 
+test("T-245: unlinking a client that is not linked is a 400, and unlinking starts the first day with the client again", async () => {
+  const alice = await device(ALICE);
+  const bank = "alice-bank-sign";
+  // Make sure the bank client is linked, with a first signature recorded.
+  if (!(await clientOf(alice, "bank-example"))?.linked) {
+    codes = ["135790"];
+    const first = await sign(bank, group(tx(5)));
+    const req = await fetchRequest(alice, first.json.auth_req_id);
+    assert.equal((await postReceipt(alice, req.auth_req_id, receiptFor(alice, req, "135790"))).status, 200);
+  }
+  assert.equal((await sign(bank, buildGroup([tx(5, { note: "t245-u1" })]).items)).status, 200);
+  assert.ok(mock.state.firstSigned.has("pw_alice|bank-example"), "a signature starts the first day");
+  assert.equal((await putAs(alice, { clients: { "bank-example": { unlink: true } } })).status, 200);
+  assert.equal(mock.state.firstSigned.has("pw_alice|bank-example"), false, "unlink resets the first day: truly first use");
+  const again = await putAs(alice, { clients: { "bank-example": { unlink: true } } });
+  assert.equal(again.status, 400, "not linked: nothing to unlink");
+  assert.equal(again.json.error, "invalid_request");
+});
+
 test("T-245: remember needs ids of the request offered as untrusted, one to sixteen, unique; a denial never carries it; unlink forgets what was remembered", async () => {
   const alice = await device(ALICE);
   const g = buildGroup([tx(10, { note: "t245-r" }), { sender: ALICE_ADDR, appId: 5151 }, { sender: ALICE_ADDR, appId: 5152 }]);

@@ -109,6 +109,35 @@ void main() {
     expect(find.text('Unproven application 0123-4567-89ab-cdef'), findsOneWidget);
   });
 
+  test('a server fingerprint is 16 lowercase hex characters or it is replaced by the local one', () {
+    for (final bad in ['Totally Your Bank', '68DCF7CE89A943B0', '68dcf7ce', '68dcf7ce89a943b0ff', '']) {
+      final c = ClientSetting.fromJson({
+        'client_id': 'bank-example',
+        'fingerprint': bad,
+        'always_ask': false,
+      });
+      expect(c.fingerprint, fingerprintOfClientId('bank-example'), reason: bad);
+    }
+    final ok = ClientSetting.fromJson({
+      'client_id': 'x',
+      'fingerprint': '68dcf7ce89a943b0',
+      'always_ask': false,
+    });
+    expect(ok.fingerprint, '68dcf7ce89a943b0');
+    expect(ok.linked, isTrue);
+    expect(ClientSetting.fromJson({'client_id': 'x', 'linked': false, 'always_ask': false}).linked,
+        isFalse);
+  });
+
+  testWidgets('a request fingerprint that is not hex is not drawn as an identity',
+      (tester) async {
+    await _show(
+        tester,
+        const ServiceIdentity(domainProven: false, fingerprint: 'Your Trusted Bank'));
+    expect(find.text('Unproven application'), findsOneWidget);
+    expect(find.textContaining('Trusted'), findsNothing);
+  });
+
   group('label rules (the server\'s isDisplaySafe)', () {
     test('accepts ordinary text, Slovak letters, emoji', () {
       for (final ok in ['My chat', 'Banka čistá', 'Work \u{1F4BC}', 'a' * 40]) {

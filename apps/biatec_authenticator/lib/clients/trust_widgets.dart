@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../security/settings_client.dart';
 import '../security/settings_controller.dart';
-import '../security/settings_frame.dart' show whenText;
+import '../security/settings_frame.dart' show confirmSheet, whenText;
 import '../theme.dart';
 import '../ui/ui.dart';
 import 'amounts.dart';
@@ -26,6 +27,25 @@ List<Widget> inactiveBanner(SettingsController c) {
       ),
     ),
   ];
+}
+
+/// Lifts the running pause [pause] of [clientId] after a confirmation: loosening, signed with the approval key when Biatec OIDC asks. The change names the pause's own origin.
+Future<void> liftPause(BuildContext context, SettingsController controller,
+    String clientId, PausedOrigin pause) async {
+  final s = TrustStrings.of();
+  final yes = await confirmSheet(context,
+      title: s.t('liftPauseTitle', {'origin': pause.origin}),
+      message: s.t('liftPauseBody'),
+      confirmLabel: s.t('liftPause'),
+      cancelLabel: s.t('keepPaused'),
+      biometric: true,
+      icon: Icons.fingerprint);
+  if (!yes) return;
+  await controller.apply({
+    'clients': {
+      clientId: {'paused': false, 'origin': pause.origin}
+    }
+  });
 }
 
 /// The amount the user sees for a threshold: "Always ask" for 0, else the amount and EUR.

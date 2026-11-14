@@ -240,7 +240,11 @@ void main() {
   group('trusted clients', () {
     testWidgets('lifts a client pause with a signed consent', (tester) async {
       final oidc = FakeSettingsOidc();
-      oidc.clientById('bank-example')['paused_until'] = oidc.nowSeconds + 3600;
+      oidc.clientById('bank-example')
+        ..['paused_until'] = oidc.nowSeconds + 3600
+        ..['pauses'] = [
+          {'origin': 'https://bank.example', 'paused_until': oidc.nowSeconds + 3600}
+        ];
       final rig = SettingsRig(oidc: oidc);
       await _open(tester, LegacyClientsScreen(services: rig.services));
       expect(find.byKey(const Key('paused-bank-example')), findsOneWidget);

@@ -136,7 +136,11 @@ void main() {
     testWidgets('a paused client shows a banner and lifting asks first',
         (tester) async {
       final oidc = FakeSettingsOidc();
-      oidc.clientById('bank-example')['paused_until'] = oidc.nowSeconds + 3600;
+      oidc.clientById('bank-example')
+        ..['paused_until'] = oidc.nowSeconds + 3600
+        ..['pauses'] = [
+          {'origin': 'https://bank.example', 'paused_until': oidc.nowSeconds + 3600}
+        ];
       final rig = SettingsRig(oidc: oidc);
       await _open(tester, LegacyClientsScreen(services: rig.services));
       await tester.ensureVisible(find.byKey(const Key('lift-bank-example')));
@@ -149,6 +153,28 @@ void main() {
       await tester.pumpAndSettle();
       expect(rig.gate.asked, 0);
       expect(oidc.clientById('bank-example')['paused_until'], isNotNull);
+    });
+
+    testWidgets("lifting a pause sends the pause's origin with paused: false",
+        (tester) async {
+      final oidc = FakeSettingsOidc();
+      oidc.clientById('bank-example')
+        ..['paused_until'] = oidc.nowSeconds + 3600
+        ..['pauses'] = [
+          {'origin': 'https://bank.example', 'paused_until': oidc.nowSeconds + 3600}
+        ];
+      final rig = SettingsRig(oidc: oidc);
+      await _open(tester, LegacyClientsScreen(services: rig.services),
+          size: const Size(400, 2400));
+      await tester.ensureVisible(find.byKey(const Key('lift-bank-example')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('lift-bank-example')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-change')));
+      await tester.pumpAndSettle();
+      expect((oidc.puts.first['change'] as Map)['clients'], {
+        'bank-example': {'paused': false, 'origin': 'https://bank.example'}
+      });
     });
 
     testWidgets('turning always-ask off can be declined', (tester) async {

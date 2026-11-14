@@ -122,6 +122,19 @@ class TrustStrings {
     'unlinkTitle': 'Unlink this service?',
     'unlinkBody':
         'It can no longer send you requests without you approving it as a new service again. Applications you trusted for it and its settings are removed.',
+    'pausesTitle': 'Paused services',
+    'thresholdChangedTitle': 'The threshold changed',
+    'thresholdChangedBody':
+        'It was changed while you were typing, so the field shows the new amount. Check it before you save.',
+    'askTestNetworksOffTitle': 'Stop asking on test networks?',
+    'askTestNetworksOffBody':
+        'Requests on test networks will no longer ask because of their amount or an unknown value. Every other reason to ask still applies.',
+    'blockUnprovenOffTitle': 'Let services without a proven domain ask?',
+    'blockUnprovenOffBody':
+        'A service that has not proven its domain will be able to send you requests again.',
+    'turnOff': 'Turn off',
+    'keepOn': 'Keep it on',
+    'moreApplications': 'More applications could be trusted than the {max} offered here. Only the first {max} can be remembered with one approval.',
     'keepLinked': 'Keep it linked',
   });
 
@@ -218,6 +231,19 @@ class TrustStrings {
     'unlinkTitle': 'Zrušiť prepojenie tejto služby?',
     'unlinkBody':
         'Nebude vám môcť posielať žiadosti, kým ju znova neschválite ako novú službu. Aplikácie, ktorým ste pre ňu dôverovali, aj jej nastavenia sa odstránia.',
+    'pausesTitle': 'Pozastavené služby',
+    'thresholdChangedTitle': 'Limit sa zmenil',
+    'thresholdChangedBody':
+        'Zmenil sa počas písania, preto pole ukazuje novú sumu. Pred uložením ju skontrolujte.',
+    'askTestNetworksOffTitle': 'Prestať sa pýtať v testovacích sieťach?',
+    'askTestNetworksOffBody':
+        'Žiadosti v testovacích sieťach sa už nebudú pýtať kvôli sume ani neznámej hodnote. Ostatné dôvody na pýtanie platia ďalej.',
+    'blockUnprovenOffTitle': 'Povoliť služby bez overenej domény?',
+    'blockUnprovenOffBody':
+        'Služba, ktorá si neoverila doménu, vám bude môcť znova posielať žiadosti.',
+    'turnOff': 'Vypnúť',
+    'keepOn': 'Nechať zapnuté',
+    'moreApplications': 'Dôverovať by sa dalo viac aplikácií, než je tu {max} ponúkaných. Jedným schválením sa dá zapamätať najviac prvých {max}.',
     'keepLinked': 'Ponechať prepojenú',
   });
 }

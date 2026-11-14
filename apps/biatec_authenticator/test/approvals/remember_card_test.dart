@@ -213,6 +213,23 @@ void main() {
           isFalse);
     });
 
+    test('rememberable is computed once and holds at most 16', () {
+      final json = (jsonDecode(jsonEncode(vectorRequest(_remember))) as Map)
+          .cast<String, Object?>();
+      final d = (json['authorization_details'] as List).single as Map;
+      d['applications'] = [
+        for (var i = 1; i <= 16; i++) {'id': i, 'trusted': false}
+      ];
+      final r = ConsentRequest.fromJson(json);
+      expect(identical(r.rememberable, r.rememberable), isTrue);
+      expect(r.rememberable, hasLength(ConsentRequest.maxRemembered));
+      // A request lists at most 16 applications (the schema), so nothing is cut off here; the cap is the receipt's own limit.
+      expect(r.rememberableTruncated, isFalse);
+      expect(ConsentRequest.maxRemembered, 16);
+      expect(r.canRemember(r.rememberable.first), isTrue);
+      expect(r.canRemember(const ApplicationEntry(id: '20', trusted: false)), isFalse);
+    });
+
     test('an application creation (id 0) is never offered', () {
       final json = (jsonDecode(jsonEncode(vectorRequest(_remember))) as Map)
           .cast<String, Object?>();

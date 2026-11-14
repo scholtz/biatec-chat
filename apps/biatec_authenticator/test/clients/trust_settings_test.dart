@@ -112,14 +112,58 @@ void main() {
     testWidgets('Ask on test networks and Block services: the server decides', (tester) async {
       final rig = TrustRig();
       await _open(tester, ThresholdScreen(services: rig.services));
-      // Turning "ask" off is loosening: signed once.
+      // Turning "ask" off is loosening: explained and confirmed, then signed once.
       await _tap(tester, 'ask-test-networks');
+      await _tap(tester, 'confirm-change');
       expect(rig.oidc.settings['ask_on_test_networks'], isFalse);
       expect(rig.keys.signed, hasLength(1));
       // Turning "block" on is tightening: no signature.
       await _tap(tester, 'block-unproven');
       expect(rig.oidc.settings['block_unproven_clients'], isTrue);
       expect(rig.keys.signed, hasLength(1));
+    });
+
+    testWidgets('turning Ask on test networks or Block off is explained and confirmed first; on applies directly',
+        (tester) async {
+      final rig = TrustRig();
+      rig.oidc.settings['block_unproven_clients'] = true;
+      await _open(tester, ThresholdScreen(services: rig.services));
+      // Off: a sheet explains it, and Keep leaves everything as it is.
+      await _tap(tester, 'ask-test-networks');
+      expect(find.text('Stop asking on test networks?'), findsOneWidget);
+      await _tap(tester, 'keep');
+      expect(rig.oidc.puts, isEmpty);
+      await _tap(tester, 'block-unproven');
+      expect(find.text('Let services without a proven domain ask?'), findsOneWidget);
+      await _tap(tester, 'confirm-change');
+      expect(rig.oidc.settings['block_unproven_clients'], isFalse);
+      expect(rig.keys.signed, hasLength(1));
+      // On: tightening, no sheet.
+      await _tap(tester, 'block-unproven');
+      expect(find.byKey(const Key('confirm-change')), findsNothing);
+      expect(rig.oidc.settings['block_unproven_clients'], isTrue);
+    });
+
+    testWidgets('an untouched field follows a changed threshold; an edited one is reset with a warning and never saved stale',
+        (tester) async {
+      final rig = TrustRig();
+      final reload = ValueNotifier<int>(0);
+      await _open(tester, ThresholdScreen(services: rig.services), reload: reload);
+      String field() => tester.widget<TextField>(find.byKey(const Key('threshold-field'))).controller!.text;
+      expect(field(), '1000.00');
+      rig.oidc.settings['threshold_eur'] = '300.00';
+      reload.value++;
+      await tester.pumpAndSettle();
+      expect(field(), '300.00');
+      expect(find.byKey(const Key('threshold-changed')), findsNothing);
+      // The user types; the threshold changes underneath.
+      await _type(tester, 'threshold-field', '777');
+      rig.oidc.settings['threshold_eur'] = '400.00';
+      reload.value++;
+      await tester.pumpAndSettle();
+      expect(field(), '400.00');
+      expect(find.byKey(const Key('threshold-changed')), findsOneWidget);
+      expect(rig.oidc.puts, isEmpty);
     });
 
     testWidgets('an inactive device reads everything and changes nothing, with the reason',
@@ -162,6 +206,32 @@ void main() {
       expect(find.textContaining('bank-entity'), findsNothing);
       expect(find.textContaining('erified'), findsNothing);
       expect(find.textContaining('Unproven application'), findsOneWidget);
+    });
+
+    testWidgets('only a linked service is listed; a pause on an unlinked one can still be lifted',
+        (tester) async {
+      final oidc = FakeTrustOidc();
+      final until = oidc.nowSeconds + 3600;
+      oidc.clients.add(trustClient('held-label', domain: 'held.example', label: 'Held', linkedAt: null)
+        ..['linked'] = false);
+      oidc.clients.add(trustClient('paused-only', domain: 'paused.example', linkedAt: null, pauses: [
+        {'origin': 'https://paused.example', 'paused_until': until}
+      ])
+        ..['linked'] = false);
+      final rig = TrustRig(oidc: oidc);
+      await _open(tester, ClientsScreen(services: rig.services), size: const Size(400, 3000));
+      expect(find.byKey(const Key('client-held-label')), findsNothing);
+      expect(find.byKey(const Key('client-paused-only')), findsNothing);
+      expect(find.byKey(const Key('client-bank-example')), findsOneWidget);
+      expect(find.byKey(const Key('unlinked-paused-paused-only')), findsOneWidget);
+      await _tap(tester, 'lift-paused-only-https://paused.example');
+      await _tap(tester, 'confirm-change');
+      expect(oidc.puts.last['change'], {
+        'clients': {
+          'paused-only': {'paused': false, 'origin': 'https://paused.example'}
+        }
+      });
+      expect(rig.keys.signed, hasLength(1));
     });
 
     testWidgets('no linked service is explained', (tester) async {

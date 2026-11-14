@@ -7,10 +7,10 @@ import '../ui/ui.dart';
 import 'label_rules.dart';
 import 'trust_strings.dart';
 
-/// `xxxx-xxxx-xxxx-xxxx` for the 16 hex characters of a fingerprint (specification section 6), anything else as it is.
+/// `xxxx-xxxx-xxxx-xxxx` for the 16 lowercase hex characters of a fingerprint (specification section 6). Anything else is not a fingerprint and is never drawn: the empty string.
 String formatFingerprint(String? fingerprint) {
   final f = fingerprint ?? '';
-  if (f.length != 16) return f;
+  if (!RegExp(r'^[0-9a-f]{16}$').hasMatch(f)) return '';
   return [for (var i = 0; i < 16; i += 4) f.substring(i, i + 4)].join('-');
 }
 

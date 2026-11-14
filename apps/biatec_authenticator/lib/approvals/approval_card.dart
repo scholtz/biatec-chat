@@ -113,6 +113,13 @@ class ApprovalCard extends StatelessWidget {
         const Fact('Transfers', 'None', key: Key('fact-no-transfers')),
       for (var i = 0; i < g.applications.length; i++)
         ..._applicationRow(i, g.applications),
+      if (trust && request.rememberableTruncated)
+        Padding(
+          key: const Key('remember-truncated'),
+          padding: const EdgeInsets.only(bottom: AppSpacing.s),
+          child: Text(TrustStrings.of().t('moreApplications',
+              {'max': '${ConsentRequest.maxRemembered}'})),
+        ),
       Fact('From', d.sender, mono: true, key: const Key('fact-sender')),
       Fact('Network', d.network, key: const Key('fact-network')),
       Fact('Group hash', d.groupHash, mono: true, key: const Key('fact-hash')),

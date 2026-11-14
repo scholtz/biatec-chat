@@ -96,19 +96,6 @@ class _Detail extends StatelessWidget {
     await controller.apply(_one({'per_client_threshold_eur': v}));
   }
 
-  Future<void> _lift(BuildContext context, PausedOrigin pause) async {
-    final s = TrustStrings.of();
-    final yes = await confirmSheet(context,
-        title: s.t('liftPauseTitle', {'origin': pause.origin}),
-        message: s.t('liftPauseBody'),
-        confirmLabel: s.t('liftPause'),
-        cancelLabel: s.t('keepPaused'),
-        biometric: true,
-        icon: Icons.fingerprint);
-    if (!yes) return;
-    await controller.apply(_one({'paused': false, 'origin': pause.origin}));
-  }
-
   Future<void> _unlink(BuildContext context) async {
     final s = TrustStrings.of();
     final yes = await confirmSheet(context,
@@ -246,7 +233,9 @@ class _Detail extends StatelessWidget {
                     const SizedBox(height: AppSpacing.s),
                     FilledButton(
                       key: Key('lift-$id-${pause.origin}'),
-                      onPressed: enabled ? () => _lift(context, pause) : null,
+                      onPressed: enabled
+                          ? () => liftPause(context, controller, id, pause)
+                          : null,
                       child: Text(s.t('liftPause')),
                     ),
                   ]),

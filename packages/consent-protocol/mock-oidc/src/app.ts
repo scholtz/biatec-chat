@@ -1050,6 +1050,7 @@ export function createMockOidc(options: MockOptions = {}) {
         const s = cs(sub, id);
         if ("unlink" in c) {
           if (c.unlink !== true || Object.keys(c).length !== 1) throw bad("unlink must be true and the only member of the change for the client");
+          if (!user.used.has(id)) throw bad("only a linked client can be unlinked");
           continue; // tightening
         }
         if ("always_ask" in c && typeof c.always_ask !== "boolean") throw bad("always_ask must be a boolean");
@@ -1102,6 +1103,7 @@ export function createMockOidc(options: MockOptions = {}) {
         user.alwaysAsk = user.alwaysAsk.filter((x) => x !== id);
         trustedApplications.delete(key);
         linkedAt.delete(key);
+        firstSigned.delete(key); // the user's first day with the client starts again: the next request is truly first use
         s.label = undefined;
         s.perClientThresholdEur = undefined;
         continue;

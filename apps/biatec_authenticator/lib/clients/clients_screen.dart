@@ -27,7 +27,12 @@ class ClientsScreen extends StatelessWidget {
       services: services,
       controller: controller,
       builder: (context, c) {
-        final clients = c.settings!.clients;
+        // Only a service the user linked is a linked service. One that holds just a setting (a label, a threshold) is not listed; a running pause on it is, below, so it can still be lifted.
+        final clients = [for (final x in c.settings!.clients) if (x.linked) x];
+        final paused = [
+          for (final x in c.settings!.clients)
+            if (!x.linked && x.pauses.isNotEmpty) x
+        ];
         return [
           ...inactiveBanner(c),
           if (clients.isEmpty)
@@ -50,6 +55,48 @@ class ClientsScreen extends StatelessWidget {
                     onOpen: () => Navigator.of(context).push(
                         ClientDetailScreen.route(services, c, client.clientId))),
               ),
+          if (paused.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.m, AppSpacing.l, AppSpacing.m, AppSpacing.xs),
+              child: Semantics(
+                  header: true,
+                  child: Text(s.t('pausesTitle'),
+                      style: Theme.of(context).textTheme.titleSmall)),
+            ),
+            for (final client in paused)
+              Padding(
+                key: Key('unlinked-paused-${client.clientId}'),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.m, vertical: AppSpacing.s),
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.m),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          ServiceIdentity.setting(client, compact: true),
+                          for (final pause in client.pauses) ...[
+                            const SizedBox(height: AppSpacing.s),
+                            Text(s.t('pausedOrigin', {
+                              'origin': pause.origin,
+                              'when': whenText(pause.pausedUntil)
+                            })),
+                            const SizedBox(height: AppSpacing.xs),
+                            FilledButton(
+                              key: Key('lift-${client.clientId}-${pause.origin}'),
+                              onPressed: !c.busy && c.deviceActive
+                                  ? () => liftPause(
+                                      context, c, client.clientId, pause)
+                                  : null,
+                              child: Text(s.t('liftPause')),
+                            ),
+                          ],
+                        ]),
+                  ),
+                ),
+              ),
+          ],
         ];
       },
     );

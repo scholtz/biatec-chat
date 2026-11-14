@@ -111,7 +111,7 @@ All trust is the user's, set on the phone; the mock trusts no client and no appl
 | `clients.{client_id}.trusted_applications_add` | 1 to 16 unique `{ "network": "algorand-mainnet" or "algorand-testnet", "app_id": <integer >= 1> }`; only for a linked client | loosening |
 | `clients.{client_id}.trusted_applications_remove` | same list shape; not the same application as `_add` | tightening |
 | `clients.{client_id}.paused: false` with `origin` | the canonical origin of a running pause (only `false`: a pause is set by denials) | lifting is loosening |
-| `clients.{client_id}.unlink: true` | the only member for that client; forgets the link, label, trusted applications, own threshold and "always ask" (a running pause stays) | tightening |
+| `clients.{client_id}.unlink: true` | the only member for that client; forgets the link (and the first day with the client: the next request is first use again; a client that is not linked is `400 invalid_request`), label, trusted applications, own threshold and "always ask" (a running pause stays) | tightening |
 
 Loosening versus tightening is decided here, by the mock, never by the app; a change that mixes both is loosening as a whole. Send the change; if it is a loosening and carries no valid `consent`, nothing changes and the answer is
 

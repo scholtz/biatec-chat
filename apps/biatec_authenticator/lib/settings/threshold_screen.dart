@@ -6,6 +6,7 @@ import '../clients/trust_widgets.dart';
 import '../security/settings_controller.dart';
 import '../security/settings_frame.dart';
 import '../theme.dart';
+import '../ui/ui.dart';
 
 /// Settings, Security, Approval threshold: the amount above which a request asks on this phone, the user's own choice with no ceiling of the app's (an operator may set one; its refusal is shown as
 /// it is said). Also "Ask on test networks" and "Block services without a proven domain".
@@ -51,15 +52,36 @@ class _ThresholdFormState extends State<_ThresholdForm> {
   final _focus = FocusNode();
   String? _problem;
 
+  /// The threshold the field was last in step with: what Biatec OIDC held when the field was filled in.
+  late String _shown;
+
+  /// Set when the threshold changed underneath an amount the user had typed: the field was reset, and says so.
+  bool _changedUnderneath = false;
+
   @override
   void initState() {
     super.initState();
-    _text = TextEditingController(
-        text: widget.controller.settings!.thresholdEur);
+    _shown = widget.controller.settings!.thresholdEur;
+    _text = TextEditingController(text: _shown);
+    widget.controller.addListener(_sync);
+  }
+
+  /// The threshold changed (another device, a refresh, this screen's own save): an untouched field follows it; one the user had edited is reset to it with a notice, so a stale amount is never saved.
+  void _sync() {
+    final now = widget.controller.settings?.thresholdEur;
+    if (now == null || now == _shown || !mounted) return;
+    final dirty = _text.text.trim() != _shown;
+    _shown = now;
+    setState(() {
+      _text.text = now;
+      _problem = null;
+      _changedUnderneath = dirty;
+    });
   }
 
   @override
   void dispose() {
+    widget.controller.removeListener(_sync);
     _text.dispose();
     _focus.dispose();
     super.dispose();
@@ -72,6 +94,9 @@ class _ThresholdFormState extends State<_ThresholdForm> {
   }
 
   Future<void> _save(SettingsController c) async {
+    // The amount in the field was typed against another threshold: nothing is sent.
+    _sync();
+    if (_changedUnderneath) return;
     final v = _typed;
     if (v == null) {
       setState(() => _problem = TrustStrings.of().t('amountProblem'));
@@ -80,8 +105,26 @@ class _ThresholdFormState extends State<_ThresholdForm> {
     final ok = await c.apply({'threshold_eur': v});
     if (ok && mounted && c.settings != null) {
       // The server's own spelling of the amount (`250.00`).
-      setState(() => _text.text = c.settings!.thresholdEur);
+      _shown = c.settings!.thresholdEur;
+      setState(() {
+        _text.text = _shown;
+        _changedUnderneath = false;
+      });
     }
+  }
+
+  /// Turning a protection off loosens it: explained and confirmed first (the phone then asks for the fingerprint or face). Turning it on applies at once.
+  Future<void> _confirmOff(SettingsController c, Map<String, Object?> change,
+      String titleKey, String bodyKey) async {
+    final s = TrustStrings.of();
+    final yes = await confirmSheet(context,
+        title: s.t(titleKey),
+        message: s.t(bodyKey),
+        confirmLabel: s.t('turnOff'),
+        cancelLabel: s.t('keepOn'),
+        biometric: true,
+        icon: Icons.fingerprint);
+    if (yes) await c.apply(change);
   }
 
   @override
@@ -116,6 +159,15 @@ class _ThresholdFormState extends State<_ThresholdForm> {
         ),
         const SizedBox(height: AppSpacing.xs),
         Text(s.t('thresholdIntro'), style: theme.textTheme.bodyMedium),
+        if (_changedUnderneath) ...[
+          const SizedBox(height: AppSpacing.s),
+          StatusBanner(
+            key: const Key('threshold-changed'),
+            severity: StatusSeverity.warning,
+            title: s.t('thresholdChangedTitle'),
+            message: s.t('thresholdChangedBody'),
+          ),
+        ],
         const SizedBox(height: AppSpacing.m),
         Wrap(spacing: AppSpacing.s, runSpacing: AppSpacing.s, children: [
           for (final choice in thresholdChoices)
@@ -175,7 +227,10 @@ class _ThresholdFormState extends State<_ThresholdForm> {
           subtitle: Text(s.t('askTestNetworksHelp')),
           value: settings.askOnTestNetworks,
           onChanged: enabled
-              ? (v) => c.apply({'ask_on_test_networks': v})
+              ? (v) => v
+                  ? c.apply({'ask_on_test_networks': true})
+                  : _confirmOff(c, {'ask_on_test_networks': false},
+                      'askTestNetworksOffTitle', 'askTestNetworksOffBody')
               : null,
         ),
         SwitchListTile(
@@ -185,7 +240,10 @@ class _ThresholdFormState extends State<_ThresholdForm> {
           subtitle: Text(s.t('blockUnprovenHelp')),
           value: settings.blockUnprovenClients,
           onChanged: enabled
-              ? (v) => c.apply({'block_unproven_clients': v})
+              ? (v) => v
+                  ? c.apply({'block_unproven_clients': true})
+                  : _confirmOff(c, {'block_unproven_clients': false},
+                      'blockUnprovenOffTitle', 'blockUnprovenOffBody')
               : null,
         ),
       ]),

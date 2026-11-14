@@ -109,8 +109,18 @@ class _ClientCard extends StatelessWidget {
             const SizedBox(height: AppSpacing.s),
             FilledButton(
               key: Key('lift-$id'),
-              onPressed: enabled
-                  ? () => _apply(context, one('paused', false),
+              onPressed: enabled && client.pauses.isNotEmpty
+                  ? () => _apply(
+                      context,
+                      {
+                        'clients': {
+                          id: {
+                            'paused': false,
+                            // The signed schema wants the origin of the pause with `paused: false`.
+                            'origin': client.pauses.first.origin
+                          }
+                        }
+                      },
                       title: 'Lift the pause for $name?',
                       message: '$name will be able to ask for approvals '
                           'again straight away.',
