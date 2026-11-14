@@ -50,6 +50,14 @@ export const config = {
     threshold5000: secret("CONFORMANCE_BEARER_THRESHOLD_5000", "frank-chat-sign"),
   },
   unsupportedNetwork: env("CONFORMANCE_UNSUPPORTED_NETWORK", "bitcoin-testnet"),
+  /**
+   * The user of the settings cases (T-245). They change settings and unlink the client, so they run as an account of their own that no other case uses: a bearer of the
+   * verified client for it and its active device (the device key is the one of `devicePrivateJwk`).
+   */
+  settings: {
+    bearer: secret("CONFORMANCE_SETTINGS_BEARER", "hank-chat-sign"),
+    device: { deviceToken: secret("CONFORMANCE_SETTINGS_DEVICE_TOKEN", "device-token-hank"), deviceKid: env("CONFORMANCE_SETTINGS_DEVICE_KID", "hank-device") } as { deviceToken: string; deviceKid: string },
+  },
 };
 
 /** The sender the default group and the refusal cases use. */
@@ -175,32 +183,49 @@ const clientAuth = () => basicAuth(config.clientId, config.clientSecret);
 const deviceAuth = () => "Device " + config.deviceToken;
 export const signPath = () => `/wallet/${config.network}/${config.address}/sign`;
 
-/** What the authenticator does: build a receipt from the fetched request and the typed code, and sign it. */
-export async function approve(base: string, authReqId: string, code: string) {
-  const reqReply = await http(base, "GET", `/consent/requests/${authReqId}`, { auth: deviceAuth() });
-  if (reqReply.status !== 200) throw new Error(`device could not fetch the consent request: HTTP ${reqReply.status} ${JSON.stringify(reqReply.json)}`);
-  const request = reqReply.json;
-  const devReply = await http(base, "GET", `/mock/devices/${config.deviceKid}`);
+/** A device of the test account that signs: its token, kid and (in `buildReceipt`) the attestation looked up with the mock's helper. */
+export interface Signer { deviceToken: string; deviceKid: string }
+const alice = (): Signer => ({ deviceToken: config.deviceToken, deviceKid: config.deviceKid });
+
+/** What the authenticator does: build the 1.1 receipt from the fetched request and the typed code, and sign it with the approval key. `remember` ticks applications of the request (protocol 1.1). */
+export async function buildReceipt(base: string, request: Record<string, any>, code: string, opts: { who?: Signer; decision?: "approve" | "deny"; remember?: number[] } = {}) {
+  const who = opts.who ?? alice();
+  const devReply = await http(base, "GET", `/mock/devices/${who.deviceKid}`);
   if (devReply.status !== 200) throw new Error("device attestation lookup failed (CONFORMANCE_DEVICE_* must describe an enrolled device)");
   const signed = {
     authorization_details: request.authorization_details,
     auth_req_id: request.auth_req_id,
     client_fingerprint: request.client.fingerprint,
     binding_code: code,
-    decision: "approve",
+    decision: opts.decision ?? "approve",
     expiry: request.expiry,
     sub: request.sub,
     binding_message: request.binding_message,
+    ...(opts.remember ? { remember: { applications: opts.remember } } : {}),
   };
-  const receipt = {
+  return {
     version: "1.1",
     signed,
     alg: "ES256",
     signature: signEs256(config.devicePrivateJwk!, Buffer.from(jcs(signed), "utf8")),
     issued_at: Math.floor(Date.now() / 1000),
-    device: { kid: config.deviceKid, key_use: "approve", public_key: devReply.json.public_key, attestation: devReply.json.attestation },
+    device: { kid: who.deviceKid, key_use: "approve", public_key: devReply.json.public_key, attestation: devReply.json.attestation },
   };
-  const posted = await http(base, "POST", `/consent/requests/${authReqId}/receipt`, { auth: deviceAuth(), body: receipt });
+}
+
+/** The device fetches the consent request of `authReqId`. */
+export async function fetchRequest(base: string, authReqId: string, who: Signer = alice()) {
+  const reqReply = await http(base, "GET", `/consent/requests/${authReqId}`, { auth: "Device " + who.deviceToken });
+  if (reqReply.status !== 200) throw new Error(`device could not fetch the consent request: HTTP ${reqReply.status} ${JSON.stringify(reqReply.json)}`);
+  return reqReply.json as Record<string, any>;
+}
+
+/** What the authenticator does: fetch the request, build a receipt from it and the typed code, sign it and post it (it must be accepted). */
+export async function approve(base: string, authReqId: string, code: string, opts: { who?: Signer; remember?: number[] } = {}) {
+  const who = opts.who ?? alice();
+  const request = await fetchRequest(base, authReqId, who);
+  const receipt = await buildReceipt(base, request, code, opts);
+  const posted = await http(base, "POST", `/consent/requests/${authReqId}/receipt`, { auth: "Device " + who.deviceToken, body: receipt });
   if (posted.status !== 200) throw new Error(`receipt was not accepted: HTTP ${posted.status} ${JSON.stringify(posted.json)}`);
   return request;
 }

@@ -4,6 +4,7 @@ import '../enrollment/enrollment_store.dart';
 import '../keys/device_key_store.dart';
 import '../keys/key_security_level.dart';
 import '../enrollment/enrollment_state.dart';
+import '../clients/service_identity.dart';
 import 'approval_client.dart';
 import 'biometric_gate.dart';
 import 'consent_request.dart';
@@ -49,6 +50,7 @@ class ApprovalController extends ChangeNotifier {
     required this.history,
     required this.gate,
     this.twoKeys = true,
+    this.trustSettings = false,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
@@ -63,7 +65,34 @@ class ApprovalController extends ChangeNotifier {
 
   /// `AppConfig.twoKeys`: the two device keys. Off, the one prompt-free key signs everything and [gate] asks first (the behaviour before T-241).
   final bool twoKeys;
+
+  /// `AppConfig.trustSettings`: the card offers "don't ask again" and an approval signs the ticked ids into `remember`. Off, nothing is ever remembered.
+  final bool trustSettings;
   final DateTime Function() _clock;
+
+  final Set<String> _remembered = <String>{};
+
+  /// The application ids the user ticked on the card. Unticked by default: nothing is ticked for the user.
+  Set<String> get remembered => Set.unmodifiable(_remembered);
+
+  /// Ticks or clears "don't ask again" for [id], when the card offers it for that application.
+  void setRemember(String id, bool on) {
+    final shown = _request;
+    if (!trustSettings || shown == null || _phase != ApprovalPhase.ready) {
+      return;
+    }
+    final offered = shown.rememberable.any((a) => a.id == id);
+    if (!offered) return;
+    if (on ? _remembered.add(id) : _remembered.remove(id)) notifyListeners();
+  }
+
+  /// The ticked ids, as the card of [request] offers them, in the order of the request.
+  List<int> _rememberFor(ConsentRequest request) => !trustSettings
+      ? const []
+      : [
+          for (final a in request.rememberable)
+            if (_remembered.contains(a.id)) int.parse(a.id)
+        ];
 
   ApprovalPhase _phase = ApprovalPhase.loading;
   ApprovalPhase get phase => _phase;
@@ -293,6 +322,8 @@ class ApprovalController extends ChangeNotifier {
       final fresh = await client.fetch(token, authReqId);
       if (canonicalize(fresh.json) != canonicalize(shown.json)) {
         _request = fresh;
+        // Nothing is ticked for the user after a review again.
+        _remembered.clear();
         _set(ApprovalPhase.ready,
             error: 'The request changed. Review it again before approving.');
         return;
@@ -319,6 +350,7 @@ class ApprovalController extends ChangeNotifier {
           clock: () => now,
           prompt: prompt,
           singleKey: !twoKeys,
+          remember: _rememberFor(fresh),
         );
       } on KeyPromptCancelled {
         // Nothing was signed or sent: the request stays pending and no code attempt is used.
@@ -486,7 +518,8 @@ String summarize(AuthorizationDetail d) => switch (d) {
           'per transaction, ${d.requested.perDayEur} EUR per day',
     };
 
-/// The client as rule 3 allows it to be named.
-String clientLabel(ConsentClient c) => c.verified
-    ? (c.legacy ? (c.displayName ?? c.domain ?? c.entityId ?? '') : c.domain!)
-    : 'Unproven application ${c.fingerprintShown ?? ''}'.trim();
+/// The client as rule 3 allows it to be named: its proven domain, or "Unproven application" and the fingerprint.
+String clientLabel(ConsentClient c) {
+  final host = provenDomainOf(c.domainProven, c.domain);
+  return host ?? 'Unproven application ${formatFingerprint(c.fingerprint)}'.trim();
+}

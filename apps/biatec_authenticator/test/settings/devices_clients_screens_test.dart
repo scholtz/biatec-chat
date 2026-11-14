@@ -1,4 +1,4 @@
-import 'package:biatec_authenticator/clients/clients_screen.dart';
+import 'package:biatec_authenticator/clients/legacy_clients_screen.dart';
 import 'package:biatec_authenticator/devices/devices_screen.dart';
 import 'package:biatec_authenticator/keys/key_security_level.dart';
 import 'package:biatec_authenticator/theme.dart';
@@ -124,20 +124,25 @@ void main() {
   });
 
   group('trusted clients', () {
-    testWidgets('each client says who it is and whether it is verified',
+    testWidgets('each client is drawn by the identity widget, never as verified',
         (tester) async {
       final rig = SettingsRig();
-      await _open(tester, ClientsScreen(services: rig.services));
+      await _open(tester, LegacyClientsScreen(services: rig.services));
       expect(find.byKey(const Key('client-biatec-chat')), findsOneWidget);
-      expect(find.text('Verified client'), findsWidgets);
+      expect(find.textContaining('Unproven application'), findsWidgets);
+      expect(find.text('Verified client'), findsNothing);
     });
 
     testWidgets('a paused client shows a banner and lifting asks first',
         (tester) async {
       final oidc = FakeSettingsOidc();
-      oidc.clientById('bank-example')['paused_until'] = oidc.nowSeconds + 3600;
+      oidc.clientById('bank-example')
+        ..['paused_until'] = oidc.nowSeconds + 3600
+        ..['pauses'] = [
+          {'origin': 'https://bank.example', 'paused_until': oidc.nowSeconds + 3600}
+        ];
       final rig = SettingsRig(oidc: oidc);
-      await _open(tester, ClientsScreen(services: rig.services));
+      await _open(tester, LegacyClientsScreen(services: rig.services));
       await tester.ensureVisible(find.byKey(const Key('lift-bank-example')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('lift-bank-example')));
@@ -150,10 +155,64 @@ void main() {
       expect(oidc.clientById('bank-example')['paused_until'], isNotNull);
     });
 
+    testWidgets("lifting a pause sends the pause's origin with paused: false",
+        (tester) async {
+      final oidc = FakeSettingsOidc();
+      oidc.clientById('bank-example')
+        ..['paused_until'] = oidc.nowSeconds + 3600
+        ..['pauses'] = [
+          {'origin': 'https://bank.example', 'paused_until': oidc.nowSeconds + 3600}
+        ];
+      final rig = SettingsRig(oidc: oidc);
+      await _open(tester, LegacyClientsScreen(services: rig.services),
+          size: const Size(400, 2400));
+      await tester.ensureVisible(find.byKey(const Key('lift-bank-example')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('lift-bank-example')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-change')));
+      await tester.pumpAndSettle();
+      expect((oidc.puts.first['change'] as Map)['clients'], {
+        'bank-example': {'paused': false, 'origin': 'https://bank.example'}
+      });
+    });
+
+    testWidgets('a server that lists no pauses is asked as before: lift without an origin', (tester) async {
+      final oidc = FakeSettingsOidc();
+      oidc.clientById('bank-example')['paused_until'] = oidc.nowSeconds + 3600;
+      final rig = SettingsRig(oidc: oidc);
+      await _open(tester, LegacyClientsScreen(services: rig.services),
+          size: const Size(400, 2400));
+      await tester.ensureVisible(find.byKey(const Key('lift-bank-example')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('lift-bank-example')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-change')));
+      await tester.pumpAndSettle();
+      expect((oidc.puts.first['change'] as Map)['clients'], {
+        'bank-example': {'paused': false}
+      });
+    });
+
+    testWidgets('a label that breaks the rules is not used in the confirm title', (tester) async {
+      final oidc = FakeSettingsOidc();
+      oidc.clientById('bank-example')
+        ..['label'] = 'Bank\u202E'
+        ..['paused_until'] = oidc.nowSeconds + 3600;
+      final rig = SettingsRig(oidc: oidc);
+      await _open(tester, LegacyClientsScreen(services: rig.services),
+          size: const Size(400, 2400));
+      await tester.ensureVisible(find.byKey(const Key('lift-bank-example')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('lift-bank-example')));
+      await tester.pumpAndSettle();
+      expect(find.text('Lift the pause for this service?'), findsOneWidget);
+    });
+
     testWidgets('turning always-ask off can be declined', (tester) async {
       final rig = SettingsRig();
       rig.oidc.clientById('biatec-chat')['always_ask'] = true;
-      await _open(tester, ClientsScreen(services: rig.services));
+      await _open(tester, LegacyClientsScreen(services: rig.services));
       await tester.tap(find.byKey(const Key('always-ask-biatec-chat')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('keep')), findsOneWidget);
@@ -166,14 +225,14 @@ void main() {
     testWidgets('no clients is explained', (tester) async {
       final rig = SettingsRig();
       (rig.oidc.settings['clients'] as List).clear();
-      await _open(tester, ClientsScreen(services: rig.services));
+      await _open(tester, LegacyClientsScreen(services: rig.services));
       expect(find.byKey(const Key('no-clients')), findsOneWidget);
     });
 
     testWidgets('the threshold sheet says whether an amount raises or lowers',
         (tester) async {
       final rig = SettingsRig();
-      await _open(tester, ClientsScreen(services: rig.services));
+      await _open(tester, LegacyClientsScreen(services: rig.services));
       await tester.ensureVisible(
           find.byKey(const Key('threshold-change-bank-example')));
       await tester.pumpAndSettle();
@@ -202,7 +261,7 @@ void main() {
         oidc.clientById('bank-example')['paused_until'] =
             oidc.nowSeconds + 3600;
         final rig = SettingsRig(oidc: oidc);
-        await _open(tester, ClientsScreen(services: rig.services),
+        await _open(tester, LegacyClientsScreen(services: rig.services),
             brightness: brightness, text: 3, size: const Size(320, 568));
         expect(tester.takeException(), isNull);
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));

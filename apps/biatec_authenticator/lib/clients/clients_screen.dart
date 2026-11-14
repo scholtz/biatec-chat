@@ -4,211 +4,154 @@ import '../security/settings_client.dart';
 import '../security/settings_controller.dart';
 import '../security/settings_frame.dart';
 import '../theme.dart';
-import '../ui/ui.dart';
+import 'client_detail_screen.dart';
+import 'service_identity.dart';
+import 'trust_strings.dart';
+import 'trust_widgets.dart';
 
-/// Trusted clients: per-client threshold, "always ask" and lifting the
-/// 24 hour pause of rule 10. Loosening any of them needs approval on this
-/// device; tightening applies at once.
-///
-/// Each client is a card: who it is and whether its name is confirmed, whether it is paused, and the three controls. A change that loosens something is confirmed in a sheet that says the phone will ask for a fingerprint or face; one that tightens applies at once.
+/// Settings, Security, Linked services: every service the user linked to this authenticator, each drawn by the one identity widget (its proven domain, or "Unproven application" and the fingerprint,
+/// and the user's own label), with the date it was linked. A tap opens its detail. Nothing here is a name the operator or the service asserted.
 class ClientsScreen extends StatelessWidget {
   const ClientsScreen({super.key, required this.services, this.controller});
 
   final SettingsServices services;
 
-  /// Shared with the other settings tabs (see [SettingsFrame.controller]).
+  /// Shared with the other settings screens (see [SettingsFrame.controller]).
   final SettingsController? controller;
 
   @override
   Widget build(BuildContext context) {
+    final s = TrustStrings.of();
     return SettingsFrame(
-      title: 'Trusted clients and thresholds',
+      title: s.t('linkedServicesTitle'),
       services: services,
       controller: controller,
       builder: (context, c) {
-        final s = c.settings!;
-        if (s.clients.isEmpty) {
-          return const [
-            Padding(
-              key: Key('no-clients'),
-              padding: EdgeInsets.all(AppSpacing.l),
-              child: Column(children: [
-                ExcludeSemantics(child: Icon(Icons.verified_user, size: 48)),
-                SizedBox(height: AppSpacing.m),
-                Text(
-                    'No client has asked for an approval yet. Each one that '
-                    'does will appear here.',
-                    textAlign: TextAlign.center),
-              ]),
-            ),
-          ];
-        }
+        // Only a service the user linked is a linked service. One that holds just a setting (a label, a threshold) is not listed; a running pause on it is, below, so it can still be lifted.
+        final clients = [for (final x in c.settings!.clients) if (x.linked) x];
+        final paused = [
+          for (final x in c.settings!.clients)
+            if (!x.linked && x.pauses.isNotEmpty) x
+        ];
         return [
-          for (final client in s.clients)
+          ...inactiveBanner(c),
+          if (clients.isEmpty)
             Padding(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.m, vertical: AppSpacing.s),
-              child: _ClientCard(client: client, account: s, controller: c),
+              key: const Key('no-clients'),
+              padding: const EdgeInsets.all(AppSpacing.l),
+              child: Column(children: [
+                const ExcludeSemantics(child: Icon(Icons.link_off, size: 48)),
+                const SizedBox(height: AppSpacing.m),
+                Text(s.t('noLinkedServices'), textAlign: TextAlign.center),
+              ]),
+            )
+          else
+            for (final client in clients)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.m, vertical: AppSpacing.s),
+                child: _ServiceCard(
+                    client: client,
+                    onOpen: () => Navigator.of(context).push(
+                        ClientDetailScreen.route(services, c, client.clientId))),
+              ),
+          if (paused.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.m, AppSpacing.l, AppSpacing.m, AppSpacing.xs),
+              child: Semantics(
+                  header: true,
+                  child: Text(s.t('pausesTitle'),
+                      style: Theme.of(context).textTheme.titleSmall)),
             ),
+            for (final client in paused)
+              Padding(
+                key: Key('unlinked-paused-${client.clientId}'),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.m, vertical: AppSpacing.s),
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.m),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          ServiceIdentity.setting(client, compact: true),
+                          for (final pause in client.pauses) ...[
+                            const SizedBox(height: AppSpacing.s),
+                            Text(s.t('pausedOrigin', {
+                              'origin': pause.origin,
+                              'when': whenText(pause.pausedUntil)
+                            })),
+                            const SizedBox(height: AppSpacing.xs),
+                            FilledButton(
+                              key: Key('lift-${client.clientId}-${pause.origin}'),
+                              onPressed: !c.busy && c.deviceActive
+                                  ? () => liftPause(
+                                      context, c, client.clientId, pause)
+                                  : null,
+                              child: Text(s.t('liftPause')),
+                            ),
+                          ],
+                        ]),
+                  ),
+                ),
+              ),
+          ],
         ];
       },
     );
   }
 }
 
-class _ClientCard extends StatelessWidget {
-  const _ClientCard(
-      {required this.client, required this.account, required this.controller});
+class _ServiceCard extends StatelessWidget {
+  const _ServiceCard({required this.client, required this.onOpen});
 
   final ClientSetting client;
-  final ConsentSettings account;
-  final SettingsController controller;
-
-  Future<void> _apply(BuildContext context, Map<String, Object?> change,
-          {required String title,
-          required String message,
-          required String confirmLabel}) =>
-      applyWithConfirm(context, controller, account, change,
-          title: title, message: message, confirmLabel: confirmLabel);
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
+    final s = TrustStrings.of();
     final theme = Theme.of(context);
-    final id = client.clientId;
-    final enabled = !controller.busy;
-    final until = client.pausedUntil;
-    final own = client.perClientThresholdEur;
-    final name = client.label;
-    Map<String, Object?> one(String key, Object? value) => {
-          'clients': {
-            id: {key: value}
-          }
-        };
+    final linked = client.linkedAt;
+    final paused = client.pausedUntil != null;
     return Card(
-      key: Key('client-$id'),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.m),
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          MergeSemantics(
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              ExcludeSemantics(
-                  child: Icon(
-                      client.verified
-                          ? Icons.verified_user
-                          : Icons.warning_amber,
-                      color: client.verified
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.error)),
-              const SizedBox(width: AppSpacing.m),
-              Expanded(
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(name,
-                          style: theme.textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w600)),
-                      Text(
-                          client.verified
-                              ? 'Verified client'
-                              : 'Unverified client. Its name is not '
-                                  'confirmed.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant)),
-                    ]),
-              ),
-            ]),
-          ),
-          if (until != null) ...[
-            const SizedBox(height: AppSpacing.m),
-            StatusBanner(
-              key: Key('paused-$id'),
-              severity: StatusSeverity.warning,
-              icon: Icons.pause_circle_outline,
-              title: 'Paused until ${whenText(until)}',
-              message: 'This client cannot ask for approvals while '
-                  'paused. Lifting the pause needs approval on this '
-                  'device.',
+      key: Key('client-${client.clientId}'),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        key: Key('open-${client.clientId}'),
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.m),
+          child: Row(children: [
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ServiceIdentity.setting(client, compact: true),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(
+                        linked == null
+                            ? s.t('notLinkedDate')
+                            : s.t('linkedOn', {'when': whenText(linked)}),
+                        key: Key('linked-${client.clientId}'),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant)),
+                    if (paused || client.alwaysAsk)
+                      Padding(
+                        padding: const EdgeInsets.only(top: AppSpacing.xs),
+                        child: Text(
+                            [
+                              if (paused) s.t('pausedShort'),
+                              if (client.alwaysAsk) s.t('alwaysAskShort'),
+                            ].join(' · '),
+                            style: theme.textTheme.bodySmall),
+                      ),
+                  ]),
             ),
-            const SizedBox(height: AppSpacing.s),
-            FilledButton(
-              key: Key('lift-$id'),
-              onPressed: enabled
-                  ? () => _apply(context, one('paused', false),
-                      title: 'Lift the pause for $name?',
-                      message: '$name will be able to ask for approvals '
-                          'again straight away.',
-                      confirmLabel: 'Lift pause')
-                  : null,
-              child: const Text('Lift pause'),
-            ),
-          ],
-          const SizedBox(height: AppSpacing.s),
-          SwitchListTile(
-            key: Key('always-ask-$id'),
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Always ask'),
-            subtitle: const Text('Every action from this client needs '
-                'your phone. Turning it off needs approval on this '
-                'device.'),
-            value: client.alwaysAsk,
-            onChanged: enabled
-                ? (v) => _apply(context, one('always_ask', v),
-                    title: 'Stop always asking for $name?',
-                    message: 'Small actions from $name will no longer '
-                        'need your phone. Large ones still do.',
-                    confirmLabel: 'Turn off')
-                : null,
-          ),
-          const Divider(),
-          MergeSemantics(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Threshold for this client',
-                  key: Key('threshold-$id'), style: theme.textTheme.titleSmall),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                  own == null
-                      ? 'Uses the account threshold '
-                          '(${account.thresholdEur} EUR).'
-                      : '$own EUR. Raising it needs approval on this '
-                          'device.',
-                  style: theme.textTheme.bodyMedium),
-            ]),
-          ),
-          const SizedBox(height: AppSpacing.s),
-          OutlinedButton(
-            key: Key('threshold-change-$id'),
-            onPressed: enabled
-                ? () async {
-                    final v = await askEur(context,
-                        title: 'Threshold for $name',
-                        initial: own ?? account.thresholdEur,
-                        current: own ?? account.thresholdEur,
-                        hint: 'Lowering applies at once. Raising needs '
-                            'approval on this device.');
-                    if (v == null || !context.mounted) return;
-                    await controller.apply(one('per_client_threshold_eur', v));
-                  }
-                : null,
-            child: const Text('Change threshold'),
-          ),
-          if (own != null) ...[
-            const SizedBox(height: AppSpacing.s),
-            TextButton(
-              key: Key('threshold-reset-$id'),
-              onPressed: enabled
-                  ? () => _apply(context, one('per_client_threshold_eur', null),
-                      title: 'Use the account threshold for $name?',
-                      message: 'It goes back to the account threshold of '
-                          '${account.thresholdEur} EUR. Actions up to '
-                          'that amount will no longer need your phone.',
-                      confirmLabel: 'Use account threshold')
-                  : null,
-              child: const Text('Use account threshold'),
-            ),
-          ],
-        ]),
+            const Icon(Icons.chevron_right),
+          ]),
+        ),
       ),
     );
   }

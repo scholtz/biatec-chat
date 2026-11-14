@@ -16,20 +16,22 @@ ConsentSettings _settings({
       sub: 'pw_alice',
       biometricRequired: biometric,
       thresholdEur: threshold,
-      blockUnverifiedClients: block,
+      blockUnprovenClients: block,
       clients: clients ??
           [
             const ClientSetting(
                 clientId: 'chat',
                 label: 'Chat',
-                verified: true,
+                fingerprint: '0123456789abcdef',
+                domainProven: true,
                 alwaysAsk: true,
                 perClientThresholdEur: '200.00',
                 pausedUntil: null),
             ClientSetting(
                 clientId: 'bank',
                 label: 'Bank',
-                verified: true,
+                fingerprint: 'fedcba9876543210',
+                domainProven: true,
                 alwaysAsk: false,
                 perClientThresholdEur: null,
                 pausedUntil: DateTime.utc(2026, 10, 21)),

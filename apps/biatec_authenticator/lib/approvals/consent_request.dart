@@ -60,6 +60,36 @@ class ConsentRequest {
 
   bool isExpired(DateTime now) => !expiresAt.isAfter(now);
 
+  /// A receipt's `remember` holds at most this many application ids (the schema's `maxItems`).
+  static const maxRemembered = 16;
+
+  /// Every application of this request that could be offered, before the cap: untrusted, id 1 or more (0 is an application creation, never trusted), and listed once (a verifier refuses an id
+  /// that is ambiguous). A 1.0 request offers none.
+  late final List<ApplicationEntry> _offerable = () {
+    final d = detail;
+    if (!isShowable || d is! TransactionDetail) return const <ApplicationEntry>[];
+    final apps = d.group!.applications;
+    return [
+      for (final a in apps)
+        if (!a.trusted &&
+            (int.tryParse(a.id) ?? 0) >= 1 &&
+            apps.where((o) => o.id == a.id).length == 1)
+          a
+    ];
+  }();
+
+  /// What the card offers to trust ("don't ask again"): at most [maxRemembered] applications. Computed once.
+  late final List<ApplicationEntry> rememberable =
+      _offerable.length <= maxRemembered
+          ? _offerable
+          : _offerable.sublist(0, maxRemembered);
+
+  /// More applications could be trusted than the card offers (the cap); the card says so.
+  bool get rememberableTruncated => _offerable.length > maxRemembered;
+
+  /// Whether [a] is one the card offers to trust.
+  bool canRemember(ApplicationEntry a) => rememberable.any((o) => o.id == a.id);
+
   /// The single detail, parsed for display.
   late final AuthorizationDetail detail = AuthorizationDetail.parse(
       (authorizationDetails.single as Map).cast<String, Object?>());
@@ -112,36 +142,37 @@ class ConsentRequest {
 /// The requesting client. Protocol 1.1: `{ fingerprint, domain_proven,
 /// domain?, linked }`; only a proven domain says who it is, and nothing here
 /// is a name (rule 3). The 1.0 shape (`entity_id`, `verified`, `display_name`)
-/// still parses so an old request can be recognised and refused.
+/// still parses so an old request can be recognised and refused; of it only the
+/// `entity_id` is kept, because a deny receipt of a 1.0 request names the client by it, and none of it is ever shown.
 class ConsentClient {
   const ConsentClient({
     this.entityId,
-    required this.verified,
-    this.displayName,
+    required this.domainProven,
     this.domain,
     this.fingerprint,
     this.linked = false,
     this.legacy = false,
+    this.legacyVerified = false,
   });
 
-  /// 1.0 only.
+  /// 1.0 only, signed into a 1.0 receipt and never rendered.
   final String? entityId;
 
-  /// 1.1: the domain is proven. 1.0: the operator vouched for the client.
-  final bool verified;
+  /// The client proved control of [domain]. A 1.0 client is never proven.
+  final bool domainProven;
 
-  /// 1.0 only; never shown.
-  final String? displayName;
-
-  /// The proven ASCII host, only when [verified] in 1.1.
+  /// The proven ASCII host, only when [domainProven].
   final String? domain;
   final String? fingerprint;
+
+  /// This user already linked the client on their phone.
   final bool linked;
 
   /// A 1.0 client object.
   final bool legacy;
 
-  bool get domainProven => !legacy && verified;
+  /// 1.0 only: the `verified` flag, kept because a 1.0 receipt signs the binding message only for such a client. Never rendered.
+  final bool legacyVerified;
 
   /// `xxxx-xxxx-xxxx-xxxx` for the 16 hex characters, otherwise as received.
   String? get fingerprintShown {
@@ -174,7 +205,7 @@ class ConsentClient {
         throw const FormatException('consent request: client.domain');
       }
       return ConsentClient(
-        verified: proven,
+        domainProven: proven,
         // No domain claim is taken from a client that did not prove it.
         domain: proven ? domain : null,
         fingerprint: fingerprint,
@@ -188,11 +219,10 @@ class ConsentClient {
     }
     return ConsentClient(
       entityId: entityId,
-      verified: verified,
-      displayName: verified ? opt('display_name') : null,
-      domain: verified ? opt('domain') : null,
+      domainProven: false,
       fingerprint: opt('fingerprint'),
       legacy: true,
+      legacyVerified: verified,
     );
   }
 }

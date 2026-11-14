@@ -150,7 +150,7 @@ test("hub: settings_changed arrives after a settings change", async () => {
   const c = await connect(longBase, (await ticket(longBase)).ticket);
   const dev = await mockDevice(longBase, "alice");
   // Tightening needs no signed consent.
-  const r = await call(longBase, "PUT", "/devices/settings", { Authorization: "Device " + dev.device_token }, { change: { block_unverified_clients: true } });
+  const r = await call(longBase, "PUT", "/devices/settings", { Authorization: "Device " + dev.device_token }, { change: { block_unproven_clients: true } });
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.deepEqual(await c.next((x) => x.type === 1), { type: 1, target: "settings_changed", arguments: [{}] });
   c.ws.close();

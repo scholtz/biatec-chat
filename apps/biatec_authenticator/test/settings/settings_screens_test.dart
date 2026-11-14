@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:biatec_authenticator/approvals/approval_client.dart';
 import 'package:biatec_authenticator/approvals/approval_services.dart';
 import 'package:biatec_authenticator/approvals/history_store.dart';
-import 'package:biatec_authenticator/clients/clients_screen.dart';
+import 'package:biatec_authenticator/clients/legacy_clients_screen.dart';
 import 'package:biatec_authenticator/config.dart';
 import 'package:biatec_authenticator/devices/devices_screen.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
@@ -181,7 +181,7 @@ void main() {
       final applied = await c.apply({'block_unverified_clients': true});
       await reloading;
       expect(applied, isTrue);
-      expect(c.settings!.blockUnverifiedClients, isTrue);
+      expect(c.settings!.blockUnprovenClients, isTrue);
       c.dispose();
     });
 
@@ -240,9 +240,13 @@ void main() {
   group('trusted clients', () {
     testWidgets('lifts a client pause with a signed consent', (tester) async {
       final oidc = FakeSettingsOidc();
-      oidc.clientById('bank-example')['paused_until'] = oidc.nowSeconds + 3600;
+      oidc.clientById('bank-example')
+        ..['paused_until'] = oidc.nowSeconds + 3600
+        ..['pauses'] = [
+          {'origin': 'https://bank.example', 'paused_until': oidc.nowSeconds + 3600}
+        ];
       final rig = SettingsRig(oidc: oidc);
-      await _open(tester, ClientsScreen(services: rig.services));
+      await _open(tester, LegacyClientsScreen(services: rig.services));
       expect(find.byKey(const Key('paused-bank-example')), findsOneWidget);
 
       await tester.ensureVisible(find.byKey(const Key('lift-bank-example')));
@@ -259,7 +263,7 @@ void main() {
     testWidgets('always ask: on applies at once, off is signed',
         (tester) async {
       final rig = SettingsRig();
-      await _open(tester, ClientsScreen(services: rig.services));
+      await _open(tester, LegacyClientsScreen(services: rig.services));
       await tester.tap(find.byKey(const Key('always-ask-biatec-chat')));
       await tester.pumpAndSettle();
       expect(rig.oidc.clientById('biatec-chat')['always_ask'], isTrue);
@@ -276,7 +280,7 @@ void main() {
 
     testWidgets('per-client threshold can be set and reset', (tester) async {
       final rig = SettingsRig();
-      await _open(tester, ClientsScreen(services: rig.services));
+      await _open(tester, LegacyClientsScreen(services: rig.services));
       expect(
           find.textContaining('Uses the account threshold'), findsNWidgets(3));
 
@@ -303,11 +307,13 @@ void main() {
       expect(rig.keys.prompts, hasLength(1));
     });
 
-    testWidgets('an unverified client is labelled in words', (tester) async {
+    testWidgets('a service without a proven domain is drawn as unproven, never verified',
+        (tester) async {
       final rig = SettingsRig();
-      await _open(tester, ClientsScreen(services: rig.services));
-      expect(find.textContaining('Unverified client'), findsOneWidget);
-      expect(find.text('Verified client'), findsNWidgets(2));
+      await _open(tester, LegacyClientsScreen(services: rig.services));
+      expect(find.textContaining('Unproven application'), findsNWidgets(3));
+      expect(find.text('Verified client'), findsNothing);
+      expect(find.textContaining('Unverified client'), findsNothing);
     });
   });
 
@@ -324,7 +330,7 @@ void main() {
       );
       for (final screen in <Widget>[
         DevicesScreen(services: off),
-        ClientsScreen(services: off),
+        LegacyClientsScreen(services: off),
         _settings(off),
       ]) {
         await _open(tester, screen);
@@ -384,11 +390,11 @@ void main() {
       // Trusted clients is a screen inside Settings, with the bar still showing, and back leads to Settings.
       await tester.tap(find.byKey(const Key('trusted-clients')));
       await tester.pumpAndSettle();
-      expect(find.byType(ClientsScreen), findsOneWidget);
+      expect(find.byType(LegacyClientsScreen), findsOneWidget);
       expect(find.byType(NavigationBar), findsOneWidget);
       await tester.pageBack();
       await tester.pumpAndSettle();
-      expect(find.byType(ClientsScreen), findsNothing);
+      expect(find.byType(LegacyClientsScreen), findsNothing);
       expect(find.byType(SettingsScreen), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });

@@ -1,13 +1,16 @@
 import 'package:biatec_authenticator/approvals/approval_screen.dart';
 import 'package:biatec_authenticator/approvals/history_screen.dart';
 import 'package:biatec_authenticator/approvals/pending_screen.dart';
+import 'package:biatec_authenticator/clients/client_detail_screen.dart';
 import 'package:biatec_authenticator/clients/clients_screen.dart';
+import 'package:biatec_authenticator/clients/legacy_clients_screen.dart';
 import 'package:biatec_authenticator/codes/codes_screen.dart';
 import 'package:biatec_authenticator/devices/devices_screen.dart';
 import 'package:biatec_authenticator/lock/biometric_authenticator.dart';
 import 'package:biatec_authenticator/lock/lock_controller.dart';
 import 'package:biatec_authenticator/lock/lock_screens.dart';
 import 'package:biatec_authenticator/settings/settings_screen.dart';
+import 'package:biatec_authenticator/settings/threshold_screen.dart';
 import 'package:biatec_authenticator/shell/app_shell.dart';
 import 'package:biatec_authenticator/theme.dart';
 import 'package:flutter/material.dart';
@@ -33,7 +36,10 @@ void expectNoSecureArea(WidgetTester tester) {
     HistoryScreen,
     DevicesScreen,
     SettingsScreen,
+    LegacyClientsScreen,
     ClientsScreen,
+    ClientDetailScreen,
+    ThresholdScreen,
     ApprovalScreen,
   ]) {
     expect(find.byType(type, skipOffstage: false), findsNothing,

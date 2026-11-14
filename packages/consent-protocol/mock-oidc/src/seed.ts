@@ -52,6 +52,8 @@ export const users: SeedUser[] = [
   { sub: "pw_frank", email: "frank@example.com", thresholdEur: 5000, alwaysAsk: [], usedClients: ["biatec-chat"], limits: { per_transaction_eur: "10000", per_day_eur: "30000" }, activeDevice: true },
   // Has an active device and blocks clients without a proven domain.
   { sub: "pw_gina", email: "gina@example.com", thresholdEur: 1000, alwaysAsk: [], usedClients: ["biatec-chat", "unverified-app"], limits: { per_transaction_eur: "1000", per_day_eur: "3000" }, activeDevice: true, blockUnprovenClients: true },
+  // Has an active device and nothing else uses the account: the conformance settings cases (T-245) change its threshold, trust and links.
+  { sub: "pw_hank", email: "hank@example.com", thresholdEur: 1000, alwaysAsk: [], usedClients: ["biatec-chat"], limits: { per_transaction_eur: "1000", per_day_eur: "3000" }, activeDevice: true },
 ];
 
 /** Static bearer tokens. `login-*` tokens stand for a fresh full login (needed for device enrollment). */
@@ -61,6 +63,7 @@ export const staticTokens: Record<string, { sub: string; clientId: string; scope
   "alice-bank-sign": { sub: "pw_alice", clientId: "bank-example", scope: "openid sign", kind: "access" },
   "gina-chat-sign": { sub: "pw_gina", clientId: "biatec-chat", scope: "openid sign", kind: "access" },
   "gina-unverified-sign": { sub: "pw_gina", clientId: "unverified-app", scope: "openid sign", kind: "access" },
+  "hank-chat-sign": { sub: "pw_hank", clientId: "biatec-chat", scope: "openid sign", kind: "access" },
   "alice-new-sign": { sub: "pw_alice", clientId: "new-app", scope: "openid sign", kind: "access" },
   "alice-unverified-sign": { sub: "pw_alice", clientId: "unverified-app", scope: "openid sign", kind: "access" },
   "carol-chat-sign": { sub: "pw_carol", clientId: "biatec-chat", scope: "openid sign", kind: "access" },

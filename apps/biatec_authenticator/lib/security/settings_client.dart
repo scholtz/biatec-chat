@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 import '../approvals/approval_client.dart';
@@ -79,40 +80,149 @@ class DeviceInfo {
       );
 }
 
-/// The settings of one client, as `GET /devices/settings` lists them.
+/// An application the user trusts for one service: "do not ask again while the amount is under my threshold".
+class TrustedApplication {
+  const TrustedApplication({required this.network, required this.appId});
+
+  final String network;
+  final int appId;
+
+  /// The member of `trusted_applications_add` / `_remove` of a settings change.
+  Map<String, Object?> toJson() => {'network': network, 'app_id': appId};
+
+  static TrustedApplication? tryParse(Object? json) {
+    if (json is! Map) return null;
+    final network = json['network'];
+    final id = json['app_id'];
+    if (network is! String || id is! int || id < 1) return null;
+    return TrustedApplication(network: network, appId: id);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is TrustedApplication &&
+      other.network == network &&
+      other.appId == appId;
+
+  @override
+  int get hashCode => Object.hash(network, appId);
+}
+
+/// The first 16 hex characters of the SHA-256 of a `client_id` (specification section 6): used only when Biatec OIDC did not send the fingerprint.
+String fingerprintOfClientId(String clientId) =>
+    sha256.convert(utf8.encode(clientId)).toString().substring(0, 16);
+
+/// A canonical origin as the signed schema and `lib.mjs` define it: scheme, lower-case host of well-formed labels, a port 1 to 65535 that is not the scheme's default.
+final RegExp canonicalOrigin = RegExp(
+    r'^(?!https://[^/]*:443$)(?!http://[^/]*:80$)https?://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$');
+
+final RegExp _fingerprintShape = RegExp(r'^[0-9a-f]{16}$');
+
+DateTime? _epochOrIso(Object? v) {
+  if (v is num) {
+    return DateTime.fromMillisecondsSinceEpoch(v.toInt() * 1000, isUtc: true);
+  }
+  if (v is String) return DateTime.tryParse(v)?.toUtc();
+  return null;
+}
+
+/// A pause of one origin of a service (rule 10).
+class PausedOrigin {
+  const PausedOrigin({required this.origin, required this.pausedUntil});
+
+  final String origin;
+  final DateTime pausedUntil;
+}
+
+/// A service the user linked to the authenticator, as `GET /devices/settings` lists it.
+///
+/// Biatec OIDC vouches for no service: the only things shown about it are its proven domain, or its fingerprint when it has none, and the user's own [label]. There is no
+/// name, no "verified" and no logo here, and a member a server sends under such a name is not read.
 class ClientSetting {
   const ClientSetting({
     required this.clientId,
-    required this.label,
-    required this.verified,
+    required this.fingerprint,
+    required this.domainProven,
     required this.alwaysAsk,
     required this.perClientThresholdEur,
     required this.pausedUntil,
+    this.label,
+    this.domain,
+    this.linkedAt,
+    this.linked = true,
+    this.pauses = const [],
+    this.trustedApplications = const [],
   });
 
   final String clientId;
-  final String label;
-  final bool verified;
+
+  /// The user's own name for the service, or null.
+  final String? label;
+
+  /// 16 lowercase hex characters.
+  final String fingerprint;
+  final bool domainProven;
+
+  /// The proven ASCII host, only when [domainProven].
+  final String? domain;
+  final DateTime? linkedAt;
+
+  /// The user linked the service (approved its first request). A service can be listed without it, because it holds a setting (a label, a threshold, a running pause).
+  final bool linked;
   final bool alwaysAsk;
 
   /// Decimal EUR string, or null to follow the account threshold.
   final String? perClientThresholdEur;
 
-  /// Set while the 24 hour pause of rule 10 runs.
+  /// Set while the 24 hour pause of rule 10 runs: the latest across origins.
   final DateTime? pausedUntil;
+  final List<PausedOrigin> pauses;
+  final List<TrustedApplication> trustedApplications;
 
   factory ClientSetting.fromJson(Map<String, Object?> json) {
-    final until = json['paused_until'];
+    final id = json['client_id'] as String;
+    final proven = json['domain_proven'] as bool? ?? false;
+    final domain = json['domain'];
+    final label = json['label'];
+    final fingerprint = json['fingerprint'];
+    final pauses = <PausedOrigin>[];
+    final rawPauses = json['pauses'];
+    if (rawPauses is List) {
+      for (final p in rawPauses) {
+        if (p is! Map) continue;
+        final until = _epochOrIso(p['paused_until']);
+        final origin = p['origin'];
+        if (until != null && origin is String && canonicalOrigin.hasMatch(origin)) {
+          pauses.add(PausedOrigin(origin: origin, pausedUntil: until));
+        }
+      }
+    }
+    final apps = <TrustedApplication>[];
+    final rawApps = json['trusted_applications'];
+    if (rawApps is List) {
+      for (final a in rawApps) {
+        final app = TrustedApplication.tryParse(a);
+        if (app != null) apps.add(app);
+      }
+    }
     return ClientSetting(
-      clientId: json['client_id'] as String,
-      label: json['label'] as String? ?? json['client_id'] as String,
-      verified: json['verified'] as bool? ?? false,
-      alwaysAsk: json['always_ask'] as bool,
+      clientId: id,
+      label: label is String && label.isNotEmpty ? label : null,
+      // Only 16 lowercase hex characters is a fingerprint; anything else the server sends is never drawn as an identity.
+      fingerprint: fingerprint is String && _fingerprintShape.hasMatch(fingerprint)
+          ? fingerprint
+          : fingerprintOfClientId(id),
+      domainProven: proven && domain is String && domain.isNotEmpty,
+      // A domain is taken only from a service that proved it.
+      domain: proven && domain is String && domain.isNotEmpty ? domain : null,
+      linkedAt: _epochOrIso(json['linked_at']),
+      // An older server sends no `linked`: it listed linked clients only.
+      linked: json['linked'] is bool ? json['linked'] as bool : true,
+      alwaysAsk: json['always_ask'] as bool? ?? false,
       perClientThresholdEur: json['per_client_threshold_eur'] as String?,
-      pausedUntil: until is num
-          ? DateTime.fromMillisecondsSinceEpoch(until.toInt() * 1000,
-              isUtc: true)
-          : null,
+      pausedUntil: _epochOrIso(json['paused_until']),
+      pauses: pauses,
+      trustedApplications: apps,
     );
   }
 }
@@ -123,8 +233,10 @@ class ConsentSettings {
     required this.sub,
     required this.biometricRequired,
     required this.thresholdEur,
-    required this.blockUnverifiedClients,
+    required this.blockUnprovenClients,
     required this.clients,
+    this.defaultThresholdEur,
+    this.askOnTestNetworks = true,
   });
 
   /// The user these settings belong to; the signed change names it.
@@ -133,7 +245,15 @@ class ConsentSettings {
 
   /// Decimal EUR string.
   final String thresholdEur;
-  final bool blockUnverifiedClients;
+
+  /// What an account without settings uses (the starting value), when Biatec OIDC says.
+  final String? defaultThresholdEur;
+
+  /// Ask for a test-network request whose value is unknown or above the threshold. Turning it off is loosening.
+  final bool askOnTestNetworks;
+
+  /// Refuse services without a proven domain.
+  final bool blockUnprovenClients;
   final List<ClientSetting> clients;
 
   ClientSetting? client(String id) {
@@ -146,9 +266,13 @@ class ConsentSettings {
   factory ConsentSettings.fromJson(Map<String, Object?> json) =>
       ConsentSettings(
         sub: json['sub'] as String,
-        biometricRequired: json['biometric_required'] as bool,
+        biometricRequired: json['biometric_required'] as bool? ?? true,
         thresholdEur: json['threshold_eur'] as String,
-        blockUnverifiedClients: json['block_unverified_clients'] as bool,
+        defaultThresholdEur: json['default_threshold_eur'] as String?,
+        askOnTestNetworks: json['ask_on_test_networks'] as bool? ?? true,
+        blockUnprovenClients: (json['block_unproven_clients'] ??
+                json['block_unverified_clients']) as bool? ??
+            false,
         clients: [
           for (final c in json['clients'] as List)
             ClientSetting.fromJson((c as Map).cast<String, Object?>())

@@ -18,6 +18,7 @@ class AppConfig {
       this.deviceChannel = false,
       this.twoKeys = false,
       this.inAppLogin = false,
+      this.trustSettings = false,
       this.oidcClientId = defaultOidcClientId,
       this.redirectUri = debugRedirectUri,
       this.release = false});
@@ -52,6 +53,8 @@ class AppConfig {
   static const bool _definedTwoKeys = bool.fromEnvironment('TWO_KEY_DEVICE');
 
   static const bool _definedInAppLogin = bool.fromEnvironment('IN_APP_LOGIN');
+
+  static const bool _definedTrustSettings = bool.fromEnvironment('TRUST_SETTINGS');
 
   static const String _definedClientId = String.fromEnvironment('OIDC_CLIENT_ID');
 
@@ -88,6 +91,12 @@ class AppConfig {
   /// `--dart-define=IN_APP_LOGIN=true` says otherwise. Off, the app keeps the enrollment it had (a pasted login token, debug builds only) and offers no sign-in and no activation.
   final bool inAppLogin;
 
+  /// Whether Biatec OIDC has the user-held trust settings (T-245, issues 27 and 30 of AlgorandGoogleDriveAccount): the user's own threshold with no ceiling, `ask_on_test_networks`, `block_unproven_clients`, per service
+  /// `label`, `trusted_applications_add` / `_remove`, `unlink`, `linked` and `remember` on a receipt, and a refusal of a loosening that is not signed (`403 consent_required`). Real Biatec OIDC has none yet, so this is on
+  /// for the mock only until `--dart-define=TRUST_SETTINGS=true` says otherwise. Off, Settings keeps the one threshold and the block switch of before, and there is no Linked services screen and no
+  /// "don't ask again" on the approval card (the receipt never carries `remember`).
+  final bool trustSettings;
+
   /// The OAuth client id of this app (`--dart-define=OIDC_CLIENT_ID`).
   final String oidcClientId;
 
@@ -110,6 +119,7 @@ class AppConfig {
           deviceChannel: _definedDeviceChannel,
           twoKeys: _definedTwoKeys,
           inAppLogin: _definedInAppLogin,
+          trustSettings: _definedTrustSettings,
           clientId: _definedClientId,
           redirectUri: _definedRedirect);
 
@@ -122,6 +132,7 @@ class AppConfig {
       bool deviceChannel = false,
       bool twoKeys = false,
       bool inAppLogin = false,
+      bool trustSettings = false,
       String clientId = '',
       String redirectUri = '',
       bool? release,
@@ -144,6 +155,7 @@ class AppConfig {
           deviceChannel: true,
           twoKeys: true,
           inAppLogin: true,
+          trustSettings: true,
           oidcClientId: _clientId(clientId),
           redirectUri: _redirect(redirectUri, false, null, true),
           release: false);
@@ -162,6 +174,7 @@ class AppConfig {
         deviceChannel: isMock || deviceChannel,
         twoKeys: isMock || twoKeys,
         inAppLogin: isMock || inAppLogin,
+        trustSettings: isMock || trustSettings,
         oidcClientId: _clientId(clientId),
         redirectUri: _redirect(redirectUri, isRelease, url, isMock || inAppLogin),
         release: isRelease);
