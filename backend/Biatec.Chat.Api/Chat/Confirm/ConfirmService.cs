@@ -900,7 +900,7 @@ public sealed class ConfirmService(
         {
             "consent_unavailable" when r.Reason == "no_active_device" =>
                 (noDevice, Biatec.Chat.Tools.Caps.NoDevice.NoDevicePolicy.Message(noDevice), true),
-            "daily_cap_exceeded" => (Biatec.Chat.Tools.Caps.NoDevice.NoDevicePolicy.DailyCapReason,
+            "daily_cap_exceeded" when r.Reason is null or "no_active_device" => (Biatec.Chat.Tools.Caps.NoDevice.NoDevicePolicy.DailyCapReason,
                 (r.CapEur is { Length: > 0 } cap ? $"You have reached the daily limit of {cap} EUR for accounts without an active authenticator." : "You have reached the daily limit for accounts without an active authenticator.")
                 + nothing + " " + Biatec.Chat.Tools.Caps.NoDevice.NoDevicePolicy.EnrollHint, true),
             "client_paused" => ("client_paused", "You paused this site in your Biatec authenticator, so it cannot sign for you." + nothing, true),

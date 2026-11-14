@@ -154,7 +154,8 @@ public sealed class ConsentSettingsClient(HttpClient http) : IConsentSettingsCli
         o.ValueKind == JsonValueKind.Object && o.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
 
     private static bool IsSet(JsonElement o, string name) =>
-        o.ValueKind == JsonValueKind.Object && o.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(v.GetString());
+        o.ValueKind == JsonValueKind.Object && o.TryGetProperty(name, out var v)
+        && ((v.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(v.GetString())) || v.ValueKind == JsonValueKind.Number); // an ISO time or an epoch; null and absent are not set
 }
 
 /// <summary>

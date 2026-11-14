@@ -1152,6 +1152,7 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
     [InlineData(429, "{\"error\":\"too_many_pending_requests\"}", "too_many_pending_requests", null, null)]
     [InlineData(429, "{\"error\":\"rate_limited\"}", "rate_limited", null, null)]
     [InlineData(401, "{\"error\":\"invalid_grant\",\"error_description\":\"consent not usable\"}", "consent_not_usable", null, null)]
+    [InlineData(401, "{\"error\":\"insufficient_user_authentication\",\"error_description\":\"consent not usable\"}", "consent_not_usable", null, null)]
     public async Task WalletSigningClient_ParsesTheRefusalIntoATypedOutcome(int status, string body, string error, string? reason, string? capEur)
     {
         var r = Assert.IsType<WalletSignOutcome.Rejected>(await ClientFor(new StubHandler(_ => Task.FromResult(Json(status, body)))).SignAsync("B", SampleRequest()));

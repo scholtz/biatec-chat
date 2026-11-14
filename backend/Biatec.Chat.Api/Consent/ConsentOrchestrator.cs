@@ -55,7 +55,7 @@ public sealed class ConsentOrchestrator(
         if (steps.Count == 0) throw new PreviewException(PreviewError.NotFound, "Unknown preview.");
         var stepIds = steps.Select(s => s.Id).ToList();
         var request = (await db.ConsentRequests.Where(c => stepIds.Contains(c.StepId)).ToListAsync(ct))
-            .OrderByDescending(c => c.ExpiresAt).FirstOrDefault();
+            .OrderByDescending(c => c.Status == ConsentRequestStatus.Pending).ThenByDescending(c => c.ExpiresAt).FirstOrDefault(); // a second round that is still pending wins over the approved first one
         if (request is null) return new ConsentAdvance(StatusOf(previewId, steps[0].Id, ConsentState.NotRequired, null, null), null);
 
         var step = steps.First(s => s.Id == request.StepId);

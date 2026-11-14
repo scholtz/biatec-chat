@@ -143,7 +143,7 @@ void main() {
       expect(find.byKey(const Key('fact-receiver')), findsNothing);
     });
 
-    testWidgets('cannot be approved or denied from the screen', (tester) async {
+    testWidgets('cannot be approved from the screen, but can still be denied', (tester) async {
       tester.view.physicalSize = const Size(400, 2000);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
@@ -161,6 +161,9 @@ void main() {
           tester.widget<FilledButton>(find.byKey(const Key('approve')));
       expect(approve.onPressed, isNull);
       expect(h.oidc.receipts, isEmpty);
+      // Refusing is always safe: the deny button stays on.
+      final deny = tester.widget<OutlinedButton>(find.byKey(const Key('deny')));
+      expect(deny.onPressed, isNotNull);
       await tester.pumpWidget(const SizedBox());
     });
   });

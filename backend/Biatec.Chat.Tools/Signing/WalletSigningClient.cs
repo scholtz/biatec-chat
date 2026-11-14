@@ -91,6 +91,9 @@ public sealed class WalletSigningClient(HttpClient http) : IWalletSigningClient
             var code = (int)res.StatusCode;
             // Never log or surface the body: on success it holds signed transactions.
             if (res.IsSuccessStatusCode) return ParseSigned(text);
+            // A spent or unusable approval carries the step-up error code too (without an auth_req_id): tell it apart first.
+            if (res.StatusCode == HttpStatusCode.Unauthorized && string.Equals(ReadString(text, "error_description"), "consent not usable", StringComparison.OrdinalIgnoreCase))
+                return new WalletSignOutcome.Rejected(code, ConsentNotUsableError);
             if (res.StatusCode == HttpStatusCode.Unauthorized && ReadString(text, "error") == StepUpError)
             {
                 var id = ReadString(text, "auth_req_id");
