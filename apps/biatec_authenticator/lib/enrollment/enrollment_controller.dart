@@ -7,11 +7,13 @@ import '../keys/device_key_store.dart';
 import '../security/device_proof.dart';
 import '../keys/key_security_level.dart';
 import '../keys/prompt_free_key.dart';
+import '../approvals/approval_client.dart' show ApprovalException;
 import '../security/settings_client.dart';
 import 'auth_client.dart';
 import 'enrollment_proof.dart';
 import 'enrollment_strings.dart';
 import 'pairing_code.dart';
+import 'recovery_code_format.dart';
 import 'enrollment_state.dart';
 import 'observable_enrollment_store.dart';
 import 'oidc_enrollment_client.dart';
@@ -83,6 +85,7 @@ class EnrollmentController extends ChangeNotifier {
   static String get recoveryWrongError => EnrollStrings.en.recoveryWrong;
   static String get recoveryLockedError => EnrollStrings.en.recoveryLocked;
   static String get staleLoginError => EnrollStrings.en.staleLoginAgain;
+  static String get recoveryFormatError => EnrollStrings.en.recoveryFormat;
 
   final DeviceKeyStore keys;
 
@@ -129,7 +132,9 @@ class EnrollmentController extends ChangeNotifier {
 
   DateTime get now => _clock();
 
+  /// A controller that was disposed (its screen left while the browser was open) changes nothing any more.
   void _set(EnrollmentState s) {
+    if (_disposed) return;
     _state = s;
     notifyListeners();
   }
@@ -199,7 +204,10 @@ class EnrollmentController extends ChangeNotifier {
     if (record == null) {
       // A read that failed says nothing: an enrolled device stays as it is (a locked or busy keystore), and only a store that answers "nothing" means not enrolled.
       if (_readFailed && _state.record != null) return;
-      if (p != EnrollmentPhase.failed) _set(EnrollmentState.notEnrolled);
+      // (A device that was just cancelled keeps the notice that says so.)
+      if (p != EnrollmentPhase.failed && p != EnrollmentPhase.notEnrolled) {
+        _set(EnrollmentState.notEnrolled);
+      }
       return;
     }
     if (twoKeys && !record.hasTwoKeys) {
@@ -310,6 +318,14 @@ class EnrollmentController extends ChangeNotifier {
         (p != EnrollmentPhase.notEnrolled && p != EnrollmentPhase.failed)) {
       return EnrollResult.ignored;
     }
+    // A recovery code that cannot be one is refused before the browser opens: nothing is spent, and no second login is needed because of a typo.
+    final typed = recoveryCode?.trim();
+    final code = typed == null || typed.isEmpty ? null : normalizeRecoveryCode(typed);
+    if (typed != null && typed.isNotEmpty && code == null) {
+      _set(EnrollmentState(EnrollmentPhase.failed, error: recoveryFormatError));
+      return EnrollResult.failed;
+    }
+    recoveryCode = code;
     _signingIn = true;
     notifyListeners();
     try {
@@ -318,20 +334,25 @@ class EnrollmentController extends ChangeNotifier {
         try {
           token = await signIn.signIn(request);
         } on LoginCancelled {
+          if (_disposed) return EnrollResult.ignored;
           _set(EnrollmentState(EnrollmentPhase.failed,
               error: loginCancelledError));
           return EnrollResult.failed;
         } on LoginFailed catch (e) {
+          if (_disposed) return EnrollResult.ignored;
           _set(EnrollmentState(EnrollmentPhase.failed,
               error: '$loginFailedPrefix ${e.message}'));
           return EnrollResult.failed;
         }
+        // The browser flow outlived the screen: nothing is enrolled for a screen that is gone, and the token is dropped.
+        if (_disposed) return EnrollResult.ignored;
         final result = await enroll(
             loginToken: token,
             recoveryCode: recoveryCode,
             deviceName: deviceName ?? defaultDeviceName);
         token = null; // dropped: the enrollment is over
         if (result != EnrollResult.staleLogin) return result;
+        if (_disposed) return result;
         if (attempt >= 1) {
           _set(EnrollmentState(EnrollmentPhase.failed, error: staleLoginError));
           return EnrollResult.failed;
@@ -340,7 +361,7 @@ class EnrollmentController extends ChangeNotifier {
       }
     } finally {
       _signingIn = false;
-      notifyListeners();
+      if (!_disposed) notifyListeners();
     }
   }
 
@@ -358,6 +379,17 @@ class EnrollmentController extends ChangeNotifier {
       _set(const EnrollmentState(EnrollmentPhase.failed,
           error: 'A fresh login is required to enroll.'));
       return EnrollResult.failed;
+    }
+    final typed = recoveryCode?.trim();
+    if (typed != null && typed.isNotEmpty) {
+      final code = normalizeRecoveryCode(typed);
+      if (code == null) {
+        _set(EnrollmentState(EnrollmentPhase.failed, error: recoveryFormatError));
+        return EnrollResult.failed;
+      }
+      recoveryCode = code;
+    } else {
+      recoveryCode = null;
     }
     _set(const EnrollmentState(EnrollmentPhase.generatingKey));
     DeviceKeys? deviceKeys;
@@ -615,7 +647,12 @@ class EnrollmentController extends ChangeNotifier {
       final list = await api.devices(record.deviceToken);
       if (_disposed || session != _session) return;
       final me = list.where((d) => d.kid == record.kid).firstOrNull;
-      if (me == null || !me.active) return;
+      // A device that is no longer listed was cancelled.
+      if (me == null) {
+        await _cancelledElsewhere(session);
+        return;
+      }
+      if (!me.active) return;
       // A server clock a little ahead of the phone's must not leave an activated device "inactive".
       final now = _clock();
       final done =
@@ -628,10 +665,48 @@ class EnrollmentController extends ChangeNotifier {
       if (_disposed || session != _session) return;
       _set(EnrollmentState.fromRecord(done, _clock()));
       await _ensureRecoveryCode();
+    } on ApprovalException catch (e) {
+      // Biatec OIDC no longer knows this device's token: it was cancelled (the email link, another phone). Not a hiccup to retry.
+      if (_isCancelledStatus(e.status)) await _cancelledElsewhere(session);
     } on Object {
       // Quiet: the next poll tries again.
     } finally {
       _polling = false;
+    }
+  }
+
+  /// 401, 403 and 404 on a call of a waiting device: the device was cancelled (or never existed for this account).
+  static bool _isCancelledStatus(int? status) =>
+      status == 401 || status == 403 || status == 404;
+
+  /// This device was cancelled elsewhere: its record and keys go, it is signed out, and the start screen says so.
+  Future<void> _cancelledElsewhere(int session) async {
+    await _removeLocalEnrollment();
+    if (_disposed || session != _session) return;
+    signOut();
+    _set(EnrollmentState(EnrollmentPhase.notEnrolled,
+        notice: EnrollStrings.of().deviceCancelled));
+  }
+
+  /// Removes the stored enrollment and the keys; a failure of either is not allowed to stop the sign-out.
+  Future<void> _removeLocalEnrollment() async {
+    final record = _state.record;
+    try {
+      await store.clearAlias();
+    } on Object {
+      // A stale alias would only be reused for the next key.
+    }
+    try {
+      await store.clear();
+    } on Object {
+      // Cleared in memory; the disk is retried by the store.
+    }
+    if (record != null) {
+      try {
+        await deleteDeviceKeys(keys, record);
+      } on Object {
+        // The keys are useless without the enrollment; a new enrollment removes them again.
+      }
     }
   }
 
@@ -646,30 +721,29 @@ class EnrollmentController extends ChangeNotifier {
     final api = devices;
     if (record == null || api == null) return false;
     _cancelError = null;
+    var already = false;
     try {
       await api.cancelDevice(record.deviceToken, record.kid);
+    } on ApprovalException catch (e) {
+      // Already cancelled elsewhere (the token is no longer known): the same end, with the notice that says so.
+      if (!_isCancelledStatus(e.status)) {
+        _cancelError = e.message;
+        notifyListeners();
+        return false;
+      }
+      already = true;
     } on Object catch (e) {
       _cancelError = '$e';
       notifyListeners();
       return false;
     }
-    try {
-      await store.clearAlias();
-    } on Object {
-      // A stale alias would only be reused for the next key.
-    }
     // The server cancelled it: whatever the local clean-up meets, the device ends signed out (the store signs out in memory first, see ObservableEnrollmentStore.clear).
-    try {
-      await store.clear();
-    } on Object {
-      // Cleared in memory; the disk is retried by the store.
-    }
-    try {
-      await deleteDeviceKeys(keys, record);
-    } on Object {
-      // The keys are useless without the enrollment; a new enrollment removes them again.
-    }
+    await _removeLocalEnrollment();
     signOut();
+    if (already) {
+      _set(EnrollmentState(EnrollmentPhase.notEnrolled,
+          notice: EnrollStrings.of().deviceCancelled));
+    }
     return true;
   }
 

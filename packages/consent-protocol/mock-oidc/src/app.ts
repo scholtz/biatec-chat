@@ -120,7 +120,7 @@ export interface MockOptions {
 
 /** A device has an approval key (its `kid`, `publicKey`, `attestation`) and optionally a presence key; each is attested for its own use. */
 interface PresenceKey { kid: string; publicKey: Record<string, string>; attestation: string }
-interface Device { /** The label the new device sent (shown on the other devices). */ name?: string; /** The enrollment nonce (the challenge): the pairing code and a device approval are bound to it. */ enrollNonce?: string; recoveryCodeKept?: string; kid: string; sub: string; publicKey: Record<string, string>; token: string; activeAt: number; cancelled: boolean; attestation: string; presence?: PresenceKey; recoveryCode?: string; recoveryAcknowledged?: boolean; push?: PushTarget; platformAttestation?: { kind: string; attestedAt: number } }
+interface Device { /** The label the new device sent (shown on the other devices). */ name?: string; /** The enrollment nonce (the challenge): the pairing code and a device approval are bound to it. */ enrollNonce?: string; kid: string; sub: string; publicKey: Record<string, string>; token: string; activeAt: number; cancelled: boolean; attestation: string; presence?: PresenceKey; recovery?: { code: string; state: "issued" | "acknowledged" | "consumed" }; push?: PushTarget; platformAttestation?: { kind: string; attestedAt: number } }
 interface PushTarget { provider: "apns"; token: string }
 // What a real deployment hands to FCM or APNs. The data payload is the request id and nothing else.
 interface PushMessage { kid: string; provider: PushTarget["provider"]; token: string; data: { auth_req_id: string } | { event: "device_enrolled"; kid: string } }
@@ -804,7 +804,7 @@ export function createMockOidc(options: MockOptions = {}) {
       const f = recoveryFailures.get(t.sub);
       if (f && f.lockedUntil > now()) throw new HttpError(429, "too_many_attempts", "too many wrong recovery codes: try again later", {}, { "Retry-After": String(f.lockedUntil - now()) });
       const given = a.code.trim().toUpperCase();
-      recoveryFrom = [...devices.values()].find((d) => d.sub === t.sub && !d.cancelled && d.activeAt <= now() && d.recoveryCodeKept !== undefined && safeEqual(d.recoveryCodeKept, given));
+      recoveryFrom = [...devices.values()].find((d) => d.sub === t.sub && !d.cancelled && d.activeAt <= now() && d.recovery !== undefined && d.recovery.state !== "consumed" && safeEqual(d.recovery.code, given));
       if (!recoveryFrom) {
         const next = { count: (f?.count ?? 0) + 1, lockedUntil: 0 };
         if (next.count >= RECOVERY_CODE_MAX_FAILURES) { next.count = 0; next.lockedUntil = now() + RECOVERY_LOCKOUT_SECONDS; }
@@ -855,8 +855,7 @@ export function createMockOidc(options: MockOptions = {}) {
     if (recoveryFrom) {
       // Used up: a recovery code activates one device.
       recoveryFailures.delete(t.sub);
-      recoveryFrom.recoveryCodeKept = undefined;
-      recoveryFrom.recoveryCode = undefined;
+      recoveryFrom.recovery!.state = "consumed"; // never issued or accepted again, whatever is asked of the device afterwards
     }
     if (typeof body.name === "string") d.name = body.name;
     d.enrollNonce = enrollNonce;
@@ -1201,16 +1200,15 @@ export function createMockOidc(options: MockOptions = {}) {
     if (m === "POST" && path === "/devices/recovery-code") {
       const d = deviceAuth(req);
       if (d.activeAt > now()) throw new HttpError(403, "access_denied", "the recovery code is issued only once the device is active (rule 7)", { reason: "device_inactive" });
-      if (d.recoveryAcknowledged) throw new HttpError(409, "conflict", "the recovery code was already shown");
-      d.recoveryCode ??= randomBytes(6).toString("hex").toUpperCase().replace(/(.{4})(?=.)/g, "$1-");
-      d.recoveryCodeKept = d.recoveryCode; // what activates a later device, until used (the server keeps it after the user confirmed saving it)
-      return { status: 200, body: { recovery_code: d.recoveryCode } };
+      // One code per device, for its whole life: issued (re-served until the user confirmed saving it), acknowledged (never shown again, still accepted at enrollment), consumed (used by an activation: gone for good, not regenerated).
+      if (d.recovery && d.recovery.state !== "issued") throw new HttpError(409, "conflict", d.recovery.state === "consumed" ? "the recovery code was used" : "the recovery code was already shown");
+      d.recovery ??= { code: randomBytes(6).toString("hex").toUpperCase().replace(/(.{4})(?=.)/g, "$1-"), state: "issued" };
+      return { status: 200, body: { recovery_code: d.recovery.code } };
     }
     if (m === "POST" && path === "/devices/recovery-code/ack") {
       const d = deviceAuth(req);
-      if (d.activeAt > now() || !d.recoveryCode) throw new HttpError(409, "conflict", "no recovery code is pending");
-      d.recoveryAcknowledged = true;
-      d.recoveryCode = undefined;
+      if (d.activeAt > now() || d.recovery?.state !== "issued") throw new HttpError(409, "conflict", "no recovery code is pending");
+      d.recovery.state = "acknowledged"; // the server keeps it: it activates a later device
       return { status: 200, body: { acknowledged: true } };
     }
     if (m === "PUT" && path === "/devices/push") {

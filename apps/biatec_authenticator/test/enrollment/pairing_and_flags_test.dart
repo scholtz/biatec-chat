@@ -158,7 +158,7 @@ void main() {
           AppConfig.appLinkRedirectUri);
       expect(
           () => AppConfig.resolve('https://oidc.biatec.io',
-              release: true, redirectUri: 'io.biatec.authenticator:/cb'),
+              release: true, inAppLogin: true, redirectUri: 'io.biatec.authenticator:/cb'),
           throwsA(isA<ConfigException>()));
       expect(
           AppConfig.resolve('https://oidc.biatec.io',
@@ -212,6 +212,25 @@ void main() {
       expect(httpsCallbackSupported(TargetPlatform.iOS, 'Version 16.7 (Build 20H19)'), isFalse);
       // A version that cannot be read fails closed.
       expect(httpsCallbackSupported(TargetPlatform.iOS, 'unknown'), isFalse);
+    });
+
+    test('an unused redirect define does not stop the app when the login is off', () {
+      expect(
+          AppConfig.resolve('https://oidc.biatec.io',
+                  release: true, redirectUri: 'io.biatec.authenticator:/cb')
+              .inAppLogin,
+          isFalse);
+      expect(
+          AppConfig.resolve('https://oidc.other.example',
+                  release: true, redirectUri: 'https://evil.example/cb')
+              .inAppLogin,
+          isFalse);
+      expect(
+          () => AppConfig.resolve('https://oidc.biatec.io',
+              release: true,
+              inAppLogin: true,
+              redirectUri: 'io.biatec.authenticator:/cb'),
+          throwsA(isA<ConfigException>()));
     });
 
     test('the client id has a default and a safe shape', () {

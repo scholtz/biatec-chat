@@ -33,6 +33,8 @@ class EnrollStrings {
   String get recoveryWrong => _get('recoveryWrong');
   String get recoveryLockedTitle => _get('recoveryLockedTitle');
   String get recoveryLocked => _get('recoveryLocked');
+  String get recoveryFormat => _get('recoveryFormat');
+  String get deviceCancelled => _get('deviceCancelled');
 
   // A new device waiting for another device
   String get pairingTitle => _get('pairingTitle');
@@ -83,6 +85,10 @@ class EnrollStrings {
     'recoveryWrongTitle': 'Recovery code not accepted',
     'recoveryWrong':
         'That recovery code is not right. Check it and try again. Nothing was enrolled.',
+    'recoveryFormat':
+        'A recovery code has three groups of four letters or digits, like 1A2B-3C4D-5E6F. Check it: nothing was sent.',
+    'deviceCancelled':
+        'This device was cancelled, from the email link or from another phone. It was removed from this phone; enroll it again if you want to use it.',
     'recoveryLockedTitle': 'Too many attempts',
     'recoveryLocked':
         'Too many wrong recovery codes. Wait a while before you try again, or leave the field empty and activate this device from another phone.',
@@ -135,6 +141,10 @@ class EnrollStrings {
     'recoveryWrongTitle': 'Obnovovací kód nebol prijatý',
     'recoveryWrong':
         'Obnovovací kód nie je správny. Skontrolujte ho a skúste znova. Nič sa nezaregistrovalo.',
+    'recoveryFormat':
+        'Obnovovací kód má tri skupiny po štyri znaky, napríklad 1A2B-3C4D-5E6F. Skontrolujte ho: nič sa neodoslalo.',
+    'deviceCancelled':
+        'Toto zariadenie bolo zrušené, cez odkaz v e-maile alebo z iného telefónu. Z tohto telefónu bolo odstránené; ak ho chcete používať, zaregistrujte ho znova.',
     'recoveryLockedTitle': 'Príliš veľa pokusov',
     'recoveryLocked':
         'Príliš veľa nesprávnych obnovovacích kódov. Chvíľu počkajte, alebo pole nechajte prázdne a aktivujte toto zariadenie z iného telefónu.',

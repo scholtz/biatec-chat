@@ -186,7 +186,7 @@ class AppConfig {
       if (uri == null || uri.scheme.isEmpty || uri.hasFragment) {
         throw const ConfigException('OIDC_REDIRECT_URI is not a valid redirect URI.');
       }
-      if (release && uri.scheme != 'https') {
+      if (release && login && uri.scheme != 'https') {
         throw const ConfigException(
             'OIDC_REDIRECT_URI must be an https app link in a release build.');
       }

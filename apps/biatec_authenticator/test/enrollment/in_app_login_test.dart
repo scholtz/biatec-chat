@@ -1,5 +1,6 @@
 // T-242: the in-app login (a fake auth client in place of the system browser), the stale-login restart, the pairing code a waiting device shows, the recovery
 // code at enrollment, and the waiting device's polling and cancel.
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:biatec_authenticator/config.dart';
@@ -7,6 +8,7 @@ import 'package:biatec_authenticator/enrollment/auth_client.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_controller.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
+import 'package:biatec_authenticator/enrollment/enrollment_strings.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/enrollment/pairing_code.dart';
@@ -98,6 +100,17 @@ class _StuckKeys extends FakeTwoKeyStore {
   Future<void> deleteKeys() async => throw StateError('keystore busy');
 }
 
+/// A browser that answers when the test says so.
+class _SlowAuth extends FakeAuth {
+  _SlowAuth(this.gate) : super([]);
+  final Completer<String> gate;
+  @override
+  Future<String> signIn(AuthRequest request) {
+    requests.add(request);
+    return gate.future;
+  }
+}
+
 void main() {
   final t0 = DateTime.utc(2026, 11, 1, 9);
   const nonce = 'enroll-nonce-0123456789abcdef';
@@ -113,6 +126,8 @@ void main() {
     Map<String, Object?>? enrollBody,
     List<Map<String, Object?>> Function()? devices,
     DateTime? activeAt,
+    int devicesStatus = 200,
+    int cancelStatus = 200,
   }) {
     final client = MockClient((r) async {
       requests.add(r);
@@ -151,11 +166,14 @@ void main() {
             201);
       }
       if (r.method == 'GET' && r.url.path == '/devices') {
+        if (devicesStatus != 200) {
+          return http.Response(jsonEncode({'error': 'invalid_token'}), devicesStatus);
+        }
         return http.Response(
             jsonEncode({'devices': devices?.call() ?? <Object>[]}), 200);
       }
       if (r.method == 'POST' && r.url.path.endsWith('/cancel')) {
-        return http.Response(jsonEncode({'cancelled': true}), 200);
+        return http.Response(jsonEncode({'cancelled': cancelStatus == 200}), cancelStatus);
       }
       return http.Response('{}', 404);
     });
@@ -392,6 +410,127 @@ void main() {
     });
   });
 
+  group('a device cancelled elsewhere', () {
+    for (final status in [401, 403, 404]) {
+      test('a $status on the poll signs it out with a notice and removes the keys',
+          () async {
+        final c = build(devicesStatus: status);
+        await c.signInAndEnroll();
+        expect(c.state.phase, EnrollmentPhase.inactive);
+        await c.pollActivation();
+        expect(c.state.phase, EnrollmentPhase.notEnrolled);
+        expect(c.state.notice, EnrollStrings.of().deviceCancelled);
+        expect(c.state.record, isNull);
+        expect(storage.items, isEmpty);
+        expect(keys.keys, isNull);
+        // A later refresh does not wipe the notice.
+        await c.refresh();
+        expect(c.state.notice, isNotNull);
+      });
+    }
+
+    test('a device that is no longer listed was cancelled', () async {
+      final c = build(devices: () => []);
+      await c.signInAndEnroll();
+      await c.pollActivation();
+      expect(c.state.phase, EnrollmentPhase.notEnrolled);
+      expect(c.state.notice, EnrollStrings.of().deviceCancelled);
+      expect(storage.items, isEmpty);
+    });
+
+    test('"Cancel this device" on one that is already cancelled ends clean, with the notice',
+        () async {
+      final c = build(cancelStatus: 404);
+      await c.signInAndEnroll();
+      expect(await c.cancelThisDevice(), isTrue);
+      expect(c.cancelError, isNull);
+      expect(c.state.phase, EnrollmentPhase.notEnrolled);
+      expect(c.state.notice, EnrollStrings.of().deviceCancelled);
+      expect(storage.items, isEmpty);
+    });
+
+    test('a server error (500) on cancel is an error, not a cancellation', () async {
+      final c = build(cancelStatus: 500);
+      await c.signInAndEnroll();
+      expect(await c.cancelThisDevice(), isFalse);
+      expect(c.state.phase, EnrollmentPhase.inactive);
+      expect(c.cancelError, isNotNull);
+    });
+  });
+
+  group('the browser flow outlives the screen', () {
+    test('a disposed controller enrolls nothing and changes nothing', () async {
+      final gate = Completer<String>();
+      auth = _SlowAuth(gate);
+      final c = build();
+      var notified = 0;
+      c.addListener(() => notified++);
+      final pending = c.signInAndEnroll();
+      await Future<void>.delayed(Duration.zero);
+      expect(c.signingIn, isTrue);
+      c.dispose();
+      final before = notified;
+      gate.complete('good-token');
+      expect(await pending, EnrollResult.ignored);
+      expect(notified, before);
+      expect(requests, isEmpty, reason: 'the token was dropped, nothing was sent');
+      expect(keys.generated, isEmpty);
+      expect(storage.items, isEmpty);
+    });
+
+    test('a cancelled sign-in after dispose is quiet too', () async {
+      final gate = Completer<String>();
+      auth = _SlowAuth(gate);
+      final c = build();
+      final pending = c.signInAndEnroll();
+      await Future<void>.delayed(Duration.zero);
+      c.dispose();
+      gate.completeError(const LoginCancelled());
+      expect(await pending, EnrollResult.ignored);
+    });
+  });
+
+  group('a recovery code that cannot be one', () {
+    test('is refused before the browser opens, and nothing is sent', () async {
+      for (final typed in ['WRONG', '1234', 'ZZZZ-ZZZZ-ZZZZ', '1A2B-3C4D-5E6F-7']) {
+        final c = build();
+        final result = await c.signInAndEnroll(recoveryCode: typed);
+        expect(result, EnrollResult.failed, reason: typed);
+        expect(c.state.error, EnrollmentController.recoveryFormatError);
+        expect(classifyEnrollmentError(c.state.error!).kind,
+            EnrollmentProblemKind.wrongRecoveryCode);
+      }
+      expect(auth.requests, isEmpty);
+      expect(requests, isEmpty);
+    });
+
+    test('enroll() with a pasted token checks it too, before any key is made', () async {
+      final c = build();
+      expect(await c.enroll(loginToken: 'good-token', recoveryCode: 'nope'),
+          EnrollResult.failed);
+      expect(keys.generated, isEmpty);
+      expect(requests, isEmpty);
+    });
+
+    test('typed loosely is sent in the form Biatec OIDC takes', () async {
+      final c = build(activeAt: t0);
+      await c.signInAndEnroll(recoveryCode: ' 1a2b 3c4d-5e6f ');
+      final body = jsonDecode(requests
+          .lastWhere((r) => r.method == 'POST' && r.url.path == '/devices')
+          .body) as Map;
+      expect(body['activation'], {'kind': 'recovery_code', 'code': '1A2B-3C4D-5E6F'});
+    });
+
+    test('an empty field is no code', () async {
+      final c = build(activeAt: t0);
+      await c.signInAndEnroll(recoveryCode: '  ');
+      final body = jsonDecode(requests
+          .lastWhere((r) => r.method == 'POST' && r.url.path == '/devices')
+          .body) as Map;
+      expect(body.containsKey('activation'), isFalse);
+    });
+  });
+
   group('the recovery code at enrollment', () {
     test('goes in activation, and the device is active at once', () async {
       final c = build(activeAt: t0);
@@ -408,7 +547,7 @@ void main() {
     test('a wrong code has its own text and nothing is enrolled', () async {
       final c = build(
           enrollStatus: 403, enrollBody: {'error': 'invalid_recovery_code'});
-      final result = await c.signInAndEnroll(recoveryCode: 'WRONG');
+      final result = await c.signInAndEnroll(recoveryCode: '0000-0000-0000');
       expect(result, EnrollResult.failed);
       expect(c.state.error, EnrollmentController.recoveryWrongError);
       final p = classifyEnrollmentError(c.state.error!);
@@ -436,7 +575,7 @@ void main() {
     test('too many wrong codes (429) have their own text', () async {
       final c =
           build(enrollStatus: 429, enrollBody: {'error': 'too_many_attempts'});
-      await c.signInAndEnroll(recoveryCode: 'WRONG');
+      await c.signInAndEnroll(recoveryCode: '0000-0000-0000');
       expect(c.state.error, EnrollmentController.recoveryLockedError);
       expect(classifyEnrollmentError(c.state.error!).kind,
           EnrollmentProblemKind.recoveryLocked);

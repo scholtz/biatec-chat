@@ -249,6 +249,14 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
       const Text('This app is the second factor for your Biatec account: it '
           'asks you to approve what matters, on this device, with your '
           'fingerprint or face.'),
+      if (s.notice != null) ...[
+        const SizedBox(height: AppSpacing.m),
+        StatusBanner(
+          key: const Key('welcome-notice'),
+          severity: StatusSeverity.warning,
+          message: s.notice!,
+        ),
+      ],
       if (s.error == EnrollmentController.legacyKeyNotice) ...[
         const SizedBox(height: AppSpacing.m),
         const StatusBanner(

@@ -207,6 +207,36 @@ void main() {
     expect(find.byKey(const Key('activate-dev-2')), findsOneWidget);
   });
 
+  test('a malformed pairing object leaves that device without one, not the list failing',
+      () async {
+    final bad = {
+      'kid': 'dev-3',
+      'current': false,
+      'active': false,
+      'active_at': 1792425600 + 86400,
+      'pairing': {'new_approval_jwk_thumbprint': 5, 'nonce': null},
+    };
+    final odd = {'kid': 'dev-4', 'current': false, 'active': false, 'active_at': 1, 'pairing': 'x'};
+    final client = SettingsClient(
+        baseUrl: 'http://oidc.test',
+        client: MockClient((_) async => http.Response(
+            jsonEncode({'devices': [_pending(), bad, odd]}), 200)));
+    final list = await client.devices('t');
+    expect(list.map((d) => d.kid), ['dev-2', 'dev-3', 'dev-4']);
+    expect(list[0].pairing, isNotNull);
+    expect(list[1].pairing, isNull);
+    expect(list[2].pairing, isNull);
+    expect(PairingData.tryParse(null), isNull);
+    expect(
+        PairingData.tryParse({
+          'new_approval_jwk_thumbprint': 'a',
+          'new_presence_jwk_thumbprint': 'b',
+          'nonce': 'n',
+          'pairing_code': 1
+        }),
+        isNull);
+  });
+
   test('the code comes from the listed keys, whatever the server says it is', () {
     String? code(Map<String, Object?> d) =>
         SettingsController.pairingCodeOf(DeviceInfo.fromJson(d));

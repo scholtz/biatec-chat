@@ -230,3 +230,16 @@ test("recovery code: a refusal for any other reason leaves the code usable and t
     clock -= RECOVERY_LOCKOUT_SECONDS + 1;
   }
 });
+
+test("recovery code: a used code is consumed for good, it is not issued again to the device and not accepted for a second activation", async () => {
+  const auth = "Device device-token-dave";
+  const issued = (await call("POST", "/devices/recovery-code", { auth })).json.recovery_code as string;
+  // Not acknowledged yet: still served, and it activates a new device.
+  assert.equal((await call("POST", "/devices/recovery-code", { auth })).json.recovery_code, issued);
+  const first = await enroll("login-dave", { activation: { kind: "recovery_code", code: issued } });
+  assert.equal(first.res.status, 201);
+  // The burnt code is not handed out again, nor a fresh one in its place, and the acknowledgement has nothing to confirm.
+  assert.equal((await call("POST", "/devices/recovery-code", { auth })).status, 409);
+  assert.equal((await call("POST", "/devices/recovery-code/ack", { auth })).status, 409);
+  assert.equal((await enroll("login-dave", { activation: { kind: "recovery_code", code: issued } })).res.status, 403, "the code is not usable for a second device");
+});

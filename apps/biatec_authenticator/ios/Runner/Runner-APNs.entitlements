@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Only for a build with the optional Apple wake (--dart-define=APNS_ENABLED=true): Runner.entitlements plus the push entitlement. Point
+	<!-- Only for a build with the optional Apple wake (--dart-define=APNS_ENABLED=true): Runner-AppLinks.entitlements (the Release and Profile entitlements, with the app links) plus the push entitlement. Point
 	     CODE_SIGN_ENTITLEMENTS at this file for that build only (README, "The optional Apple wake"); the committed project does not use it, so a normal
 	     build has no push entitlement. -->
 	<key>aps-environment</key>

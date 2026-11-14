@@ -63,6 +63,10 @@ EnrollmentProblem classifyEnrollmentError(String error) {
     return EnrollmentProblem(EnrollmentProblemKind.wrongRecoveryCode,
         strings.recoveryWrongTitle, strings.recoveryWrong, strings.signInButton);
   }
+  if (error == EnrollmentController.recoveryFormatError) {
+    return EnrollmentProblem(EnrollmentProblemKind.wrongRecoveryCode,
+        strings.recoveryWrongTitle, strings.recoveryFormat, strings.signInButton);
+  }
   if (error == EnrollmentController.recoveryLockedError) {
     return EnrollmentProblem(EnrollmentProblemKind.recoveryLocked,
         strings.recoveryLockedTitle, strings.recoveryLocked, strings.signInButton);

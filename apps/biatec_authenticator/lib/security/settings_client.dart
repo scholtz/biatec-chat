@@ -22,12 +22,21 @@ class PairingData {
   final String nonce;
   final String? serverCode;
 
-  factory PairingData.fromJson(Map<String, Object?> json) => PairingData(
-        approvalThumbprint: json['new_approval_jwk_thumbprint'] as String,
-        presenceThumbprint: json['new_presence_jwk_thumbprint'] as String,
-        nonce: json['nonce'] as String,
-        serverCode: json['pairing_code'] as String?,
-      );
+  /// [json] as pairing data, or null when it is missing or malformed: one odd device then has no activation offer, instead of the whole device list failing.
+  static PairingData? tryParse(Object? json) {
+    if (json is! Map) return null;
+    final a = json['new_approval_jwk_thumbprint'];
+    final p = json['new_presence_jwk_thumbprint'];
+    final n = json['nonce'];
+    final c = json['pairing_code'];
+    if (a is! String || p is! String || n is! String) return null;
+    if (c != null && c is! String) return null;
+    return PairingData(
+        approvalThumbprint: a,
+        presenceThumbprint: p,
+        nonce: n,
+        serverCode: c as String?);
+  }
 }
 
 /// One enrolled device of the user, as `GET /devices` lists it.
@@ -66,10 +75,7 @@ class DeviceInfo {
             (json['active_at'] as num).toInt() * 1000,
             isUtc: true),
         name: json['name'] as String?,
-        pairing: json['pairing'] is Map
-            ? PairingData.fromJson(
-                (json['pairing'] as Map).cast<String, Object?>())
-            : null,
+        pairing: PairingData.tryParse(json['pairing']),
       );
 }
 
@@ -213,6 +219,15 @@ class SettingsClient {
     throw ApprovalException('Unexpected response (${res.statusCode}).');
   }
 
+  /// The body of a refusal as an object, or an empty one when it is not (the status is what counts then).
+  static Map<String, Object?> _lenient(http.Response res) {
+    try {
+      return _object(res);
+    } on ApprovalException {
+      return const {};
+    }
+  }
+
   static String _detail(Map<String, Object?> json) =>
       '${json['error_description'] ?? json['error'] ?? 'error'}';
 
@@ -221,11 +236,12 @@ class SettingsClient {
     final url = Uri.parse('$baseUrl/devices');
     final res = await _send(
         () async => _client.get(url, headers: await _auth('GET', url, token)));
-    final json = _object(res);
     if (res.statusCode != 200) {
       throw ApprovalException(
-          'Could not load devices (${res.statusCode}): ${_detail(json)}');
+          'Could not load devices (${res.statusCode}): ${_detail(_lenient(res))}',
+          status: res.statusCode);
     }
+    final json = _object(res);
     try {
       return [
         for (final d in json['devices'] as List)
@@ -242,10 +258,12 @@ class SettingsClient {
     final res = await _send(() async =>
         _client.post(url, headers: await _auth('POST', url, token)));
     if (res.statusCode == 200) return;
-    final json = _object(res);
-    throw ApprovalException(res.statusCode == 409
-        ? 'Only a pending enrollment can be cancelled.'
-        : 'Could not cancel (${res.statusCode}): ${_detail(json)}');
+    final json = _lenient(res);
+    throw ApprovalException(
+        res.statusCode == 409
+            ? 'Only a pending enrollment can be cancelled.'
+            : 'Could not cancel (${res.statusCode}): ${_detail(json)}',
+        status: res.statusCode);
   }
 
   /// `POST /devices/{kid}/activate`: an active device activates the pending device [kid] with [approval], the `biatec_device_approval` it signed with its approval key
