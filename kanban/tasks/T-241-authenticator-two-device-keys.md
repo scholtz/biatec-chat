@@ -1,7 +1,7 @@
 ---
 id: T-241
 title: "Authenticator: two device keys - approval key bound to biometrics in the keystore, presence key for proofs and Deny (BCHAT-007)"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-239, T-240, T-244]
@@ -9,9 +9,9 @@ area: ["apps/biatec_authenticator/lib/keys/**", "apps/biatec_authenticator/lib/a
 parallel: yes
 conflicts_with: []
 issue: "#260"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-241"
+owner: "session-20261114-1930"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#secure-area"
 created: 2026-11-12
 updated: 2026-11-14
@@ -77,3 +77,4 @@ Filled in when the task moves to review.
 - 2026-11-12 18:43 · kanban-board · backlog → blocked · waiting on: T-239, T-240
 - 2026-11-13 09:05 · scholtz · blocked → blocked · waits for T-244 too (both change the Android and iOS projects)
 - 2026-11-14 16:36 · kanban-board · blocked → backlog · blockers done: T-239, T-240, T-244
+- 2026-11-14 19:30 · scholtz · backlog → in-progress · claimed by session-20261114-1930 on task/T-241
