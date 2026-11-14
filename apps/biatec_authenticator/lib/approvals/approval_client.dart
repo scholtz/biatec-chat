@@ -174,12 +174,19 @@ class ApprovalClient {
               {'Content-Type': 'application/json'}),
           body: '{}',
         ));
-    final json = _object(res.body, res.statusCode);
+    // The status first: a bare 401 or 403 (no body, or not JSON, as ASP.NET Core sends) is still a refusal with a status.
     if (res.statusCode != 200) {
+      Map<String, Object?> json = const {};
+      try {
+        json = _object(res.body, res.statusCode);
+      } on ApprovalException {
+        // No readable body: the status says enough.
+      }
       throw ApprovalException(
           'No channel ticket (${res.statusCode}): ${_detail(json)}',
           status: res.statusCode);
     }
+    final json = _object(res.body, res.statusCode);
     final ticket = json['ticket'];
     final expires = json['expires_in'];
     if (ticket is! String || ticket.isEmpty) {

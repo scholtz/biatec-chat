@@ -638,6 +638,38 @@ void main() {
       });
     });
 
+    test('two wakes within a second while not enrolled are not dropped', () {
+      fakeAsync((fa) {
+        var calls = 0;
+        var asked = 0;
+        final wake = StreamController<void>.broadcast(sync: true);
+        final channel = DeviceChannel(
+          hubUri: Uri.parse('wss://oidc.example/hubs/device'),
+          ticket: () async {
+            asked++;
+            throw StateError('stop');
+          },
+          enrolled: () async {
+            calls++;
+            if (calls <= 2) {
+              // A wake lands during each of the first two checks, which both say "not enrolled".
+              wake.add(null);
+              return false;
+            }
+            return true;
+          },
+          wake: wake.stream,
+          random: _Fixed(0),
+          now: () => epoch.add(fa.elapsed),
+        );
+        channel.start();
+        fa.elapse(const Duration(milliseconds: 1000));
+        expect(asked, 1, reason: 'not the 5 minute sleep');
+        channel.stop();
+        fa.flushMicrotasks();
+      });
+    });
+
     test('a ticket asked for before an enrollment change is not used', () {
       fakeAsync((fa) {
         final wake = StreamController<void>.broadcast();

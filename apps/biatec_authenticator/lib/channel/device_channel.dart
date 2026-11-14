@@ -233,12 +233,15 @@ class DeviceChannel implements DeviceEventSource {
   Future<void> _sleep(int seen, Duration? d) {
     if (seen != _wakes) {
       // A wake came in after the caller looked: do not wait. At most once a second, so wakes that keep coming cannot make a loop that never rests.
+      const gap = Duration(seconds: 1);
       final now = _now();
       final last = _lastSkip;
-      if (last == null || now.difference(last) >= const Duration(seconds: 1)) {
+      if (last == null || now.difference(last) >= gap) {
         _lastSkip = now;
         return Future.value();
       }
+      // Throttled: the wake is not dropped. Wait only what is left of the second, then the caller looks again.
+      d = d == null || d > gap - now.difference(last) ? gap - now.difference(last) : d;
     }
     final sleep = _Sleep();
     _sleeping = sleep;

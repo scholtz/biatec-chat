@@ -75,6 +75,21 @@ void main() {
     });
   });
 
+  test('a bare 401 or 403 (no body) is still a refusal with its status',
+      () async {
+    for (final status in [401, 403]) {
+      for (final body in ['', 'Forbidden']) {
+        final client = ApprovalClient(
+            baseUrl: 'http://oidc',
+            client: MockClient((_) async => http.Response(body, status)));
+        await expectLater(
+            client.hubTicket('t'),
+            throwsA(isA<ApprovalException>()
+                .having((e) => e.status, 'status', status)));
+      }
+    }
+  });
+
   test('one pinned WebSocket client is reused until the policy changes', () {
     PinnedHttp.configure(PinPolicy.none());
     final a = PinnedHttp.webSocketClient();
