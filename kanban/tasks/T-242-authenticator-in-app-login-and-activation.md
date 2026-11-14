@@ -1,7 +1,7 @@
 ---
 id: T-242
 title: "Authenticator: enroll through an in-app Biatec OIDC login, activate a new device from an existing one with a pairing code (BCHAT-033)"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-241]
@@ -9,9 +9,9 @@ area: ["apps/biatec_authenticator/lib/enrollment/**", "apps/biatec_authenticator
 parallel: yes
 conflicts_with: []
 issue: "#286"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-242"
+owner: "session-20261115-0000"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-11-12
 updated: 2026-11-14
@@ -77,3 +77,4 @@ Filled in when the task moves to review.
 - 2026-11-12 18:43 · kanban-board · backlog → blocked · waiting on: T-241
 - 2026-11-13 09:05 · scholtz · blocked → blocked · wording: device channel instead of push (revision 2)
 - 2026-11-14 23:02 · kanban-board · blocked → backlog · blockers done: T-241
+- 2026-11-15 00:00 · scholtz · backlog → in-progress · claimed by session-20261115-0000 on task/T-242
