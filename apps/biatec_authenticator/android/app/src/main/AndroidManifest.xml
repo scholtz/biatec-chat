@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- The camera is asked for only when the user opens the QR scanner to add an account; no picture is stored. -->
     <uses-permission android:name="android.permission.CAMERA"/>
@@ -48,6 +49,28 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <!-- The in-app login (T-242): flutter_appauth opens the system browser and the browser returns to this activity through the app link below (Android verifies
+             the link against https://<host>/.well-known/assetlinks.json: a deployment prerequisite of Biatec OIDC, docs/required-changes-biatec-oidc.md). It is exported
+             because the browser must be able to start it, so its one filter is a verified https link on the two Biatec OIDC hosts and nothing else; the custom scheme a debug
+             build uses is declared in the debug manifest only. tools:node="replace" drops the library's own filter (a custom scheme any app could register). -->
+        <activity
+            android:name="net.openid.appauth.RedirectUriReceiverActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AppCompat.Translucent.NoTitleBar"
+            tools:node="replace">
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="oidc.biatec.io" android:pathPrefix="/app/authenticator/callback"/>
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="stage.oidc.biatec.io" android:pathPrefix="/app/authenticator/callback"/>
             </intent-filter>
         </activity>
         <!-- Not exported: only the app starts it (StayConnectedPlugin) and the boot receiver below restarts it. -->

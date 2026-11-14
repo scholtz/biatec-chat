@@ -36,6 +36,9 @@ android {
         // A typo here would ship a release that quietly never attests, so a value that is not a number stops the build.
         if (!integrityProject.matches(Regex("\\d+"))) throw GradleException("playIntegrityProject must be the numeric Google Cloud project number")
         manifestPlaceholders["playIntegrityProject"] = integrityProject
+        // flutter_appauth (AppAuth) wants a redirect scheme placeholder. The manifest replaces AppAuth's own filter (AndroidManifest.xml, the app link; the debug manifest adds
+        // the custom scheme), so this value registers nothing; it only has to exist.
+        manifestPlaceholders["appAuthRedirectScheme"] = "io.biatec.authenticator"
     }
 
     // Release signing material is never in the repository: android/key.properties (git-ignored) names the keystore, see the README, "Release

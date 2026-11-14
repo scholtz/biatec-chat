@@ -11,6 +11,8 @@ import '../config.dart';
 import '../enrollment/enrollment_state.dart';
 import '../keys/device_key_store.dart';
 import '../keys/prompt_free_key.dart';
+import '../enrollment/enrollment_strings.dart';
+import '../enrollment/pairing_code.dart';
 import 'settings_client.dart';
 import '../enrollment/observable_enrollment_store.dart';
 
@@ -316,6 +318,104 @@ class SettingsController extends ChangeNotifier {
     }
     _busy = false;
     _changed();
+  }
+
+  /// The pairing code of the pending device [device], computed here from the keys and nonce Biatec OIDC lists for it (never taken from the server's own code). Null when the
+  /// device has no pairing data, or when what Biatec OIDC lists does not give the code it says it does: such a device is not offered for activation.
+  static String? pairingCodeOf(DeviceInfo device) {
+    final p = device.pairing;
+    if (p == null) return null;
+    try {
+      final code =
+          pairingCode(p.approvalThumbprint, p.presenceThumbprint, p.nonce);
+      final theirs = p.serverCode;
+      return theirs != null && theirs != code ? null : code;
+    } on ArgumentError {
+      return null;
+    }
+  }
+
+  /// Activates the pending device [device] after the user compared the pairing code on both phones: signs a `biatec_device_approval` with the APPROVAL key (the one
+  /// biometric prompt, which is the user's confirmation) and sends it to `POST /devices/{kid}/activate`. Returns true when the device is active now.
+  Future<bool> activateDevice(DeviceInfo device) async {
+    if (_busy) return false;
+    _busy = true;
+    _changes++;
+    _error = null;
+    _notice = null;
+    _changed();
+    var done = false;
+    final strings = EnrollStrings.of();
+    try {
+      final record = await _record();
+      _checkActive(record);
+      final code = pairingCodeOf(device);
+      if (code == null) throw ApprovalException(strings.activateMismatch);
+      final attestation = record.attestation;
+      if (!twoKeys || attestation == null) {
+        throw ApprovalException(strings.activateUnavailable);
+      }
+      final key = await keys.loadApproval();
+      if (key == null || key.kid != record.kid) {
+        throw const ApprovalException(ApprovalKeyInvalidated.message);
+      }
+      if (key.securityLevel.blocksSigning || !key.authBound) {
+        throw const ApprovalException('This phone cannot protect approvals.');
+      }
+      final p = device.pairing!;
+      final signed = <String, Object?>{
+        'type': 'biatec_device_approval',
+        'approver_kid': record.kid,
+        'new_kid': device.kid,
+        'new_approval_jwk_thumbprint': p.approvalThumbprint,
+        'new_presence_jwk_thumbprint': p.presenceThumbprint,
+        'pairing_code': code,
+        'nonce': p.nonce,
+        'issued_at': now.toUtc().millisecondsSinceEpoch ~/ 1000,
+      };
+      final Uint8List signature;
+      try {
+        // The operating system asks for a strong biometric for this one signature: that is the user's confirmation.
+        signature = await keys.signApproval(
+            Uint8List.fromList(canonicalBytes(signed)),
+            promptTitle: strings.activatePrompt,
+            promptSubtitle: strings.activatePromptSubtitle);
+      } on KeyPromptCancelled {
+        throw const ApprovalException('Cancelled. Nothing was activated.');
+      } on ApprovalKeyInvalidated {
+        throw const ApprovalException(ApprovalKeyInvalidated.message);
+      } on KeyPromptFailed catch (e) {
+        throw ApprovalException('Could not approve: ${e.message}');
+      }
+      if (signature.length != 64) {
+        throw StateError('the keystore returned a ${signature.length}-byte '
+            'signature; ES256 r||s is 64 bytes');
+      }
+      await client.activateDevice(record.deviceToken, device.kid, {
+        'signed': signed,
+        'alg': 'ES256',
+        'signature': base64Url.encode(signature).replaceAll('=', ''),
+        'device': {
+          'kid': record.kid,
+          'key_use': 'approve',
+          'public_key': key.toJwk(),
+          'attestation': attestation,
+        },
+      });
+      _notice = strings
+          .activated(device.name ?? strings.newDeviceName);
+      done = true;
+      try {
+        _devices = await client.devices(record.deviceToken);
+      } on Object {
+        // Best effort: the activation went through.
+      }
+    } on Object catch (e) {
+      _fail(e);
+    }
+    _busy = false;
+    _changed();
+    return done;
   }
 
   /// Applies [change] (the `change` object of `PUT /devices/settings`).

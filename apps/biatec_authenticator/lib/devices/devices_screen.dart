@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../approvals/widgets/fact_row.dart';
+import '../enrollment/enrollment_strings.dart';
+import '../enrollment/pairing_code.dart';
 import '../enrollment/widgets/key_protection_card.dart';
 import '../keys/device_key_store.dart';
 import '../keys/prompt_free_key.dart';
@@ -99,11 +101,32 @@ class _DeviceCard extends StatelessWidget {
     if (yes) await controller.cancelDevice(device.kid);
   }
 
+  Future<void> _confirmActivate(BuildContext context, String name) async {
+    final strings = EnrollStrings.of();
+    final yes = await confirmSheet(
+      context,
+      title: strings.activateConfirmTitle,
+      message: strings.activateConfirmMessage,
+      confirmLabel: strings.activateConfirm,
+      cancelLabel: strings.keep,
+      confirmKey: const Key('confirm-activate'),
+      cancelKey: const Key('keep-activate'),
+      icon: Icons.phonelink_lock,
+    );
+    if (yes) await controller.activateDevice(device);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final d = device;
     final busy = controller.busy;
+    final strings = EnrollStrings.of();
+    // Another device's enrollment that waits for this one: its pairing code, computed here from the keys Biatec OIDC lists for it. Only when the activation flow exists (the server sends the pairing data) and this device can sign it.
+    final code = d.pending && !d.current && services.twoKeys
+        ? SettingsController.pairingCodeOf(d)
+        : null;
+    final name = d.name ?? strings.newDeviceName;
     return Card(
       key: Key('device-${d.kid}'),
       child: Padding(
@@ -155,12 +178,42 @@ class _DeviceCard extends StatelessWidget {
                   style: theme.textTheme.bodySmall
                       ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
             ),
+          if (code != null) ...[
+            const SizedBox(height: AppSpacing.m),
+            Semantics(
+              header: true,
+              child: Text(strings.activateTitle(name),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  key: Key('activate-title-${d.kid}'),
+                  style: theme.textTheme.titleMedium),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(strings.activateCodeLabel, style: theme.textTheme.labelMedium),
+            Semantics(
+              label: code.split('').join(' '),
+              child: ExcludeSemantics(
+                child: Text(spacedPairingCode(code),
+                    key: Key('pairing-code-${d.kid}'),
+                    style: theme.textTheme.headlineMedium
+                        ?.copyWith(fontFeatures: const [FontFeature.tabularFigures()])),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(strings.activateCompare, style: theme.textTheme.bodyMedium),
+            const SizedBox(height: AppSpacing.m),
+            FilledButton(
+              key: Key('activate-${d.kid}'),
+              onPressed: busy ? null : () => _confirmActivate(context, name),
+              child: Text(strings.activateButton),
+            ),
+          ],
           if (d.pending) ...[
             const SizedBox(height: AppSpacing.m),
             OutlinedButton(
               key: Key('cancel-${d.kid}'),
               onPressed: busy ? null : () => _confirmCancel(context),
-              child: const Text('Cancel enrollment'),
+              child: Text(code != null ? strings.cancelThisDevice : 'Cancel enrollment'),
             ),
           ],
         ]),

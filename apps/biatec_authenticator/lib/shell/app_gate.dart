@@ -6,6 +6,7 @@ import '../approvals/approval_services.dart';
 import '../codes/backup_screen.dart';
 import '../codes/codes_services.dart';
 import '../config.dart';
+import '../enrollment/auth_client.dart';
 import '../enrollment/enrollment_controller.dart';
 import '../enrollment/enrollment_screen.dart';
 import '../enrollment/enrollment_state.dart';
@@ -14,6 +15,7 @@ import '../enrollment/oidc_enrollment_client.dart';
 import '../lock/lock_controller.dart';
 import '../channel/stay_connected.dart';
 import '../push/device_event_controller.dart';
+import '../security/settings_client.dart';
 import '../security/settings_controller.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
@@ -82,6 +84,13 @@ class _AppGateState extends State<AppGate> {
         keys: widget.approvals.keys,
         store: widget.approvals.enrollment,
         client: OidcEnrollmentClient(baseUrl: widget.config.oidcBaseUrl),
+        twoKeys: widget.approvals.twoKeys,
+        // The in-app login and the waiting device's calls exist only against a Biatec OIDC that has them (`AppConfig.inAppLogin`).
+        auth: widget.config.inAppLogin ? AppAuthClient() : null,
+        loginRequest:
+            widget.config.inAppLogin ? AuthRequest.forConfig(widget.config) : null,
+        devices: SettingsClient(
+            baseUrl: widget.config.oidcBaseUrl, proof: widget.approvals.proof),
       );
 
   @override

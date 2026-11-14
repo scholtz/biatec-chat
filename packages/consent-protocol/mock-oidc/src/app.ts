@@ -5,6 +5,8 @@
 //   POST /token                               CIBA token grant, returns consent_receipt
 //   GET  /consent/receipts/:auth_req_id       receipt retrieval by the owning client
 //   POST /devices                             device enrollment (rule 7), optionally with a platform attestation
+//   GET  /authorize, POST /token (authorization_code)  the authenticator's in-app login, PKCE (T-242)
+//   POST /devices/{kid}/activate              an active device activates a pending one with a signed biatec_device_approval (T-242)
 //   POST /devices/challenge, PUT /devices/attestation   single-use nonce for a platform attestation, and its refresh (T-234)
 //   PUT  /devices/push                        register or replace the device's APNs token (fcm: 400 unsupported_push_provider, T-244)
 //   POST /devices/hub-ticket, WS /hubs/device  the device channel (SignalR JSON hub protocol, src/device-hub.ts, T-244)
@@ -29,7 +31,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020Module from "ajv/dist/2020.js";
-import { jcs, sha256Hex, signCompactJws, thumbprint, verifyApproval, verifyEnrollmentProof, verifyEs256, verifyReceipt, ATTESTATION_TYP } from "../../scripts/lib.mjs";
+import { jcs, pairingCode, sha256Hex, signCompactJws, thumbprint, verifyApproval, verifyDeviceSigned, verifyEnrollmentProof, verifyEs256, verifyReceipt, ATTESTATION_TYP } from "../../scripts/lib.mjs";
 import { GroupError, decodeGroup, decimalToCents, describeAlgorandGroup, describeJsonGroup, mockSigned, transactionDetails, type Described } from "./group.ts";
 import { clients, staticTokens, users, type SeedClient, type SeedUser } from "./seed.ts";
 
@@ -40,6 +42,14 @@ const loadJson = (...p: string[]) => JSON.parse(readFileSync(join(pkgRoot, ...p)
 export const CONSENT_VALIDITY_SECONDS = 300;
 export const MAX_CODE_ATTEMPTS = 3;
 export const INACTIVE_DEVICE_SECONDS = 24 * 3600;
+/** A login that enrolls a device must have authenticated this recently (`auth_time`, T-242): the authenticator asks for `max_age=0`, the server enforces it. */
+export const LOGIN_MAX_AGE_SECONDS = 300;
+/** Wrong recovery codes per account before activation by recovery code is locked (429), and for how long. */
+export const RECOVERY_CODE_MAX_FAILURES = 5;
+export const RECOVERY_LOCKOUT_SECONDS = 900;
+/** Redirect URIs the mock accepts for the authenticator's login (T-242): the app link and the debug custom scheme fallback. */
+export const AUTHENTICATOR_CLIENT_ID = "biatec-authenticator";
+export const AUTHENTICATOR_REDIRECT_URIS = ["https://oidc.biatec.io/app/authenticator/callback", "io.biatec.authenticator:/oauth2redirect"];
 /** Seconds a client must wait between token polls of one request (the `interval` the challenge announces). */
 export const POLL_INTERVAL_SECONDS = 2;
 /** RFC 8628 3.5 and CIBA 10.2: a client that polls too fast is told `slow_down` and must add this to its interval. */
@@ -110,10 +120,10 @@ export interface MockOptions {
 
 /** A device has an approval key (its `kid`, `publicKey`, `attestation`) and optionally a presence key; each is attested for its own use. */
 interface PresenceKey { kid: string; publicKey: Record<string, string>; attestation: string }
-interface Device { kid: string; sub: string; publicKey: Record<string, string>; token: string; activeAt: number; cancelled: boolean; attestation: string; presence?: PresenceKey; recoveryCode?: string; recoveryAcknowledged?: boolean; push?: PushTarget; platformAttestation?: { kind: string; attestedAt: number } }
+interface Device { /** The label the new device sent (shown on the other devices). */ name?: string; /** The enrollment nonce (the challenge): the pairing code and a device approval are bound to it. */ enrollNonce?: string; recoveryCodeKept?: string; kid: string; sub: string; publicKey: Record<string, string>; token: string; activeAt: number; cancelled: boolean; attestation: string; presence?: PresenceKey; recoveryCode?: string; recoveryAcknowledged?: boolean; push?: PushTarget; platformAttestation?: { kind: string; attestedAt: number } }
 interface PushTarget { provider: "apns"; token: string }
 // What a real deployment hands to FCM or APNs. The data payload is the request id and nothing else.
-interface PushMessage { kid: string; provider: PushTarget["provider"]; token: string; data: { auth_req_id: string } }
+interface PushMessage { kid: string; provider: PushTarget["provider"]; token: string; data: { auth_req_id: string } | { event: "device_enrolled"; kid: string } }
 interface Pending {
   request: Record<string, any>;
   code: string;
@@ -131,7 +141,7 @@ interface Pending {
   /** Reserve then spend (issue 28): a consent is reserved before signing, spent when signing succeeded, released on a handled failure. */
   spend: "none" | "reserved" | "spent";
 }
-interface Token { sub: string; clientId: string; scope: string; kind: "access" | "login" | "consent"; exp?: number; authReqId?: string; /** The group or body hash a consent token is bound to. */ consentHash?: string }
+interface Token { /** Unix seconds of the user's last authentication (login tokens); absent = just now. */ authTime?: number; sub: string; clientId: string; scope: string; kind: "access" | "login" | "consent"; exp?: number; authReqId?: string; /** The group or body hash a consent token is bound to. */ consentHash?: string }
 
 class HttpError extends Error {
   status: number;
@@ -194,7 +204,11 @@ export function createMockOidc(options: MockOptions = {}) {
   const userMap = new Map<string, SeedUser & { used: Set<string> }>();
   for (const u of users) userMap.set(u.sub, { ...structuredClone(u), used: new Set(u.usedClients) });
   const clientMap = new Map<string, SeedClient>(clients.map((c) => [c.id, c]));
-  const tokens = new Map<string, Token>(Object.entries(staticTokens).map(([k, v]) => [k, { ...v }]));
+  const tokens = new Map<string, Token>(Object.entries(staticTokens).map(([k, { authAgeSeconds, ...v }]) => [k, { ...v, ...(authAgeSeconds ? { authTime: now() - authAgeSeconds } : {}) }]));
+  // The authorization code flow of the authenticator's in-app login (T-242): single-use codes bound to the PKCE challenge.
+  const authCodes = new Map<string, { sub: string; scope: string; challenge: string; redirectUri: string; expires: number; authTime: number }>();
+  const recoveryFailures = new Map<string, { count: number; lockedUntil: number }>();
+  const statementNonces = new Map<string, Set<string>>(); // approver kid -> nonces of the device approvals it signed (single use)
   const devices = new Map<string, Device>();
   // Single-use nonces for the platform attestation (required-changes row 25): who asked, and until when.
   const attestationChallenges = new Map<string, { sub: string; expires: number }>();
@@ -623,7 +637,46 @@ export function createMockOidc(options: MockOptions = {}) {
     throw challenge(t, details, "manage-limits", requestOrigin(req, undefined, clientMap.get(t.clientId)!), CONSENT_VALIDITY_SECONDS, body as Record<string, string>);
   }
 
+  /**
+   * The authenticator's in-app login (T-242): authorization code with PKCE (S256), a public client. The mock logs the user in at once (`login_hint` is an email address, alice
+   * by default) and always authenticates afresh, which is what `prompt=login` and `max_age=0` ask for. The code goes back to the redirect URI in a 302.
+   */
+  function authorize(url: URL): { status: number; body: unknown; headers?: Record<string, string> } {
+    const q = (k: string) => url.searchParams.get(k) ?? "";
+    const redirect = q("redirect_uri");
+    if (q("client_id") !== AUTHENTICATOR_CLIENT_ID) throw new HttpError(400, "invalid_client", "unknown client_id");
+    if (!AUTHENTICATOR_REDIRECT_URIS.includes(redirect)) throw new HttpError(400, "invalid_request", "redirect_uri is not registered for this client");
+    const back = (params: Record<string, string>) => {
+      const u = new URL(redirect);
+      for (const [k, v] of Object.entries({ ...params, ...(q("state") ? { state: q("state") } : {}) })) u.searchParams.set(k, v);
+      return { status: 302, body: {}, headers: { Location: u.toString() } };
+    };
+    if (q("response_type") !== "code") return back({ error: "unsupported_response_type" });
+    if (q("code_challenge_method") !== "S256" || !/^[A-Za-z0-9_-]{43}$/.test(q("code_challenge"))) return back({ error: "invalid_request", error_description: "PKCE with S256 is required" });
+    const user = [...userMap.values()].find((u) => u.email === (q("login_hint") || "alice@example.com"));
+    if (!user) return back({ error: "access_denied", error_description: "unknown login_hint" });
+    const granted = q("scope").split(" ").filter((x) => x === "openid" || x === "enroll-device");
+    const code = "code_" + randomBytes(24).toString("base64url");
+    for (const [c, v] of authCodes) if (v.expires < now()) authCodes.delete(c);
+    authCodes.set(code, { sub: user.sub, scope: granted.join(" "), challenge: q("code_challenge"), redirectUri: redirect, expires: now() + 60, authTime: now() });
+    return back({ code });
+  }
+
+  function codeGrant(body: Record<string, any>) {
+    if (body.client_id !== AUTHENTICATOR_CLIENT_ID) throw new HttpError(400, "invalid_client", "unknown client_id");
+    const c = typeof body.code === "string" ? authCodes.get(body.code) : undefined;
+    if (typeof body.code === "string") authCodes.delete(body.code); // single use, also when it fails below
+    if (!c || c.expires < now() || c.redirectUri !== body.redirect_uri) throw new HttpError(400, "invalid_grant", "the code is unknown, used, expired or for another redirect_uri");
+    const verifier = typeof body.code_verifier === "string" ? body.code_verifier : "";
+    if (!/^[A-Za-z0-9._~-]{43,128}$/.test(verifier) || !safeEqual(createHash("sha256").update(verifier).digest("base64url"), c.challenge)) throw new HttpError(400, "invalid_grant", "PKCE verification failed");
+    const value = "login_" + randomBytes(24).toString("base64url");
+    tokens.set(value, { sub: c.sub, clientId: AUTHENTICATOR_CLIENT_ID, scope: c.scope, kind: "login", authTime: c.authTime, exp: now() + LOGIN_MAX_AGE_SECONDS });
+    // No refresh token and no ID token: the access token is held in memory for the enrollment and dropped.
+    return { status: 200, body: { access_token: value, token_type: "Bearer", expires_in: LOGIN_MAX_AGE_SECONDS, scope: c.scope } };
+  }
+
   function tokenEndpoint(req: IncomingMessage, body: Record<string, any>) {
+    if (body.grant_type === "authorization_code") return codeGrant(body);
     const client = authClient(req, body);
     if (body.grant_type !== "urn:openid:params:grant-type:ciba") throw new HttpError(400, "unsupported_grant_type");
     const p = typeof body.auth_req_id === "string" ? pending.get(body.auth_req_id) : undefined;
@@ -698,15 +751,27 @@ export function createMockOidc(options: MockOptions = {}) {
     return { kind: a.kind as string, attestedAt: now() };
   }
 
+  /**
+   * A login token that may enroll a device: scope `enroll-device` (else 403) and a fresh `auth_time` (else `401 insufficient_user_authentication` with `max_age`, so the
+   * app restarts the login once). A token without `auth_time` (the seeded `login-*` tokens) counts as authenticated just now.
+   */
+  function enrollmentToken(req: IncomingMessage): Token & { value: string } {
+    const t = bearer(req);
+    if (t.kind !== "login") throw new HttpError(403, "access_denied", "enrollment needs a fresh full login");
+    if (!t.scope.split(" ").includes("enroll-device")) throw new HttpError(403, "insufficient_scope", "the login token needs the enroll-device scope", {}, { "WWW-Authenticate": 'Bearer error="insufficient_scope", scope="enroll-device"' });
+    if (t.authTime !== undefined && now() - t.authTime > LOGIN_MAX_AGE_SECONDS) {
+      throw new HttpError(401, "insufficient_user_authentication", "the login is too old: sign in again", { max_age: 0 }, { "WWW-Authenticate": 'Bearer error="insufficient_user_authentication", max_age=0' });
+    }
+    return t;
+  }
+
   function attestationChallenge(req: IncomingMessage) {
     const sub = req.headers.authorization?.startsWith("Device ") ? (() => {
       const d = deviceAuth(req);
       if (d.cancelled) throw new HttpError(403, "access_denied", "this device was cancelled");
       return d.sub;
     })() : (() => {
-      const t = bearer(req);
-      if (t.kind !== "login") throw new HttpError(403, "access_denied", "a challenge needs a fresh full login or an enrolled device");
-      return t.sub;
+      return enrollmentToken(req).sub;
     })();
     for (const [n, c] of attestationChallenges) if (c.expires < now()) attestationChallenges.delete(n);
     if (attestationChallenges.size > 1000) throw new HttpError(429, "too_many_requests", "too many open challenges");
@@ -723,16 +788,33 @@ export function createMockOidc(options: MockOptions = {}) {
   }
 
   function enroll(req: IncomingMessage, body: Record<string, any>) {
-    const t = bearer(req);
-    if (t.kind !== "login") throw new HttpError(403, "access_denied", "enrollment needs a fresh full login");
+    const t = enrollmentToken(req);
     const pk = body.public_key;
     if (typeof body.kid !== "string" || !body.kid || !pk || pk.kty !== "EC" || pk.crv !== "P-256" || typeof pk.x !== "string" || typeof pk.y !== "string") throw new HttpError(400, "invalid_request", "kid and an EC P-256 public_key are required");
     if (deviceOfKey(body.kid)) throw new HttpError(409, "conflict", "kid already enrolled");
     const hadActive = activeDevices(t.sub).length > 0;
     let activeAt = now() + INACTIVE_DEVICE_SECONDS;
-    if (typeof body.approved_by_kid === "string") {
-      const approver = devices.get(body.approved_by_kid);
-      if (!approver || approver.sub !== t.sub || approver.cancelled || approver.activeAt > now()) throw new HttpError(400, "invalid_request", "approved_by_kid is not an active device of this user");
+    // Naming the kid of an active device proves nothing (T-242): activation is a signed device approval (`POST /devices/{kid}/activate`) or a recovery code.
+    if (body.approved_by_kid !== undefined) throw new HttpError(400, "invalid_request", "approved_by_kid is not accepted: an active device activates a new one with POST /devices/{kid}/activate");
+    if (body.name !== undefined && (typeof body.name !== "string" || body.name.length < 1 || body.name.length > 80)) throw new HttpError(400, "invalid_request", "name is 1 to 80 characters");
+    let recoveryFrom: Device | undefined;
+    if (body.activation !== undefined) {
+      const a = body.activation;
+      if (!a || typeof a !== "object" || a.kind !== "recovery_code" || typeof a.code !== "string") throw new HttpError(400, "invalid_request", "activation is { kind: \"recovery_code\", code }");
+      const f = recoveryFailures.get(t.sub);
+      if (f && f.lockedUntil > now()) throw new HttpError(429, "too_many_attempts", "too many wrong recovery codes: try again later", {}, { "Retry-After": String(f.lockedUntil - now()) });
+      const given = a.code.trim().toUpperCase();
+      recoveryFrom = [...devices.values()].find((d) => d.sub === t.sub && !d.cancelled && d.activeAt <= now() && d.recoveryCodeKept !== undefined && safeEqual(d.recoveryCodeKept, given));
+      if (!recoveryFrom) {
+        const next = { count: (f?.count ?? 0) + 1, lockedUntil: 0 };
+        if (next.count >= RECOVERY_CODE_MAX_FAILURES) { next.count = 0; next.lockedUntil = now() + RECOVERY_LOCKOUT_SECONDS; }
+        recoveryFailures.set(t.sub, next);
+        throw new HttpError(403, "invalid_recovery_code", "the recovery code is wrong");
+      }
+      recoveryFailures.delete(t.sub);
+      // Used up: a recovery code activates one device.
+      recoveryFrom.recoveryCodeKept = undefined;
+      recoveryFrom.recoveryCode = undefined;
       activeAt = now();
     }
     const push = body.push === undefined ? undefined : pushTarget(body.push);
@@ -773,10 +855,19 @@ export function createMockOidc(options: MockOptions = {}) {
       presence = { kid: body.presence_kid, publicKey: { kty: "EC", crv: "P-256", x: pp.x, y: pp.y } };
     }
     const d = addDevice(t.sub, body.kid, { kty: "EC", crv: "P-256", x: pk.x, y: pk.y }, activeAt, undefined, presence);
+    if (typeof body.name === "string") d.name = body.name;
+    d.enrollNonce = enrollNonce;
     setPush(d, push);
-    hub.notify(d.sub, "device_enrolled", { kid: d.kid });
+    announceEnrolled(d);
     d.platformAttestation = platformAttestation;
     return { status: 201, body: { kid: d.kid, active: d.activeAt <= now(), active_at: d.activeAt, attestation: d.attestation, ...(d.presence ? { presence_kid: d.presence.kid, presence_attestation: d.presence.attestation } : {}), device_token: d.token, cancel_notice_sent_to_existing_devices: hadActive && activeAt > now(), ...(platformAttestation ? { attestation_refresh_after: now() + ATTESTATION_REFRESH_SECONDS } : {}) } };
+  }
+
+  /** Tells the user's other devices that a device was enrolled or activated: the channel event, and a push message for each active device with a push token. */
+  function announceEnrolled(d: Device) {
+    hub.notify(d.sub, "device_enrolled", { kid: d.kid });
+    for (const o of activeDevices(d.sub)) if (o.push && o.kid !== d.kid) pushOutbox.push({ kid: o.kid, ...o.push, data: { event: "device_enrolled", kid: d.kid } });
+    if (pushOutbox.length > 500) pushOutbox.splice(0, pushOutbox.length - 500);
   }
 
   function deviceView(p: Pending) {
@@ -1003,8 +1094,51 @@ export function createMockOidc(options: MockOptions = {}) {
 
   function listDevices(req: IncomingMessage) {
     const me = deviceAuth(req);
-    const list = [...devices.values()].filter((x) => x.sub === me.sub && !x.cancelled).map((x) => ({ kid: x.kid, current: x.kid === me.kid, active: x.activeAt <= now(), active_at: x.activeAt }));
+    const list = [...devices.values()].filter((x) => x.sub === me.sub && !x.cancelled).map((x) => ({
+      kid: x.kid, current: x.kid === me.kid, active: x.activeAt <= now(), active_at: x.activeAt, ...(x.name ? { name: x.name } : {}),
+      // What a device needs to activate this one (T-242): its two key thumbprints and the enrollment nonce, and the pairing code they give. Shown for a pending device that has two keys.
+      ...(x.activeAt > now() && x.presence && x.enrollNonce ? { pairing: pairingOf(x) } : {}),
+    }));
     return { status: 200, body: { devices: list } };
+  }
+
+  function pairingOf(x: Device) {
+    const approval = thumbprint(x.publicKey as never);
+    const presence = thumbprint(x.presence!.publicKey as never);
+    return { new_approval_jwk_thumbprint: approval, new_presence_jwk_thumbprint: presence, nonce: x.enrollNonce!, pairing_code: pairingCode(approval, presence, x.enrollNonce!) };
+  }
+
+  /**
+   * `POST /devices/{kid}/activate` (T-242): an ACTIVE device of the same account activates a pending one by sending a `biatec_device_approval` signed with its APPROVAL key,
+   * covering the new device's two keys, the enrollment nonce and the pairing code (`verifyDeviceSigned`). The nonce is single use per approver.
+   */
+  function activateDevice(req: IncomingMessage, kid: string, body: Record<string, any>) {
+    const me = deviceAuth(req);
+    if (!isActive(me)) throw new HttpError(403, "access_denied", "this device is not active yet (rule 7)");
+    const target = devices.get(kid);
+    // Another account's device is "not found": the approver must belong to the account of the device being enrolled.
+    if (!target || target.cancelled || target.sub !== me.sub) throw new HttpError(404, "not_found");
+    if (target.activeAt <= now()) throw new HttpError(409, "conflict", "this device is already active");
+    if (!target.presence || !target.enrollNonce) throw new HttpError(409, "conflict", "this enrollment has no second key or nonce: it cannot be approved by a device");
+    const env = body.approval;
+    const refuse = (m: string) => new HttpError(403, "invalid_approval", m);
+    if (!env || typeof env !== "object" || !env.signed || !env.device || typeof env.device.public_key !== "object" || env.device.public_key === null) throw refuse("a signed biatec_device_approval is required");
+    // The statement is the caller's: its key is this device's approval key (the key in the envelope is checked against the stored one, not trusted).
+    let sameKey = false;
+    try { sameKey = env.device.kid === me.kid && thumbprint(env.device.public_key) === thumbprint(me.publicKey as never); } catch { sameKey = false; }
+    if (!sameKey || env.signed.approver_kid !== me.kid) throw refuse("the approval is not signed by the key of the calling device");
+    const used = statementNonces.get(me.kid) ?? new Set<string>();
+    const p = pairingOf(target);
+    const ok = verifyDeviceSigned(env, jwks, { issuer, now: now(), usedNonces: used }, {
+      approverActive: true, sub: target.sub,
+      approval: { new_kid: target.kid, new_approval_jwk_thumbprint: p.new_approval_jwk_thumbprint, new_presence_jwk_thumbprint: p.new_presence_jwk_thumbprint, nonce: target.enrollNonce },
+    });
+    if (!ok) throw refuse("the signed approval does not verify (approval key, pairing code, keys, nonce, issued_at)");
+    used.add(env.signed.nonce); // one atomic step in this single-threaded mock: checked above, recorded now
+    statementNonces.set(me.kid, used);
+    target.activeAt = now();
+    announceEnrolled(target);
+    return { status: 200, body: { kid: target.kid, active: true, active_at: target.activeAt, approved_by: me.kid } };
   }
 
   function cancelDevice(req: IncomingMessage, kid: string) {
@@ -1049,9 +1183,10 @@ export function createMockOidc(options: MockOptions = {}) {
     let x: RegExpMatchArray | null;
     if (m === "GET" && path === "/.well-known/jwks.json") return { status: 200, body: jwks };
     if (m === "GET" && path === "/.well-known/openid-configuration") {
-      return { status: 200, body: { issuer, jwks_uri: "/.well-known/jwks.json", token_endpoint: "/token", backchannel_authentication_endpoint: "/connect/ciba", backchannel_token_delivery_modes_supported: ["poll"], grant_types_supported: ["urn:openid:params:grant-type:ciba"], acr_values_supported: ["biatec:consent"], authorization_details_types_supported: ["biatec_transaction", "biatec_limits_change"] } };
+      return { status: 200, body: { issuer, jwks_uri: "/.well-known/jwks.json", authorization_endpoint: "/authorize", token_endpoint: "/token", code_challenge_methods_supported: ["S256"], scopes_supported: ["openid", "enroll-device"], backchannel_authentication_endpoint: "/connect/ciba", backchannel_token_delivery_modes_supported: ["poll"], grant_types_supported: ["urn:openid:params:grant-type:ciba", "authorization_code"], acr_values_supported: ["biatec:consent"], authorization_details_types_supported: ["biatec_transaction", "biatec_limits_change"] } };
     }
     if (m === "POST" && path === "/connect/ciba") return ciba(req, await readBody(req));
+    if (m === "GET" && path === "/authorize") return authorize(url);
     if (m === "POST" && path === "/token") return tokenEndpoint(req, await readBody(req));
     if (m === "PUT" && path === "/wallet/limits") return putLimits(req, await readBody(req));
     if (m === "POST" && (x = path.match(/^\/wallet\/([^/]+)\/([^/]+)\/sign$/))) return sign(req, { network: x[1], address: x[2] }, await readBody(req));
@@ -1065,6 +1200,7 @@ export function createMockOidc(options: MockOptions = {}) {
       if (d.activeAt > now()) throw new HttpError(403, "access_denied", "the recovery code is issued only once the device is active (rule 7)", { reason: "device_inactive" });
       if (d.recoveryAcknowledged) throw new HttpError(409, "conflict", "the recovery code was already shown");
       d.recoveryCode ??= randomBytes(6).toString("hex").toUpperCase().replace(/(.{4})(?=.)/g, "$1-");
+      d.recoveryCodeKept = d.recoveryCode; // what activates a later device, until used (the server keeps it after the user confirmed saving it)
       return { status: 200, body: { recovery_code: d.recoveryCode } };
     }
     if (m === "POST" && path === "/devices/recovery-code/ack") {
@@ -1088,6 +1224,7 @@ export function createMockOidc(options: MockOptions = {}) {
       return { status: 200, body: hub.issueTicket(d.sub, d.kid) };
     }
     if (m === "GET" && path === "/devices") return listDevices(req);
+    if (m === "POST" && (x = path.match(/^\/devices\/([^/]+)\/activate$/))) return activateDevice(req, decodeURIComponent(x[1]), await readBody(req));
     if (m === "POST" && (x = path.match(/^\/devices\/([^/]+)\/cancel$/))) return cancelDevice(req, decodeURIComponent(x[1]));
     if (m === "GET" && path === "/consent/settings") return consentSettings(req, url);
     if (m === "GET" && path === "/devices/settings") return { status: 200, body: settingsView(deviceAuth(req).sub) };
@@ -1137,7 +1274,7 @@ export function createMockOidc(options: MockOptions = {}) {
 
   const server: Server = createServer((req, res: ServerResponse) => {
     route(req).then(
-      (r) => send(res, r.status, r.body, {}),
+      (r) => send(res, r.status, r.body, (r as { headers?: Record<string, string> }).headers ?? {}),
       (e) => {
         if (e instanceof HttpError) send(res, e.status, e.body, e.headers);
         else {

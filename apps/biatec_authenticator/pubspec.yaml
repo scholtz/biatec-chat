@@ -24,6 +24,7 @@ dependencies:
   flutter_local_notifications: ^19.0.0
   # Tells the channel when there is no network, so it makes no attempts then.
   connectivity_plus: ^6.1.0
+  flutter_appauth: ^13.0.0
 
 dev_dependencies:
   flutter_test:

@@ -125,6 +125,43 @@ default counts as a real Biatec OIDC, so the settings screens are off unless `--
   `flutter test --dart-define=MOCK_OIDC_URL=http://127.0.0.1:8089 test/enrollment/mock_oidc_contract_test.dart`
   (skipped otherwise).
 
+## In-app login and activation of a new device (T-242, audit finding BCHAT-033)
+
+A device is enrolled only by a person who just logged in inside the app, and becomes active at once only when an existing device's user confirmed the same pairing code on both phones, or a recovery code was entered.
+
+- **Login** (`lib/enrollment/auth_client.dart`): `flutter_appauth`, authorization code with PKCE in the system browser (Custom Tabs on Android, `ASWebAuthenticationSession` on iOS, never an embedded web view; the iOS session is ephemeral). Client `--dart-define=OIDC_CLIENT_ID=...` (default `biatec-authenticator`), scope `openid enroll-device`, `prompt=login`, `max_age=0`, no refresh token. The access token is held in a local variable for `POST /devices/challenge` and `POST /devices` and then dropped: nothing from the login is stored (`test/enrollment/in_app_login_test.dart` checks that no value written to the secure storage holds it). Biatec OIDC enforces `auth_time` as well: `401 insufficient_user_authentication` with `max_age` restarts the login once ("Sign in again").
+- **Redirect:** a release build returns through an app link (`https://oidc.biatec.io/app/authenticator/callback`, or `--dart-define=OIDC_REDIRECT_URI=https://...`; a custom scheme is refused in a release build); a debug build uses `io.biatec.authenticator:/oauth2redirect`, which only the debug Android manifest declares. The app links need `assetlinks.json` and `apple-app-site-association` on Biatec OIDC's hosts (`docs/required-changes-biatec-oidc.md`, section 26); until they exist a release build cannot finish the login.
+- **Switch:** `--dart-define=IN_APP_LOGIN=true|false`, on for the mock and off for any other URL, like `TWO_KEY_DEVICE` and `DEVICE_CHANNEL`. Off: no sign-in button, no activation, the enrollment is what it was. Activation by another device needs `TWO_KEY_DEVICE` too (`AppConfig.activationByDevice`).
+- **The paste field** for a login token exists only in a debug build (`AppConfig.pasteLoginToken` is `!release && (isMock || !inAppLogin)`, and `release` is `!kDebugMode`, so a release build has no such field; `test/enrollment/pairing_and_flags_test.dart` checks the flag and the screen). A release build against a Biatec OIDC without the login therefore says "Sign-in is not available yet" and enrolls nothing.
+- **A new device waits** (`lib/enrollment/enrollment_screen.dart`): it shows the six digit pairing code (`lib/enrollment/pairing_code.dart`, spec 8.3, worked example in `test/enrollment/pairing_and_flags_test.dart`), computed from its OWN two keys and the enrollment nonce; says it becomes active after 24 hours if nobody activates it and that an email with a cancel link was sent; asks `GET /devices` every 5 seconds while the screen is open; and has "Cancel this device" (`POST /devices/{kid}/cancel`, then the keys and record go).
+- **An active device activates** (`lib/devices/devices_screen.dart`, `SettingsController.activateDevice`): the Devices screen shows "Activate <name>?" with the pairing code the app works out from the thumbprints and nonce `GET /devices` lists (refused, and not offered, when the server's own code differs). The user compares the two phones and confirms; the approval key signs `biatec_device_approval` (one biometric prompt, `signApproval`) and the app calls `POST /devices/{new_kid}/activate`. The `device_enrolled` event of the device channel refreshes the list. Mismatch or doubt: "Cancel this device".
+- **Recovery code:** a field on the sign-in step; the code goes in `POST /devices` as `activation: { kind: "recovery_code", code }`. A wrong code and the lockout (`429`) have their own texts.
+- **Strings:** English and Slovak, by the phone's language (`lib/enrollment/enrollment_strings.dart`; the test checks both have every key).
+- **Android:** `AndroidManifest.xml` declares AppAuth's `RedirectUriReceiverActivity` (exported, because the browser starts it) with verified https filters only; the debug manifest adds the custom scheme; `test/platform_hardening_test.dart` checks both and that the merged release manifest has no custom scheme. **iOS:** `Runner.entitlements` has `applinks:` domains; the Info.plist needs no URL scheme.
+
+### Tests (T-242)
+
+    flutter test test/enrollment test/devices
+    pnpm --filter mock-oidc test
+
+Contract tests against a running mock (`test/enrollment/mock_oidc_activation_contract_test.dart`):
+
+    MOCK_TWO_KEYS=1 MOCK_JSON_GROUPS=1 MOCK_TEST_HELPERS=1 MOCK_MAX_PENDING=1000 PORT=8093 pnpm --filter mock-oidc start
+    flutter test --dart-define=MOCK_OIDC_URL=http://127.0.0.1:8093 test/enrollment/mock_oidc_activation_contract_test.dart
+
+### Manual checklist for two phones (NOT run: no phone was available when this was written; the browser, the app link return and the native keystore have never run on a device)
+
+Two phones with a fingerprint or face enrolled, the mock reachable from both (`HOST=0.0.0.0` on a network you trust, `MOCK_TWO_KEYS=1`; the first phone is called A, the second B; use `--dart-define=OIDC_BASE_URL=http://<host>:8089` on both, which makes them mock builds only if the URL is the default, so for this check run them as debug builds against the mock URL with the test helpers off):
+
+1. A, first device: open the app, "Get started", "Sign in with Biatec". The system browser opens (not an embedded view), A returns to the app by itself. The step says the device is inactive for 24 hours, shows a pairing code, says an email with a cancel link was sent, and offers "Cancel this device". (With the mock, skip the 24 hours with `POST /mock/devices/<kid>/activate`, which needs `MOCK_TEST_HELPERS=1`.) A shows the recovery code once: save it.
+2. B, a second device of the same account: sign in again (the browser asks for the credentials even though it has a session: `prompt=login`). B shows a six digit pairing code.
+3. A: open Devices. A card "Activate <name>?" shows a code; it is the same six digits as on B. Tap "Activate", then "The codes match": the OS asks for the fingerprint once. B turns active within about 5 seconds and shows its own recovery code step.
+4. B again, from the start (erase it in Privacy and erase first): sign in, and on A compare. This time doubt the code and tap "Cancel this device" on B (or "Cancel this device" on the card on A): B goes back to the start and A's list no longer has it.
+5. Recovery code: erase B, sign in again, enter A's recovery code in the field before signing in: B is active at once with no waiting. Repeat with a wrong code: "Recovery code not accepted"; after five wrong codes: "Too many attempts".
+6. Stale login: leave the browser login open for more than five minutes before finishing (or use `login-alice-stale` through a debug build): the app says "Sign in again" and restarts the login once.
+7. Cancel the browser (close the Custom Tab): "Sign-in was cancelled. Nothing was enrolled."
+8. Release build against a real URL with `IN_APP_LOGIN=true`, after the app links are hosted: the browser returns through the https link. Without the hosting it stays in the browser (expected: the prerequisite in `docs/required-changes-biatec-oidc.md`).
+
 ## Approvals and receipts (T-052)
 
 - `lib/approvals/`: `ApprovalClient` (`GET /devices/requests`, `GET /consent/requests/{id}`,

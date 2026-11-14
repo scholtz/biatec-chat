@@ -5,6 +5,18 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <application>
+        <!-- Debug builds only (T-242): the custom scheme the login returns to when no hosted assetlinks.json exists for a developer's server. Any app may register a
+             custom scheme, so the main manifest (and the release build) has none; it merges into the app link activity declared there. -->
+        <activity android:name="net.openid.appauth.RedirectUriReceiverActivity" android:exported="true" tools:node="merge">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="io.biatec.authenticator" android:path="/oauth2redirect"/>
+            </intent-filter>
+        </activity>
+    </application>
     <!-- Debug builds only: plain http to the mock OIDC on the host (10.0.2.2) comes from this variant's own network_security_config.xml, which allows
          cleartext for the developer's machine and nowhere else. No attribute here switches cleartext on for every host. -->
 </manifest>

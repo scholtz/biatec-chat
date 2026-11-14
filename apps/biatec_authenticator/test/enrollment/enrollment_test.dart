@@ -159,7 +159,8 @@ void main() {
         () async {
       final c =
           build((_) => created(activeAt: t0.millisecondsSinceEpoch ~/ 1000));
-      await c.enroll(loginToken: 'login-alice', approvedByKid: 'alice-device');
+      await c.enroll(
+          loginToken: 'login-alice', recoveryCode: 'CCCC-DDDD-EEEE');
       expect(c.recoveryCodeToShow, 'AAAA-BBBB-CCCC');
       c.forgetRecoveryCode();
       expect(c.recoveryCodeToShow, isNull);
@@ -167,17 +168,21 @@ void main() {
       expect(c.recoveryCodeToShow, 'AAAA-BBBB-CCCC');
     });
 
-    test('approved by an active device is active at once', () async {
+    test('a recovery code makes the device active at once, and naming an active device does not',
+        () async {
       final c =
           build((_) => created(activeAt: t0.millisecondsSinceEpoch ~/ 1000));
-      await c.enroll(loginToken: 'login-alice', approvedByKid: 'alice-device');
+      await c.enroll(
+          loginToken: 'login-alice', recoveryCode: 'CCCC-DDDD-EEEE');
       // The code is fetched after activation, also for an approved device.
       expect(c.state.phase, EnrollmentPhase.activeRecoveryPending);
       expect(c.recoveryCodeToShow, 'AAAA-BBBB-CCCC');
-      expect(
-          (jsonDecode(requests.firstWhere((r) => r.url.path == '/devices').body)
-              as Map)['approved_by_kid'],
-          'alice-device');
+      final body = jsonDecode(
+              requests.firstWhere((r) => r.url.path == '/devices').body)
+          as Map;
+      expect(body['activation'],
+          {'kind': 'recovery_code', 'code': 'CCCC-DDDD-EEEE'});
+      expect(body.containsKey('approved_by_kid'), isFalse);
     });
 
     test('recovery code is shown once, then erased', () async {
