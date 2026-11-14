@@ -556,6 +556,37 @@ test("DNS-valid hosts only: labels up to 63 characters", () => {
   assert.equal(withOrigin("https://" + "a".repeat(64) + ".example"), false);
 });
 
+test("ZWNJ, ZWJ and VS16 are allowed in context, refused at the ends and in runs", () => {
+  assert.equal(isDisplaySafe("\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645"), true, "Persian with ZWNJ");
+  assert.equal(isDisplaySafe("family \u{1F468}\u200D\u{1F469}\u200D\u{1F467}"), true, "emoji ZWJ sequence");
+  assert.equal(isDisplaySafe("heart \u2764\uFE0F"), true, "emoji presentation");
+  assert.equal(isDisplaySafe("\u200Cbank"), false, "at the start");
+  assert.equal(isDisplaySafe("bank\u200D"), false, "at the end");
+  assert.equal(isDisplaySafe("a\u200C\u200Db"), false, "two in a row");
+  assert.equal(isDisplaySafe("a \u200Db"), false, "next to white space");
+  assert.equal(isDisplaySafe("x\uFE0F"), false, "VS16 after a letter");
+});
+
+test("the signed origin is bounded at the approval too", () => {
+  const v = v11[0];
+  const o = { ...O, now: v.receipt.signed.expiry - 100 };
+  const long = "https://" + Array.from({ length: 40 }, () => "abcdefgh").join(".");
+  assert.ok(long.length > 253);
+  const req = clone(v.request);
+  req.origin = long;
+  req.authorization_details[0].origin = long;
+  const r = clone(v.receipt);
+  r.signed.authorization_details[0].origin = long;
+  r.signature = signEs256(keys.device, Buffer.from(jcs(r.signed), "utf8"));
+  assert.equal(verifyApproval(r, jwks, req, r.signed.binding_code, new Set(), o), false);
+});
+
+test("the settings schema accepts a label with ZWNJ, ZWJ and VS16 (the verifier decides the context)", () => {
+  const base = clone(device.settings_changes[0].envelope.signed);
+  base.change = { clients: { x: { label: "heart ❤️ می‌خ" } } };
+  assert.equal(valid("settings-change-signed", base), true);
+});
+
 test("a pairing code that is not a string is refused even if its digits match", () => {
   const a = device.device_approvals.find((x) => x.expected.accepted);
   const e = clone(a.envelope);

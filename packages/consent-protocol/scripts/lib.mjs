@@ -154,18 +154,23 @@ export function attestedKeyUse(receipt, jwks, opts = {}) {
  * always honoured) nor the other way round.
  */
 export function verifyReceipt(receipt, jwks, opts = {}) {
+  return verifiedClaims(receipt, jwks, opts) !== null;
+}
+
+/** The attestation claims of a receipt whose signature, attestation and key-use rules all verify, or null. One pass. Never throws. */
+function verifiedClaims(receipt, jwks, opts = {}) {
   try {
-    if (!verifyReceiptSignature(receipt)) return false;
+    if (!verifyReceiptSignature(receipt)) return null;
     const payload = receiptClaims(receipt, jwks, opts);
-    if (!payload) return false;
+    if (!payload) return null;
     // An approve needs an approval key. A device that is attested for a key use (every 1.1 device is) can never approve with another one,
     // whatever `version` the receipt wears; only a 1.0 device, whose attestation carries no key use, approves without one.
-    if (receipt.signed.decision === "approve" && payload.biatec_key_use !== undefined && payload.biatec_key_use !== "approve") return false;
+    if (receipt.signed.decision === "approve" && payload.biatec_key_use !== undefined && payload.biatec_key_use !== "approve") return null;
     // `remember` trusts applications: only an approval of a 1.1 receipt may carry it, never a denial.
-    if (receipt.signed.remember !== undefined && (receipt.signed.decision !== "approve" || receipt.version !== "1.1")) return false;
-    return true;
+    if (receipt.signed.remember !== undefined && (receipt.signed.decision !== "approve" || receipt.version !== "1.1")) return null;
+    return payload;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -192,12 +197,24 @@ const INVISIBLE = /[\u00AD\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180E\u2061-\u20
  * U+200D, U+2060, U+FEFF), no line breaks, no filler or invisible characters (soft hyphen, Hangul fillers, invisible operators,
  * variation selectors, tag characters), no padding and not blank. No bare or stacked combining marks (a mark must follow a base character, at most three in a row). A violation is refused, never stripped. Look-alike letters of another script are NOT detected: the label sits beside the proven domain or fingerprint, never instead of it.
  */
+/**
+ * ZWNJ and ZWJ (U+200C, U+200D) are part of ordinary text in several scripts (Persian, Indic) and of emoji sequences, and U+FE0F makes a
+ * symbol an emoji: they are allowed between two letters, marks, symbols or digits (ZWNJ, ZWJ) and right after a symbol or digit (U+FE0F),
+ * never at an end or next to white space, and at most one in a row. Everything else in the format class stays refused.
+ */
+function withoutJoiners(text) {
+  return text
+    .replace(/(?<=[\p{L}\p{M}\p{S}\p{N}\uFE0F])[\u200C\u200D](?=[\p{L}\p{M}\p{S}\p{N}])/gu, "")
+    .replace(/(?<=[\p{S}\p{N}#*])\uFE0F/gu, "");
+}
+
 export function isDisplaySafe(text, max = 40) {
   if (typeof text !== "string" || text.length === 0 || !text.isWellFormed() || text !== text.normalize("NFC")) return false;
   if ([...text].length > max || text.trim() !== text || text.trim() === "") return false; // no padding, not blank
-  if (NOT_ALLOWED_SPACE_OR_FORMAT.test(text) || /[\p{Zs}]/u.test(text.replaceAll(" ", ""))) return false;
+  if (/[\u200C\u200D\uFE0F]{2,}/.test(text)) return false; // never several joiners in a row
+  if (NOT_ALLOWED_SPACE_OR_FORMAT.test(withoutJoiners(text))) return false;
   if (/^\p{M}|\p{M}{4}/u.test(text)) return false; // a mark needs a base character; stacks are limited
-  return !INVISIBLE.test(text);
+  return !INVISIBLE.test(withoutJoiners(text));
 }
 
 const MEMBERS = new Set(["always_ask", "per_client_threshold_eur", "label", "trusted_applications_add", "trusted_applications_remove", "paused", "origin", "unlink"]);
@@ -381,10 +398,11 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
     // valid attestation too). A caller that knows the device is not active passes `opts.deviceActive === false`; a device attested for a
     // key use (every 1.1 device) needs `true`, as checked below. The 1.0 flows, whose devices have no attested use, carry no such lookup.
     if (opts.deviceActive === false) return false;
-    if (!verifyReceipt(receipt, jwks, { ...opts, now })) return false;
+    const claims = verifiedClaims(receipt, jwks, { ...opts, now });
+    if (!claims) return false;
     // A device attested for a key use is a 1.1 device whatever `version` the receipt wears (a pending one has a valid attestation too):
     // it is authorized only with the caller's `deviceActive === true`. Only a 1.0 device, with no attested use, needs no lookup.
-    if (receiptClaims(receipt, jwks, { ...opts, now })?.biatec_key_use !== undefined && opts.deviceActive !== true) return false;
+    if (claims.biatec_key_use !== undefined && opts.deviceActive !== true) return false;
     const s = receipt.signed;
     const d = s.authorization_details?.[0];
     if (typeof expectedBindingCode !== "string" || !/^[0-9]{6}$/.test(expectedBindingCode)) return false;
@@ -403,7 +421,7 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
     )
       return false;
     // The origin the server recorded is the origin the user saw and signed (a transaction of 1.1 carries it in its details).
-    if (receipt.version === "1.1" && d?.type === "biatec_transaction" && (typeof d.origin !== "string" || d.origin !== request.origin || !ORIGIN.test(d.origin) || !Array.isArray(d.transfers))) return false;
+    if (receipt.version === "1.1" && d?.type === "biatec_transaction" && (typeof d.origin !== "string" || d.origin !== request.origin || d.origin.length > 253 || !ORIGIN.test(d.origin) || !Array.isArray(d.transfers))) return false;
     if (s.remember !== undefined) {
       // Each id MUST be an application of the request (section 8): the user can only trust what the card showed.
       // Only applications the card offered to trust (the untrusted ones): an already trusted one has nothing to remember.

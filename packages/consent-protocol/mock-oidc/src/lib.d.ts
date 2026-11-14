@@ -24,11 +24,11 @@ declare module "*/scripts/lib.mjs" {
     envelope: any,
     jwks: { keys: any[] },
     opts: VerifyOptions & { usedNonces: Set<string> },
-    expect: { approverActive: true; sub?: string; approval?: { new_kid: string; new_approval_jwk_thumbprint: string; new_presence_jwk_thumbprint: string; nonce: string } },
+    expect: { approverActive: true; sub: string; approval?: { new_kid: string; new_approval_jwk_thumbprint: string; new_presence_jwk_thumbprint: string; nonce: string } },
   ): boolean;
   export function verifyEnrollmentProof(
     jws: string,
-    expect: { approval_public_key: object; kid: string; presence_kid: string; presence_public_key: object; nonce: string; usedNonces: Set<string>; now?: number },
+    expect: { approval_public_key: object; kid: string; presence_kid: string; presence_public_key: object; presence_proof: string; nonce: string; usedNonces: Set<string>; now?: number },
   ): boolean;
   export function verifyApproval(
     receipt: any,
@@ -39,6 +39,7 @@ declare module "*/scripts/lib.mjs" {
     opts: VerifyOptions,
   ): boolean;
   export const ATTESTATION_TYP: string;
+  export const ENROLL_PRESENCE_PROOF_TYP: string;
   export const KEY_USES: readonly ["approve", "presence"];
   export function attestationClaims(attestation: string, jwks: { keys: any[] }, opts: VerifyOptions): Record<string, any> | null;
   export const ENROLL_PROOF_TYP: string;
