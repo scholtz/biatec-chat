@@ -186,17 +186,17 @@ export function pairingCode(newApprovalThumbprint, newPresenceThumbprint, nonce)
 
 const SIGNED_WINDOW_SECONDS = 300;
 
+/** The exact members of each device-signed statement (the schemas set additionalProperties false). */
+const MEMBERS_OF = {
+  biatec_settings_change: ["type", "sub", "kid", "nonce", "issued_at", "change"],
+  biatec_device_approval: ["type", "approver_kid", "new_kid", "new_approval_jwk_thumbprint", "new_presence_jwk_thumbprint", "pairing_code", "nonce", "issued_at"],
+};
+
 /** Format, control, line and paragraph separators; white space other than a plain space; a run of spaces. */
 const NOT_ALLOWED_SPACE_OR_FORMAT = /[\p{Cf}\p{Cc}\p{Co}\p{Cn}\p{Zl}\p{Zp}]|[^\S ]|  /u;
 /** Invisible or filler characters outside the general categories above (soft hyphen, fillers, invisible operators, variation selectors, tags). */
 const INVISIBLE = /[\u00AD\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180E\u2061-\u2065\u206A-\u206F\u2800\u3164\uFE00-\uFE0F\uFFA0\uFFF9-\uFFFC]|[\u{1D173}-\u{1D17A}\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]/u;
 
-/**
- * Text a user types that is shown next to a security decision: Unicode NFC, at most `max` code points, no control characters,
- * no bidirectional controls (U+202A to U+202E, U+2066 to U+2069, U+200E, U+200F, U+061C), no zero-width characters (U+200B to
- * U+200D, U+2060, U+FEFF), no line breaks, no filler or invisible characters (soft hyphen, Hangul fillers, invisible operators,
- * variation selectors, tag characters), no padding and not blank. No bare or stacked combining marks (a mark must follow a base character, at most three in a row). A violation is refused, never stripped. Look-alike letters of another script are NOT detected: the label sits beside the proven domain or fingerprint, never instead of it.
- */
 /**
  * ZWNJ and ZWJ (U+200C, U+200D) are part of ordinary text in several scripts (Persian, Indic) and of emoji sequences, and U+FE0F makes a
  * symbol an emoji: they are allowed between two letters, marks, symbols or digits (ZWNJ, ZWJ) and right after a symbol or digit (U+FE0F),
@@ -208,13 +208,19 @@ function withoutJoiners(text) {
     .replace(/(?<=[\p{S}\p{N}#*])\uFE0F/gu, "");
 }
 
+/**
+ * Text a user types that is shown next to a security decision: Unicode NFC, at most `max` code points, no control characters,
+ * no bidirectional controls (U+202A to U+202E, U+2066 to U+2069, U+200E, U+200F, U+061C), no zero-width characters (U+200B to
+ * U+200D, U+2060, U+FEFF), no line breaks, no filler or invisible characters (soft hyphen, Hangul fillers, invisible operators,
+ * variation selectors, tag characters), no padding and not blank. No bare or stacked combining marks (a mark must follow a base character, at most three in a row). A violation is refused, never stripped. Look-alike letters of another script are NOT detected: the label sits beside the proven domain or fingerprint, never instead of it.
+ */
 export function isDisplaySafe(text, max = 40) {
   if (typeof text !== "string" || text.length === 0 || !text.isWellFormed() || text !== text.normalize("NFC")) return false;
   if ([...text].length > max || text.trim() !== text || text.trim() === "") return false; // no padding, not blank
-  if (/[\u200C\u200D\uFE0F]{2,}/.test(text)) return false; // never several joiners in a row
-  if (NOT_ALLOWED_SPACE_OR_FORMAT.test(withoutJoiners(text))) return false;
+  if (/[\u200C\u200D]{2,}/.test(text)) return false; // never several joiners in a row (a variation selector before a joiner is the normal emoji form)
   if (/^\p{M}|\p{M}{4}/u.test(text)) return false; // a mark needs a base character; stacks are limited
-  return !INVISIBLE.test(withoutJoiners(text));
+  const plain = withoutJoiners(text); // the allowed joiners and emoji selectors removed, once
+  return !NOT_ALLOWED_SPACE_OR_FORMAT.test(plain) && !INVISIBLE.test(plain);
 }
 
 const MEMBERS = new Set(["always_ask", "per_client_threshold_eur", "label", "trusted_applications_add", "trusted_applications_remove", "paused", "origin", "unlink"]);
@@ -286,11 +292,8 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
     // A settings change that cannot be read unambiguously, or whose label is not display-safe, is refused (spec section 8.2).
     if (settings && !settingsChangeWellFormed(s.change)) return false;
     // The signed object has exactly the members the schema allows: nothing rides along unsigned-looking but signed.
-    const MEMBERS_OF = {
-      biatec_settings_change: ["type", "sub", "kid", "nonce", "issued_at", "change"],
-      biatec_device_approval: ["type", "approver_kid", "new_kid", "new_approval_jwk_thumbprint", "new_presence_jwk_thumbprint", "pairing_code", "nonce", "issued_at"],
-    }[s.type];
-    if (Object.keys(s).length !== MEMBERS_OF.length || !MEMBERS_OF.every((k) => k in s)) return false;
+    const memberList = MEMBERS_OF[s.type];
+    if (Object.keys(s).length !== memberList.length || !memberList.every((k) => k in s)) return false;
     // A settings change names the subject it is for; the attestation must be for that same subject.
     // ... and it is for the account the caller is changing: `expect.sub` is required and must equal it.
     if (settings && (typeof s.sub !== "string" || s.sub === "" || s.sub !== expect.sub)) return false;

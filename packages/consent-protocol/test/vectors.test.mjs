@@ -560,6 +560,8 @@ test("ZWNJ, ZWJ and VS16 are allowed in context, refused at the ends and in runs
   assert.equal(isDisplaySafe("\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645"), true, "Persian with ZWNJ");
   assert.equal(isDisplaySafe("family \u{1F468}\u200D\u{1F469}\u200D\u{1F467}"), true, "emoji ZWJ sequence");
   assert.equal(isDisplaySafe("heart \u2764\uFE0F"), true, "emoji presentation");
+  assert.equal(isDisplaySafe("\u{1F3F3}\uFE0F\u200D\u{1F308}"), true, "rainbow flag: a variation selector before a joiner");
+  assert.equal(isDisplaySafe("\u{1F468}\u200D\u2764\uFE0F\u200D\u{1F468}"), true, "couple with heart");
   assert.equal(isDisplaySafe("\u200Cbank"), false, "at the start");
   assert.equal(isDisplaySafe("bank\u200D"), false, "at the end");
   assert.equal(isDisplaySafe("a\u200C\u200Db"), false, "two in a row");
