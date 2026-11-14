@@ -509,6 +509,36 @@ test("a settings change is refused for another account, and a receipt of a devic
   assert.equal(verifyApproval(old.receipt, jwks, old.request, old.receipt.signed.binding_code, new Set(), { ...o, deviceActive: undefined, now: old.receipt.signed.expiry - 100 }), true, "1.0 receipts carry no such lookup");
 });
 
+test("the canonical-origin pattern is the same in the three schemas and in the verifier", () => {
+  const fromSchema = (f, pick) => pick(load("schemas", f));
+  const a = fromSchema("authorization-details-transaction.schema.json", (s) => s.$defs.origin.pattern);
+  const b = fromSchema("consent-request.schema.json", (s) => s.allOf.find((x) => x.if?.required?.includes("client") && x.then?.properties?.origin).then.properties.origin.pattern);
+  const c = fromSchema("settings-change-signed.schema.json", (s) => s.properties.change.properties.clients.additionalProperties.properties.origin.pattern);
+  assert.equal(b, a);
+  assert.equal(c, a);
+  const lib = readFileSync(join(root, "scripts", "lib.mjs"), "utf8");
+  const src = lib.match(/const ORIGIN = \/(.*)\/;/)[1].replaceAll("\\/", "/");
+  assert.equal(src, a);
+});
+
+test("a pairing code that is not a string is refused even if its digits match", () => {
+  const a = device.device_approvals.find((x) => x.expected.accepted);
+  const e = clone(a.envelope);
+  e.signed.pairing_code = Number(e.signed.pairing_code);
+  e.signature = signEs256(keys.device, Buffer.from(jcs(e.signed), "utf8"));
+  assert.equal(verifyDeviceSigned(e, jwks, DO, { approval: a.expected_inputs, sub: device.enrollment_sub, approverActive: true }), false);
+});
+
+test("the proven domain is a well-formed host", () => {
+  const r = clone(v11[0].request);
+  for (const d of ["..", "-", ".", "a..b", "-a.example"]) {
+    r.client.domain = d;
+    assert.equal(valid("consent-request", r), false, d);
+  }
+  r.client.domain = "chat.biatec.io";
+  assert.equal(valid("consent-request", r), true);
+});
+
 test("canonical origins only, the transaction invariants are in the schema, and a pause names its origin", () => {
   const base = clone(v11[0].request.authorization_details[0]);
   const withOrigin = (origin) => ({ ...clone(base), origin });

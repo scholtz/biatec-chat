@@ -59,7 +59,7 @@
       "properties": {
         "fingerprint": { "type": "string", "pattern": "^[0-9a-f]{16}$", "description": "16 lowercase hex characters (64 bits) of the SHA-256 of the client_id, shown as xxxx-xxxx-xxxx-xxxx." },
         "domain_proven": { "type": "boolean", "description": "True when the client proved control of its domain by serving /.well-known/biatec-client.json that lists its client_id." },
-        "domain": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9.-]+$", "description": "The proven domain in ASCII (A-label) form. Present exactly when domain_proven is true." },
+        "domain": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "description": "The proven domain in ASCII (A-label) form. Present exactly when domain_proven is true." },
         "linked": { "type": "boolean", "description": "Whether this user already linked this client on their phone (first use of any client always asks)." }
       }
     },

@@ -11,7 +11,7 @@ declare module "*/scripts/lib.mjs" {
     issuer: string;
     now?: number;
     /** Read by verifyApproval only: the caller looked up that the signing device is active. A device attested for a key use (every 1.1 device) fails closed without `true`; verifyReceipt and verifyAttestation do not read it. */
-    deviceActive?: boolean; // required by verifyApproval for any device attested for a key use (every 1.1 device)
+    deviceActive?: boolean;
     /** Read by verifyDeviceSigned only: statement nonces already accepted from the device (single use). */
     usedNonces?: Set<string>;
   };
@@ -39,5 +39,7 @@ declare module "*/scripts/lib.mjs" {
     opts: VerifyOptions,
   ): boolean;
   export const ATTESTATION_TYP: string;
+  export const KEY_USES: readonly ["approve", "presence"];
+  export function attestationClaims(attestation: string, jwks: { keys: any[] }, opts: VerifyOptions): Record<string, any> | null;
   export const ENROLL_PROOF_TYP: string;
 }

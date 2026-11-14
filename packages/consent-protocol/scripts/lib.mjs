@@ -186,11 +186,16 @@ const SIGNED_WINDOW_SECONDS = 300;
  * U+200D, U+2060, U+FEFF), no line breaks, no filler or invisible characters (soft hyphen, Hangul fillers, invisible operators,
  * variation selectors, tag characters), no padding and not blank. A violation is refused, never stripped.
  */
+/** Format, control, line and paragraph separators; white space other than a plain space; a run of spaces. */
+const NOT_ALLOWED_SPACE_OR_FORMAT = /[\p{Cf}\p{Cc}\p{Zl}\p{Zp}]|[^\S ]|  /u;
+/** Invisible or filler characters outside the general categories above (soft hyphen, fillers, invisible operators, variation selectors, tags). */
+const INVISIBLE = /[\u00AD\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180E\u2061-\u2065\u206A-\u206F\u2800\u3164\uFE00-\uFE0F\uFFA0\uFFF9-\uFFFC]|[\u{1D173}-\u{1D17A}\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]/u;
+
 export function isDisplaySafe(text, max = 40) {
   if (typeof text !== "string" || text.length === 0 || !text.isWellFormed() || text !== text.normalize("NFC")) return false;
   if ([...text].length > max || text.trim() !== text || text.trim() === "") return false; // no padding, not blank
-  if (/[\p{Cf}\p{Cc}\p{Zl}\p{Zp}]|[^\S ]|  /u.test(text) || /[\p{Zs}]/u.test(text.replaceAll(" ", ""))) return false; // no format characters, no other white space, no runs of spaces
-  return !/[\u00AD\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180E\u2061-\u2065\u206A-\u206F\u2800\u3164\uFE00-\uFE0F\uFFA0\uFFF9-\uFFFC]|[\u{1D173}-\u{1D17A}\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]/u.test(text) && !/[\u0000-\u001F\u007F-\u009F\u2028\u2029\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\u061C\uFEFF]/.test(text);
+  if (NOT_ALLOWED_SPACE_OR_FORMAT.test(text) || /[\p{Zs}]/u.test(text.replaceAll(" ", ""))) return false;
+  return !INVISIBLE.test(text);
 }
 
 const MEMBERS = new Set(["always_ask", "per_client_threshold_eur", "label", "trusted_applications_add", "trusted_applications_remove", "paused", "origin", "unlink"]);
@@ -291,8 +296,19 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
       const e = expect.approval;
       if (typeof e.new_kid !== "string" || s.new_kid !== e.new_kid) return false; // the kid being activated is the kid the approver signed
       if (s.new_approval_jwk_thumbprint !== e.new_approval_jwk_thumbprint || s.new_presence_jwk_thumbprint !== e.new_presence_jwk_thumbprint || s.nonce !== e.nonce) return false;
-      if (!timingSafeEqualStr(s.pairing_code, pairingCode(e.new_approval_jwk_thumbprint, e.new_presence_jwk_thumbprint, e.nonce))) return false;
+      if (typeof s.pairing_code !== "string" || !timingSafeEqualStr(s.pairing_code, pairingCode(e.new_approval_jwk_thumbprint, e.new_presence_jwk_thumbprint, e.nonce))) return false;
     }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** An EC P-256 public JWK with its coordinates: a real point (Node refuses to import one that is not on the curve). */
+function isP256PublicJwk(jwk) {
+  try {
+    if (!jwk || jwk.kty !== "EC" || jwk.crv !== "P-256" || typeof jwk.x !== "string" || typeof jwk.y !== "string") return false;
+    pub(jwk);
     return true;
   } catch {
     return false;
@@ -305,17 +321,6 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
  * equals the thumbprint of `expect.presence_public_key`, `nonce` equals `expect.nonce`, and `iat` is within 300 seconds of
  * `expect.now`. Never throws.
  */
-/** An EC P-256 public JWK with its coordinates: a real point (Node refuses to import one that is not on the curve). */
-function isP256PublicJwk(jwk) {
-  try {
-    if (!jwk || jwk.kty !== "EC" || jwk.crv !== "P-256" || typeof jwk.x !== "string" || typeof jwk.y !== "string") return false;
-    pub(jwk);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export function verifyEnrollmentProof(jws, expect = {}) {
   // The approval key the server received and the key that signed the proof must be the same: it is the proof of possession.
   if (!expect.approval_public_key) return false;
