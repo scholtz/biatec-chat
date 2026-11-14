@@ -100,9 +100,19 @@ public sealed class ConsentOrchestrator(
                     .ExecuteUpdateAsync(u => u.SetProperty(c => c.Status, ConsentRequestStatus.Denied), CancellationToken.None);
                 if (won == 0)
                     return new ConsentAdvance(StatusOf(previewId, step.Id, ConsentState.Denied, null, request.ExpiresAt), null); // another poll took the denial and ends it
-                await RecordDenialAsync(tenant, session, previewId, request, step, d.Reason, ct);
-                // The claim is made: the consent MUST now be ended whatever happened to the evidence or to this request, so it is not tied to the caller token.
-                return await EndAsync(session, previewId, request, ConsentRequestStatus.Denied, denied: true, d.Reason ?? "deny", CancellationToken.None);
+                try
+                {
+                    await RecordDenialAsync(tenant, session, previewId, request, step, d.Reason, ct);
+                    // The claim is made: the consent MUST now be ended whatever happened to the evidence or to this request, so it is not tied to the caller token.
+                    return await EndAsync(session, previewId, request, ConsentRequestStatus.Denied, denied: true, d.Reason ?? "deny", CancellationToken.None);
+                }
+                catch
+                {
+                    // Ending failed (for example the database): hand the request back, so a later poll finishes the denial instead of finding it claimed and never ended.
+                    await db.ConsentRequests.Where(c => c.Id == request.Id && c.Status == ConsentRequestStatus.Denied)
+                        .ExecuteUpdateAsync(u => u.SetProperty(c => c.Status, ConsentRequestStatus.Pending), CancellationToken.None);
+                    throw;
+                }
             }
             case CibaPollOutcome.Expired:
                 return await EndAsync(session, previewId, request, ConsentRequestStatus.Expired, denied: false, "expired_token", ct);
@@ -133,7 +143,7 @@ public sealed class ConsentOrchestrator(
         // the elevated token that came with it is dropped unused, and the step ends like a missing receipt.
         if (receipts.Enabled)
         {
-            var verdict = await receipts.VerifyApprovalAsync(tenant, session, request, step, approved.Receipt, ct);
+            var verdict = await receipts.VerifyApprovalAsync(tenant, session, request, step, approved.Receipt, CancellationToken.None); // the one-time token is spent: not tied to the caller
             if (verdict != ReceiptVerdict.Valid)
             {
                 log.LogWarning("A consent receipt was refused: {FailureCode}", verdict.Code());

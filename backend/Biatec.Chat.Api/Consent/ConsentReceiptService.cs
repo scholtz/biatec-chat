@@ -93,7 +93,7 @@ public sealed class ConsentReceiptService(IOidcMetadataProvider metadata, IConse
             var expected = new ConsentReceiptExpectation(
                 Issuer: oidc.Value.Issuer, Now: clock.GetUtcNow(), AuthReqId: request.AuthReqId, ClientEntityId: tenant.ClientEntityId, Sub: session.OidcSub ?? "",
                 BindingCode: bindingCode, BindingMessage: "", GroupHash: ConsentReceiptVerifier.GroupHash(System.Convert.FromHexString(step.SubjectHash)),
-                Network: step.Network, Sender: step.SenderAddress, Origin: ConfirmService.ReportedOrigin(tenant, request.Origin), Decisions: decisions, CheckExpiry: checkExpiry, ClientId: tenant.OidcClientId, ExpiryGraceSeconds: ConsentOrchestrator.MaxPollIntervalSeconds);
+                Network: step.Network, Sender: step.SenderAddress, Origin: ConfirmService.ReportedOrigin(tenant, request.Origin), Decisions: decisions, CheckExpiry: checkExpiry, ClientId: tenant.OidcClientId, ExpiryGraceSeconds: request.PollIntervalSeconds);
 
             var verdict = ConsentReceiptVerifier.Verify(receipt, ToSigningKeys(await metadata.GetSigningKeysAsync(false, ct)), expected);
             // A key the cache does not know may be a rotation: refetch once (the provider rate limits it) and try again.
