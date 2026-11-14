@@ -1,7 +1,7 @@
 // Contract test: the device channel against a running packages/consent-protocol/mock-oidc server. A request opened in the mock arrives over the
 // channel, with a ticket fetched from `POST /devices/hub-ticket`.
 //
-//   MOCK_JSON_GROUPS=1 MOCK_TEST_HELPERS=1 MOCK_MAX_PENDING=1000 PORT=8089 pnpm --filter mock-oidc start   # from the repo root; 127.0.0.1:8089
+//   MOCK_JSON_GROUPS=1 MOCK_TWO_KEYS=1 MOCK_TEST_HELPERS=1 MOCK_MAX_PENDING=1000 PORT=8089 pnpm --filter mock-oidc start   # from the repo root; 127.0.0.1:8089
 //   flutter test --dart-define=MOCK_OIDC_URL=http://127.0.0.1:8089 test/channel/mock_oidc_channel_contract_test.dart
 //
 // It needs the mock's device hub (T-244): `POST /devices/hub-ticket` answering `{ticket, expires_in}` and a WebSocket at `/hubs/device?access_token=<ticket>` that
@@ -32,7 +32,7 @@ void main() {
         (await http.get(Uri.parse('$baseUrl/mock/devices/alice-device')))
             .body) as Map;
     final store = MemoryEnrollmentStore();
-    await store.write(EnrollmentRecord(
+    await store.write(EnrollmentRecord(presenceKid: 'p-kid', presenceAttestation: 'p.p.s', 
         kid: 'alice-device',
         deviceToken: d['device_token'] as String,
         activeAt: DateTime.utc(2020)));

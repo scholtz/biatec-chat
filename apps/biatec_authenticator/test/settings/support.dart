@@ -185,6 +185,8 @@ class SettingsRig {
     enrollment.write(record ??
         EnrollmentRecord(
           kid: 'dev-1',
+          presenceKid: 'dev-1-presence',
+          presenceAttestation: 'p.p.s',
           deviceToken: FakeSettingsOidc.token,
           activeAt: activeAt ?? DateTime.utc(2020),
           attestation: 'att',
@@ -202,7 +204,8 @@ class SettingsRig {
   }
 
   final FakeSettingsOidc oidc;
-  final keys = SoftwareKeyStore(deviceTestKey());
+  final keys = SoftwareKeyStore(deviceTestKey(),
+      approvalKid: 'dev-1', presenceKid: 'dev-1-presence');
   /// The disk behind the store.
   final disk = MemoryEnrollmentStore();
 

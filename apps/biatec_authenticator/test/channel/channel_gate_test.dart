@@ -45,7 +45,7 @@ void main() {
   group('a refused ticket', () {
     Future<int> calls(int status) async {
       final store = MemoryEnrollmentStore();
-      await store.write(EnrollmentRecord(
+      await store.write(EnrollmentRecord(presenceKid: 'p-kid', presenceAttestation: 'p.p.s', 
           kid: 'k', deviceToken: 't', activeAt: DateTime.utc(2020)));
       var n = 0;
       final channel = buildDeviceChannel(

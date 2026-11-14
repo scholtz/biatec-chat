@@ -51,22 +51,38 @@ class RecordingDeviceKeys implements DeviceKeyStore {
   final Order order;
   final bool fail;
   final deleted = <String>[];
+  int keysDeleted = 0;
 
   @override
-  Future<void> delete(String alias) async {
+  Future<void> deleteKeys() async {
     order.calls.add('device-key');
     if (fail) throw StateError('keystore unavailable');
-    deleted.add(alias);
+    keysDeleted++;
   }
 
+  /// The single key of an install from before the two keys.
   @override
-  Future<DeviceKey> generate(String alias) => throw UnimplementedError();
+  Future<void> deleteLegacyKey(String alias) async => deleted.add(alias);
 
   @override
-  Future<DeviceKey?> load(String alias) async => null;
+  Future<DeviceKeys> generateKeys() => throw UnimplementedError();
 
   @override
-  Future<Uint8List> sign(String alias, Uint8List data) =>
+  Future<DeviceKey?> loadApproval() async => null;
+
+  @override
+  Future<DeviceKey?> loadPresence() async => null;
+
+  @override
+  Future<KeysState> keysState() async => KeysState.missing;
+
+  @override
+  Future<Uint8List> signPresence(Uint8List data) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Uint8List> signApproval(Uint8List data,
+          {required String promptTitle, required String promptSubtitle}) =>
       throw UnimplementedError();
 }
 
@@ -79,7 +95,7 @@ class Rig {
     final order = Order();
     final enrollment = RecordingEnrollment(order);
     await enrollment.writeAlias('device-alias');
-    await enrollment.write(EnrollmentRecord(
+    await enrollment.write(EnrollmentRecord(presenceKid: 'p-kid', presenceAttestation: 'p.p.s', 
         kid: 'device-alias',
         deviceToken: 't',
         activeAt: DateTime.utc(2020),

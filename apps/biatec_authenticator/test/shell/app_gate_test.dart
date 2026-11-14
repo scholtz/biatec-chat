@@ -77,7 +77,7 @@ void main() {
         (tester) async {
       final rig = ShellRig();
       final store = _HangingStore();
-      await store.write(EnrollmentRecord(
+      await store.write(EnrollmentRecord(presenceKid: 'p-kid', presenceAttestation: 'p.p.s', 
           kid: 'dev-1',
           deviceToken: 'dev-token',
           activeAt: DateTime.utc(2020),

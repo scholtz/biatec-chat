@@ -1,41 +1,20 @@
 // Contract test: the real enrollment client and controller against a running
 // packages/consent-protocol/mock-oidc server (no hand-written responses).
 //
-//   MOCK_JSON_GROUPS=1 MOCK_TEST_HELPERS=1 MOCK_MAX_PENDING=1000 PORT=8089 pnpm --filter mock-oidc start   # from the repo root; 127.0.0.1:8089
+//   MOCK_JSON_GROUPS=1 MOCK_TWO_KEYS=1 MOCK_TEST_HELPERS=1 MOCK_MAX_PENDING=1000 PORT=8089 pnpm --filter mock-oidc start   # from the repo root; 127.0.0.1:8089
 //   flutter test --dart-define=MOCK_OIDC_URL=http://127.0.0.1:8089 test/enrollment/mock_oidc_contract_test.dart
 //
 // Skipped when MOCK_OIDC_URL is not set.
-import 'dart:typed_data';
 
 import 'package:biatec_authenticator/enrollment/enrollment_controller.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
-import 'package:biatec_authenticator/keys/device_key_store.dart';
-import 'package:biatec_authenticator/keys/key_security_level.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../approvals/support.dart';
 import 'package:http/http.dart' as http;
-
-const _fakeP256 = (
-  x: 'f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU',
-  y: 'x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0',
-);
-
-class _Keys implements DeviceKeyStore {
-  @override
-  Future<DeviceKey> generate(String alias) async => DeviceKey(
-      kid: alias,
-      x: _fakeP256.x,
-      y: _fakeP256.y,
-      securityLevel: KeySecurityLevel.trustedEnvironment);
-  @override
-  Future<DeviceKey?> load(String alias) async => null;
-  @override
-  Future<Uint8List> sign(String alias, Uint8List data) async => data;
-  @override
-  Future<void> delete(String alias) async {}
-}
 
 void main() {
   const url = String.fromEnvironment('MOCK_OIDC_URL');
@@ -43,7 +22,7 @@ void main() {
 
   EnrollmentController install(DateTime Function() clock) =>
       EnrollmentController(
-        keys: _Keys(),
+        keys: randomSoftwareKeyStore(),
         store: ObservableEnrollmentStore(MemoryEnrollmentStore()),
         client: OidcEnrollmentClient(baseUrl: baseUrl!),
         clock: clock,

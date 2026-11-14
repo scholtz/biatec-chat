@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:biatec_authenticator/keys/device_key_store.dart';
 import 'package:biatec_authenticator/keys/key_security_level.dart';
 import 'package:biatec_authenticator/security/touch_guard.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
@@ -153,6 +154,8 @@ class Harness {
         deviceToken: 'dev-token',
         activeAt: activeAt ?? DateTime.utc(2020),
         attestation: attestation,
+        presenceKid: 'alice-device-presence',
+        presenceAttestation: 'h.p.presence',
       ));
     services = ApprovalServices(
       client: ApprovalClient(baseUrl: 'http://oidc', client: oidc.client),
@@ -227,11 +230,15 @@ void main() {
       final receipt = await signReceipt(
         keys: keys,
         device: DeviceIdentity(
-            key: (await keys.load('alice-device'))!, attestation: 'h.p.s'),
+            approvalKey: (await keys.loadApproval())!,
+            approvalAttestation: 'h.p.s',
+            presenceKey: (await keys.loadPresence())!,
+            presenceAttestation: 'h.p.presence'),
         request: request,
         code: '483920',
         decision: Decision.approve,
         now: vectorNow(),
+        prompt: const ApprovalPrompt(title: 'Approve', subtitle: 'Bank: 10 EUR'),
       );
       expect(receipt['version'], '1');
       expect(receipt['alg'], 'ES256');
@@ -292,7 +299,10 @@ void main() {
       expect(c.phase, ApprovalPhase.ready);
       await c.approve('483920');
       expect(c.phase, ApprovalPhase.approved, reason: c.error);
-      expect(h.gate.asked, 1);
+      // The OS prompt is the gate: one approval signature, no separate biometric check.
+      expect(h.keys.prompts, hasLength(1));
+      expect(h.gate.asked, 0);
+      expect(h.keys.presenceSigned, isEmpty);
       final r = h.oidc.receipts.single;
       final s = (r['signed'] as Map).cast<String, Object?>();
       expect(s['decision'], 'approve');
@@ -389,14 +399,21 @@ void main() {
           '9000.000000');
     });
 
-    test('failed biometric check signs nothing', () async {
+    test('a cancelled prompt leaves the request pending and uses no attempt',
+        () async {
       final h = Harness(vectorRequest('stepup-transaction-approve'));
-      h.gate.pass = false;
       final c = await h.open();
+      h.keys.cancelNextPrompt = true;
       await c.approve('483920');
       expect(c.phase, ApprovalPhase.ready);
+      expect(c.error, contains('cancelled'));
       expect(h.keys.signed, isEmpty);
-      expect(h.oidc.receipts, isEmpty);
+      expect(h.oidc.receipts, isEmpty, reason: 'nothing was sent');
+      expect(h.oidc.attempts, 0, reason: 'no code attempt used');
+      expect(h.oidc.status, 'pending');
+      // The user can approve afterwards.
+      await c.approve('483920');
+      expect(c.phase, ApprovalPhase.approved, reason: c.error);
     });
 
     test('a malformed code is not sent', () async {
@@ -474,6 +491,101 @@ void main() {
       expect(s['binding_code'], '');
       expect(s['binding_message'], 'Invoice 2026-0043');
       expect((await h.history.read()).single.decision, 'deny');
+    });
+  });
+
+  group('two keys', () {
+    test('approve signs with the approval key, once, and nothing else prompts',
+        () async {
+      final h = Harness(vectorRequest('stepup-transaction-approve'));
+      final c = await h.open();
+      await c.approve('483920');
+      expect(c.phase, ApprovalPhase.approved, reason: c.error);
+      expect(h.keys.prompts, hasLength(1));
+      expect(h.keys.signed, hasLength(1));
+      expect(h.keys.presenceSigned, isEmpty);
+      expect(h.gate.asked, 0);
+      final device = (h.oidc.receipts.single['device'] as Map);
+      expect(device['kid'], 'alice-device');
+      expect(device['key_use'], 'approve');
+      expect(device['attestation'], 'h.p.s');
+      // The prompt names the client and the total, from the fetched request.
+      final (title, subtitle) = h.keys.prompts.single;
+      expect(title, ApprovalPrompt.fixedTitle);
+      final request = ConsentRequest.fromJson(h.oidc.request);
+      expect(subtitle, contains(clientLabel(request.client)));
+      expect(subtitle, contains(summarize(request.detail)));
+    });
+
+    test('deny and code_failed are signed by the presence key and never prompt',
+        () async {
+      final h = Harness(vectorRequest('stepup-transaction-approve'));
+      final c = await h.open();
+      await c.approve('000001');
+      await c.approve('000002');
+      await c.approve('000003');
+      expect(c.phase, ApprovalPhase.codeFailed, reason: c.error);
+      // The three wrong codes were approve receipts (prompted three times); the code_failed receipt is the presence key's.
+      expect(h.keys.prompts, hasLength(3));
+      expect(h.keys.presenceSigned, hasLength(1));
+      final last = h.oidc.receipts.last;
+      expect((last['device'] as Map)['kid'], 'alice-device-presence');
+      expect((last['device'] as Map)['key_use'], 'presence');
+      expect((last['device'] as Map)['attestation'], 'h.p.presence');
+
+      final d = Harness(vectorRequest('direct-transaction-deny'));
+      final dc = await d.open();
+      await dc.deny();
+      expect(dc.phase, ApprovalPhase.denied, reason: dc.error);
+      expect(d.keys.prompts, isEmpty);
+      expect(d.keys.presenceSigned, hasLength(1));
+      expect((d.oidc.receipts.single['device'] as Map)['key_use'], 'presence');
+    });
+
+    test('an invalidated approval key turns Approve off and keeps Deny',
+        () async {
+      final h = Harness(vectorRequest('direct-transaction-deny'));
+      h.keys.state = KeysState.approvalKeyInvalidated;
+      final c = await h.open();
+      expect(c.keysState, KeysState.approvalKeyInvalidated);
+      expect(c.canApprove, isFalse);
+      await c.approve('483920');
+      expect(c.phase, ApprovalPhase.ready);
+      expect(c.error, ApprovalKeyInvalidated.message);
+      expect(h.keys.prompts, isEmpty, reason: 'the user is not asked');
+      expect(h.oidc.receipts, isEmpty);
+      await c.deny();
+      expect(c.phase, ApprovalPhase.denied, reason: c.error);
+      expect((h.oidc.receipts.single['device'] as Map)['key_use'], 'presence');
+    });
+
+    test('an approval key that is not bound to the biometrics cannot approve',
+        () async {
+      final h = Harness(vectorRequest('stepup-transaction-approve'));
+      h.keys.authBound = false;
+      final c = await h.open();
+      await c.approve('483920');
+      expect(c.phase, ApprovalPhase.ready);
+      expect(c.error, contains('cannot protect approvals'));
+      expect(h.keys.prompts, isEmpty);
+      expect(h.oidc.receipts, isEmpty);
+    });
+
+    test('an install with one key (no presence key in its record) is refused',
+        () async {
+      final h = Harness(vectorRequest('stepup-transaction-approve'));
+      h.store.write(EnrollmentRecord(
+          kid: 'alice-device',
+          deviceToken: 'dev-token',
+          activeAt: DateTime.utc(2020),
+          attestation: 'h.p.s'));
+      final c = await h.open();
+      await c.approve('483920');
+      expect(c.error, contains('Enroll it again'));
+      await c.deny();
+      expect(c.error, contains('Enroll it again'));
+      expect(h.keys.prompts, isEmpty);
+      expect(h.oidc.receipts, isEmpty);
     });
   });
 

@@ -840,7 +840,8 @@ void main() {
       await tester.pump();
       await tester.pump();
       await tester.pump();
-      expect(h.gate.asked, 1, reason: 'one biometric, one approval');
+      expect(h.keys.prompts, hasLength(1), reason: 'one biometric, one approval');
+      expect(h.gate.asked, 0);
       expect(find.text('Approved.'), findsOneWidget);
       await _end(tester);
     });

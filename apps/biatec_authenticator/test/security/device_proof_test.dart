@@ -1,12 +1,13 @@
 // BCHAT-030: every device call carries a proof of possession of the device key.
 //
 // The last test runs against a mock started in proof mode and is skipped unless MOCK_OIDC_URL is set:
-//   MOCK_TEST_HELPERS=1 MOCK_DEVICE_PROOF=1 pnpm --filter mock-oidc start
+//   MOCK_TWO_KEYS=1 MOCK_TEST_HELPERS=1 MOCK_DEVICE_PROOF=1 pnpm --filter mock-oidc start
 //   flutter test --dart-define=MOCK_OIDC_URL=http://127.0.0.1:8089 test/security/device_proof_test.dart
 import 'dart:convert';
 
 import 'package:biatec_authenticator/approvals/approval_client.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
+import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/security/device_proof.dart';
 import 'package:biatec_authenticator/security/settings_client.dart';
 import 'package:crypto/crypto.dart';
@@ -21,9 +22,17 @@ Map<String, Object?> _part(String jws, int i) => (jsonDecode(
     .cast<String, Object?>();
 
 Future<KeystoreDeviceProofSigner> _signer(SoftwareKeyStore keys,
-    {String? alias = 'alice-device', DateTime? now}) async {
+    {String? alias = 'alice-device-presence', DateTime? now}) async {
   final enrollment = MemoryEnrollmentStore();
-  if (alias != null) await enrollment.writeAlias(alias);
+  // The proof is signed by the presence key, whose kid is in the enrollment record.
+  if (alias != null) {
+    await enrollment.write(EnrollmentRecord(
+        kid: 'alice-device',
+        deviceToken: 'tok',
+        activeAt: DateTime.utc(2020),
+        presenceKid: alias,
+        presenceAttestation: 'p.p.s'));
+  }
   return KeystoreDeviceProofSigner(
       keys: keys, enrollment: enrollment, clock: () => now ?? DateTime.utc(2026, 10, 23, 12));
 }
@@ -39,7 +48,7 @@ void main() {
     final jws = h[deviceProofHeader]!;
     final header = _part(jws, 0);
     final payload = _part(jws, 1);
-    expect(header, {'alg': 'ES256', 'typ': deviceProofType, 'kid': 'alice-device'});
+    expect(header, {'alg': 'ES256', 'typ': deviceProofType, 'kid': 'alice-device-presence'});
     expect(payload['htm'], 'GET');
     expect(payload['htu'], url.toString());
     expect(payload['iat'], DateTime.utc(2026, 10, 23, 12).millisecondsSinceEpoch ~/ 1000);
@@ -47,7 +56,7 @@ void main() {
     expect((payload['jti'] as String).length, greaterThanOrEqualTo(16));
     final parts = jws.split('.');
     expect(
-        verifyEs256(deviceTestKey(), utf8.encode('${parts[0]}.${parts[1]}'),
+        verifyEs256(presenceTestKey(), utf8.encode('${parts[0]}.${parts[1]}'),
             base64Url.decode(base64Url.normalize(parts[2]))),
         isTrue);
     expect(jws, isNot(contains(token)), reason: 'the token itself is never in the proof');
@@ -109,11 +118,35 @@ void main() {
     await expectLater(plain.pending(deviceToken), throwsA(isA<ApprovalException>()));
 
     final enrollment = MemoryEnrollmentStore();
-    await enrollment.writeAlias(info['kid'] as String);
+    // The proof is the presence key's, under its kid.
+    await enrollment.write(EnrollmentRecord(
+        kid: info['kid'] as String,
+        deviceToken: deviceToken,
+        activeAt: DateTime.utc(2020),
+        presenceKid: (info['presence'] as Map)['kid'] as String,
+        presenceAttestation: 'p'));
     final proven = ApprovalClient(
         baseUrl: url,
         proof: KeystoreDeviceProofSigner(keys: keys, enrollment: enrollment, clock: DateTime.now));
     expect(await proven.pending(deviceToken), isA<List>());
     expect(await proven.pending(deviceToken), isA<List>(), reason: 'a fresh proof each call');
+
+    // A proof signed by the approval key is refused by the mock: the approval key never signs a proof.
+    final wrong = MemoryEnrollmentStore();
+    await wrong.write(EnrollmentRecord(
+        kid: info['kid'] as String,
+        deviceToken: deviceToken,
+        activeAt: DateTime.utc(2020),
+        presenceKid: info['kid'] as String,
+        presenceAttestation: 'p'));
+    final approvalKeyProof = ApprovalClient(
+        baseUrl: url,
+        proof: KeystoreDeviceProofSigner(keys: _ApprovalKeySigns(keys), enrollment: wrong, clock: DateTime.now));
+    await expectLater(approvalKeyProof.pending(deviceToken), throwsA(isA<ApprovalException>()));
   }, skip: url.isEmpty ? 'set MOCK_OIDC_URL (mock in proof mode) to run' : false);
+}
+
+/// A store whose "presence" signature is made by the approval key, to show the server refuses a proof by the wrong key.
+class _ApprovalKeySigns extends SoftwareKeyStore {
+  _ApprovalKeySigns(SoftwareKeyStore inner) : super(inner.jwk, presenceJwk: inner.jwk);
 }

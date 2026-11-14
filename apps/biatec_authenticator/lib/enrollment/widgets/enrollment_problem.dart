@@ -93,11 +93,12 @@ EnrollmentProblem classifyEnrollmentError(String error) {
   }
   // The controller's refusals of a key that is not in secure hardware.
   if (error.startsWith('This device keeps the key in') ||
-      error.startsWith('This device cannot say where it keeps the key')) {
+      error.startsWith('This device cannot say where it keeps the key') ||
+      error.startsWith('This phone cannot protect approvals')) {
     return EnrollmentProblem(
         EnrollmentProblemKind.keyNotHardware,
         'This device cannot protect the key',
-        'The key must be kept in secure hardware. $error',
+        'The keys must be kept in secure hardware, and the one that approves must need your fingerprint or face every time. $error',
         'Try again');
   }
   return EnrollmentProblem(
