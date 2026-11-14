@@ -1,7 +1,7 @@
 ---
 id: T-246
 title: "Consent protocol 1.2: relying parties - linking, payment, login and action requests, details hash (universal authenticator)"
-status: blocked
+status: backlog
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-245]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#biatec-authenticator-and-the-biatec-consent-protocol"
 created: 2026-11-13
-updated: 2026-11-13
+updated: 2026-11-15
 ---
 
 # T-246 - Consent protocol 1.2: relying parties
@@ -84,3 +84,4 @@ Filled in when the task moves to review.
 ## Activity log
 
 - 2026-11-13 09:05 · scholtz · (new) → blocked · created from revision 2 of the consent architecture record (AlgorandGoogleDriveAccount issue 23): universal authenticator
+- 2026-11-15 00:42 · kanban-board · blocked → backlog · blockers done: T-245

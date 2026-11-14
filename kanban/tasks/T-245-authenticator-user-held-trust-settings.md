@@ -1,7 +1,7 @@
 ---
 id: T-245
 title: "Authenticator: the user's own threshold, linked services, trusted applications (all trust is set on the phone)"
-status: review
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-242]
@@ -14,7 +14,7 @@ owner: "session-20261115-0215"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#biatec-authenticator-and-the-biatec-consent-protocol"
 created: 2026-11-13
-updated: 2026-11-14
+updated: 2026-11-15
 ---
 
 # T-245 - Authenticator: threshold, linked services, trusted applications
@@ -80,9 +80,12 @@ PR #416, `task/T-245` @ 05abcda. Local: `flutter test` 1346 pass, mock-oidc 78, 
 
 ## Review
 
+- 2026-11-15 00:42 · approve · PR #416 merged into main @ 2071fc0 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-13 09:05 · scholtz · (new) → blocked · created from revision 2 of the consent architecture record (AlgorandGoogleDriveAccount issue 23): all trust is the user's, threshold is the user's
 - 2026-11-14 23:55 · kanban-board · blocked → backlog · blockers done: T-242
 - 2026-11-15 02:15 · scholtz · backlog → in-progress · claimed by session-20261115-0215 on task/T-245
 - 2026-11-15 05:30 · scholtz · in-progress → review · PR #416 @ 05abcda
+- 2026-11-15 00:42 · user · review → done · PR #416 merged into main @ 2071fc0 (synced by kanban-sync)
