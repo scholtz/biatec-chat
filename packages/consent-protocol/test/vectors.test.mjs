@@ -589,6 +589,23 @@ test("the settings schema accepts a label with ZWNJ, ZWJ and VS16 (the verifier 
   assert.equal(valid("settings-change-signed", base), true);
 });
 
+test("client ids are keys in NFC, and a nonce has the base64url alphabet only", () => {
+  const base = device.settings_changes.find((x) => x.expected.accepted);
+  const withClient = (id) => {
+    const e = clone(base.envelope);
+    e.signed.change = { clients: { [id]: { always_ask: true } } };
+    e.signature = signEs256(keys.device, Buffer.from(jcs(e.signed), "utf8"));
+    return verifyDeviceSigned(e, jwks, DO, ACTIVE);
+  };
+  assert.equal(withClient("caf\u00e9"), true);
+  assert.equal(withClient("cafe\u0301"), false, "not NFC");
+  const dotted = clone(base.envelope);
+  dotted.signed.nonce = "dotted.nonce.with.dots.0000";
+  dotted.signature = signEs256(keys.device, Buffer.from(jcs(dotted.signed), "utf8"));
+  assert.equal(verifyDeviceSigned(dotted, jwks, DO, ACTIVE), false);
+  assert.equal(valid("settings-change-signed", dotted.signed), false, "the schema says so too");
+});
+
 test("the pairing helper refuses ambiguous input", () => {
   const p = device.pairing_code;
   assert.throws(() => pairingCode(p.new_approval_jwk_thumbprint, p.new_presence_jwk_thumbprint, "enroll.nonce.with.dots.0000"));

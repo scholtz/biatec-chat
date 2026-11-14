@@ -19,8 +19,8 @@ const publicOf = ({ d, ...pub }) => pub;
 const pubJwk = (k) => ({ kty: "EC", crv: "P-256", x: k.x, y: k.y });
 
 // Refuse before anything is written: a run without --force must leave the working tree alone.
-if (existsSync(join(dir, "receipts.json")) && !process.argv.includes("--force")) {
-  console.error("vectors/receipts.json exists; ECDSA signatures are randomized so regenerating rewrites every vector. Pass --force to overwrite.");
+if ((existsSync(join(dir, "receipts.json")) || existsSync(join(dir, "device-signed.json"))) && !process.argv.includes("--force")) {
+  console.error("vectors/receipts.json or vectors/device-signed.json exists; ECDSA signatures are randomized so regenerating rewrites every vector. Pass --force to overwrite.");
   process.exit(1);
 }
 

@@ -182,12 +182,15 @@ function verifiedClaims(receipt, jwks, opts = {}) {
 export function pairingCode(newApprovalThumbprint, newPresenceThumbprint, nonce) {
   // Fixed shapes, so the input cannot be split two ways: two 43-character thumbprints and a nonce without a dot.
   const thumb = /^[A-Za-z0-9_-]{43}$/;
-  if (!thumb.test(newApprovalThumbprint) || !thumb.test(newPresenceThumbprint) || typeof nonce !== "string" || nonce.length < 16 || nonce.length > 128 || nonce.includes(".")) throw new Error("invalid pairing code input");
+  if (!thumb.test(newApprovalThumbprint) || !thumb.test(newPresenceThumbprint) || !NONCE.test(nonce)) throw new Error("invalid pairing code input");
   const d = createHash("sha256").update(`${newApprovalThumbprint}.${newPresenceThumbprint}.${nonce}`, "utf8").digest();
   return String(d.readUInt32BE(0) % 1_000_000).padStart(6, "0");
 }
 
 const SIGNED_WINDOW_SECONDS = 300;
+
+/** A statement or enrollment nonce: 16 to 128 characters of base64url alphabet (no dot, so the pairing code input has one reading). */
+const NONCE = /^[A-Za-z0-9_-]{16,128}$/;
 
 /** The exact members of each device-signed statement (the schemas set additionalProperties false). */
 const MEMBERS_OF = {
@@ -247,7 +250,7 @@ function settingsChangeWellFormed(change) {
   if ("threshold_eur" in change && !(typeof change.threshold_eur === "string" && AMOUNT.test(change.threshold_eur))) return false;
   for (const k of ["block_unproven_clients", "biometric_required", "ask_on_test_networks"]) if (k in change && typeof change[k] !== "boolean") return false;
   if ("clients" in change && (change.clients === null || typeof change.clients !== "object" || Array.isArray(change.clients) || Object.keys(change.clients).length === 0 || Object.keys(change.clients).length > 50)) return false;
-  if (Object.keys(change.clients ?? {}).some((id) => id.length === 0 || [...id].length > 200 || /[\u0000-\u001F\u007F-\u009F]/.test(id))) return false; // a client id is a bounded printable key
+  if (Object.keys(change.clients ?? {}).some((id) => id.length === 0 || [...id].length > 200 || id !== id.normalize("NFC") || /[\u0000-\u001F\u007F-\u009F]/.test(id))) return false; // a client id is a bounded printable key
   for (const c of Object.values(change.clients ?? {})) {
     if (c === null || typeof c !== "object" || Object.keys(c).length === 0) return false;
     if (Object.keys(c).some((k) => !MEMBERS.has(k))) return false;
@@ -288,15 +291,16 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
     const now = opts.now ?? nowSeconds();
     const s = envelope.signed;
     if (envelope.alg !== "ES256") return false;
-    if (!verifyEs256(envelope.device.public_key, Buffer.from(jcs(s), "utf8"), envelope.signature)) return false;
     const settings = s.type === "biatec_settings_change";
     const approval = s.type === "biatec_device_approval";
     if (!settings && !approval) return false;
     // Cheap preconditions first, so an envelope that fails them costs nothing more.
     if (expect.approverActive !== true) return false; // a pending device (the first 24 hours, or one just enrolled by an attacker) cannot loosen anything
     if (!(opts.usedNonces instanceof Set)) return false; // without the set of used nonces a replay cannot be told
-    if (typeof s.nonce !== "string" || s.nonce.length < 16 || s.nonce.length > 128 || opts.usedNonces.has(s.nonce)) return false;
+    if (!NONCE.test(s.nonce) || opts.usedNonces.has(s.nonce)) return false;
     if (!Number.isInteger(s.issued_at) || Math.abs(now - s.issued_at) > SIGNED_WINDOW_SECONDS) return false;
+    // The signature, once the cheap preconditions above held (a replayed or stale statement costs no P-256 verification).
+    if (!verifyEs256(envelope.device.public_key, Buffer.from(jcs(s), "utf8"), envelope.signature)) return false;
     // The signed object has exactly the members the schema allows: nothing rides along unsigned-looking but signed.
     const memberList = MEMBERS_OF[s.type];
     if (Object.keys(s).length !== memberList.length || !memberList.every((k) => k in s)) return false;
@@ -369,7 +373,7 @@ export function verifyEnrollmentProof(jws, expect = {}) {
     // The key ids the device is registered under are the ones the proof names (the caller says which: both are required).
     if (typeof expect.kid !== "string" || expect.kid === "" || payload.kid !== expect.kid) return false;
     if (typeof expect.presence_kid !== "string" || expect.presence_kid === "" || payload.presence_kid !== expect.presence_kid) return false;
-    if (typeof expect.nonce !== "string" || expect.nonce.length < 16 || expect.nonce.length > 128) return false; // the shape the schema requires
+    if (!NONCE.test(expect.nonce)) return false; // the shape the schema requires
     if (payload.nonce !== expect.nonce || expect.usedNonces.has(payload.nonce)) return false;
     if (!expect.presence_public_key || payload.presence_jwk_thumbprint !== thumbprint(expect.presence_public_key)) return false;
     if (!Number.isInteger(payload.iat) || Math.abs(now - payload.iat) > SIGNED_WINDOW_SECONDS) return false;

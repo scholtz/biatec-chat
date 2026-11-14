@@ -10,7 +10,7 @@
     "type": { "const": "biatec_settings_change" },
     "sub": { "type": "string", "minLength": 1, "description": "The device's enrollment subject." },
     "kid": { "type": "string", "minLength": 1, "description": "The approval key's id: the device that signs." },
-    "nonce": { "type": "string", "minLength": 16, "maxLength": 128, "description": "Single use per device." },
+    "nonce": { "type": "string", "pattern": "^[A-Za-z0-9_-]{16,128}$", "minLength": 16, "maxLength": 128, "description": "Single use per device." },
     "issued_at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "Unix time in seconds; accepted within 300 seconds of the server's clock." },
     "change": {
       "type": "object",
