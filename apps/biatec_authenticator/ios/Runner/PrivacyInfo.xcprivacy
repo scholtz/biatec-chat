@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<!-- Privacy manifest of the app itself. No tracking, no tracking domains, no analytics. The app sends, to Biatec OIDC only: the push token
-	     (a device identifier, used to deliver approval requests), and the device token, key and signed approvals and settings changes,
+	     (a device identifier, only in a build with the optional Apple wake, used to wake the app for approval requests), and the device token, key and signed approvals and settings changes,
 	     which are tied to the user's Biatec account (a user ID). Both are for the app's function. Libraries bring their own manifests. -->
 	<key>NSPrivacyTracking</key>
 	<false/>

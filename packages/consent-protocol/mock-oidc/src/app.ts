@@ -6,7 +6,8 @@
 //   GET  /consent/receipts/:auth_req_id       receipt retrieval by the owning client
 //   POST /devices                             device enrollment (rule 7), optionally with a platform attestation
 //   POST /devices/challenge, PUT /devices/attestation   single-use nonce for a platform attestation, and its refresh (T-234)
-//   PUT  /devices/push                        register or replace the device's FCM/APNs token
+//   PUT  /devices/push                        register or replace the device's APNs token (fcm: 400 unsupported_push_provider, T-244)
+//   POST /devices/hub-ticket, WS /hubs/device  the device channel (SignalR JSON hub protocol, src/device-hub.ts, T-244)
 //   GET  /devices/requests, GET /consent/requests/:id, POST /consent/requests/:id/receipt   authenticator side
 //   GET  /consent/settings                    the calling client's view of the user's consent settings (bearer; row 20)
 //   GET  /.well-known/jwks.json, /.well-known/openid-configuration
@@ -21,6 +22,7 @@
 // auth_req_id (GET /mock/push-outbox shows what would be sent). Nothing is sent to FCM or APNs.
 // Rules enforced: 2 (binding code, 3 attempts), 4 (first use), 5 (300 s, single use, group-hash binding),
 // 7 (24 h inactive first device), 8 (no device, no above-threshold actions), 9 (offline-verifiable receipts).
+import { createDeviceHub } from "./device-hub.ts";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -92,12 +94,16 @@ export interface MockOptions {
   maxPendingPerClientOrigin?: number;
   /** New requests per user and client per hour (default 60, rule 10). */
   maxRequestsPerHour?: number;
+  /** A device channel connection is closed (allowReconnect true) after this many seconds (default 1800; MOCK_HUB_LIFETIME_SECONDS in `server.ts`). */
+  hubLifetimeSeconds?: number;
+  /** Seconds between pings the channel sends (default 15). */
+  hubPingSeconds?: number;
 }
 
 /** A device has an approval key (its `kid`, `publicKey`, `attestation`) and optionally a presence key; each is attested for its own use. */
 interface PresenceKey { kid: string; publicKey: Record<string, string>; attestation: string }
 interface Device { kid: string; sub: string; publicKey: Record<string, string>; token: string; activeAt: number; cancelled: boolean; attestation: string; presence?: PresenceKey; recoveryCode?: string; recoveryAcknowledged?: boolean; push?: PushTarget; platformAttestation?: { kind: string; attestedAt: number } }
-interface PushTarget { provider: "fcm" | "apns"; token: string }
+interface PushTarget { provider: "apns"; token: string }
 // What a real deployment hands to FCM or APNs. The data payload is the request id and nothing else.
 interface PushMessage { kid: string; provider: PushTarget["provider"]; token: string; data: { auth_req_id: string } }
 interface Pending {
@@ -187,6 +193,14 @@ export function createMockOidc(options: MockOptions = {}) {
   const pending = new Map<string, Pending>();
   const consumed = new Set<string>();
   const pushOutbox: PushMessage[] = [];
+  const hub = createDeviceHub({ now, lifetimeSeconds: options.hubLifetimeSeconds, pingSeconds: options.hubPingSeconds });
+  const closedAnnounced = new Set<string>();
+  /** Tells the connected devices of the user that a request is no longer open (once per request). */
+  function announceClosed(p: Pending) {
+    if (closedAnnounced.has(p.request.auth_req_id)) return;
+    closedAnnounced.add(p.request.auth_req_id);
+    hub.notify(p.request.sub, "consent_closed", { auth_req_id: p.request.auth_req_id });
+  }
   // Consent settings beyond what the seed holds (T-084). Keys: sub, or sub|clientId.
   const accountSettings = new Map<string, { biometricRequired: boolean; blockUnverified: boolean; askOnTestNetworks: boolean }>();
   const clientSettings = new Map<string, { perClientThresholdEur?: number; pausedUntil?: number }>();
@@ -364,6 +378,7 @@ export function createMockOidc(options: MockOptions = {}) {
     pending.set(authReqId, { request, code, attempts: 0, clientId: opts.client.id, status: "pending", tokenIssued: false, scope: opts.scope, limitsBody: opts.limitsBody, interval: POLL_INTERVAL_SECONDS, spend: "none" });
     for (const d of activeDevices(opts.user.sub)) if (d.push) pushOutbox.push({ kid: d.kid, ...d.push, data: { auth_req_id: authReqId } });
     if (pushOutbox.length > 500) pushOutbox.splice(0, pushOutbox.length - 500); // a long-running mock keeps the recent ones
+    hub.notify(opts.user.sub, "consent_request", { auth_req_id: authReqId });
     return { authReqId, code, expiresIn: opts.requestedExpiry };
   }
 
@@ -642,7 +657,8 @@ export function createMockOidc(options: MockOptions = {}) {
   }
 
   function pushTarget(v: any): PushTarget {
-    if (!v || (v.provider !== "fcm" && v.provider !== "apns") || typeof v.token !== "string" || !v.token || v.token.length > 4096) throw new HttpError(400, "invalid_request", "push needs provider fcm or apns and a token");
+    if (v && v.provider === "fcm") throw new HttpError(400, "unsupported_push_provider", "this server does not push through Firebase; use the device channel (POST /devices/hub-ticket) or apns");
+    if (!v || v.provider !== "apns" || typeof v.token !== "string" || !v.token || v.token.length > 4096) throw new HttpError(400, "invalid_request", "push needs provider apns and a token");
     return { provider: v.provider, token: v.token };
   }
 
@@ -719,6 +735,7 @@ export function createMockOidc(options: MockOptions = {}) {
     }
     const d = addDevice(t.sub, body.kid, { kty: "EC", crv: "P-256", x: pk.x, y: pk.y }, activeAt, undefined, presence);
     setPush(d, push);
+    hub.notify(d.sub, "device_enrolled", { kid: d.kid });
     d.platformAttestation = platformAttestation;
     return { status: 201, body: { kid: d.kid, active: d.activeAt <= now(), active_at: d.activeAt, attestation: d.attestation, ...(d.presence ? { presence_kid: d.presence.kid, presence_attestation: d.presence.attestation } : {}), device_token: d.token, cancel_notice_sent_to_existing_devices: hadActive && activeAt > now(), ...(platformAttestation ? { attestation_refresh_after: now() + ATTESTATION_REFRESH_SECONDS } : {}) } };
   }
@@ -758,6 +775,7 @@ export function createMockOidc(options: MockOptions = {}) {
     if (decision === "deny") {
       p.status = "denied";
       p.receipt = receipt;
+      announceClosed(p);
       return { status: 200, body: { status: "denied" } };
     }
     if (decision === "code_failed") {
@@ -771,6 +789,7 @@ export function createMockOidc(options: MockOptions = {}) {
       p.attempts += 1;
       if (p.attempts >= MAX_CODE_ATTEMPTS) {
         p.status = "code_failed";
+        announceClosed(p);
         throw new HttpError(403, "access_denied", "the third wrong binding code ends the request", { reason: "code_failed", attempts_remaining: 0 });
       }
       throw new HttpError(400, "wrong_code", "the binding code does not match", { attempts_remaining: MAX_CODE_ATTEMPTS - p.attempts });
@@ -778,6 +797,7 @@ export function createMockOidc(options: MockOptions = {}) {
     if (!verifyApproval(receipt, jwks, r, p.code, consumed, { issuer, now: now(), deviceActive: isActive(d) })) throw new HttpError(400, "invalid_receipt", "approval does not verify");
     p.status = "approved";
     p.receipt = receipt;
+    announceClosed(p);
     // Approving links the client (rule 4: only a client the user approved before is not asked again for a value below the threshold),
     // and `remember` is the user's own trust in the applications of this request, kept for this client.
     userMap.get(p.request.sub)!.used.add(p.clientId);
@@ -902,6 +922,7 @@ export function createMockOidc(options: MockOptions = {}) {
       settingsNonces.add(d.kid + "|" + s.nonce);
     }
     applyChange(d.sub, body.change);
+    hub.notify(d.sub, "settings_changed", {});
     return { status: 200, body: { applied: true, loosened: loosening, settings: settingsView(d.sub) } };
   }
 
@@ -956,6 +977,7 @@ export function createMockOidc(options: MockOptions = {}) {
     if (target.activeAt <= now()) throw new HttpError(409, "conflict", "only a pending enrollment can be cancelled");
     target.cancelled = true;
     target.push = undefined;
+    hub.closeDevice(kid, false);
     return { status: 200, body: { kid, cancelled: true } };
   }
 
@@ -1022,6 +1044,10 @@ export function createMockOidc(options: MockOptions = {}) {
       setPush(d, target);
       return { status: 200, body: { kid: d.kid, provider: d.push!.provider } };
     }
+    if (m === "POST" && path === "/devices/hub-ticket") {
+      const d = deviceAuth(req);
+      return { status: 200, body: hub.issueTicket(d.sub, d.kid) };
+    }
     if (m === "GET" && path === "/devices") return listDevices(req);
     if (m === "POST" && (x = path.match(/^\/devices\/([^/]+)\/cancel$/))) return cancelDevice(req, decodeURIComponent(x[1]));
     if (m === "GET" && path === "/consent/settings") return consentSettings(req, url);
@@ -1058,7 +1084,14 @@ export function createMockOidc(options: MockOptions = {}) {
       const d = devices.get(x[1]);
       if (!d) throw new HttpError(404, "not_found");
       d.activeAt = now();
+      hub.notify(d.sub, "device_enrolled", { kid: d.kid });
       return { status: 200, body: { kid: d.kid, active: true } };
+    }
+    if (m === "POST" && path === "/mock/hub/close") {
+      const b = await readBody(req);
+      if (typeof b.kid !== "string") throw new HttpError(400, "invalid_request", "kid is required");
+      hub.closeDevice(b.kid, b.allow_reconnect !== false);
+      return { status: 200, body: { closed: true } };
     }
     throw new HttpError(404, "not_found");
   }
@@ -1075,10 +1108,17 @@ export function createMockOidc(options: MockOptions = {}) {
       },
     );
   });
+  hub.attach(server);
+  // A request that runs out is announced when the mock's clock passes its expiry (the mock otherwise only notices when asked).
+  const sweep = setInterval(() => {
+    for (const p of pending.values()) if (p.status === "pending" && expired(p)) announceClosed(p);
+  }, 1000);
+  sweep.unref();
+  server.on("close", () => clearInterval(sweep));
   function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string>) {
     res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Biatec-Min-App-Build": String(minAppBuild), ...headers });
     res.end(JSON.stringify(body));
   }
 
-  return { server, issuer, jwks, keys, state: { pending, consumed, devices, users: userMap, tokens, pushOutbox, accountSettings, clientSettings, trustedApplications, firstSigned, noDeviceSpends } };
+  return { server, issuer, jwks, keys, hub, state: { pending, consumed, devices, users: userMap, tokens, pushOutbox, accountSettings, clientSettings, trustedApplications, firstSigned, noDeviceSpends } };
 }

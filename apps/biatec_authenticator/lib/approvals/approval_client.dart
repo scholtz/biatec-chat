@@ -9,9 +9,12 @@ import 'consent_request.dart';
 /// The request could not be reached or read. [offline] is true when the
 /// server was not reachable at all.
 class ApprovalException implements Exception {
-  const ApprovalException(this.message, {this.offline = false});
+  const ApprovalException(this.message, {this.offline = false, this.status});
   final String message;
   final bool offline;
+
+  /// The HTTP status when Biatec OIDC answered with one that refused the call, else null.
+  final int? status;
   @override
   String toString() => message;
 }
@@ -47,6 +50,13 @@ class ReceiptRefused extends ReceiptOutcome {
   final int status;
   final String error;
   final String description;
+}
+
+/// A single-use ticket for the device channel. [expiresIn] is in seconds, when the server said.
+class HubTicket {
+  const HubTicket(this.ticket, this.expiresIn);
+  final String ticket;
+  final int? expiresIn;
 }
 
 /// The authenticator side of Biatec OIDC (the mock in development), using
@@ -155,8 +165,38 @@ class ApprovalClient {
     }
   }
 
-  /// `PUT /devices/push`: where Biatec OIDC sends this device's
-  /// notifications (T-053).
+  /// `POST /devices/hub-ticket`: a single-use ticket for one connection of the device channel. It is signed like every device call (device token and device proof), so the channel never opens without the device key. The ticket is short-lived and goes in the WebSocket URL, so it is never logged.
+  Future<HubTicket> hubTicket(String deviceToken) async {
+    final url = Uri.parse('$baseUrl/devices/hub-ticket');
+    final res = await _send(() async => _client.post(
+          url,
+          headers: await _auth('POST', url, deviceToken,
+              {'Content-Type': 'application/json'}),
+          body: '{}',
+        ));
+    // The status first: a bare 401 or 403 (no body, or not JSON, as ASP.NET Core sends) is still a refusal with a status.
+    if (res.statusCode != 200) {
+      Map<String, Object?> json = const {};
+      try {
+        json = _object(res.body, res.statusCode);
+      } on ApprovalException {
+        // No readable body: the status says enough.
+      }
+      throw ApprovalException(
+          'No channel ticket (${res.statusCode}): ${_detail(json)}',
+          status: res.statusCode);
+    }
+    final json = _object(res.body, res.statusCode);
+    final ticket = json['ticket'];
+    final expires = json['expires_in'];
+    if (ticket is! String || ticket.isEmpty) {
+      throw const ApprovalException('Malformed channel ticket.');
+    }
+    return HubTicket(ticket, expires is int ? expires : null);
+  }
+
+  /// `PUT /devices/push`: the Apple push token (provider `apns`), which only
+  /// wakes an iPhone whose app is not running. The channel itself needs none.
   Future<void> registerPush(
       String deviceToken, String provider, String pushToken) async {
     final url = Uri.parse('$baseUrl/devices/push');

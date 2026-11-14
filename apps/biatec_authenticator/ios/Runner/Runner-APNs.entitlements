@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Only for a build with the optional Apple wake (--dart-define=APNS_ENABLED=true): Runner.entitlements plus the push entitlement. Point
+	     CODE_SIGN_ENTITLEMENTS at this file for that build only (README, "The optional Apple wake"); the committed project does not use it, so a normal
+	     build has no push entitlement. -->
+	<key>aps-environment</key>
+	<string>production</string>
+	<key>com.apple.developer.devicecheck.appattest-environment</key>
+	<string>production</string>
+</dict>
+</plist>

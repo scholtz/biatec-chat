@@ -12,6 +12,8 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // flutter_local_notifications relies on core library desugaring (its README, "Gradle setup").
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -71,6 +73,8 @@ kotlin {
 }
 
 dependencies {
+    // Required by flutter_local_notifications (java.time on older Android versions). Its Gson ProGuard rules ship with the plugin from v19.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     // The strong-biometric prompt of the two-factor vault (VaultPlugin), also used by the biometric lock (BiometricChannel).
     implementation("androidx.biometric:biometric:1.1.0")
     // Play Integrity, for the platform attestation at enrollment (AttestationChannel).

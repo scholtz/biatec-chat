@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resource shrinking keeps the launcher icon: the notifications (flutter_local_notifications) and the service notification name it by resource, which the shrinker cannot see. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@mipmap/ic_launcher*,@drawable/ic_launcher*" />

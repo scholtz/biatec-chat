@@ -246,10 +246,16 @@ importers:
       algosdk:
         specifier: 3.9.0
         version: 3.9.0
+      ws:
+        specifier: 8.22.0
+        version: 8.22.0
     devDependencies:
       '@types/node':
         specifier: ^22.15.0
         version: 22.20.5
+      '@types/ws':
+        specifier: 8.18.2
+        version: 8.18.2
       typescript:
         specifier: ^5.9.2
         version: 5.9.3

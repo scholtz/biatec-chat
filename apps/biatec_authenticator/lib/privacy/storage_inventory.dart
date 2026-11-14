@@ -76,17 +76,17 @@ const sentToBiatec = [
   ),
   DataItem(
     'The notification address',
-    'The token your phone\'s push service gave this app, so Biatec OIDC can '
-        'tell you that a request is waiting.',
+    'Only with the optional Apple wake: the token Apple gave this app, so '
+        'Biatec OIDC can wake it. The app also keeps one connection open.',
   ),
 ];
 
-/// What the push service (Google or Apple) sees.
+/// What the push service (Apple, in a build with the optional wake) sees. There is no other push service.
 const sentToPushService = [
   DataItem(
     'A notice that something is waiting',
-    'The push service delivers it to this phone. It carries no amount, name or '
-        'code; the app fetches the request from Biatec OIDC when you open it.',
+    'Apple delivers it, only with the optional wake. It carries no amount, '
+        'name or code.',
   ),
 ];
 

@@ -18,5 +18,9 @@ const jsonGroups = process.env.MOCK_JSON_GROUPS === "1";
 const maxPendingPerClientOrigin = process.env.MOCK_MAX_PENDING ? Number(process.env.MOCK_MAX_PENDING) : undefined;
 const maxRequestsPerHour = process.env.MOCK_MAX_PER_HOUR ? Number(process.env.MOCK_MAX_PER_HOUR) : undefined;
 for (const n of [maxPendingPerClientOrigin, maxRequestsPerHour]) if (n !== undefined && (!Number.isInteger(n) || n < 1)) throw new Error("MOCK_MAX_PENDING and MOCK_MAX_PER_HOUR must be whole numbers of at least 1");
-const { server, issuer } = createMockOidc({ testHelpers, deviceProof, minAppBuild, jsonGroups, maxPendingPerClientOrigin, maxRequestsPerHour });
+// MOCK_HUB_LIFETIME_SECONDS=<n>: the device channel (WS /hubs/device) closes a connection after n seconds (default 1800). MOCK_HUB_PING_SECONDS=<n>: ping interval (default 15).
+const hubLifetimeSeconds = process.env.MOCK_HUB_LIFETIME_SECONDS ? Number(process.env.MOCK_HUB_LIFETIME_SECONDS) : undefined;
+const hubPingSeconds = process.env.MOCK_HUB_PING_SECONDS ? Number(process.env.MOCK_HUB_PING_SECONDS) : undefined;
+for (const n of [hubLifetimeSeconds, hubPingSeconds]) if (n !== undefined && !(n > 0)) throw new Error("MOCK_HUB_LIFETIME_SECONDS and MOCK_HUB_PING_SECONDS must be positive numbers");
+const { server, issuer } = createMockOidc({ hubLifetimeSeconds, hubPingSeconds, testHelpers, deviceProof, minAppBuild, jsonGroups, maxPendingPerClientOrigin, maxRequestsPerHour });
 server.listen(port, host, () => console.log(`mock-oidc (${issuer}) listening on http://${host}:${port}${testHelpers ? " with test helpers (MOCK_TEST_HELPERS=1)" : ""}`));

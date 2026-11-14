@@ -31,7 +31,14 @@ abstract final class PinnedHttp {
   static PinPolicy _policy = PinPolicy.none();
 
   /// Set once at startup, before the first request.
-  static void configure(PinPolicy policy) => _policy = policy;
+  static void configure(PinPolicy policy) {
+    _policy = policy;
+    // A client made under the old policy is not kept.
+    _webSocketClient?.close();
+    _webSocketClient = null;
+  }
+
+  static HttpClient? _webSocketClient;
 
   static PinPolicy get policy => _policy;
 
@@ -46,6 +53,12 @@ abstract final class PinnedHttp {
   /// A client that enforces [policy]. Plain `http` is only for a local developer machine in a debug build ([allowLocalHttp]).
   static http.Client create(PinPolicy policy, {bool? allowLocalHttp}) =>
       _PinnedClient(policy, allowLocalHttp ?? kDebugMode);
+
+  /// An `HttpClient` with the same rules as [create] (no system authorities, a certificate must match a pin), for the WebSocket of the device channel. The channel's `wss` handshake goes through it, so a socket is never opened on trust the HTTPS calls would refuse.
+  ///
+  /// One client is made and reused by every connection (a client per attempt would leave a security context and sockets behind), until [configure] runs again.
+  static HttpClient webSocketClient() =>
+      _webSocketClient ??= _PinnedClient(_policy, kDebugMode).httpClient;
 }
 
 class _LazyClient extends http.BaseClient {
@@ -69,7 +82,7 @@ class _PinnedClient extends http.BaseClient {
   _PinnedClient(this._policy, this._allowLocalHttp) {
     final context = SecurityContext(withTrustedRoots: false)
       ..minimumTlsProtocolVersion = TlsProtocolVersion.tls1_2;
-    final io = HttpClient(context: context)
+    final io = httpClient = HttpClient(context: context)
       ..badCertificateCallback = _check
       ..connectionTimeout = const Duration(seconds: 15);
     _https = IOClient(io);
@@ -77,6 +90,7 @@ class _PinnedClient extends http.BaseClient {
 
   final PinPolicy _policy;
   final bool _allowLocalHttp;
+  late final HttpClient httpClient;
   late final IOClient _https;
   http.Client? _plain;
 
