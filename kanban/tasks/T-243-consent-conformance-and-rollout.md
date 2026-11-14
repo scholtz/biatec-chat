@@ -1,7 +1,7 @@
 ---
 id: T-243
 title: "Run the conformance kit against a real Biatec OIDC, and write the consent rollout checklist (flags, stage test script)"
-status: in-progress
+status: review
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-237, T-238, T-240]
@@ -49,10 +49,10 @@ Parallel work possible: **no**. T-245 and T-246 add cases to the same conformanc
 
 ## Acceptance criteria
 
-- [ ] `pnpm --filter conformance test` passes against the mock as before.
-- [ ] With `CONFORMANCE_OIDC_URL` set to a server that lacks the mock helpers, the run completes, skips are listed with reasons, and no token or code appears in the report (asserted by a test that feeds marker values).
-- [ ] `docs/consent-rollout.md` exists with the four parts above.
-- [ ] The run against stage and the manual script are recorded in the Hand-off with their results, or the Hand-off says plainly that they were not run and why (server not deployed, no phone).
+- [x] `pnpm --filter conformance test` passes against the mock as before.
+- [x] With `CONFORMANCE_OIDC_URL` set to a server that lacks the mock helpers, the run completes, skips are listed with reasons, and no token or code appears in the report (asserted by a test that feeds marker values).
+- [x] `docs/consent-rollout.md` exists with the four parts above.
+- [x] The run against stage and the manual script are recorded in the Hand-off with their results, or the Hand-off says plainly that they were not run and why (server not deployed, no phone).
 
 ## Implementation notes
 
@@ -65,7 +65,14 @@ Parallel work possible: **no**. T-245 and T-246 add cases to the same conformanc
 
 ## Hand-off
 
-Filled in when the task moves to review.
+PR #413, `task/T-243` @ 8159e14. `pnpm --filter @biatec/consent-protocol conformance` 52 pass (mock), `pnpm --filter mock-oidc test` 59 pass; CI backend, js, images, authenticator-security pass (the `authenticator` job fails on the Flutter SDK drift that also fails on main; this PR touches no authenticator file).
+
+- Conformance kit: `CONFORMANCE_OIDC_URL`, declared needs per case, skips with reasons, env-only inputs, per-run redacted report with run state and commit/dirty paths; no raw reports for external servers; a test feeds marker secrets and asserts none appears.
+- `docs/consent-rollout.md` (four parts, minimum pass set for a stage run), `docs/required-changes-biatec-oidc.md` status per row (as of 2026-11-14), accurate threat-model/architecture statements, stage overlay with the two caps settings at their current values.
+- NOT run: the conformance run against stage and the manual phone script (no stage access, no phone; the Biatec OIDC consent issues 23 to 38 are still open). `tsc --noEmit` cannot run in the conformance package (no TypeScript installed); vitest compiles the files.
+- Known limits: the status table of another repository goes stale (the refresh command is in the heading); the report's commit stamp lists dirty paths.
+
+**Unblocks:** nothing directly (T-245 and T-246 add cases to the same kit).
 
 ## Review
 
@@ -76,3 +83,4 @@ Filled in when the task moves to review.
 - 2026-11-13 09:05 · scholtz · blocked → blocked · amended for revision 2 (proven domain, user-set threshold and trusted application in the stage script)
 - 2026-11-14 15:18 · kanban-board · blocked → backlog · blockers done: T-237, T-238, T-240
 - 2026-11-14 18:30 · scholtz · backlog → in-progress · claimed by session-20261114-1830 on task/T-243
+- 2026-11-14 19:20 · scholtz · in-progress → review · PR #413 @ 8159e14
