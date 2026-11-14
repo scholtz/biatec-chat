@@ -58,8 +58,8 @@ Parallel work possible: **yes** (after T-240, which also changes the mock; T-241
 - [x] Controller tests: each event has the effect above; the notification text contains nothing from the payload.
 - [x] Contract test against the mock: a request opened in the mock arrives over the channel.
 - [x] Setting off → no service is started (test on the service starter fake); setting on → started, and stopped when the device is unenrolled.
-- [x] `flutter analyze` and `flutter test` pass; `./gradlew :app:compileDebugKotlin` compiles; `pnpm --filter mock-oidc test` passes.
-- [x] Manual checklist in the README for a person with an Android phone (request arrives with the app in the background and the setting on; nothing arrives with it off until the app is opened) and an iPhone (arrives in the foreground). The Hand-off says which were run.
+- [ ] `flutter analyze` and `flutter test` pass; `./gradlew :app:compileDebugKotlin` compiles; `pnpm --filter mock-oidc test` passes.
+- [ ] Manual checklist in the README for a person with an Android phone (request arrives with the app in the background and the setting on; nothing arrives with it off until the app is opened) and an iPhone (arrives in the foreground). The Hand-off says which were run.
 
 ## Implementation notes
 
