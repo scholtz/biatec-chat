@@ -50,25 +50,41 @@ Map<String, Object?> signedObject(
 String renderedBindingMessage(ConsentRequest request) =>
     request.client.verified ? request.bindingMessage : '';
 
-/// What the device needs to sign a receipt.
+/// What the device needs to sign a receipt: both public keys with the attestation Biatec OIDC issued for each (protocol 1.1: each key has its own, naming its use).
 class DeviceIdentity {
   const DeviceIdentity({
-    required this.key,
-    required this.attestation,
+    this.approvalKey,
+    this.approvalAttestation,
+    required this.presenceKey,
+    required this.presenceAttestation,
   });
 
-  /// The enrolled hardware key; [DeviceKey.kid] is also the keystore alias.
-  final DeviceKey key;
+  /// The approval key (bound to the biometric check) and its attestation (`biatec_key_use: approve`). Null when the approval key is invalidated or gone: such a device can still deny.
+  final DeviceKey? approvalKey;
+  final String? approvalAttestation;
 
-  /// Biatec OIDC's attestation JWS for this key.
-  final String attestation;
+  /// The presence key and its attestation (`biatec_key_use: presence`).
+  final DeviceKey presenceKey;
+  final String presenceAttestation;
 }
 
-/// Signs JCS([signedObject]) with the device key and wraps it in the receipt
-/// envelope (`schemas/consent-receipt.schema.json`).
+/// What the biometric prompt of an approval says: the app's fixed title, and a subtitle that names the client and the total.
+class ApprovalPrompt {
+  const ApprovalPrompt({required this.title, required this.subtitle});
+
+  /// The same text for every approval (the operating system shows it; on iOS it is the whole reason line).
+  static const fixedTitle = 'Approve this action';
+
+  final String title;
+  final String subtitle;
+}
+
+/// Signs JCS([signedObject]) and wraps it in the receipt envelope (`schemas/consent-receipt.schema.json`).
 ///
-/// A wrong or empty code is still signed as typed: Biatec OIDC compares it,
-/// and a deny or code_failed receipt carries whatever was last typed.
+/// An `approve` receipt is signed by the approval key, which makes the operating system ask for a strong biometric for this one signature
+/// ([prompt] is what it says; it is required for an approve). `deny` and `code_failed` are signed by the presence key and never prompt.
+///
+/// A wrong or empty code is still signed as typed: Biatec OIDC compares it, and a deny or code_failed receipt carries whatever was last typed.
 Future<Map<String, Object?>> signReceipt({
   required DeviceKeyStore keys,
   required DeviceIdentity device,
@@ -76,13 +92,35 @@ Future<Map<String, Object?>> signReceipt({
   required String code,
   required Decision decision,
   required DateTime now,
+  ApprovalPrompt? prompt,
 }) async {
   final signed = signedObject(request, code: code, decision: decision);
-  final signature = await keys.sign(
-      device.key.kid, Uint8List.fromList(canonicalBytes(signed)));
+  final bytes = Uint8List.fromList(canonicalBytes(signed));
+  final approving = decision == Decision.approve;
+  // Before anything is signed, so the user is never asked for a biometric that cannot lead to a receipt.
+  if (approving &&
+      (device.approvalKey == null || device.approvalAttestation == null)) {
+    throw StateError('this device has no approval key to sign an approval');
+  }
+  final Uint8List signature;
+  if (approving) {
+    if (prompt == null) {
+      throw ArgumentError('an approve receipt needs the text of the prompt');
+    }
+    signature = await keys.signApproval(bytes,
+        promptTitle: prompt.title, promptSubtitle: prompt.subtitle);
+  } else {
+    signature = await keys.signPresence(bytes);
+  }
   if (signature.length != 64) {
     throw StateError('the keystore returned a ${signature.length}-byte '
         'signature; ES256 r||s is 64 bytes');
+  }
+  final key = approving ? device.approvalKey : device.presenceKey;
+  final attestation =
+      approving ? device.approvalAttestation : device.presenceAttestation;
+  if (key == null || attestation == null) {
+    throw StateError('this device has no approval key to sign an approval');
   }
   return {
     'version': request.client.legacy ? '1' : '1.1',
@@ -91,12 +129,11 @@ Future<Map<String, Object?>> signReceipt({
     'signature': base64Url.encode(signature).replaceAll('=', ''),
     'issued_at': now.toUtc().millisecondsSinceEpoch ~/ 1000,
     'device': {
-      'kid': device.key.kid,
-      // 1.1: informational copy of the attestation's biatec_key_use; this is
-      // the approval key (presence keys are not used by this app).
-      if (!request.client.legacy) 'key_use': 'approve',
-      'public_key': device.key.toJwk(),
-      'attestation': device.attestation,
+      'kid': key.kid,
+      // 1.1: informational copy of the attestation's biatec_key_use.
+      if (!request.client.legacy) 'key_use': approving ? 'approve' : 'presence',
+      'public_key': key.toJwk(),
+      'attestation': attestation,
     },
   };
 }

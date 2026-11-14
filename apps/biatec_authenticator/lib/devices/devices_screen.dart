@@ -177,7 +177,7 @@ class _KeyLevel extends StatefulWidget {
 }
 
 class _KeyLevelState extends State<_KeyLevel> {
-  late final Future<DeviceKey?> _key = widget.keys.load(widget.kid);
+  late final Future<DeviceKey?> _key = widget.keys.loadApproval();
 
   @override
   Widget build(BuildContext context) {

@@ -1209,3 +1209,51 @@ test("T-234: a platform attestation is bound to a single-use challenge", async (
   assert.equal((await call("PUT", "/devices/attestation", { auth: dev, body: { attestation_challenge: n4, platform_attestation: attestation } })).status, 400, "the refresh challenge is single use too");
   assert.equal((await call("PUT", "/devices/attestation", { body: {} })).status, 401);
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// T-241 (D9): with two keys enforced, enrollment needs both proofs and the device proof is the presence key's
+
+test("T-241: MOCK_TWO_KEYS: enrollment needs the enrollment proof, and the device proof must come from the presence key", async () => {
+  const strict = createMockOidc({ now: () => clock, testHelpers: true, deviceProof: true, twoKeys: true });
+  await new Promise<void>((r) => strict.server.listen(0, "127.0.0.1", r));
+  const b = `http://127.0.0.1:${(strict.server.address() as AddressInfo).port}`;
+  const post = (path: string, auth: string, body?: object) =>
+    fetch(`${b}${path}`, { method: "POST", headers: { Authorization: auth, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  const pub = (k: any) => ({ kty: "EC", crv: "P-256", x: k.x, y: k.y });
+  const thumb = (k: any) => createHash("sha256").update(JSON.stringify({ crv: "P-256", kty: "EC", x: k.x, y: k.y })).digest("base64url");
+  const jws = (typ: string, signer: any, payload: object, jwk: any = pub(signer)) => {
+    const input = Buffer.from(JSON.stringify({ alg: "ES256", typ, jwk })).toString("base64url") + "." + Buffer.from(JSON.stringify(payload)).toString("base64url");
+    return { input, sig: signEs256(signer, Buffer.from(input, "utf8")) };
+  };
+  try {
+    const enrollBody = async (over: { presenceSigner?: any; nonce?: string } = {}) => {
+      const nonce = over.nonce ?? ((await (await post("/devices/challenge", "Bearer login-alice")).json()) as any).nonce;
+      const payload = { kid: "new-approval", presence_kid: "new-presence", presence_jwk_thumbprint: thumb(keys.new_presence), nonce, iat: clock };
+      const a = jws("biatec-device-enroll+jwt", keys.new_approval, payload);
+      const signer = over.presenceSigner ?? keys.new_presence;
+      const p = jws("biatec-device-enroll-presence+jwt", signer, payload, pub(keys.new_presence));
+      return { kid: "new-approval", public_key: pub(keys.new_approval), presence_kid: "new-presence", presence_public_key: pub(keys.new_presence), approval_proof: a.input + "." + a.sig, presence_proof: p.input + "." + p.sig };
+    };
+    assert.equal((await post("/devices", "Bearer login-alice", { kid: "x1", public_key: pub(keys.new_approval) })).status, 400, "a single key is refused");
+    assert.equal((await post("/devices", "Bearer login-alice", await enrollBody({ presenceSigner: keys.device }))).status, 400, "the presence proof must be signed by the presence key");
+    assert.equal((await post("/devices", "Bearer login-alice", await enrollBody({ nonce: "A".repeat(32) }))).status, 400, "an unknown nonce");
+    const ok = await post("/devices", "Bearer login-alice", await enrollBody());
+    assert.equal(ok.status, 201, await ok.clone().text());
+    const enrolled = (await ok.json()) as any;
+    assert.ok(enrolled.presence_attestation, "the presence key gets its own attestation");
+
+    // The device proof: the presence key's, never the approval key's.
+    const token = enrolled.device_token as string;
+    const proof = (signer: any, kid: string) => {
+      const payload = { htm: "GET", htu: `${b}/devices/requests`, iat: clock, jti: randomBytes(12).toString("hex"), ath: createHash("sha256").update(token).digest("base64url") };
+      const input = Buffer.from(JSON.stringify({ alg: "ES256", typ: DEVICE_PROOF_TYP, kid })).toString("base64url") + "." + Buffer.from(JSON.stringify(payload)).toString("base64url");
+      return input + "." + signEs256(signer, Buffer.from(input, "utf8"));
+    };
+    const get = (p: string) => fetch(`${b}/devices/requests`, { headers: { Authorization: "Device " + token, "X-Device-Proof": p } });
+    assert.equal((await get(proof(keys.new_presence, "new-presence"))).status, 200);
+    assert.equal((await get(proof(keys.new_approval, "new-approval"))).status, 401, "a proof signed by the approval key");
+    assert.equal((await get(proof(keys.new_approval, "new-presence"))).status, 401, "the approval key under the presence kid");
+  } finally {
+    strict.server.close();
+  }
+});

@@ -29,7 +29,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020Module from "ajv/dist/2020.js";
-import { jcs, sha256Hex, signCompactJws, thumbprint, verifyApproval, verifyEs256, verifyReceipt, ATTESTATION_TYP } from "../../scripts/lib.mjs";
+import { jcs, sha256Hex, signCompactJws, thumbprint, verifyApproval, verifyEnrollmentProof, verifyEs256, verifyReceipt, ATTESTATION_TYP } from "../../scripts/lib.mjs";
 import { GroupError, decodeGroup, decimalToCents, describeAlgorandGroup, describeJsonGroup, mockSigned, transactionDetails, type Described } from "./group.ts";
 import { clients, staticTokens, users, type SeedClient, type SeedUser } from "./seed.ts";
 
@@ -88,6 +88,14 @@ export interface MockOptions {
    * `Authorization: Device <token>` alone is then not enough (BCHAT-030). Off by default; `server.ts` turns it on with MOCK_DEVICE_PROOF=1.
    */
   deviceProof?: boolean;
+  /**
+   * Two device keys, enforced (D9, T-241): `POST /devices` needs `presence_kid`, `presence_public_key`, `approval_proof` (the enrollment proof signed
+   * by the new approval key, carrying the nonce of a challenge from `POST /devices/challenge`) and `presence_proof` (the same payload signed by the
+   * presence key), verified with `verifyEnrollmentProof`; the device proof (`X-Device-Proof`, when `deviceProof` is on) must be signed by the
+   * PRESENCE key, and one signed by the approval key is refused. An approve receipt signed by the presence key is refused with or without this flag
+   * (attested `biatec_key_use`). Off by default so the other tests keep their single-key enrollments; `server.ts` turns it on with MOCK_TWO_KEYS=1.
+   */
+  twoKeys?: boolean;
   /** Unsigned groups are base64(JSON) descriptors instead of Algorand transactions (src/group.ts). For the e2e harness only; MOCK_JSON_GROUPS=1 in `server.ts`. */
   jsonGroups?: boolean;
   /** Pending requests per user, client and origin (default 3, rule 10). */
@@ -314,10 +322,13 @@ export function createMockOidc(options: MockOptions = {}) {
     } catch {
       badProof("not JSON");
     }
-    if (header?.alg !== "ES256" || header?.typ !== DEVICE_PROOF_TYP || header?.kid !== d.kid) badProof("wrong header");
+    // Two keys: the proof is the presence key's (it needs no prompt); the approval key never signs one.
+    const proofKey = options.twoKeys ? d.presence : { kid: d.kid, publicKey: d.publicKey };
+    if (!proofKey) badProof("this device has no presence key");
+    if (header?.alg !== "ES256" || header?.typ !== DEVICE_PROOF_TYP || header?.kid !== proofKey.kid) badProof("wrong header");
     let signatureOk = false;
     try {
-      signatureOk = verifyEs256(d.publicKey, Buffer.from(parts[0] + "." + parts[1], "utf8"), parts[2]);
+      signatureOk = verifyEs256(proofKey.publicKey, Buffer.from(parts[0] + "." + parts[1], "utf8"), parts[2]);
     } catch {
       signatureOk = false;
     }
@@ -720,6 +731,31 @@ export function createMockOidc(options: MockOptions = {}) {
       activeAt = now();
     }
     const push = body.push === undefined ? undefined : pushTarget(body.push);
+    // Two keys enforced: the proof of possession of both, bound to a nonce of this user's challenge. Checked before the platform attestation
+    // takes the challenge (the same nonce binds both); the nonce is spent below, whatever else fails after this point.
+    let enrollNonce: string | undefined;
+    if (options.twoKeys) {
+      const pp = body.presence_public_key;
+      if (typeof body.presence_kid !== "string" || !pp || typeof body.approval_proof !== "string" || typeof body.presence_proof !== "string") {
+        throw new HttpError(400, "invalid_request", "presence_kid, presence_public_key, approval_proof and presence_proof are required (two device keys)");
+      }
+      let nonce: unknown;
+      try { nonce = JSON.parse(Buffer.from(body.approval_proof.split(".")[1] ?? "", "base64url").toString("utf8")).nonce; } catch { nonce = undefined; }
+      const c = typeof nonce === "string" ? attestationChallenges.get(nonce) : undefined;
+      if (!c || c.sub !== t.sub || c.expires < now()) throw new HttpError(400, "invalid_request", "the enrollment challenge in the proof is unknown, used, expired or another user's");
+      enrollNonce = nonce as string;
+      attestationChallenges.delete(enrollNonce); // single use, also when the proof fails
+      let ok = false;
+      try {
+        ok = verifyEnrollmentProof(body.approval_proof, {
+          approval_public_key: { kty: "EC", crv: "P-256", x: pk.x, y: pk.y }, kid: body.kid, presence_kid: body.presence_kid,
+          presence_public_key: { kty: "EC", crv: "P-256", x: pp.x, y: pp.y }, presence_proof: body.presence_proof, nonce: enrollNonce, usedNonces: new Set(), now: now(),
+        });
+      } catch { ok = false; }
+      if (!ok) throw new HttpError(400, "invalid_proof", "the enrollment proof does not verify (approval key, presence key, nonce and iat)");
+      // The platform attestation, when sent, is bound to the same nonce: put it back for takePlatformAttestation.
+      attestationChallenges.set(enrollNonce, c);
+    }
     // Without a platform attestation the device is enrolled and flagged; with a malformed or replayed one it is refused.
     // The two fields go together: one alone is refused (an orphan challenge would otherwise be ignored and left unspent).
     if ((body.platform_attestation === undefined) !== (body.attestation_challenge === undefined)) throw new HttpError(400, "invalid_request", "attestation_challenge and platform_attestation are sent together");
@@ -733,6 +769,7 @@ export function createMockOidc(options: MockOptions = {}) {
       if (deviceOfKey(body.presence_kid)) throw new HttpError(409, "conflict", "presence_kid already enrolled");
       presence = { kid: body.presence_kid, publicKey: { kty: "EC", crv: "P-256", x: pp.x, y: pp.y } };
     }
+    if (enrollNonce) attestationChallenges.delete(enrollNonce);
     const d = addDevice(t.sub, body.kid, { kty: "EC", crv: "P-256", x: pk.x, y: pk.y }, activeAt, undefined, presence);
     setPush(d, push);
     hub.notify(d.sub, "device_enrolled", { kid: d.kid });

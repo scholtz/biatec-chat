@@ -4,7 +4,6 @@ import '../enrollment/enrollment_store.dart';
 import '../keys/device_key_store.dart';
 import '../keys/key_security_level.dart';
 import 'approval_client.dart';
-import 'biometric_gate.dart';
 import 'consent_request.dart';
 import 'history_store.dart';
 import 'jcs.dart';
@@ -35,7 +34,7 @@ enum ApprovalPhase {
 /// Six digits, the binding code format (rule 2).
 final _codeFormat = RegExp(r'^[0-9]{6}$');
 
-/// Drives one approval: fetch, card, code entry, biometric gate, signed
+/// Drives one approval: fetch, card, code entry, OS biometric prompt, signed
 /// receipt. Biatec OIDC is the authority on the code and its three attempts;
 /// the controller mirrors what it answers.
 class ApprovalController extends ChangeNotifier {
@@ -44,7 +43,6 @@ class ApprovalController extends ChangeNotifier {
     required this.client,
     required this.keys,
     required this.enrollment,
-    required this.gate,
     required this.history,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
@@ -53,7 +51,6 @@ class ApprovalController extends ChangeNotifier {
   final ApprovalClient client;
   final DeviceKeyStore keys;
   final EnrollmentStore enrollment;
-  final BiometricGate gate;
   final HistoryStore history;
   final DateTime Function() _clock;
 
@@ -83,6 +80,14 @@ class ApprovalController extends ChangeNotifier {
   /// first wrong code in this session (the server keeps the count, and it may
   /// already be lower if codes were tried earlier).
   int? get attemptsRemaining => _attemptsRemaining;
+
+  KeysState? _keysState;
+
+  /// What the keystore said about the keys at the last check, or null before it. [KeysState.approvalKeyInvalidated] turns Approve off; Deny keeps working.
+  KeysState? get keysState => _keysState;
+
+  /// Approve is possible as far as the keys go. (An unknown state, from a keystore that did not answer, does not turn it off: signing then fails by itself.)
+  bool get canApprove => _keysState == null || _keysState == KeysState.ok;
 
   /// The last well-formed code typed, signed into a deny or code_failed
   /// receipt.
@@ -134,6 +139,7 @@ class ApprovalController extends ChangeNotifier {
         return;
       }
       _request = request;
+      await _checkKeys();
     } on ApprovalException catch (e) {
       _set(ApprovalPhase.unavailable, error: e.message, offline: e.offline);
       return;
@@ -145,8 +151,16 @@ class ApprovalController extends ChangeNotifier {
         _request!.isExpired(now) ? ApprovalPhase.expired : ApprovalPhase.ready);
   }
 
-  /// The enrolled, active device that signs. Throws [ApprovalException] when
-  /// this device cannot decide (rule 7: an inactive device approves nothing).
+  /// Asks the keystore whether the keys are usable (no prompt). An answer that cannot be had leaves the state as it was.
+  Future<void> _checkKeys() async {
+    try {
+      _keysState = await keys.keysState();
+    } on Object {
+      // The keystore did not answer: the signing call will say what is wrong.
+    }
+  }
+
+  /// The enrolled, active device that signs: its record and its keys. Throws [ApprovalException] when this device cannot decide (rule 7: an inactive device approves nothing). The approval key is null in the identity when it is invalidated or gone: the device can still deny.
   Future<(String, DeviceIdentity)> _device() async {
     final record = await enrollment.read();
     if (record == null) {
@@ -156,22 +170,48 @@ class ApprovalController extends ChangeNotifier {
       throw const ApprovalException(
           'This device is not active yet, so it cannot decide.');
     }
-    final attestation = record.attestation;
-    if (attestation == null) {
+    final presenceKid = record.presenceKid;
+    final presenceAttestation = record.presenceAttestation;
+    if (presenceKid == null || presenceAttestation == null) {
+      // An install from before the two keys: its one key is not bound to the biometrics. No silent migration.
       throw const ApprovalException(
-          'This enrollment has no attestation. Enroll the device again.');
+          'This device uses an old device key. Enroll it again.');
     }
-    final key = await keys.load(record.kid);
-    if (key == null) {
-      throw const ApprovalException('The device key is missing.');
+    final presence = await keys.loadPresence();
+    if (presence == null || presence.kid != presenceKid) {
+      throw const ApprovalException(
+          'The device key is missing. Enroll this device again.');
     }
-    if (key.securityLevel.blocksSigning) {
+    if (presence.securityLevel.blocksSigning) {
       throw const ApprovalException(KeySecurityLevel.softwareKeyMessage);
     }
+    final approval = await keys.loadApproval();
     return (
       record.deviceToken,
-      DeviceIdentity(key: key, attestation: attestation)
+      DeviceIdentity(
+        approvalKey:
+            approval != null && approval.kid == record.kid ? approval : null,
+        approvalAttestation: record.attestation,
+        presenceKey: presence,
+        presenceAttestation: presenceAttestation,
+      )
     );
+  }
+
+  /// Why this device cannot approve, if it cannot: an approval needs the approval key, in hardware and bound to the biometrics.
+  String? _cannotApprove(DeviceIdentity device) {
+    final key = device.approvalKey;
+    if (_keysState == KeysState.approvalKeyInvalidated || key == null) {
+      return ApprovalKeyInvalidated.message;
+    }
+    if (device.approvalAttestation == null) {
+      return 'This enrollment has no attestation. Enroll the device again.';
+    }
+    if (key.securityLevel.blocksSigning || !key.authBound) {
+      return 'This phone cannot protect approvals. Enroll this device on '
+          'a phone that can.';
+    }
+    return null;
   }
 
   /// Approves with the binding [code] the requesting surface shows.
@@ -192,8 +232,10 @@ class ApprovalController extends ChangeNotifier {
     _set(ApprovalPhase.working);
     try {
       final (token, device) = await _device();
-      if (!await gate.confirm('Approve this action')) {
-        _set(ApprovalPhase.ready, error: 'Biometric check did not pass.');
+      await _checkKeys();
+      final blocked = _cannotApprove(device);
+      if (blocked != null) {
+        _set(ApprovalPhase.ready, error: blocked);
         return;
       }
       // Never approve from a cached card: fetch again, and stop if anything
@@ -210,14 +252,35 @@ class ApprovalController extends ChangeNotifier {
         return;
       }
       _lastCode = code;
-      final receipt = await signReceipt(
-        keys: keys,
-        device: device,
-        request: fresh,
-        code: code,
-        decision: Decision.approve,
-        now: now,
+      // The operating system asks for a strong biometric for this one signature: the prompt is the gate, nothing else asks. The subtitle names the client and the total, from the request that was just fetched.
+      final prompt = ApprovalPrompt(
+        title: ApprovalPrompt.fixedTitle,
+        subtitle: '${clientLabel(fresh.client)}: ${summarize(fresh.detail)}',
       );
+      final Map<String, Object?> receipt;
+      try {
+        receipt = await signReceipt(
+          keys: keys,
+          device: device,
+          request: fresh,
+          code: code,
+          decision: Decision.approve,
+          now: now,
+          prompt: prompt,
+        );
+      } on KeyPromptCancelled {
+        // Nothing was signed or sent: the request stays pending and no code attempt is used.
+        _set(ApprovalPhase.ready,
+            error: 'Approval cancelled. Nothing was sent.');
+        return;
+      } on ApprovalKeyInvalidated {
+        _keysState = KeysState.approvalKeyInvalidated;
+        _set(ApprovalPhase.ready, error: ApprovalKeyInvalidated.message);
+        return;
+      } on KeyPromptFailed catch (e) {
+        _set(ApprovalPhase.ready, error: 'Could not approve: ${e.message}');
+        return;
+      }
       final outcome = await client.postReceipt(token, authReqId, receipt);
       switch (outcome) {
         case ReceiptAccepted(status: 'approved'):
@@ -273,7 +336,8 @@ class ApprovalController extends ChangeNotifier {
   }
 
   /// Denies. Deny is signed like approve (rule 10) but needs no code and no
-  /// biometric check: refusing must always be easy.
+  /// biometric check: refusing must always be easy. It is signed by the
+  /// presence key, so it works when the approval key is invalidated too.
   Future<void> deny() async {
     final shown = _request;
     if (_phase != ApprovalPhase.ready || shown == null) return;
@@ -314,6 +378,17 @@ class ApprovalController extends ChangeNotifier {
     } on Object catch (e) {
       _set(ApprovalPhase.ready, error: 'Could not deny: $e');
     }
+  }
+
+  /// The approval key is invalidated or gone: this device drops its keys and its enrollment, so the app leads to the enrollment screen. Biatec OIDC keeps the old device record until it is cancelled from the account (or its own rules end it).
+  Future<void> startReenrollment() async {
+    if (_phase == ApprovalPhase.working) return;
+    try {
+      await keys.deleteKeys();
+    } on Object {
+      // The keys are useless once the enrollment is gone.
+    }
+    await enrollment.clear();
   }
 
   void _refused(ReceiptOutcome outcome) {

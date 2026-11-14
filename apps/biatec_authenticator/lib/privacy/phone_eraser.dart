@@ -84,8 +84,10 @@ class PhoneEraser {
       await vaultKeys.endSession();
     });
     await step('The device key', () async {
+      await deviceKeys.deleteKeys();
+      // The single key of an install from before the two keys, if there is one.
       final alias = await enrollment.readAlias();
-      if (alias != null) await deviceKeys.delete(alias);
+      if (alias != null) await deviceKeys.deleteLegacyKey(alias);
     });
     // Anything left means the alias and the enrollment stay, so that trying again can find the key.
     if (failed.isNotEmpty) return EraseResult(failed);

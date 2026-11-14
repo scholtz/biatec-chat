@@ -61,7 +61,6 @@ class ApprovalServices {
         client: client,
         keys: keys,
         enrollment: enrollment,
-        gate: gate,
         history: history,
         clock: clock,
       );

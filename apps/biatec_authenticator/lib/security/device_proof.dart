@@ -23,7 +23,7 @@ abstract class DeviceProofSigner {
   Future<Map<String, String>> headers(String method, Uri url, String deviceToken);
 }
 
-/// Signs the proof with the key in the keystore, under the alias of this install.
+/// Signs the proof with the presence key in the keystore (protocol 1.1): it needs no prompt, which a proof on every HTTP call could not have. The approval key never signs a proof.
 class KeystoreDeviceProofSigner implements DeviceProofSigner {
   KeystoreDeviceProofSigner({
     required this.keys,
@@ -42,10 +42,10 @@ class KeystoreDeviceProofSigner implements DeviceProofSigner {
 
   @override
   Future<Map<String, String>> headers(String method, Uri url, String deviceToken) async {
-    final alias = await enrollment.readAlias();
-    // No alias means no device key: a configured signer never silently falls back to the bearer token alone.
-    if (alias == null) throw StateError('this install has no device key to prove with');
-    final header = {'alg': 'ES256', 'typ': deviceProofType, 'kid': alias};
+    final presenceKid = (await enrollment.read())?.presenceKid;
+    // No presence key means no device key to prove with (a new install, or one from before the two keys): a configured signer never silently falls back to the bearer token alone.
+    if (presenceKid == null) throw StateError('this install has no device key to prove with');
+    final header = {'alg': 'ES256', 'typ': deviceProofType, 'kid': presenceKid};
     final payload = {
       'htm': method.toUpperCase(),
       'htu': url.toString(),
@@ -54,7 +54,7 @@ class KeystoreDeviceProofSigner implements DeviceProofSigner {
       'ath': _b64(sha256.convert(utf8.encode(deviceToken)).bytes),
     };
     final input = '${_b64(utf8.encode(jsonEncode(header)))}.${_b64(utf8.encode(jsonEncode(payload)))}';
-    final signature = await keys.sign(alias, Uint8List.fromList(utf8.encode(input)));
+    final signature = await keys.signPresence(Uint8List.fromList(utf8.encode(input)));
     if (signature.length != 64) {
       throw StateError('the keystore returned a ${signature.length}-byte signature, expected r||s of 64');
     }

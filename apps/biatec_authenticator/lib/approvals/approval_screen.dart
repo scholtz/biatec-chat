@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../keys/device_key_store.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
 import 'approval_card.dart';
@@ -101,7 +102,7 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
   /// Whether the user can act now: a live, current request that is not being worked on. Offline or expired, both buttons are off (a stale card is never signed, and a deny needs the server too).
   bool _canAct(ApprovalController c) {
     final request = c.request;
-    if (request == null || !request.isShowable) return false;
+    if (request == null || !request.isShowable || !c.canApprove) return false;
     return _canDeny(c);
   }
 
@@ -281,6 +282,21 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
                   'be approved or denied. Go back and start the action again.',
             ),
             const SizedBox(height: AppSpacing.m),
+          ] else if (c.keysState == KeysState.approvalKeyInvalidated) ...[
+            // Approve is off, Deny still works; the way out is to enroll again.
+            StatusBanner(
+              key: const Key('approval-key-invalidated'),
+              severity: StatusSeverity.danger,
+              icon: Icons.fingerprint,
+              title: 'Approvals are off on this phone',
+              message: '${ApprovalKeyInvalidated.message} Deny still works.',
+              actionLabel: 'Enroll this device again',
+              onAction: () async {
+                await c.startReenrollment();
+                if (mounted) _close();
+              },
+            ),
+            const SizedBox(height: AppSpacing.m),
           ] else if (c.error != null) ...[
             _errorBanner(c.error!),
             const SizedBox(height: AppSpacing.m),
@@ -303,6 +319,7 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
   Widget _errorBanner(String error) {
     final wrong = error.startsWith('Wrong code');
     final changed = error.startsWith('The request changed');
+    final cancelled = error.startsWith('Approval cancelled');
     final retryable = error.startsWith('Could not') ||
         error.startsWith('Refused') ||
         error.startsWith('Unexpected');
@@ -313,7 +330,9 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
           ? 'Wrong code'
           : changed
               ? 'The request changed'
-              : 'Could not complete',
+              : cancelled
+                  ? 'Approval cancelled'
+                  : 'Could not complete',
       message: retryable ? '$error You can try again.' : error,
     );
   }
