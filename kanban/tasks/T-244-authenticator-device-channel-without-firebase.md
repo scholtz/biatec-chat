@@ -1,7 +1,7 @@
 ---
 id: T-244
 title: "Authenticator: device channel over SignalR (no Firebase), Android stay-connected service, optional Apple wake"
-status: review
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-240]
@@ -85,9 +85,12 @@ PR #412, `task/T-244` @ 04f23eb. Local: `flutter test` 1203 pass, mock-oidc 59, 
 
 ## Review
 
+- 2026-11-14 16:36 · approve · PR #412 merged into main @ 2bcc0e3 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-13 09:05 · scholtz · (new) → blocked · created from revision 2 of the consent architecture record (AlgorandGoogleDriveAccount issue 23): no Firebase
 - 2026-11-14 15:18 · kanban-board · blocked → backlog · blockers done: T-240
 - 2026-11-14 16:30 · scholtz · backlog → in-progress · claimed by session-20261114-1630 on task/T-244
 - 2026-11-14 18:00 · scholtz · in-progress → review · PR #412 @ 04f23eb
+- 2026-11-14 16:36 · user · review → done · PR #412 merged into main @ 2bcc0e3 (synced by kanban-sync)

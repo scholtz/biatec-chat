@@ -1,7 +1,7 @@
 ---
 id: T-241
 title: "Authenticator: two device keys - approval key bound to biometrics in the keystore, presence key for proofs and Deny (BCHAT-007)"
-status: blocked
+status: backlog
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-239, T-240, T-244]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#secure-area"
 created: 2026-11-12
-updated: 2026-11-13
+updated: 2026-11-14
 ---
 
 # T-241 - Authenticator: two device keys (BCHAT-007)
@@ -76,3 +76,4 @@ Filled in when the task moves to review.
 - 2026-11-12 18:43 · scholtz · (new) → blocked · created from the consent architecture record (AlgorandGoogleDriveAccount issue 23)
 - 2026-11-12 18:43 · kanban-board · backlog → blocked · waiting on: T-239, T-240
 - 2026-11-13 09:05 · scholtz · blocked → blocked · waits for T-244 too (both change the Android and iOS projects)
+- 2026-11-14 16:36 · kanban-board · blocked → backlog · blockers done: T-239, T-240, T-244
