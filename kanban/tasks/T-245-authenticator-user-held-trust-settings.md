@@ -1,7 +1,7 @@
 ---
 id: T-245
 title: "Authenticator: the user's own threshold, linked services, trusted applications (all trust is set on the phone)"
-status: in-progress
+status: review
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-242]
@@ -50,12 +50,12 @@ Parallel work possible: **no**: T-243 changes the same conformance kit, so do no
 
 ## Acceptance criteria
 
-- [ ] Widget tests: proven domain, unproven application, user label; no test fixture can make a server-supplied name appear (a fixture with `display_name` and `verified` members renders neither).
-- [ ] Card: "New service" banner only when not linked; ticking an application puts exactly that id in `remember.applications` of the signed receipt and the receipt verifies with `packages/consent-protocol/scripts/lib.mjs`; Deny never carries `remember`.
-- [ ] Threshold: lowering sends no signature; raising signs with the approval key exactly once; 0 shows "Always ask"; a value above an operator maximum shows the server's refusal.
-- [ ] Linked services: label edit, per-service threshold, removing a trusted application, unlink, lifting a pause (signed).
-- [ ] Contract tests against the mock: after approving with `remember`, the same application under the threshold is signed without a request; after unlink the next request is first use; with the threshold raised to 5000 a 2000 EUR transfer is signed without a request.
-- [ ] `flutter analyze`, `flutter test`, `pnpm --filter mock-oidc test` and `pnpm --filter conformance test` pass.
+- [x] Widget tests: proven domain, unproven application, user label; no test fixture can make a server-supplied name appear (a fixture with `display_name` and `verified` members renders neither).
+- [x] Card: "New service" banner only when not linked; ticking an application puts exactly that id in `remember.applications` of the signed receipt and the receipt verifies with `packages/consent-protocol/scripts/lib.mjs`; Deny never carries `remember`.
+- [x] Threshold: lowering sends no signature; raising signs with the approval key exactly once; 0 shows "Always ask"; a value above an operator maximum shows the server's refusal.
+- [x] Linked services: label edit, per-service threshold, removing a trusted application, unlink, lifting a pause (signed).
+- [x] Contract tests against the mock: after approving with `remember`, the same application under the threshold is signed without a request; after unlink the next request is first use; with the threshold raised to 5000 a 2000 EUR transfer is signed without a request.
+- [x] `flutter analyze`, `flutter test`, `pnpm --filter mock-oidc test` and `pnpm --filter conformance test` pass.
 
 ## Implementation notes
 
@@ -67,7 +67,16 @@ Parallel work possible: **no**: T-243 changes the same conformance kit, so do no
 
 ## Hand-off
 
-Filled in when the task moves to review.
+PR #416, `task/T-245` @ 05abcda. Local: `flutter test` 1346 pass, mock-oidc 78, conformance 63, e2e 10, the settings and approval contract tests pass against a mock started with `MOCK_MAX_THRESHOLD_EUR=5000`. CI: backend, js, images, authenticator-security pass; `authenticator` fails only on the Flutter SDK drift that also fails on main (it stops at `flutter analyze`, so the Dart tests only ran locally).
+
+- One identity widget (proven ASCII domain or "Unproven application" with the fingerprint, plus the user's own label); no server name, logo or `verified` anywhere. Approval card: "New service" banner, unticked "don't ask again" per untrusted application into the signed `remember.applications`, Deny never carries it, the receipt verifies with `scripts/lib.mjs` (that test shells out to `node` and skips when node is missing, as it is in the CI authenticator job).
+- Threshold screen (decimal strings, Always ask / 100 / 500 / 1000 / 5000 / free, the server's 400 text, switches with confirmation for loosening) and Linked services (label, always ask, own threshold, trusted applications, pauses, unlink). The server decides loosening; the app signs with the approval key only on `403 consent_required`.
+- Gated by `TRUST_SETTINGS` (on for the mock, off against real Biatec OIDC; the legacy settings screens keep the old keys that real OIDC understands).
+- Mock and conformance: issue 30 settings, linking on first approval, `remember`, unlink resets first use, 11 conformance cases; the mock README section "Settings (issue 30, T-245)" is the interface source of truth.
+- Deviation from the task text: the spec (secure-area rule 4) wins, so a fresh biometric (the app gate) precedes EVERY settings change; a loosening therefore costs the gate prompt plus the approval-key prompt (the signature is still made once), where the task said "exactly once".
+- NOT verified on a device (biometric prompts, Android/iOS screens). The operator ceiling is covered by a mock test only, not by a conformance case. Fingerprint shown is the four-group form `xxxx-xxxx-xxxx-xxxx`. The label NFC check in Dart is approximate (no normaliser): the server still checks NFC.
+
+**Unblocks:** T-246 (consent protocol 1.2 for relying parties).
 
 ## Review
 
@@ -76,3 +85,4 @@ Filled in when the task moves to review.
 - 2026-11-13 09:05 · scholtz · (new) → blocked · created from revision 2 of the consent architecture record (AlgorandGoogleDriveAccount issue 23): all trust is the user's, threshold is the user's
 - 2026-11-14 23:55 · kanban-board · blocked → backlog · blockers done: T-242
 - 2026-11-15 02:15 · scholtz · backlog → in-progress · claimed by session-20261115-0215 on task/T-245
+- 2026-11-15 05:30 · scholtz · in-progress → review · PR #416 @ 05abcda
