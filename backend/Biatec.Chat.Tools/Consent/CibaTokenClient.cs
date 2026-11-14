@@ -154,7 +154,8 @@ public sealed class ConsentSettingsClient(HttpClient http) : IConsentSettingsCli
         o.ValueKind == JsonValueKind.Object && o.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
 
     private static bool IsSet(JsonElement o, string name) =>
-        o.ValueKind == JsonValueKind.Object && o.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(v.GetString());
+        o.ValueKind == JsonValueKind.Object && o.TryGetProperty(name, out var v)
+        && ((v.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(v.GetString())) || v.ValueKind == JsonValueKind.Number); // an ISO time or an epoch; null and absent are not set
 }
 
 /// <summary>
@@ -173,7 +174,7 @@ public static class ConsentPrediction
         if (s is null) return FallbackText;
         if (s.AlwaysAsk || s.CoolingOff || s.FirstUse) return s.DeviceActive ? AskedText : NoDeviceText;
         if (s.ThresholdEur is { } threshold && valueEur is { } v)
-            return v > threshold ? (s.DeviceActive ? AskedText : NoDeviceText) : NotExpectedText;
+            return v > threshold || threshold <= 0 ? (s.DeviceActive ? AskedText : NoDeviceText) : NotExpectedText;
         return FallbackText;
     }
 }

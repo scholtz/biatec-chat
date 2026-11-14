@@ -20,6 +20,7 @@ class ApprovalCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    if (!request.isShowable) return const UnsupportedRequestCard();
     final detail = request.detail;
     final message = renderedBindingMessage(request);
     return Card(
@@ -36,40 +37,89 @@ class ApprovalCard extends StatelessWidget {
             },
             if (message.isNotEmpty) ...[
               const Divider(height: 24),
-              Text(
-                  'Message from ${request.client.displayName ?? request.client.entityId}',
+              Text('Message from ${request.client.domain}',
                   style: theme.textTheme.labelMedium),
               const SizedBox(height: AppSpacing.xs),
               Text(message, key: const Key('binding-message')),
             ],
             const Divider(height: 24),
-            Fact('Requested on', request.origin, key: const Key('fact-origin')),
+            Fact('Origin, as reported by the application', _origin(),
+                key: const Key('fact-origin')),
           ],
         ),
       ),
     );
   }
 
-  List<Widget> _transaction(ThemeData theme, TransactionDetail d) => [
+  /// The origin the client reported; it says nothing about who the client is.
+  String _origin() {
+    final d = request.detail;
+    if (d is TransactionDetail && d.group != null) return d.group!.origin;
+    return request.origin;
+  }
+
+  List<Widget> _transaction(ThemeData theme, TransactionDetail d) {
+    final g = d.group!;
+    return [
+      // The total first, in the warning style when the value is not known.
+      if (g.valueKnown)
         AmountHero(
-          amount: '${d.amount} ${d.assetSymbol}',
-          fiat: '${d.fiatAmount} ${d.fiatCurrency}',
+          amount: d.headline,
+          fiat: '${g.total}',
+        )
+      else ...[
+        const StatusBanner(
+          key: Key('value-unknown'),
+          severity: StatusSeverity.warning,
+          icon: Icons.warning_amber_rounded,
+          title: 'Value unknown',
+          message: 'Biatec could not work out what this is worth, or an '
+              'application in it is not trusted. Approve only if you started '
+              'this action yourself.',
         ),
-        const SizedBox(height: AppSpacing.m),
-        // Who receives it comes before the rest: it is what is easiest to get wrong.
-        if (d.receiver != null)
-          Fact('To', d.receiver!, mono: true, key: const Key('fact-receiver')),
-        Fact('From', d.sender, mono: true, key: const Key('fact-sender')),
-        Fact('Network', d.network, key: const Key('fact-network')),
-        if (d.applicationId != null)
-          Fact('Application', '${d.applicationId}',
-              key: const Key('fact-application')),
-        Fact('Asset',
-            '${d.assetSymbol} (id ${d.assetId}, ${d.assetDecimals} decimals)',
-            key: const Key('fact-asset')),
-        Fact('Group hash', d.groupHash,
-            mono: true, key: const Key('fact-hash')),
-      ];
+      ],
+      const SizedBox(height: AppSpacing.m),
+      for (var i = 0; i < g.transfers.length; i++)
+        _transfer(theme, i, g.transfers[i]),
+      if (g.transfers.isEmpty)
+        const Fact('Transfers', 'None', key: Key('fact-no-transfers')),
+      for (var i = 0; i < g.applications.length; i++)
+        _application(i, g.applications[i]),
+      Fact('From', d.sender, mono: true, key: const Key('fact-sender')),
+      Fact('Network', d.network, key: const Key('fact-network')),
+      Fact('Group hash', d.groupHash, mono: true, key: const Key('fact-hash')),
+    ];
+  }
+
+  Widget _transfer(ThemeData theme, int i, TransferEntry t) => Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.s),
+        child: Column(
+            key: Key('transfer-$i'),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${t.amount} ${t.asset.symbol}',
+                  key: Key('transfer-$i-amount'),
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+              Text(t.fiat == null ? 'Value unknown' : '${t.fiat}',
+                  key: Key('transfer-$i-fiat')),
+              Fact('To', t.receiver,
+                  mono: true, key: Key('transfer-$i-receiver')),
+              Text('Asset ${t.asset.symbol} (id ${t.asset.id}, '
+                  '${t.asset.decimals} decimals)'),
+            ]),
+      );
+
+  Widget _application(int i, ApplicationEntry a) => a.trusted
+      ? Fact('Calls application', a.id, key: Key('application-$i'))
+      : StatusBanner(
+          key: Key('application-$i'),
+          severity: StatusSeverity.warning,
+          icon: Icons.warning_amber_rounded,
+          title: 'Calls application ${a.id}',
+          message: 'You have not trusted this application for this '
+              'service. It can do more than the transfers listed.',
+        );
 
   List<Widget> _limits(ThemeData theme, LimitsChangeDetail d) => [
         Semantics(
@@ -137,8 +187,28 @@ class ApprovalCard extends StatelessWidget {
 /// The way a limits change moves the limits.
 enum LimitsMove { raises, lowers, same }
 
-/// Who asks. A verified client shows its name and domain; an unverified one
-/// only a warning and its fingerprint (rule 3).
+/// The card for a request this app cannot show (protocol 1.0 shape): nothing
+/// of it is rendered and it cannot be approved.
+class UnsupportedRequestCard extends StatelessWidget {
+  const UnsupportedRequestCard({super.key});
+
+  @override
+  Widget build(BuildContext context) => const Card(
+        child: Padding(
+          padding: EdgeInsets.all(AppSpacing.m),
+          child: StatusBanner(
+            key: Key('request-unsupported'),
+            severity: StatusSeverity.danger,
+            icon: Icons.block,
+            title: 'This request cannot be shown; update the app',
+            message: 'It cannot be approved here. Nothing was approved.',
+          ),
+        ),
+      );
+}
+
+/// Who asks. Only a proven domain says who it is; otherwise "Unproven
+/// application" and the fingerprint. Never a name (rule 3).
 class ClientBanner extends StatelessWidget {
   const ClientBanner({super.key, required this.client});
 
@@ -147,12 +217,13 @@ class ClientBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (!client.verified) {
+    final fingerprint = client.fingerprintShown ?? '';
+    if (!client.domainProven) {
       return StatusBanner(
         key: const Key('client-unverified'),
         severity: StatusSeverity.warning,
         icon: Icons.warning_amber_rounded,
-        title: 'Unverified application ${client.fingerprint ?? ''}'.trim(),
+        title: 'Unproven application $fingerprint'.trim(),
         message: 'Biatec cannot confirm who this is. Approve only if you '
             'started this action yourself.',
       );
@@ -160,15 +231,13 @@ class ClientBanner extends StatelessWidget {
     return MergeSemantics(
       child: Row(key: const Key('client-verified'), children: [
         Icon(Icons.verified,
-            color: theme.colorScheme.primary, semanticLabel: 'Verified'),
+            color: theme.colorScheme.primary, semanticLabel: 'Proven domain'),
         const SizedBox(width: AppSpacing.s),
         Expanded(
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(client.displayName ?? client.entityId,
-                style: theme.textTheme.titleMedium),
-            if (client.domain != null) Text(client.domain!),
-            Text('Verified application',
+            Text(client.domain!, style: theme.textTheme.titleMedium),
+            Text('Proven domain, application $fingerprint'.trim(),
                 style: theme.textTheme.labelSmall
                     ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
           ]),

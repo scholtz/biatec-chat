@@ -55,7 +55,7 @@ public sealed class ConsentOrchestrator(
         if (steps.Count == 0) throw new PreviewException(PreviewError.NotFound, "Unknown preview.");
         var stepIds = steps.Select(s => s.Id).ToList();
         var request = (await db.ConsentRequests.Where(c => stepIds.Contains(c.StepId)).ToListAsync(ct))
-            .OrderByDescending(c => c.ExpiresAt).FirstOrDefault();
+            .OrderByDescending(c => c.Status == ConsentRequestStatus.Pending).ThenByDescending(c => c.ExpiresAt).FirstOrDefault(); // a second round that is still pending wins over the approved first one
         if (request is null) return new ConsentAdvance(StatusOf(previewId, steps[0].Id, ConsentState.NotRequired, null, null), null);
 
         var step = steps.First(s => s.Id == request.StepId);
@@ -178,6 +178,9 @@ public sealed class ConsentOrchestrator(
             try { result = await confirm.EndConsentAsync(session, previewId, denied: false, "resume_failed", CancellationToken.None, "resume_failed"); }
             catch (Exception) { result = new ConfirmResult(ConfirmOutcome.Failed, "The approved action could not be completed. Nothing was submitted; ask for the preview again.", [], ErrorCode: "resume_failed"); }
         }
+        // The approval could not be used and one new round was started (ConfirmService allows exactly one): the consent is pending again, under the new request.
+        if (result.Outcome == ConfirmOutcome.ConsentPending && result.Consent is { } next)
+            return new ConsentAdvance(StatusOf(previewId, step.Id, ConsentState.Pending, next.BindingCode, next.ExpiresAt), null);
         return new ConsentAdvance(StatusOf(previewId, step.Id, ConsentState.Approved, request.BindingCode, request.ExpiresAt), result);
     }
 

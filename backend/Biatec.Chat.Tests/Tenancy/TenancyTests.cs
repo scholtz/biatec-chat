@@ -73,6 +73,30 @@ public sealed class TenancyTests : IDisposable
         r.Headers.TryGetValues(name, out var v) ? string.Join(",", v) : null;
 
     [Fact]
+    public async Task ClientProof_ListsOnlyTheClientIdOfTheTenantBoundToTheHost()
+    {
+        var r = await SendAsync(Req(HttpMethod.Get, "/.well-known/biatec-client.json"));
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        Assert.Equal("application/json", r.Content.Headers.ContentType!.ToString());
+        Assert.Equal("public, max-age=3600", Header(r, "Cache-Control"));
+        var body = System.Text.Json.JsonDocument.Parse(await r.Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal(System.Text.Json.JsonValueKind.Object, body.ValueKind);
+        Assert.Equal(["client_ids"], body.EnumerateObject().Select(p => p.Name));
+        Assert.Equal([TenantSeed.BiatecChat().OidcClientId], body.GetProperty("client_ids").EnumerateArray().Select(e => e.GetString()));
+        Assert.NotEqual(TenantSeed.BiatecChat().OidcClientId, TenantSeed.LocalhostDev().OidcClientId);
+    }
+
+    [Fact]
+    public async Task ClientProof_AnotherTenantsHostGetsItsOwnClientId_AndAnUnknownHostIs404()
+    {
+        var other = await SendAsync(Req(HttpMethod.Get, "/.well-known/biatec-client.json", host: TenantSeed.LocalhostDev().Host));
+        Assert.Equal(HttpStatusCode.OK, other.StatusCode);
+        Assert.Equal(TenantSeed.LocalhostDev().OidcClientId,
+            System.Text.Json.JsonDocument.Parse(await other.Content.ReadAsStringAsync()).RootElement.GetProperty("client_ids")[0].GetString());
+        Assert.Equal(HttpStatusCode.NotFound, (await SendAsync(Req(HttpMethod.Get, "/.well-known/biatec-client.json", host: "evil.example"))).StatusCode);
+    }
+
+    [Fact]
     public async Task UnknownHost_Is404()
     {
         var r = await SendAsync(Req(HttpMethod.Get, "/terminal-probe", host: "evil.example"));

@@ -26,7 +26,7 @@ public static class NoDeviceDefaults
 }
 
 /// <summary>A user Biatec OIDC reports as having no active device (enrolled-but-inactive counts as none).</summary>
-/// <param name="ThresholdEur">The user's consent threshold for this client, never above the deployment ceiling.</param>
+/// <param name="ThresholdEur">The user's own consent threshold for this client, as Biatec OIDC reports it: it may be above 1000 or 0. Only a settings answer without one falls back to <see cref="CapDefaults.ConsentThresholdCeilingEur"/>, the default threshold.</param>
 public sealed record NoDeviceStatus(decimal DailyCapEur, decimal ThresholdEur, bool AlwaysAsk);
 
 public interface INoDeviceGate
@@ -100,8 +100,8 @@ public sealed class NoDeviceGate(IConsentSettingsClient settings, Func<Uri?> set
             cache.Put(sessionKey, s);
         }
         if (s.DeviceActive) return null;
-        var ceiling = CapDefaults.ConsentThresholdCeilingEur;
-        return new NoDeviceStatus(Math.Max(0m, options.DailyCapEur), Math.Min(s.ThresholdEur ?? ceiling, ceiling), s.AlwaysAsk);
+        // The user's threshold is used as it is (no clamp); the default applies only when the answer carries none.
+        return new NoDeviceStatus(Math.Max(0m, options.DailyCapEur), s.ThresholdEur ?? CapDefaults.ConsentThresholdCeilingEur, s.AlwaysAsk);
     }
 }
 
@@ -124,7 +124,7 @@ public static class NoDevicePolicy
     /// refuses at once rather than wait for a phone the user does not have.
     /// </summary>
     public static bool NeedsPhone(NoDeviceStatus s, decimal? valueEur, bool consentForced) =>
-        consentForced || s.AlwaysAsk || valueEur is not { } v || v > s.ThresholdEur;
+        consentForced || s.AlwaysAsk || s.ThresholdEur <= 0 || valueEur is not { } v || v > s.ThresholdEur; // a threshold of 0 asks for every action
 
     public static string Message(string reason) => reason switch
     {

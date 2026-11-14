@@ -30,6 +30,12 @@ public sealed record ConfirmResponse
     public string? ReauthorizeScope { get; init; }
     /// <summary>Set after a settled x402 payment: the paid resource's content. Untrusted seller data, shown as data only.</summary>
     public string? ResourceContent { get; init; }
+    /// <summary>
+    /// Machine-readable reason the widget has its own text for (no_active_device, no_device_daily_cap, client_paused, unproven_client_blocked,
+    /// consent_unsupported, too_many_pending, code_failed, preview_expired, resume_failed, receipt_missing, receipt_invalid, ...); null on success.
+    /// The message stays the fallback.
+    /// </summary>
+    public string? ErrorCode { get; init; }
 }
 
 public static class ConfirmRegistration
@@ -110,23 +116,21 @@ public static class ConfirmEndpoints
 
     private static IResult ToHttp(ConfirmResult r)
     {
-            var (code, label) = r.Outcome switch
-            {
-                ConfirmOutcome.AgentRestricted => (StatusCodes.Status403Forbidden, r.ErrorCode ?? "agent_analyze_only"),
-                ConfirmOutcome.Landed => (StatusCodes.Status200OK, "landed"),
-                ConfirmOutcome.Submitted => (StatusCodes.Status202Accepted, "submitted"),
-                ConfirmOutcome.ConsentPending => (StatusCodes.Status202Accepted, "consent_pending"),
-                ConfirmOutcome.SignInUnavailable => (StatusCodes.Status503ServiceUnavailable, "sign_in_unavailable"),
-                ConfirmOutcome.ScopeRequired => (StatusCodes.Status403Forbidden, "scope_required"),
-                ConfirmOutcome.SignInRequired => (StatusCodes.Status401Unauthorized, "sign_in_required"),
-                _ => (StatusCodes.Status422UnprocessableEntity, "failed"),
-            };
-            return Results.Json(new ConfirmResponse
-            {
-                Status = label, Message = r.Message, TxIds = r.TxIds, Consent = r.Consent, ReauthorizeScope = r.ReauthorizeScope, ResourceContent = r.ResourceContent,
-            }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)
-            {
-                Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase) },
-            }, statusCode: code);
+        var code = r.Outcome switch
+        {
+            ConfirmOutcome.AgentRestricted => StatusCodes.Status403Forbidden,
+            ConfirmOutcome.Landed => StatusCodes.Status200OK,
+            ConfirmOutcome.Submitted => StatusCodes.Status202Accepted,
+            ConfirmOutcome.ConsentPending => StatusCodes.Status202Accepted,
+            ConfirmOutcome.SignInUnavailable => StatusCodes.Status503ServiceUnavailable,
+            ConfirmOutcome.ScopeRequired => StatusCodes.Status403Forbidden,
+            ConfirmOutcome.SignInRequired => StatusCodes.Status401Unauthorized,
+            _ => StatusCodes.Status422UnprocessableEntity,
+        };
+        // The body is the one the consent stream sends too (status label, message, errorCode, ...).
+        return Results.Json(Consent.ConsentEndpoints.ToResponse(r), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)
+        {
+            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase) },
+        }, statusCode: code);
     }
 }

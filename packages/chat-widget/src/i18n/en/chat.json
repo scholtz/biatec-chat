@@ -77,6 +77,10 @@
     "resumeFailed": "The approval could not be used to complete the action. Nothing was signed. Ask for a fresh preview.",
     "receiptMissing": "The approval did not arrive complete, so it was not used. Nothing was signed.",
     "receiptInvalid": "The approval could not be verified, so it was not used. Nothing was signed. Ask for the preview again.",
+    "clientPaused": "You paused this site in Biatec Authenticator, so it cannot sign for you. Resume it in the app to continue. Nothing was signed.",
+    "unprovenClientBlocked": "This site could not prove its domain, and your settings block unproven applications. Nothing was signed.",
+    "consentUnsupported": "This action cannot be approved on your phone, so it cannot be signed. Nothing was signed.",
+    "tooManyPending": "Too many approvals are waiting or requests are coming too fast. Please try again in a little while. Nothing was signed.",
     "partial": "This step was not approved, so it was not signed. Steps that already completed stay completed.",
     "lost": "This approval can no longer be followed here. Nothing is signed unless a receipt appears. Ask for a fresh preview."
   }

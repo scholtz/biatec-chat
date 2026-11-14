@@ -26,13 +26,13 @@ class RequestCard extends StatelessWidget {
     final who = clientLabel(request.client);
     final (headline, sub) = switch (detail) {
       TransactionDetail() => (
-          '${detail.amount} ${detail.assetSymbol}',
-          '${detail.fiatAmount} ${detail.fiatCurrency} on ${detail.network}'
+          detail.headline,
+          '${detail.valueText} on ${detail.network}'
         ),
       LimitsChangeDetail() => ('Change spending limits', summarize(detail)),
     };
     final spoken = 'Request from $who: $headline, $sub, ${spokenLeft(left)}. '
-        '${request.client.verified ? '' : 'Unverified application. '}'
+        '${request.client.verified ? '' : 'Unproven application. '}'
         'Double tap to open.';
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -55,7 +55,7 @@ class RequestCard extends StatelessWidget {
                         ? Icons.verified
                         : Icons.warning_amber_rounded,
                     semanticLabel:
-                        request.client.verified ? 'Verified' : 'Unverified'),
+                        request.client.verified ? 'Proven domain' : 'Unproven'),
               ),
               const SizedBox(width: AppSpacing.m),
               Expanded(

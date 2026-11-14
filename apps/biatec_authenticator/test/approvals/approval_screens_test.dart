@@ -115,7 +115,7 @@ void main() {
       final request = ConsentRequest.fromJson(h.oidc.request);
       final d = request.detail as TransactionDetail;
       expect(find.byKey(Key('pending-${request.authReqId}')), findsOneWidget);
-      expect(find.text('${d.amount} ${d.assetSymbol}'), findsOneWidget);
+      expect(find.text(d.headline), findsOneWidget);
       expect(find.textContaining(d.network), findsWidgets);
       // The time left, in words (the vectors give a request 280 seconds).
       expect(find.text('4 min left'), findsOneWidget);
@@ -146,7 +146,7 @@ void main() {
           ConsentRequest.fromJson(h.oidc.request).detail as TransactionDetail;
       expect(
           find.bySemanticsLabel(RegExp(
-              'Request from .*${RegExp.escape('${d.amount} ${d.assetSymbol}')}.*expires in 4 minutes.*Double tap to open')),
+              'Request from .*${RegExp.escape(d.headline)}.*expires in 4 minutes.*Double tap to open')),
           findsOneWidget);
       handle.dispose();
       await _end(tester);
@@ -159,8 +159,8 @@ void main() {
       final h = Harness(vectorRequest('direct-transaction-approve-unverified'));
       await _pumpPending(tester, h);
       expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
-      expect(find.bySemanticsLabel(RegExp('Unverified application')),
-          findsWidgets);
+      expect(
+          find.bySemanticsLabel(RegExp('Unproven application')), findsWidgets);
       handle.dispose();
       await _end(tester);
     });
@@ -258,7 +258,7 @@ void main() {
       final d =
           ConsentRequest.fromJson(h.oidc.request).detail as TransactionDetail;
       final amount = tester.widget<Text>(find.byKey(const Key('fact-amount')));
-      expect(amount.data, '${d.amount} ${d.assetSymbol}');
+      expect(amount.data, d.headline);
       final body =
           Theme.of(tester.element(find.byKey(const Key('fact-amount'))))
               .textTheme
@@ -266,12 +266,8 @@ void main() {
               .fontSize!;
       expect(amount.style!.fontSize, greaterThan(body * 1.5));
       expect(find.text('You are approving'), findsOneWidget);
-      if (d.receiver != null) {
-        expect(
-            tester.getTopLeft(find.byKey(const Key('fact-receiver'))).dy,
-            lessThan(
-                tester.getTopLeft(find.byKey(const Key('fact-sender'))).dy));
-      }
+      expect(tester.getTopLeft(find.byKey(const Key('transfer-0-receiver'))).dy,
+          lessThan(tester.getTopLeft(find.byKey(const Key('fact-sender'))).dy));
       await _end(tester);
     });
 
@@ -284,15 +280,17 @@ void main() {
       final d = request.detail as TransactionDetail;
       expect(
           find.bySemanticsLabel(
-              'You are approving ${d.amount} ${d.assetSymbol}, worth ${d.fiatAmount} ${d.fiatCurrency}'),
+              'You are approving ${d.headline}, worth ${d.valueText}'),
           findsOneWidget);
       // The label and the whole address are one item.
-      final to = tester.getSemantics(find.byKey(const Key('fact-receiver')));
+      final to =
+          tester.getSemantics(find.byKey(const Key('transfer-0-receiver')));
       expect('${to.label} ${to.value}', contains('To'));
-      expect('${to.label} ${to.value}', contains(d.receiver!));
+      expect('${to.label} ${to.value}',
+          contains(d.group!.transfers.single.receiver));
       expect(
           find.bySemanticsLabel(RegExp(
-              '${RegExp.escape(request.client.displayName!)}[\\s\\S]*Verified')),
+              '${RegExp.escape(request.client.domain!)}[\\s\\S]*Proven domain')),
           findsWidgets);
       expect(
           find.bySemanticsLabel(RegExp('Request expires in')), findsOneWidget);
@@ -337,7 +335,7 @@ void main() {
         (tester) async {
       final h = Harness(vectorRequest('direct-transaction-approve-verified'));
       await _pumpApproval(tester, h);
-      for (final key in ['fact-receiver', 'fact-sender', 'fact-hash']) {
+      for (final key in ['transfer-0-receiver', 'fact-sender', 'fact-hash']) {
         final text = tester.widget<SelectableText>(find.descendant(
             of: find.byKey(Key(key)), matching: find.byType(SelectableText)));
         expect(text.style!.fontFamily, 'monospace', reason: key);
@@ -382,7 +380,7 @@ void main() {
       expect(
           find.descendant(
               of: banner,
-              matching: find.textContaining('Unverified application')),
+              matching: find.textContaining('Unproven application')),
           findsOneWidget);
       expect(
           find.descendant(

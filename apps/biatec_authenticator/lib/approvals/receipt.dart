@@ -32,7 +32,11 @@ Map<String, Object?> signedObject(
     {
       'authorization_details': request.authorizationDetails,
       'auth_req_id': request.authReqId,
-      'client_entity_id': request.client.entityId,
+      // 1.1 names the client by fingerprint; 1.0 by its entity id.
+      if (request.client.legacy)
+        'client_entity_id': request.client.entityId
+      else
+        'client_fingerprint': request.client.fingerprint,
       'binding_code': code,
       'decision': decision.wire,
       'expiry': request.expiry,
@@ -81,13 +85,16 @@ Future<Map<String, Object?>> signReceipt({
         'signature; ES256 r||s is 64 bytes');
   }
   return {
-    'version': '1',
+    'version': request.client.legacy ? '1' : '1.1',
     'signed': signed,
     'alg': 'ES256',
     'signature': base64Url.encode(signature).replaceAll('=', ''),
     'issued_at': now.toUtc().millisecondsSinceEpoch ~/ 1000,
     'device': {
       'kid': device.key.kid,
+      // 1.1: informational copy of the attestation's biatec_key_use; this is
+      // the approval key (presence keys are not used by this app).
+      if (!request.client.legacy) 'key_use': 'approve',
       'public_key': device.key.toJwk(),
       'attestation': device.attestation,
     },

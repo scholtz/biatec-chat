@@ -213,6 +213,19 @@ describe("following a phone approval", () => {
     expect(consent.stream).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["client_paused", "paused this site"],
+    ["unproven_client_blocked", "could not prove its domain"],
+    ["consent_unsupported", "cannot be approved on your phone"],
+    ["too_many_pending", "try again in a little while"],
+  ])("%s on the confirm answer shows its own text", async (errorCode, text) => {
+    const m = await mountChat(fakeConsent(), [{ type: "preview_card", preview: preview() }]);
+    wrapper = m.wrapper;
+    m.confirm.mockResolvedValueOnce(result("failed", { errorCode, message: "The backend says so" }));
+    await m.chat.confirmPreview("p1");
+    expect(m.entry().note).toContain(text);
+  });
+
   it("an unknown reason falls back to the backend's message", async () => {
     const m = await mountChat(fakeConsent(), [{ type: "preview_card", preview: preview() }]);
     wrapper = m.wrapper;

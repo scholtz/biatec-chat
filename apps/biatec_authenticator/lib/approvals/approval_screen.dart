@@ -101,6 +101,13 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
   /// Whether the user can act now: a live, current request that is not being worked on. Offline or expired, both buttons are off (a stale card is never signed, and a deny needs the server too).
   bool _canAct(ApprovalController c) {
     final request = c.request;
+    if (request == null || !request.isShowable) return false;
+    return _canDeny(c);
+  }
+
+  /// A request this version cannot show (a 1.0 request) cannot be approved, but it can still be denied: refusing is always safe.
+  bool _canDeny(ApprovalController c) {
+    final request = c.request;
     if (request == null) return false;
     return c.phase == ApprovalPhase.ready &&
         !c.offline &&
@@ -124,10 +131,11 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
               c.phase == ApprovalPhase.working;
           if (!shown) return const SizedBox.shrink();
           final can = _canAct(c);
+          final canDeny = _canDeny(c);
           return ApprovalActionBar(
             busy: c.phase == ApprovalPhase.working,
             onApprove: can ? () => _approve(c) : null,
-            onDeny: can ? c.deny : null,
+            onDeny: canDeny ? c.deny : null,
           );
         },
       ),

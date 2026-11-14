@@ -43,7 +43,9 @@ export type PhoneAction =
   | { decision: "deny" };
 
 export class MockOidcHarness {
-  readonly mock = createMockOidc({ testHelpers: true });
+  // JSON groups: the demo states amounts and payees as descriptors instead of building Algorand transactions. The pending and hourly limits are the
+  // mock's defaults (3 per client, user and origin; 60 an hour), which a demo run stays far below.
+  readonly mock = createMockOidc({ testHelpers: true, jsonGroups: true });
   base = "";
 
   async start(): Promise<void> {
@@ -66,6 +68,14 @@ export class MockOidcHarness {
       u.alwaysAsk = ["biatec-chat"];
       u.used.delete("biatec-chat");
     }
+  }
+
+  /**
+   * Protocol 1.1 has no operator list of applications: an application is trusted only when the user trusted it for the client (approving with
+   * `remember`). The demo's applications (the safe, the pool) are pre-trusted so that their value counts and the card shows a total.
+   */
+  trustApplications(subs: string[], appIds: number[]): void {
+    for (const sub of subs) this.mock.state.trustedApplications.set(sub + "|biatec-chat", new Set(appIds.map((id) => `${NETWORK}:${id}`)));
   }
 
   async call(method: string, path: string, opts: { auth?: string; body?: unknown; form?: Record<string, string> } = {}): Promise<HttpResult> {
@@ -98,7 +108,7 @@ export class MockOidcHarness {
     const signed = {
       authorization_details: card.authorization_details,
       auth_req_id: card.auth_req_id,
-      client_entity_id: card.client.entity_id,
+      client_fingerprint: card.client.fingerprint,
       binding_code: action.decision === "approve" ? action.code : "",
       decision: action.decision,
       expiry: card.expiry,
@@ -106,12 +116,12 @@ export class MockOidcHarness {
       binding_message: card.binding_message,
     };
     const receipt = {
-      version: "1",
+      version: "1.1",
       signed,
       alg: "ES256",
       signature: signEs256(deviceKey, Buffer.from(jcs(signed), "utf8")),
       issued_at: Math.floor(Date.now() / 1000),
-      device: { kid: dev.kid, public_key: dev.public_key, attestation: dev.attestation },
+      device: { kid: dev.kid, key_use: "approve", public_key: dev.public_key, attestation: dev.attestation },
     };
     return this.call("POST", `/consent/requests/${card.auth_req_id}/receipt`, { auth: "Device " + who.deviceToken, body: receipt });
   }
@@ -120,7 +130,7 @@ export class MockOidcHarness {
 
   /** First leg of a signing call: Biatec OIDC either signs (below threshold) or answers with a step-up challenge. */
   signRaw(bearer: string, who: Identity, group: Tx[], extra: object = {}): Promise<HttpResult> {
-    return this.call("POST", `/wallet/${NETWORK}/${who.address}/sign`, { auth: "Bearer " + bearer, body: { unsigned_group: group.map(encodeTx), ...extra } });
+    return this.call("POST", `/wallet/${NETWORK}/${who.address}/sign`, { auth: "Bearer " + bearer, body: { transactions: group.map(encodeTx), ...extra } });
   }
 
   /** The backend redeems an approved CIBA request for a one-time consent token and the signed receipt. */

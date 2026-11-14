@@ -832,11 +832,12 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
     public async Task OidcRefusal_FailsThePreview_WithoutSubmitting()
     {
         var b = await BuildPreviewAsync();
-        _oidc.Override = _ => new WalletSignOutcome.Rejected(403, "daily_cap_exceeded");
+        _oidc.Override = _ => new WalletSignOutcome.Rejected(403, "some_other_refusal");
         var r = await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
 
         Assert.Equal(ConfirmOutcome.Failed, r.Outcome);
-        Assert.Contains("spending limit", r.Message);
+        Assert.Contains("Signing was refused", r.Message);
+        Assert.Equal("some_other_refusal", r.ErrorCode);
         Assert.Empty(_mcp.Submits);
         Assert.Equal(ActionPreviewStatus.Failed, (await LoadAsync(b.PreviewId)).Preview.Status);
     }
@@ -1012,6 +1013,156 @@ public sealed class ConfirmServiceTests : IAsyncLifetime
         }
         Assert.Equal(ConfirmOutcome.Landed, (await ConfirmAsync(previewId, group.GroupHash)).Outcome);
         Assert.Equal(ActionPreviewStatus.InProgress, (await LoadAsync(previewId)).Preview.Status);
+    }
+
+    // ---- T-240: the refusals of the real signing endpoint, as codes the widget renders ----
+
+    [Theory]
+    [InlineData(403, "consent_unavailable", "no_active_device", null, "no_active_device", true)]
+    [InlineData(403, "daily_cap_exceeded", null, "100.00", "no_device_daily_cap", true)]
+    [InlineData(403, "client_paused", null, null, "client_paused", true)]
+    [InlineData(403, "unproven_client_blocked", null, null, "unproven_client_blocked", false)]
+    [InlineData(403, "consent_unsupported_operation", null, null, "consent_unsupported", false)]
+    [InlineData(403, "consent_unsupported_network", null, null, "consent_unsupported", false)]
+    [InlineData(429, "too_many_pending_requests", null, null, "too_many_pending", true)]
+    [InlineData(429, "rate_limited", null, null, "too_many_pending", true)]
+    public async Task OidcNamedRefusals_AreMappedToTheUserFacingCode(int status, string error, string? reason, string? capEur, string code, bool confirmable)
+    {
+        var b = await BuildPreviewAsync();
+        _oidc.Override = _ => new WalletSignOutcome.Rejected(status, error, reason, capEur);
+        var r = await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+
+        Assert.Equal(ConfirmOutcome.Failed, r.Outcome);
+        Assert.Equal(code, r.ErrorCode);
+        Assert.Contains("Nothing was signed", r.Message);
+        if (capEur is not null) Assert.Contains("100.00 EUR", r.Message);
+        Assert.Empty(_mcp.Submits);
+        Assert.Equal(confirmable ? ActionPreviewStatus.Proposed : ActionPreviewStatus.Failed, (await LoadAsync(b.PreviewId)).Preview.Status);
+        // The wire body carries the code (the confirm endpoint and the consent stream both build it this way).
+        Assert.Equal(code, Biatec.Chat.Api.Consent.ConsentEndpoints.ToResponse(r).ErrorCode);
+    }
+
+    [Fact]
+    public async Task ConsentUnavailableForAnotherReason_IsNotTakenForNoDevice()
+    {
+        var b = await BuildPreviewAsync();
+        _oidc.Override = _ => new WalletSignOutcome.Rejected(403, "consent_unavailable", "something_else");
+        var r = await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        Assert.Equal("consent_unavailable", r.ErrorCode);
+        Assert.Equal(ActionPreviewStatus.Failed, (await LoadAsync(b.PreviewId)).Preview.Status);
+    }
+
+    [Fact]
+    public async Task ConsentNotUsableOnResume_StartsExactlyOneNewRound_ThenStops()
+    {
+        var b = await BuildPreviewAsync();
+        _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_first", "482193", 300, 2);
+        Assert.Equal(ConfirmOutcome.ConsentPending, (await ConfirmAsync(b.PreviewId, b.Group.GroupHash)).Outcome);
+
+        // The first approval's elevated token is refused as "consent not usable": one new challenge, the same group, asking for consent.
+        _oidc.Override = r => r.RequireConsent
+            ? new WalletSignOutcome.StepUp("ar_second", "193820", 300, 2)
+            : new WalletSignOutcome.Rejected(401, WalletSigningClient.ConsentNotUsableError);
+        ConfirmResult second;
+        await using (var db = NewContext())
+            second = await NewService(db).ResumeAfterConsentAsync(_tenant, _session, b.PreviewId, "ELEVATED-1", CancellationToken.None);
+        Assert.Equal(ConfirmOutcome.ConsentPending, second.Outcome);
+        Assert.Equal("193820", second.Consent!.BindingCode);
+        await using (var db = NewContext())
+        {
+            var requests = await db.ConsentRequests.AsNoTracking().OrderBy(c => c.ExpiresAt).ToListAsync();
+            Assert.Equal(["ar_first", "ar_second"], requests.Select(c => c.AuthReqId).OrderBy(x => x));
+            Assert.Equal(StepStatus.AwaitingConsent, (await db.ActionSteps.AsNoTracking().SingleAsync()).Status);
+        }
+        Assert.Equal(3, _oidc.Calls.Count);
+        Assert.True(_oidc.Calls[2].Request.RequireConsent);
+        Assert.Equal("ACCESS-TOKEN-SECRET", _oidc.Calls[2].Bearer); // the session's own token, not the spent elevated one
+
+        // The second approval fails the same way: no third round, the preview ends.
+        _oidc.Override = _ => new WalletSignOutcome.Rejected(401, WalletSigningClient.ConsentNotUsableError);
+        ConfirmResult third;
+        await using (var db = NewContext())
+            third = await NewService(db).ResumeAfterConsentAsync(_tenant, _session, b.PreviewId, "ELEVATED-2", CancellationToken.None);
+        Assert.Equal(ConfirmOutcome.Failed, third.Outcome);
+        Assert.Equal(WalletSigningClient.ConsentNotUsableError, third.ErrorCode);
+        Assert.Equal(ActionPreviewStatus.Failed, (await LoadAsync(b.PreviewId)).Preview.Status);
+        Assert.Equal(4, _oidc.Calls.Count);
+        await using (var db = NewContext()) Assert.Equal(2, await db.ConsentRequests.CountAsync());
+    }
+
+    [Fact]
+    public async Task ADenialForAWrongBindingCode_CarriesCodeFailed()
+    {
+        var b = await BuildPreviewAsync();
+        _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_code", "482193", 300, 2);
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        ConfirmResult r;
+        await using (var db = NewContext())
+            r = await NewService(db).EndConsentAsync(_session, b.PreviewId, denied: true, "code_failed", CancellationToken.None);
+        Assert.Equal("code_failed", r.ErrorCode);
+        Assert.Equal("code_failed", Biatec.Chat.Api.Consent.ConsentEndpoints.ToResponse(r).ErrorCode);
+    }
+
+    [Theory]
+    [InlineData("deny")]
+    [InlineData(null)]
+    public async Task APlainDenial_KeepsConsentDenied(string? reason)
+    {
+        var b = await BuildPreviewAsync();
+        _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_deny", "482193", 300, 2);
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        await using var db = NewContext();
+        Assert.Equal("consent_denied", (await NewService(db).EndConsentAsync(_session, b.PreviewId, denied: true, reason, CancellationToken.None)).ErrorCode);
+    }
+
+    [Theory]
+    [InlineData("preview_expired")]
+    [InlineData("receipt_missing")]
+    [InlineData("receipt_invalid")]
+    [InlineData("resume_failed")]
+    public async Task EndedConsent_CarriesItsErrorCodeOnTheWire(string code)
+    {
+        var b = await BuildPreviewAsync();
+        _oidc.Override = _ => new WalletSignOutcome.StepUp("ar_end", "482193", 300, 2);
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        await using var db = NewContext();
+        var r = await NewService(db).EndConsentAsync(_session, b.PreviewId, denied: false, code, CancellationToken.None, code);
+        Assert.Equal(code, Biatec.Chat.Api.Consent.ConsentEndpoints.ToResponse(r).ErrorCode);
+    }
+
+    [Fact]
+    public void TheConfirmBody_CarriesTheErrorCodeAsCamelCaseJson()
+    {
+        var json = JsonSerializer.Serialize(Biatec.Chat.Api.Consent.ConsentEndpoints.ToResponse(
+            new ConfirmResult(ConfirmOutcome.Failed, "m", [], ErrorCode: "client_paused")), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal("client_paused", JsonDocument.Parse(json).RootElement.GetProperty("errorCode").GetString());
+        Assert.Equal("failed", JsonDocument.Parse(json).RootElement.GetProperty("status").GetString());
+    }
+
+    [Theory]
+    [InlineData(403, "{\"error\":\"consent_unavailable\",\"reason\":\"no_active_device\"}", "consent_unavailable", "no_active_device", null)]
+    [InlineData(403, "{\"error\":\"daily_cap_exceeded\",\"cap_eur\":\"100.00\"}", "daily_cap_exceeded", null, "100.00")]
+    [InlineData(403, "{\"error\":\"daily_cap_exceeded\",\"cap_eur\":100}", "daily_cap_exceeded", null, "100")]
+    [InlineData(403, "{\"error\":\"daily_cap_exceeded\",\"cap_eur\":\"not a number\"}", "daily_cap_exceeded", null, null)]
+    [InlineData(403, "{\"error\":\"client_paused\"}", "client_paused", null, null)]
+    [InlineData(403, "{\"error\":\"unproven_client_blocked\"}", "unproven_client_blocked", null, null)]
+    [InlineData(403, "{\"error\":\"consent_unsupported_operation\"}", "consent_unsupported_operation", null, null)]
+    [InlineData(403, "{\"error\":\"consent_unsupported_network\"}", "consent_unsupported_network", null, null)]
+    [InlineData(403, "{\"error\":\"consent_hash_mismatch\"}", "consent_hash_mismatch", null, null)]
+    [InlineData(429, "{\"error\":\"too_many_pending_requests\"}", "too_many_pending_requests", null, null)]
+    [InlineData(429, "{\"error\":\"rate_limited\"}", "rate_limited", null, null)]
+    [InlineData(401, "{\"error\":\"invalid_grant\",\"error_description\":\"consent not usable\"}", "consent_not_usable", null, null)]
+    [InlineData(401, "{\"error\":\"insufficient_user_authentication\",\"error_description\":\"consent not usable\"}", "consent_not_usable", null, null)]
+    public async Task WalletSigningClient_ParsesTheRefusalIntoATypedOutcome(int status, string body, string error, string? reason, string? capEur)
+    {
+        var r = Assert.IsType<WalletSignOutcome.Rejected>(await ClientFor(new StubHandler(_ => Task.FromResult(Json(status, body)))).SignAsync("B", SampleRequest()));
+        Assert.Equal((status, error, reason, capEur), (r.Status, r.Error, r.Reason, r.CapEur));
+    }
+
+    [Fact]
+    public async Task WalletSigningClient_An429WithoutANamedRefusal_StaysAnOutage_SoTheUserIsToldToTryLater()
+    {
+        Assert.IsType<WalletSignOutcome.Unavailable>(await ClientFor(new StubHandler(_ => Task.FromResult(Json(429, "{\"error\":\"slow_down\"}")))).SignAsync("B", SampleRequest()));
     }
 
     // ---- the HTTP client that talks to Biatec OIDC ----

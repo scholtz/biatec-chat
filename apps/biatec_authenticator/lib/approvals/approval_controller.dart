@@ -178,6 +178,8 @@ class ApprovalController extends ChangeNotifier {
   Future<void> approve(String code) async {
     final shown = _request;
     if (_phase != ApprovalPhase.ready || shown == null) return;
+    // A request this version cannot show is never approved, whatever surface asks (the screen also turns the button off).
+    if (!shown.isShowable) return;
     code = code.trim();
     if (!_codeFormat.hasMatch(code)) {
       _set(ApprovalPhase.ready, error: 'Enter the six-digit code.');
@@ -347,13 +349,12 @@ class ApprovalController extends ChangeNotifier {
 
 /// One line for lists and history.
 String summarize(AuthorizationDetail d) => switch (d) {
-      TransactionDetail() => '${d.amount} ${d.assetSymbol} '
-          '(${d.fiatAmount} ${d.fiatCurrency}) on ${d.network}',
+      TransactionDetail() => '${d.headline} (${d.valueText}) on ${d.network}',
       LimitsChangeDetail() => 'Limits to ${d.requested.perTransactionEur} EUR '
           'per transaction, ${d.requested.perDayEur} EUR per day',
     };
 
 /// The client as rule 3 allows it to be named.
 String clientLabel(ConsentClient c) => c.verified
-    ? (c.displayName ?? c.domain ?? c.entityId)
-    : 'Unverified application ${c.fingerprint ?? ''}'.trim();
+    ? (c.legacy ? (c.displayName ?? c.domain ?? c.entityId ?? '') : c.domain!)
+    : 'Unproven application ${c.fingerprintShown ?? ''}'.trim();

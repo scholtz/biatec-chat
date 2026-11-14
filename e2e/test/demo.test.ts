@@ -63,9 +63,9 @@ describe("demo script steps 1-8 (always-ask fallback, mock Biatec OIDC)", () => 
     expect(fund.wrongCodeAttempts).toBe(1);
     expect(run.refusedSwitches).toHaveLength(1);
     expect(run.refusedSwitches[0]).not.toBe(fund.groupHash);
-    expect(fund.notes.join(" ")).toMatch(/group_hash_mismatch/);
+    expect(fund.notes.join(" ")).toMatch(/consent_hash_mismatch/);
     expect(run.steps.every((s) => s.notes.some((n) => n.includes("cannot be replayed")))).toBe(true);
-    verdicts.push("wrong code refused, swapped group refused with group_hash_mismatch, consent single use");
+    verdicts.push("wrong code refused, swapped group refused with consent_hash_mismatch, consent single use");
   });
 });
 

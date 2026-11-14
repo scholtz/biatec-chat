@@ -28,6 +28,13 @@ the **direct entry** (`POST /connect/ciba`) the suite plays client and authentic
 5. the consent token signs the group once, and a second use is refused;
 6. the two entries produce receipts with identical structure.
 
+`tests/refusals.conformance.test.ts` covers the answers of the signing endpoint besides a signature and the policy behind them: the group id
+recomputed (`400 group_hash_mismatch`), `403 consent_unsupported_operation` (rekey, close-to, clawback), `consent_unsupported_network`,
+`consent_unavailable` with `reason: no_active_device`, `client_paused`, `unproven_client_blocked`, `daily_cap_exceeded` with `cap_eur`,
+`consent_hash_mismatch` (one byte changed after approval, the consent stays usable), `401 consent not usable` on a second use, the consent
+token refused on another endpoint, `valuedEur`, `429 too_many_pending_requests`, `429 rate_limited`, the user's own threshold (5000 EUR) and
+`GET /consent/settings`. The receipts are protocol 1.1 (`client_fingerprint`, `device.key_use` approve) and every group is a real unsigned Algorand group.
+
 `tests/detection.test.ts` proves the suite fails on a bad receipt: it alters a signed member, the signature, the
 device key, the binding code, the decision and the schema, and it runs both entries through a proxy that tampers with
 the receipt on the wire.
@@ -43,11 +50,13 @@ Defaults are the mock's public seed data. Override with environment variables:
 | `CONFORMANCE_CLIENT_ID`, `CONFORMANCE_CLIENT_SECRET` | Verified client (HTTP Basic) for direct entry and token redemption | `biatec-chat` |
 | `CONFORMANCE_LOGIN_HINT` | User for the direct entry | `alice@example.com` |
 | `CONFORMANCE_STEPUP_BEARER` | Access token of that client and user, which triggers step-up for the group | `alice-chat-sign` |
-| `CONFORMANCE_NETWORK`, `CONFORMANCE_ADDRESS`, `CONFORMANCE_ORIGIN` | Wallet network, sender address, request origin | `algorand-testnet`, `ALICEADDRESS` |
-| `CONFORMANCE_UNSIGNED_GROUP` | JSON array of unsigned group items above the user's threshold (the default is the mock's descriptor encoding, not msgpack) | mock descriptor |
+| `CONFORMANCE_NETWORK`, `CONFORMANCE_ADDRESS`, `CONFORMANCE_ORIGIN` | Wallet network, sender address (a valid Algorand address), request origin | `algorand-testnet`, a fixed test address |
+| `CONFORMANCE_UNSIGNED_GROUP` | JSON array of base64 unsigned Algorand transactions above the user's threshold (the refusal cases always build their own groups from `CONFORMANCE_ADDRESS`) | 5000 USDC from the address |
+| `CONFORMANCE_BEARER_NO_DEVICE`, `_PAUSED`, `_CAPPED`, `_UNPROVEN_BLOCKED`, `_ALWAYS_ASK`, `_THRESHOLD_5000` | Access tokens of a user with no device, one who paused the client, one inside the first day without a device, one who blocks unproven clients (using a client without a proven domain), one who always asks, one whose threshold is 5000 EUR | the mock's `bob`, `dave`, `erin`, `gina`, `carol`, `frank` tokens |
+| `CONFORMANCE_UNSUPPORTED_NETWORK` | A network the server cannot consent to | `bitcoin-testnet` |
 | `CONFORMANCE_DEVICE_TOKEN`, `CONFORMANCE_DEVICE_KID`, `CONFORMANCE_DEVICE_PRIVATE_JWK` | Enrolled test device that signs receipts (private JWK as JSON) | vector device |
 
-The authenticator side needs the device's attestation and public key, which the suite reads from the helper
+The authenticator side signs 1.1 receipts with the approval key and needs the device's attestation and public key, which the suite reads from the helper
 `GET /mock/devices/{kid}` (a standalone mock serves it only when started with `MOCK_TEST_HELPERS=1`). A server without that helper must offer an equivalent; adapt the lookup in `approve` in `src/kit.ts`.
 
 ## Reports

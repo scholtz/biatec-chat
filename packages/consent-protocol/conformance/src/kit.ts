@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020Module from "ajv/dist/2020.js";
 import { jcs, signEs256, verifyReceipt } from "../../scripts/lib.mjs";
-import { encodeTx } from "../../mock-oidc/src/group.ts";
+import { account, buildGroup, usdcTransfer, type BuiltGroup, type TxSpec } from "../../mock-oidc/src/build.ts";
 
 const Ajv2020 = Ajv2020Module as unknown as typeof Ajv2020Module.default;
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -21,7 +21,7 @@ export const config = {
   clientId: env("CONFORMANCE_CLIENT_ID", "biatec-chat"),
   clientSecret: env("CONFORMANCE_CLIENT_SECRET", "biatec-chat-secret"),
   loginHint: env("CONFORMANCE_LOGIN_HINT", "alice@example.com"),
-  address: env("CONFORMANCE_ADDRESS", "ALICEADDRESS"),
+  address: env("CONFORMANCE_ADDRESS", account("alice")),
   network: env("CONFORMANCE_NETWORK", "algorand-testnet"),
   origin: env("CONFORMANCE_ORIGIN", "https://chat.biatec.io"),
   /** Bearer token of the same user and client, over the step-up threshold when signing `unsignedGroup`. */
@@ -30,19 +30,28 @@ export const config = {
   deviceToken: env("CONFORMANCE_DEVICE_TOKEN", "device-token-alice"),
   deviceKid: env("CONFORMANCE_DEVICE_KID", "alice-device"),
   devicePrivateJwk: process.env.CONFORMANCE_DEVICE_PRIVATE_JWK ? JSON.parse(process.env.CONFORMANCE_DEVICE_PRIVATE_JWK) : vectorKeys.device,
-  /** Unsigned group items above the user's step-up threshold. Default is the mock's descriptor encoding. */
+  /** Unsigned group items above the user's step-up threshold: real base64 msgpack transactions. Default: 5000 USDC from `address` (about 4612 EUR in the mock's price table). */
   unsignedGroup: process.env.CONFORMANCE_UNSIGNED_GROUP
     ? (JSON.parse(process.env.CONFORMANCE_UNSIGNED_GROUP) as string[])
-    : [
-        encodeTx({
-          sender: env("CONFORMANCE_ADDRESS", "ALICEADDRESS"),
-          receiver: "PAYEE",
-          asset: { id: "31566704", symbol: "USDC", decimals: 6 },
-          amount: "5000.000000",
-          fiat_eur: "5000.00",
-        }),
-      ],
+    : buildGroup([usdcTransfer(env("CONFORMANCE_ADDRESS", account("alice")), account("conformance payee"), 5000)]).items,
+  /** Further users and clients of the refusal cases: bearer tokens of the mock's seed data. */
+  bearers: {
+    noDevice: env("CONFORMANCE_BEARER_NO_DEVICE", "bob-chat-sign"),
+    paused: env("CONFORMANCE_BEARER_PAUSED", "dave-chat-sign"),
+    capped: env("CONFORMANCE_BEARER_CAPPED", "erin-chat-sign"),
+    blocksUnproven: env("CONFORMANCE_BEARER_UNPROVEN_BLOCKED", "gina-unverified-sign"),
+    alwaysAsk: env("CONFORMANCE_BEARER_ALWAYS_ASK", "carol-chat-sign"),
+    threshold5000: env("CONFORMANCE_BEARER_THRESHOLD_5000", "frank-chat-sign"),
+  },
+  unsupportedNetwork: env("CONFORMANCE_UNSUPPORTED_NETWORK", "bitcoin-testnet"),
 };
+
+/** The sender the default group and the refusal cases use. */
+export const sender = () => config.address;
+/** A transfer of `usdc` whole USDC from `sender()` to a fixed payee. */
+export const transfer = (usdc: number, extra: Partial<TxSpec> = {}): TxSpec => usdcTransfer(sender(), account("conformance payee"), usdc, extra);
+export { buildGroup, account };
+export type { BuiltGroup, TxSpec };
 
 // ---------------------------------------------------------------------------------------------------------------
 // Schemas
@@ -111,18 +120,25 @@ export function receiptProblems(receipt: any, ctx: ReceiptContext): string[] {
     return [`signed is not canonicalizable: ${(e as Error).message}`];
   }
 
-  // Signing rules: device ES256 signature over JCS(signed) and the Biatec OIDC attestation of the device key.
+  // Signing rules: device ES256 signature over JCS(signed) and the Biatec OIDC attestation of the device key, which for 1.1 names its use.
   if (!verifyReceipt(receipt, ctx.jwks, { issuer: config.issuer, now: ctx.now })) problems.push("signature or device attestation does not verify against the published JWKS");
+  if (receipt.version !== "1.1") problems.push(`version is ${receipt.version}, expected 1.1`);
+  if (receipt.signed.decision === "approve" && receipt.device?.key_use !== "approve") problems.push("an approval must be signed by an approval key (device.key_use approve)");
 
   // The receipt restates the request member for member.
   const r = ctx.request;
   const same = (label: string, a: unknown, b: unknown) => { if (jcs(a) !== jcs(b)) problems.push(`signed.${label} differs from the consent request`); };
   same("auth_req_id", s.auth_req_id, r.auth_req_id);
-  same("client_entity_id", s.client_entity_id, r.client.entity_id);
+  same("client_fingerprint", s.client_fingerprint, r.client.fingerprint);
   same("sub", s.sub, r.sub);
   same("expiry", s.expiry, r.expiry);
   same("binding_message", s.binding_message, r.binding_message);
   same("authorization_details", s.authorization_details, r.authorization_details);
+  const d = s.authorization_details?.[0];
+  if (d?.type === "biatec_transaction") {
+    if (d.group_hash !== r.bound_hash) problems.push("group_hash is not the hash the request is bound to");
+    if (d.origin !== r.origin) problems.push("the origin in the details is not the request's origin");
+  }
   if (s.binding_code !== ctx.bindingCode) problems.push("signed.binding_code is not the code that was entered");
   if (s.decision !== "approve") problems.push(`signed.decision is ${s.decision}, expected approve`);
   return problems;
@@ -154,7 +170,7 @@ const deviceAuth = () => "Device " + config.deviceToken;
 export const signPath = () => `/wallet/${config.network}/${config.address}/sign`;
 
 /** What the authenticator does: build a receipt from the fetched request and the typed code, and sign it. */
-async function approve(base: string, authReqId: string, code: string) {
+export async function approve(base: string, authReqId: string, code: string) {
   const reqReply = await http(base, "GET", `/consent/requests/${authReqId}`, { auth: deviceAuth() });
   if (reqReply.status !== 200) throw new Error(`device could not fetch the consent request: HTTP ${reqReply.status} ${JSON.stringify(reqReply.json)}`);
   const request = reqReply.json;
@@ -163,7 +179,7 @@ async function approve(base: string, authReqId: string, code: string) {
   const signed = {
     authorization_details: request.authorization_details,
     auth_req_id: request.auth_req_id,
-    client_entity_id: request.client.entity_id,
+    client_fingerprint: request.client.fingerprint,
     binding_code: code,
     decision: "approve",
     expiry: request.expiry,
@@ -171,12 +187,12 @@ async function approve(base: string, authReqId: string, code: string) {
     binding_message: request.binding_message,
   };
   const receipt = {
-    version: "1",
+    version: "1.1",
     signed,
     alg: "ES256",
     signature: signEs256(config.devicePrivateJwk, Buffer.from(jcs(signed), "utf8")),
     issued_at: Math.floor(Date.now() / 1000),
-    device: { kid: config.deviceKid, public_key: devReply.json.public_key, attestation: devReply.json.attestation },
+    device: { kid: config.deviceKid, key_use: "approve", public_key: devReply.json.public_key, attestation: devReply.json.attestation },
   };
   const posted = await http(base, "POST", `/consent/requests/${authReqId}/receipt`, { auth: deviceAuth(), body: receipt });
   if (posted.status !== 200) throw new Error(`receipt was not accepted: HTTP ${posted.status} ${JSON.stringify(posted.json)}`);
@@ -200,14 +216,14 @@ async function finish(base: string, entry: FlowResult["entry"], authReqId: strin
   const request = await approve(base, authReqId, code);
   const tokenReply = await redeem(base, authReqId, intervalSeconds);
   if (tokenReply.status !== 200) throw new Error(`token endpoint refused: HTTP ${tokenReply.status} ${JSON.stringify(tokenReply.json)}`);
-  const signReply = await http(base, "POST", signPath(), { auth: "Bearer " + tokenReply.json.access_token, body: { unsigned_group: config.unsignedGroup } });
+  const signReply = await http(base, "POST", signPath(), { auth: "Bearer " + tokenReply.json.access_token, body: { transactions: config.unsignedGroup, origin: config.origin } });
   const jwks = (await http(base, "GET", "/.well-known/jwks.json")).json;
   return { entry, request, bindingCode: code, receipt: tokenReply.json.consent_receipt, tokenReply, signReply, jwks };
 }
 
 /** Step-up entry (RFC 9470): signing above the threshold answers 401 with the challenge, then the CIBA grant. */
 export async function runStepUp(base: string): Promise<FlowResult & { challenge: Reply }> {
-  const challenge = await http(base, "POST", signPath(), { auth: "Bearer " + config.stepUpBearer, body: { unsigned_group: config.unsignedGroup } });
+  const challenge = await http(base, "POST", signPath(), { auth: "Bearer " + config.stepUpBearer, body: { transactions: config.unsignedGroup, origin: config.origin } });
   if (challenge.status !== 401) throw new Error(`expected the step-up challenge (401), got HTTP ${challenge.status} ${JSON.stringify(challenge.json)}`);
   const flow = await finish(base, "step-up", challenge.json.auth_req_id, challenge.json.binding_code, challenge.json.interval ?? 2);
   return { ...flow, challenge };
@@ -231,4 +247,25 @@ export async function runDirect(base: string): Promise<FlowResult & { start: Rep
   if (start.status !== 200) throw new Error(`direct entry refused: HTTP ${start.status} ${JSON.stringify(start.json)}`);
   const flow = await finish(base, "direct", start.json.auth_req_id, start.json.binding_code, start.json.interval ?? 2);
   return { ...flow, start };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Pieces for the refusal and behaviour cases
+
+let originSeq = 0;
+/** An origin no earlier case used: the pending-request limit is per client, user and origin. */
+export const freshOrigin = () => `https://conformance-${Date.now().toString(36)}-${++originSeq}.example`;
+
+/** A signing call with an ordinary or consent token. */
+export const signCall = (base: string, bearer: string, group: { items: string[]; grp?: string }, extra: Record<string, unknown> = {}, network = config.network) =>
+  http(base, "POST", `/wallet/${network}/${config.address}/sign`, { auth: "Bearer " + bearer, body: { transactions: group.items, ...(group.grp ? { grp: group.grp } : {}), origin: freshOrigin(), ...extra } });
+
+/** Step-up, approval and token for a group: the elevated token, ready for the signing call. */
+export async function elevate(base: string, group: BuiltGroup, extra: Record<string, unknown> = {}) {
+  const challenge = await signCall(base, config.stepUpBearer, group, extra);
+  if (challenge.status !== 401) throw new Error(`expected the step-up challenge (401), got HTTP ${challenge.status} ${JSON.stringify(challenge.json)}`);
+  const request = await approve(base, challenge.json.auth_req_id, challenge.json.binding_code);
+  const tokenReply = await redeem(base, challenge.json.auth_req_id, challenge.json.interval ?? 2);
+  if (tokenReply.status !== 200) throw new Error(`token endpoint refused: HTTP ${tokenReply.status} ${JSON.stringify(tokenReply.json)}`);
+  return { challenge, request, token: tokenReply.json.access_token as string };
 }

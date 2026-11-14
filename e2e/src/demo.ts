@@ -98,6 +98,7 @@ export async function runDemo(h: MockOidcHarness): Promise<DemoRun> {
   const alice: Identity = { name: "Alice", sub: "pw_carol", deviceKid: "carol-device", deviceToken: "device-token-carol", accessToken: "carol-chat-sign", address: algoAddr("alice") };
   const bob: Identity = { name: "Bob", sub: "pw_alice", deviceKid: "alice-device", deviceToken: "device-token-alice", accessToken: "alice-chat-sign", address: algoAddr("bob") };
   h.configureAlwaysAsk(alice.sub, bob.sub);
+  h.trustApplications([alice.sub, bob.sub], [SAFE_APP_ID, POOL_APP_ID]);
 
   const key = new EvidenceKey();
   const A = new Session(alice, key);
@@ -109,7 +110,9 @@ export async function runDemo(h: MockOidcHarness): Promise<DemoRun> {
 
   const cardSummary = (card: PhoneCard): StepRecord["phoneCard"] => {
     const d = card.authorization_details[0];
-    return { amounts: `${d.amount} ${d.asset.symbol}`, fiatEur: d.fiat_value.amount, receiver: d.receiver, applicationId: d.application_id, groupHash: d.group_hash };
+    // Protocol 1.1: every transfer and application is listed; the demo's steps have one of each at most. An unknown value (an application the user did not trust) has no total.
+    const t = d.transfers[0];
+    return { amounts: t ? `${t.amount} ${t.asset.symbol}` : "no transfer", fiatEur: d.fiat_value?.amount ?? "unknown", receiver: t?.receiver, applicationId: d.applications[0]?.id, groupHash: d.group_hash };
   };
 
   /** One Biatec OIDC signing call, end to end: preview, confirm, step-up, phone, consent token, signature, evidence. */
@@ -164,10 +167,10 @@ export async function runDemo(h: MockOidcHarness): Promise<DemoRun> {
 
       if (spec.switchTo) {
         const bad = await h.signRaw(tok.json.access_token, s.who, spec.switchTo);
-        if (bad.status < 400 || bad.json.error !== "group_hash_mismatch") throw new Error(`step ${spec.step}: a different group must be refused with group_hash_mismatch, got ${bad.status} ${JSON.stringify(bad.json)}`);
+        if (bad.status < 400 || bad.json.error !== "consent_hash_mismatch") throw new Error(`step ${spec.step}: a different group must be refused with consent_hash_mismatch, got ${bad.status} ${JSON.stringify(bad.json)}`);
         refusedSwitches.push(groupHash(spec.switchTo, NETWORK));
-        record.notes.push("a different group was refused with the approved consent (group_hash_mismatch) and the consent stayed unspent");
-        log(`  bait and switch refused: group_hash_mismatch, consent not spent`);
+        record.notes.push("a different group was refused with the approved consent (consent_hash_mismatch) and the consent stayed unspent");
+        log(`  bait and switch refused: consent_hash_mismatch, consent not spent`);
       }
       const second = await h.signRaw(tok.json.access_token, s.who, spec.group);
       if (second.status !== 200) throw new Error(`step ${spec.step}: signing with the consent failed: ${second.status} ${JSON.stringify(second.json)}`);
