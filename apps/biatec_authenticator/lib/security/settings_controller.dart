@@ -10,6 +10,7 @@ import '../approvals/jcs.dart';
 import '../config.dart';
 import '../enrollment/enrollment_state.dart';
 import '../keys/device_key_store.dart';
+import '../keys/prompt_free_key.dart';
 import 'settings_client.dart';
 import '../enrollment/observable_enrollment_store.dart';
 
@@ -376,7 +377,8 @@ class SettingsController extends ChangeNotifier {
   Future<ConsentSettings> _signedChange(EnrollmentRecord record,
       ConsentSettings current, Map<String, Object?> change) async {
     _checkActive(record);
-    final key = twoKeys ? await keys.loadApproval() : await keys.loadPresence();
+    final promptFree = PromptFreeKey.of(record);
+    final key = twoKeys ? await keys.loadApproval() : await promptFree.load(keys);
     if (key == null || key.kid != record.kid) {
       throw const ApprovalException(ApprovalKeyInvalidated.message);
     }
@@ -394,8 +396,8 @@ class SettingsController extends ChangeNotifier {
     final Uint8List signature;
     try {
       if (!twoKeys) {
-        signature =
-            await keys.signPresence(Uint8List.fromList(canonicalBytes(signed)));
+        signature = await promptFree
+            .sign(keys, Uint8List.fromList(canonicalBytes(signed)));
       } else {
         // The operating system asks for a strong biometric for this one signature.
         signature = await keys.signApproval(

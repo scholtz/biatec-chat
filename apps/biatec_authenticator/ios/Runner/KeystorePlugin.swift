@@ -45,6 +45,18 @@ public class KeystorePlugin: NSObject, FlutterPlugin {
             }
         case "keysState":
             result(keysState())
+        case "generatePresence":
+            // Single-key mode: ONLY the prompt-free key is made (no approval key, no biometric needed), as before T-241.
+            generatePresence(result)
+        case "loadLegacy":
+            // The key of an install from before the two keys, under its old tag.
+            guard let alias = legacyAlias(args) else { return result(FlutterError(code: "bad_args", message: "alias is required", details: nil)) }
+            result(parts(alias, approval: false))
+        case "signLegacy":
+            guard let alias = legacyAlias(args), let data = (args["data"] as? FlutterStandardTypedData)?.data, let key = privateKey(alias, context: nil) else {
+                return result(FlutterError(code: "no_key", message: "No key or data", details: nil))
+            }
+            sign(key, data, result)
         case "signPresence":
             guard let data = (args["data"] as? FlutterStandardTypedData)?.data, let key = privateKey(KeystorePlugin.presenceTag, context: nil) else {
                 return result(FlutterError(code: "no_key", message: "No key or data", details: nil))
@@ -67,6 +79,28 @@ public class KeystorePlugin: NSObject, FlutterPlugin {
         }
     }
 
+    private func legacyAlias(_ args: [String: Any]) -> String? {
+        guard let alias = args["alias"] as? String, !alias.isEmpty, alias != KeystorePlugin.approvalTag, alias != KeystorePlugin.presenceTag else { return nil }
+        return alias
+    }
+
+    private func generatePresence(_ result: (Any?) -> Void) {
+        if let existing = parts(KeystorePlugin.presenceTag, approval: false) { return result(existing) }
+        let (key, error) = make(KeystorePlugin.presenceTag, approval: false)
+        guard key != nil, let p = parts(KeystorePlugin.presenceTag, approval: false) else {
+            return result(FlutterError(code: error ?? "keystore_error", message: "The key could not be created", details: nil))
+        }
+        if p["securityLevel"] as? String == "software" {
+            SecItemDelete(query(KeystorePlugin.presenceTag) as CFDictionary)
+            return result(FlutterError(code: "insecure_key", message: "The keystore holds the key in software", details: ["securityLevel": "software"]))
+        }
+        result(p)
+    }
+
+    // One approval prompt at a time: a second signApproval while one is open fails at once.
+    private static let promptLock = NSLock()
+    private static var promptActive = false
+
     // MARK: Signing
 
     private func sign(_ key: SecKey, _ data: Data, _ result: (Any?) -> Void) {
@@ -81,6 +115,18 @@ public class KeystorePlugin: NSObject, FlutterPlugin {
     private func signApproval(_ args: [String: Any], _ result: (Any?) -> Void) {
         guard let data = (args["data"] as? FlutterStandardTypedData)?.data else {
             return result(FlutterError(code: "bad_args", message: "data is required", details: nil))
+        }
+        KeystorePlugin.promptLock.lock()
+        if KeystorePlugin.promptActive {
+            KeystorePlugin.promptLock.unlock()
+            return result(FlutterError(code: "prompt_active", message: "Another approval prompt is already open", details: nil))
+        }
+        KeystorePlugin.promptActive = true
+        KeystorePlugin.promptLock.unlock()
+        defer {
+            KeystorePlugin.promptLock.lock()
+            KeystorePlugin.promptActive = false
+            KeystorePlugin.promptLock.unlock()
         }
         let context = LAContext()
         // The app's fixed text (the title it passes), not text a request supplies; the client and total are in the card the user just read.
@@ -158,8 +204,9 @@ public class KeystorePlugin: NSObject, FlutterPlugin {
     }
 
     private func generateKeys(_ result: (Any?) -> Void) {
+        // Reuse only when the keys are really usable (parity with Android): keysState must say ok.
         if let a = parts(KeystorePlugin.approvalTag, approval: true), let p = parts(KeystorePlugin.presenceTag, approval: false),
-           a["authBound"] as? Bool == true {
+           a["authBound"] as? Bool == true, keysState() == "ok" {
             return result(["approval": a, "presence": p])
         }
         // Both or neither: a half set is removed and made again.

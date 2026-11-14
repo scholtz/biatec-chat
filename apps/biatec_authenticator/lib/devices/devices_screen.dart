@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../approvals/widgets/fact_row.dart';
 import '../enrollment/widgets/key_protection_card.dart';
 import '../keys/device_key_store.dart';
+import '../keys/prompt_free_key.dart';
 import '../security/settings_client.dart';
 import '../security/settings_controller.dart';
 import '../security/settings_frame.dart';
@@ -142,7 +143,10 @@ class _DeviceCard extends StatelessWidget {
           if (d.current) ...[
             const SizedBox(height: AppSpacing.s),
             _KeyLevel(
-                key: Key('level-${d.kid}'), kid: d.kid, keys: services.keys),
+                key: Key('level-${d.kid}'),
+                kid: d.kid,
+                keys: services.keys,
+                twoKeys: services.twoKeys),
           ] else
             Padding(
               padding: const EdgeInsets.only(top: AppSpacing.s),
@@ -167,9 +171,14 @@ class _DeviceCard extends StatelessWidget {
 
 /// Where this device's key lives, asked of the keystore once.
 class _KeyLevel extends StatefulWidget {
-  const _KeyLevel({super.key, required this.kid, required this.keys});
+  const _KeyLevel(
+      {super.key,
+      required this.kid,
+      required this.keys,
+      required this.twoKeys});
 
   final String kid;
+  final bool twoKeys;
   final DeviceKeyStore keys;
 
   @override
@@ -177,7 +186,15 @@ class _KeyLevel extends StatefulWidget {
 }
 
 class _KeyLevelState extends State<_KeyLevel> {
-  late final Future<DeviceKey?> _key = widget.keys.loadApproval();
+  late final Future<DeviceKey?> _key = _load();
+
+  Future<DeviceKey?> _load() async {
+    // The key that IS the device key: the approval key in two-key mode, the prompt-free one (this build's or the old alias) otherwise. A key under another kid is not this device's.
+    final key = widget.twoKeys
+        ? await widget.keys.loadApproval()
+        : await PromptFreeKey.forSingleKid(widget.kid).load(widget.keys);
+    return key != null && key.kid == widget.kid ? key : null;
+  }
 
   @override
   Widget build(BuildContext context) {

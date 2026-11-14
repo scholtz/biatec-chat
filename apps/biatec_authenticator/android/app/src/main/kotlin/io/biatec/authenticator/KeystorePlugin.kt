@@ -87,16 +87,24 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
     private class PluginError(val code: String, message: String, val details: Any? = null) : Exception(message)
 
     /** Answers the channel call once, whatever the prompt callbacks do afterwards. */
-    private class Once(private val result: MethodChannel.Result, private val main: Handler) {
+    private class Once(private val result: MethodChannel.Result, private val main: Handler, private val onDone: (() -> Unit)? = null) {
         private val done = AtomicBoolean(false)
-        fun success(value: Any?) { if (done.compareAndSet(false, true)) main.post { result.success(value) } }
-        fun error(code: String, message: String, details: Any? = null) { if (done.compareAndSet(false, true)) main.post { result.error(code, message, details) } }
+        fun success(value: Any?) { if (done.compareAndSet(false, true)) { onDone?.invoke(); main.post { result.success(value) } } }
+        fun error(code: String, message: String, details: Any? = null) { if (done.compareAndSet(false, true)) { onDone?.invoke(); main.post { result.error(code, message, details) } } }
     }
+
+    // One approval prompt at a time: a second signApproval while one is open fails at once (prompt_active) instead of stacking a second prompt.
+    private val promptActive = AtomicBoolean(false)
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         val method = call.method
         val data = call.argument<ByteArray>("data")
-        val once = Once(result, main)
+        val flight = method == "signApproval"
+        if (flight && !promptActive.compareAndSet(false, true)) {
+            Once(result, main).error("prompt_active", "Another approval prompt is already open")
+            return
+        }
+        val once = Once(result, main, if (flight) ({ promptActive.set(false) }) else null)
         // Created again after a detach (the plugin instance can be attached to another engine).
         if (worker.isShutdown) worker = Executors.newSingleThreadExecutor()
         worker.execute {
@@ -109,7 +117,12 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
                         else -> throw PluginError("bad_args", "use is required")
                     })
                     "keysState" -> once.success(keysState())
-                    "signPresence" -> once.success(signPresence(data))
+                    "signPresence" -> once.success(signWith(PRESENCE_ALIAS, data))
+                    // Single-key mode: only the prompt-free key is made (no approval key, no biometric needed), as before T-241.
+                    "generatePresence" -> once.success(generatePresence())
+                    // The key of an install from before the two keys, under its old random alias: still found and signed with in single-key mode.
+                    "loadLegacy" -> once.success(publicOf(legacyAlias(call), false))
+                    "signLegacy" -> once.success(signWith(legacyAlias(call), data))
                     "signApproval" -> signApproval(data, call.argument<String>("title"), call.argument<String>("subtitle"), once)
                     "deleteKeys" -> { deleteKeys(); once.success(null) }
                     // The single key of an install from before the two keys, by its alias.
@@ -132,9 +145,26 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
 
     // --- Presence key -------------------------------------------------------------------------------------------------------------------
 
-    private fun signPresence(data: ByteArray?): ByteArray {
+    private fun legacyAlias(call: MethodCall): String {
+        val alias = call.argument<String>("alias")
+        if (alias.isNullOrEmpty() || alias == APPROVAL_ALIAS || alias == PRESENCE_ALIAS) throw PluginError("bad_args", "alias is required")
+        return alias
+    }
+
+    private fun generatePresence(): Map<String, Any> {
+        publicOf(PRESENCE_ALIAS, false)?.let { return it }
+        make(PRESENCE_ALIAS, false)
+        val presence = publicOf(PRESENCE_ALIAS, false)!!
+        if (presence["securityLevel"] == "software") {
+            if (ks.containsAlias(PRESENCE_ALIAS)) ks.deleteEntry(PRESENCE_ALIAS)
+            throw PluginError("insecure_key", "The keystore holds the key in software", mapOf("securityLevel" to "software"))
+        }
+        return presence
+    }
+
+    private fun signWith(alias: String, data: ByteArray?): ByteArray {
         if (data == null) throw PluginError("bad_args", "data is required")
-        val key = ks.getKey(PRESENCE_ALIAS, null) as? PrivateKey ?: throw PluginError("no_key", "No presence key")
+        val key = ks.getKey(alias, null) as? PrivateKey ?: throw PluginError("no_key", "No such key")
         val der = Signature.getInstance("SHA256withECDSA").run { initSign(key); update(data); sign() }
         return derToRaw(der)
     }
@@ -308,20 +338,27 @@ class KeystorePlugin(private val context: android.content.Context) : FlutterPlug
 
     /** Without a prompt: both keys there and the approval key still usable (initSign throws when the biometrics changed), invalidated, or missing. */
     private fun keysState(): String {
-        val presence = ks.containsAlias(PRESENCE_ALIAS)
-        val approvalHere = ks.containsAlias(APPROVAL_ALIAS)
-        if (!approvalHere) return if (markers.getBoolean(MARKER, false)) "approval_key_invalidated" else "missing"
-        if (!presence) return "missing"
+        val gone = if (markers.getBoolean(MARKER, false)) "approval_key_invalidated" else "missing"
+        if (!ks.containsAlias(APPROVAL_ALIAS)) return gone
+        // "ok" only when the approval key was really loaded and a signature can be started with it. A key that cannot be recovered is invalidated.
+        val key = try {
+            ks.getKey(APPROVAL_ALIAS, null) as? PrivateKey
+        } catch (e: KeyPermanentlyInvalidatedException) {
+            return "approval_key_invalidated"
+        } catch (e: java.security.UnrecoverableKeyException) {
+            return "approval_key_invalidated"
+        } ?: return gone
+        if (!ks.containsAlias(PRESENCE_ALIAS)) return "missing"
         return try {
-            val key = ks.getKey(APPROVAL_ALIAS, null) as PrivateKey
             // For a per-use key this only starts the operation: it throws when the key was invalidated and asks for nothing.
             Signature.getInstance("SHA256withECDSA").initSign(key)
             "ok"
         } catch (e: KeyPermanentlyInvalidatedException) {
             "approval_key_invalidated"
-        } catch (e: Exception) {
-            "ok"
+        } catch (e: java.security.InvalidKeyException) {
+            "approval_key_invalidated"
         }
+        // Anything else (the keystore is busy) is thrown: Dart then keeps the state it had, and never reads it as ok.
     }
 
     private fun publicOf(alias: String, approval: Boolean): Map<String, Any>? {

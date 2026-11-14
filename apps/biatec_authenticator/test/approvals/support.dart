@@ -88,6 +88,23 @@ class SoftwareKeyStore implements DeviceKeyStore {
       approval: _key(jwk, approvalKid, bound: authBound),
       presence: _key(presenceJwk, presenceKid, bound: false));
 
+  /// Single-key mode and old installs: the one key under [approvalKid] as an alias.
+  final List<Uint8List> legacySigned = [];
+
+  @override
+  Future<DeviceKey> generatePresenceKey() async =>
+      _key(presenceJwk, presenceKid, bound: false);
+
+  @override
+  Future<DeviceKey?> loadLegacy(String alias) async =>
+      alias == approvalKid ? _key(jwk, alias, bound: false) : null;
+
+  @override
+  Future<Uint8List> signLegacy(String alias, Uint8List data) async {
+    legacySigned.add(data);
+    return _sign(jwk, data);
+  }
+
   @override
   Future<DeviceKey?> loadApproval() async =>
       _key(jwk, approvalKid, bound: authBound);

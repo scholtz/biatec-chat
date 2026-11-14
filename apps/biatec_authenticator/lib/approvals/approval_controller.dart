@@ -8,6 +8,7 @@ import 'biometric_gate.dart';
 import 'consent_request.dart';
 import 'history_store.dart';
 import 'jcs.dart';
+import '../keys/prompt_free_key.dart';
 import 'receipt.dart';
 
 enum ApprovalPhase {
@@ -181,11 +182,16 @@ class ApprovalController extends ChangeNotifier {
           'This device is not active yet, so it cannot decide.');
     }
     if (!twoKeys) {
-      // The single enrolled key is the prompt-free key, under the record's kid.
-      final key = await keys.loadPresence();
-      if (key == null || key.kid != record.kid) {
+      // The single enrolled key is the prompt-free key: this build's presence key, or the old alias of an install from before the two keys.
+      final promptFree = PromptFreeKey.of(record);
+      final key = await promptFree.load(keys);
+      if (key == null) {
         throw const ApprovalException(
             'The device key is missing. Enroll this device again.');
+      }
+      if (record.attestation == null) {
+        throw const ApprovalException(
+            'This enrollment has no attestation. Enroll the device again.');
       }
       if (key.securityLevel.blocksSigning) {
         throw const ApprovalException(KeySecurityLevel.softwareKeyMessage);
@@ -196,7 +202,8 @@ class ApprovalController extends ChangeNotifier {
             approvalKey: key,
             approvalAttestation: record.attestation,
             presenceKey: key,
-            presenceAttestation: record.attestation ?? ''),
+            presenceAttestation: record.attestation!,
+            legacyAlias: promptFree.legacy ? promptFree.kid : null),
       );
     }
     final presenceKid = record.presenceKid;

@@ -282,24 +282,27 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
                   'be approved or denied. Go back and start the action again.',
             ),
             const SizedBox(height: AppSpacing.m),
-          ] else if (c.keysState == KeysState.approvalKeyInvalidated) ...[
-            // Approve is off, Deny still works; the way out is to enroll again.
-            StatusBanner(
-              key: const Key('approval-key-invalidated'),
-              severity: StatusSeverity.danger,
-              icon: Icons.fingerprint,
-              title: 'Approvals are off on this phone',
-              message: '${ApprovalKeyInvalidated.message} Deny still works.',
-              actionLabel: 'Enroll this device again',
-              onAction: () async {
-                await c.startReenrollment();
-                if (mounted) _close();
-              },
-            ),
-            const SizedBox(height: AppSpacing.m),
-          ] else if (c.error != null) ...[
-            _errorBanner(c.error!),
-            const SizedBox(height: AppSpacing.m),
+          ] else ...[
+            // Approve is off, Deny still works; the way out is to enroll again. An error of the last step is shown as well, never hidden by this banner.
+            if (c.keysState == KeysState.approvalKeyInvalidated)
+              _keysBanner(
+                  const Key('approval-key-invalidated'),
+                  'Approvals are off on this phone',
+                  '${ApprovalKeyInvalidated.message} Deny still works.',
+                  c)
+            else if (c.keysState == KeysState.missing)
+              _keysBanner(
+                  const Key('approval-keys-missing'),
+                  'This phone has no device keys',
+                  'The keys that sign approvals are not on this phone (it was '
+                      'restored, or the keys were removed), so it cannot '
+                      'approve or deny. Enroll this device again.',
+                  c),
+            if (c.error != null &&
+                c.error != ApprovalKeyInvalidated.message) ...[
+              _errorBanner(c.error!),
+              const SizedBox(height: AppSpacing.m),
+            ],
           ],
           ApprovalCard(request: request),
           const SizedBox(height: AppSpacing.m),
@@ -314,6 +317,23 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
           const SizedBox(height: AppSpacing.l),
         ]);
   }
+
+  Widget _keysBanner(Key key, String title, String message, ApprovalController c) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.m),
+        child: StatusBanner(
+          key: key,
+          severity: StatusSeverity.danger,
+          icon: Icons.fingerprint,
+          title: title,
+          message: message,
+          actionLabel: 'Enroll this device again',
+          onAction: () async {
+            await c.startReenrollment();
+            if (mounted) _close();
+          },
+        ),
+      );
 
   /// A step that did not go through, in words, with what to do next.
   Widget _errorBanner(String error) {

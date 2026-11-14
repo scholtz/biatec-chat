@@ -57,6 +57,7 @@ class DeviceIdentity {
     this.approvalAttestation,
     required this.presenceKey,
     required this.presenceAttestation,
+    this.legacyAlias,
   });
 
   /// The approval key (bound to the biometric check) and its attestation (`biatec_key_use: approve`). Null when the approval key is invalidated or gone: such a device can still deny.
@@ -66,6 +67,9 @@ class DeviceIdentity {
   /// The presence key and its attestation (`biatec_key_use: presence`).
   final DeviceKey presenceKey;
   final String presenceAttestation;
+
+  /// Single-key mode with an install from before the two keys: the old alias that signs (the presence key is that key).
+  final String? legacyAlias;
 }
 
 /// What the biometric prompt of an approval says: the app's fixed title, and a subtitle that names the client and the total.
@@ -112,7 +116,9 @@ Future<Map<String, Object?>> signReceipt({
     signature = await keys.signApproval(bytes,
         promptTitle: prompt.title, promptSubtitle: prompt.subtitle);
   } else {
-    signature = await keys.signPresence(bytes);
+    signature = singleKey && device.legacyAlias != null
+        ? await keys.signLegacy(device.legacyAlias!, bytes)
+        : await keys.signPresence(bytes);
   }
   if (signature.length != 64) {
     throw StateError('the keystore returned a ${signature.length}-byte '

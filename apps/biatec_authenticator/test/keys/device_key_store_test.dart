@@ -141,7 +141,7 @@ void main() {
     test('KeystorePlugin.kt and KeystorePlugin.swift understand every name and value the Dart side sends', () {
       final kt = File('android/app/src/main/kotlin/io/biatec/authenticator/KeystorePlugin.kt').readAsStringSync();
       final swift = File('ios/Runner/KeystorePlugin.swift').readAsStringSync();
-      for (final method in ['generateKeys', 'load', 'keysState', 'signPresence', 'signApproval', 'deleteKeys', 'delete']) {
+      for (final method in ['generateKeys', 'generatePresence', 'load', 'loadLegacy', 'signLegacy', 'keysState', 'signPresence', 'signApproval', 'deleteKeys', 'delete']) {
         expect(kt, contains('"$method"'), reason: 'Kotlin: $method');
         expect(swift, contains('"$method"'), reason: 'Swift: $method');
       }
@@ -160,7 +160,18 @@ void main() {
         expect(kt, contains('"$wire"'));
         expect(swift, contains('"$wire"'));
       }
-      for (final code in ['cancelled', 'approval_key_invalidated', 'no_biometrics', 'locked_out', 'auth_failed', 'key_generation_failed', 'insecure_key']) {
+      // Single-key mode makes ONLY the prompt-free key: no approval key, no biometric requirement, on both platforms.
+      final ktGen = kt.substring(kt.indexOf('private fun generatePresence'));
+      expect(ktGen.substring(0, ktGen.indexOf('private fun signWith')), isNot(contains('APPROVAL_ALIAS')));
+      final swGen = swift.substring(swift.indexOf('private func generatePresence'));
+      expect(swGen.substring(0, swGen.indexOf('// One approval prompt at a time')), isNot(contains('approvalTag')));
+      // One approval prompt at a time, on both platforms.
+      expect(kt, contains('promptActive'));
+      expect(swift, contains('promptActive'));
+      // The old alias of an install from before the two keys is still looked up (and never the new aliases).
+      expect(kt, contains('legacyAlias(call)'));
+      expect(swift, contains('legacyAlias(args)'));
+      for (final code in ['prompt_active', 'cancelled', 'approval_key_invalidated', 'no_biometrics', 'locked_out', 'auth_failed', 'key_generation_failed', 'insecure_key']) {
         expect(kt, contains('"$code"'), reason: 'Kotlin error $code');
         expect(swift, contains('"$code"'), reason: 'Swift error $code');
       }

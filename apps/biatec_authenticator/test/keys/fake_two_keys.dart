@@ -69,11 +69,37 @@ class FakeTwoKeyStore implements DeviceKeyStore {
     return keys = made;
   }
 
+  /// Single-key mode: how many times only the prompt-free key was made (and the approval key was not).
+  int presenceOnlyGenerated = 0;
+  DeviceKey? _single;
+
+  /// The old random aliases of installs from before the two keys that this fake holds a key for.
+  final Map<String, DeviceKey> legacy = {};
+  final List<String> legacySigned = [];
+
+  @override
+  Future<DeviceKey> generatePresenceKey() async {
+    if (failGenerate) throw Exception('no secure hardware');
+    presenceOnlyGenerated++;
+    _n++;
+    return _single = DeviceKey.fromParts(KeyUse.presence,
+        x: _coord(50 + _n), y: _coord(150 + _n), securityLevel: level);
+  }
+
+  @override
+  Future<DeviceKey?> loadLegacy(String alias) async => legacy[alias];
+
+  @override
+  Future<Uint8List> signLegacy(String alias, Uint8List data) async {
+    legacySigned.add(alias);
+    return Uint8List(64)..fillRange(0, 64, 5);
+  }
+
   @override
   Future<DeviceKey?> loadApproval() async => keys?.approval;
 
   @override
-  Future<DeviceKey?> loadPresence() async => keys?.presence;
+  Future<DeviceKey?> loadPresence() async => keys?.presence ?? _single;
 
   @override
   Future<KeysState> keysState() async => keys == null && state == KeysState.ok

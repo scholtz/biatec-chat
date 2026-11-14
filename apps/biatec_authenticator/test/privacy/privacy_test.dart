@@ -68,6 +68,16 @@ class RecordingDeviceKeys implements DeviceKeyStore {
   Future<DeviceKeys> generateKeys() => throw UnimplementedError();
 
   @override
+  Future<DeviceKey> generatePresenceKey() => throw UnimplementedError();
+
+  @override
+  Future<DeviceKey?> loadLegacy(String alias) async => null;
+
+  @override
+  Future<Uint8List> signLegacy(String alias, Uint8List data) =>
+      throw UnimplementedError();
+
+  @override
   Future<DeviceKey?> loadApproval() async => null;
 
   @override

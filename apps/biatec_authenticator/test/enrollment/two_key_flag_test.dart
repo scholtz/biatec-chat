@@ -16,6 +16,8 @@ import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/integrity/attestation.dart';
+import 'package:biatec_authenticator/keys/device_key_store.dart';
+import 'package:biatec_authenticator/keys/key_security_level.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -104,7 +106,10 @@ void main() {
       final body = jsonDecode(requests.single.body) as Map;
       expect(body.keys.toSet(), {'kid', 'public_key'});
       // The enrolled key is the prompt-free one: nothing in this mode asks the OS for a biometric.
-      expect(body['kid'], keys.keys!.presence.kid);
+      expect(body['kid'], (await keys.loadPresence())!.kid);
+      // ONLY the prompt-free key was made: no approval key, no biometric.
+      expect(keys.presenceOnlyGenerated, 1);
+      expect(keys.generated, isEmpty);
       expect(keys.prompts, 0);
       expect(c.state.record!.presenceKid, isNull);
       // A one-key record is normal in this mode, not a legacy install.
@@ -185,8 +190,178 @@ void main() {
       expect(oidc.receipts, hasLength(1), reason: c.error);
       expect(gate.asked, 1);
       expect(keys.prompts, isEmpty);
-      expect(keys.presenceSigned, hasLength(1));
+      expect(keys.legacySigned, hasLength(1),
+          reason: 'signed with the old alias');
+      expect(keys.presenceSigned, isEmpty);
       expect((oidc.receipts.single['device'] as Map)['kid'], 'k');
+    });
+
+    test('a single-key record without an attestation refuses deny too',
+        () async {
+      final oidc = FakeOidc(vectorRequest('stepup-transaction-approve'));
+      final keys =
+          SoftwareKeyStore(deviceTestKey(), approvalKid: 'k', presenceKid: 'k');
+      final store = MemoryEnrollmentStore()
+        ..write(EnrollmentRecord(
+            kid: 'k', deviceToken: 'dev-token', activeAt: DateTime.utc(2020)));
+      final services = ApprovalServices(
+        client: ApprovalClient(baseUrl: 'http://oidc', client: oidc.client),
+        keys: keys,
+        enrollment: ObservableEnrollmentStore(store),
+        gate: FakeGate(),
+        history: MemoryHistoryStore(),
+        twoKeys: false,
+        clock: vectorNow,
+      );
+      final c = services.controllerFor(oidc.request['auth_req_id'] as String);
+      await c.load();
+      await c.deny();
+      expect(c.error,
+          'This enrollment has no attestation. Enroll the device again.');
+      expect(oidc.receipts, isEmpty);
+    });
+  });
+
+  group('upgrade from a build before the two keys', () {
+    final old = EnrollmentRecord(
+        kid: 'biatec-authenticator-abc',
+        deviceToken: 'tok',
+        activeAt: DateTime.utc(2020),
+        attestation: 'a.b.c');
+
+    EnrollmentController controller(FakeTwoKeyStore keys,
+            {required bool twoKeys}) =>
+        EnrollmentController(
+          keys: keys,
+          store:
+              ObservableEnrollmentStore(MemoryEnrollmentStore()..write(old)),
+          client: OidcEnrollmentClient(
+              baseUrl: 'http://oidc',
+              client: MockClient((r) async => http.Response('{}', 404))),
+          clock: () => t0,
+          attestation: _NoAttestation(),
+          twoKeys: twoKeys,
+        );
+
+    test(
+        'single-key mode: the old record stays valid and its key is found under the old alias',
+        () async {
+      final keys = FakeTwoKeyStore()
+        ..legacy['biatec-authenticator-abc'] = const DeviceKey(
+            kid: 'biatec-authenticator-abc',
+            x: 'x',
+            y: 'y',
+            securityLevel: KeySecurityLevel.trustedEnvironment);
+      final c = controller(keys, twoKeys: false);
+      await c.refresh();
+      expect(c.state.phase, isNot(EnrollmentPhase.notEnrolled));
+      expect(c.state.record!.kid, 'biatec-authenticator-abc');
+      expect(c.keyLevel, KeySecurityLevel.trustedEnvironment);
+    });
+
+    test('two-key mode: the same record asks to enroll again', () async {
+      final c = controller(FakeTwoKeyStore(), twoKeys: true);
+      await c.refresh();
+      expect(c.state.phase, EnrollmentPhase.notEnrolled);
+      expect(c.state.error, EnrollmentController.legacyKeyNotice);
+    });
+
+    test('the device proof signs with the old alias and names it as the kid',
+        () async {
+      final keys = FakeTwoKeyStore();
+      final signer = KeystoreDeviceProofSigner(
+          keys: keys,
+          enrollment: MemoryEnrollmentStore()..write(old),
+          clock: () => t0);
+      final h = await signer.headers(
+          'GET', Uri.parse('https://oidc.example/devices'), 'tok');
+      final header = jsonDecode(utf8.decode(base64Url
+          .decode(base64Url.normalize(h.values.single.split('.')[0])))) as Map;
+      expect(header['kid'], 'biatec-authenticator-abc');
+      expect(keys.legacySigned, ['biatec-authenticator-abc']);
+      expect(keys.presenceSigns, 0);
+    });
+  });
+
+  group('the enrollment challenge may expire while the user or the platform waits',
+      () {
+    http.Response created(http.Request r) {
+      final body = jsonDecode(r.body) as Map;
+      return http.Response(
+          jsonEncode({
+            'kid': body['kid'],
+            'active_at':
+                t0.add(const Duration(hours: 24)).millisecondsSinceEpoch ~/
+                    1000,
+            'device_token': 'tok',
+            'attestation': 'a',
+            'presence_kid': body['presence_kid'],
+            'presence_attestation': 'p',
+          }),
+          201);
+    }
+
+    test('a slow platform: a fresh challenge is fetched before the proofs are made',
+        () async {
+      var now = t0;
+      var challenges = 0;
+      final keys = FakeTwoKeyStore();
+      final client = MockClient((r) async {
+        if (r.url.path == '/devices/challenge') {
+          challenges++;
+          return http.Response(jsonEncode({'nonce': 'n' * 32}), 200);
+        }
+        return created(r);
+      });
+      final c = EnrollmentController(
+        keys: keys,
+        store: ObservableEnrollmentStore(MemoryEnrollmentStore()),
+        client: OidcEnrollmentClient(baseUrl: 'http://oidc', client: client),
+        clock: () => now,
+        attestation:
+            _SlowPlatform(() => now = now.add(const Duration(seconds: 400))),
+      );
+      await c.enroll(loginToken: 'login-alice');
+      expect(c.state.phase, EnrollmentPhase.inactive, reason: c.state.error);
+      expect(challenges, 2);
+      expect(keys.prompts, 1,
+          reason: 'the proofs were made once, with the fresh challenge');
+    });
+
+    test('the server says the challenge expired: one more try with a fresh one',
+        () async {
+      var challenges = 0;
+      var posts = 0;
+      final keys = FakeTwoKeyStore();
+      final client = MockClient((r) async {
+        if (r.url.path == '/devices/challenge') {
+          challenges++;
+          return http.Response(jsonEncode({'nonce': 'n' * 32}), 200);
+        }
+        posts++;
+        if (posts == 1) {
+          return http.Response(
+              jsonEncode({
+                'error': 'invalid_request',
+                'error_description':
+                    'the enrollment challenge in the proof is expired'
+              }),
+              400);
+        }
+        return created(r);
+      });
+      final c = EnrollmentController(
+        keys: keys,
+        store: ObservableEnrollmentStore(MemoryEnrollmentStore()),
+        client: OidcEnrollmentClient(baseUrl: 'http://oidc', client: client),
+        clock: () => t0,
+        attestation: _NoAttestation(),
+      );
+      await c.enroll(loginToken: 'login-alice');
+      expect(c.state.phase, EnrollmentPhase.inactive, reason: c.state.error);
+      expect(challenges, 2);
+      expect(posts, 2);
+      expect(keys.prompts, 2);
     });
   });
 
@@ -222,6 +397,18 @@ void main() {
     }
     expect(store.reads, 1);
   });
+}
+
+class _SlowPlatform implements AttestationProvider {
+  _SlowPlatform(this.onToken);
+  final void Function() onToken;
+  @override
+  Future<bool> supported() async => true;
+  @override
+  Future<AttestationToken?> token(String nonce) async {
+    onToken();
+    return const AttestationToken(kind: 'app_attest', token: 't');
+  }
 }
 
 class _SlowPrompt extends SoftwareKeyStore {

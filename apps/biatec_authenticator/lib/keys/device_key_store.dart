@@ -106,7 +106,7 @@ class KeyPromptCancelled implements Exception {
   String toString() => 'The biometric check was cancelled.';
 }
 
-/// The biometric prompt could not give a signature: [code] is `no_biometrics`, `locked_out`, `no_activity` or `auth_failed`.
+/// The biometric prompt could not give a signature: [code] is `no_biometrics`, `locked_out`, `no_activity`, `prompt_active` (another approval prompt is open: try again) or `auth_failed`.
 class KeyPromptFailed implements Exception {
   const KeyPromptFailed(this.code, this.message);
   final String code;
@@ -136,6 +136,15 @@ class ApprovalKeyInvalidated implements Exception {
 abstract class DeviceKeyStore {
   /// Creates both key pairs, or returns the existing ones. Throws [PlatformException] with code `insecure_key` when the keystore could not make a hardware key (for the approval key: bound to the biometrics) and `no_biometrics` when no strong biometric is enrolled on the phone.
   Future<DeviceKeys> generateKeys();
+
+  /// Single-key mode: creates ONLY the prompt-free key (no approval key, no biometric requirement), or returns the existing one.
+  Future<DeviceKey> generatePresenceKey();
+
+  /// The prompt-free key of an install from BEFORE the two keys, under its old random alias (the alias is the key's kid). Null when there is none.
+  Future<DeviceKey?> loadLegacy(String alias);
+
+  /// Signs with that old key (ES256, raw r||s). Never prompts.
+  Future<Uint8List> signLegacy(String alias, Uint8List data);
 
   /// The existing approval key, or null when there is none (never made, or gone).
   Future<DeviceKey?> loadApproval();
@@ -213,6 +222,28 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
   }
 
   @override
+  Future<DeviceKey> generatePresenceKey() async =>
+      _parse(await _channel.invokeMethod<Object?>('generatePresence'),
+          KeyUse.presence);
+
+  @override
+  Future<DeviceKey?> loadLegacy(String alias) async {
+    final raw = await _channel.invokeMethod<Object?>('loadLegacy', {'alias': alias});
+    if (raw == null) return null;
+    final key = _parse(raw, KeyUse.presence);
+    // The old key's kid is its alias, not a derived one.
+    return DeviceKey(
+        kid: alias, x: key.x, y: key.y, securityLevel: key.securityLevel);
+  }
+
+  @override
+  Future<Uint8List> signLegacy(String alias, Uint8List data) async {
+    final raw = await _channel
+        .invokeMethod<Uint8List>('signLegacy', {'alias': alias, 'data': data});
+    return raw!;
+  }
+
+  @override
   Future<DeviceKey?> loadApproval() => _load(KeyUse.approve);
 
   @override
@@ -245,6 +276,7 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
         case 'no_biometrics':
         case 'locked_out':
         case 'no_activity':
+        case 'prompt_active':
         case 'auth_failed':
           throw KeyPromptFailed(e.code, e.message ?? 'The biometric check did not succeed.');
       }

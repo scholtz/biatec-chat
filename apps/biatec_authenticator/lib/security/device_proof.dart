@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 
 import '../enrollment/enrollment_store.dart';
 import '../keys/device_key_store.dart';
+import '../keys/prompt_free_key.dart';
 
 /// Header that carries the proof of possession of the device key.
 const deviceProofHeader = 'X-Device-Proof';
@@ -37,25 +38,30 @@ class KeystoreDeviceProofSigner implements DeviceProofSigner {
   final EnrollmentStore enrollment;
   final DateTime Function() _clock;
   final Random _random;
-  final Map<String, String> _kids = {};
+  // One entry is enough: the key that signs for the current device token. A new enrollment has a new token and replaces it.
+  String? _cachedToken;
+  PromptFreeKey? _cachedKey;
 
   static String _b64(List<int> bytes) => base64Url.encode(bytes).replaceAll('=', '');
 
   @override
   Future<Map<String, String>> headers(String method, Uri url, String deviceToken) async {
     // The kid is cached by device token (a new enrollment has a new token), so the record is not decoded on every call.
-    var presenceKid = _kids[deviceToken];
-    if (presenceKid == null) {
+    var key = _cachedToken == deviceToken ? _cachedKey : null;
+    if (key == null) {
       final record = await enrollment.read();
-      // Two-key record: the presence key's kid. Single-key record: the one enrolled key is the prompt-free key, under the record's kid.
-      presenceKid = record?.presenceKid ?? record?.kid;
-      if (presenceKid != null && record?.deviceToken == deviceToken) {
-        _kids[deviceToken] = presenceKid;
+      // The one rule for which key signs without a prompt (two-key record, single-key record, or the old alias of an install from before the two keys).
+      if (record != null) {
+        key = PromptFreeKey.of(record);
+        if (record.deviceToken == deviceToken) {
+          _cachedToken = deviceToken;
+          _cachedKey = key;
+        }
       }
     }
-    // No presence key means no device key to prove with (a new install, or one from before the two keys): a configured signer never silently falls back to the bearer token alone.
-    if (presenceKid == null) throw StateError('this install has no device key to prove with');
-    final header = {'alg': 'ES256', 'typ': deviceProofType, 'kid': presenceKid};
+    // No record means no device key to prove with: a configured signer never silently falls back to the bearer token alone.
+    if (key == null) throw StateError('this install has no device key to prove with');
+    final header = {'alg': 'ES256', 'typ': deviceProofType, 'kid': key.kid};
     final payload = {
       'htm': method.toUpperCase(),
       'htu': url.toString(),
@@ -64,7 +70,7 @@ class KeystoreDeviceProofSigner implements DeviceProofSigner {
       'ath': _b64(sha256.convert(utf8.encode(deviceToken)).bytes),
     };
     final input = '${_b64(utf8.encode(jsonEncode(header)))}.${_b64(utf8.encode(jsonEncode(payload)))}';
-    final signature = await keys.signPresence(Uint8List.fromList(utf8.encode(input)));
+    final signature = await key.sign(keys, Uint8List.fromList(utf8.encode(input)));
     if (signature.length != 64) {
       throw StateError('the keystore returned a ${signature.length}-byte signature, expected r||s of 64');
     }
