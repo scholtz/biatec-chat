@@ -7,41 +7,47 @@ import { fileURLToPath } from "node:url";
 import Ajv2020Module from "ajv/dist/2020.js";
 import { jcs, signEs256, verifyReceipt } from "../../scripts/lib.mjs";
 import { account, buildGroup, usdcTransfer, type BuiltGroup, type TxSpec } from "../../mock-oidc/src/build.ts";
+import type { TestContext } from "vitest";
+import { missing, seeded, type Need } from "./needs.ts";
 
 const Ajv2020 = Ajv2020Module as unknown as typeof Ajv2020Module.default;
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const loadJson = (...p: string[]) => JSON.parse(readFileSync(join(root, ...p), "utf8"));
 
+// Seed data of the mock are only defaults when the server is the mock; against a real server a secret or token comes
+// from the person's environment or is empty (and the cases that need it are skipped, see needs.ts).
+const useSeed = seeded();
 const env = (name: string, fallback: string) => process.env[name] || fallback;
+const secret = (name: string, seed: string, ...aliases: string[]) => [name, ...aliases].map((n) => process.env[n]).find(Boolean) || (useSeed ? seed : "");
 const vectorKeys = loadJson("vectors", "keys.json");
 
 export const config = {
   issuer: env("CONFORMANCE_ISSUER", "https://oidc.biatec.test"),
   /** Direct entry (and token redemption) client, HTTP Basic. */
   clientId: env("CONFORMANCE_CLIENT_ID", "biatec-chat"),
-  clientSecret: env("CONFORMANCE_CLIENT_SECRET", "biatec-chat-secret"),
+  clientSecret: secret("CONFORMANCE_CLIENT_SECRET", "biatec-chat-secret"),
   loginHint: env("CONFORMANCE_LOGIN_HINT", "alice@example.com"),
   address: env("CONFORMANCE_ADDRESS", account("alice")),
   network: env("CONFORMANCE_NETWORK", "algorand-testnet"),
   origin: env("CONFORMANCE_ORIGIN", "https://chat.biatec.io"),
   /** Bearer token of the same user and client, over the step-up threshold when signing `unsignedGroup`. */
-  stepUpBearer: env("CONFORMANCE_STEPUP_BEARER", "alice-chat-sign"),
+  stepUpBearer: secret("CONFORMANCE_USER_TOKEN", "alice-chat-sign", "CONFORMANCE_STEPUP_BEARER"),
   /** Authenticator side: device token, kid and the private JWK that signs receipts. */
-  deviceToken: env("CONFORMANCE_DEVICE_TOKEN", "device-token-alice"),
+  deviceToken: secret("CONFORMANCE_DEVICE_TOKEN", "device-token-alice"),
   deviceKid: env("CONFORMANCE_DEVICE_KID", "alice-device"),
-  devicePrivateJwk: process.env.CONFORMANCE_DEVICE_PRIVATE_JWK ? JSON.parse(process.env.CONFORMANCE_DEVICE_PRIVATE_JWK) : vectorKeys.device,
+  devicePrivateJwk: process.env.CONFORMANCE_DEVICE_PRIVATE_JWK ? JSON.parse(process.env.CONFORMANCE_DEVICE_PRIVATE_JWK) : useSeed ? vectorKeys.device : undefined,
   /** Unsigned group items above the user's step-up threshold: real base64 msgpack transactions. Default: 5000 USDC from `address` (about 4612 EUR in the mock's price table). */
   unsignedGroup: process.env.CONFORMANCE_UNSIGNED_GROUP
     ? (JSON.parse(process.env.CONFORMANCE_UNSIGNED_GROUP) as string[])
     : buildGroup([usdcTransfer(env("CONFORMANCE_ADDRESS", account("alice")), account("conformance payee"), 5000)]).items,
   /** Further users and clients of the refusal cases: bearer tokens of the mock's seed data. */
   bearers: {
-    noDevice: env("CONFORMANCE_BEARER_NO_DEVICE", "bob-chat-sign"),
-    paused: env("CONFORMANCE_BEARER_PAUSED", "dave-chat-sign"),
-    capped: env("CONFORMANCE_BEARER_CAPPED", "erin-chat-sign"),
-    blocksUnproven: env("CONFORMANCE_BEARER_UNPROVEN_BLOCKED", "gina-unverified-sign"),
-    alwaysAsk: env("CONFORMANCE_BEARER_ALWAYS_ASK", "carol-chat-sign"),
-    threshold5000: env("CONFORMANCE_BEARER_THRESHOLD_5000", "frank-chat-sign"),
+    noDevice: secret("CONFORMANCE_BEARER_NO_DEVICE", "bob-chat-sign"),
+    paused: secret("CONFORMANCE_BEARER_PAUSED", "dave-chat-sign"),
+    capped: secret("CONFORMANCE_BEARER_CAPPED", "erin-chat-sign"),
+    blocksUnproven: secret("CONFORMANCE_BEARER_UNPROVEN_BLOCKED", "gina-unverified-sign"),
+    alwaysAsk: secret("CONFORMANCE_BEARER_ALWAYS_ASK", "carol-chat-sign"),
+    threshold5000: secret("CONFORMANCE_BEARER_THRESHOLD_5000", "frank-chat-sign"),
   },
   unsupportedNetwork: env("CONFORMANCE_UNSUPPORTED_NETWORK", "bitcoin-testnet"),
 };
@@ -190,7 +196,7 @@ export async function approve(base: string, authReqId: string, code: string) {
     version: "1.1",
     signed,
     alg: "ES256",
-    signature: signEs256(config.devicePrivateJwk, Buffer.from(jcs(signed), "utf8")),
+    signature: signEs256(config.devicePrivateJwk!, Buffer.from(jcs(signed), "utf8")),
     issued_at: Math.floor(Date.now() / 1000),
     device: { kid: config.deviceKid, key_use: "approve", public_key: devReply.json.public_key, attestation: devReply.json.attestation },
   };
@@ -269,3 +275,22 @@ export async function elevate(base: string, group: BuiltGroup, extra: Record<str
   if (tokenReply.status !== 200) throw new Error(`token endpoint refused: HTTP ${tokenReply.status} ${JSON.stringify(tokenReply.json)}`);
   return { challenge, request, token: tokenReply.json.access_token as string };
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Declaring what a case needs
+
+/**
+ * Wraps a case with the inputs it needs. When this run cannot offer them (a real server without the mock's helpers, a secret
+ * that was not supplied) the case is reported as SKIPPED with the reason, never passed.
+ */
+export const needs = (list: Need[], fn: (ctx: TestContext) => unknown | Promise<unknown>) => async (ctx: TestContext) => {
+  const why = missing(list);
+  if (why) ctx.skip(why);
+  return fn(ctx);
+};
+
+/** Runs `fn` on first use only, so a flow that a skipped case would need is never started. */
+export const lazy = <T>(fn: () => Promise<T>) => {
+  let p: Promise<T> | undefined;
+  return () => (p ??= fn());
+};

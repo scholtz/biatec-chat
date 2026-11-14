@@ -3,44 +3,48 @@
 import { describe, it, expect, inject, beforeAll, afterAll } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { receiptProblems, runDirect, runStepUp } from "../src/kit.ts";
+import { lazy, needs, receiptProblems, runDirect, runStepUp } from "../src/kit.ts";
+import type { Need } from "../src/needs.ts";
 
 const base = inject("baseUrl");
+// Every case plays client and authenticator against the server, then corrupts what came back.
+const flowNeeds: Need[] = ["userToken", "deviceKey", "mockHelpers"];
 
 describe("conformance checks detect a broken receipt", () => {
-  let good: Awaited<ReturnType<typeof runStepUp>>;
-  beforeAll(async () => { good = await runStepUp(base); });
+  const goodFlow = lazy(() => runStepUp(base));
+  let good!: Awaited<ReturnType<typeof runStepUp>>;
   const check = (receipt: unknown) => receiptProblems(receipt, { jwks: good.jwks, request: good.request, bindingCode: good.bindingCode });
   const clone = () => structuredClone(good.receipt);
+  const detects = (name: string, fn: () => unknown) => it(name, needs(flowNeeds, async () => { good = await goodFlow(); await fn(); }));
 
-  it("accepts the untouched receipt", () => expect(check(good.receipt)).toEqual([]));
+  detects("accepts the untouched receipt", () => expect(check(good.receipt)).toEqual([]));
 
-  it("flags a signed member changed after signing", () => {
+  detects("flags a signed member changed after signing", () => {
     const r = clone();
     r.signed.authorization_details[0].group_hash = "A".repeat(52);
     expect(check(r).join()).toMatch(/verify|differs/);
   });
 
-  it("flags a corrupted signature", () => {
+  detects("flags a corrupted signature", () => {
     const r = clone();
     r.signature = (r.signature[0] === "A" ? "B" : "A") + r.signature.slice(1);
     expect(check(r).join()).toMatch(/verify/);
   });
 
-  it("flags a swapped device key", () => {
+  detects("flags a swapped device key", () => {
     const r = clone();
     r.device.public_key = { ...r.device.public_key, x: r.device.public_key.y };
     expect(check(r).join()).toMatch(/verify/);
   });
 
-  it("flags a wrong binding code and a deny decision", () => {
+  detects("flags a wrong binding code and a deny decision", () => {
     const r = clone();
     r.signed.binding_code = "000000";
     r.signed.decision = "deny";
     expect(check(r).length).toBeGreaterThan(0);
   });
 
-  it("flags schema violations (extra member, wrong version, missing signature)", () => {
+  detects("flags schema violations (extra member, wrong version, missing signature)", () => {
     const extra = clone(); extra.surprise = true;
     expect(check(extra).join()).toMatch(/consent-receipt/);
     const ver = clone(); ver.version = "2";
@@ -49,7 +53,7 @@ describe("conformance checks detect a broken receipt", () => {
     expect(check(missing).join()).toMatch(/consent-receipt/);
   });
 
-  it("flags a receipt for another request", () => {
+  detects("flags a receipt for another request", () => {
     expect(receiptProblems(good.receipt, { jwks: good.jwks, request: { ...good.request, auth_req_id: "ciba_other" }, bindingCode: good.bindingCode }).join()).toMatch(/auth_req_id/);
   });
 });
@@ -78,8 +82,10 @@ describe("both entries are reported when the token endpoint returns a tampered r
   });
   afterAll(() => new Promise<void>((r) => proxy.close(() => r())));
 
-  it.each([["step-up", runStepUp], ["direct", runDirect]] as const)("%s entry", async (_n, run) => {
-    const f = await run(proxyBase);
-    expect(receiptProblems(f.receipt, { jwks: f.jwks, request: f.request, bindingCode: f.bindingCode }).length).toBeGreaterThan(0);
-  });
+  for (const [name, run, extra] of [["step-up", runStepUp, []], ["direct", runDirect, ["clientSecret"]]] as const) {
+    it(`${name} entry`, needs([...flowNeeds, ...(extra as readonly Need[])], async () => {
+      const f = await run(proxyBase);
+      expect(receiptProblems(f.receipt, { jwks: f.jwks, request: f.request, bindingCode: f.bindingCode }).length).toBeGreaterThan(0);
+    }));
+  }
 });
