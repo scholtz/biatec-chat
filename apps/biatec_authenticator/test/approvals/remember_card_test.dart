@@ -81,6 +81,17 @@ class _Rig {
   late final ApprovalServices services;
 }
 
+/// Whether `node` runs here (the CI authenticator job has none): the verification with the protocol kit needs it.
+final String? _nodeSkip = () {
+  try {
+    return Process.runSync('node', ['--version']).exitCode == 0
+        ? null
+        : 'node is not runnable, so lib.mjs verifyApproval cannot run';
+  } on Object {
+    return 'node is not installed, so lib.mjs verifyApproval cannot run';
+  }
+}();
+
 void main() {
   group('New service banner', () {
     testWidgets('shown only when the service is not linked', (tester) async {
@@ -124,7 +135,7 @@ void main() {
 
     test(
         'ticking puts exactly that id in remember.applications, and the receipt verifies with lib.mjs',
-        () async {
+        skip: _nodeSkip, () async {
       final v = _vector(_remember);
       final json = (v['request'] as Map).cast<String, Object?>();
       final rig = _Rig(json);

@@ -500,9 +500,10 @@ class SettingsController extends ChangeNotifier {
   /// of the amount, an unknown member, an inactive device) is shown as it is said.
   Future<bool> _applyServerDecides(EnrollmentRecord record,
       ConsentSettings current, Map<String, Object?> change) async {
-    // Single-key mode signs without a prompt of its own, so the app's gate asks first. With two keys the signature's own prompt is the one biometric, and a change that tightens
-    // asks for none (it cannot be told in advance without repeating the server's classifier).
-    if (!twoKeys && !await gate.confirm('Change a security setting')) {
+    // PRODUCT-DESCRIPTION, secure area rule 4: a fresh biometric for ANY change to a security setting. Biatec OIDC alone says whether a change loosens, so it cannot be known before sending
+    // whether the approval key's own prompt will follow: the app's gate asks first for every change (one prompt for a tightening), and a loosening is then signed by the approval key, whose
+    // prompt is a second one. The signature itself is still made exactly once.
+    if (!await gate.confirm('Change a security setting')) {
       throw const ApprovalException('Biometric check did not pass.');
     }
     var signed = false;

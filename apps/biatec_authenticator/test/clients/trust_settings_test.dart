@@ -46,6 +46,7 @@ void main() {
       expect(put.containsKey('consent'), isFalse);
       expect(rig.keys.signed, isEmpty);
       expect(rig.keys.prompts, isEmpty);
+      expect(rig.gate.asked, 1, reason: 'rule 4: a fresh biometric for any security change');
       expect(rig.oidc.settings['threshold_eur'], '250.50');
       expect(find.text('Now: 250.50 EUR'), findsOneWidget);
     });
@@ -67,6 +68,7 @@ void main() {
       expect((consent['device'] as Map)['key_use'], 'approve');
       expect(rig.keys.signed, hasLength(1));
       expect(rig.keys.prompts, hasLength(1));
+      expect(rig.gate.asked, 1, reason: 'the gate asks first; the signature itself is made once');
       expect(rig.keys.presenceSigned, isEmpty);
       expect(rig.oidc.settings['threshold_eur'], '5000.00');
     });
