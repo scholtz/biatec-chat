@@ -9,7 +9,6 @@ int notificationIdFor(String authReqId) {
   for (final unit in authReqId.codeUnits) {
     h = ((h ^ unit) * 0x01000193) & 0x7fffffff;
   }
-  // 1 is kept free for the notification of an added device.
   return h < 2 ? h + 2 : h;
 }
 
@@ -25,7 +24,6 @@ class LocalDeviceNotifier implements DeviceNotifier {
   final ChannelStrings Function() _strings;
   Future<void>? _ready;
 
-  static const deviceNotificationId = 1;
   static const channelId = 'approvals';
 
   /// Sets the plugin up once. [onTap] runs when the user taps a notification while the app runs (it brings the Approvals tab forward); without it a tap just opens the app.
@@ -79,11 +77,12 @@ class LocalDeviceNotifier implements DeviceNotifier {
   }
 
   @override
-  Future<void> deviceEnrolled() async {
+  Future<void> deviceEnrolled(String kid) async {
     await initialize();
     final s = _strings();
-    await _plugin.show(
-        deviceNotificationId, s.deviceTitle, s.deviceBody, _details(s));
+    // One notification per added device, with an id in its own range (the kid picks it and is never shown), so it replaces neither a request's nor another device's.
+    await _plugin.show(notificationIdFor('device:$kid'), s.deviceTitle,
+        s.deviceBody, _details(s));
   }
 
   @override

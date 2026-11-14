@@ -9,9 +9,12 @@ import 'consent_request.dart';
 /// The request could not be reached or read. [offline] is true when the
 /// server was not reachable at all.
 class ApprovalException implements Exception {
-  const ApprovalException(this.message, {this.offline = false});
+  const ApprovalException(this.message, {this.offline = false, this.status});
   final String message;
   final bool offline;
+
+  /// The HTTP status when Biatec OIDC answered with one that refused the call, else null.
+  final int? status;
   @override
   String toString() => message;
 }
@@ -174,7 +177,8 @@ class ApprovalClient {
     final json = _object(res.body, res.statusCode);
     if (res.statusCode != 200) {
       throw ApprovalException(
-          'No channel ticket (${res.statusCode}): ${_detail(json)}');
+          'No channel ticket (${res.statusCode}): ${_detail(json)}',
+          status: res.statusCode);
     }
     final ticket = json['ticket'];
     final expires = json['expires_in'];

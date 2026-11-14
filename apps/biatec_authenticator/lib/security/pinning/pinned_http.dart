@@ -31,7 +31,14 @@ abstract final class PinnedHttp {
   static PinPolicy _policy = PinPolicy.none();
 
   /// Set once at startup, before the first request.
-  static void configure(PinPolicy policy) => _policy = policy;
+  static void configure(PinPolicy policy) {
+    _policy = policy;
+    // A client made under the old policy is not kept.
+    _webSocketClient?.close();
+    _webSocketClient = null;
+  }
+
+  static HttpClient? _webSocketClient;
 
   static PinPolicy get policy => _policy;
 
@@ -48,8 +55,10 @@ abstract final class PinnedHttp {
       _PinnedClient(policy, allowLocalHttp ?? kDebugMode);
 
   /// An `HttpClient` with the same rules as [create] (no system authorities, a certificate must match a pin), for the WebSocket of the device channel. The channel's `wss` handshake goes through it, so a socket is never opened on trust the HTTPS calls would refuse.
+  ///
+  /// One client is made and reused by every connection (a client per attempt would leave a security context and sockets behind), until [configure] runs again.
   static HttpClient webSocketClient() =>
-      _PinnedClient(_policy, kDebugMode).httpClient;
+      _webSocketClient ??= _PinnedClient(_policy, kDebugMode).httpClient;
 }
 
 class _LazyClient extends http.BaseClient {

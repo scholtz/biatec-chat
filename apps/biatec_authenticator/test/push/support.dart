@@ -22,13 +22,13 @@ class FakeSource implements DeviceEventSource {
 class FakeNotifier implements DeviceNotifier {
   final requests = <String>[];
   final cancelled = <String>[];
-  int devices = 0;
+  final devices = <String>[];
 
   @override
   Future<void> requestArrived(String authReqId) async =>
       requests.add(authReqId);
   @override
-  Future<void> deviceEnrolled() async => devices++;
+  Future<void> deviceEnrolled(String kid) async => devices.add(kid);
   @override
   Future<void> cancelRequest(String authReqId) async =>
       cancelled.add(authReqId);

@@ -13,6 +13,7 @@ import 'channel/local_notifier.dart';
 import 'channel/stay_connected.dart';
 import 'push/apple_push.dart';
 import 'push/device_event_controller.dart';
+import 'push/device_event_source.dart';
 import 'integrity/integrity_checker.dart';
 import 'integrity/platform_integrity.dart';
 import 'lock/lock_controller.dart';
@@ -63,20 +64,25 @@ Future<void> main() async {
   final messenger = GlobalKey<ScaffoldMessengerState>();
   final shell = ShellController();
   final notifier = LocalDeviceNotifier();
-  final stayConnected = StayConnectedController(
-    platform: MethodChannelStayConnected(
-        notificationPermission: () async {
-      await notifier.requestPermission();
-    }),
-    enrollment: approvals.enrollment,
-  );
+  // Against a Biatec OIDC without the device channel (config.deviceChannel is off) nothing connects, the service is never started and the setting is not shown.
+  final StayConnectedController? stayConnected = config.deviceChannel
+      ? StayConnectedController(
+          platform: MethodChannelStayConnected(
+              notificationPermission: () async {
+            await notifier.requestPermission();
+          }),
+          enrollment: approvals.enrollment,
+        )
+      : null;
   // The device channel: a SignalR connection to Biatec OIDC while the app is in front. The Android service (if the user turned it on) keeps one while the app is closed.
-  final channel = buildDeviceChannel(
-    config: config,
-    client: approvals.client,
-    enrollment: approvals.enrollment,
-    wake: changesOf(approvals.enrollment),
-  );
+  final DeviceEventSource channel = config.deviceChannel
+      ? buildDeviceChannel(
+          config: config,
+          client: approvals.client,
+          enrollment: approvals.enrollment,
+          wake: changesOf(approvals.enrollment),
+        )
+      : IdleEventSource();
   final events = DeviceEventController(
     enrollment: approvals.enrollment,
     client: approvals.client,
@@ -99,11 +105,24 @@ Future<void> main() async {
       messengerKey: messenger));
   // Everything below starts after the first frame: the UI never waits for it, and a tapped notification that launched the app finds a mounted navigator.
   await WidgetsBinding.instance.endOfFrame;
-  await notifier.initialize(onTap: shell.showApprovals);
+  // Each step is on its own: a plugin that fails on some platform (notifications on desktop, say) must not stop the channel or the setting.
+  try {
+    await notifier.initialize(onTap: shell.showApprovals);
+  } on Object {
+    // Nothing is logged (the app never logs); the rest of the start goes on.
+  }
   // The channel's events are not shown by the OS while the app is open, so say it here.
   events.requestArrived.listen((_) => showRequestArrived(messenger, shell));
-  await events.start(channel);
-  await stayConnected.load();
+  try {
+    await events.start(channel);
+  } on Object {
+    // Nothing is logged (the app never logs); the rest of the start goes on.
+  }
+  try {
+    await stayConnected?.load();
+  } on Object {
+    // Nothing is logged (the app never logs); the rest of the start goes on.
+  }
 }
 
 /// In-app notice for a request that arrived over the channel while the app is open. It names no detail:

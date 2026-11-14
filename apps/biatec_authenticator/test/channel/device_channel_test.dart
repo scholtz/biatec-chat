@@ -601,6 +601,132 @@ void main() {
       });
     });
   });
+
+  group('refusal and wake-ups', () {
+    final epoch = DateTime.utc(2026, 11, 14);
+
+    test('a refused device (ChannelRefused) is not retried until something changes',
+        () {
+      fakeAsync((fa) {
+        var asked = 0;
+        final wake = StreamController<void>.broadcast();
+        final channel = DeviceChannel(
+          hubUri: Uri.parse('wss://oidc.example/hubs/device'),
+          ticket: () async {
+            asked++;
+            throw const ChannelRefused();
+          },
+          enrolled: () async => true,
+          wake: wake.stream,
+          random: _Fixed(0),
+          now: () => epoch.add(fa.elapsed),
+        );
+        channel.start();
+        fa.elapse(const Duration(hours: 5));
+        expect(asked, 1, reason: 'no retry every 30 seconds for ever');
+        // A new enrollment (the wake) tries again.
+        wake.add(null);
+        fa.elapse(const Duration(seconds: 1));
+        expect(asked, 2);
+        channel.stop();
+        fa.flushMicrotasks();
+      });
+    });
+
+    test('a close with allowReconnect false is not retried until something changes',
+        () {
+      fakeAsync((fa) {
+        var asked = 0;
+        final wake = StreamController<void>.broadcast();
+        final channel = DeviceChannel(
+          hubUri: Uri.parse('wss://oidc.example/hubs/device'),
+          ticket: () async => 't${++asked}',
+          enrolled: () async => true,
+          wake: wake.stream,
+          random: _Fixed(0),
+          now: () => epoch.add(fa.elapsed),
+          silenceLimit: const Duration(days: 1),
+          connector: (uri) {
+            final s = FakeHubSocket();
+            Timer(const Duration(seconds: 2),
+                () => s.serverSends(_frame({'type': 7, 'allowReconnect': false})));
+            return s;
+          },
+        );
+        channel.start();
+        fa.elapse(const Duration(hours: 3));
+        expect(asked, 1);
+        wake.add(null);
+        fa.elapse(const Duration(seconds: 1));
+        expect(asked, 2);
+        channel.stop();
+        fa.flushMicrotasks();
+      });
+    });
+
+    test('a wake that comes while the readiness check runs is not lost', () {
+      fakeAsync((fa) {
+        var enrolled = false;
+        var asked = 0;
+        final wake = StreamController<void>.broadcast();
+        final channel = DeviceChannel(
+          hubUri: Uri.parse('wss://oidc.example/hubs/device'),
+          ticket: () async {
+            asked++;
+            throw StateError('stop');
+          },
+          enrolled: () async {
+            final was = enrolled;
+            // The enrollment happens and announces itself after the answer is known, before the channel starts to sleep.
+            scheduleMicrotask(() {
+              enrolled = true;
+              wake.add(null);
+            });
+            return was;
+          },
+          wake: wake.stream,
+          random: _Fixed(0),
+          now: () => epoch.add(fa.elapsed),
+        );
+        channel.start();
+        fa.elapse(const Duration(milliseconds: 500));
+        expect(asked, 1, reason: 'not waiting for the 5 minute check');
+        channel.stop();
+        fa.flushMicrotasks();
+      });
+    });
+
+    test('an old sleep ending cannot clear a newer one', () {
+      fakeAsync((fa) {
+        var asked = 0;
+        final wake = StreamController<void>.broadcast();
+        final channel = DeviceChannel(
+          hubUri: Uri.parse('wss://oidc.example/hubs/device'),
+          ticket: () async {
+            asked++;
+            throw StateError('x');
+          },
+          enrolled: () async => true,
+          wake: wake.stream,
+          backoff: const [Duration(seconds: 10)],
+          random: _Fixed(0),
+          now: () => epoch.add(fa.elapsed),
+        );
+        channel.start();
+        fa.elapse(const Duration(seconds: 1));
+        expect(asked, 1);
+        // Wakes cut each backoff short, one after the other; each still works.
+        wake.add(null);
+        fa.elapse(const Duration(milliseconds: 10));
+        expect(asked, 2);
+        wake.add(null);
+        fa.elapse(const Duration(milliseconds: 10));
+        expect(asked, 3);
+        channel.stop();
+        fa.flushMicrotasks();
+      });
+    });
+  });
 }
 
 class FakeNetwork implements NetworkStatus {

@@ -15,7 +15,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <!-- Hardening (BCHAT-008): nothing is backed up or transferred, cleartext traffic is forbidden (the debug manifest allows it for the local
-         mock only), and MainActivity, the launcher, is the only component declared here. Libraries add their own components when the
+         mock only), MainActivity (the launcher) is the only activity and the only exported component; the one service (StayConnectedService) and the boot receiver are not exported. Libraries add their own components when the
          manifests are merged; test/platform_hardening_test.dart checks this file, and CI checks the merged release manifest after the release build. -->
     <application
         android:label="Biatec Authenticator"

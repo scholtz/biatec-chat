@@ -33,6 +33,11 @@ Future<void> stayConnectedMain() async {
   try {
     config = AppConfig.fromEnvironment();
     PinnedHttp.configure(pinPolicyFor(config));
+    // A build whose Biatec OIDC has no device channel has nothing to stay connected to (a restart after boot may find an old choice).
+    if (!config.deviceChannel) {
+      await stopSelf();
+      return;
+    }
   } on ConfigException {
     // An unsafe URL: the app does not start either, so there is nothing to stay connected to.
     await stopSelf();

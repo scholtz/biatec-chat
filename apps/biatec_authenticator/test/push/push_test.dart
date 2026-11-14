@@ -242,12 +242,23 @@ void main() {
       expect(notifier.cancelled, ['ciba_1']);
     });
 
-    test('device_enrolled refreshes the device list and notifies', () async {
+    test('device_enrolled refreshes the device list and notifies in the background',
+        () async {
       await controller.start(source);
       source.controller.add(const DeviceEnrolled('phone-2'));
       await pumpEventQueue();
       expect(devices, 1);
-      expect(notifier.devices, 1);
+      expect(notifier.devices, ['phone-2']);
+    });
+
+    test('device_enrolled in the foreground refreshes but shows no notification',
+        () async {
+      foreground = true;
+      await controller.start(source);
+      source.controller.add(const DeviceEnrolled('phone-2'));
+      await pumpEventQueue();
+      expect(devices, 1);
+      expect(notifier.devices, isEmpty);
     });
 
     test('settings_changed refreshes the settings', () async {

@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart' show Listenable;
 import '../approvals/approval_client.dart';
 import '../config.dart';
 import '../enrollment/enrollment_store.dart';
+import '../push/device_event.dart';
+import '../push/device_event_source.dart';
 import 'connectivity_status.dart';
 import 'device_channel.dart';
 
@@ -31,7 +33,13 @@ DeviceChannel buildDeviceChannel({
       ticket: () async {
         final record = await enrollment.read();
         if (record == null) throw StateError('not enrolled');
-        return (await client.hubTicket(record.deviceToken)).ticket;
+        try {
+          return (await client.hubTicket(record.deviceToken)).ticket;
+        } on ApprovalException catch (e) {
+          // 401 or 403: the device was revoked or cancelled. Retrying every 30 seconds for ever would only add load.
+          if (e.status == 401 || e.status == 403) throw const ChannelRefused();
+          rethrow;
+        }
       },
     );
 
@@ -44,4 +52,14 @@ Stream<void> changesOf(Listenable source) {
     onCancel: () => source.removeListener(fire),
   );
   return controller.stream;
+}
+
+/// The source of a build whose Biatec OIDC has no device channel: it never connects and never asks for a ticket.
+class IdleEventSource implements DeviceEventSource {
+  @override
+  Stream<DeviceEvent> get events => const Stream.empty();
+  @override
+  Future<void> start() async {}
+  @override
+  Future<void> stop() async {}
 }

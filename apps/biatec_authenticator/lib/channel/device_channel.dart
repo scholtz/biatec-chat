@@ -58,6 +58,12 @@ HubSocket connectHubSocket(Uri uri) {
       connectTimeout: const Duration(seconds: 15)));
 }
 
+/// Thrown by the ticket function when Biatec OIDC refuses this device for good (401 or 403: the device was revoked or cancelled). The channel stops
+/// and makes no more attempts until the enrollment or the network changes, or the app starts again.
+class ChannelRefused implements Exception {
+  const ChannelRefused();
+}
+
 /// Whether the phone has a network, so no attempt is made while it has none.
 abstract class NetworkStatus {
   Future<bool> get online;
@@ -139,7 +145,10 @@ class DeviceChannel implements DeviceEventSource {
   bool _running = false;
   int _generation = 0;
   HubSocket? _socket;
-  void Function()? _interrupt;
+
+  /// Counts wake-ups. A sleep started with an older count than this returns at once, so a wake that came in before the sleep began is not lost.
+  int _wakes = 0;
+  _Sleep? _sleeping;
 
   @override
   Stream<DeviceEvent> get events => _events.stream;
@@ -150,13 +159,13 @@ class DeviceChannel implements DeviceEventSource {
     _running = true;
     final generation = ++_generation;
     final w = wake;
-    if (w != null) _subs.add(w.listen((_) => _interrupt?.call()));
+    if (w != null) _subs.add(w.listen((_) => _wake()));
     final n = network;
     if (n != null) {
       _subs.add(n.changes.listen((online) {
         // Going offline ends the connection now; there is no attempt until the network is back.
         if (!online) _closeSocket();
-        _interrupt?.call();
+        _wake();
       }));
     }
     unawaited(_run(generation));
@@ -171,7 +180,7 @@ class DeviceChannel implements DeviceEventSource {
       unawaited(s.cancel());
     }
     _subs.clear();
-    _interrupt?.call();
+    _wake();
     await _closeSocket();
   }
 
@@ -198,16 +207,21 @@ class DeviceChannel implements DeviceEventSource {
     }
   }
 
-  Future<void> _sleep(Duration d) {
-    final done = Completer<void>();
-    final timer = Timer(d, () {
-      if (!done.isCompleted) done.complete();
+  void _wake() {
+    _wakes++;
+    _sleeping?.end();
+  }
+
+  /// Sleeps for [d], or until woken; with a null [d] until woken. [seen] is the wake count the caller saw before it decided to sleep.
+  Future<void> _sleep(int seen, Duration? d) {
+    if (seen != _wakes) return Future.value();
+    final sleep = _Sleep();
+    _sleeping = sleep;
+    if (d != null) sleep.timer = Timer(d, sleep.end);
+    // Only this sleep's own record is cleared: an older sleep finishing late cannot remove a newer one.
+    return sleep.done.future.whenComplete(() {
+      if (identical(_sleeping, sleep)) _sleeping = null;
     });
-    _interrupt = () {
-      timer.cancel();
-      if (!done.isCompleted) done.complete();
-    };
-    return done.future.whenComplete(() => _interrupt = null);
   }
 
   Future<bool> _ready() async {
@@ -222,10 +236,11 @@ class DeviceChannel implements DeviceEventSource {
   Future<void> _run(int generation) async {
     var failures = 0;
     while (_alive(generation)) {
+      final seen = _wakes;
       if (!await _ready()) {
         // Not enrolled or offline: wait for a change, make no attempt, and do not count it as a failure.
         failures = 0;
-        await _sleep(const Duration(minutes: 5));
+        await _sleep(seen, const Duration(minutes: 5));
         continue;
       }
       final end = await _session(generation);
@@ -234,13 +249,13 @@ class DeviceChannel implements DeviceEventSource {
       if (!end.allowReconnect) {
         // The server asked for the end: wait for the enrollment or the network to change (or a new start) instead of asking again.
         failures = 0;
-        await _sleep(const Duration(hours: 1));
+        await _sleep(_wakes, null);
         continue;
       }
       final base = backoff[min(failures, backoff.length - 1)];
       failures++;
       final jitter = base.inMilliseconds * 0.2 * _random.nextDouble();
-      await _sleep(base + Duration(milliseconds: jitter.round()));
+      await _sleep(_wakes, base + Duration(milliseconds: jitter.round()));
     }
   }
 
@@ -333,6 +348,9 @@ class DeviceChannel implements DeviceEventSource {
       handshakeTimer = Timer(handshakeTimeout, finish);
       socket.send('{"protocol":"json","version":1}\x1e');
       return await end.future;
+    } on ChannelRefused {
+      // The device is revoked or cancelled: retrying cannot help.
+      return const _End(Duration.zero, false);
     } on Object {
       // Only the kind of failure is kept: the exception text of a failed connect can hold the URL, and the URL holds the ticket.
       return _End(
@@ -346,6 +364,16 @@ class DeviceChannel implements DeviceEventSource {
       if (identical(_socket, socket)) _socket = null;
       await _closeQuietly(socket);
     }
+  }
+}
+
+class _Sleep {
+  final done = Completer<void>();
+  Timer? timer;
+
+  void end() {
+    timer?.cancel();
+    if (!done.isCompleted) done.complete();
   }
 }
 

@@ -65,7 +65,7 @@ class _NoNotifier implements DeviceNotifier {
   @override
   Future<void> requestArrived(String authReqId) async {}
   @override
-  Future<void> deviceEnrolled() async {}
+  Future<void> deviceEnrolled(String kid) async {}
   @override
   Future<void> cancelRequest(String authReqId) async {}
 }

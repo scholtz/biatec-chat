@@ -14,7 +14,7 @@ abstract class DeviceNotifier {
   Future<void> requestArrived(String authReqId);
 
   /// "A device was added / Open Biatec Authenticator to review it".
-  Future<void> deviceEnrolled();
+  Future<void> deviceEnrolled(String kid);
 
   /// Removes the notification of a request that was decided, expired or withdrawn.
   Future<void> cancelRequest(String authReqId);
@@ -24,7 +24,7 @@ abstract class DeviceNotifier {
 ///
 /// - `consent_request`: the pending list refreshes ([requestArrived]); when the app is not in the foreground the pending requests are fetched over the authenticated call and a notification with fixed text is shown.
 /// - `consent_closed`: [onRequestClosed] drops the card, and its notification goes.
-/// - `device_enrolled`: [onDevicesChanged] refreshes the device list, and a notification with fixed text is shown.
+/// - `device_enrolled`: [onDevicesChanged] refreshes the device list, and when the app is not in front a notification with fixed text is shown.
 /// - `settings_changed`: [onSettingsChanged] refreshes the settings.
 ///
 /// The channel only runs while a process does, so a missed event is the normal case and the app polls too (the pending list every 5 seconds while it is open, and on resume). It also owns the optional Apple wake registration (`PUT /devices/push` with provider `apns`), which is the one thing that can reach an iPhone whose app is not running; with no [apple] nothing registers.
@@ -122,9 +122,9 @@ class DeviceEventController {
       case ConsentClosed(:final authReqId):
         onRequestClosed?.call(authReqId);
         unawaited(_quietly(() => notifier.cancelRequest(authReqId)));
-      case DeviceEnrolled():
+      case DeviceEnrolled(:final kid):
         onDevicesChanged?.call();
-        unawaited(_quietly(notifier.deviceEnrolled));
+        unawaited(_deviceEnrolled(kid));
       case SettingsChanged():
         onSettingsChanged?.call();
     }
@@ -146,6 +146,16 @@ class DeviceEventController {
       await notifier.requestArrived(authReqId);
     } on Object {
       // A notification that cannot be shown is not worth a crash: the request is waiting in the app.
+    }
+  }
+
+  /// Like a request: a notification only when the app is not in front (the device list refreshes itself then).
+  Future<void> _deviceEnrolled(String kid) async {
+    try {
+      if (await isForeground()) return;
+      await notifier.deviceEnrolled(kid);
+    } on Object {
+      // See [_consentRequested].
     }
   }
 

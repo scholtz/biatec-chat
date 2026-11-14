@@ -42,12 +42,15 @@ void main() {
       () async {
     final notifier = LocalDeviceNotifier(strings: () => ChannelStrings.sk);
     await notifier.requestArrived('ciba_1');
-    await notifier.deviceEnrolled();
+    await notifier.deviceEnrolled('phone-2');
+    await notifier.deviceEnrolled('phone-3');
     final shows = calls.where((c) => c.method == 'show').toList();
     expect((shows[0].arguments as Map)['title'], ChannelStrings.sk.requestTitle);
     expect((shows[1].arguments as Map)['title'], ChannelStrings.sk.deviceTitle);
-    expect((shows[1].arguments as Map)['id'],
-        LocalDeviceNotifier.deviceNotificationId);
+    // Two added devices, and a request, never share a notification.
+    final ids = shows.map((c) => (c.arguments as Map)['id']).toSet();
+    expect(ids, hasLength(3));
+    expect('${shows[1].arguments}', isNot(contains('phone-2')));
   });
 
   test('a closed request removes its own notification', () async {
