@@ -8,10 +8,15 @@
 //   POST /devices/challenge, PUT /devices/attestation   single-use nonce for a platform attestation, and its refresh (T-234)
 //   PUT  /devices/push                        register or replace the device's FCM/APNs token
 //   GET  /devices/requests, GET /consent/requests/:id, POST /consent/requests/:id/receipt   authenticator side
+//   GET  /consent/settings                    the calling client's view of the user's consent settings (bearer; row 20)
 //   GET  /.well-known/jwks.json, /.well-known/openid-configuration
 //   GET /devices, POST /devices/:kid/cancel   device list; cancelling a pending enrollment (rule 7, T-084)
 //   GET/PUT /devices/settings                 consent settings; loosening needs a device-signed biatec_settings_change (T-084)
 //   GET/POST /mock/...                        test helpers (activate a device, inspect state, push outbox)
+// Protocol 1.1: unsigned groups are real Algorand transactions (algosdk), the group id is recomputed, authorization_details lists every
+// transfer and application, receipts are 1.1 (client_fingerprint, two device keys with attested key use). Refusals as AlgorandGoogleDriveAccount
+// issue 28: consent_unavailable, client_paused, unproven_client_blocked, daily_cap_exceeded, consent_unsupported_operation,
+// consent_unsupported_network, consent_hash_mismatch, too_many_pending_requests, rate_limited. A consent is reserved, then spent.
 // Push: opening a request queues one message per active device with a push token; its data is only the
 // auth_req_id (GET /mock/push-outbox shows what would be sent). Nothing is sent to FCM or APNs.
 // Rules enforced: 2 (binding code, 3 attempts), 4 (first use), 5 (300 s, single use, group-hash binding),
@@ -23,7 +28,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020Module from "ajv/dist/2020.js";
 import { jcs, sha256Hex, signCompactJws, thumbprint, verifyApproval, verifyEs256, verifyReceipt, ATTESTATION_TYP } from "../../scripts/lib.mjs";
-import { GroupError, decodeGroup, transactionDetails } from "./group.ts";
+import { GroupError, decodeGroup, decimalToCents, describeAlgorandGroup, describeJsonGroup, mockSigned, transactionDetails, type Described } from "./group.ts";
 import { clients, staticTokens, users, type SeedClient, type SeedUser } from "./seed.ts";
 
 const Ajv2020 = Ajv2020Module as unknown as typeof Ajv2020Module.default;
@@ -37,8 +42,18 @@ export const INACTIVE_DEVICE_SECONDS = 24 * 3600;
 export const POLL_INTERVAL_SECONDS = 2;
 /** RFC 8628 3.5 and CIBA 10.2: a client that polls too fast is told `slow_down` and must add this to its interval. */
 export const SLOW_DOWN_STEP_SECONDS = 5;
-/** Open (pending, unexpired) requests one user can have at a time; a further one is refused. */
-export const MAX_OPEN_REQUESTS_PER_USER = 20;
+/** Open (pending, unexpired) requests one user can have with one client from one origin at a time (rule 10); a further one is refused. */
+export const MAX_PENDING_PER_CLIENT_ORIGIN = 3;
+/** New requests one client may open for one user per hour: an anti-spam limit only, with no per-second burst limit (rule 10). */
+export const MAX_REQUESTS_PER_HOUR = 60;
+/** Reduced daily cap of a user with no active device during the first 24 hours of the client or of the user's use of it (rule 4), in EUR. */
+export const NO_DEVICE_DAILY_CAP_EUR = 100;
+/** A new client asks the phone for every request for this long after it registered (rule 4). */
+export const COOLING_OFF_SECONDS = 24 * 3600;
+/** The threshold of an account that never set one. */
+export const DEFAULT_THRESHOLD_EUR = 1000;
+/** `maxConsentSeconds` below this is refused (required-changes row 16). */
+export const MIN_CONSENT_SECONDS = 30;
 /** Push registrations one device may make per minute (`PUT /devices/push`): a stolen token cannot keep re-pointing the notifications. */
 export const MAX_PUSH_REGISTRATIONS_PER_MINUTE = 6;
 /** How far a device proof's `iat` may be from the clock, and so how long its `jti` is remembered. */
@@ -71,9 +86,17 @@ export interface MockOptions {
    * `Authorization: Device <token>` alone is then not enough (BCHAT-030). Off by default; `server.ts` turns it on with MOCK_DEVICE_PROOF=1.
    */
   deviceProof?: boolean;
+  /** Unsigned groups are base64(JSON) descriptors instead of Algorand transactions (src/group.ts). For the e2e harness only; MOCK_JSON_GROUPS=1 in `server.ts`. */
+  jsonGroups?: boolean;
+  /** Pending requests per user, client and origin (default 3, rule 10). */
+  maxPendingPerClientOrigin?: number;
+  /** New requests per user and client per hour (default 60, rule 10). */
+  maxRequestsPerHour?: number;
 }
 
-interface Device { kid: string; sub: string; publicKey: Record<string, string>; token: string; activeAt: number; cancelled: boolean; attestation: string; recoveryCode?: string; recoveryAcknowledged?: boolean; push?: PushTarget; platformAttestation?: { kind: string; attestedAt: number } }
+/** A device has an approval key (its `kid`, `publicKey`, `attestation`) and optionally a presence key; each is attested for its own use. */
+interface PresenceKey { kid: string; publicKey: Record<string, string>; attestation: string }
+interface Device { kid: string; sub: string; publicKey: Record<string, string>; token: string; activeAt: number; cancelled: boolean; attestation: string; presence?: PresenceKey; recoveryCode?: string; recoveryAcknowledged?: boolean; push?: PushTarget; platformAttestation?: { kind: string; attestedAt: number } }
 interface PushTarget { provider: "fcm" | "apns"; token: string }
 // What a real deployment hands to FCM or APNs. The data payload is the request id and nothing else.
 interface PushMessage { kid: string; provider: PushTarget["provider"]; token: string; data: { auth_req_id: string } }
@@ -91,8 +114,10 @@ interface Pending {
   scope: string;
   /** For limits requests: the body to apply once Biatec OIDC accepts the consent. */
   limitsBody?: Record<string, string>;
+  /** Reserve then spend (issue 28): a consent is reserved before signing, spent when signing succeeded, released on a handled failure. */
+  spend: "none" | "reserved" | "spent";
 }
-interface Token { sub: string; clientId: string; scope: string; kind: "access" | "login" | "consent"; exp?: number; authReqId?: string }
+interface Token { sub: string; clientId: string; scope: string; kind: "access" | "login" | "consent"; exp?: number; authReqId?: string; /** The group or body hash a consent token is bound to. */ consentHash?: string }
 
 class HttpError extends Error {
   status: number;
@@ -132,6 +157,9 @@ export function createMockOidc(options: MockOptions = {}) {
   const now = options.now ?? (() => Math.floor(Date.now() / 1000));
   const issuer = options.issuer ?? ISSUER;
   const testHelpers = options.testHelpers ?? false;
+  const jsonGroups = options.jsonGroups ?? false;
+  const maxPending = options.maxPendingPerClientOrigin ?? MAX_PENDING_PER_CLIENT_ORIGIN;
+  const maxPerHour = options.maxRequestsPerHour ?? MAX_REQUESTS_PER_HOUR;
   const minAppBuild = options.minAppBuild ?? 1;
   const newCode = options.newBindingCode ?? (() => String(randomInt(0, 1_000_000)).padStart(6, "0"));
   const keys = options.oidcKey ? { oidc: options.oidcKey, device: loadJson("vectors", "keys.json").device } : loadJson("vectors", "keys.json");
@@ -160,30 +188,70 @@ export function createMockOidc(options: MockOptions = {}) {
   const consumed = new Set<string>();
   const pushOutbox: PushMessage[] = [];
   // Consent settings beyond what the seed holds (T-084). Keys: sub, or sub|clientId.
-  const accountSettings = new Map<string, { biometricRequired: boolean; blockUnverified: boolean }>();
+  const accountSettings = new Map<string, { biometricRequired: boolean; blockUnverified: boolean; askOnTestNetworks: boolean }>();
   const clientSettings = new Map<string, { perClientThresholdEur?: number; pausedUntil?: number }>();
   const settingsNonces = new Set<string>();
+  // The user's own trust, kept per user and client: applications trusted by approving with `remember` (key: `network:app_id`).
+  const trustedApplications = new Map<string, Set<string>>();
+  // When the user first got a signature from a client (rule 4's first day with the client; 0 for a seeded client used long ago), and what
+  // a user with no active device spent in the last 24 hours (the reduced cap). Keys: sub|clientId.
+  const firstSigned = new Map<string, number>();
+  const noDeviceSpends = new Map<string, { at: number; cents: bigint }[]>();
+  // When each request was opened, per sub|clientId, for the hourly rate limit.
+  const openedAt = new Map<string, number[]>();
+  const registeredAt = (c: SeedClient) => now() - (c.registeredHoursAgo === undefined ? 10 * 365 * 86400 : c.registeredHoursAgo * 3600);
 
-  const attest = (sub: string, kid: string, pub: Record<string, string>) =>
+  /** The attestation of a device key, minted by Biatec OIDC for `sub`: it binds the key and its use (`approve` or `presence`). */
+  const attest = (sub: string, kid: string, pub: Record<string, string>, use: "approve" | "presence") =>
     signCompactJws(oidcKey, { alg: "ES256", kid: oidcKey.kid, typ: ATTESTATION_TYP }, {
-      iss: issuer, sub, device_kid: kid, device_jwk_thumbprint: thumbprint(pub as never), iat: now(), exp: now() + 365 * 86400,
+      iss: issuer, sub, device_kid: kid, device_jwk_thumbprint: thumbprint(pub as never), biatec_key_use: use, iat: now(), exp: now() + 365 * 86400,
     });
-  const addDevice = (sub: string, kid: string, publicKey: Record<string, string>, activeAt: number, token = randomBytes(24).toString("base64url")) => {
-    const d: Device = { kid, sub, publicKey, token, activeAt, cancelled: false, attestation: attest(sub, kid, publicKey) };
+  const addDevice = (sub: string, kid: string, publicKey: Record<string, string>, activeAt: number, token = randomBytes(24).toString("base64url"), presence?: { kid: string; publicKey: Record<string, string> }) => {
+    const d: Device = { kid, sub, publicKey, token, activeAt, cancelled: false, attestation: attest(sub, kid, publicKey, "approve") };
+    if (presence) d.presence = { ...presence, attestation: attest(sub, presence.kid, presence.publicKey, "presence") };
     devices.set(kid, d);
     return d;
   };
-  // Seeded active devices use the vector device key, so receipts signed with vectors/keys.json verify.
-  const { d: _dd, kid: _dk, alg: _da, use: _du, ...devicePub } = keys.device;
-  for (const u of users) if (u.activeDevice) addDevice(u.sub, u.email.split("@")[0] + "-device", devicePub, 0, testHelpers ? "device-token-" + u.email.split("@")[0] : undefined);
+  // Seeded active devices use the vector keys (the approval key `device`, the `presence` key), so receipts signed with vectors/keys.json verify.
+  const publicOf = (k: Record<string, string>) => {
+    const { d: _d1, kid: _k1, alg: _a1, use: _u1, ...pub } = k;
+    return pub;
+  };
+  const devicePub = publicOf(keys.device);
+  const presencePub = publicOf(keys.presence);
+  for (const u of users) {
+    if (!u.activeDevice) continue;
+    const name = u.email.split("@")[0];
+    addDevice(u.sub, name + "-device", devicePub, 0, testHelpers ? "device-token-" + name : undefined, { kid: name + "-device-presence", publicKey: presencePub });
+  }
+  for (const u of users) {
+    for (const c of u.usedClients) firstSigned.set(u.sub + "|" + c, 0);
+    for (const c of u.pausedClients ?? []) clientSettings.set(u.sub + "|" + c, { pausedUntil: now() + 10 * 365 * 86400 });
+    if (u.blockUnprovenClients) accountSettings.set(u.sub, { biometricRequired: true, blockUnverified: true, askOnTestNetworks: true });
+  }
 
   const activeDevices = (sub: string) => [...devices.values()].filter((d) => d.sub === sub && !d.cancelled && d.activeAt <= now());
+  /** The device that owns a key (its approval kid or its presence kid), whatever its state. */
+  const deviceOfKey = (kid: string) => [...devices.values()].find((d) => d.kid === kid || d.presence?.kid === kid);
+  const isActive = (d: Device | undefined) => d !== undefined && !d.cancelled && d.activeAt <= now();
 
   // Helpers
-  const clientInfo = (c: SeedClient) =>
-    c.verified
-      ? { entity_id: c.entityId, verified: true, display_name: c.displayName, domain: c.domain }
-      : { entity_id: c.entityId, verified: false, fingerprint: c.fingerprint };
+  /** First eight bytes of the SHA-256 of the client_id, 16 lowercase hex characters: what the user sees (and a receipt signs) for a client. */
+  const fingerprintOf = (clientId: string) => createHash("sha256").update(clientId, "utf8").digest("hex").slice(0, 16);
+  /** Biatec OIDC vouches for no client: the fingerprint, the proven domain when there is one, and whether this user linked the client. */
+  const clientInfo = (c: SeedClient, user: { used: Set<string> }) => ({
+    fingerprint: fingerprintOf(c.id),
+    domain_proven: c.verified,
+    ...(c.verified && c.domain ? { domain: c.domain } : {}),
+    linked: user.used.has(c.id),
+  });
+  const ORIGIN = /^(?!https:\/\/[^/]*:443$)(?!http:\/\/[^/]*:80$)https?:\/\/[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$/;
+  /** The origin a request reports: the body's `origin`, else the Origin header, else the client's own domain. It must be a canonical origin. */
+  function requestOrigin(req: IncomingMessage, given: unknown, client: SeedClient): string {
+    const o = given ?? req.headers.origin ?? "https://" + (client.domain ?? "client.invalid");
+    if (typeof o !== "string" || o.length > 253 || !ORIGIN.test(o)) throw new HttpError(400, "invalid_request", "origin must be an absolute http(s) origin in canonical form (lower-case host, no path, no default port)");
+    return o;
+  }
 
   function authClient(req: IncomingMessage, body: Record<string, any>): SeedClient {
     let id: string | undefined, secret: string | undefined;
@@ -202,11 +270,13 @@ export function createMockOidc(options: MockOptions = {}) {
     return c;
   }
 
-  function bearer(req: IncomingMessage): Token & { value: string } {
+  /** A consent token (acr biatec:consent) is accepted only by the wallet signing endpoints (`allowConsent`); everywhere else it is refused (decision D8). */
+  function bearer(req: IncomingMessage, allowConsent = false): Token & { value: string } {
     const h = req.headers.authorization;
     const value = h?.startsWith("Bearer ") ? h.slice(7) : "";
     const t = tokens.get(value);
     if (!t || (t.exp !== undefined && t.exp <= now())) throw new HttpError(401, "invalid_token", "missing, unknown or expired bearer token", {}, { "WWW-Authenticate": 'Bearer error="invalid_token"' });
+    if (t.kind === "consent" && !allowConsent) throw new HttpError(401, "invalid_token", "a consent token is accepted only by the wallet signing endpoints", {}, { "WWW-Authenticate": 'Bearer error="invalid_token"' });
     return { ...t, value };
   }
 
@@ -266,19 +336,23 @@ export function createMockOidc(options: MockOptions = {}) {
 
   const expired = (p: Pending) => p.request.expiry <= now();
 
-  function openRequest(opts: { entry: "step-up" | "direct"; user: SeedUser; client: SeedClient; details: Record<string, any>; bindingMessage: string; requestedExpiry: number; origin: string; scope: string; limitsBody?: Record<string, string> }) {
-    // A user's open requests are bounded: an unbounded number of pending requests is a flood of phone prompts.
-    const open = [...pending.values()].filter((p) => p.request.sub === opts.user.sub && p.status === "pending" && !p.tokenIssued && !expired(p)).length;
-    if (open >= MAX_OPEN_REQUESTS_PER_USER) throw new HttpError(429, "too_many_requests", `at most ${MAX_OPEN_REQUESTS_PER_USER} requests can be open for one user`);
+  function openRequest(opts: { entry: "step-up" | "direct"; user: SeedUser & { used: Set<string> }; client: SeedClient; details: Record<string, any>; bindingMessage: string; requestedExpiry: number; origin: string; scope: string; limitsBody?: Record<string, string> }) {
+    // Rule 10: at most three pending requests per client, user and origin, and an anti-spam rate per client and user.
+    const open = [...pending.values()].filter((p) => p.request.sub === opts.user.sub && p.clientId === opts.client.id && p.request.origin === opts.origin && p.status === "pending" && !p.tokenIssued && !expired(p)).length;
+    if (open >= maxPending) throw new HttpError(429, "too_many_pending_requests", `at most ${maxPending} requests of one client can be open for one user from one origin`, { limit: maxPending, scope: { client: opts.client.id, origin: opts.origin } });
+    const rateKey = opts.user.sub + "|" + opts.client.id;
+    const recent = (openedAt.get(rateKey) ?? []).filter((t) => now() - t < 3600);
+    if (recent.length >= maxPerHour) throw new HttpError(429, "rate_limited", `at most ${maxPerHour} requests per hour`, {}, { "Retry-After": String(Math.max(1, recent[0] + 3600 - now())) });
+    openedAt.set(rateKey, [...recent, now()]);
     const authReqId = "ciba_" + randomBytes(16).toString("hex");
     const code = newCode();
-    // Rendered, and so signed, only for a verified client and only in the direct entry (spec section 5).
+    // Rendered, and so signed, only for a client with a proven domain and only in the direct entry (spec section 5).
     const message = opts.entry === "direct" && opts.client.verified ? opts.bindingMessage : "";
     const request = {
       auth_req_id: authReqId,
       entry: opts.entry,
       authorization_details: [opts.details],
-      client: clientInfo(opts.client),
+      client: clientInfo(opts.client, opts.user),
       binding_message: message,
       requested_expiry: opts.requestedExpiry,
       expiry: now() + opts.requestedExpiry,
@@ -287,7 +361,7 @@ export function createMockOidc(options: MockOptions = {}) {
       sub: opts.user.sub,
     };
     validate("consent-request", request, "internal consent request");
-    pending.set(authReqId, { request, code, attempts: 0, clientId: opts.client.id, status: "pending", tokenIssued: false, scope: opts.scope, limitsBody: opts.limitsBody, interval: POLL_INTERVAL_SECONDS });
+    pending.set(authReqId, { request, code, attempts: 0, clientId: opts.client.id, status: "pending", tokenIssued: false, scope: opts.scope, limitsBody: opts.limitsBody, interval: POLL_INTERVAL_SECONDS, spend: "none" });
     for (const d of activeDevices(opts.user.sub)) if (d.push) pushOutbox.push({ kid: d.kid, ...d.push, data: { auth_req_id: authReqId } });
     if (pushOutbox.length > 500) pushOutbox.splice(0, pushOutbox.length - 500); // a long-running mock keeps the recent ones
     return { authReqId, code, expiresIn: opts.requestedExpiry };
@@ -304,7 +378,89 @@ export function createMockOidc(options: MockOptions = {}) {
   const isLoosening = (user: SeedUser, body: Record<string, string>) =>
     Number(body.per_transaction_eur) > Number(user.limits.per_transaction_eur) || Number(body.per_day_eur) > Number(user.limits.per_day_eur);
 
-  // --- Handlers -------------------------------------------------------------------------------------------------
+  // --- The group, the user's trust and the policy ----------------------------------------------------------------------------
+
+  /** Applications this user trusted for this client on this network (by approving with `remember`): the user's own list, never an operator's. */
+  function trustedFor(sub: string, clientId: string, network: string): Set<number> {
+    const out = new Set<number>();
+    for (const k of trustedApplications.get(sub + "|" + clientId) ?? []) {
+      const i = k.lastIndexOf(":");
+      if (k.slice(0, i) === network) out.add(Number(k.slice(i + 1)));
+    }
+    return out;
+  }
+
+  /** Decodes and describes the group the client handed over; every refusal of the decoder becomes its HTTP answer. */
+  function describeGroup(items: string[], address: string, network: string, grp: string | undefined, origin: string, sub: string, clientId: string) {
+    try {
+      let described: Described;
+      let txns: ReturnType<typeof describeAlgorandGroup>["txns"] | undefined;
+      if (jsonGroups) described = describeJsonGroup(decodeGroup(items, address), network);
+      else {
+        const r = describeAlgorandGroup(items, address, grp);
+        described = r.described;
+        txns = r.txns;
+      }
+      return { described, txns, ...transactionDetails(described, network, origin, trustedFor(sub, clientId, network)) };
+    } catch (e) {
+      if (e instanceof GroupError) throw new HttpError(e.status, e.code, e.message);
+      throw e;
+    }
+  }
+
+  /** Refusals that hold whatever the value: the user paused this client (rule 10), or blocks clients without a proven domain. */
+  function standingRefusals(sub: string, client: SeedClient) {
+    const paused = clientSettings.get(sub + "|" + client.id)?.pausedUntil;
+    if (paused !== undefined && paused > now()) throw new HttpError(403, "client_paused", "the user paused this client", { paused_until: paused });
+    if (acct(sub).blockUnverified && !client.verified) throw new HttpError(403, "unproven_client_blocked", "the user blocks clients that have not proven their domain");
+  }
+
+  const unsupportedNetwork = () => new HttpError(403, "consent_unsupported_network", "consent is not supported on this network");
+
+  const thresholdOf = (user: SeedUser, clientId: string) => clientSettings.get(user.sub + "|" + clientId)?.perClientThresholdEur ?? user.thresholdEur;
+
+  /**
+   * The policy decision (issue 27, D3): refuse, sign without the phone (`allow`), or ask the phone (`consent`). It only reads.
+   * A user with an active device is asked for: `requireConsent`, "always ask", a client not linked yet, a client in its first 24 hours, a value
+   * above the threshold (the user's own, no ceiling, 0 asks for everything) and an unknown value. A user with no active device cannot be asked:
+   * inside the client's first day the reduced cap applies (an unknown value never fits), otherwise whatever would ask is refused.
+   */
+  function decide(user: SeedUser & { used: Set<string> }, client: SeedClient, network: string, g: { details: Record<string, any>; valueEur: string | null }, requireConsent: boolean): "allow" | "consent" {
+    standingRefusals(user.sub, client);
+    const known = g.details.value_known === true && g.valueEur !== null;
+    const testnet = network.endsWith("testnet");
+    // On a test network the user may choose not to be asked about value (every other reason still applies).
+    const overValue = !(testnet && !acct(user.sub).askOnTestNetworks) && (!known || Number(g.valueEur) > thresholdOf(user, client.id));
+    const coolingOff = registeredAt(client) + COOLING_OFF_SECONDS > now();
+    const alwaysAsk = user.alwaysAsk.includes(client.id);
+    if (activeDevices(user.sub).length > 0) {
+      if (!(requireConsent || alwaysAsk || !user.used.has(client.id) || coolingOff || overValue)) return "allow";
+      if (network.startsWith("bitcoin")) throw unsupportedNetwork();
+      return "consent";
+    }
+    const noDevice = () => new HttpError(403, "consent_unavailable", "phone approval is required but the user has no active enrolled device (rule 8)", { reason: "no_active_device" });
+    if (requireConsent || alwaysAsk) throw noDevice();
+    const key = user.sub + "|" + client.id;
+    const first = firstSigned.get(key);
+    if (coolingOff || first === undefined || now() < first + COOLING_OFF_SECONDS) {
+      const spent = (noDeviceSpends.get(key) ?? []).filter((s) => now() - s.at < 86400).reduce((sum, s) => sum + s.cents, 0n);
+      if (!known || spent + decimalToCents(g.valueEur!) > BigInt(NO_DEVICE_DAILY_CAP_EUR) * 100n) {
+        throw new HttpError(403, "daily_cap_exceeded", `without an active device at most ${NO_DEVICE_DAILY_CAP_EUR} EUR a day can be signed during the first day with a client`, { cap_eur: money(NO_DEVICE_DAILY_CAP_EUR), reason: "no_active_device" });
+      }
+      return "allow";
+    }
+    if (overValue) throw noDevice();
+    return "allow";
+  }
+
+  /** What a signature changes: the user's first day with the client starts, and a user with no device spends from the reduced cap. */
+  function recordSigned(user: SeedUser, client: SeedClient, valueEur: string | null) {
+    const key = user.sub + "|" + client.id;
+    if (!firstSigned.has(key)) firstSigned.set(key, now());
+    if (activeDevices(user.sub).length === 0 && valueEur !== null) noDeviceSpends.set(key, [...(noDeviceSpends.get(key) ?? []).filter((s) => now() - s.at < 86400), { at: now(), cents: decimalToCents(valueEur) }]);
+  }
+
+  // --- Handlers -------------------------------------------------------------------------------------------------------------
 
   function ciba(req: IncomingMessage, body: Record<string, any>) {
     const client = authClient(req, body);
@@ -313,21 +469,19 @@ export function createMockOidc(options: MockOptions = {}) {
     if (params.scope === "manage-limits" && !client.allowManageLimits) throw new HttpError(403, "unauthorized_client", "manage-limits is reserved for operator-allowlisted clients");
     const user = [...userMap.values()].find((u) => u.email === params.login_hint || u.sub === params.login_hint);
     if (!user) throw new HttpError(400, "unknown_user_id", "login_hint does not identify a user");
+    const origin = requestOrigin(req, params.origin, client);
     if (activeDevices(user.sub).length === 0) throw new HttpError(403, "access_denied", "the user has no active enrolled device (rule 8)", { reason: "no_active_device" });
+    standingRefusals(user.sub, client);
     let details: Record<string, any>;
     let limitsBody: Record<string, string> | undefined;
     if (params.scope === "sign") {
-      try {
-        details = transactionDetails(decodeGroup(params.unsigned_group, params.address), params.network);
-      } catch (e) {
-        if (e instanceof GroupError) throw new HttpError(400, "invalid_request", e.message);
-        throw e;
-      }
+      if (String(params.network).startsWith("bitcoin") && !jsonGroups) throw unsupportedNetwork();
+      details = describeGroup(params.unsigned_group, params.address, params.network, undefined, origin, user.sub, client.id).details;
     } else {
       limitsBody = params.limits_request;
       details = limitsDetails(user, limitsBody!);
     }
-    const r = openRequest({ entry: "direct", user, client, details, bindingMessage: params.binding_message ?? "", requestedExpiry: params.requested_expiry ?? CONSENT_VALIDITY_SECONDS, origin: params.origin, scope: params.scope, limitsBody });
+    const r = openRequest({ entry: "direct", user, client, details, bindingMessage: params.binding_message ?? "", requestedExpiry: params.requested_expiry ?? CONSENT_VALIDITY_SECONDS, origin, scope: params.scope, limitsBody });
     const res = { auth_req_id: r.authReqId, expires_in: r.expiresIn, interval: POLL_INTERVAL_SECONDS, binding_code: r.code };
     validate("backchannel-authentication-response", res, "internal response");
     return { status: 200, body: res };
@@ -337,64 +491,94 @@ export function createMockOidc(options: MockOptions = {}) {
     if (!t.scope.split(" ").includes(scope)) throw new HttpError(403, "insufficient_scope", `the token lacks the ${scope} scope`, {}, { "WWW-Authenticate": `Bearer error="insufficient_scope", scope="${scope}"` });
   }
 
-  function challenge(t: Token, details: Record<string, any>, scope: string, origin: string, limitsBody?: Record<string, string>) {
+  function challenge(t: Token, details: Record<string, any>, scope: string, origin: string, requestedExpiry: number, limitsBody?: Record<string, string>) {
     const user = userMap.get(t.sub)!;
     const client = clientMap.get(t.clientId)!;
     if (activeDevices(user.sub).length === 0) {
-      throw new HttpError(403, "access_denied", "phone approval is required but the user has no active enrolled device (rule 8)", { reason: "no_active_device" });
+      throw new HttpError(403, "consent_unavailable", "phone approval is required but the user has no active enrolled device (rule 8)", { reason: "no_active_device" });
     }
-    const r = openRequest({ entry: "step-up", user, client, details, bindingMessage: "", requestedExpiry: CONSENT_VALIDITY_SECONDS, origin, scope, limitsBody });
-    const body = { error: "insufficient_user_authentication", error_description: "Phone approval is required for this action.", acr_values: "biatec:consent", auth_req_id: r.authReqId, expires_in: r.expiresIn, interval: POLL_INTERVAL_SECONDS, binding_code: r.code };
+    const r = openRequest({ entry: "step-up", user, client, details, bindingMessage: "", requestedExpiry, origin, scope, limitsBody });
+    const body = { error: "insufficient_user_authentication", error_description: "consent required", acr_values: "biatec:consent", auth_req_id: r.authReqId, expires_in: r.expiresIn, interval: POLL_INTERVAL_SECONDS, binding_code: r.code };
     validate("stepup-challenge", body, "internal challenge");
     return new HttpError(401, body.error, body.error_description, { acr_values: body.acr_values, auth_req_id: body.auth_req_id, expires_in: body.expires_in, interval: body.interval, binding_code: body.binding_code }, {
-      "WWW-Authenticate": 'Bearer error="insufficient_user_authentication", acr_values="biatec:consent"',
+      "WWW-Authenticate": 'Bearer error="insufficient_user_authentication", error_description="consent required", acr_values="biatec:consent"',
     });
   }
 
-  /** Verifies a consent token against the stored request and the presented hash. Spends the consent only after this returns. */
-  function checkConsent(t: Token, boundHash: string, scope: string, network?: string): Pending {
+  const consentNotUsable = () =>
+    new HttpError(401, "insufficient_user_authentication", "consent not usable", {}, { "WWW-Authenticate": 'Bearer error="insufficient_user_authentication", error_description="consent not usable"' });
+
+  /**
+   * The record behind a consent token, when it can still be used (issue 28, step 9): approved for this client, account and action, for this
+   * network and sender when given, not expired, not reserved or spent, and its receipt verifies against the stored request. Anything else is
+   * `401 consent not usable` and the client starts over with its ordinary token. Nothing is spent here: the caller reserves, signs, then spends.
+   */
+  function usableConsent(t: Token, scope: string, where?: { network: string; sender: string }): Pending {
     const p = t.authReqId ? pending.get(t.authReqId) : undefined;
-    if (!p || p.status !== "approved" || !p.receipt) throw new HttpError(401, "invalid_token", "no approved consent for this token");
-    if (consumed.has(t.authReqId!)) throw new HttpError(401, "invalid_token", "this consent was already used (rule 5)", { reason: "consent_consumed" });
+    if (!p || p.status !== "approved" || !p.receipt || p.clientId !== t.clientId || p.request.sub !== t.sub) throw consentNotUsable();
     if (p.scope !== scope) throw new HttpError(403, "insufficient_scope", "the consent was granted for another action");
-    if (network !== undefined && p.request.authorization_details?.[0]?.network !== network) throw new HttpError(403, "group_hash_mismatch", "the consent was granted for another network");
-    if (p.request.bound_hash !== boundHash) throw new HttpError(403, "group_hash_mismatch", "the presented group differs from the one consented to (rule 5)");
-    if (!verifyApproval(p.receipt, jwks, p.request, p.code, consumed, { issuer, now: now() })) throw new HttpError(401, "invalid_token", "the consent receipt does not verify (expired, altered or wrong code)");
+    const d = p.request.authorization_details?.[0];
+    if (where && (d?.network !== where.network || d?.sender !== where.sender)) throw consentNotUsable();
+    if (p.spend !== "none" || consumed.has(t.authReqId!) || p.request.expiry <= now()) throw consentNotUsable();
+    const signer = deviceOfKey(p.receipt.device.kid);
+    if (!verifyApproval(p.receipt, jwks, p.request, p.code, consumed, { issuer, now: now(), deviceActive: isActive(signer) })) throw consentNotUsable();
     return p;
   }
 
+  /** Reserve, run the signing, then spend; a handled refusal releases the reservation, an unexpected failure leaves it reserved (D7). */
+  function spendConsent<T>(p: Pending, run: () => T): T {
+    p.spend = "reserved";
+    let out: T;
+    try {
+      out = run();
+    } catch (e) {
+      if (e instanceof HttpError) p.spend = "none";
+      throw e;
+    }
+    p.spend = "spent";
+    consumed.add(p.request.auth_req_id);
+    return out;
+  }
+
   function sign(req: IncomingMessage, params: Record<string, string>, body: Record<string, any>) {
-    const t = bearer(req);
+    const t = bearer(req, true);
     requireScope(t, "sign");
     const { network, address } = params;
     if (!/^(algorand|bitcoin)-(mainnet|testnet)$/.test(network)) throw new HttpError(404, "unknown_network");
-    if (!Array.isArray(body.unsigned_group) || body.unsigned_group.length === 0 || !body.unsigned_group.every((x: unknown) => typeof x === "string")) {
-      throw new HttpError(400, "invalid_request", "unsigned_group must be a non-empty array of strings");
+    // `transactions` is the member of the real endpoint; `unsigned_group` is the name of the CIBA parameter and is accepted too.
+    const items = body.transactions ?? body.unsigned_group;
+    if (!Array.isArray(items) || items.length === 0 || !items.every((x: unknown) => typeof x === "string")) {
+      throw new HttpError(400, "invalid_request", "transactions must be a non-empty array of strings");
     }
-    let details: Record<string, any>;
-    try {
-      details = transactionDetails(decodeGroup(body.unsigned_group, address), network);
-    } catch (e) {
-      if (e instanceof GroupError) throw new HttpError(400, "invalid_request", e.message);
-      throw e;
-    }
-    const finish = () => ({ status: 200, body: { signed_group: body.unsigned_group.map((g: string) => "signed:" + g), group_hash: details.group_hash } });
-    if (t.kind === "consent") {
-      const p = checkConsent(t, details.group_hash, "sign", network);
-      consumed.add(t.authReqId!);
-      userMap.get(t.sub)!.used.add(t.clientId);
-      void p;
-      return finish();
+    if (body.grp !== undefined && typeof body.grp !== "string") throw new HttpError(400, "invalid_request", "grp must be a base64 string");
+    let expirySeconds = CONSENT_VALIDITY_SECONDS;
+    if (body.maxConsentSeconds !== undefined) {
+      if (!Number.isInteger(body.maxConsentSeconds) || body.maxConsentSeconds < MIN_CONSENT_SECONDS) throw new HttpError(400, "invalid_request", "maxConsentSeconds too small");
+      expirySeconds = Math.min(expirySeconds, body.maxConsentSeconds);
     }
     const user = userMap.get(t.sub)!;
-    const fiat = Number(details.fiat_value.amount);
-    const needs = body.requireConsent === true || fiat > (clientSettings.get(t.sub + "|" + t.clientId)?.perClientThresholdEur ?? user.thresholdEur) || user.alwaysAsk.includes(t.clientId) || !user.used.has(t.clientId);
-    if (!needs) return finish();
-    throw challenge(t, details, "sign", String(req.headers.origin ?? "https://" + (clientMap.get(t.clientId)?.domain ?? "client.invalid")));
+    const client = clientMap.get(t.clientId)!;
+    const origin = requestOrigin(req, body.origin, client);
+    if (network.startsWith("bitcoin") && !jsonGroups) throw unsupportedNetwork(); // the mock cannot decode a PSBT
+    const g = describeGroup(items, address, network, body.grp, origin, t.sub, t.clientId);
+    const finish = () => {
+      const signed = g.txns ? g.txns.map(mockSigned) : items.map((x: string) => "signed:" + x);
+      recordSigned(user, client, g.valueEur);
+      return { status: 200, body: { signedTransactions: signed, signed_group: signed, group_hash: g.described.groupHash, valuedEur: g.valueEur } };
+    };
+    if (t.kind === "consent") {
+      // The elevated token is bound to the group it was granted for: another group is refused and the consent stays usable.
+      if (t.consentHash !== g.described.groupHash) throw new HttpError(403, "consent_hash_mismatch", "elevated token is bound to a different group");
+      const p = usableConsent(t, "sign", { network, sender: address });
+      standingRefusals(user.sub, client);
+      return spendConsent(p, finish);
+    }
+    if (decide(user, client, network, g, body.requireConsent === true) === "allow") return finish();
+    throw challenge(t, g.details, "sign", origin, expirySeconds);
   }
 
   function putLimits(req: IncomingMessage, body: Record<string, any>) {
-    const t = bearer(req);
+    const t = bearer(req, true);
     requireScope(t, "manage-limits");
     const ok = body && typeof body === "object" && Object.keys(body).sort().join() === "per_day_eur,per_transaction_eur" && Object.values(body).every((v) => typeof v === "string" && /^(0|[1-9][0-9]*)(\.[0-9]+)?$/.test(v));
     if (!ok) throw new HttpError(400, "invalid_request", "body must be {per_transaction_eur, per_day_eur} decimal strings");
@@ -405,13 +589,12 @@ export function createMockOidc(options: MockOptions = {}) {
       return { status: 200, body: { limits: user.limits } };
     };
     if (t.kind === "consent") {
-      checkConsent(t, details.request_hash, "manage-limits");
-      consumed.add(t.authReqId!);
-      return apply();
+      if (t.consentHash !== details.request_hash) throw new HttpError(403, "consent_hash_mismatch", "elevated token is bound to a different request body");
+      return spendConsent(usableConsent(t, "manage-limits"), apply);
     }
     // Tightening applies immediately; loosening is a consent-elevated action (section 12).
     if (!isLoosening(user, body as Record<string, string>) && body.requireConsent !== true) return apply();
-    throw challenge(t, details, "manage-limits", String(req.headers.origin ?? "https://" + (clientMap.get(t.clientId)?.domain ?? "client.invalid")), body as Record<string, string>);
+    throw challenge(t, details, "manage-limits", requestOrigin(req, undefined, clientMap.get(t.clientId)!), CONSENT_VALIDITY_SECONDS, body as Record<string, string>);
   }
 
   function tokenEndpoint(req: IncomingMessage, body: Record<string, any>) {
@@ -435,7 +618,7 @@ export function createMockOidc(options: MockOptions = {}) {
     }
     const value = "consent_" + randomBytes(24).toString("base64url");
     const exp = Math.min(now() + CONSENT_VALIDITY_SECONDS, p.request.expiry);
-    tokens.set(value, { sub: p.request.sub, clientId: client.id, scope: p.scope, kind: "consent", exp, authReqId: p.request.auth_req_id });
+    tokens.set(value, { sub: p.request.sub, clientId: client.id, scope: p.scope, kind: "consent", exp, authReqId: p.request.auth_req_id, consentHash: p.request.bound_hash });
     p.tokenIssued = true;
     const res = { access_token: value, token_type: "Bearer", expires_in: Math.max(1, exp - now()), scope: p.scope, consent_receipt: p.receipt };
     validate("token-response", res, "internal token response");
@@ -512,7 +695,7 @@ export function createMockOidc(options: MockOptions = {}) {
     if (t.kind !== "login") throw new HttpError(403, "access_denied", "enrollment needs a fresh full login");
     const pk = body.public_key;
     if (typeof body.kid !== "string" || !body.kid || !pk || pk.kty !== "EC" || pk.crv !== "P-256" || typeof pk.x !== "string" || typeof pk.y !== "string") throw new HttpError(400, "invalid_request", "kid and an EC P-256 public_key are required");
-    if (devices.has(body.kid)) throw new HttpError(409, "conflict", "kid already enrolled");
+    if (deviceOfKey(body.kid)) throw new HttpError(409, "conflict", "kid already enrolled");
     const hadActive = activeDevices(t.sub).length > 0;
     let activeAt = now() + INACTIVE_DEVICE_SECONDS;
     if (typeof body.approved_by_kid === "string") {
@@ -525,10 +708,19 @@ export function createMockOidc(options: MockOptions = {}) {
     // The two fields go together: one alone is refused (an orphan challenge would otherwise be ignored and left unspent).
     if ((body.platform_attestation === undefined) !== (body.attestation_challenge === undefined)) throw new HttpError(400, "invalid_request", "attestation_challenge and platform_attestation are sent together");
     const platformAttestation = body.platform_attestation === undefined ? undefined : takePlatformAttestation(t.sub, body);
-    const d = addDevice(t.sub, body.kid, { kty: "EC", crv: "P-256", x: pk.x, y: pk.y }, activeAt);
+    // A device with a second, presence key sends it with its kid; its own attestation then says `presence`. (The enrollment proof, the pairing
+    // code and activation by another device are T-242's; the mock only models the keys and their attested use.)
+    let presence: { kid: string; publicKey: Record<string, string> } | undefined;
+    if (body.presence_kid !== undefined || body.presence_public_key !== undefined) {
+      const pp = body.presence_public_key;
+      if (typeof body.presence_kid !== "string" || !body.presence_kid || body.presence_kid === body.kid || !pp || pp.kty !== "EC" || pp.crv !== "P-256" || typeof pp.x !== "string" || typeof pp.y !== "string") throw new HttpError(400, "invalid_request", "presence_kid and an EC P-256 presence_public_key go together and name another key");
+      if (deviceOfKey(body.presence_kid)) throw new HttpError(409, "conflict", "presence_kid already enrolled");
+      presence = { kid: body.presence_kid, publicKey: { kty: "EC", crv: "P-256", x: pp.x, y: pp.y } };
+    }
+    const d = addDevice(t.sub, body.kid, { kty: "EC", crv: "P-256", x: pk.x, y: pk.y }, activeAt, undefined, presence);
     setPush(d, push);
     d.platformAttestation = platformAttestation;
-    return { status: 201, body: { kid: d.kid, active: d.activeAt <= now(), active_at: d.activeAt, attestation: d.attestation, device_token: d.token, cancel_notice_sent_to_existing_devices: hadActive && activeAt > now(), ...(platformAttestation ? { attestation_refresh_after: now() + ATTESTATION_REFRESH_SECONDS } : {}) } };
+    return { status: 201, body: { kid: d.kid, active: d.activeAt <= now(), active_at: d.activeAt, attestation: d.attestation, ...(d.presence ? { presence_kid: d.presence.kid, presence_attestation: d.presence.attestation } : {}), device_token: d.token, cancel_notice_sent_to_existing_devices: hadActive && activeAt > now(), ...(platformAttestation ? { attestation_refresh_after: now() + ATTESTATION_REFRESH_SECONDS } : {}) } };
   }
 
   function deviceView(p: Pending) {
@@ -546,19 +738,21 @@ export function createMockOidc(options: MockOptions = {}) {
     const p = deviceOwns(d, id);
     if (d.activeAt > now()) throw new HttpError(403, "access_denied", "this device is not active yet (rule 7)");
     validate("consent-receipt", receipt, "receipt");
+    if (receipt.version !== "1.1") throw new HttpError(400, "invalid_receipt", "a protocol 1.1 receipt is required (version \"1.1\", client_fingerprint, device.key_use)");
     const s = receipt.signed;
     const decision = s.decision;
     if (p.status === "approved" || p.status === "denied" || (p.status === "code_failed" && p.receipt)) throw new HttpError(409, "conflict", "this request already has a decision");
     if (expired(p)) throw new HttpError(410, "expired_token", "the request expired");
     // Rule 2: code_failed is terminal; only the code_failed receipt itself is accepted afterwards.
     if (p.status === "code_failed" && decision !== "code_failed") throw new HttpError(403, "access_denied", "attempts exhausted", { reason: "code_failed" });
-    // Rule 9: both signatures, and the device must be the enrolled one.
-    if (receipt.device.kid !== d.kid || jcs(receipt.device.public_key) !== jcs(d.publicKey) || !verifyReceipt(receipt, jwks, { issuer, now: now() })) {
+    // Rule 9: both signatures, and the key must be one the device enrolled (its approval key or its presence key); the attestation says which use.
+    const key = receipt.device.kid === d.kid ? { kid: d.kid, publicKey: d.publicKey } : d.presence && receipt.device.kid === d.presence.kid ? d.presence : undefined;
+    if (!key || jcs(receipt.device.public_key) !== jcs(key.publicKey) || !verifyReceipt(receipt, jwks, { issuer, now: now() })) {
       throw new HttpError(400, "invalid_receipt", "receipt signature or attestation does not verify");
     }
     // The receipt must restate the stored request (rule 1); it never supplies the thing being consented to.
     const r = p.request;
-    if (s.auth_req_id !== r.auth_req_id || s.client_entity_id !== r.client.entity_id || s.sub !== r.sub || s.expiry !== r.expiry || s.binding_message !== r.binding_message || jcs(s.authorization_details) !== jcs(r.authorization_details)) {
+    if (s.auth_req_id !== r.auth_req_id || s.client_fingerprint !== r.client.fingerprint || s.sub !== r.sub || s.expiry !== r.expiry || s.binding_message !== r.binding_message || jcs(s.authorization_details) !== jcs(r.authorization_details)) {
       throw new HttpError(400, "receipt_mismatch", "receipt does not match the stored request");
     }
     if (decision === "deny") {
@@ -581,9 +775,14 @@ export function createMockOidc(options: MockOptions = {}) {
       }
       throw new HttpError(400, "wrong_code", "the binding code does not match", { attempts_remaining: MAX_CODE_ATTEMPTS - p.attempts });
     }
-    if (!verifyApproval(receipt, jwks, r, p.code, consumed, { issuer, now: now() })) throw new HttpError(400, "invalid_receipt", "approval does not verify");
+    if (!verifyApproval(receipt, jwks, r, p.code, consumed, { issuer, now: now(), deviceActive: isActive(d) })) throw new HttpError(400, "invalid_receipt", "approval does not verify");
     p.status = "approved";
     p.receipt = receipt;
+    // Approving links the client (rule 4: only a client the user approved before is not asked again for a value below the threshold),
+    // and `remember` is the user's own trust in the applications of this request, kept for this client.
+    userMap.get(p.request.sub)!.used.add(p.clientId);
+    const trustedKey = p.request.sub + "|" + p.clientId;
+    for (const id of s.remember?.applications ?? []) trustedApplications.set(trustedKey, (trustedApplications.get(trustedKey) ?? new Set()).add(`${r.authorization_details[0].network}:${id}`));
     return { status: 200, body: { status: "approved" } };
   }
 
@@ -591,7 +790,7 @@ export function createMockOidc(options: MockOptions = {}) {
 
   const acct = (sub: string) => {
     let a = accountSettings.get(sub);
-    if (!a) accountSettings.set(sub, (a = { biometricRequired: true, blockUnverified: false }));
+    if (!a) accountSettings.set(sub, (a = { biometricRequired: true, blockUnverified: false, askOnTestNetworks: true }));
     return a;
   };
   const cs = (sub: string, clientId: string) => {
@@ -706,6 +905,42 @@ export function createMockOidc(options: MockOptions = {}) {
     return { status: 200, body: { applied: true, loosened: loosening, settings: settingsView(d.sub) } };
   }
 
+  /** `GET /consent/settings`: the calling client's view of the user's consent settings (issue 27, required-changes row 20). A consent token is refused. */
+  function consentSettings(req: IncomingMessage, url: URL) {
+    const t = bearer(req);
+    const user = userMap.get(t.sub)!;
+    const client = clientMap.get(t.clientId)!;
+    const s = cs(t.sub, client.id);
+    const origin = url.searchParams.get("origin");
+    if (origin !== null && !ORIGIN.test(origin)) throw new HttpError(400, "invalid_request", "origin must be an absolute http(s) origin in canonical form");
+    const coolingOffUntil = registeredAt(client) + COOLING_OFF_SECONDS;
+    const apps = [...(trustedApplications.get(t.sub + "|" + client.id) ?? [])].map((k) => {
+      const i = k.lastIndexOf(":");
+      return { network: k.slice(0, i), app_id: Number(k.slice(i + 1)) };
+    });
+    const owned = [...devices.values()].filter((d) => d.sub === t.sub && !d.cancelled);
+    return {
+      status: 200,
+      body: {
+        threshold_eur: money(user.thresholdEur),
+        default_threshold_eur: money(DEFAULT_THRESHOLD_EUR),
+        ask_on_test_networks: acct(t.sub).askOnTestNetworks,
+        device_enrolled: owned.length > 0,
+        device_active: owned.some((d) => d.activeAt <= now()),
+        client: {
+          linked: user.used.has(client.id),
+          always_ask: user.alwaysAsk.includes(client.id),
+          paused_until: s.pausedUntil !== undefined && s.pausedUntil > now() ? s.pausedUntil : null,
+          cooling_off_until: coolingOffUntil > now() ? coolingOffUntil : null,
+          first_use: !user.used.has(client.id),
+          per_client_threshold_eur: s.perClientThresholdEur === undefined ? null : money(s.perClientThresholdEur),
+          domain_proven: client.verified,
+          trusted_applications: apps,
+        },
+      },
+    };
+  }
+
   function listDevices(req: IncomingMessage) {
     const me = deviceAuth(req);
     const list = [...devices.values()].filter((x) => x.sub === me.sub && !x.cancelled).map((x) => ({ kid: x.kid, current: x.kid === me.kid, active: x.activeAt <= now(), active_at: x.activeAt }));
@@ -789,6 +1024,7 @@ export function createMockOidc(options: MockOptions = {}) {
     }
     if (m === "GET" && path === "/devices") return listDevices(req);
     if (m === "POST" && (x = path.match(/^\/devices\/([^/]+)\/cancel$/))) return cancelDevice(req, decodeURIComponent(x[1]));
+    if (m === "GET" && path === "/consent/settings") return consentSettings(req, url);
     if (m === "GET" && path === "/devices/settings") return { status: 200, body: settingsView(deviceAuth(req).sub) };
     if (m === "PUT" && path === "/devices/settings") return putSettings(req, await readBody(req));
     if (m === "GET" && path === "/devices/requests") {
@@ -805,7 +1041,7 @@ export function createMockOidc(options: MockOptions = {}) {
     if (m === "GET" && (x = path.match(/^\/mock\/devices\/([^/]+)$/))) {
       const d = devices.get(x[1]);
       if (!d) throw new HttpError(404, "not_found");
-      return { status: 200, body: { kid: d.kid, sub: d.sub, active: d.activeAt <= now(), active_at: d.activeAt, attestation: d.attestation, device_token: d.token, public_key: d.publicKey } };
+      return { status: 200, body: { kid: d.kid, sub: d.sub, active: d.activeAt <= now(), active_at: d.activeAt, attestation: d.attestation, device_token: d.token, public_key: d.publicKey, ...(d.presence ? { presence: { kid: d.presence.kid, public_key: d.presence.publicKey, attestation: d.presence.attestation } } : {}) } };
     }
     // Test helper: the 24 hour client pause (rule 10) that the user lifts from the trusted-clients screen.
     if (m === "POST" && (x = path.match(/^\/mock\/users\/([^/]+)\/clients\/([^/]+)\/pause$/))) {
@@ -844,5 +1080,5 @@ export function createMockOidc(options: MockOptions = {}) {
     res.end(JSON.stringify(body));
   }
 
-  return { server, issuer, jwks, keys, state: { pending, consumed, devices, users: userMap, tokens, pushOutbox } };
+  return { server, issuer, jwks, keys, state: { pending, consumed, devices, users: userMap, tokens, pushOutbox, accountSettings, clientSettings, trustedApplications, firstSigned, noDeviceSpends } };
 }

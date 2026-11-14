@@ -243,6 +243,9 @@ importers:
       ajv:
         specifier: ^8.17.1
         version: 8.20.0
+      algosdk:
+        specifier: 3.9.0
+        version: 3.9.0
     devDependencies:
       '@types/node':
         specifier: ^22.15.0

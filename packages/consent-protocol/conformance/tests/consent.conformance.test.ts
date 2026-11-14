@@ -70,7 +70,7 @@ describe(`consent conformance (${inject("target")}: ${base})`, () => {
     it("a spent consent cannot sign again", async () => {
       const again = await http(base, "POST", signPath(), {
         auth: "Bearer " + stepUp.tokenReply.json.access_token,
-        body: { unsigned_group: config.unsignedGroup },
+        body: { transactions: config.unsignedGroup, origin: config.origin },
       });
       expect(again.status).toBeGreaterThanOrEqual(400);
     });
