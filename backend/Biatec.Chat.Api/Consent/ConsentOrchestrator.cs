@@ -93,8 +93,16 @@ public sealed class ConsentOrchestrator(
         switch (polled)
         {
             case CibaPollOutcome.Denied d:
+            {
+                // Claim the denial first (one poller wins), then fetch and record the receipt: a second tab or stream polling meanwhile
+                // sees a request that is no longer pending and neither records the evidence twice nor ends the consent twice.
+                var won = await db.ConsentRequests.Where(c => c.Id == request.Id && c.Status == ConsentRequestStatus.Pending)
+                    .ExecuteUpdateAsync(u => u.SetProperty(c => c.Status, ConsentRequestStatus.Denied), CancellationToken.None);
+                if (won == 0)
+                    return new ConsentAdvance(StatusOf(previewId, step.Id, ConsentState.Pending, request.BindingCode, request.ExpiresAt), null, TimeSpan.FromSeconds(request.PollIntervalSeconds));
                 await RecordDenialAsync(tenant, session, previewId, request, step, d.Reason, ct);
                 return await EndAsync(session, previewId, request, ConsentRequestStatus.Denied, denied: true, d.Reason ?? "deny", ct);
+            }
             case CibaPollOutcome.Expired:
                 return await EndAsync(session, previewId, request, ConsentRequestStatus.Expired, denied: false, "expired_token", ct);
             case CibaPollOutcome.Approved a:

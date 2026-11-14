@@ -76,7 +76,7 @@ public static class ReceiptVerdictExtensions
 /// <param name="Issuer">The configured Biatec OIDC issuer (<c>Oidc:Issuer</c>).</param>
 /// <param name="Now">The trusted clock.</param>
 /// <param name="AuthReqId">The auth_req_id of the stored consent request.</param>
-/// <param name="ClientEntityId">The tenant's client entity id: protocol 1.1 names the client by the fingerprint of it, 1.0 names it directly.</param>
+/// <param name="ClientEntityId">The tenant's client entity id: protocol 1.0 names the client by it directly (1.1 uses the fingerprint of <c>ClientId</c>).</param>
 /// <param name="Sub">The session's subject.</param>
 /// <param name="BindingCode">The code Biatec OIDC issued; null skips the comparison (a denial carries a typed or no code).</param>
 /// <param name="BindingMessage">The binding message of the request (the empty string for a step-up entry).</param>
