@@ -430,7 +430,7 @@ export function createMockOidc(options: MockOptions = {}) {
     const known = g.details.value_known === true && g.valueEur !== null;
     const testnet = network.endsWith("testnet");
     // On a test network the user may choose not to be asked about value (every other reason still applies).
-    const overValue = !(testnet && !acct(user.sub).askOnTestNetworks) && (!known || Number(g.valueEur) > thresholdOf(user, client.id));
+    const overValue = !(testnet && !acct(user.sub).askOnTestNetworks) && (!known || thresholdOf(user, client.id) <= 0 || Number(g.valueEur) > thresholdOf(user, client.id)); // a threshold of 0 asks for every action, a value of 0 included
     const coolingOff = registeredAt(client) + COOLING_OFF_SECONDS > now();
     const alwaysAsk = user.alwaysAsk.includes(client.id);
     if (activeDevices(user.sub).length > 0) {

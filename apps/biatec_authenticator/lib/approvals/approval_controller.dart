@@ -178,6 +178,8 @@ class ApprovalController extends ChangeNotifier {
   Future<void> approve(String code) async {
     final shown = _request;
     if (_phase != ApprovalPhase.ready || shown == null) return;
+    // A request this version cannot show is never approved, whatever surface asks (the screen also turns the button off).
+    if (!shown.isShowable) return;
     code = code.trim();
     if (!_codeFormat.hasMatch(code)) {
       _set(ApprovalPhase.ready, error: 'Enter the six-digit code.');
