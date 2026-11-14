@@ -1,7 +1,7 @@
 ---
 id: T-238
 title: "Backend: verify the consent receipt before resuming, and keep denial receipts as evidence"
-status: review
+status: done
 priority: P0
 epic: "Consent & authenticator"
 blocked_by: [T-239]
@@ -78,6 +78,8 @@ PR #410, `task/T-238` @ b105aef. `dotnet test backend` passes (CI `backend` gree
 
 ## Review
 
+- 2026-11-14 14:18 · approve · PR #410 merged into main @ f693ebe (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-12 18:43 · scholtz · (new) → blocked · created from the consent architecture record (AlgorandGoogleDriveAccount issue 23)
@@ -85,3 +87,4 @@ PR #410, `task/T-238` @ b105aef. `dotnet test backend` passes (CI `backend` gree
 - 2026-11-14 13:21 · kanban-board · blocked → backlog · blockers done: T-239
 - 2026-11-14 08:30 · scholtz · backlog → in-progress · claimed by session-20261114-0830 on task/T-238
 - 2026-11-14 14:20 · scholtz · in-progress → review · PR #410 @ b105aef
+- 2026-11-14 14:18 · user · review → done · PR #410 merged into main @ f693ebe (synced by kanban-sync)
