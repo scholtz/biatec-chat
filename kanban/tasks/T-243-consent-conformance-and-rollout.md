@@ -1,7 +1,7 @@
 ---
 id: T-243
 title: "Run the conformance kit against a real Biatec OIDC, and write the consent rollout checklist (flags, stage test script)"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-237, T-238, T-240]
@@ -9,9 +9,9 @@ area: ["packages/consent-protocol/conformance/**", "docs/consent-rollout.md", "d
 parallel: no
 conflicts_with: [T-245, T-246]
 issue: "#401"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-243"
+owner: "session-20261114-1830"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#required-changes-to-biatec-oidc"
 created: 2026-11-12
 updated: 2026-11-14
@@ -75,3 +75,4 @@ Filled in when the task moves to review.
 - 2026-11-12 18:43 · kanban-board · backlog → blocked · waiting on: T-237, T-238, T-240
 - 2026-11-13 09:05 · scholtz · blocked → blocked · amended for revision 2 (proven domain, user-set threshold and trusted application in the stage script)
 - 2026-11-14 15:18 · kanban-board · blocked → backlog · blockers done: T-237, T-238, T-240
+- 2026-11-14 18:30 · scholtz · backlog → in-progress · claimed by session-20261114-1830 on task/T-243
