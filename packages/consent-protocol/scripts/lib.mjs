@@ -95,7 +95,7 @@ export function attestationClaims(attestation, jwks, opts = {}) {
     if (!verifyEs256(key, Buffer.from(h + "." + p, "ascii"), s)) return null;
     if (payload.iss !== opts.issuer) return null;
     if (typeof payload.exp !== "number" || payload.exp <= now) return null;
-    if (typeof payload.sub !== "string" || (payload.iat !== undefined && (!Number.isInteger(payload.iat) || payload.iat > now + 300))) return null; // not from the future
+    if (typeof payload.sub !== "string" || (payload.iat !== undefined && (!Number.isInteger(payload.iat) || payload.iat > now + SIGNED_WINDOW_SECONDS))) return null; // not from the future
     return payload;
   } catch {
     return null;
@@ -183,7 +183,7 @@ function verifiedClaims(receipt, jwks, opts = {}) {
 export function pairingCode(newApprovalThumbprint, newPresenceThumbprint, nonce) {
   // Fixed shapes, so the input cannot be split two ways: two 43-character thumbprints and a nonce without a dot.
   const thumb = /^[A-Za-z0-9_-]{43}$/;
-  if (!thumb.test(newApprovalThumbprint) || !thumb.test(newPresenceThumbprint) || !NONCE.test(nonce)) throw new Error("invalid pairing code input");
+  if (!thumb.test(newApprovalThumbprint) || !thumb.test(newPresenceThumbprint) || !isNonce(nonce)) throw new Error("invalid pairing code input");
   const d = createHash("sha256").update(`${newApprovalThumbprint}.${newPresenceThumbprint}.${nonce}`, "utf8").digest();
   return String(d.readUInt32BE(0) % 1_000_000).padStart(6, "0");
 }
@@ -192,7 +192,7 @@ const SIGNED_WINDOW_SECONDS = 300;
 
 /** A statement or enrollment nonce: 16 to 128 characters of base64url alphabet (no dot, so the pairing code input has one reading). */
 const NONCE_SHAPE = /^[A-Za-z0-9_-]{16,128}$/;
-const NONCE = { test: (n) => typeof n === "string" && NONCE_SHAPE.test(n) };
+const isNonce = (n) => typeof n === "string" && NONCE_SHAPE.test(n);
 
 /** The exact members of each device-signed statement (the schemas set additionalProperties false). */
 const MEMBERS_OF = {
@@ -207,7 +207,7 @@ const INVISIBLE = /[\u00AD\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180E\u2061-\u20
 
 /**
  * ZWNJ and ZWJ (U+200C, U+200D) are part of ordinary text in several scripts (Persian, Indic) and of emoji sequences, and U+FE0F makes a
- * symbol an emoji: they are allowed between two letters, marks, symbols or digits (ZWNJ, ZWJ) and right after a symbol or digit (U+FE0F),
+ * symbol an emoji: they are allowed after a letter, mark, symbol or digit and before a letter, symbol or digit (ZWNJ, ZWJ; never before a mark or a selector) and right after a symbol or digit (U+FE0F),
  * never at an end or next to white space, and at most one in a row. Everything else in the format class stays refused.
  */
 function withoutJoiners(text) {
@@ -299,7 +299,7 @@ export function verifyDeviceSigned(envelope, jwks, opts = {}, expect = {}) {
     // Cheap preconditions first, so an envelope that fails them costs nothing more.
     if (expect.approverActive !== true) return false; // a pending device (the first 24 hours, or one just enrolled by an attacker) cannot loosen anything
     if (!(opts.usedNonces instanceof Set)) return false; // without the set of used nonces a replay cannot be told
-    if (!NONCE.test(s.nonce) || opts.usedNonces.has(s.nonce)) return false;
+    if (!isNonce(s.nonce) || opts.usedNonces.has(s.nonce)) return false;
     if (!Number.isInteger(s.issued_at) || Math.abs(now - s.issued_at) > SIGNED_WINDOW_SECONDS) return false;
     // The signature, once the cheap preconditions above held (a replayed or stale statement costs no P-256 verification).
     if (!verifyEs256(envelope.device.public_key, Buffer.from(jcs(s), "utf8"), envelope.signature)) return false;
@@ -368,17 +368,18 @@ export function verifyEnrollmentProof(jws, expect = {}) {
     const sameMembers = (o, keys) => Object.keys(o).length === keys.length && keys.every((k) => k in o);
     if (!sameMembers(header, ["alg", "typ", "jwk"]) || !sameMembers(header.jwk, ["kty", "crv", "x", "y"])) return false;
     if (!sameMembers(payload, ["kid", "presence_kid", "presence_jwk_thumbprint", "nonce", "iat"])) return false;
-    if (!verifyEs256(header.jwk, Buffer.from(parts[0] + "." + parts[1], "ascii"), parts[2])) return false;
     if (!isP256PublicJwk(header.jwk) || thumbprint(header.jwk) !== thumbprint(expect.approval_public_key)) return false;
     // Two keys, not one used twice: the presence key is another key than the approval key.
     if (payload.presence_jwk_thumbprint === thumbprint(header.jwk) || payload.presence_kid === payload.kid) return false;
     // The key ids the device is registered under are the ones the proof names (the caller says which: both are required).
     if (typeof expect.kid !== "string" || expect.kid === "" || payload.kid !== expect.kid) return false;
     if (typeof expect.presence_kid !== "string" || expect.presence_kid === "" || payload.presence_kid !== expect.presence_kid) return false;
-    if (!NONCE.test(expect.nonce)) return false; // the shape the schema requires
+    if (!isNonce(expect.nonce)) return false; // the shape the schema requires
     if (payload.nonce !== expect.nonce || expect.usedNonces.has(payload.nonce)) return false;
     if (!expect.presence_public_key || payload.presence_jwk_thumbprint !== thumbprint(expect.presence_public_key)) return false;
     if (!Number.isInteger(payload.iat) || Math.abs(now - payload.iat) > SIGNED_WINDOW_SECONDS) return false;
+    // The signatures, once everything cheap held (a replayed, stale or misnamed proof costs no P-256 verification).
+    if (!verifyEs256(header.jwk, Buffer.from(parts[0] + "." + parts[1], "ascii"), parts[2])) return false;
     // Possession of the presence key: a second JWS over the SAME payload, signed by the presence key. Naming a key by its thumbprint
     // proves nothing (anyone's public key could be named); without this second signature the proof is refused.
     const pp = typeof expect.presence_proof === "string" ? expect.presence_proof.split(".") : [];
@@ -408,11 +409,6 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
     // valid attestation too). A caller that knows the device is not active passes `opts.deviceActive === false`; a device attested for a
     // key use (every 1.1 device) needs `true`, as checked below. The 1.0 flows, whose devices have no attested use, carry no such lookup.
     if (opts.deviceActive === false) return false;
-    const claims = verifiedClaims(receipt, jwks, { ...opts, now });
-    if (!claims) return false;
-    // A device attested for a key use is a 1.1 device whatever `version` the receipt wears (a pending one has a valid attestation too):
-    // it is authorized only with the caller's `deviceActive === true`. Only a 1.0 device, with no attested use, needs no lookup.
-    if (claims.biatec_key_use !== undefined && opts.deviceActive !== true) return false;
     const s = receipt.signed;
     const d = s.authorization_details?.[0];
     if (typeof expectedBindingCode !== "string" || !/^[0-9]{6}$/.test(expectedBindingCode)) return false;
@@ -443,7 +439,13 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
       const ids = s.remember.applications;
       if (!Array.isArray(ids) || ids.length === 0 || new Set(ids).size !== ids.length || !ids.every((id) => id !== 0 && shown.has(id))) return false;
     }
-    return !consumed.has(s.auth_req_id);
+    if (consumed.has(s.auth_req_id)) return false;
+    // The signatures last (every cheap check above held): the receipt's and the attestation's.
+    const claims = verifiedClaims(receipt, jwks, { ...opts, now });
+    if (!claims) return false;
+    // A device attested for a key use is a 1.1 device whatever `version` the receipt wears (a pending one has a valid attestation too):
+    // it is authorized only with the caller's `deviceActive === true`. Only a 1.0 device, with no attested use, needs no lookup.
+    return claims.biatec_key_use === undefined || opts.deviceActive === true;
   } catch {
     return false;
   }

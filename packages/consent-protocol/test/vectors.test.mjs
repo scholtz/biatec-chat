@@ -921,3 +921,12 @@ test("a device approval is bound to the subject of the account being enrolled", 
   assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { approval: a.expected_inputs, sub: device.enrollment_sub, approverActive: true }), true);
   assert.equal(verifyDeviceSigned(a.envelope, jwks, DO, { approval: a.expected_inputs, sub: "pw_another_account", approverActive: true }), false, "an active device of another account cannot approve");
 });
+
+test("the generator refuses to run without --force and leaves the vectors alone", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const before = readFileSync(new URL("../vectors/device-signed.json", import.meta.url), "utf8");
+  const r = spawnSync(process.execPath, [new URL("../scripts/generate-vectors.mjs", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")], { encoding: "utf8" });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /--force/);
+  assert.equal(readFileSync(new URL("../vectors/device-signed.json", import.meta.url), "utf8"), before);
+});
