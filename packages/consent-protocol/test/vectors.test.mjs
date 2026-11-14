@@ -451,7 +451,7 @@ test("a settings label is display-safe (NFC, no bidirectional or zero-width char
   assert.equal(isDisplaySafe("My bank"), true);
   assert.equal(isDisplaySafe("My very own bank"), true);
   assert.equal(isDisplaySafe("Caf\u00e9"), true);
-  for (const bad of ["Bank\u202Eevil", "Bank\u200B", "Cafe\u0301", "two\nlines", "", "x".repeat(41), "tab\t", "\ufeffBank", "lone\ud800", "   ", "\u3164", " padded", "padded ", "soft\u00ADhyphen", "tag\u{E0041}", "vs\ufe0f", "invisible\u2063sep", "braille\u2800", "format\u206F", "obj\ufffc", "music\u{1D173}", "wide\u3000\u3000gap", "no\u00A0break", "thin\u2009space", "double  space", "bcd\u{1BCA0}", "egy\u{13430}"]) assert.equal(isDisplaySafe(bad), false, JSON.stringify(bad));
+  for (const bad of ["Bank\u202Eevil", "Bank\u200B", "Cafe\u0301", "two\nlines", "", "x".repeat(41), "tab\t", "\ufeffBank", "lone\ud800", "   ", "\u3164", " padded", "padded ", "soft\u00ADhyphen", "tag\u{E0041}", "vs\ufe0f", "invisible\u2063sep", "braille\u2800", "format\u206F", "obj\ufffc", "music\u{1D173}", "wide\u3000\u3000gap", "\u0301lone mark", "stack" + "\u0301".repeat(4), "no\u00A0break", "thin\u2009space", "double  space", "bcd\u{1BCA0}", "egy\u{13430}"]) assert.equal(isDisplaySafe(bad), false, JSON.stringify(bad));
   const base = device.settings_changes.find((x) => x.expected.accepted);
   const resign = (change) => {
     const e = clone(base.envelope);
@@ -493,6 +493,8 @@ test("a settings label is display-safe (NFC, no bidirectional or zero-width char
   assert.equal(resign({ clients: { "": { always_ask: true } } }), false, "an empty client id");
   assert.equal(resign({ clients: { ["x".repeat(201)]: { always_ask: true } } }), false, "an oversized client id");
   assert.equal(resign({ clients: { "bad\nid": { always_ask: true } } }), false, "a control character in a client id");
+  assert.equal(resign({ clients: { ["\u{1F600}".repeat(150)]: { always_ask: true } } }), true, "200 code points, not code units");
+  assert.equal(resign({ clients: { ["\u{1F600}".repeat(201)]: { always_ask: true } } }), false);
   assert.equal(valid("settings-change-signed", { ...clone(device.settings_changes[0].envelope.signed), change: { clients: { x: { unlink: true, always_ask: false } } } }), false, "the schema also refuses a mixed unlink");
 });
 
@@ -519,6 +521,22 @@ test("the canonical-origin pattern is the same in the three schemas and in the v
   const lib = readFileSync(join(root, "scripts", "lib.mjs"), "utf8");
   const src = lib.match(/const ORIGIN = \/(.*)\/;/)[1].replaceAll("\\/", "/");
   assert.equal(src, a);
+});
+
+test("an enrollment proof with extra members (a private key in the header jwk, an extra claim) is refused", () => {
+  const e = device.enrollment_proofs.find((x) => x.expected.accepted);
+  const ok = { approval_public_key: keys.new_approval, kid: keys.new_approval.kid, presence_kid: keys.new_presence.kid, usedNonces: new Set(), nonce: e.payload.nonce, presence_public_key: e.presence_public_key, now: e.payload.iat + 5 };
+  const withD = signCompactJws(keys.new_approval, { ...e.header, jwk: { ...e.header.jwk, d: keys.new_approval.d } }, e.payload);
+  assert.equal(verifyEnrollmentProof(withD, ok), false);
+  const extra = signCompactJws(keys.new_approval, e.header, { ...e.payload, note: "x" });
+  assert.equal(verifyEnrollmentProof(extra, ok), false);
+});
+
+test("DNS-valid hosts only: labels up to 63 characters", () => {
+  const base = clone(v11[0].request.authorization_details[0]);
+  const withOrigin = (origin) => valid("authorization-details-transaction", { ...clone(base), origin });
+  assert.equal(withOrigin("https://" + "a".repeat(63) + ".example"), true);
+  assert.equal(withOrigin("https://" + "a".repeat(64) + ".example"), false);
 });
 
 test("a pairing code that is not a string is refused even if its digits match", () => {

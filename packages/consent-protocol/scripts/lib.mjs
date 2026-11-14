@@ -180,21 +180,22 @@ export function pairingCode(newApprovalThumbprint, newPresenceThumbprint, nonce)
 
 const SIGNED_WINDOW_SECONDS = 300;
 
-/**
- * Text a user types that is shown next to a security decision: Unicode NFC, at most `max` code points, no control characters,
- * no bidirectional controls (U+202A to U+202E, U+2066 to U+2069, U+200E, U+200F, U+061C), no zero-width characters (U+200B to
- * U+200D, U+2060, U+FEFF), no line breaks, no filler or invisible characters (soft hyphen, Hangul fillers, invisible operators,
- * variation selectors, tag characters), no padding and not blank. A violation is refused, never stripped.
- */
 /** Format, control, line and paragraph separators; white space other than a plain space; a run of spaces. */
 const NOT_ALLOWED_SPACE_OR_FORMAT = /[\p{Cf}\p{Cc}\p{Zl}\p{Zp}]|[^\S ]|  /u;
 /** Invisible or filler characters outside the general categories above (soft hyphen, fillers, invisible operators, variation selectors, tags). */
 const INVISIBLE = /[\u00AD\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180E\u2061-\u2065\u206A-\u206F\u2800\u3164\uFE00-\uFE0F\uFFA0\uFFF9-\uFFFC]|[\u{1D173}-\u{1D17A}\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]/u;
 
+/**
+ * Text a user types that is shown next to a security decision: Unicode NFC, at most `max` code points, no control characters,
+ * no bidirectional controls (U+202A to U+202E, U+2066 to U+2069, U+200E, U+200F, U+061C), no zero-width characters (U+200B to
+ * U+200D, U+2060, U+FEFF), no line breaks, no filler or invisible characters (soft hyphen, Hangul fillers, invisible operators,
+ * variation selectors, tag characters), no padding and not blank. No bare or stacked combining marks (a mark must follow a base character, at most three in a row). A violation is refused, never stripped. Look-alike letters of another script are NOT detected: the label sits beside the proven domain or fingerprint, never instead of it.
+ */
 export function isDisplaySafe(text, max = 40) {
   if (typeof text !== "string" || text.length === 0 || !text.isWellFormed() || text !== text.normalize("NFC")) return false;
   if ([...text].length > max || text.trim() !== text || text.trim() === "") return false; // no padding, not blank
   if (NOT_ALLOWED_SPACE_OR_FORMAT.test(text) || /[\p{Zs}]/u.test(text.replaceAll(" ", ""))) return false;
+  if (/^\p{M}|\p{M}{4}/u.test(text)) return false; // a mark needs a base character; stacks are limited
   return !INVISIBLE.test(text);
 }
 
@@ -202,7 +203,7 @@ const MEMBERS = new Set(["always_ask", "per_client_threshold_eur", "label", "tru
 
 const AMOUNT = /^(0|[1-9][0-9]{0,14})(\.[0-9]{1,2})?$/;
 /** A canonical origin: scheme, lower-case host of well-formed labels, optional port 1-65535 that is not the scheme's default. */
-const ORIGIN = /^(?!https:\/\/[^/]*:443$)(?!http:\/\/[^/]*:80$)https?:\/\/[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$/;
+const ORIGIN = /^(?!https:\/\/[^/]*:443$)(?!http:\/\/[^/]*:80$)https?:\/\/[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$/;
 const appKey = (a) => a.network + ":" + a.app_id;
 const isApplicationList = (l) =>
   Array.isArray(l) && l.length >= 1 && l.length <= 16 && new Set(l.map((a) => a && appKey(a))).size === l.length && l.every((a) => a && typeof a === "object" && (a.network === "algorand-mainnet" || a.network === "algorand-testnet") && Number.isSafeInteger(a.app_id) && a.app_id >= 0 && Object.keys(a).length === 2);
@@ -219,7 +220,7 @@ function settingsChangeWellFormed(change) {
   if ("threshold_eur" in change && !(typeof change.threshold_eur === "string" && AMOUNT.test(change.threshold_eur))) return false;
   for (const k of ["block_unproven_clients", "biometric_required", "ask_on_test_networks"]) if (k in change && typeof change[k] !== "boolean") return false;
   if ("clients" in change && (change.clients === null || typeof change.clients !== "object" || Array.isArray(change.clients) || Object.keys(change.clients).length === 0 || Object.keys(change.clients).length > 50)) return false;
-  if (Object.keys(change.clients ?? {}).some((id) => id.length === 0 || id.length > 200 || /[\u0000-\u001F\u007F-\u009F]/.test(id))) return false; // a client id is a bounded printable key
+  if (Object.keys(change.clients ?? {}).some((id) => id.length === 0 || [...id].length > 200 || /[\u0000-\u001F\u007F-\u009F]/.test(id))) return false; // a client id is a bounded printable key
   for (const c of Object.values(change.clients ?? {})) {
     if (c === null || typeof c !== "object" || Object.keys(c).length === 0) return false;
     if (Object.keys(c).some((k) => !MEMBERS.has(k))) return false;
@@ -334,6 +335,10 @@ export function verifyEnrollmentProof(jws, expect = {}) {
     const header = JSON.parse(decodeB64u(parts[0]).toString("utf8"));
     const payload = JSON.parse(decodeB64u(parts[1]).toString("utf8"));
     if (header.alg !== "ES256" || header.typ !== ENROLL_PROOF_TYP || header.jwk?.kty !== "EC" || header.jwk?.crv !== "P-256") return false;
+    // Exactly the members the schema allows: no private `d` rides in the header jwk, no extra claim in the payload.
+    const sameMembers = (o, keys) => Object.keys(o).length === keys.length && keys.every((k) => k in o);
+    if (!sameMembers(header, ["alg", "typ", "jwk"]) || !sameMembers(header.jwk, ["kty", "crv", "x", "y"])) return false;
+    if (!sameMembers(payload, ["kid", "presence_kid", "presence_jwk_thumbprint", "nonce", "iat"])) return false;
     if (!verifyEs256(header.jwk, Buffer.from(parts[0] + "." + parts[1], "ascii"), parts[2])) return false;
     if (!isP256PublicJwk(header.jwk) || thumbprint(header.jwk) !== thumbprint(expect.approval_public_key)) return false;
     // Two keys, not one used twice: the presence key is another key than the approval key.
@@ -369,7 +374,7 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
     if (!verifyReceipt(receipt, jwks, { ...opts, now })) return false;
     // A device attested for a key use is a 1.1 device whatever `version` the receipt wears (a pending one has a valid attestation too):
     // it is authorized only with the caller's `deviceActive === true`. Only a 1.0 device, with no attested use, needs no lookup.
-    if (attestedKeyUse(receipt, jwks, { ...opts, now }) !== null && opts.deviceActive !== true) return false;
+    if (receiptClaims(receipt, jwks, { ...opts, now })?.biatec_key_use !== undefined && opts.deviceActive !== true) return false;
     const s = receipt.signed;
     const d = s.authorization_details?.[0];
     if (typeof expectedBindingCode !== "string" || !/^[0-9]{6}$/.test(expectedBindingCode)) return false;
