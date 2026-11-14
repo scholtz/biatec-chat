@@ -1,7 +1,7 @@
 ---
 id: T-242
 title: "Authenticator: enroll through an in-app Biatec OIDC login, activate a new device from an existing one with a pairing code (BCHAT-033)"
-status: blocked
+status: backlog
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-241]
@@ -14,7 +14,7 @@ owner: ""
 taken_by: ""
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-11-12
-updated: 2026-11-13
+updated: 2026-11-14
 ---
 
 # T-242 - Authenticator: in-app login for enrollment, and activation by an existing device (BCHAT-033)
@@ -76,3 +76,4 @@ Filled in when the task moves to review.
 - 2026-11-12 18:43 · scholtz · (new) → blocked · created from the consent architecture record (AlgorandGoogleDriveAccount issue 23)
 - 2026-11-12 18:43 · kanban-board · backlog → blocked · waiting on: T-241
 - 2026-11-13 09:05 · scholtz · blocked → blocked · wording: device channel instead of push (revision 2)
+- 2026-11-14 23:02 · kanban-board · blocked → backlog · blockers done: T-241

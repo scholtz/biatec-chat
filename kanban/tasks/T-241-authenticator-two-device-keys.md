@@ -1,7 +1,7 @@
 ---
 id: T-241
 title: "Authenticator: two device keys - approval key bound to biometrics in the keystore, presence key for proofs and Deny (BCHAT-007)"
-status: review
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-239, T-240, T-244]
@@ -78,6 +78,8 @@ PR #414, `task/T-241` @ b025d55. Local: `flutter test` 1235 pass, mock-oidc 60, 
 
 ## Review
 
+- 2026-11-14 23:02 · approve · PR #414 merged into main @ 5549726 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-12 18:43 · scholtz · (new) → blocked · created from the consent architecture record (AlgorandGoogleDriveAccount issue 23)
@@ -86,3 +88,4 @@ PR #414, `task/T-241` @ b025d55. Local: `flutter test` 1235 pass, mock-oidc 60, 
 - 2026-11-14 16:36 · kanban-board · blocked → backlog · blockers done: T-239, T-240, T-244
 - 2026-11-14 19:30 · scholtz · backlog → in-progress · claimed by session-20261114-1930 on task/T-241
 - 2026-11-14 22:40 · scholtz · in-progress → review · PR #414 @ b025d55
+- 2026-11-14 23:02 · user · review → done · PR #414 merged into main @ 5549726 (synced by kanban-sync)
