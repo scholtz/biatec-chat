@@ -25,9 +25,12 @@ docker build -f packages/consent-protocol/mock-oidc/Dockerfile -t biatec-mock-oi
 | `POST /devices/recovery-code`, `POST /devices/recovery-code/ack` | `Authorization: Device <token>`; the recovery code is issued only once the device is active (403 while inactive), re-issued until acknowledged, then 409 (rule 7) |
 | `GET /devices/requests`, `GET /consent/requests/{id}`, `POST /consent/requests/{id}/receipt` | Authenticator side, `Authorization: Device <token>`; the request never contains the binding code |
 | `GET /.well-known/jwks.json`, `/.well-known/openid-configuration` | Discovery |
-| `PUT /devices/push` | `Authorization: Device <token>`; registers or replaces the device's push token |
+| `PUT /devices/push` | `Authorization: Device <token>`; body `{ "provider": "apns", "token": "<hex>" }` registers or replaces the device's Apple push token. `fcm` is `400 unsupported_push_provider` (no Firebase, T-244) |
+| `POST /devices/hub-ticket` | `Authorization: Device <token>` (and the device proof where required); answers `{ "ticket": "...", "expires_in": 30 }`. The ticket is single use and lives 30 seconds |
+| `WS /hubs/device?access_token=<ticket>` | The device channel, SignalR JSON hub protocol, server to client only (`src/device-hub.ts`). A used, expired or unknown ticket is refused with HTTP 401 at the upgrade. See "Device channel" below |
 | `GET /devices`, `POST /devices/{kid}/cancel` | Device list; cancelling a pending enrollment (T-084) |
 | `GET /devices/settings`, `PUT /devices/settings` | Consent settings; loosening needs a device-signed `biatec_settings_change` (T-084) |
+| `POST /mock/hub/close` | Test helper, body `{ "kid": "...", "allow_reconnect": false }`: sends the close message to the device's channel connections and closes them |
 | `GET /mock/devices/{kid}` (the answer also carries the device's `presence` key and its attestation), `POST /mock/devices/{kid}/activate`, `GET /mock/push-outbox?kid=...` | Test helpers, served only with `MOCK_TEST_HELPERS=1` (always on when the mock is embedded in tests); the outbox shows the push messages that would be sent. Without the flag the seeded devices also get random tokens, because `device-token-<user>` is predictable (BCHAT-006) |
 
 ## Running it
@@ -59,6 +62,17 @@ docker build -f packages/consent-protocol/mock-oidc/Dockerfile -t biatec-mock-oi
 - Groups are real unsigned Algorand transactions (`algosdk` 3.9.0, base64 msgpack). `src/build.ts` builds them for tests (`buildGroup`, `usdcTransfer`, `account`). "Signing" returns the transactions with an all-zero signature. Bitcoin cannot be decoded: a Bitcoin request is `403 consent_unsupported_network`. `MOCK_JSON_GROUPS=1` (option `jsonGroups`) switches to base64(JSON) descriptors (`src/group.ts`, `Tx`); only the e2e demo harness uses it.
 - Valuation is a static price table in `src/group.ts` (ALGO 0.20, USDC 0.9225 EUR, on mainnet and testnet alike); any other asset is unpriced, so the value is unknown and the phone is asked. An application is trusted only when the user approved with `remember` for that client; no operator list.
 - The reduced cap, the hourly limit and the pause are modelled per client, not per origin (the pending limit is per origin). `MOCK_MAX_PENDING` and `MOCK_MAX_PER_HOUR` (options `maxPendingPerClientOrigin`, `maxRequestsPerHour`) raise the limits for a long contract run. Receipts must be protocol 1.1; a 1.0 receipt is refused. The enrollment proof, the pairing code and activation by another device (T-242) are not modelled; `POST /devices` takes an optional `presence_kid` and `presence_public_key`.
-- State is in memory. Nothing is sent to FCM, APNs or a device channel: each new request queues one message per active device with a push token (`GET /mock/push-outbox`), and clients can also poll `GET /devices/requests`.
+- State is in memory. Nothing is sent to APNs: each new request queues one message per active device with a push token (`GET /mock/push-outbox`), and clients can also poll `GET /devices/requests`.
 
 - Platform attestation (T-234): `POST /devices/challenge` (login or device token) issues a single-use nonce; `POST /devices` accepts `attestation_challenge` and `platform_attestation` together, and `PUT /devices/attestation` refreshes it. The mock checks the shape, binds the nonce to the user, spends it once and expires it after 300 s; it cannot verify a token with Google or Apple. `attestation_refresh_after` comes back when one was accepted.
+
+## Device channel (T-244)
+
+`POST /devices/hub-ticket`, then connect `ws://<host>/hubs/device?access_token=<ticket>`. Every message is JSON followed by the record separator `0x1e`; a frame may hold several.
+
+1. Client sends `{"protocol":"json","version":1}` + `0x1e`; the server answers `{}` + `0x1e` (anything else: `{"error":"..."}` and close).
+2. Server events are invocations `{"type":1,"target":"<event>","arguments":[{...}]}`, payloads are ids only: `consent_request {auth_req_id}` (a request for the user opens), `consent_closed {auth_req_id}` (approved, denied, code attempts used up, or expired; expiry is noticed within a second of the mock clock passing it), `device_enrolled {kid}` (a device of the user is enrolled or activated), `settings_changed {}`. Events go to every connected device of that user. The client never sends invocations.
+3. Ping `{"type":6}`: the server answers a client ping with a ping and sends one every `MOCK_HUB_PING_SECONDS` (default 15).
+4. Close `{"type":7,"allowReconnect":true}` after `MOCK_HUB_LIFETIME_SECONDS` (default 1800; options `hubLifetimeSeconds`, `hubPingSeconds`), or with `allowReconnect: false` when the device is cancelled or `POST /mock/hub/close` asks for it.
+
+The push outbox (`GET /mock/push-outbox`) records the same request-opened events as before.
