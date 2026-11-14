@@ -107,6 +107,7 @@ const CODE_TEXT: Record<string, string> = {
   preview_expired: "consent.previewExpired",
   resume_failed: "consent.resumeFailed",
   receipt_missing: "consent.receiptMissing",
+  receipt_invalid: "consent.receiptInvalid",
 };
 const codeText = (code: string | null | undefined): string | null => (code && Object.prototype.hasOwnProperty.call(CODE_TEXT, code) ? t(CODE_TEXT[code]!) : null);
 /** Preview statuses after which nothing is pending any more. */

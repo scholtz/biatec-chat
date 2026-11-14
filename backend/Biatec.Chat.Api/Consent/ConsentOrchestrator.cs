@@ -40,6 +40,7 @@ public sealed class ConsentOrchestrator(
     IEvidenceLog evidence,
     TimeProvider clock,
     ILogger<ConsentOrchestrator> log,
+    ConsentReceiptService receipts,
     IEvidenceRecorder? recorder = null)
 {
     /// <summary>Upper bound of the poll interval after repeated <c>slow_down</c> answers.</summary>
@@ -92,7 +93,31 @@ public sealed class ConsentOrchestrator(
         switch (polled)
         {
             case CibaPollOutcome.Denied d:
-                return await EndAsync(session, previewId, request, ConsentRequestStatus.Denied, denied: true, d.Reason ?? "deny", ct);
+            {
+                // Claim the denial first (one poller wins), then fetch and record the receipt: a second tab or stream polling meanwhile
+                // sees a request that is no longer pending and neither records the evidence twice nor ends the consent twice.
+                var won = await db.ConsentRequests.Where(c => c.Id == request.Id && c.Status == ConsentRequestStatus.Pending)
+                    .ExecuteUpdateAsync(u => u.SetProperty(c => c.Status, ConsentRequestStatus.Denied), CancellationToken.None);
+                if (won == 0)
+                    return new ConsentAdvance(StatusOf(previewId, step.Id, ConsentState.Denied, null, request.ExpiresAt), null); // another poll took the denial and ends it
+                try
+                {
+                    await RecordDenialAsync(tenant, session, previewId, request, step, d.Reason, ct);
+                    // The claim is made: the consent MUST now be ended whatever happened to the evidence or to this request, so it is not tied to the caller token.
+                    return await EndAsync(session, previewId, request, ConsentRequestStatus.Denied, denied: true, d.Reason ?? "deny", CancellationToken.None);
+                }
+                catch
+                {
+                    // Ending failed (for example the database): hand the request back, so a later poll finishes the denial instead of finding it claimed and never ended.
+                    try
+                    {
+                        await db.ConsentRequests.Where(c => c.Id == request.Id && c.Status == ConsentRequestStatus.Denied)
+                            .ExecuteUpdateAsync(u => u.SetProperty(c => c.Status, ConsentRequestStatus.Pending), CancellationToken.None);
+                    }
+                    catch (Exception) { /* the original failure is the one to surface */ }
+                    throw;
+                }
+            }
             case CibaPollOutcome.Expired:
                 return await EndAsync(session, previewId, request, ConsentRequestStatus.Expired, denied: false, "expired_token", ct);
             case CibaPollOutcome.Approved a:
@@ -116,7 +141,21 @@ public sealed class ConsentOrchestrator(
     {
         // Biatec OIDC always returns the signed receipt with the token. Without it there is nothing to keep as proof.
         if (string.IsNullOrEmpty(approved.Receipt))
-            return await EndAsync(session, previewId, request, ConsentRequestStatus.Cancelled, denied: false, "receipt_missing", ct, "receipt_missing");
+            return await EndAsync(session, previewId, request, ConsentRequestStatus.Cancelled, denied: false, "receipt_missing", CancellationToken.None, "receipt_missing");
+
+        // The receipt is checked against what this backend asked for before anything resumes (T-238). A receipt that does not verify is not consent:
+        // the elevated token that came with it is dropped unused, and the step ends like a missing receipt.
+        if (receipts.Enabled)
+        {
+            var verdict = await receipts.VerifyApprovalAsync(tenant, session, request, step, approved.Receipt, CancellationToken.None); // the one-time token is spent: not tied to the caller
+            if (verdict != ReceiptVerdict.Valid)
+            {
+                log.LogWarning("A consent receipt was refused: {FailureCode}", verdict.Code());
+                await RecordAsync(session, EvidenceKinds.ConsentReceiptRejected,
+                    EvidencePayloads.ConsentReceiptRejected(previewId, step.Id, request.AuthReqId, step.SubjectHash, verdict.Code(), Sha256Hex(approved.Receipt)));
+                return await EndAsync(session, previewId, request, ConsentRequestStatus.Cancelled, denied: false, "receipt_invalid", CancellationToken.None, "receipt_invalid");
+            }
+        }
 
         // Exactly one poller wins the approval (the token can be redeemed once anyway).
         var claimed = await db.ConsentRequests.Where(c => c.Id == request.Id && c.Status == ConsentRequestStatus.Pending)
@@ -128,16 +167,7 @@ public sealed class ConsentOrchestrator(
         // The open-consent exemption ends here: restart the idle window so signing is not swept mid-flow (T-080).
         await Sessions.SessionLiveness.TouchByIdAsync(db, session.Id, clock.GetUtcNow(), CancellationToken.None);
 
-        var payload = EvidencePayloads.ConsentReceipt(previewId, step.Id, request.AuthReqId, step.SubjectHash, approved.Receipt);
-        try
-        {
-            if (recorder is not null) await recorder.RecordAsync(session.ConversationId, EvidenceKinds.ConsentReceipt, payload, CancellationToken.None);
-            else await evidence.AppendAsync(session.ConversationId, EvidenceKinds.ConsentReceipt, payload, ct: CancellationToken.None);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            log.LogError("Could not record the consent receipt: {ErrorType}", ex.GetType().Name);
-        }
+        await RecordAsync(session, EvidenceKinds.ConsentReceipt, EvidencePayloads.ConsentReceipt(previewId, step.Id, request.AuthReqId, step.SubjectHash, approved.Receipt));
 
         ConfirmResult result;
         try { result = await confirm.ResumeAfterConsentAsync(tenant, session, previewId, approved.AccessToken, ct); }
@@ -150,6 +180,43 @@ public sealed class ConsentOrchestrator(
         }
         return new ConsentAdvance(StatusOf(previewId, step.Id, ConsentState.Approved, request.BindingCode, request.ExpiresAt), result);
     }
+
+    /// <summary>
+    /// A denial is always honoured; its signed receipt is evidence. It is fetched (best effort, bounded) and verified; a denial whose receipt cannot be
+    /// had or does not verify is recorded as <c>consent_denied_unverified</c>, and the action is cancelled all the same.
+    /// </summary>
+    private async Task RecordDenialAsync(Tenant tenant, ChatSession session, Guid previewId, ConsentRequest request, Biatec.Chat.Core.Data.ActionStep step, string? reason, CancellationToken ct)
+    {
+        if (!receipts.Enabled) return;
+        try
+        {
+            var denial = await receipts.FetchDenialAsync(tenant, session, request, step, ct);
+            if (denial.Verified)
+                await RecordAsync(session, EvidenceKinds.ConsentReceipt, EvidencePayloads.ConsentReceipt(previewId, step.Id, request.AuthReqId, step.SubjectHash, denial.Receipt!));
+            else
+                await RecordAsync(session, EvidenceKinds.ConsentDeniedUnverified,
+                    EvidencePayloads.ConsentDeniedUnverified(previewId, step.Id, request.AuthReqId, step.SubjectHash, reason, denial.FailureCode));
+        }
+        catch (Exception ex) // the claim is made, so the denial is ended whatever happens to the evidence (cancellation included)
+        {
+            log.LogWarning("The denial receipt could not be recorded: {ErrorType}", ex.GetType().Name);
+        }
+    }
+
+    private async Task RecordAsync(ChatSession session, string kind, System.Text.Json.Nodes.JsonObject payload)
+    {
+        try
+        {
+            if (recorder is not null) await recorder.RecordAsync(session.ConversationId, kind, payload, CancellationToken.None);
+            else await evidence.AppendAsync(session.ConversationId, kind, payload, ct: CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            log.LogError("Could not record {Kind}: {ErrorType}", kind, ex.GetType().Name);
+        }
+    }
+
+    private static string Sha256Hex(string text) => Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)));
 
     private async Task<ConsentAdvance> EndAsync(ChatSession session, Guid previewId, ConsentRequest request, ConsentRequestStatus status,
         bool denied, string reason, CancellationToken ct, string? errorCode = null)

@@ -82,6 +82,23 @@ public static class EvidencePayloads
         ["previewId"] = previewId.ToString(), ["stepId"] = stepId.ToString(), ["authReqId"] = authReqId,
         ["groupHash"] = groupHash, ["receipt"] = receiptJson,
     };
+
+    /// <summary>
+    /// T-238: the receipt did not verify. Carries the failure code and the receipt's SHA-256 (lower-case hex of its UTF-8 text), never the
+    /// receipt itself: it is not proof of anything. <paramref name="receiptSha256"/> is null when there was no receipt text to hash.
+    /// </summary>
+    public static JsonObject ConsentReceiptRejected(Guid previewId, Guid stepId, string authReqId, string groupHash, string failureCode, string? receiptSha256) => new()
+    {
+        ["previewId"] = previewId.ToString(), ["stepId"] = stepId.ToString(), ["authReqId"] = authReqId,
+        ["groupHash"] = groupHash, ["failureCode"] = failureCode, ["receiptSha256"] = receiptSha256,
+    };
+
+    /// <summary>T-238: a denial (<paramref name="reason"/> deny, code_failed) whose signed receipt could not be fetched or verified (<paramref name="failureCode"/>).</summary>
+    public static JsonObject ConsentDeniedUnverified(Guid previewId, Guid stepId, string authReqId, string groupHash, string? reason, string failureCode) => new()
+    {
+        ["previewId"] = previewId.ToString(), ["stepId"] = stepId.ToString(), ["authReqId"] = authReqId,
+        ["groupHash"] = groupHash, ["reason"] = reason, ["failureCode"] = failureCode,
+    };
 }
 
 /// <summary>

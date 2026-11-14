@@ -801,6 +801,9 @@ namespace Biatec.Chat.Api.Migrations
                     b.Property<bool>("LimitsUpdateEnabled")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("OidcClientEntityId")
+                        .HasColumnType("text");
+
                     b.Property<string>("OidcClientId")
                         .IsRequired()
                         .HasColumnType("text");

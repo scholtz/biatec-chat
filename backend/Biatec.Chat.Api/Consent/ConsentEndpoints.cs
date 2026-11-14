@@ -50,7 +50,12 @@ public static class ConsentRegistration
     {
         services.AddHttpClient<ICibaTokenClient, CibaTokenClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
         services.AddHttpClient<IConsentSettingsClient, ConsentSettingsClient>(c => c.Timeout = TimeSpan.FromSeconds(5));
+        services.AddHttpClient<IConsentReceiptClient, ConsentReceiptClient>(c => c.Timeout = TimeSpan.FromSeconds(5))
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }); // the session bearer is never replayed to a redirect target
         services.AddOptions<ConsentStreamOptions>();
+        services.AddOptions<ConsentOptions>().BindConfiguration(ConsentOptions.Section);
+        services.TryAddScoped<ConsentReceiptService>();
+        services.AddHostedService<ConsentVerificationStartupCheck>();
         services.TryAddScoped<ConsentOrchestrator>();
         services.TryAddScoped<ConsentPredictor>();
         return services;

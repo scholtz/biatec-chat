@@ -22,9 +22,11 @@ using Biatec.Chat.Core.Evidence;
 using Biatec.Chat.Core.Previews;
 using Biatec.Chat.Tools.Algod;
 using Biatec.Chat.Tools.Consent;
+using Microsoft.IdentityModel.Tokens;
 using Biatec.Chat.Tools.Mcp;
 using Biatec.Chat.Tools.Signing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -48,7 +50,6 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
     private const string Resource = "https://mcp.example.test";
     private const string AuthReqId = "ciba_8257c10231dd9b46e2f877484cf0b2a3";
     private const string ConsentToken = "consent_TOKEN_abc";
-    private const string Receipt = "{\"version\":1,\"alg\":\"ES256\",\"signature\":\"AAAA\",\"signed\":{\"decision\":\"approve\",\"binding_code\":\"483920\"},\"device\":{\"kid\":\"dev-1\"}}";
 
     private sealed class TestClock(DateTimeOffset start) : TimeProvider
     {
@@ -87,11 +88,21 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
         public bool SettingsFail;
         public readonly List<Dictionary<string, string>> TokenRequests = [];
         public bool Redeemed;
+        /// <summary>The consent_receipt of the approved token response: a real signed receipt (see ConsentTestKit).</summary>
+        public string Receipt = "";
+        /// <summary>What GET /consent/receipts/{auth_req_id} answers; null = 404 (not available).</summary>
+        public string? DenialReceipt;
+        public readonly List<(string Path, string? Bearer)> ReceiptRequests = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             var url = request.RequestUri!;
             Assert.Equal(Issuer, url.GetLeftPart(UriPartial.Authority));
+            if (url.AbsolutePath.StartsWith("/consent/receipts/", StringComparison.Ordinal))
+            {
+                ReceiptRequests.Add((url.AbsolutePath, request.Headers.Authorization?.Parameter));
+                return DenialReceipt is null ? new HttpResponseMessage(HttpStatusCode.NotFound) : Json(200, DenialReceipt);
+            }
             if (url.AbsolutePath == "/consent/settings")
             {
                 Assert.Equal("Bearer", request.Headers.Authorization!.Scheme);
@@ -123,9 +134,19 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
 
     private sealed class FakeMetadata : IOidcMetadataProvider
     {
+        /// <summary>Simulates a rotation: the cached keys do not hold the signing key until a refresh is forced.</summary>
+        public bool HideKeysUntilRefresh;
+        public bool Unavailable;
+        public int Refreshes;
         public Task<OidcMetadata> GetAsync(CancellationToken ct) =>
             Task.FromResult(new OidcMetadata(Issuer, new Uri(Issuer + "/authorize"), new Uri(Issuer + "/token"), new Uri(Issuer + "/jwks")));
-        public Task<IReadOnlyList<Microsoft.IdentityModel.Tokens.SecurityKey>> GetSigningKeysAsync(bool forceRefresh, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<SecurityKey>> GetSigningKeysAsync(bool forceRefresh, CancellationToken ct)
+        {
+            if (Unavailable) throw new OidcException("down");
+            if (forceRefresh) Refreshes++;
+            if (HideKeysUntilRefresh && !forceRefresh) return Task.FromResult<IReadOnlyList<SecurityKey>>([]);
+            return Task.FromResult<IReadOnlyList<SecurityKey>>(new JsonWebKeySet(File.ReadAllText(Path.Combine(ConsentTestKit.VectorsDir(), "jwks.json"))).GetSigningKeys().ToList());
+        }
     }
 
     private sealed class FakeSecrets : ISecretResolver
@@ -178,6 +199,9 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
     private readonly FakeMcp _mcp = new();
     private readonly FakeEvidence _evidence = new();
     private readonly MockConsentServer _server = new();
+    private readonly FakeMetadata _metadata = new();
+    private readonly ConsentOptions _consentOptions = new();
+    private GroupedTransactions _group = null!;
     private MockWallet _wallet = null!;
     private Tenant _tenant = null!;
     private ChatSession _session = null!;
@@ -199,6 +223,7 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _wallet = new MockWallet(_user);
+        _group = AlgorandGroup.Ensure([Pay(_user.Address)]);
         await AdminAsync($"CREATE DATABASE \"{_dbName}\"");
         await using var db = NewContext();
         await db.Database.MigrateAsync();
@@ -213,6 +238,7 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
         db.Conversations.Add(conv);
         db.ChatSessions.Add(_session);
         await db.SaveChangesAsync();
+        SetReceipt(_ => { });
         _vault.Items[_session.Id.ToString("N")] = new TokenVaultEntry
         {
             AccessToken = "ACCESS-TOKEN-SECRET", AccessExpiresAt = _clock.Now.AddMinutes(10), RefreshToken = "REFRESH-TOKEN-SECRET",
@@ -234,7 +260,7 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
 
     private async Task<(GroupedTransactions Group, Guid PreviewId)> BuildPreviewAsync()
     {
-        var group = AlgorandGroup.Ensure([Pay(_user.Address)]);
+        var group = _group;
         await using var db = NewContext();
         var snap = await new ActionPreviewService(db, _clock).CreateAsync(new NewPreviewSpec(_session.ConversationId, "wallet.transfer", "{\"intent\":\"send\"}",
         [
@@ -248,9 +274,31 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
         new(db, new ActionPreviewService(db, _clock), new ScopeGuard(_vault, _clock), _vault, _wallet, _mcp, new FakeConfirmer(), _evidence, _clock,
             NullLogger<ConfirmService>.Instance);
 
+    private ConsentReceiptService NewReceipts() =>
+        new(_metadata, new ConsentReceiptClient(new HttpClient(_server)), _vault, Options.Create(new OidcOptions { Issuer = Issuer, McpResource = Resource }),
+            Options.Create(_consentOptions), _clock, NullLogger<ConsentReceiptService>.Instance);
+
     private ConsentOrchestrator NewOrchestrator(ChatDbContext db) =>
-        new(db, NewConfirm(db), new CibaTokenClient(new HttpClient(_server)), new FakeMetadata(), new FakeSecrets(),
-            Options.Create(new OidcOptions { Issuer = Issuer, McpResource = Resource }), _evidence, _clock, NullLogger<ConsentOrchestrator>.Instance);
+        new(db, NewConfirm(db), new CibaTokenClient(new HttpClient(_server)), _metadata, new FakeSecrets(),
+            Options.Create(new OidcOptions { Issuer = Issuer, McpResource = Resource }), _evidence, _clock, NullLogger<ConsentOrchestrator>.Instance, NewReceipts());
+
+    /// <summary>What a genuine phone signs for the previewed group: a valid 1.1 approval by the approval key, for this tenant, session and origin.</summary>
+    private ReceiptSpec SpecFor(GroupedTransactions group) => new()
+    {
+        Sub = "user-1", AuthReqId = AuthReqId, ClientEntityId = _tenant.OidcClientId, BindingCode = "483920",
+        Expiry = _clock.Now.AddHours(1).ToUnixTimeSeconds(), IssuedAt = _clock.Now.ToUnixTimeSeconds() - 30,
+        GroupHash = ConsentReceiptVerifier.GroupHash(Convert.FromHexString(group.GroupHash)), Network = Network, Sender = _user.Address.EncodeAsString(),
+        Origin = ConfirmService.BackendOrigin(_tenant), Issuer = Issuer,
+    };
+
+    /// <summary>The receipt the mock answers an approval with, as the genuine one altered by <paramref name="tweak"/>.</summary>
+    private string SetReceipt(Action<ReceiptSpec> tweak) => _server.Receipt = ConsentTestKit.Build(SpecFor(_group).With(tweak));
+
+    private string SetDenial(string decision, Action<ReceiptSpec>? tweak = null) => _server.DenialReceipt = ConsentTestKit.Build(SpecFor(_group).With(s =>
+    {
+        s.Decision = decision; s.BindingCode = decision == "deny" ? "" : "000000"; s.DeviceKey = decision == "deny" ? "presence" : "device";
+        tweak?.Invoke(s);
+    }));
 
     private async Task<ConfirmResult> ConfirmAsync(Guid previewId, string groupHash)
     {
@@ -381,12 +429,12 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
 
         var (_, step, consent) = await LoadAsync(b.PreviewId);
         using (var stored = JsonDocument.Parse(consent.Receipt!))
-            Assert.Equal("dev-1", stored.RootElement.GetProperty("device").GetProperty("kid").GetString());
+            Assert.Equal("device-test-key-1", stored.RootElement.GetProperty("device").GetProperty("kid").GetString());
         // jsonb keeps the JSON value, not the byte layout; the exact text is in the evidence entry below.
-        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(Receipt), JsonNode.Parse(consent.Receipt!)));
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(_server.Receipt), JsonNode.Parse(consent.Receipt!)));
 
         var recorded = Assert.Single(_evidence.Entries, e => e.Kind == EvidenceKinds.ConsentReceipt).Payload;
-        Assert.Equal(Receipt, (string?)recorded["receipt"]);
+        Assert.Equal(_server.Receipt, (string?)recorded["receipt"]);
         Assert.Equal(AuthReqId, (string?)recorded["authReqId"]);
         Assert.Equal(step.Id.ToString(), (string?)recorded["stepId"]);
         Assert.Equal(b.Group.GroupHash, (string?)recorded["groupHash"]);
@@ -403,6 +451,7 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
         var b = await BuildPreviewAsync();
         await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
         _server.State = serverState;
+        var denialReceipt = SetDenial(reason);
         var r = await AdvanceAsync(b.PreviewId);
 
         Assert.Equal(ConsentState.Denied, r.Status.State);
@@ -418,6 +467,14 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
         Assert.Null(consent.Receipt);
         var denied = Assert.Single(_evidence.Entries, e => e.Kind == "consent_denied").Payload;
         Assert.Equal(reason, (string?)denied["reason"]);
+        // The signed denial receipt was fetched with the session's token, verified, and recorded as evidence.
+        var fetched = Assert.Single(_server.ReceiptRequests);
+        Assert.Equal("/consent/receipts/" + AuthReqId, fetched.Path);
+        Assert.Equal("ACCESS-TOKEN-SECRET", fetched.Bearer);
+        var recordedDenial = Assert.Single(_evidence.Entries, e => e.Kind == EvidenceKinds.ConsentReceipt).Payload;
+        Assert.Equal(denialReceipt, (string?)recordedDenial["receipt"]);
+        Assert.Equal(AuthReqId, (string?)recordedDenial["authReqId"]);
+        Assert.DoesNotContain(_evidence.Entries, e => e.Kind == EvidenceKinds.ConsentDeniedUnverified);
 
         // Stays denied on later polls; the token endpoint is not asked again.
         var polls = _server.TokenRequests.Count;
@@ -435,6 +492,7 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
 
         Assert.Equal(ConsentState.TimedOut, r.Status.State);
         Assert.Equal("consent_expired", r.Result!.ErrorCode);
+        Assert.Empty(_server.ReceiptRequests); // nobody decided: there is no device decision to prove
         var (preview, step, consent) = await LoadAsync(b.PreviewId);
         Assert.Equal(ActionPreviewStatus.Expired, preview.Status);
         Assert.Equal(StepStatus.Expired, step.Status);
@@ -531,6 +589,197 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
         Assert.Equal(StepStatus.Expired, (await LoadAsync(b.PreviewId)).Step.Status);
     }
 
+    [Theory]
+    [InlineData("1.1")]
+    [InlineData("1")]
+    public async Task AValidReceipt_OfEitherProtocolVersion_ResumesSigning(string version)
+    {
+        var b = await BuildPreviewAsync();
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        SetReceipt(s => s.Version = version);
+        _server.State = "approved";
+        var r = await AdvanceAsync(b.PreviewId);
+
+        Assert.Equal(ConsentState.Approved, r.Status.State);
+        Assert.Equal(ConfirmOutcome.Landed, r.Result!.Outcome);
+        Assert.Equal(2, _wallet.Calls.Count);
+        Assert.Single(_mcp.Submits);
+        Assert.DoesNotContain(_evidence.Entries, e => e.Kind == EvidenceKinds.ConsentReceiptRejected);
+    }
+
+    [Theory]
+    [InlineData("group_hash_mismatch")]
+    [InlineData("sender_mismatch")]
+    [InlineData("origin_mismatch")]
+    [InlineData("binding_code_mismatch")]
+    [InlineData("decision_not_allowed")]
+    [InlineData("approval_key_required")]
+    [InlineData("attestation_subject_mismatch")]
+    [InlineData("attestation_expired")]
+    [InlineData("attestation_unknown_key")]
+    [InlineData("device_signature_invalid")]
+    [InlineData("auth_req_id_mismatch")]
+    [InlineData("subject_mismatch")]
+    [InlineData("client_mismatch")]
+    [InlineData("receipt_expired")]
+    public async Task AnInvalidReceipt_EndsTheStepAsReceiptInvalid_SignsNothing_AndIsRecordedByItsHash(string failureCode)
+    {
+        var b = await BuildPreviewAsync();
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        var receipt = SetReceipt(failureCode switch
+        {
+            "group_hash_mismatch" => s => s.GroupHash = ConsentReceiptVerifier.GroupHash(new byte[32]),
+            "sender_mismatch" => s => s.Sender = "WSNJGAWN52IJMHAEFZIOPCS3IXSHS4C46QDNSKWDEWQ3E6M4HUNLYTHJXE",
+            "origin_mismatch" => s => s.Origin = "https://evil.example",
+            "binding_code_mismatch" => s => s.BindingCode = "000000",
+            "decision_not_allowed" => s => { s.Decision = "deny"; s.BindingCode = ""; },
+            "approval_key_required" => s => s.DeviceKey = "presence",
+            "attestation_subject_mismatch" => s => s.MutateAttestation = c => c["sub"] = "someone-else",
+            "attestation_expired" => s => s.MutateAttestation = c => c["exp"] = _clock.Now.ToUnixTimeSeconds() - 1,
+            "attestation_unknown_key" => s => { s.AttestationKid = "rogue-key-1"; s.AttestationSigningKey = "new_presence"; },
+            "device_signature_invalid" => s => s.TamperSigned = o => o["expiry"] = s.Expiry + 1,
+            "auth_req_id_mismatch" => s => s.AuthReqId = "ciba_00000000000000000000000000000000",
+            "subject_mismatch" => s => { s.Sub = "user-2"; },
+            "client_mismatch" => s => s.ClientEntityId = "another-client",
+            "receipt_expired" => s => s.Expiry = _clock.Now.ToUnixTimeSeconds() + 10,
+            _ => throw new ArgumentOutOfRangeException(nameof(failureCode)),
+        });
+        // (For receipt_expired the approval arrives after the receipt's own expiry.)
+        _server.State = "approved";
+        var r = await AdvanceAsync(b.PreviewId, afterSeconds: failureCode == "receipt_expired" ? 100 : null);
+
+        Assert.NotEqual(ConsentState.Approved, r.Status.State);
+        Assert.Equal(ConfirmOutcome.Failed, r.Result!.Outcome);
+        Assert.Equal("receipt_invalid", r.Result.ErrorCode);
+        // The elevated token that came with the receipt is never used: no second signing call, nothing submitted.
+        Assert.Single(_wallet.Calls);
+        Assert.DoesNotContain(_wallet.Calls, c => c.Bearer == ConsentToken);
+        Assert.Empty(_mcp.Submits);
+
+        var (preview, step, consent) = await LoadAsync(b.PreviewId);
+        Assert.Equal(ActionPreviewStatus.Expired, preview.Status);
+        Assert.Equal(StepStatus.Expired, step.Status);
+        Assert.Equal(ConsentRequestStatus.Cancelled, consent.Status);
+        Assert.Null(consent.Receipt);
+
+        // The evidence names the failure and the receipt by its hash, never the receipt, and records no receipt as consent.
+        var rejected = Assert.Single(_evidence.Entries, e => e.Kind == EvidenceKinds.ConsentReceiptRejected).Payload;
+        Assert.Equal(failureCode, (string?)rejected["failureCode"]);
+        Assert.Equal(ConsentTestKit.Sha256Hex(receipt), (string?)rejected["receiptSha256"]);
+        Assert.Equal(AuthReqId, (string?)rejected["authReqId"]);
+        Assert.False(rejected.ContainsKey("receipt"));
+        Assert.DoesNotContain((string)JsonNode.Parse(receipt)!["signature"]!, rejected.ToJsonString());
+        Assert.DoesNotContain(_evidence.Entries, e => e.Kind == EvidenceKinds.ConsentReceipt);
+        Assert.DoesNotContain(ConsentToken, string.Concat(_evidence.Entries.Select(e => e.Payload.ToJsonString())));
+    }
+
+    [Fact]
+    public async Task AnUnknownAttestationKey_IsRefetchedOnce_ThenTheReceiptVerifies()
+    {
+        var b = await BuildPreviewAsync();
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        _metadata.HideKeysUntilRefresh = true; // the cached JWKS predates the rotation
+        _server.State = "approved";
+        var r = await AdvanceAsync(b.PreviewId);
+
+        Assert.Equal(ConfirmOutcome.Landed, r.Result!.Outcome);
+        Assert.Equal(1, _metadata.Refreshes);
+    }
+
+    [Fact]
+    public async Task WithoutTheSigningKeys_NothingCanBeVerified_AndTheReceiptIsRefused()
+    {
+        var b = await BuildPreviewAsync();
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        _metadata.Unavailable = true;
+        _server.State = "approved";
+        var r = await AdvanceAsync(b.PreviewId);
+
+        Assert.Equal("receipt_invalid", r.Result!.ErrorCode);
+        Assert.Empty(_mcp.Submits);
+        Assert.Equal("keys_unavailable", (string?)Assert.Single(_evidence.Entries, e => e.Kind == EvidenceKinds.ConsentReceiptRejected).Payload["failureCode"]);
+    }
+
+    [Fact]
+    public async Task VerifyReceiptsOff_ResumesLikeBefore_ForDiagnosingABrokenDeployment()
+    {
+        _consentOptions.VerifyReceipts = false;
+        var b = await BuildPreviewAsync();
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        SetReceipt(s => s.GroupHash = ConsentReceiptVerifier.GroupHash(new byte[32]));
+        _server.State = "approved";
+        var r = await AdvanceAsync(b.PreviewId);
+
+        Assert.Equal(ConfirmOutcome.Landed, r.Result!.Outcome);
+        Assert.DoesNotContain(_evidence.Entries, e => e.Kind == EvidenceKinds.ConsentReceiptRejected);
+    }
+
+    [Fact]
+    public async Task StartupWarning_IsLogged_OnlyWhenVerificationIsOff()
+    {
+        var on = new CapturingLogger<ConsentVerificationStartupCheck>();
+        await new ConsentVerificationStartupCheck(Options.Create(new ConsentOptions()), on).StartAsync(CancellationToken.None);
+        Assert.Empty(on.Warnings);
+        var off = new CapturingLogger<ConsentVerificationStartupCheck>();
+        await new ConsentVerificationStartupCheck(Options.Create(new ConsentOptions { VerifyReceipts = false }), off).StartAsync(CancellationToken.None);
+        Assert.Contains("Consent:VerifyReceipts", Assert.Single(off.Warnings));
+    }
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public readonly List<string> Warnings = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Warning) Warnings.Add(formatter(state, exception));
+        }
+    }
+
+    [Fact]
+    public async Task ADenialReceiptThatCannotBeFetched_IsRecordedAsUnverified_AndTheActionIsStillCancelled()
+    {
+        var b = await BuildPreviewAsync();
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        _server.State = "denied";
+        _server.DenialReceipt = null; // 404
+        var r = await AdvanceAsync(b.PreviewId);
+
+        Assert.Equal(ConsentState.Denied, r.Status.State);
+        Assert.Equal("consent_denied", r.Result!.ErrorCode);
+        Assert.Equal(ActionPreviewStatus.Cancelled, (await LoadAsync(b.PreviewId)).Preview.Status);
+        Assert.Empty(_mcp.Submits);
+        var unverified = Assert.Single(_evidence.Entries, e => e.Kind == EvidenceKinds.ConsentDeniedUnverified).Payload;
+        Assert.Equal("receipt_unavailable", (string?)unverified["failureCode"]);
+        Assert.Equal(AuthReqId, (string?)unverified["authReqId"]);
+        Assert.DoesNotContain(_evidence.Entries, e => e.Kind == EvidenceKinds.ConsentReceipt);
+        Assert.Single(_evidence.Entries, e => e.Kind == "consent_denied");
+    }
+
+    [Theory]
+    [InlineData("group_hash_mismatch")]
+    [InlineData("decision_not_allowed")]
+    [InlineData("device_signature_invalid")]
+    public async Task ADenialReceiptThatDoesNotVerify_IsRecordedAsUnverified_AndTheActionIsStillCancelled(string failureCode)
+    {
+        var b = await BuildPreviewAsync();
+        await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
+        _server.State = "denied";
+        SetDenial("deny", failureCode switch
+        {
+            "group_hash_mismatch" => s => s.GroupHash = ConsentReceiptVerifier.GroupHash(new byte[32]),
+            "decision_not_allowed" => s => { s.Decision = "approve"; s.BindingCode = "483920"; s.DeviceKey = "device"; }, // an approval is not a denial
+            _ => s => s.TamperSigned = o => o["expiry"] = s.Expiry + 1,
+        });
+        var r = await AdvanceAsync(b.PreviewId);
+
+        Assert.Equal(ConsentState.Denied, r.Status.State);
+        Assert.Equal(ActionPreviewStatus.Cancelled, (await LoadAsync(b.PreviewId)).Preview.Status);
+        Assert.Empty(_mcp.Submits);
+        Assert.Equal(failureCode, (string?)Assert.Single(_evidence.Entries, e => e.Kind == EvidenceKinds.ConsentDeniedUnverified).Payload["failureCode"]);
+        Assert.DoesNotContain(_evidence.Entries, e => e.Kind == EvidenceKinds.ConsentReceipt);
+    }
+
     [Fact]
     public async Task ApprovalWithoutAReceipt_IsNotAccepted()
     {
@@ -538,8 +787,8 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
         await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
         var handler = new MockNoReceipt();
         await using var db = NewContext();
-        var orchestrator = new ConsentOrchestrator(db, NewConfirm(db), new CibaTokenClient(new HttpClient(handler)), new FakeMetadata(), new FakeSecrets(),
-            Options.Create(new OidcOptions { Issuer = Issuer, McpResource = Resource }), _evidence, _clock, NullLogger<ConsentOrchestrator>.Instance);
+        var orchestrator = new ConsentOrchestrator(db, NewConfirm(db), new CibaTokenClient(new HttpClient(handler)), _metadata, new FakeSecrets(),
+            Options.Create(new OidcOptions { Issuer = Issuer, McpResource = Resource }), _evidence, _clock, NullLogger<ConsentOrchestrator>.Instance, NewReceipts());
         var r = await orchestrator.AdvanceAsync(_tenant, _session, b.PreviewId, CancellationToken.None);
 
         Assert.NotEqual(ConsentState.Approved, r.Status.State);
@@ -567,8 +816,8 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
         var b = await BuildPreviewAsync();
         await ConfirmAsync(b.PreviewId, b.Group.GroupHash);
         await using var db = NewContext();
-        var down = new ConsentOrchestrator(db, NewConfirm(db), new CibaTokenClient(new HttpClient(new Down())), new FakeMetadata(), new FakeSecrets(),
-            Options.Create(new OidcOptions { Issuer = Issuer, McpResource = Resource }), _evidence, _clock, NullLogger<ConsentOrchestrator>.Instance);
+        var down = new ConsentOrchestrator(db, NewConfirm(db), new CibaTokenClient(new HttpClient(new Down())), _metadata, new FakeSecrets(),
+            Options.Create(new OidcOptions { Issuer = Issuer, McpResource = Resource }), _evidence, _clock, NullLogger<ConsentOrchestrator>.Instance, NewReceipts());
         var r = await down.AdvanceAsync(_tenant, _session, b.PreviewId, CancellationToken.None);
         Assert.Equal(ConsentState.Pending, r.Status.State);
         Assert.Equal(StepStatus.AwaitingConsent, (await LoadAsync(b.PreviewId)).Step.Status);
@@ -619,7 +868,7 @@ public sealed class ConsentOrchestratorTests : IAsyncLifetime
         _server.State = "approved";
         var ok = Assert.IsType<CibaPollOutcome.Approved>(await Poll());
         Assert.Equal(ConsentToken, ok.AccessToken);
-        Assert.Equal(Receipt, ok.Receipt);
+        Assert.Equal(_server.Receipt, ok.Receipt);
         Assert.DoesNotContain(ConsentToken, ok.ToString());
         Assert.IsType<CibaPollOutcome.Unavailable>(await new CibaTokenClient(new HttpClient(new Down())).PollAsync(ep, "c", "s", Resource, AuthReqId));
     }
