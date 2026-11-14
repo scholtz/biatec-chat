@@ -1,7 +1,7 @@
 ---
 id: T-244
 title: "Authenticator: device channel over SignalR (no Firebase), Android stay-connected service, optional Apple wake"
-status: backlog
+status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-240]
@@ -9,9 +9,9 @@ area: ["apps/biatec_authenticator/lib/push/**", "apps/biatec_authenticator/lib/c
 parallel: yes
 conflicts_with: []
 issue: "#404"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-244"
+owner: "session-20261114-1630"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-11-13
 updated: 2026-11-14
@@ -81,3 +81,4 @@ Filled in when the task moves to review.
 
 - 2026-11-13 09:05 · scholtz · (new) → blocked · created from revision 2 of the consent architecture record (AlgorandGoogleDriveAccount issue 23): no Firebase
 - 2026-11-14 15:18 · kanban-board · blocked → backlog · blockers done: T-240
+- 2026-11-14 16:30 · scholtz · backlog → in-progress · claimed by session-20261114-1630 on task/T-244
