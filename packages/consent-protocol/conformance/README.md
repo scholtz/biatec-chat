@@ -27,7 +27,9 @@ needs, and a case whose needs this run cannot offer is reported as **skipped wit
 | `bearer:<name>` | the matching `CONFORMANCE_BEARER_*` variable is set |
 
 ```
-CONFORMANCE_OIDC_URL=https://oidc.stage.example CONFORMANCE_ISSUER=https://oidc.stage.example CONFORMANCE_CLIENT_ID=... CONFORMANCE_CLIENT_SECRET=... CONFORMANCE_USER_TOKEN=... CONFORMANCE_ADDRESS=...   pnpm --filter @biatec/consent-protocol conformance
+export CONFORMANCE_OIDC_URL=https://oidc.stage.example CONFORMANCE_ISSUER=https://oidc.stage.example CONFORMANCE_CLIENT_ID=... CONFORMANCE_ADDRESS=...
+read -rs CONFORMANCE_CLIENT_SECRET; read -rs CONFORMANCE_USER_TOKEN; export CONFORMANCE_CLIENT_SECRET CONFORMANCE_USER_TOKEN   # typed, not written anywhere
+pnpm --filter @biatec/consent-protocol conformance
 ```
 
 Against another server the seed data of the mock are not defaults: unset secrets stay empty. The cases that open a dozen or two hundred
