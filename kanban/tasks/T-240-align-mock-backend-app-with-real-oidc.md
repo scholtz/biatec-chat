@@ -1,7 +1,7 @@
 ---
 id: T-240
 title: "Align the mock, the backend's signing path and the authenticator card with protocol 1.1 and the real Biatec OIDC"
-status: in-progress
+status: review
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-239]
@@ -56,13 +56,13 @@ Parallel work possible: **yes**. T-238 changes `backend/Biatec.Chat.Api/Consent/
 
 ## Acceptance criteria
 
-- [ ] A real two-transaction Algorand group built with `algosdk` round-trips through the mock: challenge, receipt, token, signed; changing one byte after approval gives `consent_hash_mismatch`.
-- [ ] Each refusal has a conformance case and a backend test showing the user-facing code.
-- [ ] `401 consent not usable` on resume leads to exactly one new challenge in a test, then stops.
-- [ ] Backend tests: a user whose threshold is 5000 gets no phone prediction for a 2000 EUR transfer; a threshold of 0 predicts the phone for every action; `404` from the settings endpoint falls back to the tenant default.
-- [ ] `GET /.well-known/biatec-client.json` returns the tenant's client id for its host and `404` for another host.
-- [ ] The card widget tests render a two-transfer group, an untrusted application, "Value unknown", a proven domain and an unproven application; a 1.0 request is not approvable.
-- [ ] `pnpm --filter mock-oidc test`, the conformance kit, `dotnet test backend`, `flutter test` in `apps/biatec_authenticator`, and the widget's `vitest` and `vue-tsc` pass.
+- [x] A real two-transaction Algorand group built with `algosdk` round-trips through the mock: challenge, receipt, token, signed; changing one byte after approval gives `consent_hash_mismatch`.
+- [x] Each refusal has a conformance case and a backend test showing the user-facing code.
+- [x] `401 consent not usable` on resume leads to exactly one new challenge in a test, then stops.
+- [x] Backend tests: a user whose threshold is 5000 gets no phone prediction for a 2000 EUR transfer; a threshold of 0 predicts the phone for every action; `404` from the settings endpoint falls back to the tenant default.
+- [x] `GET /.well-known/biatec-client.json` returns the tenant's client id for its host and `404` for another host.
+- [x] The card widget tests render a two-transfer group, an untrusted application, "Value unknown", a proven domain and an unproven application; a 1.0 request is not approvable.
+- [x] `pnpm --filter mock-oidc test`, the conformance kit, `dotnet test backend`, `flutter test` in `apps/biatec_authenticator`, and the widget's `vitest` and `vue-tsc` pass.
 
 ## Implementation notes
 
@@ -75,7 +75,15 @@ Parallel work possible: **yes**. T-238 changes `backend/Biatec.Chat.Api/Consent/
 
 ## Hand-off
 
-Filled in when the task moves to review.
+PR #411, `task/T-240` @ 59c42ef. Local: `dotnet test backend` 1746+ pass, mock-oidc 50, conformance 41, e2e 10, widget vitest 509, `flutter test` 1146, Dart mock contract tests 8/8 against the mock. CI: backend, js, images, pack, check pass; the two authenticator jobs fail on Flutter SDK drift (deprecation lints for `package:flutter/material.dart`, `pub get` changing `pubspec.lock`), which also fails on main.
+
+- Mock Biatec OIDC speaks 1.1 with real Algorand groups, `GET /consent/settings`, every refusal, reserve-then-spend; conformance case per refusal; seed users dave, erin, frank, gina and the `new-app` client.
+- Backend: typed refusals mapped to user codes, one new consent round on `401 consent not usable`, user threshold unclamped (0 asks for everything, 404 falls back to the tenant default), `/.well-known/biatec-client.json`, `errorCode` on the confirm answer and the consent stream; widget texts en/sk.
+- Authenticator card shows every transfer and application, proven domain or fingerprint, "Value unknown", origin; a 1.0 request cannot be approved (it can still be denied); 1.1 receipts carry `device.key_use`.
+- `docs/required-changes-biatec-oidc.md` brought up to date with the Biatec OIDC issue per row.
+- Known limits: mock has no Bitcoin decoding; the mock's `/devices/settings` view fields are T-245; the `remember` offer on the card is T-241; the settings fallback on a missing endpoint assumes an active device; the domain proof is cached for an hour as the task states; the authenticator CI jobs need a separate task to fix the SDK drift.
+
+**Unblocks:** T-241 (with T-244), T-243 (with T-238, done).
 
 ## Review
 
@@ -87,3 +95,4 @@ Filled in when the task moves to review.
 - 2026-11-13 14:20 · scholtz · scope note · added the errorCode on ConfirmResponse (found while merging T-237)
 - 2026-11-14 13:21 · kanban-board · blocked → backlog · blockers done: T-239
 - 2026-11-14 14:30 · scholtz · backlog → in-progress · claimed by session-20261114-1430 on task/T-240
+- 2026-11-14 16:00 · scholtz · in-progress → review · PR #411 @ 59c42ef
