@@ -203,8 +203,11 @@ has not shipped a change:
 We only change this repository. Everything that needs a change in Biatec OIDC is listed with its fallback in
 [required-changes-biatec-oidc.md](required-changes-biatec-oidc.md). The ones that shape the architecture today:
 
-- No consent endpoints at the real Biatec OIDC: consent flows run against the mock only. The mock lives in
-  `packages/consent-protocol/mock-oidc`, and the backend test mock for the login flow is `backend/Biatec.Chat.Tests/Auth/MockOidc.cs`.
+- Consent enforcement is not deployed at the real Biatec OIDC (the step-up on the signing endpoint and the policy, issues 25 to 28 of its repository, are open;
+  part of the foundation is on its `master`): the full consent flow runs against the mock only. The backend already verifies every consent receipt itself
+  (T-238), and the switches that hand the decision to Biatec OIDC are prepared and off (`Caps__OidcHonoursRequireConsent`, `Caps__NoDevice__Enabled`; the
+  procedure is [consent-rollout.md](consent-rollout.md)). The mock lives in `packages/consent-protocol/mock-oidc`, and the backend test mock for the login flow
+  is `backend/Biatec.Chat.Tests/Auth/MockOidc.cs`.
 - No confidential-client registration: an operator adds the tenant client, and onboarding answers `202 pending-operator-approval`.
 - No revocation endpoint: logout destroys the vault entry and the refresh token ages out at the IdP (30 days today).
 - Unknown application calls (Algo Safe, DEX pools) are treated as above threshold, so the phone is always asked.

@@ -22,3 +22,11 @@ data:
   # plain http behind the TLS-terminating ingress. The keys are the same on every host of this backend, so the mounted
   # host's bundles point here too.
   Evidence__PublicBaseUrl: https://stage.chat.biatec.io
+  # Consent enforcement switches (T-243, docs/consent-rollout.md). They are written out at the values that keep today's behaviour, which are
+  # also the code defaults, so that flipping one is a reviewed one-line change on stage. Flip them in this order and only after the prerequisites
+  # of the rollout document hold on stage.oidc.biatec.io (Consent__Enforcement=AgentClients, the client marked ConsentEnforced, its domain proven):
+  #   1. Caps__OidcHonoursRequireConsent -> "true": a cap sends the user to the phone instead of refusing.
+  #   2. Caps__NoDevice__Enabled -> "false": Biatec OIDC enforces the no-device rule itself.
+  # Rollback is the reverse: set them back to the values below.
+  Caps__OidcHonoursRequireConsent: "false"
+  Caps__NoDevice__Enabled: "true"

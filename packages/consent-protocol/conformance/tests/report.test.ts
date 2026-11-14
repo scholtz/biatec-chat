@@ -1,0 +1,180 @@
+// The kit against a server that is not the mock and lacks its helpers: the run completes, every case that needs a helper (or an
+// input nobody supplied) is listed as skipped with its reason, and no token, secret or code reaches the report.
+// A tiny stub plays the server. It answers 404 on /mock/*, and every other call with a 401 that echoes the caller's credentials and
+// carries a binding code, an auth request id and an access token, so that any failure message built from the answer would leak them.
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { spawn } from "node:child_process";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { have, missing, offersHelpers, redact } from "../src/needs.ts";
+import { publicUrl } from "../src/report.ts";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const markers = {
+  clientSecret: "MARK-client-secret-7f3a9c1e",
+  userToken: "MARK-user-token-b81d44e0",
+  deviceToken: "MARK-device-token-52c9aa17",
+  bearerNoDevice: "MARK-bearer-nodevice-0e6f31d2",
+  jwkD: "MARK-jwk-private-d-93ab07cc",
+  bindingCode: "424242",
+  authReqId: "ciba_MARKauthreq91",
+  accessToken: "MARK-access-token-e5d27b09",
+};
+
+describe("the kit against a server without the mock's helpers", () => {
+  let stub: Server;
+  let url: string;
+  let dir: string;
+  let run: { error?: Error; status: number | null };
+  let reportText: string;
+  let report: any;
+
+  beforeAll(async () => {
+    stub = createServer((req, res) => {
+      req.resume();
+      if (req.url?.startsWith("/mock/")) { res.writeHead(404).end(); return; }
+      res.writeHead(401, { "Content-Type": "application/json", "WWW-Authenticate": 'Bearer error="insufficient_user_authentication"' });
+      res.end(JSON.stringify({
+        error: `rejected ${req.headers.authorization ?? ""}`,
+        error_description: `binding_code ${markers.bindingCode}`,
+        binding_code: markers.bindingCode,
+        auth_req_id: markers.authReqId,
+        access_token: markers.accessToken,
+      }));
+    });
+    await new Promise<void>((r) => stub.listen(0, "127.0.0.1", r));
+    url = `http://127.0.0.1:${(stub.address() as AddressInfo).port}`;
+    dir = mkdtempSync(join(tmpdir(), "conformance-report-"));
+    const vitest = join(dirname(createRequire(import.meta.url).resolve("vitest/package.json")), "vitest.mjs");
+    // Asynchronous: the stub lives in this process and must keep answering while the nested run talks to it.
+    run = await new Promise((resolve) => {
+    const child = spawn(process.execPath, [vitest, "run", "--config", join(here, "..", "vitest.config.ts")], {
+      cwd: join(here, ".."),
+      stdio: "ignore",
+      // A clean environment: only what a process needs to start, plus the markers. A person's real CONFORMANCE_* secrets never reach the child.
+      env: {
+        ...Object.fromEntries(["PATH", "Path", "HOME", "USERPROFILE", "SystemRoot", "TEMP", "TMP", "TMPDIR", "APPDATA", "LOCALAPPDATA", "COMSPEC", "PATHEXT", "windir"].filter((k) => process.env[k] !== undefined).map((k) => [k, process.env[k]!])),
+        CONFORMANCE_NESTED: "1",
+        CONFORMANCE_OIDC_URL: url,
+        CONFORMANCE_REPORT_DIR: dir,
+        CONFORMANCE_MOCK_HELPERS: "",
+        CONFORMANCE_CLIENT_SECRET: markers.clientSecret,
+        CONFORMANCE_USER_TOKEN: markers.userToken,
+        CONFORMANCE_DEVICE_TOKEN: markers.deviceToken,
+        CONFORMANCE_BEARER_NO_DEVICE: markers.bearerNoDevice,
+        CONFORMANCE_DEVICE_PRIVATE_JWK: JSON.stringify({ kty: "EC", crv: "P-256", x: "x".repeat(43), y: "y".repeat(43), d: markers.jwkD }),
+      },
+    });
+    const timer = setTimeout(() => child.kill(), 120_000);
+    child.on("error", (error) => resolve({ error, status: null }));
+    child.on("exit", (status) => { clearTimeout(timer); resolve({ status }); });
+    });
+    const files = readdirSync(dir);
+    const file = files.find((f) => f.startsWith("run-") && f.endsWith(".json"));
+    reportText = file ? readFileSync(join(dir, file), "utf8") : "";
+    report = reportText ? JSON.parse(reportText) : null;
+  }, 150_000);
+
+  afterAll(async () => {
+    await new Promise<void>((r) => stub.close(() => r()));
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("completes and writes exactly one report file for the run", () => {
+    expect(run.error).toBeUndefined();
+    expect(run.status === 0 || run.status === 1, `exit ${run.status}`).toBe(true);
+    expect(readdirSync(dir).filter((f) => f.startsWith("run-"))).toHaveLength(1);
+    // The vitest JSON and JUnit files carry raw failure messages, so they are not written against another server.
+    expect(readdirSync(dir).filter((f) => !f.startsWith("run-"))).toEqual([]);
+  });
+
+  it("names the server, the commit of this repository and a result per case", () => {
+    expect(report.server).toBe(url);
+    expect(report.commit).toMatch(/^([0-9a-f]{40}|unknown)$/);
+    expect(report.cases.length).toBeGreaterThan(20);
+    expect(report.runState).toBe("completed");
+    expect(Array.isArray(report.dirtyPaths)).toBe(true);
+    expect(report.totals.not_run).toBe(0);
+    for (const c of report.cases) expect(["passed", "failed", "skipped", "not_run"]).toContain(c.status);
+    expect(report.totals.passed + report.totals.failed + report.totals.skipped + report.totals.not_run).toBe(report.cases.length);
+  });
+
+  it("lists the cases that need a mock helper as skipped, each with its reason, never as passed", () => {
+    const skipped = report.cases.filter((c: any) => c.status === "skipped");
+    expect(skipped.length).toBeGreaterThan(10);
+    for (const c of skipped) expect(c.reason, c.name).toMatch(/^needs /);
+    expect(skipped.filter((c: any) => /mockHelpers/.test(c.reason)).length).toBeGreaterThan(10);
+    for (const name of ["step-up entry > the receipt conforms", "direct entry > the receipt conforms", "a second use of an elevated token", "too_many_pending_requests"]) {
+      const c = report.cases.find((x: any) => x.name.includes(name));
+      expect(c, name).toBeDefined();
+      expect(c.status, name).toBe("skipped");
+    }
+    // Cases that need only what was supplied do run (and fail against the stub, which answers 401 to everything).
+    expect(report.cases.find((c: any) => c.name.includes("an inconsistent grp")).status).toBe("failed");
+    // The shared canonicalization vectors need nothing from the server.
+    expect(report.cases.find((c: any) => c.name.includes("RFC 8785")).status).toBe("passed");
+  });
+
+  it("holds no token, secret or code", () => {
+    for (const [name, value] of Object.entries(markers)) expect(reportText, name).not.toContain(value);
+    expect(reportText).not.toContain(JSON.stringify(markers.jwkD));
+    // The failures are there (and vitest abbreviates the answers in them); the redaction itself is asserted below.
+    expect(report.totals.failed).toBeGreaterThan(0);
+  });
+});
+
+describe("what the report may say", () => {
+  it("reports a case's missing inputs by name", () => {
+    const env = { CONFORMANCE_OIDC_URL: "https://stage.example" };
+    expect(missing(["mockHelpers", "userToken"], env)).toMatch(/mockHelpers.*userToken.*CONFORMANCE_USER_TOKEN/);
+    expect(missing(["userToken"], { ...env, CONFORMANCE_USER_TOKEN: "x" })).toBeNull();
+    expect(missing(["mockHelpers"], {})).toBeNull(); // in-process mock
+  });
+
+  it("the mock-helpers flag never supplies a secret nobody supplied, and seeds apply only to the in-process mock", () => {
+    const env = { CONFORMANCE_OIDC_URL: "https://stage.example", CONFORMANCE_MOCK_HELPERS: "1" };
+    expect(have("mockHelpers", env)).toBe(true);
+    for (const n of ["clientSecret", "userToken", "deviceKey", "bearer:noDevice", "bearer:threshold5000"] as const) expect(have(n, env), n).toBe(false);
+    expect(missing(["userToken"], env)).toMatch(/CONFORMANCE_USER_TOKEN/);
+    expect(have("userToken", { ...env, CONFORMANCE_USER_TOKEN: "x" })).toBe(true);
+    expect(have("userToken", {})).toBe(true); // in-process mock
+  });
+
+  it("keeps ordinary words and redacts credentials, whatever the variable and the shape", () => {
+    expect(redact("Device attestation lookup failed: Basic authentication is required", {})).toBe("Device attestation lookup failed: Basic authentication is required");
+    const env = { CONFORMANCE_BEARER_PAUSED: "abcd", CONFORMANCE_CLIENT_SECRET: "s3cr3t-value" };
+    const text = redact("paused abcd, secret s3cr3t-value, Device abc123xyz, Basic dXNlcjpw0YXNz, Bearer 0123456789klmnopqrst", env);
+    for (const leak of ["abcd", "s3cr3t-value", "abc123xyz", "dXNlcjpw0YXNz", "0123456789klmnopqrst"]) expect(text).not.toContain(leak);
+  });
+
+  it("keeps prose that uses a credential's name, and redacts quoted and escaped forms", () => {
+    const keep = "HTTP status code: 401, token endpoint refused, d: next, code=";
+    expect(redact(keep.replace("code=", "decoded"), {})).toBe(keep.replace("code=", "decoded"));
+    const bs = String.fromCharCode(92);
+    const forms = [
+      `{"access_token":"leakA1"}`, `{'id_token': 'leakB2'}`, `${bs}"refresh_token${bs}":${bs}"leakC3${bs}"`, `binding_code=leakD4`,
+      `{"auth_req_id": "leakE5"}`, `client_secret: 'leakF6'`, `{"code":"leakG7"}`, `token=leakH8`, `{"d":"leakI9"}`,
+    ];
+    for (const f of forms) expect(redact(f, {}), f).not.toMatch(/leak[A-I]\d/);
+  });
+
+  it("names a standalone mock's helpers truthfully in the report", () => {
+    expect(offersHelpers({ CONFORMANCE_OIDC_URL: "https://x.example", CONFORMANCE_MOCK_HELPERS: "1" })).toBe(true);
+    expect(offersHelpers({ CONFORMANCE_OIDC_URL: "https://x.example" })).toBe(false);
+  });
+
+  it("redacts supplied secrets and token-shaped values", () => {
+    const env = { CONFORMANCE_USER_TOKEN: "super-secret-value" };
+    const text = redact(`HTTP 401 Bearer abcdef123456 {"binding_code":"123456","note":"super-secret-value","auth_req_id":"ciba_x1"} eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln`, env);
+    for (const leak of ["super-secret-value", "abcdef123456", "123456", "ciba_x1", "eyJhbGci"]) expect(text).not.toContain(leak);
+  });
+
+  it("drops credentials, query and fragment from the server URL", () => {
+    expect(publicUrl("https://user:pw@stage.example/path/?token=abc#frag")).toBe("https://stage.example/path");
+  });
+});

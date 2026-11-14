@@ -17,7 +17,7 @@ CONSENT-15); biatec-chat's T-240 brought this document row by row up to date. Wh
 
 | Biatec OIDC must provide | Issue | Fallback in this repository |
 | --- | --- | --- |
-| `group_hash` as the recomputed Algorand group id; `transfers`, `applications`, `value_known`, signed `origin` in `authorization_details` | #26, #28 | None: build against the mock only (T-240); against real Biatec OIDC the feature is disabled by configuration: keep consent enforcement off against real Biatec OIDC (the switch `Consent:Enforcement`, default `Off`, is added by T-243 together with the code that reads it; until then nothing enforces anything and the backend's own caps and no-device rules apply) |
+| `group_hash` as the recomputed Algorand group id; `transfers`, `applications`, `value_known`, signed `origin` in `authorization_details` | #26, #28 | None: build against the mock only (T-240); against real Biatec OIDC the feature is disabled by configuration: keep consent enforcement off against real Biatec OIDC (the switch is Biatec OIDC's own `Consent__Enforcement`, default `Off`; the backend has no switch of its own: it asks the phone only when Biatec OIDC answers 401 `insufficient_user_authentication`, and its caps and no-device rules apply until the two settings of [consent-rollout.md](consent-rollout.md) are changed) |
 | Client identity as `{ fingerprint, domain_proven, domain?, linked }`; the domain proof `/.well-known/biatec-client.json`; no operator-vouched name | #25, #27 | None: mock only (T-240), disabled by configuration against real Biatec OIDC (the switch is added by that task); the backend serves the well-known file so the proof works when Biatec OIDC checks it |
 | Two attested device keys (`biatec_key_use` `approve` / `presence`); an approve receipt refused unless its attestation says `approve` | #32 | None: mock only (T-241), disabled by configuration against real Biatec OIDC (a build flag added by that task keeps the app on one key); the real server keeps accepting 1.0 single-key receipts until it ships |
 | Enrollment proof (`biatec-device-enroll+jwt`), pairing code, `POST /devices/{kid}/activate` with a signed `biatec_device_approval` | #31 | None: mock only (T-242), disabled by configuration against real Biatec OIDC (the in-app login and the activation by another device are off; enrollment keeps the 24 hour delay) |
@@ -82,6 +82,48 @@ against the mock and cannot be enabled against real Biatec OIDC until the row sh
 | 23 | Operator identity claim (`biatec_operator` group) for the admin API | none | Named operator bearer keys: `Admin:Operators:<name>:KeyHash` holds only the SHA-256 of each operator's key, and every admin change records the operator name in the signed admin evidence chain (T-097, docs/admin-api.md). The shared `Onboarding:OperatorKey` is still accepted as the deprecated operator `legacy` |
 | 24 | Minimum authenticator build: every answer carries `X-Biatec-Min-App-Build` | #30 | An optional build expiry date compiled into the app (`--dart-define=BUILD_EXPIRES`); without either an old build keeps running. The authenticator reads the header on every call it makes, against the mock only until Biatec OIDC sends it (T-232) |
 | 25 | Platform attestation at enrollment: a challenge endpoint, and Play Integrity and App Attest tokens verified (`POST /devices/challenge`, `attestation_challenge` and `platform_attestation` on `POST /devices`, `PUT /devices/attestation`) | #36 (verification), #31 (the challenge endpoint) | Enroll without an attestation and flag the device; the authenticator sends one when the platform offers it and the mock checks its shape (T-234) |
+
+## Status on Biatec OIDC (T-243, as of 2026-11-14)
+
+Refresh it with `gh issue list -R ludovit-scholtz/AlgorandGoogleDriveAccount --state all --limit 60` (and `git log` of that repository's `master`). Row by row: whether the change is implemented in Biatec OIDC, and whether it is enabled on stage. The source is the issue list of
+`ludovit-scholtz/AlgorandGoogleDriveAccount` (`gh issue list --state all`: issues 23 to 38 are all open, nothing of the consent architecture is closed) and the
+commits on that repository's `master`, which holds part of the foundation: the consent protocol primitives (PR 19), consent requests, device endpoints and
+receipt verification (PR 20), consent polling with `slow_down` and `access_denied` (PR 21), the CIBA token grant with the elevated consent token (PR 22, for
+issue 15), the device API with proof of possession (PR 18, for issue 12) and the popup opener policy (PR 17, issue 13). "Enabled on stage" means this repository
+switches the feature on there (`k8s/stage`, the authenticator build flags); **no row is enabled on stage**, because `Consent__Enforcement` and the backend settings
+of [consent-rollout.md](consent-rollout.md) are all at their off values. What is not known from here is whether the stage Biatec OIDC currently runs the master
+commits named above (its last stage deploy commit in that repository is 1.2026.11.12-main) and how it is configured; the first conformance run against stage
+(consent-rollout.md, part 1) is what answers it. It has not been run.
+
+| # | Implemented in Biatec OIDC (issue) | Enabled on stage |
+| --- | --- | --- |
+| 1 CIBA endpoint and token grant | Partly: the token grant, polling and the elevated token are on master (PR 21, 22); the step-up of the signing endpoint (#28), direct entry, discovery and grant restriction (#34) are not (open) | No |
+| 2 `authorization_details` types | No (#26, #33 open) | No |
+| 3 Step-up challenge and `requireConsent` | No (#28, #33 open) | No |
+| 4 Device enrollment, attestation, receipts | Partly: device API with proof of possession and receipt store on master (PR 18, 20); account key (#24), enrollment hardening (#31), two keys (#32), platform attestation (#36) open | No |
+| 5 Safe application-call valuation | No (#26, #27 open) | No |
+| 6 DEX pool call decoding | Not part of protocol 1.1; no issue | No |
+| 7 Test networks without a price table | No (#26, #27 open) | No |
+| 8 Group-hash binding | No (#26, #28 open) | No |
+| 9 Confidential-client registration | No issue; the operator adds the static client (the fallback in use) | The fallback is in use: yes |
+| 10 Reduced cap without an active device | No (#27, #28 open) | No: the backend's own rule (`Caps__NoDevice__Enabled=true`) is what runs |
+| 11 `valuedEur` | No (#28 open) | No |
+| 12 Client identity and domain proof | No (#25 open); the backend serves the proof file (T-240) | No: the phone would say "Unproven application" |
+| 13 Forced fresh consent on scope elevation | No issue; not needed | n/a |
+| 14 RFC 7009 revocation of the presented token | No issue | No |
+| 15 Pairwise subject identifiers | No (#24 open) | No |
+| 16 `maxConsentSeconds` | No (#28 open) | No |
+| 17 Origin-aware consent requests | No (#28, #30 open) | No |
+| 18 Per-client refresh lifetime | No issue | No |
+| 19 Consent-gated loosening of settings | No (#30 open) | No |
+| 20 `GET /consent/settings` | No (#27 open) | No: `CONSENT_SETTINGS_API` is off for real Biatec OIDC |
+| 21 Device list and cancel | No (#30 open) | No |
+| 22 Device-side consent settings | No (#30 open) | No |
+| 23 Operator identity claim | No issue | No: named operator keys are the fallback in use |
+| 24 Minimum authenticator build header | No (#30 open) | No |
+| 25 Platform attestation at enrollment | No (#36, #31 open) | No |
+| Protocol 1.1 table: device channel (SignalR) and email | No (#29, #37 open) | No: `DEVICE_CHANNEL` off for real Biatec OIDC (T-244), no email |
+| Protocol 1.1 table: relying parties | No (#38 open) | No |
 
 **Mock status.** The in-repo mock Biatec OIDC (`packages/consent-protocol/mock-oidc`, T-047 and T-240) implements the consent side as protocol 1.1:
 the step-up entry on `POST /wallet/{network}/{address}/sign` and `PUT /wallet/limits`, the direct entry, the CIBA token grant, receipts with two
