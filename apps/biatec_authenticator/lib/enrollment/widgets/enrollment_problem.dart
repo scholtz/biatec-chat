@@ -1,3 +1,6 @@
+import '../enrollment_controller.dart';
+import '../enrollment_strings.dart';
+
 /// Why an enrollment attempt failed, as far as the user can act on it.
 enum EnrollmentProblemKind {
   /// Biatec OIDC could not be reached: nothing was enrolled, trying again may work.
@@ -14,6 +17,15 @@ enum EnrollmentProblemKind {
 
   /// The device cannot keep the key in secure hardware.
   keyNotHardware,
+
+  /// The recovery code typed at enrollment is wrong.
+  wrongRecoveryCode,
+
+  /// Too many wrong recovery codes: activation by recovery code is locked for a while.
+  recoveryLocked,
+
+  /// The sign-in in the browser was cancelled or did not give a token.
+  signInFailed,
 
   /// Anything else; the message says what the server or device said.
   other,
@@ -46,6 +58,35 @@ bool isUnreachableError(String error) => error.startsWith(_unreachablePrefix);
 /// Reads the message the controller reports (the client's messages are fixed texts) into something the screen can answer specifically.
 EnrollmentProblem classifyEnrollmentError(String error) {
   final lower = error.toLowerCase();
+  final strings = EnrollStrings.of();
+  if (error == EnrollmentController.recoveryWrongError) {
+    return EnrollmentProblem(EnrollmentProblemKind.wrongRecoveryCode,
+        strings.recoveryWrongTitle, strings.recoveryWrong, strings.signInButton);
+  }
+  if (error == EnrollmentController.recoveryFormatError) {
+    return EnrollmentProblem(EnrollmentProblemKind.wrongRecoveryCode,
+        strings.recoveryWrongTitle, strings.recoveryFormat, strings.signInButton);
+  }
+  if (error == EnrollmentController.recoveryLockedError) {
+    return EnrollmentProblem(EnrollmentProblemKind.recoveryLocked,
+        strings.recoveryLockedTitle, strings.recoveryLocked, strings.signInButton);
+  }
+  if (error == EnrollmentController.loginCancelledError) {
+    return EnrollmentProblem(EnrollmentProblemKind.signInFailed,
+        strings.signInButton, strings.loginCancelled, strings.signInButton);
+  }
+  if (error.startsWith(EnrollmentController.loginFailedPrefix)) {
+    return EnrollmentProblem(
+        EnrollmentProblemKind.signInFailed,
+        strings.signInButton,
+        strings.loginFailed(
+            error.substring(EnrollmentController.loginFailedPrefix.length).trim()),
+        strings.signInButton);
+  }
+  if (error == EnrollmentController.staleLoginError) {
+    return EnrollmentProblem(EnrollmentProblemKind.signInFailed,
+        strings.signInAgainButton, strings.staleLoginAgain, strings.signInAgainButton);
+  }
   // The pinning refusal (PinningException.message): "The connection to <host> could not be verified, so nothing was sent."
   if (error.startsWith('The connection to ') &&
       lower.contains('could not be verified')) {

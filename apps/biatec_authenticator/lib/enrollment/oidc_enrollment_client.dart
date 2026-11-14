@@ -9,8 +9,25 @@ import 'enrollment_proof.dart';
 import 'enrollment_state.dart';
 
 class EnrollmentException implements Exception {
-  const EnrollmentException(this.message, {this.code});
+  const EnrollmentException(this.message,
+      {this.code, this.status, this.recoveryCodeSent = false});
   final String message;
+
+  /// The HTTP status, when the server answered.
+  final int? status;
+
+  /// The login is too old for an enrollment: `401 insufficient_user_authentication` (RFC 9470). The app signs in again, once.
+  bool get isStaleLogin => code == 'insufficient_user_authentication';
+
+  /// `403 invalid_recovery_code`: the recovery code at enrollment is wrong.
+  bool get isWrongRecoveryCode => code == 'invalid_recovery_code';
+
+  /// A recovery code was part of the request that was refused.
+  final bool recoveryCodeSent;
+
+  /// `429 too_many_attempts` for a request that carried a recovery code: too many wrong codes, activation by recovery code is locked for a while. Any other 429 (a rate limit, too many open challenges) is not this.
+  bool get isRecoveryLocked =>
+      recoveryCodeSent && status == 429 && code == 'too_many_attempts';
 
   /// The server's `error` member (machine readable), when it sent one: `invalid_challenge` and `invalid_proof` are the ones the app acts on.
   final String? code;
@@ -27,14 +44,13 @@ class OidcEnrollmentClient {
   final http.Client _client;
 
   /// Enrolls the two keys of [keys] with the enrollment [proofs]. [loginToken] comes from a fresh full login (rule 7).
-  /// [approvedByKid] names an already active device that approved this one,
-  /// which makes the new device active at once.
+  /// [recoveryCode] activates the new device at once (`activation: {kind: recovery_code, code}`). Naming an active device's kid does not (T-242: it proves nothing), so there is no such argument.
   Future<EnrollmentRecord> enroll({
     required DeviceKey key,
     DeviceKey? presenceKey,
     EnrollmentProofs? proofs,
     required String loginToken,
-    String? approvedByKid,
+    String? recoveryCode,
     String? name,
     String? challenge,
     AttestationToken? platformAttestation,
@@ -57,7 +73,8 @@ class OidcEnrollmentClient {
             'approval_proof': proofs.approvalProof,
             'presence_proof': proofs.presenceProof,
           },
-          if (approvedByKid != null) 'approved_by_kid': approvedByKid,
+          if (recoveryCode != null)
+            'activation': {'kind': 'recovery_code', 'code': recoveryCode},
           if (name != null) 'name': name,
           // The platform's proof that this is the real app on a real device, bound to the nonce Biatec OIDC gave. Sent only when there is one: a missing proof is not replaced by a made-up one.
           if (platformAttestation != null && challenge != null) ...{
@@ -72,7 +89,7 @@ class OidcEnrollmentClient {
       throw EnrollmentException('Could not reach Biatec OIDC: $e');
     }
     return parseResponse(res.statusCode, res.body,
-        twoKeys: presenceKey != null);
+        twoKeys: presenceKey != null, recoverySent: recoveryCode != null);
   }
 
   static Map<String, Object?> _attestationJson(AttestationToken t) => {
@@ -90,11 +107,22 @@ class OidcEnrollmentClient {
     try {
       final res = await _client.post(Uri.parse('$baseUrl/devices/challenge'),
           headers: {'Authorization': auth});
+      if (res.statusCode == 401) {
+        // A login that is too old is not "no challenge": the app signs in again.
+        final json = _decodeObject(res.body, res.statusCode);
+        if (json['error'] == 'insufficient_user_authentication') {
+          throw EnrollmentException('The sign-in is too old (401).',
+              code: 'insufficient_user_authentication', status: 401);
+        }
+      }
       if (res.statusCode != 200) return null;
       final nonce = _decodeObject(res.body, res.statusCode)['nonce'];
       return nonce is String && nonce.isNotEmpty && nonce.length <= 512
           ? nonce
           : null;
+    } on EnrollmentException catch (e) {
+      if (e.isStaleLogin) rethrow;
+      return null;
     } on Object {
       return null;
     }
@@ -133,13 +161,15 @@ class OidcEnrollmentClient {
   }
 
   static EnrollmentRecord parseResponse(int status, String body,
-      {bool twoKeys = true}) {
+      {bool twoKeys = true, bool recoverySent = false}) {
     final json = _decodeObject(body, status);
     if (status != 201) {
       final detail = json['error_description'] ?? json['error'] ?? 'error';
       final code = json['error'];
       throw EnrollmentException('Enrollment refused ($status): $detail',
-          code: code is String ? code : null);
+          code: code is String ? code : null,
+          status: status,
+          recoveryCodeSent: recoverySent);
     }
     // The recovery code is deliberately not read here: rule 7 issues it only
     // once the device is active, through [requestRecoveryCode].

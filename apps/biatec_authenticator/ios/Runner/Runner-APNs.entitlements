@@ -2,12 +2,20 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Only for a build with the optional Apple wake (--dart-define=APNS_ENABLED=true): Runner.entitlements plus the push entitlement. Point
+	<!-- Only for a build with the optional Apple wake (--dart-define=APNS_ENABLED=true): Runner-AppLinks.entitlements (the Release and Profile entitlements, with the app links) plus the push entitlement. Point
 	     CODE_SIGN_ENTITLEMENTS at this file for that build only (README, "The optional Apple wake"); the committed project does not use it, so a normal
 	     build has no push entitlement. -->
 	<key>aps-environment</key>
 	<string>production</string>
 	<key>com.apple.developer.devicecheck.appattest-environment</key>
 	<string>production</string>
+	<!-- In-app login (T-242): the browser returns to the app through a universal link on the Biatec OIDC hosts (applinks needs the Associated Domains capability on the
+	     App ID and https://<host>/.well-known/apple-app-site-association: a deployment prerequisite of Biatec OIDC, docs/required-changes-biatec-oidc.md). The custom scheme a
+	     debug build uses needs no registration here: ASWebAuthenticationSession hands the callback to the app itself, so the Info.plist has no URL scheme. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:oidc.biatec.io</string>
+		<string>applinks:stage.oidc.biatec.io</string>
+	</array>
 </dict>
 </plist>

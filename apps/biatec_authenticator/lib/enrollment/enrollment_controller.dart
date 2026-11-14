@@ -2,13 +2,36 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show PlatformException;
 
 import '../integrity/attestation.dart';
+import '../config.dart';
 import '../keys/device_key_store.dart';
+import '../security/device_proof.dart';
 import '../keys/key_security_level.dart';
 import '../keys/prompt_free_key.dart';
+import '../approvals/approval_client.dart' show ApprovalException;
+import '../security/settings_client.dart';
+import 'auth_client.dart';
 import 'enrollment_proof.dart';
+import 'enrollment_strings.dart';
+import 'pairing_code.dart';
+import 'recovery_code_format.dart';
 import 'enrollment_state.dart';
 import 'observable_enrollment_store.dart';
 import 'oidc_enrollment_client.dart';
+
+/// How one [EnrollmentController.enroll] ended.
+enum EnrollResult {
+  /// The device is enrolled (active, or waiting for its activation).
+  enrolled,
+
+  /// Nothing was enrolled; [EnrollmentState.error] says why.
+  failed,
+
+  /// Biatec OIDC says the login is too old (`401 insufficient_user_authentication`, `max_age`): nothing was enrolled and a new sign-in is needed.
+  staleLogin,
+
+  /// Not started: this device is already enrolling or enrolled.
+  ignored,
+}
 
 /// Drives the enrollment state machine. Time is injected so the 24 h delay is
 /// testable.
@@ -21,7 +44,48 @@ class EnrollmentController extends ChangeNotifier {
     this.attestation = const PlatformAttestationProvider(),
     this.attestationTimeout = const Duration(seconds: 30),
     this.twoKeys = true,
+    this.auth,
+    this.loginRequest,
+    this.devices,
   }) : _clock = clock ?? DateTime.now;
+
+  /// The one way the app builds its controller from [config] (the app gate and the enrollment screen both use it): the in-app login and the waiting device's calls exist
+  /// only against a Biatec OIDC that has them (`AppConfig.inAppLogin`), and the calls carry the proof of possession of the device key ([proof], by default the keystore's).
+  factory EnrollmentController.forConfig(
+    AppConfig config, {
+    required DeviceKeyStore keys,
+    required ObservableEnrollmentStore store,
+    DeviceProofSigner? proof,
+    AuthClient? authClient,
+    bool? twoKeys,
+  }) =>
+      EnrollmentController(
+        keys: keys,
+        store: store,
+        client: OidcEnrollmentClient(baseUrl: config.oidcBaseUrl),
+        twoKeys: twoKeys ?? config.twoKeys,
+        auth: config.inAppLogin ? (authClient ?? AppAuthClient()) : null,
+        loginRequest:
+            config.inAppLogin ? AuthRequest.forConfig(config) : null,
+        devices: SettingsClient(
+            baseUrl: config.oidcBaseUrl,
+            proof: proof ?? KeystoreDeviceProofSigner(keys: keys, enrollment: store)),
+      );
+
+  /// The system browser login (null: no in-app login, `AppConfig.inAppLogin` is off and the token comes from outside) and what it asks for.
+  final AuthClient? auth;
+  final AuthRequest? loginRequest;
+
+  /// The device list and cancel calls, for the waiting device to learn that it was activated and to cancel itself. Null: no polling.
+  final SettingsClient? devices;
+
+  /// The state error of a cancelled sign-in, a failed one, and of the recovery code at enrollment (English; the screen shows the phone's language).
+  static String get loginCancelledError => EnrollStrings.en.loginCancelled;
+  static const loginFailedPrefix = 'Sign-in failed:';
+  static String get recoveryWrongError => EnrollStrings.en.recoveryWrong;
+  static String get recoveryLockedError => EnrollStrings.en.recoveryLocked;
+  static String get staleLoginError => EnrollStrings.en.staleLoginAgain;
+  static String get recoveryFormatError => EnrollStrings.en.recoveryFormat;
 
   final DeviceKeyStore keys;
 
@@ -68,7 +132,9 @@ class EnrollmentController extends ChangeNotifier {
 
   DateTime get now => _clock();
 
+  /// A controller that was disposed (its screen left while the browser was open) changes nothing any more.
   void _set(EnrollmentState s) {
+    if (_disposed) return;
     _state = s;
     notifyListeners();
   }
@@ -138,7 +204,10 @@ class EnrollmentController extends ChangeNotifier {
     if (record == null) {
       // A read that failed says nothing: an enrolled device stays as it is (a locked or busy keystore), and only a store that answers "nothing" means not enrolled.
       if (_readFailed && _state.record != null) return;
-      if (p != EnrollmentPhase.failed) _set(EnrollmentState.notEnrolled);
+      // (A device that was just cancelled keeps the notice that says so.)
+      if (p != EnrollmentPhase.failed && p != EnrollmentPhase.notEnrolled) {
+        _set(EnrollmentState.notEnrolled);
+      }
       return;
     }
     if (twoKeys && !record.hasTwoKeys) {
@@ -224,20 +293,103 @@ class EnrollmentController extends ChangeNotifier {
     }
   }
 
-  /// Generates the key and enrolls it. [loginToken] is from a fresh login.
-  Future<void> enroll({
+  /// What a new device calls itself, for the other devices to show ("Activate Android phone?"). Nothing personal: the platform only.
+  static String get defaultDeviceName => switch (defaultTargetPlatform) {
+        TargetPlatform.android => 'Android phone',
+        TargetPlatform.iOS => 'iPhone',
+        _ => 'Biatec Authenticator',
+      };
+
+  bool _signingIn = false;
+
+  /// The browser is open for the sign-in (or the enrollment that follows it runs).
+  bool get signingIn => _signingIn;
+
+  /// Signs the user in with the system browser and enrolls this device with the token that gives. The token lives in a local variable for the enrollment calls and is dropped; it is not written to any store, and no refresh token is asked for. A login Biatec OIDC finds too old starts the sign-in again, once.
+  Future<EnrollResult> signInAndEnroll(
+      {String? recoveryCode, String? deviceName}) async {
+    final signIn = auth;
+    final request = loginRequest;
+    if (signIn == null || request == null) {
+      throw StateError('no in-app login is configured');
+    }
+    final p = _state.phase;
+    if (_signingIn ||
+        (p != EnrollmentPhase.notEnrolled && p != EnrollmentPhase.failed)) {
+      return EnrollResult.ignored;
+    }
+    // A recovery code that cannot be one is refused before the browser opens: nothing is spent, and no second login is needed because of a typo.
+    final typed = recoveryCode?.trim();
+    final code = typed == null || typed.isEmpty ? null : normalizeRecoveryCode(typed);
+    if (typed != null && typed.isNotEmpty && code == null) {
+      _set(EnrollmentState(EnrollmentPhase.failed, error: recoveryFormatError));
+      return EnrollResult.failed;
+    }
+    recoveryCode = code;
+    _signingIn = true;
+    notifyListeners();
+    try {
+      for (var attempt = 0;; attempt++) {
+        String? token;
+        try {
+          token = await signIn.signIn(request);
+        } on LoginCancelled {
+          if (_disposed) return EnrollResult.ignored;
+          _set(EnrollmentState(EnrollmentPhase.failed,
+              error: loginCancelledError));
+          return EnrollResult.failed;
+        } on LoginFailed catch (e) {
+          if (_disposed) return EnrollResult.ignored;
+          _set(EnrollmentState(EnrollmentPhase.failed,
+              error: '$loginFailedPrefix ${e.message}'));
+          return EnrollResult.failed;
+        }
+        // The browser flow outlived the screen: nothing is enrolled for a screen that is gone, and the token is dropped.
+        if (_disposed) return EnrollResult.ignored;
+        final result = await enroll(
+            loginToken: token,
+            recoveryCode: recoveryCode,
+            deviceName: deviceName ?? defaultDeviceName);
+        token = null; // dropped: the enrollment is over
+        if (result != EnrollResult.staleLogin) return result;
+        if (_disposed) return result;
+        if (attempt >= 1) {
+          _set(EnrollmentState(EnrollmentPhase.failed, error: staleLoginError));
+          return EnrollResult.failed;
+        }
+        // The state now says "Sign in again" (a notice); the login restarts once.
+      }
+    } finally {
+      _signingIn = false;
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  /// Generates the key and enrolls it. [loginToken] is from a fresh login. [recoveryCode] activates the device at once.
+  Future<EnrollResult> enroll({
     required String loginToken,
-    String? approvedByKid,
+    String? recoveryCode,
     String? deviceName,
   }) async {
     final p = _state.phase;
     if (p != EnrollmentPhase.notEnrolled && p != EnrollmentPhase.failed) {
-      return;
+      return EnrollResult.ignored;
     }
     if (loginToken.trim().isEmpty) {
       _set(const EnrollmentState(EnrollmentPhase.failed,
           error: 'A fresh login is required to enroll.'));
-      return;
+      return EnrollResult.failed;
+    }
+    final typed = recoveryCode?.trim();
+    if (typed != null && typed.isNotEmpty) {
+      final code = normalizeRecoveryCode(typed);
+      if (code == null) {
+        _set(EnrollmentState(EnrollmentPhase.failed, error: recoveryFormatError));
+        return EnrollResult.failed;
+      }
+      recoveryCode = code;
+    } else {
+      recoveryCode = null;
     }
     _set(const EnrollmentState(EnrollmentPhase.generatingKey));
     DeviceKeys? deviceKeys;
@@ -274,11 +426,11 @@ class EnrollmentController extends ChangeNotifier {
       // Not what this app promises: the keys are removed instead of enrolled.
       await _discardKeys();
       _set(EnrollmentState(EnrollmentPhase.failed, error: e.message));
-      return;
+      return EnrollResult.failed;
     } on _NotInHardware catch (e) {
       await _discardKeys();
       _set(EnrollmentState(EnrollmentPhase.failed, error: e.message));
-      return;
+      return EnrollResult.failed;
     } on PlatformException catch (e) {
       await _discardKeys();
       _set(EnrollmentState(EnrollmentPhase.failed,
@@ -291,12 +443,12 @@ class EnrollmentController extends ChangeNotifier {
                       ? 'This phone could not create the device keys. Restart '
                           'the phone and try again.'
                       : 'Could not create the device keys: $e'));
-      return;
+      return EnrollResult.failed;
     } on Object catch (e) {
       await _discardKeys();
       _set(EnrollmentState(EnrollmentPhase.failed,
           error: 'Could not create the device keys: $e'));
-      return;
+      return EnrollResult.failed;
     }
     _keyLevel = enrolled.securityLevel;
     _keyLevelKid = enrolled.kid;
@@ -311,7 +463,7 @@ class EnrollmentController extends ChangeNotifier {
     try {
       record = await _enrollOnServer(
         loginToken: loginToken.trim(),
-        approvedByKid: approvedByKid,
+        recoveryCode: recoveryCode,
         deviceName: deviceName,
         enrolled: enrolled,
         deviceKeys: deviceKeys,
@@ -321,25 +473,40 @@ class EnrollmentController extends ChangeNotifier {
       await _discardKeys();
       _set(const EnrollmentState(EnrollmentPhase.failed,
           error: 'Enrollment cancelled. Nothing was enrolled.'));
-      return;
+      return EnrollResult.failed;
     } on _NoChallenge {
       await _discardKeys();
       _set(const EnrollmentState(EnrollmentPhase.failed,
           error:
               'Biatec OIDC did not give an enrollment challenge. Try again.'));
-      return;
+      return EnrollResult.failed;
     } on _ProofFailed catch (e) {
       await _discardKeys();
       _set(EnrollmentState(EnrollmentPhase.failed,
           error: 'Could not prove possession of the device keys: ${e.cause}'));
-      return;
+      return EnrollResult.failed;
+    } on EnrollmentException catch (e) {
+      // Nothing was enrolled, so the unused keys are removed.
+      await _discardKeys();
+      if (e.isStaleLogin) {
+        // `401 insufficient_user_authentication` with `max_age`: not a failure of this device, the login has to be done again.
+        _set(EnrollmentState(EnrollmentPhase.notEnrolled,
+            notice: EnrollStrings.of().staleLoginNotice));
+        return EnrollResult.staleLogin;
+      }
+      _set(EnrollmentState(EnrollmentPhase.failed,
+          error: e.isWrongRecoveryCode
+              ? recoveryWrongError
+              : e.isRecoveryLocked
+                  ? recoveryLockedError
+                  : e.message));
+      return EnrollResult.failed;
     } on Object catch (e) {
       // Nothing was enrolled, so the unused keys are removed.
       await _discardKeys();
       _set(EnrollmentState(EnrollmentPhase.failed,
-          error:
-              e is EnrollmentException ? e.message : 'Enrollment failed: $e'));
-      return;
+          error: 'Enrollment failed: $e'));
+      return EnrollResult.failed;
     }
     // The server now has the device. Never lose it over a storage hiccup: keep
     // the key, retry the write, and fall back to working from memory (refresh
@@ -358,6 +525,7 @@ class EnrollmentController extends ChangeNotifier {
     _set(EnrollmentState.fromRecord(record, _clock(),
         error: saved ? null : warning));
     await _ensureRecoveryCode();
+    return EnrollResult.enrolled;
   }
 
   /// A challenge older than this is not used (Biatec OIDC lets one live 300 s; the platform's token and the biometric prompt both wait for something outside the app).
@@ -366,7 +534,7 @@ class EnrollmentController extends ChangeNotifier {
   /// Asks for the challenge, the platform's token and (two-key mode) the enrollment proofs, and enrolls. The proofs are built last, so their `iat` is fresh after the platform's wait; if the challenge may have expired meanwhile (older than [challengeMaxAge], or the server says so) a fresh one is fetched and the proofs are made again, once.
   Future<EnrollmentRecord> _enrollOnServer({
     required String loginToken,
-    required String? approvedByKid,
+    required String? recoveryCode,
     required String? deviceName,
     required DeviceKey enrolled,
     required DeviceKeys? deviceKeys,
@@ -378,6 +546,10 @@ class EnrollmentController extends ChangeNotifier {
       if (twoKeys || attest) {
         try {
           challenge = await client.requestChallenge(loginToken: loginToken);
+        } on EnrollmentException catch (e) {
+          // A login that is too old is told to the caller; any other failure is "no challenge".
+          if (e.isStaleLogin) rethrow;
+          challenge = null;
         } on Object {
           challenge = null;
         }
@@ -426,16 +598,22 @@ class EnrollmentController extends ChangeNotifier {
         }
       }
       try {
-        return await client.enroll(
+        final record = await client.enroll(
           key: enrolled,
           presenceKey: twoKeys ? deviceKeys!.presence : null,
           proofs: proofs,
           loginToken: loginToken,
-          approvedByKid: approvedByKid,
+          recoveryCode: recoveryCode,
           name: deviceName,
           challenge: proof == null ? null : challenge,
           platformAttestation: proof,
         );
+        // The code this device shows while it waits for another device: from its own keys and the nonce it enrolled with, never from what the server says.
+        return twoKeys && challenge != null && isPairingNonce(challenge)
+            ? record.copyWith(
+                pairingCode: pairingCode(deviceKeys!.approval.thumbprint,
+                    deviceKeys.presence.thumbprint, challenge))
+            : record;
       } on EnrollmentException catch (e) {
         // The server says, by its machine-readable error code, that the challenge or the proof is no good (expired, used): one more try with a fresh
         // challenge. The user is told that the biometric is asked again (never silently).
@@ -449,6 +627,124 @@ class EnrollmentController extends ChangeNotifier {
         rethrow;
       }
     }
+  }
+
+  bool _polling = false;
+
+  /// A device that is waiting can be activated by another device. Asks Biatec OIDC whether this one is active now (call about every 5 seconds while the enrollment screen is open); when it is, the record says so and the app opens. Quiet when Biatec OIDC cannot be reached.
+  Future<void> pollActivation() async {
+    final record = _state.record;
+    final api = devices;
+    if (api == null ||
+        _state.phase != EnrollmentPhase.inactive ||
+        record == null ||
+        _polling) {
+      return;
+    }
+    _polling = true;
+    final session = _session;
+    try {
+      final list = await api.devices(record.deviceToken);
+      if (_disposed || session != _session) return;
+      final me = list.where((d) => d.kid == record.kid).firstOrNull;
+      // A device that is no longer listed was cancelled.
+      if (me == null) {
+        await _cancelledElsewhere(session);
+        return;
+      }
+      if (!me.active) return;
+      // A server clock a little ahead of the phone's must not leave an activated device "inactive".
+      final now = _clock();
+      final done =
+          record.copyWith(activeAt: me.activeAt.isAfter(now) ? now : me.activeAt);
+      try {
+        await store.write(done);
+      } on Object {
+        // Kept in memory; refresh writes it again.
+      }
+      if (_disposed || session != _session) return;
+      _set(EnrollmentState.fromRecord(done, _clock()));
+      await _ensureRecoveryCode();
+    } on ApprovalException catch (e) {
+      // Biatec OIDC no longer knows this device's token: it was cancelled (the email link, another phone). Not a hiccup to retry.
+      if (_isCancelledStatus(e.status)) await _cancelledElsewhere(session);
+    } on Object {
+      // Quiet: the next poll tries again.
+    } finally {
+      _polling = false;
+    }
+  }
+
+  /// 401, 403 and 404 on a call of a waiting device: the device was cancelled (or never existed for this account).
+  static bool _isCancelledStatus(int? status) =>
+      status == 401 || status == 403 || status == 404;
+
+  /// This device was cancelled elsewhere: its record and keys go, it is signed out, and the start screen says so.
+  Future<void> _cancelledElsewhere(int session) async {
+    await _removeLocalEnrollment();
+    if (_disposed || session != _session) return;
+    signOut();
+    _set(EnrollmentState(EnrollmentPhase.notEnrolled,
+        notice: EnrollStrings.of().deviceCancelled));
+  }
+
+  /// Removes the stored enrollment and the keys; a failure of either is not allowed to stop the sign-out.
+  Future<void> _removeLocalEnrollment() async {
+    final record = _state.record;
+    try {
+      await store.clearAlias();
+    } on Object {
+      // A stale alias would only be reused for the next key.
+    }
+    try {
+      await store.clear();
+    } on Object {
+      // Cleared in memory; the disk is retried by the store.
+    }
+    if (record != null) {
+      try {
+        await deleteDeviceKeys(keys, record);
+      } on Object {
+        // The keys are useless without the enrollment; a new enrollment removes them again.
+      }
+    }
+  }
+
+  String? _cancelError;
+
+  /// Why [cancelThisDevice] did not work.
+  String? get cancelError => _cancelError;
+
+  /// "Cancel this device": the pending enrollment is cancelled at Biatec OIDC (`POST /devices/{kid}/cancel`), this device's keys and record are removed and the app is back at the start. Returns false (and says why in [cancelError]) when Biatec OIDC could not be reached.
+  Future<bool> cancelThisDevice() async {
+    final record = _state.record;
+    final api = devices;
+    if (record == null || api == null) return false;
+    _cancelError = null;
+    var already = false;
+    try {
+      await api.cancelDevice(record.deviceToken, record.kid);
+    } on ApprovalException catch (e) {
+      // Already cancelled elsewhere (the token is no longer known): the same end, with the notice that says so.
+      if (!_isCancelledStatus(e.status)) {
+        _cancelError = e.message;
+        notifyListeners();
+        return false;
+      }
+      already = true;
+    } on Object catch (e) {
+      _cancelError = '$e';
+      notifyListeners();
+      return false;
+    }
+    // The server cancelled it: whatever the local clean-up meets, the device ends signed out (the store signs out in memory first, see ObservableEnrollmentStore.clear).
+    await _removeLocalEnrollment();
+    signOut();
+    if (already) {
+      _set(EnrollmentState(EnrollmentPhase.notEnrolled,
+          notice: EnrollStrings.of().deviceCancelled));
+    }
+    return true;
   }
 
   Future<void> _discardKeys() async {

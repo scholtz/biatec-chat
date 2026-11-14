@@ -10,7 +10,6 @@ import '../enrollment/enrollment_controller.dart';
 import '../enrollment/enrollment_screen.dart';
 import '../enrollment/enrollment_state.dart';
 import '../enrollment/observable_enrollment_store.dart';
-import '../enrollment/oidc_enrollment_client.dart';
 import '../lock/lock_controller.dart';
 import '../channel/stay_connected.dart';
 import '../push/device_event_controller.dart';
@@ -78,10 +77,12 @@ class _AppGateState extends State<AppGate> {
   /// Clears of the store this gate has dealt with.
   int _clearsSeen = 0;
 
-  EnrollmentController _build() => EnrollmentController(
+  EnrollmentController _build() => EnrollmentController.forConfig(
+        widget.config,
         keys: widget.approvals.keys,
         store: widget.approvals.enrollment,
-        client: OidcEnrollmentClient(baseUrl: widget.config.oidcBaseUrl),
+        proof: widget.approvals.proof,
+        twoKeys: widget.approvals.twoKeys,
       );
 
   @override

@@ -9,6 +9,7 @@ class EnrollmentRecord {
     this.presenceAttestation,
     this.recoveryCodeShown = false,
     this.attestationRefreshAfter,
+    this.pairingCode,
   });
 
   final String kid;
@@ -40,18 +41,25 @@ class EnrollmentRecord {
   /// When Biatec OIDC wants the platform attestation (Play Integrity, App Attest) sent again, or null for a device enrolled without one.
   final DateTime? attestationRefreshAfter;
 
+  /// The six digit pairing code this device computed from its own two keys and the enrollment nonce (spec 8.3), shown while the device waits for another device to activate it. Not a secret, and null for a device that was not enrolled to wait for an approval.
+  final String? pairingCode;
+
   EnrollmentRecord copyWith(
-          {bool? recoveryCodeShown, DateTime? attestationRefreshAfter}) =>
+          {bool? recoveryCodeShown,
+          DateTime? attestationRefreshAfter,
+          DateTime? activeAt,
+          String? pairingCode}) =>
       EnrollmentRecord(
         kid: kid,
         deviceToken: deviceToken,
-        activeAt: activeAt,
+        activeAt: activeAt ?? this.activeAt,
         attestation: attestation,
         presenceKid: presenceKid,
         presenceAttestation: presenceAttestation,
         recoveryCodeShown: recoveryCodeShown ?? this.recoveryCodeShown,
         attestationRefreshAfter:
             attestationRefreshAfter ?? this.attestationRefreshAfter,
+        pairingCode: pairingCode ?? this.pairingCode,
       );
 
   EnrollmentRecord withCodeShown() => copyWith(recoveryCodeShown: true);
@@ -71,6 +79,7 @@ class EnrollmentRecord {
         if (attestationRefreshAfter != null)
           'attestation_refresh_after':
               attestationRefreshAfter!.toUtc().millisecondsSinceEpoch,
+        if (pairingCode != null) 'pairing_code': pairingCode,
       };
 
   factory EnrollmentRecord.fromJson(Map<String, Object?> json) =>
@@ -88,6 +97,7 @@ class EnrollmentRecord {
                 json['attestation_refresh_after'] as int,
                 isUtc: true)
             : null,
+        pairingCode: json['pairing_code'] as String?,
       );
 }
 

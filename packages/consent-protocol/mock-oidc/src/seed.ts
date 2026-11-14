@@ -55,7 +55,7 @@ export const users: SeedUser[] = [
 ];
 
 /** Static bearer tokens. `login-*` tokens stand for a fresh full login (needed for device enrollment). */
-export const staticTokens: Record<string, { sub: string; clientId: string; scope: string; kind: "access" | "login" }> = {
+export const staticTokens: Record<string, { sub: string; clientId: string; scope: string; kind: "access" | "login"; /** A login token only: how many seconds before the mock started the user last authenticated (default 0: just now, whenever it is used). */ authAgeSeconds?: number }> = {
   "alice-chat-sign": { sub: "pw_alice", clientId: "biatec-chat", scope: "openid sign", kind: "access" },
   "alice-chat-limits": { sub: "pw_alice", clientId: "biatec-chat", scope: "openid sign manage-limits", kind: "access" },
   "alice-bank-sign": { sub: "pw_alice", clientId: "bank-example", scope: "openid sign", kind: "access" },
@@ -69,7 +69,12 @@ export const staticTokens: Record<string, { sub: string; clientId: string; scope
   "frank-chat-sign": { sub: "pw_frank", clientId: "biatec-chat", scope: "openid sign", kind: "access" },
   "bob-chat-sign": { sub: "pw_bob", clientId: "biatec-chat", scope: "openid sign", kind: "access" },
   "alice-chat-nosign": { sub: "pw_alice", clientId: "biatec-chat", scope: "openid profile", kind: "access" },
-  "login-alice": { sub: "pw_alice", clientId: "biatec-authenticator", scope: "openid", kind: "login" },
-  "login-bob": { sub: "pw_bob", clientId: "biatec-authenticator", scope: "openid", kind: "login" },
+  // A fresh full login inside the authenticator (T-242): scope `enroll-device`, `auth_time` = now. `login-alice-stale` authenticated an hour ago: refused with `insufficient_user_authentication`.
+  "login-alice": { sub: "pw_alice", clientId: "biatec-authenticator", scope: "openid enroll-device", kind: "login" },
+  "login-bob": { sub: "pw_bob", clientId: "biatec-authenticator", scope: "openid enroll-device", kind: "login" },
+  "login-carol": { sub: "pw_carol", clientId: "biatec-authenticator", scope: "openid enroll-device", kind: "login" },
+  "login-frank": { sub: "pw_frank", clientId: "biatec-authenticator", scope: "openid enroll-device", kind: "login" },
+  "login-dave": { sub: "pw_dave", clientId: "biatec-authenticator", scope: "openid enroll-device", kind: "login" },
+  "login-alice-stale": { sub: "pw_alice", clientId: "biatec-authenticator", scope: "openid enroll-device", kind: "login", authAgeSeconds: 3600 },
 };
 

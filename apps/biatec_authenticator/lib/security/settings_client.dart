@@ -6,6 +6,39 @@ import '../approvals/approval_client.dart';
 import 'device_proof.dart';
 import 'pinning/pinned_http.dart';
 
+/// What an active device needs to activate a pending one (`pairing` in `GET /devices`, required changes, "Activation by an existing device"): the new device's two key
+/// thumbprints and its enrollment nonce. The pairing code is computed from them by the app ([pairingCode]); `serverCode` is the code Biatec OIDC computed, and the app
+/// refuses to activate when the two differ.
+class PairingData {
+  const PairingData({
+    required this.approvalThumbprint,
+    required this.presenceThumbprint,
+    required this.nonce,
+    this.serverCode,
+  });
+
+  final String approvalThumbprint;
+  final String presenceThumbprint;
+  final String nonce;
+  final String? serverCode;
+
+  /// [json] as pairing data, or null when it is missing or malformed: one odd device then has no activation offer, instead of the whole device list failing.
+  static PairingData? tryParse(Object? json) {
+    if (json is! Map) return null;
+    final a = json['new_approval_jwk_thumbprint'];
+    final p = json['new_presence_jwk_thumbprint'];
+    final n = json['nonce'];
+    final c = json['pairing_code'];
+    if (a is! String || p is! String || n is! String) return null;
+    if (c != null && c is! String) return null;
+    return PairingData(
+        approvalThumbprint: a,
+        presenceThumbprint: p,
+        nonce: n,
+        serverCode: c as String?);
+  }
+}
+
 /// One enrolled device of the user, as `GET /devices` lists it.
 class DeviceInfo {
   const DeviceInfo({
@@ -13,9 +46,17 @@ class DeviceInfo {
     required this.current,
     required this.active,
     required this.activeAt,
+    this.name,
+    this.pairing,
   });
 
   final String kid;
+
+  /// The label the device gave itself when it enrolled, when it did.
+  final String? name;
+
+  /// Present for a pending device that has two keys: what an active device needs to activate it.
+  final PairingData? pairing;
 
   /// True for the device that asked.
   final bool current;
@@ -33,6 +74,8 @@ class DeviceInfo {
         activeAt: DateTime.fromMillisecondsSinceEpoch(
             (json['active_at'] as num).toInt() * 1000,
             isUtc: true),
+        name: json['name'] as String?,
+        pairing: PairingData.tryParse(json['pairing']),
       );
 }
 
@@ -176,6 +219,15 @@ class SettingsClient {
     throw ApprovalException('Unexpected response (${res.statusCode}).');
   }
 
+  /// The body of a refusal as an object, or an empty one when it is not (the status is what counts then).
+  static Map<String, Object?> _lenient(http.Response res) {
+    try {
+      return _object(res);
+    } on ApprovalException {
+      return const {};
+    }
+  }
+
   static String _detail(Map<String, Object?> json) =>
       '${json['error_description'] ?? json['error'] ?? 'error'}';
 
@@ -184,11 +236,12 @@ class SettingsClient {
     final url = Uri.parse('$baseUrl/devices');
     final res = await _send(
         () async => _client.get(url, headers: await _auth('GET', url, token)));
-    final json = _object(res);
     if (res.statusCode != 200) {
       throw ApprovalException(
-          'Could not load devices (${res.statusCode}): ${_detail(json)}');
+          'Could not load devices (${res.statusCode}): ${_detail(_lenient(res))}',
+          status: res.statusCode);
     }
+    final json = _object(res);
     try {
       return [
         for (final d in json['devices'] as List)
@@ -205,10 +258,33 @@ class SettingsClient {
     final res = await _send(() async =>
         _client.post(url, headers: await _auth('POST', url, token)));
     if (res.statusCode == 200) return;
+    final json = _lenient(res);
+    throw ApprovalException(
+        res.statusCode == 409
+            ? 'Only a pending enrollment can be cancelled.'
+            : 'Could not cancel (${res.statusCode}): ${_detail(json)}',
+        status: res.statusCode);
+  }
+
+  /// `POST /devices/{kid}/activate`: an active device activates the pending device [kid] with [approval], the `biatec_device_approval` it signed with its approval key
+  /// (`{signed, alg, signature, device}`).
+  Future<void> activateDevice(
+      String token, String kid, Map<String, Object?> approval) async {
+    final url =
+        Uri.parse('$baseUrl/devices/${Uri.encodeComponent(kid)}/activate');
+    final res = await _send(() async => _client.post(
+          url,
+          headers: await _auth(
+              'POST', url, token, {'Content-Type': 'application/json'}),
+          body: jsonEncode({'approval': approval}),
+        ));
+    if (res.statusCode == 200) return;
     final json = _object(res);
     throw ApprovalException(res.statusCode == 409
-        ? 'Only a pending enrollment can be cancelled.'
-        : 'Could not cancel (${res.statusCode}): ${_detail(json)}');
+        ? 'That device is already active, or cannot be approved by a device.'
+        : res.statusCode == 404
+            ? 'That device is no longer waiting for activation.'
+            : 'Could not activate it (${res.statusCode}): ${_detail(json)}');
   }
 
   /// `GET /devices/settings`.

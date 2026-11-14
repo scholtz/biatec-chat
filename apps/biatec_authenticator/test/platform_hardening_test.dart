@@ -132,9 +132,10 @@ void main() {
     });
 
     test(
-        'the launcher activity is the only exported component; the one service and the boot receiver are not exported',
+        'the launcher activity and the login redirect are the only exported components; the one service and the boot receiver are not exported',
         () {
-      expect('android:exported="true"'.allMatches(manifest).length, 1);
+      // T-242: the browser returns to AppAuth's redirect activity, which therefore must be exported. Its filters are verified https app links only.
+      expect('android:exported="true"'.allMatches(manifest).length, 2);
       expect(manifest, isNot(contains('<provider')),
           reason: 'a provider in the manifest');
       // T-244: the "Stay connected for approvals" service and its boot receiver, nothing else.
@@ -148,9 +149,33 @@ void main() {
           RegExp(r'<receiver[^>]*>').firstMatch(manifest)!.group(0)!;
       expect(receiver, contains('android:name=".BootReceiver"'));
       expect(receiver, contains('android:exported="false"'));
-      expect('<activity'.allMatches(manifest).length, 1);
+      expect('<activity'.allMatches(manifest).length, 2);
       expect(manifest, contains('android:name=".MainActivity"'));
       expect(manifest, isNot(contains('android:debuggable')));
+    });
+
+    test(
+        'the login redirect is a verified https app link in the main manifest, and the custom scheme is in the debug manifest only',
+        () {
+      final redirect = RegExp(
+              r'<activity\s[^>]*RedirectUriReceiverActivity[^>]*>.*?</activity>',
+              dotAll: true)
+          .firstMatch(manifest)!
+          .group(0)!;
+      expect(redirect, contains('tools:node="replace"'),
+          reason: 'AppAuth\'s own custom scheme filter is dropped');
+      final schemes = RegExp(r'android:scheme="([^"]*)"')
+          .allMatches(redirect)
+          .map((m) => m.group(1))
+          .toSet();
+      expect(schemes, {'https'});
+      expect('android:autoVerify="true"'.allMatches(redirect).length,
+          '<intent-filter'.allMatches(redirect).length);
+      expect(redirect, isNot(contains('android:scheme="io.biatec')));
+      // The custom scheme fallback of a debug build.
+      expect(debugManifest, contains('RedirectUriReceiverActivity'));
+      expect(debugManifest, contains('android:scheme="io.biatec.authenticator"'));
+      expect(profileManifest, isNot(contains('RedirectUriReceiverActivity')));
     });
 
     test('the app declares the permission it needs itself', () {
@@ -211,9 +236,33 @@ void main() {
       expect(tags, isNotEmpty);
       for (final tag in tags) {
         if (tag.contains('.MainActivity')) continue;
+        // T-242: the login redirect (see the main manifest test above); its filters are checked below.
+        if (tag.contains('net.openid.appauth.RedirectUriReceiverActivity')) {
+          continue;
+        }
         expect(tag, contains('android:permission='),
             reason: 'an exported component without a permission: $tag');
       }
+    },
+        skip: file == null && !requireMergedManifest
+            ? 'no merged release manifest: build the release APK first'
+            : false);
+
+    test('the merged release manifest has no custom scheme anywhere', () {
+      expect(file, isNotNull,
+          reason: 'build the release APK first (flutter build apk --release)');
+      final xml = file!.readAsStringSync();
+      final redirect = RegExp(
+              r'<activity[^>]*net\.openid\.appauth\.RedirectUriReceiverActivity.*?</activity>',
+              dotAll: true)
+          .firstMatch(xml)!
+          .group(0)!;
+      final schemes = RegExp(r'android:scheme="([^"]*)"')
+          .allMatches(redirect)
+          .map((m) => m.group(1))
+          .toSet();
+      expect(schemes, {'https'},
+          reason: 'a release build returns from the browser through an app link only');
     },
         skip: file == null && !requireMergedManifest
             ? 'no merged release manifest: build the release APK first'

@@ -4,13 +4,15 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../keys/device_key_store.dart';
+import '../security/settings_frame.dart' show confirmSheet;
 import '../theme.dart';
 import '../ui/ui.dart';
 import 'enrollment_controller.dart';
 import 'enrollment_state.dart';
+import 'enrollment_strings.dart';
+import 'pairing_code.dart';
 import 'enrollment_store.dart';
 import 'observable_enrollment_store.dart';
-import 'oidc_enrollment_client.dart';
 import 'widgets/enrollment_problem.dart';
 import 'widgets/key_protection_card.dart';
 import 'widgets/onboarding_step.dart';
@@ -36,7 +38,9 @@ class EnrollmentScreen extends StatefulWidget {
 class _EnrollmentScreenState extends State<EnrollmentScreen> {
   late final EnrollmentController _controller;
   late final TextEditingController _token;
+  late final TextEditingController _recoveryCode;
   Timer? _ticker;
+  int _ticks = 0;
 
   /// Whether the user left the welcome step. A device that already tried (a failed attempt) is past it.
   bool _started = false;
@@ -47,14 +51,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
   @override
   void initState() {
     super.initState();
-    _controller = widget.controller ??
-        EnrollmentController(
-          keys: const PlatformDeviceKeyStore(),
-          // The observable store keeps an enrollment whose write failed (the controller relies on it).
-          store: ObservableEnrollmentStore(SecureEnrollmentStore()),
-          client: OidcEnrollmentClient(baseUrl: widget.config.oidcBaseUrl),
-          twoKeys: widget.config.twoKeys,
-        );
+    _controller = widget.controller ?? _buildController();
+    _recoveryCode = TextEditingController();
     // The mock accepts the seeded login token; a real build gets the token
     // from the OIDC login.
     _token =
@@ -67,8 +65,19 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
       if (s.phase == EnrollmentPhase.inactive && !_controller.refreshing) {
         _controller.refresh();
       }
+      // While the device waits, Biatec OIDC is asked every 5 seconds whether another device activated it (only while this screen is open).
+      if (s.phase == EnrollmentPhase.inactive && ++_ticks % 5 == 0) {
+        _controller.pollActivation();
+      }
     });
   }
+
+  EnrollmentController _buildController() => EnrollmentController.forConfig(
+        widget.config,
+        keys: const PlatformDeviceKeyStore(),
+        // The observable store keeps an enrollment whose write failed (the controller relies on it).
+        store: ObservableEnrollmentStore(SecureEnrollmentStore()),
+      );
 
   /// True once this screen has seen the device enrolled; the next time it is not enrolled, it signed out.
   bool _wasEnrolled = false;
@@ -94,6 +103,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     _controller.removeListener(_forgetToken);
     _ticker?.cancel();
     _token.dispose();
+    _recoveryCode.dispose();
     if (widget.controller == null) _controller.dispose();
     super.dispose();
   }
@@ -239,6 +249,14 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
       const Text('This app is the second factor for your Biatec account: it '
           'asks you to approve what matters, on this device, with your '
           'fingerprint or face.'),
+      if (s.notice != null) ...[
+        const SizedBox(height: AppSpacing.m),
+        StatusBanner(
+          key: const Key('welcome-notice'),
+          severity: StatusSeverity.warning,
+          message: s.notice!,
+        ),
+      ],
       if (s.error == EnrollmentController.legacyKeyNotice) ...[
         const SizedBox(height: AppSpacing.m),
         const StatusBanner(
@@ -265,18 +283,36 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     ];
   }
 
+  /// The sign-in button exists when the build has the in-app login AND the controller can do it (it is built with the browser client then).
+  bool get _inApp => widget.config.inAppLogin && _controller.auth != null;
+
+  String? get _recoveryText {
+    final t = _recoveryCode.text.trim();
+    return t.isEmpty ? null : t;
+  }
+
   List<Widget> _connect(BuildContext context, EnrollmentState s) {
     final raw = s.error;
     final problem = raw == null ? null : classifyEnrollmentError(raw);
     final again = problem?.checksAgain ?? false;
+    final strings = EnrollStrings.of();
+    final inApp = _inApp;
+    // Debug builds only (see AppConfig.pasteLoginToken): the field is not part of a release build.
+    final paste = widget.config.pasteLoginToken;
+    final busy = _checking || _controller.signingIn;
     return [
       KeyedSubtree(
         key: const Key('step-connect'),
         child: _title(context, 'Connect this device to your account'),
       ),
       const SizedBox(height: AppSpacing.s),
-      const Text('Paste the login token from a fresh Biatec OIDC login. It is '
-          'used once, to link this device, and is not kept.'),
+      if (inApp)
+        Text(strings.signInIntro, key: const Key('sign-in-intro'))
+      else if (paste)
+        const Text('Paste the login token from a fresh Biatec OIDC login. It is '
+            'used once, to link this device, and is not kept.')
+      else
+        Text(strings.signInUnavailable, key: const Key('sign-in-unavailable')),
       if (problem != null) ...[
         const SizedBox(height: AppSpacing.m),
         StatusBanner(
@@ -287,47 +323,96 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
           message: _withoutToken(problem.message),
         ),
       ],
-      const SizedBox(height: AppSpacing.m),
-      TextField(
-        key: const Key('login-token'),
-        controller: _token,
-        // A token is a secret: it is hidden unless the user asks, and the keyboard does not learn it or suggest it.
-        obscureText: !_showToken,
-        autocorrect: false,
-        enableSuggestions: false,
-        enableIMEPersonalizedLearning: false,
-        decoration: InputDecoration(
-          labelText: 'Login token',
-          helperText: 'From a fresh Biatec OIDC login',
-          suffixIcon: IconButton(
-            key: const Key('login-token-toggle'),
-            tooltip: _showToken ? 'Hide the token' : 'Show the token',
-            icon: Icon(_showToken ? Icons.visibility_off : Icons.visibility),
-            onPressed: () => setState(() => _showToken = !_showToken),
+      if (s.notice != null) ...[
+        const SizedBox(height: AppSpacing.m),
+        StatusBanner(
+          key: const Key('connect-notice'),
+          severity: StatusSeverity.warning,
+          message: s.notice!,
+        ),
+      ],
+      if (inApp) ...[
+        const SizedBox(height: AppSpacing.m),
+        TextField(
+          key: const Key('recovery-code-field'),
+          controller: _recoveryCode,
+          autocorrect: false,
+          enableSuggestions: false,
+          enableIMEPersonalizedLearning: false,
+          textCapitalization: TextCapitalization.characters,
+          decoration: InputDecoration(
+            labelText: strings.recoveryFieldLabel,
+            helperText: strings.recoveryFieldHelp,
+            helperMaxLines: 3,
           ),
         ),
-      ),
-      const SizedBox(height: AppSpacing.m),
-      FilledButton(
-        key: const Key('enroll-button'),
-        // Off while the device is being asked, so a second tap does not start a second check.
-        onPressed: _checking
-            ? null
-            : () => again
-                ? _checkAgain()
-                : _controller.enroll(loginToken: _token.text),
-        child: Text(_checking
-            ? 'Checking…'
-            : problem?.actionLabel ?? 'Connect and create the key'),
-      ),
-      if (again) ...[
-        const SizedBox(height: AppSpacing.s),
-        // The server has the device but this app may not: enrolling again is still possible.
-        OutlinedButton(
-          key: const Key('enroll-again-button'),
-          onPressed: () => _controller.enroll(loginToken: _token.text),
-          child: const Text('Connect again with this token'),
+        const SizedBox(height: AppSpacing.m),
+        FilledButton(
+          key: const Key('sign-in-button'),
+          // Off while the browser is open or the device is asked, so a second tap does not start a second sign-in.
+          onPressed: busy
+              ? null
+              : () => again
+                  ? _checkAgain()
+                  : _controller.signInAndEnroll(recoveryCode: _recoveryText),
+          child: Text(_controller.signingIn
+              ? strings.signingIn
+              : _checking
+                  ? 'Checking\u2026'
+                  : s.notice != null
+                      ? strings.signInAgainButton
+                      : problem?.actionLabel ?? strings.signInButton),
         ),
+      ],
+      if (paste) ...[
+        const SizedBox(height: AppSpacing.m),
+        TextField(
+          key: const Key('login-token'),
+          controller: _token,
+          // A token is a secret: it is hidden unless the user asks, and the keyboard does not learn it or suggest it.
+          obscureText: !_showToken,
+          autocorrect: false,
+          enableSuggestions: false,
+          enableIMEPersonalizedLearning: false,
+          decoration: InputDecoration(
+            labelText: 'Login token',
+            helperText: inApp
+                ? 'Debug builds only: a seeded token of the mock'
+                : 'From a fresh Biatec OIDC login',
+            suffixIcon: IconButton(
+              key: const Key('login-token-toggle'),
+              tooltip: _showToken ? 'Hide the token' : 'Show the token',
+              icon: Icon(_showToken ? Icons.visibility_off : Icons.visibility),
+              onPressed: () => setState(() => _showToken = !_showToken),
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.m),
+        (inApp ? OutlinedButton.new : FilledButton.new)(
+          key: const Key('enroll-button'),
+          // Off while the device is being asked, so a second tap does not start a second check.
+          onPressed: busy
+              ? null
+              : () => again && !inApp
+                  ? _checkAgain()
+                  : _controller.enroll(
+                      loginToken: _token.text, recoveryCode: _recoveryText),
+          child: Text(_checking
+              ? 'Checking\u2026'
+              : inApp
+                  ? 'Connect with the pasted token'
+                  : problem?.actionLabel ?? 'Connect and create the key'),
+        ),
+        if (again && !inApp) ...[
+          const SizedBox(height: AppSpacing.s),
+          // The server has the device but this app may not: enrolling again is still possible.
+          OutlinedButton(
+            key: const Key('enroll-again-button'),
+            onPressed: () => _controller.enroll(
+                loginToken: _token.text, recoveryCode: _recoveryText),
+            child: const Text('Connect again with this token'),
+          ),
+        ],
       ],
     ];
   }
@@ -346,6 +431,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
             'period. It protects your account if someone else gets hold of '
             'a login. Until then, actions that need phone approval cannot be '
             'completed here.'),
+        ..._activationHelp(context, s),
         const SizedBox(height: AppSpacing.l),
         Center(
           child: Column(children: [
@@ -363,6 +449,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
             ),
           ]),
         ),
+        ..._cancelThisDevice(context),
         ..._keyLevel(),
       ];
     }
@@ -391,6 +478,72 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
         ]),
       ),
       ..._keyLevel(),
+    ];
+  }
+
+  /// While the device waits: the pairing code to compare with an active device, and the 24 hour text. Only against a Biatec OIDC that has the activation flow.
+  List<Widget> _activationHelp(BuildContext context, EnrollmentState s) {
+    if (!widget.config.inAppLogin) return const [];
+    final strings = EnrollStrings.of();
+    final theme = Theme.of(context);
+    final code = s.record?.pairingCode;
+    return [
+      if (code != null) ...[
+        const SizedBox(height: AppSpacing.m),
+        Center(
+          child: Column(children: [
+            Text(strings.pairingTitle, style: theme.textTheme.titleMedium),
+            Semantics(
+              label: code.split('').join(' '),
+              child: ExcludeSemantics(
+                child: Text(spacedPairingCode(code),
+                    key: const Key('pairing-code'),
+                    style: theme.textTheme.displaySmall?.copyWith(
+                        fontFeatures: const [FontFeature.tabularFigures()])),
+              ),
+            ),
+          ]),
+        ),
+        const SizedBox(height: AppSpacing.s),
+        Text(strings.pairingHelp, key: const Key('pairing-help')),
+      ],
+      const SizedBox(height: AppSpacing.m),
+      Text(strings.waitingText, key: const Key('waiting-text')),
+    ];
+  }
+
+  /// "Cancel this device": the pending enrollment is cancelled at Biatec OIDC and removed from this phone.
+  List<Widget> _cancelThisDevice(BuildContext context) {
+    if (!widget.config.inAppLogin || _controller.devices == null) {
+      return const [];
+    }
+    final strings = EnrollStrings.of();
+    return [
+      const SizedBox(height: AppSpacing.l),
+      OutlinedButton(
+        key: const Key('cancel-this-device'),
+        onPressed: () async {
+          final messenger = ScaffoldMessenger.of(context);
+          final yes = await confirmSheet(
+            context,
+            title: strings.cancelThisTitle,
+            message: strings.cancelThisMessage,
+            confirmLabel: strings.cancelThisConfirm,
+            cancelLabel: strings.keep,
+            confirmKey: const Key('confirm-cancel-this-device'),
+            cancelKey: const Key('keep-this-device'),
+            icon: Icons.phone_android,
+          );
+          if (!yes) return;
+          final done = await _controller.cancelThisDevice();
+          if (!done && mounted) {
+            messenger.showSnackBar(SnackBar(
+                content: Text(_controller.cancelError ??
+                    'Could not cancel this device.')));
+          }
+        },
+        child: Text(strings.cancelThisDevice),
+      ),
     ];
   }
 

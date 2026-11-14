@@ -839,7 +839,7 @@ test("contract: distinct installs enroll with distinct kids, the same kid is rej
   assert.equal(dup2.status, 409, "a constant kid only ever works for the first device");
 });
 
-test("rule 7: a first device is inactive for 24 hours unless an active device approves", async () => {
+test("rule 7: a first device is inactive for 24 hours unless an active device signs a device approval (T-242)", async () => {
   const fresh = (await import("node:crypto")).generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" }) as Record<string, string>;
   assert.equal((await call("POST", "/devices", { auth: bearer("alice-chat-sign"), body: { kid: "k0", public_key: fresh } })).status, 403, "needs a full login");
 
@@ -850,8 +850,10 @@ test("rule 7: a first device is inactive for 24 hours unless an active device ap
   assert.ok(e1.json.attestation.split(".").length === 3);
   assert.equal((await call("GET", "/devices/requests", { auth: "Device " + e1.json.device_token })).status, 200);
 
+  // Naming an active device proves nothing (T-242): approved_by_kid is refused, whoever it names.
   const e2 = await call("POST", "/devices", { auth: bearer("login-alice"), body: { kid: "alice-second", public_key: fresh, approved_by_kid: "alice-device" } });
-  assert.equal(e2.json.active, true);
+  assert.equal(e2.status, 400);
+  assert.equal(e2.json.error, "invalid_request");
   const e3 = await call("POST", "/devices", { auth: bearer("login-alice"), body: { kid: "alice-third", public_key: fresh, approved_by_kid: "bob-phone" } });
   assert.equal(e3.status, 400);
   assert.equal((await call("POST", "/devices", { auth: bearer("login-alice"), body: { kid: "alice-third", public_key: { kty: "RSA" } } })).status, 400);

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- App Attest: proof to Biatec OIDC that this is the genuine app (lib/integrity/attestation.dart). Needs the App Attest capability on the App ID. -->
+	<key>com.apple.developer.devicecheck.appattest-environment</key>
+	<string>production</string>
+	<!-- Release and Profile builds only (CODE_SIGN_ENTITLEMENTS of those two configurations): Runner.entitlements plus the app links of the in-app login (T-242). The browser returns to the app through a universal
+	     link on the Biatec OIDC hosts; that needs the Associated Domains capability on the App ID and https://<host>/.well-known/apple-app-site-association (a deployment prerequisite of Biatec OIDC,
+	     docs/required-changes-biatec-oidc.md). It is not in the Debug configuration, where code signing with a personal team fails without the capability: a debug build returns through the custom
+	     scheme, which ASWebAuthenticationSession hands to the app itself, so the Info.plist has no URL scheme. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:oidc.biatec.io</string>
+		<string>applinks:stage.oidc.biatec.io</string>
+	</array>
+</dict>
+</plist>
