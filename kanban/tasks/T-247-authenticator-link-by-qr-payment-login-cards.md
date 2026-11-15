@@ -1,7 +1,7 @@
 ---
 id: T-247
 title: "Authenticator: link a service by QR code, and approval cards for payments, logins and actions"
-status: review
+status: done
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-246]
@@ -82,9 +82,12 @@ PR #418, `task/T-247` @ dde96b8. Local: `flutter test` 1563 pass; the link, appr
 
 ## Review
 
+- 2026-11-15 03:02 · approve · PR #418 merged into main @ 0dc65a0 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-13 09:05 · scholtz · (new) → blocked · created from revision 2 of the consent architecture record (AlgorandGoogleDriveAccount issue 23): universal authenticator
 - 2026-11-15 02:06 · kanban-board · blocked → backlog · blockers done: T-246
 - 2026-11-15 12:10 · scholtz · backlog → in-progress · claimed by session-20261115-1210 on task/T-247
 - 2026-11-15 15:30 · scholtz · in-progress → review · PR #418 @ dde96b8
+- 2026-11-15 03:02 · user · review → done · PR #418 merged into main @ 0dc65a0 (synced by kanban-sync)
