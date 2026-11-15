@@ -1,7 +1,7 @@
 ---
 id: T-247
 title: "Authenticator: link a service by QR code, and approval cards for payments, logins and actions"
-status: backlog
+status: in-progress
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-246]
@@ -9,9 +9,9 @@ area: ["apps/biatec_authenticator/lib/links/**", "apps/biatec_authenticator/lib/
 parallel: yes
 conflicts_with: []
 issue: "#407"
-branch: ""
-owner: ""
-taken_by: ""
+branch: "task/T-247"
+owner: "session-20261115-1210"
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-11-13
 updated: 2026-11-15
@@ -77,3 +77,4 @@ Filled in when the task moves to review.
 
 - 2026-11-13 09:05 · scholtz · (new) → blocked · created from revision 2 of the consent architecture record (AlgorandGoogleDriveAccount issue 23): universal authenticator
 - 2026-11-15 02:06 · kanban-board · blocked → backlog · blockers done: T-246
+- 2026-11-15 12:10 · scholtz · backlog → in-progress · claimed by session-20261115-1210 on task/T-247
