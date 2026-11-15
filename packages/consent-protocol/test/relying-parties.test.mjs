@@ -57,7 +57,8 @@ const pinnedOpts = (v, extra = {}) => ({
   clientFingerprint: v.request.client.fingerprint,
   sub: file.subject,
   auth_req_id: v.receipt.signed.auth_req_id,
-  ...(v.receipt.signed.decision === "approve" ? { bindingCode: v.receipt.signed.binding_code } : {}),
+  bindingCode: /^[0-9]{6}$/.test(v.receipt.signed.binding_code) ? v.receipt.signed.binding_code : "000000", // what the party displayed (a deny may carry none)
+  consumed: new Set(),
   ...extra,
 });
 const byName = (n) => vectors.find((v) => v.name === n);
@@ -289,9 +290,9 @@ test("verifyReceiptPinned: origin, decision, ids, fingerprint, code, expiry and 
   const d = byName("payment-deny");
   assert.equal(verifyReceiptPinned(d.receipt, pins, d.sent_details, pinnedOpts(d, { now: d.receipt.signed.expiry + 1000 })), true);
   // the tag of the sent object: with its own origin it must be the signed one
-  assert.equal(verifyReceiptPinned(v.receipt, pins, { ...v.sent_details, origin: v.server_origin }, { now: file.now, origin: v.server_origin }), true);
-  assert.equal(verifyReceiptPinned(v.receipt, pins, { ...v.sent_details, origin: "https://evil.example" }, { now: file.now, origin: v.server_origin }), false, "expectedDetails.origin conflicts with opts.origin");
-  assert.equal(verifyReceiptPinned(v.receipt, pins, { ...v.sent_details, origin: v.server_origin }, { now: file.now, origin: null }), false);
+  assert.equal(verifyReceiptPinned(v.receipt, pins, { ...v.sent_details, origin: v.server_origin }, pinnedOpts(v, { origin: v.server_origin })), true);
+  assert.equal(verifyReceiptPinned(v.receipt, pins, { ...v.sent_details, origin: "https://evil.example" }, pinnedOpts(v, { origin: v.server_origin })), false, "expectedDetails.origin conflicts with opts.origin");
+  assert.equal(verifyReceiptPinned(v.receipt, pins, { ...v.sent_details, origin: v.server_origin }, pinnedOpts(v, { origin: null })), false);
   // a receipt signed without an origin needs origin null, and a string is refused
   const nv = vectors.find((x) => x.server_origin === null && x.expected.accepted && x.receipt.signed.decision === "approve");
   if (nv) {
@@ -598,7 +599,7 @@ for (const v of links.vectors) {
     const o = { now: links.now, issuer: links.issuer, consumed: new Set() };
     assert.equal(verifyLink(v.envelope, jwks, o, v.expected_inputs), v.expected.accepted, "attestation mode");
     const { sub, ...pinnedInputs } = v.expected_inputs;
-    assert.equal(verifyLinkPinned({ signed: v.envelope.signed, signature: v.envelope.signature }, links.pinned_devices, pinnedInputs, { now: links.now }), v.expected.accepted, "pinned mode");
+    assert.equal(verifyLinkPinned({ signed: v.envelope.signed, signature: v.envelope.signature, alg: "ES256" }, links.pinned_devices, pinnedInputs, { now: links.now, consumed: new Set() }), v.expected.accepted, "pinned mode");
   });
 
   test(`[link] ${v.name}: what the device saw is what it signed`, () => {
@@ -655,7 +656,7 @@ test("verifyLink and verifyLinkPinned refuse what does not match, replay and sta
   const inputs = (over = {}) => ({ ...v.expected_inputs, ...over });
   const pin = (e, over = {}, now = links.now) => {
     const { sub, ...rest } = inputs(over);
-    return verifyLinkPinned({ signed: e.signed, signature: e.signature }, links.pinned_devices, rest, { now });
+    return verifyLinkPinned({ signed: e.signed, signature: e.signature, alg: "ES256" }, links.pinned_devices, rest, { now, consumed: new Set() });
   };
   assert.equal(verifyLink(v.envelope, jwks, o(), inputs()), true);
   assert.equal(pin(v.envelope), true);
@@ -676,14 +677,14 @@ test("verifyLink and verifyLinkPinned refuse what does not match, replay and sta
   other.device.kid = "device-other";
   assert.equal(verifyLink(other, jwks, o(), inputs()), false);
   // pinned: the device list decides
-  const noDevices = verifyLinkPinned({ signed: v.envelope.signed, signature: v.envelope.signature }, [], (({ sub, ...r }) => r)(v.expected_inputs), { now: links.now });
+  const noDevices = verifyLinkPinned({ signed: v.envelope.signed, signature: v.envelope.signature, alg: "ES256" }, [], (({ sub, ...r }) => r)(v.expected_inputs), { now: links.now, consumed: new Set() });
   assert.equal(noDevices, false);
   const asPresence = links.pinned_devices.map((d) => ({ ...d, key_use: "presence" }));
-  assert.equal(verifyLinkPinned({ signed: v.envelope.signed, signature: v.envelope.signature }, asPresence, (({ sub, ...r }) => r)(v.expected_inputs), { now: links.now }), false, "an approval signed by a key listed as presence");
-  assert.equal(verifyLinkPinned({ signed: v.envelope.signed, signature: v.envelope.signature }, links.pinned_devices, (({ sub, ...r }) => r)(v.expected_inputs), { now: links.now, consumed: new Set([v.envelope.signed.link_id]) }), false);
+  assert.equal(verifyLinkPinned({ signed: v.envelope.signed, signature: v.envelope.signature, alg: "ES256" }, asPresence, (({ sub, ...r }) => r)(v.expected_inputs), { now: links.now, consumed: new Set() }), false, "an approval signed by a key listed as presence");
+  assert.equal(verifyLinkPinned({ signed: v.envelope.signed, signature: v.envelope.signature, alg: "ES256" }, links.pinned_devices, (({ sub, ...r }) => r)(v.expected_inputs), { now: links.now, consumed: new Set([v.envelope.signed.link_id]) }), false);
   for (const bad of [null, {}, { signed: {} }]) {
     assert.equal(verifyLink(bad, jwks, o(), inputs()), false);
-    assert.equal(verifyLinkPinned(bad, links.pinned_devices, inputs(), {}), false);
+    assert.equal(verifyLinkPinned(bad, links.pinned_devices, inputs(), { consumed: new Set() }), false);
   }
   // signature re-made with another key
   const forged = clone(v.envelope);
@@ -697,7 +698,7 @@ test("a deny of a link may be signed by either key and does not need the code; a
   assert.equal(d.envelope.signed.binding_code, "");
   assert.equal(d.envelope.device.key_use, "presence");
   const { sub, ...rest } = d.expected_inputs;
-  assert.equal(verifyLinkPinned({ signed: d.envelope.signed, signature: d.envelope.signature }, links.pinned_devices, { ...rest, binding_code: undefined }, { now: links.now }), true);
+  assert.equal(verifyLinkPinned({ signed: d.envelope.signed, signature: d.envelope.signature, alg: "ES256" }, links.pinned_devices, { ...rest, binding_code: undefined }, { now: links.now, consumed: new Set() }), true);
   const a = clone(links.vectors.find((x) => x.name === "link-approve-domain-proven").envelope.signed);
   a.binding_code = "";
   assert.equal(valid("link-signed", a), false);
@@ -791,4 +792,35 @@ test("backchannel request: a relying party sends scope openid and one details ob
   bad((r) => (r.scope = "sign"));
   // the wallet scopes still refuse client details
   assert.equal(valid("backchannel-authentication-request", { scope: "sign", resource: "r", login_hint: "u", origin: "https://bank.example", network: "algorand-mainnet", address: "A", unsigned_group: ["AA"], authorization_details: [sent] }), false);
+});
+
+test("verifyReceiptPinned requires the party's own values: auth_req_id, sub, clientFingerprint, bindingCode and a consumed Set; a spent id is refused", () => {
+  const v = byName("payment-approve");
+  const ok = (extra) => verifyReceiptPinned(v.receipt, pins, v.sent_details, pinnedOpts(v, extra));
+  assert.equal(ok({}), true);
+  for (const k of ["auth_req_id", "sub", "clientFingerprint", "bindingCode", "consumed"]) assert.equal(ok({ [k]: undefined }), false, k + " is required");
+  assert.equal(ok({ consumed: [] }), false, "a Set");
+  assert.equal(ok({ bindingCode: "12345" }), false);
+  assert.equal(ok({ clientFingerprint: "xyz" }), false);
+  const spent = new Set();
+  assert.equal(ok({ consumed: spent }), true);
+  assert.equal(spent.size, 0, "the function never adds to the set");
+  spent.add(v.receipt.signed.auth_req_id); // the caller records the id after it acted
+  assert.equal(ok({ consumed: spent }), false, "replay");
+  // a deny needs the same values
+  const d = byName("payment-deny");
+  assert.equal(verifyReceiptPinned(d.receipt, pins, d.sent_details, pinnedOpts(d, { consumed: undefined })), false);
+  assert.equal(verifyReceiptPinned(d.receipt, pins, d.sent_details, pinnedOpts(d, { sub: undefined })), false);
+});
+
+test("verifyLinkPinned requires alg ES256 and a consumed Set; a spent link id is refused", () => {
+  const v = links.vectors.find((x) => x.expected.accepted && x.envelope.signed.decision === "approve");
+  const { sub, ...inputs } = v.expected_inputs;
+  const run = (approval, o) => verifyLinkPinned(approval, links.pinned_devices, inputs, { now: links.now, ...o });
+  const base = { signed: v.envelope.signed, signature: v.envelope.signature, alg: "ES256" };
+  assert.equal(run(base, { consumed: new Set() }), true);
+  assert.equal(run(base, {}), false, "consumed is required");
+  assert.equal(run({ signed: base.signed, signature: base.signature }, { consumed: new Set() }), false, "alg is required");
+  for (const alg of ["none", "HS256", "PS256", "es256"]) assert.equal(run({ ...base, alg }, { consumed: new Set() }), false, alg);
+  assert.equal(run(base, { consumed: new Set([v.envelope.signed.link_id]) }), false, "single use");
 });

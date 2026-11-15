@@ -170,6 +170,8 @@ interface Pending {
   attempts: number;
   clientId: string;
   status: "pending" | "approved" | "denied" | "code_failed";
+  /** A relying party's request closed because its link was removed: the token endpoint says `access_denied` with `reason: "unlinked"`, and there is no receipt. */
+  closedBy?: "unlinked";
   receipt?: Record<string, any>;
   tokenIssued: boolean;
   /** Seconds between token polls; raised by every slow_down. */
@@ -631,14 +633,14 @@ export function createMockOidc(options: MockOptions = {}) {
   // --- Handlers -------------------------------------------------------------------------------------------------------------
 
   /** What is wrong with a relying party's details, for the `invalid_authorization_details` description (the mock names the first rule broken; nothing is stripped or corrected). */
-  function whyInvalidDetails(details: unknown): string {
+  function whyInvalidDetails(details: unknown): string | null {
     const d = (Array.isArray(details) ? details[0] : undefined) as Record<string, any> | undefined;
     if (!Array.isArray(details) || details.length !== 1 || !d || typeof d !== "object") return "authorization_details is an array with exactly one object";
     if ("origin" in d) return "origin is added by the server and is never sent by the relying party";
     const v = ajv.getSchema("https://schemas.biatec.io/consent/v1/authorization-details.schema.json#/$defs/v1_2")!;
     if (!v(details)) return "schema: " + ajv.errorsText(v.errors);
     if (d.type === "biatec_payment" && d.creditor_account && "iban" in d.creditor_account && !isValidIban(d.creditor_account.iban)) return "creditor_account.iban: the check digits are wrong";
-    return "a text rule (spec section 15), the amount or the date is violated: refused, never stripped";
+    return isValidRelyingPartyDetails(d) ? null : "a text rule (spec section 15), the amount or the date is violated: refused, never stripped";
   }
 
   /** `POST /connect/ciba` of a linked relying party (spec 14.4): scope openid and one payment, login or action object. Always goes to the phone. */
@@ -650,9 +652,15 @@ export function createMockOidc(options: MockOptions = {}) {
     const user = link && link.clientId === client.id ? userMap.get(link.account) : undefined;
     if (!user || !user.used.has(client.id)) throw new HttpError(400, "unknown_user_id", "login_hint does not identify a linked user");
     const details = params.authorization_details;
-    const v12 = ajv.getSchema("https://schemas.biatec.io/consent/v1/authorization-details.schema.json#/$defs/v1_2")!;
-    if (!Array.isArray(details) || details.length !== 1 || (details[0] && typeof details[0] === "object" && "origin" in details[0]) || !v12(details) || !isValidRelyingPartyDetails(details[0])) throw new HttpError(400, "invalid_authorization_details", whyInvalidDetails(details));
-    validate("backchannel-authentication-request", params, "backchannel authentication request");
+    // One validation pass on the way through: the request schema (which holds the 1.2 details schemas and forbids an origin inside the object), then the rules of spec 15 and the IBAN.
+    // Only a refusal runs the diagnosis that names the first rule broken.
+    const generic = validator("backchannel-authentication-request");
+    if (!generic(params) || !isValidRelyingPartyDetails(details[0])) {
+      const schemaText = ajv.errorsText(generic.errors);
+      const why = whyInvalidDetails(details);
+      if (why) throw new HttpError(400, "invalid_authorization_details", why);
+      throw new HttpError(400, "invalid_request", "backchannel authentication request: " + schemaText);
+    }
     const given = params.origin ?? req.headers.origin;
     if (given !== undefined && (typeof given !== "string" || given.length > 253 || !ORIGIN.test(given))) throw new HttpError(400, "invalid_request", "origin must be an absolute http(s) origin in canonical form (lower-case host, no path, no default port)");
     if (activeDevices(user.sub).length === 0) throw new HttpError(403, "consent_unavailable", "phone approval is required but the user has no active enrolled device", { reason: "no_active_device" });
@@ -847,6 +855,7 @@ export function createMockOidc(options: MockOptions = {}) {
     const p = typeof body.auth_req_id === "string" ? pending.get(body.auth_req_id) : undefined;
     if (!p || p.clientId !== client.id) throw new HttpError(400, "invalid_grant", "unknown auth_req_id");
     if (p.tokenIssued) throw new HttpError(400, "invalid_grant", "auth_req_id was already redeemed");
+    if (p.status === "denied" && p.closedBy === "unlinked") throw new HttpError(400, "access_denied", "the link was removed (by the user or by the relying party) while the request was open: this is not a denial by the user, and there is no receipt", { reason: "unlinked" });
     if (p.status === "denied") throw new HttpError(400, "access_denied", "the user denied the request");
     if (p.status === "code_failed") throw new HttpError(400, "access_denied", "the binding code was entered wrongly three times", { reason: "code_failed" });
     if (expired(p)) throw new HttpError(400, "expired_token", "the request expired");
@@ -1149,12 +1158,13 @@ export function createMockOidc(options: MockOptions = {}) {
       ...(maxThresholdEur !== undefined ? { max_threshold_eur: money(maxThresholdEur) } : {}),
       block_unproven_clients: acct(sub).blockUnverified,
       ask_on_test_networks: acct(sub).askOnTestNetworks,
-      clients: [...clientMap.values()].map(syncProof)
+      clients: [...clientMap.values()]
         .filter((c) => {
           const s = cs(sub, c.id);
           return user.used.has(c.id) || user.alwaysAsk.includes(c.id) || s.label !== undefined || s.perClientThresholdEur !== undefined || (s.pausedUntil !== undefined && s.pausedUntil > now()) || appList(sub, c.id).length > 0;
         })
         .map((c) => {
+          syncProof(c); // only the clients this user holds something for: a relying party is read lazily, never all of them on every call
           const s = cs(sub, c.id);
           const paused = s.pausedUntil !== undefined && s.pausedUntil > now();
           return {
@@ -1562,6 +1572,7 @@ export function createMockOidc(options: MockOptions = {}) {
     for (const p of pending.values()) {
       if (p.rp && p.account === account && p.clientId === clientId && p.status === "pending") {
         p.status = "denied";
+        p.closedBy = "unlinked";
         announceClosed(p);
       }
     }
@@ -1763,6 +1774,7 @@ export function createMockOidc(options: MockOptions = {}) {
     // Single-use assertions are remembered until they expire, links until an hour after they ended: nothing grows without bound.
     for (const [k, until] of usedAssertions) if (until <= now()) usedAssertions.delete(k);
     for (const [id, l] of links) if (l.expiresAt + 3600 <= now()) { links.delete(id); consumedLinks.delete(id); }
+    for (const m of [registrations, rpOpened]) for (const [k, times] of m) { const recent = times.filter((x) => now() - x < 3600); if (recent.length === 0) m.delete(k); else if (recent.length !== times.length) m.set(k, recent); }
   }, 1000);
   sweep.unref();
   server.on("close", () => clearInterval(sweep));

@@ -87,27 +87,37 @@ public partial class ConsentProtocolVectorTests
         return true;
     }
 
+    /// <summary>An object with exactly the required members and no member outside the allowed ones (the schemas set additionalProperties false).</summary>
+    private static bool Closed(JsonNode? n, string[] required, string[] optional) =>
+        n is JsonObject o && required.All(o.ContainsKey) && o.Select(kv => kv.Key).All(k => required.Contains(k) || optional.Contains(k));
+
+    private static string? Str(JsonNode? n) => n is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
+
+    /// <summary>Mirrors <c>isValidRelyingPartyDetails</c> of scripts/lib.mjs: closed member sets, the text profile for every string, the IBAN, amount and date rules, no empty login context.</summary>
     private static bool DetailsWellFormed(JsonNode d)
     {
-        var o = d.AsObject();
-        var type = (string)o["type"]!;
-        bool Text(JsonNode? n, int max) => n is JsonValue v && v.TryGetValue<string>(out var s) && RelyingPartyTextAccepted(s, max);
-        if (o.ContainsKey("origin") && !(o["origin"] is JsonValue ov && ov.TryGetValue<string>(out var originText) && OriginValid(originText))) return false;
-        switch (type)
+        bool Text(JsonNode? n, int max) => Str(n) is { } s && RelyingPartyTextAccepted(s, max);
+        if (d is not JsonObject o) return false;
+        if (o.ContainsKey("origin") && !(Str(o["origin"]) is { } originText && OriginValid(originText))) return false;
+        switch (Str(o["type"]))
         {
             case "biatec_payment":
-                var amount = o["instructed_amount"]!;
-                if (!Regex.IsMatch((string)amount["amount"]!, @"^(0|[1-9][0-9]{0,14})(\.[0-9]{1,2})?$") || !Regex.IsMatch((string)amount["amount"]!, "[1-9]")) return false;
-                if (!Regex.IsMatch((string)amount["currency"]!, "^[A-Z]{3}$") || !Text(o["creditor_name"], 70)) return false;
-                var account = o["creditor_account"]!.AsObject();
-                if (account.ContainsKey("iban") ? !IbanValid((string)account["iban"]!) : !(Text(account["identification"], 34) && Text(account["scheme"], 20))) return false;
+                if (!Closed(o, new[] { "type", "instructed_amount", "creditor_name", "creditor_account" }, new[] { "remittance", "execution_date", "origin" })) return false;
+                var amount = o["instructed_amount"];
+                if (!Closed(amount, new[] { "amount", "currency" }, Array.Empty<string>()) || Str(amount!["amount"]) is not { } value || Str(amount["currency"]) is not { } currency) return false;
+                if (!Regex.IsMatch(value, @"^(0|[1-9][0-9]{0,14})(\.[0-9]{1,2})?$") || !Regex.IsMatch(value, "[1-9]") || !Regex.IsMatch(currency, "^[A-Z]{3}$") || !Text(o["creditor_name"], 70)) return false;
+                var account = o["creditor_account"];
+                if (Closed(account, new[] { "iban" }, Array.Empty<string>())) { if (Str(account!["iban"]) is not { } iban || !IbanValid(iban)) return false; }
+                else if (!Closed(account, new[] { "identification", "scheme" }, Array.Empty<string>()) || !Text(account!["identification"], 34) || !Text(account["scheme"], 20)) return false;
                 if (o.ContainsKey("remittance") && !Text(o["remittance"], 140)) return false;
-                return !o.ContainsKey("execution_date") || DateOnly.TryParseExact((string)o["execution_date"]!, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
+                return !o.ContainsKey("execution_date") || (Str(o["execution_date"]) is { } date && DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _));
             case "biatec_login":
-                return !o.ContainsKey("context") || o["context"]!.AsObject().All(kv => Text(kv.Value, 80));
+                if (!Closed(o, new[] { "type" }, new[] { "context", "origin" })) return false;
+                if (!o.ContainsKey("context")) return true;
+                return o["context"] is JsonObject ctx && ctx.Count > 0 && Closed(ctx, Array.Empty<string>(), new[] { "ip", "location", "user_agent" }) && ctx.All(kv => Text(kv.Value, 80));
             case "biatec_action":
-                var lines = o["lines"]!.AsArray();
-                return Text(o["title"], 60) && lines.Count is >= 1 and <= 8 && lines.All(l => Text(l!["label"], 30) && Text(l["value"], 80));
+                if (!Closed(o, new[] { "type", "title", "lines" }, new[] { "origin" }) || !Text(o["title"], 60)) return false;
+                return o["lines"] is JsonArray lines && lines.Count is >= 1 and <= 8 && lines.All(l => Closed(l, new[] { "label", "value" }, Array.Empty<string>()) && Text(l!["label"], 30) && Text(l["value"], 80));
             default:
                 return false;
         }
@@ -187,6 +197,12 @@ public partial class ConsentProtocolVectorTests
                 && SamePins(pins, dev["public_key"]!, approve, (string)receipt["signature"]!, data);
             var expectedPinned = (v["expected_pinned"] ?? v["expected"])!["accepted"]!.GetValue<bool>();
             Assert.True(expectedPinned == pinned, name + ": pinned mode");
+            // the party's own values are required and a spent id is refused (the caller records the id after it acted)
+            var request = v["request"]!;
+            var authReqId = (string)signed["auth_req_id"]!;
+            bool PinnedWithState(ISet<string> consumed) => pinned && (string)signed["sub"]! == (string)request["sub"]! && (string)signed["client_fingerprint"]! == (string)request["client"]!["fingerprint"]! && !consumed.Contains(authReqId);
+            Assert.True(expectedPinned == PinnedWithState(new HashSet<string>()), name + ": pinned mode with the party's values");
+            Assert.False(PinnedWithState(new HashSet<string> { authReqId }), name + ": replay");
         }
     }
 
@@ -339,5 +355,37 @@ public partial class ConsentProtocolVectorTests
             Assert.True(OriginValid(ok), ok);
         foreach (var bad in new[] { "https://bank.example:443", "http://bank.example:80", "https://Bank.example", "https://bank.example/", "https://bank.example/path", "https://bank.example:0", "https://bank.example:65536", "https://bank.example:08080", "ftp://bank.example", "https://-bank.example", "https://bank..example", "https://bank.example?x=1", "https://user@bank.example", "https://" + new string('a', 64) + ".example" })
             Assert.False(OriginValid(bad), bad);
+    }
+
+    [Fact]
+    public void DetailsWellFormed_ClosedMemberSetsAndTheEmptyContextAreRefusedLikeTheReference()
+    {
+        var file = Load("receipts-1.2.json");
+        var vectors = file["vectors"]!.AsArray();
+        JsonNode Sent(string type) => JsonNode.Parse(vectors.First(v => (string)v!["sent_details"]!["type"]! == type)!["sent_details"]!.ToJsonString())!;
+        // the vectors' own details are accepted
+        foreach (var type in new[] { "biatec_payment", "biatec_login", "biatec_action" }) Assert.True(DetailsWellFormed(Sent(type)), type);
+        var cases = new List<(string Name, JsonNode Details)>();
+        void Bad(string name, string type, Action<JsonObject> change) { var d = Sent(type).AsObject(); change(d); cases.Add((name, d)); }
+        Bad("unknown member of a payment", "biatec_payment", d => d["priority"] = "high");
+        Bad("unknown member of the amount", "biatec_payment", d => d["instructed_amount"]!["rate"] = "1");
+        Bad("iban and identification together", "biatec_payment", d => d["creditor_account"] = new JsonObject { ["iban"] = "DE89370400440532013000", ["identification"] = "1", ["scheme"] = "BBAN" });
+        Bad("identification without scheme", "biatec_payment", d => d["creditor_account"] = new JsonObject { ["identification"] = "1" });
+        Bad("extra member of the account", "biatec_payment", d => d["creditor_account"]!["bic"] = "X");
+        Bad("a number as the amount", "biatec_payment", d => d["instructed_amount"]!["amount"] = 12);
+        Bad("missing creditor_name", "biatec_payment", d => d.Remove("creditor_name"));
+        Bad("unknown member of a login", "biatec_login", d => d["note"] = "x");
+        Bad("empty login context", "biatec_login", d => d["context"] = new JsonObject());
+        Bad("unknown member of the context", "biatec_login", d => d["context"]!["device"] = "x");
+        Bad("context that is not an object", "biatec_login", d => d["context"] = "x");
+        Bad("unknown member of an action", "biatec_action", d => d["icon"] = "x");
+        Bad("extra member of a line", "biatec_action", d => d["lines"]![0]!["hint"] = "x");
+        Bad("a line without a value", "biatec_action", d => d["lines"]![0]!.AsObject().Remove("value"));
+        Bad("no lines", "biatec_action", d => d["lines"] = new JsonArray());
+        Bad("nine lines", "biatec_action", d => d["lines"] = new JsonArray(Enumerable.Range(0, 9).Select(_ => (JsonNode)new JsonObject { ["label"] = "l", ["value"] = "v" }).ToArray()));
+        Bad("an origin that is not canonical", "biatec_login", d => d["origin"] = "https://Bank.example");
+        foreach (var (name, details) in cases) Assert.False(DetailsWellFormed(details), name);
+        Assert.False(DetailsWellFormed(JsonNode.Parse("{\"type\":\"biatec_transfer\"}")!));
+        Assert.False(DetailsWellFormed(JsonNode.Parse("[]")!));
     }
 }

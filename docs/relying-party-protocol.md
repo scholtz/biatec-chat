@@ -19,6 +19,8 @@ The server side is Biatec OIDC issue 38, which is not built yet: today you build
 | Text rules for every string you send | Spec chapter 15 |
 | Schemas and signed test vectors (`receipts-1.2.json`, `link.json`, `text-rules.json`) | `packages/consent-protocol/{schemas,vectors}` |
 
+**What the pinned key does and does not give you.** After you pinned a device key, Biatec OIDC cannot alter or forge the content of a receipt for that key, and a receipt signed by another key is detected. At link time the list of keys comes from the same server answer as the user's signed approval, so you trust the operator for which keys are the user's then; later changes of the list are your own policy decision (spec 14.1 and 14.6). `verifyReceiptPinned` needs your own `auth_req_id`, `sub`, client fingerprint, the code you displayed, the origin you reported (or `null`) and a Set of ids you already acted on; record the id after it returned true and before you execute anything. A request closed because the user (or you) removed the link ends with `access_denied`, `reason: "unlinked"` and no receipt: it is not a denial by the user.
+
 The reference helpers (`isValidIban`, `detailsHash`, `verifyReceiptPinned`, `verifyLinkPinned`, `isRelyingPartyText`) are in
-`packages/consent-protocol/scripts/lib.mjs`; a relying party written in another language reproduces them from the spec and checks
+`packages/consent-protocol/scripts/lib.mjs`, and the HTTP helpers and the runnable story (`scripts/rp-client.mjs`, `scripts/rp-demo.mjs`) ship in the package too; a relying party written in another language reproduces them from the spec and checks
 itself against the vectors.

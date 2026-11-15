@@ -376,7 +376,7 @@ const receipts12 = cases12.map((c) => {
   const expected = c.expected ?? { accepted: true };
   const expectedPinned = c.expected_pinned ?? expected;
   if (verifyReceipt(receipt, jwks, O12) !== expected.accepted) throw new Error("1.2 self-check (attested) failed for " + c.name);
-  const pinnedOpts = { now: NOW + 60, origin: c.origin ?? null, clientFingerprint: c.client.request.fingerprint, sub: SUB_RP, auth_req_id: authReqId, ...(c.decision === "approve" ? { bindingCode: c.code } : {}) };
+  const pinnedOpts = { now: NOW + 60, origin: c.origin ?? null, clientFingerprint: c.client.request.fingerprint, sub: SUB_RP, auth_req_id: authReqId, bindingCode: /^[0-9]{6}$/.test(c.code ?? "") ? c.code : "000000", consumed: new Set() };
   if (verifyReceiptPinned(receipt, pins, c.sent, pinnedOpts) !== expectedPinned.accepted) throw new Error("1.2 self-check (pinned) failed for " + c.name);
   if (expected.accepted && c.decision === "approve" && !verifyApproval(receipt, jwks, request, c.code, new Set(), O12)) throw new Error("1.2 approval self-check failed for " + c.name);
   const v = {
@@ -458,7 +458,7 @@ const linkVectors = linkCases.map((c) => {
   const expected = c.expected ?? { accepted: true };
   if (verifyLink(envelope, jwks, { now: NOW + 60, issuer: ISS, consumed: new Set() }, expectedInputs) !== expected.accepted) throw new Error("link self-check (attested) failed for " + c.name);
   const { sub, ...pinnedInputs } = expectedInputs;
-  if (verifyLinkPinned({ signed, signature: envelope.signature }, pinnedDevices, pinnedInputs, { now: NOW + 60 }) !== expected.accepted) throw new Error("link self-check (pinned) failed for " + c.name);
+  if (verifyLinkPinned({ signed, signature: envelope.signature, alg: "ES256" }, pinnedDevices, pinnedInputs, { now: NOW + 60, consumed: new Set() }) !== expected.accepted) throw new Error("link self-check (pinned) failed for " + c.name);
   return {
     name: c.name,
     description: c.note,
@@ -473,7 +473,7 @@ const linkVectors = linkCases.map((c) => {
   };
 });
 write("link.json", {
-  _comment: "Protocol 1.2 link statements (`biatec_link`) with the link request the device fetched and the link code the party showed. Attestation mode: verifyLink(envelope, jwks, ...). Pinned mode: verifyLinkPinned({ signed, signature }, pinned_devices, expected_inputs without sub). Regenerate with scripts/generate-vectors.mjs --1.2.",
+  _comment: "Protocol 1.2 link statements (`biatec_link`) with the link request the device fetched and the link code the party showed. Attestation mode: verifyLink(envelope, jwks, ...). Pinned mode: verifyLinkPinned({ signed, signature, alg: 'ES256' }, pinned_devices, expected_inputs without sub). Regenerate with scripts/generate-vectors.mjs --1.2.",
   now: NOW + 60,
   issuer: ISS,
   subject: SUB_RP,

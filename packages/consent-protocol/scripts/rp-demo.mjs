@@ -31,7 +31,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * Runs the whole story against `server`. `log(line)` receives every step. Returns `{ ok, decision, subject, authReqId }`; throws on a protocol failure.
  * Options: `clientUri`, `user`, `manual`, `timeoutSeconds`, `pollMs` (override of the announced interval, for tests of a mock with a fast clock), `payment`.
  */
-export async function runDemo({ server, log = console.log, clientUri, user = "alice", manual = false, domainPublished: publishedByYou = false, timeoutSeconds = 300, pollMs, payment } = {}) {
+export async function runDemo({ server, log = console.log, clientUri, user = "alice", manual = false, domainPublished: publishedByYou = false, afterOpen, timeoutSeconds = 300, pollMs, payment } = {}) {
   const step = (n, text) => log(`\n[${n}] ${text}`);
   const base = String(server).replace(/\/+$/, "");
   const deadline = Date.now() + timeoutSeconds * 1000;
@@ -88,7 +88,9 @@ export async function runDemo({ server, log = console.log, clientUri, user = "al
   if (status.status !== "linked") throw new Error(`the link ended as ${status.status}`);
   // What the user signed, checked with the device keys of this answer only: the signature under the key named by signed.kid.
   const expectLink = { link_id: created.json.link_id, client_fingerprint: clientFingerprint(rp.clientId), domain: domainPublished ? host : null, nonce: status.approval.signed.nonce, binding_code: created.json.binding_code };
-  if (!verifyLinkPinned(status.approval, status.devices, expectLink)) throw new Error("the link statement does not verify");
+  const linksActedOn = new Set(); // the link ids this party already acted on (it records the id after the check, before it relies on the link)
+  if (!verifyLinkPinned({ signed: status.approval.signed, signature: status.approval.signature, alg: "ES256" }, status.devices, expectLink, { consumed: linksActedOn })) throw new Error("the link statement does not verify");
+  linksActedOn.add(created.json.link_id);
   const pins = status.devices;
   log(`    linked. subject ${status.subject}; verified the user's signed statement; pinned ${pins.length} device keys:`);
   for (const p of pins) log(`      ${p.key_use.padEnd(8)} ${p.kid}  thumbprint ${thumbprint(p.jwk)}`);
@@ -101,7 +103,9 @@ export async function runDemo({ server, log = console.log, clientUri, user = "al
   log(`    auth_req_id ${opened.json.auth_req_id}   expires in ${opened.json.expires_in} s`);
   log(`    code to show to the user inside the bank's own session: ${opened.json.binding_code}`);
   log(`    asking: ${details.instructed_amount.amount} ${details.instructed_amount.currency} to ${details.creditor_name}, ${details.creditor_account.iban}`);
-  if (scripted) {
+  // Test hook: `afterOpen({ rp, subject, authReqId })` runs before the phone answers; returning false leaves the request unanswered (to remove the link, for example).
+  const answer = afterOpen ? (await afterOpen({ rp, subject: status.subject, authReqId: opened.json.auth_req_id })) !== false : true;
+  if (scripted && answer) {
     const a = await approveRequest(base, dev, opened.json.auth_req_id, { code: opened.json.binding_code });
     if (a.posted?.status !== 200) throw new Error("the scripted phone could not approve: " + JSON.stringify(a.posted?.json ?? a.fetched.json));
     log("    phone: the card showed the amount, the payee and the IBAN as written by the bank; the user typed the code and approved with the approval key");
@@ -116,7 +120,12 @@ export async function runDemo({ server, log = console.log, clientUri, user = "al
     const e = t.json?.error;
     if (e === "authorization_pending") { tokenInterval = t.json.interval ?? tokenInterval; log("    pending ..."); }
     else if (e === "slow_down") tokenInterval = t.json.interval ?? tokenInterval + 5;
-    else if (e === "access_denied") {
+    else if (e === "access_denied" && t.json.reason === "unlinked") {
+      // The link was removed while the request was open: not a denial by the user, and no receipt exists. Nothing is executed.
+      log(`    ended: access_denied, reason unlinked (${t.json.error_description}): no receipt, nothing is executed`);
+      log("\nDone.");
+      return { ok: false, decision: "unlinked", subject: status.subject, authReqId: opened.json.auth_req_id };
+    } else if (e === "access_denied") {
       const r = await rpCall(rp, "GET", `/consent/receipts/${opened.json.auth_req_id}`);
       if (r.status === 200) { receipt = r.json; log(`    ended: access_denied (${t.json.reason ?? "the user denied"}); fetched the receipt`); break; }
       throw new Error("denied without a receipt");
@@ -128,13 +137,16 @@ export async function runDemo({ server, log = console.log, clientUri, user = "al
   step(6, "Verifying the receipt with the pinned device key only (no JWKS, no attestation, no call to Biatec)");
   const same = await rpCall(rp, "GET", `/consent/receipts/${opened.json.auth_req_id}`);
   if (same.status === 200 && JSON.stringify(same.json) !== JSON.stringify(receipt)) throw new Error("the receipt retrieval differs from the token response");
-  const ok = verifyReceiptPinned(receipt, pins, details, {
-    origin, auth_req_id: opened.json.auth_req_id, sub: status.subject, clientFingerprint: clientFingerprint(rp.clientId),
-    ...(receipt.signed?.decision === "approve" ? { bindingCode: opened.json.binding_code } : {}),
-  });
+  const actedOn = new Set(); // the auth_req_id values this party already acted on
+  const own = { origin, auth_req_id: opened.json.auth_req_id, sub: status.subject, clientFingerprint: clientFingerprint(rp.clientId), bindingCode: opened.json.binding_code, consumed: actedOn };
+  const ok = verifyReceiptPinned(receipt, pins, details, own);
   log(`    verifyReceiptPinned: ${ok}  (signature under a pinned ${receipt.signed?.decision === "approve" ? "approval" : ""} key, details = what was sent, details_hash recomputed, decision ${receipt.signed?.decision})`);
   if (!ok) throw new Error("the receipt does not verify against the pinned keys: nothing is executed");
   const decision = receipt.signed.decision;
+  actedOn.add(opened.json.auth_req_id); // recorded after the check and before acting (atomically with it, in a real party)
+  const replay = verifyReceiptPinned(receipt, pins, details, own);
+  log(`    the same receipt presented again: ${replay} (replay protection: the id is recorded as acted on)`);
+  if (replay) throw new Error("a replayed receipt verified");
   if (decision === "approve") log(`    approved by the user: the bank would now execute the payment and store this receipt as the user's signed consent`);
   else log(`    the result is ${decision}: nothing is executed`);
   log("\nDone.");

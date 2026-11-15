@@ -142,8 +142,11 @@ describe("linking (spec 14.3)", () => {
     expect(p.pins.some((d) => d.key_use === "approve")).toBe(true);
     const expect_ = { link_id: p.created.link_id, client_fingerprint: clientFingerprint(p.rp.clientId), domain: p.host, nonce: p.linkRequest.nonce, binding_code: p.created.binding_code };
     const a = p.status.approval;
-    expect(verifyLinkPinned({ signed: a.signed, signature: a.signature }, p.pins, expect_), "pinned mode").toBe(true);
-    expect(verifyLinkPinned({ signed: a.signed, signature: a.signature }, p.pins, { ...expect_, domain: null }), "the domain the user did not decide about").toBe(false);
+    const approval = { signed: a.signed, signature: a.signature, alg: "ES256" as const };
+    expect(verifyLinkPinned(approval, p.pins, expect_, { consumed: new Set() }), "pinned mode").toBe(true);
+    expect(verifyLinkPinned(approval, p.pins, expect_, { consumed: new Set([p.created.link_id]) }), "a link id already acted on").toBe(false);
+    expect(verifyLinkPinned({ signed: a.signed, signature: a.signature } as never, p.pins, expect_, { consumed: new Set() }), "alg is required").toBe(false);
+    expect(verifyLinkPinned(approval, p.pins, { ...expect_, domain: null }, { consumed: new Set() }), "the domain the user did not decide about").toBe(false);
     const jwks = (await http(base, "GET", "/.well-known/jwks.json")).json;
     const key = p.pins.find((d) => d.kid === a.signed.kid)!;
     const envelope = { signed: a.signed, alg: "ES256", signature: a.signature, device: { kid: key.kid, key_use: key.key_use, public_key: key.jwk, attestation: a.attestation } };
@@ -261,10 +264,12 @@ describe("requests (spec 14.4, 14.5)", () => {
       const receipt = t.json.consent_receipt;
       expect(receipt.version).toBe("1.2");
       expect(receipt.signed.details_hash).toBe(detailsHash({ ...details, origin: ORIGIN }));
-      const opts = { auth_req_id: o.json.auth_req_id, sub: p.subject, clientFingerprint: clientFingerprint(p.rp.clientId), bindingCode: o.json.binding_code, decision: "approve" as const, origin: ORIGIN };
+      const opts = { auth_req_id: o.json.auth_req_id, sub: p.subject, clientFingerprint: clientFingerprint(p.rp.clientId), bindingCode: o.json.binding_code, decision: "approve" as const, origin: ORIGIN, consumed: new Set<string>() };
       expect(verifyReceiptPinned(receipt, p.pins, details, opts), "pinned verification").toBe(true);
       expect(verifyReceiptPinned(receipt, p.pins, details, { ...opts, origin: undefined as never }), "the origin is explicit: absent is refused").toBe(false);
       expect(verifyReceiptPinned(receipt, p.pins, details, { ...opts, origin: null }), "none expected but one signed").toBe(false);
+      expect(verifyReceiptPinned(receipt, p.pins, details, { ...opts, consumed: undefined as never }), "the party's consumed set is required").toBe(false);
+      expect(verifyReceiptPinned(receipt, p.pins, details, { ...opts, consumed: new Set([opts.auth_req_id]) }), "replay: the id was recorded after the party acted").toBe(false);
       const jwks = (await http(base, "GET", "/.well-known/jwks.json")).json;
       expect(verifyReceipt(receipt, jwks, { issuer: await issuerOf(base) }), "attestation mode").toBe(true);
       // the same receipt at the party's retrieval paths (the existing one and the one of issue 38)
@@ -318,8 +323,8 @@ describe("requests (spec 14.4, 14.5)", () => {
     const deny = await approveRequest(base, p.dev, o.auth_req_id, { code: "", decision: "deny" });
     expect(deny.posted?.status, JSON.stringify(deny.posted?.json)).toBe(200);
     const r = (await rpCall(p.rp, "GET", `/consent/receipts/${o.auth_req_id}`)).json;
-    expect(verifyReceiptPinned(r, p.pins, PAYMENT, { origin: null, decision: "deny" })).toBe(true);
-    expect(verifyReceiptPinned(r, p.pins, PAYMENT, { origin: null, decision: "approve" })).toBe(false);
+    expect(verifyReceiptPinned(r, p.pins, PAYMENT, { origin: null, decision: "deny", auth_req_id: o.auth_req_id, sub: p.subject, clientFingerprint: clientFingerprint(p.rp.clientId), bindingCode: o.binding_code, consumed: new Set() })).toBe(true);
+    expect(verifyReceiptPinned(r, p.pins, PAYMENT, { origin: null, decision: "approve", auth_req_id: o.auth_req_id, sub: p.subject, clientFingerprint: clientFingerprint(p.rp.clientId), bindingCode: o.binding_code, consumed: new Set() })).toBe(false);
     expect((await redeem(p, o.auth_req_id)).json.error).toBe("access_denied");
     const o2 = (await open(p, LOGIN)).json;
     const wrong = (code: string) => approveRequest(base, p.dev, o2.auth_req_id, { code });
@@ -327,6 +332,15 @@ describe("requests (spec 14.4, 14.5)", () => {
     await wrong("000002");
     expect((await wrong("000003")).posted?.json.reason).toBe("code_failed");
     expect((await redeem(p, o2.auth_req_id)).json.error).toBe("access_denied");
+  }));
+
+  it("a request closed because the link was removed ends as access_denied with reason unlinked and has no receipt", needs(playing, async () => {
+    const p = await linkedParty();
+    const o = (await open(p, PAYMENT)).json;
+    expect((await rpCall(p.rp, "DELETE", `/consent/links/subject/${p.subject}`)).status).toBe(200);
+    const t = await redeem(p, o.auth_req_id);
+    expect([t.status, t.json?.error, t.json?.reason]).toEqual([400, "access_denied", "unlinked"]);
+    expect((await rpCall(p.rp, "GET", `/consent/receipts/${o.auth_req_id}`)).status, "no receipt").toBe(404);
   }));
 
   it("a presence key never approves a request (it may deny)", needs([...playing, "presenceKey"], async () => {

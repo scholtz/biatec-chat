@@ -63,7 +63,7 @@ async function linked(o: { prove?: boolean; user?: string; alg?: "ES256" | "PS25
   assert.equal(status.status, 200, JSON.stringify(status.json));
   valid("link-status", status.json);
   assert.equal(status.json.status, "linked");
-  return { rp, host, dev, created: created.json, linkRequest: linkRequest.json, status: status.json, subject: status.json.subject as string, pins: status.json.devices as { kid: string; key_use: "approve" | "presence"; jwk: object }[] };
+  return { rp, host, dev, created: created.json, linkRequest: linkRequest.json, status: status.json, subject: status.json.subject as string, pins: status.json.devices as { kid: string; key_use: "approve" | "presence"; jwk: { kty: string; crv: string; x: string; y: string } }[] };
 }
 type Linked = Awaited<ReturnType<typeof linked>>;
 
@@ -78,6 +78,9 @@ async function requestFlow(l: Linked, details: object, opts: { origin?: string; 
   const a = await approveRequest(base, l.dev, o.json.auth_req_id, { code: o.json.binding_code, decision: opts.decision, presence: opts.presence, now: now() });
   return { opened: o.json, ...a };
 }
+
+/** The party's own values for verifyReceiptPinned: the id it got, the subject, its fingerprint, the code it displayed, the ids it already acted on. */
+const pinOpts = (l: Linked, o: { auth_req_id: string; binding_code: string }, extra: Record<string, unknown> = {}) => ({ auth_req_id: o.auth_req_id, sub: l.subject, clientFingerprint: clientFingerprint(l.rp.clientId), bindingCode: o.binding_code, consumed: new Set<string>(), origin: null as string | null, now: now(), ...extra });
 
 // ---------------------------------------------------------------------------------------------------------------
 // Registration
@@ -256,8 +259,8 @@ test("link: the round trip, the answers match the schemas, the party verifies th
   // the pins: the approval and the presence key of the active device
   assert.deepEqual(l.pins.map((d) => [d.kid, d.key_use]).sort(), [["alice-device", "approve"], ["alice-device-presence", "presence"]]);
   const expect = { link_id: l.created.link_id, client_fingerprint: clientFingerprint(l.rp.clientId), domain: l.host, nonce: l.linkRequest.nonce, binding_code: l.created.binding_code };
-  assert.equal(verifyLinkPinned({ signed: l.status.approval.signed, signature: l.status.approval.signature }, l.pins, expect, { now: now() }), true, "pinned mode: no Biatec key involved");
-  assert.equal(verifyLinkPinned({ signed: l.status.approval.signed, signature: l.status.approval.signature }, l.pins, { ...expect, domain: null }, { now: now() }), false, "another domain than the one signed");
+  assert.equal(verifyLinkPinned({ signed: l.status.approval.signed, signature: l.status.approval.signature, alg: "ES256" as const }, l.pins, expect, { now: now(), consumed: new Set() }), true, "pinned mode: no Biatec key involved");
+  assert.equal(verifyLinkPinned({ signed: l.status.approval.signed, signature: l.status.approval.signature, alg: "ES256" as const }, l.pins, { ...expect, domain: null }, { now: now(), consumed: new Set() }), false, "another domain than the one signed");
   const envelope = { signed: l.status.approval.signed, alg: "ES256", signature: l.status.approval.signature, device: { kid: "alice-device", key_use: "approve", public_key: l.pins[0].jwk, attestation: l.status.approval.attestation } };
   assert.equal(verifyLink(envelope, mock.jwks, { issuer: mock.issuer, consumed: new Set(), now: now() }, { ...expect, sub: l.subject }), true, "attestation mode");
   // the link is single use and the user now has the client
@@ -355,7 +358,7 @@ test("link: a deny is a result (status denied with the approval), expiry, slow_d
   assert.equal(s.status, "denied");
   assert.equal(s.subject, undefined);
   assert.equal(s.approval.signed.decision, "deny");
-  assert.equal(verifyLinkPinned({ signed: s.approval.signed, signature: s.approval.signature }, [{ kid: "alice-device", key_use: "approve", jwk: dev.publicKey }], { link_id: c.link_id, client_fingerprint: clientFingerprint(rp.clientId), domain: s.approval.signed.domain, nonce: s.approval.signed.nonce }, { now: now() }), true);
+  assert.equal(verifyLinkPinned({ signed: s.approval.signed, signature: s.approval.signature, alg: "ES256" as const }, [{ kid: "alice-device", key_use: "approve", jwk: dev.publicKey as { kty: string; crv: string; x: string; y: string } }], { link_id: c.link_id, client_fingerprint: clientFingerprint(rp.clientId), domain: s.approval.signed.domain, nonce: s.approval.signed.nonce }, { now: now(), consumed: new Set() }), true);
   assert.equal(mock.state.users.get("pw_alice")!.used.has(rp.clientId), false, "a deny links nothing");
   // expiry
   const e = (await rpCall(rp, "POST", "/consent/links", { body: {} })).json;
@@ -402,8 +405,9 @@ for (const [name, details] of [["payment", PAYMENT], ["login", LOGIN], ["action"
     const receipt = t.json.consent_receipt;
     assert.equal(receipt.version, "1.2");
     assert.equal(receipt.signed.details_hash, detailsHash(stored));
-    const o = { auth_req_id: f.opened.auth_req_id, sub: l.subject, clientFingerprint: clientFingerprint(l.rp.clientId), bindingCode: f.opened.binding_code, decision: "approve" as const, origin: ORIGIN, now: now() };
+    const o = pinOpts(l, f.opened, { decision: "approve", origin: ORIGIN });
     assert.equal(verifyReceiptPinned(receipt, l.pins, details, o), true, "pinned verification");
+    assert.equal(verifyReceiptPinned(receipt, l.pins, details, { ...o, consumed: new Set([o.auth_req_id]) }), false, "replay: the caller recorded the id after it acted");
     // attestation mode (what the server and a second check do)
     assert.equal(verifyReceipt(receipt, mock.jwks, { issuer: mock.issuer, now: now() }), true);
     assert.equal(verifyApproval(receipt, mock.jwks, f.fetched.json, f.opened.binding_code, new Set(), { issuer: mock.issuer, now: now(), deviceActive: true }), true);
@@ -437,8 +441,8 @@ test("request: without an origin the details carry none; with an origin in the o
   assert.equal("origin" in f.fetched.json.authorization_details[0], false);
   assert.equal(f.fetched.json.bound_hash, detailsHash(PAYMENT));
   const t = (await tokenOf(l, f.opened.auth_req_id)).json;
-  assert.equal(verifyReceiptPinned(t.consent_receipt, l.pins, PAYMENT, { origin: null, now: now() }), true);
-  assert.equal(verifyReceiptPinned(t.consent_receipt, l.pins, PAYMENT, { origin: ORIGIN, now: now() }), false, "the party expected an origin the server did not add");
+  assert.equal(verifyReceiptPinned(t.consent_receipt, l.pins, PAYMENT, pinOpts(l, f.opened)), true);
+  assert.equal(verifyReceiptPinned(t.consent_receipt, l.pins, PAYMENT, pinOpts(l, f.opened, { origin: ORIGIN })), false, "the party expected an origin the server did not add");
   assert.notEqual(detailsHash(PAYMENT), detailsHash({ ...PAYMENT, origin: ORIGIN }));
   const inside = await open(l, { ...PAYMENT, origin: ORIGIN });
   assert.deepEqual([inside.status, inside.json.error], [400, "invalid_authorization_details"]);
@@ -562,8 +566,8 @@ test("request: the device approves with the approval key only; a presence-key ap
   assert.equal(deny.posted!.status, 200, JSON.stringify(deny.posted!.json));
   const r = (await rpCall(l.rp, "GET", `/consent/receipts/${o.auth_req_id}`)).json;
   assert.equal(r.signed.decision, "deny");
-  assert.equal(verifyReceiptPinned(r, l.pins, PAYMENT, { origin: null, decision: "deny", now: now() }), true, "a deny is authentic with either key");
-  assert.equal(verifyReceiptPinned(r, l.pins, PAYMENT, { origin: null, decision: "approve", now: now() }), false);
+  assert.equal(verifyReceiptPinned(r, l.pins, PAYMENT, pinOpts(l, o, { decision: "deny" })), true, "a deny is authentic with either key");
+  assert.equal(verifyReceiptPinned(r, l.pins, PAYMENT, pinOpts(l, o, { decision: "approve" })), false);
   const t = await tokenOf(l, o.auth_req_id);
   assert.deepEqual([t.status, t.json.error], [400, "access_denied"]);
 });
@@ -717,8 +721,8 @@ test("a new device: its key shows up in the devices list, and pinned verificatio
   const receipt = { version: "1.2", signed, alg: "ES256", signature: sig, issued_at: now(), device: { kid: newDev.kid, key_use: "approve", public_key: newDev.publicKey, attestation: newDev.attestation } };
   assert.equal((await httpJson(base, "POST", `/consent/requests/${o.auth_req_id}/receipt`, { headers: { Authorization: newDev.auth }, body: receipt })).status, 200);
   const stored = (await rpCall(l.rp, "GET", `/consent/receipts/${o.auth_req_id}`)).json;
-  assert.equal(verifyReceiptPinned(stored, l.pins, PAYMENT, { origin: null, now: now() }), false, "the old pins do not know this key");
-  assert.equal(verifyReceiptPinned(stored, after.json.devices, PAYMENT, { origin: null, now: now() }), true, "after the party accepted the keys of the list");
+  assert.equal(verifyReceiptPinned(stored, l.pins, PAYMENT, pinOpts(l, o)), false, "the old pins do not know this key");
+  assert.equal(verifyReceiptPinned(stored, after.json.devices, PAYMENT, pinOpts(l, o)), true, "after the party accepted the keys of the list");
   assert.equal(verifyReceipt(stored, mock.jwks, { issuer: mock.issuer, now: now() }), true, "attestation mode accepts it");
 });
 
@@ -789,4 +793,33 @@ test("client assertion: a client_id next to the assertion must be the assertion'
   assert.deepEqual([conflict.status, conflict.json.error], [401, "invalid_client"]);
   const form = await rpCall(rp, "POST", "/token", { form: { grant_type: "urn:openid:params:grant-type:ciba", auth_req_id: "x", client_id: other.clientId } });
   assert.equal(form.status, 401);
+});
+
+test("a request closed because the link was removed ends as access_denied with reason unlinked, and there is no receipt (by the party and on the phone)", async () => {
+  for (const how of ["party", "phone"] as const) {
+    const l = await linked();
+    const o = (await open(l, PAYMENT)).json;
+    if (how === "party") assert.equal((await rpCall(l.rp, "DELETE", `/consent/links/subject/${l.subject}`)).status, 200);
+    else assert.equal((await httpJson(base, "PUT", "/devices/settings", { headers: { Authorization: l.dev.auth }, body: { change: { clients: { [l.rp.clientId]: { unlink: true } } } } })).status, 200);
+    const t = await tokenOf(l, o.auth_req_id);
+    assert.deepEqual([t.status, t.json.error, t.json.reason], [400, "access_denied", "unlinked"], how);
+    assert.match(t.json.error_description, /not a denial by the user/);
+    assert.equal((await rpCall(l.rp, "GET", `/consent/receipts/${o.auth_req_id}`)).status, 404, "no receipt");
+    // a user's own deny stays distinguishable: no reason
+    const l2 = await linked();
+    const o2 = (await open(l2, PAYMENT)).json;
+    await approveRequest(base, l2.dev, o2.auth_req_id, { code: "", decision: "deny", now: now() });
+    const d = await tokenOf(l2, o2.auth_req_id);
+    assert.deepEqual([d.json.error, d.json.reason], ["access_denied", undefined]);
+  }
+});
+
+test("authorization_details of a refused request names the rule once: a bad IBAN, a text rule, an origin inside; another bad parameter is invalid_request", async () => {
+  const l = await linked();
+  const bad = { ...PAYMENT, creditor_account: { iban: "DE89370400440532013001" } };
+  const r = await open(l, bad);
+  assert.deepEqual([r.status, r.json.error], [400, "invalid_authorization_details"]);
+  assert.match(r.json.error_description, /check digits/);
+  const other = await open(l, PAYMENT, { requested_expiry: 9999 });
+  assert.deepEqual([other.status, other.json.error], [400, "invalid_request"]);
 });

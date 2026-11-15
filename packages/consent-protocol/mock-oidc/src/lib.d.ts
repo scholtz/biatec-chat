@@ -31,12 +31,14 @@ declare module "*/scripts/lib.mjs" {
   export function isValidDate(text: unknown): boolean;
   export function isValidRelyingPartyDetails(details: unknown): boolean;
   export function isValidLinkSigned(signed: unknown): boolean;
-  export type Pin = { key_use: "approve" | "presence"; jwk: object } | object;
+  export type PublicJwk = { kty: string; crv: string; x: string; y: string };
+  /** A pinned device key: its use and its public JWK, or a bare JWK meaning an approval key. */
+  export type Pin = { key_use: "approve" | "presence"; jwk: PublicJwk } | PublicJwk;
   export function verifyReceiptPinned(
-    receipt: any,
+    receipt: unknown,
     pinned: Pin | Pin[],
     expectedDetails: object,
-    opts: { now?: number; origin: string | null; decision?: "approve" | "deny" | "code_failed"; auth_req_id?: string; sub?: string; clientFingerprint?: string; bindingCode?: string; consumed?: Set<string>; checkExpiry?: boolean },
+    opts: { origin: string | null; auth_req_id: string; sub: string; clientFingerprint: string; bindingCode: string; consumed: ReadonlySet<string>; now?: number; decision?: "approve" | "deny" | "code_failed"; checkExpiry?: boolean },
   ): boolean;
   export function verifyLink(
     envelope: any,
@@ -45,10 +47,10 @@ declare module "*/scripts/lib.mjs" {
     expect: { link_id: string; client_fingerprint: string; domain: string | null; nonce: string; binding_code?: string; sub: string },
   ): boolean;
   export function verifyLinkPinned(
-    approval: { signed: any; signature: string },
-    devices: { kid: string; key_use: "approve" | "presence"; jwk: object }[],
+    approval: { signed: unknown; signature: string; alg: "ES256" },
+    devices: { kid: string; key_use: "approve" | "presence"; jwk: PublicJwk }[],
     expect: { link_id: string; client_fingerprint: string; domain: string | null; nonce: string; binding_code?: string },
-    opts?: { now?: number; consumed?: Set<string> },
+    opts: { consumed: ReadonlySet<string>; now?: number },
   ): boolean;
   export function verifyDeviceSigned(
     envelope: any,

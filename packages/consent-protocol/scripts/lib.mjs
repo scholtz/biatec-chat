@@ -374,7 +374,6 @@ export function verifyEnrollmentProof(jws, expect = {}) {
     const payload = JSON.parse(decodeB64u(parts[1]).toString("utf8"));
     if (header.alg !== "ES256" || header.typ !== ENROLL_PROOF_TYP || header.jwk?.kty !== "EC" || header.jwk?.crv !== "P-256") return false;
     // Exactly the members the schema allows: no private `d` rides in the header jwk, no extra claim in the payload.
-    const sameMembers = (o, keys) => Object.keys(o).length === keys.length && keys.every((k) => k in o);
     if (!sameMembers(header, ["alg", "typ", "jwk"]) || !sameMembers(header.jwk, ["kty", "crv", "x", "y"])) return false;
     if (!sameMembers(payload, ["kid", "presence_kid", "presence_jwk_thumbprint", "nonce", "iat"])) return false;
     if (!isP256PublicJwk(header.jwk) || thumbprint(header.jwk) !== thumbprint(expect.approval_public_key)) return false;
@@ -634,8 +633,11 @@ function normalizePins(pinned) {
  *  4. The signature over JCS(signed) verifies under a pinned key (the receipt's own `device` block is not consulted). `pinned` is one pin or an
  *     array of pins; a pin is `{ key_use: "approve" | "presence", jwk }`, or a bare JWK meaning an approval key. An `approve` is accepted only
  *     under a pin whose `key_use` is "approve" (rule 8: a presence key never approves); `deny` and `code_failed` accept either.
- * Other `opts` (each checked only when given): `decision` ("approve" | "deny" | "code_failed"), `auth_req_id`, `sub`, `clientFingerprint`,
- * `bindingCode` (an approval must carry it, compared in constant time), `consumed` (a Set of spent auth_req_id values: replay refused).
+ * The party's own values are REQUIRED, because they are what ties the receipt to the request it opened (a receipt of another request, user or party, or a replay,
+ * would otherwise verify): `opts.auth_req_id` (the id it got when it opened the request), `opts.sub` (the subject it used as `login_hint`), `opts.clientFingerprint`
+ * (`clientFingerprint(client_id)`), `opts.bindingCode` (the code it displayed; compared in constant time for an approve) and `opts.consumed` (a Set of the `auth_req_id`
+ * values it already acted on: an id in it is refused). The function never adds to the set: THE CALLER RECORDS `auth_req_id` after it got true and acted (before the payment
+ * is executed, atomically with it). Missing or malformed values are refused. Optional: `decision` ("approve" | "deny" | "code_failed": what the caller requires).
  * An approval must not be expired at `opts.now` (default: the current time) unless `opts.checkExpiry === false` (re-verifying an archived receipt).
  * The caller still reads `receipt.signed.decision`: a true result for a `deny` means the user denied, authentically.
  */
@@ -644,6 +646,8 @@ export function verifyReceiptPinned(receipt, pinned, expectedDetails, opts = {})
     if (receipt.version !== "1.2" || receipt.alg !== "ES256") return false;
     const pins = normalizePins(pinned);
     if (!pins) return false;
+    const nonEmpty = (x) => typeof x === "string" && x !== "";
+    if (!nonEmpty(opts.auth_req_id) || !nonEmpty(opts.sub) || !/^[0-9a-f]{16}$/.test(opts.clientFingerprint ?? "") || !/^[0-9]{6}$/.test(opts.bindingCode ?? "") || !(opts.consumed instanceof Set)) return false;
     const s = receipt.signed;
     if (!relyingPartyReceiptWellFormed(s)) return false; // steps 1 and 2
     if (expectedDetails === null || typeof expectedDetails !== "object" || Array.isArray(expectedDetails)) return false;
@@ -655,11 +659,9 @@ export function verifyReceiptPinned(receipt, pinned, expectedDetails, opts = {})
     if ("origin" in expectedDetails && expectedOrigin !== wantOrigin) return false;
     if (signedOrigin !== wantOrigin) return false;
     if (opts.decision !== undefined && s.decision !== opts.decision) return false;
-    if (opts.auth_req_id !== undefined && s.auth_req_id !== opts.auth_req_id) return false;
-    if (opts.sub !== undefined && s.sub !== opts.sub) return false;
-    if (opts.clientFingerprint !== undefined && s.client_fingerprint !== opts.clientFingerprint) return false;
-    if (opts.consumed !== undefined && (!(opts.consumed instanceof Set) || opts.consumed.has(s.auth_req_id))) return false;
-    if (opts.bindingCode !== undefined && s.decision === "approve" && !timingSafeEqualStr(s.binding_code, opts.bindingCode)) return false;
+    if (s.auth_req_id !== opts.auth_req_id || s.sub !== opts.sub || s.client_fingerprint !== opts.clientFingerprint) return false;
+    if (opts.consumed.has(s.auth_req_id)) return false; // replay: the caller records the id after it acted
+    if (s.decision === "approve" && !timingSafeEqualStr(s.binding_code, opts.bindingCode)) return false;
     if (s.decision === "approve" && opts.checkExpiry !== false && s.expiry <= (opts.now ?? nowSeconds())) return false;
     const bytes = Buffer.from(jcs(s), "utf8");
     return pins.some((p) => (s.decision !== "approve" || p.key_use === "approve") && verifyEs256(p.jwk, bytes, receipt.signature)); // step 4, last
@@ -717,16 +719,20 @@ export function verifyLink(envelope, jwks, opts = {}, expect = {}) {
 }
 
 /**
- * Verifies a link statement the way a relying party does with `GET /consent/links/{id}` (`approval` = { signed, signature }, `devices` = the
- * `[{ kid, key_use, jwk }]` list of that answer or your pinned copy of it): the signing key is the device named by `signed.kid`; an `approve`
- * needs that device's `key_use` to be "approve". `expect` as in `verifyLink` without `sub`; `opts.now` optional, `opts.consumed` optional
- * (a Set of link ids). No attestation is consulted. On true, pin the `devices` of the answer (spec section 14.6). Never throws.
+ * Verifies a link statement the way a relying party does with `GET /consent/links/{id}`: `approval` = { signed, signature, alg: "ES256" } (the answer's
+ * `approval` without its attestation, plus the algorithm, which the party states and which MUST be "ES256": the answer names none because ES256 is the only one),
+ * `devices` = the `[{ kid, key_use, jwk }]` list of that answer. The signing key is the device named by `signed.kid`; an `approve` needs that device's `key_use` to
+ * be "approve". `expect` as in `verifyLink` without `sub`; `opts.now` optional, `opts.consumed` REQUIRED (a Set of link ids already acted on: an id in it is refused;
+ * the caller records `link_id` after it got true, as for `verifyReceiptPinned`). No attestation is consulted.
+ * THE LIMIT OF THIS CHECK: the `devices` list and the approval come from the same server answer, so this proves that the statement was signed by one of the keys the
+ * answer lists, not that those keys are the user's. At link time the party trusts Biatec OIDC for WHICH keys it pins (spec 14.1); the user's signature binds the keys to
+ * this party only to the extent the operator told the truth about them. Never throws.
  */
 export function verifyLinkPinned(approval, devices, expect = {}, opts = {}) {
   try {
     const s = approval.signed;
-    if (!isValidLinkSigned(s) || !linkMatches(s, expect, opts.now ?? nowSeconds())) return false;
-    if (opts.consumed !== undefined && (!(opts.consumed instanceof Set) || opts.consumed.has(s.link_id))) return false;
+    if (approval.alg !== "ES256" || !isValidLinkSigned(s) || !linkMatches(s, expect, opts.now ?? nowSeconds())) return false;
+    if (!(opts.consumed instanceof Set) || opts.consumed.has(s.link_id)) return false;
     if (!Array.isArray(devices)) return false;
     const pin = devices.find((d) => d && d.kid === s.kid);
     if (!pin || !KEY_USES.includes(pin.key_use) || (s.decision === "approve" && pin.key_use !== "approve") || !isP256PublicJwk(pin.jwk)) return false;

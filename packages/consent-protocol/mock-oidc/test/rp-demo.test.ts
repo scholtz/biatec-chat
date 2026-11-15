@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { createMockOidc } from "../src/app.ts";
+import { rpCall } from "../src/test-device.ts";
 // @ts-expect-error a plain JavaScript module
 import { runDemo } from "../../scripts/rp-demo.mjs";
 
@@ -53,3 +54,22 @@ test("rp-demo: a mock without test helpers cannot script the phone, so the demo 
   });
 });
 
+
+test("rp-demo: a link removed while the request is open ends as unlinked (not a denial, no receipt), and nothing is executed", async () => {
+  await withMock({ testHelpers: true }, async (base) => {
+    const lines: string[] = [];
+    const r = await runDemo({
+      server: base,
+      log: (l: string) => lines.push(l),
+      afterOpen: async ({ rp, subject }: { rp: Parameters<typeof rpCall>[0]; subject: string }) => {
+        assert.equal((await rpCall(rp, "DELETE", `/consent/links/subject/${subject}`)).status, 200);
+        return false;
+      },
+    });
+    assert.deepEqual([r.ok, r.decision], [false, "unlinked"]);
+    const out = lines.join("\n");
+    assert.match(out, /reason unlinked/);
+    assert.match(out, /nothing is executed/);
+    assert.equal(/verifyReceiptPinned: true/.test(out), false);
+  });
+});
