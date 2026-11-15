@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../keys/device_key_store.dart';
+import '../text/rp_strings.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
 import 'approval_card.dart';
@@ -132,6 +133,26 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
           final shown = c.phase == ApprovalPhase.ready ||
               c.phase == ApprovalPhase.working;
           if (!shown) return const SizedBox.shrink();
+          // A request this app cannot show can be neither approved nor denied (no valid receipt exists for it): it can be dismissed, locally.
+          if (c.request?.detail is UnsupportedDetail) {
+            return Material(
+              elevation: 3,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.m),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      key: const Key('dismiss'),
+                      onPressed: () => _dismiss(c),
+                      child: Text(RpStrings.of().t('dismiss')),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }
           final can = _canAct(c);
           final canDeny = _canDeny(c);
           return ApprovalActionBar(
@@ -174,6 +195,18 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
       return;
     }
     await c.approve(_code.text);
+  }
+
+  /// Hides the request until it runs out and goes back, with a message: nothing is sent to Biatec OIDC.
+  void _dismiss(ApprovalController c) {
+    widget.services.dismissed.add(widget.authReqId);
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+          key: const Key('dismissed'),
+          content: Text(RpStrings.of().t('dismissed'))));
+    _close();
   }
 
   /// Back to the list (or wherever the request was opened from).

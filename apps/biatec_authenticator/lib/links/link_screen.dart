@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../approvals/cards/relying_party_card.dart' show WrittenByServiceBox;
+import '../approvals/widgets/approval_actions.dart';
 import '../approvals/widgets/binding_code_field.dart';
 import '../approvals/widgets/expiry.dart' show clockLeft;
 import '../approvals/widgets/result_view.dart';
@@ -12,7 +13,7 @@ import '../ui/ui.dart';
 import 'link_code.dart';
 import 'link_controller.dart';
 import 'link_services.dart';
-import 'rp_strings.dart';
+import '../text/rp_strings.dart';
 
 /// Opens the link screen for [raw], the text of a scanned or pasted code or of a deep link another app opened the app with. Every way in comes through here, so they behave the same: the code is parsed
 /// strictly, a code that is refused is explained on a screen of its own, and nothing is ever linked without the link screen (the user types the code the service shows and presses Link).
@@ -198,10 +199,16 @@ class _LinkScreenState extends State<LinkScreen> {
             return const SizedBox.shrink();
           }
           final can = _canAct(c);
-          return _LinkActionBar(
+          final s = RpStrings.of();
+          return ApprovalActionBar(
             busy: c.phase == LinkPhase.working,
-            onLink: can ? () => _link(c) : null,
-            onDontLink: can ? () => c.deny(_code.text) : null,
+            approveLabel: s.t('linkButton'),
+            denyLabel: s.t('dontLink'),
+            approveIcon: Icons.link,
+            approveKey: const Key('link'),
+            denyKey: const Key('dont-link'),
+            onApprove: can ? () => _link(c) : null,
+            onDeny: can ? () => c.deny() : null,
           );
         },
       ),
@@ -312,63 +319,6 @@ class _LinkScreenState extends State<LinkScreen> {
         ),
         const SizedBox(height: AppSpacing.l),
       ],
-    );
-  }
-}
-
-/// Link and Don't link in a bar that stays at the bottom of the screen.
-class _LinkActionBar extends StatelessWidget {
-  const _LinkActionBar(
-      {required this.onLink, required this.onDontLink, required this.busy});
-
-  final VoidCallback? onLink;
-  final VoidCallback? onDontLink;
-  final bool busy;
-
-  @override
-  Widget build(BuildContext context) {
-    final s = RpStrings.of();
-    final scheme = Theme.of(context).colorScheme;
-    final stacked = MediaQuery.textScalerOf(context).scale(1) >= 1.5 ||
-        MediaQuery.sizeOf(context).width < 360;
-    final link = FilledButton.icon(
-      key: const Key('link'),
-      onPressed: onLink,
-      icon: const Icon(Icons.link),
-      label: Text(s.t('linkButton')),
-    );
-    final dont = OutlinedButton.icon(
-      key: const Key('dont-link'),
-      onPressed: onDontLink,
-      icon: const Icon(Icons.close),
-      label: Text(s.t('dontLink')),
-    );
-    return Material(
-      elevation: 3,
-      color: scheme.surfaceContainer,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.m),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            if (busy) ...[
-              Semantics(
-                  label: 'Working', child: const LinearProgressIndicator()),
-              const SizedBox(height: AppSpacing.s),
-            ],
-            if (stacked) ...[
-              SizedBox(width: double.infinity, child: link),
-              const SizedBox(height: AppSpacing.s),
-              SizedBox(width: double.infinity, child: dont),
-            ] else
-              Row(children: [
-                Expanded(child: dont),
-                const SizedBox(width: AppSpacing.m),
-                Expanded(child: link),
-              ]),
-          ]),
-        ),
-      ),
     );
   }
 }

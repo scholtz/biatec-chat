@@ -6,9 +6,10 @@ import 'package:biatec_authenticator/approvals/approval_controller.dart';
 import 'package:biatec_authenticator/approvals/approval_screen.dart';
 import 'package:biatec_authenticator/approvals/consent_request.dart';
 import 'package:biatec_authenticator/approvals/jcs.dart';
+import 'package:biatec_authenticator/approvals/pending_screen.dart';
 import 'package:biatec_authenticator/approvals/receipt.dart';
 import 'package:biatec_authenticator/approvals/widgets/request_card.dart';
-import 'package:biatec_authenticator/links/rp_strings.dart';
+import 'package:biatec_authenticator/text/rp_strings.dart';
 import 'package:biatec_authenticator/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -211,6 +212,23 @@ void main() {
       expect(rig.oidc.receipts.map((r) => r['version']).toSet(), {'1.2'});
     });
 
+    test('the prompt of the operating system has no text the service wrote: its identity, the amount and the currency only', () async {
+      for (final (name, code, expected) in [
+        ('payment-approve', '620418', 'bank.example: Payment of 1250.00 EUR'),
+        ('login-approve', '917263', 'bank.example: Sign in'),
+        ('action-approve', '550193', 'bank.example: Confirm an action'),
+      ]) {
+        final rig = RpRig(rpRequest(name), code: code);
+        final c = rig.services.controllerFor(rig.oidc.request['auth_req_id'] as String);
+        await c.load();
+        await c.approve(code);
+        expect(c.phase, ApprovalPhase.approved, reason: c.error);
+        expect(rig.keys.prompts.single.$2, expected);
+        expect(rig.keys.prompts.single.$2, isNot(contains('Muster')));
+        expect(rig.keys.prompts.single.$2, isNot(contains('Add payee')));
+      }
+    });
+
     test('the history keeps the type, the service and the amount, and no code', () async {
       final rig = RpRig(rpRequest('payment-approve'));
       final c = rig.services
@@ -218,12 +236,13 @@ void main() {
       await c.load();
       await c.approve('620418');
       final entry = (await rig.history.read()).single;
-      expect(entry.summary, 'Payment: 1250.00 EUR to Muster Energie GmbH');
+      expect(entry.summary, 'Payment: 1250.00 EUR');
+      expect(entry.summary, isNot(contains('Muster')));
       expect(entry.clientLabel, 'bank.example');
       expect(entry.decision, 'approve');
       expect(jsonEncode(entry.receipt), isNot(contains('620418')));
       expect(summarize(_parse(rpRequest('login-approve')).detail), 'Sign in');
-      expect(summarize(_parse(rpRequest('action-approve')).detail), 'Action: Add payee');
+      expect(summarize(_parse(rpRequest('action-approve')).detail), 'Action requested');
     });
   });
 
@@ -307,11 +326,69 @@ void main() {
       expect(find.text('This request cannot be shown; update the app'),
           findsOneWidget);
       expect(find.text('Muster Energie GmbH'), findsNothing);
-      expect(_approveOn(tester), isFalse);
-      expect(
-          tester.widget<OutlinedButton>(find.byKey(const Key('deny'))).onPressed,
-          isNull);
+      // Neither approve nor deny: a Dismiss that hides it locally.
+      expect(find.byKey(const Key('approve')), findsNothing);
+      expect(find.byKey(const Key('deny')), findsNothing);
+      expect(find.byKey(const Key('dismiss')), findsOneWidget);
       expect(rig.oidc.receipts, isEmpty);
+    });
+
+    testWidgets('Dismiss hides the request locally, says so, and sends nothing', (tester) async {
+      final r = withDetail(rpRequest('payment-approve'), (d) => d['type'] = 'biatec_teleport');
+      r['bound_hash'] = 'x';
+      final rig = RpRig(r);
+      var calls = 0;
+      await tester.pumpWidget(MaterialApp(
+        theme: buildTheme(Brightness.light),
+        home: Builder(
+            builder: (context) => Scaffold(
+                  body: TextButton(
+                      key: const Key('open'),
+                      onPressed: () => Navigator.of(context).push(
+                          ApprovalScreen.route(rig.services, r['auth_req_id'] as String)),
+                      child: const Text('open')),
+                )),
+      ));
+      await tester.tap(find.byKey(const Key('open')));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('dismiss')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(rig.services.dismissed, contains(r['auth_req_id']));
+      expect(find.text('Dismissed. Nothing was sent.'), findsOneWidget);
+      expect(rig.oidc.receipts, isEmpty);
+      expect(calls, 0);
+    });
+
+    testWidgets('in the pending list an unsupported request has Dismiss, is not counted, and is gone after it', (tester) async {
+      final r = withDetail(rpRequest('payment-approve'), (d) => d['type'] = 'biatec_teleport');
+      r['bound_hash'] = 'x';
+      final rig = RpRig(r);
+      final counts = <int>[];
+      tester.view.physicalSize = const Size(500, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+          theme: buildTheme(Brightness.light),
+          home: PendingScreen(
+              services: rig.services,
+              pollEvery: const Duration(hours: 1),
+              onCount: counts.add)));
+      await tester.pump();
+      await tester.pump();
+      final id = r['auth_req_id'] as String;
+      expect(find.byKey(Key('pending-$id')), findsOneWidget);
+      expect(find.text('This request cannot be shown'), findsOneWidget);
+      expect(counts.last, 0, reason: 'not counted in the badge');
+      await tester.tap(find.byKey(Key('dismiss-$id')));
+      await tester.pump();
+      expect(find.byKey(Key('pending-$id')), findsNothing);
+      expect(find.text('Dismissed. Nothing was sent.'), findsOneWidget);
+      expect(rig.oidc.receipts, isEmpty);
+      // A refresh does not bring it back.
+      await tester.pumpWidget(const SizedBox());
     });
 
     testWidgets('a right-to-left override on the card: the text is not drawn, the request cannot be signed',
@@ -336,7 +413,7 @@ void main() {
       await _screen(tester, rig);
       // The request is not even offered as one that can be shown: fetching it fails with the same words, or the card says so.
       expect(find.textContaining('cannot be shown'), findsWidgets);
-      expect(_approveOn(tester), isFalse);
+      expect(find.byKey(const Key('approve')), findsNothing);
     });
   });
 
@@ -506,7 +583,7 @@ void main() {
     for (final name in ['payment-approve', 'login-approve', 'action-approve']) {
       final r = _parse(rpRequest(name));
       expect(r.isShowable, isTrue, reason: name);
-      expect(r.isRelyingParty, isTrue);
+      expect(r.detail, isA<RelyingPartyDetail>());
       expect(vectorNow().isBefore(r.expiresAt), isTrue);
     }
   });
@@ -531,7 +608,14 @@ void main() {
     testWidgets('a payment: the amount first, who is paid, who asks', (tester) async {
       await card(tester, _parse(rpRequest('payment-approve')));
       expect(find.text('1250.00 EUR'), findsOneWidget);
-      expect(find.text('Payment to Muster Energie GmbH'), findsOneWidget);
+      expect(find.text('Payment request'), findsOneWidget);
+      // The service's words only in the quiet quoted line, with who wrote them; never in the headline.
+      final quoted = find.byKey(Key('quoted-${rpRequest('payment-approve')['auth_req_id']}'));
+      expect(quoted, findsOneWidget);
+      final q = tester.widget<Text>(find.descendant(of: quoted, matching: find.byType(Text)));
+      expect(q.data, 'From bank.example: “Muster Energie GmbH”');
+      expect(q.style!.fontStyle, FontStyle.italic);
+      expect(q.style!.fontSize, lessThan(tester.widget<Text>(find.text('1250.00 EUR')).style!.fontSize!));
       expect(find.text('bank.example'), findsOneWidget);
     });
 
@@ -539,7 +623,9 @@ void main() {
       await card(tester, _parse(rpRequest('login-approve')));
       expect(find.text('Sign in'), findsOneWidget);
       await card(tester, _parse(rpRequest('action-approve')));
-      expect(find.text('Add payee'), findsOneWidget);
+      expect(find.text('Action requested'), findsOneWidget);
+      expect(find.text('Add payee'), findsNothing, reason: 'the title is only inside the quoted line');
+      expect(find.textContaining('“Add payee”'), findsOneWidget);
     });
 
     testWidgets('a request that cannot be shown says so and names no detail', (tester) async {

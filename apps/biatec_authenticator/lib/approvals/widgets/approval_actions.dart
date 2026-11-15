@@ -11,7 +11,19 @@ class ApprovalActionBar extends StatelessWidget {
     required this.onApprove,
     required this.onDeny,
     this.busy = false,
+    this.approveLabel = 'Approve',
+    this.denyLabel = 'Deny',
+    this.approveIcon = Icons.check,
+    this.approveKey = const Key('approve'),
+    this.denyKey = const Key('deny'),
   });
+
+  /// The words and keys of the two buttons: the link screen reuses this bar as Link and Don't link.
+  final String approveLabel;
+  final String denyLabel;
+  final IconData approveIcon;
+  final Key approveKey;
+  final Key denyKey;
 
   final VoidCallback? onApprove;
   final VoidCallback? onDeny;
@@ -27,16 +39,16 @@ class ApprovalActionBar extends StatelessWidget {
     final stacked = MediaQuery.textScalerOf(context).scale(1) >= 1.5 ||
         MediaQuery.sizeOf(context).width < 360;
     final approve = FilledButton.icon(
-      key: const Key('approve'),
+      key: approveKey,
       onPressed: onApprove,
-      icon: const Icon(Icons.check),
-      label: const Text('Approve'),
+      icon: Icon(approveIcon),
+      label: Text(approveLabel),
     );
     final deny = OutlinedButton.icon(
-      key: const Key('deny'),
+      key: denyKey,
       onPressed: onDeny,
       icon: const Icon(Icons.close),
-      label: const Text('Deny'),
+      label: Text(denyLabel),
     );
     return Material(
       elevation: 3,

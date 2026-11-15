@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../clients/service_identity.dart';
-import '../../links/rp_strings.dart';
+import '../../text/rp_strings.dart';
 import '../../theme.dart';
 import '../consent_request.dart';
 

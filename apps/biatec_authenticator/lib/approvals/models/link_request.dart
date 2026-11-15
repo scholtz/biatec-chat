@@ -1,5 +1,5 @@
-import '../approvals/consent_request.dart';
-import 'text_rules.dart';
+import '../../text/text_rules.dart';
+import '../consent_request.dart';
 
 /// What the device fetches with `GET /consent/links/{id}` (`schemas/link-request.schema.json`): the service that wants to be linked, as Biatec OIDC knows it, the label the service
 /// gave this user, a nonce and the time the link runs out. Parsed strictly: anything the screen could not show faithfully throws [FormatException] and the link is never offered.

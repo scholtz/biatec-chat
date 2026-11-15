@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../security/device_proof.dart';
 import '../security/pinning/pinned_http.dart';
-import '../links/link_request.dart';
+import 'models/link_request.dart';
 import 'consent_request.dart';
 
 /// The request could not be reached or read. [offline] is true when the
@@ -333,23 +333,23 @@ class ApprovalClient {
   /// `POST /consent/links/{id}/receipt`: the signed `biatec_link` statement ([body] is `{ signed, signature }`), with the link secret.
   Future<LinkOutcome> postLinkReceipt(String deviceToken, String linkId,
       String secret, Map<String, Object?> body) async {
+    final url = Uri.parse(
+        '$baseUrl/consent/links/${Uri.encodeComponent(linkId)}/receipt');
+    // The proof and the headers are made BEFORE anything is sent: a device key that cannot sign is a plain failure, and nothing left the phone.
+    final headers = await _auth('POST', url, deviceToken,
+        {'Content-Type': 'application/json', 'X-Link-Secret': secret});
     final http.Response res;
     try {
-      final url = Uri.parse(
-          '$baseUrl/consent/links/${Uri.encodeComponent(linkId)}/receipt');
-      res = await _send(() async => _client.post(
-            url,
-            headers: await _auth('POST', url, deviceToken, {
-              'Content-Type': 'application/json',
-              'X-Link-Secret': secret,
-            }),
-            body: jsonEncode(body),
-          ));
+      res = await _send(
+          () async => _client.post(url, headers: headers, body: jsonEncode(body)));
     } on ApprovalException catch (e) {
-      // The statement may have arrived even though no answer did.
-      throw ApprovalException('No answer from Biatec OIDC, so the decision '
-          'may or may not be recorded. Check Linked services in Settings. '
-          '(${e.message})');
+      // A pinning failure happens when the connection is made, before the statement is sent: a plain failure. Only a connection that was lost or timed out (the "offline" kind) may have
+      // delivered it without the answer coming back.
+      if (!e.offline) rethrow;
+      throw ApprovalException(
+          'No answer from Biatec OIDC, so the decision may or may not be recorded. '
+          'Check Linked services in Settings. (${e.message})',
+          offline: true);
     }
     final json = _linkBody(res);
     if (res.statusCode == 200) {

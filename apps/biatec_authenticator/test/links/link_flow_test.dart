@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:biatec_authenticator/approvals/approval_client.dart';
 import 'package:biatec_authenticator/approvals/history_store.dart';
 import 'package:biatec_authenticator/approvals/jcs.dart';
+import 'package:biatec_authenticator/approvals/widgets/approval_actions.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/keys/device_key_store.dart';
@@ -12,7 +13,7 @@ import 'package:biatec_authenticator/links/link_code.dart';
 import 'package:biatec_authenticator/links/link_controller.dart';
 import 'package:biatec_authenticator/links/link_screen.dart';
 import 'package:biatec_authenticator/links/link_services.dart';
-import 'package:biatec_authenticator/links/rp_strings.dart';
+import 'package:biatec_authenticator/text/rp_strings.dart';
 import 'package:biatec_authenticator/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,6 +43,7 @@ class FakeLinkServer {
   /// Answers the next fetch with this status instead of the link (404, 409, 410, 403).
   int? failFetchWith;
   String status = 'pending';
+  bool denyAnswersWrongCode = false;
   int attempts = 0;
   int fetches = 0;
   final List<Map<String, Object?>> posted = [];
@@ -82,6 +84,9 @@ class FakeLinkServer {
           final signed = (body['signed'] as Map).cast<String, Object?>();
           if (status == 'closed') {
             return _json(403, {'error': 'access_denied', 'reason': 'code_failed'});
+          }
+          if (signed['decision'] == 'deny' && denyAnswersWrongCode) {
+            return _json(400, {'error': 'wrong_code', 'attempts_remaining': 2});
           }
           if (signed['decision'] == 'deny') {
             status = 'denied';
@@ -337,13 +342,39 @@ void main() {
       expect((await rig.history.read()).single.decision, 'deny');
     });
 
-    testWidgets('a deny carries the code when one was typed', (tester) async {
+    testWidgets('a deny never carries the code the user typed (it may be a wrong one)', (tester) async {
       final rig = Rig(FakeLinkServer());
       await _open(tester, rig);
       await _type(tester, '123456');
       await _tap(tester, 'dont-link');
       final signed = (rig.server.posted.single['signed'] as Map).cast<String, Object?>();
-      expect(signed['binding_code'], '123456');
+      expect(signed['binding_code'], '');
+      expect(find.text('Not linked.'), findsOneWidget);
+    });
+
+    testWidgets('a deny the server answers with wrong_code is said, and nothing is recorded', (tester) async {
+      final server = FakeLinkServer()..denyAnswersWrongCode = true;
+      final rig = Rig(server);
+      await _open(tester, rig);
+      await _tap(tester, 'dont-link');
+      expect(find.text('Wrong code.'), findsOneWidget);
+      expect(find.byKey(const Key('link')), findsOneWidget);
+      expect((await rig.history.read()), isEmpty);
+    });
+
+    testWidgets('the link screen uses the shared approval action bar', (tester) async {
+      final rig = Rig(FakeLinkServer());
+      await _open(tester, rig);
+      expect(find.byType(ApprovalActionBar), findsOneWidget);
+    });
+
+    testWidgets('Link without the confirmation for an unproven service says why instead of doing nothing', (tester) async {
+      final rig = Rig(FakeLinkServer(domainProven: false));
+      final c = rig.services.controllerFor(rig.code);
+      await c.load();
+      await c.approve(_code);
+      expect(c.error, contains('has not proven who it is'));
+      expect(rig.server.posted, isEmpty);
     });
 
     testWidgets('a code that is not six digits is told so and nothing is sent', (tester) async {

@@ -12,6 +12,7 @@ import 'dart:convert';
 import 'package:biatec_authenticator/approvals/approval_client.dart';
 import 'package:biatec_authenticator/approvals/approval_controller.dart';
 import 'package:biatec_authenticator/approvals/approval_services.dart';
+import 'package:biatec_authenticator/approvals/consent_request.dart';
 import 'package:biatec_authenticator/approvals/history_store.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
@@ -220,7 +221,7 @@ void main() {
     final p = await phone();
     final c = p.links.controllerFor(p.links.parse(link.uri));
     await c.load();
-    await c.deny('');
+    await c.deny();
     expect(c.phase, LinkPhase.denied, reason: c.error);
     // Presence key, no prompt.
     expect(p.keys.prompts, isEmpty);
@@ -326,7 +327,7 @@ void main() {
     final pc = p.approvals.controllerFor(pay.id);
     await pc.load();
     expect(pc.phase, ApprovalPhase.ready, reason: pc.error);
-    expect(pc.request!.isRelyingParty, isTrue);
+    expect(pc.request!.detail, isA<RelyingPartyDetail>());
     await pc.approve(pay.code);
     expect(pc.phase, ApprovalPhase.approved, reason: pc.error);
     final payReceipt = await receiptOf(pay.id);
@@ -375,9 +376,9 @@ void main() {
     // History: the payment with its amount, the login, the action, and the link, with no code in any of them.
     final summaries = [for (final e in await p.history.read()) e.summary];
     expect(summaries, containsAll([
-      'Payment: 12.50 EUR to Muster Energie GmbH',
+      'Payment: 12.50 EUR',
       'Sign in',
-      'Action: Add payee',
+      'Action requested',
       'Link a service',
     ]));
   }, skip: skip);

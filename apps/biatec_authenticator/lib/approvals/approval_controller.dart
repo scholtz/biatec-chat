@@ -298,7 +298,7 @@ class ApprovalController extends ChangeNotifier {
       // The operating system asks for a strong biometric for this one signature: the prompt is the gate, nothing else asks. The subtitle names the client and the total, from the request that was just fetched.
       final prompt = ApprovalPrompt(
         title: ApprovalPrompt.fixedTitle,
-        subtitle: '${clientLabel(fresh.client)}: ${summarize(fresh.detail)}',
+        subtitle: '${clientLabel(fresh.client)}: ${promptSummary(fresh.detail)}',
       );
       final Map<String, Object?> receipt;
       try {
@@ -480,11 +480,19 @@ String summarize(AuthorizationDetail d) => switch (d) {
       TransactionDetail() => '${d.headline} (${d.valueText}) on ${d.network}',
       LimitsChangeDetail() => 'Limits to ${d.requested.perTransactionEur} EUR '
           'per transaction, ${d.requested.perDayEur} EUR per day',
-      // The text the service wrote passed the text rules, so it is safe in a line of history and in the prompt of the operating system.
-      PaymentDetail() => 'Payment: ${d.amount} ${d.currency} to ${d.creditorName}',
+      // Never free text a service wrote: that is drawn only in the area that says who wrote it. The amount and the currency passed the schema.
+      PaymentDetail() => 'Payment: ${d.amount} ${d.currency}',
       LoginDetail() => 'Sign in',
-      ActionDetail() => 'Action: ${d.title}',
+      ActionDetail() => 'Action requested',
       UnsupportedDetail() => 'Request that cannot be shown',
+    };
+
+/// The line under the title of the biometric prompt of the operating system: the app's own words, and for a payment the amount and the currency. Never text a service wrote.
+String promptSummary(AuthorizationDetail d) => switch (d) {
+      PaymentDetail() => 'Payment of ${d.amount} ${d.currency}',
+      LoginDetail() => 'Sign in',
+      ActionDetail() => 'Confirm an action',
+      _ => summarize(d),
     };
 
 /// The client as rule 3 allows it to be named: its proven domain, or "Unproven application" and the fingerprint.

@@ -4,7 +4,7 @@ import '../codes/add/qr_scan_screen.dart';
 import '../theme.dart';
 import 'link_screen.dart';
 import 'link_services.dart';
-import 'rp_strings.dart';
+import '../text/rp_strings.dart';
 
 /// "Link a service" in Settings, Linked services: the scanner and, for a phone with no camera (or a code that was sent as text), a field to paste the code into. Both lead to the same place as a deep link
 /// from another app: [openLinkCode], so nothing is linked without the link screen.

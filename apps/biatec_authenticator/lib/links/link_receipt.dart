@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import '../approvals/jcs.dart';
 import '../approvals/receipt.dart';
 import '../keys/device_key_store.dart';
-import 'link_request.dart';
+import '../approvals/models/link_request.dart';
 
 /// `approve` or `deny`: the two decisions of a `biatec_link` statement.
 enum LinkDecision {

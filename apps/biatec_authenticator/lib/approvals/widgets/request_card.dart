@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
+import '../../text/rp_strings.dart';
 import '../approval_controller.dart' show clientLabel, summarize;
 import '../consent_request.dart';
 import 'expiry.dart';
@@ -12,7 +13,11 @@ class RequestCard extends StatelessWidget {
     required this.request,
     required this.now,
     required this.onOpen,
+    this.onDismiss,
   });
+
+  /// For a request this app cannot show: hides it locally (nothing is sent). Null for every other request.
+  final VoidCallback? onDismiss;
 
   final ConsentRequest request;
   final DateTime now;
@@ -24,24 +29,31 @@ class RequestCard extends StatelessWidget {
     final detail = request.detail;
     final left = request.expiresAt.difference(now);
     final who = clientLabel(request.client);
-    final (headline, sub) = switch (detail) {
+    final (headline, sub, quoted) = switch (detail) {
       TransactionDetail() => (
           detail.headline,
-          '${detail.valueText} on ${detail.network}'
+          '${detail.valueText} on ${detail.network}',
+          null
         ),
-      LimitsChangeDetail() => ('Change spending limits', summarize(detail)),
+      LimitsChangeDetail() => ('Change spending limits', summarize(detail), null),
+      // The headline and the line under it are the app's words (the amount passed the schema). What the service wrote goes only in the quoted line, in the quiet style, with who wrote it.
       PaymentDetail() => (
           '${detail.amount} ${detail.currency}',
-          'Payment to ${detail.creditorName}'
+          'Payment request',
+          detail.creditorName
         ),
-      LoginDetail() => ('Sign in', 'Asked by $who'),
-      ActionDetail() => (detail.title, 'Asked by $who'),
+      LoginDetail() => ('Sign in', 'Sign-in request', null),
+      ActionDetail() => ('Action requested', 'Request to confirm an action', detail.title),
       UnsupportedDetail() => (
           'This request cannot be shown',
-          'Update the app'
+          'Update the app',
+          null
         ),
     };
+    final rp = RpStrings.of();
+    final fromWho = quoted == null ? null : rp.t('fromService', {'who': who});
     final spoken = 'Request from $who: $headline, $sub, ${spokenLeft(left)}. '
+        '${quoted == null ? '' : '$fromWho written by the service: $quoted. '}'
         '${request.client.domainProven ? '' : 'Unproven application. '}'
         'Double tap to open.';
     return Card(
@@ -78,6 +90,26 @@ class RequestCard extends StatelessWidget {
                           style: theme.textTheme.titleLarge
                               ?.copyWith(fontWeight: FontWeight.w700)),
                       Text(sub, style: theme.textTheme.bodyMedium),
+                      if (quoted != null)
+                        Container(
+                          key: Key('quoted-${request.authReqId}'),
+                          margin: const EdgeInsets.only(top: AppSpacing.xs),
+                          padding: const EdgeInsets.only(left: AppSpacing.s),
+                          decoration: BoxDecoration(
+                              border: Border(
+                                  left: BorderSide(
+                                      color: theme.colorScheme.outlineVariant,
+                                      width: 3))),
+                          child: Text('$fromWho “$quoted”',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                  fontStyle: FontStyle.italic,
+                                  color: theme.colorScheme.onSurfaceVariant)),
+                        ),
+                      if (onDismiss != null)
+                        TextButton(
+                            key: Key('dismiss-${request.authReqId}'),
+                            onPressed: onDismiss,
+                            child: Text(rp.t('dismiss'))),
                       const SizedBox(height: AppSpacing.s),
                       Text(coarseLeft(left),
                           key: Key('left-${request.authReqId}'),

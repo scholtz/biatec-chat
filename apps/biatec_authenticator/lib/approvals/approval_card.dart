@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../clients/service_identity.dart';
 import '../clients/trust_strings.dart';
-import '../links/rp_strings.dart';
+import '../text/rp_strings.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
 import 'cards/relying_party_card.dart';

@@ -15,6 +15,7 @@ import 'push/apple_push.dart';
 import 'push/device_event_controller.dart';
 import 'push/device_event_source.dart';
 import 'integrity/integrity_checker.dart';
+import 'text/rp_strings.dart';
 import 'links/link_services.dart';
 import 'integrity/platform_integrity.dart';
 import 'lock/lock_controller.dart';
@@ -218,17 +219,35 @@ class _AuthenticatorAppState extends State<AuthenticatorApp>
   Future<bool> didPushRouteInformation(RouteInformation routeInformation) async =>
       _takeDeepLink(routeInformation.uri.toString());
 
+  /// The ONE place a deep link is taken, from the observer above and from the route the app was launched with ([initState]). Returns true when [route] is a link code of this app (it is then consumed:
+  /// the platform must not try to open it as a screen). With linking off nothing is linked and the user is told so, neutrally.
   bool _takeDeepLink(String route) {
     final text = LinkIntake.linkTextFromRoute(route);
     if (text == null) return false;
-    _settings.links?.intake.offer(text);
+    final links = _settings.links;
+    if (links != null) {
+      links.intake.offer(text);
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _messengerKey.currentState
+          ?..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(
+              key: const Key('linking-off'),
+              content: Text(RpStrings.of().t('linkingOff'))));
+      });
+    }
     return true;
   }
+
+  late final GlobalKey<ScaffoldMessengerState> _messengerKey =
+      widget.messengerKey ?? GlobalKey<ScaffoldMessengerState>();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // The route the app was launched with: a deep link opens the app with it as the initial route.
+    _takeDeepLink(WidgetsBinding.instance.platformDispatcher.defaultRouteName);
     // A controller handed in was loaded by the caller (main reads it before the first frame).
     if (widget.theme == null) _theme.load();
   }
@@ -261,7 +280,7 @@ class _AuthenticatorAppState extends State<AuthenticatorApp>
       listenable: _theme,
       builder: (context, _) => MaterialApp(
         navigatorKey: widget.navigatorKey,
-        scaffoldMessengerKey: widget.messengerKey,
+        scaffoldMessengerKey: _messengerKey,
         title: 'Biatec Authenticator',
         theme: buildTheme(Brightness.light),
         darkTheme: buildTheme(Brightness.dark),
@@ -278,7 +297,7 @@ class _AuthenticatorAppState extends State<AuthenticatorApp>
             return MaterialPageRoute<void>(
                 settings: settings, builder: (_) => _gate(push));
           }
-          _takeDeepLink(name);
+          // A link code is not a screen: no route (the initial routes fall back to the gate). It is taken elsewhere, once.
           return null;
         },
       ),

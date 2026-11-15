@@ -4,7 +4,7 @@ import 'dart:io';
 
 import 'package:biatec_authenticator/links/link_code.dart';
 import 'package:biatec_authenticator/links/link_services.dart';
-import 'package:biatec_authenticator/links/rp_strings.dart';
+import 'package:biatec_authenticator/text/rp_strings.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _origin = 'https://oidc.biatec.test';

@@ -116,6 +116,30 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('the same link delivered twice (the launch route and a pushed route) opens one link screen', (tester) async {
+    final rig = _Rig();
+    await rig.pump(tester);
+    await rig.deepLink(tester, _uri);
+    await rig.deepLink(tester, _uri);
+    expect(find.byKey(const Key('link-what')), findsOneWidget);
+    expect(rig.server.fetches, 1);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  test('the intake takes a text once and ignores the same text again', () {
+    final intake = LinkIntake();
+    var heard = 0;
+    intake.addListener(() => heard++);
+    intake.offer('a');
+    intake.offer('a');
+    expect(heard, 1);
+    expect(intake.take(), 'a');
+    intake.offer('a');
+    expect(intake.hasPending, isFalse);
+    intake.offer('b');
+    expect(intake.take(), 'b');
+  });
+
   testWidgets('a deep link for another authenticator service is refused on a screen and nothing is fetched',
       (tester) async {
     final rig = _Rig();
@@ -154,6 +178,8 @@ void main() {
     expect(find.byKey(const Key('link-what')), findsNothing);
     expect(find.text('Link a service'), findsNothing);
     expect(rig.server.fetches, 0);
+    // Dropped with feedback, not silently.
+    expect(find.text('This build cannot link services.'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 

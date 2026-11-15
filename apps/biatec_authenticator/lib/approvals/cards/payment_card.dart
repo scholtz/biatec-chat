@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../links/rp_strings.dart';
+import '../../text/rp_strings.dart';
 import '../../theme.dart';
 import '../consent_request.dart';
 import '../widgets/fact_row.dart';

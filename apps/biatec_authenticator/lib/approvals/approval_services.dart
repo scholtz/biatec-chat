@@ -69,6 +69,10 @@ class ApprovalServices {
   final TouchGuard touchGuard;
   final DateTime Function() clock;
 
+  /// Requests the user dismissed because this app cannot show them (an unknown type, a schema failure, text that breaks the rules). Local only, for this run of the app: nothing is sent to Biatec OIDC,
+  /// and the request simply runs out there. They are hidden from the list and not counted in the badge.
+  final Set<String> dismissed = <String>{};
+
   ApprovalController controllerFor(String authReqId) => ApprovalController(
         authReqId: authReqId,
         client: client,

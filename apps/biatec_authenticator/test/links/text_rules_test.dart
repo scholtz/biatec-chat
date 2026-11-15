@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:biatec_authenticator/clients/label_rules.dart';
-import 'package:biatec_authenticator/links/text_rules.dart';
+import 'package:biatec_authenticator/text/text_rules.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 List<Map<String, Object?>> _vectors() => [

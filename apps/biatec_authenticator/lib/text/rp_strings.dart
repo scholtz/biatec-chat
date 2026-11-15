@@ -87,6 +87,12 @@ class RpStrings {
     'tryAgain': 'Try again',
     'expiredTitle': 'This link has expired',
     'expiredBody': 'Nothing was linked. Start again in the service.',
+    'confirmUnproven':
+        'This service has not proven who it is. Press Link and confirm to link it anyway.',
+    'linkingOff': 'This build cannot link services.',
+    'fromService': 'From {who}:',
+    'dismiss': 'Dismiss',
+    'dismissed': 'Dismissed. Nothing was sent.',
   });
 
   static const sk = RpStrings._({
@@ -151,5 +157,11 @@ class RpStrings {
     'tryAgain': 'Skúsiť znova',
     'expiredTitle': 'Toto prepojenie vypršalo',
     'expiredBody': 'Nič sa neprepojilo. Začnite znova v službe.',
+    'confirmUnproven':
+        'Táto služba neoverila, kto je. Stlačte Prepojiť a potvrďte, ak ju chcete aj tak prepojiť.',
+    'linkingOff': 'Táto verzia nemôže prepájať služby.',
+    'fromService': 'Od {who}:',
+    'dismiss': 'Zavrieť',
+    'dismissed': 'Zavreté. Nič sa neodoslalo.',
   });
 }

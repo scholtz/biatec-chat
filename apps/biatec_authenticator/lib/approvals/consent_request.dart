@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
-import '../links/text_rules.dart';
+import '../text/text_rules.dart';
 import 'jcs.dart';
 import 'models/transfer_models.dart';
 
@@ -73,9 +73,6 @@ class ConsentRequest {
         d is RelyingPartyDetail ||
         (d is TransactionDetail && !d.isLegacy);
   }
-
-  /// A payment, login or action request of a relying party, shown in full.
-  bool get isRelyingParty => !client.legacy && detail is RelyingPartyDetail;
 
   bool isExpired(DateTime now) => !expiresAt.isAfter(now);
 

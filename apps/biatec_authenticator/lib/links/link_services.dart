@@ -16,6 +16,9 @@ import 'link_controller.dart';
 class LinkIntake extends ChangeNotifier {
   String? _pending;
 
+  /// The text last offered. A deep link can reach the app twice (as the route it was launched with and as a route pushed after the launch): the same text again is the same link, not a second one.
+  String? _last;
+
   /// Whether a code is waiting.
   bool get hasPending => _pending != null;
 
@@ -28,6 +31,8 @@ class LinkIntake extends ChangeNotifier {
 
   /// Another app (or a route name the platform delivered) opened the app with [raw]. The latest one wins.
   void offer(String raw) {
+    if (raw == _last) return;
+    _last = raw;
     _pending = raw;
     notifyListeners();
   }

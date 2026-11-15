@@ -9,8 +9,8 @@ import '../enrollment/enrollment_store.dart';
 import '../keys/device_key_store.dart';
 import 'link_code.dart';
 import 'link_receipt.dart';
-import 'link_request.dart';
-import 'rp_strings.dart';
+import '../approvals/models/link_request.dart';
+import '../text/rp_strings.dart';
 
 enum LinkPhase {
   /// Fetching the link.
@@ -160,7 +160,11 @@ class LinkController extends ChangeNotifier {
       _set(LinkPhase.ready, error: s.t('enterCode'));
       return;
     }
-    if (shown.domain == null && !confirmedUnproven) return;
+    if (shown.domain == null && !confirmedUnproven) {
+      // Never silent: the screen asks for the second confirmation, and anything else that calls this is told why nothing happened.
+      _set(LinkPhase.ready, error: s.t('confirmUnproven'));
+      return;
+    }
     if (shown.isExpired(now)) {
       _set(LinkPhase.gone);
       return;
@@ -231,19 +235,19 @@ class LinkController extends ChangeNotifier {
     }
   }
 
-  /// Does not link: signs a deny with the presence key (no prompt: refusing is always easy). Carries the code only when one was typed.
-  Future<void> deny(String typed) async {
+  /// Does not link: signs a deny with the presence key (no prompt: refusing is always easy). A deny needs no code (the schema allows an empty one and the server never compares it), and the
+  /// code the user typed, which may be a wrong one, is never put in a statement that says "no": it carries the empty code.
+  Future<void> deny() async {
     final shown = _request;
     if (_phase != LinkPhase.ready || shown == null) return;
     _set(LinkPhase.working);
     try {
       final (token, device) = await _device();
-      final trimmed = typed.trim();
       final body = await signLink(
         keys: keys,
         device: device,
         request: shown,
-        code: _codeFormat.hasMatch(trimmed) ? trimmed : '',
+        code: '',
         decision: LinkDecision.deny,
         clock: () => now,
       );
@@ -255,8 +259,10 @@ class LinkController extends ChangeNotifier {
           _set(LinkPhase.denied);
         case LinkClosed():
           _set(LinkPhase.closed);
-        case LinkDone():
         case LinkWrongCode():
+          // A server that compares the code of a deny: said, not guessed at, and nothing was recorded.
+          _set(LinkPhase.ready, error: RpStrings.of().t('wrongCode'));
+        case LinkDone():
         case LinkRefused():
           _refused(outcome);
       }
