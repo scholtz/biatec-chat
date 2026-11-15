@@ -17,10 +17,13 @@
 //   --client-uri <url> the https URL of the organisation (default a random rp-demo-<n>.example host; its well-known file is served to a mock through the helper)
 //   --user <name>      the scripted phone's user in the mock (default alice)
 //   --manual           do not script the phone: wait for a real one (up to --timeout seconds, default 300)
+//   --domain-published with --manual: you published the well-known file yourself, so the user's statement must name the host registered (else it must say no domain)
+//
+// Plain JavaScript, no build step: runs on Node 20 or newer (the package's `engines`).
 import { pathToFileURL } from "node:url";
 import { randomBytes } from "node:crypto";
 import { clientFingerprint, thumbprint, verifyLinkPinned, verifyReceiptPinned } from "./lib.mjs";
-import { approveLink, approveRequest, generateRpKey, httpJson, parseLinkUri, proveDomain, registerRelyingParty, rpCall, testDevice } from "../mock-oidc/src/test-device.ts";
+import { approveLink, approveRequest, httpJson, parseLinkUri, proveDomain, registerRelyingParty, rpCall, testDevice } from "./rp-client.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -28,7 +31,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * Runs the whole story against `server`. `log(line)` receives every step. Returns `{ ok, decision, subject, authReqId }`; throws on a protocol failure.
  * Options: `clientUri`, `user`, `manual`, `timeoutSeconds`, `pollMs` (override of the announced interval, for tests of a mock with a fast clock), `payment`.
  */
-export async function runDemo({ server, log = console.log, clientUri, user = "alice", manual = false, timeoutSeconds = 300, pollMs, payment } = {}) {
+export async function runDemo({ server, log = console.log, clientUri, user = "alice", manual = false, domainPublished: publishedByYou = false, timeoutSeconds = 300, pollMs, payment } = {}) {
   const step = (n, text) => log(`\n[${n}] ${text}`);
   const base = String(server).replace(/\/+$/, "");
   const deadline = Date.now() + timeoutSeconds * 1000;
@@ -50,6 +53,8 @@ export async function runDemo({ server, log = console.log, clientUri, user = "al
   const { rp, reply } = await registerRelyingParty(base, issuer, { clientUri: clientUri ?? `https://${host}` });
   if (reply.status !== 201) throw new Error(`registration refused: HTTP ${reply.status} ${JSON.stringify(reply.json)}`);
   log(`    client_id ${rp.clientId}   fingerprint ${clientFingerprint(rp.clientId)}   client_uri https://${host}`);
+  // The domain the user must have decided about is the host this demo registered, or none when no well-known file was published: never what the phone's statement says.
+  const domainPublished = scripted || publishedByYou;
   if (scripted) {
     await proveDomain(rp, host);
     log(`    domain proof: served https://${host}/.well-known/biatec-client.json to the mock { "client_ids": ["${rp.clientId}"] }`);
@@ -82,7 +87,7 @@ export async function runDemo({ server, log = console.log, clientUri, user = "al
   }
   if (status.status !== "linked") throw new Error(`the link ended as ${status.status}`);
   // What the user signed, checked with the device keys of this answer only: the signature under the key named by signed.kid.
-  const expectLink = { link_id: created.json.link_id, client_fingerprint: clientFingerprint(rp.clientId), domain: scripted ? host : status.approval.signed.domain, nonce: status.approval.signed.nonce, binding_code: created.json.binding_code };
+  const expectLink = { link_id: created.json.link_id, client_fingerprint: clientFingerprint(rp.clientId), domain: domainPublished ? host : null, nonce: status.approval.signed.nonce, binding_code: created.json.binding_code };
   if (!verifyLinkPinned(status.approval, status.devices, expectLink)) throw new Error("the link statement does not verify");
   const pins = status.devices;
   log(`    linked. subject ${status.subject}; verified the user's signed statement; pinned ${pins.length} device keys:`);
@@ -148,7 +153,8 @@ function parseArgs(argv, env) {
       else if (a === "--client-uri") o.clientUri = v;
       else if (a === "--user") o.user = v;
       else o.timeoutSeconds = Number(v);
-    } else if (a === "--help" || a === "-h") o.help = true;
+    } else if (a === "--domain-published") o.domainPublished = true;
+    else if (a === "--help" || a === "-h") o.help = true;
     else throw new Error("unknown argument " + a);
   }
   return o;
@@ -157,7 +163,7 @@ function parseArgs(argv, env) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const o = parseArgs(process.argv.slice(2), process.env);
-    if (o.help) console.log("usage: node rp-demo.mjs [--server <url>] [--client-uri <https url>] [--user <name>] [--manual] [--timeout <seconds>]");
+    if (o.help) console.log("usage: node rp-demo.mjs [--server <url>] [--client-uri <https url>] [--user <name>] [--manual] [--domain-published] [--timeout <seconds>]");
     else {
       const r = await runDemo(o);
       process.exit(r.decision === "approve" ? 0 : 3);

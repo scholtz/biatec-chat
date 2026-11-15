@@ -4,10 +4,10 @@
 // `mockHelpers` (the device's attestation and keys, and the stand-in for the domain proof) and `deviceKey`; the presence-key cases also `presenceKey`.
 import { describe, it, expect, inject } from "vitest";
 import { createHmac } from "node:crypto";
-import { clientFingerprint, detailsHash, jcs, verifyLink, verifyLinkPinned, verifyReceipt, verifyReceiptPinned } from "../../scripts/lib.mjs";
+import { clientFingerprint, detailsHash, jcs, signEs256, verifyLink, verifyLinkPinned, verifyReceipt, verifyReceiptPinned } from "../../scripts/lib.mjs";
 import { account, approveLink, approveRequest, buildGroup, config, http, httpJson, issuerOf, needs, newRelyingParty, phone, registerRelyingParty, rpCall, schemaProblems, parseLinkUri } from "../src/kit.ts";
 import { usdcTransfer } from "../../mock-oidc/src/build.ts";
-import { clientAssertion, generateRpKey } from "../../mock-oidc/src/test-device.ts";
+import { clientAssertion, generateRpKey } from "../../scripts/rp-client.mjs";
 import type { Need } from "../src/needs.ts";
 
 const base = inject("baseUrl");
@@ -104,6 +104,16 @@ describe("client authentication (RFC 7523)", () => {
     return `${h}.${createHmac("sha256", JSON.stringify(rp.key.publicJwk)).update(h).digest("base64url")}`;
   });
 
+  it("a client_id next to the assertion that is not the assertion's own is 401 (RFC 7523), in a JSON body and in a form", needs(registering, async () => {
+    const { rp } = await newRelyingParty(base);
+    const other = (await newRelyingParty(base)).rp;
+    expect((await rpCall(rp, "POST", "/consent/links", { body: { client_id: rp.clientId } })).status, "its own client_id is fine").toBe(201);
+    const json = await rpCall(rp, "POST", "/consent/links", { body: { client_id: other.clientId } });
+    expect([json.status, json.json?.error]).toEqual([401, "invalid_client"]);
+    const form = await rpCall(rp, "POST", "/token", { form: { grant_type: CIBA, auth_req_id: "ciba_x", client_id: other.clientId } });
+    expect(form.status).toBe(401);
+  }));
+
   it("such a client can never obtain sign, manage-limits or any wallet scope, and the signing endpoint takes nothing of it", needs(registering, async () => {
     const { rp } = await newRelyingParty(base);
     const g = buildGroup([usdcTransfer(config.address, account("conformance payee"), 5000)]);
@@ -174,6 +184,21 @@ describe("linking (spec 14.3)", () => {
     expect(["expired", "denied"]).toContain((await rpCall(rp, "GET", `/consent/links/${c.link_id}`)).json.status);
   }));
 
+  it("the link statement needs the link secret like the fetch: missing or wrong is 404", needs(playing, async () => {
+    const dev = await phone(base);
+    const { rp } = await newRelyingParty(base, { prove: true });
+    const c = (await rpCall(rp, "POST", "/consent/links", { body: {} })).json;
+    const { id, secret } = parseLinkUri(c.link_uri);
+    const lr = (await httpJson(base, "GET", `/consent/links/${id}`, { headers: { Authorization: dev.auth, "X-Link-Secret": secret } })).json;
+    const signed = { type: "biatec_link", link_id: id, client_fingerprint: lr.client.fingerprint, domain: lr.client.domain ?? null, decision: "approve", binding_code: c.binding_code, nonce: lr.nonce, issued_at: nowS(), kid: dev.kid };
+    const body = { signed, signature: signEs256(config.devicePrivateJwk!, Buffer.from(jcs(signed), "utf8")) };
+    const post = (h: Record<string, string>) => httpJson(base, "POST", `/consent/links/${id}/receipt`, { headers: { Authorization: dev.auth, ...h }, body });
+    expect((await post({})).status, "no secret").toBe(404);
+    expect((await post({ "X-Link-Secret": "A".repeat(43) })).status, "wrong secret").toBe(404);
+    expect((await rpCall(rp, "GET", `/consent/links/${id}`)).json.status, "nothing linked yet").toBe("pending");
+    expect((await post({ "X-Link-Secret": secret })).status).toBe(200);
+  }));
+
   it("a presence key never approves a link (it may deny)", needs([...playing, "presenceKey"], async () => {
     const dev = await phone(base);
     const { rp } = await newRelyingParty(base, { prove: true });
@@ -238,6 +263,8 @@ describe("requests (spec 14.4, 14.5)", () => {
       expect(receipt.signed.details_hash).toBe(detailsHash({ ...details, origin: ORIGIN }));
       const opts = { auth_req_id: o.json.auth_req_id, sub: p.subject, clientFingerprint: clientFingerprint(p.rp.clientId), bindingCode: o.json.binding_code, decision: "approve" as const, origin: ORIGIN };
       expect(verifyReceiptPinned(receipt, p.pins, details, opts), "pinned verification").toBe(true);
+      expect(verifyReceiptPinned(receipt, p.pins, details, { ...opts, origin: undefined as never }), "the origin is explicit: absent is refused").toBe(false);
+      expect(verifyReceiptPinned(receipt, p.pins, details, { ...opts, origin: null }), "none expected but one signed").toBe(false);
       const jwks = (await http(base, "GET", "/.well-known/jwks.json")).json;
       expect(verifyReceipt(receipt, jwks, { issuer: await issuerOf(base) }), "attestation mode").toBe(true);
       // the same receipt at the party's retrieval paths (the existing one and the one of issue 38)
@@ -291,8 +318,8 @@ describe("requests (spec 14.4, 14.5)", () => {
     const deny = await approveRequest(base, p.dev, o.auth_req_id, { code: "", decision: "deny" });
     expect(deny.posted?.status, JSON.stringify(deny.posted?.json)).toBe(200);
     const r = (await rpCall(p.rp, "GET", `/consent/receipts/${o.auth_req_id}`)).json;
-    expect(verifyReceiptPinned(r, p.pins, PAYMENT, { decision: "deny" })).toBe(true);
-    expect(verifyReceiptPinned(r, p.pins, PAYMENT, { decision: "approve" })).toBe(false);
+    expect(verifyReceiptPinned(r, p.pins, PAYMENT, { origin: null, decision: "deny" })).toBe(true);
+    expect(verifyReceiptPinned(r, p.pins, PAYMENT, { origin: null, decision: "approve" })).toBe(false);
     expect((await redeem(p, o.auth_req_id)).json.error).toBe("access_denied");
     const o2 = (await open(p, LOGIN)).json;
     const wrong = (code: string) => approveRequest(base, p.dev, o2.auth_req_id, { code });

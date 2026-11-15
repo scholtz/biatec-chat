@@ -36,7 +36,7 @@ declare module "*/scripts/lib.mjs" {
     receipt: any,
     pinned: Pin | Pin[],
     expectedDetails: object,
-    opts?: { now?: number; origin?: string | null; decision?: "approve" | "deny" | "code_failed"; auth_req_id?: string; sub?: string; clientFingerprint?: string; bindingCode?: string; consumed?: Set<string>; checkExpiry?: boolean },
+    opts: { now?: number; origin: string | null; decision?: "approve" | "deny" | "code_failed"; auth_req_id?: string; sub?: string; clientFingerprint?: string; bindingCode?: string; consumed?: Set<string>; checkExpiry?: boolean },
   ): boolean;
   export function verifyLink(
     envelope: any,
@@ -73,4 +73,25 @@ declare module "*/scripts/lib.mjs" {
   export const KEY_USES: readonly ["approve", "presence"];
   export function attestationClaims(attestation: string, jwks: { keys: any[] }, opts: VerifyOptions): Record<string, any> | null;
   export const ENROLL_PROOF_TYP: string;
+}
+
+// The relying-party and phone helpers shared by the demo, the tests and the conformance kit (scripts/rp-client.mjs, plain JavaScript).
+declare module "*/scripts/rp-client.mjs" {
+  export const vectorKeys: Record<string, Record<string, string>>;
+  export const CLIENT_ASSERTION_TYPE: string;
+  export interface RpKey { alg: "ES256" | "PS256"; kid: string; privateJwk: Record<string, string>; publicJwk: Record<string, string> }
+  export interface AssertionOptions { exp?: number; iat?: number; jti?: string; iss?: string; sub?: string; aud?: string | string[]; alg?: "ES256" | "PS256"; kid?: string | null; now?: number }
+  export interface Reply { status: number; headers: Headers; json: any }
+  export interface RelyingParty { base: string; issuer: string; clientId: string; key: RpKey; clock?: () => number }
+  export interface TestDevice { auth: string; kid: string; publicKey: Record<string, string>; attestation: string; presence: { kid: string; public_key: Record<string, string>; attestation: string }; approvalKey?: Record<string, string>; presenceKey?: Record<string, string> }
+  export function generateRpKey(alg?: "ES256" | "PS256", kid?: string): RpKey;
+  export function clientAssertion(key: RpKey, clientId: string, audience: string, o?: AssertionOptions): string;
+  export function httpJson(base: string, method: string, path: string, opts?: { headers?: Record<string, string>; body?: unknown; form?: Record<string, string> }): Promise<Reply>;
+  export function rpCall(rp: RelyingParty, method: string, path: string, opts?: { body?: Record<string, unknown>; form?: Record<string, string>; assertion?: string; assertionOptions?: AssertionOptions }): Promise<Reply>;
+  export function registerRelyingParty(base: string, issuer: string, o?: { clientUri?: string; alg?: "ES256" | "PS256"; extra?: Record<string, unknown> }): Promise<{ rp: RelyingParty; reply: Reply }>;
+  export function proveDomain(rp: RelyingParty, host: string): Promise<Reply>;
+  export function testDevice(base: string, user?: string, o?: { kid?: string; token?: string; approvalKey?: Record<string, string>; presenceKey?: Record<string, string> }): Promise<TestDevice>;
+  export function parseLinkUri(uri: string): { iss: string; id: string; secret: string };
+  export function approveLink(base: string, dev: TestDevice, linkUri: string, a: { code: string; decision?: "approve" | "deny"; presence?: boolean; change?: Record<string, unknown>; now?: number }): Promise<{ linkRequest: Reply; posted: Reply | undefined; signed?: Record<string, any> }>;
+  export function approveRequest(base: string, dev: TestDevice, authReqId: string, a: { code: string; decision?: "approve" | "deny"; presence?: boolean; change?: Record<string, unknown>; now?: number }): Promise<{ fetched: Reply; receipt?: any; posted: Reply | undefined }>;
 }

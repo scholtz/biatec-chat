@@ -325,7 +325,7 @@ export const lazy = <T>(fn: () => Promise<T>) => {
 // ---------------------------------------------------------------------------------------------------------------
 // Relying parties (protocol 1.2, spec chapter 14): a party and its phone, played by the kit
 
-import { approveLink, approveRequest, httpJson, parseLinkUri, proveDomain, registerRelyingParty, rpCall, testDevice, type RelyingParty, type TestDevice } from "../../mock-oidc/src/test-device.ts";
+import { approveLink, approveRequest, httpJson, parseLinkUri, proveDomain, registerRelyingParty, rpCall, testDevice, type RelyingParty, type TestDevice } from "../../scripts/rp-client.mjs";
 export { approveLink, approveRequest, httpJson, parseLinkUri, proveDomain, registerRelyingParty, rpCall, testDevice };
 export type { RelyingParty, TestDevice };
 

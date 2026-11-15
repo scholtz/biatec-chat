@@ -38,12 +38,61 @@ public partial class ConsentProtocolVectorTests
         return runes.All(r => Rune.GetUnicodeCategory(r) is not (UnicodeCategory.Control or UnicodeCategory.Format or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator));
     }
 
+    /// <summary>The canonical origin of spec sections 3.6 and 6 (the pattern of the request and details schemas): http or https, a lower-case host of well-formed labels, an optional port 1 to 65535 that is not the scheme's default.</summary>
+    private static readonly Regex OriginPattern = new(
+        @"^(?!https://[^/]*:443$)(?!http://[^/]*:80$)https?://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$",
+        RegexOptions.CultureInvariant);
+
+    private static bool OriginValid(string origin) => origin.Length <= 253 && OriginPattern.IsMatch(origin);
+
+    private static bool IsMark(Rune r) => Rune.GetUnicodeCategory(r) is UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.EnclosingMark;
+
+    /// <summary>Filler and invisible characters outside the general categories refused (spec section 15, rule 7): soft hyphen, combining grapheme joiner, Hangul and other fillers, invisible operators, variation selectors, musical invisibles, tags.</summary>
+    private static bool IsInvisible(int c) =>
+        c is 0x00AD or 0x034F or 0x115F or 0x1160 or 0x17B4 or 0x17B5 or 0x2800 or 0x3164 or 0xFFA0
+        || (c >= 0x180B && c <= 0x180E) || (c >= 0x2061 && c <= 0x2065) || (c >= 0x206A && c <= 0x206F) || (c >= 0xFE00 && c <= 0xFE0F) || (c >= 0xFFF9 && c <= 0xFFFC)
+        || (c >= 0x1D173 && c <= 0x1D17A) || (c >= 0xE0000 && c <= 0xE007F) || (c >= 0xE0100 && c <= 0xE01EF);
+
+    /// <summary>
+    /// The relying-party text profile in full (spec chapter 15, <c>isRelyingPartyText</c>): NFC, well-formed UTF-16, 1..max code points, no padding and not blank, no control, format
+    /// (bidirectional controls, zero-width characters and joiners, the emoji selector), private-use, line or paragraph separator characters, no white space but a plain space and no run of
+    /// spaces, no filler or invisible characters, no combining mark without a base character (at the start or after a space) and no stack of more than three marks.
+    /// </summary>
+    private static bool RelyingPartyTextAccepted(string text, int max)
+    {
+        if (text.Length == 0) return false;
+        var runes = new List<Rune>();
+        for (var i = 0; i < text.Length;)
+        {
+            if (Rune.DecodeFromUtf16(text.AsSpan(i), out var r, out var used) != System.Buffers.OperationStatus.Done) return false; // a lone surrogate
+            runes.Add(r);
+            i += used;
+        }
+        if (!text.IsNormalized(NormalizationForm.FormC) || text.Trim() != text || text.Trim().Length == 0 || text.Contains("  ")) return false;
+        if (runes.Count > max) return false;
+        var marks = 0;
+        for (var i = 0; i < runes.Count; i++)
+        {
+            var r = runes[i];
+            var cat = Rune.GetUnicodeCategory(r);
+            if (cat is UnicodeCategory.Control or UnicodeCategory.Format or UnicodeCategory.PrivateUse or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator) return false;
+            if (Rune.IsWhiteSpace(r) && r.Value != ' ') return false;
+            if (IsInvisible(r.Value)) return false;
+            if (IsMark(r))
+            {
+                if (i == 0 || runes[i - 1].Value == ' ' || ++marks > 3) return false;
+            }
+            else marks = 0;
+        }
+        return true;
+    }
+
     private static bool DetailsWellFormed(JsonNode d)
     {
         var o = d.AsObject();
         var type = (string)o["type"]!;
-        bool Text(JsonNode? n, int max) => n is JsonValue v && v.TryGetValue<string>(out var s) && CoreTextAccepted(s, max);
-        if (o.ContainsKey("origin") && !Regex.IsMatch((string)o["origin"]!, "^https://[a-z0-9.-]+$")) return false;
+        bool Text(JsonNode? n, int max) => n is JsonValue v && v.TryGetValue<string>(out var s) && RelyingPartyTextAccepted(s, max);
+        if (o.ContainsKey("origin") && !(o["origin"] is JsonValue ov && ov.TryGetValue<string>(out var originText) && OriginValid(originText))) return false;
         switch (type)
         {
             case "biatec_payment":
@@ -267,5 +316,28 @@ public partial class ConsentProtocolVectorTests
         Assert.Contains(vectors, v => !(bool)v!["core"]! && !(bool)v["accepted"]! && CoreTextAccepted((string)v["text"]!, (int)v["max"]!));
         Assert.Equal(12, vectors.Count(v => (string)v!["reason"]! == "bidirectional_control" && (string)v["profile"]! == "relying_party"));
         Assert.Equal(5, vectors.Count(v => (string)v!["reason"]! == "zero_width" && (string)v["profile"]! == "relying_party"));
+    }
+
+    [Fact]
+    public void TextRuleVectors_RelyingPartyProfileIsDecidedInFull()
+    {
+        var vectors = Load("text-rules.json")["vectors"]!.AsArray().Where(v => (string)v!["profile"]! == "relying_party").ToList();
+        Assert.True(vectors.Count >= 40);
+        foreach (var v in vectors)
+            Assert.True((bool)v!["accepted"]! == RelyingPartyTextAccepted((string)v["text"]!, (int)v["max"]!), "relying-party text " + (string)v["name"]!);
+        // the strings the core rules alone let through (joiners are Cf and so refused by the core too; the rest is the strict set)
+        foreach (var text in new[] { "a  b", "a\u00ADb", "a\u034Fb", "e\u0301\u0301\u0301\u0301", " pad", "pad ", "\u0301a", "a \u0301", "a\u200Db", "a\u200Cb", "a\uFE0Fb", "a\uE000b", "a\u00A0b", "a\u3000b", "a\u2800b", "a\U000E0041b", "a\uD800b", "   " })
+            Assert.False(RelyingPartyTextAccepted(text, 80), System.Text.Json.JsonSerializer.Serialize(text));
+        Assert.True(RelyingPartyTextAccepted("Zo\u00eb M\u00fcller", 80));
+        Assert.True(RelyingPartyTextAccepted("e\u0301".Normalize(NormalizationForm.FormC), 80));
+    }
+
+    [Fact]
+    public void OriginPattern_IsTheSpecsCanonicalOrigin()
+    {
+        foreach (var ok in new[] { "https://netbanking.bank.example", "http://localhost", "http://bank.example:8080", "https://bank.example:8443", "https://a-b.example", "http://bank.example:443", "https://bank.example:80" })
+            Assert.True(OriginValid(ok), ok);
+        foreach (var bad in new[] { "https://bank.example:443", "http://bank.example:80", "https://Bank.example", "https://bank.example/", "https://bank.example/path", "https://bank.example:0", "https://bank.example:65536", "https://bank.example:08080", "ftp://bank.example", "https://-bank.example", "https://bank..example", "https://bank.example?x=1", "https://user@bank.example", "https://" + new string('a', 64) + ".example" })
+            Assert.False(OriginValid(bad), bad);
     }
 }

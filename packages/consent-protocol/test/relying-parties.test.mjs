@@ -271,7 +271,9 @@ test("verifyReceiptPinned: origin, decision, ids, fingerprint, code, expiry and 
   const run = (extra, receipt = v.receipt) => verifyReceiptPinned(receipt, pins, v.sent_details, pinnedOpts(v, extra));
   assert.equal(run({ origin: "https://evil.example" }), false);
   assert.equal(run({ origin: null }), false, "an origin was signed but none expected");
-  assert.equal(run({ origin: undefined }), true, "no expectation about the origin");
+  assert.equal(run({ origin: undefined }), false, "the origin is explicit: absent is refused");
+  assert.equal(run({ origin: 5 }), false, "a string or null");
+  assert.equal(verifyReceiptPinned(v.receipt, pins, v.sent_details, { now: file.now }), false, "no opts.origin at all");
   assert.equal(run({ decision: "approve" }), true);
   assert.equal(run({ decision: "deny" }), false);
   assert.equal(run({ auth_req_id: "ciba_other" }), false);
@@ -287,8 +289,15 @@ test("verifyReceiptPinned: origin, decision, ids, fingerprint, code, expiry and 
   const d = byName("payment-deny");
   assert.equal(verifyReceiptPinned(d.receipt, pins, d.sent_details, pinnedOpts(d, { now: d.receipt.signed.expiry + 1000 })), true);
   // the tag of the sent object: with its own origin it must be the signed one
-  assert.equal(verifyReceiptPinned(v.receipt, pins, { ...v.sent_details, origin: v.server_origin }, { now: file.now }), true);
-  assert.equal(verifyReceiptPinned(v.receipt, pins, { ...v.sent_details, origin: "https://evil.example" }, { now: file.now }), false);
+  assert.equal(verifyReceiptPinned(v.receipt, pins, { ...v.sent_details, origin: v.server_origin }, { now: file.now, origin: v.server_origin }), true);
+  assert.equal(verifyReceiptPinned(v.receipt, pins, { ...v.sent_details, origin: "https://evil.example" }, { now: file.now, origin: v.server_origin }), false, "expectedDetails.origin conflicts with opts.origin");
+  assert.equal(verifyReceiptPinned(v.receipt, pins, { ...v.sent_details, origin: v.server_origin }, { now: file.now, origin: null }), false);
+  // a receipt signed without an origin needs origin null, and a string is refused
+  const nv = vectors.find((x) => x.server_origin === null && x.expected.accepted && x.receipt.signed.decision === "approve");
+  if (nv) {
+    assert.equal(verifyReceiptPinned(nv.receipt, pins, nv.sent_details, pinnedOpts(nv, { now: nv.receipt.signed.expiry - 1 })), true);
+    assert.equal(verifyReceiptPinned(nv.receipt, pins, nv.sent_details, pinnedOpts(nv, { origin: "https://netbanking.bank.example", now: nv.receipt.signed.expiry - 1 })), false);
+  }
 });
 
 test("verifyReceiptPinned: pins decide, the receipt's own device block does not", () => {

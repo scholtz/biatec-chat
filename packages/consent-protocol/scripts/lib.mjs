@@ -628,12 +628,13 @@ function normalizePins(pinned) {
  *  1. The signed object is exactly the nine members of a 1.2 receipt, one relying-party detail object that satisfies the schemas and the text
  *     rules (`isValidRelyingPartyDetails`), `binding_message` empty, `decision` and `binding_code` of the right shape.
  *  2. `details_hash` equals `detailsHash(authorization_details[0])` (computed here, never copied).
- *  3. The signed details are exactly `expectedDetails`, the object the party sent, apart from `origin` (the server adds it). When `expectedDetails`
- *     has an `origin`, or `opts.origin` is a string, the signed origin must equal it; `opts.origin === null` requires none.
+ *  3. The signed details are exactly `expectedDetails`, the object the party sent, apart from `origin` (the server adds it). The origin is EXPLICIT:
+ *     `opts.origin` is required, a string (the origin the party reported, which the signed one must equal) or `null` (the party reported none: the signed
+ *     details must have none). An absent `opts.origin` is refused, and so is an `expectedDetails.origin` that differs from it.
  *  4. The signature over JCS(signed) verifies under a pinned key (the receipt's own `device` block is not consulted). `pinned` is one pin or an
  *     array of pins; a pin is `{ key_use: "approve" | "presence", jwk }`, or a bare JWK meaning an approval key. An `approve` is accepted only
  *     under a pin whose `key_use` is "approve" (rule 8: a presence key never approves); `deny` and `code_failed` accept either.
- * Optional `opts` (each checked only when given): `decision` ("approve" | "deny" | "code_failed"), `auth_req_id`, `sub`, `clientFingerprint`,
+ * Other `opts` (each checked only when given): `decision` ("approve" | "deny" | "code_failed"), `auth_req_id`, `sub`, `clientFingerprint`,
  * `bindingCode` (an approval must carry it, compared in constant time), `consumed` (a Set of spent auth_req_id values: replay refused).
  * An approval must not be expired at `opts.now` (default: the current time) unless `opts.checkExpiry === false` (re-verifying an archived receipt).
  * The caller still reads `receipt.signed.decision`: a true result for a `deny` means the user denied, authentically.
@@ -649,8 +650,10 @@ export function verifyReceiptPinned(receipt, pinned, expectedDetails, opts = {})
     const { origin: signedOrigin, ...signedRest } = s.authorization_details[0];
     const { origin: expectedOrigin, ...expectedRest } = expectedDetails;
     if (jcs(signedRest) !== jcs(expectedRest)) return false; // step 3
-    const wantOrigin = "origin" in expectedDetails ? expectedOrigin : opts.origin;
-    if (wantOrigin !== undefined && signedOrigin !== (wantOrigin === null ? undefined : wantOrigin)) return false;
+    if (opts.origin !== null && typeof opts.origin !== "string") return false; // explicit: a string, or null for "none expected"
+    const wantOrigin = opts.origin === null ? undefined : opts.origin;
+    if ("origin" in expectedDetails && expectedOrigin !== wantOrigin) return false;
+    if (signedOrigin !== wantOrigin) return false;
     if (opts.decision !== undefined && s.decision !== opts.decision) return false;
     if (opts.auth_req_id !== undefined && s.auth_req_id !== opts.auth_req_id) return false;
     if (opts.sub !== undefined && s.sub !== opts.sub) return false;

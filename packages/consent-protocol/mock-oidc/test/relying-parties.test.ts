@@ -8,10 +8,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import Ajv2020Module from "ajv/dist/2020.js";
-import { clientFingerprint, detailsHash, signEs256, verifyApproval, verifyLink, verifyLinkPinned, verifyReceipt, verifyReceiptPinned } from "../../scripts/lib.mjs";
+import { clientFingerprint, detailsHash, jcs, signEs256, verifyApproval, verifyLink, verifyLinkPinned, verifyReceipt, verifyReceiptPinned } from "../../scripts/lib.mjs";
 import { createMockOidc } from "../src/app.ts";
 import { account, buildGroup, usdcTransfer } from "../src/build.ts";
-import { approveLink, approveRequest, clientAssertion, generateRpKey, httpJson, proveDomain, registerRelyingParty, rpCall, testDevice, vectorKeys, type RelyingParty, type TestDevice } from "../src/test-device.ts";
+import { approveLink, approveRequest, clientAssertion, parseLinkUri, generateRpKey, httpJson, proveDomain, registerRelyingParty, rpCall, testDevice, vectorKeys, type RelyingParty, type TestDevice } from "../src/test-device.ts";
 
 const Ajv2020 = Ajv2020Module as unknown as typeof Ajv2020Module.default;
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -562,8 +562,8 @@ test("request: the device approves with the approval key only; a presence-key ap
   assert.equal(deny.posted!.status, 200, JSON.stringify(deny.posted!.json));
   const r = (await rpCall(l.rp, "GET", `/consent/receipts/${o.auth_req_id}`)).json;
   assert.equal(r.signed.decision, "deny");
-  assert.equal(verifyReceiptPinned(r, l.pins, PAYMENT, { decision: "deny", now: now() }), true, "a deny is authentic with either key");
-  assert.equal(verifyReceiptPinned(r, l.pins, PAYMENT, { decision: "approve", now: now() }), false);
+  assert.equal(verifyReceiptPinned(r, l.pins, PAYMENT, { origin: null, decision: "deny", now: now() }), true, "a deny is authentic with either key");
+  assert.equal(verifyReceiptPinned(r, l.pins, PAYMENT, { origin: null, decision: "approve", now: now() }), false);
   const t = await tokenOf(l, o.auth_req_id);
   assert.deepEqual([t.status, t.json.error], [400, "access_denied"]);
 });
@@ -717,8 +717,8 @@ test("a new device: its key shows up in the devices list, and pinned verificatio
   const receipt = { version: "1.2", signed, alg: "ES256", signature: sig, issued_at: now(), device: { kid: newDev.kid, key_use: "approve", public_key: newDev.publicKey, attestation: newDev.attestation } };
   assert.equal((await httpJson(base, "POST", `/consent/requests/${o.auth_req_id}/receipt`, { headers: { Authorization: newDev.auth }, body: receipt })).status, 200);
   const stored = (await rpCall(l.rp, "GET", `/consent/receipts/${o.auth_req_id}`)).json;
-  assert.equal(verifyReceiptPinned(stored, l.pins, PAYMENT, { now: now() }), false, "the old pins do not know this key");
-  assert.equal(verifyReceiptPinned(stored, after.json.devices, PAYMENT, { now: now() }), true, "after the party accepted the keys of the list");
+  assert.equal(verifyReceiptPinned(stored, l.pins, PAYMENT, { origin: null, now: now() }), false, "the old pins do not know this key");
+  assert.equal(verifyReceiptPinned(stored, after.json.devices, PAYMENT, { origin: null, now: now() }), true, "after the party accepted the keys of the list");
   assert.equal(verifyReceipt(stored, mock.jwks, { issuer: mock.issuer, now: now() }), true, "attestation mode accepts it");
 });
 
@@ -764,3 +764,29 @@ test("a key pair of the relying party is never sent: the answers hold no private
 });
 
 void clientFingerprint;
+
+test("link: POST .../receipt needs X-Link-Secret like the fetch (missing or wrong is 404)", async () => {
+  const dev = await testDevice(base, "alice");
+  const { rp } = await newRp();
+  const c = (await rpCall(rp, "POST", "/consent/links", { body: {} })).json;
+  const { id, secret } = parseLinkUri(c.link_uri);
+  const lr = (await httpJson(base, "GET", `/consent/links/${id}`, { headers: { Authorization: dev.auth, "X-Link-Secret": secret } })).json;
+  const signed = { type: "biatec_link", link_id: id, client_fingerprint: lr.client.fingerprint, domain: lr.client.domain ?? null, decision: "approve", binding_code: c.binding_code, nonce: lr.nonce, issued_at: now(), kid: dev.kid };
+  const body = { signed, signature: signEs256(vectorKeys.device, Buffer.from(jcs(signed), "utf8")) };
+  const post = (h: Record<string, string>) => httpJson(base, "POST", `/consent/links/${id}/receipt`, { headers: { Authorization: dev.auth, ...h }, body });
+  assert.equal((await post({})).status, 404, "no secret");
+  assert.equal((await post({ "X-Link-Secret": "A".repeat(43) })).status, 404, "wrong secret");
+  assert.equal((await rpCall(rp, "GET", `/consent/links/${id}`)).json.status, "pending");
+  assert.equal((await post({ "X-Link-Secret": secret })).status, 200);
+});
+
+test("client assertion: a client_id next to the assertion must be the assertion's own (RFC 7523), else 401", async () => {
+  const { rp } = await newRp();
+  const other = (await newRp()).rp;
+  const ok = await rpCall(rp, "POST", "/consent/links", { body: { client_id: rp.clientId } });
+  assert.equal(ok.status, 201);
+  const conflict = await rpCall(rp, "POST", "/consent/links", { body: { client_id: other.clientId } });
+  assert.deepEqual([conflict.status, conflict.json.error], [401, "invalid_client"]);
+  const form = await rpCall(rp, "POST", "/token", { form: { grant_type: "urn:openid:params:grant-type:ciba", auth_req_id: "x", client_id: other.clientId } });
+  assert.equal(form.status, 401);
+});
