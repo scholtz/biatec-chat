@@ -34,6 +34,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export async function runDemo({ server, log = console.log, clientUri, user = "alice", manual = false, domainPublished: publishedByYou = false, afterOpen, timeoutSeconds = 300, pollMs, payment } = {}) {
   const step = (n, text) => log(`\n[${n}] ${text}`);
   const base = String(server).replace(/\/+$/, "");
+  if (!(typeof timeoutSeconds === "number" && Number.isFinite(timeoutSeconds) && timeoutSeconds > 0)) throw new Error("timeout must be a positive number of seconds");
   const deadline = Date.now() + timeoutSeconds * 1000;
   const wait = (seconds) => sleep(pollMs ?? seconds * 1000);
 
@@ -87,7 +88,8 @@ export async function runDemo({ server, log = console.log, clientUri, user = "al
   }
   if (status.status !== "linked") throw new Error(`the link ended as ${status.status}`);
   // What the user signed, checked with the device keys of this answer only: the signature under the key named by signed.kid.
-  const expectLink = { link_id: created.json.link_id, client_fingerprint: clientFingerprint(rp.clientId), domain: domainPublished ? host : null, nonce: status.approval.signed.nonce, binding_code: created.json.binding_code };
+  const expectLink = { link_id: created.json.link_id, client_fingerprint: clientFingerprint(rp.clientId), domain: domainPublished ? host : null, nonce: status.approval.signed.nonce, // the nonce is the server's value, read from the statement: it is NOT an independent expectation (the party never sees the link request); what binds are the link id, the fingerprint, the domain and the code the party displayed
+     binding_code: created.json.binding_code };
   const linksActedOn = new Set(); // the link ids this party already acted on (it records the id after the check, before it relies on the link)
   if (!verifyLinkPinned({ signed: status.approval.signed, signature: status.approval.signature, alg: "ES256" }, status.devices, expectLink, { consumed: linksActedOn })) throw new Error("the link statement does not verify");
   linksActedOn.add(created.json.link_id);
@@ -164,7 +166,7 @@ function parseArgs(argv, env) {
       if (a === "--server") o.server = v;
       else if (a === "--client-uri") o.clientUri = v;
       else if (a === "--user") o.user = v;
-      else o.timeoutSeconds = Number(v);
+      else o.timeoutSeconds = Number(v); // validated by runDemo: a positive, finite number
     } else if (a === "--domain-published") o.domainPublished = true;
     else if (a === "--help" || a === "-h") o.help = true;
     else throw new Error("unknown argument " + a);

@@ -21,7 +21,7 @@ public partial class ConsentProtocolVectorTests
     /// <summary>The mod-97-10 check of an IBAN in electronic form (spec section 3.3).</summary>
     private static bool IbanValid(string iban)
     {
-        if (!Regex.IsMatch(iban, "^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$")) return false;
+        if (!Regex.IsMatch(iban, @"^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}\z")) return false;
         var rearranged = iban[4..] + iban[..4];
         var rem = 0;
         foreach (var ch in rearranged)
@@ -40,7 +40,7 @@ public partial class ConsentProtocolVectorTests
 
     /// <summary>The canonical origin of spec sections 3.6 and 6 (the pattern of the request and details schemas): http or https, a lower-case host of well-formed labels, an optional port 1 to 65535 that is not the scheme's default.</summary>
     private static readonly Regex OriginPattern = new(
-        @"^(?!https://[^/]*:443$)(?!http://[^/]*:80$)https?://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$",
+        @"^(?!https://[^/]*:443\z)(?!http://[^/]*:80\z)https?://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?\z",
         RegexOptions.CultureInvariant);
 
     private static bool OriginValid(string origin) => origin.Length <= 253 && OriginPattern.IsMatch(origin);
@@ -105,7 +105,7 @@ public partial class ConsentProtocolVectorTests
                 if (!Closed(o, new[] { "type", "instructed_amount", "creditor_name", "creditor_account" }, new[] { "remittance", "execution_date", "origin" })) return false;
                 var amount = o["instructed_amount"];
                 if (!Closed(amount, new[] { "amount", "currency" }, Array.Empty<string>()) || Str(amount!["amount"]) is not { } value || Str(amount["currency"]) is not { } currency) return false;
-                if (!Regex.IsMatch(value, @"^(0|[1-9][0-9]{0,14})(\.[0-9]{1,2})?$") || !Regex.IsMatch(value, "[1-9]") || !Regex.IsMatch(currency, "^[A-Z]{3}$") || !Text(o["creditor_name"], 70)) return false;
+                if (!Regex.IsMatch(value, @"^(0|[1-9][0-9]{0,14})(\.[0-9]{1,2})?\z") || !Regex.IsMatch(value, "[1-9]") || !Regex.IsMatch(currency, @"^[A-Z]{3}\z") || !Text(o["creditor_name"], 70)) return false;
                 var account = o["creditor_account"];
                 if (Closed(account, new[] { "iban" }, Array.Empty<string>())) { if (Str(account!["iban"]) is not { } iban || !IbanValid(iban)) return false; }
                 else if (!Closed(account, new[] { "identification", "scheme" }, Array.Empty<string>()) || !Text(account!["identification"], 34) || !Text(account["scheme"], 20)) return false;
@@ -353,7 +353,7 @@ public partial class ConsentProtocolVectorTests
     {
         foreach (var ok in new[] { "https://netbanking.bank.example", "http://localhost", "http://bank.example:8080", "https://bank.example:8443", "https://a-b.example", "http://bank.example:443", "https://bank.example:80" })
             Assert.True(OriginValid(ok), ok);
-        foreach (var bad in new[] { "https://bank.example:443", "http://bank.example:80", "https://Bank.example", "https://bank.example/", "https://bank.example/path", "https://bank.example:0", "https://bank.example:65536", "https://bank.example:08080", "ftp://bank.example", "https://-bank.example", "https://bank..example", "https://bank.example?x=1", "https://user@bank.example", "https://" + new string('a', 64) + ".example" })
+        foreach (var bad in new[] { "https://bank.example:443", "http://bank.example:80", "https://Bank.example", "https://bank.example/", "https://bank.example/path", "https://bank.example:0", "https://bank.example:65536", "https://bank.example:08080", "ftp://bank.example", "https://-bank.example", "https://bank..example", "https://bank.example?x=1", "https://user@bank.example", "https://" + new string('a', 64) + ".example", "https://bank.example\n", "http://bank.example:8080\n" })
             Assert.False(OriginValid(bad), bad);
     }
 
@@ -388,4 +388,27 @@ public partial class ConsentProtocolVectorTests
         Assert.False(DetailsWellFormed(JsonNode.Parse("{\"type\":\"biatec_transfer\"}")!));
         Assert.False(DetailsWellFormed(JsonNode.Parse("[]")!));
     }
+
+    [Fact]
+    public void Patterns_AreAnchoredAtTheEndOfTheString_NotBeforeATrailingNewline()
+    {
+        Assert.True(IbanValid("DE89370400440532013000"));
+        Assert.False(IbanValid("DE89370400440532013000\n"));
+        Assert.False(OriginValid("https://bank.example\n"));
+        var amount = Sent("biatec_payment");
+        foreach (var (member, value) in new[] { ("amount", "1250.00\n"), ("currency", "EUR\n") })
+        {
+            var d = JsonNode.Parse(amount.ToJsonString())!.AsObject();
+            d["instructed_amount"]![member] = value;
+            Assert.False(DetailsWellFormed(d), member);
+        }
+        var iban = JsonNode.Parse(amount.ToJsonString())!.AsObject();
+        iban["creditor_account"] = new JsonObject { ["iban"] = "DE89370400440532013000\n" };
+        Assert.False(DetailsWellFormed(iban));
+        var origin = JsonNode.Parse(amount.ToJsonString())!.AsObject();
+        origin["origin"] = "https://netbanking.bank.example\n";
+        Assert.False(DetailsWellFormed(origin));
+    }
+
+    private static JsonNode Sent(string type) => JsonNode.Parse(Load("receipts-1.2.json")["vectors"]!.AsArray().First(v => (string)v!["sent_details"]!["type"]! == type)!["sent_details"]!.ToJsonString())!;
 }

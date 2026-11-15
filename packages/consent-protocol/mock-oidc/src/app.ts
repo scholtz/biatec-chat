@@ -333,8 +333,10 @@ export function createMockOidc(options: MockOptions = {}) {
   /** The pairwise subject of an account for a client (stable: the same account through the same client always gets the same one). */
   const pairwiseSubject = (clientId: string, account: string) => "pw_" + createHash("sha256").update("biatec-mock-pairwise:" + clientId + ":" + account, "utf8").digest("hex").slice(0, 16);
   /** A relying party is proven only while the well-known file of the host of its `client_uri` lists its client id (the real server re-checks daily; the mock reads it on every use). */
+  let requestEpoch = 0; // incremented for every request: syncProof reads a relying party's well-known file at most once in each
   function syncProof(c: SeedClient): SeedClient {
-    if (!c.rp) return c;
+    if (!c.rp || c.rp.checkedEpoch === requestEpoch) return c; // the proof is read once per request
+    c.rp.checkedEpoch = requestEpoch;
     let f: any = null;
     try { f = fetchJson(`https://${c.rp.host}/.well-known/biatec-client.json`); } catch { f = null; }
     c.verified = !!f && typeof f === "object" && Array.isArray(f.client_ids) && f.client_ids.length <= 50 && f.client_ids.includes(c.id);
@@ -495,7 +497,6 @@ export function createMockOidc(options: MockOptions = {}) {
     if (open >= maxRpPending) throw new HttpError(429, "too_many_pending_requests", `at most ${maxRpPending} requests of one relying party can be open for one user`, { limit: maxRpPending, scope: { client: clientId } });
     const recent = (rpOpened.get(clientId) ?? []).filter((x) => now() - x < 60);
     if (recent.length >= maxRpPerMinute) throw new HttpError(429, "rate_limited", `at most ${maxRpPerMinute} requests per minute`, {}, { "Retry-After": String(Math.max(1, recent[0] + 60 - now())) });
-    rpOpened.set(clientId, [...recent, now()]);
   }
 
   /** Rule 10: at most three pending requests per client, user and origin, and an anti-spam rate per client and user. */
@@ -529,6 +530,7 @@ export function createMockOidc(options: MockOptions = {}) {
       sub: opts.rp?.subject ?? opts.user.sub,
     };
     validate("consent-request", request, "internal consent request");
+    if (opts.rp) rpOpened.set(opts.client.id, [...(rpOpened.get(opts.client.id) ?? []).filter((x) => now() - x < 60), now()]); // counted once the request is stored
     pending.set(authReqId, { request, account: opts.user.sub, ...(opts.rp ? { rp: true } : {}), code, attempts: 0, clientId: opts.client.id, status: "pending", tokenIssued: false, scope: opts.scope, limitsBody: opts.limitsBody, interval: POLL_INTERVAL_SECONDS, spend: "none" });
     for (const d of activeDevices(opts.user.sub)) if (d.push) pushOutbox.push({ kid: d.kid, ...d.push, data: { auth_req_id: authReqId } });
     if (pushOutbox.length > 500) pushOutbox.splice(0, pushOutbox.length - 500); // a long-running mock keeps the recent ones
@@ -1160,12 +1162,12 @@ export function createMockOidc(options: MockOptions = {}) {
       ask_on_test_networks: acct(sub).askOnTestNetworks,
       clients: [...clientMap.values()]
         .filter((c) => {
-          const s = cs(sub, c.id);
+          const s = clientSettings.get(sub + "|" + c.id) ?? {}; // a lookup that creates nothing
           return user.used.has(c.id) || user.alwaysAsk.includes(c.id) || s.label !== undefined || s.perClientThresholdEur !== undefined || (s.pausedUntil !== undefined && s.pausedUntil > now()) || appList(sub, c.id).length > 0;
         })
         .map((c) => {
           syncProof(c); // only the clients this user holds something for: a relying party is read lazily, never all of them on every call
-          const s = cs(sub, c.id);
+          const s = clientSettings.get(sub + "|" + c.id) ?? {};
           const paused = s.pausedUntil !== undefined && s.pausedUntil > now();
           return {
             client_id: c.id,
@@ -1643,6 +1645,7 @@ export function createMockOidc(options: MockOptions = {}) {
   }
 
   async function route(req: IncomingMessage): Promise<{ status: number; body: unknown }> {
+    requestEpoch++;
     const url = new URL(req.url ?? "/", "http://mock");
     const path = url.pathname;
     const m = req.method ?? "GET";
