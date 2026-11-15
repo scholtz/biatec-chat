@@ -1,7 +1,7 @@
 ---
 id: T-246
 title: "Consent protocol 1.2: relying parties - linking, payment, login and action requests, details hash (universal authenticator)"
-status: in-progress
+status: review
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-245]
@@ -59,11 +59,11 @@ Parallel work possible: **no**: T-243 changes the same conformance kit, so do no
 
 ## Acceptance criteria
 
-- [ ] `pnpm --filter consent-protocol test` passes with the new vectors, including "altering any one signed member invalidates the signature" for `biatec_link` and for each new receipt type, and the text-rule vectors.
-- [ ] `pnpm --filter mock-oidc test` and `pnpm --filter conformance test` pass, including: a client that was not linked cannot open a request; a `private_key_jwt` client cannot obtain `sign`; an assertion replay is refused.
-- [ ] `dotnet test backend --filter ConsentProtocolVectorTests` passes.
-- [ ] `node packages/consent-protocol/scripts/rp-demo.mjs` runs to the end against the mock with the mock's test device approving (scripted), and verifies the receipt with the pinned key only.
-- [ ] The spec has a "Changes from 1.1" section. Envelope `version` is `"1.2"` for the new types and stays `"1.1"` for `biatec_transaction`.
+- [x] `pnpm --filter consent-protocol test` passes with the new vectors, including "altering any one signed member invalidates the signature" for `biatec_link` and for each new receipt type, and the text-rule vectors.
+- [x] `pnpm --filter mock-oidc test` and `pnpm --filter conformance test` pass, including: a client that was not linked cannot open a request; a `private_key_jwt` client cannot obtain `sign`; an assertion replay is refused.
+- [x] `dotnet test backend --filter ConsentProtocolVectorTests` passes.
+- [x] `node packages/consent-protocol/scripts/rp-demo.mjs` runs to the end against the mock with the mock's test device approving (scripted), and verifies the receipt with the pinned key only.
+- [x] The spec has a "Changes from 1.1" section. Envelope `version` is `"1.2"` for the new types and stays `"1.1"` for `biatec_transaction`.
 
 ## Implementation notes
 
@@ -77,7 +77,15 @@ Parallel work possible: **no**: T-243 changes the same conformance kit, so do no
 
 ## Hand-off
 
-Filled in when the task moves to review.
+PR #417, `task/T-246` @ 1916db2. Local: protocol tests 302 pass, `dotnet test backend --filter ConsentProtocolVectorTests` 19 pass, mock-oidc 116, conformance 107, e2e 10, `scripts/rp-demo.mjs` runs to the end against the mock and verifies the receipt with the pinned key only. CI: backend, js, images, authenticator-security pass; `authenticator` fails only on the Flutter SDK drift that also fails on main (this PR touches no authenticator file).
+
+- Spec chapters 14 (Relying parties), 15 (text rules: relying-party profile, label profile, shared core), 16 (Changes from 1.1); `details_hash` with a worked example; version "1.2" for the new types, "1.1" for `biatec_transaction`. Schemas `authorization-details-payment|login|action`, `link-request`, `link-created`, `link-status`, `link-signed`; vectors `receipts-1.2.json`, `link.json`, `text-rules.json` (generated); `lib.mjs` (`detailsHash`, `isValidIban`, `verifyReceiptPinned`, `verifyLink`, `verifyLinkPinned`); C# vector tests; `PRODUCT-DESCRIPTION.md` "Universal Authenticator" and `docs/relying-party-protocol.md`.
+- Mock: `private_key_jwt` registration, links, CIBA with the three request types, `openid`-only token refused everywhere; 40+ conformance cases; `rp-demo.mjs`.
+- Honest trust limit (stated in the spec and the product description): at link time the party trusts the operator for WHICH device key it pins (the key list comes from the same answer); after pinning, the operator cannot alter or forge a receipt for that key.
+- Open points for Biatec OIDC issue 38 (nothing here decides them for the server): bodyless party calls use `Authorization: Client-Assertion <jwt>` in the mock; the spec does not say what the app puts in `device.attestation` of a 1.2 receipt (the mock mints it for the pairwise subject when the receipt is stored: T-247 and the server must agree); `X-Link-Secret` is required on the device receipt call in the mock; the receipt endpoint is served at both `/consent/receipts/{id}` and the issue-38 path; an unlinked pending request ends as `access_denied` with reason `unlinked`.
+- Not modelled: a hardened domain fetcher and the daily re-check, `service_linked` event/email; the conformance `.ts` files cannot be typechecked (no tsc in that package).
+
+**Unblocks:** T-247 (link by QR, payment and login cards).
 
 ## Review
 
@@ -86,3 +94,4 @@ Filled in when the task moves to review.
 - 2026-11-13 09:05 · scholtz · (new) → blocked · created from revision 2 of the consent architecture record (AlgorandGoogleDriveAccount issue 23): universal authenticator
 - 2026-11-15 00:42 · kanban-board · blocked → backlog · blockers done: T-245
 - 2026-11-15 05:40 · scholtz · backlog → in-progress · claimed by session-20261115-0540 on task/T-246
+- 2026-11-15 12:00 · scholtz · in-progress → review · PR #417 @ 1916db2
