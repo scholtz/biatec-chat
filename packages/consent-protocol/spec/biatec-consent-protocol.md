@@ -1,6 +1,6 @@
-# Biatec Consent Protocol, version 1.1
+# Biatec Consent Protocol, version 1.2
 
-Status: draft. This document is the integrator-facing specification. `PRODUCT-DESCRIPTION.md` ("Biatec Authenticator And The Biatec Consent Protocol") is the product source of truth and wins on any conflict. Version 1.1 replaces 1.0 as the only version new implementations produce (the mock Biatec OIDC, the widget's backend and the authenticator of this repository still produce 1.0 and move to 1.1 in their own tasks; the schemas and verifiers accept both meanwhile); [13. Changes from 1.0](#13-changes-from-10) lists what changed.
+Status: draft. This document is the integrator-facing specification. `PRODUCT-DESCRIPTION.md` ("Biatec Authenticator And The Biatec Consent Protocol") is the product source of truth and wins on any conflict. Version 1.2 adds **relying parties**: any organisation (a bank, a broker, an internal system) can use the authenticator to confirm payments, logins and other actions, without Biatec vouching for it ([14. Relying parties](#14-relying-parties)), with the requests of sections 3.3 to 3.6, the verification of section 8.4 and 8.5 and the text rules of [15. Text rules](#15-text-rules); [16. Changes from 1.1](#16-changes-from-11) lists what changed. Version 1.1 stays the version of `biatec_transaction` and `biatec_limits_change` receipts: the envelope `version` is `"1.1"` for them and `"1.2"` for the three new types. Version 1.1 replaced 1.0 (the mock Biatec OIDC, the widget's backend and the authenticator of this repository move to the newer versions in their own tasks; the schemas and verifiers accept all of them meanwhile); [13. Changes from 1.0](#13-changes-from-10) lists what changed then.
 
 The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 
@@ -26,6 +26,7 @@ Roles:
 - **Biatec OIDC**: the authorization server. It decodes the transaction group, values it, opens the request, generates the binding code, stores the request and verifies and consumes receipts. It vouches for no client and for no application.
 - **Authenticator**: the mobile app holding the device keys.
 - **User**: sees the card on the authenticator and the binding code on the requesting surface. All trust is the user's: the threshold, which services are linked and which applications are trusted are set on the user's own phone.
+- **Relying party**: a client that is an organisation asking for confirmation of its own actions, not a wallet application. It registers itself, is linked by the user on the phone and can then send payment, login and action requests ([14. Relying parties](#14-relying-parties)). Biatec OIDC vouches for no relying party.
 
 Machine-readable definitions live in `schemas/` (JSON Schema 2020-12) and signed examples in `vectors/`. Everything in this document that is normative about a wire object is expressed by a schema.
 
@@ -38,14 +39,14 @@ A consent request at Biatec OIDC is always the same object, whichever entry poin
 - An optional client-supplied `binding_message`.
 - The client identity: `fingerprint`, `domain_proven`, `domain` when proven, and `linked` (section 6).
 - `requested_expiry` (default and maximum 300 seconds) and the derived `expiry`.
-- The **bound hash** (`group_hash` or `request_hash`) the consent is tied to.
+- The **bound hash** (`group_hash`, `request_hash` or, for the relying-party types of protocol 1.2, `details_hash`) the consent is tied to.
 - The reporting `origin` and the pairwise `sub` of the requesting client.
 
 Client-supplied amounts or payees are never accepted as the thing being consented to; the group (or canonical limits body) is.
 
 ## 3. Authorization details types
 
-`authorization_details` is an array of exactly one object (`schemas/authorization-details.schema.json`), of one of the two types below.
+`authorization_details` is an array of exactly one object (`schemas/authorization-details.schema.json`), of one of the types below: the two wallet types of protocol 1.1 (3.1, 3.2) or, from protocol 1.2, the three relying-party types (3.3 to 3.5, branch `#/$defs/v1_2`). A receipt or request of a wallet type has version 1.1, one of a relying-party type version 1.2; the two never mix (the schemas and every verifier refuse a mixture, and `version` is unsigned, so the shape decides).
 
 ### 3.1 `biatec_transaction`
 
@@ -63,6 +64,97 @@ The `group_hash` is the Algorand group ID recomputed from the handed transaction
 ### 3.2 `biatec_limits_change`
 
 Describes a change of spending limits (`schemas/authorization-details-limits-change.schema.json`). It carries no `origin`: for this type the request's `origin` is recorded by Biatec OIDC but is not part of what the device signs. It has `current_limits`, `requested_limits` and `request_hash`, the lowercase hex SHA-256 of the RFC 8785 canonical request body of `PUT /wallet/limits`. The vectors include a worked example: the body `{"per_day_eur":"5000","per_transaction_eur":"2000"}` hashes to the `request_hash` in `vectors/receipts.json`.
+
+### 3.3 `biatec_payment`
+
+A payment the relying party asks the user to confirm (`schemas/authorization-details-payment.schema.json`). Biatec does not execute it: the relying party (a bank) does, after it has the user's signed approval. The members are exactly:
+
+- `type`: `biatec_payment`.
+- `instructed_amount`: `{ amount, currency }`. `amount` is a decimal string with at most two decimals and greater than zero (`^(0|[1-9][0-9]{0,14})(\.[0-9]{1,2})?$`, never a JSON number); `currency` is three upper-case letters (ISO 4217).
+- `creditor_name`: 1 to 70 characters.
+- `creditor_account`: either `{ iban }` or `{ identification, scheme }`. The IBAN is in electronic form (upper case, no spaces) and its ISO 7064 mod-97-10 check digits MUST be right (`isValidIban` in `scripts/lib.mjs`; the country-specific lengths are not checked). `identification` is 1 to 34 characters and `scheme` 1 to 20 characters (for example `BBAN` or `SORTCODE`).
+- `remittance` (optional): 1 to 140 characters.
+- `execution_date` (optional): an ISO 8601 calendar date `YYYY-MM-DD` that exists.
+- `origin` (optional): added by Biatec OIDC when it has one (section 3.6), never sent by the relying party.
+
+Every string member is text a relying party supplied and is untrusted: it obeys the text rules of [15. Text rules](#15-text-rules) (relying-party profile), a violation is refused and never stripped. The card shows each member in a field the app draws itself, the creditor's name and account marked as written by the relying party, together with who is asking (section 6).
+
+```json schema=authorization-details-payment
+{
+  "type": "biatec_payment",
+  "instructed_amount": {
+    "amount": "1250.00",
+    "currency": "EUR"
+  },
+  "creditor_name": "Muster Energie GmbH",
+  "creditor_account": {
+    "iban": "DE89370400440532013000"
+  },
+  "remittance": "Invoice 2026-0042",
+  "execution_date": "2026-10-20",
+  "origin": "https://netbanking.bank.example"
+}
+```
+
+### 3.4 `biatec_login`
+
+Access to the relying party's own service, for example internet banking (`schemas/authorization-details-login.schema.json`): `type` `biatec_login`, an optional `context` with any of `ip`, `location` and `user_agent` (each 1 to 80 characters, at least one present, text rules of section 15) and an optional `origin` as in 3.3. The context is what the relying party reports about the session that asks; the card shows it as reported by the relying party.
+
+```json schema=authorization-details-login
+{
+  "type": "biatec_login",
+  "context": {
+    "ip": "203.0.113.42",
+    "location": "Bratislava, Slovakia",
+    "user_agent": "Firefox 133 on Windows 11"
+  },
+  "origin": "https://netbanking.bank.example"
+}
+```
+
+### 3.5 `biatec_action`
+
+Any other action (`schemas/authorization-details-action.schema.json`): `type` `biatec_action`, a `title` of 1 to 60 characters, 1 to 8 `lines` of `{ label, value }` (label 1 to 30, value 1 to 80 characters) and an optional `origin` as in 3.3. The app renders the title and every line as plain text in fields it draws itself and shows nothing the relying party did not list.
+
+```json schema=authorization-details-action
+{
+  "type": "biatec_action",
+  "title": "Add payee",
+  "lines": [
+    {
+      "label": "Payee",
+      "value": "Muster Energie GmbH"
+    },
+    {
+      "label": "Account",
+      "value": "DE89 3704 0044 0532 0130 00"
+    },
+    {
+      "label": "Daily limit",
+      "value": "5 000 EUR"
+    }
+  ]
+}
+```
+
+### 3.6 `details_hash`
+
+For the three relying-party types the bound hash is the `details_hash`: the base64url encoding without padding (43 characters) of the SHA-256 digest of the RFC 8785 canonical form of the `authorization_details` **object** (the one element, not the array) exactly as the relying party sent it, plus the `origin` member that Biatec OIDC added when it had an origin. Biatec OIDC never rewrites, completes or removes a member of the relying party's object, and a request that carries an unknown member or an `origin` of the relying party's own is refused (`400 invalid_authorization_details`).
+
+- The device computes the hash itself from the object it renders and signs, and never copies it from the request. A verifier computes it again from the object in the receipt (`detailsHash(details)` in `scripts/lib.mjs`) and compares it with the signed `details_hash`.
+- The request's `bound_hash`, the signed receipt's `details_hash` and the elevated token's `consent_hash` carry the same value. `group_hash` stays the bound hash of `biatec_transaction` and is a member of that type's details; a signed object has `details_hash` for the three new types and never for a wallet type, so exactly one of `group_hash` and `details_hash` binds a receipt.
+- The relying party knows the object it sent and the origin it reported, so it recomputes the hash without asking anyone (section 8.5).
+
+Worked example, the first vector of `vectors/receipts-1.2.json` (`payment-approve`). Biatec OIDC added the origin the request came from to the object the bank sent:
+
+```
+sent by the relying party   {"creditor_account":{"iban":"DE89370400440532013000"},"creditor_name":"Muster Energie GmbH","execution_date":"2026-10-20","instructed_amount":{"amount":"1250.00","currency":"EUR"},"remittance":"Invoice 2026-0042","type":"biatec_payment"}
+stored (origin added)       {"creditor_account":{"iban":"DE89370400440532013000"},"creditor_name":"Muster Energie GmbH","execution_date":"2026-10-20","instructed_amount":{"amount":"1250.00","currency":"EUR"},"origin":"https://netbanking.bank.example","remittance":"Invoice 2026-0042","type":"biatec_payment"}
+SHA-256 (hex)               dc3d46b119895d9d9a465a649a877d48d41148b589b318b575f815dd769917b7
+details_hash (base64url)    3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c
+```
+
+The origin is part of the hashed object: the same payment without it hashes to `b2PVUKD24wUOKSiIlgXGGUi5aGY0xDrOEbTynZ7A-HA`. One character of the creditor IBAN changed (`DE89370400440532013001` instead of `DE89370400440532013000`) gives `7GT9fJfJrRbKOcU278OAD0xH25t7eMzkLTbZkPnwlbk`, and the altered IBAN also fails its check digits; `vectors/receipts-1.2.json` contains a receipt signed over such an altered payment next to the original hash (`payment-approve-iban-altered-REFUSED`) that every verifier MUST refuse.
 
 ## 4. Step-up entry
 
@@ -182,6 +274,43 @@ The authenticator learns of a request as a hint over its device channel (or a pu
 }
 ```
 
+For a relying-party request (1.2) the object is the same with the details of section 3.3 to 3.5, `entry` always `direct`, `binding_message` always the empty string, `client.linked` always true (an unlinked relying party never reaches the phone), `bound_hash` the `details_hash` and `origin` present exactly when the server had one (and then equal to the `origin` inside the details):
+
+```json schema=consent-request
+{
+  "auth_req_id": "ciba_92a04b22022b474b2a2ab118e5062a95",
+  "entry": "direct",
+  "authorization_details": [
+    {
+      "type": "biatec_payment",
+      "instructed_amount": {
+        "amount": "1250.00",
+        "currency": "EUR"
+      },
+      "creditor_name": "Muster Energie GmbH",
+      "creditor_account": {
+        "iban": "DE89370400440532013000"
+      },
+      "remittance": "Invoice 2026-0042",
+      "execution_date": "2026-10-20",
+      "origin": "https://netbanking.bank.example"
+    }
+  ],
+  "client": {
+    "fingerprint": "b70156d0932b8095",
+    "domain_proven": true,
+    "domain": "bank.example",
+    "linked": true
+  },
+  "binding_message": "",
+  "requested_expiry": 300,
+  "expiry": 1792425900,
+  "bound_hash": "3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c",
+  "origin": "https://netbanking.bank.example",
+  "sub": "pw_5e2b9d0c71a84f36"
+}
+```
+
 **Who is asking.** Biatec OIDC vouches for no client. The `client` object has exactly:
 
 - `fingerprint`: 16 lowercase hex characters, the first eight bytes (64 bits) of the SHA-256 of the `client_id`, shown to the user as `xxxx-xxxx-xxxx-xxxx`. The fingerprint is for the user's eyes: a client is linked and trusted by its full `client_id` at Biatec OIDC, never by this value alone. Matching a chosen client's fingerprint takes about 2^64 hashes, which is out of reach of casual attackers and within reach of very large clusters, so the user must still compare the proven domain, which an impostor cannot have.
@@ -218,12 +347,18 @@ Signing procedure:
 2. Canonicalize it with RFC 8785. All amounts are strings; integers MUST be at most 2^53 - 1.
 3. Sign the UTF-8 bytes with ES256 (ECDSA P-256, SHA-256) using the **approval key** for `approve`; `deny` and `code_failed` may use either key. The signature is the 64-byte IEEE P1363 `r || s` form, base64url without padding; verifiers MUST reject non-canonical encodings.
 
-The receipt envelope (`schemas/consent-receipt.schema.json`) adds `version` (`"1.1"`), `alg`, `signature`, `issued_at` (informational, unsigned) and `device`: the key ID, the informational `key_use`, the device public key as a JWK, and the **attestation**, a compact ES256 JWS signed by a Biatec OIDC JWKS key whose payload binds `sub`, `device_kid`, `device_jwk_thumbprint` (RFC 7638 thumbprint of the device public key) and `biatec_key_use`, which is `approve` or `presence`.
+The receipt envelope (`schemas/consent-receipt.schema.json`) adds `version` (`"1.1"`, or `"1.2"` for a relying-party receipt), `alg`, `signature`, `issued_at` (informational, unsigned) and `device`: the key ID, the informational `key_use`, the device public key as a JWK, and the **attestation**, a compact ES256 JWS signed by a Biatec OIDC JWKS key whose payload binds `sub`, `device_kid`, `device_jwk_thumbprint` (RFC 7638 thumbprint of the device public key) and `biatec_key_use`, which is `approve` or `presence`.
 
 Worked example, the first vector in `vectors/receipts.json` (canonical bytes, one line):
 
 ```
 {"auth_req_id":"ciba_8257c10231dd9b46e2f877484cf0b2a3","authorization_details":[{"applications":[],"fiat_value":{"amount":"4612.50","currency":"EUR"},"group_hash":"BJPMYYUBSMQWYXMEBZT2ZHFZTWCIJAFAIMUZEGOJZKJPRBKU5KNA","network":"algorand-mainnet","origin":"https://app.biatec.io","sender":"YKBLPFVKZFZFGOVHQK6L63YX67B76YBZCSYYGU4WD7QC3PRRP4U7Q2DCWE","transfers":[{"amount":"5000.000000","asset":{"decimals":6,"id":"31566704","symbol":"USDC"},"fiat_value":{"amount":"4612.50","currency":"EUR"},"receiver":"WSNJGAWN52IJMHAEFZIOPCS3IXSHS4C46QDNSKWDEWQ3E6M4HUNLYTHJXE"}],"type":"biatec_transaction","value_known":true}],"binding_code":"483920","binding_message":"","client_fingerprint":"68dcf7ce89a943b0","decision":"approve","expiry":1792425900,"sub":"pw_7c1f0a52e9b34d68"}
+```
+
+**Relying-party receipts (version 1.2).** The signed object of a 1.2 receipt has the eight members above without `remember`, plus a ninth, `details_hash` (section 3.6), and `binding_message` is always the empty string: the relying party's text is in the details, which the card renders in fields it controls. The envelope `version` is `"1.2"`, the device block is as in 1.1 (`device.key_use` is required). Worked example, the first vector in `vectors/receipts-1.2.json` (canonical bytes, one line):
+
+```
+{"auth_req_id":"ciba_92a04b22022b474b2a2ab118e5062a95","authorization_details":[{"creditor_account":{"iban":"DE89370400440532013000"},"creditor_name":"Muster Energie GmbH","execution_date":"2026-10-20","instructed_amount":{"amount":"1250.00","currency":"EUR"},"origin":"https://netbanking.bank.example","remittance":"Invoice 2026-0042","type":"biatec_payment"}],"binding_code":"620418","binding_message":"","client_fingerprint":"b70156d0932b8095","decision":"approve","details_hash":"3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c","expiry":1792425900,"sub":"pw_5e2b9d0c71a84f36"}
 ```
 
 ### 8.1 Offline verification
@@ -294,6 +429,28 @@ uint32  1500102716   (0x5969c03c)
 code    102716       (1500102716 mod 1000000)
 ```
 
+### 8.4 Verification of relying-party receipts (attestation mode)
+
+For a receipt of version `"1.2"` the steps of section 8.1 apply with these additions (`verifyReceipt` covers them, `verifyApproval` adds the stored request):
+
+1. The signed object has exactly the nine members of section 8, `authorization_details` has exactly one object of a relying-party type that satisfies its schema, the text rules of [15. Text rules](#15-text-rules) hold for every string, the IBAN check digits and the amount and date rules of section 3.3 hold, `binding_message` is the empty string and `decision` and `binding_code` have the shapes of the schema (an explicit deny may carry an empty code).
+2. `details_hash` equals, compared in constant time, the hash of section 3.6 computed from `authorization_details[0]`: it is never accepted because it is there. A receipt whose hash differs is refused however valid its signatures are.
+3. An `approve` MUST be signed by an approval key (attested `biatec_key_use` `approve`); a payment, a login or an action approved with a presence key is refused. `deny` and `code_failed` accept either key. There is no other way to approve: this is the same rule as for wallet receipts, and the relying-party types have no application trust and so no `remember`.
+4. `version` is not signed: a receipt whose details are of a relying-party type and whose `version` is not `"1.2"`, or the reverse, is refused, and so is a `version` `"1.2"` receipt without `details_hash` or with `group_hash` or `remember` anywhere.
+5. For authorization, `verifyApproval` additionally requires that the stored request is a direct request of a linked client (`entry` `direct`, `client.linked` true), that the signed `authorization_details` equal the stored ones, that `bound_hash` equals the signed `details_hash`, that the request's `origin` is the origin inside the details (both absent, or equal) and the number matching, expiry, single-use and active-device rules of section 8.1.
+
+### 8.5 Verification with a pinned device key (no attestation)
+
+A relying party that pinned the device's public keys when the user linked it (section 14.3) can verify a receipt of its own request with those keys alone and without Biatec OIDC's JWKS, its attestation or any request to a Biatec server. This mode is defined for version `"1.2"` receipts only: `verifyReceiptPinned(receipt, pinned, expectedDetails, opts)` in `scripts/lib.mjs`. The relying party passes the object it sent (`expectedDetails`), never the details of the receipt. It returns true only when all of these hold:
+
+1. The signed object is well formed as in 8.4 step 1 (the text rules apply to what the user was shown, not only to what the party meant to send).
+2. `details_hash` is the hash of the signed details, computed by the verifier (8.4 step 2).
+3. The signed details equal `expectedDetails` member for member (compared as canonical forms), except `origin`: Biatec OIDC added it. When the party knows the origin it reported it checks it (`opts.origin`; `null` means none was expected).
+4. The signature over the canonical form of the signed object verifies under a pinned key. Each pin says whether it is an approval or a presence key; an `approve` is accepted only under an approval pin (a presence key never approves), `deny` and `code_failed` under either. The receipt's own `device` block is not consulted: a pinned key is the only trust anchor.
+5. When the party passes them: the `decision` it requires (`opts.decision`), its own `auth_req_id` and `sub`, its own client fingerprint (`clientFingerprint(client_id)`), the binding code it showed (`opts.bindingCode`, approve only), that the id is not in its set of spent ids (`opts.consumed`) and that an approval has not expired (`opts.now`, default the current time; `opts.checkExpiry === false` for re-verifying an archived receipt).
+
+True means the receipt is authentic and is about what the party sent; the party then reads `signed.decision`. The attestation, when the party also checks it, is a second check: a party that trusts Biatec OIDC's key may additionally run the steps of 8.4.
+
 ## 9. Test vectors
 
 | File | Content |
@@ -301,11 +458,16 @@ code    102716       (1500102716 mod 1000000)
 | `vectors/receipts.json` | Twelve protocol 1.1 receipts with their request objects: step-up and direct entries, a client with a proven domain and one without, approve, deny and `code_failed`, transaction and limits change, a two-transfer group, a transfer plus an application the user trusted, an untrusted application approved with `remember`, a group whose value is unknown, a deny signed by the presence key, and one **negative** vector (an approval signed by the presence key) that verifiers MUST refuse. Each vector carries its `expected` verdict |
 | `vectors/receipts-1.0.json` | The six frozen protocol 1.0 receipts, kept so that 1.0 receipts keep validating |
 | `vectors/device-signed.json` | Settings changes, approvals of a new device and enrollment proofs, each with its verdict (including four negative ones), and the pairing code worked example |
+| `vectors/receipts-1.2.json` | Protocol 1.2 receipts with their request objects and the `sent_details` the relying party sent: approve and deny for each of `biatec_payment`, `biatec_login` and `biatec_action`, a payment to an account that is not an IBAN, with and without an origin, a deny signed by the presence key, and three **negative** vectors: a payment approval signed by the presence key, a payment whose IBAN differs by one character from the one the party sent (next to the original `details_hash`), both refused in both modes, and a receipt signed by a second phone whose key the relying party never pinned (valid in attestation mode, refused in pinned mode: `expected_pinned`). The file carries the `pinned_devices` the party saw at linking and the `iban_alteration` hashes |
+| `vectors/link.json` | Link statements (`biatec_link`): approve for a party with a proven domain and one without (`domain` null), a deny signed by the presence key and three **negative** vectors (a different domain than the one the device was shown, an approval signed by the presence key, a code other than the one shown), each with the link request the device fetched, the link code the party displayed and the inputs the verifier expects |
+| `vectors/text-rules.json` | Accepted and refused strings of the text rules of section 15, each with the profile, the limit and the reason; `core: true` marks those that follow from the minimum rules every implementation applies |
 | `vectors/canonicalization.json` | RFC 8785 cases (member ordering by UTF-16 code units, string escapes, ECMAScript numbers) that every implementation, including the backend, must reproduce byte for byte |
 | `vectors/jwks.json` | Test Biatec OIDC public key used by the attestations |
 | `vectors/keys.json` | **Test-only** private keys used to reproduce the vectors: the Biatec OIDC key, the approval and presence key of one device and those of a second, new device. They protect nothing |
 
 `pnpm --filter consent-protocol test` validates every vector against the schemas, checks the canonical form and hash, verifies both signatures, honours each vector's `expected` verdict and checks that altering any one signed member invalidates the signature, for receipts and for the device-signed statements alike.
+For protocol 1.2 the same command also checks that the receipt and link vectors validate against the schemas, that `details_hash` is recomputed from each details object, that altering any one signed member of a `biatec_link` statement or of a 1.2 receipt invalidates the signature, that both verification modes give each vector's verdict (`expected`, `expected_pinned`), and that every string of `vectors/text-rules.json` is accepted or refused as written. The .NET test `ConsentProtocolVectorTests` verifies the signatures, canonical forms, hashes, key-use and pinned rules and the core text rules of the same files.
+
 
 ## 10. Third-party integration
 
@@ -314,6 +476,8 @@ code    102716       (1500102716 mod 1000000)
 3. Use the direct entry (section 5) or handle the step-up challenge (section 4). In both cases display the returned binding code, poll or receive the token, and present it to the wallet endpoint.
 
 The user links the client on their phone the first time they approve a request of it; every request of a client that is not linked asks the phone, whatever the value.
+
+A relying party (an organisation that asks the user to confirm its own payments, logins and actions) follows [14. Relying parties](#14-relying-parties) instead: it registers with `private_key_jwt`, is linked by the user, and verifies receipts with the keys it pinned.
 
 ## 11. Protocol rules and where they are specified
 
@@ -374,3 +538,169 @@ Version 1.1 is additive where it can be and replaces 1.0 as the only version imp
 8. **The client is not vouched for.** The request's `client` object is `{ fingerprint, domain_proven, domain?, linked }`; the 1.0 members that asserted an operator-vouched name, a verified flag or a federation entity id are 1.0 only. The signed object names the client by `client_fingerprint` instead of the 1.0 entity member. The fingerprint is 16 lowercase hex characters (shown `xxxx-xxxx-xxxx-xxxx`). `binding_message` is rendered only when the domain is proven.
 9. **User-held trust.** `remember` in an approve receipt trusts applications for a client; the user sets the threshold (no ceiling), links clients, and trusts applications on their own phone (rules 3, 4 and section 12). There is no operator list of clients, applications or test-network prices.
 10. **Device channel.** The authenticator learns of a request from a hint over Biatec OIDC's own device channel (or a platform push); no third-party push relay is part of the protocol.
+
+## 14. Relying parties
+
+Biatec Authenticator is a universal authenticator: any organisation can adopt it as its confirmation app for payments and for access to its internet banking. Biatec vouches for nobody. The organisation proves its domain, the user links it on the phone, and the organisation can verify every approval against the device key it saw at linking. The server side is specified by Biatec OIDC (issue 38 of the Biatec OIDC repository); this chapter is the contract between it, the authenticator and the relying party. `docs/relying-party-protocol.md` points here.
+
+### 14.1 Trust model
+
+Four statements hold and nothing in this chapter may weaken one:
+
+1. **Biatec OIDC vouches for no relying party.** The phone shows the domain the party proved (section 6) or "Unproven application" with the fingerprint, and the user decides. No name, logo or badge comes from the operator or from the party.
+2. **A relying party reaches a user's phone only after that user linked it on the phone.** Linking is a statement signed by the approval key (14.3). A request for a subject that is not linked is refused (`400 unknown_user_id`); no request of a relying party opens before that, whatever its content.
+3. **What the user approves is exactly the `authorization_details` the relying party sent.** The card shows them in fields the app renders itself (plain text, never markup, links or images), the strings marked as written by the relying party, and the device signs their hash (section 3.6). Server-side thresholds, application trust and first-use rules do not apply to these requests: they always go to the phone.
+4. **The receipt is signed by the device.** Biatec OIDC adds an attestation, but a relying party that pinned the device key at linking verifies the device signature itself (8.5) and does not have to trust the Biatec OIDC operator for the result.
+
+A relying party is never given a wallet capability: it can never obtain `sign`, `manage-limits`, `enroll-device` or any wallet scope, and the access token it redeems for a request has scope `openid` only, `acr` `biatec:consent` and a `consent_hash` (the `details_hash`) and is refused by every endpoint of Biatec OIDC (the signing endpoint, userinfo, the device endpoints). What the party needs is the receipt.
+
+### 14.2 Registration
+
+A relying party registers itself with RFC 7591 Dynamic Client Registration as a confidential client:
+
+- `token_endpoint_auth_method` `private_key_jwt`, with `jwks` (inline; at most 4 keys; EC P-256 or RSA of 2048 bits or more; no private members) or `jwks_uri` (https; fetched like the well-known file below and cached for one hour). No client secret is ever issued.
+- `grant_types` containing only `urn:openid:params:grant-type:ciba`; no redirect URIs.
+- `client_uri`: required, an absolute https URL with a host name (not an IP address), as for every client.
+
+Client authentication follows RFC 7523: the assertion's `iss` and `sub` are the `client_id`, `aud` is the token endpoint or the issuer, `exp` is at most 5 minutes ahead, the `jti` is single use (an assertion replayed within its lifetime is refused) and the algorithms are `ES256` and `PS256` only (`none` and HMAC are refused). Such a client can use only the CIBA endpoint and grant, the link endpoints (14.3) and receipt retrieval; every other endpoint answers `401` or `403`.
+
+The party proves its domain by serving `https://<host of client_uri>/.well-known/biatec-client.json` with the body `{ "client_ids": ["<client_id>"] }` (at most 50 entries). Biatec OIDC fetches it with a hardened fetcher and re-checks it daily. Without it the user sees the party as "Unproven application" with its fingerprint, `domain` in the link statement is `null`, and the user decides on that basis. Registration is rate limited per source address.
+
+### 14.3 Linking
+
+Linking is how the user establishes trust, and it is the only way a relying party reaches a phone.
+
+1. **The party starts a link** inside its own authenticated session with `POST /consent/links` (client authentication), body `{ "user_label"?: string }` (at most 40 characters, text rules of section 15: what the party calls this user, for example a masked name). The answer is `201` (`schemas/link-created.schema.json`) with the `link_id`, the `link_uri`, a six digit `binding_code`, `expires_in` (300) and `interval` (2).
+2. **The link code** is the `link_uri`, shown as a QR code: `biatec-authenticator://link?iss=<issuer>&id=<link_id>&s=<link_secret>`. `iss` is the percent-encoded issuer of the Biatec OIDC the party registered with, `id` the `link_id` and `s` the 32 random bytes of the link secret as base64url (43 characters, stored hashed by the server). The query has exactly these three members in this order. **The app refuses a link code whose `iss` is not the server it is enrolled with**, before it sends the secret anywhere. The six digit `binding_code` is shown next to the QR code and typed on the phone (the binding-code rules of section 7: three attempts).
+3. **The device fetches the request** with `GET /consent/links/{id}`, header `X-Link-Secret`, device authentication of an **active** device (`schemas/link-request.schema.json`): the `client` (fingerprint, `domain_proven`, `domain` when proven), the `user_label` (shown as reported by the service), a `nonce` and `expires_at`.
+4. **The user decides** on the phone: the card shows the proven domain, or "Unproven application" with the fingerprint, and the label as written by the service. Approving needs the binding code and the approval key (biometrics). The device signs the `biatec_link` statement (`schemas/link-signed.schema.json`) and posts it with `POST /consent/links/{id}/receipt` as `{ "signed", "signature" }`.
+5. **The statement** is `{ type: "biatec_link", link_id, client_fingerprint, domain (string or null), decision: "approve" | "deny", binding_code, nonce, issued_at, kid }`, signed (ES256, IEEE P1363, base64url) over its RFC 8785 canonical form by the **approval key** for `approve` (either key for `deny`, which carries an empty `binding_code` when no code was typed). `domain` is the proven domain the server showed the device, or `null`: signing it makes the user's decision about that domain, and the server and a verifier refuse a statement whose domain, fingerprint, link id, nonce or code differ from what was shown and issued, whose `issued_at` is not within 300 seconds of their clock, or that is used a second time.
+6. **The party polls** `GET /consent/links/{id}` (only the client that created it; polling faster than `interval` answers `slow_down`; `schemas/link-status.schema.json`): `status` `pending`, `linked`, `denied` or `expired`. When `linked` it carries the pairwise `subject` (the `login_hint` of every later request), the `devices` (the `kid`, `key_use` and public JWK of the approval and presence key of each active device of the account) and the `approval` (`signed`, `signature`, `attestation`). When `denied` it carries the `approval` of the denial.
+7. **The party verifies and pins.** With `verifyLinkPinned(approval, devices, expect)` the party checks that the statement is the user's: the signature under the device named by `signed.kid` (an approval needs that device's `key_use` to be `approve`), the link id, its own fingerprint, the domain it expects, the nonce, the code it showed and the time. On success it pins the `devices` of the answer (14.6). `verifyLink(envelope, jwks, opts, expect)` is the same check with the attestation, which Biatec OIDC runs at `POST /consent/links/{id}/receipt` and a party may run as a second check.
+8. **Unlinking.** The party removes its own link with `DELETE /consent/links/subject/{subject}`; the user removes a link on the phone at any time (tightening, no statement needed).
+
+Worked example, the first vector of `vectors/link.json` (`link-approve-domain-proven`). What the party gets from `POST /consent/links`:
+
+```json schema=link-created
+{
+  "link_id": "lnk_6f24862262c182126431e3a6",
+  "link_uri": "biatec-authenticator://link?iss=https%3A%2F%2Foidc.biatec.test&id=lnk_6f24862262c182126431e3a6&s=c6cWUY11Jq3nvnZ0yLm821tPt4OJSKXr_j070m1UOL4",
+  "binding_code": "620418",
+  "expires_in": 300,
+  "interval": 2
+}
+```
+
+What the device fetches:
+
+```json schema=link-request
+{
+  "link_id": "lnk_6f24862262c182126431e3a6",
+  "client": {
+    "fingerprint": "b70156d0932b8095",
+    "domain_proven": true,
+    "domain": "bank.example"
+  },
+  "user_label": "Alex M. (account ending 4421)",
+  "nonce": "link-nonce-d3a69547bc93fba9dff105d9",
+  "expires_at": 1792425900
+}
+```
+
+What the device signs (canonical bytes below the object), with the approval key:
+
+```json schema=link-signed
+{
+  "type": "biatec_link",
+  "link_id": "lnk_6f24862262c182126431e3a6",
+  "client_fingerprint": "b70156d0932b8095",
+  "domain": "bank.example",
+  "decision": "approve",
+  "binding_code": "620418",
+  "nonce": "link-nonce-d3a69547bc93fba9dff105d9",
+  "issued_at": 1792425630,
+  "kid": "device-test-key-1"
+}
+```
+
+```
+{"binding_code":"620418","client_fingerprint":"b70156d0932b8095","decision":"approve","domain":"bank.example","issued_at":1792425630,"kid":"device-test-key-1","link_id":"lnk_6f24862262c182126431e3a6","nonce":"link-nonce-d3a69547bc93fba9dff105d9","type":"biatec_link"}
+```
+
+### 14.4 Direct requests
+
+A linked relying party opens a request with the CIBA backchannel authentication endpoint (`POST /connect/ciba`, client authentication with its `private_key_jwt`, `schemas/backchannel-authentication-request.schema.json`): `scope` `openid`, `login_hint` the linked `subject`, `authorization_details` with exactly one object of the types of sections 3.3 to 3.5 (without `origin`), optionally `origin` (the origin of the party's session, which Biatec OIDC records inside the details as the party reported it) and `requested_expiry`. There is no `binding_message`.
+
+```json schema=backchannel-authentication-request
+{
+  "scope": "openid",
+  "login_hint": "pw_5e2b9d0c71a84f36",
+  "authorization_details": [
+    {
+      "type": "biatec_payment",
+      "instructed_amount": {
+        "amount": "1250.00",
+        "currency": "EUR"
+      },
+      "creditor_name": "Muster Energie GmbH",
+      "creditor_account": {
+        "iban": "DE89370400440532013000"
+      },
+      "remittance": "Invoice 2026-0042",
+      "execution_date": "2026-10-20"
+    }
+  ],
+  "origin": "https://netbanking.bank.example",
+  "requested_expiry": 300
+}
+```
+
+- Unknown members, a schema violation, an IBAN with wrong check digits, a text-rule violation or an `origin` the party put inside the object are refused with `400 invalid_authorization_details`; nothing is stripped or corrected. An unlinked or unknown `login_hint` is `400 unknown_user_id`, for a party the user unlinked as well, and for a subject that never existed (the answer does not say which).
+- The request always goes to the phone: the threshold, trusted applications and first-use rules do not apply. The pause of a client on a site, "block unproven clients", the open-request cap (at most five pending requests per user and client) and the rate limit (60 requests per minute per client) do, and a user with no active device cannot be asked (`403 consent_unavailable`).
+- The answer is that of section 5 (`auth_req_id`, `expires_in`, `interval`, `binding_code`). The party displays the binding code inside its own session and the user types it on the phone, as for every request (rule 2).
+- The party polls the token endpoint as in section 4. The token it redeems has scope `openid` only and is useless anywhere. The receipt is returned in `consent_receipt` of the token response and at `GET /consent/receipts/{auth_req_id}`, only to the party the request belongs to.
+
+### 14.5 Receipt verification with a pinned device key
+
+The party verifies the receipt it got, without trusting Biatec OIDC, as described in section 8.5: `verifyReceiptPinned(receipt, pinned, expectedDetails, opts)` with the keys it pinned at linking, the object it sent, and its own ids. Only then does it act: a payment is executed, a login completed, an action carried out when `signed.decision` is `approve`; a `deny` and a `code_failed` are results too, and nothing is executed. Verifying the attestation as well is optional. The party also stores the receipt: it is the user's signed consent to exactly that payment.
+
+### 14.6 A new device and a pinned key
+
+A pinned key belongs to the devices the account had when the party looked. When the user adds a phone, its receipts are signed by a key the party has not pinned: `verifyReceiptPinned` refuses them, correctly, because nothing yet says the new key is the user's. The party asks `GET /consent/links/subject/{subject}/devices` (client authentication), which lists the current approval and presence keys of the account's active devices (`devices` of `schemas/link-status.schema.json`), and decides by its own policy:
+
+- **Accept the new keys**, trusting Biatec OIDC's statement that they belong to this account (the attestation of the receipt says the same). A party that does so trusts the operator for the keys, though never for the content of a receipt.
+- **Ask the user to link again**, in the party's own authenticated session, with a link statement from the new phone: the new phone's approval key then signs the user's decision about the party itself, and the party keeps its independence.
+
+A party removes pins that no longer appear in the list (a phone the user removed or lost) and refuses receipts signed by them. The conformance vector `payment-approve-new-device-unpinned` is a valid receipt that pinned verification refuses until the party decides.
+
+## 15. Text rules
+
+One normative section for every string a relying party supplies (`creditor_name`, `creditor_account.identification`, `creditor_account.scheme`, `remittance`, the `context` members of a login, the `title`, `label` and `value` of an action, the `user_label` of a link) and for the user's own text (the `label` of a settings change, section 8.2). Everything in this chapter is an input rule: a violation is **refused, never stripped, normalized or truncated**, by the server that receives the string and again by the device that renders it, because the device does not trust the server. A string that would be accepted on one reading and refused on another is refused.
+
+1. **Normalization.** Unicode NFC.
+2. **Length.** Counted in code points (not UTF-16 units, not bytes): at least 1 and at most the maximum of the member. An optional member is absent, never empty.
+3. **No control characters** (general category Cc: U+0000 to U+001F and U+007F to U+009F, which includes the tab).
+4. **No bidirectional controls**: U+202A to U+202E, U+2066 to U+2069, U+200E, U+200F and U+061C.
+5. **No zero-width characters**: U+200B to U+200D, U+2060 and U+FEFF.
+6. **No line breaks**: U+000A, U+000D, U+0085, U+2028 and U+2029.
+7. **The rest of the strict set** (`isDisplaySafe`): no other format character (Cf) or private-use character, no white space other than a plain space, no leading or trailing space, no run of spaces, no blank text, no filler or invisible character (soft hyphen, Hangul fillers, invisible operators, variation selectors, tag characters), no combining mark without a base character or in a stack of more than three, and no lone surrogate.
+
+Two profiles share these rules and differ in one point. The **relying-party profile** (`isRelyingPartyText(text, max)`) has no exception: ZWNJ, ZWJ and the emoji selector U+FE0F are refused like the other zero-width and invisible characters, because no payee, title or login context depends on them and the party is untrusted. The **label profile** (`isDisplaySafe(text, max)`, the user's own text) allows ZWNJ and ZWJ after a letter, mark, symbol or digit and before a letter, symbol or digit (never in a run, at an end or next to white space) and U+FE0F right after a symbol, a digit, `#` or `*`, so Persian and Indic text and emoji sequences can be labels; the character classes are those of Unicode 16, and a verifier whose Unicode tables are older may refuse a character newer than its tables. A string the relying-party profile accepts, the label profile accepts as well.
+
+Rules 1 to 6 are the **core**: every implementation MUST apply at least these (Biatec OIDC at the server, the .NET reference test in this repository); the device and every receipt verifier apply all seven rules. A string only the core accepts can be opened as a request and then be refused on the phone, which is safe, never the reverse. `vectors/text-rules.json` lists accepted and refused strings with the profile, the limit and the reason; the vectors with `core: true` are decided by rules 1 to 6 alone.
+
+Look-alike letters of another script are not detected, so a relying party's text is always shown as written by the relying party, beside the proven domain or the fingerprint and never instead of them, in plain text, with no markup, link or image interpreted.
+
+## 16. Changes from 1.1
+
+Version 1.2 is additive: nothing of 1.1 changes, `biatec_transaction` and `biatec_limits_change` stay at envelope `version` `"1.1"`, and a verifier that knows only 1.1 refuses a 1.2 receipt as it refuses any unknown version.
+
+1. **Relying parties.** Any organisation can register as a `private_key_jwt` client, be linked by the user on the phone and send payment, login and action requests (chapter 14, `docs/relying-party-protocol.md`). Biatec OIDC vouches for none.
+2. **Three request types.** `biatec_payment`, `biatec_login` and `biatec_action` (sections 3.3 to 3.5, schemas `authorization-details-payment|login|action`). Amounts are decimal strings of at most two decimals; the IBAN's check digits are validated.
+3. **`details_hash`** (section 3.6): the SHA-256 of the canonical details object, base64url, computed by the device from what it renders; the bound hash and `consent_hash` of these requests. A 1.2 receipt's signed object has it as a ninth member, never `remember`, and an empty `binding_message`; the envelope `version` is `"1.2"` (`schemas/consent-receipt-signed.schema.json#/$defs/v1_2`).
+4. **Pinned verification** (section 8.5): `verifyReceiptPinned` verifies a receipt with the keys a relying party pinned at linking and no attestation; an `approve` always needs an approval key (8.4).
+5. **Linking.** The `biatec_link` statement (14.3, `schemas/link-signed.schema.json`, `link-request`, `link-created`, `link-status`), the link code `biatec-authenticator://link?iss=<issuer>&id=<link_id>&s=<link_secret>` and the rule that the app refuses an issuer other than its own server. `device-signed.schema.json` accepts the statement as a third device-signed object.
+6. **Direct requests of relying parties.** `scope` `openid` and an `authorization_details` object in the backchannel authentication request (`schemas/backchannel-authentication-request.schema.json`); the requests always go to the phone and the token they redeem is useless at every endpoint.
+7. **Text rules** (chapter 15): one normative section for every string a relying party supplies and for the user's own text; `isDisplaySafe` gains the relying-party profile (`isRelyingPartyText`).
+8. **Request origin.** The request's `origin` is required for wallet types and optional for relying-party types (present exactly when the server had one).
+9. **New vectors.** `vectors/receipts-1.2.json`, `vectors/link.json` and `vectors/text-rules.json`; the 1.0 and 1.1 vectors are unchanged.

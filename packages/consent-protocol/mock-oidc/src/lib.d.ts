@@ -20,7 +20,36 @@ declare module "*/scripts/lib.mjs" {
   export function verifyAttestation(receipt: any, jwks: { keys: any[] }, opts: VerifyOptions): boolean;
   export function attestedKeyUse(receipt: any, jwks: { keys: any[] }, opts: VerifyOptions): "approve" | "presence" | null;
   export function pairingCode(newApprovalThumbprint: string, newPresenceThumbprint: string, nonce: string): string;
-  export function isDisplaySafe(text: unknown, max?: number): boolean;
+  export function isDisplaySafe(text: unknown, max?: number, opts?: { joiners?: boolean }): boolean;
+  // Protocol 1.2 (relying parties), spec chapters 14 and 15.
+  export const RP_TYPES: readonly ["biatec_payment", "biatec_login", "biatec_action"];
+  export function detailsHash(details: unknown): string;
+  export function clientFingerprint(clientId: string): string;
+  export function isRelyingPartyText(text: unknown, max: number): boolean;
+  export function isValidIban(iban: unknown): boolean;
+  export function isValidPaymentAmount(amount: unknown): boolean;
+  export function isValidDate(text: unknown): boolean;
+  export function isValidRelyingPartyDetails(details: unknown): boolean;
+  export function isValidLinkSigned(signed: unknown): boolean;
+  export type Pin = { key_use: "approve" | "presence"; jwk: object } | object;
+  export function verifyReceiptPinned(
+    receipt: any,
+    pinned: Pin | Pin[],
+    expectedDetails: object,
+    opts?: { now?: number; origin?: string | null; decision?: "approve" | "deny" | "code_failed"; auth_req_id?: string; sub?: string; clientFingerprint?: string; bindingCode?: string; consumed?: Set<string>; checkExpiry?: boolean },
+  ): boolean;
+  export function verifyLink(
+    envelope: any,
+    jwks: { keys: any[] },
+    opts: { issuer: string; consumed: Set<string>; now?: number },
+    expect: { link_id: string; client_fingerprint: string; domain: string | null; nonce: string; binding_code?: string; sub: string },
+  ): boolean;
+  export function verifyLinkPinned(
+    approval: { signed: any; signature: string },
+    devices: { kid: string; key_use: "approve" | "presence"; jwk: object }[],
+    expect: { link_id: string; client_fingerprint: string; domain: string | null; nonce: string; binding_code?: string },
+    opts?: { now?: number; consumed?: Set<string> },
+  ): boolean;
   export function verifyDeviceSigned(
     envelope: any,
     jwks: { keys: any[] },

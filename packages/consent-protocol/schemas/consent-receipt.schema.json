@@ -2,24 +2,33 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.biatec.io/consent/v1/consent-receipt.schema.json",
   "title": "Consent receipt",
-  "description": "Signed receipt as returned in consent_receipt and at GET /consent/receipts/{auth_req_id}. Verifiable offline with the Biatec OIDC JWKS. `version` 1.1 is the only version implementations produce; 1.0 receipts predate the split of the device key in two and are still accepted.",
+  "description": "Signed receipt as returned in consent_receipt and at GET /consent/receipts/{auth_req_id}. Verifiable offline with the Biatec OIDC JWKS. `version` 1.1 is what implementations produce for `biatec_transaction` and `biatec_limits_change`, `version` 1.2 for the relying-party types (payment, login, action; spec chapter 14); 1.0 receipts predate the split of the device key in two and are still accepted.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "signed", "alg", "signature", "device", "issued_at"],
   "allOf": [
     {
-      "if": { "required": ["version"], "properties": { "version": { "const": "1.1" } } },
+      "if": { "required": ["version"], "properties": { "version": { "const": "1.2" } } },
       "then": {
         "properties": {
-          "signed": { "$ref": "consent-receipt-signed.schema.json#/$defs/v1_1" },
+          "signed": { "$ref": "consent-receipt-signed.schema.json#/$defs/v1_2" },
           "device": { "type": "object", "required": ["key_use"], "properties": { "key_use": true } }
         }
       },
-      "else": { "properties": { "signed": { "$ref": "consent-receipt-signed.schema.json#/$defs/v1_0" }, "device": { "type": "object", "properties": { "key_use": false } } } }
+      "else": {
+        "if": { "required": ["version"], "properties": { "version": { "const": "1.1" } } },
+        "then": {
+          "properties": {
+            "signed": { "$ref": "consent-receipt-signed.schema.json#/$defs/v1_1" },
+            "device": { "type": "object", "required": ["key_use"], "properties": { "key_use": true } }
+          }
+        },
+        "else": { "properties": { "signed": { "$ref": "consent-receipt-signed.schema.json#/$defs/v1_0" }, "device": { "type": "object", "properties": { "key_use": false } } } }
+      }
     }
   ],
   "properties": {
-    "version": { "enum": ["1", "1.1"] },
+    "version": { "enum": ["1", "1.1", "1.2"] },
     "signed": { "$ref": "consent-receipt-signed.schema.json" },
     "alg": { "const": "ES256" },
     "signature": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$", "description": "base64url of the 64-byte IEEE P1363 (r || s) ES256 signature over the UTF-8 bytes of JCS(signed)." },

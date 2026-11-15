@@ -1,0 +1,400 @@
+{
+  "_comment": "Protocol 1.2 link statements (`biatec_link`) with the link request the device fetched and the link code the party showed. Attestation mode: verifyLink(envelope, jwks, ...). Pinned mode: verifyLinkPinned({ signed, signature }, pinned_devices, expected_inputs without sub). Regenerate with scripts/generate-vectors.mjs --1.2.",
+  "now": 1792425660,
+  "issuer": "https://oidc.biatec.test",
+  "subject": "pw_5e2b9d0c71a84f36",
+  "pinned_devices": [
+    {
+      "kid": "device-test-key-1",
+      "key_use": "approve",
+      "jwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
+        "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
+      }
+    },
+    {
+      "kid": "presence-test-key-1",
+      "key_use": "presence",
+      "jwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "nZQI_ShNEIOy_-Pb6TPa8LOaCyDengdDzBlg0cOhD7w",
+        "y": "kTQ5sb0lNB760k-c7T8v3yVvGikDQpORyXnLjldhgCQ"
+      }
+    }
+  ],
+  "vectors": [
+    {
+      "name": "link-approve-domain-proven",
+      "description": "The user links a bank that proved its domain. Approval key.",
+      "client_id": "bank-example-client",
+      "link_created": {
+        "link_id": "lnk_6f24862262c182126431e3a6",
+        "link_uri": "biatec-authenticator://link?iss=https%3A%2F%2Foidc.biatec.test&id=lnk_6f24862262c182126431e3a6&s=c6cWUY11Jq3nvnZ0yLm821tPt4OJSKXr_j070m1UOL4",
+        "binding_code": "620418",
+        "expires_in": 300,
+        "interval": 2
+      },
+      "link_request": {
+        "link_id": "lnk_6f24862262c182126431e3a6",
+        "client": {
+          "fingerprint": "b70156d0932b8095",
+          "domain_proven": true,
+          "domain": "bank.example"
+        },
+        "user_label": "Alex M. (account ending 4421)",
+        "nonce": "link-nonce-d3a69547bc93fba9dff105d9",
+        "expires_at": 1792425900
+      },
+      "expected": {
+        "accepted": true
+      },
+      "expected_inputs": {
+        "link_id": "lnk_6f24862262c182126431e3a6",
+        "client_fingerprint": "b70156d0932b8095",
+        "domain": "bank.example",
+        "nonce": "link-nonce-d3a69547bc93fba9dff105d9",
+        "binding_code": "620418",
+        "sub": "pw_5e2b9d0c71a84f36"
+      },
+      "envelope": {
+        "signed": {
+          "type": "biatec_link",
+          "link_id": "lnk_6f24862262c182126431e3a6",
+          "client_fingerprint": "b70156d0932b8095",
+          "domain": "bank.example",
+          "decision": "approve",
+          "binding_code": "620418",
+          "nonce": "link-nonce-d3a69547bc93fba9dff105d9",
+          "issued_at": 1792425630,
+          "kid": "device-test-key-1"
+        },
+        "alg": "ES256",
+        "signature": "7rJ-8164gD60BICIJ9PzsRJHCR3nvJK91uKAT5k1SiPfHmb6VWIi1eLOwwSclkhGi7Xyjyzl4SRZdTTByku-RQ",
+        "device": {
+          "kid": "device-test-key-1",
+          "key_use": "approve",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
+            "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd181ZTJiOWQwYzcxYTg0ZjM2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.MtYk9-CajuGx5v9pslsTxMKrp3urAktrb1VbT5ctUkeFU60KlNjtdj3p0pJOTNOC6EjIjSbjD9mG4m9zXrdDcw"
+        }
+      },
+      "canonical": "{\"binding_code\":\"620418\",\"client_fingerprint\":\"b70156d0932b8095\",\"decision\":\"approve\",\"domain\":\"bank.example\",\"issued_at\":1792425630,\"kid\":\"device-test-key-1\",\"link_id\":\"lnk_6f24862262c182126431e3a6\",\"nonce\":\"link-nonce-d3a69547bc93fba9dff105d9\",\"type\":\"biatec_link\"}",
+      "canonical_sha256": "94a6ef1ad4fa9db988e524e6fbd91f0124b016c02cd859e8c048d9e22ecbdc66"
+    },
+    {
+      "name": "link-approve-domain-unproven",
+      "description": "The user links a party without a proven domain: the signed `domain` is null, the user decided on the fingerprint.",
+      "client_id": "rp-unproven-3b7e",
+      "link_created": {
+        "link_id": "lnk_ea5e6bdb89e748cd32b0e8c5",
+        "link_uri": "biatec-authenticator://link?iss=https%3A%2F%2Foidc.biatec.test&id=lnk_ea5e6bdb89e748cd32b0e8c5&s=T9EAsd5jzYekX4bUfdxMPOcFxk8McsFZwMeI9tCjYtI",
+        "binding_code": "157302",
+        "expires_in": 300,
+        "interval": 2
+      },
+      "link_request": {
+        "link_id": "lnk_ea5e6bdb89e748cd32b0e8c5",
+        "client": {
+          "fingerprint": "8455f1b8f2a67676",
+          "domain_proven": false
+        },
+        "nonce": "link-nonce-c9edf47f7affef04ecedc14b",
+        "expires_at": 1792425900
+      },
+      "expected": {
+        "accepted": true
+      },
+      "expected_inputs": {
+        "link_id": "lnk_ea5e6bdb89e748cd32b0e8c5",
+        "client_fingerprint": "8455f1b8f2a67676",
+        "domain": null,
+        "nonce": "link-nonce-c9edf47f7affef04ecedc14b",
+        "binding_code": "157302",
+        "sub": "pw_5e2b9d0c71a84f36"
+      },
+      "envelope": {
+        "signed": {
+          "type": "biatec_link",
+          "link_id": "lnk_ea5e6bdb89e748cd32b0e8c5",
+          "client_fingerprint": "8455f1b8f2a67676",
+          "domain": null,
+          "decision": "approve",
+          "binding_code": "157302",
+          "nonce": "link-nonce-c9edf47f7affef04ecedc14b",
+          "issued_at": 1792425630,
+          "kid": "device-test-key-1"
+        },
+        "alg": "ES256",
+        "signature": "3lPfxF3f63zdACCpEmSgrXRzz5PkTP-thh_9SOZUN-57mVj8ffL2YCBKGOYT4G8DSUPyrZPZLs1FXg4WygGOOg",
+        "device": {
+          "kid": "device-test-key-1",
+          "key_use": "approve",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
+            "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd181ZTJiOWQwYzcxYTg0ZjM2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.5_Y4HA_QaKh36bqmm5BnBapgvg4gn8QdxhVOPEmZaxtvWXE262EOrAyU2cl-qn18c8J7xXdzpoEAhaAYfdBs4Q"
+        }
+      },
+      "canonical": "{\"binding_code\":\"157302\",\"client_fingerprint\":\"8455f1b8f2a67676\",\"decision\":\"approve\",\"domain\":null,\"issued_at\":1792425630,\"kid\":\"device-test-key-1\",\"link_id\":\"lnk_ea5e6bdb89e748cd32b0e8c5\",\"nonce\":\"link-nonce-c9edf47f7affef04ecedc14b\",\"type\":\"biatec_link\"}",
+      "canonical_sha256": "e2732143c2bddb9a3fd7a36ecbed5fc666b66f9e69fb364b218d9f7cadc0f316"
+    },
+    {
+      "name": "link-deny",
+      "description": "The user refused to link before typing the code; a deny may be signed by the presence key.",
+      "client_id": "bank-example-client",
+      "link_created": {
+        "link_id": "lnk_3bc8fcc37a99aa9a611a818c",
+        "link_uri": "biatec-authenticator://link?iss=https%3A%2F%2Foidc.biatec.test&id=lnk_3bc8fcc37a99aa9a611a818c&s=xlRkgwcLakHw5jHmzkBfeaFCCisC_JS_IcEbh5sjeS8",
+        "binding_code": "573082",
+        "expires_in": 300,
+        "interval": 2
+      },
+      "link_request": {
+        "link_id": "lnk_3bc8fcc37a99aa9a611a818c",
+        "client": {
+          "fingerprint": "b70156d0932b8095",
+          "domain_proven": true,
+          "domain": "bank.example"
+        },
+        "user_label": "Alex M. (account ending 4421)",
+        "nonce": "link-nonce-9a46eded9a82a1fe65f781aa",
+        "expires_at": 1792425900
+      },
+      "expected": {
+        "accepted": true
+      },
+      "expected_inputs": {
+        "link_id": "lnk_3bc8fcc37a99aa9a611a818c",
+        "client_fingerprint": "b70156d0932b8095",
+        "domain": "bank.example",
+        "nonce": "link-nonce-9a46eded9a82a1fe65f781aa",
+        "binding_code": "573082",
+        "sub": "pw_5e2b9d0c71a84f36"
+      },
+      "envelope": {
+        "signed": {
+          "type": "biatec_link",
+          "link_id": "lnk_3bc8fcc37a99aa9a611a818c",
+          "client_fingerprint": "b70156d0932b8095",
+          "domain": "bank.example",
+          "decision": "deny",
+          "binding_code": "",
+          "nonce": "link-nonce-9a46eded9a82a1fe65f781aa",
+          "issued_at": 1792425630,
+          "kid": "presence-test-key-1"
+        },
+        "alg": "ES256",
+        "signature": "6xC0cjFYXRJr4qQCG5JcNkReT7KYpe2FHNUmKDce5Xnpr6SzO3RetCQkOut8RaSMiFWfELgBoszGQ-pSoOrWTA",
+        "device": {
+          "kid": "presence-test-key-1",
+          "key_use": "presence",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "nZQI_ShNEIOy_-Pb6TPa8LOaCyDengdDzBlg0cOhD7w",
+            "y": "kTQ5sb0lNB760k-c7T8v3yVvGikDQpORyXnLjldhgCQ"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd181ZTJiOWQwYzcxYTg0ZjM2IiwiZGV2aWNlX2tpZCI6InByZXNlbmNlLXRlc3Qta2V5LTEiLCJkZXZpY2VfandrX3RodW1icHJpbnQiOiIyZjB2dWwzdGJ5S0Y2S3R2V3VRYUVBWnVCano1aHUxeS15QUlEVWswNXpJIiwiYmlhdGVjX2tleV91c2UiOiJwcmVzZW5jZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.aAIHFbeeW-yclexw56Lfq99kHspLBUtyPF3zzCP0ivQKN7qUZQrBNo7uJTIJ_zhR1c5rRRpc4hsqPWSTDxxdIA"
+        }
+      },
+      "canonical": "{\"binding_code\":\"\",\"client_fingerprint\":\"b70156d0932b8095\",\"decision\":\"deny\",\"domain\":\"bank.example\",\"issued_at\":1792425630,\"kid\":\"presence-test-key-1\",\"link_id\":\"lnk_3bc8fcc37a99aa9a611a818c\",\"nonce\":\"link-nonce-9a46eded9a82a1fe65f781aa\",\"type\":\"biatec_link\"}",
+      "canonical_sha256": "d2058893555c5af4c083ca878370dd28682aa9c3a1f17cd8b70fb9087d3c4127"
+    },
+    {
+      "name": "link-wrong-domain-REFUSED",
+      "description": "NEGATIVE: the signed domain is not the one the server showed the device. Everything else is valid; verifiers MUST refuse it.",
+      "client_id": "bank-example-client",
+      "link_created": {
+        "link_id": "lnk_6c79a8fd3a138e05af358183",
+        "link_uri": "biatec-authenticator://link?iss=https%3A%2F%2Foidc.biatec.test&id=lnk_6c79a8fd3a138e05af358183&s=BmpZNvYXOHXWe6X52i-A8Win6HWD8_cNE1jgZy7VL2s",
+        "binding_code": "846513",
+        "expires_in": 300,
+        "interval": 2
+      },
+      "link_request": {
+        "link_id": "lnk_6c79a8fd3a138e05af358183",
+        "client": {
+          "fingerprint": "b70156d0932b8095",
+          "domain_proven": true,
+          "domain": "bank.example"
+        },
+        "nonce": "link-nonce-8e91c4c26549b2aa40a732fb",
+        "expires_at": 1792425900
+      },
+      "expected": {
+        "accepted": false,
+        "reason": "domain_mismatch"
+      },
+      "expected_inputs": {
+        "link_id": "lnk_6c79a8fd3a138e05af358183",
+        "client_fingerprint": "b70156d0932b8095",
+        "domain": "bank.example",
+        "nonce": "link-nonce-8e91c4c26549b2aa40a732fb",
+        "binding_code": "846513",
+        "sub": "pw_5e2b9d0c71a84f36"
+      },
+      "envelope": {
+        "signed": {
+          "type": "biatec_link",
+          "link_id": "lnk_6c79a8fd3a138e05af358183",
+          "client_fingerprint": "b70156d0932b8095",
+          "domain": "bank-example.test",
+          "decision": "approve",
+          "binding_code": "846513",
+          "nonce": "link-nonce-8e91c4c26549b2aa40a732fb",
+          "issued_at": 1792425630,
+          "kid": "device-test-key-1"
+        },
+        "alg": "ES256",
+        "signature": "3clibqawO8amA4ziw-76TEXnsauqotPeXgXWfwdQQzo6ZyApki6XxiIjaVdq4_m3cf3bRXo9044D4yjZJaWUvA",
+        "device": {
+          "kid": "device-test-key-1",
+          "key_use": "approve",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
+            "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd181ZTJiOWQwYzcxYTg0ZjM2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.7Ft0jVm_Q5B7-PtcybqCCOzgJ1vHxu-EPreHUB1itUIo3U9BLfOXZu_PCVL7HWsuZFyv6Ur7QyW5pQFMql5GmA"
+        }
+      },
+      "canonical": "{\"binding_code\":\"846513\",\"client_fingerprint\":\"b70156d0932b8095\",\"decision\":\"approve\",\"domain\":\"bank-example.test\",\"issued_at\":1792425630,\"kid\":\"device-test-key-1\",\"link_id\":\"lnk_6c79a8fd3a138e05af358183\",\"nonce\":\"link-nonce-8e91c4c26549b2aa40a732fb\",\"type\":\"biatec_link\"}",
+      "canonical_sha256": "c586235ac65e159d028eabf62371befbbdb27e8076b723734d953d3443673c24"
+    },
+    {
+      "name": "link-approve-signed-by-presence-key-REFUSED",
+      "description": "NEGATIVE: an approval of a link signed by the presence key. Verifiers MUST refuse it (a link is signed by the approval key).",
+      "client_id": "bank-example-client",
+      "link_created": {
+        "link_id": "lnk_c42bb8ede5509d66499b7a7f",
+        "link_uri": "biatec-authenticator://link?iss=https%3A%2F%2Foidc.biatec.test&id=lnk_c42bb8ede5509d66499b7a7f&s=rOxzbIUAkCQkw9K2izTP2krPCOuryFHdDoWefj5znqY",
+        "binding_code": "290417",
+        "expires_in": 300,
+        "interval": 2
+      },
+      "link_request": {
+        "link_id": "lnk_c42bb8ede5509d66499b7a7f",
+        "client": {
+          "fingerprint": "b70156d0932b8095",
+          "domain_proven": true,
+          "domain": "bank.example"
+        },
+        "nonce": "link-nonce-170763c557c05caa4b0e3524",
+        "expires_at": 1792425900
+      },
+      "expected": {
+        "accepted": false,
+        "reason": "approve_requires_approval_key"
+      },
+      "expected_inputs": {
+        "link_id": "lnk_c42bb8ede5509d66499b7a7f",
+        "client_fingerprint": "b70156d0932b8095",
+        "domain": "bank.example",
+        "nonce": "link-nonce-170763c557c05caa4b0e3524",
+        "binding_code": "290417",
+        "sub": "pw_5e2b9d0c71a84f36"
+      },
+      "envelope": {
+        "signed": {
+          "type": "biatec_link",
+          "link_id": "lnk_c42bb8ede5509d66499b7a7f",
+          "client_fingerprint": "b70156d0932b8095",
+          "domain": "bank.example",
+          "decision": "approve",
+          "binding_code": "290417",
+          "nonce": "link-nonce-170763c557c05caa4b0e3524",
+          "issued_at": 1792425630,
+          "kid": "presence-test-key-1"
+        },
+        "alg": "ES256",
+        "signature": "o2I_I5CG0WEg0jK9XeqT0bhte5f9c3KtutS_0YKkzEceM2qQ-xhSD3m90Wfih9RzbbT0HwiKMdoSTImkBHlQ7A",
+        "device": {
+          "kid": "presence-test-key-1",
+          "key_use": "presence",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "nZQI_ShNEIOy_-Pb6TPa8LOaCyDengdDzBlg0cOhD7w",
+            "y": "kTQ5sb0lNB760k-c7T8v3yVvGikDQpORyXnLjldhgCQ"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd181ZTJiOWQwYzcxYTg0ZjM2IiwiZGV2aWNlX2tpZCI6InByZXNlbmNlLXRlc3Qta2V5LTEiLCJkZXZpY2VfandrX3RodW1icHJpbnQiOiIyZjB2dWwzdGJ5S0Y2S3R2V3VRYUVBWnVCano1aHUxeS15QUlEVWswNXpJIiwiYmlhdGVjX2tleV91c2UiOiJwcmVzZW5jZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.q9v9aLRznIduYjtr8GP31vTILGwJOwECvHeIC8dAvYHg6jxHZHHNvQR86fYh52oKxQa1Yw0ZZ_pPwq48pV8krQ"
+        }
+      },
+      "canonical": "{\"binding_code\":\"290417\",\"client_fingerprint\":\"b70156d0932b8095\",\"decision\":\"approve\",\"domain\":\"bank.example\",\"issued_at\":1792425630,\"kid\":\"presence-test-key-1\",\"link_id\":\"lnk_c42bb8ede5509d66499b7a7f\",\"nonce\":\"link-nonce-170763c557c05caa4b0e3524\",\"type\":\"biatec_link\"}",
+      "canonical_sha256": "15cbf9e5c7ab39e3d92e4bafe7e44659f7da56d258b0ebc5cce929c1fd46da55"
+    },
+    {
+      "name": "link-wrong-binding-code-REFUSED",
+      "description": "NEGATIVE: the code the user typed is not the code the relying party showed.",
+      "client_id": "bank-example-client",
+      "link_created": {
+        "link_id": "lnk_b7757b3090cf9719db0576f1",
+        "link_uri": "biatec-authenticator://link?iss=https%3A%2F%2Foidc.biatec.test&id=lnk_b7757b3090cf9719db0576f1&s=XUVxpkxXz56brlQ9xKW3i5hiuZFkFbxpZH77DD304QU",
+        "binding_code": "718420",
+        "expires_in": 300,
+        "interval": 2
+      },
+      "link_request": {
+        "link_id": "lnk_b7757b3090cf9719db0576f1",
+        "client": {
+          "fingerprint": "b70156d0932b8095",
+          "domain_proven": true,
+          "domain": "bank.example"
+        },
+        "nonce": "link-nonce-3be3bf463cf5a219af866301",
+        "expires_at": 1792425900
+      },
+      "expected": {
+        "accepted": false,
+        "reason": "binding_code_mismatch"
+      },
+      "expected_inputs": {
+        "link_id": "lnk_b7757b3090cf9719db0576f1",
+        "client_fingerprint": "b70156d0932b8095",
+        "domain": "bank.example",
+        "nonce": "link-nonce-3be3bf463cf5a219af866301",
+        "binding_code": "718420",
+        "sub": "pw_5e2b9d0c71a84f36"
+      },
+      "envelope": {
+        "signed": {
+          "type": "biatec_link",
+          "link_id": "lnk_b7757b3090cf9719db0576f1",
+          "client_fingerprint": "b70156d0932b8095",
+          "domain": "bank.example",
+          "decision": "approve",
+          "binding_code": "000000",
+          "nonce": "link-nonce-3be3bf463cf5a219af866301",
+          "issued_at": 1792425630,
+          "kid": "device-test-key-1"
+        },
+        "alg": "ES256",
+        "signature": "aHndWirxtqkiU_fK6yRmgiOM_JkWzvb7j-DRIPbdVVQAlsTGfYqlQJJcjYRBdLlwhsbv2qP7L-Z2kxsi_QYU6Q",
+        "device": {
+          "kid": "device-test-key-1",
+          "key_use": "approve",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
+            "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd181ZTJiOWQwYzcxYTg0ZjM2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.P2yFLAbw58c0-AKJp6i8EOK82N2QDnKQXW9MnqBX4Cwr4_g_S76KwwH4t53_-Mvihx9sIDgZYkFiQPrKm2-Lfg"
+        }
+      },
+      "canonical": "{\"binding_code\":\"000000\",\"client_fingerprint\":\"b70156d0932b8095\",\"decision\":\"approve\",\"domain\":\"bank.example\",\"issued_at\":1792425630,\"kid\":\"device-test-key-1\",\"link_id\":\"lnk_b7757b3090cf9719db0576f1\",\"nonce\":\"link-nonce-3be3bf463cf5a219af866301\",\"type\":\"biatec_link\"}",
+      "canonical_sha256": "c4374e80893fb9e48ec9ec0a897a0f83e65364fb25e0cb65d58446ef13109f00"
+    }
+  ]
+}

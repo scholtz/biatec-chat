@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/link-created.schema.json",
+  "title": "Link created",
+  "description": "The `201` answer of `POST /consent/links` (client authentication) to the relying party (protocol 1.2, spec section 14.3). `link_uri` is the link code the party shows as a QR code inside its own authenticated session; `binding_code` is shown next to it and typed on the phone.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["link_id", "link_uri", "binding_code", "expires_in", "interval"],
+  "properties": {
+    "link_id": { "$ref": "link-signed.schema.json#/$defs/linkId" },
+    "link_uri": { "type": "string", "pattern": "^biatec-authenticator://link\\?iss=[^&#\\s]+&id=[A-Za-z0-9_-]{16,128}&s=[A-Za-z0-9_-]{43}$", "description": "biatec-authenticator://link?iss=<issuer>&id=<link_id>&s=<link_secret>; `iss` is the percent-encoded issuer, `s` the base64url of 32 random bytes." },
+    "binding_code": { "$ref": "binding-code.schema.json" },
+    "expires_in": { "type": "integer", "minimum": 1, "maximum": 300 },
+    "interval": { "type": "integer", "minimum": 1 }
+  }
+}

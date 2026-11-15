@@ -1,0 +1,1030 @@
+{
+  "_comment": "Protocol 1.2 signed receipt vectors (payment, login, action). Verify with jwks.json (attestation mode) or with pinned_devices alone (pinned mode, spec section 14.5). `sent_details` is what the relying party sent, `server_origin` the origin Biatec OIDC added (null: none). Regenerate with scripts/generate-vectors.mjs --1.2.",
+  "now": 1792425660,
+  "issuer": "https://oidc.biatec.test",
+  "subject": "pw_5e2b9d0c71a84f36",
+  "pinned_devices": [
+    {
+      "kid": "device-test-key-1",
+      "key_use": "approve",
+      "jwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
+        "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
+      }
+    },
+    {
+      "kid": "presence-test-key-1",
+      "key_use": "presence",
+      "jwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "nZQI_ShNEIOy_-Pb6TPa8LOaCyDengdDzBlg0cOhD7w",
+        "y": "kTQ5sb0lNB760k-c7T8v3yVvGikDQpORyXnLjldhgCQ"
+      }
+    }
+  ],
+  "iban_alteration": {
+    "description": "One character of the creditor IBAN changed: the details hash changes, and the altered IBAN no longer satisfies its mod-97 check digits.",
+    "original_iban": "DE89370400440532013000",
+    "altered_iban": "DE89370400440532013001",
+    "original_details_hash": "3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c",
+    "altered_details_hash": "7GT9fJfJrRbKOcU278OAD0xH25t7eMzkLTbZkPnwlbk"
+  },
+  "vectors": [
+    {
+      "name": "payment-approve",
+      "description": "A bank asks for a payment to an IBAN. Approval key; the server added the origin it had.",
+      "client_id": "bank-example-client",
+      "sent_details": {
+        "type": "biatec_payment",
+        "instructed_amount": {
+          "amount": "1250.00",
+          "currency": "EUR"
+        },
+        "creditor_name": "Muster Energie GmbH",
+        "creditor_account": {
+          "iban": "DE89370400440532013000"
+        },
+        "remittance": "Invoice 2026-0042",
+        "execution_date": "2026-10-20"
+      },
+      "server_origin": "https://netbanking.bank.example",
+      "details_hash": "3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c",
+      "expected": {
+        "accepted": true
+      },
+      "request": {
+        "auth_req_id": "ciba_92a04b22022b474b2a2ab118e5062a95",
+        "entry": "direct",
+        "authorization_details": [
+          {
+            "type": "biatec_payment",
+            "instructed_amount": {
+              "amount": "1250.00",
+              "currency": "EUR"
+            },
+            "creditor_name": "Muster Energie GmbH",
+            "creditor_account": {
+              "iban": "DE89370400440532013000"
+            },
+            "remittance": "Invoice 2026-0042",
+            "execution_date": "2026-10-20",
+            "origin": "https://netbanking.bank.example"
+          }
+        ],
+        "client": {
+          "fingerprint": "b70156d0932b8095",
+          "domain_proven": true,
+          "domain": "bank.example",
+          "linked": true
+        },
+        "binding_message": "",
+        "requested_expiry": 300,
+        "expiry": 1792425900,
+        "bound_hash": "3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c",
+        "origin": "https://netbanking.bank.example",
+        "sub": "pw_5e2b9d0c71a84f36"
+      },
+      "receipt": {
+        "version": "1.2",
+        "signed": {
+          "authorization_details": [
+            {
+              "type": "biatec_payment",
+              "instructed_amount": {
+                "amount": "1250.00",
+                "currency": "EUR"
+              },
+              "creditor_name": "Muster Energie GmbH",
+              "creditor_account": {
+                "iban": "DE89370400440532013000"
+              },
+              "remittance": "Invoice 2026-0042",
+              "execution_date": "2026-10-20",
+              "origin": "https://netbanking.bank.example"
+            }
+          ],
+          "auth_req_id": "ciba_92a04b22022b474b2a2ab118e5062a95",
+          "client_fingerprint": "b70156d0932b8095",
+          "binding_code": "620418",
+          "decision": "approve",
+          "expiry": 1792425900,
+          "sub": "pw_5e2b9d0c71a84f36",
+          "binding_message": "",
+          "details_hash": "3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c"
+        },
+        "alg": "ES256",
+        "signature": "t-vxBjXVANqb0OBVaOEsIxPzF1UT1J9YAzsPO_RXW36k4r7i9fh--PdxirABHjo6a1latkNXhmIFDbmD73zsmA",
+        "issued_at": 1792425620,
+        "device": {
+          "kid": "device-test-key-1",
+          "key_use": "approve",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
+            "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd181ZTJiOWQwYzcxYTg0ZjM2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.vPU_U2VqlU3iZPRNIzUOzgQ1NIgVucLnXD4MKC4b9heFrEQMR4yM-k_oMCczdeyNq85iggMrqGwxX6Ykk2VQrw"
+        }
+      },
+      "canonical": "{\"auth_req_id\":\"ciba_92a04b22022b474b2a2ab118e5062a95\",\"authorization_details\":[{\"creditor_account\":{\"iban\":\"DE89370400440532013000\"},\"creditor_name\":\"Muster Energie GmbH\",\"execution_date\":\"2026-10-20\",\"instructed_amount\":{\"amount\":\"1250.00\",\"currency\":\"EUR\"},\"origin\":\"https://netbanking.bank.example\",\"remittance\":\"Invoice 2026-0042\",\"type\":\"biatec_payment\"}],\"binding_code\":\"620418\",\"binding_message\":\"\",\"client_fingerprint\":\"b70156d0932b8095\",\"decision\":\"approve\",\"details_hash\":\"3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c\",\"expiry\":1792425900,\"sub\":\"pw_5e2b9d0c71a84f36\"}",
+      "canonical_sha256": "170adde015cd68f569f81d2f7512b1314a4bcfad40bfa1c6c87f3934515f7d67"
+    },
+    {
+      "name": "payment-deny",
+      "description": "The user denied the same payment before typing a code.",
+      "client_id": "bank-example-client",
+      "sent_details": {
+        "type": "biatec_payment",
+        "instructed_amount": {
+          "amount": "1250.00",
+          "currency": "EUR"
+        },
+        "creditor_name": "Muster Energie GmbH",
+        "creditor_account": {
+          "iban": "DE89370400440532013000"
+        },
+        "remittance": "Invoice 2026-0042",
+        "execution_date": "2026-10-20"
+      },
+      "server_origin": "https://netbanking.bank.example",
+      "details_hash": "3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c",
+      "expected": {
+        "accepted": true
+      },
+      "request": {
+        "auth_req_id": "ciba_fedfc16165db72b4cd94d32383a5aa1e",
+        "entry": "direct",
+        "authorization_details": [
+          {
+            "type": "biatec_payment",
+            "instructed_amount": {
+              "amount": "1250.00",
+              "currency": "EUR"
+            },
+            "creditor_name": "Muster Energie GmbH",
+            "creditor_account": {
+              "iban": "DE89370400440532013000"
+            },
+            "remittance": "Invoice 2026-0042",
+            "execution_date": "2026-10-20",
+            "origin": "https://netbanking.bank.example"
+          }
+        ],
+        "client": {
+          "fingerprint": "b70156d0932b8095",
+          "domain_proven": true,
+          "domain": "bank.example",
+          "linked": true
+        },
+        "binding_message": "",
+        "requested_expiry": 300,
+        "expiry": 1792425900,
+        "bound_hash": "3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c",
+        "origin": "https://netbanking.bank.example",
+        "sub": "pw_5e2b9d0c71a84f36"
+      },
+      "receipt": {
+        "version": "1.2",
+        "signed": {
+          "authorization_details": [
+            {
+              "type": "biatec_payment",
+              "instructed_amount": {
+                "amount": "1250.00",
+                "currency": "EUR"
+              },
+              "creditor_name": "Muster Energie GmbH",
+              "creditor_account": {
+                "iban": "DE89370400440532013000"
+              },
+              "remittance": "Invoice 2026-0042",
+              "execution_date": "2026-10-20",
+              "origin": "https://netbanking.bank.example"
+            }
+          ],
+          "auth_req_id": "ciba_fedfc16165db72b4cd94d32383a5aa1e",
+          "client_fingerprint": "b70156d0932b8095",
+          "binding_code": "",
+          "decision": "deny",
+          "expiry": 1792425900,
+          "sub": "pw_5e2b9d0c71a84f36",
+          "binding_message": "",
+          "details_hash": "3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c"
+        },
+        "alg": "ES256",
+        "signature": "Vyj3OumzmvXugbbig7sshntv9uEqBL6P_FHC3v_v4D7GU9TnJGKXLkqtPo-YtjyUHhYaNKeuZX0LjK4SbDJFsQ",
+        "issued_at": 1792425620,
+        "device": {
+          "kid": "device-test-key-1",
+          "key_use": "approve",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
+            "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd181ZTJiOWQwYzcxYTg0ZjM2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.LOCoPK86JlO-D5x8VDDVYrs_IZyIClxR1QgyAEtbMxgq0VgrBRBmgeXpAOAbHTjnq-wsIDsbrTkUddc0vnBRlg"
+        }
+      },
+      "canonical": "{\"auth_req_id\":\"ciba_fedfc16165db72b4cd94d32383a5aa1e\",\"authorization_details\":[{\"creditor_account\":{\"iban\":\"DE89370400440532013000\"},\"creditor_name\":\"Muster Energie GmbH\",\"execution_date\":\"2026-10-20\",\"instructed_amount\":{\"amount\":\"1250.00\",\"currency\":\"EUR\"},\"origin\":\"https://netbanking.bank.example\",\"remittance\":\"Invoice 2026-0042\",\"type\":\"biatec_payment\"}],\"binding_code\":\"\",\"binding_message\":\"\",\"client_fingerprint\":\"b70156d0932b8095\",\"decision\":\"deny\",\"details_hash\":\"3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c\",\"expiry\":1792425900,\"sub\":\"pw_5e2b9d0c71a84f36\"}",
+      "canonical_sha256": "0e7041a5acfd7e88361d0c590a4338d7bcf7a6d1750044dc9f5fd53160c41237"
+    },
+    {
+      "name": "payment-account-identification-approve",
+      "description": "A relying party without a proven domain, an account that is not an IBAN, no remittance or date, and no origin (the server had none).",
+      "client_id": "rp-unproven-3b7e",
+      "sent_details": {
+        "type": "biatec_payment",
+        "instructed_amount": {
+          "amount": "89.90",
+          "currency": "GBP"
+        },
+        "creditor_name": "Example Supplies Ltd",
+        "creditor_account": {
+          "identification": "20000055779911",
+          "scheme": "SORTCODE"
+        }
+      },
+      "server_origin": null,
+      "details_hash": "v2qUwL8I7H7p07MbGxLzR3qwAH5zsitHcR1JH0up4EA",
+      "expected": {
+        "accepted": true
+      },
+      "request": {
+        "auth_req_id": "ciba_fb38892a01349a4eb21de753bb1959c6",
+        "entry": "direct",
+        "authorization_details": [
+          {
+            "type": "biatec_payment",
+            "instructed_amount": {
+              "amount": "89.90",
+              "currency": "GBP"
+            },
+            "creditor_name": "Example Supplies Ltd",
+            "creditor_account": {
+              "identification": "20000055779911",
+              "scheme": "SORTCODE"
+            }
+          }
+        ],
+        "client": {
+          "fingerprint": "8455f1b8f2a67676",
+          "domain_proven": false,
+          "linked": true
+        },
+        "binding_message": "",
+        "requested_expiry": 300,
+        "expiry": 1792425900,
+        "bound_hash": "v2qUwL8I7H7p07MbGxLzR3qwAH5zsitHcR1JH0up4EA",
+        "sub": "pw_5e2b9d0c71a84f36"
+      },
+      "receipt": {
+        "version": "1.2",
+        "signed": {
+          "authorization_details": [
+            {
+              "type": "biatec_payment",
+              "instructed_amount": {
+                "amount": "89.90",
+                "currency": "GBP"
+              },
+              "creditor_name": "Example Supplies Ltd",
+              "creditor_account": {
+                "identification": "20000055779911",
+                "scheme": "SORTCODE"
+              }
+            }
+          ],
+          "auth_req_id": "ciba_fb38892a01349a4eb21de753bb1959c6",
+          "client_fingerprint": "8455f1b8f2a67676",
+          "binding_code": "384105",
+          "decision": "approve",
+          "expiry": 1792425900,
+          "sub": "pw_5e2b9d0c71a84f36",
+          "binding_message": "",
+          "details_hash": "v2qUwL8I7H7p07MbGxLzR3qwAH5zsitHcR1JH0up4EA"
+        },
+        "alg": "ES256",
+        "signature": "L3aGopM9e_gvEBu7aR5omr23zlH9TJWwfsioIMyckCikx0JpK72R67F9MITQ6Nz4p_4fTY10bdXSC9dHx4BkDw",
+        "issued_at": 1792425620,
+        "device": {
+          "kid": "device-test-key-1",
+          "key_use": "approve",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
+            "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd181ZTJiOWQwYzcxYTg0ZjM2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.8kBd69zj2HbqQU-S9grqspb5iwswk9rCvjwMb8fvOg1H3A1fC2_Kbc7QcYgBSP3HbimqD5OKnmx5OHMf58KCnQ"
+        }
+      },
+      "canonical": "{\"auth_req_id\":\"ciba_fb38892a01349a4eb21de753bb1959c6\",\"authorization_details\":[{\"creditor_account\":{\"identification\":\"20000055779911\",\"scheme\":\"SORTCODE\"},\"creditor_name\":\"Example Supplies Ltd\",\"instructed_amount\":{\"amount\":\"89.90\",\"currency\":\"GBP\"},\"type\":\"biatec_payment\"}],\"binding_code\":\"384105\",\"binding_message\":\"\",\"client_fingerprint\":\"8455f1b8f2a67676\",\"decision\":\"approve\",\"details_hash\":\"v2qUwL8I7H7p07MbGxLzR3qwAH5zsitHcR1JH0up4EA\",\"expiry\":1792425900,\"sub\":\"pw_5e2b9d0c71a84f36\"}",
+      "canonical_sha256": "e991cf364177dadab27b4e3a64484b3554d30acb8d363d35a96de8cd4cc4b605"
+    },
+    {
+      "name": "login-approve",
+      "description": "Access to internet banking: the login context the party reported.",
+      "client_id": "bank-example-client",
+      "sent_details": {
+        "type": "biatec_login",
+        "context": {
+          "ip": "203.0.113.42",
+          "location": "Bratislava, Slovakia",
+          "user_agent": "Firefox 133 on Windows 11"
+        }
+      },
+      "server_origin": "https://netbanking.bank.example",
+      "details_hash": "pXEyBH7f_qs4ZpCo85vUAK7-h5XunXvjwIzTgslMUFM",
+      "expected": {
+        "accepted": true
+      },
+      "request": {
+        "auth_req_id": "ciba_f295db0fa17f3f569c34e17915d85525",
+        "entry": "direct",
+        "authorization_details": [
+          {
+            "type": "biatec_login",
+            "context": {
+              "ip": "203.0.113.42",
+              "location": "Bratislava, Slovakia",
+              "user_agent": "Firefox 133 on Windows 11"
+            },
+            "origin": "https://netbanking.bank.example"
+          }
+        ],
+        "client": {
+          "fingerprint": "b70156d0932b8095",
+          "domain_proven": true,
+          "domain": "bank.example",
+          "linked": true
+        },
+        "binding_message": "",
+        "requested_expiry": 300,
+        "expiry": 1792425900,
+        "bound_hash": "pXEyBH7f_qs4ZpCo85vUAK7-h5XunXvjwIzTgslMUFM",
+        "origin": "https://netbanking.bank.example",
+        "sub": "pw_5e2b9d0c71a84f36"
+      },
+      "receipt": {
+        "version": "1.2",
+        "signed": {
+          "authorization_details": [
+            {
+              "type": "biatec_login",
+              "context": {
+                "ip": "203.0.113.42",
+                "location": "Bratislava, Slovakia",
+                "user_agent": "Firefox 133 on Windows 11"
+              },
+              "origin": "https://netbanking.bank.example"
+            }
+          ],
+          "auth_req_id": "ciba_f295db0fa17f3f569c34e17915d85525",
+          "client_fingerprint": "b70156d0932b8095",
+          "binding_code": "917263",
+          "decision": "approve",
+          "expiry": 1792425900,
+          "sub": "pw_5e2b9d0c71a84f36",
+          "binding_message": "",
+          "details_hash": "pXEyBH7f_qs4ZpCo85vUAK7-h5XunXvjwIzTgslMUFM"
+        },
+        "alg": "ES256",
+        "signature": "iiXE8yu-zJParSHSDyttZmKEQL-uC6Tdl8BmExdMnAbYlFKdj-qi7-lPD0YTFzJC5MfV55xyNqfMfcxANfhetw",
+        "issued_at": 1792425620,
+        "device": {
+          "kid": "device-test-key-1",
+          "key_use": "approve",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
+            "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd181ZTJiOWQwYzcxYTg0ZjM2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.pnROeuqPTT2OwB02erO-5wQceNcl6K8hzaIZ81FmJ8ObAlKvgBodBVnz9FOz9mnzPfewnvUq44GEvxJNVKOndg"
+        }
+      },
+      "canonical": "{\"auth_req_id\":\"ciba_f295db0fa17f3f569c34e17915d85525\",\"authorization_details\":[{\"context\":{\"ip\":\"203.0.113.42\",\"location\":\"Bratislava, Slovakia\",\"user_agent\":\"Firefox 133 on Windows 11\"},\"origin\":\"https://netbanking.bank.example\",\"type\":\"biatec_login\"}],\"binding_code\":\"917263\",\"binding_message\":\"\",\"client_fingerprint\":\"b70156d0932b8095\",\"decision\":\"approve\",\"details_hash\":\"pXEyBH7f_qs4ZpCo85vUAK7-h5XunXvjwIzTgslMUFM\",\"expiry\":1792425900,\"sub\":\"pw_5e2b9d0c71a84f36\"}",
+      "canonical_sha256": "49e8d578332b30cfa15eb15ced358eb283cab79f986640d0c353e72628d67a7a"
+    },
+    {
+      "name": "login-deny",
+      "description": "A deny needs no biometric: it may be signed by the presence key.",
+      "client_id": "bank-example-client",
+      "sent_details": {
+        "type": "biatec_login",
+        "context": {
+          "ip": "203.0.113.42",
+          "location": "Bratislava, Slovakia",
+          "user_agent": "Firefox 133 on Windows 11"
+        }
+      },
+      "server_origin": "https://netbanking.bank.example",
+      "details_hash": "pXEyBH7f_qs4ZpCo85vUAK7-h5XunXvjwIzTgslMUFM",
+      "expected": {
+        "accepted": true
+      },
+      "request": {
+        "auth_req_id": "ciba_430e244c5dad64754307710a3022175a",
+        "entry": "direct",
+        "authorization_details": [
+          {
+            "type": "biatec_login",
+            "context": {
+              "ip": "203.0.113.42",
+              "location": "Bratislava, Slovakia",
+              "user_agent": "Firefox 133 on Windows 11"
+            },
+            "origin": "https://netbanking.bank.example"
+          }
+        ],
+        "client": {
+          "fingerprint": "b70156d0932b8095",
+          "domain_proven": true,
+          "domain": "bank.example",
+          "linked": true
+        },
+        "binding_message": "",
+        "requested_expiry": 300,
+        "expiry": 1792425900,
+        "bound_hash": "pXEyBH7f_qs4ZpCo85vUAK7-h5XunXvjwIzTgslMUFM",
+        "origin": "https://netbanking.bank.example",
+        "sub": "pw_5e2b9d0c71a84f36"
+      },
+      "receipt": {
+        "version": "1.2",
+        "signed": {
+          "authorization_details": [
+            {
+              "type": "biatec_login",
+              "context": {
+                "ip": "203.0.113.42",
+                "location": "Bratislava, Slovakia",
+                "user_agent": "Firefox 133 on Windows 11"
+              },
+              "origin": "https://netbanking.bank.example"
+            }
+          ],
+          "auth_req_id": "ciba_430e244c5dad64754307710a3022175a",
+          "client_fingerprint": "b70156d0932b8095",
+          "binding_code": "",
+          "decision": "deny",
+          "expiry": 1792425900,
+          "sub": "pw_5e2b9d0c71a84f36",
+          "binding_message": "",
+          "details_hash": "pXEyBH7f_qs4ZpCo85vUAK7-h5XunXvjwIzTgslMUFM"
+        },
+        "alg": "ES256",
+        "signature": "VyBoXAAG1jOaSeXXx_PEpAwTwa6DRRCV15oyK94Ks2l4CT16ygvKeI4RyeHU1k9NWju4TqZdh5dR1klsTGOeSw",
+        "issued_at": 1792425620,
+        "device": {
+          "kid": "presence-test-key-1",
+          "key_use": "presence",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "nZQI_ShNEIOy_-Pb6TPa8LOaCyDengdDzBlg0cOhD7w",
+            "y": "kTQ5sb0lNB760k-c7T8v3yVvGikDQpORyXnLjldhgCQ"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd181ZTJiOWQwYzcxYTg0ZjM2IiwiZGV2aWNlX2tpZCI6InByZXNlbmNlLXRlc3Qta2V5LTEiLCJkZXZpY2VfandrX3RodW1icHJpbnQiOiIyZjB2dWwzdGJ5S0Y2S3R2V3VRYUVBWnVCano1aHUxeS15QUlEVWswNXpJIiwiYmlhdGVjX2tleV91c2UiOiJwcmVzZW5jZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.5LYQQnv__WRvGosmcl2cYgg_Cfa8PP6ie8U54-loKqNCPJrHEjlfw1sm-BSyKlMxzEhm7XAJvAjn9oFFbCIxmA"
+        }
+      },
+      "canonical": "{\"auth_req_id\":\"ciba_430e244c5dad64754307710a3022175a\",\"authorization_details\":[{\"context\":{\"ip\":\"203.0.113.42\",\"location\":\"Bratislava, Slovakia\",\"user_agent\":\"Firefox 133 on Windows 11\"},\"origin\":\"https://netbanking.bank.example\",\"type\":\"biatec_login\"}],\"binding_code\":\"\",\"binding_message\":\"\",\"client_fingerprint\":\"b70156d0932b8095\",\"decision\":\"deny\",\"details_hash\":\"pXEyBH7f_qs4ZpCo85vUAK7-h5XunXvjwIzTgslMUFM\",\"expiry\":1792425900,\"sub\":\"pw_5e2b9d0c71a84f36\"}",
+      "canonical_sha256": "553a3170754d7f063d1fec572c79bcf4be5bc54f0e10aedb643c18824b456b34"
+    },
+    {
+      "name": "action-approve",
+      "description": "Any other action: a title and label/value lines the app renders itself.",
+      "client_id": "bank-example-client",
+      "sent_details": {
+        "type": "biatec_action",
+        "title": "Add payee",
+        "lines": [
+          {
+            "label": "Payee",
+            "value": "Muster Energie GmbH"
+          },
+          {
+            "label": "Account",
+            "value": "DE89 3704 0044 0532 0130 00"
+          },
+          {
+            "label": "Daily limit",
+            "value": "5 000 EUR"
+          }
+        ]
+      },
+      "server_origin": null,
+      "details_hash": "SxN-4uu5nqSXpo6HX97SYT8HSQizDLdD7F7s-JodUIA",
+      "expected": {
+        "accepted": true
+      },
+      "request": {
+        "auth_req_id": "ciba_9f9d0cdda418f5ec5d388dfd5bf67de2",
+        "entry": "direct",
+        "authorization_details": [
+          {
+            "type": "biatec_action",
+            "title": "Add payee",
+            "lines": [
+              {
+                "label": "Payee",
+                "value": "Muster Energie GmbH"
+              },
+              {
+                "label": "Account",
+                "value": "DE89 3704 0044 0532 0130 00"
+              },
+              {
+                "label": "Daily limit",
+                "value": "5 000 EUR"
+              }
+            ]
+          }
+        ],
+        "client": {
+          "fingerprint": "b70156d0932b8095",
+          "domain_proven": true,
+          "domain": "bank.example",
+          "linked": true
+        },
+        "binding_message": "",
+        "requested_expiry": 300,
+        "expiry": 1792425900,
+        "bound_hash": "SxN-4uu5nqSXpo6HX97SYT8HSQizDLdD7F7s-JodUIA",
+        "sub": "pw_5e2b9d0c71a84f36"
+      },
+      "receipt": {
+        "version": "1.2",
+        "signed": {
+          "authorization_details": [
+            {
+              "type": "biatec_action",
+              "title": "Add payee",
+              "lines": [
+                {
+                  "label": "Payee",
+                  "value": "Muster Energie GmbH"
+                },
+                {
+                  "label": "Account",
+                  "value": "DE89 3704 0044 0532 0130 00"
+                },
+                {
+                  "label": "Daily limit",
+                  "value": "5 000 EUR"
+                }
+              ]
+            }
+          ],
+          "auth_req_id": "ciba_9f9d0cdda418f5ec5d388dfd5bf67de2",
+          "client_fingerprint": "b70156d0932b8095",
+          "binding_code": "550193",
+          "decision": "approve",
+          "expiry": 1792425900,
+          "sub": "pw_5e2b9d0c71a84f36",
+          "binding_message": "",
+          "details_hash": "SxN-4uu5nqSXpo6HX97SYT8HSQizDLdD7F7s-JodUIA"
+        },
+        "alg": "ES256",
+        "signature": "H674qoI_xWF1xggVWtaf-CbNUNS_V2-daH5W93V_gvISKR1t4Yz5jqrcOsFPT3d4qbmH5TiECOaE1xVvk1V3sg",
+        "issued_at": 1792425620,
+        "device": {
+          "kid": "device-test-key-1",
+          "key_use": "approve",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
+            "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd181ZTJiOWQwYzcxYTg0ZjM2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.NculcEEKqA3ggHzPPF-N_wdBbGvoGyi6jlCfgij1-HHJZCmJp2E5OxeLHhJeWGsB2IJxGykN1CcgJc52IeswcA"
+        }
+      },
+      "canonical": "{\"auth_req_id\":\"ciba_9f9d0cdda418f5ec5d388dfd5bf67de2\",\"authorization_details\":[{\"lines\":[{\"label\":\"Payee\",\"value\":\"Muster Energie GmbH\"},{\"label\":\"Account\",\"value\":\"DE89 3704 0044 0532 0130 00\"},{\"label\":\"Daily limit\",\"value\":\"5 000 EUR\"}],\"title\":\"Add payee\",\"type\":\"biatec_action\"}],\"binding_code\":\"550193\",\"binding_message\":\"\",\"client_fingerprint\":\"b70156d0932b8095\",\"decision\":\"approve\",\"details_hash\":\"SxN-4uu5nqSXpo6HX97SYT8HSQizDLdD7F7s-JodUIA\",\"expiry\":1792425900,\"sub\":\"pw_5e2b9d0c71a84f36\"}",
+      "canonical_sha256": "959557907a8f9112fb6dfbdc734d34e29a73813382c10beb504699f3fcf3375a"
+    },
+    {
+      "name": "action-deny",
+      "description": "The user denied the action.",
+      "client_id": "bank-example-client",
+      "sent_details": {
+        "type": "biatec_action",
+        "title": "Add payee",
+        "lines": [
+          {
+            "label": "Payee",
+            "value": "Muster Energie GmbH"
+          },
+          {
+            "label": "Account",
+            "value": "DE89 3704 0044 0532 0130 00"
+          },
+          {
+            "label": "Daily limit",
+            "value": "5 000 EUR"
+          }
+        ]
+      },
+      "server_origin": null,
+      "details_hash": "SxN-4uu5nqSXpo6HX97SYT8HSQizDLdD7F7s-JodUIA",
+      "expected": {
+        "accepted": true
+      },
+      "request": {
+        "auth_req_id": "ciba_abee82e2279e1d5eaa3df17976733169",
+        "entry": "direct",
+        "authorization_details": [
+          {
+            "type": "biatec_action",
+            "title": "Add payee",
+            "lines": [
+              {
+                "label": "Payee",
+                "value": "Muster Energie GmbH"
+              },
+              {
+                "label": "Account",
+                "value": "DE89 3704 0044 0532 0130 00"
+              },
+              {
+                "label": "Daily limit",
+                "value": "5 000 EUR"
+              }
+            ]
+          }
+        ],
+        "client": {
+          "fingerprint": "b70156d0932b8095",
+          "domain_proven": true,
+          "domain": "bank.example",
+          "linked": true
+        },
+        "binding_message": "",
+        "requested_expiry": 300,
+        "expiry": 1792425900,
+        "bound_hash": "SxN-4uu5nqSXpo6HX97SYT8HSQizDLdD7F7s-JodUIA",
+        "sub": "pw_5e2b9d0c71a84f36"
+      },
+      "receipt": {
+        "version": "1.2",
+        "signed": {
+          "authorization_details": [
+            {
+              "type": "biatec_action",
+              "title": "Add payee",
+              "lines": [
+                {
+                  "label": "Payee",
+                  "value": "Muster Energie GmbH"
+                },
+                {
+                  "label": "Account",
+                  "value": "DE89 3704 0044 0532 0130 00"
+                },
+                {
+                  "label": "Daily limit",
+                  "value": "5 000 EUR"
+                }
+              ]
+            }
+          ],
+          "auth_req_id": "ciba_abee82e2279e1d5eaa3df17976733169",
+          "client_fingerprint": "b70156d0932b8095",
+          "binding_code": "",
+          "decision": "deny",
+          "expiry": 1792425900,
+          "sub": "pw_5e2b9d0c71a84f36",
+          "binding_message": "",
+          "details_hash": "SxN-4uu5nqSXpo6HX97SYT8HSQizDLdD7F7s-JodUIA"
+        },
+        "alg": "ES256",
+        "signature": "sHL0jXMJCjeUUHA9AXNu9LZV7xEvLSwrK5KeOY1dIT8ba24FtmDTGckFxGUM2kAYCQl-ejh2Hq5p4O0I2H_ssA",
+        "issued_at": 1792425620,
+        "device": {
+          "kid": "device-test-key-1",
+          "key_use": "approve",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
+            "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd181ZTJiOWQwYzcxYTg0ZjM2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.TnN4lw8PsuzDgKS65vpHOmtp4gGkxS1Zbm8ZJybMe1LFP-FCByhqzhN2EmeE0tPk64ejeIGwz88aWTDC5afY4A"
+        }
+      },
+      "canonical": "{\"auth_req_id\":\"ciba_abee82e2279e1d5eaa3df17976733169\",\"authorization_details\":[{\"lines\":[{\"label\":\"Payee\",\"value\":\"Muster Energie GmbH\"},{\"label\":\"Account\",\"value\":\"DE89 3704 0044 0532 0130 00\"},{\"label\":\"Daily limit\",\"value\":\"5 000 EUR\"}],\"title\":\"Add payee\",\"type\":\"biatec_action\"}],\"binding_code\":\"\",\"binding_message\":\"\",\"client_fingerprint\":\"b70156d0932b8095\",\"decision\":\"deny\",\"details_hash\":\"SxN-4uu5nqSXpo6HX97SYT8HSQizDLdD7F7s-JodUIA\",\"expiry\":1792425900,\"sub\":\"pw_5e2b9d0c71a84f36\"}",
+      "canonical_sha256": "2f681a9acf673547792b2e7226115d237a63da69d56d5ec907f3fe8d28b9783f"
+    },
+    {
+      "name": "payment-approve-signed-by-presence-key-REFUSED",
+      "description": "NEGATIVE: the signature and the attestation are valid, but a payment approval must be signed by an approval key. Verifiers MUST refuse it, in attestation mode (key use) and in pinned mode (the presence pin does not approve).",
+      "client_id": "bank-example-client",
+      "sent_details": {
+        "type": "biatec_payment",
+        "instructed_amount": {
+          "amount": "1250.00",
+          "currency": "EUR"
+        },
+        "creditor_name": "Muster Energie GmbH",
+        "creditor_account": {
+          "iban": "DE89370400440532013000"
+        },
+        "remittance": "Invoice 2026-0042",
+        "execution_date": "2026-10-20"
+      },
+      "server_origin": "https://netbanking.bank.example",
+      "details_hash": "3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c",
+      "expected": {
+        "accepted": false,
+        "reason": "approve_requires_approval_key"
+      },
+      "request": {
+        "auth_req_id": "ciba_4115d6042fcbeebbc0b4fe754bba131c",
+        "entry": "direct",
+        "authorization_details": [
+          {
+            "type": "biatec_payment",
+            "instructed_amount": {
+              "amount": "1250.00",
+              "currency": "EUR"
+            },
+            "creditor_name": "Muster Energie GmbH",
+            "creditor_account": {
+              "iban": "DE89370400440532013000"
+            },
+            "remittance": "Invoice 2026-0042",
+            "execution_date": "2026-10-20",
+            "origin": "https://netbanking.bank.example"
+          }
+        ],
+        "client": {
+          "fingerprint": "b70156d0932b8095",
+          "domain_proven": true,
+          "domain": "bank.example",
+          "linked": true
+        },
+        "binding_message": "",
+        "requested_expiry": 300,
+        "expiry": 1792425900,
+        "bound_hash": "3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c",
+        "origin": "https://netbanking.bank.example",
+        "sub": "pw_5e2b9d0c71a84f36"
+      },
+      "receipt": {
+        "version": "1.2",
+        "signed": {
+          "authorization_details": [
+            {
+              "type": "biatec_payment",
+              "instructed_amount": {
+                "amount": "1250.00",
+                "currency": "EUR"
+              },
+              "creditor_name": "Muster Energie GmbH",
+              "creditor_account": {
+                "iban": "DE89370400440532013000"
+              },
+              "remittance": "Invoice 2026-0042",
+              "execution_date": "2026-10-20",
+              "origin": "https://netbanking.bank.example"
+            }
+          ],
+          "auth_req_id": "ciba_4115d6042fcbeebbc0b4fe754bba131c",
+          "client_fingerprint": "b70156d0932b8095",
+          "binding_code": "208846",
+          "decision": "approve",
+          "expiry": 1792425900,
+          "sub": "pw_5e2b9d0c71a84f36",
+          "binding_message": "",
+          "details_hash": "3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c"
+        },
+        "alg": "ES256",
+        "signature": "Nij7Y4yvumH2DTTXZ4mZFcr7F2DLFRJE5iJrRYbgasiVO2tVaCGtXIYdJVYqlSTXCXsdTZKsf-8h31Vy0ZV7wg",
+        "issued_at": 1792425620,
+        "device": {
+          "kid": "presence-test-key-1",
+          "key_use": "presence",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "nZQI_ShNEIOy_-Pb6TPa8LOaCyDengdDzBlg0cOhD7w",
+            "y": "kTQ5sb0lNB760k-c7T8v3yVvGikDQpORyXnLjldhgCQ"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd181ZTJiOWQwYzcxYTg0ZjM2IiwiZGV2aWNlX2tpZCI6InByZXNlbmNlLXRlc3Qta2V5LTEiLCJkZXZpY2VfandrX3RodW1icHJpbnQiOiIyZjB2dWwzdGJ5S0Y2S3R2V3VRYUVBWnVCano1aHUxeS15QUlEVWswNXpJIiwiYmlhdGVjX2tleV91c2UiOiJwcmVzZW5jZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.EIV614ntSnbB3kBjbnwVRnqFs5QrrXW9uS6hMEr3H6HtArZNqE0rQLAwSmEirCMu85sHhlUO99Apa--w9OTNAw"
+        }
+      },
+      "canonical": "{\"auth_req_id\":\"ciba_4115d6042fcbeebbc0b4fe754bba131c\",\"authorization_details\":[{\"creditor_account\":{\"iban\":\"DE89370400440532013000\"},\"creditor_name\":\"Muster Energie GmbH\",\"execution_date\":\"2026-10-20\",\"instructed_amount\":{\"amount\":\"1250.00\",\"currency\":\"EUR\"},\"origin\":\"https://netbanking.bank.example\",\"remittance\":\"Invoice 2026-0042\",\"type\":\"biatec_payment\"}],\"binding_code\":\"208846\",\"binding_message\":\"\",\"client_fingerprint\":\"b70156d0932b8095\",\"decision\":\"approve\",\"details_hash\":\"3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c\",\"expiry\":1792425900,\"sub\":\"pw_5e2b9d0c71a84f36\"}",
+      "canonical_sha256": "00ca99f0aa027c9ef9f20f61541b3b900bcd01459c3c1deec34c906759e52691"
+    },
+    {
+      "name": "payment-approve-iban-altered-REFUSED",
+      "description": "NEGATIVE: the device signed a payment whose IBAN differs by one character from the one the party sent, next to the details_hash of the ORIGINAL (a relay swapping the payee after the party computed the hash). Both signatures are valid; the hash computed from the signed details does not equal details_hash, and the altered IBAN fails its checksum as well.",
+      "client_id": "bank-example-client",
+      "sent_details": {
+        "type": "biatec_payment",
+        "instructed_amount": {
+          "amount": "1250.00",
+          "currency": "EUR"
+        },
+        "creditor_name": "Muster Energie GmbH",
+        "creditor_account": {
+          "iban": "DE89370400440532013000"
+        },
+        "remittance": "Invoice 2026-0042",
+        "execution_date": "2026-10-20"
+      },
+      "server_origin": "https://netbanking.bank.example",
+      "details_hash": "3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c",
+      "expected": {
+        "accepted": false,
+        "reason": "details_hash_mismatch"
+      },
+      "request": {
+        "auth_req_id": "ciba_6f1911212ce99fb9e37b719ce6326856",
+        "entry": "direct",
+        "authorization_details": [
+          {
+            "type": "biatec_payment",
+            "instructed_amount": {
+              "amount": "1250.00",
+              "currency": "EUR"
+            },
+            "creditor_name": "Muster Energie GmbH",
+            "creditor_account": {
+              "iban": "DE89370400440532013000"
+            },
+            "remittance": "Invoice 2026-0042",
+            "execution_date": "2026-10-20",
+            "origin": "https://netbanking.bank.example"
+          }
+        ],
+        "client": {
+          "fingerprint": "b70156d0932b8095",
+          "domain_proven": true,
+          "domain": "bank.example",
+          "linked": true
+        },
+        "binding_message": "",
+        "requested_expiry": 300,
+        "expiry": 1792425900,
+        "bound_hash": "3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c",
+        "origin": "https://netbanking.bank.example",
+        "sub": "pw_5e2b9d0c71a84f36"
+      },
+      "receipt": {
+        "version": "1.2",
+        "signed": {
+          "authorization_details": [
+            {
+              "type": "biatec_payment",
+              "instructed_amount": {
+                "amount": "1250.00",
+                "currency": "EUR"
+              },
+              "creditor_name": "Muster Energie GmbH",
+              "creditor_account": {
+                "iban": "DE89370400440532013001"
+              },
+              "remittance": "Invoice 2026-0042",
+              "execution_date": "2026-10-20",
+              "origin": "https://netbanking.bank.example"
+            }
+          ],
+          "auth_req_id": "ciba_6f1911212ce99fb9e37b719ce6326856",
+          "client_fingerprint": "b70156d0932b8095",
+          "binding_code": "731950",
+          "decision": "approve",
+          "expiry": 1792425900,
+          "sub": "pw_5e2b9d0c71a84f36",
+          "binding_message": "",
+          "details_hash": "3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c"
+        },
+        "alg": "ES256",
+        "signature": "2-T0OLRsjlRBNrvM-mG-bTP_MuKFQSNgxB7LIVaMEkVeeQle-hpOv3QZhOaEBSeOgc0obV0rjcgg6z4hVmatnA",
+        "issued_at": 1792425620,
+        "device": {
+          "kid": "device-test-key-1",
+          "key_use": "approve",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "WaGrIVu9nxelqZVnkH9zHbfccq7AbouCYjVdXMfTSvo",
+            "y": "S45Nc7iger4-AGl6Civy_9FCLltVZQDXhXN3p7zGez0"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd181ZTJiOWQwYzcxYTg0ZjM2IiwiZGV2aWNlX2tpZCI6ImRldmljZS10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiNGxPM2U3S2JQdVpzQzZnQU85MjBSVFhXRThpa3FQM3NidHdnSkZvM1lBMCIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.eP6Qj-Mm_PnbbN4fquDXYoTlA_iQ_9JmvBb-LBLZMLYL8O9r4CbhBFiIv36dxLtV2-FYyQQrde5ntFRpRHFz2Q"
+        }
+      },
+      "canonical": "{\"auth_req_id\":\"ciba_6f1911212ce99fb9e37b719ce6326856\",\"authorization_details\":[{\"creditor_account\":{\"iban\":\"DE89370400440532013001\"},\"creditor_name\":\"Muster Energie GmbH\",\"execution_date\":\"2026-10-20\",\"instructed_amount\":{\"amount\":\"1250.00\",\"currency\":\"EUR\"},\"origin\":\"https://netbanking.bank.example\",\"remittance\":\"Invoice 2026-0042\",\"type\":\"biatec_payment\"}],\"binding_code\":\"731950\",\"binding_message\":\"\",\"client_fingerprint\":\"b70156d0932b8095\",\"decision\":\"approve\",\"details_hash\":\"3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c\",\"expiry\":1792425900,\"sub\":\"pw_5e2b9d0c71a84f36\"}",
+      "canonical_sha256": "7ce56e057d49ce142b8bb00bcf9153dc95a47bf285831782982951cf58d661d4"
+    },
+    {
+      "name": "payment-approve-new-device-unpinned",
+      "description": "A second phone the user added after linking: its approval key is attested by Biatec OIDC but the relying party never pinned it. Attestation mode accepts; pinned mode refuses until the party decides (spec section 14.6).",
+      "client_id": "bank-example-client",
+      "sent_details": {
+        "type": "biatec_payment",
+        "instructed_amount": {
+          "amount": "1250.00",
+          "currency": "EUR"
+        },
+        "creditor_name": "Muster Energie GmbH",
+        "creditor_account": {
+          "iban": "DE89370400440532013000"
+        },
+        "remittance": "Invoice 2026-0042",
+        "execution_date": "2026-10-20"
+      },
+      "server_origin": "https://netbanking.bank.example",
+      "details_hash": "3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c",
+      "expected": {
+        "accepted": true
+      },
+      "request": {
+        "auth_req_id": "ciba_af0659742ab16848c8c6e3d82ae8dd3c",
+        "entry": "direct",
+        "authorization_details": [
+          {
+            "type": "biatec_payment",
+            "instructed_amount": {
+              "amount": "1250.00",
+              "currency": "EUR"
+            },
+            "creditor_name": "Muster Energie GmbH",
+            "creditor_account": {
+              "iban": "DE89370400440532013000"
+            },
+            "remittance": "Invoice 2026-0042",
+            "execution_date": "2026-10-20",
+            "origin": "https://netbanking.bank.example"
+          }
+        ],
+        "client": {
+          "fingerprint": "b70156d0932b8095",
+          "domain_proven": true,
+          "domain": "bank.example",
+          "linked": true
+        },
+        "binding_message": "",
+        "requested_expiry": 300,
+        "expiry": 1792425900,
+        "bound_hash": "3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c",
+        "origin": "https://netbanking.bank.example",
+        "sub": "pw_5e2b9d0c71a84f36"
+      },
+      "receipt": {
+        "version": "1.2",
+        "signed": {
+          "authorization_details": [
+            {
+              "type": "biatec_payment",
+              "instructed_amount": {
+                "amount": "1250.00",
+                "currency": "EUR"
+              },
+              "creditor_name": "Muster Energie GmbH",
+              "creditor_account": {
+                "iban": "DE89370400440532013000"
+              },
+              "remittance": "Invoice 2026-0042",
+              "execution_date": "2026-10-20",
+              "origin": "https://netbanking.bank.example"
+            }
+          ],
+          "auth_req_id": "ciba_af0659742ab16848c8c6e3d82ae8dd3c",
+          "client_fingerprint": "b70156d0932b8095",
+          "binding_code": "462790",
+          "decision": "approve",
+          "expiry": 1792425900,
+          "sub": "pw_5e2b9d0c71a84f36",
+          "binding_message": "",
+          "details_hash": "3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c"
+        },
+        "alg": "ES256",
+        "signature": "_44oBKHFkGunL8PJyKgAqZY5GS80OCAsfl5kQZfW_NwPO3pgNkIGBztEBmjubeAXFGrIYiz5puAw7334SWp-Hw",
+        "issued_at": 1792425620,
+        "device": {
+          "kid": "new-approval-test-key-1",
+          "key_use": "approve",
+          "public_key": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "wBr6iGCVDjGqRAEnuoZ73gOL1hMgZD8m8D4EUUT826s",
+            "y": "RU6lo5TiXSc6OyD6yZVlwA317Lg98bBzcImRZvZdQy8"
+          },
+          "attestation": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im9pZGMtdGVzdC1rZXktMSIsInR5cCI6ImJpYXRlYy1kZXZpY2UtYXR0ZXN0YXRpb24rand0In0.eyJpc3MiOiJodHRwczovL29pZGMuYmlhdGVjLnRlc3QiLCJzdWIiOiJwd181ZTJiOWQwYzcxYTg0ZjM2IiwiZGV2aWNlX2tpZCI6Im5ldy1hcHByb3ZhbC10ZXN0LWtleS0xIiwiZGV2aWNlX2p3a190aHVtYnByaW50IjoiY3BYajNLN2M0X2JCZDlsWHhLb084YVpQd1R3dVBNR3p3bllnZzNyR19qWSIsImJpYXRlY19rZXlfdXNlIjoiYXBwcm92ZSIsImlhdCI6MTc5MjE2NjQwMCwiZXhwIjoxODIzOTYxNjAwfQ.r7VtX2olMWs3KyonEkAg41RfUc8W7fT4FpMr1Tic_raMHswfbZSIGXHgbwf97KkYp7bQKg5qa8Bva0fHm08bvQ"
+        }
+      },
+      "canonical": "{\"auth_req_id\":\"ciba_af0659742ab16848c8c6e3d82ae8dd3c\",\"authorization_details\":[{\"creditor_account\":{\"iban\":\"DE89370400440532013000\"},\"creditor_name\":\"Muster Energie GmbH\",\"execution_date\":\"2026-10-20\",\"instructed_amount\":{\"amount\":\"1250.00\",\"currency\":\"EUR\"},\"origin\":\"https://netbanking.bank.example\",\"remittance\":\"Invoice 2026-0042\",\"type\":\"biatec_payment\"}],\"binding_code\":\"462790\",\"binding_message\":\"\",\"client_fingerprint\":\"b70156d0932b8095\",\"decision\":\"approve\",\"details_hash\":\"3D1GsRmJXZ2aRlpkmod9SNQRSLWJsxi1dfgV3XaZF7c\",\"expiry\":1792425900,\"sub\":\"pw_5e2b9d0c71a84f36\"}",
+      "canonical_sha256": "9744783d56bb5033a4c58aeb9a9ff43b3e05506b36f0515eaff63a7dc801b4dd",
+      "expected_pinned": {
+        "accepted": false,
+        "reason": "unpinned_key"
+      }
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/link-request.schema.json",
+  "title": "Link request",
+  "description": "What the authenticator fetches with `GET /consent/links/{id}` (header `X-Link-Secret`, device authentication of an active device) after it scanned the link code (protocol 1.2, spec section 14.3). The device renders `client` and `user_label`, never anything else about the party.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["link_id", "client", "nonce", "expires_at"],
+  "properties": {
+    "link_id": { "$ref": "link-signed.schema.json#/$defs/linkId" },
+    "client": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fingerprint", "domain_proven"],
+      "allOf": [
+        {
+          "if": { "required": ["domain_proven"], "properties": { "domain_proven": { "const": true } } },
+          "then": { "required": ["domain"], "properties": { "domain": true } },
+          "else": { "properties": { "domain": false } }
+        }
+      ],
+      "properties": {
+        "fingerprint": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+        "domain_proven": { "type": "boolean" },
+        "domain": { "$ref": "link-signed.schema.json#/$defs/domain", "description": "Present exactly when domain_proven is true." }
+      }
+    },
+    "user_label": { "type": "string", "minLength": 1, "maxLength": 40, "description": "What the party calls this user, for example a masked name; untrusted text under the text rules of spec section 15, shown as reported by the service." },
+    "nonce": { "type": "string", "pattern": "^[A-Za-z0-9_-]{16,128}$", "description": "Signed back in the link statement." },
+    "expires_at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "Unix time in seconds." }
+  }
+}

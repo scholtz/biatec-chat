@@ -514,7 +514,9 @@ test("a settings change is refused for another account, and a receipt of a devic
 test("the canonical-origin pattern is the same in the three schemas and in the verifier", () => {
   const fromSchema = (f, pick) => pick(load("schemas", f));
   const a = fromSchema("authorization-details-transaction.schema.json", (s) => s.$defs.origin.pattern);
-  const b = fromSchema("consent-request.schema.json", (s) => s.allOf.find((x) => x.if?.required?.includes("client") && x.then?.properties?.origin).then.properties.origin.pattern);
+  const b = fromSchema("consent-request.schema.json", (s) => s.allOf.find((x) => x.else?.if?.required?.includes("client") && x.else?.then?.properties?.origin).else.then.properties.origin.pattern);
+  const rp = fromSchema("consent-request.schema.json", (s) => s.allOf.find((x) => x.then?.properties?.entry?.const === "direct").then.properties.origin.pattern);
+  assert.equal(rp, a, "the relying-party branch of the request");
   const c = fromSchema("settings-change-signed.schema.json", (s) => s.properties.change.properties.clients.additionalProperties.properties.origin.pattern);
   assert.equal(b, a);
   assert.equal(c, a);

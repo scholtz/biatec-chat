@@ -11,7 +11,7 @@ namespace Biatec.Chat.Tests.Canonical;
 /// receipts, the protocol 1.1 receipts (including the vectors a verifier MUST refuse), the device-signed statements,
 /// the pairing code and the enrollment proofs.
 /// </summary>
-public class ConsentProtocolVectorTests
+public partial class ConsentProtocolVectorTests
 {
     private const string Issuer = "https://oidc.biatec.test";
 
