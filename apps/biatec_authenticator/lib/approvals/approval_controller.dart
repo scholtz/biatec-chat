@@ -8,6 +8,7 @@ import '../clients/service_identity.dart';
 import 'approval_client.dart';
 import 'biometric_gate.dart';
 import 'consent_request.dart';
+import 'device_identity.dart';
 import 'history_store.dart';
 import 'jcs.dart';
 import '../keys/prompt_free_key.dart';
@@ -236,56 +237,17 @@ class ApprovalController extends ChangeNotifier {
             legacyAlias: promptFree.legacy ? promptFree.kid : null),
       );
     }
-    final presenceKid = record.presenceKid;
-    final presenceAttestation = record.presenceAttestation;
-    if (presenceKid == null || presenceAttestation == null) {
-      // An install from before the two keys: its one key is not bound to the biometrics. No silent migration.
-      throw const ApprovalException(
-          'This device uses an old device key. Enroll it again.');
-    }
-    final presence = await keys.loadPresence();
-    if (presence == null || presence.kid != presenceKid) {
-      throw const ApprovalException(
-          'The device key is missing. Enroll this device again.');
-    }
-    if (presence.securityLevel.blocksSigning) {
-      throw const ApprovalException(KeySecurityLevel.softwareKeyMessage);
-    }
-    final approval = await keys.loadApproval();
-    return (
-      record.deviceToken,
-      DeviceIdentity(
-        approvalKey:
-            approval != null && approval.kid == record.kid ? approval : null,
-        approvalAttestation: record.attestation,
-        presenceKey: presence,
-        presenceAttestation: presenceAttestation,
-      )
-    );
+    return (record.deviceToken, await twoKeyIdentityOf(record, keys));
   }
 
   /// Why this device cannot approve, if it cannot: an approval needs the approval key, in hardware and bound to the biometrics.
   String? _cannotApprove(DeviceIdentity device) {
-    final key = device.approvalKey;
     if (!twoKeys) {
       return device.approvalAttestation == null
           ? 'This enrollment has no attestation. Enroll the device again.'
           : null;
     }
-    if (_keysState == KeysState.missing) return ApprovalKeysMissing.message;
-    if (_keysState == KeysState.approvalKeyInvalidated) {
-      return ApprovalKeyInvalidated.message;
-    }
-    // The state says ok but the key cannot be loaded: it is gone.
-    if (key == null) return ApprovalKeysMissing.message;
-    if (device.approvalAttestation == null) {
-      return 'This enrollment has no attestation. Enroll the device again.';
-    }
-    if (key.securityLevel.blocksSigning || !key.authBound) {
-      return 'This phone cannot protect approvals. Enroll this device on '
-          'a phone that can.';
-    }
-    return null;
+    return cannotApproveWith(device, _keysState);
   }
 
   /// Approves with the binding [code] the requesting surface shows.
@@ -336,7 +298,7 @@ class ApprovalController extends ChangeNotifier {
       // The operating system asks for a strong biometric for this one signature: the prompt is the gate, nothing else asks. The subtitle names the client and the total, from the request that was just fetched.
       final prompt = ApprovalPrompt(
         title: ApprovalPrompt.fixedTitle,
-        subtitle: '${clientLabel(fresh.client)}: ${summarize(fresh.detail)}',
+        subtitle: '${clientLabel(fresh.client)}: ${promptSummary(fresh.detail)}',
       );
       final Map<String, Object?> receipt;
       try {
@@ -426,6 +388,8 @@ class ApprovalController extends ChangeNotifier {
   Future<void> deny() async {
     final shown = _request;
     if (_phase != ApprovalPhase.ready || shown == null) return;
+    // A receipt over a request that cannot be shown could not be a valid one.
+    if (shown.detail is UnsupportedDetail) return;
     _set(ApprovalPhase.working);
     try {
       final (token, device) = await _device();
@@ -516,6 +480,19 @@ String summarize(AuthorizationDetail d) => switch (d) {
       TransactionDetail() => '${d.headline} (${d.valueText}) on ${d.network}',
       LimitsChangeDetail() => 'Limits to ${d.requested.perTransactionEur} EUR '
           'per transaction, ${d.requested.perDayEur} EUR per day',
+      // Never free text a service wrote: that is drawn only in the area that says who wrote it. The amount and the currency passed the schema.
+      PaymentDetail() => 'Payment: ${d.amount} ${d.currency}',
+      LoginDetail() => 'Sign in',
+      ActionDetail() => 'Action requested',
+      UnsupportedDetail() => 'Request that cannot be shown',
+    };
+
+/// The line under the title of the biometric prompt of the operating system: the app's own words, and for a payment the amount and the currency. Never text a service wrote.
+String promptSummary(AuthorizationDetail d) => switch (d) {
+      PaymentDetail() => 'Payment of ${d.amount} ${d.currency}',
+      LoginDetail() => 'Sign in',
+      ActionDetail() => 'Confirm an action',
+      _ => summarize(d),
     };
 
 /// The client as rule 3 allows it to be named: its proven domain, or "Unproven application" and the fingerprint.

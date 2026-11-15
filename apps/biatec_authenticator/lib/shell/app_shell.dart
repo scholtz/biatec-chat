@@ -12,6 +12,7 @@ import '../codes/codes_screen.dart';
 import '../codes/codes_services.dart';
 import '../config.dart';
 import '../devices/devices_screen.dart';
+import '../links/link_screen.dart';
 import '../privacy/phone_eraser.dart';
 import '../push/device_event_controller.dart';
 import '../settings/settings_screen.dart';
@@ -80,9 +81,24 @@ class _AppShellState extends State<AppShell> {
         widget.controller.selected == AppTab.approvals;
     widget.controller.sessionStarted();
     widget.controller.addListener(_onSelect);
+    // A link code another app opened this app with (`biatec-authenticator://link?...`) waits in the intake until the signed-in app can show the link screen for it.
+    widget.settings.links?.intake.addListener(_onLinkCode);
     // Once the tab navigators exist, open a card a notification asked for.
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => widget.controller.openQueued());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.controller.openQueued();
+      _onLinkCode();
+    });
+  }
+
+  /// Opens the link screen for a waiting deep link, exactly as for a scanned code: it is parsed strictly and nothing is linked until the user types the code and presses Link.
+  void _onLinkCode() {
+    final links = widget.settings.links;
+    if (links == null || !mounted || !links.intake.hasPending) return;
+    final raw = links.intake.take();
+    if (raw == null) return;
+    openLinkCode(context, links, raw,
+        rootNavigator: true,
+        onLinked: () => _settingsController?.load(quiet: true));
   }
 
   @override
@@ -102,6 +118,7 @@ class _AppShellState extends State<AppShell> {
 
   @override
   void dispose() {
+    widget.settings.links?.intake.removeListener(_onLinkCode);
     _settingsController?.dispose();
     widget.controller.removeListener(_onSelect);
     // The next shell (after a sign-out and a new enrollment) starts on Codes, or Approvals if a request is waiting.

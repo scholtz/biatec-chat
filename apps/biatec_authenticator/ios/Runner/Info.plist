@@ -22,6 +22,21 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<!-- T-247: the link code of a service (biatec-authenticator://link?iss=...&id=...&s=...) opened from another app. It is only text for the link screen: parsed strictly, refused unless it names this
+		     app's own server, and never acted on without that screen. The one URL scheme of this app. -->
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>io.biatec.authenticator.link</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>biatec-authenticator</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>NSAppTransportSecurity</key>

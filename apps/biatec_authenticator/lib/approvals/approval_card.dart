@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../clients/service_identity.dart';
 import '../clients/trust_strings.dart';
+import '../text/rp_strings.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
+import 'cards/relying_party_card.dart';
 import 'consent_request.dart';
 import 'receipt.dart';
 import 'widgets/amount_hero.dart';
@@ -40,6 +42,8 @@ class ApprovalCard extends StatelessWidget {
     final theme = Theme.of(context);
     if (!request.isShowable) return const UnsupportedRequestCard();
     final detail = request.detail;
+    // A payment, login or action of a relying party (protocol 1.2) has a card of its own.
+    if (detail is RelyingPartyDetail) return RelyingPartyCard(request: request);
     final message = renderedBindingMessage(request);
     return Card(
       child: Padding(
@@ -62,6 +66,8 @@ class ApprovalCard extends StatelessWidget {
             ...switch (detail) {
               TransactionDetail() => _transaction(theme, detail),
               LimitsChangeDetail() => _limits(theme, detail),
+              // Never reached: such a request is not showable (above) or has its own card.
+              RelyingPartyDetail() || UnsupportedDetail() => const <Widget>[],
             },
             if (message.isNotEmpty) ...[
               const Divider(height: 24),
@@ -255,18 +261,21 @@ class UnsupportedRequestCard extends StatelessWidget {
   const UnsupportedRequestCard({super.key});
 
   @override
-  Widget build(BuildContext context) => const Card(
-        child: Padding(
-          padding: EdgeInsets.all(AppSpacing.m),
-          child: StatusBanner(
-            key: Key('request-unsupported'),
-            severity: StatusSeverity.danger,
-            icon: Icons.block,
-            title: 'This request cannot be shown; update the app',
-            message: 'It cannot be approved here. Nothing was approved.',
-          ),
+  Widget build(BuildContext context) {
+    final s = RpStrings.of();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.m),
+        child: StatusBanner(
+          key: const Key('request-unsupported'),
+          severity: StatusSeverity.danger,
+          icon: Icons.block,
+          title: s.t('cannotShow'),
+          message: s.t('cannotShowBody'),
         ),
-      );
+      ),
+    );
+  }
 }
 
 /// Who asks: the one service-identity widget (the proven domain, or "Unproven application" and the fingerprint; never a name).

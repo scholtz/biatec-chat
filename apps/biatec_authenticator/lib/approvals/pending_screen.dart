@@ -8,6 +8,7 @@ import '../ui/ui.dart';
 import 'approval_client.dart';
 import 'approval_screen.dart';
 import 'approval_services.dart';
+import '../text/rp_strings.dart';
 import 'consent_request.dart';
 import 'widgets/request_card.dart';
 
@@ -81,6 +82,36 @@ class _PendingScreenState extends State<PendingScreen> {
     widget.refreshOn?.addListener(_onRefreshSignal);
   }
 
+  /// What the list shows: not a request the user dismissed.
+  List<ConsentRequest> _visible(Iterable<ConsentRequest> list) {
+    widget.services.dismissed.prune(widget.services.clock());
+    return _visibleNow(list);
+  }
+
+  List<ConsentRequest> _visibleNow(Iterable<ConsentRequest> list) => [
+        for (final r in list)
+          if (!widget.services.dismissed.contains(r.authReqId)) r
+      ];
+
+  /// The badge counts what the user can act on: a request this app cannot show is not one.
+  int _countOf(List<ConsentRequest> list) =>
+      list.where((r) => r.detail is! UnsupportedDetail).length;
+
+  /// Hides a request this app cannot show until it runs out. Local only: no call is made.
+  void _dismiss(ConsentRequest r) {
+    widget.services.dismissed
+      ..prune(widget.services.clock())
+      ..add(r.authReqId, r.expiresAt);
+    final left = _visible(_requests ?? const []);
+    setState(() => _requests = left);
+    _tell(_countOf(left));
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+          key: const Key('dismissed'),
+          content: Text(RpStrings.of().t('dismissed'))));
+  }
+
   /// A failing listener is that listener's problem, not a failed load.
   void _tell(int count) {
     try {
@@ -98,7 +129,7 @@ class _PendingScreenState extends State<PendingScreen> {
     final alive = known.where((r) => !r.isExpired(now)).toList();
     final changed = alive.length != known.length;
     setState(() => _requests = alive);
-    if (changed) _tell(alive.length);
+    if (changed) _tell(_countOf(alive));
   }
 
   /// A card that covers the list asks for nothing; the list loads when the card closes.
@@ -230,12 +261,12 @@ class _PendingScreenState extends State<PendingScreen> {
       final now = widget.services.clock();
       if (!mounted) return;
       setState(() {
-        _requests = list.where((r) => !r.isExpired(now)).toList();
+        _requests = _visible(list.where((r) => !r.isExpired(now))).toList();
         _error = null;
         _offline = false;
         _signedOut = false;
       });
-      _tell(_requests!.length);
+      _tell(_countOf(_requests!));
     } on Object catch (e) {
       if (!mounted) return;
       final now = widget.services.clock();
@@ -251,7 +282,7 @@ class _PendingScreenState extends State<PendingScreen> {
         _requests = _requests?.where((r) => !r.isExpired(now)).toList();
       });
       final known = _requests;
-      if (known != null) _tell(known.length);
+      if (known != null) _tell(_countOf(known));
     }
   }
 
@@ -305,7 +336,12 @@ class _PendingScreenState extends State<PendingScreen> {
           for (final r in requests)
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.s),
-              child: RequestCard(request: r, now: now, onOpen: () => _open(r)),
+              child: RequestCard(
+                  request: r,
+                  now: now,
+                  onOpen: () => _open(r),
+                  onDismiss:
+                      r.detail is UnsupportedDetail ? () => _dismiss(r) : null),
             ),
         ],
       );

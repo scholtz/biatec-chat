@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../approvals/approval_client.dart';
+import '../approvals/consent_request.dart';
 import '../enrollment/enrollment_store.dart';
 import '../enrollment/observable_enrollment_store.dart';
 import 'device_event.dart';
@@ -37,6 +38,7 @@ class DeviceEventController {
     this.onRequestClosed,
     this.onDevicesChanged,
     this.onSettingsChanged,
+    this.isDismissed,
     this.apple,
     this.watchLifecycle = true,
     DateTime Function()? clock,
@@ -54,6 +56,9 @@ class DeviceEventController {
   final void Function(String authReqId)? onRequestClosed;
   final VoidCallback? onDevicesChanged;
   final VoidCallback? onSettingsChanged;
+
+  /// Whether the user dismissed this request (one the app cannot show): no notification for it.
+  final bool Function(String authReqId)? isDismissed;
 
   /// The Apple wake, when the build has it on; null otherwise.
   final ApplePushRegistration? apple;
@@ -139,7 +144,13 @@ class DeviceEventController {
       try {
         final pending = await client.pending(record.deviceToken);
         // Not in the list: decided or withdrawn already, nothing to ask the user for.
-        if (!pending.any((r) => r.authReqId == authReqId)) return;
+        final mine = pending.where((r) => r.authReqId == authReqId);
+        if (mine.isEmpty) return;
+        // A request this app cannot show, or one the user dismissed, is nothing to be notified about.
+        if (mine.first.detail is UnsupportedDetail ||
+            (isDismissed?.call(authReqId) ?? false)) {
+          return;
+        }
       } on Object {
         // The list could not be fetched; the notification names nothing, so it is safe to show and the app fetches when opened.
       }

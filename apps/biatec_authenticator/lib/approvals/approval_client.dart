@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../security/device_proof.dart';
 import '../security/pinning/pinned_http.dart';
+import 'models/link_request.dart';
 import 'consent_request.dart';
 
 /// The request could not be reached or read. [offline] is true when the
@@ -52,6 +53,57 @@ class ReceiptRefused extends ReceiptOutcome {
   final String description;
 }
 
+/// Why a link could not be loaded.
+enum LinkProblem {
+  /// Not found, expired or already used (the server's 404, 409 and 410): shown in one neutral message.
+  gone,
+
+  /// This device is not active yet, so it cannot link anything.
+  notActive,
+
+  /// The link answered, but with something the screen cannot show faithfully.
+  cannotShow,
+  other,
+}
+
+class LinkException implements Exception {
+  const LinkException(this.problem, {this.message = ''});
+  final LinkProblem problem;
+  final String message;
+  @override
+  String toString() => message.isEmpty ? problem.name : message;
+}
+
+/// What Biatec OIDC said about a posted link statement.
+sealed class LinkOutcome {
+  const LinkOutcome();
+}
+
+/// Accepted; [status] is `linked` or `denied`.
+class LinkDone extends LinkOutcome {
+  const LinkDone(this.status);
+  final String status;
+}
+
+/// The binding code did not match; [attemptsRemaining] is the server's count (null when it did not say).
+class LinkWrongCode extends LinkOutcome {
+  const LinkWrongCode(this.attemptsRemaining);
+  final int? attemptsRemaining;
+}
+
+/// The third wrong code closed the link.
+class LinkClosed extends LinkOutcome {
+  const LinkClosed();
+}
+
+/// Refused for another reason (expired, already decided, invalid).
+class LinkRefused extends LinkOutcome {
+  const LinkRefused(this.status, this.error, this.description);
+  final int status;
+  final String error;
+  final String description;
+}
+
 /// A single-use ticket for the device channel. [expiresIn] is in seconds, when the server said.
 class HubTicket {
   const HubTicket(this.ticket, this.expiresIn);
@@ -62,10 +114,17 @@ class HubTicket {
 /// The authenticator side of Biatec OIDC (the mock in development), using
 /// `Authorization: Device <token>`.
 class ApprovalClient {
-  ApprovalClient({required this.baseUrl, http.Client? client, this.proof})
+  ApprovalClient(
+      {required this.baseUrl,
+      http.Client? client,
+      this.proof,
+      this.relyingParties = false})
       : _client = client ?? PinnedHttp.clientFor(baseUrl);
 
   final String baseUrl;
+
+  /// `AppConfig.relyingPartiesEnabled`: payment, login and action requests are shown. Off, a request of one of these types cannot be shown or approved.
+  final bool relyingParties;
   final http.Client _client;
 
   /// Adds the proof of possession of the device key to every call (BCHAT-030); null sends the bearer token alone.
@@ -136,7 +195,8 @@ class ApprovalClient {
     for (final item in list) {
       if (item is! Map) continue;
       try {
-        out.add(ConsentRequest.fromJson(item.cast<String, Object?>()));
+        out.add(ConsentRequest.fromJson(item.cast<String, Object?>(),
+            relyingParties: relyingParties));
       } on FormatException {
         // A request the card cannot show faithfully is never offered.
       }
@@ -156,7 +216,7 @@ class ApprovalClient {
           'Could not load the request (${res.statusCode}): ${_detail(json)}');
     }
     try {
-      final r = ConsentRequest.fromJson(json);
+      final r = ConsentRequest.fromJson(json, relyingParties: relyingParties);
       if (r.authReqId != authReqId) {
         throw const FormatException('a different request came back');
       }
@@ -247,5 +307,87 @@ class ApprovalClient {
     }
     return ReceiptRefused(
         res.statusCode, '${json['error'] ?? 'error'}', _detail(json));
+  }
+
+  /// `GET /consent/links/{id}` with the link secret: the service that wants to be linked. Throws [LinkException] for a link that is gone, expired or used, and [ApprovalException] otherwise.
+  Future<LinkRequest> fetchLink(
+      String deviceToken, String linkId, String secret) async {
+    final url =
+        Uri.parse('$baseUrl/consent/links/${Uri.encodeComponent(linkId)}');
+    final res = await _send(() async => _client.get(url,
+        headers:
+            await _auth('GET', url, deviceToken, {'X-Link-Secret': secret})));
+    final json = _linkBody(res);
+    if (res.statusCode != 200) throw _linkProblem(res.statusCode, json);
+    try {
+      final r = LinkRequest.fromJson(json);
+      if (r.linkId != linkId) {
+        throw const FormatException('a different link came back');
+      }
+      return r;
+    } on FormatException {
+      throw const LinkException(LinkProblem.cannotShow);
+    }
+  }
+
+  /// `POST /consent/links/{id}/receipt`: the signed `biatec_link` statement ([body] is `{ signed, signature }`), with the link secret.
+  Future<LinkOutcome> postLinkReceipt(String deviceToken, String linkId,
+      String secret, Map<String, Object?> body) async {
+    final url = Uri.parse(
+        '$baseUrl/consent/links/${Uri.encodeComponent(linkId)}/receipt');
+    // The proof and the headers are made BEFORE anything is sent: a device key that cannot sign is a plain failure, and nothing left the phone.
+    final headers = await _auth('POST', url, deviceToken,
+        {'Content-Type': 'application/json', 'X-Link-Secret': secret});
+    final http.Response res;
+    try {
+      res = await _send(
+          () async => _client.post(url, headers: headers, body: jsonEncode(body)));
+    } on ApprovalException catch (e) {
+      // A pinning failure happens when the connection is made, before the statement is sent: a plain failure. Only a connection that was lost or timed out (the "offline" kind) may have
+      // delivered it without the answer coming back.
+      if (!e.offline) rethrow;
+      throw ApprovalException(
+          'No answer from Biatec OIDC, so the decision may or may not be recorded. '
+          'Check Linked services in Settings. (${e.message})',
+          offline: true);
+    }
+    final json = _linkBody(res);
+    if (res.statusCode == 200) {
+      final status = json['status'];
+      if (status is! String) {
+        throw const ApprovalException('Malformed link response.');
+      }
+      return LinkDone(status);
+    }
+    if (json['reason'] == 'code_failed') return const LinkClosed();
+    if (json['error'] == 'wrong_code') {
+      final left = json['attempts_remaining'];
+      return LinkWrongCode(left is int ? left : null);
+    }
+    return LinkRefused(
+        res.statusCode, '${json['error'] ?? 'error'}', _detail(json));
+  }
+
+  /// The body of a link answer: JSON when it is, empty otherwise (a bare 404 has none).
+  static Map<String, Object?> _linkBody(http.Response res) {
+    try {
+      return _object(res.body, res.statusCode);
+    } on ApprovalException {
+      if (res.statusCode == 200) rethrow;
+      return const {};
+    }
+  }
+
+  static LinkException _linkProblem(int status, Map<String, Object?> json) {
+    switch (status) {
+      case 404 || 409 || 410:
+        // Unknown id, wrong secret, decided already, expired: one neutral answer, so nothing is learned from the difference.
+        return const LinkException(LinkProblem.gone);
+      case 403:
+        return const LinkException(LinkProblem.notActive);
+      default:
+        return LinkException(LinkProblem.other,
+            message: 'Could not load the link ($status): ${_detail(json)}');
+    }
   }
 }

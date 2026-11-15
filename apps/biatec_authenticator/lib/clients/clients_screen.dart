@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../links/link_entry.dart';
 import '../security/settings_client.dart';
 import '../security/settings_controller.dart';
 import '../security/settings_frame.dart';
@@ -35,6 +36,11 @@ class ClientsScreen extends StatelessWidget {
         ];
         return [
           ...inactiveBanner(c),
+          // Protocol 1.2: a service is linked by scanning the QR code it shows (off against a Biatec OIDC without the relying-party protocol).
+          if (services.links != null)
+            LinkEntry(
+                services: services.links!,
+                onLinked: () => c.load(quiet: true)),
           if (clients.isEmpty)
             Padding(
               key: const Key('no-clients'),

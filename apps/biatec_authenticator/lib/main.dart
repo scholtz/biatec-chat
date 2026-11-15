@@ -15,6 +15,8 @@ import 'push/apple_push.dart';
 import 'push/device_event_controller.dart';
 import 'push/device_event_source.dart';
 import 'integrity/integrity_checker.dart';
+import 'text/rp_strings.dart';
+import 'links/link_services.dart';
 import 'integrity/platform_integrity.dart';
 import 'lock/lock_controller.dart';
 import 'security/biometric_policy.dart';
@@ -91,6 +93,7 @@ Future<void> main() async {
     onRequestClosed: (_) => shell.requestsChanged.value++,
     onDevicesChanged: () => shell.reloads[AppTab.devices]!.value++,
     onSettingsChanged: () => shell.reloads[AppTab.settings]!.value++,
+    isDismissed: approvals.dismissed.contains,
     // The optional Apple wake: nothing registers unless the build says so.
     apple: apnsEnabled ? MethodChannelApplePush() : null,
   );
@@ -192,7 +195,8 @@ class AuthenticatorApp extends StatefulWidget {
   State<AuthenticatorApp> createState() => _AuthenticatorAppState();
 }
 
-class _AuthenticatorAppState extends State<AuthenticatorApp> {
+class _AuthenticatorAppState extends State<AuthenticatorApp>
+    with WidgetsBindingObserver {
   late final LockController _lock = widget.lock ??
       LockController(
         authenticator: PlatformBiometricAuthenticator(),
@@ -210,20 +214,65 @@ class _AuthenticatorAppState extends State<AuthenticatorApp> {
   late final ShellController _shell = widget.shell ?? ShellController();
   late final ThemeController _theme = widget.theme ?? ThemeController();
 
+  /// A deep link of this app (`biatec-authenticator://link?...`) opened while the app runs. It is handed to the link intake, which shows the link screen once the signed-in app is up; the observer is
+  /// registered before the app's own routing is, so it sees the route first. The link is consumed even when linking is off (nothing acts on it then), so the platform never tries to open it as a screen.
+  @override
+  Future<bool> didPushRouteInformation(RouteInformation routeInformation) async =>
+      _takeDeepLink(routeInformation.uri.toString());
+
+  /// The ONE place a deep link is taken, from the observer above and from the route the app was launched with ([initState]). Returns true when [route] is a link code of this app (it is then consumed:
+  /// the platform must not try to open it as a screen). With linking off nothing is linked and the user is told so, neutrally.
+  bool _takeDeepLink(String route) {
+    final text = LinkIntake.linkTextFromRoute(route);
+    if (text == null) return false;
+    final links = _settings.links;
+    if (links != null) {
+      links.intake.offer(text);
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _messengerKey.currentState
+          ?..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(
+              key: const Key('linking-off'),
+              content: Text(RpStrings.of().t('linkingOff'))));
+      });
+    }
+    return true;
+  }
+
+  late final GlobalKey<ScaffoldMessengerState> _messengerKey =
+      widget.messengerKey ?? GlobalKey<ScaffoldMessengerState>();
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // The route the app was launched with: a deep link opens the app with it as the initial route.
+    _takeDeepLink(WidgetsBinding.instance.platformDispatcher.defaultRouteName);
     // A controller handed in was loaded by the caller (main reads it before the first frame).
     if (widget.theme == null) _theme.load();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (widget.shell == null) _shell.dispose();
     if (widget.theme == null) _theme.dispose();
     if (widget.lock == null) _lock.dispose();
     super.dispose();
   }
+
+  Widget _gate(DeviceEventController? push) => AppGate(
+        config: widget.config,
+        approvals: _approvals,
+        settings: _settings,
+        codes: _codes,
+        shell: _shell,
+        lock: _lock,
+        push: push,
+        stayConnected: widget.stayConnected,
+        enrollment: widget.enrollment,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -232,7 +281,7 @@ class _AuthenticatorAppState extends State<AuthenticatorApp> {
       listenable: _theme,
       builder: (context, _) => MaterialApp(
         navigatorKey: widget.navigatorKey,
-        scaffoldMessengerKey: widget.messengerKey,
+        scaffoldMessengerKey: _messengerKey,
         title: 'Biatec Authenticator',
         theme: buildTheme(Brightness.light),
         darkTheme: buildTheme(Brightness.dark),
@@ -241,17 +290,17 @@ class _AuthenticatorAppState extends State<AuthenticatorApp> {
             controller: _theme,
             child: LockScope(
                 lock: _lock, child: largeTypeBuilder(context, child))),
-        home: AppGate(
-          config: widget.config,
-          approvals: _approvals,
-          settings: _settings,
-          codes: _codes,
-          shell: _shell,
-          lock: _lock,
-          push: push,
-          stayConnected: widget.stayConnected,
-          enrollment: widget.enrollment,
-        ),
+        // The one screen is the gate. The route the platform opened the app with may be a deep link (`biatec-authenticator://link?...`): that is not a screen, so it goes to the link intake and the
+        // initial route falls back to the gate (a name this returns no route for is dropped from the initial routes).
+        onGenerateRoute: (settings) {
+          final name = settings.name ?? Navigator.defaultRouteName;
+          if (name == Navigator.defaultRouteName) {
+            return MaterialPageRoute<void>(
+                settings: settings, builder: (_) => _gate(push));
+          }
+          // A link code is not a screen: no route (the initial routes fall back to the gate). It is taken elsewhere, once.
+          return null;
+        },
       ),
     );
   }

@@ -178,6 +178,43 @@ void main() {
       expect(profileManifest, isNot(contains('RedirectUriReceiverActivity')));
     });
 
+    test(
+        'T-247: MainActivity has its launcher filter and exactly one VIEW filter, for the link code of a service (a custom scheme, host link, nothing else)',
+        () {
+      final main = RegExp(
+              r'<activity\s[^>]*android:name="\.MainActivity"[^>]*>.*?</activity>',
+              dotAll: true)
+          .firstMatch(manifest)!
+          .group(0)!;
+      // The comments carry no filter: look at the elements only.
+      final xml = main.replaceAll(RegExp(r'<!--.*?-->', dotAll: true), '');
+      final filters = RegExp(r'<intent-filter[ >].*?</intent-filter>', dotAll: true)
+          .allMatches(xml)
+          .map((m) => m.group(0)!)
+          .toList();
+      expect(filters, hasLength(2));
+      final launcher = filters.firstWhere((f) => f.contains('android.intent.action.MAIN'));
+      expect(launcher, contains('android.intent.category.LAUNCHER'));
+      expect(launcher, isNot(contains('android.intent.action.VIEW')));
+      final view = filters.singleWhere((f) => f.contains('android.intent.action.VIEW'));
+      expect(view, isNot(contains('android.intent.action.MAIN')));
+      expect('<data '.allMatches(view).length, 1);
+      expect(RegExp(r'android:scheme="([^"]*)"').allMatches(view).map((m) => m.group(1)).toList(),
+          ['biatec-authenticator']);
+      expect(RegExp(r'android:host="([^"]*)"').allMatches(view).map((m) => m.group(1)).toList(),
+          ['link']);
+      // Nothing wider: no path, port or MIME type, and no second scheme on this activity.
+      expect(view, isNot(contains('android:path')));
+      expect(view, isNot(contains('android:port')));
+      expect(view, isNot(contains('android:mimeType')));
+      expect(view, contains('android.intent.category.BROWSABLE'));
+      expect(view, contains('android.intent.category.DEFAULT'));
+      // A custom scheme cannot be verified like an app link.
+      expect(view, isNot(contains('autoVerify')));
+      // MainActivity was exported already: this adds no exported component.
+      expect('android:exported="true"'.allMatches(manifest).length, 2);
+    });
+
     test('the app declares the permission it needs itself', () {
       expect(manifest, contains('android.permission.INTERNET'));
     });
@@ -275,11 +312,20 @@ void main() {
     final project = read('ios/Runner.xcodeproj/project.pbxproj');
 
     test(
-        'App Transport Security has no exceptions and there are no URL schemes',
+        'App Transport Security has no exceptions and the only URL scheme is the link code of a service (T-247)',
         () {
       expect(plist, isNot(contains('NSAllowsArbitraryLoads')));
       expect(plist, isNot(contains('NSExceptionDomains')));
-      expect(plist, isNot(contains('CFBundleURLTypes')));
+      // Exactly one scheme: biatec-authenticator (the link code, parsed strictly and never acted on without the link screen).
+      expect('CFBundleURLTypes'.allMatches(plist).length, 1);
+      final schemes = RegExp(
+              r'<key>CFBundleURLSchemes</key>\s*<array>(.*?)</array>',
+              dotAll: true)
+          .allMatches(plist)
+          .expand((m) => RegExp(r'<string>(.*?)</string>').allMatches(m.group(1)!))
+          .map((m) => m.group(1))
+          .toList();
+      expect(schemes, ['biatec-authenticator']);
       expect(plist, contains('NSFaceIDUsageDescription'));
     });
 
