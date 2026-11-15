@@ -29,6 +29,39 @@ Map<String, Object?> signedObject(
   required String code,
   required Decision decision,
   List<int> remember = const [],
+}) {
+  final detail = request.detail;
+  if (detail is UnsupportedDetail) {
+    throw StateError('a request that cannot be shown is never signed');
+  }
+  if (detail is RelyingPartyDetail) {
+    // Protocol 1.2 (spec 8): the eight members of 1.1 without `remember`, and a ninth, `details_hash`. The hash is the one this app computed from the object it renders (spec 3.6), never the
+    // request's own, and the request already refused to exist when the two differ; the check is repeated here because this is the object that is signed. The relying party's text is in the
+    // details, so `binding_message` is always empty.
+    if (detail.detailsHash != request.boundHash) {
+      throw StateError('the details hash differs from the request\'s own');
+    }
+    return {
+      'authorization_details': request.authorizationDetails,
+      'auth_req_id': request.authReqId,
+      'client_fingerprint': request.client.fingerprint,
+      'binding_code': code,
+      'decision': decision.wire,
+      'expiry': request.expiry,
+      'sub': request.sub,
+      'binding_message': '',
+      'details_hash': detail.detailsHash,
+    };
+  }
+  return _walletObject(request,
+      code: code, decision: decision, remember: remember);
+}
+
+Map<String, Object?> _walletObject(
+  ConsentRequest request, {
+  required String code,
+  required Decision decision,
+  required List<int> remember,
 }) =>
     {
       'authorization_details': request.authorizationDetails,
@@ -109,6 +142,10 @@ Future<Map<String, Object?>> signReceipt({
 }) async {
   final signed =
       signedObject(request, code: code, decision: decision, remember: remember);
+  if (singleKey && request.detail is RelyingPartyDetail) {
+    // A relying party's approval is signed by the approval key (spec 8.4): the one-key mode has none.
+    throw StateError('a relying party request needs the two device keys');
+  }
   final bytes = Uint8List.fromList(canonicalBytes(signed));
   final approving = decision == Decision.approve && !singleKey;
   // Before anything is signed, so the user is never asked for a biometric that cannot lead to a receipt.
@@ -141,7 +178,11 @@ Future<Map<String, Object?>> signReceipt({
     throw StateError('this device has no approval key to sign an approval');
   }
   return {
-    'version': request.client.legacy ? '1' : '1.1',
+    'version': request.client.legacy
+        ? '1'
+        : request.detail is RelyingPartyDetail
+            ? '1.2'
+            : '1.1',
     'signed': signed,
     'alg': 'ES256',
     'signature': base64Url.encode(signature).replaceAll('=', ''),

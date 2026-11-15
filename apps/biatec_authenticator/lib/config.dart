@@ -19,6 +19,7 @@ class AppConfig {
       this.twoKeys = false,
       this.inAppLogin = false,
       this.trustSettings = false,
+      this.relyingParties = false,
       this.oidcClientId = defaultOidcClientId,
       this.redirectUri = debugRedirectUri,
       this.release = false});
@@ -55,6 +56,8 @@ class AppConfig {
   static const bool _definedInAppLogin = bool.fromEnvironment('IN_APP_LOGIN');
 
   static const bool _definedTrustSettings = bool.fromEnvironment('TRUST_SETTINGS');
+
+  static const bool _definedRelyingParties = bool.fromEnvironment('RELYING_PARTIES');
 
   static const String _definedClientId = String.fromEnvironment('OIDC_CLIENT_ID');
 
@@ -97,6 +100,16 @@ class AppConfig {
   /// "don't ask again" on the approval card (the receipt never carries `remember`).
   final bool trustSettings;
 
+  /// Whether Biatec OIDC has the relying-party protocol 1.2 (T-246, issue 38 of AlgorandGoogleDriveAccount): linking a service by QR code (`GET /consent/links/{id}`,
+  /// `POST /consent/links/{id}/receipt`) and the payment, login and action requests with `details_hash`. Real Biatec OIDC has none yet, so this is on for the mock only until
+  /// `--dart-define=RELYING_PARTIES=true` says otherwise. It also needs [twoKeys] (an approval is signed by the approval key) and [trustSettings] (Linked services): see [relyingPartiesEnabled]. Off, there is no "Link a service", the
+  /// `biatec-authenticator://link` code is not acted on, and a request of one of the new types is shown as "This request cannot be shown; update the app" and cannot be approved.
+  final bool relyingParties;
+
+  /// The link flow and the three request types are available: the server has them, the device has two keys, and the user-held trust settings are on (the list of linked services, where a
+  /// service is linked from and unlinked, is one of their screens).
+  bool get relyingPartiesEnabled => relyingParties && twoKeys && trustSettings;
+
   /// The OAuth client id of this app (`--dart-define=OIDC_CLIENT_ID`).
   final String oidcClientId;
 
@@ -120,6 +133,7 @@ class AppConfig {
           twoKeys: _definedTwoKeys,
           inAppLogin: _definedInAppLogin,
           trustSettings: _definedTrustSettings,
+          relyingParties: _definedRelyingParties,
           clientId: _definedClientId,
           redirectUri: _definedRedirect);
 
@@ -133,6 +147,7 @@ class AppConfig {
       bool twoKeys = false,
       bool inAppLogin = false,
       bool trustSettings = false,
+      bool relyingParties = false,
       String clientId = '',
       String redirectUri = '',
       bool? release,
@@ -156,6 +171,7 @@ class AppConfig {
           twoKeys: true,
           inAppLogin: true,
           trustSettings: true,
+          relyingParties: true,
           oidcClientId: _clientId(clientId),
           redirectUri: _redirect(redirectUri, false, null, true),
           release: false);
@@ -175,6 +191,7 @@ class AppConfig {
         twoKeys: isMock || twoKeys,
         inAppLogin: isMock || inAppLogin,
         trustSettings: isMock || trustSettings,
+        relyingParties: isMock || relyingParties,
         oidcClientId: _clientId(clientId),
         redirectUri: _redirect(redirectUri, isRelease, url, isMock || inAppLogin),
         release: isRelease);

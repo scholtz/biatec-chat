@@ -30,6 +30,16 @@ class RequestCard extends StatelessWidget {
           '${detail.valueText} on ${detail.network}'
         ),
       LimitsChangeDetail() => ('Change spending limits', summarize(detail)),
+      PaymentDetail() => (
+          '${detail.amount} ${detail.currency}',
+          'Payment to ${detail.creditorName}'
+        ),
+      LoginDetail() => ('Sign in', 'Asked by $who'),
+      ActionDetail() => (detail.title, 'Asked by $who'),
+      UnsupportedDetail() => (
+          'This request cannot be shown',
+          'Update the app'
+        ),
     };
     final spoken = 'Request from $who: $headline, $sub, ${spokenLeft(left)}. '
         '${request.client.domainProven ? '' : 'Unproven application. '}'

@@ -11,6 +11,7 @@ import '../config.dart';
 import '../enrollment/enrollment_state.dart';
 import '../keys/device_key_store.dart';
 import '../keys/prompt_free_key.dart';
+import '../links/link_services.dart';
 import '../enrollment/enrollment_strings.dart';
 import '../enrollment/pairing_code.dart';
 import 'settings_client.dart';
@@ -80,6 +81,7 @@ class SettingsServices {
     this.twoKeys = true,
     this.activationByDevice = true,
     this.trustSettings = false,
+    this.links,
     DateTime Function()? clock,
     String Function()? nonce,
   })  : clock = clock ?? DateTime.now,
@@ -98,6 +100,7 @@ class SettingsServices {
         twoKeys: approvals.twoKeys,
         activationByDevice: config.activationByDevice,
         trustSettings: config.trustSettings,
+        links: LinkServices.fromConfig(config, approvals),
         clock: approvals.clock,
       );
 
@@ -120,6 +123,10 @@ class SettingsServices {
 
   /// `AppConfig.trustSettings`: the user-held trust settings (threshold choices, linked services, trusted applications, the server decides loosening). Off: the screens of before T-245.
   final bool trustSettings;
+
+  /// Linking a service by QR code (protocol 1.2, `AppConfig.relyingPartiesEnabled`): "Link a service" in Linked services and the deep link. Null when Biatec OIDC has no relying-party protocol: there is no
+  /// such entry and no link code is acted on.
+  final LinkServices? links;
 
   SettingsController controller() => SettingsController(
         client: client,

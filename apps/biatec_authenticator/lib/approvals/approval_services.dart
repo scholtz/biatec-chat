@@ -33,7 +33,10 @@ class ApprovalServices {
     // Every device call proves possession of the device key, not only the bearer token (BCHAT-030).
     final proof = KeystoreDeviceProofSigner(keys: keys, enrollment: enrollment);
     return ApprovalServices(
-      client: ApprovalClient(baseUrl: config.oidcBaseUrl, proof: proof),
+      client: ApprovalClient(
+          baseUrl: config.oidcBaseUrl,
+          proof: proof,
+          relyingParties: config.relyingPartiesEnabled),
       keys: keys,
       enrollment: enrollment,
       gate: gate,

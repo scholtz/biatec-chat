@@ -50,6 +50,16 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- T-247: the link code of a service (biatec-authenticator://link?iss=...&id=...&s=...) opened from another app, for example the phone's camera app after it read the QR code. It is only
+                 text: the app parses it strictly, refuses an issuer other than its own server, and shows the link screen, where the user types the code and decides. Nothing is linked without that screen.
+                 A custom scheme cannot be verified like an app link, so any app could register it too; that only lets another app receive a link code the user meant for this one (a code is useless without the
+                 six digits the service shows next to its QR code). Exactly this one filter, on MainActivity, which is exported already (test/platform_hardening_test.dart). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="biatec-authenticator" android:host="link"/>
+            </intent-filter>
         </activity>
         <!-- The in-app login (T-242): flutter_appauth opens the system browser and the browser returns to this activity through the app link below (Android verifies
              the link against https://<host>/.well-known/assetlinks.json: a deployment prerequisite of Biatec OIDC, docs/required-changes-biatec-oidc.md). It is exported

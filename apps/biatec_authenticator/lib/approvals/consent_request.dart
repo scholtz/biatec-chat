@@ -1,7 +1,14 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
+
+import '../links/text_rules.dart';
 import 'jcs.dart';
 import 'models/transfer_models.dart';
 
 export 'models/transfer_models.dart';
+
+part 'models/relying_party_models.dart';
 
 /// The consent request object fetched from Biatec OIDC
 /// (`schemas/consent-request.schema.json`). It never carries the binding code.
@@ -21,6 +28,7 @@ class ConsentRequest {
     required this.boundHash,
     required this.origin,
     required this.sub,
+    required this.relyingParties,
   });
 
   /// The object as received.
@@ -43,20 +51,31 @@ class ConsentRequest {
   /// Unix seconds.
   final int expiry;
   final String boundHash;
+
+  /// The request's `origin`. Empty when the server had none, which only a relying-party request (protocol 1.2) can have.
   final String origin;
   final String sub;
+
+  /// `AppConfig.relyingPartiesEnabled`: the payment, login and action types are shown. Off, a request of one of them is an [UnsupportedDetail]: it cannot be shown or approved.
+  final bool relyingParties;
 
   DateTime get expiresAt =>
       DateTime.fromMillisecondsSinceEpoch(expiry * 1000, isUtc: true);
 
   /// Whether the card can show this request in full: a protocol 1.1 request
-  /// (transfers, applications, value). A 1.0 request, or any request whose
-  /// client or detail is of the 1.0 shape, is refused and never approvable.
+  /// (transfers, applications, value) or a relying-party request of protocol 1.2 whose
+  /// text passed the text rules. A 1.0 request, or any request whose
+  /// client or detail is of the 1.0 shape, an unknown type or a request that fails its schema is refused and never approvable.
   bool get isShowable {
     if (client.legacy) return false;
     final d = detail;
-    return d is LimitsChangeDetail || (d is TransactionDetail && !d.isLegacy);
+    return d is LimitsChangeDetail ||
+        d is RelyingPartyDetail ||
+        (d is TransactionDetail && !d.isLegacy);
   }
+
+  /// A payment, login or action request of a relying party, shown in full.
+  bool get isRelyingParty => !client.legacy && detail is RelyingPartyDetail;
 
   bool isExpired(DateTime now) => !expiresAt.isAfter(now);
 
@@ -90,13 +109,30 @@ class ConsentRequest {
   /// Whether [a] is one the card offers to trust.
   bool canRemember(ApplicationEntry a) => rememberable.any((o) => o.id == a.id);
 
-  /// The single detail, parsed for display.
-  late final AuthorizationDetail detail = AuthorizationDetail.parse(
-      (authorizationDetails.single as Map).cast<String, Object?>());
+  /// The single detail, parsed for display. A relying-party request is also checked as a whole (spec 6, 8.4 step 5): a direct request, no binding message, a linked client and an
+  /// `origin` equal to the one inside the details; one that is not is an [UnsupportedDetail].
+  late final AuthorizationDetail detail = _detailOf();
+
+  AuthorizationDetail _detailOf() {
+    final d = AuthorizationDetail.parse(
+        (authorizationDetails.single as Map).cast<String, Object?>(),
+        relyingParties: relyingParties);
+    if (d is! RelyingPartyDetail) return d;
+    final inside = d.origin;
+    final consistent = entry == 'direct' &&
+        bindingMessage.isEmpty &&
+        !client.legacy &&
+        client.linked &&
+        (inside ?? '') == origin;
+    return consistent ? d : const UnsupportedDetail('inconsistent request');
+  }
 
   /// Parses and checks [json]. Throws [FormatException] on anything the card
   /// could not show faithfully, so a malformed request is never approvable.
-  factory ConsentRequest.fromJson(Map<String, Object?> json) {
+  ///
+  /// [relyingParties] says whether the three relying-party types are shown (`AppConfig.relyingPartiesEnabled`); off, they are not approvable.
+  factory ConsentRequest.fromJson(Map<String, Object?> json,
+      {bool relyingParties = false}) {
     String str(String key) {
       final v = json[key];
       if (v is! String) throw FormatException('consent request: $key');
@@ -121,8 +157,9 @@ class ConsentRequest {
       bindingMessage: str('binding_message'),
       expiry: expiry,
       boundHash: str('bound_hash'),
-      origin: str('origin'),
+      origin: json['origin'] == null ? '' : str('origin'),
       sub: str('sub'),
+      relyingParties: relyingParties,
     );
     try {
       // A string the receipt could not sign must not reach the card.
@@ -131,7 +168,12 @@ class ConsentRequest {
       throw FormatException('consent request: ${e.message}');
     }
     final d = request.detail; // throws when the detail is malformed
-    if (d.boundHash != request.boundHash) {
+    // A wallet request always names its origin; only a relying party's request may have none.
+    if (json['origin'] == null && d is! UnsupportedDetail && d is! RelyingPartyDetail) {
+      throw const FormatException('consent request: origin');
+    }
+    // For a relying-party type this is the hash the app computed itself from the object it renders (spec 3.6), never one copied from the request: a request that states another is refused.
+    if (d is! UnsupportedDetail && d.boundHash != request.boundHash) {
       throw const FormatException(
           'consent request: bound_hash differs from the detail hash');
     }
@@ -234,15 +276,21 @@ sealed class AuthorizationDetail {
   /// The hash the consent is bound to (`group_hash` or `request_hash`).
   String get boundHash;
 
-  static AuthorizationDetail parse(Map<String, Object?> json) {
+  /// An unknown type, a relying-party type of a build that does not have them, or a relying-party detail that fails its schema or the text rules is an [UnsupportedDetail]: nothing of it is
+  /// drawn and it cannot be approved. A wallet type that is malformed throws, as it always did.
+  static AuthorizationDetail parse(Map<String, Object?> json,
+      {bool relyingParties = false}) {
     switch (json['type']) {
       case 'biatec_transaction':
         return TransactionDetail.fromJson(json);
       case 'biatec_limits_change':
         return LimitsChangeDetail.fromJson(json);
+      case 'biatec_payment' || 'biatec_login' || 'biatec_action':
+        if (!relyingParties) return const UnsupportedDetail('not enabled');
+        return RelyingPartyDetail.tryParse(json) ??
+            const UnsupportedDetail('schema or text rules');
       default:
-        throw FormatException(
-            'unsupported authorization detail type ${json['type']}');
+        return const UnsupportedDetail('unknown type');
     }
   }
 }

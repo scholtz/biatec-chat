@@ -8,6 +8,7 @@ import '../ui/ui.dart';
 import 'approval_card.dart';
 import 'approval_controller.dart';
 import 'approval_services.dart';
+import 'consent_request.dart';
 import 'widgets/approval_actions.dart';
 import 'widgets/binding_code_field.dart';
 import 'widgets/expiry.dart';
@@ -109,7 +110,7 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
   /// A request this version cannot show (a 1.0 request) cannot be approved, but it can still be denied: refusing is always safe.
   bool _canDeny(ApprovalController c) {
     final request = c.request;
-    if (request == null) return false;
+    if (request == null || request.detail is UnsupportedDetail) return false;
     return c.phase == ApprovalPhase.ready &&
         !c.offline &&
         request.expiresAt.isAfter(c.now);
