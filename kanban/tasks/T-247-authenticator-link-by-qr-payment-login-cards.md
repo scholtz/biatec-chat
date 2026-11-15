@@ -1,7 +1,7 @@
 ---
 id: T-247
 title: "Authenticator: link a service by QR code, and approval cards for payments, logins and actions"
-status: in-progress
+status: review
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-246]
@@ -51,10 +51,10 @@ Parallel work possible: **yes** (after T-246).
 
 ## Acceptance criteria
 
-- [ ] Parser tests: a valid link; extra parameter, missing parameter, other scheme, other `iss` → refused with the right message.
-- [ ] Link flow against the mock: approve creates the link and the service appears in Linked services; deny does not; three wrong codes close the link; the approve signature is by the approval key and verifies with `lib.mjs`.
-- [ ] Card tests for each type from the T-246 vectors; an unknown type and a string with a right-to-left override are not approvable.
-- [ ] `details_hash`: the app's value equals the vector's for every 1.2 receipt vector; a request whose stated hash differs is refused.
+- [x] Parser tests: a valid link; extra parameter, missing parameter, other scheme, other `iss` → refused with the right message.
+- [x] Link flow against the mock: approve creates the link and the service appears in Linked services; deny does not; three wrong codes close the link; the approve signature is by the approval key and verifies with `lib.mjs`.
+- [x] Card tests for each type from the T-246 vectors; an unknown type and a string with a right-to-left override are not approvable.
+- [x] `details_hash`: the app's value equals the vector's for every 1.2 receipt vector; a request whose stated hash differs is refused.
 - [ ] `flutter analyze` and `flutter test` pass.
 - [ ] Manual checklist in the README using `packages/consent-protocol/scripts/rp-demo.mjs` against the mock on a real phone: scan, link, approve a payment, deny a login. The Hand-off says whether it was run.
 
@@ -69,7 +69,16 @@ Parallel work possible: **yes** (after T-246).
 
 ## Hand-off
 
-Filled in when the task moves to review.
+PR #418, `task/T-247` @ dde96b8. Local: `flutter test` 1563 pass; the link, approval and settings contract tests pass against the mock (started and killed in one command; not re-run after the last round). CI: backend, js, images, authenticator-security pass; `authenticator` fails only on the Flutter SDK drift that also fails on main (it stops at `flutter analyze`, so the Dart tests ran locally only).
+
+- Link entry from Settings → Linked services (QR scanner or pasted code) and the `biatec-authenticator://link` deep link, parsed strictly; a wrong `iss` is refused before anything is sent; a deep link is handled exactly like a scanned code. Link screen with the service identity, the service's own label in a "Written by the service" area, a typed six-digit code (never auto-submitted), Link signed with the approval key, Don't link with the presence key, an extra confirmation for an unproven domain, remaining attempts, a "check again" path after a lost answer.
+- Cards for payment, login and action; an unknown type or a schema/text-rule failure is "This request cannot be shown; update the app" and cannot be approved (a local, in-memory Dismiss clears it for this run). A Dart port of the relying-party text profile passes all 60 `text-rules.json` vectors. The app computes `details_hash` itself and refuses a request whose own hash differs. Service-written text never appears in the app's own style: the list card and the OS prompt use fixed app words plus the service identity and, for payments, the amount.
+- Gated by configuration against real Biatec OIDC: `RELYING_PARTIES` (needs the two keys and the trust settings too; on for the mock).
+- NOT verified on a device: camera scan, deep link from another app, biometric prompts, iOS URL scheme delivery, the manual checklist (`scripts/rp-demo.mjs --manual`, in the README). No device criterion is ticked. How Flutter 3.50 hands a deep link to Dart is confirmed only by a platform-message test.
+- Decisions and limits: the mock's issuer is always `https://oidc.biatec.test`, so the app accepts that exact issuer only for a build against the mock or a plain `http` server (an `https` build has no exception); the Dart text-rule port refuses a combining mark after a Latin/Greek/Cyrillic letter (no normaliser; it can refuse text the server accepts, never the reverse); the custom URL scheme is claimable by other apps (the link secret is single-use and lives 5 minutes); a 1.2 receipt carries the device's own attestation (the spec does not say otherwise; the server must agree); dismissed requests come back after a restart; `deny` on a link sends an empty binding code.
+- Files outside the task's area list: `lib/config.dart`, `lib/main.dart`, `lib/security/settings_controller.dart`, `lib/shell/app_shell.dart` (flag, deep-link routing, intake), and a small refactor into `lib/approvals/device_identity.dart` and `lib/text/`.
+
+**Unblocks:** nothing (last task of the consent epic).
 
 ## Review
 
@@ -78,3 +87,4 @@ Filled in when the task moves to review.
 - 2026-11-13 09:05 · scholtz · (new) → blocked · created from revision 2 of the consent architecture record (AlgorandGoogleDriveAccount issue 23): universal authenticator
 - 2026-11-15 02:06 · kanban-board · blocked → backlog · blockers done: T-246
 - 2026-11-15 12:10 · scholtz · backlog → in-progress · claimed by session-20261115-1210 on task/T-247
+- 2026-11-15 15:30 · scholtz · in-progress → review · PR #418 @ dde96b8
