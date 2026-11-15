@@ -1,7 +1,7 @@
 ---
 id: T-246
 title: "Consent protocol 1.2: relying parties - linking, payment, login and action requests, details hash (universal authenticator)"
-status: review
+status: done
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-245]
@@ -89,9 +89,12 @@ PR #417, `task/T-246` @ 1916db2. Local: protocol tests 302 pass, `dotnet test ba
 
 ## Review
 
+- 2026-11-15 02:06 · approve · PR #417 merged into main @ f8ee42f (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-13 09:05 · scholtz · (new) → blocked · created from revision 2 of the consent architecture record (AlgorandGoogleDriveAccount issue 23): universal authenticator
 - 2026-11-15 00:42 · kanban-board · blocked → backlog · blockers done: T-245
 - 2026-11-15 05:40 · scholtz · backlog → in-progress · claimed by session-20261115-0540 on task/T-246
 - 2026-11-15 12:00 · scholtz · in-progress → review · PR #417 @ 1916db2
+- 2026-11-15 02:06 · user · review → done · PR #417 merged into main @ f8ee42f (synced by kanban-sync)
