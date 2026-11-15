@@ -14,10 +14,11 @@ class RpStrings {
 
   final Map<String, String> _t;
 
+  static final RegExp _place = RegExp(r'\{([A-Za-z]+)\}');
+
   /// The text for [key] with each `{name}` of it replaced from [args], in one pass (a value that itself holds `{name}` is never substituted again).
   String t(String key, [Map<String, String> args = const {}]) {
-    return _t[key]!.replaceAllMapped(
-        RegExp(r'\{([A-Za-z]+)\}'), (m) => args[m[1]] ?? m[0]!);
+    return _t[key]!.replaceAllMapped(_place, (m) => args[m[1]] ?? m[0]!);
   }
 
   /// Every key, so a test can check that both languages have all of them.
@@ -46,9 +47,6 @@ class RpStrings {
     'linkTitle': 'Link a service',
     'linkAServiceHelp':
         'Scan the QR code the service shows you. The service has to be one you started linking yourself.',
-    'scanTitle': 'Scan the service\'s QR code',
-    'scanHint':
-        'Point the camera at the QR code of the service. Nothing is recorded.',
     'pasteCode': 'Paste a link code',
     'pasteField': 'Link code',
     'pasteOpen': 'Open',
@@ -84,13 +82,16 @@ class RpStrings {
     'enterCode': 'Enter the six-digit code.',
     'linkCancelled': 'Linking cancelled. Nothing was sent.',
     'done': 'Done',
-    'tryAgain': 'Try again',
     'expiredTitle': 'This link has expired',
-    'expiredBody': 'Nothing was linked. Start again in the service.',
     'confirmUnproven':
         'This service has not proven who it is. Press Link and confirm to link it anyway.',
     'linkingOff': 'This build cannot link services.',
     'fromService': 'From {who}:',
+    'checkAgain': 'Check again',
+    'stillPending': 'Nothing was recorded. The link is still open.',
+    'undeterminedTitle': 'The link is no longer open',
+    'undeterminedBody':
+        'If it went through, the service is now in Settings, Linked services.',
     'dismiss': 'Dismiss',
     'dismissed': 'Dismissed. Nothing was sent.',
   });
@@ -116,9 +117,6 @@ class RpStrings {
     'linkTitle': 'Prepojiť službu',
     'linkAServiceHelp':
         'Naskenujte QR kód, ktorý vám služba ukáže. Prepájanie musíte spustiť vy sami.',
-    'scanTitle': 'Naskenujte QR kód služby',
-    'scanHint':
-        'Namierte kameru na QR kód služby. Nič sa nenahráva.',
     'pasteCode': 'Vložiť kód prepojenia',
     'pasteField': 'Kód prepojenia',
     'pasteOpen': 'Otvoriť',
@@ -154,13 +152,16 @@ class RpStrings {
     'enterCode': 'Zadajte šesťmiestny kód.',
     'linkCancelled': 'Prepájanie sa zrušilo. Nič sa neodoslalo.',
     'done': 'Hotovo',
-    'tryAgain': 'Skúsiť znova',
     'expiredTitle': 'Toto prepojenie vypršalo',
-    'expiredBody': 'Nič sa neprepojilo. Začnite znova v službe.',
     'confirmUnproven':
         'Táto služba neoverila, kto je. Stlačte Prepojiť a potvrďte, ak ju chcete aj tak prepojiť.',
     'linkingOff': 'Táto verzia nemôže prepájať služby.',
     'fromService': 'Od {who}:',
+    'checkAgain': 'Skontrolovať znova',
+    'stillPending': 'Nič sa nezaznamenalo. Prepojenie je stále otvorené.',
+    'undeterminedTitle': 'Prepojenie už nie je otvorené',
+    'undeterminedBody':
+        'Ak prebehlo, služba je teraz v Nastaveniach, Prepojené služby.',
     'dismiss': 'Zavrieť',
     'dismissed': 'Zavreté. Nič sa neodoslalo.',
   });

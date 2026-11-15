@@ -123,7 +123,10 @@ void main() {
     late int settings;
     late DeviceEventController controller;
 
-    DeviceEventController make({FakeApple? apple, Duration? retryAfter}) =>
+    DeviceEventController make(
+            {FakeApple? apple,
+            Duration? retryAfter,
+            bool Function(String)? dismissed}) =>
         DeviceEventController(
           enrollment: store,
           client:
@@ -133,6 +136,7 @@ void main() {
           onRequestClosed: closed.add,
           onDevicesChanged: () => devices++,
           onSettingsChanged: () => settings++,
+          isDismissed: dismissed,
           apple: apple,
           watchLifecycle: false,
           clock: () => now,
@@ -192,6 +196,21 @@ void main() {
           .add(ConsentRequested(request['auth_req_id'] as String));
       await pumpEventQueue();
       expect(arrived, 1);
+      expect(notifier.requests, isEmpty);
+    });
+
+    test('a request the app cannot show, or one the user dismissed, shows no notification', () async {
+      final bad = {...sampleRequest(), 'bound_hash': 'x'};
+      ((bad['authorization_details'] as List).single as Map)['type'] = 'biatec_teleport';
+      final dismissedRequest = sampleRequest();
+      dismissedRequest['auth_req_id'] = 'dismissed-1';
+      await store.write(record('dev-token'));
+      registry.pending = [bad, dismissedRequest];
+      controller = make(dismissed: (id) => id == 'dismissed-1');
+      await controller.start(source);
+      source.controller.add(ConsentRequested(bad['auth_req_id'] as String));
+      source.controller.add(ConsentRequested('dismissed-1'));
+      await pumpEventQueue();
       expect(notifier.requests, isEmpty);
     });
 

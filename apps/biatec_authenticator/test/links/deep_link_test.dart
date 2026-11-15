@@ -126,18 +126,22 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  test('the intake takes a text once and ignores the same text again', () {
-    final intake = LinkIntake();
+  test('the same text twice in a moment is one delivery; after that the same link can be opened again', () {
+    var now = DateTime.utc(2026, 11, 15, 12);
+    final intake = LinkIntake(clock: () => now);
     var heard = 0;
     intake.addListener(() => heard++);
-    intake.offer('a');
-    intake.offer('a');
-    expect(heard, 1);
+    intake.offer('a'); // the launch route
     expect(intake.take(), 'a');
-    intake.offer('a');
+    now = now.add(const Duration(seconds: 1));
+    intake.offer('a'); // the route pushed right after
     expect(intake.hasPending, isFalse);
-    intake.offer('b');
-    expect(intake.take(), 'b');
+    expect(heard, 1);
+    // Later (the link screen was closed): the same QR code opens again.
+    now = now.add(const Duration(minutes: 1));
+    intake.offer('a');
+    expect(intake.take(), 'a');
+    expect(heard, 2);
   });
 
   testWidgets('a deep link for another authenticator service is refused on a screen and nothing is fetched',

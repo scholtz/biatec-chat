@@ -44,6 +44,9 @@ class FakeLinkServer {
   int? failFetchWith;
   String status = 'pending';
   bool denyAnswersWrongCode = false;
+
+  /// The answer to a posted statement is lost (the connection drops after it was sent).
+  bool dropAnswer = false;
   int attempts = 0;
   int fetches = 0;
   final List<Map<String, Object?>> posted = [];
@@ -81,6 +84,7 @@ class FakeLinkServer {
             req.url.path == '/consent/links/$_linkId/receipt') {
           final body = (jsonDecode(req.body) as Map).cast<String, Object?>();
           posted.add(body);
+          if (dropAnswer) throw http.ClientException('connection reset');
           final signed = (body['signed'] as Map).cast<String, Object?>();
           if (status == 'closed') {
             return _json(403, {'error': 'access_denied', 'reason': 'code_failed'});
@@ -340,6 +344,50 @@ void main() {
       expect(signed['kid'], 'alice-device-presence');
       expect(rig.server.status, 'denied');
       expect((await rig.history.read()).single.decision, 'deny');
+    });
+
+    testWidgets('a callback that throws does not turn an accepted link into a failure', (tester) async {
+      final rig = Rig(FakeLinkServer());
+      await _open(tester, rig, onLinked: () => throw StateError('boom'));
+      await _type(tester, _code);
+      await _tap(tester, 'link');
+      expect(find.text('Linked.'), findsOneWidget);
+      expect(find.textContaining('Could not link'), findsNothing);
+    });
+
+    testWidgets('Check again: a link that is still open can be tried again', (tester) async {
+      final server = FakeLinkServer()..dropAnswer = true;
+      final rig = Rig(server);
+      await _open(tester, rig);
+      await _type(tester, _code);
+      await _tap(tester, 'link');
+      expect(find.text('Check again'), findsOneWidget);
+      server.dropAnswer = false;
+      server.status = 'pending';
+      await tester.tap(find.text('Check again'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Nothing was recorded. The link is still open.'), findsOneWidget);
+      expect(_enabled(tester, 'link'), isTrue);
+    });
+
+    testWidgets('Check again: a link that is gone is reported as no longer open, and Linked services reload', (tester) async {
+      final server = FakeLinkServer()..dropAnswer = true;
+      final rig = Rig(server);
+      var reloaded = 0;
+      await _open(tester, rig, onLinked: () => reloaded++);
+      await _type(tester, _code);
+      await _tap(tester, 'link');
+      // It did arrive and was recorded: the server now answers 409 for the link.
+      server.dropAnswer = false;
+      server.failFetchWith = 409;
+      await tester.tap(find.text('Check again'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('The link is no longer open'), findsOneWidget);
+      expect(reloaded, 1);
     });
 
     testWidgets('a deny never carries the code the user typed (it may be a wrong one)', (tester) async {

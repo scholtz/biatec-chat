@@ -93,6 +93,7 @@ Future<void> main() async {
     onRequestClosed: (_) => shell.requestsChanged.value++,
     onDevicesChanged: () => shell.reloads[AppTab.devices]!.value++,
     onSettingsChanged: () => shell.reloads[AppTab.settings]!.value++,
+    isDismissed: approvals.dismissed.contains,
     // The optional Apple wake: nothing registers unless the build says so.
     apple: apnsEnabled ? MethodChannelApplePush() : null,
   );

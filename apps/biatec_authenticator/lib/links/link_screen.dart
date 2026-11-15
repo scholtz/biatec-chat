@@ -126,6 +126,7 @@ class _LinkScreenState extends State<LinkScreen> {
     return r != null &&
         c.phase == LinkPhase.ready &&
         !c.offline &&
+        !c.uncertain &&
         !r.isExpired(c.now);
   }
 
@@ -251,6 +252,13 @@ class _LinkScreenState extends State<LinkScreen> {
             message: s.t('closedBody'),
             actionLabel: s.t('done'),
             onAction: _close);
+      case LinkPhase.undetermined:
+        return ResultView(
+            icon: Icons.help_outline,
+            title: s.t('undeterminedTitle'),
+            message: s.t('undeterminedBody'),
+            actionLabel: s.t('done'),
+            onAction: _close);
       case LinkPhase.gone:
         return ResultView(
             icon: Icons.timer_off,
@@ -280,7 +288,10 @@ class _LinkScreenState extends State<LinkScreen> {
               key: const Key('link-error'),
               severity: StatusSeverity.danger,
               title: s.t('linkTitle'),
-              message: c.error!),
+              message: c.error!,
+              // After a lost answer: ask the server instead of a dead end.
+              actionLabel: c.uncertain ? s.t('checkAgain') : null,
+              onAction: c.uncertain ? c.recheck : null),
           const SizedBox(height: AppSpacing.m),
         ],
         Card(

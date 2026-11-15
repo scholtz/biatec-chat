@@ -83,7 +83,12 @@ class _PendingScreenState extends State<PendingScreen> {
   }
 
   /// What the list shows: not a request the user dismissed.
-  List<ConsentRequest> _visible(Iterable<ConsentRequest> list) => [
+  List<ConsentRequest> _visible(Iterable<ConsentRequest> list) {
+    widget.services.dismissed.prune(widget.services.clock());
+    return _visibleNow(list);
+  }
+
+  List<ConsentRequest> _visibleNow(Iterable<ConsentRequest> list) => [
         for (final r in list)
           if (!widget.services.dismissed.contains(r.authReqId)) r
       ];
@@ -94,7 +99,9 @@ class _PendingScreenState extends State<PendingScreen> {
 
   /// Hides a request this app cannot show until it runs out. Local only: no call is made.
   void _dismiss(ConsentRequest r) {
-    widget.services.dismissed.add(r.authReqId);
+    widget.services.dismissed
+      ..prune(widget.services.clock())
+      ..add(r.authReqId, r.expiresAt);
     final left = _visible(_requests ?? const []);
     setState(() => _requests = left);
     _tell(_countOf(left));

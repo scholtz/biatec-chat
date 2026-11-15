@@ -14,9 +14,18 @@ import 'link_controller.dart';
 /// A link code another app opened this app with (`biatec-authenticator://link?...`), waiting for the link screen. Opening the app with such a link never links anything: the text only waits here until
 /// the signed-in app can show the link screen for it, which is where the user decides. It is treated exactly like a scanned code.
 class LinkIntake extends ChangeNotifier {
+  LinkIntake({DateTime Function()? clock, this.duplicateWindow = const Duration(seconds: 3)})
+      : _clock = clock ?? DateTime.now;
+
+  final DateTime Function() _clock;
+
+  /// The same text offered again within this time is the same delivery (the launch route and the route pushed right after it), not a second link. After it, the same link or QR code can be opened again.
+  final Duration duplicateWindow;
+  DateTime? _lastAt;
+
   String? _pending;
 
-  /// The text last offered. A deep link can reach the app twice (as the route it was launched with and as a route pushed after the launch): the same text again is the same link, not a second one.
+  /// The text last offered, and when (see [duplicateWindow]).
   String? _last;
 
   /// Whether a code is waiting.
@@ -31,8 +40,11 @@ class LinkIntake extends ChangeNotifier {
 
   /// Another app (or a route name the platform delivered) opened the app with [raw]. The latest one wins.
   void offer(String raw) {
-    if (raw == _last) return;
+    final now = _clock();
+    final at = _lastAt;
+    if (raw == _last && at != null && now.difference(at) < duplicateWindow) return;
     _last = raw;
+    _lastAt = now;
     _pending = raw;
     notifyListeners();
   }

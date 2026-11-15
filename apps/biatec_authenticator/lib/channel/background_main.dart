@@ -47,7 +47,10 @@ Future<void> stayConnectedMain() async {
   final enrollment = SecureEnrollmentStore();
   // The same proof of possession as every other device call (BCHAT-030): no proof, no ticket, no channel.
   final proof = KeystoreDeviceProofSigner(keys: keys, enrollment: enrollment);
-  final client = ApprovalClient(baseUrl: config.oidcBaseUrl, proof: proof);
+  final client = ApprovalClient(
+      baseUrl: config.oidcBaseUrl,
+      proof: proof,
+      relyingParties: config.relyingPartiesEnabled);
   final notifier = LocalDeviceNotifier();
   final channel = buildDeviceChannel(
     config: config,

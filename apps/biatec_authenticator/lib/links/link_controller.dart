@@ -32,6 +32,9 @@ enum LinkPhase {
 
   /// The link could not be loaded or this device cannot decide.
   unavailable,
+
+  /// After a statement whose answer was lost: the link is no longer open, and whether it went through is for Linked services to say.
+  undetermined,
 }
 
 final _codeFormat = RegExp(r'^[0-9]{6}$');
@@ -149,6 +152,54 @@ class LinkController extends ChangeNotifier {
     return (record.deviceToken, await twoKeyIdentityOf(record, keys));
   }
 
+  bool _sent = false;
+  bool _uncertain = false;
+
+  /// A statement was sent and no answer came back: it may or may not be recorded. The screen then offers "Check again" ([recheck]) instead of the buttons.
+  bool get uncertain => _uncertain;
+
+  /// [onLinked] belongs to the caller: whatever it throws, an accepted link stays accepted.
+  void _notifyLinked() {
+    try {
+      onLinked?.call();
+    } on Object {
+      // The list of linked services reloads when it is next opened.
+    }
+  }
+
+  /// Asks the server again after a lost answer. A link that is still open: nothing was recorded, try again. One that is not: it went through, was refused, or ran out, which Linked services (reloaded now) shows.
+  Future<void> recheck() async {
+    if (_phase == LinkPhase.working || _phase == LinkPhase.loading) return;
+    _set(LinkPhase.working);
+    try {
+      final record = await enrollment.read();
+      if (record == null) {
+        throw const ApprovalException('This device is not enrolled.');
+      }
+      final r =
+          await client.fetchLink(record.deviceToken, code.linkId, code.secret);
+      _request = r;
+      _uncertain = false;
+      _set(r.isExpired(now) ? LinkPhase.undetermined : LinkPhase.ready,
+          error: RpStrings.of().t('stillPending'));
+    } on LinkException catch (e) {
+      if (e.problem == LinkProblem.gone) {
+        _uncertain = false;
+        _set(LinkPhase.undetermined);
+        _notifyLinked();
+      } else {
+        _uncertain = true;
+        _set(LinkPhase.ready, error: e.toString());
+      }
+    } on ApprovalException catch (e) {
+      _uncertain = true;
+      _set(LinkPhase.ready, error: e.message, offline: e.offline);
+    } on Object catch (e) {
+      _uncertain = true;
+      _set(LinkPhase.ready, error: '$e');
+    }
+  }
+
   /// Links the service: the user typed [typed] (the code the service shows next to its QR code) and pressed Link. A service without a proven domain is linked only with [confirmedUnproven], which the screen
   /// sets after the extra confirmation. One biometric prompt, for the approval key.
   Future<void> approve(String typed, {bool confirmedUnproven = false}) async {
@@ -206,13 +257,15 @@ class LinkController extends ChangeNotifier {
         _set(LinkPhase.ready, error: 'Could not link: ${e.message}');
         return;
       }
+      _sent = true;
       final outcome =
           await client.postLinkReceipt(token, code.linkId, code.secret, body);
+      _sent = false;
       switch (outcome) {
         case LinkDone(status: 'linked'):
           await _remember(shown, LinkDecision.approve, body);
           _set(LinkPhase.linked);
-          onLinked?.call();
+          _notifyLinked();
         case LinkWrongCode(:final attemptsRemaining):
           _attemptsRemaining = attemptsRemaining;
           _set(LinkPhase.ready,
@@ -229,6 +282,8 @@ class LinkController extends ChangeNotifier {
           _refused(outcome);
       }
     } on ApprovalException catch (e) {
+      _uncertain = _sent && e.offline;
+      _sent = false;
       _set(LinkPhase.ready, error: e.message, offline: e.offline);
     } on Object catch (e) {
       _set(LinkPhase.ready, error: 'Could not link: $e');
@@ -251,8 +306,10 @@ class LinkController extends ChangeNotifier {
         decision: LinkDecision.deny,
         clock: () => now,
       );
+      _sent = true;
       final outcome =
           await client.postLinkReceipt(token, code.linkId, code.secret, body);
+      _sent = false;
       switch (outcome) {
         case LinkDone(status: 'denied'):
           await _remember(shown, LinkDecision.deny, body);
@@ -267,6 +324,8 @@ class LinkController extends ChangeNotifier {
           _refused(outcome);
       }
     } on ApprovalException catch (e) {
+      _uncertain = _sent && e.offline;
+      _sent = false;
       _set(LinkPhase.ready, error: e.message, offline: e.offline);
     } on Object catch (e) {
       _set(LinkPhase.ready, error: 'Could not decline: $e');

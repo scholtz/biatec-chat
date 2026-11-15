@@ -199,7 +199,8 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
 
   /// Hides the request until it runs out and goes back, with a message: nothing is sent to Biatec OIDC.
   void _dismiss(ApprovalController c) {
-    widget.services.dismissed.add(widget.authReqId);
+    final r = c.request;
+    if (r != null) widget.services.dismissed.add(widget.authReqId, r.expiresAt);
     final messenger = ScaffoldMessenger.of(context);
     messenger
       ..hideCurrentSnackBar()

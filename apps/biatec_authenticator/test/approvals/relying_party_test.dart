@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:biatec_authenticator/approvals/approval_card.dart';
 import 'package:biatec_authenticator/approvals/approval_controller.dart';
 import 'package:biatec_authenticator/approvals/approval_screen.dart';
+import 'package:biatec_authenticator/approvals/approval_services.dart' show DismissedRequests;
 import 'package:biatec_authenticator/approvals/consent_request.dart';
 import 'package:biatec_authenticator/approvals/jcs.dart';
 import 'package:biatec_authenticator/approvals/pending_screen.dart';
@@ -356,7 +357,7 @@ void main() {
       await tester.tap(find.byKey(const Key('dismiss')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
-      expect(rig.services.dismissed, contains(r['auth_req_id']));
+      expect(rig.services.dismissed.contains(r['auth_req_id'] as String), isTrue);
       expect(find.text('Dismissed. Nothing was sent.'), findsOneWidget);
       expect(rig.oidc.receipts, isEmpty);
       expect(calls, 0);
@@ -559,6 +560,17 @@ void main() {
       expect(find.byKey(const Key('expires-in')), findsOneWidget);
       expect(find.byKey(const Key('binding-code')), findsOneWidget);
     });
+  });
+
+  test('dismissed ids are forgotten once the request has run out', () {
+    final d = DismissedRequests();
+    final t = DateTime.utc(2026, 11, 15, 12);
+    d.add('a', t.add(const Duration(minutes: 5)));
+    d.add('b', t.add(const Duration(minutes: 1)));
+    d.prune(t.add(const Duration(minutes: 2)));
+    expect(d.contains('a'), isTrue);
+    expect(d.contains('b'), isFalse);
+    expect(d.length, 1);
   });
 
   group('English and Slovak', () {
