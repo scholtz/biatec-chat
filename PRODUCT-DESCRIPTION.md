@@ -567,6 +567,29 @@ Biatec OIDC today provides the authorization-code flow with PKCE, dynamic client
 | Consent-gated loosening of consent settings (threshold, "always ask", per-client settings, trusted applications, client pauses), signed by the approval key | Keeps an identity-provider-only attacker from disabling the phone | Settings can be loosened only from an active enrolled device's own screen, not from the web; chat then hides raising limits (`limits.update` is lowering-only) |
 | `GET /consent/settings` returning, for the calling client, the user's consent threshold, per-client settings such as "always ask", cooling-off and first-use status, and whether an active device is enrolled | Lets the backend predict on the preview card whether the phone will be asked, and tell users without a device to enroll | Card says "may need approval on your phone" without predicting |
 
+### Universal Authenticator
+
+**Decision (2026-11-13).** Biatec Authenticator is a universal authenticator: any organisation, a bank for example, can adopt it as its confirmation app for payments and for access to its internet banking. Biatec vouches for nobody. The organisation proves its domain, the user links it on the phone, and the organisation can verify every approval against the device key it pinned at linking, so after pinning it does not depend on the Biatec OIDC operator for what a receipt says (at link time it trusts the operator's answer for which keys are the user's: see statement 4). Protocol 1.2 (`packages/consent-protocol/spec`, chapter "Relying parties") defines the shapes; the mock Biatec OIDC and the conformance suite implement them until the real server ships (Biatec OIDC issue 38).
+
+**Trust model.** Four statements hold and nothing may weaken one:
+
+1. Biatec OIDC vouches for no relying party. The phone shows the domain the party proved, or "Unproven application" with the fingerprint of its `client_id`, and the user decides. No name, logo or badge comes from the operator or from the party.
+2. A relying party can reach a user's phone only after that user linked it on the phone. Linking is a statement signed by the approval key; the party shows a QR code (`biatec-authenticator://link?iss=<issuer>&id=<link_id>&s=<link_secret>`) and a six digit code inside its own authenticated session, and the app refuses a QR code of any server other than the one it is enrolled with.
+3. What the user approves is exactly the `authorization_details` the relying party sent, shown in fields the app renders itself (plain text, strings marked as written by the relying party). The device signs their hash (`details_hash`), computed from the object it renders and never copied from the request.
+4. The receipt is signed by the device. Biatec OIDC adds an attestation, but a relying party that pinned a device key verifies the device signature itself: after pinning, the operator cannot alter or forge the content of a receipt for that key, and a receipt signed by another key is detected. The limit: the devices list comes from the same server answer as the link approval, so at link time the party trusts the operator for which keys are the user's; a later change of the list is the party's own decision (spec 14.6).
+
+A relying party registers as a confidential client (`private_key_jwt`, CIBA grant only, a required `client_uri`) and can never obtain a wallet scope; the token it redeems for a request is useless at every endpoint. Its requests always go to the phone: the threshold and trusted-application rules of the user's own policy do not apply, while a pause, "block unproven clients" and the absence of an active device do.
+
+**Three request types.** All carry the same binding code and the same signed receipt:
+
+| Type | What the card shows | Fields |
+| --- | --- | --- |
+| `biatec_payment` | The amount and currency, the creditor's name and account, the remittance and the execution date | `instructed_amount` (decimal string with at most two decimals, greater than zero, and a three letter currency), `creditor_name` (1 to 70), `creditor_account` (an IBAN with valid check digits, or an identification of 1 to 34 characters and a scheme of 1 to 20), optional `remittance` (up to 140) and `execution_date` |
+| `biatec_login` | Access to the party's service with the context the party reported | optional `context` with `ip`, `location` and `user_agent` (each up to 80) |
+| `biatec_action` | Any other action: a title and labelled lines | `title` (1 to 60) and 1 to 8 `lines` of `label` (up to 30) and `value` (up to 80) |
+
+Every string a relying party supplies is untrusted: Unicode NFC, no control, bidirectional or zero-width characters and no line breaks, lengths counted in code points, and a violation is refused, never stripped. A new phone the user adds after linking signs with a key the party has not pinned; the party then decides by its own policy whether to accept the new keys listed by Biatec OIDC or to ask the user to link again.
+
 ### Permissionless Third-Party Integration
 
 A bank, a fintech, or any other service can integrate in three steps without contacting Biatec (once the confidential-client registration listed under Required Changes To Biatec OIDC ships; until then step 2 is an operator-reviewed registration). Capabilities that need the `manage-limits` scope stay reserved for operator-allowlisted clients:

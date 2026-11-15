@@ -2,8 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.biatec.io/consent/v1/consent-receipt-signed.schema.json",
   "title": "Signed receipt object",
-  "description": "The object whose RFC 8785 canonical form the device key signs. Protocol 1.1 signs exactly eight members (nine when an approval carries `remember`); protocol 1.0 signed eight members that named the client differently (the `v1_0` branch).",
-  "oneOf": [{ "$ref": "#/$defs/v1_1" }, { "$ref": "#/$defs/v1_0" }],
+  "description": "The object whose RFC 8785 canonical form the device key signs. Protocol 1.1 signs exactly eight members (nine when an approval carries `remember`); protocol 1.0 signed eight members that named the client differently (the `v1_0` branch); protocol 1.2 (relying parties) signs the eight members of 1.1 without `remember` and a ninth, `details_hash` (the `v1_2` branch).",
+  "oneOf": [{ "$ref": "#/$defs/v1_1" }, { "$ref": "#/$defs/v1_0" }, { "$ref": "#/$defs/v1_2" }],
   "$defs": {
     "v1_1": {
       "title": "Signed receipt object, protocol 1.1",
@@ -40,6 +40,29 @@
         }
       }
     },
+    "v1_2": {
+      "title": "Signed receipt object, protocol 1.2 (relying parties)",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authorization_details", "auth_req_id", "client_fingerprint", "binding_code", "decision", "expiry", "sub", "binding_message", "details_hash"],
+      "allOf": [
+        {
+          "if": { "required": ["decision"], "properties": { "decision": { "enum": ["approve", "code_failed"] } } },
+          "then": { "properties": { "binding_code": { "type": "string", "pattern": "^[0-9]{6}$" } } }
+        }
+      ],
+      "properties": {
+        "authorization_details": { "$ref": "authorization-details.schema.json#/$defs/v1_2" },
+        "auth_req_id": { "type": "string", "minLength": 16, "description": "Single-use nonce." },
+        "client_fingerprint": { "$ref": "#/$defs/fingerprint" },
+        "binding_code": { "type": "string", "pattern": "^([0-9]{6})?$", "description": "The code the user typed; the empty string for an explicit Deny before any code was typed." },
+        "decision": { "enum": ["approve", "deny", "code_failed"] },
+        "expiry": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "Unix time in seconds." },
+        "sub": { "type": "string", "minLength": 1, "description": "The pairwise subject of the requesting client." },
+        "binding_message": { "type": "string", "maxLength": 0, "description": "Always the empty string: the relying party's text is in the details, which the card renders in fields it controls." },
+        "details_hash": { "$ref": "#/$defs/detailsHash", "description": "SHA-256 of the canonical authorization_details object, computed by the device from the object it rendered (spec section 3.6). A verifier computes it again and compares." }
+      }
+    },
     "v1_0": {
       "title": "Signed receipt object, protocol 1.0",
       "type": "object",
@@ -62,6 +85,7 @@
         "binding_message": { "type": "string", "maxLength": 140, "description": "Text as rendered on the card, or the empty string if none was rendered." }
       }
     },
+    "detailsHash": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$", "description": "base64url without padding of a SHA-256 digest (43 characters)." },
     "fingerprint": { "type": "string", "pattern": "^[0-9a-f]{16}$", "description": "16 lowercase hex characters (64 bits) of the SHA-256 of the client_id, shown to the user as xxxx-xxxx-xxxx-xxxx." }
   }
 }

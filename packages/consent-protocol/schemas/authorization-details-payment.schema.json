@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/authorization-details-payment.schema.json",
+  "title": "biatec_payment authorization detail",
+  "description": "RFC 9396 authorization_details object of a payment a relying party asks the user to confirm (protocol 1.2, spec section 3.3). The relying party's members are untrusted text: besides this schema, every string obeys the text rules of spec section 15 (relying-party profile), the IBAN's mod-97 check digits are right and `execution_date` is a real calendar date; a verifier checks those (`isValidRelyingPartyDetails` in scripts/lib.mjs). `origin` is added by Biatec OIDC when it has one, never by the relying party.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "instructed_amount", "creditor_name", "creditor_account"],
+  "properties": {
+    "type": { "const": "biatec_payment" },
+    "instructed_amount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["amount", "currency"],
+      "properties": {
+        "amount": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,14})(\\.[0-9]{1,2})?$",
+          "not": { "pattern": "^0(\\.0+)?$" },
+          "description": "Decimal string, at most two decimals, greater than zero. Never a JSON number."
+        },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 alphabetic code: three upper-case letters." }
+      }
+    },
+    "creditor_name": { "type": "string", "minLength": 1, "maxLength": 70 },
+    "creditor_account": {
+      "oneOf": [
+        {
+          "title": "IBAN",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["iban"],
+          "properties": {
+            "iban": { "type": "string", "pattern": "^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$", "description": "Electronic form: upper case, no spaces. The mod-97 check digits are validated by the verifier." }
+          }
+        },
+        {
+          "title": "Other account identification",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["identification", "scheme"],
+          "properties": {
+            "identification": { "type": "string", "minLength": 1, "maxLength": 34 },
+            "scheme": { "type": "string", "minLength": 1, "maxLength": 20, "description": "The scheme the identification is in, for example BBAN or SORTCODE." }
+          }
+        }
+      ]
+    },
+    "remittance": { "type": "string", "minLength": 1, "maxLength": 140 },
+    "execution_date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "ISO 8601 calendar date; a verifier checks that it exists." },
+    "origin": { "$ref": "authorization-details-transaction.schema.json#/$defs/origin", "description": "Added by Biatec OIDC when it has one, as the relying party reported it; part of the hashed object." }
+  }
+}

@@ -36,6 +36,8 @@ export const config = {
   deviceToken: secret("CONFORMANCE_DEVICE_TOKEN", "device-token-alice"),
   deviceKid: env("CONFORMANCE_DEVICE_KID", "alice-device"),
   devicePrivateJwk: process.env.CONFORMANCE_DEVICE_PRIVATE_JWK ? JSON.parse(process.env.CONFORMANCE_DEVICE_PRIVATE_JWK) : useSeed ? vectorKeys.device : undefined,
+  /** The device's private presence key (protocol 1.1): only for the cases that prove it never approves. */
+  presencePrivateJwk: process.env.CONFORMANCE_PRESENCE_PRIVATE_JWK ? JSON.parse(process.env.CONFORMANCE_PRESENCE_PRIVATE_JWK) : useSeed ? vectorKeys.presence : undefined,
   /** Unsigned group items above the user's step-up threshold: real base64 msgpack transactions. Default: 5000 USDC from `address` (about 4612 EUR in the mock's price table). */
   unsignedGroup: process.env.CONFORMANCE_UNSIGNED_GROUP
     ? (JSON.parse(process.env.CONFORMANCE_UNSIGNED_GROUP) as string[])
@@ -319,3 +321,33 @@ export const lazy = <T>(fn: () => Promise<T>) => {
   let p: Promise<T> | undefined;
   return () => (p ??= fn());
 };
+
+// ---------------------------------------------------------------------------------------------------------------
+// Relying parties (protocol 1.2, spec chapter 14): a party and its phone, played by the kit
+
+import { approveLink, approveRequest, httpJson, parseLinkUri, proveDomain, registerRelyingParty, rpCall, testDevice, type RelyingParty, type TestDevice } from "../../scripts/rp-client.mjs";
+export { approveLink, approveRequest, httpJson, parseLinkUri, proveDomain, registerRelyingParty, rpCall, testDevice };
+export type { RelyingParty, TestDevice };
+
+/** The issuer a client assertion is addressed to: what the server's discovery document says, else the configured one. */
+export async function issuerOf(base: string): Promise<string> {
+  const r = await http(base, "GET", "/.well-known/openid-configuration");
+  return typeof r.json?.issuer === "string" ? r.json.issuer : config.issuer;
+}
+
+let rpSeq = 0;
+/** A relying party registered at the server (key in memory); its domain is proven through the mock's helper when `prove` is true. */
+export async function newRelyingParty(base: string, o: { prove?: boolean; alg?: "ES256" | "PS256" } = {}) {
+  const host = `conformance-rp-${Date.now().toString(36)}-${++rpSeq}.example`;
+  const { rp, reply } = await registerRelyingParty(base, await issuerOf(base), { clientUri: `https://${host}`, alg: o.alg });
+  if (reply.status !== 201) throw new Error(`registration refused: HTTP ${reply.status} ${JSON.stringify(reply.json)}`);
+  if (o.prove) {
+    const p = await proveDomain(rp, host);
+    if (p.status !== 200) throw new Error("the server did not take the domain proof helper (POST /mock/serve): HTTP " + p.status);
+  }
+  return { rp, host };
+}
+
+/** The phone of the test account: the device of `CONFORMANCE_DEVICE_*` with the keys that sign for it. Needs the mock's helper for its attestation and public key. */
+export const phone = (base: string): Promise<TestDevice> =>
+  testDevice(base, "alice", { kid: config.deviceKid, token: config.deviceToken, approvalKey: config.devicePrivateJwk, presenceKey: config.presencePrivateJwk });

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/authorization-details-login.schema.json",
+  "title": "biatec_login authorization detail",
+  "description": "RFC 9396 authorization_details object of a login a relying party asks the user to confirm (protocol 1.2, spec section 3.4). The context strings are untrusted text under the text rules of spec section 15 (relying-party profile). `origin` is added by Biatec OIDC when it has one, never by the relying party.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type"],
+  "properties": {
+    "type": { "const": "biatec_login" },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "ip": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "location": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "user_agent": { "type": "string", "minLength": 1, "maxLength": 80 }
+      }
+    },
+    "origin": { "$ref": "authorization-details-transaction.schema.json#/$defs/origin", "description": "Added by Biatec OIDC when it has one, as the relying party reported it; part of the hashed object." }
+  }
+}

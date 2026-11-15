@@ -31,8 +31,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020Module from "ajv/dist/2020.js";
-import { isDisplaySafe, jcs, pairingCode, sha256Hex, signCompactJws, thumbprint, verifyApproval, verifyDeviceSigned, verifyEnrollmentProof, verifyEs256, verifyReceipt, ATTESTATION_TYP } from "../../scripts/lib.mjs";
+import { clientFingerprint, detailsHash, isDisplaySafe, isValidIban, isRelyingPartyText, isValidRelyingPartyDetails, jcs, pairingCode, sha256Hex, signCompactJws, thumbprint, verifyApproval, verifyDeviceSigned, verifyEnrollmentProof, verifyEs256, verifyLink, verifyReceipt, ATTESTATION_TYP } from "../../scripts/lib.mjs";
 import { GroupError, decodeGroup, decimalToCents, describeAlgorandGroup, describeJsonGroup, mockSigned, transactionDetails, type Described } from "./group.ts";
+import { AssertionError, CIBA_GRANT, CLIENT_ASSERTION_TYPE, MetadataError, clientUriHost, validateJwks, verifyAssertion, type PublicJwk } from "./rp.ts";
 import { clients, staticTokens, users, type SeedClient, type SeedUser } from "./seed.ts";
 
 const Ajv2020 = Ajv2020Module as unknown as typeof Ajv2020Module.default;
@@ -118,6 +119,39 @@ export interface MockOptions {
   hubPingSeconds?: number;
   /** An operator ceiling for the user's own threshold, in EUR (MOCK_MAX_THRESHOLD_EUR in `server.ts`). Unset: no operator ceiling, only the technical one of 1000000000 EUR. */
   maxThresholdEur?: number;
+  /** Registrations (`POST /register`) per source address per hour (default 100). */
+  maxRegistrationsPerHour?: number;
+  /** New requests one relying party may open per minute, over all its users (default 60, spec 14.4). */
+  maxRelyingPartyRequestsPerMinute?: number;
+  /** Open (pending) requests of one relying party for one user (default 5, spec 14.4). */
+  maxRelyingPartyPendingPerUser?: number;
+  /**
+   * Fetches a document the real server would fetch with its hardened fetcher: the well-known file `https://<host of client_uri>/.well-known/biatec-client.json`
+   * and a `jwks_uri`. Synchronous; return the parsed JSON, or null. The default serves only what `serve(url, json)` (the returned object, or the helper `POST /mock/serve`) was given: the mock never
+   * leaves the machine.
+   */
+  fetchJson?: (url: string) => unknown;
+}
+
+/** Link of a relying party (protocol 1.2, spec 14.3). */
+interface Link {
+  id: string;
+  clientId: string;
+  secretHash: string;
+  code: string;
+  attempts: number;
+  userLabel?: string;
+  nonce: string;
+  expiresAt: number;
+  /** pending until the user decides; `closed` after three wrong codes (the party sees `expired`). */
+  status: "pending" | "linked" | "denied" | "closed";
+  /** What the server showed the device (the device fetched the link): the fingerprint and the proven domain, or null. */
+  shown?: { fingerprint: string; domain: string | null };
+  subject?: string;
+  account?: string;
+  approval?: { signed: Record<string, any>; signature: string; attestation: string };
+  lastPollAt?: number;
+  interval: number;
 }
 
 /** A device has an approval key (its `kid`, `publicKey`, `attestation`) and optionally a presence key; each is attested for its own use. */
@@ -128,10 +162,16 @@ interface PushTarget { provider: "apns"; token: string }
 interface PushMessage { kid: string; provider: PushTarget["provider"]; token: string; data: { auth_req_id: string } | { event: "device_enrolled"; kid: string } }
 interface Pending {
   request: Record<string, any>;
+  /** The account (the user's `sub` at this server). `request.sub` is the pairwise subject of the requesting client, which for a relying party differs. */
+  account: string;
+  /** A relying party's request (protocol 1.2). */
+  rp?: boolean;
   code: string;
   attempts: number;
   clientId: string;
   status: "pending" | "approved" | "denied" | "code_failed";
+  /** A relying party's request closed because its link was removed: the token endpoint says `access_denied` with `reason: "unlinked"`, and there is no receipt. */
+  closedBy?: "unlinked";
   receipt?: Record<string, any>;
   tokenIssued: boolean;
   /** Seconds between token polls; raised by every slow_down. */
@@ -143,7 +183,7 @@ interface Pending {
   /** Reserve then spend (issue 28): a consent is reserved before signing, spent when signing succeeded, released on a handled failure. */
   spend: "none" | "reserved" | "spent";
 }
-interface Token { /** Unix seconds of the user's last authentication (login tokens); absent = just now. */ authTime?: number; sub: string; clientId: string; scope: string; kind: "access" | "login" | "consent"; exp?: number; authReqId?: string; /** The group or body hash a consent token is bound to. */ consentHash?: string }
+interface Token { /** Unix seconds of the user's last authentication (login tokens); absent = just now. */ authTime?: number; sub: string; clientId: string; scope: string; kind: "access" | "login" | "consent"; /** Redeemed by a relying party: scope openid only, refused by every endpoint. */ rp?: boolean; exp?: number; authReqId?: string; /** The group or body hash a consent token is bound to. */ consentHash?: string }
 
 class HttpError extends Error {
   status: number;
@@ -172,6 +212,7 @@ function parseForm(text: string): Record<string, unknown> {
   for (const k of ["unsigned_group"]) if (typeof out[k] === "string") out[k] = [out[k]];
   if (typeof out.limits_request === "string") out.limits_request = JSON.parse(out.limits_request);
   if (typeof out.requested_expiry === "string") out.requested_expiry = Number(out.requested_expiry);
+  if (typeof out.authorization_details === "string") { try { out.authorization_details = JSON.parse(out.authorization_details); } catch { /* left as text: refused as invalid_authorization_details */ } } // RFC 9396: JSON text in a form
   return out;
 }
 
@@ -217,6 +258,19 @@ export function createMockOidc(options: MockOptions = {}) {
   const attestationChallenges = new Map<string, { sub: string; expires: number }>();
   const pending = new Map<string, Pending>();
   const consumed = new Set<string>();
+  // Relying parties (protocol 1.2, spec chapter 14).
+  const served = new Map<string, unknown>(); // url -> JSON the mock's stand-in for the hardened fetcher returns (serve(), POST /mock/serve)
+  const fetchJson = options.fetchJson ?? ((url: string) => served.get(url) ?? null);
+  const links = new Map<string, Link>();
+  const consumedLinks = new Set<string>(); // link ids that got a decision (a link statement is single use)
+  const subjects = new Map<string, { account: string; clientId: string }>(); // pairwise subject -> the account it was given for
+  const usedAssertions = new Map<string, number>(); // client_id|jti -> when it may be forgotten
+  const registrations = new Map<string, number[]>(); // source address -> times of its registrations
+  const rpOpened = new Map<string, number[]>(); // relying party -> times of the requests it opened
+  const maxRegistrationsPerHour = options.maxRegistrationsPerHour ?? 100;
+  const maxRpPerMinute = options.maxRelyingPartyRequestsPerMinute ?? 60;
+  const maxRpPending = options.maxRelyingPartyPendingPerUser ?? 5;
+  const JWKS_CACHE_SECONDS = 3600;
   const pushOutbox: PushMessage[] = [];
   const hub = createDeviceHub({ now, lifetimeSeconds: options.hubLifetimeSeconds, pingSeconds: options.hubPingSeconds });
   const closedAnnounced = new Set<string>();
@@ -224,7 +278,7 @@ export function createMockOidc(options: MockOptions = {}) {
   function announceClosed(p: Pending) {
     if (closedAnnounced.has(p.request.auth_req_id)) return;
     closedAnnounced.add(p.request.auth_req_id);
-    hub.notify(p.request.sub, "consent_closed", { auth_req_id: p.request.auth_req_id });
+    hub.notify(p.account, "consent_closed", { auth_req_id: p.request.auth_req_id });
   }
   // Consent settings beyond what the seed holds (T-084). Keys: sub, or sub|clientId.
   const accountSettings = new Map<string, { biometricRequired: boolean; blockUnverified: boolean; askOnTestNetworks: boolean }>();
@@ -276,18 +330,33 @@ export function createMockOidc(options: MockOptions = {}) {
   const isActive = (d: Device | undefined) => d !== undefined && !d.cancelled && d.activeAt <= now();
 
   // Helpers
-  /** First eight bytes of the SHA-256 of the client_id, 16 lowercase hex characters: what the user sees (and a receipt signs) for a client. */
-  const fingerprintOf = (clientId: string) => createHash("sha256").update(clientId, "utf8").digest("hex").slice(0, 16);
+  /** The pairwise subject of an account for a client (stable: the same account through the same client always gets the same one). */
+  const pairwiseSubject = (clientId: string, account: string) => "pw_" + createHash("sha256").update("biatec-mock-pairwise:" + clientId + ":" + account, "utf8").digest("hex").slice(0, 16);
+  /** A relying party is proven only while the well-known file of the host of its `client_uri` lists its client id (the real server re-checks daily; the mock reads it on every use). */
+  let requestEpoch = 0; // incremented for every request: syncProof reads a relying party's well-known file at most once in each
+  function syncProof(c: SeedClient): SeedClient {
+    if (!c.rp || c.rp.checkedEpoch === requestEpoch) return c; // the proof is read once per request
+    c.rp.checkedEpoch = requestEpoch;
+    let f: any = null;
+    try { f = fetchJson(`https://${c.rp.host}/.well-known/biatec-client.json`); } catch { f = null; }
+    c.verified = !!f && typeof f === "object" && Array.isArray(f.client_ids) && f.client_ids.length <= 50 && f.client_ids.includes(c.id);
+    c.domain = c.verified ? c.rp.host : undefined;
+    return c;
+  }
   /** Biatec OIDC vouches for no client: the fingerprint, the proven domain when there is one, and whether this user linked the client. */
-  const clientInfo = (c: SeedClient, user: { used: Set<string> }) => ({
-    fingerprint: fingerprintOf(c.id),
-    domain_proven: c.verified,
-    ...(c.verified && c.domain ? { domain: c.domain } : {}),
-    linked: user.used.has(c.id),
-  });
+  const clientInfo = (c: SeedClient, user: { used: Set<string> }) => {
+    syncProof(c);
+    return {
+      fingerprint: clientFingerprint(c.id),
+      domain_proven: c.verified,
+      ...(c.verified && c.domain ? { domain: c.domain } : {}),
+      linked: user.used.has(c.id),
+    };
+  };
   const ORIGIN = /^(?!https:\/\/[^/]*:443$)(?!http:\/\/[^/]*:80$)https?:\/\/[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$/;
   /** The origin a request reports: the body's `origin`, else the Origin header, else the client's own domain. It must be a canonical origin. */
   function requestOrigin(req: IncomingMessage, given: unknown, client: SeedClient): string {
+    syncProof(client);
     const o = given ?? req.headers.origin ?? "https://" + (client.domain ?? "client.invalid");
     if (typeof o !== "string" || o.length > 253 || !ORIGIN.test(o)) throw new HttpError(400, "invalid_request", "origin must be an absolute http(s) origin in canonical form (lower-case host, no path, no default port)");
     return o;
@@ -306,8 +375,47 @@ export function createMockOidc(options: MockOptions = {}) {
       secret = body.client_secret;
     }
     const c = id ? clientMap.get(id) : undefined;
-    if (!c || typeof secret !== "string" || !safeEqual(secret, c.secret)) throw new HttpError(401, "invalid_client", "client authentication failed", {}, { "WWW-Authenticate": 'Basic realm="mock-oidc"' });
+    if (!c || c.rp || typeof secret !== "string" || !safeEqual(secret, c.secret)) throw new HttpError(401, "invalid_client", "client authentication failed", {}, { "WWW-Authenticate": 'Basic realm="mock-oidc"' });
     return c;
+  }
+
+  const invalidClient = (why: string) => new HttpError(401, "invalid_client", why, {}, { "WWW-Authenticate": 'Client-Assertion realm="mock-oidc"' });
+  /** The client assertion of a request: the form or JSON members `client_assertion_type` and `client_assertion` (RFC 7523), or for a request without a body `Authorization: Client-Assertion <jwt>`. */
+  function assertionOf(req: IncomingMessage, body: Record<string, any>): string | undefined {
+    const h = req.headers.authorization;
+    if (h?.startsWith("Client-Assertion ")) return h.slice(17).trim();
+    if (body.client_assertion === undefined && body.client_assertion_type === undefined) return undefined;
+    if (body.client_assertion_type !== CLIENT_ASSERTION_TYPE || typeof body.client_assertion !== "string") throw invalidClient("client_assertion_type must be " + CLIENT_ASSERTION_TYPE + " with a client_assertion");
+    return body.client_assertion;
+  }
+
+  /** Authenticates a relying party by its `private_key_jwt` assertion (RFC 7523: iss = sub = client_id, aud the token endpoint or the issuer, exp at most 5 minutes ahead, jti single use, ES256 or PS256). */
+  function authRp(jwt: string, bodyClientId?: unknown): SeedClient {
+    let claimed: unknown;
+    try { claimed = JSON.parse(Buffer.from(jwt.split(".")[1] ?? "", "base64url").toString("utf8")).iss; } catch { claimed = undefined; }
+    const c = typeof claimed === "string" ? clientMap.get(claimed) : undefined;
+    if (!c?.rp) throw invalidClient("client assertion: unknown client");
+    // A client_id sent next to the assertion must be the one the assertion is for (RFC 7523 section 3): a conflict is refused, never resolved in either one's favour.
+    if (bodyClientId !== undefined && bodyClientId !== c.id) throw invalidClient("client_id conflicts with the iss and sub of the client assertion");
+    if (c.rp.jwksUri && now() - c.rp.keysFetchedAt > JWKS_CACHE_SECONDS) {
+      try { c.rp.keys = validateJwks(fetchJson(c.rp.jwksUri)); c.rp.keysFetchedAt = now(); } catch { /* keep the cached keys */ }
+    }
+    const aud = [issuer, issuer.replace(/\/+$/, "") + "/token"];
+    try {
+      const { jti, exp } = verifyAssertion(jwt, c.rp.keys, c.id, aud, now());
+      if (usedAssertions.has(c.id + "|" + jti)) throw new AssertionError("client assertion: jti was used already");
+      usedAssertions.set(c.id + "|" + jti, exp);
+    } catch (e) {
+      if (e instanceof AssertionError) throw invalidClient(e.message);
+      throw e;
+    }
+    return syncProof(c);
+  }
+
+  /** A seeded client by its secret (Basic or form), a relying party by its assertion. */
+  function authAny(req: IncomingMessage, body: Record<string, any>): SeedClient {
+    const jwt = assertionOf(req, body);
+    return jwt === undefined ? authClient(req, body) : authRp(jwt, body.client_id);
   }
 
   /** A consent token (acr biatec:consent) is accepted only by the wallet signing endpoints (`allowConsent`); everywhere else it is refused (decision D8). */
@@ -316,6 +424,8 @@ export function createMockOidc(options: MockOptions = {}) {
     const value = h?.startsWith("Bearer ") ? h.slice(7) : "";
     const t = tokens.get(value);
     if (!t || (t.exp !== undefined && t.exp <= now())) throw new HttpError(401, "invalid_token", "missing, unknown or expired bearer token", {}, { "WWW-Authenticate": 'Bearer error="invalid_token"' });
+    // The token a relying party redeems is useless at every endpoint of this service (spec 14.1): not even the signing endpoint takes it.
+    if (t.rp) throw new HttpError(401, "invalid_token", "the token of a relying party request is accepted by no endpoint", {}, { "WWW-Authenticate": 'Bearer error="invalid_token"' });
     if (t.kind === "consent" && !allowConsent) throw new HttpError(401, "invalid_token", "a consent token is accepted only by the wallet signing endpoints", {}, { "WWW-Authenticate": 'Bearer error="invalid_token"' });
     return { ...t, value };
   }
@@ -379,17 +489,33 @@ export function createMockOidc(options: MockOptions = {}) {
 
   const expired = (p: Pending) => p.request.expiry <= now();
 
-  function openRequest(opts: { entry: "step-up" | "direct"; user: SeedUser & { used: Set<string> }; client: SeedClient; details: Record<string, any>; bindingMessage: string; requestedExpiry: number; origin: string; scope: string; limitsBody?: Record<string, string> }) {
-    // Rule 10: at most three pending requests per client, user and origin, and an anti-spam rate per client and user.
-    const open = [...pending.values()].filter((p) => p.request.sub === opts.user.sub && p.clientId === opts.client.id && p.request.origin === opts.origin && p.status === "pending" && !p.tokenIssued && !expired(p)).length;
-    if (open >= maxPending) throw new HttpError(429, "too_many_pending_requests", `at most ${maxPending} requests of one client can be open for one user from one origin`, { limit: maxPending, scope: { client: opts.client.id, origin: opts.origin } });
-    const rateKey = opts.user.sub + "|" + opts.client.id;
-    const recent = (openedAt.get(rateKey) ?? []).filter((t) => now() - t < 3600);
+  const stillOpen = (p: Pending, account: string, clientId: string) => p.account === account && p.clientId === clientId && p.status === "pending" && !p.tokenIssued && !expired(p);
+
+  /** Spec 14.4: at most five open requests per user and relying party, and 60 requests a minute per relying party; the threshold, trust and first-use rules do not apply. */
+  function enforceRpLimits(account: string, clientId: string) {
+    const open = [...pending.values()].filter((p) => stillOpen(p, account, clientId)).length;
+    if (open >= maxRpPending) throw new HttpError(429, "too_many_pending_requests", `at most ${maxRpPending} requests of one relying party can be open for one user`, { limit: maxRpPending, scope: { client: clientId } });
+    const recent = (rpOpened.get(clientId) ?? []).filter((x) => now() - x < 60);
+    if (recent.length >= maxRpPerMinute) throw new HttpError(429, "rate_limited", `at most ${maxRpPerMinute} requests per minute`, {}, { "Retry-After": String(Math.max(1, recent[0] + 60 - now())) });
+  }
+
+  /** Rule 10: at most three pending requests per client, user and origin, and an anti-spam rate per client and user. */
+  function enforceClientLimits(account: string, clientId: string, origin: string | undefined) {
+    const open = [...pending.values()].filter((p) => stillOpen(p, account, clientId) && p.request.origin === origin).length;
+    if (open >= maxPending) throw new HttpError(429, "too_many_pending_requests", `at most ${maxPending} requests of one client can be open for one user from one origin`, { limit: maxPending, scope: { client: clientId, origin } });
+    const rateKey = account + "|" + clientId;
+    const recent = (openedAt.get(rateKey) ?? []).filter((x) => now() - x < 3600);
     if (recent.length >= maxPerHour) throw new HttpError(429, "rate_limited", `at most ${maxPerHour} requests per hour`, {}, { "Retry-After": String(Math.max(1, recent[0] + 3600 - now())) });
     openedAt.set(rateKey, [...recent, now()]);
+  }
+
+  function openRequest(opts: { entry: "step-up" | "direct"; user: SeedUser & { used: Set<string> }; client: SeedClient; details: Record<string, any>; bindingMessage: string; requestedExpiry: number; origin: string | undefined; scope: string; limitsBody?: Record<string, string>; /** A relying party's request (protocol 1.2): the pairwise subject it knows the user by, and the hash its details are bound to. */ rp?: { subject: string; boundHash: string } }) {
+    if (opts.rp) enforceRpLimits(opts.user.sub, opts.client.id);
+    else enforceClientLimits(opts.user.sub, opts.client.id, opts.origin);
     const authReqId = "ciba_" + randomBytes(16).toString("hex");
     const code = newCode();
     // Rendered, and so signed, only for a client with a proven domain and only in the direct entry (spec section 5).
+    syncProof(opts.client);
     const message = opts.entry === "direct" && opts.client.verified ? opts.bindingMessage : "";
     const request = {
       auth_req_id: authReqId,
@@ -399,12 +525,13 @@ export function createMockOidc(options: MockOptions = {}) {
       binding_message: message,
       requested_expiry: opts.requestedExpiry,
       expiry: now() + opts.requestedExpiry,
-      bound_hash: opts.details.group_hash ?? opts.details.request_hash,
-      origin: opts.origin,
-      sub: opts.user.sub,
+      bound_hash: opts.rp?.boundHash ?? opts.details.group_hash ?? opts.details.request_hash,
+      ...(opts.origin !== undefined ? { origin: opts.origin } : {}), // a relying party's request has an origin only when the server had one
+      sub: opts.rp?.subject ?? opts.user.sub,
     };
     validate("consent-request", request, "internal consent request");
-    pending.set(authReqId, { request, code, attempts: 0, clientId: opts.client.id, status: "pending", tokenIssued: false, scope: opts.scope, limitsBody: opts.limitsBody, interval: POLL_INTERVAL_SECONDS, spend: "none" });
+    if (opts.rp) rpOpened.set(opts.client.id, [...(rpOpened.get(opts.client.id) ?? []).filter((x) => now() - x < 60), now()]); // counted once the request is stored
+    pending.set(authReqId, { request, account: opts.user.sub, ...(opts.rp ? { rp: true } : {}), code, attempts: 0, clientId: opts.client.id, status: "pending", tokenIssued: false, scope: opts.scope, limitsBody: opts.limitsBody, interval: POLL_INTERVAL_SECONDS, spend: "none" });
     for (const d of activeDevices(opts.user.sub)) if (d.push) pushOutbox.push({ kid: d.kid, ...d.push, data: { auth_req_id: authReqId } });
     if (pushOutbox.length > 500) pushOutbox.splice(0, pushOutbox.length - 500); // a long-running mock keeps the recent ones
     hub.notify(opts.user.sub, "consent_request", { auth_req_id: authReqId });
@@ -454,6 +581,7 @@ export function createMockOidc(options: MockOptions = {}) {
 
   /** Refusals that hold whatever the value: the user paused this client (rule 10), or blocks clients without a proven domain. */
   function standingRefusals(sub: string, client: SeedClient) {
+    syncProof(client);
     const paused = clientSettings.get(sub + "|" + client.id)?.pausedUntil;
     if (paused !== undefined && paused > now()) throw new HttpError(403, "client_paused", "the user paused this client", { paused_until: paused });
     if (acct(sub).blockUnverified && !client.verified) throw new HttpError(403, "unproven_client_blocked", "the user blocks clients that have not proven their domain");
@@ -506,9 +634,52 @@ export function createMockOidc(options: MockOptions = {}) {
 
   // --- Handlers -------------------------------------------------------------------------------------------------------------
 
+  /** What is wrong with a relying party's details, for the `invalid_authorization_details` description (the mock names the first rule broken; nothing is stripped or corrected). */
+  function whyInvalidDetails(details: unknown): string | null {
+    const d = (Array.isArray(details) ? details[0] : undefined) as Record<string, any> | undefined;
+    if (!Array.isArray(details) || details.length !== 1 || !d || typeof d !== "object") return "authorization_details is an array with exactly one object";
+    if ("origin" in d) return "origin is added by the server and is never sent by the relying party";
+    const v = ajv.getSchema("https://schemas.biatec.io/consent/v1/authorization-details.schema.json#/$defs/v1_2")!;
+    if (!v(details)) return "schema: " + ajv.errorsText(v.errors);
+    if (d.type === "biatec_payment" && d.creditor_account && "iban" in d.creditor_account && !isValidIban(d.creditor_account.iban)) return "creditor_account.iban: the check digits are wrong";
+    return isValidRelyingPartyDetails(d) ? null : "a text rule (spec section 15), the amount or the date is violated: refused, never stripped";
+  }
+
+  /** `POST /connect/ciba` of a linked relying party (spec 14.4): scope openid and one payment, login or action object. Always goes to the phone. */
+  function cibaRelyingParty(req: IncomingMessage, client: SeedClient, params: Record<string, any>) {
+    if (params.scope !== "openid") throw new HttpError(403, "unauthorized_client", "a relying party asks with scope openid and authorization_details: it never gets sign, manage-limits or any wallet scope");
+    if (typeof params.login_hint !== "string" || params.login_hint === "") throw new HttpError(400, "invalid_request", "login_hint is the subject of the link");
+    // Nothing opens before the user linked this party on the phone, whatever the content: an unknown, unlinked or unlinked-again subject is one answer.
+    const link = subjects.get(params.login_hint);
+    const user = link && link.clientId === client.id ? userMap.get(link.account) : undefined;
+    if (!user || !user.used.has(client.id)) throw new HttpError(400, "unknown_user_id", "login_hint does not identify a linked user");
+    const details = params.authorization_details;
+    // One validation pass on the way through: the request schema (which holds the 1.2 details schemas and forbids an origin inside the object), then the rules of spec 15 and the IBAN.
+    // Only a refusal runs the diagnosis that names the first rule broken.
+    const generic = validator("backchannel-authentication-request");
+    if (!generic(params) || !isValidRelyingPartyDetails(details[0])) {
+      const schemaText = ajv.errorsText(generic.errors);
+      const why = whyInvalidDetails(details);
+      if (why) throw new HttpError(400, "invalid_authorization_details", why);
+      throw new HttpError(400, "invalid_request", "backchannel authentication request: " + schemaText);
+    }
+    const given = params.origin ?? req.headers.origin;
+    if (given !== undefined && (typeof given !== "string" || given.length > 253 || !ORIGIN.test(given))) throw new HttpError(400, "invalid_request", "origin must be an absolute http(s) origin in canonical form (lower-case host, no path, no default port)");
+    if (activeDevices(user.sub).length === 0) throw new HttpError(403, "consent_unavailable", "phone approval is required but the user has no active enrolled device", { reason: "no_active_device" });
+    standingRefusals(user.sub, client);
+    // The server adds `origin` only when it has one and never rewrites a member; the bound hash is the hash of the object as stored (spec 3.6).
+    const stored = { ...details[0], ...(given !== undefined ? { origin: given } : {}) };
+    const r = openRequest({ entry: "direct", user, client, details: stored, bindingMessage: "", requestedExpiry: params.requested_expiry ?? CONSENT_VALIDITY_SECONDS, origin: given, scope: "openid", rp: { subject: params.login_hint, boundHash: detailsHash(stored) } });
+    const res = { auth_req_id: r.authReqId, expires_in: r.expiresIn, interval: POLL_INTERVAL_SECONDS, binding_code: r.code };
+    validate("backchannel-authentication-response", res, "internal response");
+    return { status: 200, body: res };
+  }
+
   function ciba(req: IncomingMessage, body: Record<string, any>) {
-    const client = authClient(req, body);
-    const { client_id: _a, client_secret: _b, ...params } = body;
+    const client = authAny(req, body);
+    const { client_id: _a, client_secret: _b, client_assertion: _c, client_assertion_type: _d, ...params } = body;
+    if (client.rp) return cibaRelyingParty(req, client, params);
+    if (params.scope === "openid") throw new HttpError(403, "unauthorized_client", "authorization_details of a payment, login or action are for linked relying parties (private_key_jwt clients)");
     validate("backchannel-authentication-request", params, "backchannel authentication request");
     if (params.scope === "manage-limits" && !client.allowManageLimits) throw new HttpError(403, "unauthorized_client", "manage-limits is reserved for operator-allowlisted clients");
     const user = [...userMap.values()].find((u) => u.email === params.login_hint || u.sub === params.login_hint);
@@ -681,11 +852,12 @@ export function createMockOidc(options: MockOptions = {}) {
 
   function tokenEndpoint(req: IncomingMessage, body: Record<string, any>) {
     if (body.grant_type === "authorization_code") return codeGrant(body);
-    const client = authClient(req, body);
-    if (body.grant_type !== "urn:openid:params:grant-type:ciba") throw new HttpError(400, "unsupported_grant_type");
+    const client = authAny(req, body);
+    if (body.grant_type !== CIBA_GRANT) throw new HttpError(400, client.rp ? "unauthorized_client" : "unsupported_grant_type", client.rp ? "a relying party can use only the CIBA grant" : undefined);
     const p = typeof body.auth_req_id === "string" ? pending.get(body.auth_req_id) : undefined;
     if (!p || p.clientId !== client.id) throw new HttpError(400, "invalid_grant", "unknown auth_req_id");
     if (p.tokenIssued) throw new HttpError(400, "invalid_grant", "auth_req_id was already redeemed");
+    if (p.status === "denied" && p.closedBy === "unlinked") throw new HttpError(400, "access_denied", "the link was removed (by the user or by the relying party) while the request was open: this is not a denial by the user, and there is no receipt", { reason: "unlinked" });
     if (p.status === "denied") throw new HttpError(400, "access_denied", "the user denied the request");
     if (p.status === "code_failed") throw new HttpError(400, "access_denied", "the binding code was entered wrongly three times", { reason: "code_failed" });
     if (expired(p)) throw new HttpError(400, "expired_token", "the request expired");
@@ -701,7 +873,7 @@ export function createMockOidc(options: MockOptions = {}) {
     }
     const value = "consent_" + randomBytes(24).toString("base64url");
     const exp = Math.min(now() + CONSENT_VALIDITY_SECONDS, p.request.expiry);
-    tokens.set(value, { sub: p.request.sub, clientId: client.id, scope: p.scope, kind: "consent", exp, authReqId: p.request.auth_req_id, consentHash: p.request.bound_hash });
+    tokens.set(value, { sub: p.request.sub, clientId: client.id, scope: p.scope, kind: "consent", exp, authReqId: p.request.auth_req_id, consentHash: p.request.bound_hash, ...(p.rp ? { rp: true } : {}) });
     p.tokenIssued = true;
     const res = { access_token: value, token_type: "Bearer", expires_in: Math.max(1, exp - now()), scope: p.scope, consent_receipt: p.receipt };
     validate("token-response", res, "internal token response");
@@ -715,7 +887,7 @@ export function createMockOidc(options: MockOptions = {}) {
       const t = bearer(req);
       clientId = t.clientId;
       bearerSub = t.sub;
-    } else clientId = authClient(req, {}).id;
+    } else clientId = authAny(req, {}).id;
     const p = pending.get(id);
     if (!p || p.clientId !== clientId) throw new HttpError(404, "not_found");
     // A bearer token belongs to a subject: a receipt is handed only to the subject it was issued for (not to any user of the same client).
@@ -882,7 +1054,7 @@ export function createMockOidc(options: MockOptions = {}) {
 
   function deviceOwns(d: Device, id: string): Pending {
     const p = pending.get(id);
-    if (!p || p.request.sub !== d.sub) throw new HttpError(404, "not_found");
+    if (!p || p.account !== d.sub) throw new HttpError(404, "not_found");
     return p;
   }
 
@@ -891,7 +1063,7 @@ export function createMockOidc(options: MockOptions = {}) {
     const p = deviceOwns(d, id);
     if (d.activeAt > now()) throw new HttpError(403, "access_denied", "this device is not active yet (rule 7)");
     validate("consent-receipt", receipt, "receipt");
-    if (receipt.version !== "1.1") throw new HttpError(400, "invalid_receipt", "a protocol 1.1 receipt is required (version \"1.1\", client_fingerprint, device.key_use)");
+    if (receipt.version !== (p.rp ? "1.2" : "1.1")) throw new HttpError(400, "invalid_receipt", p.rp ? "a protocol 1.2 receipt is required for a relying party's request (version \"1.2\", details_hash, client_fingerprint, device.key_use)" : "a protocol 1.1 receipt is required (version \"1.1\", client_fingerprint, device.key_use)");
     const s = receipt.signed;
     const decision = s.decision;
     if (p.status === "approved" || p.status === "denied" || (p.status === "code_failed" && p.receipt)) throw new HttpError(409, "conflict", "this request already has a decision");
@@ -900,12 +1072,19 @@ export function createMockOidc(options: MockOptions = {}) {
     if (p.status === "code_failed" && decision !== "code_failed") throw new HttpError(403, "access_denied", "attempts exhausted", { reason: "code_failed" });
     // Rule 9: both signatures, and the key must be one the device enrolled (its approval key or its presence key); the attestation says which use.
     const key = receipt.device.kid === d.kid ? { kid: d.kid, publicKey: d.publicKey } : d.presence && receipt.device.kid === d.presence.kid ? d.presence : undefined;
+    if (p.rp && key) {
+      // The attestation of a 1.2 receipt names the pairwise subject the party knows the user by (spec section 8): Biatec OIDC mints it when the receipt is stored, so the one the device
+      // holds (for its account) is replaced. The signature is the device's and is verified below; `device.key_use` must name the use of the key.
+      const use = key.kid === d.kid ? "approve" : "presence";
+      if (receipt.device.key_use !== use) throw new HttpError(400, "invalid_receipt", "device.key_use does not name the use of the key");
+      receipt = { ...receipt, device: { ...receipt.device, attestation: attest(p.request.sub, key.kid, key.publicKey, use) } };
+    }
     if (!key || jcs(receipt.device.public_key) !== jcs(key.publicKey) || !verifyReceipt(receipt, jwks, { issuer, now: now() })) {
       throw new HttpError(400, "invalid_receipt", "receipt signature or attestation does not verify");
     }
     // The receipt must restate the stored request (rule 1); it never supplies the thing being consented to.
     const r = p.request;
-    if (s.auth_req_id !== r.auth_req_id || s.client_fingerprint !== r.client.fingerprint || s.sub !== r.sub || s.expiry !== r.expiry || s.binding_message !== r.binding_message || jcs(s.authorization_details) !== jcs(r.authorization_details)) {
+    if (s.auth_req_id !== r.auth_req_id || s.client_fingerprint !== r.client.fingerprint || s.sub !== r.sub || s.expiry !== r.expiry || s.binding_message !== r.binding_message || jcs(s.authorization_details) !== jcs(r.authorization_details) || (p.rp && s.details_hash !== r.bound_hash)) {
       throw new HttpError(400, "receipt_mismatch", "receipt does not match the stored request");
     }
     if (decision === "deny") {
@@ -936,10 +1115,10 @@ export function createMockOidc(options: MockOptions = {}) {
     announceClosed(p);
     // Approving links the client (rule 4: only a client the user approved before is not asked again for a value below the threshold),
     // and `remember` is the user's own trust in the applications of this request, kept for this client.
-    const approvedUser = userMap.get(p.request.sub)!;
-    if (!approvedUser.used.has(p.clientId)) linkedAt.set(p.request.sub + "|" + p.clientId, now());
+    const approvedUser = userMap.get(p.account)!;
+    if (!approvedUser.used.has(p.clientId)) linkedAt.set(p.account + "|" + p.clientId, now());
     approvedUser.used.add(p.clientId);
-    const trustedKey = p.request.sub + "|" + p.clientId;
+    const trustedKey = p.account + "|" + p.clientId;
     for (const id of s.remember?.applications ?? []) trustedApplications.set(trustedKey, (trustedApplications.get(trustedKey) ?? new Set()).add(`${r.authorization_details[0].network}:${id}`));
     return { status: 200, body: { status: "approved" } };
   }
@@ -981,18 +1160,19 @@ export function createMockOidc(options: MockOptions = {}) {
       ...(maxThresholdEur !== undefined ? { max_threshold_eur: money(maxThresholdEur) } : {}),
       block_unproven_clients: acct(sub).blockUnverified,
       ask_on_test_networks: acct(sub).askOnTestNetworks,
-      clients: clients
+      clients: [...clientMap.values()]
         .filter((c) => {
-          const s = cs(sub, c.id);
+          const s = clientSettings.get(sub + "|" + c.id) ?? {}; // a lookup that creates nothing
           return user.used.has(c.id) || user.alwaysAsk.includes(c.id) || s.label !== undefined || s.perClientThresholdEur !== undefined || (s.pausedUntil !== undefined && s.pausedUntil > now()) || appList(sub, c.id).length > 0;
         })
         .map((c) => {
-          const s = cs(sub, c.id);
+          syncProof(c); // only the clients this user holds something for: a relying party is read lazily, never all of them on every call
+          const s = clientSettings.get(sub + "|" + c.id) ?? {};
           const paused = s.pausedUntil !== undefined && s.pausedUntil > now();
           return {
             client_id: c.id,
             label: s.label ?? null,
-            fingerprint: fingerprintOf(c.id),
+            fingerprint: clientFingerprint(c.id),
             domain_proven: c.verified,
             ...(c.verified && c.domain ? { domain: c.domain } : {}),
             linked: user.used.has(c.id),
@@ -1099,13 +1279,8 @@ export function createMockOidc(options: MockOptions = {}) {
       const key = sub + "|" + id;
       if (c.unlink === true) {
         // Unlinking forgets everything the user held for the client except a running pause: the next request is first use again.
-        user.used.delete(id);
-        user.alwaysAsk = user.alwaysAsk.filter((x) => x !== id);
-        trustedApplications.delete(key);
-        linkedAt.delete(key);
-        firstSigned.delete(key); // the user's first day with the client starts again: the next request is truly first use
-        s.label = undefined;
-        s.perClientThresholdEur = undefined;
+        // A relying party's open requests are closed too (it is not linked any more).
+        unlinkClient(sub, id);
         continue;
       }
       if ("always_ask" in c) user.alwaysAsk = c.always_ask ? [...new Set([...user.alwaysAsk, id])] : user.alwaysAsk.filter((x) => x !== id);
@@ -1151,7 +1326,7 @@ export function createMockOidc(options: MockOptions = {}) {
   function consentSettings(req: IncomingMessage, url: URL) {
     const t = bearer(req);
     const user = userMap.get(t.sub)!;
-    const client = clientMap.get(t.clientId)!;
+    const client = syncProof(clientMap.get(t.clientId)!);
     const s = cs(t.sub, client.id);
     const origin = url.searchParams.get("origin");
     if (origin !== null && !ORIGIN.test(origin)) throw new HttpError(400, "invalid_request", "origin must be an absolute http(s) origin in canonical form");
@@ -1242,6 +1417,211 @@ export function createMockOidc(options: MockOptions = {}) {
     return { status: 200, body: { kid, cancelled: true } };
   }
 
+  // --- Relying parties (protocol 1.2, spec chapter 14; Biatec OIDC issue 38) ---------------------------------------------
+
+  /** `POST /register` (RFC 7591): only a `private_key_jwt` relying party registers itself; no client secret is ever issued. Rate limited per source address. */
+  function register(req: IncomingMessage, body: Record<string, any>) {
+    const addr = req.socket.remoteAddress ?? "unknown";
+    const recent = (registrations.get(addr) ?? []).filter((x) => now() - x < 3600);
+    if (recent.length >= maxRegistrationsPerHour) throw new HttpError(429, "rate_limited", `at most ${maxRegistrationsPerHour} registrations per hour from one address`, {}, { "Retry-After": String(Math.max(1, recent[0] + 3600 - now())) });
+    registrations.set(addr, [...recent, now()]);
+    const meta = (m: string) => new HttpError(400, "invalid_client_metadata", m);
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw meta("the body is a JSON object of client metadata");
+    if (body.token_endpoint_auth_method !== "private_key_jwt") throw meta("a relying party registers with token_endpoint_auth_method private_key_jwt (no client secret is issued)");
+    if (body.grant_types !== undefined && !(Array.isArray(body.grant_types) && body.grant_types.length > 0 && body.grant_types.every((g: unknown) => g === CIBA_GRANT))) throw meta("grant_types contains only " + CIBA_GRANT);
+    if (body.redirect_uris !== undefined && !(Array.isArray(body.redirect_uris) && body.redirect_uris.length === 0)) throw new HttpError(400, "invalid_redirect_uri", "a relying party has no redirect URIs");
+    if (body.scope !== undefined && body.scope !== "openid") throw meta("a relying party never gets a wallet scope: scope is openid or absent");
+    let host: string;
+    let keys: PublicJwk[];
+    try {
+      host = clientUriHost(body.client_uri);
+      if ((body.jwks === undefined) === (body.jwks_uri === undefined)) throw new MetadataError("exactly one of jwks and jwks_uri");
+      if (body.jwks_uri !== undefined) {
+        if (typeof body.jwks_uri !== "string" || !body.jwks_uri.startsWith("https://") || body.jwks_uri.length > 2048) throw new MetadataError("jwks_uri is an https URL");
+        keys = validateJwks(fetchJson(body.jwks_uri));
+      } else keys = validateJwks(body.jwks);
+    } catch (e) {
+      if (e instanceof MetadataError) throw meta(e.message);
+      throw e;
+    }
+    const id = "rp_" + randomBytes(12).toString("base64url");
+    clientMap.set(id, { id, secret: "", entityId: body.client_uri, verified: false, allowManageLimits: false, rp: { keys, ...(body.jwks_uri ? { jwksUri: body.jwks_uri } : {}), keysFetchedAt: now(), clientUri: body.client_uri, host, registeredAt: now() } });
+    return {
+      status: 201,
+      body: { client_id: id, client_id_issued_at: now(), token_endpoint_auth_method: "private_key_jwt", grant_types: [CIBA_GRANT], client_uri: body.client_uri, ...(body.jwks_uri ? { jwks_uri: body.jwks_uri } : { jwks: { keys } }) },
+    };
+  }
+
+  const LINK_SECONDS = 300;
+  const MAX_OPEN_LINKS_PER_CLIENT = 50;
+  /** The public approval and presence keys of an account's active devices (`link-status` devices): what a relying party pins. */
+  const pinnedDevices = (account: string) =>
+    activeDevices(account).flatMap((d) => [
+      { kid: d.kid, key_use: "approve" as const, jwk: { ...d.publicKey } },
+      ...(d.presence ? [{ kid: d.presence.kid, key_use: "presence" as const, jwk: { ...d.presence.publicKey } }] : []),
+    ]);
+  const linkExpired = (l: Link) => l.expiresAt <= now();
+
+  /** `POST /consent/links` (client authentication): the party starts a link inside its own authenticated session. */
+  function createLink(req: IncomingMessage, body: Record<string, any>) {
+    const client = authAny(req, body);
+    if (!client.rp) throw new HttpError(403, "unauthorized_client", "links are for relying parties (private_key_jwt clients)");
+    const { client_assertion: _a, client_assertion_type: _b, client_id: _c, ...rest } = body;
+    if (Object.keys(rest).some((k) => k !== "user_label")) throw new HttpError(400, "invalid_request", "the body is { user_label? }");
+    if (rest.user_label !== undefined && !isRelyingPartyText(rest.user_label, 40)) throw new HttpError(400, "invalid_request", "user_label is 1 to 40 characters of plain text (spec section 15): refused, never stripped");
+    if ([...links.values()].filter((l) => l.clientId === client.id && l.status === "pending" && !linkExpired(l)).length >= MAX_OPEN_LINKS_PER_CLIENT) throw new HttpError(429, "rate_limited", `at most ${MAX_OPEN_LINKS_PER_CLIENT} open links per relying party`);
+    const id = "lnk_" + randomBytes(12).toString("hex");
+    const secret = randomBytes(32).toString("base64url");
+    const l: Link = { id, clientId: client.id, secretHash: sha256Hex(secret), code: newCode(), attempts: 0, ...(rest.user_label !== undefined ? { userLabel: rest.user_label } : {}), nonce: "link-nonce-" + randomBytes(12).toString("hex"), expiresAt: now() + LINK_SECONDS, status: "pending", interval: POLL_INTERVAL_SECONDS };
+    links.set(id, l);
+    const res = { link_id: id, link_uri: `biatec-authenticator://link?iss=${encodeURIComponent(issuer)}&id=${id}&s=${secret}`, binding_code: l.code, expires_in: LINK_SECONDS, interval: POLL_INTERVAL_SECONDS };
+    validate("link-created", res, "internal link answer");
+    return { status: 201, body: res };
+  }
+
+  /** `GET /consent/links/{id}`: the device of an active device with the link secret (link-request), or the party that created the link (link-status). */
+  function getLink(req: IncomingMessage, id: string) {
+    const l = links.get(id);
+    if (req.headers.authorization?.startsWith("Device ")) {
+      const d = deviceAuth(req);
+      const secret = req.headers["x-link-secret"];
+      if (!l || typeof secret !== "string" || !safeEqual(sha256Hex(secret), l.secretHash)) throw new HttpError(404, "not_found");
+      if (!isActive(d)) throw new HttpError(403, "access_denied", "this device is not active yet (rule 7)");
+      if (l.status !== "pending") throw new HttpError(409, "conflict", "this link was decided already");
+      if (linkExpired(l)) throw new HttpError(410, "expired_token", "the link expired");
+      const c = clientMap.get(l.clientId)!;
+      syncProof(c);
+      const domain = c.verified && c.domain ? c.domain : null;
+      l.shown = { fingerprint: clientFingerprint(c.id), domain };
+      const res = { link_id: l.id, client: { fingerprint: l.shown.fingerprint, domain_proven: domain !== null, ...(domain !== null ? { domain } : {}) }, ...(l.userLabel !== undefined ? { user_label: l.userLabel } : {}), nonce: l.nonce, expires_at: l.expiresAt };
+      validate("link-request", res, "internal link request");
+      return { status: 200, body: res };
+    }
+    const client = authAny(req, {});
+    if (!l || l.clientId !== client.id) throw new HttpError(404, "not_found");
+    const status = l.status === "closed" || (l.status === "pending" && linkExpired(l)) ? "expired" : l.status;
+    if (status === "pending") {
+      // Polling faster than the interval is told to slow down, and the interval grows (as for the token endpoint).
+      const tooFast = l.lastPollAt !== undefined && now() - l.lastPollAt < l.interval;
+      l.lastPollAt = now();
+      if (tooFast) {
+        l.interval += SLOW_DOWN_STEP_SECONDS;
+        throw new HttpError(400, "slow_down", "poll less often", { interval: l.interval });
+      }
+    }
+    const res = status === "linked" ? { status, subject: l.subject, devices: pinnedDevices(l.account!), approval: l.approval } : status === "denied" ? { status, approval: l.approval } : { status };
+    validate("link-status", res, "internal link status");
+    return { status: 200, body: res };
+  }
+
+  /** `POST /consent/links/{id}/receipt`: the device posts the `biatec_link` statement (spec 14.3): `{ signed, signature }`, signed by the approval key for an approve. */
+  function postLinkReceipt(req: IncomingMessage, id: string, body: Record<string, any>) {
+    const d = deviceAuth(req);
+    const l = links.get(id);
+    const secret = req.headers["x-link-secret"];
+    if (!l || typeof secret !== "string" || !safeEqual(sha256Hex(secret), l.secretHash)) throw new HttpError(404, "not_found"); // the secret is required here as for the fetch (spec 14.3)
+    if (!isActive(d)) throw new HttpError(403, "access_denied", "this device is not active yet (rule 7)");
+    if (l.status === "closed") throw new HttpError(403, "access_denied", "the binding code was entered wrongly three times", { reason: "code_failed" });
+    if (l.status !== "pending" || consumedLinks.has(l.id)) throw new HttpError(409, "conflict", "this link was decided already");
+    if (linkExpired(l)) throw new HttpError(410, "expired_token", "the link expired");
+    if (!body || typeof body !== "object" || Object.keys(body).sort().join() !== "signature,signed" || typeof body.signature !== "string") throw new HttpError(400, "invalid_request", "the body is { signed, signature }");
+    const signed = body.signed;
+    validate("link-signed", signed, "link statement");
+    // The statement is the caller's: it names a key of this device, and what it restates must be what the server showed.
+    const key = signed.kid === d.kid ? { kid: d.kid, publicKey: d.publicKey } : d.presence && signed.kid === d.presence.kid ? d.presence : undefined;
+    if (!key) throw new HttpError(400, "invalid_receipt", "the statement is not signed by a key of the calling device");
+    if (!l.shown || signed.link_id !== l.id || signed.client_fingerprint !== l.shown.fingerprint || signed.domain !== l.shown.domain || signed.nonce !== l.nonce) {
+      throw new HttpError(400, "receipt_mismatch", "the statement does not restate what the server showed (link, fingerprint, domain, nonce): the link request must be fetched first");
+    }
+    const use = key.kid === d.kid ? "approve" : "presence";
+    const subject = pairwiseSubject(l.clientId, d.sub);
+    const device = { kid: key.kid, key_use: use, public_key: key.publicKey, attestation: attest(subject, key.kid, key.publicKey, use) };
+    // Signature, the approval key for an approve (attested use), the freshness of `issued_at`; the binding code is compared below, so that wrong codes can be counted.
+    if (!verifyLink({ signed, alg: "ES256", signature: body.signature, device }, jwks, { issuer, now: now(), consumed: consumedLinks }, { link_id: l.id, client_fingerprint: l.shown.fingerprint, domain: l.shown.domain, nonce: l.nonce, binding_code: signed.binding_code, sub: subject })) {
+      throw new HttpError(400, "invalid_receipt", "the link statement does not verify (signature, approval key, issued_at within 300 seconds)");
+    }
+    if (signed.decision === "deny") {
+      l.status = "denied";
+      l.approval = { signed, signature: body.signature, attestation: device.attestation };
+      consumedLinks.add(l.id);
+      return { status: 200, body: { status: "denied" } };
+    }
+    if (!safeEqual(signed.binding_code, l.code)) {
+      l.attempts += 1;
+      if (l.attempts >= MAX_CODE_ATTEMPTS) {
+        l.status = "closed";
+        throw new HttpError(403, "access_denied", "the third wrong binding code closes the link", { reason: "code_failed", attempts_remaining: 0 });
+      }
+      throw new HttpError(400, "wrong_code", "the binding code does not match", { attempts_remaining: MAX_CODE_ATTEMPTS - l.attempts });
+    }
+    l.status = "linked";
+    l.account = d.sub;
+    l.subject = subject;
+    l.approval = { signed, signature: body.signature, attestation: device.attestation };
+    consumedLinks.add(l.id);
+    subjects.set(subject, { account: d.sub, clientId: l.clientId });
+    // The user linked the client: it is a client the user knows (as after a first approved request), and the other devices learn that settings changed.
+    const user = userMap.get(d.sub)!;
+    if (!user.used.has(l.clientId)) linkedAt.set(d.sub + "|" + l.clientId, now());
+    user.used.add(l.clientId);
+    firstSigned.set(d.sub + "|" + l.clientId, firstSigned.get(d.sub + "|" + l.clientId) ?? now());
+    hub.notify(d.sub, "settings_changed", {});
+    return { status: 200, body: { status: "linked" } };
+  }
+
+  /** What leaving a link means for the requests a relying party still has open: they are closed (denied, without a receipt). */
+  function closeRelyingPartyRequests(account: string, clientId: string) {
+    for (const p of pending.values()) {
+      if (p.rp && p.account === account && p.clientId === clientId && p.status === "pending") {
+        p.status = "denied";
+        p.closedBy = "unlinked";
+        announceClosed(p);
+      }
+    }
+  }
+
+  /** The link of a subject of the calling relying party, or 404 (the same answer for a subject that never existed). */
+  function linkedSubject(req: IncomingMessage, subject: string) {
+    const client = authAny(req, {});
+    const m = subjects.get(subject);
+    const user = m && m.clientId === client.id ? userMap.get(m.account) : undefined;
+    if (!m || !user || !user.used.has(client.id)) throw new HttpError(404, "not_found");
+    return { client, account: m.account, user };
+  }
+
+  /** `DELETE /consent/links/subject/{subject}`: the party removes its own link; the user removes it on the phone. */
+  function deleteLink(req: IncomingMessage, subject: string) {
+    const { client, account } = linkedSubject(req, subject);
+    unlinkClient(account, client.id);
+    return { status: 200, body: { unlinked: true } };
+  }
+
+  /** `GET /consent/links/subject/{subject}/devices`: the current approval and presence keys of the account's active devices (a new phone shows up here, spec 14.6). */
+  function subjectDevices(req: IncomingMessage, subject: string) {
+    const { account } = linkedSubject(req, subject);
+    const list = pinnedDevices(account);
+    const v = ajv.getSchema("https://schemas.biatec.io/consent/v1/link-status.schema.json#/$defs/devices")!;
+    if (!v(list)) throw new HttpError(500, "server_error", "internal devices list: " + ajv.errorsText(v.errors));
+    return { status: 200, body: { devices: list } };
+  }
+
+  /** Unlinking (by the party or on the phone): the client is a stranger again (first use), and its open relying-party requests are closed. */
+  function unlinkClient(account: string, clientId: string) {
+    const user = userMap.get(account)!;
+    const key = account + "|" + clientId;
+    user.used.delete(clientId);
+    user.alwaysAsk = user.alwaysAsk.filter((x) => x !== clientId);
+    trustedApplications.delete(key);
+    linkedAt.delete(key);
+    firstSigned.delete(key); // the first day with the client starts again: the next request is truly first use
+    const s = clientSettings.get(key);
+    if (s) {
+      s.label = undefined;
+      s.perClientThresholdEur = undefined;
+    }
+    closeRelyingPartyRequests(account, clientId);
+  }
+
   // --- Routing --------------------------------------------------------------------------------------------------
 
   async function readBody(req: IncomingMessage): Promise<Record<string, any>> {
@@ -1265,15 +1645,25 @@ export function createMockOidc(options: MockOptions = {}) {
   }
 
   async function route(req: IncomingMessage): Promise<{ status: number; body: unknown }> {
+    requestEpoch++;
     const url = new URL(req.url ?? "/", "http://mock");
     const path = url.pathname;
     const m = req.method ?? "GET";
     let x: RegExpMatchArray | null;
     if (m === "GET" && path === "/.well-known/jwks.json") return { status: 200, body: jwks };
     if (m === "GET" && path === "/.well-known/openid-configuration") {
-      return { status: 200, body: { issuer, jwks_uri: "/.well-known/jwks.json", authorization_endpoint: "/authorize", token_endpoint: "/token", code_challenge_methods_supported: ["S256"], scopes_supported: ["openid", "enroll-device"], backchannel_authentication_endpoint: "/connect/ciba", backchannel_token_delivery_modes_supported: ["poll"], grant_types_supported: ["urn:openid:params:grant-type:ciba", "authorization_code"], acr_values_supported: ["biatec:consent"], authorization_details_types_supported: ["biatec_transaction", "biatec_limits_change"] } };
+      return { status: 200, body: { issuer, jwks_uri: "/.well-known/jwks.json", authorization_endpoint: "/authorize", token_endpoint: "/token", code_challenge_methods_supported: ["S256"], scopes_supported: ["openid", "enroll-device"], backchannel_authentication_endpoint: "/connect/ciba", backchannel_token_delivery_modes_supported: ["poll"], grant_types_supported: ["urn:openid:params:grant-type:ciba", "authorization_code"], acr_values_supported: ["biatec:consent"], authorization_details_types_supported: ["biatec_transaction", "biatec_limits_change", "biatec_payment", "biatec_login", "biatec_action"], registration_endpoint: "/register", token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post", "private_key_jwt"], token_endpoint_auth_signing_alg_values_supported: ["ES256", "PS256"] } };
     }
     if (m === "POST" && path === "/connect/ciba") return ciba(req, await readBody(req));
+    // Relying parties (protocol 1.2, spec chapter 14)
+    if (m === "POST" && path === "/register") return register(req, await readBody(req));
+    if (m === "POST" && path === "/consent/links") return createLink(req, await readBody(req));
+    if (m === "GET" && (x = path.match(/^\/consent\/links\/subject\/([^/]+)\/devices$/))) return subjectDevices(req, decodeURIComponent(x[1]));
+    if (m === "DELETE" && (x = path.match(/^\/consent\/links\/subject\/([^/]+)$/))) return deleteLink(req, decodeURIComponent(x[1]));
+    if (m === "GET" && (x = path.match(/^\/consent\/links\/([^/]+)$/))) return getLink(req, x[1]);
+    if (m === "POST" && (x = path.match(/^\/consent\/links\/([^/]+)\/receipt$/))) return postLinkReceipt(req, x[1], await readBody(req));
+    // Biatec OIDC issue 38 names the receipt retrieval of the party `GET /consent/requests/{auth_req_id}/receipt`: the same answer as `GET /consent/receipts/{auth_req_id}`.
+    if (m === "GET" && (x = path.match(/^\/consent\/requests\/([^/]+)\/receipt$/))) return getReceipt(req, x[1]);
     if (m === "GET" && path === "/authorize") return authorize(url);
     if (m === "POST" && path === "/token") return tokenEndpoint(req, await readBody(req));
     if (m === "PUT" && path === "/wallet/limits") return putLimits(req, await readBody(req));
@@ -1318,7 +1708,7 @@ export function createMockOidc(options: MockOptions = {}) {
     if (m === "PUT" && path === "/devices/settings") return putSettings(req, await readBody(req));
     if (m === "GET" && path === "/devices/requests") {
       const d = deviceAuth(req);
-      return { status: 200, body: { requests: [...pending.values()].filter((p) => p.request.sub === d.sub && p.status === "pending" && !expired(p)).map(deviceView) } };
+      return { status: 200, body: { requests: [...pending.values()].filter((p) => p.account === d.sub && p.status === "pending" && !expired(p)).map(deviceView) } };
     }
     if (m === "GET" && (x = path.match(/^\/consent\/requests\/([^/]+)$/))) {
       const p = deviceOwns(deviceAuth(req), x[1]);
@@ -1351,6 +1741,14 @@ export function createMockOidc(options: MockOptions = {}) {
       hub.notify(d.sub, "device_enrolled", { kid: d.kid });
       return { status: 200, body: { kid: d.kid, active: true } };
     }
+    if (m === "POST" && path === "/mock/serve") {
+      // What the real server fetches with its hardened fetcher: the well-known file of a relying party and a jwks_uri. Body { url, json } (json null removes it).
+      const b = await readBody(req);
+      if (typeof b.url !== "string" || !b.url.startsWith("https://")) throw new HttpError(400, "invalid_request", "url is an https URL");
+      if (b.json === null || b.json === undefined) served.delete(b.url);
+      else served.set(b.url, b.json);
+      return { status: 200, body: { served: b.json !== null && b.json !== undefined } };
+    }
     if (m === "POST" && path === "/mock/hub/close") {
       const b = await readBody(req);
       if (typeof b.kid !== "string") throw new HttpError(400, "invalid_request", "kid is required");
@@ -1376,6 +1774,10 @@ export function createMockOidc(options: MockOptions = {}) {
   // A request that runs out is announced when the mock's clock passes its expiry (the mock otherwise only notices when asked).
   const sweep = setInterval(() => {
     for (const p of pending.values()) if (p.status === "pending" && expired(p)) announceClosed(p);
+    // Single-use assertions are remembered until they expire, links until an hour after they ended: nothing grows without bound.
+    for (const [k, until] of usedAssertions) if (until <= now()) usedAssertions.delete(k);
+    for (const [id, l] of links) if (l.expiresAt + 3600 <= now()) { links.delete(id); consumedLinks.delete(id); }
+    for (const m of [registrations, rpOpened]) for (const [k, times] of m) { const recent = times.filter((x) => now() - x < 3600); if (recent.length === 0) m.delete(k); else if (recent.length !== times.length) m.set(k, recent); }
   }, 1000);
   sweep.unref();
   server.on("close", () => clearInterval(sweep));
@@ -1384,5 +1786,10 @@ export function createMockOidc(options: MockOptions = {}) {
     res.end(JSON.stringify(body));
   }
 
-  return { server, issuer, jwks, keys, hub, state: { pending, consumed, devices, users: userMap, tokens, pushOutbox, accountSettings, clientSettings, trustedApplications, firstSigned, noDeviceSpends } };
+  /** Serves a document to the mock's stand-in fetcher: the well-known file of a relying party (`https://<host>/.well-known/biatec-client.json`) or a `jwks_uri`. `null` removes it. */
+  const serve = (url: string, json: unknown) => {
+    if (json === null) served.delete(url);
+    else served.set(url, json);
+  };
+  return { server, issuer, jwks, keys, hub, serve, pairwiseSubject, state: { pending, consumed, devices, users: userMap, tokens, pushOutbox, accountSettings, clientSettings, trustedApplications, firstSigned, noDeviceSpends } };
 }

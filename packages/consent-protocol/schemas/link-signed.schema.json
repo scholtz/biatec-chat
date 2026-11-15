@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/link-signed.schema.json",
+  "title": "Signed link statement",
+  "description": "The object the device signs (RFC 8785 canonical form, ES256) when the user links, or refuses to link, a relying party on the phone (protocol 1.2, spec section 14.3). An `approve` is signed by the approval key, a `deny` by either key.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "link_id", "client_fingerprint", "domain", "decision", "binding_code", "nonce", "issued_at", "kid"],
+  "allOf": [
+    {
+      "if": { "required": ["decision"], "properties": { "decision": { "const": "approve" } } },
+      "then": { "properties": { "binding_code": { "type": "string", "pattern": "^[0-9]{6}$" } } }
+    }
+  ],
+  "properties": {
+    "type": { "const": "biatec_link" },
+    "link_id": { "$ref": "#/$defs/linkId" },
+    "client_fingerprint": { "type": "string", "pattern": "^[0-9a-f]{16}$", "description": "Fingerprint of the relying party's client_id, as the server showed it to the device." },
+    "domain": { "oneOf": [{ "$ref": "#/$defs/domain" }, { "type": "null" }], "description": "The proven domain the server showed to the device, or null when the party has none. Signing it makes the user's decision about that domain." },
+    "decision": { "enum": ["approve", "deny"] },
+    "binding_code": { "type": "string", "pattern": "^([0-9]{6})?$", "description": "The code the user typed; the empty string for an explicit Deny before any code was typed." },
+    "nonce": { "type": "string", "pattern": "^[A-Za-z0-9_-]{16,128}$", "description": "The nonce of the link request the device fetched." },
+    "issued_at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "Unix time in seconds; accepted within 300 seconds of the server's clock." },
+    "kid": { "type": "string", "minLength": 1, "description": "The key id of the device key that signs." }
+  },
+  "$defs": {
+    "linkId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{16,128}$" },
+    "domain": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$" }
+  }
+}

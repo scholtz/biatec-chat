@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.biatec.io/consent/v1/link-status.schema.json",
+  "title": "Link status",
+  "description": "What the relying party gets from `GET /consent/links/{id}` (client authentication, only the client that created the link) and what `GET /consent/links/subject/{subject}/devices` extends (protocol 1.2, spec section 14.3). Once `linked`, `subject` is the pairwise subject to use as `login_hint`, `devices` lists the public keys of the account's active devices for pinning, and `approval` is the user's signed `biatec_link` approval.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "const": "linked"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "subject",
+          "devices",
+          "approval"
+        ],
+        "properties": {
+          "subject": true,
+          "devices": true,
+          "approval": true
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "const": "denied"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "approval"
+        ],
+        "properties": {
+          "subject": false,
+          "devices": false,
+          "approval": true
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "enum": [
+              "pending",
+              "expired"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "subject": false,
+          "devices": false,
+          "approval": false
+        }
+      }
+    }
+  ],
+  "properties": {
+    "status": {
+      "enum": [
+        "pending",
+        "linked",
+        "denied",
+        "expired"
+      ]
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The pairwise subject of this account for this client: the `login_hint` of every later request."
+    },
+    "devices": {
+      "$ref": "#/$defs/devices"
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signed",
+        "signature",
+        "attestation"
+      ],
+      "properties": {
+        "signed": {
+          "$ref": "link-signed.schema.json"
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{86}$",
+          "description": "ES256 (IEEE P1363, base64url) over the UTF-8 bytes of JCS(signed) by the device key `signed.kid`."
+        },
+        "attestation": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+          "description": "Compact JWS by a Biatec OIDC JWKS key; a second check only, a party that pinned the key does not need it."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "devices": {
+      "type": "array",
+      "maxItems": 64,
+      "description": "The public approval and presence keys of the account's active devices, for pinning.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kid",
+          "key_use",
+          "jwk"
+        ],
+        "properties": {
+          "kid": {
+            "type": "string",
+            "minLength": 1
+          },
+          "key_use": {
+            "enum": [
+              "approve",
+              "presence"
+            ]
+          },
+          "jwk": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kty",
+              "crv",
+              "x",
+              "y"
+            ],
+            "properties": {
+              "kty": {
+                "const": "EC"
+              },
+              "crv": {
+                "const": "P-256"
+              },
+              "x": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{43}$"
+              },
+              "y": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{43}$"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

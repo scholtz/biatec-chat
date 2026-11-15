@@ -2,13 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.biatec.io/consent/v1/device-signed.schema.json",
   "title": "Device-signed statement",
-  "description": "A settings change or the approval of a new device, signed by the approval key of an active device, with that key's attestation. Checked like a receipt (spec section 8.1): signature over JCS(signed), attestation by the Biatec OIDC JWKS, and the attested biatec_key_use must be `approve`.",
+  "description": "A settings change, the approval of a new device or a link statement (`biatec_link`, protocol 1.2), signed by the approval key of an active device, with that key's attestation. Checked like a receipt (spec section 8.1): signature over JCS(signed), attestation by the Biatec OIDC JWKS, and the attested biatec_key_use must be `approve` (for a link statement only when it approves: a denial accepts either key).",
   "type": "object",
   "additionalProperties": false,
   "required": ["signed", "alg", "signature", "device"],
   "properties": {
     "signed": {
-      "oneOf": [{ "$ref": "settings-change-signed.schema.json" }, { "$ref": "device-approval-signed.schema.json" }]
+      "oneOf": [{ "$ref": "settings-change-signed.schema.json" }, { "$ref": "device-approval-signed.schema.json" }, { "$ref": "link-signed.schema.json" }]
     },
     "alg": { "const": "ES256" },
     "signature": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$" },

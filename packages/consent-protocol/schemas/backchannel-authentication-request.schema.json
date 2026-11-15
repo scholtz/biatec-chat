@@ -2,30 +2,37 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.biatec.io/consent/v1/backchannel-authentication-request.schema.json",
   "title": "Direct entry: backchannel authentication request",
-  "description": "Parameters a client posts (form-encoded on the wire, shown here as JSON) to the CIBA backchannel authentication endpoint. The unsigned group (or canonical limits body) is the thing consented to; authorization_details is built by Biatec OIDC and is never accepted from the client.",
+  "description": "Parameters a client posts (form-encoded on the wire, shown here as JSON) to the CIBA backchannel authentication endpoint. The unsigned group (or canonical limits body) is the thing consented to; for the wallet scopes authorization_details is built by Biatec OIDC and is never accepted from the client. Protocol 1.2: a relying party (a client without wallet scopes, spec chapter 14) sends scope `openid` and exactly one authorization_details object of the type payment, login or action, without `origin` (Biatec OIDC adds it when it has one); `login_hint` is then the linked `subject`.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["scope", "resource", "login_hint", "origin"],
+  "required": ["scope", "login_hint"],
   "allOf": [
     {
       "if": { "required": ["scope"], "properties": { "scope": { "const": "sign" } } },
       "then": {
-        "required": ["unsigned_group", "network", "address"],
-        "properties": { "unsigned_group": true, "network": true, "address": true, "limits_request": false }
+        "required": ["resource", "origin", "unsigned_group", "network", "address"],
+        "properties": { "resource": true, "origin": true, "unsigned_group": true, "network": true, "address": true, "limits_request": false, "authorization_details": false }
       }
     },
     {
       "if": { "required": ["scope"], "properties": { "scope": { "const": "manage-limits" } } },
       "then": {
-        "required": ["limits_request"],
-        "properties": { "limits_request": true, "unsigned_group": false, "network": false, "address": false }
+        "required": ["resource", "origin", "limits_request"],
+        "properties": { "resource": true, "origin": true, "limits_request": true, "unsigned_group": false, "network": false, "address": false, "authorization_details": false }
+      }
+    },
+    {
+      "if": { "required": ["scope"], "properties": { "scope": { "const": "openid" } } },
+      "then": {
+        "required": ["authorization_details"],
+        "properties": { "authorization_details": true, "origin": true, "binding_message": false, "limits_request": false, "unsigned_group": false, "network": false, "address": false, "resource": false }
       }
     }
   ],
   "properties": {
-    "scope": { "enum": ["sign", "manage-limits"] },
+    "scope": { "enum": ["sign", "manage-limits", "openid"] },
     "resource": { "type": "string", "minLength": 1 },
-    "login_hint": { "type": "string", "minLength": 1, "description": "Identifies the user to be asked." },
+    "login_hint": { "type": "string", "minLength": 1, "description": "Identifies the user to be asked; for a relying party the `subject` of the link (spec section 14.3)." },
     "network": { "enum": ["algorand-mainnet", "algorand-testnet", "bitcoin-mainnet", "bitcoin-testnet"] },
     "address": { "type": "string", "minLength": 1 },
     "unsigned_group": {
@@ -37,7 +44,13 @@
     "binding_message": { "type": "string", "maxLength": 140, "description": "Optional purpose text. Rendered, and therefore signed, only for clients chaining to a recognized trust anchor; otherwise the signed value is the empty string." },
     "requested_expiry": { "type": "integer", "minimum": 1, "maximum": 300, "default": 300 },
     "origin": { "type": "string", "minLength": 1, "description": "Origin of the requesting surface, used for pending-request and pause scoping (rule 10)." },
-    "authorization_details": false,
+    "authorization_details": {
+      "description": "Relying parties only (scope `openid`): exactly one payment, login or action object, without `origin`.",
+      "allOf": [
+        { "$ref": "authorization-details.schema.json#/$defs/v1_2" },
+        { "type": "array", "items": { "type": "object", "not": { "required": ["origin"], "properties": { "origin": true } } } }
+      ]
+    },
     "client_notification_token": { "type": "string", "description": "Ping mode only." }
   }
 }

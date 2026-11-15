@@ -120,6 +120,16 @@ describe("the kit against a server without the mock's helpers", () => {
     expect(report.cases.find((c: any) => c.name.includes("RFC 8785")).status).toBe("passed");
   });
 
+  it("lists the relying-party cases as skipped for their needs: registering throwaway parties is opt-in, and the phone needs the mock's helpers", () => {
+    const rp = report.cases.filter((c: any) => c.file === "relying-party.conformance.test.ts");
+    expect(rp.length).toBeGreaterThan(30);
+    for (const c of rp) {
+      expect(c.status, c.name).toBe("skipped");
+      expect(c.reason, c.name).toMatch(/relyingParties \(set CONFORMANCE_RP_REGISTRATION=1\)/);
+    }
+    expect(rp.filter((c: any) => /mockHelpers/.test(c.reason)).length).toBeGreaterThan(15);
+  });
+
   it("holds no token, secret or code", () => {
     for (const [name, value] of Object.entries(markers)) expect(reportText, name).not.toContain(value);
     expect(reportText).not.toContain(JSON.stringify(markers.jwkD));
@@ -139,7 +149,8 @@ describe("what the report may say", () => {
   it("the mock-helpers flag never supplies a secret nobody supplied, and seeds apply only to the in-process mock", () => {
     const env = { CONFORMANCE_OIDC_URL: "https://stage.example", CONFORMANCE_MOCK_HELPERS: "1" };
     expect(have("mockHelpers", env)).toBe(true);
-    for (const n of ["clientSecret", "userToken", "deviceKey", "bearer:noDevice", "bearer:threshold5000"] as const) expect(have(n, env), n).toBe(false);
+    for (const n of ["clientSecret", "userToken", "deviceKey", "presenceKey", "relyingParties", "bearer:noDevice", "bearer:threshold5000"] as const) expect(have(n, env), n).toBe(false);
+    expect(have("relyingParties", { ...env, CONFORMANCE_RP_REGISTRATION: "1" })).toBe(true);
     expect(missing(["userToken"], env)).toMatch(/CONFORMANCE_USER_TOKEN/);
     expect(have("userToken", { ...env, CONFORMANCE_USER_TOKEN: "x" })).toBe(true);
     expect(have("userToken", {})).toBe(true); // in-process mock

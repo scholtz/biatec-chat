@@ -27,5 +27,17 @@ for (const n of [hubLifetimeSeconds, hubPingSeconds]) if (n !== undefined && !(n
 // MOCK_MAX_THRESHOLD_EUR=<n>: an operator ceiling for the user's own approval threshold (unset: none, only the technical 1000000000 EUR).
 const maxThresholdEur = process.env.MOCK_MAX_THRESHOLD_EUR ? Number(process.env.MOCK_MAX_THRESHOLD_EUR) : undefined;
 if (maxThresholdEur !== undefined && !(maxThresholdEur >= 0 && maxThresholdEur <= 1_000_000_000)) throw new Error("MOCK_MAX_THRESHOLD_EUR must be an amount from 0 to 1000000000");
-const { server, issuer } = createMockOidc({ maxThresholdEur, hubLifetimeSeconds, hubPingSeconds, testHelpers, deviceProof, twoKeys, minAppBuild, jsonGroups, maxPendingPerClientOrigin, maxRequestsPerHour });
+// Relying parties (protocol 1.2): MOCK_MAX_REGISTRATIONS_PER_HOUR=<n> (per source address, default 100), MOCK_RP_MAX_PER_MINUTE=<n> (requests one party opens per minute, default 60),
+// MOCK_RP_MAX_PENDING=<n> (open requests of one party for one user, default 5).
+const rpLimit = (name: string) => {
+  const raw = process.env[name];
+  if (!raw) return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) throw new Error(name + " must be a whole number of at least 1");
+  return n;
+};
+const maxRegistrationsPerHour = rpLimit("MOCK_MAX_REGISTRATIONS_PER_HOUR");
+const maxRelyingPartyRequestsPerMinute = rpLimit("MOCK_RP_MAX_PER_MINUTE");
+const maxRelyingPartyPendingPerUser = rpLimit("MOCK_RP_MAX_PENDING");
+const { server, issuer } = createMockOidc({ maxRegistrationsPerHour, maxRelyingPartyRequestsPerMinute, maxRelyingPartyPendingPerUser, maxThresholdEur, hubLifetimeSeconds, hubPingSeconds, testHelpers, deviceProof, twoKeys, minAppBuild, jsonGroups, maxPendingPerClientOrigin, maxRequestsPerHour });
 server.listen(port, host, () => console.log(`mock-oidc (${issuer}) listening on http://${host}:${port}${testHelpers ? " with test helpers (MOCK_TEST_HELPERS=1)" : ""}`));

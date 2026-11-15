@@ -128,8 +128,11 @@ function receiptClaims(receipt, jwks, opts) {
     const payload = boundClaims(receipt.device, receipt.signed.sub, jwks, opts);
     if (!payload) return null;
     const s = receipt.signed;
-    const is11 = receipt.version === "1.1";
+    const v12 = receipt.version === "1.2";
+    const is11 = receipt.version === "1.1" || v12; // 1.2 names the client like 1.1 does
     if (!is11 && receipt.version !== "1") return null;
+    // `version` is unsigned: a relying-party type (and the `details_hash` member that goes with it) is a 1.2 receipt and only that.
+    if (RP_TYPES.includes(s.authorization_details?.[0]?.type) !== v12 || ("details_hash" in s) !== v12) return null;
     if (is11 ? !("client_fingerprint" in s) || "client_entity_id" in s : !("client_entity_id" in s) || "client_fingerprint" in s) return null;
     if (payload.biatec_key_use !== undefined && !KEY_USES.includes(payload.biatec_key_use)) return null;
     if (is11 && payload.biatec_key_use === undefined) return null;
@@ -172,6 +175,7 @@ function verifiedClaims(receipt, jwks, opts = {}) {
     // An approve needs an approval key. A device that is attested for a key use (every 1.1 device is) can never approve with another one,
     // whatever `version` the receipt wears; only a 1.0 device, whose attestation carries no key use, approves without one.
     if (receipt.signed.decision === "approve" && payload.biatec_key_use !== undefined && payload.biatec_key_use !== "approve") return null;
+    if (receipt.version === "1.2" && !relyingPartyReceiptWellFormed(receipt.signed)) return null;
     // `remember` trusts applications: only an approval of a 1.1 receipt may carry it, never a denial.
     if (receipt.signed.remember !== undefined && (receipt.signed.decision !== "approve" || receipt.version !== "1.1")) return null;
     return payload;
@@ -225,12 +229,12 @@ function withoutJoiners(text) {
  * U+200D, U+2060, U+FEFF), no line breaks, no filler or invisible characters (soft hyphen, Hangul fillers, invisible operators,
  * variation selectors, tag characters), no padding and not blank. No bare or stacked combining marks (a mark must follow a base character, at most three in a row). A violation is refused, never stripped. Look-alike letters of another script are NOT detected: the label sits beside the proven domain or fingerprint, never instead of it.
  */
-export function isDisplaySafe(text, max = 40) {
+export function isDisplaySafe(text, max = 40, opts = {}) {
   if (typeof text !== "string" || text.length === 0 || !text.isWellFormed() || text !== text.normalize("NFC")) return false;
   if ([...text].length > max || text.trim() !== text || text.trim() === "") return false; // no padding, not blank
   if (/[\u200C\u200D]{2,}/.test(text)) return false; // never several joiners in a row (a variation selector before a joiner is the normal emoji form)
   if (/(?:^|\s)\p{M}|\p{M}{4}/u.test(text)) return false; // a mark needs a base character; stacks are limited
-  const plain = withoutJoiners(text); // the allowed joiners and emoji selectors removed, once
+  const plain = opts.joiners === false ? text : withoutJoiners(text); // the allowed joiners and emoji selectors removed, once (the relying-party profile allows none)
   return !NOT_ALLOWED_SPACE_OR_FORMAT.test(plain) && !INVISIBLE.test(plain);
 }
 
@@ -370,7 +374,6 @@ export function verifyEnrollmentProof(jws, expect = {}) {
     const payload = JSON.parse(decodeB64u(parts[1]).toString("utf8"));
     if (header.alg !== "ES256" || header.typ !== ENROLL_PROOF_TYP || header.jwk?.kty !== "EC" || header.jwk?.crv !== "P-256") return false;
     // Exactly the members the schema allows: no private `d` rides in the header jwk, no extra claim in the payload.
-    const sameMembers = (o, keys) => Object.keys(o).length === keys.length && keys.every((k) => k in o);
     if (!sameMembers(header, ["alg", "typ", "jwk"]) || !sameMembers(header.jwk, ["kty", "crv", "x", "y"])) return false;
     if (!sameMembers(payload, ["kid", "presence_kid", "presence_jwk_thumbprint", "nonce", "iat"])) return false;
     if (!isP256PublicJwk(header.jwk) || thumbprint(header.jwk) !== thumbprint(expect.approval_public_key)) return false;
@@ -428,11 +431,13 @@ export function verifyApproval(receipt, jwks, request, expectedBindingCode, cons
       s.expiry !== request.expiry ||
       s.sub !== request.sub ||
       jcs(s.authorization_details) !== jcs(request.authorization_details) ||
-      (d?.group_hash ?? d?.request_hash) !== request.bound_hash
+      (d?.group_hash ?? d?.request_hash ?? s.details_hash) !== request.bound_hash
     )
       return false;
     // Every 1.1 request has a canonical origin (the request schema requires it), a transaction also signs it in its details.
     if (receipt.version === "1.1" && (typeof request.origin !== "string" || request.origin.length > 253 || !ORIGIN.test(request.origin))) return false;
+    // A relying-party request (1.2) is always a direct request of a linked client; the origin is optional and, when the server had one, is in the details too.
+    if (receipt.version === "1.2" && (request.entry !== "direct" || request.client?.linked !== true || request.origin !== d?.origin || (request.origin !== undefined && (typeof request.origin !== "string" || !ORIGIN.test(request.origin))))) return false;
     // The origin the server recorded is the origin the user saw and signed (a transaction of 1.1 carries it in its details).
     if (receipt.version === "1.1" && d?.type === "biatec_transaction" && (typeof d.origin !== "string" || d.origin !== request.origin || d.origin.length > 253 || !ORIGIN.test(d.origin) || !Array.isArray(d.transfers) || !Array.isArray(d.applications) || !detailsConsistent(d))) return false;
     if (s.remember !== undefined) {
@@ -473,7 +478,7 @@ function detailsConsistent(d) {
 function clientMatches(receipt, s, request) {
   const c = request.client;
   if (c && typeof c.fingerprint === "string" && typeof c.domain_proven === "boolean")
-    return receipt.version === "1.1" && typeof s.client_fingerprint === "string" && s.client_fingerprint === c.fingerprint;
+    return (receipt.version === "1.1" || receipt.version === "1.2") && typeof s.client_fingerprint === "string" && s.client_fingerprint === c.fingerprint;
   return receipt.version === "1" && typeof c?.entity_id === "string" && s.client_entity_id === c.entity_id;
 }
 
@@ -481,4 +486,258 @@ function timingSafeEqualStr(a, b) {
   const x = Buffer.from(String(a), "utf8");
   const y = Buffer.from(String(b), "utf8");
   return x.length === y.length && timingSafeEqual(x, y);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Protocol 1.2: relying parties (spec chapters 14 and 15). Payment, login and action requests, the details hash, links.
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** The authorization_details types a relying party can request. A receipt of one of them has envelope `version` "1.2". */
+export const RP_TYPES = ["biatec_payment", "biatec_login", "biatec_action"];
+
+/** The members of the signed object of a 1.2 receipt: the eight of 1.1 (no `remember`) and `details_hash`. */
+const SIGNED_12 = ["authorization_details", "auth_req_id", "client_fingerprint", "binding_code", "decision", "expiry", "sub", "binding_message", "details_hash"];
+
+/** The members of the signed `biatec_link` object (spec section 14.3). */
+const LINK_MEMBERS = ["type", "link_id", "client_fingerprint", "domain", "decision", "binding_code", "nonce", "issued_at", "kid"];
+
+const sameMembers = (o, keys) => o !== null && typeof o === "object" && !Array.isArray(o) && Object.keys(o).length === keys.length && keys.every((k) => k in o);
+const onlyMembers = (o, required, optional) => o !== null && typeof o === "object" && !Array.isArray(o) && required.every((k) => k in o) && Object.keys(o).every((k) => required.includes(k) || optional.includes(k));
+
+/**
+ * `details_hash` (spec section 3.6): base64url without padding of SHA-256 over the RFC 8785 canonical form of the
+ * authorization_details OBJECT (one object, not the array) exactly as the relying party sent it plus the `origin` member
+ * the server added when it had an origin. A device and a verifier compute it from the object they hold, never copy it.
+ */
+export function detailsHash(details) {
+  return b64u(createHash("sha256").update(jcs(details), "utf8").digest());
+}
+
+/** The client fingerprint of spec section 6: the first eight bytes of SHA-256(client_id) as 16 lower-case hex characters. */
+export function clientFingerprint(clientId) {
+  return createHash("sha256").update(clientId, "utf8").digest("hex").slice(0, 16);
+}
+
+/**
+ * Text a relying party supplies (spec section 15, relying-party profile): the rules of `isDisplaySafe` with ZWNJ, ZWJ and the
+ * emoji selector refused as well, because the relying party is untrusted and no script depends on them in a payee or a title.
+ * `max` is in code points. A violation is refused, never stripped.
+ */
+export function isRelyingPartyText(text, max) {
+  return isDisplaySafe(text, max, { joiners: false });
+}
+
+/** An IBAN in electronic form (upper case, no spaces, 15 to 34 characters) whose ISO 7064 mod-97-10 check digits are right. Country lengths are not checked. */
+export function isValidIban(iban) {
+  if (typeof iban !== "string" || !/^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/.test(iban)) return false;
+  let rem = 0;
+  for (const ch of iban.slice(4) + iban.slice(0, 4)) {
+    if (ch >= "A") rem = (rem * 100 + ch.charCodeAt(0) - 55) % 97; // letters are two digits, A = 10 ... Z = 35
+    else rem = (rem * 10 + Number(ch)) % 97;
+  }
+  return rem === 1;
+}
+
+const PAYMENT_AMOUNT = /^(0|[1-9][0-9]{0,14})(\.[0-9]{1,2})?$/;
+/** A decimal string of at most two decimals, greater than zero. Never a number. */
+export function isValidPaymentAmount(amount) {
+  return typeof amount === "string" && PAYMENT_AMOUNT.test(amount) && /[1-9]/.test(amount);
+}
+
+/** A calendar date `YYYY-MM-DD` that exists. */
+export function isValidDate(text) {
+  const m = typeof text === "string" ? /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(text) : null;
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const t = new Date(Date.UTC(y, mo - 1, d));
+  t.setUTCFullYear(y); // Date.UTC maps years 0 to 99 to 1900 to 1999
+  return y >= 1 && t.getUTCFullYear() === y && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d;
+}
+
+const rpText = (t, max) => isRelyingPartyText(t, max);
+
+/**
+ * True when `details` is exactly an authorization_details object of one of the three relying-party types as the schemas
+ * (`authorization-details-payment|login|action.schema.json`) describe it, with the text rules of spec section 15 applied to every string a relying
+ * party supplied and the IBAN checksum, the amount and the date checked. Never throws.
+ */
+export function isValidRelyingPartyDetails(details) {
+  try {
+    if (details === null || typeof details !== "object" || Array.isArray(details)) return false;
+    if ("origin" in details && !(typeof details.origin === "string" && details.origin.length <= 253 && ORIGIN.test(details.origin))) return false;
+    switch (details.type) {
+      case "biatec_payment": {
+        if (!onlyMembers(details, ["type", "instructed_amount", "creditor_name", "creditor_account"], ["remittance", "execution_date", "origin"])) return false;
+        const a = details.instructed_amount;
+        if (!sameMembers(a, ["amount", "currency"]) || !isValidPaymentAmount(a.amount) || typeof a.currency !== "string" || !/^[A-Z]{3}$/.test(a.currency)) return false;
+        if (!rpText(details.creditor_name, 70)) return false;
+        const c = details.creditor_account;
+        if (sameMembers(c, ["iban"])) {
+          if (!isValidIban(c.iban)) return false;
+        } else if (!sameMembers(c, ["identification", "scheme"]) || !rpText(c.identification, 34) || !rpText(c.scheme, 20)) return false;
+        if ("remittance" in details && !rpText(details.remittance, 140)) return false;
+        if ("execution_date" in details && !isValidDate(details.execution_date)) return false;
+        return true;
+      }
+      case "biatec_login": {
+        if (!onlyMembers(details, ["type"], ["context", "origin"])) return false;
+        if ("context" in details) {
+          const c = details.context;
+          if (!onlyMembers(c, [], ["ip", "location", "user_agent"]) || Object.keys(c).length === 0) return false;
+          if (!Object.values(c).every((v) => rpText(v, 80))) return false;
+        }
+        return true;
+      }
+      case "biatec_action": {
+        if (!onlyMembers(details, ["type", "title", "lines"], ["origin"]) || !rpText(details.title, 60)) return false;
+        const l = details.lines;
+        return Array.isArray(l) && l.length >= 1 && l.length <= 8 && l.every((x) => sameMembers(x, ["label", "value"]) && rpText(x.label, 30) && rpText(x.value, 80));
+      }
+      default:
+        return false;
+    }
+  } catch {
+    return false;
+  }
+}
+
+/** The signed object of a 1.2 receipt: exactly its nine members, one relying-party detail object, no client text, and a `details_hash` that is the hash of that object. */
+function relyingPartyReceiptWellFormed(s) {
+  if (!sameMembers(s, SIGNED_12)) return false;
+  const d = s.authorization_details;
+  if (!Array.isArray(d) || d.length !== 1 || !isValidRelyingPartyDetails(d[0])) return false;
+  if (s.binding_message !== "" || typeof s.client_fingerprint !== "string" || !/^[0-9a-f]{16}$/.test(s.client_fingerprint)) return false;
+  if (!["approve", "deny", "code_failed"].includes(s.decision)) return false;
+  if (typeof s.binding_code !== "string" || !(s.decision === "deny" ? /^([0-9]{6})?$/ : /^[0-9]{6}$/).test(s.binding_code)) return false;
+  if (typeof s.auth_req_id !== "string" || s.auth_req_id.length < 16 || typeof s.sub !== "string" || s.sub === "" || !Number.isSafeInteger(s.expiry) || s.expiry < 0) return false;
+  return typeof s.details_hash === "string" && timingSafeEqualStr(s.details_hash, detailsHash(d[0])); // computed from the rendered object, never trusted
+}
+
+/** The pins of `verifyReceiptPinned` and `verifyLinkPinned`: `{ key_use, jwk }` entries; a bare JWK is an approval key. Null when any entry is not a P-256 public key. */
+function normalizePins(pinned) {
+  const list = Array.isArray(pinned) ? pinned : [pinned];
+  if (list.length === 0 || list.length > 64) return null;
+  const pins = list.map((p) => (p && typeof p === "object" && "kty" in p ? { key_use: "approve", jwk: p } : p));
+  return pins.every((p) => p && typeof p === "object" && KEY_USES.includes(p.key_use) && isP256PublicJwk(p.jwk)) ? pins : null;
+}
+
+/**
+ * Verifies a protocol 1.2 receipt with the device key(s) a relying party pinned when the user linked it, and NOTHING else from
+ * Biatec OIDC: no attestation, no JWKS (spec section 14.5). Returns true only when ALL of these hold; never throws.
+ *  1. The signed object is exactly the nine members of a 1.2 receipt, one relying-party detail object that satisfies the schemas and the text
+ *     rules (`isValidRelyingPartyDetails`), `binding_message` empty, `decision` and `binding_code` of the right shape.
+ *  2. `details_hash` equals `detailsHash(authorization_details[0])` (computed here, never copied).
+ *  3. The signed details are exactly `expectedDetails`, the object the party sent, apart from `origin` (the server adds it). The origin is EXPLICIT:
+ *     `opts.origin` is required, a string (the origin the party reported, which the signed one must equal) or `null` (the party reported none: the signed
+ *     details must have none). An absent `opts.origin` is refused, and so is an `expectedDetails.origin` that differs from it.
+ *  4. The signature over JCS(signed) verifies under a pinned key (the receipt's own `device` block is not consulted). `pinned` is one pin or an
+ *     array of pins; a pin is `{ key_use: "approve" | "presence", jwk }`, or a bare JWK meaning an approval key. An `approve` is accepted only
+ *     under a pin whose `key_use` is "approve" (rule 8: a presence key never approves); `deny` and `code_failed` accept either.
+ * The party's own values are REQUIRED, because they are what ties the receipt to the request it opened (a receipt of another request, user or party, or a replay,
+ * would otherwise verify): `opts.auth_req_id` (the id it got when it opened the request), `opts.sub` (the subject it used as `login_hint`), `opts.clientFingerprint`
+ * (`clientFingerprint(client_id)`), `opts.bindingCode` (the code it displayed; compared in constant time for an approve) and `opts.consumed` (a Set of the `auth_req_id`
+ * values it already acted on: an id in it is refused). The function never adds to the set: THE CALLER RECORDS `auth_req_id` after it got true and acted (before the payment
+ * is executed, atomically with it). Missing or malformed values are refused. Optional: `decision` ("approve" | "deny" | "code_failed": what the caller requires).
+ * An approval must not be expired at `opts.now` (default: the current time) unless `opts.checkExpiry === false` (re-verifying an archived receipt).
+ * The caller still reads `receipt.signed.decision`: a true result for a `deny` means the user denied, authentically.
+ */
+export function verifyReceiptPinned(receipt, pinned, expectedDetails, opts = {}) {
+  try {
+    if (receipt.version !== "1.2" || receipt.alg !== "ES256") return false;
+    const pins = normalizePins(pinned);
+    if (!pins) return false;
+    const nonEmpty = (x) => typeof x === "string" && x !== "";
+    if (!nonEmpty(opts.auth_req_id) || !nonEmpty(opts.sub) || !/^[0-9a-f]{16}$/.test(opts.clientFingerprint ?? "") || !/^[0-9]{6}$/.test(opts.bindingCode ?? "") || !(opts.consumed instanceof Set)) return false;
+    const s = receipt.signed;
+    if (!relyingPartyReceiptWellFormed(s)) return false; // steps 1 and 2
+    if (expectedDetails === null || typeof expectedDetails !== "object" || Array.isArray(expectedDetails)) return false;
+    const { origin: signedOrigin, ...signedRest } = s.authorization_details[0];
+    const { origin: expectedOrigin, ...expectedRest } = expectedDetails;
+    if (jcs(signedRest) !== jcs(expectedRest)) return false; // step 3
+    if (opts.origin !== null && typeof opts.origin !== "string") return false; // explicit: a string, or null for "none expected"
+    const wantOrigin = opts.origin === null ? undefined : opts.origin;
+    if ("origin" in expectedDetails && expectedOrigin !== wantOrigin) return false;
+    if (signedOrigin !== wantOrigin) return false;
+    if (opts.decision !== undefined && s.decision !== opts.decision) return false;
+    if (s.auth_req_id !== opts.auth_req_id || s.sub !== opts.sub || s.client_fingerprint !== opts.clientFingerprint) return false;
+    if (opts.consumed.has(s.auth_req_id)) return false; // replay: the caller records the id after it acted
+    if (s.decision === "approve" && !timingSafeEqualStr(s.binding_code, opts.bindingCode)) return false;
+    if (s.decision === "approve" && opts.checkExpiry !== false && s.expiry <= (opts.now ?? nowSeconds())) return false;
+    const bytes = Buffer.from(jcs(s), "utf8");
+    return pins.some((p) => (s.decision !== "approve" || p.key_use === "approve") && verifyEs256(p.jwk, bytes, receipt.signature)); // step 4, last
+  } catch {
+    return false;
+  }
+}
+
+const LINK_ID = /^[A-Za-z0-9_-]{16,128}$/;
+const DOMAIN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/;
+
+/** The signed `biatec_link` object: exactly its nine members of the right types (`schemas/link-signed.schema.json`). */
+export function isValidLinkSigned(s) {
+  if (!sameMembers(s, LINK_MEMBERS) || s.type !== "biatec_link") return false;
+  if (typeof s.link_id !== "string" || !LINK_ID.test(s.link_id) || typeof s.client_fingerprint !== "string" || !/^[0-9a-f]{16}$/.test(s.client_fingerprint)) return false;
+  if (s.domain !== null && !(typeof s.domain === "string" && s.domain.length <= 253 && DOMAIN.test(s.domain))) return false;
+  if (s.decision !== "approve" && s.decision !== "deny") return false;
+  if (typeof s.binding_code !== "string" || !(s.decision === "deny" ? /^([0-9]{6})?$/ : /^[0-9]{6}$/).test(s.binding_code)) return false;
+  return isNonce(s.nonce) && Number.isSafeInteger(s.issued_at) && s.issued_at >= 0 && typeof s.kid === "string" && s.kid !== "";
+}
+
+/** What the server showed the device and the party expects: the link, the client, the code, the nonce; `issued_at` within 300 seconds of `now`. */
+function linkMatches(s, expect, now) {
+  if (!expect || typeof expect !== "object") return false;
+  if (typeof expect.link_id !== "string" || s.link_id !== expect.link_id || typeof expect.client_fingerprint !== "string" || s.client_fingerprint !== expect.client_fingerprint) return false;
+  if (!(expect.domain === null || typeof expect.domain === "string") || s.domain !== expect.domain) return false; // "no proven domain" (null) is a value too
+  if (typeof expect.nonce !== "string" || s.nonce !== expect.nonce) return false;
+  if (s.decision === "approve" && (typeof expect.binding_code !== "string" || !/^[0-9]{6}$/.test(expect.binding_code) || !timingSafeEqualStr(s.binding_code, expect.binding_code))) return false;
+  return Math.abs(now - s.issued_at) <= SIGNED_WINDOW_SECONDS;
+}
+
+/**
+ * Verifies a link statement with the attestation (what Biatec OIDC does at `POST /consent/links/{id}/receipt`, and a relying party may do as
+ * a second check): `envelope` is `{ signed, alg, signature, device }` like a device-signed statement (`device-signed.schema.json`).
+ * `expect` = { link_id, client_fingerprint, domain (string or null: what the server showed), nonce, binding_code (required for approve), sub
+ * (the subject the attestation was minted for) }. `opts` = { issuer (required), now?, consumed: Set of spent link ids (required) }.
+ * An `approve` needs the approval key (attested `biatec_key_use` "approve"); a `deny` accepts either. True means the statement is authentic and
+ * matches; the caller reads `signed.decision`. Never throws.
+ */
+export function verifyLink(envelope, jwks, opts = {}, expect = {}) {
+  try {
+    const now = opts.now ?? nowSeconds();
+    const s = envelope.signed;
+    if (envelope.alg !== "ES256" || !isValidLinkSigned(s)) return false;
+    if (!(opts.consumed instanceof Set) || opts.consumed.has(s.link_id)) return false; // a link is single use
+    if (typeof expect.sub !== "string" || !linkMatches(s, expect, now)) return false;
+    const payload = boundClaims(envelope.device, expect.sub, jwks, { ...opts, now });
+    if (!payload || !KEY_USES.includes(payload.biatec_key_use) || envelope.device.key_use !== payload.biatec_key_use) return false;
+    if (s.decision === "approve" && payload.biatec_key_use !== "approve") return false;
+    if (s.kid !== envelope.device.kid) return false;
+    return verifyEs256(envelope.device.public_key, Buffer.from(jcs(s), "utf8"), envelope.signature);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Verifies a link statement the way a relying party does with `GET /consent/links/{id}`: `approval` = { signed, signature, alg: "ES256" } (the answer's
+ * `approval` without its attestation, plus the algorithm, which the party states and which MUST be "ES256": the answer names none because ES256 is the only one),
+ * `devices` = the `[{ kid, key_use, jwk }]` list of that answer. The signing key is the device named by `signed.kid`; an `approve` needs that device's `key_use` to
+ * be "approve". `expect` as in `verifyLink` without `sub`; `opts.now` optional, `opts.consumed` REQUIRED (a Set of link ids already acted on: an id in it is refused;
+ * the caller records `link_id` after it got true, as for `verifyReceiptPinned`). No attestation is consulted.
+ * THE LIMIT OF THIS CHECK: the `devices` list and the approval come from the same server answer, so this proves that the statement was signed by one of the keys the
+ * answer lists, not that those keys are the user's. At link time the party trusts Biatec OIDC for WHICH keys it pins (spec 14.1); the user's signature binds the keys to
+ * this party only to the extent the operator told the truth about them. Never throws.
+ */
+export function verifyLinkPinned(approval, devices, expect = {}, opts = {}) {
+  try {
+    const s = approval.signed;
+    if (approval.alg !== "ES256" || !isValidLinkSigned(s) || !linkMatches(s, expect, opts.now ?? nowSeconds())) return false;
+    if (!(opts.consumed instanceof Set) || opts.consumed.has(s.link_id)) return false;
+    if (!Array.isArray(devices)) return false;
+    const pin = devices.find((d) => d && d.kid === s.kid);
+    if (!pin || !KEY_USES.includes(pin.key_use) || (s.decision === "approve" && pin.key_use !== "approve") || !isP256PublicJwk(pin.jwk)) return false;
+    return verifyEs256(pin.jwk, Buffer.from(jcs(s), "utf8"), approval.signature);
+  } catch {
+    return false;
+  }
 }

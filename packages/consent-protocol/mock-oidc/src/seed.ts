@@ -10,6 +10,11 @@ export interface SeedClient {
   allowManageLimits: boolean;
   /** Hours since the client registered, when that is less than 24 (rule 4: the cooling-off of a new client). Default: long ago. */
   registeredHoursAgo?: number;
+  /**
+   * A relying party that registered itself (protocol 1.2, `private_key_jwt`; `POST /register`): it has no secret, authenticates with a signed assertion by one of
+   * `keys`, may use only the CIBA grant and the link endpoints, and is `verified` (with its `domain`) only while its well-known file lists its client id.
+   */
+  rp?: { keys: Record<string, string>[]; jwksUri?: string; keysFetchedAt: number; /** The request in which the well-known file was last read (the mock reads it once per request). */ checkedEpoch?: number; clientUri: string; host: string; registeredAt: number };
 }
 
 export interface SeedUser {

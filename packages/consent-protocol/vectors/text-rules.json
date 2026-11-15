@@ -1,0 +1,545 @@
+{
+  "_comment": "Text rules of spec section 15. profile `relying_party` is isRelyingPartyText(text, max), `label` is isDisplaySafe(text, max). `max` is in code points. `core: true` marks the vectors that follow from the minimum rules every implementation applies (NFC, no control characters, no bidirectional controls, no zero-width characters, no line breaks, length in code points); a verifier with only those rules MUST agree on them. Non-ASCII text is written as \\u escapes. Regenerate with scripts/generate-vectors.mjs --1.2.",
+  "vectors": [
+    {
+      "name": "ascii",
+      "text": "Muster Energie GmbH",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": true,
+      "reason": "plain_text",
+      "core": true
+    },
+    {
+      "name": "nfc-accent",
+      "text": "Zo\u00eb M\u00fcller",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": true,
+      "reason": "nfc_text",
+      "core": true
+    },
+    {
+      "name": "non-latin",
+      "text": "\u65e5\u672c\u8a9e\u306e\u652f\u6255\u5148",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": true,
+      "reason": "non_latin_text",
+      "core": true
+    },
+    {
+      "name": "single-emoji",
+      "text": "Paid \ud83d\ude00 ok",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": true,
+      "reason": "emoji_is_one_code_point",
+      "core": true
+    },
+    {
+      "name": "exactly-at-limit",
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "max": 70,
+      "profile": "relying_party",
+      "accepted": true,
+      "reason": "length_equals_max",
+      "core": true
+    },
+    {
+      "name": "code-points-not-utf16-units",
+      "text": "\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00",
+      "max": 70,
+      "profile": "relying_party",
+      "accepted": true,
+      "reason": "length_counts_code_points",
+      "core": true
+    },
+    {
+      "name": "look-alike-script-not-detected",
+      "text": "p\u0430ypal",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": true,
+      "reason": "look_alike_letters_are_not_detected",
+      "core": false
+    },
+    {
+      "name": "label-persian-zwnj",
+      "text": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645",
+      "max": 40,
+      "profile": "label",
+      "accepted": true,
+      "reason": "label_allows_zwnj_in_context",
+      "core": false
+    },
+    {
+      "name": "label-zwj-emoji-sequence",
+      "text": "\ud83d\udc69\u200d\ud83d\udcbb",
+      "max": 40,
+      "profile": "label",
+      "accepted": true,
+      "reason": "label_allows_zwj_in_context",
+      "core": false
+    },
+    {
+      "name": "empty",
+      "text": "",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "empty",
+      "core": true
+    },
+    {
+      "name": "nfd-not-normalized",
+      "text": "Zoe\u0301",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "not_nfc",
+      "core": true
+    },
+    {
+      "name": "one-over-the-limit",
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "max": 70,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "too_long",
+      "core": true
+    },
+    {
+      "name": "emoji-one-over-the-limit",
+      "text": "\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00",
+      "max": 70,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "too_long",
+      "core": true
+    },
+    {
+      "name": "bidi-lre",
+      "text": "Pay\u202ament",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "bidirectional_control",
+      "core": true
+    },
+    {
+      "name": "bidi-rle",
+      "text": "Pay\u202bment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "bidirectional_control",
+      "core": true
+    },
+    {
+      "name": "bidi-pdf",
+      "text": "Pay\u202cment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "bidirectional_control",
+      "core": true
+    },
+    {
+      "name": "bidi-lro",
+      "text": "Pay\u202dment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "bidirectional_control",
+      "core": true
+    },
+    {
+      "name": "bidi-rlo",
+      "text": "Pay\u202ement",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "bidirectional_control",
+      "core": true
+    },
+    {
+      "name": "bidi-lri",
+      "text": "Pay\u2066ment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "bidirectional_control",
+      "core": true
+    },
+    {
+      "name": "bidi-rli",
+      "text": "Pay\u2067ment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "bidirectional_control",
+      "core": true
+    },
+    {
+      "name": "bidi-fsi",
+      "text": "Pay\u2068ment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "bidirectional_control",
+      "core": true
+    },
+    {
+      "name": "bidi-pdi",
+      "text": "Pay\u2069ment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "bidirectional_control",
+      "core": true
+    },
+    {
+      "name": "bidi-lrm",
+      "text": "Pay\u200ement",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "bidirectional_control",
+      "core": true
+    },
+    {
+      "name": "bidi-rlm",
+      "text": "Pay\u200fment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "bidirectional_control",
+      "core": true
+    },
+    {
+      "name": "bidi-alm",
+      "text": "Pay\u061cment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "bidirectional_control",
+      "core": true
+    },
+    {
+      "name": "zero-width-zwsp",
+      "text": "Pay\u200bment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "zero_width",
+      "core": true
+    },
+    {
+      "name": "zero-width-zwnj",
+      "text": "Pay\u200cment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "zero_width",
+      "core": true
+    },
+    {
+      "name": "zero-width-zwj",
+      "text": "Pay\u200dment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "zero_width",
+      "core": true
+    },
+    {
+      "name": "zero-width-word-joiner",
+      "text": "Pay\u2060ment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "zero_width",
+      "core": true
+    },
+    {
+      "name": "zero-width-bom",
+      "text": "Pay\ufeffment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "zero_width",
+      "core": true
+    },
+    {
+      "name": "line-break-lf",
+      "text": "Line one\nline two",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "line_break",
+      "core": true
+    },
+    {
+      "name": "line-break-cr",
+      "text": "Line one\rline two",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "line_break",
+      "core": true
+    },
+    {
+      "name": "line-break-nel",
+      "text": "Line one\u0085line two",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "line_break",
+      "core": true
+    },
+    {
+      "name": "line-break-line-separator",
+      "text": "Line one\u2028line two",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "line_break",
+      "core": true
+    },
+    {
+      "name": "line-break-paragraph-separator",
+      "text": "Line one\u2029line two",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "line_break",
+      "core": true
+    },
+    {
+      "name": "line-break-crlf",
+      "text": "Line one\r\nline two",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "line_break",
+      "core": true
+    },
+    {
+      "name": "control-nul",
+      "text": "Pay\u0000ment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "control_character",
+      "core": true
+    },
+    {
+      "name": "control-bell",
+      "text": "Pay\u0007ment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "control_character",
+      "core": true
+    },
+    {
+      "name": "control-tab",
+      "text": "Pay\tment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "control_character",
+      "core": true
+    },
+    {
+      "name": "control-escape",
+      "text": "Pay\u001bment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "control_character",
+      "core": true
+    },
+    {
+      "name": "control-del",
+      "text": "Pay\u007fment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "control_character",
+      "core": true
+    },
+    {
+      "name": "control-c1",
+      "text": "Pay\u009fment",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "control_character",
+      "core": true
+    },
+    {
+      "name": "leading-space",
+      "text": " Muster",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "padding",
+      "core": false
+    },
+    {
+      "name": "trailing-space",
+      "text": "Muster ",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "padding",
+      "core": false
+    },
+    {
+      "name": "run-of-spaces",
+      "text": "Muster  Energie",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "run_of_spaces",
+      "core": false
+    },
+    {
+      "name": "blank",
+      "text": "   ",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "blank",
+      "core": false
+    },
+    {
+      "name": "no-break-space",
+      "text": "Muster\u00a0Energie",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "white_space_other_than_space",
+      "core": false
+    },
+    {
+      "name": "soft-hyphen",
+      "text": "Mus\u00adter",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "invisible_character",
+      "core": false
+    },
+    {
+      "name": "hangul-filler",
+      "text": "Mus\u3164ter",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "invisible_character",
+      "core": false
+    },
+    {
+      "name": "tag-character",
+      "text": "Mus\udb40\udc41ter",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "invisible_character",
+      "core": false
+    },
+    {
+      "name": "variation-selector",
+      "text": "Mus\ufe0fter",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "invisible_character",
+      "core": false
+    },
+    {
+      "name": "invisible-times",
+      "text": "Mus\u2062ter",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "invisible_character",
+      "core": false
+    },
+    {
+      "name": "private-use",
+      "text": "Mus\ue000ter",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "private_use",
+      "core": false
+    },
+    {
+      "name": "bare-combining-mark",
+      "text": "\u0301Muster",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "mark_without_base",
+      "core": false
+    },
+    {
+      "name": "stacked-combining-marks",
+      "text": "e\u0301\u0302\u0303\u0304x",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "too_many_combining_marks",
+      "core": false
+    },
+    {
+      "name": "relying-party-zwj-emoji-sequence",
+      "text": "\ud83d\udc69\u200d\ud83d\udcbb",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "relying_party_profile_refuses_joiners",
+      "core": false
+    },
+    {
+      "name": "relying-party-persian-zwnj",
+      "text": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645",
+      "max": 80,
+      "profile": "relying_party",
+      "accepted": false,
+      "reason": "relying_party_profile_refuses_joiners",
+      "core": false
+    },
+    {
+      "name": "label-bidi-control",
+      "text": "My\u202ebank",
+      "max": 40,
+      "profile": "label",
+      "accepted": false,
+      "reason": "bidirectional_control",
+      "core": false
+    },
+    {
+      "name": "label-zwsp",
+      "text": "My\u200bbank",
+      "max": 40,
+      "profile": "label",
+      "accepted": false,
+      "reason": "zero_width",
+      "core": false
+    },
+    {
+      "name": "label-zwj-at-end",
+      "text": "bank\u200d",
+      "max": 40,
+      "profile": "label",
+      "accepted": false,
+      "reason": "joiner_not_in_context",
+      "core": false
+    }
+  ]
+}
