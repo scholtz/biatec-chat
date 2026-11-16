@@ -222,13 +222,17 @@ class LoopbackAuthClient extends AuthClient {
       if (host != '127.0.0.1') InternetAddress.loopbackIPv6,
     ];
     final servers = <HttpServer>[];
+    SocketException? missing;
     for (final a in addresses) {
       try {
         servers.add(await HttpServer.bind(a, redirect.port, shared: false));
       } on SocketException catch (e) {
         // A browser may use either address for `localhost`, so a port that something else holds on one of them could take the answer: the sign-in does not start.
-        // The one failure that is let through is a machine that has no IPv6 loopback at all (next to an IPv4 listener that is up).
-        if (servers.isNotEmpty && _noSuchAddress(e)) continue;
+        // The one failure that is let through is an address family this machine does not have; one listener is then enough (checked below).
+        if (_noSuchAddress(e)) {
+          missing = e;
+          continue;
+        }
         for (final s in servers) {
           await s.close(force: true);
         }
@@ -237,6 +241,10 @@ class LoopbackAuthClient extends AuthClient {
             ? 'Port ${redirect.port} on this computer is in use. Close the program that uses it and sign in again.'
             : 'Port ${redirect.port} on this computer cannot be opened for the sign-in (${e.osError?.message ?? e.message}).');
       }
+    }
+    if (servers.isEmpty) {
+      throw LoginFailed(
+          'Port ${redirect.port} on this computer cannot be opened for the sign-in (${missing?.osError?.message ?? 'no loopback address'}).');
     }
     return servers;
   }
@@ -281,7 +289,7 @@ class LoopbackAuthClient extends AuthClient {
         taken = true;
         final failed = error != null || code == null || code.isEmpty;
         try {
-          await _page(q, HttpStatus.ok, failed ? _failedPage : _donePage);
+          await _page(q, HttpStatus.ok, failed ? _failedPage : _donePage).timeout(const Duration(seconds: 5));
         } on Object {
           // The browser went away; the answer stands.
         }
@@ -299,8 +307,14 @@ class LoopbackAuthClient extends AuthClient {
     }
 
     final subscriptions = [for (final s in servers) s.listen(handle, onError: (Object _) {})];
-    final timer = Timer(timeout, () => fail(const LoginFailed('The sign-in was not finished in time.')));
-    cancelled.then((_) => fail(const LoginCancelled()));
+    // Once the answer is taken (its page is being written, for 5 seconds at most) neither the time limit nor a stop throws it away; a stop still ends the
+    // sign-in at the next step (see [signIn]).
+    final timer = Timer(timeout, () {
+      if (!taken) fail(const LoginFailed('The sign-in was not finished in time.'));
+    });
+    cancelled.then((_) {
+      if (!taken) fail(const LoginCancelled());
+    });
     return done.future.whenComplete(() {
       timer.cancel();
       for (final s in subscriptions) {
@@ -387,7 +401,9 @@ class LoopbackAuthClient extends AuthClient {
     if (n is! String || !_same(n, nonce)) {
       throw const LoginFailed('The ID token is not for this sign-in.');
     }
-    if (issuer != null && !_sameIssuer(claims['iss'], issuer)) {
+    // An issuer that is named must be the one asked. One that is not named is let through: today's Biatec OIDC issues ID tokens without `iss` when its issuer is
+    // not set in its configuration (required changes, section 26), and the token came from the pinned token endpoint of that issuer, bound to this sign-in by the nonce.
+    if (issuer != null && claims['iss'] != null && !_sameIssuer(claims['iss'], issuer)) {
       throw const LoginFailed('The ID token is from another issuer.');
     }
     // A server that says when the user authenticated must say "just now": the login asks for one (`max_age=0`). One that does not say cannot be checked here.

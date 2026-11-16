@@ -412,6 +412,15 @@ void main() {
             }),
         'another issuer'));
 
+    test('that names no issuer is accepted (today\'s Biatec OIDC), bound by the nonce', () async {
+      final p = Provider(
+          tokenAnswer: (f, a) => ok({
+                'access_token': 'no-iss',
+                'id_token': idToken({'aud': clientId, 'nonce': a.queryParameters['nonce']}),
+              }));
+      expect(await clientOf(p).signIn(request()), 'no-iss');
+    });
+
     test('for another client is refused', () => refused(
         (f, a) => ok({
               'access_token': 't',

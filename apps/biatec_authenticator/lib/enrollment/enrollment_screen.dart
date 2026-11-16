@@ -300,6 +300,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     // Debug builds only (see AppConfig.pasteLoginToken): the field is not part of a release build.
     final paste = widget.config.pasteLoginToken;
     final busy = _checking || _controller.signingIn;
+    final noKeyStore = problem?.kind == EnrollmentProblemKind.noKeyStore;
     return [
       KeyedSubtree(
         key: const Key('step-connect'),
@@ -356,7 +357,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
           key: const Key('sign-in-button'),
           // Off while the browser is open or the device is asked, so a second tap does not start a second sign-in.
           // Off too on a device with no key store: signing in again would end the same way.
-          onPressed: busy || problem?.kind == EnrollmentProblemKind.noKeyStore
+          onPressed: busy || noKeyStore
               ? null
               : () => again
                   ? _checkAgain()
@@ -406,7 +407,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
         (inApp ? OutlinedButton.new : FilledButton.new)(
           key: const Key('enroll-button'),
           // Off while the device is being asked, so a second tap does not start a second check.
-          onPressed: busy
+          // Off on a device with no key store, like the sign-in button: connecting again would end the same way.
+          onPressed: busy || noKeyStore
               ? null
               : () => again && !inApp
                   ? _checkAgain()
@@ -416,7 +418,9 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
               ? 'Checking\u2026'
               : inApp
                   ? 'Connect with the pasted token'
-                  : problem?.actionLabel ?? 'Connect and create the key'),
+                  : noKeyStore
+                      ? 'Connect and create the key'
+                      : problem?.actionLabel ?? 'Connect and create the key'),
         ),
         if (again && !inApp) ...[
           const SizedBox(height: AppSpacing.s),

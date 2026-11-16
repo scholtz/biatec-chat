@@ -113,7 +113,8 @@ class AppConfig {
   final bool inAppLogin;
 
   /// Whether the connect step signs the user in with the system browser (T-248): authorization code with PKCE, and the access token of that login enrolls the device. It needs
-  /// nothing of [inAppLogin] from the server, only a public client with this app's redirect, so it works against today's Biatec OIDC. On whenever [inAppLogin] is; on by
+  /// nothing of [inAppLogin] from the server, only a public client with this app's redirect, so it works against today's Biatec OIDC. This is the desktop switch
+  /// alone ([signIn] says whether the button exists, by this or by [inAppLogin]); on by
   /// default for a desktop build against stage Biatec OIDC (the client [stageDesktopClientId] exists there); otherwise `--dart-define=BROWSER_LOGIN=true` on a desktop
   /// build. `BROWSER_LOGIN=false` turns the desktop default off. A phone build refuses `BROWSER_LOGIN=true` without [inAppLogin]: there the login must be proven fresh.
   final bool browserLogin;
@@ -204,7 +205,7 @@ class AppConfig {
           deviceChannel: true,
           twoKeys: true,
           inAppLogin: true,
-          browserLogin: true,
+          browserLogin: isDesktop,
           trustSettings: true,
           relyingParties: true,
           oidcClientId: _clientId(clientId, false),
@@ -228,7 +229,8 @@ class AppConfig {
       throw const ConfigException(
           'BROWSER_LOGIN is for desktop builds. A phone build signs in with IN_APP_LOGIN=true, which needs the server side of the in-app login.');
     }
-    final login = isMock || inAppLogin || (isDesktop && (browserLogin ?? stageDesktop));
+    final desktopLogin = isDesktop && (browserLogin ?? stageDesktop);
+    final login = isMock || inAppLogin || desktopLogin;
     return AppConfig(
         oidcBaseUrl: isMock ? mockOidcBaseUrl : url,
         isMock: isMock,
@@ -236,7 +238,7 @@ class AppConfig {
         deviceChannel: isMock || deviceChannel,
         twoKeys: isMock || twoKeys,
         inAppLogin: isMock || inAppLogin,
-        browserLogin: login,
+        browserLogin: desktopLogin,
         trustSettings: isMock || trustSettings,
         relyingParties: isMock || relyingParties,
         oidcClientId: _clientId(clientId, stageDesktop),
