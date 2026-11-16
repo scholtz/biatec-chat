@@ -1,7 +1,7 @@
 ---
 id: T-250
 title: "Authenticator: a protected key store for Windows (TPM and Windows Hello), so a desktop build can enroll"
-status: blocked
+status: backlog
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-248]
@@ -74,3 +74,4 @@ Then the manual checklist on a Windows computer with Windows Hello set up.
 
 - 2026-11-16 12:00 · session-20261116-0900 · (new) → blocked · created as a follow-up of T-248, which it waits for
 - 2026-11-16 11:00 · kanban-board · backlog → blocked · waiting on: T-248
+- 2026-11-16 11:46 · kanban-board · blocked → backlog · blockers done: T-248

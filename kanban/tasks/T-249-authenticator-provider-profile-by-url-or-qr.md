@@ -1,7 +1,7 @@
 ---
 id: T-249
 title: "Authenticator: pick the provider at run time from a profile URL or QR code"
-status: blocked
+status: backlog
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-248]
@@ -71,3 +71,4 @@ together.
 
 - 2026-11-16 09:00 · session-20261116-0900 · (new) → blocked · created at the user's request; waits for T-248 (same files, and it builds on the browser login)
 - 2026-11-16 10:30 · kanban-board · backlog → blocked · waiting on: T-248
+- 2026-11-16 11:46 · kanban-board · blocked → backlog · blockers done: T-248

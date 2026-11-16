@@ -1,7 +1,7 @@
 ---
 id: T-248
 title: "Authenticator: sign in with the system browser on desktop, stage defaults for the Windows build, guide for another provider"
-status: review
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: []
@@ -113,7 +113,10 @@ together.
 
 ## Review
 
+- 2026-11-16 11:46 · approve · PR #422 merged into main @ 54b8b66 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-16 09:00 · session-20261116-0900 · (new) → in-progress · created at the user's request and claimed; T-249 (same files) is blocked by it
 - 2026-11-16 12:10 · session-20261116-0900 · in-progress → review · PR #422, four review rounds; hand-off written
+- 2026-11-16 11:46 · user · review → done · PR #422 merged into main @ 54b8b66 (synced by kanban-sync)
