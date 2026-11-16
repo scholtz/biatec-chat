@@ -42,31 +42,63 @@ class WaitingAuth extends AuthClient {
 /// A platform with no native key store: the channel has no implementation.
 class NoKeyStore extends FakeTwoKeyStore {
   @override
+  Future<KeysState> keysState() => throw MissingPluginException('no keystore');
+
+  @override
   Future<DeviceKey> generatePresenceKey() => throw MissingPluginException('no keystore');
 }
 
-class TokenAuth extends AuthClient {
+/// A key store whose probe fails for a reason that is not a missing channel.
+class FlakyProbe extends FakeTwoKeyStore {
   @override
-  Future<String> signIn(AuthRequest request) async => 'access-token';
+  Future<KeysState> keysState() => throw StateError('keystore busy');
+}
+
+class TokenAuth extends AuthClient {
+  int signIns = 0;
+
+  @override
+  Future<String> signIn(AuthRequest request) async {
+    signIns++;
+    return 'access-token';
+  }
 }
 
 void main() {
-  test('a platform without a key store enrolls nothing and says why', () async {
+  test('a platform without a key store enrolls nothing, says why, and never opens the browser', () async {
     final config = AppConfig.resolve('', release: true, windows: true);
+    final auth = TokenAuth();
     final c = EnrollmentController(
       keys: NoKeyStore(),
       store: ObservableEnrollmentStore(MemoryEnrollmentStore()),
       client: OidcEnrollmentClient(baseUrl: 'http://oidc'),
       twoKeys: false,
-      auth: TokenAuth(),
+      auth: auth,
       loginRequest: AuthRequest.forConfig(config),
     );
     expect(await c.signInAndEnroll(), EnrollResult.failed);
+    expect(auth.signIns, 0, reason: 'the key store is probed before the sign-in');
     expect(c.state.error, EnrollmentController.noKeyStoreError);
     expect(c.state.error, isNot(contains('access-token')));
     final problem = classifyEnrollmentError(c.state.error!);
     expect(problem.kind, EnrollmentProblemKind.noKeyStore);
     expect(problem.title, 'This device cannot be enrolled');
+  });
+
+  test('a probe that fails for another reason than a missing key store does not stop the sign-in', () async {
+    final config = AppConfig.resolve('', release: true, windows: true);
+    final auth = TokenAuth();
+    final c = EnrollmentController(
+      keys: FlakyProbe(),
+      store: ObservableEnrollmentStore(MemoryEnrollmentStore()),
+      client: OidcEnrollmentClient(baseUrl: 'http://oidc'),
+      twoKeys: false,
+      auth: auth,
+      loginRequest: AuthRequest.forConfig(config),
+    );
+    await c.signInAndEnroll();
+    expect(auth.signIns, 1);
+    expect(c.state.error, isNot(EnrollmentController.noKeyStoreError));
   });
 
   test('a sign-in that waits for the browser is stopped when its controller is disposed', () async {

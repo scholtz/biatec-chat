@@ -349,6 +349,16 @@ class EnrollmentController extends ChangeNotifier {
       return EnrollResult.failed;
     }
     recoveryCode = code;
+    // A computer that has no key store is told so before the browser opens: a sign-in that can only end in "cannot be enrolled" is not asked of the user. The probe
+    // reads the state of the keys (no prompt, nothing is made); only a missing channel counts, any other failure is left to the enrollment itself.
+    try {
+      await _made<KeysState>(keys.keysState);
+    } on _NoKeyStore {
+      _set(EnrollmentState(EnrollmentPhase.failed, error: noKeyStoreError));
+      return EnrollResult.failed;
+    } on Object {
+      // The probe could not read the keys for another reason; the enrollment shows what is wrong, if anything is.
+    }
     _signingIn = true;
     notifyListeners();
     try {
