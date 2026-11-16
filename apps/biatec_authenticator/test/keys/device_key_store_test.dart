@@ -182,6 +182,67 @@ void main() {
       }
     });
 
+    test('key_channels.cpp (Windows) understands every name and value the Dart side sends and answers what Dart reads', () {
+      final cpp = File('windows/runner/key_channels.cpp').readAsStringSync();
+      final keystoreCpp = File('windows/runner/keystore.cpp').readAsStringSync();
+      for (final method in ['generateKeys', 'generatePresence', 'load', 'loadLegacy', 'signLegacy', 'keysState', 'signPresence', 'signApproval', 'deleteKeys', 'delete', 'probe']) {
+        expect(cpp, contains('"$method"'), reason: 'C++: $method');
+      }
+      for (final use in [channelUse(KeyUse.approve), channelUse(KeyUse.presence)]) {
+        expect(cpp, contains('"$use"'), reason: 'C++ load use $use');
+      }
+      for (final arg in ['use', 'data', 'title', 'subtitle']) {
+        expect(cpp, contains('"$arg"'), reason: 'C++ argument $arg');
+      }
+      for (final wire in ['ok', 'approval_key_invalidated', 'missing']) {
+        expect(cpp, contains('"$wire"'), reason: 'C++ keys state $wire');
+      }
+      // The level it reports is one Dart knows, and as hardware only when the provider says so.
+      expect(KeySecurityLevel.fromWire('tpm'), KeySecurityLevel.tpm);
+      expect(KeySecurityLevel.tpm.isHardware, isTrue);
+      expect(cpp, contains('key.hardware ? "tpm" : "software"'));
+      for (final code in ['prompt_active', 'cancelled', 'approval_key_invalidated', 'no_biometrics', 'locked_out', 'auth_failed', 'insecure_key', 'no_tpm', 'no_hello']) {
+        expect(cpp, contains('"$code"'), reason: 'C++ error $code');
+      }
+      expect(keystoreCpp, contains('"key_generation_failed"'));
+      // Both keys are P-256 keys of the TPM's provider, not exportable (no export policy is ever set), and the approval signature runs only after the Windows Hello
+      // check said verified, inside the one native call.
+      expect(keystoreCpp, contains('MS_PLATFORM_CRYPTO_PROVIDER'));
+      expect(keystoreCpp, contains('BCRYPT_ECDSA_P256_ALGORITHM'));
+      expect(keystoreCpp, isNot(contains('NCRYPT_ALLOW_EXPORT_FLAG')));
+      expect(keystoreCpp, isNot(contains('NCRYPT_ALLOW_PLAINTEXT')));
+      final approval = cpp.substring(cpp.indexOf('EncodableValue SignApproval('));
+      final approvalBody = approval.substring(0, approval.indexOf('// The app lock'));
+      expect(approvalBody.indexOf('hello::Verify'), greaterThan(-1));
+      expect(approvalBody.indexOf('hello::Verify'), lessThan(approvalBody.indexOf('keystore::Sign(')), reason: 'the check comes before the signature');
+      expect(approvalBody, contains('case hello::Outcome::kVerified:\n      break;'), reason: 'only "verified" reaches the signature');
+    });
+
+    test('status reads the probe of a Windows build: TPM and Windows Hello', () async {
+      for (final (answerOf, expected) in [
+        ({'tpm': true, 'hello': 'available'}, KeyStoreStatus.ready),
+        ({'tpm': false, 'hello': 'available'}, KeyStoreStatus.noTpm),
+        ({'tpm': true, 'hello': 'not_configured'}, KeyStoreStatus.noHello),
+        ({'tpm': true, 'hello': 'no_device'}, KeyStoreStatus.noHello),
+        ({'tpm': true, 'hello': 'something new'}, KeyStoreStatus.noHello),
+        ({'hello': 'available'}, KeyStoreStatus.noTpm),
+        ({'tpm': 'yes', 'hello': 'available'}, KeyStoreStatus.noTpm),
+      ]) {
+        answer((call) => call.method == 'probe' ? answerOf : null);
+        expect(await store.status(), expected, reason: '$answerOf');
+      }
+    });
+
+    test('status on a phone (a plugin without probe) is ready, and on a platform without a key store it throws', () async {
+      answer((call) {
+        if (call.method == 'probe') throw MissingPluginException('no probe');
+        return 'missing';
+      });
+      expect(await store.status(), KeyStoreStatus.ready);
+      answer((call) => throw MissingPluginException('no plugin'));
+      await expectLater(store.status(), throwsA(isA<MissingPluginException>()));
+    });
+
     test('keysState maps the plugin answer and fails closed', () async {
       for (final (wire, state) in [
         ('ok', KeysState.ok),

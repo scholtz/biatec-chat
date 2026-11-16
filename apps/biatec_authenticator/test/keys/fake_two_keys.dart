@@ -8,6 +8,9 @@ import 'package:biatec_authenticator/keys/key_security_level.dart';
 import 'package:flutter/services.dart' show PlatformException;
 
 class FakeTwoKeyStore implements DeviceKeyStore {
+  @override
+  Future<KeyStoreStatus> status() async => KeyStoreStatus.ready;
+
   FakeTwoKeyStore([this.level = KeySecurityLevel.trustedEnvironment, int seed = 0])
       : _n = seed;
 

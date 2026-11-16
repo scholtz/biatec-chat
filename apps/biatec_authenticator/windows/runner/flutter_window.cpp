@@ -2,6 +2,8 @@
 
 #include <optional>
 
+#include <wtsapi32.h>
+
 #include "flutter/generated_plugin_registrant.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -25,6 +27,10 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  key_channels_ = std::make_unique<KeyChannels>(
+      flutter_controller_->engine()->messenger(), GetHandle());
+  // So the app can lock itself when Windows locks (the biometric channel's screenLocked).
+  ::WTSRegisterSessionNotification(GetHandle(), NOTIFY_FOR_THIS_SESSION);
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -40,6 +46,8 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  ::WTSUnRegisterSessionNotification(GetHandle());
+  key_channels_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -51,6 +59,16 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  if (key_channels_) {
+    if (message == KeyChannels::kRunQueuedMessage) {
+      key_channels_->RunQueued();
+      return 0;
+    }
+    if (message == WM_WTSSESSION_CHANGE && wparam == WTS_SESSION_LOCK) {
+      key_channels_->OnSessionLocked();
+    }
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =

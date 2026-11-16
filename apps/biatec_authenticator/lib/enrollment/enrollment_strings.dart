@@ -20,6 +20,10 @@ class EnrollStrings {
   String get signInIntroPlain => _get('signInIntroPlain');
   String get noKeyStore => _get('noKeyStore');
   String get noKeyStoreTitle => _get('noKeyStoreTitle');
+  String get noTpm => _get('noTpm');
+  String get noTpmTitle => _get('noTpmTitle');
+  String get noHello => _get('noHello');
+  String get noHelloTitle => _get('noHelloTitle');
   String get signInButton => _get('signInButton');
   String get signInAgainButton => _get('signInAgainButton');
   String get signInCancel => _get('signInCancel');
@@ -75,6 +79,12 @@ class EnrollStrings {
         'Sign in to your Biatec account in the browser. You always sign in again, also if you were signed in before. Nothing from the sign-in is kept on this device.',
     'signInIntroPlain':
         'Sign in to your account in the browser. Nothing from the sign-in is kept on this device.',
+    'noTpmTitle': 'No security chip found',
+    'noTpm':
+        'This computer has no TPM security chip that can hold the keys of this device, or it is turned off in the firmware. Turn it on, or use another computer. Nothing was enrolled.',
+    'noHelloTitle': 'Set up Windows Hello first',
+    'noHello':
+        'Approvals on this computer ask for Windows Hello (face, fingerprint or PIN), and it is not set up. Set it up in the Windows settings (Accounts, Sign-in options), then sign in again. Nothing was enrolled.',
     'noKeyStoreTitle': 'This device cannot be enrolled',
     'noKeyStore':
         'This build of the app has no protected key store on this kind of device, so the device cannot be enrolled here. Nothing was enrolled.',
@@ -137,6 +147,12 @@ class EnrollStrings {
         'Prihláste sa do svojho účtu Biatec v prehliadači. Prihlásite sa vždy znova, aj keď ste už boli prihlásený. Z prihlásenia sa v tomto zariadení nič neukladá.',
     'signInIntroPlain':
         'Prihláste sa do svojho účtu v prehliadači. Z prihlásenia sa v tomto zariadení nič neukladá.',
+    'noTpmTitle': 'Bezpečnostný čip sa nenašiel',
+    'noTpm':
+        'Tento počítač nemá bezpečnostný čip TPM, ktorý by mohol uchovať kľúče tohto zariadenia, alebo je vo firmvéri vypnutý. Zapnite ho alebo použite iný počítač. Nič sa nezaregistrovalo.',
+    'noHelloTitle': 'Najprv nastavte Windows Hello',
+    'noHello':
+        'Schvaľovania na tomto počítači žiadajú Windows Hello (tvár, odtlačok prsta alebo PIN), a to nie je nastavené. Nastavte ho v nastaveniach Windows (Účty, Možnosti prihlásenia) a potom sa prihláste znova. Nič sa nezaregistrovalo.',
     'noKeyStoreTitle': 'Toto zariadenie sa nedá zaregistrovať',
     'noKeyStore':
         'Táto zostava aplikácie nemá na tomto type zariadenia chránené úložisko kľúčov, preto sa tu zariadenie nedá zaregistrovať. Nič sa nezaregistrovalo.',

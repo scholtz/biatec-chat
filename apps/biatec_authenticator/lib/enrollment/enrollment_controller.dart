@@ -84,6 +84,10 @@ class EnrollmentController extends ChangeNotifier {
 
   /// The state error on a platform without a key store (see [enroll]).
   static String get noKeyStoreError => EnrollStrings.en.noKeyStore;
+
+  /// The state errors of a computer with no TPM, and of one where Windows Hello is not set up.
+  static String get noTpmError => EnrollStrings.en.noTpm;
+  static String get noHelloError => EnrollStrings.en.noHello;
   static String get recoveryWrongError => EnrollStrings.en.recoveryWrong;
   static String get recoveryLockedError => EnrollStrings.en.recoveryLocked;
   static String get staleLoginError => EnrollStrings.en.staleLoginAgain;
@@ -350,9 +354,18 @@ class EnrollmentController extends ChangeNotifier {
     }
     recoveryCode = code;
     // A computer that has no key store is told so before the browser opens: a sign-in that can only end in "cannot be enrolled" is not asked of the user. The probe
-    // reads the state of the keys (no prompt, nothing is made); only a missing channel counts, any other failure is left to the enrollment itself.
+    // reads what the key store can do (no prompt, nothing is made); only a missing channel and a missing TPM or Windows Hello count, any other failure is left to the enrollment itself.
     try {
-      await _made<KeysState>(keys.keysState);
+      switch (await _made<KeyStoreStatus>(keys.status)) {
+        case KeyStoreStatus.ready:
+          break;
+        case KeyStoreStatus.noTpm:
+          _set(EnrollmentState(EnrollmentPhase.failed, error: noTpmError));
+          return EnrollResult.failed;
+        case KeyStoreStatus.noHello:
+          _set(EnrollmentState(EnrollmentPhase.failed, error: noHelloError));
+          return EnrollResult.failed;
+      }
     } on _NoKeyStore {
       _set(EnrollmentState(EnrollmentPhase.failed, error: noKeyStoreError));
       return EnrollResult.failed;
@@ -474,7 +487,11 @@ class EnrollmentController extends ChangeNotifier {
     } on PlatformException catch (e) {
       await _discardKeys();
       _set(EnrollmentState(EnrollmentPhase.failed,
-          error: e.code == 'no_biometrics'
+          error: e.code == 'no_tpm'
+              ? noTpmError
+              : e.code == 'no_hello'
+                  ? noHelloError
+                  : e.code == 'no_biometrics'
               ? 'Set up a fingerprint or face on this phone first: approvals '
                   'need one.'
               : e.code == 'insecure_key'

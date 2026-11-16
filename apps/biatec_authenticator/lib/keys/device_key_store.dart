@@ -99,6 +99,18 @@ enum KeysState {
   }
 }
 
+/// What the key store of this computer can do, read before anything is made (a desktop build). A phone is always [ready].
+enum KeyStoreStatus {
+  /// Keys can be made and used.
+  ready,
+
+  /// This computer has no TPM that holds keys (or it is turned off in the firmware).
+  noTpm,
+
+  /// Windows Hello is not set up, so the approval key could not be used: approvals ask for it.
+  noHello,
+}
+
 /// The user dismissed the biometric prompt (or pressed Cancel). Nothing was signed.
 class KeyPromptCancelled implements Exception {
   const KeyPromptCancelled();
@@ -143,6 +155,9 @@ class ApprovalKeysMissing implements Exception {
 ///
 /// The level each key got is reported in [DeviceKey.securityLevel] and [DeviceKey.authBound]; enrollment refuses keys that are not in hardware and an approval key that is not bound.
 abstract class DeviceKeyStore {
+  /// Whether this computer can hold and use the keys, without making any. Phones answer [KeyStoreStatus.ready]; a Windows build says when there is no TPM or no Windows Hello. Throws [MissingPluginException] on a platform that has no key store at all.
+  Future<KeyStoreStatus> status() async => KeyStoreStatus.ready;
+
   /// Creates both key pairs, or returns the existing ones. Throws [PlatformException] with code `insecure_key` when the keystore could not make a hardware key (for the approval key: bound to the biometrics) and `no_biometrics` when no strong biometric is enrolled on the phone.
   Future<DeviceKeys> generateKeys();
 
@@ -184,13 +199,28 @@ String channelUse(KeyUse use) => use == KeyUse.approve ? 'approval' : 'presence'
 
 /// Talks to the native keystore code over a platform channel.
 ///
-/// The native side (`KeystorePlugin` for Android and iOS) implements `generateKeys`, `load` (argument `use`), `keysState`, `signPresence`, `signApproval` (arguments `data`, `title`, `subtitle`), `deleteKeys` and `delete` (argument `alias`, for the single key of old installs). A key is `{x, y, securityLevel, authBound}` (coordinates base64url, level as in [KeySecurityLevel.wire]).
+/// The native side (`KeystorePlugin` for Android and iOS, `key_channels.cpp` for Windows, which also answers `probe`) implements `generateKeys`, `load` (argument `use`), `keysState`, `signPresence`, `signApproval` (arguments `data`, `title`, `subtitle`), `deleteKeys` and `delete` (argument `alias`, for the single key of old installs). A key is `{x, y, securityLevel, authBound}` (coordinates base64url, level as in [KeySecurityLevel.wire]).
 class PlatformDeviceKeyStore implements DeviceKeyStore {
   const PlatformDeviceKeyStore(
       [this._channel =
           const MethodChannel('io.biatec.authenticator/keystore')]);
 
   final MethodChannel _channel;
+
+  @override
+  Future<KeyStoreStatus> status() async {
+    try {
+      final raw = await _channel.invokeMethod<Object?>('probe');
+      final map = (raw as Map).cast<String, Object?>();
+      // Only an explicit yes counts: an answer this app does not understand is not "ready".
+      if (map['tpm'] != true) return KeyStoreStatus.noTpm;
+      return map['hello'] == 'available' ? KeyStoreStatus.ready : KeyStoreStatus.noHello;
+    } on MissingPluginException {
+      // A phone's plugin has no `probe`: its plain `keysState` read says whether there is a key store (and throws MissingPluginException when there is none).
+      await _channel.invokeMethod<Object?>('keysState');
+      return KeyStoreStatus.ready;
+    }
+  }
 
   DeviceKey _parse(Object? raw, KeyUse use) {
     try {

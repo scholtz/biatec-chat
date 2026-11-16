@@ -12,6 +12,9 @@ enum KeySecurityLevel {
   /// Android below API 31: inside secure hardware, but the platform cannot say whether that is StrongBox or the TEE.
   hardware('hardware', 'secure hardware'),
 
+  /// Windows: the key is made and kept by the computer's TPM (the Platform Crypto Provider) and cannot be exported.
+  tpm('tpm', 'TPM security chip'),
+
   /// The key is held in software (no hardware protection).
   software('software', 'software only'),
 

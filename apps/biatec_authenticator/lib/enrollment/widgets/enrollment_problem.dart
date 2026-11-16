@@ -30,6 +30,12 @@ enum EnrollmentProblemKind {
   /// This kind of device has no protected key store (a desktop build): nothing can be enrolled here, and trying again does not help.
   noKeyStore,
 
+  /// This computer has no TPM that holds keys.
+  noTpm,
+
+  /// Windows Hello is not set up on this computer, so approvals could not ask for it.
+  noHello,
+
   /// Anything else; the message says what the server or device said.
   other,
 }
@@ -89,6 +95,14 @@ EnrollmentProblem classifyEnrollmentError(String error) {
   if (error == EnrollmentController.noKeyStoreError) {
     return EnrollmentProblem(EnrollmentProblemKind.noKeyStore,
         strings.noKeyStoreTitle, strings.noKeyStore, strings.signInButton);
+  }
+  if (error == EnrollmentController.noTpmError) {
+    return EnrollmentProblem(EnrollmentProblemKind.noTpm, strings.noTpmTitle,
+        strings.noTpm, strings.signInButton);
+  }
+  if (error == EnrollmentController.noHelloError) {
+    return EnrollmentProblem(EnrollmentProblemKind.noHello, strings.noHelloTitle,
+        strings.noHello, strings.signInButton);
   }
   if (error == EnrollmentController.staleLoginError) {
     return EnrollmentProblem(EnrollmentProblemKind.signInFailed,

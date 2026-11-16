@@ -8,6 +8,9 @@ project(runner LANGUAGES CXX)
 # Any new source files that you add to the application should be added here.
 add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
+  "hello.cpp"
+  "key_channels.cpp"
+  "keystore.cpp"
   "main.cpp"
   "utils.cpp"
   "win32_window.cpp"
@@ -34,6 +37,10 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 # dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
+# T-250: the device keys (CNG: ncrypt, bcrypt), Windows Hello (C++/WinRT: windowsapp) and the session lock (wtsapi32).
+target_link_libraries(${BINARY_NAME} PRIVATE "ncrypt.lib" "bcrypt.lib" "windowsapp.lib" "wtsapi32.lib")
+# C++/WinRT headers do not pass the runner's warnings-as-errors; the file that uses them is the only one relaxed.
+set_source_files_properties("hello.cpp" PROPERTIES COMPILE_OPTIONS "/WX-")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.

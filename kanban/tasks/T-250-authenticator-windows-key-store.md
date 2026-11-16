@@ -5,7 +5,7 @@ status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-248]
-area: ["apps/biatec_authenticator/windows/runner/**", "apps/biatec_authenticator/lib/keys/**", "apps/biatec_authenticator/lib/lock/**", "apps/biatec_authenticator/lib/enrollment/**", "apps/biatec_authenticator/test/keys/**", "apps/biatec_authenticator/test/enrollment/**", "apps/biatec_authenticator/README.md", "docs/authenticator-windows-key-store.md", "docs/required-changes-biatec-oidc.md", "PRODUCT-DESCRIPTION.md"]
+area: ["apps/biatec_authenticator/windows/runner/**", "apps/biatec_authenticator/lib/keys/**", "apps/biatec_authenticator/lib/lock/**", "apps/biatec_authenticator/lib/enrollment/**", "apps/biatec_authenticator/test/keys/**", "apps/biatec_authenticator/test/enrollment/**", "apps/biatec_authenticator/README.md", "docs/authenticator-windows-key-store.md", "apps/biatec_authenticator/windows/tools/**", "PRODUCT-DESCRIPTION.md"]
 parallel: no
 conflicts_with: [T-249, T-251]
 issue: "#423"
@@ -14,7 +14,7 @@ owner: "session-20261116-2350"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-11-16
-updated: 2026-11-16
+updated: 2026-11-17
 ---
 
 # T-250 · Authenticator: a protected key store for Windows
@@ -44,70 +44,53 @@ What Windows offers:
 
 ## Goal
 
-A Windows build enrolls a device whose keys are held by the computer's TPM, an approval needs Windows Hello for each
-signature, and the server can tell a desktop device from a phone.
+A Windows build enrolls a device whose keys are held by the computer's TPM, and an approval needs Windows Hello
+each time.
 
-## Recommended design
+## Design (owner's decision, 2026-11-17)
 
-1. **Presence key:** P-256 in the TPM (Platform Crypto Provider), not exportable, no prompt. Same algorithm as on
-   the phones, so nothing changes on the server.
-2. **Approval key:** a Windows Hello key (`KeyCredentialManager.RequestCreateAsync`, signing with
-   `RequestSignAsync`). This is the only Windows mechanism where the hardware, not the app, enforces "one user
-   gesture for one signature", which is what the product description asks of the approval key. It is RSA-2048, so
-   the server must accept an RS256 approval key for a device (a required change in Biatec OIDC, see step 2 of the
-   plan).
-3. **No software fallback.** No TPM 2.0, Windows Hello not set up, or a Hello key whose attestation does not say
-   TPM: the security level is reported as `software` and the app refuses, with a text that says what to turn on.
-4. **Device class.** The enrollment says `platform: windows`, so the server can tell a desktop device from a phone.
-   Owner's decision (2026-11-16): a desktop device may approve everything a phone may; no lower limits. Windows has
-   no counterpart of Play Integrity or App Attest, so the server cannot prove the app is genuine; that risk is
-   accepted, and the `platform` field keeps a later policy possible without a new enrollment.
+Both keys are **P-256 keys made in the TPM** (Microsoft Platform Crypto Provider, `NCrypt*`), not exportable, so the
+protocol, the server and the backend verifier stay as they are: no new algorithm, no protocol version.
 
-The rejected alternative (owner's decision, 2026-11-16): a P-256 TPM key for approvals with a `UserConsentVerifier`
-prompt in front of it. It needs no server change, but the gesture is checked by the app and not by the hardware.
+- **Presence key:** signs without a prompt, as on the phones.
+- **Approval key:** the same kind of key. The prompt is the Windows Hello check (`UserConsentVerifier`, shown over
+  the app's window) and it is part of the one native `signApproval` call: the key is not used when the check fails
+  or is cancelled, and the Dart side has no way to sign with it without the check.
+- **No software fallback.** No TPM, or Windows Hello not set up: refused with a text that says which, before the
+  browser opens. A key the provider reports as not hardware is refused.
+- **The weaker guarantee, accepted by the owner:** on a phone the hardware itself refuses to use the approval key
+  without the biometric. Here the gesture is checked by the app's own code, so a program running as the same Windows
+  user that bypasses the app (and the prompt) could ask the TPM to sign. The key still cannot be taken off the
+  computer. `docs/authenticator-windows-key-store.md` says this plainly, so a bank can weigh it.
+- The RS256 Windows Hello key (the earlier recommendation, which needed a protocol version) is not built.
+- A desktop device may approve everything a phone may. The enrollment says `platform: windows`.
 
-What a bank will ask, and the answer of this design (this is engineering advice, not a compliance certificate):
-
-| Requirement (PSD2 RTS on strong customer authentication, 2018/389) | Answer |
+| Requirement (PSD2 RTS 2018/389) | What this gives |
 | --- | --- |
-| Possession element that cannot be copied (art. 7) | Keys made in the TPM, not exportable; TPM attestation of the Hello key at enrollment. |
-| Inherence or knowledge element (art. 6, 8) | Windows Hello biometric, or the Hello PIN, which the TPM guards against guessing. |
-| Independence of the elements on a multi-purpose device (art. 9) | Keys live in the TPM, outside the app's process. Weak point: no proof of app integrity on Windows. Mitigation: a signed MSIX package. The owner accepted the rest of the risk (point 4). |
-| Dynamic linking (art. 5) | Unchanged: the approval signature covers the amount and the payee, as on the phones. |
+| Possession that cannot be copied (art. 7) | Keys made in the TPM, not exportable. |
+| Inherence or knowledge (art. 6, 8) | Windows Hello biometric or PIN, checked for every approval. |
+| Independence of the elements (art. 9) | The keys live in the TPM; the gesture is not hardware-bound (above). |
+| Dynamic linking (art. 5) | Unchanged: the signature covers the amount and the payee. |
 
-## Implementation plan
+## Implementation
 
-1. **Spike (half a day, before any other step).** A small C++/WinRT program on a Windows 11 computer with a TPM that
-   (a) makes a P-256 key in the Platform Crypto Provider and signs, (b) makes a Hello key, reads its attestation
-   and signs, (c) confirms the prompt appears for each signature and can carry the app's window as its parent.
-   Also try a P-256 key in the "Microsoft Passport Key Storage Provider" through `NCrypt`: if that works with a
-   gesture for each signature, the approval key stays P-256 and step 2 is not needed. Write the result into
-   `docs/authenticator-windows-key-store.md`.
-2. **Server contract.** Record in `docs/required-changes-biatec-oidc.md`: an RS256 approval key at `POST /devices`
-   and in the approval signature check, the `platform` of a device, and (optional) the check of the Windows
-   attestation. No device class policy: a desktop device approves what a phone approves. Add the same to the mock in this repository so the tests run. Against real
-   Biatec OIDC the Windows enrollment stays off by configuration until the server has it (AGENTS.md).
-3. **Native key store.** `windows/runner/keystore_plugin.{h,cpp}` on the channel `io.biatec.authenticator/keystore`,
-   with the methods the Dart side already calls: `generateKeys`, `generatePresence`, `load`, `keysState`,
-   `signPresence`, `signApproval`, `deleteKeys`, `delete` (the legacy methods answer "not found"). Keys are named
-   per user and per provider. ES256 signatures are returned as raw `r||s`, as on the phones. A cancelled prompt maps
-   to `KeyPromptCancelled`, a removed Hello key to `ApprovalKeyInvalidated`. Work runs off the UI thread.
-4. **Dart side.** `KeySecurityLevel.tpm` (hardware); the public key model learns RSA (`kty: RSA`, its RFC 7638
-   thumbprint); `signApproval` reports its algorithm. Nothing changes for Android and iOS.
-5. **Enrollment.** Probe the key store before the browser opens, so a computer that cannot enroll says so without a
-   sign-in, with separate texts for "no TPM" and "Windows Hello is not set up" (English and Slovak). Keep the
-   fresh-login rule: a desktop device is not enrolled on a login that may come from an existing browser session.
-6. **App lock.** The lock of the secure area uses Windows Hello (`UserConsentVerifier` is enough here: it guards
-   the screen, not a key).
-7. **Packaging.** Note in the README what a release needs: a signed MSIX. Building it is a follow-up task.
-8. **Tests and documents.** Dart unit tests with a fake channel (both key kinds, every error mapping, the probe);
-   the manual checklist; README section; PRODUCT-DESCRIPTION if the approval key rule needs the Windows wording.
+1. `windows/runner`: C++ with CNG (`NCrypt`) for the keys and `IUserConsentVerifierInterop` for the prompt, on a
+   worker thread (a prompt on the UI thread would stop the window), results posted back to the UI thread. The
+   channel `io.biatec.authenticator/keystore` with `generateKeys`, `generatePresence`, `load`, `keysState`,
+   `signPresence`, `signApproval`, `deleteKeys`, `probe` (new, Windows only; others fall back to `keysState`);
+   the legacy methods answer "not found". The channel `io.biatec.authenticator/biometric` (`status`,
+   `authenticate`, and `screenLocked` from the Windows session lock) so the app lock and the single-key approvals
+   use Windows Hello.
+2. Dart: `KeySecurityLevel.tpm`, `DeviceKeyStore.availability()`, the enrollment probe before the browser (no TPM,
+   Windows Hello not set up), texts in English and Slovak, the key protection card.
+3. Tests: Dart unit tests with a fake channel for every method and error mapping; the build; a manual checklist
+   in `docs/authenticator-windows-key-store.md` (native code is not run by the test suite).
 
 ## Scope
 
-- In: the eight steps above.
-- Out: Linux and macOS key stores; building and signing the MSIX; the server changes themselves (other repository);
-  verification of the Windows attestation on the server.
+- In: the above, the document, the README section, the PRODUCT-DESCRIPTION wording of the device keys on Windows.
+- Out: Linux and macOS key stores; building and signing the MSIX; verification of a Windows attestation on the
+  server (Windows has no counterpart of Play Integrity).
 
 ## Parallel work
 
@@ -115,18 +98,14 @@ Parallel work possible: **no**. It shares `lib/enrollment/**` with T-249 and mos
 
 ## Acceptance criteria
 
-- [ ] The spike's result is written down, and the approval key design follows it.
-- [ ] On a Windows computer with a TPM the enrollment completes against the mock after the sign-in, and the key
-      protection card says the keys are in the TPM.
+- [ ] On a Windows computer with a TPM and Windows Hello the enrollment completes against the mock after the
+      sign-in, and the key protection card says the keys are in the TPM (manual checklist).
 - [ ] A computer without a TPM, or without Windows Hello, is refused before the browser opens, with a text that
       says which one is missing; no key is kept.
-- [ ] An approval asks for Windows Hello for each signature, and a cancelled prompt signs nothing.
-- [ ] The private keys cannot be exported (checked against the provider's key properties), and a Hello key without
-      a TPM attestation is refused.
-- [ ] A desktop device is not enrolled on a login that may come from an existing browser session: either the server
-      proves the login fresh (`auth_time`, the in-app login) or the enrollment stays off, and the hand-off says which.
-- [ ] `docs/required-changes-biatec-oidc.md` holds the server changes, and the Windows enrollment is off by
-      configuration against a server that lacks them.
+- [ ] An approval asks for Windows Hello, and a cancelled or failed prompt signs nothing.
+- [ ] The private keys cannot be exported, and a key the provider does not report as hardware is refused.
+- [ ] The app lock and the approvals of the single-key mode use Windows Hello on Windows.
+- [ ] The weaker guarantee is written down in `docs/authenticator-windows-key-store.md` and PRODUCT-DESCRIPTION.
 - [ ] `flutter build windows` builds; `flutter test` passes.
 
 ## Verification
@@ -135,12 +114,8 @@ Parallel work possible: **no**. It shares `lib/enrollment/**` with T-249 and mos
     flutter test
     flutter build windows
 
-Then the manual checklist on a Windows computer with Windows Hello set up.
-
-## Decisions of the owner (2026-11-16)
-
-1. The approval key on Windows is an RS256 Windows Hello key. The server change in Biatec OIDC is needed.
-2. A desktop device may approve everything.
+Then the manual checklist in `docs/authenticator-windows-key-store.md` on a Windows computer with a TPM and
+Windows Hello.
 
 ## Hand-off
 
@@ -155,3 +130,4 @@ Then the manual checklist on a Windows computer with Windows Hello set up.
 - 2026-11-16 15:00 · session-20261116-0900 · backlog → backlog · owner decided: RS256 Windows Hello approval key; a desktop device may approve everything
 - 2026-11-16 23:50 · scholtz · taken · status stays backlog
 - 2026-11-16 23:50 · scholtz · backlog → in-progress · claimed; branch task/T-250
+- 2026-11-17 09:00 · scholtz · in-progress · owner decided: P-256 TPM keys with a Windows Hello prompt checked by the app (no protocol change); the RS256 design is dropped

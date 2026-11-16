@@ -42,7 +42,7 @@ class WaitingAuth extends AuthClient {
 /// A platform with no native key store: the channel has no implementation.
 class NoKeyStore extends FakeTwoKeyStore {
   @override
-  Future<KeysState> keysState() => throw MissingPluginException('no keystore');
+  Future<KeyStoreStatus> status() => throw MissingPluginException('no keystore');
 
   @override
   Future<DeviceKey> generatePresenceKey() => throw MissingPluginException('no keystore');
@@ -51,7 +51,16 @@ class NoKeyStore extends FakeTwoKeyStore {
 /// A key store whose probe fails for a reason that is not a missing channel.
 class FlakyProbe extends FakeTwoKeyStore {
   @override
-  Future<KeysState> keysState() => throw StateError('keystore busy');
+  Future<KeyStoreStatus> status() => throw StateError('keystore busy');
+}
+
+/// A Windows computer where the probe says what is missing.
+class ProbedKeyStore extends FakeTwoKeyStore {
+  ProbedKeyStore(this.answer);
+  final KeyStoreStatus answer;
+
+  @override
+  Future<KeyStoreStatus> status() async => answer;
 }
 
 class TokenAuth extends AuthClient {
@@ -84,6 +93,32 @@ void main() {
     expect(problem.kind, EnrollmentProblemKind.noKeyStore);
     expect(problem.title, 'This device cannot be enrolled');
   });
+
+  for (final (status, error, kind, title) in [
+    (KeyStoreStatus.noTpm, EnrollmentController.noTpmError, EnrollmentProblemKind.noTpm, 'No security chip found'),
+    (KeyStoreStatus.noHello, EnrollmentController.noHelloError, EnrollmentProblemKind.noHello, 'Set up Windows Hello first'),
+  ]) {
+    test('a computer where the probe says $status is told so before the browser opens, and nothing is made', () async {
+      final config = AppConfig.resolve('', release: true, windows: true);
+      final auth = TokenAuth();
+      final keys = ProbedKeyStore(status);
+      final c = EnrollmentController(
+        keys: keys,
+        store: ObservableEnrollmentStore(MemoryEnrollmentStore()),
+        client: OidcEnrollmentClient(baseUrl: 'http://oidc'),
+        twoKeys: true,
+        auth: auth,
+        loginRequest: AuthRequest.forConfig(config),
+      );
+      expect(await c.signInAndEnroll(), EnrollResult.failed);
+      expect(auth.signIns, 0);
+      expect(c.state.error, error);
+      final problem = classifyEnrollmentError(c.state.error!);
+      expect(problem.kind, kind);
+      expect(problem.title, title);
+      expect(keys.keys, isNull, reason: 'no key was made');
+    });
+  }
 
   test('a probe that fails for another reason than a missing key store does not stop the sign-in', () async {
     final config = AppConfig.resolve('', release: true, windows: true);
