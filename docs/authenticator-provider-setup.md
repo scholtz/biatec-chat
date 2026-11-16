@@ -58,6 +58,11 @@ A desktop app cannot receive an app link, so it listens on the loopback interfac
 | Redirect URI | `http://localhost:42815` |
 | Scopes | `openid` |
 
+**For a new client prefer `http://127.0.0.1:42815`** and build with `OIDC_REDIRECT_URI=http://127.0.0.1:42815`
+(RFC 8252, section 8.3). `localhost` is a name: a browser that remembers "always use https" for `localhost` (a
+developer machine that once ran a local https server) turns the redirect into `https` and the sign-in never arrives.
+The default stays `http://localhost:42815` because that is what stage has registered.
+
 The redirect must be registered exactly as the build has it (`OIDC_REDIRECT_URI`, default `http://localhost:42815`).
 Rules the app enforces on it: scheme `http`, host `localhost`, `127.0.0.1` or `[::1]`, an explicit port from 1024 up,
 no credentials, no query, no fragment. A path is allowed (`http://127.0.0.1:50123/callback`). If the server matches
@@ -169,7 +174,7 @@ Limits to know:
 2. Open in a browser (one line): `https://<host>/authorize?response_type=code&client_id=<client>&redirect_uri=http%3A%2F%2Flocalhost%3A42815&scope=openid&state=<43 or more characters>&nonce=n&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256`.
    The login page must appear. An error page here means the client, the redirect or PKCE is not set up.
 3. Build, start the app, tap **Get started**, then **Sign in**. The browser opens; after the login the page says
-   "You are signed in". On a phone the app then shows the next step; on a desktop build it reports the missing key
+   "The sign-in was received". On a phone the app then shows the next step; on a desktop build it reports the missing key
    store (section 6).
 4. Automated checks of the app side: `flutter test test/enrollment/loopback_auth_client_test.dart test/enrollment/desktop_login_test.dart`.
 
@@ -180,5 +185,7 @@ Messages the app shows and what they mean:
 | "The discovery document names another issuer" | `issuer` in the discovery document is not `OIDC_BASE_URL`. |
 | "The provider refused the sign-in (invalid_scope)" and similar | The authorization endpoint answered with that error code: check the client's scopes and redirect. |
 | "Port 42815 on this computer is in use" | Another program holds the port; close it, or register and build another port. |
+| "Port 42815 on this computer cannot be opened for the sign-in" | The system refused the port for another reason, for example a reserved range (Hyper-V, WSL, Docker: `netsh interface ipv4 show excludedportrange protocol=tcp`). Register and build another port. |
+| The browser shows a connection error on `https://localhost:42815` | The browser upgraded the redirect to https. Use the `127.0.0.1` redirect. |
 | "The ID token is not for this sign-in" | The server did not copy `nonce` into the ID token. |
 | "The connection to <host> could not be verified" | The server's key is not one of the build's pins. |

@@ -167,6 +167,8 @@ void main() {
       expect(await p.get('/other?code=evil&state=$state'), 400);
       expect(await p.get('/?code=evil&state=$state', method: 'POST'), 400);
       expect(await p.get('/favicon.ico'), 400);
+      // A query that cannot be decoded is answered, not left hanging.
+      expect(await p.get('/?state=%ZZ'), 400);
       expect(await p.get('/?code=good&state=$state'), 200);
       // The answer is taken once.
       await p.get('/?code=late&state=$state').then((s) => expect(s, 400), onError: (_) {});
@@ -196,7 +198,7 @@ void main() {
     }
     try {
       final p = Provider();
-      await expectLater(clientOf(p).signIn(request()), failsWith('in use'));
+      await expectLater(clientOf(p).signIn(request()), failsWith('Port 42817'));
       expect(p.authorize, isNull);
     } finally {
       await busy.close();
@@ -297,7 +299,7 @@ void main() {
     final busy = await ServerSocket.bind(InternetAddress.loopbackIPv4, 42817);
     try {
       final p = Provider();
-      await expectLater(clientOf(p).signIn(request()), failsWith('in use'));
+      await expectLater(clientOf(p).signIn(request()), failsWith('Port 42817'));
       expect(p.authorize, isNull);
     } finally {
       await busy.close();
@@ -412,6 +414,23 @@ void main() {
               }),
             }),
         'earlier sign-in'));
+
+    test('whose login is recent by the provider\'s clock is accepted on a computer whose clock is wrong', () async {
+      final p = Provider(
+          tokenAnswer: (f, a) => ok({
+                'access_token': 'fresh',
+                'id_token': idToken({
+                  'iss': issuer,
+                  'aud': clientId,
+                  'nonce': a.queryParameters['nonce'],
+                  'auth_time': DateTime.now().millisecondsSinceEpoch ~/ 1000 - 3600,
+                }),
+              }));
+      // The corrected time is an hour back: this computer's clock runs an hour fast.
+      final c = LoopbackAuthClient(
+          http: p.client, openBrowser: p.open, now: () => DateTime.now().subtract(const Duration(hours: 1)));
+      expect(await c.signIn(request()), 'fresh');
+    });
 
     test('whose login is recent is accepted', () async {
       final p = Provider(

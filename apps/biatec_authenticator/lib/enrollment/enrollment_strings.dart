@@ -19,6 +19,7 @@ class EnrollStrings {
   String get signInIntro => _get('signInIntro');
   String get signInIntroPlain => _get('signInIntroPlain');
   String get noKeyStore => _get('noKeyStore');
+  String get noKeyStoreTitle => _get('noKeyStoreTitle');
   String get signInButton => _get('signInButton');
   String get signInAgainButton => _get('signInAgainButton');
   String get signInCancel => _get('signInCancel');
@@ -74,6 +75,7 @@ class EnrollStrings {
         'Sign in to your Biatec account in the browser. You always sign in again, also if you were signed in before. Nothing from the sign-in is kept on this device.',
     'signInIntroPlain':
         'Sign in to your account in the browser. Nothing from the sign-in is kept on this device.',
+    'noKeyStoreTitle': 'This device cannot be enrolled',
     'noKeyStore':
         'This build of the app has no protected key store on this kind of device, so the device cannot be enrolled here. Nothing was enrolled.',
     'signInButton': 'Sign in with Biatec',
@@ -135,6 +137,7 @@ class EnrollStrings {
         'Prihláste sa do svojho účtu Biatec v prehliadači. Prihlásite sa vždy znova, aj keď ste už boli prihlásený. Z prihlásenia sa v tomto zariadení nič neukladá.',
     'signInIntroPlain':
         'Prihláste sa do svojho účtu v prehliadači. Z prihlásenia sa v tomto zariadení nič neukladá.',
+    'noKeyStoreTitle': 'Toto zariadenie sa nedá zaregistrovať',
     'noKeyStore':
         'Táto zostava aplikácie nemá na tomto type zariadenia chránené úložisko kľúčov, preto sa tu zariadenie nedá zaregistrovať. Nič sa nezaregistrovalo.',
     'signInButton': 'Prihlásiť sa cez Biatec',

@@ -159,7 +159,7 @@ class AppConfig {
           redirectUri: _definedRedirect);
 
   /// Hosts that mean "this machine" for a developer: plain http is acceptable to them in a build that is not a release build.
-  static const localHosts = {'localhost', '127.0.0.1', '::1', '10.0.2.2'};
+  static const localHosts = {...loopbackRedirectHosts, '10.0.2.2'};
 
   /// [release] is true for anything that is not a debug build (release and profile builds): those only accept https, and have no mock default.
   factory AppConfig.resolve(String defined,

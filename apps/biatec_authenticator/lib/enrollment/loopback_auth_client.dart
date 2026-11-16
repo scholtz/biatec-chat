@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
+import '../codes/server_clock.dart';
 import '../config.dart';
 import '../security/pinning/pinned_http.dart' show PinningException;
 import 'auth_client.dart';
@@ -30,13 +31,21 @@ class LoopbackAuthClient extends AuthClient {
     BrowserOpener? openBrowser,
     this.timeout = const Duration(minutes: 5),
     Random? random,
+    DateTime Function()? now,
   })  : _http = http,
         _openBrowser = openBrowser ?? openSystemBrowser,
-        _random = random ?? Random.secure();
+        _random = random ?? Random.secure(),
+        _now = now ?? _serverNow;
 
   final http.Client Function() _http;
   final BrowserOpener _openBrowser;
   final Random _random;
+
+  /// The time `auth_time` is compared with: this computer's clock corrected by what the provider's answers said (the pinned client reports their `Date`), so a
+  /// clock that is wrong does not turn a login of just now into an old one.
+  final DateTime Function() _now;
+
+  static DateTime _serverNow() => DateTime.now().add(ServerClock.instance.offset ?? Duration.zero);
 
   /// How long the browser has to come back. Past it the listener is closed and the sign-in fails.
   final Duration timeout;
@@ -214,8 +223,10 @@ class LoopbackAuthClient extends AuthClient {
         for (final s in servers) {
           await s.close(force: true);
         }
-        throw LoginFailed(
-            'Port ${redirect.port} on this computer is in use (${e.message}). Close the program that uses it and sign in again.');
+        // "In use" is said only when that is what the system said (Windows 10048, Linux 98, macOS 48); a reserved port or a missing address is named as it is.
+        throw LoginFailed(const {10048, 98, 48}.contains(e.osError?.errorCode)
+            ? 'Port ${redirect.port} on this computer is in use. Close the program that uses it and sign in again.'
+            : 'Port ${redirect.port} on this computer cannot be opened for the sign-in (${e.osError?.message ?? e.message}).');
       }
     }
     return servers;
@@ -233,7 +244,14 @@ class LoopbackAuthClient extends AuthClient {
 
     Future<void> handle(HttpRequest q) async {
       try {
-        final p = q.uri.queryParameters;
+        final Map<String, String> p;
+        try {
+          p = q.uri.queryParameters;
+        } on Object {
+          // A query that cannot be decoded is not the answer; it is refused like any other stray request.
+          await _page(q, HttpStatus.badRequest, _strayPage);
+          return;
+        }
         final path = q.uri.path.isEmpty ? '/' : q.uri.path;
         final expected = redirect.path.isEmpty ? '/' : redirect.path;
         final mine = q.method == 'GET' &&
@@ -301,7 +319,8 @@ class LoopbackAuthClient extends AuthClient {
     await res.close();
   }
 
-  static const _donePage = 'You are signed in. Close this window and go back to Biatec Authenticator.';
+  // Not "you are signed in": the app still has to redeem the code and check the answer, and says the outcome itself.
+  static const _donePage = 'The sign-in was received. Go back to Biatec Authenticator to continue. You can close this window.';
   static const _failedPage = 'The sign-in was not completed. Close this window and go back to Biatec Authenticator.';
   static const _strayPage = 'This address is used by Biatec Authenticator while it signs in. Nothing was done.';
 
@@ -327,7 +346,7 @@ class LoopbackAuthClient extends AuthClient {
     }
     final idToken = json['id_token'];
     if (idToken is String && idToken.isNotEmpty) {
-      _checkIdToken(idToken, issuer: e.issuer, clientId: r.clientId, nonce: nonce);
+      _checkIdToken(idToken, issuer: e.issuer, clientId: r.clientId, nonce: nonce, now: _now());
     } else if (e.issuer != null) {
       // A real provider answers an `openid` login with an ID token; without one the answer cannot be tied to this sign-in's nonce.
       throw const LoginFailed('The provider gave no ID token.');
@@ -337,7 +356,8 @@ class LoopbackAuthClient extends AuthClient {
 
   /// The ID token came straight from the token endpoint over the pinned connection, so its signature adds nothing (OpenID Connect Core 3.1.3.7, rule 6); what ties it to
   /// THIS sign-in is checked: the nonce, the issuer and the audience.
-  static void _checkIdToken(String jwt, {required String? issuer, required String clientId, required String nonce}) {
+  static void _checkIdToken(String jwt,
+      {required String? issuer, required String clientId, required String nonce, required DateTime now}) {
     final Map<String, Object?> claims;
     try {
       final parts = jwt.split('.');
@@ -356,7 +376,7 @@ class LoopbackAuthClient extends AuthClient {
     // A server that says when the user authenticated must say "just now": the login asks for one (`max_age=0`). One that does not say cannot be checked here.
     final authTime = claims['auth_time'];
     if (authTime is num &&
-        DateTime.now().millisecondsSinceEpoch / 1000 - authTime > maxLoginAgeSeconds) {
+        now.millisecondsSinceEpoch / 1000 - authTime > maxLoginAgeSeconds) {
       throw const LoginFailed('The provider used an earlier sign-in. Sign out in the browser and sign in again.');
     }
     final aud = claims['aud'];

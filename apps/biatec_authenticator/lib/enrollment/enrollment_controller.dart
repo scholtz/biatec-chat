@@ -118,6 +118,8 @@ class EnrollmentController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    // A desktop sign-in that waits for the browser is ended with its screen: the listener is closed and no code is redeemed for a controller that is gone.
+    if (_waitingForBrowser) auth?.cancel();
     super.dispose();
   }
 

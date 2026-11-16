@@ -8,6 +8,7 @@ import 'package:biatec_authenticator/enrollment/enrollment_screen.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/loopback_auth_client.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
+import 'package:biatec_authenticator/enrollment/widgets/enrollment_problem.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/theme.dart';
 import 'package:flutter/material.dart';
@@ -63,6 +64,27 @@ void main() {
     expect(await c.signInAndEnroll(), EnrollResult.failed);
     expect(c.state.error, EnrollmentController.noKeyStoreError);
     expect(c.state.error, isNot(contains('access-token')));
+    final problem = classifyEnrollmentError(c.state.error!);
+    expect(problem.kind, EnrollmentProblemKind.noKeyStore);
+    expect(problem.title, 'This device cannot be enrolled');
+  });
+
+  test('a sign-in that waits for the browser is stopped when its controller is disposed', () async {
+    final auth = WaitingAuth();
+    final config = AppConfig.resolve('', release: true, windows: true);
+    final c = EnrollmentController(
+      keys: FakeTwoKeyStore(),
+      store: ObservableEnrollmentStore(MemoryEnrollmentStore()),
+      client: OidcEnrollmentClient(baseUrl: 'http://oidc'),
+      twoKeys: false,
+      auth: auth,
+      loginRequest: AuthRequest.forConfig(config),
+    );
+    final result = c.signInAndEnroll();
+    await Future<void>.delayed(Duration.zero);
+    c.dispose();
+    expect(auth.cancels, 1);
+    expect(await result, EnrollResult.ignored);
   });
 
   group('configuration of a desktop build', () {

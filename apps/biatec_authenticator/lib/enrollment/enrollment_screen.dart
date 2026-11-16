@@ -355,7 +355,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
         FilledButton(
           key: const Key('sign-in-button'),
           // Off while the browser is open or the device is asked, so a second tap does not start a second sign-in.
-          onPressed: busy
+          // Off too on a device with no key store: signing in again would end the same way.
+          onPressed: busy || problem?.kind == EnrollmentProblemKind.noKeyStore
               ? null
               : () => again
                   ? _checkAgain()
