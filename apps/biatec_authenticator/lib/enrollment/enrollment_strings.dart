@@ -19,6 +19,7 @@ class EnrollStrings {
   String get signInIntro => _get('signInIntro');
   String get signInButton => _get('signInButton');
   String get signInAgainButton => _get('signInAgainButton');
+  String get signInCancel => _get('signInCancel');
   String get signingIn => _get('signingIn');
   String get staleLoginNotice => _get('staleLoginNotice');
   String get staleLoginAgain => _get('staleLoginAgain');
@@ -68,9 +69,10 @@ class EnrollStrings {
 
   static const en = EnrollStrings._({
     'signInIntro':
-        'Sign in to your Biatec account in the browser. You always sign in again, also if you were signed in before. Nothing from the sign-in is kept on this phone.',
+        'Sign in to your Biatec account in the browser. You always sign in again, also if you were signed in before. Nothing from the sign-in is kept on this device.',
     'signInButton': 'Sign in with Biatec',
     'signInAgainButton': 'Sign in again',
+    'signInCancel': 'Stop waiting',
     'signingIn': 'Waiting for the browser...',
     'staleLoginNotice': 'That sign-in was too old. Sign in again.',
     'staleLoginAgain':
@@ -124,9 +126,10 @@ class EnrollStrings {
 
   static const sk = EnrollStrings._({
     'signInIntro':
-        'Prihláste sa do svojho účtu Biatec v prehliadači. Prihlásite sa vždy znova, aj keď ste už boli prihlásený. Z prihlásenia sa v tomto telefóne nič neukladá.',
+        'Prihláste sa do svojho účtu Biatec v prehliadači. Prihlásite sa vždy znova, aj keď ste už boli prihlásený. Z prihlásenia sa v tomto zariadení nič neukladá.',
     'signInButton': 'Prihlásiť sa cez Biatec',
     'signInAgainButton': 'Prihlásiť sa znova',
+    'signInCancel': 'Prestať čakať',
     'signingIn': 'Čakám na prehliadač...',
     'staleLoginNotice': 'Prihlásenie bolo príliš staré. Prihláste sa znova.',
     'staleLoginAgain':

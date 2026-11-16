@@ -283,8 +283,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     ];
   }
 
-  /// The sign-in button exists when the build has the in-app login AND the controller can do it (it is built with the browser client then).
-  bool get _inApp => widget.config.inAppLogin && _controller.auth != null;
+  /// The sign-in button exists when the build has the browser login AND the controller can do it (it is built with the browser client then).
+  bool get _inApp => widget.config.signIn && _controller.auth != null;
 
   String? get _recoveryText {
     final t = _recoveryCode.text.trim();
@@ -331,7 +331,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
           message: s.notice!,
         ),
       ],
-      if (inApp) ...[
+      // The recovery code is a feature of the in-app login's server side (T-242); a plain browser login has none to send.
+      if (inApp && widget.config.inAppLogin) ...[
         const SizedBox(height: AppSpacing.m),
         TextField(
           key: const Key('recovery-code-field'),
@@ -346,6 +347,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
             helperMaxLines: 3,
           ),
         ),
+      ],
+      if (inApp) ...[
         const SizedBox(height: AppSpacing.m),
         FilledButton(
           key: const Key('sign-in-button'),
@@ -363,6 +366,15 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
                       ? strings.signInAgainButton
                       : problem?.actionLabel ?? strings.signInButton),
         ),
+        // The desktop login waits for the browser to come back; closing the browser tells the app nothing, so the wait can be ended here.
+        if (_controller.canCancelSignIn) ...[
+          const SizedBox(height: AppSpacing.s),
+          TextButton(
+            key: const Key('sign-in-cancel'),
+            onPressed: _controller.cancelSignIn,
+            child: Text(strings.signInCancel),
+          ),
+        ],
       ],
       if (paste) ...[
         const SizedBox(height: AppSpacing.m),

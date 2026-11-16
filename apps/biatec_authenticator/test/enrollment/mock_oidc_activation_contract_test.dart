@@ -33,7 +33,7 @@ class _Pass implements BiometricGate {
 }
 
 /// The system browser, played by Dart: it makes the authorization request the app makes (from the same [AuthRequest]), takes the code out of the redirect and exchanges it with a PKCE verifier. It is the mock's own login, so a token the mock hands out is what the app would get.
-class _MockBrowser implements AuthClient {
+class _MockBrowser extends AuthClient {
   _MockBrowser(this.base);
 
   final String base;
@@ -84,7 +84,7 @@ class _MockBrowser implements AuthClient {
   }
 }
 
-class _Script implements AuthClient {
+class _Script extends AuthClient {
   _Script(this.tokens);
   final List<String> tokens;
   int calls = 0;

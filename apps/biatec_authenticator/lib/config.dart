@@ -18,6 +18,7 @@ class AppConfig {
       this.deviceChannel = false,
       this.twoKeys = false,
       this.inAppLogin = false,
+      this.browserLogin = false,
       this.trustSettings = false,
       this.relyingParties = false,
       this.oidcClientId = defaultOidcClientId,
@@ -39,6 +40,13 @@ class AppConfig {
   static const String appLinkRedirectUri = 'https://oidc.biatec.io$appLinkPath';
   static const String debugRedirectUri = 'io.biatec.authenticator:/oauth2redirect';
 
+  /// The redirect of a desktop build (Windows, Linux, macOS): the app listens on the loopback interface for the answer of the system browser (RFC 8252, section 7.3).
+  /// A desktop app cannot receive an app link, so this is its only kind of redirect; the provider registers exactly this URI for the client.
+  static const String desktopRedirectUri = 'http://localhost:42815';
+
+  /// The public client of the desktop app at stage Biatec OIDC (no secret, PKCE, redirect [desktopRedirectUri]).
+  static const String stageDesktopClientId = 'biatec-authenticator-stage-app';
+
   /// Default points at the mock Biatec OIDC. 10.0.2.2 is the host machine
   /// seen from the Android emulator.
   static const String mockOidcBaseUrl = 'http://10.0.2.2:5080/mock-oidc';
@@ -54,6 +62,9 @@ class AppConfig {
   static const bool _definedTwoKeys = bool.fromEnvironment('TWO_KEY_DEVICE');
 
   static const bool _definedInAppLogin = bool.fromEnvironment('IN_APP_LOGIN');
+
+  static const bool _hasBrowserLogin = bool.hasEnvironment('BROWSER_LOGIN');
+  static const bool _definedBrowserLogin = bool.fromEnvironment('BROWSER_LOGIN');
 
   static const bool _definedTrustSettings = bool.fromEnvironment('TRUST_SETTINGS');
 
@@ -94,6 +105,12 @@ class AppConfig {
   /// `--dart-define=IN_APP_LOGIN=true` says otherwise. Off, the app keeps the enrollment it had (a pasted login token, debug builds only) and offers no sign-in and no activation.
   final bool inAppLogin;
 
+  /// Whether the connect step signs the user in with the system browser (T-248): authorization code with PKCE, and the access token of that login enrolls the device. It needs
+  /// nothing of [inAppLogin] from the server, only a public client with this app's redirect, so it works against today's Biatec OIDC. On whenever [inAppLogin] is; on by
+  /// default for a desktop build against stage Biatec OIDC (the client [stageDesktopClientId] exists there); otherwise `--dart-define=BROWSER_LOGIN=true`.
+  /// `BROWSER_LOGIN=false` turns the desktop default off.
+  final bool browserLogin;
+
   /// Whether Biatec OIDC has the user-held trust settings (T-245, issues 27 and 30 of AlgorandGoogleDriveAccount): the user's own threshold with no ceiling, `ask_on_test_networks`, `block_unproven_clients`, per service
   /// `label`, `trusted_applications_add` / `_remove`, `unlink`, `linked` and `remember` on a receipt, and a refusal of a loosening that is not signed (`403 consent_required`). Real Biatec OIDC has none yet, so this is on
   /// for the mock only until `--dart-define=TRUST_SETTINGS=true` says otherwise. Off, Settings keeps the one threshold and the block switch of before, and there is no Linked services screen and no
@@ -121,7 +138,10 @@ class AppConfig {
 
   /// Whether the enrollment screen has the field to paste a login token. Debug builds only (`release` is `!kDebugMode`, so the field is not compiled into a
   /// release build), and only while there is no in-app login against a real Biatec OIDC: the mock always has it, because its seeded `login-*` tokens are for tests.
-  bool get pasteLoginToken => !release && (isMock || !inAppLogin);
+  bool get pasteLoginToken => !release && (isMock || !signIn);
+
+  /// The connect step has the sign-in button: the system browser login is on ([browserLogin], or [inAppLogin], which includes it).
+  bool get signIn => inAppLogin || browserLogin;
 
   /// Activation of a new device by an existing one needs the in-app login and the two keys (the pairing code covers both).
   bool get activationByDevice => inAppLogin && twoKeys;
@@ -132,6 +152,7 @@ class AppConfig {
           deviceChannel: _definedDeviceChannel,
           twoKeys: _definedTwoKeys,
           inAppLogin: _definedInAppLogin,
+          browserLogin: _hasBrowserLogin ? _definedBrowserLogin : null,
           trustSettings: _definedTrustSettings,
           relyingParties: _definedRelyingParties,
           clientId: _definedClientId,
@@ -146,14 +167,20 @@ class AppConfig {
       bool deviceChannel = false,
       bool twoKeys = false,
       bool inAppLogin = false,
+      bool? browserLogin,
       bool trustSettings = false,
       bool relyingParties = false,
       String clientId = '',
       String redirectUri = '',
       bool? release,
-      bool? windows}) {
+      bool? windows,
+      bool? desktop}) {
     final isRelease = release ?? !kDebugMode;
     final isWindows = windows ?? defaultTargetPlatform == TargetPlatform.windows;
+    final isDesktop = desktop ??
+        (isWindows ||
+            defaultTargetPlatform == TargetPlatform.linux ||
+            defaultTargetPlatform == TargetPlatform.macOS);
     var url = defined.trim().replaceAll(RegExp(r'/+$'), '');
     // A plain `flutter build windows` is a release build and cannot read a defines file, so the desktop build
     // defaults to stage Biatec OIDC. Mobile release builds still need an explicit URL.
@@ -170,10 +197,11 @@ class AppConfig {
           deviceChannel: true,
           twoKeys: true,
           inAppLogin: true,
+          browserLogin: true,
           trustSettings: true,
           relyingParties: true,
-          oidcClientId: _clientId(clientId),
-          redirectUri: _redirect(redirectUri, false, null, true),
+          oidcClientId: _clientId(clientId, false),
+          redirectUri: _redirect(redirectUri, false, null, true, isDesktop),
           release: false);
     }
     // The mock is the same endpoint however the URL is spelled (scheme and host are case-insensitive).
@@ -183,6 +211,11 @@ class AppConfig {
           'The mock Biatec OIDC is not available in a release build.');
     }
     if (!isMock) validateUrl(url, release: isRelease);
+    // The desktop client exists at stage Biatec OIDC, so a desktop build against stage signs in with the browser unless the build says no.
+    final stageDesktop = isDesktop &&
+        !isMock &&
+        Uri.parse(url).host.toLowerCase() == Uri.parse(stageOidcBaseUrl).host;
+    final login = isMock || inAppLogin || (browserLogin ?? stageDesktop);
     return AppConfig(
         oidcBaseUrl: isMock ? mockOidcBaseUrl : url,
         isMock: isMock,
@@ -190,16 +223,17 @@ class AppConfig {
         deviceChannel: isMock || deviceChannel,
         twoKeys: isMock || twoKeys,
         inAppLogin: isMock || inAppLogin,
+        browserLogin: login,
         trustSettings: isMock || trustSettings,
         relyingParties: isMock || relyingParties,
-        oidcClientId: _clientId(clientId),
-        redirectUri: _redirect(redirectUri, isRelease, url, isMock || inAppLogin),
+        oidcClientId: _clientId(clientId, stageDesktop),
+        redirectUri: _redirect(redirectUri, isRelease, url, login, isDesktop),
         release: isRelease);
   }
 
-  static String _clientId(String defined) {
+  static String _clientId(String defined, bool stageDesktop) {
     final id = defined.trim();
-    if (id.isEmpty) return defaultOidcClientId;
+    if (id.isEmpty) return stageDesktop ? stageDesktopClientId : defaultOidcClientId;
     if (!RegExp(r'^[A-Za-z0-9._~-]{1,128}$').hasMatch(id)) {
       throw const ConfigException('OIDC_CLIENT_ID is not a valid client id.');
     }
@@ -209,8 +243,19 @@ class AppConfig {
   /// The redirect: what is defined, else the app link on the host of [baseUrl] (release) or the custom scheme (debug). A release build accepts an https redirect only,
   /// so the custom scheme, which any app may register, is never used outside a debug build, and the host must be one that has app links ([appLinkHosts]); with the
   /// in-app login on ([login]) anything else is a [ConfigException], with it off the redirect is never used and the production link stands in.
-  static String _redirect(String defined, bool release, String? baseUrl, bool login) {
+  ///
+  /// A desktop build ([desktop]) is different: it cannot receive an app link or a custom scheme, so its redirect is a loopback address the app itself listens on
+  /// ([isLoopbackRedirect]), [desktopRedirectUri] unless defined, in a release build too. Anything else with the login on is a [ConfigException].
+  static String _redirect(String defined, bool release, String? baseUrl, bool login, bool desktop) {
     final value = defined.trim();
+    if (desktop) {
+      if (value.isEmpty) return desktopRedirectUri;
+      if (login && !isLoopbackRedirect(value)) {
+        throw const ConfigException(
+            'OIDC_REDIRECT_URI of a desktop build must be a loopback address with a port, for example http://localhost:42815 (no query, no fragment).');
+      }
+      return value;
+    }
     if (value.isNotEmpty) {
       final uri = Uri.tryParse(value);
       if (uri == null || uri.scheme.isEmpty || uri.hasFragment) {
@@ -234,6 +279,23 @@ class AppConfig {
           'The in-app login of a release build needs an app link, and only ${appLinkHosts.join(' and ')} have one (the manifest and the entitlements list them); OIDC_BASE_URL is on $host.');
     }
     return appLinkRedirectUri;
+  }
+
+  /// The hosts a loopback redirect may name. `localhost` is accepted because Biatec OIDC matches the registered redirect by its exact host.
+  static const loopbackRedirectHosts = {'localhost', '127.0.0.1', '::1'};
+
+  /// Whether [redirect] is one the desktop login can listen on: plain `http` (the answer never leaves this machine), a loopback host, an explicit port from 1024 up, and
+  /// no credentials, query or fragment.
+  static bool isLoopbackRedirect(String redirect) {
+    final uri = Uri.tryParse(redirect);
+    return uri != null &&
+        uri.scheme == 'http' &&
+        loopbackRedirectHosts.contains(uri.host.toLowerCase()) &&
+        uri.hasPort &&
+        uri.port >= 1024 &&
+        uri.userInfo.isEmpty &&
+        !uri.hasQuery &&
+        !uri.hasFragment;
   }
 
   /// Device tokens, binding codes and receipts travel to this URL, so it must be https. The one exception is local development
