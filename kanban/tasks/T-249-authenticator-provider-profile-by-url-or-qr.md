@@ -6,8 +6,8 @@ priority: P2
 epic: "Consent & authenticator"
 blocked_by: [T-248]
 area: ["apps/biatec_authenticator/lib/provider/**", "apps/biatec_authenticator/lib/config.dart", "apps/biatec_authenticator/lib/main.dart", "apps/biatec_authenticator/lib/enrollment/**", "apps/biatec_authenticator/test/provider/**", "docs/authenticator-provider-setup.md", "PRODUCT-DESCRIPTION.md"]
-parallel: yes
-conflicts_with: []
+parallel: no
+conflicts_with: [T-250, T-251]
 issue: "#421"
 branch: ""
 owner: ""
@@ -44,8 +44,8 @@ its QR code. The app downloads the provider profile, shows who it is, and uses i
 
 ## Parallel work
 
-Parallel work possible: **yes**. T-248 changes the same files, and this task is blocked by it, so the two never run
-together.
+Parallel work possible: **no**. It shares `lib/enrollment/**` with T-250 and its files under `lib/**` with T-251.
+T-248, which changed the same files, is done.
 
 ## Acceptance criteria
 
@@ -72,3 +72,4 @@ together.
 - 2026-11-16 09:00 · session-20261116-0900 · (new) → blocked · created at the user's request; waits for T-248 (same files, and it builds on the browser login)
 - 2026-11-16 10:30 · kanban-board · backlog → blocked · waiting on: T-248
 - 2026-11-16 11:46 · kanban-board · blocked → backlog · blockers done: T-248
+- 2026-11-16 14:30 · session-20261116-0900 · backlog → backlog · conflicts with T-250 (plan widened to lib/enrollment) and the new T-251 (all of lib); parallel: no
