@@ -11,6 +11,7 @@ import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart
 import 'package:biatec_authenticator/enrollment/widgets/enrollment_problem.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/theme.dart';
+import 'package:flutter/foundation.dart' show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MissingPluginException;
 import 'package:biatec_authenticator/keys/device_key_store.dart';
@@ -52,6 +53,15 @@ class NoKeyStore extends FakeTwoKeyStore {
 class FlakyProbe extends FakeTwoKeyStore {
   @override
   Future<KeyStoreStatus> status() => throw StateError('keystore busy');
+}
+
+/// A key store whose probe answers when the test says so.
+class SlowProbe extends FakeTwoKeyStore {
+  SlowProbe(this.answer);
+  final Future<KeyStoreStatus> answer;
+
+  @override
+  Future<KeyStoreStatus> status() => answer;
 }
 
 /// A Windows computer where the probe says what is missing.
@@ -97,6 +107,7 @@ void main() {
   for (final (status, error, kind, title) in [
     (KeyStoreStatus.noTpm, EnrollmentController.noTpmError, EnrollmentProblemKind.noTpm, 'No security chip found'),
     (KeyStoreStatus.noHello, EnrollmentController.noHelloError, EnrollmentProblemKind.noHello, 'Set up Windows Hello first'),
+    (KeyStoreStatus.helloUnavailable, EnrollmentController.helloUnavailableError, EnrollmentProblemKind.helloUnavailable, 'Windows Hello cannot be used now'),
   ]) {
     test('a computer where the probe says $status is told so before the browser opens, and nothing is made', () async {
       final config = AppConfig.resolve('', release: true, windows: true);
@@ -119,6 +130,36 @@ void main() {
       expect(keys.keys, isNull, reason: 'no key was made');
     });
   }
+
+  test('a second press while the key store is probed does not start a second sign-in', () async {
+    final config = AppConfig.resolve('', release: true, windows: true);
+    final auth = TokenAuth();
+    final gate = Completer<KeyStoreStatus>();
+    final c = EnrollmentController(
+      keys: SlowProbe(gate.future),
+      store: ObservableEnrollmentStore(MemoryEnrollmentStore()),
+      client: OidcEnrollmentClient(baseUrl: 'http://oidc'),
+      twoKeys: false,
+      auth: auth,
+      loginRequest: AuthRequest.forConfig(config),
+    );
+    final first = c.signInAndEnroll();
+    expect(c.signingIn, isTrue, reason: 'the guard is up while the probe waits');
+    expect(await c.signInAndEnroll(), EnrollResult.ignored);
+    gate.complete(KeyStoreStatus.ready);
+    await first;
+    expect(auth.signIns, 1);
+    expect(c.signingIn, isFalse);
+  });
+
+  test('a Windows build names the device as a Windows computer', () {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    try {
+      expect(EnrollmentController.defaultDeviceName, 'Windows computer');
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
 
   test('a probe that fails for another reason than a missing key store does not stop the sign-in', () async {
     final config = AppConfig.resolve('', release: true, windows: true);

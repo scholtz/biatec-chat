@@ -25,6 +25,7 @@ class DeviceKey {
     required this.y,
     required this.securityLevel,
     this.authBound = false,
+    this.appGated = false,
   });
 
   /// The key's public half with a [kid] derived from it: a prefix for the use and the first 32 characters of the RFC 7638 thumbprint, so the
@@ -33,13 +34,15 @@ class DeviceKey {
       {required String x,
       required String y,
       required KeySecurityLevel securityLevel,
-      bool authBound = false}) {
+      bool authBound = false,
+      bool appGated = false}) {
     return DeviceKey(
       kid: 'biatec-${use.wire}-${jwkThumbprint(x, y).substring(0, 32)}',
       x: x,
       y: y,
       securityLevel: securityLevel,
       authBound: authBound,
+      appGated: appGated,
     );
   }
 
@@ -55,6 +58,12 @@ class DeviceKey {
 
   /// The keystore says the key needs the operating system's biometric check for every signature, and is invalidated when the biometrics change (read back from the key after it was created, never assumed). Only the approval key has it.
   final bool authBound;
+
+  /// The key is not bound by the hardware (see [authBound]) but the native key store uses it only behind the user's check, made by its own code in the same call that signs (a Windows build: Windows Hello in front of the TPM key). A weaker guarantee than [authBound], said as it is.
+  final bool appGated;
+
+  /// Whether this approval key is used only after the user's check, by either guarantee. Policy that asks "can this device approve" reads this.
+  bool get gestureRequired => authBound || appGated;
 
   Map<String, String> toJwk() => {'kty': 'EC', 'crv': 'P-256', 'x': x, 'y': y};
 
@@ -109,6 +118,9 @@ enum KeyStoreStatus {
 
   /// Windows Hello is not set up, so the approval key could not be used: approvals ask for it.
   noHello,
+
+  /// Windows Hello is set up but cannot be used now (busy, or switched off by a policy of the organisation).
+  helloUnavailable,
 }
 
 /// The user dismissed the biometric prompt (or pressed Cancel). Nothing was signed.
@@ -199,7 +211,7 @@ String channelUse(KeyUse use) => use == KeyUse.approve ? 'approval' : 'presence'
 
 /// Talks to the native keystore code over a platform channel.
 ///
-/// The native side (`KeystorePlugin` for Android and iOS, `key_channels.cpp` for Windows, which also answers `probe`) implements `generateKeys`, `load` (argument `use`), `keysState`, `signPresence`, `signApproval` (arguments `data`, `title`, `subtitle`), `deleteKeys` and `delete` (argument `alias`, for the single key of old installs). A key is `{x, y, securityLevel, authBound}` (coordinates base64url, level as in [KeySecurityLevel.wire]).
+/// The native side (`KeystorePlugin` for Android and iOS, `key_channels.cpp` for Windows, which also answers `probe`) implements `generateKeys`, `load` (argument `use`), `keysState`, `signPresence`, `signApproval` (arguments `data`, `title`, `subtitle`), `deleteKeys` and `delete` (argument `alias`, for the single key of old installs). A key is `{x, y, securityLevel, authBound, appGated}` (coordinates base64url, level as in [KeySecurityLevel.wire]).
 class PlatformDeviceKeyStore implements DeviceKeyStore {
   const PlatformDeviceKeyStore(
       [this._channel =
@@ -214,7 +226,12 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
       final map = (raw as Map).cast<String, Object?>();
       // Only an explicit yes counts: an answer this app does not understand is not "ready".
       if (map['tpm'] != true) return KeyStoreStatus.noTpm;
-      return map['hello'] == 'available' ? KeyStoreStatus.ready : KeyStoreStatus.noHello;
+      return switch (map['hello']) {
+        'available' => KeyStoreStatus.ready,
+        'unavailable' => KeyStoreStatus.helloUnavailable,
+        // Not set up, no device, or an answer this app does not know: not ready, and the user is told to set it up.
+        _ => KeyStoreStatus.noHello,
+      };
     } on MissingPluginException {
       // A phone's plugin has no `probe`: its plain `keysState` read says whether there is a key store (and throws MissingPluginException when there is none).
       await _channel.invokeMethod<Object?>('keysState');
@@ -232,6 +249,7 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
         securityLevel: KeySecurityLevel.fromWire(map['securityLevel']),
         // Only an explicit true counts, and only the approval key can be bound.
         authBound: use == KeyUse.approve && map['authBound'] == true,
+        appGated: use == KeyUse.approve && map['appGated'] == true,
       );
     } on Object {
       throw const FormatException('The keystore returned malformed key data.');

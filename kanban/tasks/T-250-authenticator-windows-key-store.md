@@ -5,7 +5,7 @@ status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-248]
-area: ["apps/biatec_authenticator/windows/runner/**", "apps/biatec_authenticator/lib/keys/**", "apps/biatec_authenticator/lib/lock/**", "apps/biatec_authenticator/lib/enrollment/**", "apps/biatec_authenticator/test/keys/**", "apps/biatec_authenticator/test/enrollment/**", "apps/biatec_authenticator/README.md", "docs/authenticator-windows-key-store.md", "apps/biatec_authenticator/windows/tools/**", "PRODUCT-DESCRIPTION.md"]
+area: ["apps/biatec_authenticator/windows/runner/**", "apps/biatec_authenticator/lib/keys/**", "apps/biatec_authenticator/lib/lock/**", "apps/biatec_authenticator/lib/enrollment/**", "apps/biatec_authenticator/test/keys/**", "apps/biatec_authenticator/test/enrollment/**", "apps/biatec_authenticator/README.md", "docs/authenticator-windows-key-store.md", "PRODUCT-DESCRIPTION.md"]
 parallel: no
 conflicts_with: [T-249, T-251]
 issue: "#423"
@@ -53,7 +53,7 @@ Both keys are **P-256 keys made in the TPM** (Microsoft Platform Crypto Provider
 protocol, the server and the backend verifier stay as they are: no new algorithm, no protocol version.
 
 - **Presence key:** signs without a prompt, as on the phones.
-- **Approval key:** the same kind of key. The prompt is the Windows Hello check (`UserConsentVerifier`, shown over
+- **Approval key:** the same kind of key, reported as `appGated`, not `authBound`. The prompt is the Windows Hello check (`UserConsentVerifier`, shown over
   the app's window) and it is part of the one native `signApproval` call: the key is not used when the check fails
   or is cancelled, and the Dart side has no way to sign with it without the check.
 - **No software fallback.** No TPM, or Windows Hello not set up: refused with a text that says which, before the
@@ -63,7 +63,7 @@ protocol, the server and the backend verifier stay as they are: no new algorithm
   user that bypasses the app (and the prompt) could ask the TPM to sign. The key still cannot be taken off the
   computer. `docs/authenticator-windows-key-store.md` says this plainly, so a bank can weigh it.
 - The RS256 Windows Hello key (the earlier recommendation, which needed a protocol version) is not built.
-- A desktop device may approve everything a phone may. The enrollment says `platform: windows`.
+- A desktop device may approve everything a phone may. It is named "Windows computer" in the device list; the enrollment sends no platform field (a server policy by device type would need one).
 
 | Requirement (PSD2 RTS 2018/389) | What this gives |
 | --- | --- |
@@ -81,7 +81,7 @@ protocol, the server and the backend verifier stay as they are: no new algorithm
    the legacy methods answer "not found". The channel `io.biatec.authenticator/biometric` (`status`,
    `authenticate`, and `screenLocked` from the Windows session lock) so the app lock and the single-key approvals
    use Windows Hello.
-2. Dart: `KeySecurityLevel.tpm`, `DeviceKeyStore.availability()`, the enrollment probe before the browser (no TPM,
+2. Dart: `KeySecurityLevel.tpm`, `DeviceKeyStore.status()` (`KeyStoreStatus`), the enrollment probe before the browser (no TPM,
    Windows Hello not set up), texts in English and Slovak, the key protection card.
 3. Tests: Dart unit tests with a fake channel for every method and error mapping; the build; a manual checklist
    in `docs/authenticator-windows-key-store.md` (native code is not run by the test suite).
@@ -131,3 +131,4 @@ Windows Hello.
 - 2026-11-16 23:50 · scholtz · taken · status stays backlog
 - 2026-11-16 23:50 · scholtz · backlog → in-progress · claimed; branch task/T-250
 - 2026-11-17 09:00 · scholtz · in-progress · owner decided: P-256 TPM keys with a Windows Hello prompt checked by the app (no protocol change); the RS256 design is dropped
+- 2026-11-17 11:00 · scholtz · in-progress · PR #425, review round 1 fixed (appGated, hello_unavailable, fresh keys per enrollment, worker lifetime, double-press guard)

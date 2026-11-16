@@ -36,6 +36,9 @@ enum EnrollmentProblemKind {
   /// Windows Hello is not set up on this computer, so approvals could not ask for it.
   noHello,
 
+  /// Windows Hello is set up but cannot be used right now (busy, or switched off by a policy).
+  helloUnavailable,
+
   /// Anything else; the message says what the server or device said.
   other,
 }
@@ -103,6 +106,10 @@ EnrollmentProblem classifyEnrollmentError(String error) {
   if (error == EnrollmentController.noHelloError) {
     return EnrollmentProblem(EnrollmentProblemKind.noHello, strings.noHelloTitle,
         strings.noHello, strings.signInButton);
+  }
+  if (error == EnrollmentController.helloUnavailableError) {
+    return EnrollmentProblem(EnrollmentProblemKind.helloUnavailable,
+        strings.helloUnavailableTitle, strings.helloUnavailable, strings.signInButton);
   }
   if (error == EnrollmentController.staleLoginError) {
     return EnrollmentProblem(EnrollmentProblemKind.signInFailed,

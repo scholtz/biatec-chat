@@ -183,8 +183,11 @@ void main() {
     });
 
     test('key_channels.cpp (Windows) understands every name and value the Dart side sends and answers what Dart reads', () {
-      final cpp = File('windows/runner/key_channels.cpp').readAsStringSync();
-      final keystoreCpp = File('windows/runner/keystore.cpp').readAsStringSync();
+      // Read without line ends and indentation, so a checkout with CRLF or a reformat does not change what is checked.
+      String source(String path) => File(path).readAsStringSync().replaceAll('\r', '');
+      String flat(String s) => s.replaceAll(RegExp(r'\s+'), ' ');
+      final cpp = source('windows/runner/key_channels.cpp');
+      final keystoreCpp = source('windows/runner/keystore.cpp');
       for (final method in ['generateKeys', 'generatePresence', 'load', 'loadLegacy', 'signLegacy', 'keysState', 'signPresence', 'signApproval', 'deleteKeys', 'delete', 'probe']) {
         expect(cpp, contains('"$method"'), reason: 'C++: $method');
       }
@@ -194,14 +197,17 @@ void main() {
       for (final arg in ['use', 'data', 'title', 'subtitle']) {
         expect(cpp, contains('"$arg"'), reason: 'C++ argument $arg');
       }
-      for (final wire in ['ok', 'approval_key_invalidated', 'missing']) {
+      for (final wire in ['ok', 'missing']) {
         expect(cpp, contains('"$wire"'), reason: 'C++ keys state $wire');
       }
+      // The gesture is the app's, not the hardware's: the approval key is reported as `appGated`, never as `authBound`.
+      expect(flat(cpp), contains('map[Text("authBound")] = EncodableValue(false);'));
+      expect(flat(cpp), contains('map[Text("appGated")] = EncodableValue(approval);'));
       // The level it reports is one Dart knows, and as hardware only when the provider says so.
       expect(KeySecurityLevel.fromWire('tpm'), KeySecurityLevel.tpm);
       expect(KeySecurityLevel.tpm.isHardware, isTrue);
       expect(cpp, contains('key.hardware ? "tpm" : "software"'));
-      for (final code in ['prompt_active', 'cancelled', 'approval_key_invalidated', 'no_biometrics', 'locked_out', 'auth_failed', 'insecure_key', 'no_tpm', 'no_hello']) {
+      for (final code in ['prompt_active', 'cancelled', 'approval_key_invalidated', 'no_biometrics', 'locked_out', 'auth_failed', 'insecure_key', 'no_tpm', 'no_hello', 'hello_unavailable']) {
         expect(cpp, contains('"$code"'), reason: 'C++ error $code');
       }
       expect(keystoreCpp, contains('"key_generation_failed"'));
@@ -211,11 +217,24 @@ void main() {
       expect(keystoreCpp, contains('BCRYPT_ECDSA_P256_ALGORITHM'));
       expect(keystoreCpp, isNot(contains('NCRYPT_ALLOW_EXPORT_FLAG')));
       expect(keystoreCpp, isNot(contains('NCRYPT_ALLOW_PLAINTEXT')));
-      final approval = cpp.substring(cpp.indexOf('EncodableValue SignApproval('));
-      final approvalBody = approval.substring(0, approval.indexOf('// The app lock'));
-      expect(approvalBody.indexOf('hello::Verify'), greaterThan(-1));
-      expect(approvalBody.indexOf('hello::Verify'), lessThan(approvalBody.indexOf('keystore::Sign(')), reason: 'the check comes before the signature');
-      expect(approvalBody, contains('case hello::Outcome::kVerified:\n      break;'), reason: 'only "verified" reaches the signature');
+      // A source check, not a run: the function that signs an approval asks first, lets only "verified" through, and signs last. (Whitespace and comments are not part of
+      // what is compared.)
+      final start = cpp.indexOf('EncodableValue SignApproval(');
+      expect(start, greaterThan(-1));
+      final body = flat(cpp.substring(start, cpp.indexOf('\n}\n', start)).replaceAll(RegExp(r'//[^\n]*'), ''));
+      final verify = body.indexOf('hello::Verify(');
+      final sign = body.indexOf('keystore::Sign(');
+      expect(verify, greaterThan(-1));
+      expect(sign, greaterThan(verify), reason: 'the check comes before the signature');
+      expect(RegExp('keystore::Sign\\(').allMatches(body).length, 1, reason: 'one signature, behind the check');
+      expect(body, contains('case hello::Outcome::kVerified: break;'), reason: 'only "verified" falls through to the signature');
+      // From the check to the `return` that carries the signature: nothing in between leaves the function.
+      final between = body.substring(verify, body.lastIndexOf('return', sign));
+      for (final outcome in ['kCanceled', 'kRetriesExhausted', 'kNotConfigured', 'kNoDevice']) {
+        expect(between, contains('case hello::Outcome::$outcome:'), reason: outcome);
+      }
+      expect(between, contains('default: throw'), reason: 'any other answer signs nothing');
+      expect(between, isNot(contains('return')), reason: 'no way out of the function between the check and the signature');
     });
 
     test('status reads the probe of a Windows build: TPM and Windows Hello', () async {
@@ -225,12 +244,29 @@ void main() {
         ({'tpm': true, 'hello': 'not_configured'}, KeyStoreStatus.noHello),
         ({'tpm': true, 'hello': 'no_device'}, KeyStoreStatus.noHello),
         ({'tpm': true, 'hello': 'something new'}, KeyStoreStatus.noHello),
+        ({'tpm': true, 'hello': 'unavailable'}, KeyStoreStatus.helloUnavailable),
         ({'hello': 'available'}, KeyStoreStatus.noTpm),
         ({'tpm': 'yes', 'hello': 'available'}, KeyStoreStatus.noTpm),
       ]) {
         answer((call) => call.method == 'probe' ? answerOf : null);
         expect(await store.status(), expected, reason: '$answerOf');
       }
+    });
+
+    test('a Windows approval key is app gated, not auth bound, and either way it counts as gated', () async {
+      answer((call) => {
+            'approval': {...part('tpm'), 'appGated': true},
+            'presence': {...part('tpm'), 'appGated': true},
+          });
+      final keys = await store.generateKeys();
+      expect(keys.approval.securityLevel, KeySecurityLevel.tpm);
+      expect(keys.approval.authBound, isFalse);
+      expect(keys.approval.appGated, isTrue);
+      expect(keys.approval.gestureRequired, isTrue);
+      expect(keys.presence.appGated, isFalse, reason: 'never for presence');
+      expect(keys.presence.gestureRequired, isFalse);
+      answer((call) => {'approval': part('tpm'), 'presence': part('tpm')});
+      expect((await store.generateKeys()).approval.gestureRequired, isFalse, reason: 'neither guarantee reported');
     });
 
     test('status on a phone (a plugin without probe) is ready, and on a platform without a key store it throws', () async {

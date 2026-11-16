@@ -15,6 +15,8 @@ Hello for every approval. This page says what is protected, what is not, how to 
 | App lock | The lock and the re-authentication before sensitive actions use the same Windows Hello check, and the app locks when Windows locks (`screenLocked`). |
 | Refused | No TPM (or off in the firmware), or Windows Hello not set up: said **before the browser opens**, so a computer that cannot enroll is not sent through a sign-in. A key the provider does not report as hardware is refused and removed, as on a phone. |
 | Security level | `tpm`, read back from the key (`NCRYPT_IMPL_TYPE_PROPERTY` has the hardware flag), never assumed. |
+| Reported as | The approval key is `appGated` (the app's own gate), **not** `authBound` (which says the hardware enforces the gesture, as on a phone). The app accepts either for approving (`DeviceKey.gestureRequired`) and keeps them apart. |
+| New keys | Every enrollment deletes any old pair and makes new keys: a TPM key outlives an uninstall, and an old pair must not reach the server as a new device. |
 | Single-key mode | Real Biatec OIDC has no two-key enrollment yet (`TWO_KEY_DEVICE` is off). Then only the presence key is made, in the TPM, and an approval is gated by the app lock's Windows Hello check, as before T-241 on a phone. |
 
 Code: `apps/biatec_authenticator/windows/runner/` (`keystore.cpp` the TPM keys, `hello.cpp` the Windows Hello check,
@@ -34,8 +36,9 @@ an RS256 approval key in the protocol, the schemas, the test vectors, the mock, 
 verifier. The owner decided against that change and for a P-256 TPM key with an app-checked prompt.
 
 The same applies to platform integrity: Windows has nothing like Play Integrity or App Attest, so the server cannot
-prove that the app is the real app. The device enrolls with `platform: windows`, which keeps a later server policy
-possible; today a desktop device may approve what a phone may.
+prove that the app is the real app. The device is named "Windows computer" in the device list (the enrollment sends no
+platform field, and a server policy that treats desktop devices differently would need one, see the open decisions);
+today a desktop device may approve what a phone may.
 
 ## What a bank can weigh (engineering advice, not a compliance certificate)
 
@@ -84,4 +87,3 @@ Record the result of each step (and the computer: Windows build, TPM manufacture
 against `key_channels.cpp` and `keystore.cpp` (and that the code makes P-256 keys in the TPM provider, never sets an
 export flag, and signs the approval only after the Windows Hello result "verified"); `test/enrollment/desktop_login_test.dart`
 covers the probe before the browser (no key store, no TPM, no Windows Hello, a probe that fails for another reason).
-`windows/tools/tpm_spike.cpp` is the small program that was written to try the provider by hand.

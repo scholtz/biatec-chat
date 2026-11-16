@@ -88,6 +88,7 @@ class EnrollmentController extends ChangeNotifier {
   /// The state errors of a computer with no TPM, and of one where Windows Hello is not set up.
   static String get noTpmError => EnrollStrings.en.noTpm;
   static String get noHelloError => EnrollStrings.en.noHello;
+  static String get helloUnavailableError => EnrollStrings.en.helloUnavailable;
   static String get recoveryWrongError => EnrollStrings.en.recoveryWrong;
   static String get recoveryLockedError => EnrollStrings.en.recoveryLocked;
   static String get staleLoginError => EnrollStrings.en.staleLoginAgain;
@@ -305,6 +306,7 @@ class EnrollmentController extends ChangeNotifier {
   static String get defaultDeviceName => switch (defaultTargetPlatform) {
         TargetPlatform.android => 'Android phone',
         TargetPlatform.iOS => 'iPhone',
+        TargetPlatform.windows => 'Windows computer',
         _ => 'Biatec Authenticator',
       };
 
@@ -353,28 +355,32 @@ class EnrollmentController extends ChangeNotifier {
       return EnrollResult.failed;
     }
     recoveryCode = code;
-    // A computer that has no key store is told so before the browser opens: a sign-in that can only end in "cannot be enrolled" is not asked of the user. The probe
-    // reads what the key store can do (no prompt, nothing is made); only a missing channel and a missing TPM or Windows Hello count, any other failure is left to the enrollment itself.
-    try {
-      switch (await _made<KeyStoreStatus>(keys.status)) {
-        case KeyStoreStatus.ready:
-          break;
-        case KeyStoreStatus.noTpm:
-          _set(EnrollmentState(EnrollmentPhase.failed, error: noTpmError));
-          return EnrollResult.failed;
-        case KeyStoreStatus.noHello:
-          _set(EnrollmentState(EnrollmentPhase.failed, error: noHelloError));
-          return EnrollResult.failed;
-      }
-    } on _NoKeyStore {
-      _set(EnrollmentState(EnrollmentPhase.failed, error: noKeyStoreError));
-      return EnrollResult.failed;
-    } on Object {
-      // The probe could not read the keys for another reason; the enrollment shows what is wrong, if anything is.
-    }
+    // The guard against a second sign-in is set first: the probe below waits for native code, and a second press in that time must not start a second sign-in.
     _signingIn = true;
     notifyListeners();
     try {
+      // A computer that has no key store is told so before the browser opens: a sign-in that can only end in "cannot be enrolled" is not asked of the user. The probe
+      // reads what the key store can do (no prompt, nothing is made); only a missing channel and a missing TPM or Windows Hello count, any other failure is left to the enrollment itself.
+      try {
+        switch (await _made<KeyStoreStatus>(keys.status)) {
+          case KeyStoreStatus.ready:
+            break;
+          case KeyStoreStatus.noTpm:
+            _set(EnrollmentState(EnrollmentPhase.failed, error: noTpmError));
+            return EnrollResult.failed;
+          case KeyStoreStatus.noHello:
+            _set(EnrollmentState(EnrollmentPhase.failed, error: noHelloError));
+            return EnrollResult.failed;
+          case KeyStoreStatus.helloUnavailable:
+            _set(EnrollmentState(EnrollmentPhase.failed, error: helloUnavailableError));
+            return EnrollResult.failed;
+        }
+      } on _NoKeyStore {
+        _set(EnrollmentState(EnrollmentPhase.failed, error: noKeyStoreError));
+        return EnrollResult.failed;
+      } on Object {
+        // The probe could not read the keys for another reason; the enrollment shows what is wrong, if anything is.
+      }
       for (var attempt = 0;; attempt++) {
         String? token;
         try {
@@ -461,7 +467,7 @@ class EnrollmentController extends ChangeNotifier {
       if (twoKeys) {
         final made = deviceKeys = await _made<DeviceKeys>(keys.generateKeys);
         if (!made.approval.securityLevel.isHardware ||
-            !made.approval.authBound) {
+            !made.approval.gestureRequired) {
           throw const _CannotProtectApprovals();
         }
         if (!made.presence.securityLevel.isHardware) {
@@ -491,6 +497,8 @@ class EnrollmentController extends ChangeNotifier {
               ? noTpmError
               : e.code == 'no_hello'
                   ? noHelloError
+                  : e.code == 'hello_unavailable'
+                      ? helloUnavailableError
                   : e.code == 'no_biometrics'
               ? 'Set up a fingerprint or face on this phone first: approvals '
                   'need one.'

@@ -12,10 +12,13 @@
 #include <flutter/method_channel.h>
 #include <windows.h>
 
+#include <cstdint>
 #include <deque>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
+#include <string>
 
 class KeyChannels {
  public:
@@ -34,13 +37,29 @@ class KeyChannels {
   void OnSessionLocked();
 
  private:
+  using Result = std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>;
+
+  // The answer of a worker: only data. The reply object stays on the window's thread (in `pending_`), so a worker that finishes after the window is gone has
+  // nothing of the engine to touch.
+  struct Done {
+    uint64_t id = 0;
+    flutter::EncodableValue value;
+    std::string code;  // empty: success
+    std::string message;
+  };
+
   struct Shared {
     std::mutex mutex;
-    std::deque<std::function<void()>> queue;
+    std::deque<Done> queue;
     HWND window = nullptr;
   };
 
+  // Runs `work` on a worker thread and answers `result` from the window's thread.
+  void RunAsync(Result result, std::function<flutter::EncodableValue()> work);
+
   std::shared_ptr<Shared> shared_;
+  std::map<uint64_t, Result> pending_;  // window's thread only
+  uint64_t next_id_ = 1;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> keystore_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> biometric_;
 };

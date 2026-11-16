@@ -24,6 +24,8 @@ class EnrollStrings {
   String get noTpmTitle => _get('noTpmTitle');
   String get noHello => _get('noHello');
   String get noHelloTitle => _get('noHelloTitle');
+  String get helloUnavailable => _get('helloUnavailable');
+  String get helloUnavailableTitle => _get('helloUnavailableTitle');
   String get signInButton => _get('signInButton');
   String get signInAgainButton => _get('signInAgainButton');
   String get signInCancel => _get('signInCancel');
@@ -85,6 +87,9 @@ class EnrollStrings {
     'noHelloTitle': 'Set up Windows Hello first',
     'noHello':
         'Approvals on this computer ask for Windows Hello (face, fingerprint or PIN), and it is not set up. Set it up in the Windows settings (Accounts, Sign-in options), then sign in again. Nothing was enrolled.',
+    'helloUnavailableTitle': 'Windows Hello cannot be used now',
+    'helloUnavailable':
+        'Windows Hello is set up but cannot be used right now: it may be busy, or switched off by a policy of your organisation. Try again, or ask your administrator. Nothing was enrolled.',
     'noKeyStoreTitle': 'This device cannot be enrolled',
     'noKeyStore':
         'This build of the app has no protected key store on this kind of device, so the device cannot be enrolled here. Nothing was enrolled.',
@@ -153,6 +158,9 @@ class EnrollStrings {
     'noHelloTitle': 'Najprv nastavte Windows Hello',
     'noHello':
         'Schvaľovania na tomto počítači žiadajú Windows Hello (tvár, odtlačok prsta alebo PIN), a to nie je nastavené. Nastavte ho v nastaveniach Windows (Účty, Možnosti prihlásenia) a potom sa prihláste znova. Nič sa nezaregistrovalo.',
+    'helloUnavailableTitle': 'Windows Hello sa teraz nedá použiť',
+    'helloUnavailable':
+        'Windows Hello je nastavené, ale teraz sa nedá použiť: môže byť zaneprázdnené alebo vypnuté pravidlom vašej organizácie. Skúste to znova alebo sa obráťte na správcu. Nič sa nezaregistrovalo.',
     'noKeyStoreTitle': 'Toto zariadenie sa nedá zaregistrovať',
     'noKeyStore':
         'Táto zostava aplikácie nemá na tomto type zariadenia chránené úložisko kľúčov, preto sa tu zariadenie nedá zaregistrovať. Nič sa nezaregistrovalo.',

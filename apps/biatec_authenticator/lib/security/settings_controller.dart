@@ -396,7 +396,7 @@ class SettingsController extends ChangeNotifier {
       if (key == null || key.kid != record.kid) {
         throw const ApprovalException(ApprovalKeyInvalidated.message);
       }
-      if (key.securityLevel.blocksSigning || !key.authBound) {
+      if (key.securityLevel.blocksSigning || !key.gestureRequired) {
         throw const ApprovalException('This phone cannot protect approvals.');
       }
       final p = device.pairing!;
@@ -544,7 +544,7 @@ class SettingsController extends ChangeNotifier {
     if (key == null || key.kid != record.kid) {
       throw const ApprovalException(ApprovalKeyInvalidated.message);
     }
-    if (key.securityLevel.blocksSigning || (twoKeys && !key.authBound)) {
+    if (key.securityLevel.blocksSigning || (twoKeys && !key.gestureRequired)) {
       throw const ApprovalException('This phone cannot protect approvals.');
     }
     final signed = <String, Object?>{

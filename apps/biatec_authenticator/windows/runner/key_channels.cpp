@@ -72,9 +72,10 @@ EncodableValue KeyMap(const keystore::PublicKey& key, bool approval) {
   map[Text("y")] = Text(key.y);
   // `tpm` only when the provider says hardware and not exportable; anything else is reported as software, which the app refuses.
   map[Text("securityLevel")] = Text(key.hardware ? "tpm" : "software");
-  // The approval key is used only behind a Windows Hello check made in the same native call. This is the app's gate, not a property the hardware enforces (the
-  // document of this task says so); the flag says the gate exists.
-  map[Text("authBound")] = EncodableValue(approval);
+  // Not `authBound`: that says the hardware itself refuses the key without the gesture, which is true on a phone and not here. The approval key is used only
+  // behind a Windows Hello check made in the same native call (the app's gate, docs/authenticator-windows-key-store.md), and `appGated` says exactly that.
+  map[Text("authBound")] = EncodableValue(false);
+  map[Text("appGated")] = EncodableValue(approval);
   return EncodableValue(map);
 }
 
@@ -102,33 +103,43 @@ std::optional<keystore::Use> UseOf(const EncodableMap* args) {
   return std::nullopt;
 }
 
+// Windows Hello must be usable before an approval key is made: nothing is made that could not be used. "Not set up" and "cannot be used right now" (busy,
+// switched off by policy) are different answers, because only the first one is something the user sets up.
+void RequireHello() {
+  switch (hello::Check()) {
+    case hello::Availability::kAvailable:
+      return;
+    case hello::Availability::kUnavailable:
+      throw keystore::KeyError("hello_unavailable", "Windows Hello cannot be used right now.");
+    default:
+      throw keystore::KeyError("no_hello", "Windows Hello is not set up on this computer.");
+  }
+}
+
 // Both keys, or neither: a half set (an interrupted enrollment) is removed and made again. The approval key is refused unless Windows Hello can be used, so
 // nothing is made that could not be used.
 EncodableValue GenerateKeys() {
   if (!keystore::TpmAvailable()) {
     throw keystore::KeyError("no_tpm", "This computer has no TPM that can hold the keys.");
   }
-  if (hello::Check() != hello::Availability::kAvailable) {
-    throw keystore::KeyError("no_hello", "Windows Hello is not set up on this computer.");
-  }
-  auto approval = keystore::Load(keystore::Use::kApproval);
-  auto presence = keystore::Load(keystore::Use::kPresence);
-  if (!approval || !presence || !approval->hardware || !presence->hardware) {
+  RequireHello();
+  // New keys for every enrollment. A key of the TPM outlives the app (an uninstall or a reset of the app's data does not remove it, unlike on a phone), so an
+  // old pair is never handed to a new enrollment: the server would see the same key again.
+  keystore::DeleteAll();
+  const auto approval = keystore::GenerateIfMissing(keystore::Use::kApproval);
+  if (!approval.hardware) {
     keystore::DeleteAll();
-    approval = keystore::GenerateIfMissing(keystore::Use::kApproval);
-    if (!approval->hardware) {
-      keystore::DeleteAll();
-      throw keystore::KeyError("insecure_key", "The TPM did not hold the approval key.");
-    }
-    presence = keystore::GenerateIfMissing(keystore::Use::kPresence);
+    throw keystore::KeyError("insecure_key", "The TPM did not hold the approval key.");
   }
+  const auto presence = keystore::GenerateIfMissing(keystore::Use::kPresence);
   EncodableMap map;
-  map[Text("approval")] = KeyMap(*approval, true);
-  map[Text("presence")] = KeyMap(*presence, false);
+  map[Text("approval")] = KeyMap(approval, true);
+  map[Text("presence")] = KeyMap(presence, false);
   return EncodableValue(map);
 }
 
 EncodableValue GeneratePresence() {
+  keystore::DeleteAll();  // new keys for every enrollment (see GenerateKeys)
   return KeyMap(keystore::GenerateIfMissing(keystore::Use::kPresence), false);
 }
 
@@ -143,8 +154,7 @@ EncodableValue KeysState() {
     const bool approval = keystore::Load(keystore::Use::kApproval).has_value();
     const bool presence = keystore::Load(keystore::Use::kPresence).has_value();
     if (approval && presence) return Text("ok");
-    // The approval key is gone while the presence key is not: it was made here and lost. Approvals stop; Deny still works.
-    if (!approval && presence) return Text("approval_key_invalidated");
+    // Not "approval_key_invalidated": no change of the biometrics invalidates a TPM key, and a presence key alone is the normal state of the single-key mode.
     return Text("missing");
   } catch (const keystore::KeyError& e) {
     if (e.code() == "no_tpm") return Text("missing");
@@ -229,102 +239,66 @@ EncodableValue BiometricAuthenticate(HWND window, const std::string& reason) {
 KeyChannels::KeyChannels(flutter::BinaryMessenger* messenger, HWND window)
     : shared_(std::make_shared<Shared>()) {
   shared_->window = window;
-  const auto shared = shared_;
-
-  // Runs `work` on a worker thread and answers the call from the window's thread. An error of ours is answered with its code; anything else as `keystore_error`.
-  const auto run_async = [shared](std::shared_ptr<Result> result,
-                                  std::function<EncodableValue()> work) {
-    std::thread([shared, result, work = std::move(work)]() {
-      EncodableValue value;
-      std::string code;
-      std::string message;
-      try {
-        value = work();
-      } catch (const keystore::KeyError& e) {
-        code = e.code();
-        message = e.what();
-      } catch (const std::exception&) {
-        code = "keystore_error";
-        message = "The key store could not do that.";
-      } catch (...) {
-        code = "keystore_error";
-        message = "The key store could not do that.";
-      }
-      HWND window = nullptr;
-      {
-        std::lock_guard<std::mutex> lock(shared->mutex);
-        shared->queue.push_back([result, value, code, message]() {
-          if (code.empty()) {
-            (*result)->Success(value);
-          } else {
-            (*result)->Error(code, message);
-          }
-        });
-        window = shared->window;
-      }
-      if (window != nullptr) PostMessage(window, kRunQueuedMessage, 0, 0);
-    }).detach();
-  };
 
   keystore_ = std::make_unique<flutter::MethodChannel<EncodableValue>>(
       messenger, "io.biatec.authenticator/keystore",
       &flutter::StandardMethodCodec::GetInstance());
   keystore_->SetMethodCallHandler(
-      [run_async, window](const MethodCall<EncodableValue>& call, Result result) {
+      [this, window](const MethodCall<EncodableValue>& call, Result result) {
         const std::string& method = call.method_name();
         const EncodableMap* args = ArgsOf(call);
-        auto holder = std::make_shared<Result>(std::move(result));
         if (method == "generateKeys") {
-          run_async(holder, [] { return GenerateKeys(); });
+          RunAsync(std::move(result), [] { return GenerateKeys(); });
         } else if (method == "generatePresence") {
           // Single-key mode: only the key that needs no prompt; the approvals are gated by the app lock's Windows Hello check.
-          run_async(holder, [] { return GeneratePresence(); });
+          RunAsync(std::move(result), [] { return GeneratePresence(); });
         } else if (method == "load") {
           const auto use = UseOf(args);
           if (!use) {
-            (*holder)->Error("bad_args", "use is required");
+            result->Error("bad_args", "use is required");
             return;
           }
-          run_async(holder, [use] { return LoadKey(*use); });
+          RunAsync(std::move(result), [use] { return LoadKey(*use); });
         } else if (method == "keysState") {
-          run_async(holder, [] { return KeysState(); });
+          RunAsync(std::move(result), [] { return KeysState(); });
         } else if (method == "probe") {
-          run_async(holder, [] { return Probe(); });
+          RunAsync(std::move(result), [] { return Probe(); });
         } else if (method == "signPresence") {
           const auto* data = BytesArg(args, "data");
           if (data == nullptr) {
-            (*holder)->Error("bad_args", "data is required");
+            result->Error("bad_args", "data is required");
             return;
           }
-          run_async(holder, [bytes = *data] {
+          RunAsync(std::move(result), [bytes = *data] {
             return EncodableValue(keystore::Sign(keystore::Use::kPresence, bytes));
           });
         } else if (method == "signApproval") {
           const auto* data = BytesArg(args, "data");
           if (data == nullptr) {
-            (*holder)->Error("bad_args", "data is required");
+            result->Error("bad_args", "data is required");
             return;
           }
           const std::string* title = StringArg(args, "title");
           const std::string* subtitle = StringArg(args, "subtitle");
-          run_async(holder, [window, bytes = *data, t = title ? *title : std::string(),
-                             s = subtitle ? *subtitle : std::string()] {
-            return SignApproval(window, bytes, t, s);
-          });
+          RunAsync(std::move(result),
+                   [window, bytes = *data, t = title ? *title : std::string(),
+                    s = subtitle ? *subtitle : std::string()] {
+                     return SignApproval(window, bytes, t, s);
+                   });
         } else if (method == "deleteKeys") {
-          run_async(holder, [] {
+          RunAsync(std::move(result), [] {
             keystore::DeleteAll();
             return EncodableValue();
           });
         } else if (method == "loadLegacy") {
           // An install from before the two keys never existed on Windows.
-          (*holder)->Success(EncodableValue());
+          result->Success(EncodableValue());
         } else if (method == "signLegacy") {
-          (*holder)->Error("key_missing", "There is no legacy key on this platform.");
+          result->Error("key_missing", "There is no legacy key on this platform.");
         } else if (method == "delete") {
-          (*holder)->Success(EncodableValue());
+          result->Success(EncodableValue());
         } else {
-          (*holder)->NotImplemented();
+          result->NotImplemented();
         }
       });
 
@@ -332,36 +306,76 @@ KeyChannels::KeyChannels(flutter::BinaryMessenger* messenger, HWND window)
       messenger, "io.biatec.authenticator/biometric",
       &flutter::StandardMethodCodec::GetInstance());
   biometric_->SetMethodCallHandler(
-      [run_async, window](const MethodCall<EncodableValue>& call, Result result) {
+      [this, window](const MethodCall<EncodableValue>& call, Result result) {
         const std::string& method = call.method_name();
-        auto holder = std::make_shared<Result>(std::move(result));
         if (method == "status") {
-          run_async(holder, [] { return BiometricStatus(); });
+          RunAsync(std::move(result), [] { return BiometricStatus(); });
         } else if (method == "authenticate") {
           const std::string* reason = StringArg(ArgsOf(call), "reason");
-          run_async(holder, [window, r = reason ? *reason : std::string()] {
+          RunAsync(std::move(result), [window, r = reason ? *reason : std::string()] {
             return BiometricAuthenticate(window, r);
           });
         } else {
-          (*holder)->NotImplemented();
+          result->NotImplemented();
         }
       });
 }
 
 KeyChannels::~KeyChannels() {
-  // Workers that finish later find no window and queue their answers for nobody.
-  std::lock_guard<std::mutex> lock(shared_->mutex);
-  shared_->window = nullptr;
-  shared_->queue.clear();
+  {
+    // Workers that finish later find no window and queue their answers for nobody.
+    std::lock_guard<std::mutex> lock(shared_->mutex);
+    shared_->window = nullptr;
+    shared_->queue.clear();
+  }
+  // The unanswered replies are dropped here, on the window's thread, while the engine is still alive.
+  pending_.clear();
+}
+
+void KeyChannels::RunAsync(Result result, std::function<EncodableValue()> work) {
+  const uint64_t id = next_id_++;
+  pending_[id] = std::move(result);
+  // The worker holds only data and the shared queue, never the reply object or `this`. An error of ours is answered with its code; anything else as
+  // `keystore_error`.
+  std::thread([shared = shared_, id, work = std::move(work)]() {
+    Done done;
+    done.id = id;
+    try {
+      done.value = work();
+    } catch (const keystore::KeyError& e) {
+      done.code = e.code();
+      done.message = e.what();
+    } catch (...) {
+      done.code = "keystore_error";
+      done.message = "The key store could not do that.";
+    }
+    HWND window = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(shared->mutex);
+      window = shared->window;
+      if (window != nullptr) shared->queue.push_back(std::move(done));
+    }
+    if (window != nullptr) PostMessage(window, kRunQueuedMessage, 0, 0);
+  }).detach();
 }
 
 void KeyChannels::RunQueued() {
-  std::deque<std::function<void()>> tasks;
+  std::deque<Done> done;
   {
     std::lock_guard<std::mutex> lock(shared_->mutex);
-    tasks.swap(shared_->queue);
+    done.swap(shared_->queue);
   }
-  for (auto& task : tasks) task();
+  for (auto& d : done) {
+    const auto it = pending_.find(d.id);
+    if (it == pending_.end()) continue;
+    Result result = std::move(it->second);
+    pending_.erase(it);
+    if (d.code.empty()) {
+      result->Success(d.value);
+    } else {
+      result->Error(d.code, d.message);
+    }
+  }
 }
 
 void KeyChannels::OnSessionLocked() {
