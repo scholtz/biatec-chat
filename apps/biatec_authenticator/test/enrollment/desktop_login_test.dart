@@ -160,28 +160,38 @@ void main() {
       for (final ok in ['http://localhost:42815', 'http://127.0.0.1:1024/cb', 'http://[::1]:5000']) {
         expect(AppConfig.isLoopbackRedirect(ok), isTrue, reason: ok);
       }
-      for (final bad in ['https://localhost:42815', 'http://localhost.evil.example:42815', 'http://0.0.0.0:42815']) {
+      for (final bad in [
+        'https://localhost:42815',
+        'http://localhost.evil.example:42815',
+        'http://0.0.0.0:42815',
+        'http://localhost:70000',
+        'http://localhost:1023',
+      ]) {
         expect(AppConfig.isLoopbackRedirect(bad), isFalse, reason: bad);
       }
     });
 
-    test('a phone is not a desktop: a loopback redirect is refused in its release build, and stage gives it no browser login by default', () {
+    test('a phone is not a desktop: no browser login without the in-app login, whose server proves the login fresh', () {
       final phone = AppConfig.resolve('https://stage.oidc.biatec.io', release: true, desktop: false, windows: false);
       expect(phone.signIn, isFalse);
       expect(phone.oidcClientId, AppConfig.defaultOidcClientId);
+      for (final release in [true, false]) {
+        expect(
+            () => AppConfig.resolve('https://stage.oidc.biatec.io',
+                release: release, desktop: false, windows: false, browserLogin: true),
+            throwsA(isA<ConfigException>().having((e) => e.message, 'message', contains('desktop'))),
+            reason: 'release: $release');
+      }
+      // With the in-app login a phone signs in as before (T-242): the app link, the enroll-device scope.
+      final on = AppConfig.resolve('https://stage.oidc.biatec.io',
+          release: true, desktop: false, windows: false, inAppLogin: true, browserLogin: true);
+      expect(on.signIn, isTrue);
+      expect(on.redirectUri, 'https://stage.oidc.biatec.io/app/authenticator/callback');
+      expect(AuthRequest.forConfig(on).scope, 'openid enroll-device');
       expect(
           () => AppConfig.resolve('https://stage.oidc.biatec.io',
-              release: true, desktop: false, windows: false, browserLogin: true, redirectUri: 'http://localhost:42815'),
+              release: true, desktop: false, windows: false, inAppLogin: true, redirectUri: 'http://localhost:42815'),
           throwsA(isA<ConfigException>()));
-      // With the browser login on, a phone's release build returns through the app link of its host.
-      final on = AppConfig.resolve('https://stage.oidc.biatec.io',
-          release: true, desktop: false, windows: false, browserLogin: true);
-      expect(on.redirectUri, 'https://stage.oidc.biatec.io/app/authenticator/callback');
-      expect(
-          () => AppConfig.resolve('https://id.bank.example',
-              release: true, desktop: false, windows: false, browserLogin: true),
-          throwsA(isA<ConfigException>()),
-          reason: 'no app link is compiled in for that host');
     });
   });
 
@@ -196,7 +206,7 @@ void main() {
       expect(desktop.loginRequest!.clientId, 'biatec-authenticator-stage-app');
       expect(desktop.twoKeys, isFalse);
       final phone = make(AppConfig.resolve('https://stage.oidc.biatec.io',
-          release: true, desktop: false, windows: false, browserLogin: true));
+          release: true, desktop: false, windows: false, inAppLogin: true));
       expect(phone.auth, isA<AppAuthClient>());
     });
   });

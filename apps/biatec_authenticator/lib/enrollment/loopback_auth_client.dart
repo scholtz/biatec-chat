@@ -71,8 +71,9 @@ class LoopbackAuthClient extends AuthClient {
   Future<String> signIn(AuthRequest r) async {
     if (_cancel != null) throw const LoginFailed('A sign-in is already open.');
     final cancel = _cancel = Completer<void>();
-    final client = _http();
+    http.Client? client;
     try {
+      client = _http();
       final redirect = Uri.parse(r.redirectUri);
       if (!AppConfig.isLoopbackRedirect(r.redirectUri)) {
         throw const LoginFailed('This build has no loopback redirect to sign in with.');
@@ -119,8 +120,16 @@ class LoopbackAuthClient extends AuthClient {
       throw LoginFailed(e.message);
     } on TlsException catch (e) {
       throw LoginFailed('The connection to the provider could not be verified (${e.message}).');
+    } on LoginCancelled {
+      rethrow;
+    } on LoginFailed {
+      rethrow;
+    } on Object catch (e) {
+      // Nothing else leaves a sign-in: the caller knows these two outcomes only, and an error it does not know would end without a word on the screen. The
+      // type is said, never the text (it could carry part of an answer).
+      throw LoginFailed('The sign-in could not be completed (${e.runtimeType}).');
     } finally {
-      client.close();
+      client?.close();
       _cancel = null;
     }
   }
@@ -238,6 +247,7 @@ class LoopbackAuthClient extends AuthClient {
 
   Future<String> _answer(List<HttpServer> servers, Uri redirect, String state, Future<void> cancelled) {
     final done = Completer<String>();
+    var taken = false;
     void fail(Object e) {
       if (!done.isCompleted) done.completeError(e);
     }
@@ -258,7 +268,7 @@ class LoopbackAuthClient extends AuthClient {
             q.connectionInfo?.remoteAddress.isLoopback == true &&
             path == expected &&
             _same(p['state'] ?? '', state);
-        if (!mine || done.isCompleted) {
+        if (!mine || taken || done.isCompleted) {
           // Not the answer to this sign-in (a favicon, another page or program probing the port): said so, and the wait goes on however many there are. The wait
           // ends with the answer, the time limit or the user.
           await _page(q, HttpStatus.badRequest, _strayPage);
@@ -266,16 +276,23 @@ class LoopbackAuthClient extends AuthClient {
         }
         final code = p['code'];
         final error = p['error'];
-        if (error != null || code == null || code.isEmpty) {
-          await _page(q, HttpStatus.ok, _failedPage);
+        // The answer is taken here, once. The page is written before the wait ends (ending it closes the listener, which would cut the page off), and a page
+        // that cannot be written (the tab was closed) does not lose the answer.
+        taken = true;
+        final failed = error != null || code == null || code.isEmpty;
+        try {
+          await _page(q, HttpStatus.ok, failed ? _failedPage : _donePage);
+        } on Object {
+          // The browser went away; the answer stands.
+        }
+        if (failed) {
           fail(error == 'access_denied'
               ? const LoginCancelled()
               // The error code is the provider's (RFC 6749, 4.1.2.1), shown as a plain code; its free text is not shown.
               : LoginFailed('The provider refused the sign-in (${_code(error)}).'));
-          return;
+        } else if (!done.isCompleted) {
+          done.complete(code);
         }
-        await _page(q, HttpStatus.ok, _donePage);
-        if (!done.isCompleted) done.complete(code);
       } on Object {
         // A broken connection is not the answer.
       }
@@ -442,7 +459,7 @@ Future<bool> openSystemBrowser(Uri url) async {
     program = '/usr/bin/open';
     arguments = ['$url'];
   } else if (Platform.isLinux) {
-    program = 'xdg-open';
+    program = '/usr/bin/xdg-open';
     arguments = ['$url'];
   } else {
     return false;

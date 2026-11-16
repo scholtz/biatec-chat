@@ -48,9 +48,9 @@ export const LOGIN_MAX_AGE_SECONDS = 300;
 /** Wrong recovery codes per account before activation by recovery code is locked (429), and for how long. */
 export const RECOVERY_CODE_MAX_FAILURES = 5;
 export const RECOVERY_LOCKOUT_SECONDS = 900;
-/** Redirect URIs the mock accepts for the authenticator's login (T-242): the app link, the debug custom scheme fallback, and the loopback redirect of a desktop build (T-248). */
+/** Redirect URIs the mock accepts for the authenticator's login (T-242): the app link and the debug custom scheme fallback. */
 export const AUTHENTICATOR_CLIENT_ID = "biatec-authenticator";
-export const AUTHENTICATOR_REDIRECT_URIS = ["https://oidc.biatec.io/app/authenticator/callback", "io.biatec.authenticator:/oauth2redirect", "http://localhost:42815"];
+export const AUTHENTICATOR_REDIRECT_URIS = ["https://oidc.biatec.io/app/authenticator/callback", "io.biatec.authenticator:/oauth2redirect"];
 /** Seconds a client must wait between token polls of one request (the `interval` the challenge announces). */
 export const POLL_INTERVAL_SECONDS = 2;
 /** RFC 8628 3.5 and CIBA 10.2: a client that polls too fast is told `slow_down` and must add this to its interval. */

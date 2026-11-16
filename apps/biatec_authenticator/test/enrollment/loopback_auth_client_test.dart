@@ -11,7 +11,9 @@ import 'package:http/testing.dart';
 
 const issuer = 'https://oidc.example';
 const clientId = 'authenticator-desktop';
-const redirect = 'http://localhost:42817';
+/// A port that is free on this machine (found once; a fixed number could be taken or reserved).
+late final int port;
+String get redirect => 'http://localhost:$port';
 
 String idToken(Map<String, Object?> claims) {
   String part(Object o) => base64Url.encode(utf8.encode(jsonEncode(o))).replaceAll('=', '');
@@ -82,7 +84,7 @@ class Provider {
   Future<int> get(String pathAndQuery, {String method = 'GET', String host = '127.0.0.1'}) async {
     final c = HttpClient()..connectionTimeout = const Duration(seconds: 2);
     try {
-      final q = await c.openUrl(method, Uri.parse('http://$host:42817$pathAndQuery'));
+      final q = await c.openUrl(method, Uri.parse('http://$host:$port$pathAndQuery'));
       final r = await q.close();
       await r.drain<void>();
       answers.add(r.statusCode);
@@ -93,9 +95,9 @@ class Provider {
   }
 }
 
-AuthRequest request({String redirectUri = redirect}) => AuthRequest(
+AuthRequest request({String? redirectUri}) => AuthRequest(
       clientId: clientId,
-      redirectUri: redirectUri,
+      redirectUri: redirectUri ?? redirect,
       scope: AuthRequest.plainScope,
       discoveryUrl: '$issuer/.well-known/openid-configuration',
     );
@@ -108,12 +110,27 @@ Matcher failsWith(String text) =>
 
 /// Nothing listens on the port after a sign-in, however it ended.
 Future<void> expectPortFree() async {
-  final s = await ServerSocket.bind(InternetAddress.loopbackIPv4, 42817);
+  final s = await ServerSocket.bind(InternetAddress.loopbackIPv4, port);
   await s.close();
 }
 
 void main() {
+  setUpAll(() async {
+    final probe = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    port = probe.port;
+    await probe.close();
+  });
   tearDown(expectPortFree);
+
+  test('an error the client does not know still ends as a failed sign-in, and the client can be used again', () async {
+    final p = Provider();
+    var broken = true;
+    final c = LoopbackAuthClient(
+        http: () => broken ? throw StateError('no client') : p.client(), openBrowser: p.open);
+    await expectLater(c.signIn(request()), failsWith('StateError'));
+    broken = false;
+    expect(await c.signIn(request()), 'access-1');
+  });
 
   test('signs in: PKCE S256, state, nonce, the code redeemed with the verifier', () async {
     final p = Provider();
@@ -192,13 +209,13 @@ void main() {
   test('a port that is taken on the IPv6 loopback address alone stops the sign-in too', () async {
     final ServerSocket busy;
     try {
-      busy = await ServerSocket.bind(InternetAddress.loopbackIPv6, 42817);
+      busy = await ServerSocket.bind(InternetAddress.loopbackIPv6, port);
     } on SocketException {
       return; // this machine has no IPv6 loopback
     }
     try {
       final p = Provider();
-      await expectLater(clientOf(p).signIn(request()), failsWith('Port 42817'));
+      await expectLater(clientOf(p).signIn(request()), failsWith('Port $port'));
       expect(p.authorize, isNull);
     } finally {
       await busy.close();
@@ -296,10 +313,10 @@ void main() {
   });
 
   test('a busy port fails before the browser opens', () async {
-    final busy = await ServerSocket.bind(InternetAddress.loopbackIPv4, 42817);
+    final busy = await ServerSocket.bind(InternetAddress.loopbackIPv4, port);
     try {
       final p = Provider();
-      await expectLater(clientOf(p).signIn(request()), failsWith('Port 42817'));
+      await expectLater(clientOf(p).signIn(request()), failsWith('Port $port'));
       expect(p.authorize, isNull);
     } finally {
       await busy.close();
@@ -492,7 +509,7 @@ void main() {
 
   test('the mock is addressed by its endpoints and needs no ID token', () async {
     final p = Provider(tokenAnswer: (f, a) => http.Response(jsonEncode({'access_token': 'mock-token'}), 200));
-    final token = await clientOf(p).signIn(const AuthRequest(
+    final token = await clientOf(p).signIn(AuthRequest(
         clientId: clientId,
         redirectUri: redirect,
         authorizationEndpoint: 'http://10.0.2.2:5080/mock-oidc/authorize',
@@ -505,7 +522,7 @@ void main() {
   test('plain http endpoints are refused unless they are the mock\'s', () async {
     final p = Provider();
     await expectLater(
-        clientOf(p).signIn(const AuthRequest(
+        clientOf(p).signIn(AuthRequest(
             clientId: clientId,
             redirectUri: redirect,
             authorizationEndpoint: 'http://oidc.example/authorize',

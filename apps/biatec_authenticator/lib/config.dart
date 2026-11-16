@@ -63,8 +63,15 @@ class AppConfig {
 
   static const bool _definedInAppLogin = bool.fromEnvironment('IN_APP_LOGIN');
 
-  static const bool _hasBrowserLogin = bool.hasEnvironment('BROWSER_LOGIN');
-  static const bool _definedBrowserLogin = bool.fromEnvironment('BROWSER_LOGIN');
+  static const String _definedBrowserLogin = String.fromEnvironment('BROWSER_LOGIN');
+
+  /// `BROWSER_LOGIN`: `true`, `false`, or not set (null: the default of the build). Anything else is a mistake that is said, not read as "off".
+  static bool? _browserLogin(String defined) => switch (defined.trim()) {
+        '' => null,
+        'true' => true,
+        'false' => false,
+        _ => throw const ConfigException('BROWSER_LOGIN must be true or false.'),
+      };
 
   static const bool _definedTrustSettings = bool.fromEnvironment('TRUST_SETTINGS');
 
@@ -107,8 +114,8 @@ class AppConfig {
 
   /// Whether the connect step signs the user in with the system browser (T-248): authorization code with PKCE, and the access token of that login enrolls the device. It needs
   /// nothing of [inAppLogin] from the server, only a public client with this app's redirect, so it works against today's Biatec OIDC. On whenever [inAppLogin] is; on by
-  /// default for a desktop build against stage Biatec OIDC (the client [stageDesktopClientId] exists there); otherwise `--dart-define=BROWSER_LOGIN=true`.
-  /// `BROWSER_LOGIN=false` turns the desktop default off.
+  /// default for a desktop build against stage Biatec OIDC (the client [stageDesktopClientId] exists there); otherwise `--dart-define=BROWSER_LOGIN=true` on a desktop
+  /// build. `BROWSER_LOGIN=false` turns the desktop default off. A phone build refuses `BROWSER_LOGIN=true` without [inAppLogin]: there the login must be proven fresh.
   final bool browserLogin;
 
   /// Whether Biatec OIDC has the user-held trust settings (T-245, issues 27 and 30 of AlgorandGoogleDriveAccount): the user's own threshold with no ceiling, `ask_on_test_networks`, `block_unproven_clients`, per service
@@ -152,7 +159,7 @@ class AppConfig {
           deviceChannel: _definedDeviceChannel,
           twoKeys: _definedTwoKeys,
           inAppLogin: _definedInAppLogin,
-          browserLogin: _hasBrowserLogin ? _definedBrowserLogin : null,
+          browserLogin: _browserLogin(_definedBrowserLogin),
           trustSettings: _definedTrustSettings,
           relyingParties: _definedRelyingParties,
           clientId: _definedClientId,
@@ -215,7 +222,13 @@ class AppConfig {
     final stageDesktop = isDesktop &&
         !isMock &&
         Uri.parse(url).host.toLowerCase() == Uri.parse(stageOidcBaseUrl).host;
-    final login = isMock || inAppLogin || (browserLogin ?? stageDesktop);
+    // A phone enrolls only on a login the server proves fresh (PRODUCT-DESCRIPTION, protocol rule 7), which is [inAppLogin]. The plain browser login has no such
+    // proof against today's Biatec OIDC, so it is for desktop builds, which cannot complete an enrollment yet (T-250).
+    if (browserLogin == true && !isDesktop && !isMock && !inAppLogin) {
+      throw const ConfigException(
+          'BROWSER_LOGIN is for desktop builds. A phone build signs in with IN_APP_LOGIN=true, which needs the server side of the in-app login.');
+    }
+    final login = isMock || inAppLogin || (isDesktop && (browserLogin ?? stageDesktop));
     return AppConfig(
         oidcBaseUrl: isMock ? mockOidcBaseUrl : url,
         isMock: isMock,
@@ -284,7 +297,7 @@ class AppConfig {
   /// The hosts a loopback redirect may name. `localhost` is accepted because Biatec OIDC matches the registered redirect by its exact host.
   static const loopbackRedirectHosts = {'localhost', '127.0.0.1', '::1'};
 
-  /// Whether [redirect] is one the desktop login can listen on: plain `http` (the answer never leaves this machine), a loopback host, an explicit port from 1024 up, and
+  /// Whether [redirect] is one the desktop login can listen on: plain `http` (the answer never leaves this machine), a loopback host, an explicit port from 1024 to 65535, and
   /// no credentials, query or fragment.
   static bool isLoopbackRedirect(String redirect) {
     final uri = Uri.tryParse(redirect);
@@ -293,6 +306,7 @@ class AppConfig {
         loopbackRedirectHosts.contains(uri.host.toLowerCase()) &&
         uri.hasPort &&
         uri.port >= 1024 &&
+        uri.port <= 65535 &&
         uri.userInfo.isEmpty &&
         !uri.hasQuery &&
         !uri.hasFragment;

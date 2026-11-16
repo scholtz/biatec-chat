@@ -64,7 +64,7 @@ developer machine that once ran a local https server) turns the redirect into `h
 The default stays `http://localhost:42815` because that is what stage has registered.
 
 The redirect must be registered exactly as the build has it (`OIDC_REDIRECT_URI`, default `http://localhost:42815`).
-Rules the app enforces on it: scheme `http`, host `localhost`, `127.0.0.1` or `[::1]`, an explicit port from 1024 up,
+Rules the app enforces on it: scheme `http`, host `localhost`, `127.0.0.1` or `[::1]`, an explicit port from 1024 to 65535,
 no credentials, no query, no fragment. A path is allowed (`http://127.0.0.1:50123/callback`). If the server matches
 redirects on any port for loopback hosts, the port is still the one in the build.
 
@@ -86,6 +86,10 @@ can be sent. (The Postman callback in the stage configuration is such an extra; 
 
 ### Phones (Android, iOS)
 
+A phone enrolls only on a login the server proves to be fresh, so a phone build needs `IN_APP_LOGIN=true` and a
+server that has the in-app login ([required-changes-biatec-oidc.md](required-changes-biatec-oidc.md): the
+`enroll-device` scope, `auth_time` checked by `POST /devices`). Real Biatec OIDC does not have it yet.
+
 A release build on a phone returns from the browser through an **app link** (an `https` address the operating system
 opens only in this app). A custom scheme is refused in a release build, because any app can register one.
 
@@ -93,7 +97,7 @@ opens only in this app). A custom scheme is refused in a release build, because 
 | --- | --- |
 | Client secret | none (public client) |
 | Redirect URI | `https://<provider host>/app/authenticator/callback` |
-| Scopes | `openid` (and `enroll-device` with `IN_APP_LOGIN=true`) |
+| Scopes | `openid enroll-device` |
 
 This needs three things that are compiled into the app, so a phone build for a new provider is a code change, not
 only build settings:
@@ -115,7 +119,7 @@ All are `--dart-define=NAME=value` on `flutter build` or `flutter run`.
 | `OIDC_BASE_URL` | The provider's base URL (the issuer). | Windows release build: `https://stage.oidc.biatec.io`. Other release builds: none, the build refuses to start. Debug: the mock. |
 | `OIDC_CLIENT_ID` | The public client of section 3. | `biatec-authenticator-stage-app` on a desktop build against stage; otherwise `biatec-authenticator`. |
 | `OIDC_REDIRECT_URI` | The registered redirect. | Desktop: `http://localhost:42815`. Phone release: the app link on the provider's host. Phone debug: `io.biatec.authenticator:/oauth2redirect`. |
-| `BROWSER_LOGIN` | `true`: the connect step has the Sign in button. `false`: it does not. | On for a desktop build against stage and whenever `IN_APP_LOGIN` is on; otherwise off. |
+| `BROWSER_LOGIN` | Desktop builds only. `true`: the connect step has the Sign in button. `false`: it does not. Any other value stops the app at start. A phone build refuses `true` without `IN_APP_LOGIN=true`. | On for a desktop build against stage; otherwise off. (`IN_APP_LOGIN=true` has its own sign-in on every platform.) |
 | `OIDC_PINS` | Public key pins of the provider's server, comma separated (section 5). | The table in `lib/security/pinning/pins.dart`; a host with no pin stops the app at start. |
 | `IN_APP_LOGIN`, `TWO_KEY_DEVICE`, `DEVICE_CHANNEL`, `TRUST_SETTINGS`, `RELYING_PARTIES`, `CONSENT_SETTINGS_API` | Server features of the consent protocol 1.1 and 1.2. Turn one on only when the server has it. | Off (on for the mock). |
 
@@ -156,7 +160,7 @@ two pins.
 | The token answer belongs to another sign-in or another server | The ID token's `nonce`, `iss` and `aud` are checked. The discovery document must name the configured issuer and keep both endpoints on its host. |
 | The code or verifier is sent somewhere else | The token request goes to the token endpoint over the pinned connection and a redirect answer is not followed. |
 | The provider's error text is shown or logged | Only the error code (`[a-z_]`, at most 40 characters) is shown. The page the listener serves is fixed text with `Content-Security-Policy: default-src 'none'`. |
-| The browser is started through a shell | The system's URL handler is started by its full path with the address as one argument. |
+| The browser is started through a shell, or a program of the same name earlier in the search path is started | The system's URL handler is started by its full path (`%SystemRoot%\System32\rundll32.exe`, `/usr/bin/open`, `/usr/bin/xdg-open`) with the address as one argument. |
 | The token is kept | The access token is held in memory for the enrollment calls and dropped. No refresh token is requested. |
 
 Limits to know:
