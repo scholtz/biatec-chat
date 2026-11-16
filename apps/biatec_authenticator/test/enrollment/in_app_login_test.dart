@@ -30,7 +30,7 @@ class _NoAttestation implements AttestationProvider {
 }
 
 /// The system browser stand-in: records what it was asked and plays a script of tokens and failures.
-class FakeAuth implements AuthClient {
+class FakeAuth extends AuthClient {
   FakeAuth(this.script);
 
   final List<Object> script;

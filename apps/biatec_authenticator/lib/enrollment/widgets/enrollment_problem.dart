@@ -27,6 +27,9 @@ enum EnrollmentProblemKind {
   /// The sign-in in the browser was cancelled or did not give a token.
   signInFailed,
 
+  /// This kind of device has no protected key store (a desktop build): nothing can be enrolled here, and trying again does not help.
+  noKeyStore,
+
   /// Anything else; the message says what the server or device said.
   other,
 }
@@ -82,6 +85,10 @@ EnrollmentProblem classifyEnrollmentError(String error) {
         strings.loginFailed(
             error.substring(EnrollmentController.loginFailedPrefix.length).trim()),
         strings.signInButton);
+  }
+  if (error == EnrollmentController.noKeyStoreError) {
+    return EnrollmentProblem(EnrollmentProblemKind.noKeyStore,
+        strings.noKeyStoreTitle, strings.noKeyStore, strings.signInButton);
   }
   if (error == EnrollmentController.staleLoginError) {
     return EnrollmentProblem(EnrollmentProblemKind.signInFailed,

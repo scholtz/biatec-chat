@@ -283,8 +283,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     ];
   }
 
-  /// The sign-in button exists when the build has the in-app login AND the controller can do it (it is built with the browser client then).
-  bool get _inApp => widget.config.inAppLogin && _controller.auth != null;
+  /// The sign-in button exists when the build has the browser login AND the controller can do it (it is built with the browser client then).
+  bool get _inApp => widget.config.signIn && _controller.auth != null;
 
   String? get _recoveryText {
     final t = _recoveryCode.text.trim();
@@ -300,6 +300,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     // Debug builds only (see AppConfig.pasteLoginToken): the field is not part of a release build.
     final paste = widget.config.pasteLoginToken;
     final busy = _checking || _controller.signingIn;
+    final noKeyStore = problem?.kind == EnrollmentProblemKind.noKeyStore;
     return [
       KeyedSubtree(
         key: const Key('step-connect'),
@@ -307,7 +308,9 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
       ),
       const SizedBox(height: AppSpacing.s),
       if (inApp)
-        Text(strings.signInIntro, key: const Key('sign-in-intro'))
+        // "You always sign in again" is said only where the server enforces it (the in-app login, `auth_time`); a plain browser login may reuse the browser's session.
+        Text(widget.config.inAppLogin ? strings.signInIntro : strings.signInIntroPlain,
+            key: const Key('sign-in-intro'))
       else if (paste)
         const Text('Paste the login token from a fresh Biatec OIDC login. It is '
             'used once, to link this device, and is not kept.')
@@ -331,7 +334,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
           message: s.notice!,
         ),
       ],
-      if (inApp) ...[
+      // The recovery code is a feature of the in-app login's server side (T-242); a plain browser login has none to send.
+      if (inApp && widget.config.inAppLogin) ...[
         const SizedBox(height: AppSpacing.m),
         TextField(
           key: const Key('recovery-code-field'),
@@ -346,11 +350,14 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
             helperMaxLines: 3,
           ),
         ),
+      ],
+      if (inApp) ...[
         const SizedBox(height: AppSpacing.m),
         FilledButton(
           key: const Key('sign-in-button'),
           // Off while the browser is open or the device is asked, so a second tap does not start a second sign-in.
-          onPressed: busy
+          // Off too on a device with no key store: signing in again would end the same way.
+          onPressed: busy || noKeyStore
               ? null
               : () => again
                   ? _checkAgain()
@@ -363,6 +370,15 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
                       ? strings.signInAgainButton
                       : problem?.actionLabel ?? strings.signInButton),
         ),
+        // The desktop login waits for the browser to come back; closing the browser tells the app nothing, so the wait can be ended here.
+        if (_controller.canCancelSignIn) ...[
+          const SizedBox(height: AppSpacing.s),
+          TextButton(
+            key: const Key('sign-in-cancel'),
+            onPressed: _controller.cancelSignIn,
+            child: Text(strings.signInCancel),
+          ),
+        ],
       ],
       if (paste) ...[
         const SizedBox(height: AppSpacing.m),
@@ -391,7 +407,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
         (inApp ? OutlinedButton.new : FilledButton.new)(
           key: const Key('enroll-button'),
           // Off while the device is being asked, so a second tap does not start a second check.
-          onPressed: busy
+          // Off on a device with no key store, like the sign-in button: connecting again would end the same way.
+          onPressed: busy || noKeyStore
               ? null
               : () => again && !inApp
                   ? _checkAgain()
@@ -401,7 +418,9 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
               ? 'Checking\u2026'
               : inApp
                   ? 'Connect with the pasted token'
-                  : problem?.actionLabel ?? 'Connect and create the key'),
+                  : noKeyStore
+                      ? 'Connect and create the key'
+                      : problem?.actionLabel ?? 'Connect and create the key'),
         ),
         if (again && !inApp) ...[
           const SizedBox(height: AppSpacing.s),

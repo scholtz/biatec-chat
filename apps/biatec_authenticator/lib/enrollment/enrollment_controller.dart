@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart' show PlatformException;
+import 'package:flutter/services.dart' show MissingPluginException, PlatformException;
 
 import '../integrity/attestation.dart';
 import '../config.dart';
@@ -64,9 +64,8 @@ class EnrollmentController extends ChangeNotifier {
         store: store,
         client: OidcEnrollmentClient(baseUrl: config.oidcBaseUrl),
         twoKeys: twoKeys ?? config.twoKeys,
-        auth: config.inAppLogin ? (authClient ?? AppAuthClient()) : null,
-        loginRequest:
-            config.inAppLogin ? AuthRequest.forConfig(config) : null,
+        auth: config.signIn ? (authClient ?? authClientFor(config)) : null,
+        loginRequest: config.signIn ? AuthRequest.forConfig(config) : null,
         devices: SettingsClient(
             baseUrl: config.oidcBaseUrl,
             proof: proof ?? KeystoreDeviceProofSigner(keys: keys, enrollment: store)),
@@ -82,6 +81,9 @@ class EnrollmentController extends ChangeNotifier {
   /// The state error of a cancelled sign-in, a failed one, and of the recovery code at enrollment (English; the screen shows the phone's language).
   static String get loginCancelledError => EnrollStrings.en.loginCancelled;
   static const loginFailedPrefix = 'Sign-in failed:';
+
+  /// The state error on a platform without a key store (see [enroll]).
+  static String get noKeyStoreError => EnrollStrings.en.noKeyStore;
   static String get recoveryWrongError => EnrollStrings.en.recoveryWrong;
   static String get recoveryLockedError => EnrollStrings.en.recoveryLocked;
   static String get staleLoginError => EnrollStrings.en.staleLoginAgain;
@@ -116,6 +118,8 @@ class EnrollmentController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    // A desktop sign-in that waits for the browser is ended with its screen: the listener is closed and no code is redeemed for a controller that is gone.
+    if (_waitingForBrowser) auth?.cancel();
     super.dispose();
   }
 
@@ -300,10 +304,29 @@ class EnrollmentController extends ChangeNotifier {
         _ => 'Biatec Authenticator',
       };
 
+  /// Key generation on a platform with no native key store: the channel has no implementation. Only that call is read this way; a missing plugin anywhere else is an ordinary failure.
+  static Future<T> _made<T>(Future<T> Function() generate) async {
+    try {
+      return await generate();
+    } on MissingPluginException {
+      throw const _NoKeyStore();
+    }
+  }
+
   bool _signingIn = false;
 
   /// The browser is open for the sign-in (or the enrollment that follows it runs).
   bool get signingIn => _signingIn;
+
+  bool _waitingForBrowser = false;
+
+  /// The sign-in waits for the browser and can be stopped with [cancelSignIn] (the desktop login; a phone's browser session ends when it is closed).
+  bool get canCancelSignIn => _waitingForBrowser && (auth?.canCancel ?? false);
+
+  /// Stops waiting for the browser: the sign-in ends as cancelled and nothing is enrolled.
+  void cancelSignIn() {
+    if (_waitingForBrowser) auth?.cancel();
+  }
 
   /// Signs the user in with the system browser and enrolls this device with the token that gives. The token lives in a local variable for the enrollment calls and is dropped; it is not written to any store, and no refresh token is asked for. A login Biatec OIDC finds too old starts the sign-in again, once.
   Future<EnrollResult> signInAndEnroll(
@@ -332,7 +355,14 @@ class EnrollmentController extends ChangeNotifier {
       for (var attempt = 0;; attempt++) {
         String? token;
         try {
-          token = await signIn.signIn(request);
+          _waitingForBrowser = true;
+          notifyListeners();
+          try {
+            token = await signIn.signIn(request);
+          } finally {
+            _waitingForBrowser = false;
+          }
+          if (!_disposed) notifyListeners();
         } on LoginCancelled {
           if (_disposed) return EnrollResult.ignored;
           _set(EnrollmentState(EnrollmentPhase.failed,
@@ -406,7 +436,7 @@ class EnrollmentController extends ChangeNotifier {
         await store.clearAlias();
       }
       if (twoKeys) {
-        final made = deviceKeys = await keys.generateKeys();
+        final made = deviceKeys = await _made<DeviceKeys>(keys.generateKeys);
         if (!made.approval.securityLevel.isHardware ||
             !made.approval.authBound) {
           throw const _CannotProtectApprovals();
@@ -417,7 +447,7 @@ class EnrollmentController extends ChangeNotifier {
         enrolled = made.approval;
       } else {
         // Single-key mode: ONLY the prompt-free key is made (no approval key, no biometric requirement), exactly as before T-241.
-        enrolled = await keys.generatePresenceKey();
+        enrolled = await _made<DeviceKey>(keys.generatePresenceKey);
         if (!enrolled.securityLevel.isHardware) {
           throw _NotInHardware(enrolled.securityLevel);
         }
@@ -443,6 +473,11 @@ class EnrollmentController extends ChangeNotifier {
                       ? 'This phone could not create the device keys. Restart '
                           'the phone and try again.'
                       : 'Could not create the device keys: $e'));
+      return EnrollResult.failed;
+    } on _NoKeyStore {
+      // A platform this app has no key store for (a desktop build): there is no protected place for a device key, so nothing is enrolled.
+      await _discardKeys();
+      _set(EnrollmentState(EnrollmentPhase.failed, error: noKeyStoreError));
       return EnrollResult.failed;
     } on Object catch (e) {
       await _discardKeys();
@@ -871,4 +906,8 @@ class _NotInHardware implements Exception {
                 'hardware. Enrollment is refused.';
 
   final String message;
+}
+
+class _NoKeyStore implements Exception {
+  const _NoKeyStore();
 }

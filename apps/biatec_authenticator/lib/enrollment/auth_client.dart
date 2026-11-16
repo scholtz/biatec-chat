@@ -5,6 +5,8 @@ import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_appauth/flutter_appauth.dart';
 
 import '../config.dart';
+import '../security/pinning/pinned_http.dart';
+import 'loopback_auth_client.dart';
 
 /// The login the authenticator asks for (T-242, D10). Everything the server enforces is in here, so a test can check it exactly: the scope, `prompt=login` and `max_age=0`.
 class AuthRequest {
@@ -23,12 +25,16 @@ class AuthRequest {
   /// `openid enroll-device`: the one scope of this login. No `offline_access`: no refresh token is requested.
   static const enrollScope = 'openid enroll-device';
 
+  /// The scope against a Biatec OIDC without the in-app login features (`AppConfig.inAppLogin` off): an ordinary login, whose access token `POST /devices` accepts.
+  static const plainScope = 'openid';
+
   /// Where the login is for: the mock is addressed by its endpoints (it has no hosted discovery under a path prefix), a real Biatec OIDC by its discovery document. Plain http is allowed for the mock only, which a release build refuses anyway.
   factory AuthRequest.forConfig(AppConfig config) {
     final base = config.oidcBaseUrl;
     return AuthRequest(
       clientId: config.oidcClientId,
       redirectUri: config.redirectUri,
+      scope: config.inAppLogin ? enrollScope : plainScope,
       discoveryUrl:
           config.isMock ? null : '$base/.well-known/openid-configuration',
       authorizationEndpoint: config.isMock ? '$base/authorize' : null,
@@ -78,13 +84,26 @@ class LoginFailed implements Exception {
   String toString() => message;
 }
 
+/// The login client of this build: a desktop build (its redirect is a loopback address, see `AppConfig.isLoopbackRedirect`) listens for the browser's answer itself
+/// ([LoopbackAuthClient]); a phone uses the platform's browser session ([AppAuthClient]).
+AuthClient authClientFor(AppConfig config) => AppConfig.isLoopbackRedirect(config.redirectUri)
+    ? LoopbackAuthClient(http: () => PinnedHttp.clientFor(config.oidcBaseUrl))
+    : AppAuthClient();
+
 /// Signs the user in with the system browser and returns the access token. The token is for the caller to use once and drop: nothing here keeps it, and no refresh token is asked for or looked at.
 abstract class AuthClient {
   Future<String> signIn(AuthRequest request);
+
+  /// Ends a sign-in that is waiting for the browser, which then fails with [LoginCancelled]. A client that cannot be told to stop (the platform's browser session ends
+  /// when the user closes it) does nothing.
+  void cancel() {}
+
+  /// Whether [cancel] does something, so the screen only offers it then.
+  bool get canCancel => false;
 }
 
 /// `flutter_appauth`: authorization code with PKCE in Custom Tabs on Android and `ASWebAuthenticationSession` on iOS, never an embedded web view. The iOS session is ephemeral, so no browser cookies are shared or kept.
-class AppAuthClient implements AuthClient {
+class AppAuthClient extends AuthClient {
   AppAuthClient([FlutterAppAuth? appAuth])
       : _appAuth = appAuth ?? const FlutterAppAuth();
 
