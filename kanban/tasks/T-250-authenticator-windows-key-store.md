@@ -53,6 +53,9 @@ Parallel work possible: **yes**. It is blocked by T-248, and T-249 changes other
 - [ ] A computer without a TPM is refused with the existing "held in software" message; no key is kept.
 - [ ] An approval asks for Windows Hello, and a cancelled prompt signs nothing.
 - [ ] The private keys cannot be exported (checked against the provider's key properties).
+- [ ] A desktop device is not enrolled on a login that may come from an existing browser session: either the server
+      proves the login fresh (`auth_time`, the in-app login) or the enrollment stays off, and the hand-off says which.
+- [ ] The key store is probed before the browser opens, so a computer that cannot enroll is told so without a sign-in.
 - [ ] `flutter build windows` builds; `flutter test` passes.
 
 ## Verification
