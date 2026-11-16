@@ -18,8 +18,8 @@ typedef BrowserOpener = Future<bool> Function(Uri url);
 /// 1. The endpoints come from the provider's discovery document, which must name the issuer the app was built for and keep both endpoints on that origin.
 /// 2. A listener is opened on the loopback interface only, on the port of the registered redirect; nothing outside this machine can reach it.
 /// 3. The system browser is opened on the authorization endpoint with a PKCE challenge (S256), a `state` and a `nonce`, all fresh random values.
-/// 4. The listener takes the one answer that carries this `state` on the redirect's path. Anything else is answered with an error and ignored, so another
-///    page or program on this machine can neither inject a code nor end the sign-in.
+/// 4. The listener takes the one answer that carries this `state` on the redirect's path. Anything else is answered with an error and ignored, however often
+///    it comes, so another page or program on this machine can neither inject a code nor end the sign-in.
 /// 5. The code is redeemed at the token endpoint with the PKCE verifier (a code read by anything else is useless without it), redirects are not followed, and the
 ///    ID token must carry this `nonce`, the issuer and this client.
 ///
@@ -41,8 +41,8 @@ class LoopbackAuthClient extends AuthClient {
   /// How long the browser has to come back. Past it the listener is closed and the sign-in fails.
   final Duration timeout;
 
-  /// Requests that are not the answer (a favicon, another page probing the port) are refused one by one; past this many the sign-in stops, so the listener is not kept busy forever.
-  static const maxStrayRequests = 64;
+  /// How old the authentication behind an ID token may be when the token says (`auth_time`): the time a login in the browser can take.
+  static const maxLoginAgeSeconds = 600;
 
   /// The longest discovery or token answer that is read.
   static const maxBodyBytes = 256 * 1024;
@@ -68,7 +68,7 @@ class LoopbackAuthClient extends AuthClient {
       if (!AppConfig.isLoopbackRedirect(r.redirectUri)) {
         throw const LoginFailed('This build has no loopback redirect to sign in with.');
       }
-      final endpoints = await _endpoints(client, r);
+      final endpoints = await _orCancelled(_endpoints(client, r), cancel.future);
       final verifier = _token(32);
       final state = _token(32);
       final nonce = _token(32);
@@ -98,7 +98,8 @@ class LoopbackAuthClient extends AuthClient {
           await s.close(force: true);
         }
       }
-      return await _redeem(client, endpoints, r, code, verifier, nonce);
+      // A sign-in that was stopped gives no token, also when the answer had already arrived: closing the client (below) ends the call that is still open.
+      return await _orCancelled(_redeem(client, endpoints, r, code, verifier, nonce), cancel.future);
     } on SocketException catch (e) {
       throw LoginFailed('The provider could not be reached (${e.message}).');
     } on http.ClientException catch (e) {
@@ -113,6 +114,20 @@ class LoopbackAuthClient extends AuthClient {
       client.close();
       _cancel = null;
     }
+  }
+
+  /// [work], unless the sign-in is stopped first: then [LoginCancelled], and what [work] ends with is ignored.
+  static Future<T> _orCancelled<T>(Future<T> work, Future<void> cancelled) {
+    final done = Completer<T>();
+    work.then((v) {
+      if (!done.isCompleted) done.complete(v);
+    }, onError: (Object e, StackTrace s) {
+      if (!done.isCompleted) done.completeError(e, s);
+    });
+    cancelled.then((_) {
+      if (!done.isCompleted) done.completeError(const LoginCancelled());
+    });
+    return done.future;
   }
 
   // ---- endpoints ----
@@ -137,7 +152,7 @@ class LoopbackAuthClient extends AuthClient {
     final issuer = discovery.substring(0, discovery.length - suffix.length);
     final json = await _json(client, http.Request('GET', uri), 'discovery document');
     // OpenID Connect Discovery 4.3: the issuer in the document is exactly the one it was asked from. A document that names another issuer is not this provider's.
-    if (json['issuer'] is! String || _trim(json['issuer'] as String) != _trim(issuer)) {
+    if (!_sameIssuer(json['issuer'], issuer)) {
       throw const LoginFailed('The discovery document names another issuer.');
     }
     final authorization = _endpoint(json['authorization_endpoint'], uri, 'authorization_endpoint');
@@ -163,7 +178,21 @@ class LoopbackAuthClient extends AuthClient {
     return uri;
   }
 
-  static String _trim(String s) => s.replaceAll(RegExp(r'/+$'), '');
+  /// Whether [value] names the issuer [expected]: the same scheme, host (letter case does not matter in a host), port and path, a trailing slash aside.
+  static bool _sameIssuer(Object? value, String expected) {
+    if (value is! String) return false;
+    final a = Uri.tryParse(value), b = Uri.tryParse(expected);
+    String path(Uri u) => u.path.replaceAll(RegExp(r'/+$'), '');
+    return a != null &&
+        b != null &&
+        a.scheme == b.scheme &&
+        a.host.toLowerCase() == b.host.toLowerCase() &&
+        a.port == b.port &&
+        path(a) == path(b) &&
+        !a.hasQuery &&
+        !a.hasFragment &&
+        a.userInfo.isEmpty;
+  }
 
   // ---- the listener ----
 
@@ -179,20 +208,25 @@ class LoopbackAuthClient extends AuthClient {
       try {
         servers.add(await HttpServer.bind(a, redirect.port, shared: false));
       } on SocketException catch (e) {
-        // The first address is the one the redirect names (IPv4 for `localhost`): without it the browser's answer could go to whatever else holds the port, so the
-        // sign-in does not start. The second (IPv6 next to `localhost`) is extra; a machine without IPv6 does not have it.
-        if (servers.isEmpty) {
-          throw LoginFailed(
-              'Port ${redirect.port} on this computer is in use (${e.message}). Close the program that uses it and sign in again.');
+        // A browser may use either address for `localhost`, so a port that something else holds on one of them could take the answer: the sign-in does not start.
+        // The one failure that is let through is a machine that has no IPv6 loopback at all (next to an IPv4 listener that is up).
+        if (servers.isNotEmpty && _noSuchAddress(e)) continue;
+        for (final s in servers) {
+          await s.close(force: true);
         }
+        throw LoginFailed(
+            'Port ${redirect.port} on this computer is in use (${e.message}). Close the program that uses it and sign in again.');
       }
     }
     return servers;
   }
 
+  /// The address family or the address does not exist on this machine (Windows: WSAEAFNOSUPPORT 10047, WSAEADDRNOTAVAIL 10049; Linux: 97, 99; macOS: 47, 49).
+  static bool _noSuchAddress(SocketException e) =>
+      const {10047, 10049, 97, 99, 47, 49}.contains(e.osError?.errorCode);
+
   Future<String> _answer(List<HttpServer> servers, Uri redirect, String state, Future<void> cancelled) {
     final done = Completer<String>();
-    var strays = 0;
     void fail(Object e) {
       if (!done.isCompleted) done.completeError(e);
     }
@@ -207,11 +241,9 @@ class LoopbackAuthClient extends AuthClient {
             path == expected &&
             _same(p['state'] ?? '', state);
         if (!mine || done.isCompleted) {
-          // Not the answer to this sign-in: said so, and the wait goes on.
+          // Not the answer to this sign-in (a favicon, another page or program probing the port): said so, and the wait goes on however many there are. The wait
+          // ends with the answer, the time limit or the user.
           await _page(q, HttpStatus.badRequest, _strayPage);
-          if (++strays > maxStrayRequests) {
-            fail(const LoginFailed('Too many unexpected requests reached the sign-in listener.'));
-          }
           return;
         }
         final code = p['code'];
@@ -318,8 +350,14 @@ class LoopbackAuthClient extends AuthClient {
     if (n is! String || !_same(n, nonce)) {
       throw const LoginFailed('The ID token is not for this sign-in.');
     }
-    if (issuer != null && (claims['iss'] is! String || _trim(claims['iss'] as String) != _trim(issuer))) {
+    if (issuer != null && !_sameIssuer(claims['iss'], issuer)) {
       throw const LoginFailed('The ID token is from another issuer.');
+    }
+    // A server that says when the user authenticated must say "just now": the login asks for one (`max_age=0`). One that does not say cannot be checked here.
+    final authTime = claims['auth_time'];
+    if (authTime is num &&
+        DateTime.now().millisecondsSinceEpoch / 1000 - authTime > maxLoginAgeSeconds) {
+      throw const LoginFailed('The provider used an earlier sign-in. Sign out in the browser and sign in again.');
     }
     final aud = claims['aud'];
     final forMe = aud is String ? aud == clientId : aud is List && aud.contains(clientId);
@@ -390,8 +428,9 @@ Future<bool> openSystemBrowser(Uri url) async {
     return false;
   }
   try {
-    final result = await Process.run(program, arguments, runInShell: false);
-    return result.exitCode == 0;
+    // Started and left alone: some launchers return only when the browser closes, and the sign-in must be listening by then.
+    await Process.start(program, arguments, runInShell: false, mode: ProcessStartMode.detached);
+    return true;
   } on ProcessException {
     return false;
   }

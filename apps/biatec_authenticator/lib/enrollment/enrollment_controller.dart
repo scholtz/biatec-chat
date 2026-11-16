@@ -83,8 +83,7 @@ class EnrollmentController extends ChangeNotifier {
   static const loginFailedPrefix = 'Sign-in failed:';
 
   /// The state error on a platform without a key store (see [enroll]).
-  static const noKeyStoreError =
-      'This build of the app has no protected key store on this kind of device, so the device cannot be enrolled here. Nothing was enrolled.';
+  static String get noKeyStoreError => EnrollStrings.en.noKeyStore;
   static String get recoveryWrongError => EnrollStrings.en.recoveryWrong;
   static String get recoveryLockedError => EnrollStrings.en.recoveryLocked;
   static String get staleLoginError => EnrollStrings.en.staleLoginAgain;
@@ -303,6 +302,15 @@ class EnrollmentController extends ChangeNotifier {
         _ => 'Biatec Authenticator',
       };
 
+  /// Key generation on a platform with no native key store: the channel has no implementation. Only that call is read this way; a missing plugin anywhere else is an ordinary failure.
+  static Future<T> _made<T>(Future<T> Function() generate) async {
+    try {
+      return await generate();
+    } on MissingPluginException {
+      throw const _NoKeyStore();
+    }
+  }
+
   bool _signingIn = false;
 
   /// The browser is open for the sign-in (or the enrollment that follows it runs).
@@ -426,7 +434,7 @@ class EnrollmentController extends ChangeNotifier {
         await store.clearAlias();
       }
       if (twoKeys) {
-        final made = deviceKeys = await keys.generateKeys();
+        final made = deviceKeys = await _made<DeviceKeys>(keys.generateKeys);
         if (!made.approval.securityLevel.isHardware ||
             !made.approval.authBound) {
           throw const _CannotProtectApprovals();
@@ -437,7 +445,7 @@ class EnrollmentController extends ChangeNotifier {
         enrolled = made.approval;
       } else {
         // Single-key mode: ONLY the prompt-free key is made (no approval key, no biometric requirement), exactly as before T-241.
-        enrolled = await keys.generatePresenceKey();
+        enrolled = await _made<DeviceKey>(keys.generatePresenceKey);
         if (!enrolled.securityLevel.isHardware) {
           throw _NotInHardware(enrolled.securityLevel);
         }
@@ -464,9 +472,10 @@ class EnrollmentController extends ChangeNotifier {
                           'the phone and try again.'
                       : 'Could not create the device keys: $e'));
       return EnrollResult.failed;
-    } on MissingPluginException {
+    } on _NoKeyStore {
       // A platform this app has no key store for (a desktop build): there is no protected place for a device key, so nothing is enrolled.
-      _set(const EnrollmentState(EnrollmentPhase.failed, error: noKeyStoreError));
+      await _discardKeys();
+      _set(EnrollmentState(EnrollmentPhase.failed, error: noKeyStoreError));
       return EnrollResult.failed;
     } on Object catch (e) {
       await _discardKeys();
@@ -895,4 +904,8 @@ class _NotInHardware implements Exception {
                 'hardware. Enrollment is refused.';
 
   final String message;
+}
+
+class _NoKeyStore implements Exception {
+  const _NoKeyStore();
 }

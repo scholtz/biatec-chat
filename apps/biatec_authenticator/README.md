@@ -151,7 +151,7 @@ A device is enrolled only by a person who just logged in inside the app, and bec
 - **Redirect of a desktop build:** a loopback address with an explicit port (`AppConfig.isLoopbackRedirect`), in a release build too; anything else stops the app at start. A phone's release build still accepts an https app link only.
 - **"Stop waiting"** ends a sign-in whose browser window was closed (the app cannot see that); the wait also ends by itself after 5 minutes.
 - **Not possible yet: finishing the enrollment on a desktop.** There is no native key store for Windows, Linux or macOS (`KeystorePlugin` exists for Android and iOS), so after the sign-in the enrollment stops with `EnrollmentController.noKeyStoreError` and nothing is enrolled. Task T-250.
-- **Tests:** `test/enrollment/loopback_auth_client_test.dart` (26: the request, the listener's rules, the discovery and token checks, time limit, cancel, busy port, loopback only) and `test/enrollment/desktop_login_test.dart` (configuration, the client chosen, the screen, the missing key store). **Not run:** a sign-in in a real browser against stage (it needs a person to log in).
+- **Tests:** `test/enrollment/loopback_auth_client_test.dart` (the request, the listener's rules, the discovery and token checks, time limit, cancel, busy port, loopback only) and `test/enrollment/desktop_login_test.dart` (configuration, the client chosen, the screen, the missing key store). **Not run:** a sign-in in a real browser against stage (it needs a person to log in).
 
 ### Tests (T-242)
 

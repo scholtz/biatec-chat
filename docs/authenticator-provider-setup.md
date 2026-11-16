@@ -36,8 +36,12 @@ Scope: the app asks for `openid` only. When the build has `IN_APP_LOGIN=true` it
 which the server must then know and enforce together with `auth_time`
 ([required-changes-biatec-oidc.md](required-changes-biatec-oidc.md)).
 
-`prompt=login` and `max_age=0` ask the server to make the user authenticate again. A server that ignores them (today's
-Biatec OIDC does) still works; the user may then be signed in from an existing browser session.
+`prompt=login` and `max_age=0` ask the server to make the user authenticate again. **Honour them.** A server that
+ignores them (today's Biatec OIDC does) still works, but whoever has a session in the computer's default browser is
+then signed in without typing anything, and that login enrolls the device. If the ID token carries `auth_time`, the
+app refuses one older than 10 minutes; without `auth_time` the app cannot tell. The enforced version of this rule
+(`enroll-device` scope and `auth_time` checked by `POST /devices`) is the in-app login of
+[required-changes-biatec-oidc.md](required-changes-biatec-oidc.md), `IN_APP_LOGIN=true`.
 
 ## 3. The client to register
 
@@ -142,8 +146,8 @@ two pins.
 | Risk | What the app does |
 | --- | --- |
 | Another program on the network reaches the listener | The listener is bound to `127.0.0.1` and `::1` only, for the length of one sign-in (at most 5 minutes), and is closed however the sign-in ends. |
-| Another page or program on the same computer sends a forged answer | Only a `GET` on the redirect's path with this sign-in's `state` (256 random bits, compared in constant time) is taken. Everything else gets a fixed error page and is ignored; after 64 such requests the sign-in stops. |
-| Something reads the authorization code (browser history, another program holding the port) | The code is useless without the PKCE verifier, which never leaves the app. If the port is already in use the sign-in does not start. |
+| Another page or program on the same computer sends a forged answer, or floods the listener | Only a `GET` on the redirect's path with this sign-in's `state` (256 random bits, compared in constant time) is taken. Everything else gets a fixed error page and is ignored, however often it comes. |
+| Something reads the authorization code (browser history, another program holding the port) | The code is useless without the PKCE verifier, which never leaves the app. If the port is already in use on the IPv4 or the IPv6 loopback address the sign-in does not start. |
 | The token answer belongs to another sign-in or another server | The ID token's `nonce`, `iss` and `aud` are checked. The discovery document must name the configured issuer and keep both endpoints on its host. |
 | The code or verifier is sent somewhere else | The token request goes to the token endpoint over the pinned connection and a redirect answer is not followed. |
 | The provider's error text is shown or logged | Only the error code (`[a-z_]`, at most 40 characters) is shown. The page the listener serves is fixed text with `Content-Security-Policy: default-src 'none'`. |

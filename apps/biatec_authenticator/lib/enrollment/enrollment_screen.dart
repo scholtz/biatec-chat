@@ -307,7 +307,9 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
       ),
       const SizedBox(height: AppSpacing.s),
       if (inApp)
-        Text(strings.signInIntro, key: const Key('sign-in-intro'))
+        // "You always sign in again" is said only where the server enforces it (the in-app login, `auth_time`); a plain browser login may reuse the browser's session.
+        Text(widget.config.inAppLogin ? strings.signInIntro : strings.signInIntroPlain,
+            key: const Key('sign-in-intro'))
       else if (paste)
         const Text('Paste the login token from a fresh Biatec OIDC login. It is '
             'used once, to link this device, and is not kept.')

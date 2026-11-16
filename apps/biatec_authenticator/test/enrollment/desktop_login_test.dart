@@ -204,7 +204,8 @@ void main() {
       final config = AppConfig.resolve('', release: true, windows: true);
       await open(tester, config, WaitingAuth());
       expect(find.byKey(const Key('sign-in-button')), findsOneWidget);
-      expect(find.byKey(const Key('sign-in-intro')), findsOneWidget);
+      // No promise of a fresh login where the server does not enforce one.
+      expect(tester.widget<Text>(find.byKey(const Key('sign-in-intro'))).data, isNot(contains('always')));
       expect(find.byKey(const Key('login-token')), findsNothing);
       expect(find.byKey(const Key('enroll-button')), findsNothing);
       expect(find.byKey(const Key('recovery-code-field')), findsNothing);

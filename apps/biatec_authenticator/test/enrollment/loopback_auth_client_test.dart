@@ -175,19 +175,83 @@ void main() {
     expect(p.tokenForm!['code'], 'good');
   });
 
-  test('a flood of stray requests ends the sign-in', () async {
+  test('a flood of stray requests does not end the sign-in', () async {
     late Provider p;
     p = Provider(browser: (url) async {
-      for (var i = 0; i <= LoopbackAuthClient.maxStrayRequests; i++) {
-        try {
-          await p.get('/?code=x&state=nope');
-        } on Object {
-          break;
-        }
+      for (var i = 0; i < 200; i++) {
+        expect(await p.get('/?code=x&state=nope'), 400);
       }
+      await p.get('/?code=code-1&state=${url.queryParameters['state']}');
     });
-    await expectLater(clientOf(p).signIn(request()), failsWith('unexpected requests'));
-    expect(p.tokenForm, isNull);
+    expect(await clientOf(p, timeout: const Duration(seconds: 30)).signIn(request()), 'access-1');
+    expect(p.tokenForm!['code'], 'code-1');
+  });
+
+  test('a port that is taken on the IPv6 loopback address alone stops the sign-in too', () async {
+    final ServerSocket busy;
+    try {
+      busy = await ServerSocket.bind(InternetAddress.loopbackIPv6, 42817);
+    } on SocketException {
+      return; // this machine has no IPv6 loopback
+    }
+    try {
+      final p = Provider();
+      await expectLater(clientOf(p).signIn(request()), failsWith('in use'));
+      expect(p.authorize, isNull);
+    } finally {
+      await busy.close();
+    }
+  });
+
+  test('stopping while the code is being redeemed gives no token', () async {
+    final hold = Completer<void>();
+    late LoopbackAuthClient c;
+    final p = Provider();
+    final slow = MockClient((q) async {
+      if (q.url.path == '/token') {
+        // The answer of the browser has arrived; the user stops now.
+        c.cancel();
+        await hold.future;
+        return http.Response(jsonEncode({'access_token': 'late'}), 200);
+      }
+      return http.Response(
+          jsonEncode({
+            'issuer': issuer,
+            'authorization_endpoint': '$issuer/authorize',
+            'token_endpoint': '$issuer/token',
+          }),
+          200);
+    });
+    c = LoopbackAuthClient(http: () => slow, openBrowser: p.open, timeout: const Duration(seconds: 5));
+    await expectLater(c.signIn(request()), throwsA(isA<LoginCancelled>()));
+    hold.complete();
+  });
+
+  test('stopping while the provider is being asked for its endpoints opens no browser', () async {
+    final hold = Completer<void>();
+    late LoopbackAuthClient c;
+    final p = Provider();
+    final slow = MockClient((q) async {
+      c.cancel();
+      await hold.future;
+      return http.Response('{}', 200);
+    });
+    c = LoopbackAuthClient(http: () => slow, openBrowser: p.open);
+    await expectLater(c.signIn(request()), throwsA(isA<LoginCancelled>()));
+    expect(p.authorize, isNull);
+    hold.complete();
+  });
+
+  test('the issuer is compared as an address: host case, default port and a trailing slash do not matter', () async {
+    for (final written in ['https://OIDC.Example', 'https://oidc.example:443', 'https://oidc.example/']) {
+      final p = Provider();
+      final token = await clientOf(p).signIn(AuthRequest(
+          clientId: clientId,
+          redirectUri: redirect,
+          scope: AuthRequest.plainScope,
+          discoveryUrl: '$written/.well-known/openid-configuration'.replaceFirst('//.well', '/.well')));
+      expect(token, 'access-1', reason: written);
+    }
   });
 
   test('the user refusing at the provider is a cancelled sign-in', () async {
@@ -336,6 +400,32 @@ void main() {
                   idToken({'iss': issuer, 'aud': 'someone-else', 'nonce': a.queryParameters['nonce']}),
             }),
         'another application'));
+
+    test('whose login is an old one is refused', () => refused(
+        (f, a) => ok({
+              'access_token': 't',
+              'id_token': idToken({
+                'iss': issuer,
+                'aud': clientId,
+                'nonce': a.queryParameters['nonce'],
+                'auth_time': DateTime.now().millisecondsSinceEpoch ~/ 1000 - 3600,
+              }),
+            }),
+        'earlier sign-in'));
+
+    test('whose login is recent is accepted', () async {
+      final p = Provider(
+          tokenAnswer: (f, a) => ok({
+                'access_token': 'fresh',
+                'id_token': idToken({
+                  'iss': issuer,
+                  'aud': [clientId, 'other'],
+                  'nonce': a.queryParameters['nonce'],
+                  'auth_time': DateTime.now().millisecondsSinceEpoch ~/ 1000 - 20,
+                }),
+              }));
+      expect(await clientOf(p).signIn(request()), 'fresh');
+    });
 
     test('without an ID token is refused', () => refused((f, a) => ok({'access_token': 't'}), 'no ID token'));
 
