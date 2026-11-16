@@ -58,13 +58,13 @@ signature, and the server can tell a desktop device from a phone.
    plan).
 3. **No software fallback.** No TPM 2.0, Windows Hello not set up, or a Hello key whose attestation does not say
    TPM: the security level is reported as `software` and the app refuses, with a text that says what to turn on.
-4. **Device class.** The enrollment says `platform: windows`. Windows has no counterpart of Play Integrity or App
-   Attest, so the server cannot prove the app is genuine. The server should treat a desktop device as a lower class
-   (limits, or login approvals only). That gate is server-side, as every tier gate is.
+4. **Device class.** The enrollment says `platform: windows`, so the server can tell a desktop device from a phone.
+   Owner's decision (2026-11-16): a desktop device may approve everything a phone may; no lower limits. Windows has
+   no counterpart of Play Integrity or App Attest, so the server cannot prove the app is genuine; that risk is
+   accepted, and the `platform` field keeps a later policy possible without a new enrollment.
 
-The rejected alternative: a P-256 TPM key for approvals with a `UserConsentVerifier` prompt in front of it. It needs
-no server change, but the gesture is checked by the app and not by the hardware. It is the fallback only if the
-owner prefers no server change, and then only for a device class with low limits.
+The rejected alternative (owner's decision, 2026-11-16): a P-256 TPM key for approvals with a `UserConsentVerifier`
+prompt in front of it. It needs no server change, but the gesture is checked by the app and not by the hardware.
 
 What a bank will ask, and the answer of this design (this is engineering advice, not a compliance certificate):
 
@@ -72,7 +72,7 @@ What a bank will ask, and the answer of this design (this is engineering advice,
 | --- | --- |
 | Possession element that cannot be copied (art. 7) | Keys made in the TPM, not exportable; TPM attestation of the Hello key at enrollment. |
 | Inherence or knowledge element (art. 6, 8) | Windows Hello biometric, or the Hello PIN, which the TPM guards against guessing. |
-| Independence of the elements on a multi-purpose device (art. 9) | Keys live in the TPM, outside the app's process. Weak point: no proof of app integrity on Windows. Mitigations: a signed MSIX package, the lower device class of point 4. |
+| Independence of the elements on a multi-purpose device (art. 9) | Keys live in the TPM, outside the app's process. Weak point: no proof of app integrity on Windows. Mitigation: a signed MSIX package. The owner accepted the rest of the risk (point 4). |
 | Dynamic linking (art. 5) | Unchanged: the approval signature covers the amount and the payee, as on the phones. |
 
 ## Implementation plan
@@ -84,8 +84,8 @@ What a bank will ask, and the answer of this design (this is engineering advice,
    gesture for each signature, the approval key stays P-256 and step 2 is not needed. Write the result into
    `docs/authenticator-windows-key-store.md`.
 2. **Server contract.** Record in `docs/required-changes-biatec-oidc.md`: an RS256 approval key at `POST /devices`
-   and in the approval signature check, the `platform` of a device, the device class policy, and (optional) the
-   check of the Windows attestation. Add the same to the mock in this repository so the tests run. Against real
+   and in the approval signature check, the `platform` of a device, and (optional) the check of the Windows
+   attestation. No device class policy: a desktop device approves what a phone approves. Add the same to the mock in this repository so the tests run. Against real
    Biatec OIDC the Windows enrollment stays off by configuration until the server has it (AGENTS.md).
 3. **Native key store.** `windows/runner/keystore_plugin.{h,cpp}` on the channel `io.biatec.authenticator/keystore`,
    with the methods the Dart side already calls: `generateKeys`, `generatePresence`, `load`, `keysState`,
@@ -137,11 +137,10 @@ Parallel work possible: **no**. It shares `lib/enrollment/**` with T-249 and mos
 
 Then the manual checklist on a Windows computer with Windows Hello set up.
 
-## Open decisions for the owner
+## Decisions of the owner (2026-11-16)
 
-1. RS256 approval key on Windows (recommended, needs the server change), or P-256 with an app-level Hello prompt
-   (no server change, weaker)?
-2. What may a desktop device approve: everything, lower limits, or logins only?
+1. The approval key on Windows is an RS256 Windows Hello key. The server change in Biatec OIDC is needed.
+2. A desktop device may approve everything.
 
 ## Hand-off
 
@@ -153,3 +152,4 @@ Then the manual checklist on a Windows computer with Windows Hello set up.
 - 2026-11-16 11:00 · kanban-board · backlog → blocked · waiting on: T-248
 - 2026-11-16 11:46 · kanban-board · blocked → backlog · blockers done: T-248
 - 2026-11-16 14:30 · session-20261116-0900 · backlog → backlog · implementation plan added at the user's request (plan only, not started); area widened, so it now conflicts with T-249 and T-251
+- 2026-11-16 15:00 · session-20261116-0900 · backlog → backlog · owner decided: RS256 Windows Hello approval key; a desktop device may approve everything
