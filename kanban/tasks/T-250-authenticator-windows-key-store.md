@@ -11,7 +11,7 @@ conflicts_with: [T-249, T-251]
 issue: "#423"
 branch: ""
 owner: ""
-taken_by: ""
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-11-16
 updated: 2026-11-16
@@ -153,3 +153,4 @@ Then the manual checklist on a Windows computer with Windows Hello set up.
 - 2026-11-16 11:46 · kanban-board · blocked → backlog · blockers done: T-248
 - 2026-11-16 14:30 · session-20261116-0900 · backlog → backlog · implementation plan added at the user's request (plan only, not started); area widened, so it now conflicts with T-249 and T-251
 - 2026-11-16 15:00 · session-20261116-0900 · backlog → backlog · owner decided: RS256 Windows Hello approval key; a desktop device may approve everything
+- 2026-11-16 23:50 · scholtz · taken · status stays backlog
