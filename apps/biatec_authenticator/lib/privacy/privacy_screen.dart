@@ -4,6 +4,7 @@ import '../security/settings_frame.dart' show confirmSheet;
 import '../theme.dart';
 import '../ui/ui.dart';
 import 'phone_eraser.dart';
+import 'privacy_texts.dart';
 import 'storage_inventory.dart';
 
 /// What the app stores, what it sends and to whom, what it never collects, and the action that removes everything from the phone.
@@ -25,18 +26,14 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
   Future<void> _erase() async {
     final eraser = widget.eraser;
     if (eraser == null || _busy) return;
+    final t = PrivacyTexts.of(Localizations.maybeLocaleOf(context));
     final yes = await confirmSheet(
       context,
-      title: 'Erase everything on this phone?',
-      message: 'This removes your two-factor accounts, the device key, your '
-          'enrollment, your approval history and your settings from this '
-          'phone, and signs the device out. The app goes back to the start.',
-      warning: 'This cannot be undone. Your two-factor accounts are not stored '
-          'anywhere else: add them again at each service, or restore them '
-          'from your own backup file. Biatec OIDC keeps its record of this '
-          'device until you cancel it from another device.',
-      confirmLabel: 'Erase everything',
-      cancelLabel: 'Keep my data',
+      title: t.text('confirmTitle'),
+      message: t.text('confirmBody'),
+      warning: t.text('confirmWarning'),
+      confirmLabel: t.text('confirmErase'),
+      cancelLabel: t.text('keepData'),
       confirmKey: const Key('confirm-erase'),
       cancelKey: const Key('keep-data'),
       biometric: true,
@@ -70,58 +67,56 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
         ),
       );
 
-  Widget _item(DataItem i) => ListTile(
-        title: Text(i.title),
-        subtitle: Text(i.text),
+  Widget _item(DataItem i, Locale? locale) => ListTile(
+        title: Text(i.titleIn(locale)),
+        subtitle: Text(i.textIn(locale)),
         isThreeLine: true,
       );
 
   @override
   Widget build(BuildContext context) {
     final result = _result;
+    final locale = Localizations.maybeLocaleOf(context);
+    final t = PrivacyTexts.of(locale);
     return Scaffold(
-      appBar: AppBar(title: const Text('Privacy')),
+      appBar: AppBar(title: Text(t.text('title'))),
       body: ListView(
         key: const Key('privacy-list'),
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
                 AppSpacing.m, AppSpacing.m, AppSpacing.m, 0),
-            child: Text('Biatec Authenticator collects only what it needs to '
-                'work. This is all of it.'),
+            child: Text(t.text('intro')),
           ),
-          _section(context, 'Stored on this phone'),
-          for (final i in storedOnPhone) _item(i),
-          _section(context, 'Sent to Biatec OIDC'),
-          for (final i in sentToBiatec) _item(i),
-          _section(context, 'Sent to the push service'),
-          for (final i in sentToPushService) _item(i),
-          _section(context, 'Never collected'),
-          for (final t in neverCollected)
+          _section(context, t.text('stored')),
+          for (final i in storedOnPhone) _item(i, locale),
+          _section(context, t.text('sentBiatec')),
+          for (final i in sentToBiatec) _item(i, locale),
+          _section(context, t.text('sentPush')),
+          for (final i in sentToPushService) _item(i, locale),
+          _section(context, t.text('never')),
+          for (final key in neverCollected)
             ListTile(
               leading: const ExcludeSemantics(child: Icon(Icons.block)),
-              title: Text(t),
+              title: Text(t.text(key)),
             ),
           if (widget.eraser != null) ...[
-            _section(context, 'Erase'),
+            _section(context, t.text('erase')),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text('Removes everything above from this phone. It '
-                      'does not remove what Biatec OIDC holds about your '
-                      'account; cancel this device from another device for '
-                      'that.'),
+                  Text(t.text('eraseBody')),
                   const SizedBox(height: AppSpacing.m),
                   if (_refused)
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: AppSpacing.m),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: AppSpacing.m),
                       child: StatusBanner(
-                        key: Key('erase-refused'),
+                        key: const Key('erase-refused'),
                         severity: StatusSeverity.warning,
-                        title: 'Nothing was erased',
-                        message: 'The fingerprint or face check did not pass.',
+                        title: t.text('refusedTitle'),
+                        message: t.text('refusedBody'),
                       ),
                     ),
                   if (result != null && !result.complete)
@@ -130,17 +125,16 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
                       child: StatusBanner(
                         key: const Key('erase-incomplete'),
                         severity: StatusSeverity.danger,
-                        title: 'Some data could not be removed',
-                        message: '${result.failed.join('. ')}. Try again, or '
-                            'uninstall the app, which removes the rest.',
+                        title: t.text('incompleteTitle'),
+                        message: t.text('incompleteBody',
+                            {'failed': result.failed.join('. ')}),
                       ),
                     ),
                   OutlinedButton.icon(
                     key: const Key('erase-everything'),
                     onPressed: _busy ? null : _erase,
                     icon: const Icon(Icons.delete_forever_outlined),
-                    label: Text(
-                        _busy ? 'Erasing' : 'Erase everything on this phone'),
+                    label: Text(t.text(_busy ? 'erasing' : 'eraseButton')),
                   ),
                   const SizedBox(height: AppSpacing.l),
                 ],

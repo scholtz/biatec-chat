@@ -14,6 +14,7 @@ import '../keys/prompt_free_key.dart';
 import '../links/link_services.dart';
 import '../enrollment/enrollment_strings.dart';
 import '../enrollment/pairing_code.dart';
+import 'security_texts.dart';
 import 'settings_client.dart';
 import '../enrollment/observable_enrollment_store.dart';
 
@@ -232,7 +233,7 @@ class SettingsController extends ChangeNotifier {
   Future<EnrollmentRecord> _record() async {
     final record = await enrollment.read();
     if (record == null) {
-      throw const ApprovalException('This device is not enrolled.');
+      throw ApprovalException(SecurityTexts.of().text('notEnrolled'));
     }
     return record;
   }
@@ -339,11 +340,10 @@ class SettingsController extends ChangeNotifier {
         _devices = const [];
         _settings = null;
         _phase = SettingsPhase.unavailable;
-        _error = 'This enrollment was cancelled. Enroll this device again '
-            'to use it.';
+        _error = SecurityTexts.of().text('cancelledHere');
       } else {
         _devices = _devices.where((d) => d.kid != kid).toList();
-        _notice = 'Enrollment cancelled.';
+        _notice = SecurityTexts.of().text('enrollmentCancelled');
         try {
           _devices = await client.devices(record.deviceToken);
         } on Object {
@@ -383,6 +383,7 @@ class SettingsController extends ChangeNotifier {
     _changed();
     var done = false;
     final strings = EnrollStrings.of();
+    final t = SecurityTexts.of();
     try {
       final record = await _record();
       _checkActive(record);
@@ -397,7 +398,7 @@ class SettingsController extends ChangeNotifier {
         throw const ApprovalException(ApprovalKeyInvalidated.message);
       }
       if (key.securityLevel.blocksSigning || !key.gestureRequired) {
-        throw const ApprovalException('This device cannot protect approvals.');
+        throw ApprovalException(t.text('cannotProtect'));
       }
       final p = device.pairing!;
       final signed = <String, Object?>{
@@ -418,11 +419,12 @@ class SettingsController extends ChangeNotifier {
             promptTitle: strings.activatePrompt,
             promptSubtitle: strings.activatePromptSubtitle);
       } on KeyPromptCancelled {
-        throw const ApprovalException('Cancelled. Nothing was activated.');
+        throw ApprovalException(t.text('activationCancelled'));
       } on ApprovalKeyInvalidated {
         throw const ApprovalException(ApprovalKeyInvalidated.message);
       } on KeyPromptFailed catch (e) {
-        throw ApprovalException('Could not approve: ${e.message}');
+        throw ApprovalException(
+            t.text('couldNotApprove', {'reason': e.message}));
       }
       if (signature.length != 64) {
         throw StateError('the keystore returned a ${signature.length}-byte '
@@ -466,6 +468,7 @@ class SettingsController extends ChangeNotifier {
     _notice = null;
     _changed();
     var applied = false;
+    final t = SecurityTexts.of();
     try {
       final record = await _record();
       if (trustSettings) {
@@ -477,9 +480,9 @@ class SettingsController extends ChangeNotifier {
         // A fresh biometric for any change to a security setting, tightening included (Secure Area rule 4). A loosening is signed by the approval key, whose OS prompt is that biometric (one prompt, no separate gate); a tightening is not signed, so the app's gate asks.
         if ((!loosening || !twoKeys) &&
             !await gate.confirm(loosening
-                ? 'Approve this settings change'
-                : 'Change a security setting')) {
-          throw const ApprovalException('Biometric check did not pass.');
+                ? t.text('approveChange')
+                : t.text('changeSetting'))) {
+          throw ApprovalException(t.text('biometricFailed'));
         }
         ConsentSettings next;
         if (loosening) {
@@ -494,7 +497,7 @@ class SettingsController extends ChangeNotifier {
         }
         _settings = next;
         _notice =
-            loosening ? 'Approved on this device and applied.' : 'Applied.';
+            t.text(loosening ? 'approvedApplied' : 'applied');
         applied = true;
       }
     } on Object catch (e) {
@@ -512,8 +515,9 @@ class SettingsController extends ChangeNotifier {
     // PRODUCT-DESCRIPTION, secure area rule 4: a fresh biometric for ANY change to a security setting. Biatec OIDC alone says whether a change loosens, so it cannot be known before sending
     // whether the approval key's own prompt will follow: the app's gate asks first for every change (one prompt for a tightening), and a loosening is then signed by the approval key, whose
     // prompt is a second one. The signature itself is still made exactly once.
-    if (!await gate.confirm('Change a security setting')) {
-      throw const ApprovalException('Biometric check did not pass.');
+    final t = SecurityTexts.of();
+    if (!await gate.confirm(t.text('changeSetting'))) {
+      throw ApprovalException(t.text('biometricFailed'));
     }
     var signed = false;
     ConsentSettings next;
@@ -524,28 +528,27 @@ class SettingsController extends ChangeNotifier {
       signed = true;
     }
     _settings = next;
-    _notice = signed ? 'Approved on this device and applied.' : 'Applied.';
+    _notice = t.text(signed ? 'approvedApplied' : 'applied');
     return true;
   }
 
   void _checkActive(EnrollmentRecord record) {
     if (record.activeAt.isAfter(now)) {
-      throw const ApprovalException('This device is not active yet, so it '
-          'cannot approve a change that lowers your protection. Changes that '
-          'raise it still work.');
+      throw ApprovalException(SecurityTexts.of().text('notActive'));
     }
   }
 
   Future<ConsentSettings> _signedChange(EnrollmentRecord record,
       ConsentSettings current, Map<String, Object?> change) async {
     _checkActive(record);
+    final t = SecurityTexts.of();
     final promptFree = PromptFreeKey.of(record);
     final key = twoKeys ? await keys.loadApproval() : await promptFree.load(keys);
     if (key == null || key.kid != record.kid) {
       throw const ApprovalException(ApprovalKeyInvalidated.message);
     }
     if (key.securityLevel.blocksSigning || (twoKeys && !key.gestureRequired)) {
-      throw const ApprovalException('This device cannot protect approvals.');
+      throw ApprovalException(t.text('cannotProtect'));
     }
     final signed = <String, Object?>{
       'type': 'biatec_settings_change',
@@ -564,15 +567,15 @@ class SettingsController extends ChangeNotifier {
         // The operating system asks for a strong biometric for this one signature.
         signature = await keys.signApproval(
             Uint8List.fromList(canonicalBytes(signed)),
-            promptTitle: 'Approve this settings change',
-            promptSubtitle: 'Lowers a protection on your Biatec account');
+            promptTitle: t.text('approveChange'),
+            promptSubtitle: t.text('approveChangeSubtitle'));
       }
     } on KeyPromptCancelled {
-      throw const ApprovalException('Approval cancelled. Nothing was changed.');
+      throw ApprovalException(t.text('approvalCancelled'));
     } on ApprovalKeyInvalidated {
       throw const ApprovalException(ApprovalKeyInvalidated.message);
     } on KeyPromptFailed catch (e) {
-      throw ApprovalException('Could not approve: ${e.message}');
+      throw ApprovalException(t.text('couldNotApprove', {'reason': e.message}));
     }
     if (signature.length != 64) {
       throw StateError('the keystore returned a ${signature.length}-byte '

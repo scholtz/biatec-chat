@@ -6,7 +6,9 @@ import '../security/settings_frame.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
 import 'label_rules.dart';
+import '../security/security_texts.dart';
 import 'service_identity.dart';
+import 'trust_strings.dart';
 
 /// The clients screen of before the user-held trust settings (T-245), shown while `AppConfig.trustSettings` is off. A service is drawn by the one identity widget like everywhere else;
 /// nothing here says "verified".
@@ -26,24 +28,23 @@ class LegacyClientsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = TrustStrings.of(Localizations.maybeLocaleOf(context));
     return SettingsFrame(
-      title: 'Trusted clients and thresholds',
+      title: t.t('legacyTitle'),
       services: services,
       controller: controller,
       builder: (context, c) {
         final s = c.settings!;
         if (s.clients.isEmpty) {
-          return const [
+          return [
             Padding(
-              key: Key('no-clients'),
-              padding: EdgeInsets.all(AppSpacing.l),
+              key: const Key('no-clients'),
+              padding: const EdgeInsets.all(AppSpacing.l),
               child: Column(children: [
-                ExcludeSemantics(child: Icon(Icons.verified_user, size: 48)),
-                SizedBox(height: AppSpacing.m),
-                Text(
-                    'No client has asked for an approval yet. Each one that '
-                    'does will appear here.',
-                    textAlign: TextAlign.center),
+                const ExcludeSemantics(
+                    child: Icon(Icons.verified_user, size: 48)),
+                const SizedBox(height: AppSpacing.m),
+                Text(t.t('legacyNoClients'), textAlign: TextAlign.center),
               ]),
             ),
           ];
@@ -79,11 +80,15 @@ class _ClientCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final locale = Localizations.maybeLocaleOf(context);
+    final t = TrustStrings.of(locale);
+    final f = SecurityTexts.of(locale);
     final id = client.clientId;
     final enabled = !controller.busy;
     final until = client.pausedUntil;
     final own = client.perClientThresholdEur;
-    final name = displaySafeLabel(client.label) ?? (client.domain ?? 'this service');
+    final name = displaySafeLabel(client.label) ??
+        (client.domain ?? t.t('legacyThisService'));
     Map<String, Object?> one(String key, Object? value) => {
           'clients': {
             id: {key: value}
@@ -102,10 +107,8 @@ class _ClientCard extends StatelessWidget {
               key: Key('paused-$id'),
               severity: StatusSeverity.warning,
               icon: Icons.pause_circle_outline,
-              title: 'Paused until ${whenText(until)}',
-              message: 'This client cannot ask for approvals while '
-                  'paused. Lifting the pause needs approval on this '
-                  'device.',
+              title: t.t('legacyPausedUntil', {'when': whenText(until)}),
+              message: t.t('legacyPausedBody'),
             ),
             const SizedBox(height: AppSpacing.s),
             FilledButton(
@@ -123,44 +126,39 @@ class _ClientCard extends StatelessWidget {
                           }
                         }
                       },
-                      title: 'Lift the pause for $name?',
-                      message: '$name will be able to ask for approvals '
-                          'again straight away.',
-                      confirmLabel: 'Lift pause')
+                      title: t.t('legacyLiftTitle', {'name': name}),
+                      message: t.t('legacyLiftBody', {'name': name}),
+                      confirmLabel: t.t('liftPause'))
                   : null,
-              child: const Text('Lift pause'),
+              child: Text(t.t('liftPause')),
             ),
           ],
           const SizedBox(height: AppSpacing.s),
           SwitchListTile(
             key: Key('always-ask-$id'),
             contentPadding: EdgeInsets.zero,
-            title: const Text('Always ask'),
-            subtitle: const Text('Every action from this client needs '
-                'your phone. Turning it off needs approval on this '
-                'device.'),
+            title: Text(t.t('alwaysAsk')),
+            subtitle: Text(t.t('legacyAlwaysAskHelp')),
             value: client.alwaysAsk,
             onChanged: enabled
                 ? (v) => _apply(context, one('always_ask', v),
-                    title: 'Stop always asking for $name?',
-                    message: 'Small actions from $name will no longer '
-                        'need your phone. Large ones still do.',
-                    confirmLabel: 'Turn off')
+                    title: t.t('legacyAlwaysAskOffTitle', {'name': name}),
+                    message: t.t('legacyAlwaysAskOffBody', {'name': name}),
+                    confirmLabel: t.t('turnOff'))
                 : null,
           ),
           const Divider(),
           MergeSemantics(
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Threshold for this client',
+              Text(t.t('legacyClientThreshold'),
                   key: Key('threshold-$id'), style: theme.textTheme.titleSmall),
               const SizedBox(height: AppSpacing.xs),
               Text(
                   own == null
-                      ? 'Uses the account threshold '
-                          '(${account.thresholdEur} EUR).'
-                      : '$own EUR. Raising it needs approval on this '
-                          'device.',
+                      ? t.t('legacyUsesAccount',
+                          {'amount': account.thresholdEur})
+                      : t.t('legacyOwn', {'amount': own}),
                   style: theme.textTheme.bodyMedium),
             ]),
           ),
@@ -170,16 +168,15 @@ class _ClientCard extends StatelessWidget {
             onPressed: enabled
                 ? () async {
                     final v = await askEur(context,
-                        title: 'Threshold for $name',
+                        title: t.t('legacyThresholdFor', {'name': name}),
                         initial: own ?? account.thresholdEur,
                         current: own ?? account.thresholdEur,
-                        hint: 'Lowering applies at once. Raising needs '
-                            'approval on this device.');
+                        hint: f.text('lowerRaiseHint'));
                     if (v == null || !context.mounted) return;
                     await controller.apply(one('per_client_threshold_eur', v));
                   }
                 : null,
-            child: const Text('Change threshold'),
+            child: Text(t.t('changeThreshold')),
           ),
           if (own != null) ...[
             const SizedBox(height: AppSpacing.s),
@@ -187,13 +184,12 @@ class _ClientCard extends StatelessWidget {
               key: Key('threshold-reset-$id'),
               onPressed: enabled
                   ? () => _apply(context, one('per_client_threshold_eur', null),
-                      title: 'Use the account threshold for $name?',
-                      message: 'It goes back to the account threshold of '
-                          '${account.thresholdEur} EUR. Actions up to '
-                          'that amount will no longer need your phone.',
-                      confirmLabel: 'Use account threshold')
+                      title: t.t('legacyResetTitle', {'name': name}),
+                      message: t.t('legacyResetBody',
+                          {'amount': account.thresholdEur}),
+                      confirmLabel: t.t('legacyUseAccount'))
                   : null,
-              child: const Text('Use account threshold'),
+              child: Text(t.t('legacyUseAccount')),
             ),
           ],
         ]),

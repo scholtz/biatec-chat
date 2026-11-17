@@ -22,7 +22,7 @@ class ThresholdScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = TrustStrings.of();
+    final s = TrustStrings.of(Localizations.maybeLocaleOf(context));
     return SettingsFrame(
       title: s.t('thresholdTitle'),
       services: services,
@@ -103,7 +103,7 @@ class _ThresholdFormState extends State<_ThresholdForm> {
     if (_changedUnderneath) setState(() => _changedUnderneath = false);
     final v = _typed;
     if (v == null) {
-      setState(() => _problem = TrustStrings.of().t('amountProblem'));
+      setState(() => _problem = TrustStrings.of(Localizations.maybeLocaleOf(context)).t('amountProblem'));
       return;
     }
     final ok = await c.apply({'threshold_eur': v});
@@ -120,7 +120,7 @@ class _ThresholdFormState extends State<_ThresholdForm> {
   /// Turning a protection off loosens it: explained and confirmed first (the phone then asks for the fingerprint or face). Turning it on applies at once.
   Future<void> _confirmOff(SettingsController c, Map<String, Object?> change,
       String titleKey, String bodyKey) async {
-    final s = TrustStrings.of();
+    final s = TrustStrings.of(Localizations.maybeLocaleOf(context));
     final yes = await confirmSheet(context,
         title: s.t(titleKey),
         message: s.t(bodyKey),
@@ -134,7 +134,7 @@ class _ThresholdFormState extends State<_ThresholdForm> {
   @override
   Widget build(BuildContext context) {
     final c = widget.controller;
-    final s = TrustStrings.of();
+    final s = TrustStrings.of(Localizations.maybeLocaleOf(context));
     final theme = Theme.of(context);
     final settings = c.settings!;
     final enabled = !c.busy && c.deviceActive;
