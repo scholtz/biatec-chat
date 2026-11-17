@@ -119,7 +119,7 @@ void main() {
     return (c: c, keys: keys, store: store);
   }
 
-  /// An install that is active at once, the way a first device is after its delay (the mock's test helper skips it).
+  /// An install that is active at once, the way a later device is after its delay (the mock's test helper skips it).
   Future<({EnrollmentController c, SoftwareKeyStore keys, ObservableEnrollmentStore store})>
       activeInstall(String login) async {
     final i = install(_Script([login]));

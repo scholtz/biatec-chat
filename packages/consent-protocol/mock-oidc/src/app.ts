@@ -23,7 +23,7 @@
 // Push: opening a request queues one message per active device with a push token; its data is only the
 // auth_req_id (GET /mock/push-outbox shows what would be sent). Nothing is sent to FCM or APNs.
 // Rules enforced: 2 (binding code, 3 attempts), 4 (first use), 5 (300 s, single use, group-hash binding),
-// 7 (24 h inactive first device), 8 (no device, no above-threshold actions), 9 (offline-verifiable receipts).
+// 7 (the first device is active at once, a later one without an approval or a recovery code is inactive for 24 h), 8 (no device, no above-threshold actions), 9 (offline-verifiable receipts).
 import { createDeviceHub } from "./device-hub.ts";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";

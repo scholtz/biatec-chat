@@ -828,7 +828,9 @@ X-Biatec-Min-App-Build: 7
 - **Today:** `POST /devices` sets `ActiveAt = now + ActivationSeconds` (24 hours by default) for every device. Setting `ActivationSeconds` to 0 is not the change: it would also activate a second device that nobody approved.
 - **Needed:** in `POST /devices`, when the account has no other device that is not cancelled (none active, none pending), set `active_at` to now and answer `active: true`. Every other device keeps the delay unless a device approval or a recovery code activates it. The check and the insert must be one step (two enrollments at the same moment must not both count as the first). The email notice is still sent.
 - **Fallback:** none. The app does not decide whether a device is active.
-- **Mock:** `enroll` in `packages/consent-protocol/mock-oidc/src/app.ts`; tests "rule 7" in `mock-oidc/test/mock-oidc.test.ts`.
+- **Mock:** `enroll` in `packages/consent-protocol/mock-oidc/src/app.ts`; tests "rule 7" in `mock-oidc/test/mock-oidc.test.ts`. The mock cannot reach an account whose only device is pending or cancelled (no device is ever removed, and a first device is never pending), so those two halves of the rule are not tested there: test them in Biatec OIDC.
+- **When it ships:** `docs/kb/phone-approval-authenticator.md` and `docs/kb/getting-started.md` still tell users that a first device becomes active after 24 hours, which is what the real server does today. Change them with the server.
+- **Known in the app:** it reads `active_at` against its own clock and not `active`, so a first device on a phone whose clock is behind shows the waiting step until the next poll (a few seconds).
 
 ## Administrator dashboard sign-in (T-126)
 
