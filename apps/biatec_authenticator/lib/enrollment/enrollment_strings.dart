@@ -22,10 +22,6 @@ class EnrollStrings {
   String get noKeyStoreTitle => _get('noKeyStoreTitle');
   String get noTpm => _get('noTpm');
   String get noTpmTitle => _get('noTpmTitle');
-  String get noHello => _get('noHello');
-  String get noHelloTitle => _get('noHelloTitle');
-  String get helloUnavailable => _get('helloUnavailable');
-  String get helloUnavailableTitle => _get('helloUnavailableTitle');
   String get signInButton => _get('signInButton');
   String get signInAgainButton => _get('signInAgainButton');
   String get signInCancel => _get('signInCancel');
@@ -84,12 +80,6 @@ class EnrollStrings {
     'noTpmTitle': 'No security chip found',
     'noTpm':
         'This computer has no TPM security chip that can hold the keys of this device, or it is turned off in the firmware. Turn it on, or use another computer. Nothing was enrolled.',
-    'noHelloTitle': 'Set up Windows Hello first',
-    'noHello':
-        'Approvals on this computer ask for Windows Hello (face, fingerprint or PIN), and it is not set up. Set it up in the Windows settings (Accounts, Sign-in options), then sign in again. If Windows offers no way to set it up, this computer cannot be used for approvals. Nothing was enrolled.',
-    'helloUnavailableTitle': 'Windows Hello cannot be used now',
-    'helloUnavailable':
-        'Windows Hello is set up but cannot be used right now: it may be busy, or switched off by a policy of your organisation. Try again, or ask your administrator. Nothing was enrolled.',
     'noKeyStoreTitle': 'This device cannot be enrolled',
     'noKeyStore':
         'This build of the app has no protected key store on this kind of device, so the device cannot be enrolled here. Nothing was enrolled.',
@@ -155,12 +145,6 @@ class EnrollStrings {
     'noTpmTitle': 'Bezpečnostný čip sa nenašiel',
     'noTpm':
         'Tento počítač nemá bezpečnostný čip TPM, ktorý by mohol uchovať kľúče tohto zariadenia, alebo je vo firmvéri vypnutý. Zapnite ho alebo použite iný počítač. Nič sa nezaregistrovalo.',
-    'noHelloTitle': 'Najprv nastavte Windows Hello',
-    'noHello':
-        'Schvaľovania na tomto počítači žiadajú Windows Hello (tvár, odtlačok prsta alebo PIN), a to nie je nastavené. Nastavte ho v nastaveniach Windows (Účty, Možnosti prihlásenia) a potom sa prihláste znova. Ak Windows nenúka žiadny spôsob nastavenia, tento počítač sa na schvaľovanie použiť nedá. Nič sa nezaregistrovalo.',
-    'helloUnavailableTitle': 'Windows Hello sa teraz nedá použiť',
-    'helloUnavailable':
-        'Windows Hello je nastavené, ale teraz sa nedá použiť: môže byť zaneprázdnené alebo vypnuté pravidlom vašej organizácie. Skúste to znova alebo sa obráťte na správcu. Nič sa nezaregistrovalo.',
     'noKeyStoreTitle': 'Toto zariadenie sa nedá zaregistrovať',
     'noKeyStore':
         'Táto zostava aplikácie nemá na tomto type zariadenia chránené úložisko kľúčov, preto sa tu zariadenie nedá zaregistrovať. Nič sa nezaregistrovalo.',

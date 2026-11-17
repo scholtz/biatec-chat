@@ -56,8 +56,11 @@ protocol, the server and the backend verifier stay as they are: no new algorithm
 - **Approval key:** the same kind of key, reported as `appGated`, not `authBound`. The prompt is the Windows Hello check (`UserConsentVerifier`, shown over
   the app's window) and it is part of the one native `signApproval` call: the key is not used when the check fails
   or is cancelled, and the Dart side has no way to sign with it without the check.
-- **No software fallback.** No TPM, or Windows Hello not set up: refused with a text that says which, before the
-  browser opens. A key the provider reports as not hardware is refused.
+- **No software fallback.** No TPM: refused with a text that says so, before the browser opens. A key the provider
+  reports as not hardware is refused.
+- **Without Windows Hello (owner, 2026-11-17):** the user chooses a PIN of the app at enrollment. It is the usage
+  secret of a TPM lock key and of the two-key approval key, so the TPM checks it and locks after too many wrong
+  tries; the app lock and every approval ask for it. Details in docs/authenticator-windows-key-store.md.
 - **The weaker guarantee, accepted by the owner:** on a phone the hardware itself refuses to use the approval key
   without the biometric. Here the gesture is checked by the app's own code, so a program running as the same Windows
   user that bypasses the app (and the prompt) could ask the TPM to sign. The key still cannot be taken off the
@@ -100,7 +103,8 @@ Parallel work possible: **no**. It shares `lib/enrollment/**` with T-249 and mos
 
 - [ ] On a Windows computer with a TPM and Windows Hello the enrollment completes against the mock after the
       sign-in, and the key protection card says the keys are in the TPM (manual checklist).
-- [ ] A computer without a TPM, or without Windows Hello, is refused before the browser opens, with a text that
+- [ ] A computer without Windows Hello enrolls with a PIN of the app that the TPM checks (owner, 2026-11-17).
+- [ ] A computer without a TPM is refused before the browser opens, with a text that
       says which one is missing; no key is kept.
 - [ ] An approval asks for Windows Hello, and a cancelled or failed prompt signs nothing.
 - [ ] The private keys cannot be exported, and a key the provider does not report as hardware is refused.
@@ -131,4 +135,5 @@ Windows Hello.
 - 2026-11-16 23:50 · scholtz · taken · status stays backlog
 - 2026-11-16 23:50 · scholtz · backlog → in-progress · claimed; branch task/T-250
 - 2026-11-17 09:00 · scholtz · in-progress · owner decided: P-256 TPM keys with a Windows Hello prompt checked by the app (no protocol change); the RS256 design is dropped
+- 2026-11-17 16:00 · scholtz · in-progress · owner asked for a way in when Windows Hello is not available: a PIN of the app, enforced by the TPM (lock key and two-key approval key), replaces the "set up Windows Hello first" refusal
 - 2026-11-17 11:00 · scholtz · in-progress · PR #425, review round 1 fixed (appGated, hello_unavailable, fresh keys per enrollment, worker lifetime, double-press guard)

@@ -106,8 +106,6 @@ void main() {
 
   for (final (status, error, kind, title) in [
     (KeyStoreStatus.noTpm, EnrollmentController.noTpmError, EnrollmentProblemKind.noTpm, 'No security chip found'),
-    (KeyStoreStatus.noHello, EnrollmentController.noHelloError, EnrollmentProblemKind.noHello, 'Set up Windows Hello first'),
-    (KeyStoreStatus.helloUnavailable, EnrollmentController.helloUnavailableError, EnrollmentProblemKind.helloUnavailable, 'Windows Hello cannot be used now'),
   ]) {
     test('a computer where the probe says $status is told so before the browser opens, and nothing is made', () async {
       final config = AppConfig.resolve('', release: true, windows: true);

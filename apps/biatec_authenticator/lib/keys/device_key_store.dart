@@ -60,7 +60,7 @@ class DeviceKey {
   /// The keystore says the key needs the operating system's biometric check for every signature, and is invalidated when the biometrics change (read back from the key after it was created, never assumed). Only the approval key has it.
   final bool authBound;
 
-  /// The key is not bound by the hardware (see [authBound]) but the native key store uses it only behind the user's check, made by its own code in the same call that signs (a Windows build: Windows Hello in front of the TPM key). A weaker guarantee than [authBound], said as it is.
+  /// The key is not bound by the hardware to a biometric (see [authBound]) but the native key store uses it only behind the user's check, made by its own code in the same call that signs (a Windows build: Windows Hello in front of the TPM key, or the app's PIN, which the TPM checks). A weaker guarantee than [authBound], said as it is.
   final bool appGated;
 
   /// Whether this approval key is used only after the user's check, by either guarantee. Policy that asks "can this device approve" reads this.
@@ -116,12 +116,6 @@ enum KeyStoreStatus {
 
   /// This computer has no TPM that holds keys (or it is turned off in the firmware).
   noTpm,
-
-  /// Windows Hello is not set up, so the approval key could not be used: approvals ask for it.
-  noHello,
-
-  /// Windows Hello is set up but cannot be used now (busy, or switched off by a policy of the organisation).
-  helloUnavailable,
 }
 
 /// The user dismissed the biometric prompt (or pressed Cancel). Nothing was signed.
@@ -168,7 +162,7 @@ class ApprovalKeysMissing implements Exception {
 ///
 /// The level each key got is reported in [DeviceKey.securityLevel] and [DeviceKey.authBound]; enrollment refuses keys that are not in hardware and an approval key that is not bound.
 abstract class DeviceKeyStore {
-  /// Whether this computer can hold and use the keys, without making any. Phones answer [KeyStoreStatus.ready]; a Windows build says when there is no TPM or no Windows Hello. Throws [MissingPluginException] on a platform that has no key store at all.
+  /// Whether this computer can hold and use the keys, without making any. Phones answer [KeyStoreStatus.ready]; a Windows build says when there is no TPM (without Windows Hello it asks for a PIN of the app instead, so that is not a refusal). Throws [MissingPluginException] on a platform that has no key store at all.
   Future<KeyStoreStatus> status();
 
   /// Creates both key pairs, or returns the existing ones. Throws [PlatformException] with code `insecure_key` when the keystore could not make a hardware key (for the approval key: bound to the biometrics) and `no_biometrics` when no strong biometric is enrolled on the phone.
@@ -227,12 +221,8 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
       final map = (raw as Map).cast<String, Object?>();
       // Only an explicit yes counts: an answer this app does not understand is not "ready".
       if (map['tpm'] != true) return KeyStoreStatus.noTpm;
-      return switch (map['hello']) {
-        'available' => KeyStoreStatus.ready,
-        'unavailable' => KeyStoreStatus.helloUnavailable,
-        // Not set up, no device, or an answer this app does not know: not ready, and the user is told to set it up.
-        _ => KeyStoreStatus.noHello,
-      };
+      // Windows Hello (`hello` in the answer) is not needed: where it cannot be used, the native side asks for a PIN of the app that the TPM checks.
+      return KeyStoreStatus.ready;
     } on MissingPluginException {
       // A phone's plugin has no `probe`: its plain `keysState` read says whether there is a key store (and throws MissingPluginException when there is none).
       await _channel.invokeMethod<Object?>('keysState');

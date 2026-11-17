@@ -11,6 +11,7 @@ add_executable(${BINARY_NAME} WIN32
   "hello.cpp"
   "key_channels.cpp"
   "keystore.cpp"
+  "pin_dialog.cpp"
   "main.cpp"
   "utils.cpp"
   "win32_window.cpp"

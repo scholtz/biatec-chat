@@ -14,11 +14,22 @@ namespace {
 // Names of the two keys in the provider (per Windows user). The version leaves room to replace them.
 constexpr wchar_t kApprovalName[] = L"io.biatec.authenticator.approval.v1";
 constexpr wchar_t kPresenceName[] = L"io.biatec.authenticator.presence.v1";
+// The key that carries the app's PIN (only on a computer without Windows Hello). It signs nothing that leaves the computer: a signature with it says the PIN is right.
+constexpr wchar_t kLockName[] = L"io.biatec.authenticator.lock.v1";
 
 // NTE_BAD_KEYSET, NTE_NO_KEY and NTE_NOT_FOUND: the key is not there (providers differ in which of them they answer for a name that was never made).
 constexpr SECURITY_STATUS kBadKeyset = static_cast<SECURITY_STATUS>(0x80090016);
 constexpr SECURITY_STATUS kNoKey = static_cast<SECURITY_STATUS>(0x8009000D);
 constexpr SECURITY_STATUS kNotFound = static_cast<SECURITY_STATUS>(0x80090011);
+
+// The TPM is locked after too many wrong tries: TPM_20_E_LOCKOUT, TPM_E_DEFEND_LOCK_RUNNING, and SCARD_W_CHV_BLOCKED (how a provider may say it).
+constexpr SECURITY_STATUS kTpmLockout = static_cast<SECURITY_STATUS>(0x80280921);
+constexpr SECURITY_STATUS kTpmDefendLock = static_cast<SECURITY_STATUS>(0x80280803);
+constexpr SECURITY_STATUS kPinBlocked = static_cast<SECURITY_STATUS>(0x8010006C);
+
+bool IsLockout(SECURITY_STATUS status) {
+  return status == kTpmLockout || status == kTpmDefendLock || status == kPinBlocked;
+}
 
 constexpr size_t kMaxSignedBytes = 1 << 20;
 
@@ -26,7 +37,14 @@ constexpr size_t kMaxSignedBytes = 1 << 20;
 std::mutex g_keys;
 
 const wchar_t* NameOf(Use use) {
-  return use == Use::kApproval ? kApprovalName : kPresenceName;
+  switch (use) {
+    case Use::kApproval:
+      return kApprovalName;
+    case Use::kLock:
+      return kLockName;
+    default:
+      return kPresenceName;
+  }
 }
 
 // Owns a CNG handle (a provider or a key) and frees it.
@@ -124,7 +142,33 @@ PublicKey Describe(const Handle& key) {
   return key_out;
 }
 
-void Create(const Handle& provider, Use use) {
+// Gives the key handle the PIN: before the key is finalized it becomes the key's usage secret, on an open key it is what the TPM checks at the signature.
+SECURITY_STATUS SetPin(const Handle& key, const std::wstring& pin) {
+  return NCryptSetProperty(
+      key.get(), NCRYPT_PIN_PROPERTY,
+      reinterpret_cast<PBYTE>(const_cast<wchar_t*>(pin.c_str())),
+      static_cast<DWORD>((pin.size() + 1) * sizeof(wchar_t)), 0);
+}
+
+// ECDSA P-256 in the TPM over a SHA-256 `digest`. Returns the status of the signature; `signature` is the 64-byte `r || s` on success.
+SECURITY_STATUS SignDigest(const Handle& key, const uint8_t* digest, const std::wstring* pin,
+                           std::vector<uint8_t>* signature) {
+  if (pin != nullptr) {
+    const SECURITY_STATUS set = SetPin(key, *pin);
+    if (set != ERROR_SUCCESS) return set;
+  }
+  signature->assign(64, 0);
+  DWORD written = 0;
+  // With a PIN the call is silent: a refused PIN is an answer, never a dialog of the provider.
+  const SECURITY_STATUS status = NCryptSignHash(
+      key.get(), nullptr, const_cast<PBYTE>(digest), 32, signature->data(),
+      static_cast<DWORD>(signature->size()), &written, pin != nullptr ? NCRYPT_SILENT_FLAG : 0);
+  // ECDSA P-256 in CNG answers the IEEE P1363 form already: 32 bytes of r, then 32 bytes of s.
+  if (status == ERROR_SUCCESS && written != 64) return NTE_FAIL;
+  return status;
+}
+
+void Create(const Handle& provider, Use use, const std::wstring* pin) {
   Handle key;
   SECURITY_STATUS status = NCryptCreatePersistedKey(
       provider.get(), key.put(), BCRYPT_ECDSA_P256_ALGORITHM, NameOf(use), 0, 0);
@@ -137,6 +181,7 @@ void Create(const Handle& provider, Use use) {
   DWORD usage = NCRYPT_ALLOW_SIGNING_FLAG;
   status = NCryptSetProperty(key.get(), NCRYPT_KEY_USAGE_PROPERTY,
                              reinterpret_cast<PBYTE>(&usage), sizeof(usage), 0);
+  if (status == ERROR_SUCCESS && pin != nullptr) status = SetPin(key, *pin);
   if (status == ERROR_SUCCESS) {
     status = NCryptFinalizeKey(key.get(), NCRYPT_SILENT_FLAG);
   }
@@ -226,9 +271,9 @@ void DeleteKey(const Handle& provider, Use use) {
 }
 
 void DeleteBoth(const Handle& provider) {
-  // Both are tried, and the first failure is reported after.
+  // Every key is tried, and the first failure is reported after.
   std::optional<KeyError> failure;
-  for (const Use use : {Use::kApproval, Use::kPresence}) {
+  for (const Use use : {Use::kApproval, Use::kPresence, Use::kLock}) {
     try {
       DeleteKey(provider, use);
     } catch (const KeyError& e) {
@@ -239,8 +284,8 @@ void DeleteBoth(const Handle& provider) {
 }
 
 // Makes the key and reads it back. A key that is not reported as hardware is removed and refused.
-PublicKey CreateAndDescribe(const Handle& provider, Use use) {
-  Create(provider, use);
+PublicKey CreateAndDescribe(const Handle& provider, Use use, const std::wstring* pin = nullptr) {
+  Create(provider, use, pin);
   Handle key;
   if (!OpenKey(provider, use, key)) {
     throw KeyError("key_generation_failed", "The new key cannot be opened.");
@@ -262,6 +307,8 @@ Existing Exists() {
   existing.approval = OpenKey(provider, Use::kApproval, approval);
   Handle presence;
   existing.presence = OpenKey(provider, Use::kPresence, presence);
+  Handle lock_key;
+  existing.lock = OpenKey(provider, Use::kLock, lock_key);
   return existing;
 }
 
@@ -288,22 +335,43 @@ auto FreshKeys(Make make) {
 
 }  // namespace
 
-KeyPair CreateFreshPair() {
-  return FreshKeys([](const Handle& provider) {
+KeyPair CreateFreshPair(const std::wstring* pin) {
+  return FreshKeys([pin](const Handle& provider) {
     KeyPair pair;
-    pair.approval = CreateAndDescribe(provider, Use::kApproval);
+    pair.approval = CreateAndDescribe(provider, Use::kApproval, pin);
     pair.presence = CreateAndDescribe(provider, Use::kPresence);
+    if (pin != nullptr) CreateAndDescribe(provider, Use::kLock, pin);
     return pair;
   });
 }
 
-PublicKey CreateFreshPresence() {
-  return FreshKeys([](const Handle& provider) {
-    return CreateAndDescribe(provider, Use::kPresence);
+PublicKey CreateFreshPresence(const std::wstring* pin) {
+  return FreshKeys([pin](const Handle& provider) {
+    PublicKey presence = CreateAndDescribe(provider, Use::kPresence);
+    if (pin != nullptr) CreateAndDescribe(provider, Use::kLock, pin);
+    return presence;
   });
 }
 
-std::vector<uint8_t> Sign(Use use, const std::vector<uint8_t>& data) {
+PinCheck CheckPin(const std::wstring& pin) {
+  std::lock_guard<std::mutex> lock(g_keys);
+  Handle provider = OpenProvider();
+  Handle key;
+  if (!OpenKey(provider, Use::kLock, key)) {
+    throw KeyError("key_missing", "The lock key is not there.");
+  }
+  // A fresh random value each time: the signature is thrown away, it only shows that the TPM took the PIN.
+  uint8_t digest[32];
+  if (BCryptGenRandom(nullptr, digest, sizeof(digest), BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0) {
+    return PinCheck::kRefused;
+  }
+  std::vector<uint8_t> signature;
+  const SECURITY_STATUS status = SignDigest(key, digest, &pin, &signature);
+  if (status == ERROR_SUCCESS) return PinCheck::kAccepted;
+  return IsLockout(status) ? PinCheck::kLocked : PinCheck::kRefused;
+}
+
+std::vector<uint8_t> Sign(Use use, const std::vector<uint8_t>& data, const std::wstring* pin) {
   if (data.size() > kMaxSignedBytes) {
     throw KeyError("sign_failed", "Too much data to sign.");
   }
@@ -319,15 +387,16 @@ std::vector<uint8_t> Sign(Use use, const std::vector<uint8_t>& data) {
       const_cast<PUCHAR>(data.empty() ? reinterpret_cast<const uint8_t*>("") : data.data()),
       static_cast<ULONG>(data.size()), digest, sizeof(digest));
   if (hashed != 0) throw KeyError("sign_failed", "The data cannot be hashed.");
-  std::vector<uint8_t> signature(64);
-  DWORD written = 0;
-  const SECURITY_STATUS status =
-      NCryptSignHash(key.get(), nullptr, digest, sizeof(digest), signature.data(),
-                     static_cast<DWORD>(signature.size()), &written, 0);
-  // ECDSA P-256 in CNG answers the IEEE P1363 form already: 32 bytes of r, then 32 bytes of s.
-  if (status != ERROR_SUCCESS || written != 64) {
-    throw KeyError("sign_failed", "The TPM did not sign (status " +
-                                      std::to_string(static_cast<long>(status)) + ").");
+  std::vector<uint8_t> signature;
+  const SECURITY_STATUS status = SignDigest(key, digest, pin, &signature);
+  if (status != ERROR_SUCCESS) {
+    if (IsLockout(status)) {
+      throw KeyError("locked_out", "The TPM is locked after too many wrong tries.");
+    }
+    // With a PIN, a refusal is read as "not the PIN" (the TPM does not always say why).
+    throw KeyError(pin != nullptr ? "auth_failed" : "sign_failed",
+                   "The TPM did not sign (status " +
+                       std::to_string(static_cast<long>(status)) + ").");
   }
   return signature;
 }

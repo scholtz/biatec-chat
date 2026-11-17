@@ -85,10 +85,8 @@ class EnrollmentController extends ChangeNotifier {
   /// The state error on a platform without a key store (see [enroll]).
   static String get noKeyStoreError => EnrollStrings.en.noKeyStore;
 
-  /// The state errors of a computer with no TPM, and of one where Windows Hello is not set up.
+  /// The state error of a computer with no TPM.
   static String get noTpmError => EnrollStrings.en.noTpm;
-  static String get noHelloError => EnrollStrings.en.noHello;
-  static String get helloUnavailableError => EnrollStrings.en.helloUnavailable;
   static String get recoveryWrongError => EnrollStrings.en.recoveryWrong;
   static String get recoveryLockedError => EnrollStrings.en.recoveryLocked;
   static String get staleLoginError => EnrollStrings.en.staleLoginAgain;
@@ -313,8 +311,9 @@ class EnrollmentController extends ChangeNotifier {
   /// What the user is told when the native key store refuses to make the keys. The codes come from KeystorePlugin.kt, KeystorePlugin.swift and key_channels.cpp.
   String _keyCreationError(PlatformException e) => switch (e.code) {
         'no_tpm' => noTpmError,
-        'no_hello' => noHelloError,
-        'hello_unavailable' => helloUnavailableError,
+        // A Windows computer without Windows Hello asks for a new PIN of the app, and the user closed that dialog.
+        'cancelled' => 'No PIN was chosen, so nothing was enrolled. Sign in again and choose a PIN.',
+        'prompt_active' => 'Another prompt of this app is open. Close it, then sign in again.',
         'no_biometrics' => 'Set up a fingerprint or face on this phone first: approvals need one.',
         'insecure_key' => const _CannotProtectApprovals().message,
         'key_generation_failed' || 'key_failed' => 'This device could not create the device keys. Restart it and try again.',
@@ -371,22 +370,16 @@ class EnrollmentController extends ChangeNotifier {
     notifyListeners();
     try {
       // A computer that has no key store is told so before the browser opens: a sign-in that can only end in "cannot be enrolled" is not asked of the user. The probe
-      // reads what the key store can do (no prompt, nothing is made); only a missing channel and a missing TPM or Windows Hello count, any other failure is left to the enrollment itself.
+      // reads what the key store can do (no prompt, nothing is made); only a missing channel and a missing TPM count, any other failure is left to the enrollment itself.
       try {
         final status = await _made<KeyStoreStatus>(keys.status);
-        // The screen may be gone while the probe waited for the TPM and Windows Hello.
+        // The screen may be gone while the probe waited for the TPM.
         if (_disposed) return EnrollResult.ignored;
         switch (status) {
           case KeyStoreStatus.ready:
             break;
           case KeyStoreStatus.noTpm:
             _set(EnrollmentState(EnrollmentPhase.failed, error: noTpmError));
-            return EnrollResult.failed;
-          case KeyStoreStatus.noHello:
-            _set(EnrollmentState(EnrollmentPhase.failed, error: noHelloError));
-            return EnrollResult.failed;
-          case KeyStoreStatus.helloUnavailable:
-            _set(EnrollmentState(EnrollmentPhase.failed, error: helloUnavailableError));
             return EnrollResult.failed;
         }
       } on _NoKeyStore {
@@ -651,7 +644,7 @@ class EnrollmentController extends ChangeNotifier {
             now: _clock(),
             promptTitle: defaultTargetPlatform == TargetPlatform.windows ? 'Enroll this computer' : 'Enroll this phone',
             promptSubtitle: defaultTargetPlatform == TargetPlatform.windows
-                ? 'Approvals will need Windows Hello'
+                ? 'Approvals will need this check'
                 : 'Approvals will need your fingerprint or face',
           );
         } on KeyPromptCancelled {
@@ -929,7 +922,7 @@ class _ProofFailed implements Exception {
 class _CannotProtectApprovals implements Exception {
   const _CannotProtectApprovals();
   String get message => 'This device cannot protect approvals. Its keystore '
-      'cannot make a key that needs your confirmation (fingerprint, face or Windows Hello) for every '
+      'cannot make a key that needs your confirmation (fingerprint, face, Windows Hello or a PIN of the app) for every '
       'approval, so enrollment is refused.';
 }
 

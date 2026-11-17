@@ -208,7 +208,7 @@ void main() {
       expect(KeySecurityLevel.fromWire('tpm'), KeySecurityLevel.tpm);
       expect(KeySecurityLevel.tpm.isHardware, isTrue);
       expect(cpp, contains('key.hardware ? "tpm" : "software"'));
-      for (final code in ['prompt_active', 'cancelled', 'approval_key_invalidated', 'no_biometrics', 'locked_out', 'auth_failed', 'no_tpm', 'no_hello', 'hello_unavailable']) {
+      for (final code in ['prompt_active', 'cancelled', 'approval_key_invalidated', 'no_biometrics', 'locked_out', 'auth_failed', 'no_tpm']) {
         expect(cpp, contains('"$code"'), reason: 'C++ error $code');
       }
       expect(keystoreCpp, contains('"key_generation_failed"'));
@@ -218,7 +218,8 @@ void main() {
       expect(flat(keystoreCpp), contains('auto FreshKeys(Make make) { std::lock_guard<std::mutex> lock(g_keys);'));
       expect(flat(keystoreCpp), contains('return FreshKeys('));
       expect(keystoreCpp, contains('The old key cannot be deleted'));
-      expect(flat(cpp), contains('keystore::CreateFreshPair()'));
+      expect(flat(cpp), contains('keystore::CreateFreshPair(pin ? &pin->value() : nullptr)'));
+      expect(cpp, isNot(contains('"no_hello"')), reason: 'a computer without Windows Hello is not refused: it gets the PIN of the app');
       expect(cpp, isNot(contains('GenerateIfMissing')), reason: 'an old pair is never handed to a new enrollment');
       // Both keys are P-256 keys of the TPM's provider, not exportable (no export policy is ever set), and the approval signature runs only after the Windows Hello
       // check said verified, inside the one native call.
@@ -244,16 +245,47 @@ void main() {
       }
       expect(between, contains('default: throw'), reason: 'any other answer signs nothing');
       expect(between, isNot(contains('return')), reason: 'no way out of the function between the check and the signature');
+
+      // Without Windows Hello: the PIN of the app. A new PIN is asked only when Windows Hello cannot be used, and before anything is made; no PIN, no keys.
+      final fresh = flat(cpp.substring(cpp.indexOf('std::optional<pin_dialog::Pin> NewPinUnlessHello('), cpp.indexOf('bool PinMode()')));
+      expect(fresh, contains('if (hello::Check() == hello::Availability::kAvailable) return std::nullopt;'));
+      expect(fresh, contains('pin_dialog::Mode::kCreate'));
+      expect(fresh, contains('if (!pin) throw keystore::KeyError("cancelled"'));
+      // The TPM checks the PIN (a signature with the lock key), and only an accepted one gets past: the approval key then signs with it.
+      final require = flat(cpp.substring(cpp.indexOf('pin_dialog::Pin RequirePin('), cpp.indexOf('EncodableValue SignApprovalWithPin(')));
+      expect(require, contains('if (!pin) throw keystore::KeyError("cancelled"'));
+      expect(require, contains('case keystore::PinCheck::kAccepted: break;'));
+      expect(require, contains('case keystore::PinCheck::kLocked: throw keystore::KeyError("locked_out"'));
+      expect(require, contains('default: throw keystore::KeyError("auth_failed"'));
+      final withPin = flat(cpp.substring(cpp.indexOf('EncodableValue SignApprovalWithPin('), start));
+      expect(withPin.indexOf('RequirePin('), lessThan(withPin.indexOf('keystore::Sign(keystore::Use::kApproval, data, &pin.value())')));
+      expect(withPin.indexOf('RequirePin('), greaterThan(-1));
+      expect(body, contains('if (existing.lock) return SignApprovalWithPin(window, data, Widen(text));'));
+      expect(body.indexOf('if (existing.lock)'), lessThan(verify), reason: 'a PIN enrollment never reaches the Windows Hello path');
+      // The app lock of a PIN enrollment asks the same PIN, and only an accepted one is a success.
+      final unlock = flat(cpp.substring(cpp.indexOf('EncodableValue BiometricAuthenticate('), cpp.indexOf('KeyChannels::KeyChannels(')));
+      expect(unlock, contains('if (PinMode()) { try { RequirePin(window, Widen(reason)); return Text("success"); }'));
+      // The PIN is the usage secret of the TPM keys: set before the key is finalized, given again for a signature, and never stored or sent over the channel.
+      expect(flat(keystoreCpp), contains('if (status == ERROR_SUCCESS && pin != nullptr) status = SetPin(key, *pin);'));
+      expect(keystoreCpp, contains('NCRYPT_PIN_PROPERTY'));
+      expect(flat(keystoreCpp), contains('pair.approval = CreateAndDescribe(provider, Use::kApproval, pin);'));
+      expect(flat(keystoreCpp), contains('if (pin != nullptr) CreateAndDescribe(provider, Use::kLock, pin);'));
+      expect(flat(keystoreCpp), contains('for (const Use use : {Use::kApproval, Use::kPresence, Use::kLock})'), reason: 'a new enrollment and an erase remove the lock key too');
+      expect(cpp, isNot(contains('"pin"')), reason: 'the PIN never crosses the channel');
+      final dialog = source('windows/runner/pin_dialog.cpp');
+      expect(dialog, contains('ES_PASSWORD'));
+      expect(dialog, contains('SecureZeroMemory'));
     });
 
-    test('status reads the probe of a Windows build: TPM and Windows Hello', () async {
+    test('status reads the probe of a Windows build: only a missing TPM is a refusal (without Windows Hello the app asks for its own PIN)', () async {
       for (final (answerOf, expected) in [
         ({'tpm': true, 'hello': 'available'}, KeyStoreStatus.ready),
         ({'tpm': false, 'hello': 'available'}, KeyStoreStatus.noTpm),
-        ({'tpm': true, 'hello': 'not_configured'}, KeyStoreStatus.noHello),
-        ({'tpm': true, 'hello': 'no_device'}, KeyStoreStatus.noHello),
-        ({'tpm': true, 'hello': 'something new'}, KeyStoreStatus.noHello),
-        ({'tpm': true, 'hello': 'unavailable'}, KeyStoreStatus.helloUnavailable),
+        ({'tpm': true, 'hello': 'not_configured'}, KeyStoreStatus.ready),
+        ({'tpm': true, 'hello': 'no_device'}, KeyStoreStatus.ready),
+        ({'tpm': true, 'hello': 'something new'}, KeyStoreStatus.ready),
+        ({'tpm': true, 'hello': 'unavailable'}, KeyStoreStatus.ready),
+        ({'tpm': true}, KeyStoreStatus.ready),
         ({'hello': 'available'}, KeyStoreStatus.noTpm),
         ({'tpm': 'yes', 'hello': 'available'}, KeyStoreStatus.noTpm),
       ]) {
