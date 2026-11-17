@@ -1,7 +1,7 @@
 ---
 id: T-252
 title: "Enrollment: the first device of an account is active at once, without the 24 hour wait"
-status: review
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: []
@@ -84,9 +84,12 @@ the 24 hours.
 
 ## Review
 
+- 2026-11-17 15:52 · approve · PR #427 merged into main @ 3b642fd (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-17 15:30 · scholtz · (new) → backlog · created at the owner's request; blockers scanned: T-249 and T-250 share PRODUCT-DESCRIPTION.md in another section, no ordering need
 - 2026-11-17 15:35 · scholtz · taken · status stays backlog
 - 2026-11-17 15:35 · scholtz · backlog → in-progress · claimed; branch task/T-252 (T-250 moved to review first)
 - 2026-11-17 17:00 · scholtz · in-progress → review · PR #427, branch task/T-252 @ 36473cc
+- 2026-11-17 15:52 · user · review → done · PR #427 merged into main @ 3b642fd (synced by kanban-sync)
