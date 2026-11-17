@@ -12,6 +12,7 @@ import '../security/settings_client.dart';
 import 'auth_client.dart';
 import 'enrollment_proof.dart';
 import 'enrollment_strings.dart';
+import 'onboarding_texts.dart';
 import 'pairing_code.dart';
 import 'recovery_code_format.dart';
 import 'enrollment_state.dart';
@@ -220,7 +221,7 @@ class EnrollmentController extends ChangeNotifier {
     if (twoKeys && !record.hasTwoKeys) {
       // From before the two keys: its one key is not bound to the biometrics. Treated as having no keys; the device enrolls again (no silent migration). A failed attempt keeps its own error.
       if (p != EnrollmentPhase.failed) {
-        _set(const EnrollmentState(EnrollmentPhase.notEnrolled,
+        _set(EnrollmentState(EnrollmentPhase.notEnrolled,
             error: legacyKeyNotice));
       }
       return;
@@ -232,8 +233,11 @@ class EnrollmentController extends ChangeNotifier {
   }
 
   /// Said on the enrollment screen for an install from before the two keys.
-  static const legacyKeyNotice = 'This phone has an older device key that is '
-      'not protected by your fingerprint or face. Enroll it again to approve.';
+  static String get legacyKeyNotice => _en.text('msgLegacyKey');
+
+  /// The messages of this controller are made in English: the screen recognises them by that text and shows them in its language
+  /// (`OnboardingTexts.message`).
+  static const _en = OnboardingTexts.en;
 
   bool _attesting = false;
 
@@ -312,12 +316,12 @@ class EnrollmentController extends ChangeNotifier {
   String _keyCreationError(PlatformException e) => switch (e.code) {
         'no_tpm' => noTpmError,
         // A Windows computer without Windows Hello asks for a new PIN of the app, and the user closed that dialog.
-        'cancelled' => 'No PIN was chosen, so nothing was enrolled. Sign in again and choose a PIN.',
-        'prompt_active' => 'Another prompt of this app is open. Close it, then sign in again.',
-        'no_biometrics' => 'Set up a fingerprint or face on this phone first: approvals need one.',
+        'cancelled' => _en.text('msgNoPin'),
+        'prompt_active' => _en.text('msgPromptActive'),
+        'no_biometrics' => _en.text('msgNoBiometrics'),
         'insecure_key' => const _CannotProtectApprovals().message,
-        'key_generation_failed' || 'key_failed' => 'This device could not create the device keys. Restart it and try again.',
-        _ => 'Could not create the device keys: $e',
+        'key_generation_failed' || 'key_failed' => _en.text('msgKeysFailed'),
+        _ => _en.text('msgKeysError', {'why': e}),
       };
 
   /// Key generation on a platform with no native key store: the channel has no implementation. Only that call is read this way; a missing plugin anywhere else is an ordinary failure.
@@ -443,8 +447,8 @@ class EnrollmentController extends ChangeNotifier {
       return EnrollResult.ignored;
     }
     if (loginToken.trim().isEmpty) {
-      _set(const EnrollmentState(EnrollmentPhase.failed,
-          error: 'A fresh login is required to enroll.'));
+      _set(EnrollmentState(EnrollmentPhase.failed,
+          error: _en.text('msgFreshLogin')));
       return EnrollResult.failed;
     }
     final typed = recoveryCode?.trim();
@@ -510,7 +514,7 @@ class EnrollmentController extends ChangeNotifier {
     } on Object catch (e) {
       await _discardKeys();
       _set(EnrollmentState(EnrollmentPhase.failed,
-          error: 'Could not create the device keys: $e'));
+          error: _en.text('msgKeysError', {'why': e})));
       return EnrollResult.failed;
     }
     _keyLevel = enrolled.securityLevel;
@@ -534,19 +538,18 @@ class EnrollmentController extends ChangeNotifier {
       );
     } on KeyPromptCancelled {
       await _discardKeys();
-      _set(const EnrollmentState(EnrollmentPhase.failed,
-          error: 'Enrollment cancelled. Nothing was enrolled.'));
+      _set(EnrollmentState(EnrollmentPhase.failed,
+          error: _en.text('msgEnrollCancelled')));
       return EnrollResult.failed;
     } on _NoChallenge {
       await _discardKeys();
-      _set(const EnrollmentState(EnrollmentPhase.failed,
-          error:
-              'Biatec OIDC did not give an enrollment challenge. Try again.'));
+      _set(EnrollmentState(EnrollmentPhase.failed,
+          error: _en.text('msgNoChallenge')));
       return EnrollResult.failed;
     } on _ProofFailed catch (e) {
       await _discardKeys();
       _set(EnrollmentState(EnrollmentPhase.failed,
-          error: 'Could not prove possession of the device keys: ${e.cause}'));
+          error: _en.text('msgProofFailed', {'why': e.cause})));
       return EnrollResult.failed;
     } on EnrollmentException catch (e) {
       // Nothing was enrolled, so the unused keys are removed.
@@ -568,7 +571,7 @@ class EnrollmentController extends ChangeNotifier {
       // Nothing was enrolled, so the unused keys are removed.
       await _discardKeys();
       _set(EnrollmentState(EnrollmentPhase.failed,
-          error: 'Enrollment failed: $e'));
+          error: _en.text('msgEnrollFailed', {'why': e})));
       return EnrollResult.failed;
     }
     // The server now has the device. Never lose it over a storage hiccup: keep
@@ -581,9 +584,9 @@ class EnrollmentController extends ChangeNotifier {
       // The store works from memory and saves behind it, again and again: give the disk a moment to say whether it took it now.
       await store.flush().timeout(storeSettleTime, onTimeout: () {});
       saved = !store.unsaved;
-      if (!saved) warning = 'Enrolled, but this device could not save it yet.';
+      if (!saved) warning = _en.text('msgNotSaved');
     } on Object catch (e) {
-      warning = 'Enrolled, but this device could not save it yet: $e';
+      warning = _en.text('msgNotSavedWhy', {'why': e});
     }
     _set(EnrollmentState.fromRecord(record, _clock(),
         error: saved ? null : warning));
@@ -642,10 +645,11 @@ class EnrollmentController extends ChangeNotifier {
             deviceKeys: deviceKeys!,
             nonce: challenge!,
             now: _clock(),
-            promptTitle: defaultTargetPlatform == TargetPlatform.windows ? 'Enroll this computer' : 'Enroll this phone',
-            promptSubtitle: defaultTargetPlatform == TargetPlatform.windows
-                ? 'Approvals will need this check'
-                : 'Approvals will need your fingerprint or face',
+            // Shown by the platform, in the device's language.
+            promptTitle: OnboardingTexts.of().text(defaultTargetPlatform == TargetPlatform.windows ? 'promptTitleComputer' : 'promptTitlePhone'),
+            promptSubtitle: OnboardingTexts.of().text(defaultTargetPlatform == TargetPlatform.windows
+                ? 'promptSubtitleComputer'
+                : 'promptSubtitlePhone'),
           );
         } on KeyPromptCancelled {
           rethrow;
@@ -657,8 +661,8 @@ class EnrollmentController extends ChangeNotifier {
         // challenge, and the user is told that the biometric is asked a second time.
         if (_clock().difference(challengeAt) > challengeMaxAge &&
             attempt == 0) {
-          _set(const EnrollmentState(EnrollmentPhase.enrolling,
-              notice: 'Confirming again...'));
+          _set(EnrollmentState(EnrollmentPhase.enrolling,
+              notice: _en.text('msgConfirmingAgain')));
           continue;
         }
       }
@@ -685,8 +689,8 @@ class EnrollmentController extends ChangeNotifier {
         if (twoKeys &&
             attempt == 0 &&
             (e.code == 'invalid_challenge' || e.code == 'invalid_proof')) {
-          _set(const EnrollmentState(EnrollmentPhase.enrolling,
-              notice: 'Confirming again...'));
+          _set(EnrollmentState(EnrollmentPhase.enrolling,
+              notice: _en.text('msgConfirmingAgain')));
           continue;
         }
         rethrow;
@@ -901,7 +905,7 @@ class EnrollmentController extends ChangeNotifier {
     try {
       await store.write(done);
     } on Object catch (e) {
-      warning = 'Could not save locally: $e';
+      warning = _en.text('msgSaveLocalFailed', {'why': e});
     }
     // A write that landed after a sign-out was taken out again by the store.
     if (session != _session) return;
@@ -921,19 +925,15 @@ class _ProofFailed implements Exception {
 /// The approval key could not be made hardware-backed and bound to the biometrics.
 class _CannotProtectApprovals implements Exception {
   const _CannotProtectApprovals();
-  String get message => 'This device cannot protect approvals. Its keystore '
-      'cannot make a key that needs your confirmation (fingerprint, face, Windows Hello or a PIN of the app) for every '
-      'approval, so enrollment is refused.';
+  String get message => OnboardingTexts.en.text('msgCannotProtect');
 }
 
 /// The keystore holds the key somewhere other than secure hardware.
 class _NotInHardware implements Exception {
   _NotInHardware(KeySecurityLevel level)
       : message = level == KeySecurityLevel.unknown
-            ? 'This device cannot say where it keeps the key, so it is not '
-                'treated as secure hardware. Enrollment is refused.'
-            : 'This device keeps the key in ${level.label}, not in secure '
-                'hardware. Enrollment is refused.';
+            ? OnboardingTexts.en.text('msgLevelUnknown')
+            : OnboardingTexts.en.text('msgNotInHardware', {'level': level.label});
 
   final String message;
 }

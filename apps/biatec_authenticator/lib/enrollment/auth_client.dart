@@ -7,6 +7,7 @@ import 'package:flutter_appauth/flutter_appauth.dart';
 import '../config.dart';
 import '../security/pinning/pinned_http.dart';
 import 'loopback_auth_client.dart';
+import 'onboarding_texts.dart';
 
 /// The login the authenticator asks for (T-242, D10). Everything the server enforces is in here, so a test can check it exactly: the scope, `prompt=login` and `max_age=0`.
 class AuthRequest {
@@ -113,8 +114,8 @@ class AppAuthClient extends AuthClient {
   Future<String> signIn(AuthRequest r) async {
     if (r.redirectUri.startsWith('https:') &&
         !httpsCallbackSupported(defaultTargetPlatform, Platform.operatingSystemVersion)) {
-      throw const LoginFailed(
-          'Signing in from this app needs iOS 17.4 or later. Update this phone, or enroll from a newer one.');
+      // In English, like every LoginFailed: the enrollment screen shows it in its language (OnboardingTexts.message).
+      throw LoginFailed(OnboardingTexts.en.text('loginIos'));
     }
     try {
       final response = await _appAuth.authorizeAndExchangeCode(
@@ -137,7 +138,7 @@ class AppAuthClient extends AuthClient {
       );
       final token = response.accessToken;
       if (token == null || token.isEmpty) {
-        throw const LoginFailed('Biatec OIDC gave no access token.');
+        throw LoginFailed(OnboardingTexts.en.text('loginNoAccessTokenOidc'));
       }
       return token;
     } on FlutterAppAuthUserCancelledException {

@@ -10,6 +10,7 @@ import '../ui/ui.dart';
 import 'enrollment_controller.dart';
 import 'enrollment_state.dart';
 import 'enrollment_strings.dart';
+import 'onboarding_texts.dart';
 import 'pairing_code.dart';
 import 'enrollment_store.dart';
 import 'observable_enrollment_store.dart';
@@ -108,15 +109,10 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     super.dispose();
   }
 
-  /// Whole hours and minutes, in words, with the right singular ("1 hour"); changes only when the minute does.
-  static String _spokenTimeLeft(Duration d) {
-    if (d.inMinutes < 1) return 'Activates in less than a minute';
-    String unit(int n, String one) => '$n ${n == 1 ? one : '${one}s'}';
-    final m = d.inMinutes.remainder(60);
-    return d.inHours == 0
-        ? 'Activates in ${unit(m, 'minute')}'
-        : 'Activates in ${unit(d.inHours, 'hour')} and ${unit(m, 'minute')}';
-  }
+  /// The language of this screen: the app's locale, the device's language when there is none.
+  Locale? get _locale => Localizations.maybeLocaleOf(context);
+  OnboardingTexts get _t => OnboardingTexts.of(_locale);
+  EnrollStrings get _strings => EnrollStrings.of(_locale);
 
   String _format(Duration d) {
     final h = d.inHours;
@@ -145,9 +141,9 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     if (!mounted) return;
     final String? say;
     if (_controller.readFailed) {
-      say = 'The storage of this device could not be read. Try again.';
+      say = _t.text('storageUnreadable');
     } else if (_controller.state.phase == EnrollmentPhase.failed) {
-      say = 'This app has no enrollment for this device yet.';
+      say = _t.text('noEnrollmentYet');
     } else {
       say = null;
     }
@@ -171,7 +167,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Set up this device')),
+      appBar: AppBar(title: Text(_t.text('appBarTitle'))),
       body: ListenableBuilder(
         listenable: _controller,
         builder: (context, _) {
@@ -204,7 +200,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     if (level == null) return const [];
     return [
       const SizedBox(height: AppSpacing.m),
-      KeyProtectionCard(level: level),
+      KeyProtectionCard(level: level, strings: _strings),
     ];
   }
 
@@ -240,45 +236,41 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
             ),
           ]),
         );
+    final t = _t;
     return [
       KeyedSubtree(
         key: const Key('step-welcome'),
-        child: _title(context, 'Welcome to Biatec Authenticator'),
+        child: _title(context, t.text('welcomeTitle')),
       ),
       const SizedBox(height: AppSpacing.s),
-      const Text('This app is the second factor for your Biatec account: it '
-          'asks you to approve what matters, on this device, with your '
-          'fingerprint or face.'),
+      Text(t.text('welcomeIntro')),
       if (s.notice != null) ...[
         const SizedBox(height: AppSpacing.m),
         StatusBanner(
           key: const Key('welcome-notice'),
           severity: StatusSeverity.warning,
-          message: s.notice!,
+          message: t.message(s.notice!),
         ),
       ],
       if (s.error == EnrollmentController.legacyKeyNotice) ...[
         const SizedBox(height: AppSpacing.m),
-        const StatusBanner(
-          key: Key('legacy-key-notice'),
+        StatusBanner(
+          key: const Key('legacy-key-notice'),
           severity: StatusSeverity.warning,
           icon: Icons.fingerprint,
-          title: 'Set this device up again',
-          message: EnrollmentController.legacyKeyNotice,
+          title: t.text('legacyKeyTitle'),
+          message: t.message(EnrollmentController.legacyKeyNotice),
         ),
       ],
       const SizedBox(height: AppSpacing.l),
-      point(Icons.key_outlined, 'What it holds',
-          'Two keys created in this device\'s secure hardware that never leave it (the one that approves needs your fingerprint or face every time), and a device token that proves this device to Biatec OIDC.'),
-      point(Icons.block, 'What it never holds',
-          'Your wallet keys, your funds or your passwords. It cannot move money by itself.'),
-      point(Icons.restore, 'If you lose this device',
-          'A recovery code, shown once at the end of setup, activates a replacement device.'),
+      point(Icons.key_outlined, t.text('holdsTitle'), t.text('holdsText')),
+      point(Icons.block, t.text('neverHoldsTitle'), t.text('neverHoldsText')),
+      point(Icons.restore, t.text('lostTitle'), t.text('lostText')),
       const SizedBox(height: AppSpacing.s),
       FilledButton(
         key: const Key('onboarding-start'),
         onPressed: () => setState(() => _started = true),
-        child: const Text('Get started'),
+        child: Text(t.text('getStarted')),
       ),
     ];
   }
@@ -293,9 +285,11 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
 
   List<Widget> _connect(BuildContext context, EnrollmentState s) {
     final raw = s.error;
-    final problem = raw == null ? null : classifyEnrollmentError(raw);
+    final problem =
+        raw == null ? null : classifyEnrollmentError(raw, locale: _locale);
     final again = problem?.checksAgain ?? false;
-    final strings = EnrollStrings.of();
+    final strings = _strings;
+    final t = _t;
     final inApp = _inApp;
     // Debug builds only (see AppConfig.pasteLoginToken): the field is not part of a release build.
     final paste = widget.config.pasteLoginToken;
@@ -304,7 +298,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     return [
       KeyedSubtree(
         key: const Key('step-connect'),
-        child: _title(context, 'Connect this device to your account'),
+        child: _title(context, t.text('connectTitle')),
       ),
       const SizedBox(height: AppSpacing.s),
       if (inApp)
@@ -312,8 +306,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
         Text(widget.config.inAppLogin ? strings.signInIntro : strings.signInIntroPlain,
             key: const Key('sign-in-intro'))
       else if (paste)
-        const Text('Paste the login token from a fresh Biatec OIDC login. It is '
-            'used once, to link this device, and is not kept.')
+        Text(t.text('pasteIntro'))
       else
         Text(strings.signInUnavailable, key: const Key('sign-in-unavailable')),
       if (problem != null) ...[
@@ -331,7 +324,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
         StatusBanner(
           key: const Key('connect-notice'),
           severity: StatusSeverity.warning,
-          message: s.notice!,
+          message: t.message(s.notice!),
         ),
       ],
       // The recovery code is a feature of the in-app login's server side (T-242); a plain browser login has none to send.
@@ -365,7 +358,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
           child: Text(_controller.signingIn
               ? strings.signingIn
               : _checking
-                  ? 'Checking\u2026'
+                  ? t.text('checking')
                   : s.notice != null
                       ? strings.signInAgainButton
                       : problem?.actionLabel ?? strings.signInButton),
@@ -391,13 +384,13 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
           enableSuggestions: false,
           enableIMEPersonalizedLearning: false,
           decoration: InputDecoration(
-            labelText: 'Login token',
+            labelText: t.text('loginTokenLabel'),
             helperText: inApp
-                ? 'Debug builds only: a seeded token of the mock'
-                : 'From a fresh Biatec OIDC login',
+                ? t.text('loginTokenHelpMock')
+                : t.text('loginTokenHelp'),
             suffixIcon: IconButton(
               key: const Key('login-token-toggle'),
-              tooltip: _showToken ? 'Hide the token' : 'Show the token',
+              tooltip: t.text(_showToken ? 'hideToken' : 'showToken'),
               icon: Icon(_showToken ? Icons.visibility_off : Icons.visibility),
               onPressed: () => setState(() => _showToken = !_showToken),
             ),
@@ -415,12 +408,12 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
                   : _controller.enroll(
                       loginToken: _token.text, recoveryCode: _recoveryText),
           child: Text(_checking
-              ? 'Checking\u2026'
+              ? t.text('checking')
               : inApp
-                  ? 'Connect with the pasted token'
+                  ? t.text('connectPasted')
                   : noKeyStore
-                      ? 'Connect and create the key'
-                      : problem?.actionLabel ?? 'Connect and create the key'),
+                      ? t.text('connectCreate')
+                      : problem?.actionLabel ?? t.text('connectCreate')),
         ),
         if (again && !inApp) ...[
           const SizedBox(height: AppSpacing.s),
@@ -429,7 +422,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
             key: const Key('enroll-again-button'),
             onPressed: () => _controller.enroll(
                 loginToken: _token.text, recoveryCode: _recoveryText),
-            child: const Text('Connect again with this token'),
+            child: Text(t.text('connectAgain')),
           ),
         ],
       ],
@@ -438,18 +431,16 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
 
   List<Widget> _protect(BuildContext context, EnrollmentState s) {
     final theme = Theme.of(context);
+    final t = _t;
     if (s.phase == EnrollmentPhase.inactive) {
       final left = s.remaining(_controller.now);
       return [
         KeyedSubtree(
           key: const Key('step-protect'),
-          child: _title(context, 'Device inactive'),
+          child: _title(context, t.text('inactiveTitle')),
         ),
         const SizedBox(height: AppSpacing.s),
-        const Text('A new device can approve requests only after a waiting '
-            'period. It protects your account if someone else gets hold of '
-            'a login. Until then, actions that need phone approval cannot be '
-            'completed here.'),
+        Text(t.text('inactiveText')),
         ..._activationHelp(context, s),
         const SizedBox(height: AppSpacing.l),
         Center(
@@ -459,9 +450,9 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
             // The spoken label only changes when the minute does, so a screen reader is not given a new sentence every second.
             Semantics(
               container: true,
-              label: _spokenTimeLeft(left),
+              label: t.spokenTimeLeft(left),
               child: ExcludeSemantics(
-                child: Text('Time left: ${_format(left)}',
+                child: Text(t.text('timeLeft', {'time': _format(left)}),
                     key: const Key('activation-countdown'),
                     style: theme.textTheme.headlineSmall),
               ),
@@ -476,23 +467,24 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     return [
       KeyedSubtree(
         key: const Key('step-protect'),
-        child: _title(context, 'Protecting the key'),
+        child: _title(context, t.text('protectTitle')),
       ),
       const SizedBox(height: AppSpacing.s),
-      const Text('The key is created in this device\'s secure hardware. It '
-          'cannot be exported, and it is used only after your fingerprint or '
-          'face.'),
+      Text(t.text('protectText')),
       const SizedBox(height: AppSpacing.l),
       Center(
         child: Column(children: [
-          Semantics(label: 'Working', child: const CircularProgressIndicator()),
+          Semantics(
+              label: t.text('working'),
+              child: const CircularProgressIndicator()),
           const SizedBox(height: AppSpacing.m),
-          Text(creating ? 'Creating the device key' : 'Enrolling this device',
+          Text(t.text(creating ? 'creatingKey' : 'enrollingDevice'),
               style: theme.textTheme.titleMedium),
           if (s.notice != null)
             Padding(
               padding: const EdgeInsets.only(top: AppSpacing.s),
-              child: Text(s.notice!, key: const Key('enrollment-notice')),
+              child: Text(t.message(s.notice!),
+                  key: const Key('enrollment-notice')),
             ),
         ]),
       ),
@@ -503,7 +495,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
   /// While the device waits: the pairing code to compare with an active device, and the 24 hour text. Only against a Biatec OIDC that has the activation flow.
   List<Widget> _activationHelp(BuildContext context, EnrollmentState s) {
     if (!widget.config.inAppLogin) return const [];
-    final strings = EnrollStrings.of();
+    final strings = _strings;
     final theme = Theme.of(context);
     final code = s.record?.pairingCode;
     return [
@@ -536,7 +528,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     if (!widget.config.inAppLogin || _controller.devices == null) {
       return const [];
     }
-    final strings = EnrollStrings.of();
+    final strings = _strings;
+    final t = _t;
     return [
       const SizedBox(height: AppSpacing.l),
       OutlinedButton(
@@ -558,7 +551,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
           if (!done && mounted) {
             messenger.showSnackBar(SnackBar(
                 content: Text(_controller.cancelError ??
-                    'Could not cancel this device.')));
+                    t.text('cancelFailed'))));
           }
         },
         child: Text(strings.cancelThisDevice),
@@ -570,10 +563,11 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     final code = _controller.recoveryCodeToShow;
     if (code == null) {
       final err = _controller.recoveryCodeError;
+      final t = _t;
       return [
         KeyedSubtree(
           key: const Key('step-recovery'),
-          child: _title(context, 'Your recovery code'),
+          child: _title(context, t.text('recoveryTitle')),
         ),
         const SizedBox(height: AppSpacing.m),
         if (err == null)
@@ -581,8 +575,9 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
         else
           ErrorState(
             offline: isUnreachableError(err),
-            title: 'The recovery code could not be loaded',
-            message: err,
+            title: t.text('recoveryLoadFailed'),
+            message: t.message(err),
+            retryLabel: t.text('tryAgain'),
             onRetry: _controller.loadRecoveryCode,
           ),
       ];
@@ -601,6 +596,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
 
   List<Widget> _done(BuildContext context) {
     final theme = Theme.of(context);
+    final t = _t;
     return [
       KeyedSubtree(
         key: const Key('step-done'),
@@ -610,12 +606,11 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
           const SizedBox(height: AppSpacing.m),
           Semantics(
             header: true,
-            child: Text('This device is enrolled and active.',
+            child: Text(t.text('doneTitle'),
                 textAlign: TextAlign.center, style: theme.textTheme.titleLarge),
           ),
           const SizedBox(height: AppSpacing.s),
-          const Text('You can now approve requests from Biatec apps on this '
-              'device.'),
+          Text(t.text('doneText')),
         ]),
       ),
       ..._keyLevel(),

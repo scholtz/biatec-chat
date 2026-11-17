@@ -1,6 +1,6 @@
 import 'dart:ui';
 
-/// The texts of the in-app login and of the activation of a new device (T-242): English and Slovak, chosen by the phone's language (the rest of the app is English only for now). The code that asks for a text keeps the keys, so a test can check that both languages have all of them.
+/// The texts of the in-app login and of the activation of a new device (T-242): English and Slovak, chosen by the phone's language (the onboarding screens have theirs in `OnboardingTexts`). The code that asks for a text keeps the keys, so a test can check that both languages have all of them.
 class EnrollStrings {
   const EnrollStrings._(this._t);
 
@@ -76,6 +76,9 @@ class EnrollStrings {
 
   /// Every key, so a test can check that both languages have all of them, and the text under one.
   Iterable<String> get keys => _t.keys;
+
+  /// The texts by key, for the test that both languages have the same keys and placeholders.
+  Map<String, String> get values => _t;
   String text(String key) => _get(key);
 
   static const en = EnrollStrings._({
@@ -189,7 +192,7 @@ class EnrollStrings {
         'Tento Biatec OIDC zatiaľ nepodporuje prihlásenie z aplikácie, preto sa toto zariadenie tu nemôže zaregistrovať.',
     'recoveryFieldLabel': 'Obnovovací kód (voliteľné)',
     'recoveryFieldHelp':
-        'Nahradízate stratený telefón? Zadajte obnovovací kód a toto zariadenie sa aktivuje hneď.',
+        'Nahrádzate stratený telefón? Zadajte obnovovací kód a toto zariadenie sa aktivuje hneď.',
     'recoveryWrongTitle': 'Obnovovací kód nebol prijatý',
     'recoveryWrong':
         'Obnovovací kód nie je správny. Skontrolujte ho a skúste znova. Nič sa nezaregistrovalo.',
@@ -204,7 +207,7 @@ class EnrollStrings {
     'pairingHelp':
         'Na telefóne, ktorý je už nastavený, otvorte Zariadenia a aktivujte toto zariadenie. Aktivujte ho, len ak ten telefón ukazuje rovnaký kód.',
     'waitingText':
-        'Ak toto zariadenie nikto neaktivuje, aktivuje sa po 24 hodinách. Na adresu vašho účtu sme poslali e-mail s odkazom na jeho zrušenie.',
+        'Ak toto zariadenie nikto neaktivuje, aktivuje sa po 24 hodinách. Na adresu vášho účtu sme poslali e-mail s odkazom na jeho zrušenie.',
     'cancelThisDevice': 'Zrušiť toto zariadenie',
     'cancelThisTitle': 'Zrušiť toto zariadenie?',
     'cancelThisMessage':

@@ -10,6 +10,10 @@ import '../codes/server_clock.dart';
 import '../config.dart';
 import '../security/pinning/pinned_http.dart' show PinningException;
 import 'auth_client.dart';
+import 'onboarding_texts.dart';
+
+/// The messages of a failed sign-in are made in English: the enrollment screen shows them in its language (`OnboardingTexts.message`).
+const _en = OnboardingTexts.en;
 
 /// Opens [url] in the user's default browser. False: it could not be started.
 typedef BrowserOpener = Future<bool> Function(Uri url);
@@ -69,14 +73,14 @@ class LoopbackAuthClient extends AuthClient {
 
   @override
   Future<String> signIn(AuthRequest r) async {
-    if (_cancel != null) throw const LoginFailed('A sign-in is already open.');
+    if (_cancel != null) throw LoginFailed(_en.text('loginAlreadyOpen'));
     final cancel = _cancel = Completer<void>();
     http.Client? client;
     try {
       client = _http();
       final redirect = Uri.parse(r.redirectUri);
       if (!AppConfig.isLoopbackRedirect(r.redirectUri)) {
-        throw const LoginFailed('This build has no loopback redirect to sign in with.');
+        throw LoginFailed(_en.text('loginNoLoopback'));
       }
       final endpoints = await _orCancelled(_endpoints(client, r), cancel.future);
       final verifier = _token(32);
@@ -100,7 +104,7 @@ class LoopbackAuthClient extends AuthClient {
         });
         if (cancel.isCompleted) throw const LoginCancelled();
         if (!await _openBrowser(url)) {
-          throw const LoginFailed('The browser could not be opened.');
+          throw LoginFailed(_en.text('loginNoBrowser'));
         }
         code = await _answer(servers, redirect, state, cancel.future);
       } finally {
@@ -111,15 +115,15 @@ class LoopbackAuthClient extends AuthClient {
       // A sign-in that was stopped gives no token, also when the answer had already arrived: closing the client (below) ends the call that is still open.
       return await _orCancelled(_redeem(client, endpoints, r, code, verifier, nonce), cancel.future);
     } on SocketException catch (e) {
-      throw LoginFailed('The provider could not be reached (${e.message}).');
+      throw LoginFailed(_en.text('loginUnreachable', {'detail': e.message}));
     } on http.ClientException catch (e) {
-      throw LoginFailed('The provider could not be reached (${e.message}).');
+      throw LoginFailed(_en.text('loginUnreachable', {'detail': e.message}));
     } on TimeoutException {
-      throw const LoginFailed('The provider did not answer in time.');
+      throw LoginFailed(_en.text('loginTimeout'));
     } on PinningException catch (e) {
       throw LoginFailed(e.message);
     } on TlsException catch (e) {
-      throw LoginFailed('The connection to the provider could not be verified (${e.message}).');
+      throw LoginFailed(_en.text('loginTls', {'detail': e.message}));
     } on LoginCancelled {
       rethrow;
     } on LoginFailed {
@@ -127,7 +131,7 @@ class LoopbackAuthClient extends AuthClient {
     } on Object catch (e) {
       // Nothing else leaves a sign-in: the caller knows these two outcomes only, and an error it does not know would end without a word on the screen. The
       // type is said, never the text (it could carry part of an answer).
-      throw LoginFailed('The sign-in could not be completed (${e.runtimeType}).');
+      throw LoginFailed(_en.text('loginIncomplete', {'detail': e.runtimeType}));
     } finally {
       client?.close();
       _cancel = null;
@@ -155,29 +159,29 @@ class LoopbackAuthClient extends AuthClient {
     if (discovery == null) {
       // The mock is addressed by its endpoints (see AuthRequest.forConfig); plain http is for it only.
       final a = r.authorizationEndpoint, t = r.tokenEndpoint;
-      if (a == null || t == null) throw const LoginFailed('This build names no login endpoints.');
+      if (a == null || t == null) throw LoginFailed(_en.text('loginNoEndpoints'));
       final authorization = Uri.parse(a), token = Uri.parse(t);
       if (!r.allowInsecure && (authorization.scheme != 'https' || token.scheme != 'https')) {
-        throw const LoginFailed('The login endpoints must be https.');
+        throw LoginFailed(_en.text('loginEndpointsHttps'));
       }
       return _Endpoints(authorization, token, null);
     }
     const suffix = '/.well-known/openid-configuration';
     final uri = Uri.parse(discovery);
     if (uri.scheme != 'https' || !discovery.endsWith(suffix)) {
-      throw const LoginFailed('The discovery address must be https.');
+      throw LoginFailed(_en.text('loginDiscoveryHttps'));
     }
     final issuer = discovery.substring(0, discovery.length - suffix.length);
-    final json = await _json(client, http.Request('GET', uri), 'discovery document');
+    final json = await _json(client, http.Request('GET', uri), _en.text('loginWhatDiscovery'));
     // OpenID Connect Discovery 4.3: the issuer in the document is exactly the one it was asked from. A document that names another issuer is not this provider's.
     if (!_sameIssuer(json['issuer'], issuer)) {
-      throw const LoginFailed('The discovery document names another issuer.');
+      throw LoginFailed(_en.text('loginOtherIssuer'));
     }
     final authorization = _endpoint(json['authorization_endpoint'], uri, 'authorization_endpoint');
     final token = _endpoint(json['token_endpoint'], uri, 'token_endpoint');
     final methods = json['code_challenge_methods_supported'];
     if (methods is List && !methods.contains('S256')) {
-      throw const LoginFailed('The provider does not support PKCE with S256.');
+      throw LoginFailed(_en.text('loginNoPkce'));
     }
     return _Endpoints(authorization, token, issuer);
   }
@@ -191,7 +195,7 @@ class LoopbackAuthClient extends AuthClient {
         uri.port != discovery.port ||
         uri.userInfo.isNotEmpty ||
         uri.hasFragment) {
-      throw LoginFailed('The $name of the provider is not an https address on ${discovery.host}.');
+      throw LoginFailed(_en.text('loginBadEndpoint', {'name': name, 'host': discovery.host}));
     }
     return uri;
   }
@@ -238,13 +242,13 @@ class LoopbackAuthClient extends AuthClient {
         }
         // "In use" is said only when that is what the system said (Windows 10048, Linux 98, macOS 48); a reserved port or a missing address is named as it is.
         throw LoginFailed(const {10048, 98, 48}.contains(e.osError?.errorCode)
-            ? 'Port ${redirect.port} on this computer is in use. Close the program that uses it and sign in again.'
-            : 'Port ${redirect.port} on this computer cannot be opened for the sign-in (${e.osError?.message ?? e.message}).');
+            ? _en.text('loginPortInUse', {'port': redirect.port})
+            : _en.text('loginPortFailed', {'port': redirect.port, 'detail': e.osError?.message ?? e.message}));
       }
     }
     if (servers.isEmpty) {
-      throw LoginFailed(
-          'Port ${redirect.port} on this computer cannot be opened for the sign-in (${missing?.osError?.message ?? 'no loopback address'}).');
+      throw LoginFailed(_en.text('loginPortFailed',
+          {'port': redirect.port, 'detail': missing?.osError?.message ?? 'no loopback address'}));
     }
     return servers;
   }
@@ -297,7 +301,7 @@ class LoopbackAuthClient extends AuthClient {
           fail(error == 'access_denied'
               ? const LoginCancelled()
               // The error code is the provider's (RFC 6749, 4.1.2.1), shown as a plain code; its free text is not shown.
-              : LoginFailed('The provider refused the sign-in (${_code(error)}).'));
+              : LoginFailed(_en.text('loginProviderRefused', {'code': _code(error)})));
         } else if (!done.isCompleted) {
           done.complete(code);
         }
@@ -310,7 +314,7 @@ class LoopbackAuthClient extends AuthClient {
     // Once the answer is taken (its page is being written, for 5 seconds at most) neither the time limit nor a stop throws it away; a stop still ends the
     // sign-in at the next step (see [signIn]).
     final timer = Timer(timeout, () {
-      if (!taken) fail(const LoginFailed('The sign-in was not finished in time.'));
+      if (!taken) fail(LoginFailed(_en.text('loginNotInTime')));
     });
     cancelled.then((_) {
       if (!taken) fail(const LoginCancelled());
@@ -351,9 +355,10 @@ class LoopbackAuthClient extends AuthClient {
   }
 
   // Not "you are signed in": the app still has to redeem the code and check the answer, and says the outcome itself.
-  static const _donePage = 'The sign-in was received. Go back to Biatec Authenticator to continue. You can close this window.';
-  static const _failedPage = 'The sign-in was not completed. Close this window and go back to Biatec Authenticator.';
-  static const _strayPage = 'This address is used by Biatec Authenticator while it signs in. Nothing was done.';
+  // In the language of this computer (fixed texts: nothing in them comes from a request).
+  static String get _donePage => OnboardingTexts.of().text('pageDone');
+  static String get _failedPage => OnboardingTexts.of().text('pageFailed');
+  static String get _strayPage => OnboardingTexts.of().text('pageStray');
 
   // ---- the token ----
 
@@ -366,21 +371,21 @@ class LoopbackAuthClient extends AuthClient {
         'client_id': r.clientId,
         'code_verifier': verifier,
       };
-    final json = await _json(client, request, 'token answer');
+    final json = await _json(client, request, _en.text('loginWhatToken'));
     final token = json['access_token'];
     if (token is! String || token.isEmpty) {
-      throw const LoginFailed('The provider gave no access token.');
+      throw LoginFailed(_en.text('loginNoAccessToken'));
     }
     final type = json['token_type'];
     if (type is String && type.toLowerCase() != 'bearer') {
-      throw const LoginFailed('The provider gave a token of a kind this app cannot use.');
+      throw LoginFailed(_en.text('loginBadTokenType'));
     }
     final idToken = json['id_token'];
     if (idToken is String && idToken.isNotEmpty) {
       _checkIdToken(idToken, issuer: e.issuer, clientId: r.clientId, nonce: nonce, now: _now());
     } else if (e.issuer != null) {
       // A real provider answers an `openid` login with an ID token; without one the answer cannot be tied to this sign-in's nonce.
-      throw const LoginFailed('The provider gave no ID token.');
+      throw LoginFailed(_en.text('loginNoIdToken'));
     }
     return token;
   }
@@ -395,26 +400,26 @@ class LoopbackAuthClient extends AuthClient {
       if (parts.length != 3) throw const FormatException();
       claims = (jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1])))) as Map).cast<String, Object?>();
     } on Object {
-      throw const LoginFailed('The ID token of the provider cannot be read.');
+      throw LoginFailed(_en.text('loginIdUnreadable'));
     }
     final n = claims['nonce'];
     if (n is! String || !_same(n, nonce)) {
-      throw const LoginFailed('The ID token is not for this sign-in.');
+      throw LoginFailed(_en.text('loginIdNotMine'));
     }
     // An issuer that is named must be the one asked. One that is not named is let through: today's Biatec OIDC issues ID tokens without `iss` when its issuer is
     // not set in its configuration (required changes, section 26), and the token came from the pinned token endpoint of that issuer, bound to this sign-in by the nonce.
     if (issuer != null && claims['iss'] != null && !_sameIssuer(claims['iss'], issuer)) {
-      throw const LoginFailed('The ID token is from another issuer.');
+      throw LoginFailed(_en.text('loginIdOtherIssuer'));
     }
     // A server that says when the user authenticated must say "just now": the login asks for one (`max_age=0`). One that does not say cannot be checked here.
     final authTime = claims['auth_time'];
     if (authTime is num &&
         now.millisecondsSinceEpoch / 1000 - authTime > maxLoginAgeSeconds) {
-      throw const LoginFailed('The provider used an earlier sign-in. Sign out in the browser and sign in again.');
+      throw LoginFailed(_en.text('loginEarlierSignIn'));
     }
     final aud = claims['aud'];
     final forMe = aud is String ? aud == clientId : aud is List && aud.contains(clientId);
-    if (!forMe) throw const LoginFailed('The ID token is for another application.');
+    if (!forMe) throw LoginFailed(_en.text('loginIdOtherApp'));
   }
 
   /// Sends [request] without following a redirect (the code and the verifier go to the token endpoint and nowhere else) and reads a JSON object of a bounded size.
@@ -423,11 +428,11 @@ class LoopbackAuthClient extends AuthClient {
       ..followRedirects = false
       ..headers['Accept'] = 'application/json';
     final response = await client.send(request).timeout(const Duration(seconds: 20),
-        onTimeout: () => throw LoginFailed('The provider did not answer in time ($what).'));
+        onTimeout: () => throw LoginFailed(_en.text('loginNoAnswerWhat', {'what': what})));
     final bytes = <int>[];
     await for (final chunk in response.stream.timeout(const Duration(seconds: 20))) {
       bytes.addAll(chunk);
-      if (bytes.length > maxBodyBytes) throw LoginFailed('The $what of the provider is too large.');
+      if (bytes.length > maxBodyBytes) throw LoginFailed(_en.text('loginTooLarge', {'what': what}));
     }
     Object? body;
     try {
@@ -437,9 +442,10 @@ class LoopbackAuthClient extends AuthClient {
     }
     if (response.statusCode != 200) {
       final error = body is Map ? body['error'] : null;
-      throw LoginFailed('The provider refused the $what (${response.statusCode}, ${_code(error is String ? error : null)}).');
+      throw LoginFailed(_en.text('loginRefusedWhat',
+          {'what': what, 'status': response.statusCode, 'code': _code(error is String ? error : null)}));
     }
-    if (body is! Map) throw LoginFailed('The $what of the provider is not JSON.');
+    if (body is! Map) throw LoginFailed(_en.text('loginNotJson', {'what': what}));
     return body.cast<String, Object?>();
   }
 

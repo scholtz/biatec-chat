@@ -13,6 +13,7 @@ import 'package:biatec_authenticator/enrollment/widgets/enrollment_problem.dart'
 import 'package:biatec_authenticator/enrollment/widgets/key_protection_card.dart';
 import 'package:biatec_authenticator/enrollment/widgets/onboarding_step.dart';
 import 'package:biatec_authenticator/keys/key_security_level.dart';
+import 'package:biatec_authenticator/l10n/texts.dart';
 import 'package:biatec_authenticator/theme.dart';
 import 'package:biatec_authenticator/ui/ui.dart';
 import 'package:material_ui/material_ui.dart';
@@ -810,5 +811,46 @@ void main() {
         await _end(tester);
       });
     }
+  });
+
+  group('in Slovak (T-251)', () {
+    testWidgets('the app bar, the step line, the problem and "Try again" are Slovak, also the key protection',
+        (tester) async {
+      tester.platformDispatcher.localeTestValue = const Locale('sk');
+      addTearDown(tester.platformDispatcher.clearLocaleTestValue);
+      tester.view.physicalSize = const Size(400, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final rig = _Rig()..networkError = http.ClientException('offline');
+      await tester.pumpWidget(MaterialApp(
+        locale: const Locale('sk'),
+        supportedLocales: appLocales,
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        theme: buildTheme(Brightness.light),
+        home: EnrollmentScreen(
+            config: AppConfig.resolve(''), controller: rig.controller),
+      ));
+      await tester.pump();
+      expect(find.text('Nastavenie tohto zariadenia'), findsOneWidget);
+      expect(find.text('Krok 1 z 5 · Vitajte'), findsOneWidget);
+      expect(find.text('Začať'), findsOneWidget);
+      await _start(tester);
+      expect(find.text('Krok 2 z 5 · Pripojenie'), findsOneWidget);
+      expect(find.text('Pripojte toto zariadenie k svojmu účtu'), findsOneWidget);
+      await _enroll(tester);
+      expect(find.text('Biatec OIDC je nedostupný'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Skúsiť znova'), findsOneWidget);
+      expect(find.text('Try again'), findsNothing);
+
+      rig.networkError = null;
+      await tester.tap(find.widgetWithText(FilledButton, 'Skúsiť znova'));
+      await _settle(tester);
+      expect(find.text('Zariadenie je neaktívne'), findsOneWidget);
+      expect(find.text('Krok 3 z 5 · Ochrana kľúča'), findsOneWidget);
+      expect(find.textContaining('Zostáva: '), findsOneWidget);
+      expect(find.text('Kľúč chránený hardvérom'), findsOneWidget);
+      expect(find.textContaining('dôveryhodné prostredie'), findsOneWidget);
+      await _end(tester);
+    });
   });
 }
