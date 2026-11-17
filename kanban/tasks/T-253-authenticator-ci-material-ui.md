@@ -1,7 +1,7 @@
 ---
 id: T-253
 title: "Authenticator: CI passes again on Flutter 3.47+ (material_ui and cupertino_ui instead of the deprecated imports)"
-status: in-progress
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: []
@@ -55,8 +55,11 @@ pull request.
 
 ## Review
 
+- 2026-11-17 16:26 · approve · PR #429 merged into main @ 2538e94 (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-17 17:30 · scholtz · (new) → backlog · created while merging T-250 and T-252 (both merged with the authenticator job red); blockers scanned: shares files with T-249 and T-251 (conflicts_with), no ordering need
 - 2026-11-17 17:30 · scholtz · taken · status stays backlog
 - 2026-11-17 17:30 · scholtz · backlog → in-progress · claimed; branch task/T-253, before T-251
+- 2026-11-17 16:26 · user · in-progress → done · PR #429 merged into main @ 2538e94 (synced by kanban-sync)
