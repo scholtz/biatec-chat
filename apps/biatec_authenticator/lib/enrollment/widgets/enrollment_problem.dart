@@ -163,7 +163,7 @@ EnrollmentProblem classifyEnrollmentError(String error) {
   // The controller's refusals of a key that is not in secure hardware.
   if (error.startsWith('This device keeps the key in') ||
       error.startsWith('This device cannot say where it keeps the key') ||
-      error.startsWith('This phone cannot protect approvals')) {
+      error.startsWith('This device cannot protect approvals')) {
     return EnrollmentProblem(
         EnrollmentProblemKind.keyNotHardware,
         'This device cannot protect the key',

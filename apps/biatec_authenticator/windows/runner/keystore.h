@@ -45,6 +45,13 @@ bool TpmAvailable();
 // The existing key, or nothing when there is none. Never creates and never prompts.
 std::optional<PublicKey> Load(Use use);
 
+// Which keys are there, read in one step and without exporting anything.
+struct Existing {
+  bool approval = false;
+  bool presence = false;
+};
+Existing Exists();
+
 struct KeyPair {
   PublicKey approval;
   PublicKey presence;

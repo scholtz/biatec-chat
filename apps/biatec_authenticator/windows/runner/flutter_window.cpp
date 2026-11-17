@@ -72,7 +72,10 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       key_channels_->RunQueued();
       return 0;
     }
-    if (message == WM_WTSSESSION_CHANGE && wparam == WTS_SESSION_LOCK) {
+    // Locked, or the user's session is no longer in front of them (a remote desktop client closed, a switch of user, a logoff): the app locks itself.
+    if (message == WM_WTSSESSION_CHANGE &&
+        (wparam == WTS_SESSION_LOCK || wparam == WTS_REMOTE_DISCONNECT ||
+         wparam == WTS_CONSOLE_DISCONNECT || wparam == WTS_SESSION_LOGOFF)) {
       key_channels_->OnSessionLocked();
     }
   }

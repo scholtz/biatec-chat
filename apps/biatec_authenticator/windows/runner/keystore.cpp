@@ -230,17 +230,30 @@ PublicKey CreateAndDescribe(const Handle& provider, Use use) {
 
 }  // namespace
 
-KeyPair CreateFreshPair() {
+Existing Exists() {
+  std::lock_guard<std::mutex> lock(g_keys);
+  Handle provider = OpenProvider();
+  Existing existing;
+  Handle approval;
+  existing.approval = OpenKey(provider, Use::kApproval, approval);
+  Handle presence;
+  existing.presence = OpenKey(provider, Use::kPresence, presence);
+  return existing;
+}
+
+namespace {
+
+// Deletes any old keys, makes the new ones with `make(provider)`, and removes whatever was made again when anything fails: a whole set or none. The lock is held
+// throughout, so nothing else touches the keys in between.
+template <typename Make>
+auto FreshKeys(Make make) {
   std::lock_guard<std::mutex> lock(g_keys);
   Handle provider = OpenProvider();
   DeleteBoth(provider);
   try {
-    KeyPair pair;
-    pair.approval = CreateAndDescribe(provider, Use::kApproval);
-    pair.presence = CreateAndDescribe(provider, Use::kPresence);
-    return pair;
+    return make(provider);
   } catch (...) {
-    // A whole pair or none: what was made is removed again (a failure to remove it cannot be reported better than the first error).
+    // A failure to remove cannot be reported better than the first error.
     try {
       DeleteBoth(provider);
     } catch (...) {
@@ -249,19 +262,21 @@ KeyPair CreateFreshPair() {
   }
 }
 
+}  // namespace
+
+KeyPair CreateFreshPair() {
+  return FreshKeys([](const Handle& provider) {
+    KeyPair pair;
+    pair.approval = CreateAndDescribe(provider, Use::kApproval);
+    pair.presence = CreateAndDescribe(provider, Use::kPresence);
+    return pair;
+  });
+}
+
 PublicKey CreateFreshPresence() {
-  std::lock_guard<std::mutex> lock(g_keys);
-  Handle provider = OpenProvider();
-  DeleteBoth(provider);
-  try {
+  return FreshKeys([](const Handle& provider) {
     return CreateAndDescribe(provider, Use::kPresence);
-  } catch (...) {
-    try {
-      DeleteBoth(provider);
-    } catch (...) {
-    }
-    throw;
-  }
+  });
 }
 
 std::vector<uint8_t> Sign(Use use, const std::vector<uint8_t>& data) {

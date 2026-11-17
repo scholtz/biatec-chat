@@ -214,7 +214,8 @@ void main() {
       expect(keystoreCpp, contains('"insecure_key"'), reason: 'a key not reported as hardware is refused');
       // One operation on the keys at a time; a whole pair or none; an old key that cannot be deleted is an error and is never reused.
       expect(keystoreCpp, contains('std::mutex g_keys'));
-      expect(flat(keystoreCpp), contains('KeyPair CreateFreshPair() { std::lock_guard<std::mutex> lock(g_keys);'));
+      expect(flat(keystoreCpp), contains('auto FreshKeys(Make make) { std::lock_guard<std::mutex> lock(g_keys);'));
+      expect(flat(keystoreCpp), contains('return FreshKeys('));
       expect(keystoreCpp, contains('The old key cannot be deleted'));
       expect(flat(cpp), contains('keystore::CreateFreshPair()'));
       expect(cpp, isNot(contains('GenerateIfMissing')), reason: 'an old pair is never handed to a new enrollment');

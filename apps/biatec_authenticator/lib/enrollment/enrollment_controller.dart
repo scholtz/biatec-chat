@@ -310,6 +310,17 @@ class EnrollmentController extends ChangeNotifier {
         _ => 'Biatec Authenticator',
       };
 
+  /// What the user is told when the native key store refuses to make the keys. The codes come from KeystorePlugin.kt, KeystorePlugin.swift and key_channels.cpp.
+  String _keyCreationError(PlatformException e) => switch (e.code) {
+        'no_tpm' => noTpmError,
+        'no_hello' => noHelloError,
+        'hello_unavailable' => helloUnavailableError,
+        'no_biometrics' => 'Set up a fingerprint or face on this phone first: approvals need one.',
+        'insecure_key' => const _CannotProtectApprovals().message,
+        'key_generation_failed' => 'This device could not create the device keys. Restart it and try again.',
+        _ => 'Could not create the device keys: $e',
+      };
+
   /// Key generation on a platform with no native key store: the channel has no implementation. Only that call is read this way; a missing plugin anywhere else is an ordinary failure.
   static Future<T> _made<T>(Future<T> Function() generate) async {
     try {
@@ -496,22 +507,7 @@ class EnrollmentController extends ChangeNotifier {
       return EnrollResult.failed;
     } on PlatformException catch (e) {
       await _discardKeys();
-      _set(EnrollmentState(EnrollmentPhase.failed,
-          error: e.code == 'no_tpm'
-              ? noTpmError
-              : e.code == 'no_hello'
-                  ? noHelloError
-                  : e.code == 'hello_unavailable'
-                      ? helloUnavailableError
-                  : e.code == 'no_biometrics'
-              ? 'Set up a fingerprint or face on this phone first: approvals '
-                  'need one.'
-              : e.code == 'insecure_key'
-                  ? const _CannotProtectApprovals().message
-                  : e.code == 'key_generation_failed'
-                      ? 'This phone could not create the device keys. Restart '
-                          'the phone and try again.'
-                      : 'Could not create the device keys: $e'));
+      _set(EnrollmentState(EnrollmentPhase.failed, error: _keyCreationError(e)));
       return EnrollResult.failed;
     } on _NoKeyStore {
       // A platform this app has no key store for (a desktop build): there is no protected place for a device key, so nothing is enrolled.
@@ -930,7 +926,7 @@ class _ProofFailed implements Exception {
 /// The approval key could not be made hardware-backed and bound to the biometrics.
 class _CannotProtectApprovals implements Exception {
   const _CannotProtectApprovals();
-  String get message => 'This phone cannot protect approvals. Its keystore '
+  String get message => 'This device cannot protect approvals. Its keystore '
       'cannot make a key that needs your fingerprint or face for every '
       'approval, so enrollment is refused.';
 }

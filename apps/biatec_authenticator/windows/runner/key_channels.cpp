@@ -144,9 +144,8 @@ EncodableValue LoadKey(keystore::Use use) {
 
 EncodableValue KeysState() {
   // A provider that cannot be opened is thrown, not read as "no keys": the keys may be fine and the TPM busy, and Dart keeps the state it had.
-  const bool approval = keystore::Load(keystore::Use::kApproval).has_value();
-  const bool presence = keystore::Load(keystore::Use::kPresence).has_value();
-  if (approval && presence) return Text("ok");
+  const keystore::Existing existing = keystore::Exists();  // both read in one step
+  if (existing.approval && existing.presence) return Text("ok");
   // Not "approval_key_invalidated": no change of the biometrics invalidates a TPM key, and a presence key alone is the normal state of the single-key mode
   // (which a phone also reports as "missing").
   return Text("missing");
@@ -162,16 +161,12 @@ EncodableValue Probe() {
 // The Windows Hello check and the signature are one operation: the key signs only after the check said verified.
 EncodableValue SignApproval(HWND window, const std::vector<uint8_t>& data,
                             const std::string& title, const std::string& subtitle) {
-  if (!keystore::Load(keystore::Use::kApproval)) {
+  if (!keystore::Exists().approval) {
     throw keystore::KeyError("approval_key_invalidated", "The approval key is gone.");
   }
   PromptGuard guard;
   if (!guard.owns()) {
     throw keystore::KeyError("prompt_active", "Another Windows Hello prompt is open. Try again.");
-  }
-  if (hello::Check() != hello::Availability::kAvailable) {
-    throw keystore::KeyError("no_biometrics",
-                             "Windows Hello is not set up on this computer. Set it up in the Windows settings, then try again.");
   }
   std::string text = title;
   if (!subtitle.empty()) text += (text.empty() ? "" : " - ") + subtitle;
