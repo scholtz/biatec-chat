@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import '../totp_texts.dart';
+
 /// How good a passphrase looks.
 enum PassphraseStrength { refused, fair, good, strong }
 
@@ -114,16 +116,16 @@ abstract final class Passphrase {
     final length = value.runes.length;
     if (length < minLength) {
       return PassphraseVerdict(PassphraseStrength.refused, 0,
-          'Use at least $minLength characters. A phrase of several words is easy to remember and hard to guess.');
+          TotpTexts.of().text('passTooShort', {'min': minLength}));
     }
     final bits = _effectiveLength(value) * (log(_pool(value)) / ln2);
     if (bits < minBits) {
-      return PassphraseVerdict(PassphraseStrength.refused, bits,
-          'This is too easy to guess: it repeats, runs on, or is built from a common word. Try several unrelated words, or a longer phrase.');
+      return PassphraseVerdict(
+          PassphraseStrength.refused, bits, TotpTexts.of().text('passTooEasy'));
     }
     if (confirmation != null && confirmation != value) {
       return PassphraseVerdict(
-          PassphraseStrength.fair, bits, 'The two entries are not the same.');
+          PassphraseStrength.fair, bits, TotpTexts.of().text('passMismatch'));
     }
     final strength = bits >= 100
         ? PassphraseStrength.strong

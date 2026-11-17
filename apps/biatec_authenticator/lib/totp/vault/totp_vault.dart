@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 
 import '../core/otp_account.dart';
+import '../totp_texts.dart';
 import 'vault_key_store.dart';
 import 'vault_storage.dart';
 
@@ -293,7 +294,7 @@ class TotpVault {
             OtpLimits.hasUnsafeCharacters(i) ||
             OtpLimits.hasUnsafeCharacters(l)) {
           throw OtpAccountException(
-              OtpAccountProblem.name, 'This name is not allowed.');
+              OtpAccountProblem.name, TotpTexts.of().text('nameNotAllowed'));
         }
         final next = _with(entry.info, issuer: i, label: l);
         await _save(state, [

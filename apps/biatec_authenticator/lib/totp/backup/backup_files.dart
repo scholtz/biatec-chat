@@ -6,6 +6,8 @@ import 'package:file_selector/file_selector.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../totp_texts.dart';
+
 import 'backup_format.dart';
 
 /// Where a backup file goes to and comes from. The real one is the system share sheet and the system file picker; tests use a fake.
@@ -48,9 +50,9 @@ class SystemBackupFiles implements BackupFiles {
 
   @override
   Future<Uint8List?> pick() async {
-    final chosen = await openFile(acceptedTypeGroups: const [
+    final chosen = await openFile(acceptedTypeGroups: [
       XTypeGroup(
-        label: 'Biatec Authenticator backup',
+        label: TotpTexts.of().text('fileType'),
         extensions: ['biatecbackup'],
         mimeTypes: ['application/octet-stream'],
         uniformTypeIdentifiers: ['public.data'],

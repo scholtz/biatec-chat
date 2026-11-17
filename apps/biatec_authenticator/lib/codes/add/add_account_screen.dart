@@ -5,6 +5,7 @@ import '../../totp/core/otp_account.dart';
 import '../../ui/ui.dart';
 import '../../totp/vault/vault_key_store.dart';
 import '../codes_controller.dart';
+import '../codes_texts.dart';
 import 'account_input.dart';
 import 'qr_scan_screen.dart';
 
@@ -42,6 +43,8 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
   OtpAlgorithm _algorithm = OtpAlgorithm.sha1;
   int _digits = 6;
   int _period = OtpLimits.defaultPeriod;
+
+  CodesTexts get _t => CodesTexts.from(context);
 
   @override
   void initState() {
@@ -95,7 +98,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
       _preview(AccountInput.fromLink(text));
     } on InputProblem catch (e) {
       setState(() {
-        _problem = 'That QR code is not a two-factor account. ${e.message}';
+        _problem = _t.text('qrNotAccount', {'why': e.message});
         _step = _Step.choose;
       });
     }
@@ -114,11 +117,11 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
     } on AddRefused catch (e) {
       _stop(e.message);
     } on VaultAuthFailed {
-      _stop('The fingerprint or face check did not pass. Nothing was saved.');
+      _stop(_t.text('saveAuthFailed'));
     } on VaultBiometricsChanged {
-      _stop('Your fingerprints or face changed. Nothing was saved.');
+      _stop(_t.text('saveBiometricsChanged'));
     } on Object {
-      _stop('The account could not be saved. Try again.');
+      _stop(_t.text('saveFailed'));
     }
   }
 
@@ -132,12 +135,13 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final title = switch (_step) {
-      _Step.choose => 'Add an account',
-      _Step.link => 'Paste a link',
-      _Step.key => 'Enter a setup key',
-      _Step.preview => 'Check the account',
-    };
+    final t = _t;
+    final title = t.text(switch (_step) {
+      _Step.choose => 'addTitle',
+      _Step.link => 'pasteLink',
+      _Step.key => 'enterKey',
+      _Step.preview => 'checkTitle',
+    });
     return PopScope(
       canPop: _step == _Step.choose,
       onPopInvokedWithResult: (didPop, _) {
@@ -161,7 +165,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                   child: StatusBanner(
                     key: const Key('add-problem'),
                     severity: StatusSeverity.danger,
-                    title: 'Not added',
+                    title: t.text('notAdded'),
                     message: _problem!,
                   ),
                 ),
@@ -179,21 +183,21 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
   }
 
   List<Widget> _choose() => [
-        const Padding(
-          padding: EdgeInsets.only(bottom: AppSpacing.s),
-          child: Text('Pick the way your service gives you the account.'),
+        Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.s),
+          child: Text(_t.text('pickWay')),
         ),
         _Way(
             keyName: 'add-scan',
             icon: Icons.qr_code_scanner,
-            title: 'Scan a QR code',
-            text: 'The camera is asked for only now. No picture is kept.',
+            title: _t.text('scanQr'),
+            text: _t.text('scanText'),
             onTap: _scan),
         _Way(
             keyName: 'add-link',
             icon: Icons.link,
-            title: 'Paste a link',
-            text: 'A link that starts with otpauth://',
+            title: _t.text('pasteLink'),
+            text: _t.text('linkText'),
             onTap: () => setState(() {
                   _problem = null;
                   _step = _Step.link;
@@ -201,9 +205,8 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
         _Way(
             keyName: 'add-key',
             icon: Icons.keyboard,
-            title: 'Enter a setup key',
-            text:
-                'The letters and digits the service shows next to the QR code.',
+            title: _t.text('enterKey'),
+            text: _t.text('keyText'),
             onTap: () => setState(() {
                   _problem = null;
                   _step = _Step.key;
@@ -219,15 +222,14 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
           keyboardType: TextInputType.url,
           minLines: 2,
           maxLines: 4,
-          decoration: const InputDecoration(
-              labelText: 'otpauth:// link',
-              helperText: 'Paste the whole link.'),
+          decoration: InputDecoration(
+              labelText: _t.text('linkLabel'), helperText: _t.text('linkHelp')),
         ),
         const SizedBox(height: AppSpacing.l),
         FilledButton(
           key: const Key('link-continue'),
           onPressed: () => _try(() => AccountInput.fromLink(_link.text)),
-          child: const Text('Continue'),
+          child: Text(_t.text('continue')),
         ),
       ];
 
@@ -236,17 +238,18 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
           key: const Key('key-issuer'),
           controller: _issuer,
           textInputAction: TextInputAction.next,
-          decoration: const InputDecoration(
-              labelText: 'Service', helperText: 'For example GitHub.'),
+          decoration: InputDecoration(
+              labelText: _t.text('service'),
+              helperText: _t.text('serviceHelp')),
         ),
         const SizedBox(height: AppSpacing.m),
         TextField(
           key: const Key('key-label'),
           controller: _label,
           textInputAction: TextInputAction.next,
-          decoration: const InputDecoration(
-              labelText: 'Account name',
-              helperText: 'Usually your email address.'),
+          decoration: InputDecoration(
+              labelText: _t.text('accountName'),
+              helperText: _t.text('accountNameHelp')),
         ),
         const SizedBox(height: AppSpacing.m),
         TextField(
@@ -254,21 +257,21 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
           controller: _secret,
           autocorrect: false,
           enableSuggestions: false,
-          decoration: const InputDecoration(
-              labelText: 'Setup key',
-              helperText: 'Spaces and capital letters do not matter.'),
+          decoration: InputDecoration(
+              labelText: _t.text('setupKey'),
+              helperText: _t.text('setupKeyHelp')),
         ),
         const SizedBox(height: AppSpacing.m),
         ExpansionTile(
           key: const Key('key-advanced'),
-          title: const Text('More settings'),
-          subtitle: const Text('Only change these if the service says so.'),
+          title: Text(_t.text('moreSettings')),
+          subtitle: Text(_t.text('moreSettingsHelp')),
           childrenPadding: const EdgeInsets.only(bottom: AppSpacing.s),
           children: [
             DropdownButtonFormField<OtpAlgorithm>(
               key: const Key('key-algorithm'),
               initialValue: _algorithm,
-              decoration: const InputDecoration(labelText: 'Algorithm'),
+              decoration: InputDecoration(labelText: _t.text('algorithm')),
               items: [
                 for (final a in OtpAlgorithm.values)
                   DropdownMenuItem(value: a, child: Text(a.uriName)),
@@ -279,7 +282,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
             DropdownButtonFormField<int>(
               key: const Key('key-digits'),
               initialValue: _digits,
-              decoration: const InputDecoration(labelText: 'Digits'),
+              decoration: InputDecoration(labelText: _t.text('digits')),
               items: [
                 for (var d = OtpLimits.minDigits; d <= OtpLimits.maxDigits; d++)
                   DropdownMenuItem(value: d, child: Text('$d')),
@@ -290,8 +293,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
             DropdownButtonFormField<int>(
               key: const Key('key-period'),
               initialValue: _period,
-              decoration:
-                  const InputDecoration(labelText: 'Seconds each code lasts'),
+              decoration: InputDecoration(labelText: _t.text('period')),
               items: [
                 for (final p in const [15, 30, 60, 90, 120])
                   DropdownMenuItem(value: p, child: Text('$p')),
@@ -311,7 +313,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                 digits: _digits,
                 period: _period,
               )),
-          child: const Text('Continue'),
+          child: Text(_t.text('continue')),
         ),
       ];
 
@@ -319,6 +321,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
     final account = _account!;
     final theme = Theme.of(context);
     final hotp = account.type == OtpType.hotp;
+    final t = _t;
     return [
       Card(
         key: const Key('add-preview'),
@@ -326,26 +329,31 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
           padding: const EdgeInsets.all(AppSpacing.m),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(account.issuer.isEmpty ? 'No service name' : account.issuer,
+            Text(
+                account.issuer.isEmpty
+                    ? t.text('noServiceName')
+                    : account.issuer,
                 style: theme.textTheme.titleLarge),
             Text(account.label, style: theme.textTheme.titleMedium),
             const SizedBox(height: AppSpacing.m),
             Text(hotp
-                ? 'Counter-based, starting at ${account.counter}'
-                : 'Time-based, a new code every ${account.period} seconds'),
-            Text('${account.digits} digits, ${account.algorithm.uriName}'),
-            Text('Key strength: ${account.secretBits} bits'),
+                ? t.text('counterBased', {'counter': account.counter})
+                : t.text('timeBased', {'period': account.period})),
+            Text(t.text('digitsLine', {
+              'digits': account.digits,
+              'algorithm': account.algorithm.uriName
+            })),
+            Text(t.text('keyStrength', {'bits': account.secretBits})),
           ]),
         ),
       ),
       const SizedBox(height: AppSpacing.s),
-      const Text('Check that this is the account you meant. Once it is saved '
-          'the key is never shown again.'),
+      Text(t.text('checkText')),
       const SizedBox(height: AppSpacing.l),
       FilledButton(
         key: const Key('save-account'),
         onPressed: _saving ? null : _save,
-        child: Text(_saving ? 'Saving' : 'Add account'),
+        child: Text(t.text(_saving ? 'saving' : 'addAccount')),
       ),
     ];
   }

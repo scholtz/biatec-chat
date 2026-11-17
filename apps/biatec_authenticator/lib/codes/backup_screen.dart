@@ -7,6 +7,7 @@ import '../totp/backup/passphrase.dart';
 import '../totp/core/otp_account.dart';
 import '../ui/ui.dart';
 import 'codes_controller.dart';
+import 'codes_texts.dart';
 
 /// Backup and restore of the two-factor accounts: an encrypted file the user keeps, locked with a passphrase only they know.
 class BackupScreen extends StatelessWidget {
@@ -18,23 +19,20 @@ class BackupScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = CodesTexts.from(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Backup')),
+      appBar: AppBar(title: Text(t.text('backupTitle'))),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.m),
         children: [
-          const Text('A backup is a file with all your two-factor accounts, '
-              'locked with a passphrase you choose. Keep it somewhere safe. '
-              'Nothing is sent to any server, and without the passphrase the '
-              'file is useless: a lost passphrase cannot be recovered.'),
+          Text(t.text('backupIntro')),
           const SizedBox(height: AppSpacing.m),
           Card(
             child: ListTile(
               key: const Key('backup-create'),
               leading: const Icon(Icons.upload_file),
-              title: const Text('Create a backup'),
-              subtitle: const Text(
-                  'Asks for your fingerprint or face, then a passphrase.'),
+              title: Text(t.text('createBackup')),
+              subtitle: Text(t.text('createBackupText')),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
                   builder: (_) => ExportBackupScreen(service: service))),
@@ -44,9 +42,8 @@ class BackupScreen extends StatelessWidget {
             child: ListTile(
               key: const Key('backup-restore'),
               leading: const Icon(Icons.download),
-              title: const Text('Restore from a backup'),
-              subtitle: const Text(
-                  'Adds the accounts of a backup file. Accounts you already have are skipped.'),
+              title: Text(t.text('restoreTitle')),
+              subtitle: Text(t.text('restoreText')),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
                   builder: (_) => ImportBackupScreen(
@@ -79,15 +76,16 @@ class _PassphraseFields extends StatelessWidget {
   final PassphraseVerdict? verdict;
   final bool enabled;
 
-  static String word(PassphraseStrength s) => switch (s) {
-        PassphraseStrength.refused => 'Too weak',
-        PassphraseStrength.fair => 'Fair',
-        PassphraseStrength.good => 'Good',
-        PassphraseStrength.strong => 'Strong',
-      };
+  static String word(CodesTexts t, PassphraseStrength s) => t.text(switch (s) {
+        PassphraseStrength.refused => 'strengthRefused',
+        PassphraseStrength.fair => 'strengthFair',
+        PassphraseStrength.good => 'strengthGood',
+        PassphraseStrength.strong => 'strengthStrong',
+      });
 
   @override
   Widget build(BuildContext context) {
+    final t = CodesTexts.from(context);
     final v = verdict;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       TextField(
@@ -99,13 +97,12 @@ class _PassphraseFields extends StatelessWidget {
         enableSuggestions: false,
         onChanged: (_) => onChanged(),
         decoration: InputDecoration(
-          labelText: 'Passphrase',
-          helperText:
-              'At least 12 characters. A phrase of several words is best.',
+          labelText: t.text('passphrase'),
+          helperText: t.text('passphraseHelp'),
           helperMaxLines: 2,
           suffixIcon: IconButton(
             key: const Key('show-passphrase'),
-            tooltip: shown ? 'Hide the passphrase' : 'Show the passphrase',
+            tooltip: t.text(shown ? 'hidePassphrase' : 'showPassphrase'),
             constraints: const BoxConstraints(
                 minWidth: kMinTapTarget, minHeight: kMinTapTarget),
             icon: Icon(shown ? Icons.visibility_off : Icons.visibility),
@@ -120,7 +117,7 @@ class _PassphraseFields extends StatelessWidget {
           container: true,
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Strength: ${word(v.strength)}',
+            Text(t.text('strength', {'word': word(t, v.strength)}),
                 key: const Key('passphrase-strength')),
             const SizedBox(height: AppSpacing.xs),
             ExcludeSemantics(
@@ -150,7 +147,7 @@ class _PassphraseFields extends StatelessWidget {
           autocorrect: false,
           enableSuggestions: false,
           onChanged: (_) => onChanged(),
-          decoration: const InputDecoration(labelText: 'Type it again'),
+          decoration: InputDecoration(labelText: t.text('typeAgain')),
         ),
       ],
     ]);
@@ -206,8 +203,8 @@ class _ExportBackupScreenState extends State<ExportBackupScreen> {
       if (mounted) setState(() => _problem = e.message);
     } on Object {
       if (mounted) {
-        setState(() => _problem =
-            'The backup could not be made. Nothing was saved. Try again.');
+        setState(
+            () => _problem = CodesTexts.from(context).text('backupFailed'));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -216,22 +213,21 @@ class _ExportBackupScreenState extends State<ExportBackupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = CodesTexts.from(context);
     final v = _verdict;
     // No way out while the work runs: leaving would wipe the accounts being added.
     return PopScope(
         canPop: !_busy,
         child: Scaffold(
-          appBar: AppBar(title: const Text('Create a backup')),
+          appBar: AppBar(title: Text(t.text('createBackup'))),
           body: ListView(
             padding: const EdgeInsets.all(AppSpacing.m),
             children: [
-              const StatusBanner(
-                key: Key('backup-warning'),
+              StatusBanner(
+                key: const Key('backup-warning'),
                 severity: StatusSeverity.warning,
-                title: 'The passphrase cannot be recovered',
-                message:
-                    'It is not stored anywhere. If you lose it, the backup '
-                    'cannot be opened by anyone, including us.',
+                title: t.text('noRecoveryTitle'),
+                message: t.text('noRecovery'),
               ),
               const SizedBox(height: AppSpacing.m),
               _PassphraseFields(
@@ -246,10 +242,10 @@ class _ExportBackupScreenState extends State<ExportBackupScreen> {
               if (_pass.text.isNotEmpty &&
                   _again.text.isNotEmpty &&
                   _pass.text != _again.text)
-                const Padding(
-                  padding: EdgeInsets.only(top: AppSpacing.s),
-                  child: Text('The two entries are not the same.',
-                      key: Key('passphrase-mismatch')),
+                Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.s),
+                  child: Text(t.text('passphraseMismatch'),
+                      key: const Key('passphrase-mismatch')),
                 ),
               const SizedBox(height: AppSpacing.l),
               if (_problem != null)
@@ -260,7 +256,7 @@ class _ExportBackupScreenState extends State<ExportBackupScreen> {
                     child: StatusBanner(
                         key: const Key('backup-problem'),
                         severity: StatusSeverity.danger,
-                        title: 'No backup was made',
+                        title: t.text('noBackupMade'),
                         message: _problem!),
                   ),
                 ),
@@ -272,27 +268,24 @@ class _ExportBackupScreenState extends State<ExportBackupScreen> {
                     child: StatusBanner(
                         key: const Key('backup-done'),
                         severity: StatusSeverity.success,
-                        title: 'Backup ready',
-                        message:
-                            '$_done ${_done == 1 ? 'account is' : 'accounts are'} in the file. '
-                            'Save it where only you can reach it, and keep the passphrase apart from it.'),
+                        title: t.text('backupReady'),
+                        message: t.count('backupDone', _done!)),
                   ),
                 ),
               if (_busy)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: AppSpacing.m),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.m),
                   child: Column(children: [
-                    LinearProgressIndicator(key: Key('backup-progress')),
-                    SizedBox(height: AppSpacing.s),
-                    Text(
-                        'Protecting the backup. This takes a few seconds on purpose: it is what makes the passphrase hard to guess.'),
+                    const LinearProgressIndicator(key: Key('backup-progress')),
+                    const SizedBox(height: AppSpacing.s),
+                    Text(t.text('protecting')),
                   ]),
                 ),
               FilledButton.icon(
                 key: const Key('backup-make'),
                 onPressed: _ready ? _create : null,
                 icon: const Icon(Icons.lock),
-                label: Text(_busy ? 'Working' : 'Create the backup'),
+                label: Text(t.text(_busy ? 'working' : 'createTheBackup')),
               ),
             ],
           ),
@@ -362,8 +355,7 @@ class _ImportBackupScreenState extends State<ImportBackupScreen> {
       if (mounted) setState(() => _problem = BackupFailure.message);
     } on Object {
       if (mounted) {
-        setState(
-            () => _problem = 'The file could not be read. Nothing was added.');
+        setState(() => _problem = CodesTexts.from(context).text('readFailed'));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -410,8 +402,8 @@ class _ImportBackupScreenState extends State<ImportBackupScreen> {
       if (mounted) setState(() => _problem = e.message);
     } on Object {
       if (mounted) {
-        setState(() => _problem =
-            'The accounts could not all be added. Open the list to see which are there, and try again.');
+        setState(
+            () => _problem = CodesTexts.from(context).text('addAllFailed'));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -420,22 +412,20 @@ class _ImportBackupScreenState extends State<ImportBackupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = CodesTexts.from(context);
     final preview = _preview;
     // No way out while the work runs: leaving would wipe the accounts being added.
     return PopScope(
         canPop: !_busy,
         child: Scaffold(
-          appBar: AppBar(title: const Text('Restore from a backup')),
+          appBar: AppBar(title: Text(t.text('restoreTitle'))),
           body: ListView(
             padding: const EdgeInsets.all(AppSpacing.m),
             children: [
               if (widget.afterBiometricsChanged)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: AppSpacing.m),
-                  child: Text(
-                      'The accounts that were on this phone cannot be opened '
-                      'any more. Restoring a backup replaces them with the accounts '
-                      'in the file.'),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.m),
+                  child: Text(t.text('afterBiometrics')),
                 ),
               _PassphraseFields(
                 passphrase: _pass,
@@ -455,7 +445,7 @@ class _ImportBackupScreenState extends State<ImportBackupScreen> {
                     child: StatusBanner(
                         key: const Key('restore-problem'),
                         severity: StatusSeverity.danger,
-                        title: 'Nothing was added',
+                        title: t.text('nothingAdded'),
                         message: _problem!),
                   ),
                 ),
@@ -467,9 +457,8 @@ class _ImportBackupScreenState extends State<ImportBackupScreen> {
                     child: StatusBanner(
                         key: const Key('restore-done'),
                         severity: StatusSeverity.success,
-                        title: 'Restored',
-                        message:
-                            '$_added ${_added == 1 ? 'account was' : 'accounts were'} added.'),
+                        title: t.text('restored'),
+                        message: t.count('restored', _added!)),
                   ),
                 ),
               if (_busy)
@@ -479,15 +468,15 @@ class _ImportBackupScreenState extends State<ImportBackupScreen> {
                   key: const Key('restore-choose'),
                   onPressed: _busy || _pass.text.isEmpty ? null : _choose,
                   icon: const Icon(Icons.folder_open),
-                  label: const Text('Choose the backup file'),
+                  label: Text(t.text('chooseFile')),
                 )
               else ...[
                 Semantics(
                   header: true,
                   child: Text(
                       preview.toAdd.isEmpty
-                          ? 'Nothing new in this backup'
-                          : 'These ${preview.toAdd.length == 1 ? 'account' : '${preview.toAdd.length} accounts'} will be added',
+                          ? t.text('nothingNew')
+                          : t.count('willAdd', preview.toAdd.length),
                       key: const Key('restore-heading'),
                       style: Theme.of(context).textTheme.titleMedium),
                 ),
@@ -500,17 +489,16 @@ class _ImportBackupScreenState extends State<ImportBackupScreen> {
                 if (preview.duplicates > 0)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
-                    child: Text(
-                        '${preview.duplicates} ${preview.duplicates == 1 ? 'account is' : 'accounts are'} already here and will be skipped.',
+                    child: Text(t.count('duplicates', preview.duplicates),
                         key: const Key('restore-duplicates')),
                   ),
                 const SizedBox(height: AppSpacing.m),
                 FilledButton(
                   key: const Key('restore-apply'),
                   onPressed: _busy || preview.toAdd.isEmpty ? null : _apply,
-                  child: Text(widget.afterBiometricsChanged
-                      ? 'Restore these accounts'
-                      : 'Add these accounts'),
+                  child: Text(t.text(widget.afterBiometricsChanged
+                      ? 'restoreThese'
+                      : 'addThese')),
                 ),
               ],
             ],

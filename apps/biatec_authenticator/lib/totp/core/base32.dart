@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'otp_account.dart';
+import '../totp_texts.dart';
 
 /// A string that is not valid Base32. The message never contains the input, which may be a secret.
 class Base32Exception implements Exception {
@@ -55,30 +56,29 @@ abstract final class Base32 {
       }
       if (u == 0x3D) {
         if (padEnded) {
-          throw const Base32Exception('The key has broken-up padding.');
+          throw Base32Exception(TotpTexts.of().text('b32BrokenPadding'));
         }
         pads++;
       } else if (_value(u) == null) {
-        throw const Base32Exception('The key has a character that is not '
-            'part of Base32 (letters A to Z and digits 2 to 7).');
+        throw Base32Exception(TotpTexts.of().text('b32BadCharacter'));
       } else if (pads > 0) {
         // Padding is only allowed at the end.
-        throw const Base32Exception('The key has padding in the middle.');
+        throw Base32Exception(TotpTexts.of().text('b32MiddlePadding'));
       } else {
         count++;
       }
     }
     if (count == 0) {
-      throw const Base32Exception('The key is empty.', empty: true);
+      throw Base32Exception(TotpTexts.of().text('b32Empty'), empty: true);
     }
     // Leftover bits that do not fill a byte are dropped, as other authenticator apps do, whatever the length (even 1, 3 or 6 characters past a group, which RFC 4648 cannot produce): some services hand out such keys, and refusing would lock the user out of that account. The cost: a mistyped extra character is not caught here, and makes codes the service refuses. Padding is defined only for whole-byte lengths, so it must then be exact.
     final want = _padFor[count % 8];
     if (pads != 0 && pads != want) {
-      throw const Base32Exception('The key has the wrong padding.');
+      throw Base32Exception(TotpTexts.of().text('b32WrongPadding'));
     }
     final out = Uint8List(count * 5 ~/ 8);
     if (out.isEmpty) {
-      throw const Base32Exception('The key is too short.', tooShort: true);
+      throw Base32Exception(TotpTexts.of().text('b32TooShort'), tooShort: true);
     }
     var n = 0;
     var buffer = 0;

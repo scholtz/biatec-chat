@@ -6,6 +6,7 @@ import '../totp/core/otp_account.dart';
 import '../totp/vault/totp_vault.dart';
 import '../totp/vault/vault_key_store.dart';
 import 'codes_services.dart';
+import 'codes_texts.dart';
 
 enum CodesPhase { loading, ready, failed }
 
@@ -128,18 +129,15 @@ class CodesController extends ChangeNotifier {
       _phase = CodesPhase.ready;
     } on VaultBiometricsChanged {
       services.lock.markBiometricsChanged();
-      _fail(
-          'Your fingerprints or face changed, so the codes cannot be opened.');
+      _fail(CodesTexts.of().text('biometricsChanged'));
     } on VaultAuthFailed {
-      _fail('The fingerprint or face check did not pass. Try again.');
+      _fail(CodesTexts.of().text('authFailedTryAgain'));
     } on VaultRolledBack {
-      _fail('The saved accounts are older than what this phone has seen, so '
-          'they are not opened. Restore them from your backup file.');
+      _fail(CodesTexts.of().text('rolledBack'));
     } on VaultCorrupt {
-      _fail('The saved accounts are damaged, so they are not opened. '
-          'Restore them from your backup file.');
+      _fail(CodesTexts.of().text('corrupt'));
     } on Object {
-      _fail('The saved accounts could not be opened. Try again.');
+      _fail(CodesTexts.of().text('openFailed'));
     }
     _notify();
   }
@@ -184,15 +182,14 @@ class CodesController extends ChangeNotifier {
 
   Future<CodeEntry> _addNow(OtpAccount account) async {
     if (_phase == CodesPhase.failed) {
-      throw const AddRefused('Your saved accounts could not be opened, so '
-          'nothing can be added. Try opening them again first.');
+      throw AddRefused(CodesTexts.of().text('addWhileFailed'));
     }
     for (final e in _entries) {
       if (account.isDuplicateOf(e.account)) {
         final who = e.info.issuer.isEmpty
             ? e.info.label
             : '${e.info.issuer}, ${e.info.label}';
-        throw AddRefused('You already have this account: $who.');
+        throw AddRefused(CodesTexts.of().text('duplicate', {'who': who}));
       }
     }
     final epoch = _epoch;
@@ -201,8 +198,7 @@ class CodesController extends ChangeNotifier {
     if (_disposed || epoch != _epoch) {
       // Locked while the vault was sealing it: saved, but not kept in memory.
       entry.account.wipe();
-      throw const AddRefused('The app locked before the account was shown. '
-          'It was saved; open the list again.');
+      throw AddRefused(CodesTexts.of().text('lockedWhileAdding'));
     }
     _entries.add(entry);
     _phase = CodesPhase.ready;
@@ -225,7 +221,8 @@ class CodesController extends ChangeNotifier {
   /// Deletes an account after a fresh fingerprint. False when the fingerprint was refused (nothing is deleted).
   Future<bool> delete(String id) async {
     final entry = _find(id);
-    if (!await services.lock.reauthenticate('Delete this account')) {
+    if (!await services.lock
+        .reauthenticate(CodesTexts.of().text('deleteReason'))) {
       return false;
     }
     await services.vault.delete(id);
