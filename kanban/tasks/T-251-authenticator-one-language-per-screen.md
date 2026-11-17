@@ -7,7 +7,7 @@ epic: "Consent & authenticator"
 blocked_by: []
 area: ["apps/biatec_authenticator/lib/**", "apps/biatec_authenticator/test/**", "apps/biatec_authenticator/pubspec.yaml", "apps/biatec_authenticator/l10n.yaml", "apps/biatec_authenticator/README.md"]
 parallel: no
-conflicts_with: [T-249, T-250]
+conflicts_with: [T-249, T-250, T-253]
 issue: "#424"
 branch: ""
 owner: ""
