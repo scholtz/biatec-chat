@@ -19,6 +19,7 @@ import '../ui/ui.dart';
 import 'app_lock_gate.dart';
 import 'app_shell.dart';
 import 'shell_controller.dart';
+import '../l10n/common_texts.dart';
 
 /// Decides what the app opens on: the enrollment flow until this device is enrolled, active and has shown its recovery code, then the navigation shell.
 class AppGate extends StatefulWidget {
@@ -226,25 +227,22 @@ class _AppGateState extends State<AppGate> {
         return _noticed(Scaffold(
           body: Center(
             child: Semantics(
-                label: 'Loading', child: const CircularProgressIndicator()),
+                label: CommonTexts.of(Localizations.maybeLocaleOf(context)).text('loading'), child: const CircularProgressIndicator()),
           ),
         ));
       case _Startup.stuck:
         return _noticed(Scaffold(
           body: ErrorState(
-            title: 'Still checking this device',
-            message: 'The secure storage on this device is slow to answer. '
-                'Your enrollment is not lost.',
+            title: CommonTexts.of(Localizations.maybeLocaleOf(context)).text('stuckTitle'),
+            message: CommonTexts.of(Localizations.maybeLocaleOf(context)).text('stuckMessage'),
             onRetry: _retry,
           ),
         ));
       case _Startup.unreadable:
         return _noticed(Scaffold(
           body: ErrorState(
-            title: 'Could not read this device',
-            message: 'The secure storage on this device did not open. Your '
-                'enrollment is not lost. Try again, and restart the app if it '
-                'keeps failing.',
+            title: CommonTexts.of(Localizations.maybeLocaleOf(context)).text('unreadableTitle'),
+            message: CommonTexts.of(Localizations.maybeLocaleOf(context)).text('unreadableMessage'),
             onRetry: _retry,
           ),
         ));
@@ -317,10 +315,9 @@ class _AppGateState extends State<AppGate> {
       padding: const EdgeInsets.all(AppSpacing.s),
       child: StatusBanner(
         severity: StatusSeverity.warning,
-        title: 'Save your recovery code',
-        message: 'It is shown once and lets you replace this device '
-            'if it is lost.',
-        actionLabel: 'Show code',
+        title: CommonTexts.of(Localizations.maybeLocaleOf(context)).text('recoveryTitle'),
+        message: CommonTexts.of(Localizations.maybeLocaleOf(context)).text('recoveryMessage'),
+        actionLabel: CommonTexts.of(Localizations.maybeLocaleOf(context)).text('showCode'),
         onAction: _showRecoveryCode,
       ),
     );

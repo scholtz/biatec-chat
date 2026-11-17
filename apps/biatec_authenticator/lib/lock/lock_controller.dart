@@ -8,6 +8,7 @@ import '../integrity/integrity_checker.dart';
 import '../update/update_guard.dart';
 import '../security/secure_storage.dart';
 import 'biometric_authenticator.dart';
+import 'lock_texts.dart';
 
 /// What the secure area is doing. Only [unlocked] shows it.
 enum AppLockState {
@@ -35,15 +36,20 @@ enum AppLockState {
 
 /// How long the app may stay in the background before it locks. There is no "never".
 enum LockDelay {
-  immediately('Immediately', Duration.zero),
-  seconds30('After 30 seconds', Duration(seconds: 30)),
-  minute1('After 1 minute', Duration(minutes: 1)),
-  minutes5('After 5 minutes', Duration(minutes: 5));
+  immediately(Duration.zero),
+  seconds30(Duration(seconds: 30)),
+  minute1(Duration(minutes: 1)),
+  minutes5(Duration(minutes: 5));
 
-  const LockDelay(this.label, this.duration);
+  const LockDelay(this.duration);
 
-  final String label;
   final Duration duration;
+
+  /// For the user, in the language of the app (or of [locale]).
+  String labelIn([Locale? locale]) => LockTexts.of(locale).text('delay.$name');
+
+  /// For the user, in the language of the device.
+  String get label => labelIn();
 
   static const LockDelay standard = seconds30;
 
@@ -168,7 +174,7 @@ class LockController extends ChangeNotifier {
 
   /// Saves the delay. Asks for a fresh biometric first: it is a security setting. Returns false when that was refused.
   Future<bool> setDelay(LockDelay value) async {
-    if (!await reauthenticate('Change when the app locks')) return false;
+    if (!await reauthenticate(LockTexts.of().text('reasonDelay'))) return false;
     _delay = value;
     _notify();
     try {
@@ -202,7 +208,7 @@ class LockController extends ChangeNotifier {
       _set(AppLockState.locked);
       return;
     }
-    final outcome = await _ask('Unlock Biatec Authenticator');
+    final outcome = await _ask(LockTexts.of().text('reasonUnlock'));
     if (_disposed || attempt != _attempt) return;
     // The state may have moved while the prompt was open (the screen locked, biometrics changed): that wins over a late success.
     if (_state != AppLockState.unlocking) return;
@@ -333,7 +339,7 @@ class LockController extends ChangeNotifier {
     _reauthenticating++;
     final BiometricOutcome outcome;
     try {
-      outcome = await _ask('Restore your accounts from a backup');
+      outcome = await _ask(LockTexts.of().text('reasonRestore'));
     } finally {
       _reauthenticating--;
     }

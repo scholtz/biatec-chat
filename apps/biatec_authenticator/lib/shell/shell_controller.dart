@@ -2,42 +2,41 @@ import 'package:material_ui/material_ui.dart';
 
 import '../approvals/approval_screen.dart';
 import '../approvals/approval_services.dart';
+import '../l10n/common_texts.dart';
 
 /// The top-level destinations of the app, in bottom-navigation order.
 enum AppTab {
   codes(
-    label: 'Codes',
     icon: Icons.pin_outlined,
     selectedIcon: Icons.pin,
   ),
   approvals(
-    label: 'Approvals',
     icon: Icons.fact_check_outlined,
     selectedIcon: Icons.fact_check,
   ),
   history(
-    label: 'History',
     icon: Icons.receipt_long_outlined,
     selectedIcon: Icons.receipt_long,
   ),
   devices(
-    label: 'Devices',
     icon: Icons.phone_android_outlined,
     selectedIcon: Icons.phone_android,
   ),
   settings(
-    label: 'Settings',
     icon: Icons.settings_outlined,
     selectedIcon: Icons.settings,
   );
 
   const AppTab({
-    required this.label,
     required this.icon,
     required this.selectedIcon,
   });
 
-  final String label;
+  /// The name of the tab, in the language of the app (or of [locale]).
+  String labelIn([Locale? locale]) => CommonTexts.of(locale).text('tab.$name');
+
+  /// The name of the tab, in the language of the device.
+  String get label => labelIn();
   final IconData icon;
   final IconData selectedIcon;
 }

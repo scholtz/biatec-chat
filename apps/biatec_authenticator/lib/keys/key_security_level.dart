@@ -1,37 +1,69 @@
+import 'dart:ui';
+
+import '../l10n/texts.dart';
+
 /// Where the device key lives, as the native keystore reports it (BCHAT-032).
 enum KeySecurityLevel {
   /// iOS: the key is a Secure Enclave key.
-  secureEnclave('secure_enclave', 'Secure Enclave'),
+  secureEnclave('secure_enclave'),
 
   /// Android: a dedicated security chip (StrongBox).
-  strongBox('strongbox', 'StrongBox security chip'),
+  strongBox('strongbox'),
 
   /// Android: the trusted execution environment.
-  trustedEnvironment('tee', 'trusted execution environment'),
+  trustedEnvironment('tee'),
 
   /// Android below API 31: inside secure hardware, but the platform cannot say whether that is StrongBox or the TEE.
-  hardware('hardware', 'secure hardware'),
+  hardware('hardware'),
 
   /// Windows: the key is made and kept by the computer's TPM (the Platform Crypto Provider) and cannot be exported.
-  tpm('tpm', 'TPM security chip'),
+  tpm('tpm'),
 
   /// Windows, on a computer whose TPM cannot be used: the key is kept by the software key store of Windows. It cannot be exported and Windows encrypts it for
   /// the Windows account, but it is software: a program that runs as the user could use it. It is enrolled, and the user is warned ([isEnrollable]).
-  windowsAccount('windows_account', 'your Windows account (software)'),
+  windowsAccount('windows_account'),
 
   /// The key is held in software (no hardware protection).
-  software('software', 'software only'),
+  software('software'),
 
   /// The platform did not say, or said something this app does not know.
-  unknown('unknown', 'unknown');
+  unknown('unknown');
 
-  const KeySecurityLevel(this.wire, this.label);
+  const KeySecurityLevel(this.wire);
 
   /// The value the platform channel carries.
   final String wire;
 
-  /// For the user.
-  final String label;
+  /// For the user, in the language of the app (or of [locale]): it is put into a sentence ("Key protection: …"), so it starts lower case where English does.
+  String labelIn([Locale? locale]) => (appLanguageIsSlovak(locale) ? _sk : _en)[name]!;
+
+  /// For the user, in the language of the device.
+  String get label => labelIn();
+
+  static const _en = {
+    'secureEnclave': 'Secure Enclave',
+    'strongBox': 'StrongBox security chip',
+    'trustedEnvironment': 'trusted execution environment',
+    'hardware': 'secure hardware',
+    'tpm': 'TPM security chip',
+    'windowsAccount': 'your Windows account (software)',
+    'software': 'software only',
+    'unknown': 'unknown',
+  };
+
+  static const _sk = {
+    'secureEnclave': 'Secure Enclave',
+    'strongBox': 'bezpečnostný čip StrongBox',
+    'trustedEnvironment': 'dôveryhodné prostredie vykonávania (TEE)',
+    'hardware': 'zabezpečený hardvér',
+    'tpm': 'bezpečnostný čip TPM',
+    'windowsAccount': 'váš účet vo Windows (softvér)',
+    'software': 'iba softvér',
+    'unknown': 'neznáme',
+  };
+
+  /// Both languages, for the test that they have the same keys (T-251).
+  static Map<String, Map<String, String>> get labelTexts => {'en': _en, 'sk': _sk};
 
   /// True when the key is protected by hardware. `software`, `windowsAccount` and `unknown` are not.
   bool get isHardware => this != software && this != unknown && this != windowsAccount;

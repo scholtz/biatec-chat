@@ -31,6 +31,7 @@ import 'shell/app_gate.dart';
 import 'shell/shell_controller.dart';
 import 'theme.dart';
 import 'update/update_guard.dart';
+import 'l10n/common_texts.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -137,9 +138,9 @@ void showRequestArrived(
   messenger.currentState
     ?..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(
-      content: const Text('New approval request'),
+      content: Text(CommonTexts.of().text('newRequest')),
       action: SnackBarAction(
-          label: 'Open',
+          label: CommonTexts.of().text('open'),
           // Back to the list if a card is open, else show the list.
           onPressed: shell.showApprovals),
     ));
@@ -344,7 +345,7 @@ class ConfigErrorApp extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('This build cannot start',
+                  Text(CommonTexts.of(Localizations.maybeLocaleOf(context)).text('cannotStart'),
                       key: const Key('config-error-title'),
                       style: Theme.of(context).textTheme.headlineSmall),
                   const SizedBox(height: 12),
