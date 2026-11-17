@@ -20,15 +20,26 @@ void main() {
   tearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
   group('KeySecurityLevel', () {
-    test('hardware levels are hardware, software and unknown are not', () {
+    test('hardware levels are hardware; software, the Windows account and unknown are not', () {
       for (final level in KeySecurityLevel.values) {
         expect(
           level.isHardware,
           level != KeySecurityLevel.software &&
+              level != KeySecurityLevel.windowsAccount &&
               level != KeySecurityLevel.unknown,
           reason: level.wire,
         );
       }
+    });
+
+    test('a key of the Windows account may be enrolled and signs; software and unknown may not be enrolled', () {
+      for (final level in KeySecurityLevel.values) {
+        expect(level.isEnrollable, level != KeySecurityLevel.software && level != KeySecurityLevel.unknown, reason: level.wire);
+      }
+      expect(KeySecurityLevel.fromWire('windows_account'), KeySecurityLevel.windowsAccount);
+      expect(KeySecurityLevel.windowsAccount.isHardware, isFalse, reason: 'never shown as hardware');
+      expect(KeySecurityLevel.windowsAccount.blocksSigning, isFalse);
+      expect(KeySecurityLevel.software.blocksSigning, isTrue, reason: 'a phone that reports software is still refused');
     });
 
     test('the wire values round-trip and anything else is unknown', () {
@@ -208,8 +219,24 @@ void main() {
       // The level it reports is one Dart knows, and as hardware only when the provider says so.
       expect(KeySecurityLevel.fromWire('tpm'), KeySecurityLevel.tpm);
       expect(KeySecurityLevel.tpm.isHardware, isTrue);
-      expect(cpp, contains('key.hardware ? "tpm" : "software"'));
-      for (final code in ['prompt_active', 'cancelled', 'key_missing', 'no_biometrics', 'locked_out', 'auth_failed', 'no_tpm']) {
+      // A key of the software store (a computer whose TPM cannot be used) has its own level, which Dart enrolls with a warning; `tpm` is never said for it.
+      expect(cpp, contains('key.hardware ? "tpm" : key.store == keystore::Store::kSoftware ? "windows_account" : "software"'));
+      expect(flat(keystoreCpp), contains('key_out.hardware = store == Store::kTpm && InHardware(provider, key);'));
+      expect(flat(keystoreCpp), contains('const Store store = TpmAvailable() ? Store::kTpm : Store::kSoftware;'), reason: 'the TPM whenever it can be used');
+      expect(cpp, isNot(contains('"no_tpm"')), reason: 'a computer without a TPM is not refused');
+      expect(flat(cpp), contains('map[Text("software")] = EncodableValue(true);'));
+      // Whether the provider is hardware is asked of the provider: asked of a key, a real TPM answers "not supported", and every key was refused.
+      expect(flat(keystoreCpp), contains('if (!DwordProperty(provider, NCRYPT_IMPL_TYPE_PROPERTY, &impl)) return false;'));
+      // The PIN of the software store: a salted slow hash, encrypted for the Windows account, with a wait after wrong tries; removed with the keys.
+      expect(keystoreCpp, contains('BCryptDeriveKeyPBKDF2'));
+      expect(keystoreCpp, contains('constexpr ULONG kPinIterations = 600000;'));
+      expect(keystoreCpp, contains('CryptProtectData'));
+      expect(flat(keystoreCpp), contains('if (found.store == Store::kSoftware) return CheckKeptPin(pin);'));
+      expect(flat(keystoreCpp), contains('if (!ReadPinRecord(&record)) return PinCheck::kRefused;'), reason: 'no record: nothing is accepted');
+      expect(flat(keystoreCpp), contains('return PinCheck::kLocked;'));
+      expect(flat(keystoreCpp), contains('DeletePinRecord(); if (failure) throw *failure;'));
+      expect(keystoreCpp, contains('"The software key can be exported."'), reason: 'a software key that can be exported is refused');
+      for (final code in ['prompt_active', 'cancelled', 'key_missing', 'no_biometrics', 'locked_out', 'auth_failed']) {
         expect(cpp, contains('"$code"'), reason: 'C++ error $code');
       }
       expect(keystoreCpp, contains('"key_generation_failed"'));
@@ -272,10 +299,11 @@ void main() {
       final unlock = flat(cpp.substring(cpp.indexOf('EncodableValue BiometricAuthenticate('), cpp.indexOf('KeyChannels::KeyChannels(')));
       expect(unlock, contains('if (sent_pin == nullptr) return Text("pin_required"); try { RequirePin(sent_pin); return Text("success"); }'));
       // The PIN is the usage secret of the TPM keys: set before the key is finalized, given again for a signature, and kept nowhere (the native copy is wiped).
-      expect(flat(keystoreCpp), contains('if (status == ERROR_SUCCESS && pin != nullptr) status = SetPin(key, *pin);'));
+      expect(flat(keystoreCpp), contains('if (pin != nullptr) { status = SetPin(key, *pin); if (status != ERROR_SUCCESS) return status; } return NCryptFinalizeKey(key.get(), NCRYPT_SILENT_FLAG);'));
       expect(keystoreCpp, contains('NCRYPT_PIN_PROPERTY'));
-      expect(flat(keystoreCpp), contains('pair.approval = CreateAndDescribe(provider, Use::kApproval, pin);'));
-      expect(flat(keystoreCpp), contains('if (pin != nullptr) CreateAndDescribe(provider, Use::kLock, pin);'));
+      expect(flat(keystoreCpp), contains('pair.approval = CreateAndDescribe(store, provider, Use::kApproval, pin);'));
+      expect(flat(keystoreCpp), contains('if (pin != nullptr) CreateLock(store, provider, *pin);'));
+      expect(flat(keystoreCpp), contains('Create(provider, use, store == Store::kTpm ? pin : nullptr);'), reason: 'only the TPM takes the PIN as a usage secret');
       expect(flat(keystoreCpp), contains('for (const Use use : {Use::kApproval, Use::kPresence, Use::kLock})'), reason: 'a new enrollment and an erase remove the lock key too');
       expect(cpp, contains('SecureZeroMemory'));
       expect(cpp, contains('"pin"'), reason: 'the argument the Dart side sends');
@@ -356,8 +384,13 @@ void main() {
       });
     });
 
-    test('status reads the probe of a Windows build: only a missing TPM is a refusal (without Windows Hello the app asks for its own PIN)', () async {
+    test('status reads the probe of a Windows build: ready with a TPM or with the software key store, and only with neither a refusal', () async {
       for (final (answerOf, expected) in [
+        ({'tpm': false, 'software': true}, KeyStoreStatus.ready),
+        ({'software': true}, KeyStoreStatus.ready),
+        ({'tpm': false, 'software': false}, KeyStoreStatus.noTpm),
+        ({'tpm': false, 'software': 'yes'}, KeyStoreStatus.noTpm),
+        ({'tpm': true, 'software': true}, KeyStoreStatus.ready),
         ({'tpm': true, 'hello': 'available'}, KeyStoreStatus.ready),
         ({'tpm': false, 'hello': 'available'}, KeyStoreStatus.noTpm),
         ({'tpm': true, 'hello': 'not_configured'}, KeyStoreStatus.ready),

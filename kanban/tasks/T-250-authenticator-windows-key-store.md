@@ -104,8 +104,9 @@ Parallel work possible: **no**. It shares `lib/enrollment/**` with T-249 and mos
 - [ ] On a Windows computer with a TPM and Windows Hello the enrollment completes against the mock after the
       sign-in, and the key protection card says the keys are in the TPM (manual checklist).
 - [ ] A computer without Windows Hello enrolls with a PIN of the app that the TPM checks (owner, 2026-11-17).
-- [ ] A computer without a TPM is refused before the browser opens, with a text that
-      says which one is missing; no key is kept.
+- [ ] A computer without a usable TPM enrolls with keys kept by the Windows account (software, not exportable), and
+      the app warns the user and lists what to improve (owner, 2026-11-17; replaces "is refused before the browser
+      opens").
 - [ ] An approval asks for Windows Hello, and a cancelled or failed prompt signs nothing.
 - [ ] The private keys cannot be exported, and a key the provider does not report as hardware is refused.
 - [ ] The app lock and the approvals of the single-key mode use Windows Hello on Windows.
@@ -137,3 +138,4 @@ Windows Hello.
 - 2026-11-17 09:00 · scholtz · in-progress · owner decided: P-256 TPM keys with a Windows Hello prompt checked by the app (no protocol change); the RS256 design is dropped
 - 2026-11-17 16:00 · scholtz · in-progress · owner asked for a way in when Windows Hello is not available: a PIN of the app, enforced by the TPM (lock key and two-key approval key), replaces the "set up Windows Hello first" refusal
 - 2026-11-17 11:00 · scholtz · in-progress · PR #425, review round 1 fixed (appGated, hello_unavailable, fresh keys per enrollment, worker lifetime, double-press guard)
+- 2026-11-17 14:30 · scholtz · in-progress · owner could still not enroll and asked for a way in without secure hardware: (1) the cause was found with a test program on the owner's computer: the hardware flag was asked of the key, a real TPM answers "not supported", so every TPM key was refused; it is asked of the provider now; (2) a computer without a usable TPM gets software keys of the Windows account, level `windows_account`, with a warning and tips; the keystore test program (windows/test/keystore_test.cpp) passed on the real TPM and in the software store

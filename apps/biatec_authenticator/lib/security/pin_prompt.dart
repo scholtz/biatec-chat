@@ -8,7 +8,7 @@ import '../theme.dart';
 
 /// The PIN of the app, used by a Windows build on a computer where Windows Hello cannot be used (T-250, docs/authenticator-windows-key-store.md).
 ///
-/// The app does not check the PIN and does not keep it: it goes with the one native call that needs it, and the computer's TPM checks it (it is the usage secret of keys in the TPM, which locks itself after too many wrong tries). This file only asks the user for it, on the app's own screen.
+/// The app does not check the PIN and does not keep it: it goes with the one native call that needs it, and the key store of the computer checks it. With a TPM it is the usage secret of keys in the TPM, which locks itself after too many wrong tries; without one, the native side keeps a salted slow hash of it, encrypted for the Windows account, and makes the user wait after wrong tries. This file only asks the user for it, on the app's own screen.
 
 /// The limits of a new PIN. The native side holds the same ones (key_channels.cpp).
 const pinMinLength = 6;
@@ -75,7 +75,7 @@ class PinStrings {
   static const en = PinStrings._({
     'createTitle': 'Choose a PIN for this app',
     'createText':
-        'Windows Hello cannot be used on this computer, so this app asks for its own PIN when it opens and for every approval. The security chip (TPM) of this computer guards it and locks for a while after too many wrong tries.',
+        'Windows Hello cannot be used on this computer, so this app asks for its own PIN when it opens and for every approval. After too many wrong tries the PIN is refused for a while.',
     'createWarning': 'The PIN cannot be recovered. If you forget it, this computer has to be enrolled again.',
     'enterTitle': 'Enter the PIN of this app',
     'pin': 'PIN',
@@ -93,7 +93,7 @@ class PinStrings {
   static const sk = PinStrings._({
     'createTitle': 'Zvoľte si PIN pre túto aplikáciu',
     'createText':
-        'Windows Hello sa na tomto počítači nedá použiť, preto si táto aplikácia pri otvorení a pri každom schválení pýta vlastný PIN. Stráži ho bezpečnostný čip (TPM) tohto počítača a po priveľa nesprávnych pokusoch sa na čas zamkne.',
+        'Windows Hello sa na tomto počítači nedá použiť, preto si táto aplikácia pri otvorení a pri každom schválení pýta vlastný PIN. Po priveľa nesprávnych pokusoch sa PIN na čas prestane prijímať.',
     'createWarning': 'PIN sa nedá obnoviť. Ak ho zabudnete, tento počítač treba zaregistrovať znova.',
     'enterTitle': 'Zadajte PIN tejto aplikácie',
     'pin': 'PIN',
@@ -145,7 +145,7 @@ class _PinDialogState extends State<PinDialog> {
   void _submit() {
     final pin = _pin.text;
     if (widget.create) {
-      // Only a new PIN is held to the rules. An existing one is whatever the TPM accepts.
+      // Only a new PIN is held to the rules. An existing one is whatever the key store accepts.
       final problem = pin.length < pinMinLength
           ? _s.text('tooShort')
           : pin != _repeat.text

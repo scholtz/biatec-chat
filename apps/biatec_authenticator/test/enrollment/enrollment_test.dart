@@ -289,6 +289,9 @@ void main() {
       KeySecurityLevel.strongBox,
       KeySecurityLevel.trustedEnvironment,
       KeySecurityLevel.hardware,
+      KeySecurityLevel.tpm,
+      // A Windows computer without a usable TPM: enrolled, and the level is kept so that the screens can warn.
+      KeySecurityLevel.windowsAccount,
     ]) {
       test('a ${level.wire} key is enrolled and its level is kept for display',
           () async {

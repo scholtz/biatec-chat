@@ -16,8 +16,9 @@ This page says what is protected, what is not, how to check it, and what a bank 
 | Presence key | Signs without a prompt, like the presence key on a phone. |
 | App lock | The lock and the re-authentication before sensitive actions use the same Windows Hello check, and the app locks when Windows locks (`screenLocked`). |
 | Without Windows Hello | The user chooses a **PIN of the app** (6 to 64 characters) at enrollment, in a dialog of the app (`lib/security/pin_prompt.dart`, in the app's own look and language), after the sign-in and before any key is made. It is the usage secret of a third TPM key (the lock key, `io.biatec.authenticator.lock.v1`) and, in two-key mode, of the approval key: the TPM refuses to sign without it and locks for a while after too many wrong tries. The app stores no copy and no hash of it: it goes with the one channel call that needs it, the native copy is wiped after the call, and the Dart copy lives until the Dart memory is collected. The app lock and every approval ask for it; "is this the PIN" is answered by a TPM signature with the lock key. Which check an enrollment uses is fixed when it is made (the lock key is there or not); a later change needs a new enrollment. A forgotten PIN cannot be recovered: the device is enrolled again. See "The PIN of the app" below. |
-| Refused | No TPM (or off in the firmware): said **before the browser opens**, so a computer that cannot enroll is not sent through a sign-in. A key the provider does not report as hardware is refused and removed, as on a phone. A closed PIN dialog makes no keys and enrolls nothing. |
-| Security level | `tpm`, read back from the key (`NCRYPT_IMPL_TYPE_PROPERTY` has the hardware flag), never assumed. |
+| Without a TPM | Not refused (owner's decision, 2026-11-17, see "A computer without a usable TPM" below): the same keys are made in the software key store of Windows, the level is `windows_account`, and the app warns the user and says what would make the computer safer. |
+| Refused | A key of the TPM that the provider does not report as hardware, and a software key that can be exported, are refused and removed. A closed PIN dialog makes no keys and enrolls nothing. |
+| Security level | `tpm` when the Platform Crypto Provider says it is hardware (`NCRYPT_IMPL_TYPE_PROPERTY` of the provider has the hardware flag) and the key's export policy allows nothing; read back, never assumed. `windows_account` for a key of the software store. |
 | Reported as | The approval key is `appGated` (the app's own gate), **not** `authBound` (which says the hardware enforces the gesture, as on a phone). The app accepts either for approving (`DeviceKey.gestureRequired`) and keeps them apart. |
 | New keys | Every enrollment deletes any old pair and makes new keys: a TPM key outlives an uninstall, and an old pair must not reach the server as a new device. |
 | Single-key mode | Real Biatec OIDC has no two-key enrollment yet (`TWO_KEY_DEVICE` is off). Then only the presence key is made, in the TPM, and an approval is gated by the app lock's Windows Hello check, as before T-241 on a phone. |
@@ -42,6 +43,37 @@ The same applies to platform integrity: Windows has nothing like Play Integrity 
 prove that the app is the real app. The device is named "Windows computer" in the device list (the enrollment sends no
 platform field, and a server policy that treats desktop devices differently would need one, see the open decisions);
 today a desktop device may approve what a phone may.
+
+## A computer without a usable TPM (added on 2026-11-17, at the owner's request)
+
+The owner asked that the app can be used on a Windows computer also when secure hardware is not available, and that
+the user is told that the computer may not be the safest one and what can be improved.
+
+- **When.** The TPM is used whenever it can be: the Platform Crypto Provider opens, says it is hardware, and makes a
+  P-256 key (a key without a name, not kept, is made as the test). Otherwise (no TPM, off in the firmware, a TPM 1.2)
+  the keys are made in the **Microsoft Software Key Storage Provider**.
+- **What that gives.** The same P-256 keys under the same names, marked not exportable (the export policy is read
+  back, and a key that could be exported is refused). Windows encrypts them for the Windows account (DPAPI).
+- **What it does not give.** They are software. A program that runs as the user can sign with them, without any
+  prompt; someone who can sign in as the user, or who has the disk and the user's password, can too. Nothing here is
+  hardware-bound.
+- **The user's check** is the same as with a TPM: Windows Hello when it can be used, otherwise the PIN of the app.
+  The software provider cannot hold a PIN silently (it takes one only with a dialog of its own), so the PIN is checked
+  by the app's native code: a random salt and a PBKDF2-HMAC-SHA256 hash (600,000 rounds) are kept in
+  `%LOCALAPPDATA%\io.biatec.authenticator\pin.v1`, encrypted for the Windows account. After 5 wrong tries in a row
+  the PIN is refused for 30 seconds, doubled with every further wrong try, up to an hour. This stops a person at the
+  keyboard. It does not stop a program that runs as the user, which can read the file and try PINs on its own, or use
+  the keys without the PIN.
+- **What the user sees.** The key protection card (after the enrollment, and on the Devices screen) is a warning, not
+  a success: "This computer is not the safest place for approvals", why, and a list: turn on the TPM in the firmware
+  and enroll again, set up Windows Hello, turn on BitLocker, a strong Windows password and a locked screen, keep
+  Windows up to date, approve larger payments on a phone. Settings says "Kept by your Windows account (software)".
+  English and Slovak.
+- **What the server sees.** Nothing different: Windows sends no attestation in either case, so Biatec OIDC cannot
+  tell a TPM key from a software key of a Windows device. A relying party that needs hardware keys has to refuse
+  Windows devices as a whole, or wait for a level in the enrollment (not in this task).
+- **A change of store.** Which store an enrollment uses is fixed when it is made. A computer whose TPM is turned on
+  later keeps its software keys until the device is removed and enrolled again (the warning says so).
 
 ## The PIN of the app (added on 2026-11-17, when the owner's computer could not use Windows Hello)
 
@@ -74,7 +106,27 @@ What it gives, compared with the Windows Hello path:
 Ways to strengthen it later: the PIN of the app also for computers that have Windows Hello (the TPM then enforces the check on the approval key), a PIN on the single-key presence key once the server tells approvals from presence proofs, the RS256 Windows Hello key (hardware-bound gesture, needs a protocol version), a signed
 MSIX package, an organisation policy that allows desktop devices only for approvals up to a limit.
 
-## Manual checklist (NOT run: native code is not run by the test suite, and the build environment of this task could not run executables)
+## What was run on a real computer (2026-11-17)
+
+`apps/biatec_authenticator/windows/test/keystore_test.cpp` compiles the real `keystore.cpp` into a console program
+(the command is at the top of the file). It was run on the owner's computer (Windows 11, a TPM 2.0, in a Remote
+Desktop session) in both forms, and every check passed:
+
+- **TPM:** new keys with and without a PIN, signatures that verify against the public key the channel would carry,
+  the level `tpm`, the right PIN accepted, a wrong PIN refused (the TPM answers `NTE_PERM`), no signature of the
+  approval key without the PIN or with a wrong one, the single-key set, and nothing left after the delete.
+- **Software store** (the same program built with `BIATEC_KEYSTORE_WITHOUT_TPM`): the same, with the level
+  `windows_account`, the lock after 5 wrong tries (also for the right PIN), acceptance after the wait, and no PIN
+  record left after the delete.
+
+That run found the fault that refused every enrollment before: "is this hardware" was asked of the key, a real TPM
+answers "not supported" to that, and the key was taken for software. It is a property of the provider and is asked
+there now.
+
+Not covered by that program: the channel code (`key_channels.cpp`), Windows Hello, and the screens. The checklist
+below is for those.
+
+## Manual checklist (NOT run)
 
 Run on a Windows 11 computer with a TPM 2.0 and Windows Hello set up. `flutter build windows`, then run
 `build\windows\x64\runner\Release\biatec_authenticator.exe`.
@@ -98,8 +150,11 @@ Run on a Windows 11 computer with a TPM 2.0 and Windows Hello set up. `flutter b
 7. **Lock.** Lock Windows (Win+L) and unlock it: the app asks for Windows Hello. Turn the app lock on in Settings and
    check that opening the app asks for it.
 8. **Remove the device** in the app, then `certutil -csp "Microsoft Platform Crypto Provider" -key` lists neither key.
-9. **No TPM.** Disable the TPM in a virtual machine without one: the sign-in button shows "No security chip found" and
-   no key is made.
+9. **No TPM.** In a virtual machine without a TPM: the sign-in and the enrollment complete, the key protection card
+   is the warning "This computer is not the safest place for approvals" with the list of what to improve,
+   `certutil -key` (the software provider) lists the keys, and `certutil -csp "Microsoft Platform Crypto Provider" -key`
+   lists none. With Windows Hello set up, approvals ask for it; without, the app asks for a new PIN and for it at
+   every unlock and approval; 5 wrong PINs give "refused for a while".
 
 Without Windows Hello (the PIN of the app):
 

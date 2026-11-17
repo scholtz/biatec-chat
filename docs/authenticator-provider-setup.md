@@ -166,7 +166,7 @@ two pins.
 Limits to know:
 
 - **Windows builds keep the device keys in the TPM** (T-250, [authenticator-windows-key-store.md](authenticator-windows-key-store.md)).
-  A computer without a TPM is refused before the browser opens; one without Windows Hello asks for a PIN of the app. Linux and macOS builds have
+  A computer without a usable TPM keeps them in the software key store of Windows and warns the user; one without Windows Hello asks for a PIN of the app. Linux and macOS builds have
   no key store: the app refuses to keep a device key in software and says "This build of the app has no protected key
   store on this kind of device".
 - A program that already runs as the same user on the same computer can read the app's memory and files, and no login

@@ -15,6 +15,10 @@ enum KeySecurityLevel {
   /// Windows: the key is made and kept by the computer's TPM (the Platform Crypto Provider) and cannot be exported.
   tpm('tpm', 'TPM security chip'),
 
+  /// Windows, on a computer whose TPM cannot be used: the key is kept by the software key store of Windows. It cannot be exported and Windows encrypts it for
+  /// the Windows account, but it is software: a program that runs as the user could use it. It is enrolled, and the user is warned ([isEnrollable]).
+  windowsAccount('windows_account', 'your Windows account (software)'),
+
   /// The key is held in software (no hardware protection).
   software('software', 'software only'),
 
@@ -29,8 +33,12 @@ enum KeySecurityLevel {
   /// For the user.
   final String label;
 
-  /// True when the key is protected by hardware. `software` and `unknown` are not: the app fails closed on both.
-  bool get isHardware => this != software && this != unknown;
+  /// True when the key is protected by hardware. `software`, `windowsAccount` and `unknown` are not.
+  bool get isHardware => this != software && this != unknown && this != windowsAccount;
+
+  /// True for a key that may be enrolled: one in hardware, or the key a Windows computer without a usable TPM keeps in its account (the user is warned,
+  /// docs/authenticator-windows-key-store.md). The app fails closed on `software` and `unknown`: only the Windows key store answers `windows_account`.
+  bool get isEnrollable => isHardware || this == windowsAccount;
 
   /// For a key that is already enrolled: only a key KNOWN to be in software stops signing. `unknown` does not, because it can mean that the
   /// platform could not read the level of a key that is in hardware, and refusing it would lock the device out; enrollment (which can

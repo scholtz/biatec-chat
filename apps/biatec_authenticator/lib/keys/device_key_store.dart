@@ -115,7 +115,7 @@ enum KeyStoreStatus {
   /// Keys can be made and used.
   ready,
 
-  /// This computer has no TPM that holds keys (or it is turned off in the firmware).
+  /// This computer has no key store that can hold the keys: neither a TPM nor the software key store of Windows.
   noTpm,
 }
 
@@ -163,7 +163,7 @@ class ApprovalKeysMissing implements Exception {
 ///
 /// The level each key got is reported in [DeviceKey.securityLevel] and [DeviceKey.authBound]; enrollment refuses keys that are not in hardware and an approval key that is not bound.
 abstract class DeviceKeyStore {
-  /// Whether this computer can hold and use the keys, without making any. Phones answer [KeyStoreStatus.ready]; a Windows build says when there is no TPM (without Windows Hello it asks for a PIN of the app instead, so that is not a refusal). Throws [MissingPluginException] on a platform that has no key store at all.
+  /// Whether this computer can hold and use the keys, without making any. Phones answer [KeyStoreStatus.ready]; a Windows build is ready with a TPM, and without one too (the keys are then kept by the Windows account, and the app warns the user); without Windows Hello it asks for a PIN of the app, so that is not a refusal either. Throws [MissingPluginException] on a platform that has no key store at all.
   Future<KeyStoreStatus> status();
 
   /// Creates both key pairs, or returns the existing ones. Throws [PlatformException] with code `insecure_key` when the keystore could not make a hardware key (for the approval key: bound to the biometrics) and `no_biometrics` when no strong biometric is enrolled on the phone.
@@ -221,8 +221,9 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
       final raw = await _channel.invokeMethod<Object?>('probe');
       final map = (raw as Map).cast<String, Object?>();
       // Only an explicit yes counts: an answer this app does not understand is not "ready".
-      if (map['tpm'] != true) return KeyStoreStatus.noTpm;
-      // Windows Hello is not needed: where it cannot be used, the native side asks for a PIN of the app that the TPM checks.
+      // A computer without a usable TPM keeps the keys in the software key store of Windows (`software`), with a warning for the user.
+      if (map['tpm'] != true && map['software'] != true) return KeyStoreStatus.noTpm;
+      // Windows Hello is not needed: where it cannot be used, the native side asks for a PIN of the app that the key store checks.
       return KeyStoreStatus.ready;
     } on MissingPluginException {
       // A phone's plugin has no `probe`: its plain `keysState` read says whether there is a key store (and throws MissingPluginException when there is none).
@@ -250,7 +251,7 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
   }
 
   /// Makes keys with [method]. A Windows computer without Windows Hello answers `pin_required`: the user is asked for a new PIN of the app and the call is made
-  /// again with it (the TPM keeps the keys behind it). No PIN chosen is `cancelled`, and nothing was made.
+  /// again with it (the key store checks it from then on). No PIN chosen is `cancelled`, and nothing was made.
   Future<Object?> _generate(String method) async {
     try {
       return await _channel.invokeMethod<Object?>(method);

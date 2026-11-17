@@ -474,18 +474,18 @@ class EnrollmentController extends ChangeNotifier {
       }
       if (twoKeys) {
         final made = deviceKeys = await _made<DeviceKeys>(keys.generateKeys);
-        if (!made.approval.securityLevel.isHardware ||
+        if (!made.approval.securityLevel.isEnrollable ||
             !made.approval.gestureRequired) {
           throw const _CannotProtectApprovals();
         }
-        if (!made.presence.securityLevel.isHardware) {
+        if (!made.presence.securityLevel.isEnrollable) {
           throw _NotInHardware(made.presence.securityLevel);
         }
         enrolled = made.approval;
       } else {
         // Single-key mode: ONLY the prompt-free key is made (no approval key, no biometric requirement), exactly as before T-241.
         enrolled = await _made<DeviceKey>(keys.generatePresenceKey);
-        if (!enrolled.securityLevel.isHardware) {
+        if (!enrolled.securityLevel.isEnrollable) {
           throw _NotInHardware(enrolled.securityLevel);
         }
       }

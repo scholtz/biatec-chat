@@ -355,6 +355,15 @@ void main() {
       expect(h.oidc.receipts, isEmpty);
     });
 
+    test('a key kept by the Windows account (a computer without a usable TPM) approves', () async {
+      final h = Harness(vectorRequest('stepup-transaction-approve'));
+      final c = await h.open();
+      h.keys.level = KeySecurityLevel.windowsAccount;
+      await c.approve('483920');
+      expect(c.phase, ApprovalPhase.approved);
+      expect(h.oidc.receipts, isNotEmpty);
+    });
+
     test('offline: nothing is signed or approved', () async {
       final h = Harness(vectorRequest('stepup-transaction-approve'));
       final c = await h.open();

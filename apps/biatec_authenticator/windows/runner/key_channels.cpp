@@ -57,8 +57,9 @@ EncodableValue KeyMap(const keystore::PublicKey& key, bool approval) {
   EncodableMap map;
   map[Text("x")] = Text(key.x);
   map[Text("y")] = Text(key.y);
-  // `tpm` only when the provider says hardware and not exportable; anything else is reported as software, which the app refuses.
-  map[Text("securityLevel")] = Text(key.hardware ? "tpm" : "software");
+  // `tpm` only when the provider says hardware and not exportable. `windows_account` is a key of the software store of a computer whose TPM cannot be used:
+  // the app enrolls it and warns the user. Anything else is reported as software, which the app refuses.
+  map[Text("securityLevel")] = Text(key.hardware ? "tpm" : key.store == keystore::Store::kSoftware ? "windows_account" : "software");
   // Not `authBound`: that says the hardware itself refuses the key without the biometric gesture, which is true on a phone and not here. The approval key is used
   // only behind a Windows Hello check made in the same native call (the app's gate, docs/authenticator-windows-key-store.md), or with the app's PIN, and
   // `appGated` covers both without claiming more than the weaker one gives.
@@ -97,7 +98,7 @@ std::optional<keystore::Use> UseOf(const EncodableMap* args) {
 }
 
 // The PIN of the app (a computer without Windows Hello). The app's own screen asks for it (lib/security/pin_prompt.dart) and sends it with the call. It is not
-// kept: this copy is wiped when the call ends, and the TPM is what checks it (keystore.h).
+// kept: this copy is wiped when the call ends, and the key store is what checks it (the TPM, or the kept hash on a computer without one: keystore.h).
 class Pin {
  public:
   explicit Pin(const std::string& utf8) : value_(Widen(utf8)) {}
@@ -146,11 +147,9 @@ bool PinMode() { return keystore::Exists().lock; }
 
 // Both keys, or neither: a half set (an interrupted enrollment) is removed and made again.
 EncodableValue GenerateKeys(const std::string* sent_pin) {
-  if (!keystore::TpmAvailable()) {
-    throw keystore::KeyError("no_tpm", "This computer has no TPM that can hold the keys.");
-  }
+  // No TPM is not a refusal: the keys are then made in the software store of Windows, and their level says so (keystore.h).
   const std::optional<Pin> pin = NewPinUnlessHello(sent_pin);
-  // New keys for every enrollment, a whole pair or none (see keystore.h): a key of the TPM outlives the app, so an old pair is never handed to a new enrollment.
+  // New keys for every enrollment, a whole pair or none (see keystore.h): a key outlives the app, so an old pair is never handed to a new enrollment.
   const keystore::KeyPair pair = keystore::CreateFreshPair(pin ? &pin->value() : nullptr);
   EncodableMap map;
   map[Text("approval")] = KeyMap(pair.approval, true);
@@ -159,9 +158,6 @@ EncodableValue GenerateKeys(const std::string* sent_pin) {
 }
 
 EncodableValue GeneratePresence(const std::string* sent_pin) {
-  if (!keystore::TpmAvailable()) {
-    throw keystore::KeyError("no_tpm", "This computer has no TPM that can hold the keys.");
-  }
   // Single-key mode: the approvals are gated by the app lock, so the app lock needs its check too (Windows Hello, or the PIN chosen for this enrollment).
   const std::optional<Pin> pin = NewPinUnlessHello(sent_pin);
   // New keys for every enrollment (see GenerateKeys).
@@ -185,13 +181,15 @@ EncodableValue KeysState() {
 
 EncodableValue Probe() {
   EncodableMap map;
-  // Only the TPM: a computer without Windows Hello enrolls with the app's PIN, so Windows Hello is not asked here.
+  // Whether the TPM can hold the keys. A computer without Windows Hello enrolls with the app's PIN, so Windows Hello is not asked here.
   map[Text("tpm")] = EncodableValue(keystore::TpmAvailable());
+  // The software store of Windows is always there: a computer without a usable TPM enrolls with it, and the app warns the user.
+  map[Text("software")] = EncodableValue(true);
   return EncodableValue(map);
 }
 
-// The PIN of the app, checked by the TPM (a signature with the lock key). Without one the answer is `pin_required`: the app asks the user and calls again.
-// Throws unless the TPM took it.
+// The PIN of the app, checked by the key store (the TPM: a signature with the lock key; without a TPM: the kept hash). Without one the answer is `pin_required`: the app asks the user and calls again.
+// Throws unless it was accepted.
 Pin RequirePin(const std::string* sent) {
   if (sent == nullptr) {
     throw keystore::KeyError("pin_required", "The PIN of the app is needed.");
@@ -201,7 +199,7 @@ Pin RequirePin(const std::string* sent) {
     case keystore::PinCheck::kAccepted:
       break;
     case keystore::PinCheck::kLocked:
-      throw keystore::KeyError("locked_out", "Too many wrong tries. The security chip is locked for a while. Try again later.");
+      throw keystore::KeyError("locked_out", "Too many wrong tries. The PIN is refused for a while. Try again later.");
     default:
       throw keystore::KeyError("auth_failed", "The PIN was not accepted.");
   }
@@ -216,7 +214,7 @@ EncodableValue SignApprovalWithPin(const std::vector<uint8_t>& data, const std::
 }
 
 // The user's check and the signature are one operation: the key signs only after Windows Hello said verified, or, on a computer without it, with the app's PIN,
-// which the TPM itself checks.
+// which the key store checks (the TPM itself, where there is one).
 EncodableValue SignApproval(HWND window, const std::vector<uint8_t>& data,
                             const std::string& title, const std::string& subtitle,
                             const std::string* sent_pin) {
