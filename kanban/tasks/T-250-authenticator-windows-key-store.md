@@ -1,7 +1,7 @@
 ---
 id: T-250
 title: "Authenticator: a protected key store for Windows (TPM and Windows Hello), so a desktop build can enroll"
-status: review
+status: done
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-248]
@@ -126,6 +126,8 @@ Windows Hello.
 
 ## Review
 
+- 2026-11-17 15:51 · approve · PR #425 merged into main @ 9984e7f (recorded by kanban-sync)
+
 ## Activity log
 
 - 2026-11-16 12:00 · session-20261116-0900 · (new) → blocked · created as a follow-up of T-248, which it waits for
@@ -140,3 +142,4 @@ Windows Hello.
 - 2026-11-17 11:00 · scholtz · in-progress · PR #425, review round 1 fixed (appGated, hello_unavailable, fresh keys per enrollment, worker lifetime, double-press guard)
 - 2026-11-17 14:30 · scholtz · in-progress · owner could still not enroll and asked for a way in without secure hardware: (1) the cause was found with a test program on the owner's computer: the hardware flag was asked of the key, a real TPM answers "not supported", so every TPM key was refused; it is asked of the provider now; (2) a computer without a usable TPM gets software keys of the Windows account, level `windows_account`, with a warning and tips; the keystore test program (windows/test/keystore_test.cpp) passed on the real TPM and in the software store
 - 2026-11-17 15:35 · scholtz · in-progress → review · the owner enrolled on a real computer (TPM key, screenshot); branch task/T-250 @ 5ba6401, PR #425. The last commit (the TPM fix and the software key store) has had no review round. The Hand-off is in the task file on the branch.
+- 2026-11-17 15:51 · user · review → done · PR #425 merged into main @ 9984e7f (synced by kanban-sync)
