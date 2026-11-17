@@ -1,17 +1,21 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../theme.dart';
+import '../onboarding_texts.dart';
 
 /// The steps of the onboarding, in order.
 enum OnboardingStep {
-  welcome('Welcome'),
-  connect('Connect'),
-  protect('Protect the key'),
-  recovery('Recovery code'),
-  done('Done');
+  welcome,
+  connect,
+  protect,
+  recovery,
+  done;
 
-  const OnboardingStep(this.label);
-  final String label;
+  /// The name of the step in English.
+  String get label => labelIn(OnboardingTexts.en);
+
+  /// The name of the step in the language of [texts].
+  String labelIn(OnboardingTexts texts) => texts.text('step_$name');
 
   static int get count => values.length;
 }
@@ -25,8 +29,12 @@ class StepIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final text =
-        'Step ${step.index + 1} of ${OnboardingStep.count} · ${step.label}';
+    final t = OnboardingTexts.of(Localizations.maybeLocaleOf(context));
+    final text = t.text('stepLine', {
+      'n': step.index + 1,
+      'count': OnboardingStep.count,
+      'label': step.labelIn(t),
+    });
     return Semantics(
       container: true,
       label: text,
