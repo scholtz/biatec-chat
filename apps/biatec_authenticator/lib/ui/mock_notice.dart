@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../config.dart';
 import '../theme.dart';
+import '../l10n/common_texts.dart';
 
 /// A strip that marks a build talking to the mock Biatec OIDC, never to a real server.
 class MockNotice extends StatelessWidget {
@@ -24,7 +25,7 @@ class MockNotice extends StatelessWidget {
             const SizedBox(width: AppSpacing.s),
             Expanded(
               child: Text(
-                'Mock Biatec OIDC \u00b7 ${config.oidcBaseUrl}',
+                CommonTexts.of(Localizations.maybeLocaleOf(context)).text('mockNotice', {'url': config.oidcBaseUrl}),
                 key: const Key('mock-notice'),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

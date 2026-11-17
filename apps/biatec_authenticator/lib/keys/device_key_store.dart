@@ -258,7 +258,7 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
     } on PlatformException catch (e) {
       if (e.code != 'pin_required') rethrow;
       final pin = await askPin(create: true);
-      if (pin == null) throw PlatformException(code: 'cancelled', message: 'No PIN was chosen.');
+      if (pin == null) throw PlatformException(code: 'cancelled', message: 'No PIN was chosen.'); // l10n-ignore: the code is read, not the message
       return _channel.invokeMethod<Object?>(method, {'pin': pin});
     }
   }

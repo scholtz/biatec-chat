@@ -37,6 +37,7 @@ class CommonTexts extends Texts {
     'newRequest': 'New approval request',
     'open': 'Open',
     'cannotStart': 'This build cannot start',
+    'mockNotice': 'Mock Biatec OIDC · {url}',
   });
 
   static const sk = CommonTexts._({
@@ -68,5 +69,6 @@ class CommonTexts extends Texts {
     'newRequest': 'Nová žiadosť o schválenie',
     'open': 'Otvoriť',
     'cannotStart': 'Táto verzia sa nemôže spustiť',
+    'mockNotice': 'Testovací Biatec OIDC · {url}',
   });
 }
