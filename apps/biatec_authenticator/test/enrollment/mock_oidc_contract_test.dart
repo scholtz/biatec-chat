@@ -30,14 +30,19 @@ void main() {
 
   test('two installs enroll, activate and receive a recovery code once',
       () async {
-    var now = DateTime.now().toUtc();
+    // Needs a freshly started mock: Bob must have no device yet. The clock is a little ahead, because the app compares `active_at` (whole seconds of the
+    // server's clock) with its own, and a first device enrolled in the same second must not read as waiting.
+    var now = DateTime.now().toUtc().add(const Duration(seconds: 5));
     final a = install(() => now);
     final b = install(() => now);
 
     await a.enroll(loginToken: 'login-alice');
     await b.enroll(loginToken: 'login-bob');
+    // Alice has a device already (the mock's seed), so this one is a later device and waits.
     expect(a.state.phase, EnrollmentPhase.inactive, reason: a.state.error);
-    expect(b.state.phase, EnrollmentPhase.inactive, reason: b.state.error);
+    // Bob has none: his first device is active at once (rule 7, T-252), and the app goes on to the recovery code.
+    expect(b.state.phase, EnrollmentPhase.activeRecoveryPending, reason: b.state.error);
+    expect(b.recoveryCodeToShow, matches(RegExp(r'^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$')));
     expect(a.state.record!.kid, isNot(b.state.record!.kid));
 
     // Inactive: the server refuses a recovery code.

@@ -27,7 +27,7 @@ All of these are settings or deployments in the Biatec OIDC repository; this rep
    `Stage` environment secrets are unchanged otherwise. Nothing is written into a file or a CI variable dump for this.
 6. **The backend verifies receipts.** `Consent:VerifyReceipts` is not set to `false` anywhere (a startup warning says so when it is). The backend then
    resumes a signing only with a receipt whose signature, attestation and binding it checked itself against what it asked for.
-7. **A phone is enrolled.** The test person has an enrolled authenticator with an active device (24 hours old, or activated by another device). If the
+7. **A phone is enrolled.** The test person has an enrolled authenticator with an active device (the account's first device, one that is 24 hours old, or one activated by another device; a Biatec OIDC without the change of T-252 still delays a first device by 24 hours). If the
    authenticator build should use the device channel, it was built with `--dart-define=DEVICE_CHANNEL=true` (T-244; default off, the app polls) and
    `CONSENT_SETTINGS_API=true` (the settings screens; row 20 to 22 of the required-changes doc). Without these the flow still works, only without the
    instant wake and the settings screens that steps 11 to 13 of the script use.
