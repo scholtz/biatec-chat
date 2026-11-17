@@ -32,7 +32,7 @@ List<Widget> inactiveBanner(SettingsController c) {
 /// Lifts the running pause [pause] of [clientId] after a confirmation: loosening, signed with the approval key when Biatec OIDC asks. The change names the pause's own origin.
 Future<void> liftPause(BuildContext context, SettingsController controller,
     String clientId, PausedOrigin pause) async {
-  final s = TrustStrings.of();
+  final s = TrustStrings.of(Localizations.maybeLocaleOf(context));
   final yes = await confirmSheet(context,
       title: s.t('liftPauseTitle', {'origin': pause.origin}),
       message: s.t('liftPauseBody'),
@@ -101,7 +101,7 @@ class _AmountSheetState extends State<_AmountSheet> {
   void _submit() {
     final v = _text.text.trim();
     if (!amountFormat.hasMatch(v)) {
-      setState(() => _problem = TrustStrings.of().t('amountProblem'));
+      setState(() => _problem = TrustStrings.of(Localizations.maybeLocaleOf(context)).t('amountProblem'));
       return;
     }
     Navigator.of(context).pop(v);
@@ -109,7 +109,7 @@ class _AmountSheetState extends State<_AmountSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final s = TrustStrings.of();
+    final s = TrustStrings.of(Localizations.maybeLocaleOf(context));
     final theme = Theme.of(context);
     final typed = _text.text.trim();
     final cmp = amountFormat.hasMatch(typed)

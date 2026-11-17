@@ -11,6 +11,7 @@ import '../security/settings_controller.dart';
 import '../security/settings_frame.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
+import 'devices_texts.dart';
 
 /// Device management: the user's enrolled devices, and cancelling a pending
 /// enrollment from any of them (rule 7).
@@ -26,20 +27,21 @@ class DevicesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = DevicesTexts.of(Localizations.maybeLocaleOf(context));
     return SettingsFrame(
-      title: 'Device management',
+      title: t.text('title'),
       services: services,
       controller: controller,
       builder: (context, c) {
         if (c.devices.isEmpty) {
-          return const [
+          return [
             Padding(
-              key: Key('no-devices'),
-              padding: EdgeInsets.all(AppSpacing.l),
+              key: const Key('no-devices'),
+              padding: const EdgeInsets.all(AppSpacing.l),
               child: Column(children: [
-                ExcludeSemantics(child: Icon(Icons.devices, size: 48)),
-                SizedBox(height: AppSpacing.m),
-                Text('No devices are enrolled.', textAlign: TextAlign.center),
+                const ExcludeSemantics(child: Icon(Icons.devices, size: 48)),
+                const SizedBox(height: AppSpacing.m),
+                Text(t.text('noDevices'), textAlign: TextAlign.center),
               ]),
             ),
           ];
@@ -52,15 +54,13 @@ class DevicesScreen extends StatelessWidget {
               child: _DeviceCard(device: d, services: services, controller: c),
             ),
           if (c.devices.any((d) => !d.pending))
-            const Padding(
-              padding: EdgeInsets.all(AppSpacing.m),
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.m),
               child: StatusBanner(
-                key: Key('devices-note'),
+                key: const Key('devices-note'),
                 severity: StatusSeverity.info,
-                title: 'Devices that are in use stay',
-                message: 'Only an enrollment that is still pending can be '
-                    'cancelled here. A device that is in use cannot be removed '
-                    'from this app.',
+                title: t.text('inUseTitle'),
+                message: t.text('inUseBody'),
               ),
             ),
         ];
@@ -79,21 +79,14 @@ class _DeviceCard extends StatelessWidget {
 
   Future<void> _confirmCancel(BuildContext context) async {
     final here = device.current;
+    final t = DevicesTexts.of(Localizations.maybeLocaleOf(context));
     final yes = await confirmSheet(
       context,
-      title: here
-          ? 'Cancel the enrollment of this device?'
-          : 'Cancel this enrollment?',
-      message: here
-          ? 'This is the device you are using. Cancelling its pending '
-              'enrollment signs it out of this account: it can no longer '
-              'approve anything, and you will have to enroll it again from the '
-              'start.'
-          : 'The device is removed and can no longer approve anything. You '
-              'can enroll it again later.',
-      warning: here ? 'You are cancelling the device in your hand.' : null,
-      confirmLabel: 'Cancel enrollment',
-      cancelLabel: 'Keep',
+      title: t.text(here ? 'cancelHereTitle' : 'cancelOtherTitle'),
+      message: t.text(here ? 'cancelHereBody' : 'cancelOtherBody'),
+      warning: here ? t.text('cancelHereWarning') : null,
+      confirmLabel: t.text('cancelEnrollment'),
+      cancelLabel: t.text('keep'),
       confirmKey: const Key('confirm-cancel'),
       cancelKey: const Key('keep'),
       icon: Icons.phone_android,
@@ -102,7 +95,7 @@ class _DeviceCard extends StatelessWidget {
   }
 
   Future<void> _confirmActivate(BuildContext context, String name) async {
-    final strings = EnrollStrings.of();
+    final strings = EnrollStrings.of(Localizations.maybeLocaleOf(context));
     final yes = await confirmSheet(
       context,
       title: strings.activateConfirmTitle,
@@ -121,7 +114,9 @@ class _DeviceCard extends StatelessWidget {
     final theme = Theme.of(context);
     final d = device;
     final busy = controller.busy;
-    final strings = EnrollStrings.of();
+    final locale = Localizations.maybeLocaleOf(context);
+    final strings = EnrollStrings.of(locale);
+    final t = DevicesTexts.of(locale);
     // Another device's enrollment that waits for this one: its pairing code, computed here from the keys Biatec OIDC lists for it. Only when the activation flow exists (the server sends the pairing data) and this device can sign it.
     final code = d.pending && !d.current && services.twoKeys && services.activationByDevice
         ? SettingsController.pairingCodeOf(d)
@@ -139,27 +134,26 @@ class _DeviceCard extends StatelessWidget {
                 runSpacing: AppSpacing.xs,
                 children: [
                   if (d.current)
-                    const _Badge(
-                        key: Key('badge-this-device'),
+                    _Badge(
+                        key: const Key('badge-this-device'),
                         icon: Icons.smartphone,
-                        text: 'This device',
+                        text: t.text('thisDevice'),
                         tone: _Tone.primary),
                   _Badge(
                       key: Key('badge-status-${d.kid}'),
                       icon:
                           d.pending ? Icons.hourglass_top : Icons.check_circle,
-                      text: d.pending ? 'Pending' : 'Active',
+                      text: t.text(d.pending ? 'pending' : 'active'),
                       tone: d.pending ? _Tone.warning : _Tone.success),
                 ]),
           ),
           const SizedBox(height: AppSpacing.s),
-          Fact('Device key id', d.kid, mono: true, key: Key('kid-${d.kid}')),
+          Fact(t.text('kid'), d.kid, mono: true, key: Key('kid-${d.kid}')),
           if (d.pending)
             Padding(
               padding: const EdgeInsets.only(top: AppSpacing.xs),
               child: Text(
-                  'Pending. It becomes active ${whenText(d.activeAt)}. '
-                  'Until then it approves nothing.',
+                  t.text('pendingUntil', {'when': whenText(d.activeAt)}),
                   key: Key('pending-${d.kid}'),
                   style: theme.textTheme.bodyMedium),
             ),
@@ -173,8 +167,7 @@ class _DeviceCard extends StatelessWidget {
           ] else
             Padding(
               padding: const EdgeInsets.only(top: AppSpacing.s),
-              child: Text(
-                  'Where its key is kept is known only on the device itself.',
+              child: Text(t.text('keyElsewhere'),
                   style: theme.textTheme.bodySmall
                       ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
             ),
@@ -213,7 +206,9 @@ class _DeviceCard extends StatelessWidget {
             OutlinedButton(
               key: Key('cancel-${d.kid}'),
               onPressed: busy ? null : () => _confirmCancel(context),
-              child: Text(code != null ? strings.cancelThisDevice : 'Cancel enrollment'),
+              child: Text(code != null
+                  ? strings.cancelThisDevice
+                  : t.text('cancelEnrollment')),
             ),
           ],
         ]),
@@ -260,10 +255,11 @@ class _KeyLevelState extends State<_KeyLevel> {
           return const SizedBox.shrink();
         }
         // Nothing to read (the key is gone, or the keystore would not answer): said, not hidden.
-        return const StatusBanner(
+        final t = DevicesTexts.of(Localizations.maybeLocaleOf(context));
+        return StatusBanner(
           severity: StatusSeverity.warning,
-          title: 'Key protection unknown',
-          message: 'This device\'s keystore did not say where its key is kept.',
+          title: t.text('levelUnknownTitle'),
+          message: t.text('levelUnknownBody'),
         );
       },
     );

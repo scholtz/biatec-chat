@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../shell/tab_reload.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
+import 'security_texts.dart';
 import 'settings_client.dart';
 import 'settings_controller.dart';
 
@@ -62,17 +63,17 @@ class _SettingsFrameState extends State<SettingsFrame> with TabReloadListener {
   @override
   Widget build(BuildContext context) {
     final footer = widget.footer;
+    final t = SecurityTexts.of(Localizations.maybeLocaleOf(context));
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
       bottomNavigationBar:
           footer == null ? null : SafeArea(top: false, child: footer),
       body: !widget.services.enabled
-          ? const EmptyState(
-              key: Key('not-available'),
+          ? EmptyState(
+              key: const Key('not-available'),
               icon: Icons.info_outline,
-              title: 'Not available yet',
-              message: 'This Biatec OIDC does not offer device and settings '
-                  'management; it only runs against the mock for now.',
+              title: t.text('notAvailableYet'),
+              message: t.text('notAvailableYetBody'),
             )
           : ListenableBuilder(
               listenable: _controller,
@@ -84,7 +85,7 @@ class _SettingsFrameState extends State<SettingsFrame> with TabReloadListener {
                   case SettingsPhase.unavailable:
                     return ErrorState(
                       key: const Key('unavailable'),
-                      message: c.error ?? 'Not available.',
+                      message: c.error ?? t.text('notAvailableBody'),
                       offline: c.offline,
                       onRetry: c.load,
                     );
@@ -105,8 +106,11 @@ class _SettingsFrameState extends State<SettingsFrame> with TabReloadListener {
   }
 }
 
-/// The progress bar, the problem and the notice of the last step, each with an icon and words. Shown above the content of every settings screen.
-List<Widget> settingsStatus(SettingsController c, {bool showError = true}) => [
+/// The progress bar, the problem and the notice of the last step, each with an icon and words. Shown above the content of every settings screen. In the phone's language, like the
+/// controller's messages under the titles.
+List<Widget> settingsStatus(SettingsController c, {bool showError = true}) {
+  final t = SecurityTexts.of();
+  return [
       if (c.busy) const LinearProgressIndicator(),
       if (c.error != null && showError)
         Padding(
@@ -114,7 +118,7 @@ List<Widget> settingsStatus(SettingsController c, {bool showError = true}) => [
           padding: const EdgeInsets.all(AppSpacing.s),
           child: StatusBanner(
               severity: StatusSeverity.danger,
-              title: 'Problem',
+              title: t.text('problem'),
               message: c.error!),
         ),
       if (c.notice != null)
@@ -126,11 +130,12 @@ List<Widget> settingsStatus(SettingsController c, {bool showError = true}) => [
             liveRegion: true,
             child: StatusBanner(
                 severity: StatusSeverity.success,
-                title: 'Done',
+                title: t.text('done'),
                 message: c.notice!),
           ),
         ),
     ];
+}
 
 /// Applies [change] to the settings. A change that loosens protection is first confirmed in a sheet that says the phone will ask for a fingerprint or face; one that tightens applies at once.
 Future<void> applyWithConfirm(
@@ -147,7 +152,8 @@ Future<void> applyWithConfirm(
       title: title,
       message: message,
       confirmLabel: confirmLabel,
-      cancelLabel: 'Keep as it is',
+      cancelLabel: SecurityTexts.of(Localizations.maybeLocaleOf(context))
+          .text('keepAsItIs'),
       biometric: true,
       icon: Icons.fingerprint,
     );
@@ -206,30 +212,30 @@ class _EurSheetState extends State<_EurSheet> {
   void _submit() {
     final v = _text.text.trim();
     if (!eurFormat.hasMatch(v)) {
-      setState(() => _problem = 'Enter an amount like 250 or 250.50.');
+      setState(() => _problem =
+          SecurityTexts.of(Localizations.maybeLocaleOf(context))
+              .text('amountProblem'));
       return;
     }
     Navigator.of(context).pop(v);
   }
 
   /// What the amount typed so far does to the current one, in words.
-  String? _effect() {
+  String? _effect(SecurityTexts t) {
     final current = double.tryParse(widget.current ?? '');
     final typed = _text.text.trim();
     if (current == null || !eurFormat.hasMatch(typed)) return null;
     final next = double.parse(typed);
-    if (next > current) {
-      return 'This raises it: your phone will ask for your fingerprint or '
-          'face first.';
-    }
-    if (next < current) return 'This lowers it: it applies at once.';
-    return 'This is the amount it already has.';
+    if (next > current) return t.text('raises');
+    if (next < current) return t.text('lowers');
+    return t.text('same');
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final effect = _effect();
+    final t = SecurityTexts.of(Localizations.maybeLocaleOf(context));
+    final effect = _effect(t);
     return SafeArea(
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(AppSpacing.l, 0, AppSpacing.l,
@@ -251,8 +257,8 @@ class _EurSheetState extends State<_EurSheet> {
               onChanged: (_) => setState(() => _problem = null),
               onSubmitted: (_) => _submit(),
               decoration: InputDecoration(
-                labelText: 'Amount',
-                suffixText: 'EUR',
+                labelText: t.text('amount'),
+                suffixText: t.text('eur'),
                 helperText: effect ?? widget.hint,
                 helperMaxLines: 3,
                 errorText: _problem,
@@ -262,12 +268,12 @@ class _EurSheetState extends State<_EurSheet> {
             FilledButton(
                 key: const Key('eur-save'),
                 onPressed: _submit,
-                child: const Text('Save')),
+                child: Text(t.text('save'))),
             const SizedBox(height: AppSpacing.s),
             OutlinedButton(
                 key: const Key('eur-cancel'),
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel')),
+                child: Text(t.text('cancel'))),
           ],
         ),
       ),
@@ -277,13 +283,13 @@ class _EurSheetState extends State<_EurSheet> {
 
 /// Asks the user to confirm a step, in a sheet from the bottom: what will happen, and (with [biometric]) that the phone will ask for a fingerprint or face. True only when confirmed.
 ///
-/// The two buttons are full width and stacked, so neither label is cut at large text, and the safe one comes second to the primary action.
+/// The two buttons are full width and stacked, so neither label is cut at large text, and the safe one comes second to the primary action. [cancelLabel] is "Keep" when null.
 Future<bool> confirmSheet(
   BuildContext context, {
   required String title,
   required String message,
   required String confirmLabel,
-  String cancelLabel = 'Keep',
+  String? cancelLabel,
   Key confirmKey = const Key('confirm-change'),
   Key cancelKey = const Key('keep'),
   IconData icon = Icons.help_outline,
@@ -296,6 +302,7 @@ Future<bool> confirmSheet(
     showDragHandle: true,
     builder: (context) {
       final theme = Theme.of(context);
+      final t = SecurityTexts.of(Localizations.maybeLocaleOf(context));
       return SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(
@@ -320,18 +327,17 @@ Future<bool> confirmSheet(
                 StatusBanner(
                   key: const Key('confirm-warning'),
                   severity: StatusSeverity.warning,
-                  title: 'Read this first',
+                  title: t.text('readFirst'),
                   message: warning,
                 ),
               ],
               if (biometric) ...[
                 const SizedBox(height: AppSpacing.m),
-                const StatusBanner(
+                StatusBanner(
                   severity: StatusSeverity.info,
                   icon: Icons.fingerprint,
-                  title: 'Your phone will ask for you',
-                  message: 'After you confirm, it asks for your fingerprint '
-                      'or face before this applies.',
+                  title: t.text('phoneAsks'),
+                  message: t.text('phoneAsksBody'),
                 ),
               ],
               const SizedBox(height: AppSpacing.l),
@@ -343,7 +349,7 @@ Future<bool> confirmSheet(
               OutlinedButton(
                   key: cancelKey,
                   onPressed: () => Navigator.of(context).pop(false),
-                  child: Text(cancelLabel)),
+                  child: Text(cancelLabel ?? t.text('keep'))),
             ],
           ),
         ),

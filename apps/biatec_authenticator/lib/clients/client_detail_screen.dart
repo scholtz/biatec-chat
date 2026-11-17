@@ -35,7 +35,7 @@ class ClientDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = TrustStrings.of();
+    final s = TrustStrings.of(Localizations.maybeLocaleOf(context));
     return SettingsFrame(
       title: s.t('serviceTitle'),
       services: services,
@@ -86,7 +86,7 @@ class _Detail extends StatelessWidget {
   }
 
   Future<void> _editThreshold(BuildContext context) async {
-    final s = TrustStrings.of();
+    final s = TrustStrings.of(Localizations.maybeLocaleOf(context));
     final own = client.perClientThresholdEur;
     final v = await askAmount(context,
         title: s.t('serviceThresholdTitle'),
@@ -97,7 +97,7 @@ class _Detail extends StatelessWidget {
   }
 
   Future<void> _unlink(BuildContext context) async {
-    final s = TrustStrings.of();
+    final s = TrustStrings.of(Localizations.maybeLocaleOf(context));
     final yes = await confirmSheet(context,
         title: s.t('unlinkTitle'),
         message: s.t('unlinkBody'),
@@ -112,7 +112,7 @@ class _Detail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = TrustStrings.of();
+    final s = TrustStrings.of(Localizations.maybeLocaleOf(context));
     final theme = Theme.of(context);
     final enabled = !controller.busy && controller.deviceActive;
     final own = client.perClientThresholdEur;
@@ -300,7 +300,7 @@ class _LabelSheetState extends State<_LabelSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final s = TrustStrings.of();
+    final s = TrustStrings.of(Localizations.maybeLocaleOf(context));
     final theme = Theme.of(context);
     final problem = _problemText(s);
     final valid = _text.text.isNotEmpty && labelProblem(_text.text) == null;

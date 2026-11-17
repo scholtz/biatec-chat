@@ -79,7 +79,7 @@ class ServiceIdentity extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = TrustStrings.of();
+    final s = TrustStrings.of(Localizations.maybeLocaleOf(context));
     final theme = Theme.of(context);
     final shown = formatFingerprint(fingerprint);
     final host = _provenDomain;

@@ -39,6 +39,9 @@ class ChannelStrings {
   /// Every key, so a test can check that both languages have all of them.
   Iterable<String> get keys => _t.keys;
 
+  /// The texts of this language, by key (`test/l10n/settings_texts_test.dart` compares the two languages).
+  Map<String, String> get values => _t;
+
   static const en = ChannelStrings._({
     'stayTitle': 'Stay connected for approvals',
     'stayOff':
