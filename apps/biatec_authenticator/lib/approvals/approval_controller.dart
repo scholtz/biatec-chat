@@ -230,7 +230,7 @@ class ApprovalController extends ChangeNotifier {
         throw ApprovalException(_t('noAttestation'));
       }
       if (key.securityLevel.blocksSigning) {
-        throw const ApprovalException(KeySecurityLevel.softwareKeyMessage);
+        throw ApprovalException(KeySecurityLevel.softwareKeyMessage);
       }
       return (
         record.deviceToken,

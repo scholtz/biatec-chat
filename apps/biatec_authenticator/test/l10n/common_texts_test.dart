@@ -1,4 +1,5 @@
 import 'package:biatec_authenticator/keys/key_security_level.dart';
+import 'package:biatec_authenticator/keys/key_texts.dart';
 import 'package:biatec_authenticator/l10n/common_texts.dart';
 import 'package:biatec_authenticator/l10n/texts.dart';
 import 'package:biatec_authenticator/lock/biometric_authenticator.dart';
@@ -24,6 +25,7 @@ void main() {
   test('every group of the shell, the lock and the key levels has both languages', () {
     expectSameTexts('common', CommonTexts.en.values, CommonTexts.sk.values, sameInBoth: {'offline'});
     expectSameTexts('lock', LockTexts.en.values, LockTexts.sk.values, sameInBoth: {'storeGoogle'});
+    expectSameTexts('keys', KeyTexts.en.values, KeyTexts.sk.values);
     final levels = KeySecurityLevel.labelTexts;
     expectSameTexts('keyLevel', levels['en']!, levels['sk']!, sameInBoth: {'secureEnclave'});
     expect(levels['en']!.keys.toSet(), KeySecurityLevel.values.map((l) => l.name).toSet());

@@ -21,7 +21,7 @@ Future<DeviceIdentity> twoKeyIdentityOf(
     throw ApprovalException(ApprovalTexts.of().text('keyMissing'));
   }
   if (presence.securityLevel.blocksSigning) {
-    throw const ApprovalException(KeySecurityLevel.softwareKeyMessage);
+    throw ApprovalException(KeySecurityLevel.softwareKeyMessage);
   }
   final approval = await keys.loadApproval();
   return DeviceIdentity(

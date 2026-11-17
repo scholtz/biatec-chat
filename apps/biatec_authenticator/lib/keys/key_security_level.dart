@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import '../l10n/texts.dart';
+import 'key_texts.dart';
 
 /// Where the device key lives, as the native keystore reports it (BCHAT-032).
 enum KeySecurityLevel {
@@ -78,9 +79,7 @@ enum KeySecurityLevel {
   bool get blocksSigning => this == software;
 
   /// What the user is told when [blocksSigning] stops an approval.
-  static const softwareKeyMessage = 'This device\'s key is held in software, '
-      'not in secure hardware, so it cannot approve. Remove this device from '
-      'your account on another trusted device and enroll it again.';
+  static String get softwareKeyMessage => KeyTexts.of().text('softwareKey');
 
   /// A missing or unrecognised value is [unknown], never a hardware level.
   static KeySecurityLevel fromWire(Object? value) {

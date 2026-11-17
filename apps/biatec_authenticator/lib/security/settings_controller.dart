@@ -395,7 +395,7 @@ class SettingsController extends ChangeNotifier {
       }
       final key = await keys.loadApproval();
       if (key == null || key.kid != record.kid) {
-        throw const ApprovalException(ApprovalKeyInvalidated.message);
+        throw ApprovalException(ApprovalKeyInvalidated.message);
       }
       if (key.securityLevel.blocksSigning || !key.gestureRequired) {
         throw ApprovalException(t.text('cannotProtect'));
@@ -421,7 +421,7 @@ class SettingsController extends ChangeNotifier {
       } on KeyPromptCancelled {
         throw ApprovalException(t.text('activationCancelled'));
       } on ApprovalKeyInvalidated {
-        throw const ApprovalException(ApprovalKeyInvalidated.message);
+        throw ApprovalException(ApprovalKeyInvalidated.message);
       } on KeyPromptFailed catch (e) {
         throw ApprovalException(
             t.text('couldNotApprove', {'reason': e.message}));
@@ -545,7 +545,7 @@ class SettingsController extends ChangeNotifier {
     final promptFree = PromptFreeKey.of(record);
     final key = twoKeys ? await keys.loadApproval() : await promptFree.load(keys);
     if (key == null || key.kid != record.kid) {
-      throw const ApprovalException(ApprovalKeyInvalidated.message);
+      throw ApprovalException(ApprovalKeyInvalidated.message);
     }
     if (key.securityLevel.blocksSigning || (twoKeys && !key.gestureRequired)) {
       throw ApprovalException(t.text('cannotProtect'));
@@ -573,7 +573,7 @@ class SettingsController extends ChangeNotifier {
     } on KeyPromptCancelled {
       throw ApprovalException(t.text('approvalCancelled'));
     } on ApprovalKeyInvalidated {
-      throw const ApprovalException(ApprovalKeyInvalidated.message);
+      throw ApprovalException(ApprovalKeyInvalidated.message);
     } on KeyPromptFailed catch (e) {
       throw ApprovalException(t.text('couldNotApprove', {'reason': e.message}));
     }
