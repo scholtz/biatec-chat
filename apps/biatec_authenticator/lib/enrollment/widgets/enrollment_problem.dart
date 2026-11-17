@@ -30,6 +30,9 @@ enum EnrollmentProblemKind {
   /// This kind of device has no protected key store (a desktop build): nothing can be enrolled here, and trying again does not help.
   noKeyStore,
 
+  /// This computer has no TPM that holds keys.
+  noTpm,
+
   /// Anything else; the message says what the server or device said.
   other,
 }
@@ -90,6 +93,10 @@ EnrollmentProblem classifyEnrollmentError(String error) {
     return EnrollmentProblem(EnrollmentProblemKind.noKeyStore,
         strings.noKeyStoreTitle, strings.noKeyStore, strings.signInButton);
   }
+  if (error == EnrollmentController.noTpmError) {
+    return EnrollmentProblem(EnrollmentProblemKind.noTpm, strings.noTpmTitle,
+        strings.noTpm, strings.signInButton);
+  }
   if (error == EnrollmentController.staleLoginError) {
     return EnrollmentProblem(EnrollmentProblemKind.signInFailed,
         strings.signInAgainButton, strings.staleLoginAgain, strings.signInAgainButton);
@@ -142,7 +149,7 @@ EnrollmentProblem classifyEnrollmentError(String error) {
   // The controller's refusals of a key that is not in secure hardware.
   if (error.startsWith('This device keeps the key in') ||
       error.startsWith('This device cannot say where it keeps the key') ||
-      error.startsWith('This phone cannot protect approvals')) {
+      error.startsWith('This device cannot protect approvals')) {
     return EnrollmentProblem(
         EnrollmentProblemKind.keyNotHardware,
         'This device cannot protect the key',

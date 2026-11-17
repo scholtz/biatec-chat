@@ -396,8 +396,8 @@ class SettingsController extends ChangeNotifier {
       if (key == null || key.kid != record.kid) {
         throw const ApprovalException(ApprovalKeyInvalidated.message);
       }
-      if (key.securityLevel.blocksSigning || !key.authBound) {
-        throw const ApprovalException('This phone cannot protect approvals.');
+      if (key.securityLevel.blocksSigning || !key.gestureRequired) {
+        throw const ApprovalException('This device cannot protect approvals.');
       }
       final p = device.pairing!;
       final signed = <String, Object?>{
@@ -544,8 +544,8 @@ class SettingsController extends ChangeNotifier {
     if (key == null || key.kid != record.kid) {
       throw const ApprovalException(ApprovalKeyInvalidated.message);
     }
-    if (key.securityLevel.blocksSigning || (twoKeys && !key.authBound)) {
-      throw const ApprovalException('This phone cannot protect approvals.');
+    if (key.securityLevel.blocksSigning || (twoKeys && !key.gestureRequired)) {
+      throw const ApprovalException('This device cannot protect approvals.');
     }
     final signed = <String, Object?>{
       'type': 'biatec_settings_change',

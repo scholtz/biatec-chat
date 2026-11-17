@@ -1,7 +1,7 @@
 ---
 id: T-252
 title: "Enrollment: the first device of an account is active at once, without the 24 hour wait"
-status: in-progress
+status: review
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: []
@@ -74,6 +74,14 @@ the 24 hours.
 
 ## Hand-off
 
+- **Summary:** rule 7 changed in PRODUCT-DESCRIPTION.md and the consent protocol spec; the mock activates the first device of an account at once; the change Biatec OIDC needs is section 27 of `docs/required-changes-biatec-oidc.md`. Branch `task/T-252 @ 36473cc`, PR #427.
+- **Files changed:** `PRODUCT-DESCRIPTION.md`, `packages/consent-protocol/spec/biatec-consent-protocol.md`, `packages/consent-protocol/mock-oidc/src/app.ts`, `mock-oidc/test/mock-oidc.test.ts`, `mock-oidc/README.md`, `docs/required-changes-biatec-oidc.md`, `docs/consent-rollout.md`, `apps/biatec_authenticator/README.md`, two contract tests of the authenticator.
+- **How it was verified:** mock-oidc 116 tests pass; consent-protocol 302 tests and 107 conformance checks pass; `mock_oidc_contract_test.dart` passes against a fresh mock. One review round: no defect in the rule; stale texts and a time-dependent test were fixed.
+- **Not met:** "a cancelled enrollment does not count as a device" is in the code and cannot be reached through the mock, so it is not tested.
+- **Follow-up tasks created:** none.
+- **Unblocks:** none.
+- **Open questions:** who makes the change in Biatec OIDC (until then a first device still waits 24 hours on stage and production); the knowledge base texts follow that change.
+
 ## Review
 
 ## Activity log
@@ -81,3 +89,4 @@ the 24 hours.
 - 2026-11-17 15:30 · scholtz · (new) → backlog · created at the owner's request; blockers scanned: T-249 and T-250 share PRODUCT-DESCRIPTION.md in another section, no ordering need
 - 2026-11-17 15:35 · scholtz · taken · status stays backlog
 - 2026-11-17 15:35 · scholtz · backlog → in-progress · claimed; branch task/T-252 (T-250 moved to review first)
+- 2026-11-17 17:00 · scholtz · in-progress → review · PR #427, branch task/T-252 @ 36473cc

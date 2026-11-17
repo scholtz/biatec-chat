@@ -44,6 +44,9 @@ bool verifyEs256(
 /// Software P-256 keys in place of the hardware keystore: an approval key and a presence key, with the counters and switches the tests of the
 /// two-key rules need. Like the real store, [signApproval] is the only call that "prompts", and it is counted.
 class SoftwareKeyStore implements DeviceKeyStore {
+  @override
+  Future<KeyStoreStatus> status() async => KeyStoreStatus.ready;
+
   SoftwareKeyStore(this.jwk,
       {Map<String, Object?>? presenceJwk,
       this.approvalKid = 'alice-device',

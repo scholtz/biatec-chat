@@ -6,6 +6,7 @@ import 'package:biatec_authenticator/enrollment/enrollment_controller.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_screen.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
+import 'package:biatec_authenticator/enrollment/enrollment_strings.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/enrollment/widgets/enrollment_problem.dart';
@@ -533,6 +534,27 @@ void main() {
           findsOneWidget);
       expect(find.widgetWithText(FilledButton, 'Check again'), findsOneWidget);
       await _end(tester);
+    });
+
+    testWidgets('a key kept by the Windows account is a warning with tips, in English and in Slovak, never a success and never a refusal',
+        (tester) async {
+      for (final strings in [EnrollStrings.en, EnrollStrings.sk]) {
+        await tester.pumpWidget(MaterialApp(
+            key: ValueKey(strings),
+            theme: buildTheme(Brightness.light),
+            home: Scaffold(
+                body: SingleChildScrollView(child: KeyProtectionCard(level: KeySecurityLevel.windowsAccount, strings: strings)))));
+        expect(find.byKey(const Key('software-key-warning')), findsOneWidget);
+        expect(find.text(strings.softwareKeyTitle), findsOneWidget);
+        expect(find.textContaining(strings.softwareKey), findsOneWidget);
+        expect(find.textContaining('BitLocker'), findsOneWidget);
+        expect(find.textContaining('Windows Hello'), findsOneWidget);
+        expect(find.textContaining('TPM'), findsOneWidget);
+        expect(find.byIcon(Icons.gpp_maybe_outlined), findsOneWidget);
+        expect(find.text('Hardware-protected key'), findsNothing);
+        expect(find.textContaining('not accepted'), findsNothing);
+      }
+      expect(EnrollStrings.sk.softwareKeyTips.split('\n').length, EnrollStrings.en.softwareKeyTips.split('\n').length);
     });
 
     testWidgets('a software key is named as such and is not accepted',

@@ -1,8 +1,10 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/services.dart';
 
+import '../security/pin_prompt.dart';
 import 'key_security_level.dart';
 
 /// What a device key is used for (protocol 1.1, `biatec_key_use`).
@@ -25,6 +27,7 @@ class DeviceKey {
     required this.y,
     required this.securityLevel,
     this.authBound = false,
+    this.appGated = false,
   });
 
   /// The key's public half with a [kid] derived from it: a prefix for the use and the first 32 characters of the RFC 7638 thumbprint, so the
@@ -33,13 +36,15 @@ class DeviceKey {
       {required String x,
       required String y,
       required KeySecurityLevel securityLevel,
-      bool authBound = false}) {
+      bool authBound = false,
+      bool appGated = false}) {
     return DeviceKey(
       kid: 'biatec-${use.wire}-${jwkThumbprint(x, y).substring(0, 32)}',
       x: x,
       y: y,
       securityLevel: securityLevel,
       authBound: authBound,
+      appGated: appGated,
     );
   }
 
@@ -55,6 +60,12 @@ class DeviceKey {
 
   /// The keystore says the key needs the operating system's biometric check for every signature, and is invalidated when the biometrics change (read back from the key after it was created, never assumed). Only the approval key has it.
   final bool authBound;
+
+  /// The key is not bound by the hardware to a biometric (see [authBound]) but the native key store uses it only behind the user's check, made by its own code in the same call that signs (a Windows build: Windows Hello in front of the TPM key, or the app's PIN, which the TPM checks). A weaker guarantee than [authBound], said as it is.
+  final bool appGated;
+
+  /// Whether this approval key is used only after the user's check, by either guarantee. Policy that asks "can this device approve" reads this.
+  bool get gestureRequired => authBound || appGated;
 
   Map<String, String> toJwk() => {'kty': 'EC', 'crv': 'P-256', 'x': x, 'y': y};
 
@@ -97,6 +108,15 @@ enum KeysState {
     }
     return missing;
   }
+}
+
+/// What the key store of this computer can do, read before anything is made (a desktop build). A phone is always [ready].
+enum KeyStoreStatus {
+  /// Keys can be made and used.
+  ready,
+
+  /// This computer has no key store that can hold the keys: neither a TPM nor the software key store of Windows.
+  noTpm,
 }
 
 /// The user dismissed the biometric prompt (or pressed Cancel). Nothing was signed.
@@ -143,6 +163,9 @@ class ApprovalKeysMissing implements Exception {
 ///
 /// The level each key got is reported in [DeviceKey.securityLevel] and [DeviceKey.authBound]; enrollment refuses keys that are not in hardware and an approval key that is not bound.
 abstract class DeviceKeyStore {
+  /// Whether this computer can hold and use the keys, without making any. Phones answer [KeyStoreStatus.ready]; a Windows build is ready with a TPM, and without one too (the keys are then kept by the Windows account, and the app warns the user); without Windows Hello it asks for a PIN of the app, so that is not a refusal either. Throws [MissingPluginException] on a platform that has no key store at all.
+  Future<KeyStoreStatus> status();
+
   /// Creates both key pairs, or returns the existing ones. Throws [PlatformException] with code `insecure_key` when the keystore could not make a hardware key (for the approval key: bound to the biometrics) and `no_biometrics` when no strong biometric is enrolled on the phone.
   Future<DeviceKeys> generateKeys();
 
@@ -184,13 +207,30 @@ String channelUse(KeyUse use) => use == KeyUse.approve ? 'approval' : 'presence'
 
 /// Talks to the native keystore code over a platform channel.
 ///
-/// The native side (`KeystorePlugin` for Android and iOS) implements `generateKeys`, `load` (argument `use`), `keysState`, `signPresence`, `signApproval` (arguments `data`, `title`, `subtitle`), `deleteKeys` and `delete` (argument `alias`, for the single key of old installs). A key is `{x, y, securityLevel, authBound}` (coordinates base64url, level as in [KeySecurityLevel.wire]).
+/// The native side (`KeystorePlugin` for Android and iOS, `key_channels.cpp` for Windows, which also answers `probe`) implements `generateKeys`, `load` (argument `use`), `keysState`, `signPresence`, `signApproval` (arguments `data`, `title`, `subtitle`, and on Windows `pin` after the answer `pin_required`, as for `generateKeys` and `generatePresence`), `deleteKeys` and `delete` (argument `alias`, for the single key of old installs). A key is `{x, y, securityLevel, authBound, appGated}` (coordinates base64url, level as in [KeySecurityLevel.wire]).
 class PlatformDeviceKeyStore implements DeviceKeyStore {
   const PlatformDeviceKeyStore(
       [this._channel =
           const MethodChannel('io.biatec.authenticator/keystore')]);
 
   final MethodChannel _channel;
+
+  @override
+  Future<KeyStoreStatus> status() async {
+    try {
+      final raw = await _channel.invokeMethod<Object?>('probe');
+      final map = (raw as Map).cast<String, Object?>();
+      // Only an explicit yes counts: an answer this app does not understand is not "ready".
+      // A computer without a usable TPM keeps the keys in the software key store of Windows (`software`), with a warning for the user.
+      if (map['tpm'] != true && map['software'] != true) return KeyStoreStatus.noTpm;
+      // Windows Hello is not needed: where it cannot be used, the native side asks for a PIN of the app that the key store checks.
+      return KeyStoreStatus.ready;
+    } on MissingPluginException {
+      // A phone's plugin has no `probe`: its plain `keysState` read says whether there is a key store (and throws MissingPluginException when there is none).
+      await _channel.invokeMethod<Object?>('keysState');
+      return KeyStoreStatus.ready;
+    }
+  }
 
   DeviceKey _parse(Object? raw, KeyUse use) {
     try {
@@ -202,15 +242,30 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
         securityLevel: KeySecurityLevel.fromWire(map['securityLevel']),
         // Only an explicit true counts, and only the approval key can be bound.
         authBound: use == KeyUse.approve && map['authBound'] == true,
+        // Only a Windows key store can say this (its approval check is the app's own); on a phone the hardware binds the gesture or the key is not accepted.
+        appGated: use == KeyUse.approve && map['appGated'] == true && defaultTargetPlatform == TargetPlatform.windows,
       );
     } on Object {
       throw const FormatException('The keystore returned malformed key data.');
     }
   }
 
+  /// Makes keys with [method]. A Windows computer without Windows Hello answers `pin_required`: the user is asked for a new PIN of the app and the call is made
+  /// again with it (the key store checks it from then on). No PIN chosen is `cancelled`, and nothing was made.
+  Future<Object?> _generate(String method) async {
+    try {
+      return await _channel.invokeMethod<Object?>(method);
+    } on PlatformException catch (e) {
+      if (e.code != 'pin_required') rethrow;
+      final pin = await askPin(create: true);
+      if (pin == null) throw PlatformException(code: 'cancelled', message: 'No PIN was chosen.');
+      return _channel.invokeMethod<Object?>(method, {'pin': pin});
+    }
+  }
+
   @override
   Future<DeviceKeys> generateKeys() async {
-    final raw = await _channel.invokeMethod<Object?>('generateKeys');
+    final raw = await _generate('generateKeys');
     try {
       final map = (raw as Map).cast<String, Object?>();
       return DeviceKeys(
@@ -232,8 +287,7 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
 
   @override
   Future<DeviceKey> generatePresenceKey() async =>
-      _parse(await _channel.invokeMethod<Object?>('generatePresence'),
-          KeyUse.presence);
+      _parse(await _generate('generatePresence'), KeyUse.presence);
 
   @override
   Future<DeviceKey?> loadLegacy(String alias) async {
@@ -264,18 +318,36 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
 
   @override
   Future<Uint8List> signPresence(Uint8List data) async {
-    final raw =
-        await _channel.invokeMethod<Uint8List>('signPresence', {'data': data});
-    return raw!;
+    try {
+      final raw =
+          await _channel.invokeMethod<Uint8List>('signPresence', {'data': data});
+      return raw!;
+    } on PlatformException catch (e) {
+      // The Windows key store: a refusal of the TPM or a vanished key, said without its internal status.
+      // A key that is gone cannot sign by trying again: the device has to enroll again (the same typed answer as for the approval key).
+      if (e.code == 'key_missing') throw const ApprovalKeysMissing();
+      if (e.code == 'sign_failed' || e.code == 'key_failed' || e.code == 'no_tpm') {
+        throw const KeyPromptFailed('auth_failed', 'The device key could not sign. Try again.');
+      }
+      rethrow;
+    }
   }
 
   @override
   Future<Uint8List> signApproval(Uint8List data,
       {required String promptTitle, required String promptSubtitle}) async {
+    Future<Uint8List?> sign(String? pin) => _channel.invokeMethod<Uint8List>('signApproval',
+        {'data': data, 'title': promptTitle, 'subtitle': promptSubtitle, if (pin != null) 'pin': pin});
     try {
-      final raw = await _channel.invokeMethod<Uint8List>('signApproval',
-          {'data': data, 'title': promptTitle, 'subtitle': promptSubtitle});
-      return raw!;
+      try {
+        return (await sign(null))!;
+      } on PlatformException catch (e) {
+        // A Windows enrollment that uses the PIN of the app: the user is asked for it, and the TPM checks it in the call that signs.
+        if (e.code != 'pin_required') rethrow;
+        final pin = await askPin(create: false, reason: '$promptTitle\n$promptSubtitle'.trim());
+        if (pin == null) throw const KeyPromptCancelled();
+        return (await sign(pin))!;
+      }
     } on PlatformException catch (e) {
       switch (e.code) {
         case 'cancelled':
@@ -288,6 +360,14 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
         case 'prompt_active':
         case 'auth_failed':
           throw KeyPromptFailed(e.code, e.message ?? 'The biometric check did not succeed.');
+        // The Windows key store could not sign (the TPM refused, or the key vanished between the check and the signature): a plain failure, never its internal status.
+        case 'key_missing':
+          // The same answer as for a vanished presence key: the keys are gone and the device has to enroll again.
+          throw const ApprovalKeysMissing();
+        case 'sign_failed':
+        case 'key_failed':
+        case 'no_tpm':
+          throw const KeyPromptFailed('auth_failed', 'The device key could not sign. Try again.');
       }
       rethrow;
     }
