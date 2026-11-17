@@ -47,9 +47,9 @@ String? cannotApproveWith(DeviceIdentity device, KeysState? state) {
   if (device.approvalAttestation == null) {
     return 'This enrollment has no attestation. Enroll the device again.';
   }
-  if (key.securityLevel.blocksSigning || !key.authBound) {
-    return 'This phone cannot protect approvals. Enroll this device on '
-        'a phone that can.';
+  if (key.securityLevel.blocksSigning || !key.gestureRequired) {
+    return 'This device cannot protect approvals. Remove it from your account '
+        'and enroll again on a device that can.';
   }
   return null;
 }

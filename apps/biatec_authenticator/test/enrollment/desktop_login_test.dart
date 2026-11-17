@@ -11,6 +11,7 @@ import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart
 import 'package:biatec_authenticator/enrollment/widgets/enrollment_problem.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/theme.dart';
+import 'package:flutter/foundation.dart' show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MissingPluginException;
 import 'package:biatec_authenticator/keys/device_key_store.dart';
@@ -42,31 +43,155 @@ class WaitingAuth extends AuthClient {
 /// A platform with no native key store: the channel has no implementation.
 class NoKeyStore extends FakeTwoKeyStore {
   @override
+  Future<KeyStoreStatus> status() => throw MissingPluginException('no keystore');
+
+  @override
   Future<DeviceKey> generatePresenceKey() => throw MissingPluginException('no keystore');
 }
 
-class TokenAuth extends AuthClient {
+/// A key store whose probe fails for a reason that is not a missing channel.
+class FlakyProbe extends FakeTwoKeyStore {
   @override
-  Future<String> signIn(AuthRequest request) async => 'access-token';
+  Future<KeyStoreStatus> status() => throw StateError('keystore busy');
+}
+
+/// A key store whose probe answers when the test says so.
+class SlowProbe extends FakeTwoKeyStore {
+  SlowProbe(this.answer);
+  final Future<KeyStoreStatus> answer;
+
+  @override
+  Future<KeyStoreStatus> status() => answer;
+}
+
+/// A Windows computer where the probe says what is missing.
+class ProbedKeyStore extends FakeTwoKeyStore {
+  ProbedKeyStore(this.answer);
+  final KeyStoreStatus answer;
+
+  @override
+  Future<KeyStoreStatus> status() async => answer;
+}
+
+class TokenAuth extends AuthClient {
+  int signIns = 0;
+
+  @override
+  Future<String> signIn(AuthRequest request) async {
+    signIns++;
+    return 'access-token';
+  }
 }
 
 void main() {
-  test('a platform without a key store enrolls nothing and says why', () async {
+  test('a platform without a key store enrolls nothing, says why, and never opens the browser', () async {
     final config = AppConfig.resolve('', release: true, windows: true);
+    final auth = TokenAuth();
     final c = EnrollmentController(
       keys: NoKeyStore(),
       store: ObservableEnrollmentStore(MemoryEnrollmentStore()),
       client: OidcEnrollmentClient(baseUrl: 'http://oidc'),
       twoKeys: false,
-      auth: TokenAuth(),
+      auth: auth,
       loginRequest: AuthRequest.forConfig(config),
     );
     expect(await c.signInAndEnroll(), EnrollResult.failed);
+    expect(auth.signIns, 0, reason: 'the key store is probed before the sign-in');
     expect(c.state.error, EnrollmentController.noKeyStoreError);
     expect(c.state.error, isNot(contains('access-token')));
     final problem = classifyEnrollmentError(c.state.error!);
     expect(problem.kind, EnrollmentProblemKind.noKeyStore);
     expect(problem.title, 'This device cannot be enrolled');
+  });
+
+  for (final (status, error, kind, title) in [
+    (KeyStoreStatus.noTpm, EnrollmentController.noTpmError, EnrollmentProblemKind.noTpm, 'No security chip found'),
+  ]) {
+    test('a computer where the probe says $status is told so before the browser opens, and nothing is made', () async {
+      final config = AppConfig.resolve('', release: true, windows: true);
+      final auth = TokenAuth();
+      final keys = ProbedKeyStore(status);
+      final c = EnrollmentController(
+        keys: keys,
+        store: ObservableEnrollmentStore(MemoryEnrollmentStore()),
+        client: OidcEnrollmentClient(baseUrl: 'http://oidc'),
+        twoKeys: true,
+        auth: auth,
+        loginRequest: AuthRequest.forConfig(config),
+      );
+      expect(await c.signInAndEnroll(), EnrollResult.failed);
+      expect(auth.signIns, 0);
+      expect(c.state.error, error);
+      final problem = classifyEnrollmentError(c.state.error!);
+      expect(problem.kind, kind);
+      expect(problem.title, title);
+      expect(keys.keys, isNull, reason: 'no key was made');
+    });
+  }
+
+  test('a second press while the key store is probed does not start a second sign-in', () async {
+    final config = AppConfig.resolve('', release: true, windows: true);
+    final auth = TokenAuth();
+    final gate = Completer<KeyStoreStatus>();
+    final c = EnrollmentController(
+      keys: SlowProbe(gate.future),
+      store: ObservableEnrollmentStore(MemoryEnrollmentStore()),
+      client: OidcEnrollmentClient(baseUrl: 'http://oidc'),
+      twoKeys: false,
+      auth: auth,
+      loginRequest: AuthRequest.forConfig(config),
+    );
+    final first = c.signInAndEnroll();
+    expect(c.signingIn, isTrue, reason: 'the guard is up while the probe waits');
+    expect(await c.signInAndEnroll(), EnrollResult.ignored);
+    gate.complete(KeyStoreStatus.ready);
+    await first;
+    expect(auth.signIns, 1);
+    expect(c.signingIn, isFalse);
+  });
+
+  test('a probe that answers after the screen is gone changes nothing and throws nothing', () async {
+    final config = AppConfig.resolve('', release: true, windows: true);
+    final auth = TokenAuth();
+    final gate = Completer<KeyStoreStatus>();
+    final c = EnrollmentController(
+      keys: SlowProbe(gate.future),
+      store: ObservableEnrollmentStore(MemoryEnrollmentStore()),
+      client: OidcEnrollmentClient(baseUrl: 'http://oidc'),
+      twoKeys: false,
+      auth: auth,
+      loginRequest: AuthRequest.forConfig(config),
+    );
+    final result = c.signInAndEnroll();
+    c.dispose();
+    gate.complete(KeyStoreStatus.noTpm);
+    expect(await result, EnrollResult.ignored);
+    expect(auth.signIns, 0);
+  });
+
+  test('a Windows build names the device as a Windows computer', () {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    try {
+      expect(EnrollmentController.defaultDeviceName, 'Windows computer');
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  test('a probe that fails for another reason than a missing key store does not stop the sign-in', () async {
+    final config = AppConfig.resolve('', release: true, windows: true);
+    final auth = TokenAuth();
+    final c = EnrollmentController(
+      keys: FlakyProbe(),
+      store: ObservableEnrollmentStore(MemoryEnrollmentStore()),
+      client: OidcEnrollmentClient(baseUrl: 'http://oidc'),
+      twoKeys: false,
+      auth: auth,
+      loginRequest: AuthRequest.forConfig(config),
+    );
+    await c.signInAndEnroll();
+    expect(auth.signIns, 1);
+    expect(c.state.error, isNot(EnrollmentController.noKeyStoreError));
   });
 
   test('a sign-in that waits for the browser is stopped when its controller is disposed', () async {

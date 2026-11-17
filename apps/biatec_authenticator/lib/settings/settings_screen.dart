@@ -6,7 +6,9 @@ import '../clients/legacy_clients_screen.dart';
 import '../clients/trust_strings.dart';
 import '../clients/trust_widgets.dart';
 import '../config.dart';
+import '../enrollment/enrollment_strings.dart';
 import '../keys/device_key_store.dart';
+import '../keys/key_security_level.dart';
 import '../keys/prompt_free_key.dart';
 import '../privacy/phone_eraser.dart';
 import '../privacy/privacy_screen.dart';
@@ -459,6 +461,8 @@ class _DeviceKeyTileState extends State<_DeviceKeyTile> {
               'The keystore did not answer. Close and open the app to try again.';
         } else if (key == null) {
           text = 'No key found for this device.';
+        } else if (key.securityLevel == KeySecurityLevel.windowsAccount) {
+          text = EnrollStrings.of().softwareKeyShort;
         } else if (key.securityLevel.isHardware) {
           text = 'Kept in ${key.securityLevel.label}. It cannot be exported.';
         } else {

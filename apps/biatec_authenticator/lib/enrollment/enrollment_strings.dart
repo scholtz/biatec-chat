@@ -20,6 +20,14 @@ class EnrollStrings {
   String get signInIntroPlain => _get('signInIntroPlain');
   String get noKeyStore => _get('noKeyStore');
   String get noKeyStoreTitle => _get('noKeyStoreTitle');
+  String get noTpm => _get('noTpm');
+  String get noTpmTitle => _get('noTpmTitle');
+
+  // A Windows computer without a usable TPM: the keys are kept by the Windows account
+  String get softwareKeyTitle => _get('softwareKeyTitle');
+  String get softwareKey => _get('softwareKey');
+  String get softwareKeyTips => _get('softwareKeyTips');
+  String get softwareKeyShort => _get('softwareKeyShort');
   String get signInButton => _get('signInButton');
   String get signInAgainButton => _get('signInAgainButton');
   String get signInCancel => _get('signInCancel');
@@ -75,6 +83,20 @@ class EnrollStrings {
         'Sign in to your Biatec account in the browser. You always sign in again, also if you were signed in before. Nothing from the sign-in is kept on this device.',
     'signInIntroPlain':
         'Sign in to your account in the browser. Nothing from the sign-in is kept on this device.',
+    'noTpmTitle': 'No security chip found',
+    'softwareKeyTitle': 'This computer is not the safest place for approvals',
+    'softwareKey':
+        'This computer has no security chip (TPM) that this app can use, so the keys of this device are kept by your Windows account. They cannot be exported, but a program that runs in your account, or anyone who can sign in to it, could use them. A phone, or a computer with a TPM, protects them better.',
+    'softwareKeyTips': 'What makes this computer safer:\n'
+        '• Turn on the TPM in the firmware settings of the computer (often called Intel PTT or AMD fTPM). Then remove this device from your account and enroll it again.\n'
+        '• Set up Windows Hello (Settings › Accounts › Sign-in options).\n'
+        '• Turn on device encryption (BitLocker), so the keys cannot be read from a stolen disk.\n'
+        '• Use a strong Windows password, lock the screen when you leave, and share this Windows account with nobody.\n'
+        '• Keep Windows and its virus protection up to date.\n'
+        '• Approve larger payments on a phone with Biatec Authenticator.',
+    'softwareKeyShort': 'Kept by your Windows account (software), not by a security chip. It cannot be exported.',
+    'noTpm':
+        'This computer has no TPM security chip that can hold the keys of this device, or it is turned off in the firmware. Turn it on, or use another computer. Nothing was enrolled.',
     'noKeyStoreTitle': 'This device cannot be enrolled',
     'noKeyStore':
         'This build of the app has no protected key store on this kind of device, so the device cannot be enrolled here. Nothing was enrolled.',
@@ -137,6 +159,20 @@ class EnrollStrings {
         'Prihláste sa do svojho účtu Biatec v prehliadači. Prihlásite sa vždy znova, aj keď ste už boli prihlásený. Z prihlásenia sa v tomto zariadení nič neukladá.',
     'signInIntroPlain':
         'Prihláste sa do svojho účtu v prehliadači. Z prihlásenia sa v tomto zariadení nič neukladá.',
+    'noTpmTitle': 'Bezpečnostný čip sa nenašiel',
+    'softwareKeyTitle': 'Tento počítač nie je najbezpečnejšie miesto na schvaľovanie',
+    'softwareKey':
+        'Tento počítač nemá bezpečnostný čip (TPM), ktorý by táto aplikácia mohla použiť, preto kľúče tohto zariadenia uchováva váš účet vo Windows. Nedajú sa exportovať, ale mohol by ich použiť program spustený vo vašom účte alebo ktokoľvek, kto sa doň dokáže prihlásiť. Telefón alebo počítač s TPM ich chráni lepšie.',
+    'softwareKeyTips': 'Čo urobí tento počítač bezpečnejším:\n'
+        '• Zapnite TPM v nastaveniach firmvéru počítača (často sa volá Intel PTT alebo AMD fTPM). Potom toto zariadenie odstráňte zo svojho účtu a zaregistrujte ho znova.\n'
+        '• Nastavte si Windows Hello (Nastavenia › Kontá › Možnosti prihlásenia).\n'
+        '• Zapnite šifrovanie zariadenia (BitLocker), aby sa kľúče nedali prečítať z ukradnutého disku.\n'
+        '• Používajte silné heslo do Windows, pri odchode zamknite obrazovku a tento účet vo Windows s nikým nezdieľajte.\n'
+        '• Udržiavajte Windows a antivírusovú ochranu aktuálne.\n'
+        '• Väčšie platby schvaľujte na telefóne s aplikáciou Biatec Authenticator.',
+    'softwareKeyShort': 'Uchováva ho váš účet vo Windows (softvér), nie bezpečnostný čip. Nedá sa exportovať.',
+    'noTpm':
+        'Tento počítač nemá bezpečnostný čip TPM, ktorý by mohol uchovať kľúče tohto zariadenia, alebo je vo firmvéri vypnutý. Zapnite ho alebo použite iný počítač. Nič sa nezaregistrovalo.',
     'noKeyStoreTitle': 'Toto zariadenie sa nedá zaregistrovať',
     'noKeyStore':
         'Táto zostava aplikácie nemá na tomto type zariadenia chránené úložisko kľúčov, preto sa tu zariadenie nedá zaregistrovať. Nič sa nezaregistrovalo.',

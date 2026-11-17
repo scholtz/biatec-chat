@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:biatec_authenticator/lock/biometric_authenticator.dart';
 import 'package:biatec_authenticator/security/biometric_policy.dart';
+import 'package:biatec_authenticator/security/pin_prompt.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -22,6 +23,42 @@ void main() {
     });
     return PlatformBiometricAuthenticator().authenticate('Unlock');
   }
+
+  group('the PIN of the app (a Windows computer without Windows Hello)', () {
+    tearDown(() => pinPromptHandler = null);
+
+    Future<BiometricOutcome> withPin(String? typed, String afterPin, List<MethodCall> calls) {
+      pinPromptHandler = ({required create, required reason}) async {
+        expect(create, isFalse);
+        expect(reason, 'Unlock');
+        return typed;
+      };
+      messenger.setMockMethodCallHandler(channel, (c) async {
+        calls.add(c);
+        return (c.arguments as Map)['pin'] == null ? 'pin_required' : afterPin;
+      });
+      return PlatformBiometricAuthenticator().authenticate('Unlock');
+    }
+
+    test('pin_required asks for the PIN and calls again with it; only the second answer decides', () async {
+      final calls = <MethodCall>[];
+      expect(await withPin('246810', 'success', calls), BiometricOutcome.success);
+      expect(calls, hasLength(2));
+      expect(calls.last.arguments, {'reason': 'Unlock', 'pin': '246810'});
+      expect(await withPin('000000', 'failed', []), BiometricOutcome.failed);
+      expect(await withPin('000000', 'lockout', []), BiometricOutcome.lockout);
+      expect(await withPin('000000', 'pin_required', []), BiometricOutcome.failed, reason: 'asked once, never in a loop');
+    });
+
+    test('a closed PIN dialog is a cancel, and nobody to ask is a cancel: nothing opens', () async {
+      final calls = <MethodCall>[];
+      expect(await withPin(null, 'success', calls), BiometricOutcome.cancelled);
+      expect(calls, hasLength(1), reason: 'no second call without a PIN');
+      pinPromptHandler = null;
+      messenger.setMockMethodCallHandler(channel, (c) async => 'pin_required');
+      expect(await PlatformBiometricAuthenticator().authenticate('Unlock'), BiometricOutcome.cancelled);
+    });
+  });
 
   group('what the platform answers', () {
     test('only "success" is a success', () async {

@@ -84,6 +84,9 @@ class EnrollmentController extends ChangeNotifier {
 
   /// The state error on a platform without a key store (see [enroll]).
   static String get noKeyStoreError => EnrollStrings.en.noKeyStore;
+
+  /// The state error of a computer with no TPM.
+  static String get noTpmError => EnrollStrings.en.noTpm;
   static String get recoveryWrongError => EnrollStrings.en.recoveryWrong;
   static String get recoveryLockedError => EnrollStrings.en.recoveryLocked;
   static String get staleLoginError => EnrollStrings.en.staleLoginAgain;
@@ -301,7 +304,20 @@ class EnrollmentController extends ChangeNotifier {
   static String get defaultDeviceName => switch (defaultTargetPlatform) {
         TargetPlatform.android => 'Android phone',
         TargetPlatform.iOS => 'iPhone',
+        TargetPlatform.windows => 'Windows computer',
         _ => 'Biatec Authenticator',
+      };
+
+  /// What the user is told when the native key store refuses to make the keys. The codes come from KeystorePlugin.kt, KeystorePlugin.swift and key_channels.cpp.
+  String _keyCreationError(PlatformException e) => switch (e.code) {
+        'no_tpm' => noTpmError,
+        // A Windows computer without Windows Hello asks for a new PIN of the app, and the user closed that dialog.
+        'cancelled' => 'No PIN was chosen, so nothing was enrolled. Sign in again and choose a PIN.',
+        'prompt_active' => 'Another prompt of this app is open. Close it, then sign in again.',
+        'no_biometrics' => 'Set up a fingerprint or face on this phone first: approvals need one.',
+        'insecure_key' => const _CannotProtectApprovals().message,
+        'key_generation_failed' || 'key_failed' => 'This device could not create the device keys. Restart it and try again.',
+        _ => 'Could not create the device keys: $e',
       };
 
   /// Key generation on a platform with no native key store: the channel has no implementation. Only that call is read this way; a missing plugin anywhere else is an ordinary failure.
@@ -349,9 +365,30 @@ class EnrollmentController extends ChangeNotifier {
       return EnrollResult.failed;
     }
     recoveryCode = code;
+    // The guard against a second sign-in is set first: the probe below waits for native code, and a second press in that time must not start a second sign-in.
     _signingIn = true;
     notifyListeners();
     try {
+      // A computer that has no key store is told so before the browser opens: a sign-in that can only end in "cannot be enrolled" is not asked of the user. The probe
+      // reads what the key store can do (no prompt, nothing is made); only a missing channel and a missing TPM count, any other failure is left to the enrollment itself.
+      try {
+        final status = await _made<KeyStoreStatus>(keys.status);
+        // The screen may be gone while the probe waited for the TPM.
+        if (_disposed) return EnrollResult.ignored;
+        switch (status) {
+          case KeyStoreStatus.ready:
+            break;
+          case KeyStoreStatus.noTpm:
+            _set(EnrollmentState(EnrollmentPhase.failed, error: noTpmError));
+            return EnrollResult.failed;
+        }
+      } on _NoKeyStore {
+        if (_disposed) return EnrollResult.ignored;
+        _set(EnrollmentState(EnrollmentPhase.failed, error: noKeyStoreError));
+        return EnrollResult.failed;
+      } on Object {
+        // The probe could not read the keys for another reason; the enrollment shows what is wrong, if anything is.
+      }
       for (var attempt = 0;; attempt++) {
         String? token;
         try {
@@ -437,18 +474,18 @@ class EnrollmentController extends ChangeNotifier {
       }
       if (twoKeys) {
         final made = deviceKeys = await _made<DeviceKeys>(keys.generateKeys);
-        if (!made.approval.securityLevel.isHardware ||
-            !made.approval.authBound) {
+        if (!made.approval.securityLevel.isEnrollable ||
+            !made.approval.gestureRequired) {
           throw const _CannotProtectApprovals();
         }
-        if (!made.presence.securityLevel.isHardware) {
+        if (!made.presence.securityLevel.isEnrollable) {
           throw _NotInHardware(made.presence.securityLevel);
         }
         enrolled = made.approval;
       } else {
         // Single-key mode: ONLY the prompt-free key is made (no approval key, no biometric requirement), exactly as before T-241.
         enrolled = await _made<DeviceKey>(keys.generatePresenceKey);
-        if (!enrolled.securityLevel.isHardware) {
+        if (!enrolled.securityLevel.isEnrollable) {
           throw _NotInHardware(enrolled.securityLevel);
         }
       }
@@ -463,16 +500,7 @@ class EnrollmentController extends ChangeNotifier {
       return EnrollResult.failed;
     } on PlatformException catch (e) {
       await _discardKeys();
-      _set(EnrollmentState(EnrollmentPhase.failed,
-          error: e.code == 'no_biometrics'
-              ? 'Set up a fingerprint or face on this phone first: approvals '
-                  'need one.'
-              : e.code == 'insecure_key'
-                  ? const _CannotProtectApprovals().message
-                  : e.code == 'key_generation_failed'
-                      ? 'This phone could not create the device keys. Restart '
-                          'the phone and try again.'
-                      : 'Could not create the device keys: $e'));
+      _set(EnrollmentState(EnrollmentPhase.failed, error: _keyCreationError(e)));
       return EnrollResult.failed;
     } on _NoKeyStore {
       // A platform this app has no key store for (a desktop build): there is no protected place for a device key, so nothing is enrolled.
@@ -614,8 +642,10 @@ class EnrollmentController extends ChangeNotifier {
             deviceKeys: deviceKeys!,
             nonce: challenge!,
             now: _clock(),
-            promptTitle: 'Enroll this phone',
-            promptSubtitle: 'Approvals will need your fingerprint or face',
+            promptTitle: defaultTargetPlatform == TargetPlatform.windows ? 'Enroll this computer' : 'Enroll this phone',
+            promptSubtitle: defaultTargetPlatform == TargetPlatform.windows
+                ? 'Approvals will need this check'
+                : 'Approvals will need your fingerprint or face',
           );
         } on KeyPromptCancelled {
           rethrow;
@@ -891,8 +921,8 @@ class _ProofFailed implements Exception {
 /// The approval key could not be made hardware-backed and bound to the biometrics.
 class _CannotProtectApprovals implements Exception {
   const _CannotProtectApprovals();
-  String get message => 'This phone cannot protect approvals. Its keystore '
-      'cannot make a key that needs your fingerprint or face for every '
+  String get message => 'This device cannot protect approvals. Its keystore '
+      'cannot make a key that needs your confirmation (fingerprint, face, Windows Hello or a PIN of the app) for every '
       'approval, so enrollment is refused.';
 }
 

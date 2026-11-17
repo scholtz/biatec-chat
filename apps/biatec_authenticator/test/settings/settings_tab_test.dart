@@ -304,6 +304,14 @@ void main() {
       expect(find.textContaining('Not in secure hardware'), findsOneWidget);
     });
 
+    testWidgets('a key kept by the Windows account is said to be software, not hardware', (tester) async {
+      final rig = SettingsRig();
+      rig.keys.level = KeySecurityLevel.windowsAccount;
+      await _open(tester, _screen(rig), size: const Size(360, 2000));
+      expect(find.textContaining('Kept by your Windows account (software)'), findsOneWidget);
+      expect(find.textContaining('Kept in'), findsNothing);
+    });
+
     testWidgets('no enrolled device says there is no key', (tester) async {
       final rig = SettingsRig();
       await rig.enrollment.clear();

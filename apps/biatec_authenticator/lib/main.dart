@@ -20,6 +20,7 @@ import 'links/link_services.dart';
 import 'integrity/platform_integrity.dart';
 import 'lock/lock_controller.dart';
 import 'security/biometric_policy.dart';
+import 'security/pin_prompt.dart';
 import 'security/pinning/pinned_http.dart';
 import 'security/pinning/pins.dart';
 import 'security/secure_storage.dart';
@@ -243,10 +244,21 @@ class _AuthenticatorAppState extends State<AuthenticatorApp>
   late final GlobalKey<ScaffoldMessengerState> _messengerKey =
       widget.messengerKey ?? GlobalKey<ScaffoldMessengerState>();
 
+  late final GlobalKey<NavigatorState> _navigatorKey =
+      widget.navigatorKey ?? GlobalKey<NavigatorState>();
+
+  /// The PIN dialog of a Windows computer without Windows Hello, shown over whatever the app shows (the lock screen, an approval, the enrollment).
+  Future<String?> _askPin({required bool create, required String reason}) async {
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null) return null;
+    return showPinDialog(navigator, create: create, reason: reason);
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    pinPromptHandler = _askPin;
     // The route the app was launched with: a deep link opens the app with it as the initial route.
     _takeDeepLink(WidgetsBinding.instance.platformDispatcher.defaultRouteName);
     // A controller handed in was loaded by the caller (main reads it before the first frame).
@@ -256,6 +268,7 @@ class _AuthenticatorAppState extends State<AuthenticatorApp>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    if (pinPromptHandler == _askPin) pinPromptHandler = null;
     if (widget.shell == null) _shell.dispose();
     if (widget.theme == null) _theme.dispose();
     if (widget.lock == null) _lock.dispose();
@@ -280,7 +293,7 @@ class _AuthenticatorAppState extends State<AuthenticatorApp>
     return ListenableBuilder(
       listenable: _theme,
       builder: (context, _) => MaterialApp(
-        navigatorKey: widget.navigatorKey,
+        navigatorKey: _navigatorKey,
         scaffoldMessengerKey: _messengerKey,
         title: 'Biatec Authenticator',
         theme: buildTheme(Brightness.light),

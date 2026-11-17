@@ -47,6 +47,9 @@ class RecordingEnrollment extends MemoryEnrollmentStore {
 }
 
 class RecordingDeviceKeys implements DeviceKeyStore {
+  @override
+  Future<KeyStoreStatus> status() async => KeyStoreStatus.ready;
+
   RecordingDeviceKeys(this.order, {this.fail = false});
   final Order order;
   final bool fail;
