@@ -320,7 +320,9 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
       return raw!;
     } on PlatformException catch (e) {
       // The Windows key store: a refusal of the TPM or a vanished key, said without its internal status.
-      if (e.code == 'key_missing' || e.code == 'sign_failed' || e.code == 'key_failed' || e.code == 'no_tpm') {
+      // A key that is gone cannot sign by trying again: the device has to enroll again (the same typed answer as for the approval key).
+      if (e.code == 'key_missing') throw const ApprovalKeysMissing();
+      if (e.code == 'sign_failed' || e.code == 'key_failed' || e.code == 'no_tpm') {
         throw const KeyPromptFailed('auth_failed', 'The device key could not sign. Try again.');
       }
       rethrow;

@@ -49,7 +49,7 @@ today a desktop device may approve what a phone may.
 | Independence of the elements (art. 9) | The keys live in the TPM, outside the app's process. The gesture is not hardware-bound (above), and there is no app attestation. |
 | Dynamic linking (art. 5) | Unchanged: the signature covers the amount and the payee. |
 
-Ways to strengthen it later: the RS256 Windows Hello key (hardware-bound gesture, needs a protocol version), a signed
+Ways to strengthen it later: a Windows-enforced use policy on the approval key itself (a TPM usage authorization or a key UI policy of the Platform Crypto Provider; not tried, because native code could not be run when this was built), the RS256 Windows Hello key (hardware-bound gesture, needs a protocol version), a signed
 MSIX package, an organisation policy that allows desktop devices only for approvals up to a limit.
 
 ## Manual checklist (NOT run: native code is not run by the test suite, and the build environment of this task could not run executables)

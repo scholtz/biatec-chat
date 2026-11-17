@@ -68,12 +68,14 @@ Availability Check() {
 Outcome Verify(HWND window, const std::wstring& message) {
   // A dialog of an earlier prompt that was cancelled but has not closed yet is still on the screen: no second one is opened over it.
   if (g_dialog_open.load()) return Outcome::kBusy;
+  // True once the completion handler exists: from then on the handler clears g_dialog_open when the dialog is really over. Before that, a failure clears it here.
+  bool handler_installed = false;
+  winrt::Windows::Foundation::IAsyncOperation<ui::UserConsentVerificationResult>
+      operation{nullptr};
   try {
     EnsureApartment();
     auto factory = winrt::get_activation_factory<ui::UserConsentVerifier,
                                                  IUserConsentVerifierInterop>();
-    winrt::Windows::Foundation::IAsyncOperation<ui::UserConsentVerificationResult>
-        operation{nullptr};
     const winrt::hstring text{message};
     g_dialog_open = true;
     const HRESULT started = factory->RequestVerificationForWindowAsync(
@@ -98,6 +100,7 @@ Outcome Verify(HWND window, const std::wstring& message) {
       g_dialog_open = false;
       ::SetEvent(done->get());
     });
+    handler_installed = true;
     // A prompt nobody answers must not hold the worker (and with it every later approval) for ever: after this time it is taken as cancelled.
     if (::WaitForSingleObject(done->get(), static_cast<DWORD>(kPromptTimeout.count())) ==
         WAIT_TIMEOUT) {
@@ -129,7 +132,14 @@ Outcome Verify(HWND window, const std::wstring& message) {
         return Outcome::kFailed;
     }
   } catch (...) {
-    // Fails closed: nothing unexpected is a "verified". (The dialog flag is not cleared here: if the operation exists, its handler clears it.)
+    // Fails closed: nothing unexpected is a "verified". Without a handler nothing else would clear the flag (and close the dialog).
+    if (!handler_installed) {
+      try {
+        if (operation) operation.Cancel();
+      } catch (...) {
+      }
+      g_dialog_open = false;
+    }
     return Outcome::kFailed;
   }
 }

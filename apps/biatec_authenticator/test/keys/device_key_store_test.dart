@@ -355,7 +355,10 @@ void main() {
     });
 
     test('signPresence says a Windows key store failure without its internal status', () async {
-      for (final code in ['key_missing', 'sign_failed', 'key_failed']) {
+      messenger.setMockMethodCallHandler(
+          channel, (call) async => throw PlatformException(code: 'key_missing', message: 'x'));
+      await expectLater(store.signPresence(Uint8List(3)), throwsA(isA<ApprovalKeysMissing>()), reason: 'a key that is gone needs a new enrollment, not a retry');
+      for (final code in ['sign_failed', 'key_failed']) {
         messenger.setMockMethodCallHandler(
             channel, (call) async => throw PlatformException(code: code, message: 'The TPM did not sign (status -2146893792).'));
         await expectLater(
