@@ -8,14 +8,14 @@ import 'package:pointycastle/export.dart';
 
 import '../core/base32.dart';
 import '../core/otp_account.dart';
+import '../totp_texts.dart';
 import 'argon2.dart';
 
 /// Every way a backup can fail to open gives this one failure and this one message: a wrong passphrase, a changed bit, a cut file, a file made with weaker settings. Telling them apart would tell an attacker which guess was close.
 class BackupFailure implements Exception {
   const BackupFailure();
 
-  static const message =
-      'This backup could not be opened. Check the passphrase and the file.';
+  static String get message => TotpTexts.of().text('backupFailure');
 
   @override
   String toString() => message;

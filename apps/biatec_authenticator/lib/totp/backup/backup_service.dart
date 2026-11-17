@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../../lock/lock_controller.dart';
 import '../core/otp_account.dart';
+import '../totp_texts.dart';
 import '../vault/totp_vault.dart';
 import 'backup_files.dart';
 import 'backup_format.dart';
@@ -52,13 +53,12 @@ class BackupService {
   Future<int> export(String passphrase, String confirmation) async {
     final verdict = Passphrase.check(passphrase, confirmation: confirmation);
     if (!verdict.accepted) throw BackupRefused(verdict.problem!);
-    if (!await lock.reauthenticate('Create a backup of your accounts')) {
-      throw const BackupRefused(
-          'The fingerprint or face check did not pass. No backup was made.');
+    if (!await lock.reauthenticate(TotpTexts.of().text('exportReason'))) {
+      throw BackupRefused(TotpTexts.of().text('exportAuthFailed'));
     }
     final infos = await vault.list();
     if (infos.isEmpty) {
-      throw const BackupRefused('There are no accounts to back up yet.');
+      throw BackupRefused(TotpTexts.of().text('nothingToBackUp'));
     }
     final accounts = <OtpAccount>[];
     try {
@@ -68,8 +68,7 @@ class BackupService {
       final file = await codec.encrypt(accounts, passphrase);
       final offered = await files.share(file, BackupCodec.fileName(_clock()));
       if (!offered) {
-        throw const BackupRefused(
-            'The share sheet was closed before the file was saved. No backup was made.');
+        throw BackupRefused(TotpTexts.of().text('shareClosed'));
       }
       return accounts.length;
     } finally {
@@ -82,9 +81,8 @@ class BackupService {
   /// Opens a backup the user picks: a fresh biometric first, then the picker, then the passphrase. Null when the picker was closed. [existing] are the accounts already in the app (for the duplicate count); the preview's accounts are the caller's to wipe.
   Future<ImportPreview?> open(String passphrase,
       {List<OtpAccount> existing = const []}) async {
-    if (!await lock.reauthenticate('Restore accounts from a backup')) {
-      throw const BackupRefused(
-          'The fingerprint or face check did not pass. Nothing was read.');
+    if (!await lock.reauthenticate(TotpTexts.of().text('restoreReason'))) {
+      throw BackupRefused(TotpTexts.of().text('readAuthFailed'));
     }
     return _read(passphrase, existing);
   }
@@ -92,8 +90,7 @@ class BackupService {
   /// The same as [open], for the screen shown after the phone's biometrics changed: the app is locked then, so the fresh biometric comes from the lock's own restore check.
   Future<ImportPreview?> openAfterBiometricsChanged(String passphrase) async {
     if (!await lock.verifyForRestore()) {
-      throw const BackupRefused(
-          'The fingerprint or face check did not pass. Nothing was read.');
+      throw BackupRefused(TotpTexts.of().text('readAuthFailed'));
     }
     return _read(passphrase, const []);
   }
@@ -123,7 +120,7 @@ class BackupService {
   /// The preview is wiped only when every account was saved, so a failure part-way (a cancelled prompt, a full disk) can be retried from the same preview: each try starts again from an empty vault. An empty backup is refused, so it can never leave the user with nothing.
   Future<int> restoreIntoFreshVault(ImportPreview preview) async {
     if (preview.toAdd.isEmpty) {
-      throw const BackupRefused('This backup has no accounts to restore.');
+      throw BackupRefused(TotpTexts.of().text('nothingToRestore'));
     }
     await vault.resetAll();
     var n = 0;

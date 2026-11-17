@@ -5,6 +5,7 @@ import '../../totp/core/otp_account.dart';
 import '../../totp/core/otp_generator.dart';
 import '../../ui/countdown_ring.dart';
 import '../codes_controller.dart';
+import '../codes_texts.dart';
 
 /// The words a screen reader says for a code: the digits one by one, in the groups they are shown in, so "123 456" is "1 2 3, 4 5 6".
 String spokenCode(String code) => OtpGenerator.group(code)
@@ -49,6 +50,7 @@ class CodeTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final t = CodesTexts.from(context);
     final account = entry.account;
     final info = entry.info;
     final hotp = account.type == OtpType.hotp;
@@ -66,8 +68,8 @@ class CodeTile extends StatelessWidget {
       color: theme.colorScheme.onSurface,
     );
     final spoken = hidden
-        ? '$name. Code hidden. Double tap to show it.'
-        : '$name. Code ${spokenCode(code)}. Double tap to copy.';
+        ? t.text('spokenHidden', {'name': name})
+        : t.text('spokenCode', {'name': name, 'code': spokenCode(code)});
     return Card(
       key: Key('code-${info.id}'),
       clipBehavior: Clip.antiAlias,
@@ -105,7 +107,7 @@ class CodeTile extends StatelessWidget {
                         style: mono,
                       ),
                       if (next != null)
-                        Text('Next: ${OtpGenerator.group(next)}',
+                        Text(t.text('next', {'code': OtpGenerator.group(next)}),
                             key: Key('next-${info.id}'),
                             style: theme.textTheme.bodyMedium?.copyWith(
                                 color: theme.colorScheme.onSurfaceVariant)),
@@ -118,11 +120,11 @@ class CodeTile extends StatelessWidget {
           if (hotp)
             Semantics(
               button: true,
-              label: 'Next code for $name',
+              label: t.text('nextCodeFor', {'name': name}),
               excludeSemantics: true,
               child: IconButton(
                 key: Key('counter-${info.id}'),
-                tooltip: 'Next code',
+                tooltip: t.text('nextCode'),
                 constraints: const BoxConstraints(
                     minWidth: kMinTapTarget, minHeight: kMinTapTarget),
                 onPressed: onNextCounter,
@@ -138,19 +140,20 @@ class CodeTile extends StatelessWidget {
           if (dragHandle != null) dragHandle!,
           PopupMenuButton<TileAction>(
             key: Key('menu-${info.id}'),
-            tooltip: 'More for $name',
+            tooltip: t.text('moreFor', {'name': name}),
             onSelected: onAction,
             itemBuilder: (_) => [
-              const PopupMenuItem(
-                  value: TileAction.rename, child: Text('Rename')),
+              PopupMenuItem(
+                  value: TileAction.rename, child: Text(t.text('rename'))),
               if (canMoveUp)
-                const PopupMenuItem(
-                    value: TileAction.moveUp, child: Text('Move up')),
+                PopupMenuItem(
+                    value: TileAction.moveUp, child: Text(t.text('moveUp'))),
               if (canMoveDown)
-                const PopupMenuItem(
-                    value: TileAction.moveDown, child: Text('Move down')),
-              const PopupMenuItem(
-                  value: TileAction.delete, child: Text('Delete')),
+                PopupMenuItem(
+                    value: TileAction.moveDown,
+                    child: Text(t.text('moveDown'))),
+              PopupMenuItem(
+                  value: TileAction.delete, child: Text(t.text('delete'))),
             ],
           ),
         ]),

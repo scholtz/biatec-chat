@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import '../totp_texts.dart';
+
 /// The HMAC hash of an account. SHA-1 is what nearly every service uses.
 enum OtpAlgorithm {
   sha1('SHA1'),
@@ -72,14 +74,14 @@ abstract final class OtpLimits {
   }
 
   // The messages are built from the limits, so they cannot go out of step with them.
-  static const digitsMessage =
-      'Codes must have $minDigits to $maxDigits digits.';
-  static const periodMessage =
-      'A code must last between $minPeriod and $maxPeriod seconds.';
-  static const weakSecretMessage = 'The secret key is too short to be safe '
-      '(at least ${minSecretBytes * 8} bits).';
-  static const counterMessage = 'The counter must be a whole number from 0 '
-      'to $maxCounter.';
+  static String get digitsMessage =>
+      TotpTexts.of().text('digits', {'min': minDigits, 'max': maxDigits});
+  static String get periodMessage =>
+      TotpTexts.of().text('period', {'min': minPeriod, 'max': maxPeriod});
+  static String get weakSecretMessage =>
+      TotpTexts.of().text('weakSecret', {'bits': minSecretBytes * 8});
+  static String get counterMessage =>
+      TotpTexts.of().text('counter', {'max': maxCounter});
 
   /// Unicode White_Space, the one idea of a space shared by Base32 (between key groups), names (turned into a plain space) and the issuer comparison.
   static bool isSpace(int u) =>
@@ -224,23 +226,23 @@ class OtpAccount {
     }
     // Each type refuses the other's setting, which a link would not carry, so writing the account as a link and reading it back gives the same account.
     if (type == OtpType.totp && counter != 0) {
-      throw OtpAccountException(OtpAccountProblem.counter,
-          'A time-based account does not have a counter.');
+      throw OtpAccountException(
+          OtpAccountProblem.counter, TotpTexts.of().text('totpNoCounter'));
     }
     if (type == OtpType.hotp && period != OtpLimits.defaultPeriod) {
-      throw OtpAccountException(OtpAccountProblem.period,
-          'A counter-based account does not have a period.');
+      throw OtpAccountException(
+          OtpAccountProblem.period, TotpTexts.of().text('hotpNoPeriod'));
     }
     if (label.isEmpty) {
       throw OtpAccountException(
-          OtpAccountProblem.name, 'This account has no name.');
+          OtpAccountProblem.name, TotpTexts.of().text('noName'));
     }
     if (issuer.length > OtpLimits.maxTextLength ||
         label.length > OtpLimits.maxTextLength ||
         OtpLimits.hasUnsafeCharacters(issuer) ||
         OtpLimits.hasUnsafeCharacters(label)) {
-      throw OtpAccountException(OtpAccountProblem.name,
-          'The name is too long or has invisible or direction-changing characters.');
+      throw OtpAccountException(
+          OtpAccountProblem.name, TotpTexts.of().text('badName'));
     }
     return Uint8List.fromList(secret);
   }
