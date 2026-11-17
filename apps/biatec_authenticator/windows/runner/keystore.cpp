@@ -192,8 +192,8 @@ bool TpmAvailable() {
   }
   bool p256 = false;
   for (DWORD i = 0; i < count; i++) {
-    if (algorithms[i].pszName != nullptr &&
-        wcscmp(algorithms[i].pszName, BCRYPT_ECDSA_P256_ALGORITHM) == 0) {
+    // Any ECDSA algorithm counts: the provider's own spelling of the curve is not relied on, and only a provider that offers no ECDSA at all (a TPM 1.2) is refused.
+    if (algorithms[i].pszName != nullptr && wcsstr(algorithms[i].pszName, L"ECDSA") != nullptr) {
       p256 = true;
     }
   }

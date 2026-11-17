@@ -15,8 +15,15 @@ namespace {
 
 namespace ui = winrt::Windows::Security::Credentials::UI;
 
-// True from the start of a consent dialog until its operation ends.
+// True from the start of a consent dialog until its operation ends. A dialog that ignores its cancel is not allowed to block every later prompt for ever: after
+// kDialogStale it no longer counts.
 std::atomic<bool> g_dialog_open{false};
+std::atomic<ULONGLONG> g_dialog_started{0};
+constexpr ULONGLONG kDialogStale = 10ull * 60 * 1000;
+
+bool DialogStillOpen() {
+  return g_dialog_open.load() && ::GetTickCount64() - g_dialog_started.load() < kDialogStale;
+}
 
 constexpr std::chrono::milliseconds kPromptTimeout{2 * 60 * 1000};
 constexpr std::chrono::seconds kCheckTimeout{10};
@@ -67,7 +74,7 @@ Availability Check() {
 
 Outcome Verify(HWND window, const std::wstring& message) {
   // A dialog of an earlier prompt that was cancelled but has not closed yet is still on the screen: no second one is opened over it.
-  if (g_dialog_open.load()) return Outcome::kBusy;
+  if (DialogStillOpen()) return Outcome::kBusy;
   // True once the completion handler exists: from then on the handler clears g_dialog_open when the dialog is really over. Before that, a failure clears it here.
   bool handler_installed = false;
   winrt::Windows::Foundation::IAsyncOperation<ui::UserConsentVerificationResult>
@@ -77,6 +84,7 @@ Outcome Verify(HWND window, const std::wstring& message) {
     auto factory = winrt::get_activation_factory<ui::UserConsentVerifier,
                                                  IUserConsentVerifierInterop>();
     const winrt::hstring text{message};
+    g_dialog_started = ::GetTickCount64();
     g_dialog_open = true;
     const HRESULT started = factory->RequestVerificationForWindowAsync(
         window, static_cast<HSTRING>(winrt::get_abi(text)),
