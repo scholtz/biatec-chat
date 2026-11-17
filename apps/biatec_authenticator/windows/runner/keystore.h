@@ -6,7 +6,7 @@
 // This code only keeps and uses the keys. The Windows Hello check that stands in front of the approval key is in hello.h and is joined to the signature in
 // key_channels.cpp, in the one native call, so the Dart side has no way to sign with the approval key without it.
 //
-// On a computer where Windows Hello cannot be used, the user's check is the app's own PIN (pin_dialog.h). The PIN is the usage secret of a third key, the lock
+// On a computer where Windows Hello cannot be used, the user's check is the app's own PIN (asked by the app's screen, lib/security/pin_prompt.dart). The PIN is the usage secret of a third key, the lock
 // key, and of the approval key: the TPM refuses to sign with them without it and locks itself after too many wrong tries. The app keeps no copy and no hash of
 // the PIN; "is this the PIN" is answered by asking the TPM for a signature with the lock key.
 #pragma once

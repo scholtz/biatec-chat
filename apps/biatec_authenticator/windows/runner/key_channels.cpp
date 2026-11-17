@@ -11,7 +11,6 @@
 
 #include "hello.h"
 #include "keystore.h"
-#include "pin_dialog.h"
 
 namespace {
 
@@ -21,7 +20,7 @@ using flutter::MethodCall;
 using flutter::MethodResult;
 using Result = std::unique_ptr<MethodResult<EncodableValue>>;
 
-// One prompt at a time (Windows Hello or the app's PIN dialog), for the approvals, the app lock and a new PIN together.
+// One Windows Hello prompt at a time, for the approvals and the app lock together.
 std::atomic<bool> g_prompt_open{false};
 
 class PromptGuard {
@@ -84,6 +83,11 @@ const std::vector<uint8_t>* BytesArg(const EncodableMap* args, const char* name)
   return it == args->end() ? nullptr : std::get_if<std::vector<uint8_t>>(&it->second);
 }
 
+std::optional<std::string> OptionalString(const EncodableMap* args, const char* name) {
+  const std::string* value = StringArg(args, name);
+  return value == nullptr ? std::nullopt : std::optional<std::string>(*value);
+}
+
 std::optional<keystore::Use> UseOf(const EncodableMap* args) {
   const std::string* use = StringArg(args, "use");
   if (use == nullptr) return std::nullopt;
@@ -92,9 +96,34 @@ std::optional<keystore::Use> UseOf(const EncodableMap* args) {
   return std::nullopt;
 }
 
-// The user's check of a new enrollment. Windows Hello when it can be used: then there is no PIN. Otherwise (not set up, no device, switched off by a policy) the
-// user chooses a PIN of the app here, before anything is made, and the keys are made with it (keystore.h). No PIN chosen: nothing is made.
-std::optional<pin_dialog::Pin> NewPinUnlessHello(HWND window) {
+// The PIN of the app (a computer without Windows Hello). The app's own screen asks for it (lib/security/pin_prompt.dart) and sends it with the call. It is not
+// kept: this copy is wiped when the call ends, and the TPM is what checks it (keystore.h).
+class Pin {
+ public:
+  explicit Pin(const std::string& utf8) : value_(Widen(utf8)) {}
+  // Copies and wipes the other: a moved-from string can keep its characters in its small buffer.
+  Pin(Pin&& other) : value_(other.value_) { other.Wipe(); }
+  Pin(const Pin&) = delete;
+  Pin& operator=(const Pin&) = delete;
+  ~Pin() { Wipe(); }
+  const std::wstring& value() const { return value_; }
+
+ private:
+  void Wipe() {
+    if (!value_.empty()) SecureZeroMemory(value_.data(), value_.size() * sizeof(wchar_t));
+    value_.clear();
+  }
+  std::wstring value_;
+};
+
+// The same limits as the app's screen (lib/security/pin_prompt.dart), held here as well: the Dart side is not what decides.
+constexpr size_t kMinPinLength = 6;
+constexpr size_t kMaxPinLength = 64;
+
+// The user's check of a new enrollment. Windows Hello when it can be used: then there is no PIN, and one that was sent is not used. Otherwise (not set up, no
+// device, switched off by a policy, a remote session) the keys are made with a PIN of the app (keystore.h). Without one the answer is `pin_required`: the app
+// asks the user for a new PIN and calls again. Nothing is made before that.
+std::optional<Pin> NewPinUnlessHello(const std::string* sent) {
   // "Cannot be used right now" may pass (busy, a slow start): it is asked again before the choice is made, because the choice holds for the whole enrollment.
   hello::Availability availability = hello::Check();
   for (int again = 0; again < 2 && availability == hello::Availability::kUnavailable; again++) {
@@ -102,13 +131,13 @@ std::optional<pin_dialog::Pin> NewPinUnlessHello(HWND window) {
     availability = hello::Check();
   }
   if (availability == hello::Availability::kAvailable) return std::nullopt;
-  PromptGuard guard;
-  if (!guard.owns()) {
-    throw keystore::KeyError("prompt_active", "Another prompt is open. Try again.");
+  if (sent == nullptr) {
+    throw keystore::KeyError("pin_required", "Windows Hello cannot be used: a PIN of the app is needed.");
   }
-  std::optional<pin_dialog::Pin> pin =
-      pin_dialog::Ask(window, pin_dialog::Mode::kCreate, pin_dialog::CreateMessage());
-  if (!pin) throw keystore::KeyError("cancelled", "No PIN was chosen.");
+  Pin pin(*sent);
+  if (pin.value().size() < kMinPinLength || pin.value().size() > kMaxPinLength) {
+    throw keystore::KeyError("bad_pin", "The PIN needs 6 to 64 characters.");
+  }
   return pin;
 }
 
@@ -116,11 +145,11 @@ std::optional<pin_dialog::Pin> NewPinUnlessHello(HWND window) {
 bool PinMode() { return keystore::Exists().lock; }
 
 // Both keys, or neither: a half set (an interrupted enrollment) is removed and made again.
-EncodableValue GenerateKeys(HWND window) {
+EncodableValue GenerateKeys(const std::string* sent_pin) {
   if (!keystore::TpmAvailable()) {
     throw keystore::KeyError("no_tpm", "This computer has no TPM that can hold the keys.");
   }
-  const std::optional<pin_dialog::Pin> pin = NewPinUnlessHello(window);
+  const std::optional<Pin> pin = NewPinUnlessHello(sent_pin);
   // New keys for every enrollment, a whole pair or none (see keystore.h): a key of the TPM outlives the app, so an old pair is never handed to a new enrollment.
   const keystore::KeyPair pair = keystore::CreateFreshPair(pin ? &pin->value() : nullptr);
   EncodableMap map;
@@ -129,12 +158,12 @@ EncodableValue GenerateKeys(HWND window) {
   return EncodableValue(map);
 }
 
-EncodableValue GeneratePresence(HWND window) {
+EncodableValue GeneratePresence(const std::string* sent_pin) {
   if (!keystore::TpmAvailable()) {
     throw keystore::KeyError("no_tpm", "This computer has no TPM that can hold the keys.");
   }
-  // Single-key mode: the approvals are gated by the app lock, so the app lock needs its check too (Windows Hello, or the PIN chosen here).
-  const std::optional<pin_dialog::Pin> pin = NewPinUnlessHello(window);
+  // Single-key mode: the approvals are gated by the app lock, so the app lock needs its check too (Windows Hello, or the PIN chosen for this enrollment).
+  const std::optional<Pin> pin = NewPinUnlessHello(sent_pin);
   // New keys for every enrollment (see GenerateKeys).
   return KeyMap(keystore::CreateFreshPresence(pin ? &pin->value() : nullptr), false);
 }
@@ -161,12 +190,14 @@ EncodableValue Probe() {
   return EncodableValue(map);
 }
 
-// The PIN of the app, asked and checked by the TPM (a signature with the lock key). Throws unless the TPM took it.
-pin_dialog::Pin RequirePin(HWND window, const std::wstring& message) {
-  std::optional<pin_dialog::Pin> pin =
-      pin_dialog::Ask(window, pin_dialog::Mode::kEnter, message);
-  if (!pin) throw keystore::KeyError("cancelled", "The PIN was not entered.");
-  switch (keystore::CheckPin(pin->value())) {
+// The PIN of the app, checked by the TPM (a signature with the lock key). Without one the answer is `pin_required`: the app asks the user and calls again.
+// Throws unless the TPM took it.
+Pin RequirePin(const std::string* sent) {
+  if (sent == nullptr) {
+    throw keystore::KeyError("pin_required", "The PIN of the app is needed.");
+  }
+  Pin pin(*sent);
+  switch (keystore::CheckPin(pin.value())) {
     case keystore::PinCheck::kAccepted:
       break;
     case keystore::PinCheck::kLocked:
@@ -174,33 +205,34 @@ pin_dialog::Pin RequirePin(HWND window, const std::wstring& message) {
     default:
       throw keystore::KeyError("auth_failed", "The PIN was not accepted.");
   }
-  return std::move(*pin);
+  return pin;
 }
 
 // An approval on a computer that uses the app's PIN. The PIN is checked against the lock key first, so it is the PIN of this enrollment whatever the approval
 // key was made with; the approval key then signs with it.
-EncodableValue SignApprovalWithPin(HWND window, const std::vector<uint8_t>& data,
-                                   const std::wstring& message) {
-  const pin_dialog::Pin pin = RequirePin(window, message);
+EncodableValue SignApprovalWithPin(const std::vector<uint8_t>& data, const std::string* sent_pin) {
+  const Pin pin = RequirePin(sent_pin);
   return EncodableValue(keystore::Sign(keystore::Use::kApproval, data, &pin.value()));
 }
 
 // The user's check and the signature are one operation: the key signs only after Windows Hello said verified, or, on a computer without it, with the app's PIN,
 // which the TPM itself checks.
 EncodableValue SignApproval(HWND window, const std::vector<uint8_t>& data,
-                            const std::string& title, const std::string& subtitle) {
+                            const std::string& title, const std::string& subtitle,
+                            const std::string* sent_pin) {
   const keystore::Existing existing = keystore::Exists();
   if (!existing.approval) {
     // Not "invalidated": no change of the biometrics invalidates a TPM key (see KeysState). The key is gone, and the device enrolls again.
     throw keystore::KeyError("key_missing", "The approval key is gone.");
   }
+  // A PIN enrollment never reaches the Windows Hello path (and shows no native prompt: the app's screen asked for the PIN).
+  if (existing.lock) return SignApprovalWithPin(data, sent_pin);
   PromptGuard guard;
   if (!guard.owns()) {
-    throw keystore::KeyError("prompt_active", "Another prompt is open. Try again.");
+    throw keystore::KeyError("prompt_active", "Another Windows Hello prompt is open. Try again.");
   }
   std::string text = title;
   if (!subtitle.empty()) text += (text.empty() ? "" : " - ") + subtitle;
-  if (existing.lock) return SignApprovalWithPin(window, data, Widen(text));
   switch (hello::Verify(window, Widen(text))) {
     case hello::Outcome::kVerified:
       break;
@@ -240,10 +272,8 @@ EncodableValue BiometricStatus() {
   }
 }
 
-EncodableValue BiometricAuthenticate(HWND window, const std::string& reason) {
-  PromptGuard guard;
-  // Another Windows Hello prompt is open (an approval's): not a wrong finger, so not "failed"; the lock reads "unavailable" as "cannot be used now".
-  if (!guard.owns()) return Text("unavailable");
+EncodableValue BiometricAuthenticate(HWND window, const std::string& reason,
+                                     const std::string* sent_pin) {
   bool pin_mode = false;
   try {
     pin_mode = PinMode();
@@ -251,16 +281,20 @@ EncodableValue BiometricAuthenticate(HWND window, const std::string& reason) {
     return Text("unavailable");
   }
   if (pin_mode) {
+    // No PIN came with the call: the app asks the user on its own screen and calls again.
+    if (sent_pin == nullptr) return Text("pin_required");
     try {
-      RequirePin(window, Widen(reason));
+      RequirePin(sent_pin);
       return Text("success");
     } catch (const keystore::KeyError& e) {
-      if (e.code() == "cancelled") return Text("cancelled");
       if (e.code() == "locked_out") return Text("lockout");
       // A refused PIN, a lock key that is gone, a TPM that cannot be reached: nothing opens.
       return Text("failed");
     }
   }
+  PromptGuard guard;
+  // Another Windows Hello prompt is open (an approval's): not a wrong finger, so not "failed"; the lock reads "unavailable" as "cannot be used now".
+  if (!guard.owns()) return Text("unavailable");
   switch (hello::Verify(window, Widen(reason))) {
     case hello::Outcome::kVerified:
       return Text("success");
@@ -292,10 +326,14 @@ KeyChannels::KeyChannels(flutter::BinaryMessenger* messenger, HWND window)
         const std::string& method = call.method_name();
         const EncodableMap* args = ArgsOf(call);
         if (method == "generateKeys") {
-          RunAsync(std::move(result), [window] { return GenerateKeys(window); });
+          RunAsync(std::move(result), [pin = OptionalString(args, "pin")] {
+            return GenerateKeys(pin ? &*pin : nullptr);
+          });
         } else if (method == "generatePresence") {
           // Single-key mode: only the key that needs no prompt; the approvals are gated by the app lock's check (Windows Hello, or the app's PIN).
-          RunAsync(std::move(result), [window] { return GeneratePresence(window); });
+          RunAsync(std::move(result), [pin = OptionalString(args, "pin")] {
+            return GeneratePresence(pin ? &*pin : nullptr);
+          });
         } else if (method == "load") {
           const auto use = UseOf(args);
           if (!use) {
@@ -326,8 +364,9 @@ KeyChannels::KeyChannels(flutter::BinaryMessenger* messenger, HWND window)
           const std::string* subtitle = StringArg(args, "subtitle");
           RunAsync(std::move(result),
                    [window, bytes = *data, t = title ? *title : std::string(),
-                    s = subtitle ? *subtitle : std::string()] {
-                     return SignApproval(window, bytes, t, s);
+                    s = subtitle ? *subtitle : std::string(),
+                    pin = OptionalString(args, "pin")] {
+                     return SignApproval(window, bytes, t, s, pin ? &*pin : nullptr);
                    });
         } else if (method == "deleteKeys") {
           RunAsync(std::move(result), [] {
@@ -356,8 +395,9 @@ KeyChannels::KeyChannels(flutter::BinaryMessenger* messenger, HWND window)
           RunAsync(std::move(result), [] { return BiometricStatus(); });
         } else if (method == "authenticate") {
           const std::string* reason = StringArg(ArgsOf(call), "reason");
-          RunAsync(std::move(result), [window, r = reason ? *reason : std::string()] {
-            return BiometricAuthenticate(window, r);
+          RunAsync(std::move(result), [window, r = reason ? *reason : std::string(),
+                                       pin = OptionalString(ArgsOf(call), "pin")] {
+            return BiometricAuthenticate(window, r, pin ? &*pin : nullptr);
           });
         } else {
           result->NotImplemented();

@@ -15,7 +15,7 @@ This page says what is protected, what is not, how to check it, and what a bank 
 | Approval key | The signature is made in one native call that first asks **Windows Hello** (face, fingerprint or the Hello PIN) over the app's window and signs only after Windows answers "verified". Cancelled, locked out and failed prompts sign nothing and are reported with the same codes as on a phone. |
 | Presence key | Signs without a prompt, like the presence key on a phone. |
 | App lock | The lock and the re-authentication before sensitive actions use the same Windows Hello check, and the app locks when Windows locks (`screenLocked`). |
-| Without Windows Hello | The user chooses a **PIN of the app** (6 to 64 characters) at enrollment, in a native dialog, after the sign-in and before any key is made. It is the usage secret of a third TPM key (the lock key, `io.biatec.authenticator.lock.v1`) and, in two-key mode, of the approval key: the TPM refuses to sign without it and locks for a while after too many wrong tries. The app stores no copy and no hash of it, and it never crosses the channel to the Dart side. The app lock and every approval ask for it; "is this the PIN" is answered by a TPM signature with the lock key. Which check an enrollment uses is fixed when it is made (the lock key is there or not); a later change needs a new enrollment. A forgotten PIN cannot be recovered: the device is enrolled again. See "The PIN of the app" below. |
+| Without Windows Hello | The user chooses a **PIN of the app** (6 to 64 characters) at enrollment, in a dialog of the app (`lib/security/pin_prompt.dart`, in the app's own look and language), after the sign-in and before any key is made. It is the usage secret of a third TPM key (the lock key, `io.biatec.authenticator.lock.v1`) and, in two-key mode, of the approval key: the TPM refuses to sign without it and locks for a while after too many wrong tries. The app stores no copy and no hash of it: it goes with the one channel call that needs it, the native copy is wiped after the call, and the Dart copy lives until the Dart memory is collected. The app lock and every approval ask for it; "is this the PIN" is answered by a TPM signature with the lock key. Which check an enrollment uses is fixed when it is made (the lock key is there or not); a later change needs a new enrollment. A forgotten PIN cannot be recovered: the device is enrolled again. See "The PIN of the app" below. |
 | Refused | No TPM (or off in the firmware): said **before the browser opens**, so a computer that cannot enroll is not sent through a sign-in. A key the provider does not report as hardware is refused and removed, as on a phone. A closed PIN dialog makes no keys and enrolls nothing. |
 | Security level | `tpm`, read back from the key (`NCRYPT_IMPL_TYPE_PROPERTY` has the hardware flag), never assumed. |
 | Reported as | The approval key is `appGated` (the app's own gate), **not** `authBound` (which says the hardware enforces the gesture, as on a phone). The app accepts either for approving (`DeviceKey.gestureRequired`) and keeps them apart. |
@@ -23,7 +23,7 @@ This page says what is protected, what is not, how to check it, and what a bank 
 | Single-key mode | Real Biatec OIDC has no two-key enrollment yet (`TWO_KEY_DEVICE` is off). Then only the presence key is made, in the TPM, and an approval is gated by the app lock's Windows Hello check, as before T-241 on a phone. |
 
 Code: `apps/biatec_authenticator/windows/runner/` (`keystore.cpp` the TPM keys, `hello.cpp` the Windows Hello check,
-`pin_dialog.cpp` the PIN dialog, `key_channels.cpp` the channels `io.biatec.authenticator/keystore` and `io.biatec.authenticator/biometric`), and
+`key_channels.cpp` the channels `io.biatec.authenticator/keystore` and `io.biatec.authenticator/biometric`), and
 `lib/keys/device_key_store.dart` (`KeyStoreStatus`, `PlatformDeviceKeyStore.status`).
 
 ## The weaker guarantee (decided by the owner on 2026-11-17)
@@ -52,8 +52,8 @@ What it gives, compared with the Windows Hello path:
   the app-checked Windows Hello prompt.
 - **Single-key mode** (real Biatec OIDC today): the presence key signs the approval and has no PIN, so the PIN stands
   in front of it only through the app lock, like Windows Hello does. The same-user program is not stopped.
-- **What it does not give:** the PIN is typed into a dialog of the app, in the user's session. A program that reads
-  keystrokes in that session can learn it. It is knowledge, not inherence. The key is still reported as `appGated`,
+- **What it does not give:** the PIN is typed into a dialog of the app, in the user's session, and passes through the
+  app's memory. A program that reads keystrokes or the app's memory in that session can learn it. It is knowledge, not inherence. The key is still reported as `appGated`,
   never `authBound`.
 - **One check per enrollment:** an enrollment made with Windows Hello cannot be opened where Windows Hello cannot
   be reached later (for example over Remote Desktop), and the other way round an enrollment made with the PIN keeps
@@ -103,7 +103,8 @@ Run on a Windows 11 computer with a TPM 2.0 and Windows Hello set up. `flutter b
 
 Without Windows Hello (the PIN of the app):
 
-10. **A new PIN.** Sign in. After the browser a dialog "Biatec Authenticator" asks for a new PIN twice. A PIN shorter
+10. **A new PIN.** Sign in. After the browser the app shows "Choose a PIN for this app" and asks for a new PIN twice
+    (Slovak texts show their diacritics). A PIN shorter
     than 6 characters, or two different ones, is refused in the dialog. Cancel: "No PIN was chosen, so nothing was
     enrolled", and `certutil` lists no key of the app. With a PIN: the enrollment completes, and `certutil` also lists
     `io.biatec.authenticator.lock.v1`.

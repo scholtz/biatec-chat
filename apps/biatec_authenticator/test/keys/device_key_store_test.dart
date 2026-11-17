@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:biatec_authenticator/keys/device_key_store.dart';
 import 'package:biatec_authenticator/keys/key_security_level.dart';
+import 'package:biatec_authenticator/security/pin_prompt.dart';
 import 'package:flutter/foundation.dart' show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -246,37 +247,113 @@ void main() {
       expect(between, contains('default: throw'), reason: 'any other answer signs nothing');
       expect(between, isNot(contains('return')), reason: 'no way out of the function between the check and the signature');
 
-      // Without Windows Hello: the PIN of the app. A new PIN is asked only when Windows Hello cannot be used, and before anything is made; no PIN, no keys.
-      final fresh = flat(cpp.substring(cpp.indexOf('std::optional<pin_dialog::Pin> NewPinUnlessHello('), cpp.indexOf('bool PinMode()')));
+      // Without Windows Hello: the PIN of the app. It is needed only when Windows Hello cannot be used, and nothing is made without it: the answer is
+      // `pin_required`, and the app's own screen asks the user and calls again.
+      final fresh = flat(cpp.substring(cpp.indexOf('std::optional<Pin> NewPinUnlessHello('), cpp.indexOf('bool PinMode()')));
       expect(fresh, contains('if (availability == hello::Availability::kAvailable) return std::nullopt;'));
+      expect(fresh, contains('if (sent == nullptr) { throw keystore::KeyError("pin_required"'));
+      expect(fresh, contains('pin.value().size() < kMinPinLength || pin.value().size() > kMaxPinLength'), reason: 'the native side holds the limits too');
+      expect(flat(cpp), contains('constexpr size_t kMinPinLength = $pinMinLength;'));
+      expect(flat(cpp), contains('constexpr size_t kMaxPinLength = $pinMaxLength;'));
       expect(cpp, isNot(contains('KeyError("approval_key_invalidated"')), reason: 'no change of the biometrics invalidates a TPM key: a gone key is key_missing');
       expect(keystoreCpp, contains('NCRYPT_OVERWRITE_KEY_FLAG'), reason: 'a key the TPM can no longer open does not block a new enrollment');
-      expect(fresh, contains('pin_dialog::Mode::kCreate'));
-      expect(fresh, contains('if (!pin) throw keystore::KeyError("cancelled"'));
       // The TPM checks the PIN (a signature with the lock key), and only an accepted one gets past: the approval key then signs with it.
-      final require = flat(cpp.substring(cpp.indexOf('pin_dialog::Pin RequirePin('), cpp.indexOf('EncodableValue SignApprovalWithPin(')));
-      expect(require, contains('if (!pin) throw keystore::KeyError("cancelled"'));
+      final require = flat(cpp.substring(cpp.indexOf('Pin RequirePin('), cpp.indexOf('EncodableValue SignApprovalWithPin(')));
+      expect(require, contains('if (sent == nullptr) { throw keystore::KeyError("pin_required"'));
       expect(require, contains('case keystore::PinCheck::kAccepted: break;'));
       expect(require, contains('case keystore::PinCheck::kLocked: throw keystore::KeyError("locked_out"'));
       expect(require, contains('default: throw keystore::KeyError("auth_failed"'));
       final withPin = flat(cpp.substring(cpp.indexOf('EncodableValue SignApprovalWithPin('), start));
-      expect(withPin.indexOf('RequirePin('), lessThan(withPin.indexOf('keystore::Sign(keystore::Use::kApproval, data, &pin.value())')));
       expect(withPin.indexOf('RequirePin('), greaterThan(-1));
-      expect(body, contains('if (existing.lock) return SignApprovalWithPin(window, data, Widen(text));'));
+      expect(withPin.indexOf('RequirePin('), lessThan(withPin.indexOf('keystore::Sign(keystore::Use::kApproval, data, &pin.value())')));
+      expect(body, contains('if (existing.lock) return SignApprovalWithPin(data, sent_pin);'));
       expect(body.indexOf('if (existing.lock)'), lessThan(verify), reason: 'a PIN enrollment never reaches the Windows Hello path');
       // The app lock of a PIN enrollment asks the same PIN, and only an accepted one is a success.
       final unlock = flat(cpp.substring(cpp.indexOf('EncodableValue BiometricAuthenticate('), cpp.indexOf('KeyChannels::KeyChannels(')));
-      expect(unlock, contains('if (pin_mode) { try { RequirePin(window, Widen(reason)); return Text("success"); }'));
-      // The PIN is the usage secret of the TPM keys: set before the key is finalized, given again for a signature, and never stored or sent over the channel.
+      expect(unlock, contains('if (sent_pin == nullptr) return Text("pin_required"); try { RequirePin(sent_pin); return Text("success"); }'));
+      // The PIN is the usage secret of the TPM keys: set before the key is finalized, given again for a signature, and kept nowhere (the native copy is wiped).
       expect(flat(keystoreCpp), contains('if (status == ERROR_SUCCESS && pin != nullptr) status = SetPin(key, *pin);'));
       expect(keystoreCpp, contains('NCRYPT_PIN_PROPERTY'));
       expect(flat(keystoreCpp), contains('pair.approval = CreateAndDescribe(provider, Use::kApproval, pin);'));
       expect(flat(keystoreCpp), contains('if (pin != nullptr) CreateAndDescribe(provider, Use::kLock, pin);'));
       expect(flat(keystoreCpp), contains('for (const Use use : {Use::kApproval, Use::kPresence, Use::kLock})'), reason: 'a new enrollment and an erase remove the lock key too');
-      expect(cpp, isNot(contains('"pin"')), reason: 'the PIN never crosses the channel');
-      final dialog = source('windows/runner/pin_dialog.cpp');
-      expect(dialog, contains('ES_PASSWORD'));
-      expect(dialog, contains('SecureZeroMemory'));
+      expect(cpp, contains('SecureZeroMemory'));
+      expect(cpp, contains('"pin"'), reason: 'the argument the Dart side sends');
+    });
+
+    group('the PIN of the app (a Windows computer without Windows Hello)', () {
+      tearDown(() => pinPromptHandler = null);
+
+      test('generateKeys and generatePresence ask for a new PIN after pin_required and call again with it', () async {
+        for (final method in ['generateKeys', 'generatePresence']) {
+          final calls = <MethodCall>[];
+          final asked = <bool>[];
+          pinPromptHandler = ({required create, required reason}) async {
+            asked.add(create);
+            return '246810';
+          };
+          answer((call) {
+            calls.add(call);
+            if (call.arguments == null) throw PlatformException(code: 'pin_required');
+            return method == 'generateKeys' ? {'approval': part('tpm'), 'presence': part('tpm')} : part('tpm');
+          });
+          if (method == 'generateKeys') {
+            await store.generateKeys();
+          } else {
+            await store.generatePresenceKey();
+          }
+          expect(calls.map((c) => c.method), [method, method]);
+          expect(calls.last.arguments, {'pin': '246810'});
+          expect(asked, [true], reason: 'a new PIN, asked once');
+        }
+      });
+
+      test('no PIN chosen is cancelled, and the keys are not asked for again', () async {
+        var calls = 0;
+        pinPromptHandler = ({required create, required reason}) async => null;
+        answer((call) {
+          calls++;
+          throw PlatformException(code: 'pin_required');
+        });
+        await expectLater(store.generateKeys(), throwsA(isA<PlatformException>().having((e) => e.code, 'code', 'cancelled')));
+        expect(calls, 1);
+        // Nobody to ask (no screen): the same.
+        pinPromptHandler = null;
+        await expectLater(store.generatePresenceKey(), throwsA(isA<PlatformException>().having((e) => e.code, 'code', 'cancelled')));
+      });
+
+      test('signApproval asks for the PIN after pin_required, with what is approved, and signs with it', () async {
+        final calls = <MethodCall>[];
+        String? shown;
+        pinPromptHandler = ({required create, required reason}) async {
+          expect(create, isFalse);
+          shown = reason;
+          return '246810';
+        };
+        answer((call) {
+          calls.add(call);
+          if ((call.arguments as Map)['pin'] == null) throw PlatformException(code: 'pin_required');
+          return Uint8List.fromList([7]);
+        });
+        expect(await store.signApproval(Uint8List.fromList([1]), promptTitle: 'Approve', promptSubtitle: 'EUR 5 to Bob'), [7]);
+        expect(shown, 'Approve\nEUR 5 to Bob');
+        expect(calls, hasLength(2));
+        expect((calls.first.arguments as Map).containsKey('pin'), isFalse);
+        expect((calls.last.arguments as Map)['pin'], '246810');
+        expect((calls.last.arguments as Map)['data'], [1]);
+      });
+
+      test('signApproval: a closed PIN dialog is a cancel, and a PIN the TPM refuses is a typed failure', () async {
+        pinPromptHandler = ({required create, required reason}) async => null;
+        answer((call) => throw PlatformException(code: 'pin_required'));
+        await expectLater(store.signApproval(Uint8List(1), promptTitle: 'a', promptSubtitle: 'b'), throwsA(isA<KeyPromptCancelled>()));
+        pinPromptHandler = ({required create, required reason}) async => 'wrong-pin';
+        for (final code in ['auth_failed', 'locked_out']) {
+          answer((call) => throw PlatformException(code: (call.arguments as Map)['pin'] == null ? 'pin_required' : code));
+          await expectLater(store.signApproval(Uint8List(1), promptTitle: 'a', promptSubtitle: 'b'),
+              throwsA(isA<KeyPromptFailed>().having((e) => e.code, 'code', code)));
+        }
+      });
     });
 
     test('status reads the probe of a Windows build: only a missing TPM is a refusal (without Windows Hello the app asks for its own PIN)', () async {

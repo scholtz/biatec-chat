@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/services.dart';
 
+import '../security/pin_prompt.dart';
 import 'key_security_level.dart';
 
 /// What a device key is used for (protocol 1.1, `biatec_key_use`).
@@ -206,7 +207,7 @@ String channelUse(KeyUse use) => use == KeyUse.approve ? 'approval' : 'presence'
 
 /// Talks to the native keystore code over a platform channel.
 ///
-/// The native side (`KeystorePlugin` for Android and iOS, `key_channels.cpp` for Windows, which also answers `probe`) implements `generateKeys`, `load` (argument `use`), `keysState`, `signPresence`, `signApproval` (arguments `data`, `title`, `subtitle`), `deleteKeys` and `delete` (argument `alias`, for the single key of old installs). A key is `{x, y, securityLevel, authBound, appGated}` (coordinates base64url, level as in [KeySecurityLevel.wire]).
+/// The native side (`KeystorePlugin` for Android and iOS, `key_channels.cpp` for Windows, which also answers `probe`) implements `generateKeys`, `load` (argument `use`), `keysState`, `signPresence`, `signApproval` (arguments `data`, `title`, `subtitle`, and on Windows `pin` after the answer `pin_required`, as for `generateKeys` and `generatePresence`), `deleteKeys` and `delete` (argument `alias`, for the single key of old installs). A key is `{x, y, securityLevel, authBound, appGated}` (coordinates base64url, level as in [KeySecurityLevel.wire]).
 class PlatformDeviceKeyStore implements DeviceKeyStore {
   const PlatformDeviceKeyStore(
       [this._channel =
@@ -248,9 +249,22 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
     }
   }
 
+  /// Makes keys with [method]. A Windows computer without Windows Hello answers `pin_required`: the user is asked for a new PIN of the app and the call is made
+  /// again with it (the TPM keeps the keys behind it). No PIN chosen is `cancelled`, and nothing was made.
+  Future<Object?> _generate(String method) async {
+    try {
+      return await _channel.invokeMethod<Object?>(method);
+    } on PlatformException catch (e) {
+      if (e.code != 'pin_required') rethrow;
+      final pin = await askPin(create: true);
+      if (pin == null) throw PlatformException(code: 'cancelled', message: 'No PIN was chosen.');
+      return _channel.invokeMethod<Object?>(method, {'pin': pin});
+    }
+  }
+
   @override
   Future<DeviceKeys> generateKeys() async {
-    final raw = await _channel.invokeMethod<Object?>('generateKeys');
+    final raw = await _generate('generateKeys');
     try {
       final map = (raw as Map).cast<String, Object?>();
       return DeviceKeys(
@@ -272,8 +286,7 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
 
   @override
   Future<DeviceKey> generatePresenceKey() async =>
-      _parse(await _channel.invokeMethod<Object?>('generatePresence'),
-          KeyUse.presence);
+      _parse(await _generate('generatePresence'), KeyUse.presence);
 
   @override
   Future<DeviceKey?> loadLegacy(String alias) async {
@@ -322,10 +335,18 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
   @override
   Future<Uint8List> signApproval(Uint8List data,
       {required String promptTitle, required String promptSubtitle}) async {
+    Future<Uint8List?> sign(String? pin) => _channel.invokeMethod<Uint8List>('signApproval',
+        {'data': data, 'title': promptTitle, 'subtitle': promptSubtitle, if (pin != null) 'pin': pin});
     try {
-      final raw = await _channel.invokeMethod<Uint8List>('signApproval',
-          {'data': data, 'title': promptTitle, 'subtitle': promptSubtitle});
-      return raw!;
+      try {
+        return (await sign(null))!;
+      } on PlatformException catch (e) {
+        // A Windows enrollment that uses the PIN of the app: the user is asked for it, and the TPM checks it in the call that signs.
+        if (e.code != 'pin_required') rethrow;
+        final pin = await askPin(create: false, reason: '$promptTitle\n$promptSubtitle'.trim());
+        if (pin == null) throw const KeyPromptCancelled();
+        return (await sign(pin))!;
+      }
     } on PlatformException catch (e) {
       switch (e.code) {
         case 'cancelled':
