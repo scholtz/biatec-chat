@@ -1,7 +1,7 @@
 ---
 id: T-251
 title: "Authenticator: every text in the user's language (English and Slovak), no mixed screens"
-status: backlog
+status: in-progress
 priority: P2
 epic: "Consent & authenticator"
 blocked_by: []
@@ -9,12 +9,12 @@ area: ["apps/biatec_authenticator/lib/**", "apps/biatec_authenticator/test/**", 
 parallel: no
 conflicts_with: [T-249, T-250, T-253]
 issue: "#424"
-branch: ""
-owner: ""
-taken_by: ""
+branch: task/T-251
+owner: session-20261117-1830
+taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-11-16
-updated: 2026-11-16
+updated: 2026-11-17
 ---
 
 # T-251 · Authenticator: every text in the user's language
@@ -99,3 +99,5 @@ Then run the Windows build on a system set to Slovak and to English and walk the
 ## Activity log
 
 - 2026-11-16 14:30 · session-20261116-0900 · (new) → backlog · created at the user's request (plan only); conflicts with T-249 and T-250 by file overlap, no ordering need
+- 2026-11-17 18:30 · scholtz · taken · status stays backlog
+- 2026-11-17 18:30 · scholtz · backlog → in-progress · claimed; branch task/T-251 (T-250 and T-253 are merged)
