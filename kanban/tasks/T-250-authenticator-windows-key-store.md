@@ -1,20 +1,20 @@
 ---
 id: T-250
 title: "Authenticator: a protected key store for Windows (TPM and Windows Hello), so a desktop build can enroll"
-status: in-progress
+status: review
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-248]
 area: ["apps/biatec_authenticator/windows/runner/**", "apps/biatec_authenticator/lib/keys/**", "apps/biatec_authenticator/lib/lock/**", "apps/biatec_authenticator/lib/enrollment/**", "apps/biatec_authenticator/test/keys/**", "apps/biatec_authenticator/test/enrollment/**", "apps/biatec_authenticator/README.md", "docs/authenticator-windows-key-store.md", "docs/required-changes-biatec-oidc.md", "PRODUCT-DESCRIPTION.md"]
 parallel: no
-conflicts_with: [T-249, T-251]
+conflicts_with: [T-249, T-251, T-252]
 issue: "#423"
 branch: "task/T-250"
 owner: "session-20261116-2350"
 taken_by: "scholtz"
 source: "PRODUCT-DESCRIPTION.md#authenticator-app-flutter"
 created: 2026-11-16
-updated: 2026-11-16
+updated: 2026-11-17
 ---
 
 # T-250 · Authenticator: a protected key store for Windows
@@ -155,3 +155,4 @@ Then the manual checklist on a Windows computer with Windows Hello set up.
 - 2026-11-16 15:00 · session-20261116-0900 · backlog → backlog · owner decided: RS256 Windows Hello approval key; a desktop device may approve everything
 - 2026-11-16 23:50 · scholtz · taken · status stays backlog
 - 2026-11-16 23:50 · scholtz · backlog → in-progress · claimed; branch task/T-250
+- 2026-11-17 15:35 · scholtz · in-progress → review · the owner enrolled on a real computer (TPM key, screenshot); branch task/T-250 @ 5ba6401, PR #425. The last commit (the TPM fix and the software key store) has had no review round. The Hand-off is in the task file on the branch.

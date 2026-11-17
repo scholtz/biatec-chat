@@ -7,7 +7,7 @@ epic: "Consent & authenticator"
 blocked_by: [T-248]
 area: ["apps/biatec_authenticator/lib/provider/**", "apps/biatec_authenticator/lib/config.dart", "apps/biatec_authenticator/lib/main.dart", "apps/biatec_authenticator/lib/enrollment/**", "apps/biatec_authenticator/test/provider/**", "docs/authenticator-provider-setup.md", "PRODUCT-DESCRIPTION.md"]
 parallel: no
-conflicts_with: [T-250, T-251]
+conflicts_with: [T-250, T-251, T-252]
 issue: "#421"
 branch: ""
 owner: ""
