@@ -15,6 +15,8 @@
 
 namespace keystore {
 
+// Every call below is serialized: one operation on the keys at a time, whatever threads the channel calls come from.
+
 // An error the Dart side understands: `code` is the code of the platform exception (`no_tpm`, `insecure_key`, `key_generation_failed`, `key_missing`,
 // `sign_failed`, ...), `what()` is for the log, never for the user.
 class KeyError : public std::runtime_error {
@@ -43,14 +45,24 @@ bool TpmAvailable();
 // The existing key, or nothing when there is none. Never creates and never prompts.
 std::optional<PublicKey> Load(Use use);
 
-// The existing key, or a new one made in the TPM. Throws `no_tpm` when there is no TPM and `key_generation_failed` when the TPM refuses.
-PublicKey GenerateIfMissing(Use use);
+struct KeyPair {
+  PublicKey approval;
+  PublicKey presence;
+};
+
+// New keys for an enrollment: any old pair is deleted first (a TPM key outlives the app, and an old pair must not reach the server as a new device), then both
+// keys are made, and both are removed again when anything fails, so there is a whole pair or none. Throws `no_tpm`, `key_failed` when an old key cannot be
+// deleted (it is never reused), `key_generation_failed` when the TPM refuses and `insecure_key` when a key is not reported as hardware.
+KeyPair CreateFreshPair();
+
+// The same for single-key mode: only the presence key.
+PublicKey CreateFreshPresence();
 
 // ES256 over `data`: SHA-256, then ECDSA P-256 in the TPM, answered as the 64-byte IEEE P1363 `r || s`. Throws `key_missing` when the key is not there.
 // Never asks the user for anything (the approval key's check is not here).
 std::vector<uint8_t> Sign(Use use, const std::vector<uint8_t>& data);
 
-// Removes both keys. A key that is not there is not an error.
+// Removes both keys. A key that is not there is not an error; a key that is there and cannot be deleted is (`key_failed`).
 void DeleteAll();
 
 // base64url without padding (RFC 4648, section 5).

@@ -32,6 +32,9 @@ class FlutterWindow : public Win32Window {
 
   // The device keys in the TPM and Windows Hello (T-250), on the channels the Dart side already uses.
   std::unique_ptr<KeyChannels> key_channels_;
+
+  // Whether Windows was asked to report the session lock (and has to be told to stop).
+  bool session_notifications_ = false;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

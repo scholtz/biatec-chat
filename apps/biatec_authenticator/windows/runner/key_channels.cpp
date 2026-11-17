@@ -123,24 +123,17 @@ EncodableValue GenerateKeys() {
     throw keystore::KeyError("no_tpm", "This computer has no TPM that can hold the keys.");
   }
   RequireHello();
-  // New keys for every enrollment. A key of the TPM outlives the app (an uninstall or a reset of the app's data does not remove it, unlike on a phone), so an
-  // old pair is never handed to a new enrollment: the server would see the same key again.
-  keystore::DeleteAll();
-  const auto approval = keystore::GenerateIfMissing(keystore::Use::kApproval);
-  if (!approval.hardware) {
-    keystore::DeleteAll();
-    throw keystore::KeyError("insecure_key", "The TPM did not hold the approval key.");
-  }
-  const auto presence = keystore::GenerateIfMissing(keystore::Use::kPresence);
+  // New keys for every enrollment, a whole pair or none (see keystore.h): a key of the TPM outlives the app, so an old pair is never handed to a new enrollment.
+  const keystore::KeyPair pair = keystore::CreateFreshPair();
   EncodableMap map;
-  map[Text("approval")] = KeyMap(approval, true);
-  map[Text("presence")] = KeyMap(presence, false);
+  map[Text("approval")] = KeyMap(pair.approval, true);
+  map[Text("presence")] = KeyMap(pair.presence, false);
   return EncodableValue(map);
 }
 
 EncodableValue GeneratePresence() {
-  keystore::DeleteAll();  // new keys for every enrollment (see GenerateKeys)
-  return KeyMap(keystore::GenerateIfMissing(keystore::Use::kPresence), false);
+  // New keys for every enrollment (see GenerateKeys).
+  return KeyMap(keystore::CreateFreshPresence(), false);
 }
 
 EncodableValue LoadKey(keystore::Use use) {
@@ -150,16 +143,13 @@ EncodableValue LoadKey(keystore::Use use) {
 }
 
 EncodableValue KeysState() {
-  try {
-    const bool approval = keystore::Load(keystore::Use::kApproval).has_value();
-    const bool presence = keystore::Load(keystore::Use::kPresence).has_value();
-    if (approval && presence) return Text("ok");
-    // Not "approval_key_invalidated": no change of the biometrics invalidates a TPM key, and a presence key alone is the normal state of the single-key mode.
-    return Text("missing");
-  } catch (const keystore::KeyError& e) {
-    if (e.code() == "no_tpm") return Text("missing");
-    throw;
-  }
+  // A provider that cannot be opened is thrown, not read as "no keys": the keys may be fine and the TPM busy, and Dart keeps the state it had.
+  const bool approval = keystore::Load(keystore::Use::kApproval).has_value();
+  const bool presence = keystore::Load(keystore::Use::kPresence).has_value();
+  if (approval && presence) return Text("ok");
+  // Not "approval_key_invalidated": no change of the biometrics invalidates a TPM key, and a presence key alone is the normal state of the single-key mode
+  // (which a phone also reports as "missing").
+  return Text("missing");
 }
 
 EncodableValue Probe() {
@@ -217,7 +207,8 @@ EncodableValue BiometricStatus() {
 
 EncodableValue BiometricAuthenticate(HWND window, const std::string& reason) {
   PromptGuard guard;
-  if (!guard.owns()) return Text("failed");
+  // Another Windows Hello prompt is open (an approval's): not a wrong finger, so not "failed"; the lock reads "unavailable" as "cannot be used now".
+  if (!guard.owns()) return Text("unavailable");
   switch (hello::Verify(window, Widen(reason))) {
     case hello::Outcome::kVerified:
       return Text("success");

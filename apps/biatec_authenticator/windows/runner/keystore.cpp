@@ -5,6 +5,7 @@
 #include <ncrypt.h>
 
 #include <cstring>
+#include <mutex>
 
 namespace keystore {
 namespace {
@@ -18,6 +19,9 @@ constexpr SECURITY_STATUS kBadKeyset = static_cast<SECURITY_STATUS>(0x80090016);
 constexpr SECURITY_STATUS kNoKey = static_cast<SECURITY_STATUS>(0x8009000D);
 
 constexpr size_t kMaxSignedBytes = 1 << 20;
+
+// One operation on the keys at a time: a delete, a create and a sign from different worker threads must not interleave.
+std::mutex g_keys;
 
 const wchar_t* NameOf(Use use) {
   return use == Use::kApproval ? kApprovalName : kPresenceName;
@@ -74,7 +78,10 @@ bool DwordProperty(const Handle& key, LPCWSTR name, DWORD* value) {
          size == sizeof(DWORD);
 }
 
-// True when the provider says the key is in hardware and, if it says anything about export, that it cannot be exported.
+// True when the provider says the key is in hardware and, if it says anything about export, that it cannot be exported. The hardware flag must be there; the
+// export policy is read as well, and a provider that does not answer that query is not held against the key (every key of the Platform Crypto Provider is made
+// inside the TPM and cannot leave it; refusing here would refuse every enrollment on a driver that does not answer the query). Step 4 of the manual checklist looks
+// at the real keys.
 bool InHardware(const Handle& key) {
   DWORD impl = 0;
   if (!DwordProperty(key, NCRYPT_IMPL_TYPE_PROPERTY, &impl)) return false;
@@ -173,28 +180,95 @@ bool TpmAvailable() {
 }
 
 std::optional<PublicKey> Load(Use use) {
+  std::lock_guard<std::mutex> lock(g_keys);
   Handle provider = OpenProvider();
   Handle key;
   if (!OpenKey(provider, use, key)) return std::nullopt;
   return Describe(key);
 }
 
-PublicKey GenerateIfMissing(Use use) {
-  Handle provider = OpenProvider();
+namespace {
+
+// Deletes a key that is there. A key that cannot be deleted is an error: it would be found again and handed to the next enrollment.
+void DeleteKey(const Handle& provider, Use use) {
   Handle key;
-  if (!OpenKey(provider, use, key)) {
-    Create(provider, use);
-    if (!OpenKey(provider, use, key)) {
-      throw KeyError("key_generation_failed", "The new key cannot be opened.");
+  if (!OpenKey(provider, use, key)) return;
+  // Frees the handle itself, so it is given away first.
+  const SECURITY_STATUS status = NCryptDeleteKey(key.release(), 0);
+  if (status != ERROR_SUCCESS) {
+    throw KeyError("key_failed", "The old key cannot be deleted (status " +
+                                     std::to_string(static_cast<long>(status)) + ").");
+  }
+}
+
+void DeleteBoth(const Handle& provider) {
+  // Both are tried, and the first failure is reported after.
+  std::optional<KeyError> failure;
+  for (const Use use : {Use::kApproval, Use::kPresence}) {
+    try {
+      DeleteKey(provider, use);
+    } catch (const KeyError& e) {
+      if (!failure) failure = e;
     }
   }
-  return Describe(key);
+  if (failure) throw *failure;
+}
+
+// Makes the key and reads it back. A key that is not reported as hardware is removed and refused.
+PublicKey CreateAndDescribe(const Handle& provider, Use use) {
+  Create(provider, use);
+  Handle key;
+  if (!OpenKey(provider, use, key)) {
+    throw KeyError("key_generation_failed", "The new key cannot be opened.");
+  }
+  PublicKey described = Describe(key);
+  if (!described.hardware) {
+    throw KeyError("insecure_key", "The provider did not report the key as held by hardware.");
+  }
+  return described;
+}
+
+}  // namespace
+
+KeyPair CreateFreshPair() {
+  std::lock_guard<std::mutex> lock(g_keys);
+  Handle provider = OpenProvider();
+  DeleteBoth(provider);
+  try {
+    KeyPair pair;
+    pair.approval = CreateAndDescribe(provider, Use::kApproval);
+    pair.presence = CreateAndDescribe(provider, Use::kPresence);
+    return pair;
+  } catch (...) {
+    // A whole pair or none: what was made is removed again (a failure to remove it cannot be reported better than the first error).
+    try {
+      DeleteBoth(provider);
+    } catch (...) {
+    }
+    throw;
+  }
+}
+
+PublicKey CreateFreshPresence() {
+  std::lock_guard<std::mutex> lock(g_keys);
+  Handle provider = OpenProvider();
+  DeleteBoth(provider);
+  try {
+    return CreateAndDescribe(provider, Use::kPresence);
+  } catch (...) {
+    try {
+      DeleteBoth(provider);
+    } catch (...) {
+    }
+    throw;
+  }
 }
 
 std::vector<uint8_t> Sign(Use use, const std::vector<uint8_t>& data) {
   if (data.size() > kMaxSignedBytes) {
     throw KeyError("sign_failed", "Too much data to sign.");
   }
+  std::lock_guard<std::mutex> lock(g_keys);
   Handle provider = OpenProvider();
   Handle key;
   if (!OpenKey(provider, use, key)) {
@@ -220,19 +294,13 @@ std::vector<uint8_t> Sign(Use use, const std::vector<uint8_t>& data) {
 }
 
 void DeleteAll() {
+  std::lock_guard<std::mutex> lock(g_keys);
   Handle provider;
   if (NCryptOpenStorageProvider(provider.put(), MS_PLATFORM_CRYPTO_PROVIDER, 0) !=
       ERROR_SUCCESS) {
     return;  // no TPM: no keys of ours
   }
-  for (const Use use : {Use::kApproval, Use::kPresence}) {
-    Handle key;
-    if (NCryptOpenKey(provider.get(), key.put(), NameOf(use), 0,
-                      NCRYPT_SILENT_FLAG) == ERROR_SUCCESS) {
-      // Frees the handle itself, so it is given away first.
-      NCryptDeleteKey(key.release(), 0);
-    }
-  }
+  DeleteBoth(provider);
 }
 
 }  // namespace keystore

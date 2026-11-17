@@ -30,7 +30,12 @@ bool FlutterWindow::OnCreate() {
   key_channels_ = std::make_unique<KeyChannels>(
       flutter_controller_->engine()->messenger(), GetHandle());
   // So the app can lock itself when Windows locks (the biometric channel's screenLocked).
-  ::WTSRegisterSessionNotification(GetHandle(), NOTIFY_FOR_THIS_SESSION);
+  session_notifications_ =
+      ::WTSRegisterSessionNotification(GetHandle(), NOTIFY_FOR_THIS_SESSION) != FALSE;
+  if (!session_notifications_) {
+    // Windows would not tell the app when the session locks: the app then locks by its own timer only. Said where a developer looks.
+    ::OutputDebugStringW(L"biatec_authenticator: WTSRegisterSessionNotification failed; the app will not lock when Windows locks.\n");
+  }
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -46,7 +51,10 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
-  ::WTSUnRegisterSessionNotification(GetHandle());
+  if (session_notifications_) {
+    ::WTSUnRegisterSessionNotification(GetHandle());
+    session_notifications_ = false;
+  }
   key_channels_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;

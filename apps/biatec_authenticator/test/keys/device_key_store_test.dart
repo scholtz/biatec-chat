@@ -207,10 +207,17 @@ void main() {
       expect(KeySecurityLevel.fromWire('tpm'), KeySecurityLevel.tpm);
       expect(KeySecurityLevel.tpm.isHardware, isTrue);
       expect(cpp, contains('key.hardware ? "tpm" : "software"'));
-      for (final code in ['prompt_active', 'cancelled', 'approval_key_invalidated', 'no_biometrics', 'locked_out', 'auth_failed', 'insecure_key', 'no_tpm', 'no_hello', 'hello_unavailable']) {
+      for (final code in ['prompt_active', 'cancelled', 'approval_key_invalidated', 'no_biometrics', 'locked_out', 'auth_failed', 'no_tpm', 'no_hello', 'hello_unavailable']) {
         expect(cpp, contains('"$code"'), reason: 'C++ error $code');
       }
       expect(keystoreCpp, contains('"key_generation_failed"'));
+      expect(keystoreCpp, contains('"insecure_key"'), reason: 'a key not reported as hardware is refused');
+      // One operation on the keys at a time; a whole pair or none; an old key that cannot be deleted is an error and is never reused.
+      expect(keystoreCpp, contains('std::mutex g_keys'));
+      expect(flat(keystoreCpp), contains('KeyPair CreateFreshPair() { std::lock_guard<std::mutex> lock(g_keys);'));
+      expect(keystoreCpp, contains('The old key cannot be deleted'));
+      expect(flat(cpp), contains('keystore::CreateFreshPair()'));
+      expect(cpp, isNot(contains('GenerateIfMissing')), reason: 'an old pair is never handed to a new enrollment');
       // Both keys are P-256 keys of the TPM's provider, not exportable (no export policy is ever set), and the approval signature runs only after the Windows Hello
       // check said verified, inside the one native call.
       expect(keystoreCpp, contains('MS_PLATFORM_CRYPTO_PROVIDER'));

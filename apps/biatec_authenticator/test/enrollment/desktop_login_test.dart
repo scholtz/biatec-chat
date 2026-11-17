@@ -152,6 +152,25 @@ void main() {
     expect(c.signingIn, isFalse);
   });
 
+  test('a probe that answers after the screen is gone changes nothing and throws nothing', () async {
+    final config = AppConfig.resolve('', release: true, windows: true);
+    final auth = TokenAuth();
+    final gate = Completer<KeyStoreStatus>();
+    final c = EnrollmentController(
+      keys: SlowProbe(gate.future),
+      store: ObservableEnrollmentStore(MemoryEnrollmentStore()),
+      client: OidcEnrollmentClient(baseUrl: 'http://oidc'),
+      twoKeys: false,
+      auth: auth,
+      loginRequest: AuthRequest.forConfig(config),
+    );
+    final result = c.signInAndEnroll();
+    c.dispose();
+    gate.complete(KeyStoreStatus.noTpm);
+    expect(await result, EnrollResult.ignored);
+    expect(auth.signIns, 0);
+  });
+
   test('a Windows build names the device as a Windows computer', () {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     try {

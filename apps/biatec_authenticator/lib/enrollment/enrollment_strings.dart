@@ -86,7 +86,7 @@ class EnrollStrings {
         'This computer has no TPM security chip that can hold the keys of this device, or it is turned off in the firmware. Turn it on, or use another computer. Nothing was enrolled.',
     'noHelloTitle': 'Set up Windows Hello first',
     'noHello':
-        'Approvals on this computer ask for Windows Hello (face, fingerprint or PIN), and it is not set up. Set it up in the Windows settings (Accounts, Sign-in options), then sign in again. Nothing was enrolled.',
+        'Approvals on this computer ask for Windows Hello (face, fingerprint or PIN), and it is not set up. Set it up in the Windows settings (Accounts, Sign-in options), then sign in again. If Windows offers no way to set it up, this computer cannot be used for approvals. Nothing was enrolled.',
     'helloUnavailableTitle': 'Windows Hello cannot be used now',
     'helloUnavailable':
         'Windows Hello is set up but cannot be used right now: it may be busy, or switched off by a policy of your organisation. Try again, or ask your administrator. Nothing was enrolled.',
@@ -157,7 +157,7 @@ class EnrollStrings {
         'Tento počítač nemá bezpečnostný čip TPM, ktorý by mohol uchovať kľúče tohto zariadenia, alebo je vo firmvéri vypnutý. Zapnite ho alebo použite iný počítač. Nič sa nezaregistrovalo.',
     'noHelloTitle': 'Najprv nastavte Windows Hello',
     'noHello':
-        'Schvaľovania na tomto počítači žiadajú Windows Hello (tvár, odtlačok prsta alebo PIN), a to nie je nastavené. Nastavte ho v nastaveniach Windows (Účty, Možnosti prihlásenia) a potom sa prihláste znova. Nič sa nezaregistrovalo.',
+        'Schvaľovania na tomto počítači žiadajú Windows Hello (tvár, odtlačok prsta alebo PIN), a to nie je nastavené. Nastavte ho v nastaveniach Windows (Účty, Možnosti prihlásenia) a potom sa prihláste znova. Ak Windows nenúka žiadny spôsob nastavenia, tento počítač sa na schvaľovanie použiť nedá. Nič sa nezaregistrovalo.',
     'helloUnavailableTitle': 'Windows Hello sa teraz nedá použiť',
     'helloUnavailable':
         'Windows Hello je nastavené, ale teraz sa nedá použiť: môže byť zaneprázdnené alebo vypnuté pravidlom vašej organizácie. Skúste to znova alebo sa obráťte na správcu. Nič sa nezaregistrovalo.',

@@ -362,7 +362,10 @@ class EnrollmentController extends ChangeNotifier {
       // A computer that has no key store is told so before the browser opens: a sign-in that can only end in "cannot be enrolled" is not asked of the user. The probe
       // reads what the key store can do (no prompt, nothing is made); only a missing channel and a missing TPM or Windows Hello count, any other failure is left to the enrollment itself.
       try {
-        switch (await _made<KeyStoreStatus>(keys.status)) {
+        final status = await _made<KeyStoreStatus>(keys.status);
+        // The screen may be gone while the probe waited for the TPM and Windows Hello.
+        if (_disposed) return EnrollResult.ignored;
+        switch (status) {
           case KeyStoreStatus.ready:
             break;
           case KeyStoreStatus.noTpm:
@@ -376,6 +379,7 @@ class EnrollmentController extends ChangeNotifier {
             return EnrollResult.failed;
         }
       } on _NoKeyStore {
+        if (_disposed) return EnrollResult.ignored;
         _set(EnrollmentState(EnrollmentPhase.failed, error: noKeyStoreError));
         return EnrollResult.failed;
       } on Object {
