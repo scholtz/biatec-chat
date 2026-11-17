@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme.dart';
+import '../approval_texts.dart';
 import 'mono.dart';
 
 /// Where the user types the binding code: the six digits shown on the screen where they started the action. It never comes from this request, so it proves the person holding the phone is the one who started it. Large and fixed-width, with a reminder never to enter a code someone else sends.
@@ -22,6 +23,7 @@ class BindingCodeField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final t = ApprovalTexts.ofContext(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       TextField(
         key: const Key('binding-code'),
@@ -39,11 +41,11 @@ class BindingCodeField extends StatelessWidget {
             ?.merge(monoStyle)
             .copyWith(letterSpacing: 8),
         decoration: InputDecoration(
-          labelText: 'Code shown where you started this action',
+          labelText: t.text('codeLabel'),
           helperText: switch (attemptsRemaining) {
-            null => 'Three attempts in total',
-            1 => '1 attempt left',
-            final n => '$n attempts left',
+            null => t.text('threeAttempts'),
+            1 => t.text('oneAttemptLeft'),
+            final n => t.text('attemptsLeft', {'n': n}),
           },
           helperMaxLines: 2,
           counterText: '',
@@ -51,8 +53,7 @@ class BindingCodeField extends StatelessWidget {
       ),
       const SizedBox(height: AppSpacing.xs),
       Text(
-        'It must match the screen where you started this action. Never enter '
-        'a code that someone sends you.',
+        t.text('codeWarning'),
         style: theme.textTheme.bodySmall
             ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
       ),

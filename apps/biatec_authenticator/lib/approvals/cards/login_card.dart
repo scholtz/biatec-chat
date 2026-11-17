@@ -16,7 +16,7 @@ class LoginCardBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final s = RpStrings.of();
+    final s = RpStrings.of(Localizations.maybeLocaleOf(context));
     final who = provenDomainOf(client.domainProven, client.domain) ??
         formatFingerprint(client.fingerprint);
     final labels = {

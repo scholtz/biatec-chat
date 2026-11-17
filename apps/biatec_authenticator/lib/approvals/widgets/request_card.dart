@@ -1,7 +1,9 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../../clients/trust_strings.dart';
 import '../../theme.dart';
 import '../../text/rp_strings.dart';
+import '../approval_texts.dart';
 import '../approval_controller.dart' show clientLabel, summarize;
 import '../consent_request.dart';
 import 'expiry.dart';
@@ -26,36 +28,55 @@ class RequestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final locale = Localizations.maybeLocaleOf(context);
+    final t = ApprovalTexts.of(locale);
     final detail = request.detail;
     final left = request.expiresAt.difference(now);
-    final who = clientLabel(request.client);
+    final who = clientLabel(request.client, locale);
     final (headline, sub, quoted) = switch (detail) {
       TransactionDetail() => (
-          detail.headline,
-          '${detail.valueText} on ${detail.network}',
+          detail.headlineIn(locale),
+          t.text('onNetwork', {
+            'value': detail.valueTextIn(locale),
+            'network': detail.network,
+          }),
           null
         ),
-      LimitsChangeDetail() => ('Change spending limits', summarize(detail), null),
+      LimitsChangeDetail() =>
+        (t.text('changeLimits'), summarize(detail, locale), null),
       // The headline and the line under it are the app's words (the amount passed the schema). What the service wrote goes only in the quoted line, in the quiet style, with who wrote it.
       PaymentDetail() => (
           '${detail.amount} ${detail.currency}',
-          'Payment request',
+          t.text('paymentRequest'),
           detail.creditorName
         ),
-      LoginDetail() => ('Sign in', 'Sign-in request', null),
-      ActionDetail() => ('Action requested', 'Request to confirm an action', detail.title),
+      LoginDetail() => (t.text('signIn'), t.text('signInRequest'), null),
+      ActionDetail() => (
+          t.text('actionRequested'),
+          t.text('confirmActionRequest'),
+          detail.title
+        ),
       UnsupportedDetail() => (
-          'This request cannot be shown',
-          'Update the app',
+          t.text('cannotShowTitle'),
+          t.text('updateApp'),
           null
         ),
     };
-    final rp = RpStrings.of();
+    final rp = RpStrings.of(locale);
     final fromWho = quoted == null ? null : rp.t('fromService', {'who': who});
-    final spoken = 'Request from $who: $headline, $sub, ${spokenLeft(left)}. '
-        '${quoted == null ? '' : '$fromWho written by the service: $quoted. '}'
-        '${request.client.domainProven ? '' : 'Unproven application. '}'
-        'Double tap to open.';
+    // Each part is filled on its own, so text a service wrote is never read as a place to fill.
+    final spoken = [
+      t.text('cardSpoken', {
+        'left': spokenLeft(left, locale),
+        'sub': sub,
+        'headline': headline,
+        'who': who,
+      }),
+      if (quoted != null)
+        t.text('cardSpokenQuoted', {'from': fromWho, 'quoted': quoted}),
+      if (!request.client.domainProven) t.text('unprovenSpoken'),
+      t.text('doubleTapOpen'),
+    ].join(' ');
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Semantics(
@@ -76,8 +97,9 @@ class RequestCard extends StatelessWidget {
                     request.client.domainProven
                         ? Icons.verified
                         : Icons.warning_amber_rounded,
-                    semanticLabel:
-                        request.client.domainProven ? 'Proven domain' : 'Unproven'),
+                    semanticLabel: request.client.domainProven
+                        ? TrustStrings.of(locale).t('provenDomain')
+                        : t.text('unproven')),
               ),
               const SizedBox(width: AppSpacing.m),
               Expanded(
@@ -111,7 +133,7 @@ class RequestCard extends StatelessWidget {
                             onPressed: onDismiss,
                             child: Text(rp.t('dismiss'))),
                       const SizedBox(height: AppSpacing.s),
-                      Text(coarseLeft(left),
+                      Text(coarseLeft(left, locale),
                           key: Key('left-${request.authReqId}'),
                           style: theme.textTheme.labelMedium?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant)),

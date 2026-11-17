@@ -16,7 +16,7 @@ class PaymentCardBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final s = RpStrings.of();
+    final s = RpStrings.of(Localizations.maybeLocaleOf(context));
     final amount = '${detail.amount} ${detail.currency}';
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(s.t('paymentHeading'),

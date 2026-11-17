@@ -47,7 +47,7 @@ class LinkCodeProblemScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = RpStrings.of();
+    final s = RpStrings.of(Localizations.maybeLocaleOf(context));
     return Scaffold(
       appBar: AppBar(title: Text(s.t('linkTitle'))),
       body: ResultView(
@@ -147,10 +147,10 @@ class _LinkScreenState extends State<LinkScreen> {
       if (obscured) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(
-              key: Key('touch-obscured'),
-              content: Text('Another app is drawing over this screen, so '
-                  'nothing was sent. Close it and tap Link again.')));
+          ..showSnackBar(SnackBar(
+              key: const Key('touch-obscured'),
+              content: Text(RpStrings.of(Localizations.maybeLocaleOf(context))
+                  .t('touchObscured'))));
         return;
       }
       await c.approve(_code.text, confirmedUnproven: confirmed);
@@ -160,7 +160,7 @@ class _LinkScreenState extends State<LinkScreen> {
   }
 
   Future<bool> _confirmUnproven() async {
-    final s = RpStrings.of();
+    final s = RpStrings.of(Localizations.maybeLocaleOf(context));
     final yes = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -185,7 +185,7 @@ class _LinkScreenState extends State<LinkScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final s = RpStrings.of();
+    final s = RpStrings.of(Localizations.maybeLocaleOf(context));
     return Scaffold(
       appBar: AppBar(title: Text(s.t('linkTitle'))),
       body: ListenableBuilder(
@@ -200,7 +200,7 @@ class _LinkScreenState extends State<LinkScreen> {
             return const SizedBox.shrink();
           }
           final can = _canAct(c);
-          final s = RpStrings.of();
+          final s = RpStrings.of(Localizations.maybeLocaleOf(context));
           return ApprovalActionBar(
             busy: c.phase == LinkPhase.working,
             approveLabel: s.t('linkButton'),
@@ -218,7 +218,7 @@ class _LinkScreenState extends State<LinkScreen> {
 
   Widget _body(BuildContext context) {
     final c = _controller;
-    final s = RpStrings.of();
+    final s = RpStrings.of(Localizations.maybeLocaleOf(context));
     switch (c.phase) {
       case LinkPhase.loading:
         return const LoadingSkeleton(key: Key('link-loading'), rows: 4);
@@ -226,9 +226,11 @@ class _LinkScreenState extends State<LinkScreen> {
         return ErrorState(
           key: const Key('link-unavailable'),
           offline: c.offline,
+          title: s.t(c.offline ? 'offlineTitle' : 'errorTitle'),
           message: c.offline
-              ? 'Offline. Linking needs a connection to Biatec OIDC.'
+              ? s.t('offline')
               : c.unavailableReason ?? s.t('goneBody'),
+          retryLabel: s.t('tryAgain'),
           onRetry: c.load,
         );
       case LinkPhase.linked:
@@ -274,7 +276,7 @@ class _LinkScreenState extends State<LinkScreen> {
 
   Widget _ready(BuildContext context) {
     final c = _controller;
-    final s = RpStrings.of();
+    final s = RpStrings.of(Localizations.maybeLocaleOf(context));
     final theme = Theme.of(context);
     final request = c.request!;
     final left = request.expiresAtTime.difference(c.now);

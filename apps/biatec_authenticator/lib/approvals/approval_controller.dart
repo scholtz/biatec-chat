@@ -1,3 +1,5 @@
+import 'dart:ui' show Locale;
+
 import 'package:flutter/foundation.dart';
 
 import '../enrollment/enrollment_store.dart';
@@ -5,7 +7,9 @@ import '../keys/device_key_store.dart';
 import '../keys/key_security_level.dart';
 import '../enrollment/enrollment_state.dart';
 import '../clients/service_identity.dart';
+import '../clients/trust_strings.dart';
 import 'approval_client.dart';
+import 'approval_texts.dart';
 import 'biometric_gate.dart';
 import 'consent_request.dart';
 import 'device_identity.dart';
@@ -38,6 +42,10 @@ enum ApprovalPhase {
 
 /// Six digits, the binding code format (rule 2).
 final _codeFormat = RegExp(r'^[0-9]{6}$');
+
+/// A text of the approvals in the device's language: the controller has no widget tree, and the screen that shows its message is in the same language.
+String _t(String key, [Map<String, Object?> args = const {}]) =>
+    ApprovalTexts.of().text(key, args);
 
 /// Drives one approval: fetch, card, code entry, OS biometric prompt, signed
 /// receipt. Biatec OIDC is the authority on the code and its three attempts;
@@ -156,7 +164,7 @@ class ApprovalController extends ChangeNotifier {
   Future<String> _deviceToken() async {
     final record = await enrollment.read();
     if (record == null) {
-      throw const ApprovalException('This device is not enrolled.');
+      throw ApprovalException(_t('notEnrolled'));
     }
     return record.deviceToken;
   }
@@ -175,8 +183,8 @@ class ApprovalController extends ChangeNotifier {
         _request = null;
         _set(ApprovalPhase.unavailable,
             error: request.isExpired(now)
-                ? 'This request has expired.'
-                : 'This request is no longer pending. It was already decided.');
+                ? _t('expired')
+                : _t('noLongerPending'));
         return;
       }
       _request = request;
@@ -206,23 +214,20 @@ class ApprovalController extends ChangeNotifier {
   Future<(String, DeviceIdentity)> _device() async {
     final record = await enrollment.read();
     if (record == null) {
-      throw const ApprovalException('This device is not enrolled.');
+      throw ApprovalException(_t('notEnrolled'));
     }
     if (record.activeAt.isAfter(now)) {
-      throw const ApprovalException(
-          'This device is not active yet, so it cannot decide.');
+      throw ApprovalException(_t('notActiveYet'));
     }
     if (!twoKeys) {
       // The single enrolled key is the prompt-free key: this build's presence key, or the old alias of an install from before the two keys.
       final promptFree = PromptFreeKey.of(record);
       final key = await promptFree.load(keys);
       if (key == null) {
-        throw const ApprovalException(
-            'The device key is missing. Enroll this device again.');
+        throw ApprovalException(_t('keyMissing'));
       }
       if (record.attestation == null) {
-        throw const ApprovalException(
-            'This enrollment has no attestation. Enroll the device again.');
+        throw ApprovalException(_t('noAttestation'));
       }
       if (key.securityLevel.blocksSigning) {
         throw const ApprovalException(KeySecurityLevel.softwareKeyMessage);
@@ -244,7 +249,7 @@ class ApprovalController extends ChangeNotifier {
   String? _cannotApprove(DeviceIdentity device) {
     if (!twoKeys) {
       return device.approvalAttestation == null
-          ? 'This enrollment has no attestation. Enroll the device again.'
+          ? _t('noAttestation')
           : null;
     }
     return cannotApproveWith(device, _keysState);
@@ -258,7 +263,7 @@ class ApprovalController extends ChangeNotifier {
     if (!shown.isShowable) return;
     code = code.trim();
     if (!_codeFormat.hasMatch(code)) {
-      _set(ApprovalPhase.ready, error: 'Enter the six-digit code.');
+      _set(ApprovalPhase.ready, error: _t('enterCode'));
       return;
     }
     if (shown.isExpired(now)) {
@@ -275,8 +280,8 @@ class ApprovalController extends ChangeNotifier {
         return;
       }
       // Single-key mode: the app's own biometric check (two-key mode: the OS prompt of the signature is the check).
-      if (!twoKeys && !await gate.confirm('Approve this action')) {
-        _set(ApprovalPhase.ready, error: 'Biometric check did not pass.');
+      if (!twoKeys && !await gate.confirm(_t('promptTitle'))) {
+        _set(ApprovalPhase.ready, error: _t('biometricFailed'));
         return;
       }
       // Never approve from a cached card: fetch again, and stop if anything
@@ -287,7 +292,7 @@ class ApprovalController extends ChangeNotifier {
         // Nothing is ticked for the user after a review again.
         _remembered.clear();
         _set(ApprovalPhase.ready,
-            error: 'The request changed. Review it again before approving.');
+            error: _t('requestChanged'));
         return;
       }
       if (fresh.isExpired(now)) {
@@ -297,7 +302,7 @@ class ApprovalController extends ChangeNotifier {
       _lastCode = code;
       // The operating system asks for a strong biometric for this one signature: the prompt is the gate, nothing else asks. The subtitle names the client and the total, from the request that was just fetched.
       final prompt = ApprovalPrompt(
-        title: ApprovalPrompt.fixedTitle,
+        title: _t('promptTitle'),
         subtitle: '${clientLabel(fresh.client)}: ${promptSummary(fresh.detail)}',
       );
       final Map<String, Object?> receipt;
@@ -316,15 +321,15 @@ class ApprovalController extends ChangeNotifier {
         );
       } on KeyPromptCancelled {
         // Nothing was signed or sent: the request stays pending and no code attempt is used.
-        _set(ApprovalPhase.ready,
-            error: 'Approval cancelled. Nothing was sent.');
+        _set(ApprovalPhase.ready, error: _t('approvalCancelled'));
         return;
       } on ApprovalKeyInvalidated {
         _keysState = KeysState.approvalKeyInvalidated;
         _set(ApprovalPhase.ready, error: ApprovalKeyInvalidated.message);
         return;
       } on KeyPromptFailed catch (e) {
-        _set(ApprovalPhase.ready, error: 'Could not approve: ${e.message}');
+        _set(ApprovalPhase.ready,
+            error: _t('couldNotApprove', {'why': e.message}));
         return;
       }
       final outcome = await client.postReceipt(token, authReqId, receipt);
@@ -336,9 +341,9 @@ class ApprovalController extends ChangeNotifier {
           _attemptsRemaining = attemptsRemaining;
           _set(ApprovalPhase.ready,
               error: switch (attemptsRemaining) {
-                null => 'Wrong code.',
-                1 => 'Wrong code. 1 attempt left.',
-                final n => 'Wrong code. $n attempts left.',
+                null => _t('wrongCode'),
+                1 => _t('wrongCodeOne'),
+                final n => _t('wrongCodeN', {'n': n}),
               });
         case CodeFailed():
           _attemptsRemaining = 0;
@@ -350,7 +355,7 @@ class ApprovalController extends ChangeNotifier {
     } on ApprovalException catch (e) {
       _set(ApprovalPhase.ready, error: e.message, offline: e.offline);
     } on Object catch (e) {
-      _set(ApprovalPhase.ready, error: 'Could not approve: $e');
+      _set(ApprovalPhase.ready, error: _t('couldNotApprove', {'why': '$e'}));
     }
   }
 
@@ -373,10 +378,12 @@ class ApprovalController extends ChangeNotifier {
       if (outcome is ReceiptAccepted) {
         await _remember(request, Decision.codeFailed, receipt);
       } else {
-        warning = 'The code_failed receipt was not accepted.';
+        warning = _t('codeFailedNotAccepted');
       }
     } on Object catch (e) {
-      warning = e is ApprovalException ? e.message : 'Could not sign: $e';
+      warning = e is ApprovalException
+          ? e.message
+          : _t('couldNotSign', {'why': '$e'});
     }
     // The request is over either way; Biatec OIDC already refused it.
     _set(ApprovalPhase.codeFailed, error: warning);
@@ -426,7 +433,7 @@ class ApprovalController extends ChangeNotifier {
     } on ApprovalException catch (e) {
       _set(ApprovalPhase.ready, error: e.message, offline: e.offline);
     } on Object catch (e) {
-      _set(ApprovalPhase.ready, error: 'Could not deny: $e');
+      _set(ApprovalPhase.ready, error: _t('couldNotDeny', {'why': '$e'}));
     }
   }
 
@@ -448,13 +455,13 @@ class ApprovalController extends ChangeNotifier {
     if (outcome is ReceiptRefused && outcome.status == 410) {
       _set(ApprovalPhase.expired);
     } else if (outcome is ReceiptRefused && outcome.status == 409) {
-      _set(ApprovalPhase.unavailable,
-          error: 'This request was already decided.');
+      _set(ApprovalPhase.unavailable, error: _t('alreadyDecided'));
     } else if (outcome is ReceiptRefused) {
       _set(ApprovalPhase.ready,
-          error: 'Refused (${outcome.status}): ${outcome.description}');
+          error: _t('refused',
+              {'status': outcome.status, 'why': outcome.description}));
     } else {
-      _set(ApprovalPhase.ready, error: 'Unexpected answer from Biatec OIDC.');
+      _set(ApprovalPhase.ready, error: _t('unexpectedAnswer'));
     }
   }
 
@@ -475,28 +482,40 @@ class ApprovalController extends ChangeNotifier {
   }
 }
 
-/// One line for lists and history.
-String summarize(AuthorizationDetail d) => switch (d) {
-      TransactionDetail() => '${d.headline} (${d.valueText}) on ${d.network}',
-      LimitsChangeDetail() => 'Limits to ${d.requested.perTransactionEur} EUR '
-          'per transaction, ${d.requested.perDayEur} EUR per day',
-      // Never free text a service wrote: that is drawn only in the area that says who wrote it. The amount and the currency passed the schema.
-      PaymentDetail() => 'Payment: ${d.amount} ${d.currency}',
-      LoginDetail() => 'Sign in',
-      ActionDetail() => 'Action requested',
-      UnsupportedDetail() => 'Request that cannot be shown',
-    };
+/// One line for lists and history, in the language of [locale] (the device's when null).
+String summarize(AuthorizationDetail d, [Locale? locale]) {
+  final t = ApprovalTexts.of(locale);
+  return switch (d) {
+    TransactionDetail() => t.text('summaryTransaction', {
+        'headline': d.headlineIn(locale),
+        'value': d.valueTextIn(locale),
+        'network': d.network,
+      }),
+    LimitsChangeDetail() => t.text('summaryLimits', {
+        'perTransaction': d.requested.perTransactionEur,
+        'perDay': d.requested.perDayEur,
+      }),
+    // Never free text a service wrote: that is drawn only in the area that says who wrote it. The amount and the currency passed the schema.
+    PaymentDetail() =>
+      t.text('summaryPayment', {'amount': d.amount, 'currency': d.currency}),
+    LoginDetail() => t.text('signIn'),
+    ActionDetail() => t.text('actionRequested'),
+    UnsupportedDetail() => t.text('summaryCannotShow'),
+  };
+}
 
 /// The line under the title of the biometric prompt of the operating system: the app's own words, and for a payment the amount and the currency. Never text a service wrote.
 String promptSummary(AuthorizationDetail d) => switch (d) {
-      PaymentDetail() => 'Payment of ${d.amount} ${d.currency}',
-      LoginDetail() => 'Sign in',
-      ActionDetail() => 'Confirm an action',
+      PaymentDetail() =>
+        _t('promptPayment', {'amount': d.amount, 'currency': d.currency}),
+      LoginDetail() => _t('signIn'),
+      ActionDetail() => _t('promptAction'),
       _ => summarize(d),
     };
 
 /// The client as rule 3 allows it to be named: its proven domain, or "Unproven application" and the fingerprint.
-String clientLabel(ConsentClient c) {
+String clientLabel(ConsentClient c, [Locale? locale]) {
   final host = provenDomainOf(c.domainProven, c.domain);
-  return host ?? 'Unproven application ${formatFingerprint(c.fingerprint)}'.trim();
+  final unproven = TrustStrings.of(locale).t('unprovenApplication');
+  return host ?? '$unproven ${formatFingerprint(c.fingerprint)}'.trim();
 }

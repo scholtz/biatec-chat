@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../approval_texts.dart';
 import '../consent_request.dart';
 
 /// The time the request was given, in seconds: what the requester asked for (`requested_expiry`), or five minutes when the request does not say.
@@ -20,19 +21,23 @@ String clockLeft(Duration left) {
   return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
 }
 
-/// For lists, which redraw once in a while rather than every second.
-String coarseLeft(Duration left) {
-  if (left.isNegative || left == Duration.zero) return 'Expired';
-  if (left.inMinutes < 1) return 'Less than a minute left';
-  return '${left.inMinutes} min left';
+/// For lists, which redraw once in a while rather than every second. In the language of [locale] (the device's when null).
+String coarseLeft(Duration left, [Locale? locale]) {
+  final t = ApprovalTexts.of(locale);
+  if (left.isNegative || left == Duration.zero) return t.text('expiredShort');
+  if (left.inMinutes < 1) return t.text('lessThanMinuteLeft');
+  return t.text('minutesLeft', {'n': left.inMinutes});
 }
 
-/// In words, for a screen reader.
-String spokenLeft(Duration left) {
-  if (left.isNegative || left == Duration.zero) return 'expired';
-  if (left.inMinutes < 1) return 'expires in less than a minute';
+/// In words, for a screen reader. In the language of [locale] (the device's when null).
+String spokenLeft(Duration left, [Locale? locale]) {
+  final t = ApprovalTexts.of(locale);
+  if (left.isNegative || left == Duration.zero) return t.text('spokenExpired');
+  if (left.inMinutes < 1) return t.text('spokenLessThanMinute');
   final m = left.inMinutes;
-  return 'expires in $m ${m == 1 ? 'minute' : 'minutes'}';
+  if (m == 1) return t.text('spokenOneMinute');
+  // Slovak counts 2 to 4 differently from 5 and more ("minúty", "minút").
+  return t.text(m <= 4 ? 'spokenFewMinutes' : 'spokenMinutes', {'n': m});
 }
 
 /// A ring that empties as the request runs out. Decorative: the time left is always also written, so the ring is hidden from a screen reader and never the only signal.
@@ -75,9 +80,13 @@ class ExpiryRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final left = request.expiresAt.difference(now);
     final over = left <= Duration.zero;
+    final locale = Localizations.maybeLocaleOf(context);
+    final t = ApprovalTexts.of(locale);
     return Semantics(
       container: true,
-      label: over ? 'Request expired' : 'Request ${spokenLeft(left)}',
+      label: over
+          ? t.text('requestExpiredSpoken')
+          : t.text('requestLeftSpoken', {'left': spokenLeft(left, locale)}),
       child: ExcludeSemantics(
         child: Row(children: [
           ExpiryRing(fraction: expiryFraction(request, now)),
@@ -85,7 +94,9 @@ class ExpiryRow extends StatelessWidget {
           // Flexible: at large text the words wrap instead of running off the screen.
           Expanded(
             child: Text(
-              over ? 'Expired' : 'Expires in ${clockLeft(left)}',
+              over
+                  ? t.text('expiredShort')
+                  : t.text('expiresIn', {'clock': clockLeft(left)}),
               key: const Key('expires-in'),
               style: Theme.of(context).textTheme.titleMedium,
             ),

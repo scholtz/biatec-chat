@@ -5,6 +5,7 @@ import '../clients/trust_strings.dart';
 import '../text/rp_strings.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
+import 'approval_texts.dart';
 import 'cards/relying_party_card.dart';
 import 'consent_request.dart';
 import 'receipt.dart';
@@ -40,6 +41,9 @@ class ApprovalCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final locale = Localizations.maybeLocaleOf(context);
+    final t = ApprovalTexts.of(locale);
+    final trustTexts = TrustStrings.of(locale);
     if (!request.isShowable) return const UnsupportedRequestCard();
     final detail = request.detail;
     // A payment, login or action of a relying party (protocol 1.2) has a card of its own.
@@ -58,26 +62,27 @@ class ApprovalCard extends StatelessWidget {
                 key: const Key('new-service'),
                 severity: StatusSeverity.info,
                 icon: Icons.add_link,
-                title: TrustStrings.of().t('newServiceTitle'),
-                message: TrustStrings.of().t('newServiceBody'),
+                title: trustTexts.t('newServiceTitle'),
+                message: trustTexts.t('newServiceBody'),
               ),
             ],
             const SizedBox(height: AppSpacing.m),
             ...switch (detail) {
-              TransactionDetail() => _transaction(theme, detail),
-              LimitsChangeDetail() => _limits(theme, detail),
+              TransactionDetail() =>
+                _transaction(theme, detail, t, trustTexts, locale),
+              LimitsChangeDetail() => _limits(theme, detail, t),
               // Never reached: such a request is not showable (above) or has its own card.
               RelyingPartyDetail() || UnsupportedDetail() => const <Widget>[],
             },
             if (message.isNotEmpty) ...[
               const Divider(height: 24),
-              Text('Message from ${request.client.domain}',
+              Text(t.text('messageFrom', {'domain': request.client.domain}),
                   style: theme.textTheme.labelMedium),
               const SizedBox(height: AppSpacing.xs),
               Text(message, key: const Key('binding-message')),
             ],
             const Divider(height: 24),
-            Fact('Origin, as reported by the application', _origin(),
+            Fact(t.text('originByApplication'), _origin(),
                 key: const Key('fact-origin')),
           ],
         ),
@@ -92,76 +97,82 @@ class ApprovalCard extends StatelessWidget {
     return request.origin;
   }
 
-  List<Widget> _transaction(ThemeData theme, TransactionDetail d) {
+  List<Widget> _transaction(ThemeData theme, TransactionDetail d,
+      ApprovalTexts t, TrustStrings trustTexts, Locale? locale) {
     final g = d.group!;
     return [
       // The total first, in the warning style when the value is not known.
       if (g.valueKnown)
         AmountHero(
-          amount: d.headline,
+          amount: d.headlineIn(locale),
           fiat: '${g.total}',
         )
       else ...[
-        const StatusBanner(
-          key: Key('value-unknown'),
+        StatusBanner(
+          key: const Key('value-unknown'),
           severity: StatusSeverity.warning,
           icon: Icons.warning_amber_rounded,
-          title: 'Value unknown',
-          message: 'Biatec could not work out what this is worth, or an '
-              'application in it is not trusted. Approve only if you started '
-              'this action yourself.',
+          title: t.text('valueUnknown'),
+          message: t.text('valueUnknownBody'),
         ),
       ],
       const SizedBox(height: AppSpacing.m),
       for (var i = 0; i < g.transfers.length; i++)
-        _transfer(theme, i, g.transfers[i]),
+        _transfer(theme, i, g.transfers[i], t),
       if (g.transfers.isEmpty)
-        const Fact('Transfers', 'None', key: Key('fact-no-transfers')),
+        Fact(t.text('transfers'), t.text('none'),
+            key: const Key('fact-no-transfers')),
       for (var i = 0; i < g.applications.length; i++)
-        ..._applicationRow(i, g.applications),
+        ..._applicationRow(i, g.applications, t, trustTexts),
       if (trust && request.rememberableTruncated)
         Padding(
           key: const Key('remember-truncated'),
           padding: const EdgeInsets.only(bottom: AppSpacing.s),
-          child: Text(TrustStrings.of().t('moreApplications',
+          child: Text(trustTexts.t('moreApplications',
               {'max': '${ConsentRequest.maxRemembered}'})),
         ),
-      Fact('From', d.sender, mono: true, key: const Key('fact-sender')),
-      Fact('Network', d.network, key: const Key('fact-network')),
-      Fact('Group hash', d.groupHash, mono: true, key: const Key('fact-hash')),
+      Fact(t.text('from'), d.sender, mono: true, key: const Key('fact-sender')),
+      Fact(t.text('network'), d.network, key: const Key('fact-network')),
+      Fact(t.text('groupHash'), d.groupHash,
+          mono: true, key: const Key('fact-hash')),
     ];
   }
 
-  Widget _transfer(ThemeData theme, int i, TransferEntry t) => Padding(
+  Widget _transfer(ThemeData theme, int i, TransferEntry e, ApprovalTexts t) =>
+      Padding(
         padding: const EdgeInsets.only(bottom: AppSpacing.s),
         child: Column(
             key: Key('transfer-$i'),
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${t.amount} ${t.asset.symbol}',
+              Text('${e.amount} ${e.asset.symbol}',
                   key: Key('transfer-$i-amount'),
                   style: theme.textTheme.titleMedium
                       ?.copyWith(fontWeight: FontWeight.w700)),
-              Text(t.fiat == null ? 'Value unknown' : '${t.fiat}',
+              Text(e.fiat == null ? t.text('valueUnknown') : '${e.fiat}',
                   key: Key('transfer-$i-fiat')),
-              Fact('To', t.receiver,
+              Fact(t.text('to'), e.receiver,
                   mono: true, key: Key('transfer-$i-receiver')),
-              Text('Asset ${t.asset.symbol} (id ${t.asset.id}, '
-                  '${t.asset.decimals} decimals)'),
+              Text(t.text('assetLine', {
+                'symbol': e.asset.symbol,
+                'id': e.asset.id,
+                'decimals': e.asset.decimals,
+              })),
             ]),
       );
 
   /// The application, and for an untrusted one that can be remembered the box "don't ask again" (unticked: the user decides, nothing is ticked for them).
-  List<Widget> _applicationRow(int i, List<ApplicationEntry> all) {
+  List<Widget> _applicationRow(int i, List<ApplicationEntry> all,
+      ApprovalTexts t, TrustStrings trustTexts) {
     final a = all[i];
     final offered = trust && request.canRemember(a);
     return [
-      _application(i, a),
-      if (offered) _rememberBox(a),
+      _application(i, a, t),
+      if (offered) _rememberBox(a, trustTexts),
     ];
   }
 
-  Widget _rememberBox(ApplicationEntry a) {
+  Widget _rememberBox(ApplicationEntry a, TrustStrings trustTexts) {
     final c = request.client;
     final who = c.domainProven && c.domain != null
         ? c.domain!
@@ -173,39 +184,38 @@ class ApprovalCard extends StatelessWidget {
       value: remembered.contains(a.id),
       onChanged:
           onRemember == null ? null : (v) => onRemember!(a.id, v ?? false),
-      title: Text(TrustStrings.of()
-          .t('dontAskAgain', {'id': a.id, 'who': who})),
+      title: Text(trustTexts.t('dontAskAgain', {'id': a.id, 'who': who})),
     );
   }
 
-  Widget _application(int i, ApplicationEntry a) => a.trusted
-      ? Fact('Calls application', a.id, key: Key('application-$i'))
+  Widget _application(int i, ApplicationEntry a, ApprovalTexts t) => a.trusted
+      ? Fact(t.text('callsApplication'), a.id, key: Key('application-$i'))
       : StatusBanner(
           key: Key('application-$i'),
           severity: StatusSeverity.warning,
           icon: Icons.warning_amber_rounded,
-          title: 'Calls application ${a.id}',
-          message: 'You have not trusted this application for this '
-              'service. It can do more than the transfers listed.',
+          title: t.text('callsApplicationId', {'id': a.id}),
+          message: t.text('untrustedApplication'),
         );
 
-  List<Widget> _limits(ThemeData theme, LimitsChangeDetail d) => [
+  List<Widget> _limits(ThemeData theme, LimitsChangeDetail d, ApprovalTexts t) =>
+      [
         Semantics(
           header: true,
-          child: Text('Change spending limits',
+          child: Text(t.text('changeLimits'),
               style: theme.textTheme.headlineSmall
                   ?.copyWith(fontWeight: FontWeight.w700)),
         ),
         const SizedBox(height: AppSpacing.s),
-        _limitsWarning(d),
+        _limitsWarning(d, t),
         const SizedBox(height: AppSpacing.s),
-        Fact('Per transaction',
+        Fact(t.text('perTransaction'),
             '${d.current.perTransactionEur} EUR → ${d.requested.perTransactionEur} EUR',
             key: const Key('fact-per-transaction')),
-        Fact('Per day',
+        Fact(t.text('perDay'),
             '${d.current.perDayEur} EUR → ${d.requested.perDayEur} EUR',
             key: const Key('fact-per-day')),
-        Fact('Request hash', d.requestHash,
+        Fact(t.text('requestHash'), d.requestHash,
             mono: true, key: const Key('fact-hash')),
       ];
 
@@ -229,25 +239,25 @@ class ApprovalCard extends StatelessWidget {
     return down ? LimitsMove.lowers : LimitsMove.same;
   }
 
-  Widget _limitsWarning(LimitsChangeDetail d) => switch (limitsMove(d)) {
-        LimitsMove.raises => const StatusBanner(
-            key: Key('limits-raised'),
+  Widget _limitsWarning(LimitsChangeDetail d, ApprovalTexts t) =>
+      switch (limitsMove(d)) {
+        LimitsMove.raises => StatusBanner(
+            key: const Key('limits-raised'),
             severity: StatusSeverity.warning,
-            title: 'This raises your limits',
-            message: 'More can be moved without asking you again. Approve '
-                'only if you asked for this.',
+            title: t.text('limitsRaisedTitle'),
+            message: t.text('limitsRaisedBody'),
           ),
-        LimitsMove.lowers => const StatusBanner(
-            key: Key('limits-lowered'),
+        LimitsMove.lowers => StatusBanner(
+            key: const Key('limits-lowered'),
             severity: StatusSeverity.info,
-            title: 'This lowers your limits',
-            message: 'Less can be moved without asking you.',
+            title: t.text('limitsLoweredTitle'),
+            message: t.text('limitsLoweredBody'),
           ),
-        LimitsMove.same => const StatusBanner(
-            key: Key('limits-same'),
+        LimitsMove.same => StatusBanner(
+            key: const Key('limits-same'),
             severity: StatusSeverity.info,
-            title: 'These limits stay the same',
-            message: 'The requested limits equal the current ones.',
+            title: t.text('limitsSameTitle'),
+            message: t.text('limitsSameBody'),
           ),
       };
 }
@@ -262,7 +272,7 @@ class UnsupportedRequestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = RpStrings.of();
+    final s = RpStrings.of(Localizations.maybeLocaleOf(context));
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.m),

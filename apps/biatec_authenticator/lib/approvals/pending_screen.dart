@@ -8,6 +8,7 @@ import '../ui/ui.dart';
 import 'approval_client.dart';
 import 'approval_screen.dart';
 import 'approval_services.dart';
+import 'approval_texts.dart';
 import '../text/rp_strings.dart';
 import 'consent_request.dart';
 import 'widgets/request_card.dart';
@@ -109,7 +110,8 @@ class _PendingScreenState extends State<PendingScreen> {
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(
           key: const Key('dismissed'),
-          content: Text(RpStrings.of().t('dismissed'))));
+          content: Text(RpStrings.of(Localizations.maybeLocaleOf(context))
+              .t('dismissed'))));
   }
 
   /// A failing listener is that listener's problem, not a failed load.
@@ -299,6 +301,7 @@ class _PendingScreenState extends State<PendingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = ApprovalTexts.ofContext(context);
     final requests = _requests;
     final error = _error;
     final Widget content;
@@ -307,25 +310,25 @@ class _PendingScreenState extends State<PendingScreen> {
           ? const LoadingSkeleton()
           : ErrorState(
               key: const Key('pending-error'),
-              title: _offline ? null : 'Could not load requests',
+              title: t.text(_offline ? 'offlineTitle' : 'loadFailed'),
               message: error,
               offline: _offline,
+              retryLabel: t.text('tryAgain'),
               onRetry: _refresh,
             );
     } else if (_signedOut) {
-      content = const EmptyState(
-        key: Key('pending-signed-out'),
+      content = EmptyState(
+        key: const Key('pending-signed-out'),
         icon: Icons.link_off,
-        title: 'This device is not enrolled',
-        message: 'Enroll this device to receive requests.',
+        title: t.text('notEnrolledTitle'),
+        message: t.text('notEnrolledBody'),
       );
     } else if (requests.isEmpty) {
       content = EmptyState(
         icon: Icons.fact_check_outlined,
-        title: 'No pending approvals',
-        message: 'Requests from Biatec Chat appear here, and this device '
-            'is notified when one arrives.',
-        actionLabel: 'Check again',
+        title: t.text('noPendingTitle'),
+        message: t.text('noPendingBody'),
+        actionLabel: t.text('checkAgain'),
         onAction: _refresh,
       );
     } else {
@@ -347,10 +350,10 @@ class _PendingScreenState extends State<PendingScreen> {
       );
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('Pending approvals'), actions: [
+      appBar: AppBar(title: Text(t.text('pendingTitle')), actions: [
         IconButton(
             onPressed: _refresh,
-            tooltip: 'Refresh',
+            tooltip: t.text('refresh'),
             icon: const Icon(Icons.refresh)),
       ]),
       // The same two slots in every state, so a banner that comes or goes does not rebuild the list under it.
@@ -364,9 +367,9 @@ class _PendingScreenState extends State<PendingScreen> {
                 ? OfflineBanner(onRetry: _refresh)
                 : StatusBanner(
                     severity: StatusSeverity.warning,
-                    title: 'Could not load requests',
+                    title: t.text('loadFailed'),
                     message: error,
-                    actionLabel: 'Try again',
+                    actionLabel: t.text('tryAgain'),
                     onAction: _refresh),
           )
         else

@@ -1,28 +1,22 @@
 import 'dart:ui';
 
+import '../l10n/texts.dart';
+
 /// The texts of the relying-party features (protocol 1.2): linking a service by QR code and the payment, login and action cards. English and Slovak, chosen by the phone's language (Slovak for `sk`,
 /// English otherwise). A text may hold `{name}` places that [t] fills; what goes into one is a value this app computed or text a service wrote that already passed the text rules, and it is always
 /// drawn as plain text.
-class RpStrings {
-  const RpStrings._(this._t);
+class RpStrings extends Texts {
+  const RpStrings._(super.values);
 
-  factory RpStrings.of([Locale? locale]) {
-    final language =
-        (locale ?? PlatformDispatcher.instance.locale).languageCode;
-    return language == 'sk' ? sk : en;
-  }
-
-  final Map<String, String> _t;
+  factory RpStrings.of([Locale? locale]) =>
+      appLanguageIsSlovak(locale) ? sk : en;
 
   static final RegExp _place = RegExp(r'\{([A-Za-z]+)\}');
 
   /// The text for [key] with each `{name}` of it replaced from [args], in one pass (a value that itself holds `{name}` is never substituted again).
   String t(String key, [Map<String, String> args = const {}]) {
-    return _t[key]!.replaceAllMapped(_place, (m) => args[m[1]] ?? m[0]!);
+    return values[key]!.replaceAllMapped(_place, (m) => args[m[1]] ?? m[0]!);
   }
-
-  /// Every key, so a test can check that both languages have all of them.
-  Iterable<String> get keys => _t.keys;
 
   static const en = RpStrings._({
     // The cards.
@@ -94,6 +88,18 @@ class RpStrings {
         'If it went through, the service is now in Settings, Linked services.',
     'dismiss': 'Dismiss',
     'dismissed': 'Dismissed. Nothing was sent.',
+    'promptTitle': 'Link this service',
+    'touchObscured':
+        'Another app is drawing over this screen, so nothing was sent. Close it and tap Link again.',
+    'offline': 'Offline. Linking needs a connection to Biatec OIDC.',
+    'offlineTitle': 'You are offline',
+    'errorTitle': 'Something went wrong',
+    'tryAgain': 'Try again',
+    'notEnrolled': 'This device is not enrolled.',
+    'couldNotLink': 'Could not link: {why}',
+    'couldNotDecline': 'Could not decline: {why}',
+    'refused': 'Refused ({status}): {why}',
+    'unexpectedAnswer': 'Unexpected answer from Biatec OIDC.',
   });
 
   static const sk = RpStrings._({
@@ -164,5 +170,17 @@ class RpStrings {
         'Ak prebehlo, služba je teraz v Nastaveniach, Prepojené služby.',
     'dismiss': 'Zavrieť',
     'dismissed': 'Zavreté. Nič sa neodoslalo.',
+    'promptTitle': 'Prepojiť túto službu',
+    'touchObscured':
+        'Cez túto obrazovku kreslí iná aplikácia, preto sa nič neodoslalo. Zatvorte ju a znova ťuknite na Prepojiť.',
+    'offline': 'Offline. Prepájanie potrebuje spojenie s Biatec OIDC.',
+    'offlineTitle': 'Ste offline',
+    'errorTitle': 'Niečo sa pokazilo',
+    'tryAgain': 'Skúsiť znova',
+    'notEnrolled': 'Toto zariadenie nie je zaregistrované.',
+    'couldNotLink': 'Nepodarilo sa prepojiť: {why}',
+    'couldNotDecline': 'Nepodarilo sa odmietnuť: {why}',
+    'refused': 'Odmietnuté ({status}): {why}',
+    'unexpectedAnswer': 'Neočakávaná odpoveď od Biatec OIDC.',
   });
 }

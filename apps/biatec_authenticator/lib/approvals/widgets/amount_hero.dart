@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../theme.dart';
+import '../approval_texts.dart';
 
 /// What the user is approving, large: the amount and its value in the user's currency. The two texts are exactly what the authorization details say. A screen reader hears one sentence with both, in full.
 class AmountHero extends StatelessWidget {
@@ -23,12 +24,13 @@ class AmountHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final t = ApprovalTexts.ofContext(context);
     return Semantics(
       container: true,
-      label: 'You are approving $amount, worth $fiat',
+      label: t.text('youAreApprovingSpoken', {'amount': amount, 'fiat': fiat}),
       child: ExcludeSemantics(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('You are approving',
+          Text(t.text('youAreApproving'),
               style: theme.textTheme.labelLarge
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
           const SizedBox(height: AppSpacing.xs),

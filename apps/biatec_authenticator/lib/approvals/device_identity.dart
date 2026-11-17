@@ -2,6 +2,7 @@ import '../enrollment/enrollment_state.dart';
 import '../keys/device_key_store.dart';
 import '../keys/key_security_level.dart';
 import 'approval_client.dart';
+import 'approval_texts.dart';
 import 'receipt.dart';
 
 /// The two keys of an enrolled device (protocol 1.1) with the attestation Biatec OIDC issued for each: what signs a receipt and a link statement. The caller has checked that the device is enrolled and
@@ -13,13 +14,11 @@ Future<DeviceIdentity> twoKeyIdentityOf(
   final presenceAttestation = record.presenceAttestation;
   if (presenceKid == null || presenceAttestation == null) {
     // An install from before the two keys: its one key is not bound to the biometrics. No silent migration.
-    throw const ApprovalException(
-        'This device uses an old device key. Enroll it again.');
+    throw ApprovalException(ApprovalTexts.of().text('oldKey'));
   }
   final presence = await keys.loadPresence();
   if (presence == null || presence.kid != presenceKid) {
-    throw const ApprovalException(
-        'The device key is missing. Enroll this device again.');
+    throw ApprovalException(ApprovalTexts.of().text('keyMissing'));
   }
   if (presence.securityLevel.blocksSigning) {
     throw const ApprovalException(KeySecurityLevel.softwareKeyMessage);
@@ -45,11 +44,10 @@ String? cannotApproveWith(DeviceIdentity device, KeysState? state) {
   // The state says ok but the key cannot be loaded: it is gone.
   if (key == null) return ApprovalKeysMissing.message;
   if (device.approvalAttestation == null) {
-    return 'This enrollment has no attestation. Enroll the device again.';
+    return ApprovalTexts.of().text('noAttestation');
   }
   if (key.securityLevel.blocksSigning || !key.gestureRequired) {
-    return 'This device cannot protect approvals. Remove it from your account '
-        'and enroll again on a device that can.';
+    return ApprovalTexts.of().text('cannotProtect');
   }
   return null;
 }

@@ -23,7 +23,7 @@ class RelyingPartyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final detail = request.detail;
     if (detail is! RelyingPartyDetail) return const SizedBox.shrink();
-    final s = RpStrings.of();
+    final s = RpStrings.of(Localizations.maybeLocaleOf(context));
     final body = switch (detail) {
       PaymentDetail() => PaymentCardBody(detail: detail),
       LoginDetail() => LoginCardBody(detail: detail, client: request.client),
@@ -60,7 +60,7 @@ class WrittenByServiceBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final s = RpStrings.of();
+    final s = RpStrings.of(Localizations.maybeLocaleOf(context));
     return Container(
       key: const Key('written-by-service'),
       width: double.infinity,
