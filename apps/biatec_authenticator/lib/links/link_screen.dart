@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../approvals/cards/relying_party_card.dart' show WrittenByServiceBox;
 import '../approvals/widgets/approval_actions.dart';

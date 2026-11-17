@@ -7,7 +7,7 @@ import 'package:biatec_authenticator/lock/lock_screens.dart';
 import 'package:biatec_authenticator/totp/backup/backup_service.dart';
 
 import 'package:biatec_authenticator/theme.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../totp/backup/backup_service_test.dart'

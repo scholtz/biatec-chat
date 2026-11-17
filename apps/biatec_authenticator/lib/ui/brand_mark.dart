@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// The mark of Biatec Authenticator, drawn as a vector so it is sharp at any size and follows light and dark: a shield with a check. It is decoration (the name is always written next to it), so it is hidden from screen readers.
 class BrandMark extends StatelessWidget {

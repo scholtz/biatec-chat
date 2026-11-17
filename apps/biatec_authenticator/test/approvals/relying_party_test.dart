@@ -12,7 +12,7 @@ import 'package:biatec_authenticator/approvals/receipt.dart';
 import 'package:biatec_authenticator/approvals/widgets/request_card.dart';
 import 'package:biatec_authenticator/text/rp_strings.dart';
 import 'package:biatec_authenticator/theme.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'approval_test.dart' show vectorNow;

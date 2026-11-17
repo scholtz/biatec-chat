@@ -1,5 +1,5 @@
 import 'package:biatec_authenticator/security/pin_prompt.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

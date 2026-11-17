@@ -13,7 +13,7 @@ import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
 import 'package:biatec_authenticator/theme.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'approval_test.dart' show FakeGate, FakeOidc, vectorNow, vectorRequest;

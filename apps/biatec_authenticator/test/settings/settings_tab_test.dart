@@ -8,7 +8,7 @@ import 'package:biatec_authenticator/settings/app_info.dart';
 import 'package:biatec_authenticator/settings/settings_screen.dart';
 import 'package:biatec_authenticator/settings/theme_controller.dart';
 import 'package:biatec_authenticator/theme.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../lock/support.dart';

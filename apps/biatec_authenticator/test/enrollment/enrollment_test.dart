@@ -9,7 +9,7 @@ import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/keys/key_security_level.dart';
 import '../keys/fake_two_keys.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';

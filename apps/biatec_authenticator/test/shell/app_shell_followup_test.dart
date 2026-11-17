@@ -6,7 +6,7 @@ import 'package:biatec_authenticator/enrollment/enrollment_screen.dart';
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/main.dart';
 import 'package:biatec_authenticator/shell/shell_controller.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../lock/support.dart';

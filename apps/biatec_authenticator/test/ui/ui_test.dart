@@ -1,6 +1,6 @@
 import 'package:biatec_authenticator/theme.dart';
 import 'package:biatec_authenticator/ui/ui.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// [child] on a narrow screen, in both brightnesses, at normal and 3x text.

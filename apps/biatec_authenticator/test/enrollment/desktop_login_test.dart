@@ -12,7 +12,7 @@ import 'package:biatec_authenticator/enrollment/widgets/enrollment_problem.dart'
 import 'package:biatec_authenticator/enrollment/oidc_enrollment_client.dart';
 import 'package:biatec_authenticator/theme.dart';
 import 'package:flutter/foundation.dart' show TargetPlatform, debugDefaultTargetPlatformOverride;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart' show MissingPluginException;
 import 'package:biatec_authenticator/keys/device_key_store.dart';
 import 'package:flutter_test/flutter_test.dart';

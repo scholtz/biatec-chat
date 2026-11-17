@@ -10,7 +10,7 @@ import 'package:biatec_authenticator/approvals/widgets/mono.dart';
 import 'package:biatec_authenticator/security/touch_guard.dart';
 import 'package:biatec_authenticator/theme.dart';
 import 'package:biatec_authenticator/ui/ui.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'approval_test.dart' show Harness, vectorRequest;

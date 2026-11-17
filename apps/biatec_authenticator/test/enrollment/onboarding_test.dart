@@ -15,7 +15,7 @@ import 'package:biatec_authenticator/enrollment/widgets/onboarding_step.dart';
 import 'package:biatec_authenticator/keys/key_security_level.dart';
 import 'package:biatec_authenticator/theme.dart';
 import 'package:biatec_authenticator/ui/ui.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../keys/fake_two_keys.dart';
 import 'package:http/http.dart' as http;

@@ -25,6 +25,8 @@ dependencies:
   # Tells the channel when there is no network, so it makes no attempts then.
   connectivity_plus: ^6.1.0
   flutter_appauth: ^13.0.0
+  material_ui: ^1.11.1
+  cupertino_ui: ^1.1.7
 
 dev_dependencies:
   flutter_test:

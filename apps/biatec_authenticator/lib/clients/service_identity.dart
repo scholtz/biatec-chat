@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../approvals/consent_request.dart';
 import '../security/settings_client.dart';

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../lock/biometric_authenticator.dart';
 import '../lock/lock_controller.dart';

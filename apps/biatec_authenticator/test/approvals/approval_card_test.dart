@@ -2,7 +2,7 @@ import 'package:biatec_authenticator/approvals/approval_card.dart';
 import 'package:biatec_authenticator/approvals/approval_screen.dart';
 import 'package:biatec_authenticator/approvals/consent_request.dart';
 import 'package:biatec_authenticator/theme.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'approval_test.dart' show Harness, vectorRequest, vectorRequest10;
