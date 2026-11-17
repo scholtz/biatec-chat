@@ -1,5 +1,6 @@
 #include "hello.h"
 
+#include <atomic>
 #include <chrono>
 
 #include <winrt/Windows.Foundation.h>
@@ -12,6 +13,9 @@ namespace hello {
 namespace {
 
 namespace ui = winrt::Windows::Security::Credentials::UI;
+
+// True from the start of a consent dialog until its operation ends.
+std::atomic<bool> g_dialog_open{false};
 
 constexpr std::chrono::minutes kPromptTimeout{2};
 constexpr std::chrono::seconds kCheckTimeout{10};
@@ -37,9 +41,13 @@ Availability Check() {
     EnsureApartment();
     auto check = ui::UserConsentVerifier::CheckAvailabilityAsync();
     // The same rule as for the prompt: a call that never completes must not hold the worker (and the enrollment waiting for the probe) for ever.
-    if (check.wait_for(kCheckTimeout) != winrt::Windows::Foundation::AsyncStatus::Completed) {
+    const auto checked = check.wait_for(kCheckTimeout);
+    if (checked == winrt::Windows::Foundation::AsyncStatus::Started) {
       check.Cancel();
       return Availability::kUnavailable;
+    }
+    if (checked != winrt::Windows::Foundation::AsyncStatus::Completed) {
+      return Availability::kUnavailable;  // it failed or was cancelled
     }
     switch (check.GetResults()) {
       case ui::UserConsentVerifierAvailability::Available:
@@ -57,6 +65,8 @@ Availability Check() {
 }
 
 Outcome Verify(HWND window, const std::wstring& message) {
+  // A dialog of an earlier prompt that was cancelled but has not closed yet is still on the screen: no second one is opened over it.
+  if (g_dialog_open.load()) return Outcome::kFailed;
   try {
     EnsureApartment();
     auto factory = winrt::get_activation_factory<ui::UserConsentVerifier,
@@ -69,14 +79,21 @@ Outcome Verify(HWND window, const std::wstring& message) {
         winrt::guid_of<winrt::Windows::Foundation::IAsyncOperation<
             ui::UserConsentVerificationResult>>(),
         winrt::put_abi(operation)));
+    // The dialog counts as open until the operation really ends, whatever this function returns meanwhile.
+    g_dialog_open = true;
+    operation.Completed([](const auto&, winrt::Windows::Foundation::AsyncStatus) {
+      g_dialog_open = false;
+    });
     // A prompt nobody answers must not hold the worker (and with it every later approval) for ever: after this time it is taken as cancelled.
-    if (operation.wait_for(kPromptTimeout) !=
-        winrt::Windows::Foundation::AsyncStatus::Completed) {
+    const auto answered = operation.wait_for(kPromptTimeout);
+    if (answered == winrt::Windows::Foundation::AsyncStatus::Started) {
       operation.Cancel();
-      // The dialog is closed by the cancel: wait for that (briefly), so a second prompt is not opened while the first one is still on the screen.
+      // The dialog is closed by the cancel: wait for that (briefly). If it is slow, g_dialog_open keeps a second prompt from opening over it.
       operation.wait_for(kCancelGrace);
       return Outcome::kCanceled;
     }
+    if (answered == winrt::Windows::Foundation::AsyncStatus::Error) return Outcome::kFailed;
+    if (answered == winrt::Windows::Foundation::AsyncStatus::Canceled) return Outcome::kCanceled;
     switch (operation.GetResults()) {
       case ui::UserConsentVerificationResult::Verified:
         return Outcome::kVerified;

@@ -342,9 +342,14 @@ void KeyChannels::RunAsync(Result result, std::function<EncodableValue()> work) 
       window = shared->window;
       if (window != nullptr) shared->queue.push_back(std::move(done));
     }
-    // A message that cannot be posted (a full queue) would leave the call open for ever: the answer is then run by the next message that arrives, and a worker that
-    // cannot reach the window at all drops it.
-    if (window != nullptr) PostMessage(window, kRunQueuedMessage, 0, 0);
+    // A message that cannot be posted (the window's queue is full) would leave the call open for ever: the worker tries again for a while, and stops when the
+    // window is gone.
+    if (window != nullptr) {
+      for (int attempt = 0; attempt < 100 && !PostMessage(window, kRunQueuedMessage, 0, 0); attempt++) {
+        if (!IsWindow(window)) break;
+        Sleep(50);
+      }
+    }
   }).detach();
   } catch (const std::exception&) {
     // No thread could be made: the call is answered now, never left open.

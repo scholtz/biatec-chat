@@ -48,8 +48,8 @@ String? cannotApproveWith(DeviceIdentity device, KeysState? state) {
     return 'This enrollment has no attestation. Enroll the device again.';
   }
   if (key.securityLevel.blocksSigning || !key.gestureRequired) {
-    return 'This device cannot protect approvals. Enroll this device on '
-        'a phone that can.';
+    return 'This device cannot protect approvals. Remove it from your account '
+        'and enroll again on a device that can.';
   }
   return null;
 }
