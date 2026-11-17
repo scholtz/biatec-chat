@@ -10,6 +10,7 @@ import '../widgets/fact_row.dart';
 import '../widgets/mono.dart';
 import 'day_groups.dart';
 import 'history_status.dart';
+import 'history_texts.dart';
 
 /// One recorded decision in full: what it was, who asked, when, the receipt id (with copy) and the device key that signed it, and the stored receipt itself.
 ///
@@ -37,19 +38,21 @@ class HistoryDetailScreen extends StatelessWidget {
   Future<void> _copy(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: entry.authReqId));
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Receipt id copied')));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(HistoryTexts.ofContext(context).text('idCopied'))));
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final format = DayFormat.of(context);
+    final t = HistoryTexts.of(format.locale);
     final receipt = redactReceipt(entry.receipt);
     final kid = deviceKeyId(receipt);
     final alg = receipt['alg'];
     final status = HistoryStatus.of(entry.decision);
     return Scaffold(
-      appBar: AppBar(title: const Text('Receipt')),
+      appBar: AppBar(title: Text(t.text('receiptTitle'))),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.m),
         children: [
@@ -67,10 +70,10 @@ class HistoryDetailScreen extends StatelessWidget {
           ),
           if (status == HistoryStatus.refused) ...[
             const SizedBox(height: AppSpacing.m),
-            const StatusBanner(
+            StatusBanner(
               severity: StatusSeverity.danger,
-              title: 'The request was refused',
-              message: 'Three wrong codes ended it. Nothing was approved.',
+              title: t.text('refusedTitle'),
+              message: t.text('refusedBody'),
             ),
           ],
           const SizedBox(height: AppSpacing.m),
@@ -80,49 +83,49 @@ class HistoryDetailScreen extends StatelessWidget {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Fact('Decision', statusLabel(entry.decision),
+                    Fact(t.text('decision'),
+                        statusLabel(entry.decision, format.locale),
                         key: const Key('receipt-decision')),
-                    Fact('Client', entry.clientLabel,
+                    Fact(t.text('client'), entry.clientLabel,
                         key: const Key('receipt-client')),
-                    Fact('Decided', dayAndClock(entry.decidedAt),
+                    Fact(t.text('decided'), dayAndClock(entry.decidedAt, format),
                         key: const Key('receipt-decided')),
                     // The receipt id is the request id: Biatec OIDC serves the verifiable receipt under it.
                     Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
-                            child: Fact('Receipt id', entry.authReqId,
+                            child: Fact(t.text('receiptId'), entry.authReqId,
                                 mono: true, key: const Key('receipt-id')),
                           ),
                           IconButton(
                             key: const Key('receipt-copy'),
-                            tooltip: 'Copy the receipt id',
+                            tooltip: t.text('copyId'),
                             icon: const Icon(Icons.copy),
                             onPressed: () => _copy(context),
                           ),
                         ]),
                     if (kid != null)
-                      Fact('Device key id', kid,
+                      Fact(t.text('deviceKeyId'), kid,
                           mono: true, key: const Key('receipt-kid')),
                     if (alg is String)
-                      Fact('Signature', alg, key: const Key('receipt-alg')),
+                      Fact(t.text('signature'), alg,
+                          key: const Key('receipt-alg')),
                   ]),
             ),
           ),
           const SizedBox(height: AppSpacing.m),
-          const StatusBanner(
+          StatusBanner(
             severity: StatusSeverity.info,
-            title: 'A copy for reading',
-            message: 'The one-time code you typed is not kept, so this copy '
-                'no longer verifies against its signature. Biatec OIDC holds '
-                'the receipt that does.',
+            title: t.text('copyTitle'),
+            message: t.text('copyBody'),
           ),
           const SizedBox(height: AppSpacing.m),
           Card(
             child: ExpansionTile(
               key: const Key('receipt-json-tile'),
-              title: const Text('Stored receipt'),
-              subtitle: const Text('As this device kept it'),
+              title: Text(t.text('storedReceipt')),
+              subtitle: Text(t.text('asKept')),
               childrenPadding: const EdgeInsets.all(AppSpacing.m),
               expandedCrossAxisAlignment: CrossAxisAlignment.start,
               children: [

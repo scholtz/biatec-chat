@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:ui' show Locale;
 
 import 'package:crypto/crypto.dart';
 
 import '../text/text_rules.dart';
+import 'approval_texts.dart';
 import 'jcs.dart';
 import 'models/transfer_models.dart';
 
@@ -344,23 +346,32 @@ class TransactionDetail extends AuthorizationDetail {
   @override
   String get boundHash => groupHash;
 
-  /// The amount line for lists and history.
-  String get headline {
+  /// The amount line for lists and history, in the device's language.
+  String get headline => headlineIn(null);
+
+  /// The amount line in the language of [locale] (the device's when null).
+  String headlineIn(Locale? locale) {
     final g = group;
     if (g == null) return '$amount $assetSymbol';
     if (g.transfers.length == 1) {
       final t = g.transfers.single;
       return '${t.amount} ${t.asset.symbol}';
     }
-    if (g.transfers.isEmpty) return 'No transfers';
-    return '${g.transfers.length} transfers';
+    final texts = ApprovalTexts.of(locale);
+    if (g.transfers.isEmpty) return texts.text('noTransfers');
+    return texts.text('nTransfers', {'n': g.transfers.length});
   }
 
-  /// The value line: the group total, or "Value unknown".
-  String get valueText {
+  /// The value line: the group total, or "Value unknown", in the device's language.
+  String get valueText => valueTextIn(null);
+
+  /// The value line in the language of [locale] (the device's when null).
+  String valueTextIn(Locale? locale) {
     final g = group;
     if (g == null) return '$fiatAmount $fiatCurrency';
-    return g.valueKnown ? '${g.total}' : 'Value unknown';
+    return g.valueKnown
+        ? '${g.total}'
+        : ApprovalTexts.of(locale).text('valueUnknown');
   }
 
   factory TransactionDetail.fromJson(Map<String, Object?> json) {

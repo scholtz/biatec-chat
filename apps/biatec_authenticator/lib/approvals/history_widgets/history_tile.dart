@@ -4,6 +4,7 @@ import '../../theme.dart';
 import '../history_store.dart';
 import 'day_groups.dart';
 import 'history_status.dart';
+import 'history_texts.dart';
 
 /// [s] as one spoken sentence: trimmed, and ending in exactly one of . ! ? (an empty text stays empty), so a text that already ends in a stop is not read with two.
 String sentence(String s) {
@@ -22,17 +23,22 @@ class HistoryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final format = DayFormat.of(context);
+    final texts = HistoryTexts.of(format.locale);
     final time = clockText(entry.decidedAt);
     // The day is spoken too: a screen reader moving by item does not read the day heading with it.
     // Without a stop of its own: it sits mid-sentence, before the date.
     final client =
         entry.clientLabel.trim().replaceFirst(RegExp(r'[.!?]+$'), '');
+    final when = dayAndClock(entry.decidedAt, format);
     final spoken = [
-      sentence(statusLabel(entry.decision)),
+      sentence(statusLabel(entry.decision, format.locale)),
       sentence(entry.summary),
-      sentence('${client.isEmpty ? 'At' : 'From $client,'} '
-          '${dayAndClock(entry.decidedAt)}'),
-      'Double tap to open the receipt.',
+      // The date first: the client is a name from outside and is never read as a place to fill.
+      sentence(client.isEmpty
+          ? texts.text('spokenAt', {'when': when})
+          : texts.text('spokenFrom', {'when': when, 'client': client})),
+      texts.text('doubleTapReceipt'),
     ].where((s) => s.isNotEmpty).join(' ');
     return Card(
       clipBehavior: Clip.antiAlias,

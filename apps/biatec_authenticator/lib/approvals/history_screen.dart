@@ -10,6 +10,7 @@ import 'history_widgets/day_groups.dart';
 import 'history_widgets/history_detail.dart';
 import 'history_widgets/history_filters.dart';
 import 'history_widgets/history_status.dart';
+import 'history_widgets/history_texts.dart';
 import 'history_widgets/history_tile.dart';
 
 /// Decisions this device signed, newest first and grouped by day, with a filter by status. A decision opens its receipt.
@@ -100,17 +101,18 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
   @override
   Widget build(BuildContext context) {
     final list = _entries;
+    final t = HistoryTexts.ofContext(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Approval history')),
+      appBar: AppBar(title: Text(t.text('title'))),
       body: list == null
           ? (_failed
               ? RefreshIndicator(
                   key: _refresher,
                   onRefresh: _load,
                   child: ErrorState(
-                      title: 'History could not be read',
-                      message:
-                          'The decisions stored on this device did not open.',
+                      title: t.text('readFailedTitle'),
+                      message: t.text('readFailedBody'),
+                      retryLabel: t.text('tryAgain'),
                       onRetry: _retry),
                 )
               : const LoadingSkeleton())
@@ -122,9 +124,9 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
                   padding: const EdgeInsets.all(AppSpacing.s),
                   child: StatusBanner(
                     severity: StatusSeverity.warning,
-                    title: 'History could not be refreshed',
-                    message: 'Showing what was read before.',
-                    actionLabel: 'Try again',
+                    title: t.text('refreshFailedTitle'),
+                    message: t.text('refreshFailedBody'),
+                    actionLabel: t.text('tryAgain'),
                     onAction: _retry,
                   ),
                 ),
@@ -132,21 +134,21 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
                 child: RefreshIndicator(
                   key: _refresher,
                   onRefresh: _load,
-                  child: _list(list),
+                  child: _list(list, t),
                 ),
               ),
             ]),
     );
   }
 
-  Widget _list(List<HistoryEntry> list) {
+  Widget _list(List<HistoryEntry> list, HistoryTexts t) {
     if (list.isEmpty) {
-      return const EmptyState(
+      return EmptyState(
           icon: Icons.receipt_long_outlined,
-          title: 'No approvals yet',
-          message: 'Requests you approve or deny on this device are '
-              'listed here with their receipts.');
+          title: t.text('emptyTitle'),
+          message: t.text('emptyBody'));
     }
+    final format = DayFormat.of(context);
     final shown = list.where(_filter.matches).toList();
     final now = (widget.clock ?? DateTime.now)();
     return ListView(
@@ -160,23 +162,22 @@ class _HistoryScreenState extends State<HistoryScreen> with TabReloadListener {
           Padding(
             padding: const EdgeInsets.all(AppSpacing.l),
             child: Column(children: [
-              Text(_filter.emptyText,
+              Text(_filter.emptyTextIn(format.locale),
                   key: const Key('history-filter-empty'),
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: AppSpacing.s),
-              const Text('No decision on this device matches this filter.',
-                  textAlign: TextAlign.center),
+              Text(t.text('noMatch'), textAlign: TextAlign.center),
               const SizedBox(height: AppSpacing.m),
               OutlinedButton(
                 key: const Key('history-show-all'),
                 onPressed: () => setState(() => _filter = HistoryFilter.all),
-                child: const Text('Show all'),
+                child: Text(t.text('showAll')),
               ),
             ]),
           )
         else
-          for (final group in groupByDay(shown, now)) ...[
+          for (final group in groupByDay(shown, now, format)) ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(
                   AppSpacing.m, AppSpacing.m, AppSpacing.m, AppSpacing.xs),
