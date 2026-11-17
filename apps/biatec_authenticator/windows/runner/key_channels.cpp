@@ -323,6 +323,7 @@ void KeyChannels::RunAsync(Result result, std::function<EncodableValue()> work) 
   pending_[id] = std::move(result);
   // The worker holds only data and the shared queue, never the reply object or `this`. An error of ours is answered with its code; anything else as
   // `keystore_error`.
+  try {
   std::thread([shared = shared_, id, work = std::move(work)]() {
     Done done;
     done.id = id;
@@ -341,8 +342,16 @@ void KeyChannels::RunAsync(Result result, std::function<EncodableValue()> work) 
       window = shared->window;
       if (window != nullptr) shared->queue.push_back(std::move(done));
     }
+    // A message that cannot be posted (a full queue) would leave the call open for ever: the answer is then run by the next message that arrives, and a worker that
+    // cannot reach the window at all drops it.
     if (window != nullptr) PostMessage(window, kRunQueuedMessage, 0, 0);
   }).detach();
+  } catch (const std::exception&) {
+    // No thread could be made: the call is answered now, never left open.
+    Result failed = std::move(pending_[id]);
+    pending_.erase(id);
+    failed->Error("keystore_error", "The key store could not do that.");
+  }
 }
 
 void KeyChannels::RunQueued() {

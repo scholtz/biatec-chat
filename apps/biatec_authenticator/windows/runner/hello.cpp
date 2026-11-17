@@ -1,5 +1,7 @@
 #include "hello.h"
 
+#include <chrono>
+
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Security.Credentials.UI.h>
 #include <winrt/base.h>
@@ -10,6 +12,8 @@ namespace hello {
 namespace {
 
 namespace ui = winrt::Windows::Security::Credentials::UI;
+
+constexpr std::chrono::minutes kPromptTimeout{2};
 
 // A worker thread joins the multithreaded apartment once; the main thread is a single-threaded apartment and does not call in here.
 void EnsureApartment() {
@@ -57,7 +61,13 @@ Outcome Verify(HWND window, const std::wstring& message) {
         winrt::guid_of<winrt::Windows::Foundation::IAsyncOperation<
             ui::UserConsentVerificationResult>>(),
         winrt::put_abi(operation)));
-    switch (operation.get()) {
+    // A prompt nobody answers must not hold the worker (and with it every later approval) for ever: after this time it is taken as cancelled.
+    if (operation.wait_for(kPromptTimeout) !=
+        winrt::Windows::Foundation::AsyncStatus::Completed) {
+      operation.Cancel();
+      return Outcome::kCanceled;
+    }
+    switch (operation.GetResults()) {
       case ui::UserConsentVerificationResult::Verified:
         return Outcome::kVerified;
       case ui::UserConsentVerificationResult::Canceled:

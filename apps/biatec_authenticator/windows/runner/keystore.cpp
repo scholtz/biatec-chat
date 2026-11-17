@@ -5,6 +5,7 @@
 #include <ncrypt.h>
 
 #include <cstring>
+#include <cwchar>
 #include <mutex>
 
 namespace keystore {
@@ -14,9 +15,10 @@ namespace {
 constexpr wchar_t kApprovalName[] = L"io.biatec.authenticator.approval.v1";
 constexpr wchar_t kPresenceName[] = L"io.biatec.authenticator.presence.v1";
 
-// NTE_BAD_KEYSET and NTE_NO_KEY: the key is not there.
+// NTE_BAD_KEYSET, NTE_NO_KEY and NTE_NOT_FOUND: the key is not there (providers differ in which of them they answer for a name that was never made).
 constexpr SECURITY_STATUS kBadKeyset = static_cast<SECURITY_STATUS>(0x80090016);
 constexpr SECURITY_STATUS kNoKey = static_cast<SECURITY_STATUS>(0x8009000D);
+constexpr SECURITY_STATUS kNotFound = static_cast<SECURITY_STATUS>(0x80090011);
 
 constexpr size_t kMaxSignedBytes = 1 << 20;
 
@@ -66,7 +68,7 @@ bool OpenKey(const Handle& provider, Use use, Handle& key) {
   const SECURITY_STATUS status =
       NCryptOpenKey(provider.get(), key.put(), NameOf(use), 0, NCRYPT_SILENT_FLAG);
   if (status == ERROR_SUCCESS) return true;
-  if (status == kBadKeyset || status == kNoKey) return false;
+  if (status == kBadKeyset || status == kNoKey || status == kNotFound) return false;
   throw KeyError("key_failed", "The key cannot be opened (status " +
                                    std::to_string(static_cast<long>(status)) + ").");
 }
@@ -175,8 +177,28 @@ std::string Base64Url(const uint8_t* data, size_t size) {
 
 bool TpmAvailable() {
   Handle provider;
-  return NCryptOpenStorageProvider(provider.put(), MS_PLATFORM_CRYPTO_PROVIDER,
-                                   0) == ERROR_SUCCESS;
+  if (NCryptOpenStorageProvider(provider.put(), MS_PLATFORM_CRYPTO_PROVIDER, 0) !=
+      ERROR_SUCCESS) {
+    return false;
+  }
+  // The provider must also offer ECDSA P-256 signatures (a TPM 1.2, or a restricted firmware TPM, opens the provider and cannot make the key). When the provider
+  // cannot be asked, the key creation says so later.
+  DWORD count = 0;
+  NCryptAlgorithmName* algorithms = nullptr;
+  if (NCryptEnumAlgorithms(provider.get(), NCRYPT_SIGNATURE_OPERATION, &count,
+                           &algorithms, 0) != ERROR_SUCCESS ||
+      algorithms == nullptr) {
+    return true;
+  }
+  bool p256 = false;
+  for (DWORD i = 0; i < count; i++) {
+    if (algorithms[i].pszName != nullptr &&
+        wcscmp(algorithms[i].pszName, BCRYPT_ECDSA_P256_ALGORITHM) == 0) {
+      p256 = true;
+    }
+  }
+  NCryptFreeBuffer(algorithms);
+  return p256;
 }
 
 std::optional<PublicKey> Load(Use use) {

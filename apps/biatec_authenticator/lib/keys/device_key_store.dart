@@ -168,7 +168,7 @@ class ApprovalKeysMissing implements Exception {
 /// The level each key got is reported in [DeviceKey.securityLevel] and [DeviceKey.authBound]; enrollment refuses keys that are not in hardware and an approval key that is not bound.
 abstract class DeviceKeyStore {
   /// Whether this computer can hold and use the keys, without making any. Phones answer [KeyStoreStatus.ready]; a Windows build says when there is no TPM or no Windows Hello. Throws [MissingPluginException] on a platform that has no key store at all.
-  Future<KeyStoreStatus> status() async => KeyStoreStatus.ready;
+  Future<KeyStoreStatus> status();
 
   /// Creates both key pairs, or returns the existing ones. Throws [PlatformException] with code `insecure_key` when the keystore could not make a hardware key (for the approval key: bound to the biometrics) and `no_biometrics` when no strong biometric is enrolled on the phone.
   Future<DeviceKeys> generateKeys();
@@ -336,6 +336,12 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
         case 'prompt_active':
         case 'auth_failed':
           throw KeyPromptFailed(e.code, e.message ?? 'The biometric check did not succeed.');
+        // The Windows key store could not sign (the TPM refused, or the key vanished between the check and the signature): a plain failure, never its internal status.
+        case 'key_missing':
+          throw const ApprovalKeyInvalidated();
+        case 'sign_failed':
+        case 'key_failed':
+          throw const KeyPromptFailed('auth_failed', 'The device key could not sign. Try again.');
       }
       rethrow;
     }

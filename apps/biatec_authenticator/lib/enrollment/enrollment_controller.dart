@@ -317,7 +317,7 @@ class EnrollmentController extends ChangeNotifier {
         'hello_unavailable' => helloUnavailableError,
         'no_biometrics' => 'Set up a fingerprint or face on this phone first: approvals need one.',
         'insecure_key' => const _CannotProtectApprovals().message,
-        'key_generation_failed' => 'This device could not create the device keys. Restart it and try again.',
+        'key_generation_failed' || 'key_failed' => 'This device could not create the device keys. Restart it and try again.',
         _ => 'Could not create the device keys: $e',
       };
 

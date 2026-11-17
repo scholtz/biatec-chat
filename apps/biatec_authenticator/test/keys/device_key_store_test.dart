@@ -336,6 +336,13 @@ void main() {
         expect((e as KeyPromptFailed).code, code);
       }
       expect(await run('keystore_error'), isA<PlatformException>());
+      // The Windows key store: a vanished key is an invalidated one, a refusal of the TPM is a plain failure, and no internal status reaches the user.
+      expect(await run('key_missing'), isA<ApprovalKeyInvalidated>());
+      for (final code in ['sign_failed', 'key_failed']) {
+        final e = await run(code);
+        expect(e, isA<KeyPromptFailed>(), reason: code);
+        expect((e as KeyPromptFailed).message, 'The device key could not sign. Try again.');
+      }
     });
 
     test('the kid is derived from the key (RFC 7638 thumbprint) and stable', () {
