@@ -308,7 +308,7 @@ class ApprovalTexts extends Texts {
     'notEnrolled': 'Toto zariadenie nie je zaregistrované.',
     'expired': 'Platnosť tejto žiadosti vypršala.',
     'noLongerPending':
-        'Táto žiadosť už nečaká na rozhodnutie. Už bola rozhodnutá.',
+        'Táto žiadosť už nečaká na rozhodnutie. Už sa o nej rozhodlo.',
     'alreadyDecided': 'O tejto žiadosti už bolo rozhodnuté.',
     'notActiveYet':
         'Toto zariadenie ešte nie je aktívne, preto nemôže rozhodovať.',

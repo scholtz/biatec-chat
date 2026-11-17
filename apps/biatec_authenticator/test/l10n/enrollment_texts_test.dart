@@ -49,7 +49,7 @@ void main() {
 
     test('the level of a key is named in Slovak', () {
       expect(sk.message(OnboardingTexts.en.text('msgNotInHardware', {'level': KeySecurityLevel.software.label})),
-          'Toto zariadenie neuchováva kľúč v zabezpečenom hardvéri, ale tu: len softvér. Registrácia sa odmieta.');
+          'Toto zariadenie neuchováva kľúč v zabezpečenom hardvéri, ale tu: iba softvér. Registrácia sa odmieta.');
     });
 
     test('an unknown text is shown as it came, and English stays English', () {

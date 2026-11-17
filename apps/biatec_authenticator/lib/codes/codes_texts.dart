@@ -200,7 +200,7 @@ class CodesTexts extends Texts {
     'restoredMany': '{n} accounts were added.',
     'chooseFile': 'Choose the backup file',
     'nothingNew': 'Nothing new in this backup',
-    'willAddOne': 'These account will be added',
+    'willAddOne': 'This account will be added',
     'willAddFew': 'These {n} accounts will be added',
     'willAddMany': 'These {n} accounts will be added',
     'duplicatesOne': '{n} account is already here and will be skipped.',
@@ -386,7 +386,7 @@ class CodesTexts extends Texts {
     'willAddMany': 'Pridá sa týchto {n} účtov',
     'duplicatesOne': '{n} účet tu už je a preskočí sa.',
     'duplicatesFew': '{n} účty tu už sú a preskočia sa.',
-    'duplicatesMany': '{n} účtov tu už je a preskočia sa.',
+    'duplicatesMany': '{n} účtov tu už je a preskočí sa.',
     'restoreThese': 'Obnoviť tieto účty',
     'addThese': 'Pridať tieto účty',
   });

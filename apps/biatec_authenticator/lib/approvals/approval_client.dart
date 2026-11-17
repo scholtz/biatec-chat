@@ -7,6 +7,7 @@ import '../security/pinning/pinned_http.dart';
 import 'approval_texts.dart';
 import 'models/link_request.dart';
 import 'consent_request.dart';
+import '../security/security_texts.dart';
 
 /// The request could not be reached or read. [offline] is true when the
 /// server was not reachable at all.
@@ -159,8 +160,9 @@ class ApprovalClient {
     try {
       return await call().timeout(_timeout);
     } on PinningException catch (e) {
-      // Not "offline": retrying will not help, and the user is told to update.
-      throw ApprovalException(e.message);
+      // Not "offline": retrying will not help, and the user is told to update. The words of PinningException.message (which stays English: the enrollment
+      // screen recognises it), in the language of the app.
+      throw ApprovalException(SecurityTexts.of().text('pinning', {'host': e.host}));
     } on Object catch (e) {
       throw ApprovalException(
           ApprovalTexts.of().text('unreachable', {'why': '$e'}),

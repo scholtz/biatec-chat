@@ -1,6 +1,6 @@
 import 'dart:ui';
 
-import 'package:flutter/widgets.dart' show WidgetsBinding;
+import 'package:flutter/widgets.dart' show WidgetsBinding, basicLocaleListResolution;
 
 /// The languages of the app (T-251): Slovak on a device set to Slovak, English on any other.
 ///
@@ -13,14 +13,18 @@ const appLocales = [Locale('en'), Locale('sk')];
 /// message it makes is in the same language as the screen that shows it.
 bool appLanguageIsSlovak([Locale? locale]) => (locale ?? deviceLocale()).languageCode == 'sk';
 
-/// The device's language, read through the binding when there is one: a test that sets `tester.platformDispatcher.localeTestValue` then gets the same
-/// language here as on its screens. Without a binding (a plain Dart test), the platform's own.
+/// The language of the app's texts on this device: the device's list of preferred languages resolved against [appLocales], the way `MaterialApp`
+/// picks the language of the screens, so a controller's message is in the same language as the screen that shows it (a phone set to Czech, then
+/// Slovak, gets Slovak in both). Read through the binding when there is one, so a test that sets the device's languages gets them here too.
 Locale deviceLocale() {
+  PlatformDispatcher dispatcher;
   try {
-    return WidgetsBinding.instance.platformDispatcher.locale;
+    dispatcher = WidgetsBinding.instance.platformDispatcher;
   } on Object {
-    return PlatformDispatcher.instance.locale;
+    dispatcher = PlatformDispatcher.instance;
   }
+  final preferred = dispatcher.locales;
+  return basicLocaleListResolution(preferred.isEmpty ? [dispatcher.locale] : preferred, appLocales);
 }
 
 /// A group of texts in one language: a map from a key to the text. `{name}` in a text is a placeholder that [text] fills in.

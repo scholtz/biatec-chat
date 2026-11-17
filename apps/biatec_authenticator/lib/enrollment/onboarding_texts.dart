@@ -422,7 +422,7 @@ class OnboardingTexts extends Texts {
     'connectTitle': 'Pripojte toto zariadenie k svojmu účtu',
     'pasteIntro':
         'Vložte prihlasovací token z čerstvého prihlásenia do Biatec OIDC. Použije sa raz, na prepojenie tohto zariadenia, a neuchováva sa.',
-    'checking': 'Kontrolujem…',
+    'checking': 'Kontroluje sa…',
     'loginTokenLabel': 'Prihlasovací token',
     'loginTokenHelpMock':
         'Len ladiace zostavy: pripravený token simulovaného servera',
@@ -436,13 +436,13 @@ class OnboardingTexts extends Texts {
     // Protect the key
     'inactiveTitle': 'Zariadenie je neaktívne',
     'inactiveText':
-        'Nové zariadenie môže schvaľovať požiadavky až po čakacej lehote. Chráni to váš účet, ak by sa k prihláseniu dostal niekto iný. Dovtedy sa tu nedajú dokončiť úkony, ktoré vyžadujú schválenie na telefóne.',
+        'Nové zariadenie môže schvaľovať žiadosti až po čakacej lehote. Chráni to váš účet, ak by sa k prihláseniu dostal niekto iný. Dovtedy sa tu nedajú dokončiť akcie, ktoré vyžadujú schválenie na telefóne.',
     'protectTitle': 'Zabezpečenie kľúča',
     'protectText':
         'Kľúč sa vytvorí v zabezpečenom hardvéri tohto zariadenia. Nedá sa exportovať a použije sa až po overení odtlačkom prsta alebo tvárou.',
-    'working': 'Pracujem',
-    'creatingKey': 'Vytváram kľúč zariadenia',
-    'enrollingDevice': 'Registrujem toto zariadenie',
+    'working': 'Pracuje sa',
+    'creatingKey': 'Vytvára sa kľúč zariadenia',
+    'enrollingDevice': 'Registruje sa toto zariadenie',
     'cancelFailed': 'Toto zariadenie sa nepodarilo zrušiť.',
 
     // Recovery code and done
@@ -451,7 +451,7 @@ class OnboardingTexts extends Texts {
     'tryAgain': 'Skúsiť znova',
     'doneTitle': 'Toto zariadenie je zaregistrované a aktívne.',
     'doneText':
-        'Teraz môžete na tomto zariadení schvaľovať požiadavky z aplikácií Biatec.',
+        'Teraz môžete na tomto zariadení schvaľovať žiadosti z aplikácií Biatec.',
     'rcTitle': 'Obnovovací kód',
     'rcIntro':
         'Tento kód si zapíšte a dobre uschovajte. Okamžite aktivuje náhradné zariadenie.',
@@ -479,8 +479,8 @@ class OnboardingTexts extends Texts {
     'level_hardware': 'zabezpečený hardvér',
     'level_tpm': 'bezpečnostný čip TPM',
     'level_windows_account': 'váš účet vo Windows (softvér)',
-    'level_software': 'len softvér',
-    'level_unknown': 'neznáma',
+    'level_software': 'iba softvér',
+    'level_unknown': 'neznáme',
 
     // The problems of a failed enrollment
     'unverifiedTitle': 'Spojenie sa nepodarilo overiť',
@@ -536,7 +536,7 @@ class OnboardingTexts extends Texts {
         'Zariadenie je zaregistrované, ale zatiaľ sa ho nepodarilo uložiť.',
     'msgNotSavedWhy':
         'Zariadenie je zaregistrované, ale zatiaľ sa ho nepodarilo uložiť: {why}',
-    'msgConfirmingAgain': 'Potvrdzujem znova...',
+    'msgConfirmingAgain': 'Znova sa potvrdzuje…',
     'msgSaveLocalFailed': 'Nepodarilo sa uložiť v tomto zariadení: {why}',
 
     // The messages of the enrollment client

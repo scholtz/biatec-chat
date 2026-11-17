@@ -55,7 +55,7 @@ enum KeySecurityLevel {
   static const _sk = {
     'secureEnclave': 'Secure Enclave',
     'strongBox': 'bezpečnostný čip StrongBox',
-    'trustedEnvironment': 'dôveryhodné prostredie vykonávania (TEE)',
+    'trustedEnvironment': 'dôveryhodné prostredie na vykonávanie kódu (TEE)',
     'hardware': 'zabezpečený hardvér',
     'tpm': 'bezpečnostný čip TPM',
     'windowsAccount': 'váš účet vo Windows (softvér)',

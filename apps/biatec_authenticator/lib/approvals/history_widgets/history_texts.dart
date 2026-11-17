@@ -78,7 +78,7 @@ class HistoryTexts extends Texts {
     'filterAllEmpty': 'Zatiaľ tu nič nie je',
     'filterApprovedEmpty': 'Zatiaľ nič neschválené',
     'filterDeniedEmpty': 'Zatiaľ nič nezamietnuté',
-    'filterRefusedEmpty': 'Zatiaľ nič odmietnuté',
+    'filterRefusedEmpty': 'Zatiaľ nič neodmietnuté',
     'statusApproved': 'Schválené',
     'statusDenied': 'Zamietnuté',
     'statusRefused': 'Odmietnuté',

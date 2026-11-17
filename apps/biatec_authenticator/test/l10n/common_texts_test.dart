@@ -44,6 +44,18 @@ void main() {
     expect(CommonTexts.sk.text('pendingCount', {'n': 3}), 'Čakajúce: 3');
   });
 
+  testWidgets('a phone set to Czech, then Slovak, gets Slovak from a controller as from a screen; one set to German, then nothing we have, English', (tester) async {
+    tester.platformDispatcher.localesTestValue = const [Locale('cs', 'CZ'), Locale('sk', 'SK')];
+    tester.platformDispatcher.localeTestValue = const Locale('cs', 'CZ');
+    addTearDown(tester.platformDispatcher.clearLocalesTestValue);
+    addTearDown(tester.platformDispatcher.clearLocaleTestValue);
+    expect(appLanguageIsSlovak(), isTrue);
+    expect(CommonTexts.of().text('tryAgain'), 'Skúsiť znova');
+    tester.platformDispatcher.localesTestValue = const [Locale('de')];
+    tester.platformDispatcher.localeTestValue = const Locale('de');
+    expect(appLanguageIsSlovak(), isFalse);
+  });
+
   group('on a device set to Slovak', () {
     testWidgets('the navigation is Slovak', (tester) async {
       slovakDevice(tester);
