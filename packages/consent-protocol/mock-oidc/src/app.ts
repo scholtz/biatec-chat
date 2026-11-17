@@ -969,7 +969,10 @@ export function createMockOidc(options: MockOptions = {}) {
     if (typeof body.kid !== "string" || !body.kid || !pk || pk.kty !== "EC" || pk.crv !== "P-256" || typeof pk.x !== "string" || typeof pk.y !== "string") throw new HttpError(400, "invalid_request", "kid and an EC P-256 public_key are required");
     if (deviceOfKey(body.kid)) throw new HttpError(409, "conflict", "kid already enrolled");
     const hadActive = activeDevices(t.sub).length > 0;
-    let activeAt = now() + INACTIVE_DEVICE_SECONDS;
+    // Rule 7 (T-252): the first device of an account (it has no other device, active or pending; a cancelled enrollment is not one) is active at once.
+    // A later device waits, unless a recovery code (below) or a device approval (`POST /devices/{kid}/activate`) activates it.
+    const first = ![...devices.values()].some((d) => d.sub === t.sub && !d.cancelled);
+    let activeAt = first ? now() : now() + INACTIVE_DEVICE_SECONDS;
     // Naming the kid of an active device proves nothing (T-242): activation is a signed device approval (`POST /devices/{kid}/activate`) or a recovery code.
     if (body.approved_by_kid !== undefined) throw new HttpError(400, "invalid_request", "approved_by_kid is not accepted: an active device activates a new one with POST /devices/{kid}/activate");
     if (body.name !== undefined && (typeof body.name !== "string" || body.name.length < 1 || body.name.length > 80)) throw new HttpError(400, "invalid_request", "name is 1 to 80 characters");

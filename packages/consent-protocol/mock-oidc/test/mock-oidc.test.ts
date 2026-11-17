@@ -801,26 +801,34 @@ test("limits: tightening applies at once, loosening needs consent bound to the r
   assert.equal((await call("PUT", "/wallet/limits", { auth: bearer("alice-chat-sign"), body: loose })).status, 403, "scope manage-limits required");
 });
 
-test("rule 7: the recovery code is never in the enrollment response, only issued once active, shown once", async () => {
+test("rule 7: the first device is active at once (T-252); the recovery code is never in the enrollment response, only issued once active, shown once", async () => {
   const fresh = (await import("node:crypto")).generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" }) as Record<string, string>;
+  // Bob has no device yet: what needs the phone is refused.
+  const signAsBob = () => call("POST", `/wallet/algorand-testnet/${ALICE_ADDR}/sign`, { auth: bearer("bob-chat-sign"), body: { transactions: group(tx(5000)), origin: nextOrigin() } });
+  assert.equal((await signAsBob()).json.reason, "no_active_device");
   const e = await call("POST", "/devices", { auth: bearer("login-bob"), body: { kid: "bob-recovery-phone", public_key: fresh } });
   assert.equal(e.status, 201);
+  assert.equal(e.json.active_at, clock, "T-252: the first device of an account is active at once");
+  assert.equal(e.json.cancel_notice_sent_to_existing_devices, false);
+  assert.equal((await signAsBob()).status, 401, "and the phone is asked at once (step-up)");
   assert.equal("recovery_code" in e.json, false, "no recovery code during enrollment");
+  // Bob's first device is active at once (T-252), so its code can be asked for at once: in its own call, never in the enrollment response.
+  assert.equal(e.json.active, true);
   const dev = "Device " + e.json.device_token;
-  const early = await call("POST", "/devices/recovery-code", { auth: dev });
+  const first = await call("POST", "/devices/recovery-code", { auth: dev });
+  assert.equal(first.status, 200);
+  assert.match(first.json.recovery_code, /^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/);
+  assert.equal((await call("POST", "/devices/recovery-code", { auth: dev })).json.recovery_code, first.json.recovery_code, "re-served until acknowledged");
+  assert.equal((await call("POST", "/devices/recovery-code/ack", { auth: dev })).status, 200);
+  assert.equal((await call("POST", "/devices/recovery-code", { auth: dev })).status, 409, "shown once only");
+  // A later device that waits gets no code while it waits.
+  const later = (await import("node:crypto")).generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" }) as Record<string, string>;
+  const w = await call("POST", "/devices", { auth: bearer("login-bob"), body: { kid: "bob-waiting-phone", public_key: later } });
+  assert.equal(w.json.active, false);
+  const early = await call("POST", "/devices/recovery-code", { auth: "Device " + w.json.device_token });
   assert.equal(early.status, 403);
   assert.equal(early.json.reason, "device_inactive");
-  clock += 86400;
-  try {
-    const first = await call("POST", "/devices/recovery-code", { auth: dev });
-    assert.equal(first.status, 200);
-    assert.match(first.json.recovery_code, /^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/);
-    assert.equal((await call("POST", "/devices/recovery-code", { auth: dev })).json.recovery_code, first.json.recovery_code, "re-served until acknowledged");
-    assert.equal((await call("POST", "/devices/recovery-code/ack", { auth: dev })).status, 200);
-    assert.equal((await call("POST", "/devices/recovery-code", { auth: dev })).status, 409, "shown once only");
-  } finally {
-    clock -= 86400;
-  }
+  assert.equal((await call("POST", "/devices/bob-waiting-phone/cancel", { auth: dev })).status, 200);
   assert.equal((await call("POST", "/devices/recovery-code", { auth: "Device nope" })).status, 401);
 });
 
@@ -839,14 +847,16 @@ test("contract: distinct installs enroll with distinct kids, the same kid is rej
   assert.equal(dup2.status, 409, "a constant kid only ever works for the first device");
 });
 
-test("rule 7: a first device is inactive for 24 hours unless an active device signs a device approval (T-242)", async () => {
+test("rule 7: a later device is inactive for 24 hours unless an active device signs a device approval (T-242)", async () => {
   const fresh = (await import("node:crypto")).generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" }) as Record<string, string>;
   assert.equal((await call("POST", "/devices", { auth: bearer("alice-chat-sign"), body: { kid: "k0", public_key: fresh } })).status, 403, "needs a full login");
 
+  // Bob has a device by now (the test above), so this one is a later device.
   const e1 = await call("POST", "/devices", { auth: bearer("login-bob"), body: { kid: "bob-phone", public_key: fresh } });
   assert.equal(e1.status, 201);
   assert.equal(e1.json.active, false);
   assert.equal(e1.json.active_at, clock + 86400);
+  assert.equal(e1.json.cancel_notice_sent_to_existing_devices, true, "the device he has is told");
   assert.ok(e1.json.attestation.split(".").length === 3);
   assert.equal((await call("GET", "/devices/requests", { auth: "Device " + e1.json.device_token })).status, 200);
 
@@ -858,12 +868,10 @@ test("rule 7: a first device is inactive for 24 hours unless an active device si
   assert.equal(e3.status, 400);
   assert.equal((await call("POST", "/devices", { auth: bearer("login-alice"), body: { kid: "alice-third", public_key: { kty: "RSA" } } })).status, 400);
 
-  // Bob still cannot complete an above-threshold action while his device is inactive (rules 7 and 8).
-  const b = await call("POST", `/wallet/algorand-testnet/${ALICE_ADDR}/sign`, { auth: bearer("bob-chat-sign"), body: { transactions: group(tx(5000)), origin: nextOrigin() } });
-  assert.equal(b.json.reason, "no_active_device");
+  // The waiting device is no use while it waits, and is active after 24 hours.
+  assert.equal((await call("GET", "/devices", { auth: "Device " + e1.json.device_token })).json.devices.find((x: { kid: string }) => x.kid === "bob-phone").active, false);
   clock += 86400;
-  const b2 = await call("POST", `/wallet/algorand-testnet/${ALICE_ADDR}/sign`, { auth: bearer("bob-chat-sign"), body: { transactions: group(tx(5000)), origin: nextOrigin() } });
-  assert.equal(b2.status, 401, "after 24 hours the device is active");
+  assert.equal((await call("GET", "/devices", { auth: "Device " + e1.json.device_token })).json.devices.find((x: { kid: string }) => x.kid === "bob-phone").active, true, "after 24 hours the device is active");
   clock -= 86400;
 });
 
