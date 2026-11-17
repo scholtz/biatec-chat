@@ -345,6 +345,19 @@ void main() {
       }
     });
 
+    test('signPresence says a Windows key store failure without its internal status', () async {
+      for (final code in ['key_missing', 'sign_failed', 'key_failed']) {
+        messenger.setMockMethodCallHandler(
+            channel, (call) async => throw PlatformException(code: code, message: 'The TPM did not sign (status -2146893792).'));
+        await expectLater(
+            store.signPresence(Uint8List(3)),
+            throwsA(isA<KeyPromptFailed>().having((e) => e.message, 'message', 'The device key could not sign. Try again.')),
+            reason: code);
+      }
+      messenger.setMockMethodCallHandler(channel, (call) async => throw PlatformException(code: 'keystore_error', message: 'x'));
+      await expectLater(store.signPresence(Uint8List(3)), throwsA(isA<PlatformException>()));
+    });
+
     test('the kid is derived from the key (RFC 7638 thumbprint) and stable', () {
       final a = DeviceKey.fromParts(KeyUse.approve,
           x: 'f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU',

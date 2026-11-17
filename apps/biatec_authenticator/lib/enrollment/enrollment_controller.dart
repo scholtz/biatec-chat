@@ -649,8 +649,10 @@ class EnrollmentController extends ChangeNotifier {
             deviceKeys: deviceKeys!,
             nonce: challenge!,
             now: _clock(),
-            promptTitle: 'Enroll this phone',
-            promptSubtitle: 'Approvals will need your fingerprint or face',
+            promptTitle: defaultTargetPlatform == TargetPlatform.windows ? 'Enroll this computer' : 'Enroll this phone',
+            promptSubtitle: defaultTargetPlatform == TargetPlatform.windows
+                ? 'Approvals will need Windows Hello'
+                : 'Approvals will need your fingerprint or face',
           );
         } on KeyPromptCancelled {
           rethrow;
@@ -927,7 +929,7 @@ class _ProofFailed implements Exception {
 class _CannotProtectApprovals implements Exception {
   const _CannotProtectApprovals();
   String get message => 'This device cannot protect approvals. Its keystore '
-      'cannot make a key that needs your fingerprint or face for every '
+      'cannot make a key that needs your confirmation (fingerprint, face or Windows Hello) for every '
       'approval, so enrollment is refused.';
 }
 

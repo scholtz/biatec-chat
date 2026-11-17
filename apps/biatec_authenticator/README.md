@@ -215,7 +215,7 @@ Protocol 1.1 splits the device key in two. Both are P-256, generated in hardware
   prompts; throws `KeyPromptCancelled`, `ApprovalKeyInvalidated` or `KeyPromptFailed`), `keysState()` (`ok`, `approvalKeyInvalidated`, `missing`, no prompt).
   There is no fallback to a software key or to the device credential for the approval key.
 - After the approval key is created the plugin reads `KeyInfo` back (hardware, user authentication required, per use, invalidated by biometric enrollment) and
-  refuses to enroll otherwise ("This phone cannot protect approvals"); the Dart side refuses it too (`DeviceKey.authBound`). A phone with no enrolled strong
+  refuses to enroll otherwise ("This device cannot protect approvals"); the Dart side refuses it too (`DeviceKey.gestureRequired`: `authBound` on a phone, or `appGated` on Windows, where the check is the app's own, see docs/authenticator-windows-key-store.md). A phone with no enrolled strong
   biometric cannot make the key: the app says to set one up first.
 - Enrollment (`lib/enrollment/enrollment_proof.dart`) asks for the server's nonce (`POST /devices/challenge`; no nonce, no enrollment), signs the enrollment proof with the
   approval key (this is the one biometric prompt of an enrollment) and a `presence_proof` over the same payload with the presence key, and sends

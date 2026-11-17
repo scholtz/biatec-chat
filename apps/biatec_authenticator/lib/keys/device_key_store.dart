@@ -312,9 +312,17 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
 
   @override
   Future<Uint8List> signPresence(Uint8List data) async {
-    final raw =
-        await _channel.invokeMethod<Uint8List>('signPresence', {'data': data});
-    return raw!;
+    try {
+      final raw =
+          await _channel.invokeMethod<Uint8List>('signPresence', {'data': data});
+      return raw!;
+    } on PlatformException catch (e) {
+      // The Windows key store: a refusal of the TPM or a vanished key, said without its internal status.
+      if (e.code == 'key_missing' || e.code == 'sign_failed' || e.code == 'key_failed') {
+        throw const KeyPromptFailed('auth_failed', 'The device key could not sign. Try again.');
+      }
+      rethrow;
+    }
   }
 
   @override

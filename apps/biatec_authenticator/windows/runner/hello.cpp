@@ -14,6 +14,8 @@ namespace {
 namespace ui = winrt::Windows::Security::Credentials::UI;
 
 constexpr std::chrono::minutes kPromptTimeout{2};
+constexpr std::chrono::seconds kCheckTimeout{10};
+constexpr std::chrono::seconds kCancelGrace{5};
 
 // A worker thread joins the multithreaded apartment once; the main thread is a single-threaded apartment and does not call in here.
 void EnsureApartment() {
@@ -33,7 +35,13 @@ void EnsureApartment() {
 Availability Check() {
   try {
     EnsureApartment();
-    switch (ui::UserConsentVerifier::CheckAvailabilityAsync().get()) {
+    auto check = ui::UserConsentVerifier::CheckAvailabilityAsync();
+    // The same rule as for the prompt: a call that never completes must not hold the worker (and the enrollment waiting for the probe) for ever.
+    if (check.wait_for(kCheckTimeout) != winrt::Windows::Foundation::AsyncStatus::Completed) {
+      check.Cancel();
+      return Availability::kUnavailable;
+    }
+    switch (check.GetResults()) {
       case ui::UserConsentVerifierAvailability::Available:
         return Availability::kAvailable;
       case ui::UserConsentVerifierAvailability::NotConfiguredForUser:
@@ -65,6 +73,8 @@ Outcome Verify(HWND window, const std::wstring& message) {
     if (operation.wait_for(kPromptTimeout) !=
         winrt::Windows::Foundation::AsyncStatus::Completed) {
       operation.Cancel();
+      // The dialog is closed by the cancel: wait for that (briefly), so a second prompt is not opened while the first one is still on the screen.
+      operation.wait_for(kCancelGrace);
       return Outcome::kCanceled;
     }
     switch (operation.GetResults()) {
