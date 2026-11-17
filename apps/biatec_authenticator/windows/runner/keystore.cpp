@@ -170,8 +170,11 @@ SECURITY_STATUS SignDigest(const Handle& key, const uint8_t* digest, const std::
 
 void Create(const Handle& provider, Use use, const std::wstring* pin) {
   Handle key;
+  // Overwrites a key of the same name. The old keys were deleted before (FreshKeys); what can still be there is a key the TPM can no longer open (the TPM was
+  // cleared or replaced), which reads as "not there" and would otherwise refuse every later enrollment.
   SECURITY_STATUS status = NCryptCreatePersistedKey(
-      provider.get(), key.put(), BCRYPT_ECDSA_P256_ALGORITHM, NameOf(use), 0, 0);
+      provider.get(), key.put(), BCRYPT_ECDSA_P256_ALGORITHM, NameOf(use), 0,
+      NCRYPT_OVERWRITE_KEY_FLAG);
   if (status != ERROR_SUCCESS) {
     throw KeyError("key_generation_failed",
                    "The key cannot be created (status " +

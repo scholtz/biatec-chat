@@ -14,7 +14,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   if (single_instance != nullptr && ::GetLastError() == ERROR_ALREADY_EXISTS) {
     const HWND running = ::FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", L"biatec_authenticator");
     if (running != nullptr) {
-      ::ShowWindow(running, SW_RESTORE);
+      // Only a minimized window is restored: a maximized one keeps its size.
+      if (::IsIconic(running)) ::ShowWindow(running, SW_RESTORE);
       ::SetForegroundWindow(running);
     }
     return EXIT_SUCCESS;

@@ -208,7 +208,7 @@ void main() {
       expect(KeySecurityLevel.fromWire('tpm'), KeySecurityLevel.tpm);
       expect(KeySecurityLevel.tpm.isHardware, isTrue);
       expect(cpp, contains('key.hardware ? "tpm" : "software"'));
-      for (final code in ['prompt_active', 'cancelled', 'approval_key_invalidated', 'no_biometrics', 'locked_out', 'auth_failed', 'no_tpm']) {
+      for (final code in ['prompt_active', 'cancelled', 'key_missing', 'no_biometrics', 'locked_out', 'auth_failed', 'no_tpm']) {
         expect(cpp, contains('"$code"'), reason: 'C++ error $code');
       }
       expect(keystoreCpp, contains('"key_generation_failed"'));
@@ -248,7 +248,9 @@ void main() {
 
       // Without Windows Hello: the PIN of the app. A new PIN is asked only when Windows Hello cannot be used, and before anything is made; no PIN, no keys.
       final fresh = flat(cpp.substring(cpp.indexOf('std::optional<pin_dialog::Pin> NewPinUnlessHello('), cpp.indexOf('bool PinMode()')));
-      expect(fresh, contains('if (hello::Check() == hello::Availability::kAvailable) return std::nullopt;'));
+      expect(fresh, contains('if (availability == hello::Availability::kAvailable) return std::nullopt;'));
+      expect(cpp, isNot(contains('KeyError("approval_key_invalidated"')), reason: 'no change of the biometrics invalidates a TPM key: a gone key is key_missing');
+      expect(keystoreCpp, contains('NCRYPT_OVERWRITE_KEY_FLAG'), reason: 'a key the TPM can no longer open does not block a new enrollment');
       expect(fresh, contains('pin_dialog::Mode::kCreate'));
       expect(fresh, contains('if (!pin) throw keystore::KeyError("cancelled"'));
       // The TPM checks the PIN (a signature with the lock key), and only an accepted one gets past: the approval key then signs with it.
@@ -264,7 +266,7 @@ void main() {
       expect(body.indexOf('if (existing.lock)'), lessThan(verify), reason: 'a PIN enrollment never reaches the Windows Hello path');
       // The app lock of a PIN enrollment asks the same PIN, and only an accepted one is a success.
       final unlock = flat(cpp.substring(cpp.indexOf('EncodableValue BiometricAuthenticate('), cpp.indexOf('KeyChannels::KeyChannels(')));
-      expect(unlock, contains('if (PinMode()) { try { RequirePin(window, Widen(reason)); return Text("success"); }'));
+      expect(unlock, contains('if (pin_mode) { try { RequirePin(window, Widen(reason)); return Text("success"); }'));
       // The PIN is the usage secret of the TPM keys: set before the key is finalized, given again for a signature, and never stored or sent over the channel.
       expect(flat(keystoreCpp), contains('if (status == ERROR_SUCCESS && pin != nullptr) status = SetPin(key, *pin);'));
       expect(keystoreCpp, contains('NCRYPT_PIN_PROPERTY'));

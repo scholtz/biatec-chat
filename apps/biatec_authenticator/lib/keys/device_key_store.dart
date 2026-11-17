@@ -221,7 +221,7 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
       final map = (raw as Map).cast<String, Object?>();
       // Only an explicit yes counts: an answer this app does not understand is not "ready".
       if (map['tpm'] != true) return KeyStoreStatus.noTpm;
-      // Windows Hello (`hello` in the answer) is not needed: where it cannot be used, the native side asks for a PIN of the app that the TPM checks.
+      // Windows Hello is not needed: where it cannot be used, the native side asks for a PIN of the app that the TPM checks.
       return KeyStoreStatus.ready;
     } on MissingPluginException {
       // A phone's plugin has no `probe`: its plain `keysState` read says whether there is a key store (and throws MissingPluginException when there is none).

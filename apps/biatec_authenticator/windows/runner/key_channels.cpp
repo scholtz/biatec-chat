@@ -52,19 +52,6 @@ std::wstring Widen(const std::string& utf8) {
   return out;
 }
 
-const char* HelloAvailabilityName(hello::Availability availability) {
-  switch (availability) {
-    case hello::Availability::kAvailable:
-      return "available";
-    case hello::Availability::kNotConfigured:
-      return "not_configured";
-    case hello::Availability::kNoDevice:
-      return "no_device";
-    default:
-      return "unavailable";
-  }
-}
-
 EncodableValue Text(const std::string& s) { return EncodableValue(s); }
 
 EncodableValue KeyMap(const keystore::PublicKey& key, bool approval) {
@@ -108,7 +95,13 @@ std::optional<keystore::Use> UseOf(const EncodableMap* args) {
 // The user's check of a new enrollment. Windows Hello when it can be used: then there is no PIN. Otherwise (not set up, no device, switched off by a policy) the
 // user chooses a PIN of the app here, before anything is made, and the keys are made with it (keystore.h). No PIN chosen: nothing is made.
 std::optional<pin_dialog::Pin> NewPinUnlessHello(HWND window) {
-  if (hello::Check() == hello::Availability::kAvailable) return std::nullopt;
+  // "Cannot be used right now" may pass (busy, a slow start): it is asked again before the choice is made, because the choice holds for the whole enrollment.
+  hello::Availability availability = hello::Check();
+  for (int again = 0; again < 2 && availability == hello::Availability::kUnavailable; again++) {
+    Sleep(1000);
+    availability = hello::Check();
+  }
+  if (availability == hello::Availability::kAvailable) return std::nullopt;
   PromptGuard guard;
   if (!guard.owns()) {
     throw keystore::KeyError("prompt_active", "Another prompt is open. Try again.");
@@ -119,15 +112,8 @@ std::optional<pin_dialog::Pin> NewPinUnlessHello(HWND window) {
   return pin;
 }
 
-// Whether this enrollment uses the app's PIN (its lock key is there) and not Windows Hello. A key store that cannot be read is not "PIN": the Windows Hello path
-// then answers, and it opens nothing by itself.
-bool PinMode() {
-  try {
-    return keystore::Exists().lock;
-  } catch (const keystore::KeyError&) {
-    return false;
-  }
-}
+// Whether this enrollment uses the app's PIN (its lock key is there) and not Windows Hello. Throws when the key store cannot be read: that is neither answer.
+bool PinMode() { return keystore::Exists().lock; }
 
 // Both keys, or neither: a half set (an interrupted enrollment) is removed and made again.
 EncodableValue GenerateKeys(HWND window) {
@@ -170,8 +156,8 @@ EncodableValue KeysState() {
 
 EncodableValue Probe() {
   EncodableMap map;
+  // Only the TPM: a computer without Windows Hello enrolls with the app's PIN, so Windows Hello is not asked here.
   map[Text("tpm")] = EncodableValue(keystore::TpmAvailable());
-  map[Text("hello")] = Text(HelloAvailabilityName(hello::Check()));
   return EncodableValue(map);
 }
 
@@ -205,7 +191,8 @@ EncodableValue SignApproval(HWND window, const std::vector<uint8_t>& data,
                             const std::string& title, const std::string& subtitle) {
   const keystore::Existing existing = keystore::Exists();
   if (!existing.approval) {
-    throw keystore::KeyError("approval_key_invalidated", "The approval key is gone.");
+    // Not "invalidated": no change of the biometrics invalidates a TPM key (see KeysState). The key is gone, and the device enrolls again.
+    throw keystore::KeyError("key_missing", "The approval key is gone.");
   }
   PromptGuard guard;
   if (!guard.owns()) {
@@ -234,8 +221,13 @@ EncodableValue SignApproval(HWND window, const std::vector<uint8_t>& data,
 
 // The app lock: the strings the Dart side reads (lib/security/biometric_policy.dart).
 EncodableValue BiometricStatus() {
-  // The app's PIN is always there to be asked.
-  if (PinMode()) return Text("available");
+  try {
+    // The app's PIN is always there to be asked.
+    if (PinMode()) return Text("available");
+  } catch (const keystore::KeyError&) {
+    // The key store cannot be read now: not "no Windows Hello", only "not now".
+    return Text("unavailable");
+  }
   switch (hello::Check()) {
     case hello::Availability::kAvailable:
       return Text("available");
@@ -252,7 +244,13 @@ EncodableValue BiometricAuthenticate(HWND window, const std::string& reason) {
   PromptGuard guard;
   // Another Windows Hello prompt is open (an approval's): not a wrong finger, so not "failed"; the lock reads "unavailable" as "cannot be used now".
   if (!guard.owns()) return Text("unavailable");
-  if (PinMode()) {
+  bool pin_mode = false;
+  try {
+    pin_mode = PinMode();
+  } catch (const keystore::KeyError&) {
+    return Text("unavailable");
+  }
+  if (pin_mode) {
     try {
       RequirePin(window, Widen(reason));
       return Text("success");

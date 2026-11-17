@@ -55,6 +55,9 @@ What it gives, compared with the Windows Hello path:
 - **What it does not give:** the PIN is typed into a dialog of the app, in the user's session. A program that reads
   keystrokes in that session can learn it. It is knowledge, not inherence. The key is still reported as `appGated`,
   never `authBound`.
+- **One check per enrollment:** an enrollment made with Windows Hello cannot be opened where Windows Hello cannot
+  be reached later (for example over Remote Desktop), and the other way round an enrollment made with the PIN keeps
+  asking for the PIN after Windows Hello is set up. Enroll again to change it.
 - **Not verified:** the code was built but never run. In particular, how the Platform Crypto Provider answers a wrong
   PIN and a locked TPM is read from the documentation of CNG and the TPM: a status that is not recognised as a lockout
   is treated as a refused PIN, so an unknown answer never opens anything. Steps 10 to 13 of the checklist check it.

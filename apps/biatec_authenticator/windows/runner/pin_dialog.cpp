@@ -14,8 +14,11 @@ constexpr WORD kRepeatId = 104;
 constexpr WORD kErrorId = 105;
 
 constexpr UINT_PTR kTimeoutTimer = 1;
-// Shorter than the two minutes the Dart side waits for a prompt (LockController.promptTimeout), so the dialog is gone before Dart gives up on it.
-constexpr UINT kTimeoutMs = 90 * 1000;
+// The existing PIN: shorter than the two minutes the Dart side waits for a prompt (LockController.promptTimeout), so the dialog is gone before Dart gives up on it.
+constexpr UINT kEnterTimeoutMs = 90 * 1000;
+// A new PIN, at enrollment: nothing on the Dart side waits with a limit, the user comes back from the browser, reads the text and types twice. The time starts
+// again with every key, and a dialog nobody touches still ends.
+constexpr UINT kCreateTimeoutMs = 10 * 60 * 1000;
 
 // The predefined window classes of a dialog template.
 constexpr WORD kButtonClass = 0x0080;
@@ -160,8 +163,14 @@ INT_PTR CALLBACK Procedure(HWND dialog, UINT message, WPARAM wparam, LPARAM lpar
       ::SendDlgItemMessageW(dialog, kPinId, EM_SETLIMITTEXT, kMaxLength, 0);
       ::SendDlgItemMessageW(dialog, kRepeatId, EM_SETLIMITTEXT, kMaxLength, 0);
       CenterOver(dialog, ::GetParent(dialog));
-      ::SetTimer(dialog, kTimeoutTimer, kTimeoutMs, nullptr);
-      ::SetForegroundWindow(dialog);
+      ::SetTimer(dialog, kTimeoutTimer,
+                 state->mode == Mode::kCreate ? kCreateTimeoutMs : kEnterTimeoutMs, nullptr);
+      // Windows may refuse the foreground to a program the user is not in (the browser of the sign-in is in front): the taskbar button then flashes until the user
+      // comes to the dialog.
+      if (!::SetForegroundWindow(dialog) || ::GetForegroundWindow() != dialog) {
+        FLASHWINFO flash = {sizeof(flash), dialog, FLASHW_ALL | FLASHW_TIMERNOFG, 0, 0};
+        ::FlashWindowEx(&flash);
+      }
       return TRUE;  // the focus goes to the first field
     }
     case WM_TIMER:
@@ -170,6 +179,11 @@ INT_PTR CALLBACK Procedure(HWND dialog, UINT message, WPARAM wparam, LPARAM lpar
     case WM_COMMAND: {
       State* state = reinterpret_cast<State*>(::GetWindowLongPtrW(dialog, DWLP_USER));
       if (state == nullptr) return FALSE;
+      // Typing a new PIN starts the time again.
+      if (HIWORD(wparam) == EN_CHANGE && state->mode == Mode::kCreate) {
+        ::SetTimer(dialog, kTimeoutTimer, kCreateTimeoutMs, nullptr);
+        return TRUE;
+      }
       if (LOWORD(wparam) == IDCANCEL) {
         Close(dialog, 0);
         return TRUE;
@@ -255,6 +269,8 @@ std::optional<Pin> Ask(HWND owner, Mode mode, const std::wstring& message) {
   dialog.Add(kStaticClass, SS_LEFT, 7, label_y, inner, 9, kLabelId, texts.label);
   dialog.Add(kStaticClass, SS_LEFT, 7, error_y, inner, 10, kErrorId, L"");
 
+  // A minimized app window would put the dialog off the screen.
+  if (owner != nullptr && ::IsIconic(owner)) ::ShowWindow(owner, SW_RESTORE);
   State state{mode, &message, &texts, {}};
   const INT_PTR answer = ::DialogBoxIndirectParamW(
       ::GetModuleHandleW(nullptr), dialog.get(), owner, Procedure,
