@@ -1,4 +1,5 @@
 import 'dart:ui';
+import '../l10n/texts.dart';
 
 /// The texts of the in-app login and of the activation of a new device (T-242): English and Slovak, chosen by the phone's language (the onboarding screens have theirs in `OnboardingTexts`). The code that asks for a text keeps the keys, so a test can check that both languages have all of them.
 class EnrollStrings {
@@ -7,7 +8,7 @@ class EnrollStrings {
   /// The strings for [locale] (the phone's language when null): Slovak for `sk`, English otherwise.
   factory EnrollStrings.of([Locale? locale]) {
     final language =
-        (locale ?? PlatformDispatcher.instance.locale).languageCode;
+        (locale ?? deviceLocale()).languageCode;
     return language == 'sk' ? sk : en;
   }
 

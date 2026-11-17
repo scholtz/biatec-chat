@@ -1,4 +1,5 @@
 import 'dart:ui';
+import '../l10n/texts.dart';
 
 /// The texts of the user-held trust settings: how a service is shown, the "New service" banner and "don't ask again" on the approval card, the approval threshold and the linked services. English and Slovak,
 /// chosen by the phone's language (Slovak for `sk`, English otherwise). A text may hold `{name}` places that [t] fills; what goes into one is the user's own value or a value this app computed
@@ -8,7 +9,7 @@ class TrustStrings {
 
   factory TrustStrings.of([Locale? locale]) {
     final language =
-        (locale ?? PlatformDispatcher.instance.locale).languageCode;
+        (locale ?? deviceLocale()).languageCode;
     return language == 'sk' ? sk : en;
   }
 

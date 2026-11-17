@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../theme.dart';
+import '../l10n/texts.dart';
 
 /// The PIN of the app, used by a Windows build on a computer where Windows Hello cannot be used (T-250, docs/authenticator-windows-key-store.md).
 ///
@@ -65,7 +65,7 @@ class PinStrings {
   const PinStrings._(this._t);
 
   factory PinStrings.of([Locale? locale]) =>
-      (locale ?? PlatformDispatcher.instance.locale).languageCode == 'sk' ? sk : en;
+      (locale ?? deviceLocale()).languageCode == 'sk' ? sk : en;
 
   final Map<String, String> _t;
 
