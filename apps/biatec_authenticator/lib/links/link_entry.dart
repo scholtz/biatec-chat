@@ -36,7 +36,7 @@ class LinkEntry extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = RpStrings.of();
+    final s = RpStrings.of(Localizations.maybeLocaleOf(context));
     final theme = Theme.of(context);
     return Padding(
       key: const Key('link-entry'),
@@ -81,7 +81,7 @@ class _PasteDialogState extends State<_PasteDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final s = RpStrings.of();
+    final s = RpStrings.of(Localizations.maybeLocaleOf(context));
     return AlertDialog(
       title: Text(s.t('pasteCode')),
       content: TextField(

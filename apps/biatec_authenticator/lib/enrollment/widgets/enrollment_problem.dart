@@ -1,5 +1,8 @@
+import 'dart:ui';
+
 import '../enrollment_controller.dart';
 import '../enrollment_strings.dart';
+import '../onboarding_texts.dart';
 
 /// Why an enrollment attempt failed, as far as the user can act on it.
 enum EnrollmentProblemKind {
@@ -61,10 +64,12 @@ const _unreachablePrefix = 'Could not reach Biatec OIDC';
 /// Whether [error] is the client's "could not reach Biatec OIDC" message.
 bool isUnreachableError(String error) => error.startsWith(_unreachablePrefix);
 
-/// Reads the message the controller reports (the client's messages are fixed texts) into something the screen can answer specifically.
-EnrollmentProblem classifyEnrollmentError(String error) {
+/// Reads the message the controller reports (the client's messages are fixed English texts) into something the screen can answer specifically, in the
+/// language of [locale] (the device's language when null). The error is recognised by its English text; what is shown is in that language.
+EnrollmentProblem classifyEnrollmentError(String error, {Locale? locale}) {
   final lower = error.toLowerCase();
-  final strings = EnrollStrings.of();
+  final strings = EnrollStrings.of(locale);
+  final t = OnboardingTexts.of(locale);
   if (error == EnrollmentController.recoveryWrongError) {
     return EnrollmentProblem(EnrollmentProblemKind.wrongRecoveryCode,
         strings.recoveryWrongTitle, strings.recoveryWrong, strings.signInButton);
@@ -82,12 +87,11 @@ EnrollmentProblem classifyEnrollmentError(String error) {
         strings.signInButton, strings.loginCancelled, strings.signInButton);
   }
   if (error.startsWith(EnrollmentController.loginFailedPrefix)) {
-    return EnrollmentProblem(
-        EnrollmentProblemKind.signInFailed,
-        strings.signInButton,
-        strings.loginFailed(
-            error.substring(EnrollmentController.loginFailedPrefix.length).trim()),
-        strings.signInButton);
+    // The reason is a LoginFailed message of the login client (English), shown in the language of the screen.
+    final why =
+        error.substring(EnrollmentController.loginFailedPrefix.length).trim();
+    return EnrollmentProblem(EnrollmentProblemKind.signInFailed,
+        strings.signInButton, strings.loginFailed(t.message(why)), strings.signInButton);
   }
   if (error == EnrollmentController.noKeyStoreError) {
     return EnrollmentProblem(EnrollmentProblemKind.noKeyStore,
@@ -104,47 +108,28 @@ EnrollmentProblem classifyEnrollmentError(String error) {
   // The pinning refusal (PinningException.message): "The connection to <host> could not be verified, so nothing was sent."
   if (error.startsWith('The connection to ') &&
       lower.contains('could not be verified')) {
-    return EnrollmentProblem(
-        EnrollmentProblemKind.unverified,
-        'The connection could not be verified',
-        'Nothing was sent. If this keeps happening, update the app.',
-        'Try again');
+    return EnrollmentProblem(EnrollmentProblemKind.unverified,
+        t.text('unverifiedTitle'), t.text('unverified'), t.text('tryAgain'));
   }
   if (isUnreachableError(error)) {
-    return EnrollmentProblem(
-        EnrollmentProblemKind.network,
-        'Cannot reach Biatec OIDC',
-        'Check your connection and try again. Nothing was enrolled.',
-        'Try again');
+    return EnrollmentProblem(EnrollmentProblemKind.network,
+        t.text('networkTitle'), t.text('network'), t.text('tryAgain'));
   }
   if (error.startsWith('A fresh login is required')) {
-    return EnrollmentProblem(
-        EnrollmentProblemKind.refusedLogin,
-        'Login token needed',
-        'Sign in to Biatec OIDC to get a fresh login token, paste it below and connect.',
-        'Connect and create the key');
+    return EnrollmentProblem(EnrollmentProblemKind.refusedLogin,
+        t.text('tokenNeededTitle'), t.text('tokenNeeded'), t.text('connectCreate'));
   }
   final refused = RegExp(r'refused \((\d{3})\)').firstMatch(lower);
   final status = refused == null ? null : int.parse(refused.group(1)!);
   // The status code decides first: a server's own wording ("token already used") must not turn a refused login into "already enrolled".
   // The server's status for a repeated device key is not fixed (409, or a 400 that says so), and the app mints a random key per attempt.
   if (status == 409 || (status == 400 && lower.contains('already enrolled'))) {
-    return EnrollmentProblem(
-        EnrollmentProblemKind.alreadyEnrolled,
-        'This device is already enrolled',
-        'Biatec OIDC already has this device. If this app has the enrollment, '
-            'check again to open it. If it does not, remove the device from '
-            'your account on another trusted device, then connect again.',
-        'Check again');
+    return EnrollmentProblem(EnrollmentProblemKind.alreadyEnrolled,
+        t.text('alreadyTitle'), t.text('already'), t.text('checkAgain'));
   }
   if (status == 400 || status == 401 || status == 403) {
-    return EnrollmentProblem(
-        EnrollmentProblemKind.refusedLogin,
-        'Login token not accepted',
-        'The token was refused, perhaps because it is old or was already used. '
-            'Sign in to Biatec OIDC again to get a fresh one, replace the token '
-            'below and connect.',
-        'Connect and create the key');
+    return EnrollmentProblem(EnrollmentProblemKind.refusedLogin,
+        t.text('tokenRefusedTitle'), t.text('tokenRefused'), t.text('connectCreate'));
   }
   // The controller's refusals of a key that is not in secure hardware.
   if (error.startsWith('This device keeps the key in') ||
@@ -152,10 +137,10 @@ EnrollmentProblem classifyEnrollmentError(String error) {
       error.startsWith('This device cannot protect approvals')) {
     return EnrollmentProblem(
         EnrollmentProblemKind.keyNotHardware,
-        'This device cannot protect the key',
-        'The keys must be kept in secure hardware, and the one that approves must need your fingerprint or face every time. $error',
-        'Try again');
+        t.text('keyNotHardwareTitle'),
+        t.text('keyNotHardware', {'why': t.message(error)}),
+        t.text('tryAgain'));
   }
-  return EnrollmentProblem(
-      EnrollmentProblemKind.other, 'Enrollment failed', error, 'Try again');
+  return EnrollmentProblem(EnrollmentProblemKind.other,
+      t.text('enrollFailedTitle'), t.message(error), t.text('tryAgain'));
 }

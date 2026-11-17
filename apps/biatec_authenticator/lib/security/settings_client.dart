@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../approvals/approval_client.dart';
 import 'device_proof.dart';
+import 'security_texts.dart';
 import 'pinning/pinned_http.dart';
 
 /// What an active device needs to activate a pending one (`pairing` in `GET /devices`, required changes, "Activation by an existing device"): the new device's two key
@@ -317,7 +318,8 @@ class SettingsClient {
     try {
       return await signer.headers(method, url, token);
     } on Object catch (e) {
-      throw ApprovalException('The device proof could not be made: $e');
+      throw ApprovalException(
+          SecurityTexts.of().text('proofFailed', {'reason': '$e'}));
     }
   }
 
@@ -325,10 +327,12 @@ class SettingsClient {
     try {
       return await call().timeout(_timeout);
     } on PinningException catch (e) {
-      // Not "offline": retrying will not help, and the user is told to update.
-      throw ApprovalException(e.message);
+      // Not "offline": retrying will not help, and the user is told to update. The same words as PinningException.message (which stays English: the enrollment screen recognises it), in the phone's language.
+      throw ApprovalException(
+          SecurityTexts.of().text('pinning', {'host': e.host}));
     } on Object catch (e) {
-      throw ApprovalException('Biatec OIDC is not reachable: $e',
+      throw ApprovalException(
+          SecurityTexts.of().text('unreachable', {'reason': '$e'}),
           offline: true);
     }
   }
@@ -340,7 +344,8 @@ class SettingsClient {
     } on Object {
       // Falls through.
     }
-    throw ApprovalException('Unexpected response (${res.statusCode}).');
+    throw ApprovalException(SecurityTexts.of()
+        .text('unexpected', {'status': '${res.statusCode}'}));
   }
 
   /// The body of a refusal as an object, or an empty one when it is not (the status is what counts then).
@@ -362,7 +367,10 @@ class SettingsClient {
         () async => _client.get(url, headers: await _auth('GET', url, token)));
     if (res.statusCode != 200) {
       throw ApprovalException(
-          'Could not load devices (${res.statusCode}): ${_detail(_lenient(res))}',
+          SecurityTexts.of().text('loadDevicesFailed', {
+            'status': '${res.statusCode}',
+            'detail': _detail(_lenient(res)),
+          }),
           status: res.statusCode);
     }
     final json = _object(res);
@@ -372,7 +380,7 @@ class SettingsClient {
           DeviceInfo.fromJson((d as Map).cast<String, Object?>())
       ];
     } on Object {
-      throw const ApprovalException('Malformed device list.');
+      throw ApprovalException(SecurityTexts.of().text('malformedDevices'));
     }
   }
 
@@ -383,10 +391,12 @@ class SettingsClient {
         _client.post(url, headers: await _auth('POST', url, token)));
     if (res.statusCode == 200) return;
     final json = _lenient(res);
+    final t = SecurityTexts.of();
     throw ApprovalException(
         res.statusCode == 409
-            ? 'Only a pending enrollment can be cancelled.'
-            : 'Could not cancel (${res.statusCode}): ${_detail(json)}',
+            ? t.text('onlyPending')
+            : t.text('cancelFailed',
+                {'status': '${res.statusCode}', 'detail': _detail(json)}),
         status: res.statusCode);
   }
 
@@ -404,11 +414,13 @@ class SettingsClient {
         ));
     if (res.statusCode == 200) return;
     final json = _object(res);
+    final t = SecurityTexts.of();
     throw ApprovalException(res.statusCode == 409
-        ? 'That device is already active, or cannot be approved by a device.'
+        ? t.text('alreadyActive')
         : res.statusCode == 404
-            ? 'That device is no longer waiting for activation.'
-            : 'Could not activate it (${res.statusCode}): ${_detail(json)}');
+            ? t.text('noLongerWaiting')
+            : t.text('activateFailed',
+                {'status': '${res.statusCode}', 'detail': _detail(json)}));
   }
 
   /// `GET /devices/settings`.
@@ -418,13 +430,13 @@ class SettingsClient {
         () async => _client.get(url, headers: await _auth('GET', url, token)));
     final json = _object(res);
     if (res.statusCode != 200) {
-      throw ApprovalException(
-          'Could not load settings (${res.statusCode}): ${_detail(json)}');
+      throw ApprovalException(SecurityTexts.of().text('loadSettingsFailed',
+          {'status': '${res.statusCode}', 'detail': _detail(json)}));
     }
     try {
       return ConsentSettings.fromJson(json);
     } on Object {
-      throw const ApprovalException('Malformed settings.');
+      throw ApprovalException(SecurityTexts.of().text('malformedSettings'));
     }
   }
 
@@ -445,13 +457,13 @@ class SettingsClient {
         return ConsentSettings.fromJson(
             (json['settings'] as Map).cast<String, Object?>());
       } on Object {
-        throw const ApprovalException('Malformed settings.');
+        throw ApprovalException(SecurityTexts.of().text('malformedSettings'));
       }
     }
     if (json['reason'] == 'consent_required') {
       throw ConsentRequiredException(_detail(json));
     }
-    throw ApprovalException(
-        'The change was refused (${res.statusCode}): ${_detail(json)}');
+    throw ApprovalException(SecurityTexts.of().text('refused',
+        {'status': '${res.statusCode}', 'detail': _detail(json)}));
   }
 }

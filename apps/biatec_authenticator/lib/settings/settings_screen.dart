@@ -14,12 +14,14 @@ import '../privacy/phone_eraser.dart';
 import '../privacy/privacy_screen.dart';
 import '../lock/lock_controller.dart';
 import '../security/settings_controller.dart';
+import '../security/security_texts.dart';
 import '../security/settings_frame.dart';
 import '../shell/tab_reload.dart';
 import '../theme.dart';
 import '../ui/ui.dart';
 import 'app_info.dart';
 import 'channel_strings.dart';
+import 'settings_texts.dart';
 import 'theme_controller.dart';
 import 'threshold_screen.dart';
 
@@ -79,8 +81,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   @override
   Widget build(BuildContext context) {
     final theme = ThemeScope.maybeOf(context);
+    final t = SettingsTexts.of(Localizations.maybeLocaleOf(context));
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: Text(t.text('title'))),
       body: ListenableBuilder(
         listenable: _controller,
         builder: (context, _) => ListView(
@@ -88,17 +91,17 @@ class _SettingsScreenState extends State<SettingsScreen>
             // A failed load shows its reason in the group itself, once.
             ...settingsStatus(_controller,
                 showError: _controller.phase != SettingsPhase.unavailable),
-            const _SectionHeader('Security'),
+            _SectionHeader(t.text('security')),
             ..._security(context, _controller),
             if (widget.stayConnected?.supported ?? false) ...[
-              const _SectionHeader('Notifications'),
+              _SectionHeader(t.text('notifications')),
               _StayConnectedTile(controller: widget.stayConnected!),
             ],
             if (theme != null) ...[
-              const _SectionHeader('Appearance'),
+              _SectionHeader(t.text('appearance')),
               _AppearanceChoice(controller: theme),
             ],
-            const _SectionHeader('About'),
+            _SectionHeader(t.text('about')),
             ..._about(context),
             const SizedBox(height: AppSpacing.l),
           ],
@@ -109,32 +112,34 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   List<Widget> _security(BuildContext context, SettingsController c) {
     final lock = LockScope.maybeOf(context);
+    final locale = Localizations.maybeLocaleOf(context);
+    final t = SettingsTexts.of(locale);
+    final f = SecurityTexts.of(locale);
     if (!widget.services.enabled) {
-      return const [
+      return [
         Padding(
-          padding: EdgeInsets.symmetric(
+          padding: const EdgeInsets.symmetric(
               horizontal: AppSpacing.m, vertical: AppSpacing.s),
           child: StatusBanner(
-            key: Key('not-available'),
+            key: const Key('not-available'),
             severity: StatusSeverity.info,
-            title: 'Not available yet',
-            message: 'This Biatec OIDC does not offer device and settings '
-                'management; it only runs against the mock for now.',
+            title: f.text('notAvailableYet'),
+            message: f.text('notAvailableYetBody'),
           ),
         ),
       ];
     }
     switch (c.phase) {
       case SettingsPhase.loading:
-        return const [
+        return [
           Padding(
-            padding: EdgeInsets.symmetric(
+            padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.m, vertical: AppSpacing.s),
             child: StatusBanner(
-              key: Key('loading'),
+              key: const Key('loading'),
               severity: StatusSeverity.info,
-              title: 'Loading',
-              message: 'Getting your security settings.',
+              title: t.text('loadingTitle'),
+              message: t.text('loadingBody'),
             ),
           ),
         ];
@@ -147,9 +152,11 @@ class _SettingsScreenState extends State<SettingsScreen>
               key: const Key('unavailable'),
               severity: StatusSeverity.danger,
               icon: c.offline ? Icons.cloud_off : Icons.error_outline,
-              title: c.offline ? 'You are offline' : 'Not available',
-              message: c.error ?? 'Not available.',
-              actionLabel: 'Try again',
+              title: c.offline
+                  ? t.text('offlineTitle')
+                  : f.text('notAvailable'),
+              message: c.error ?? f.text('notAvailableBody'),
+              actionLabel: f.text('tryAgain'),
               onAction: c.load,
             ),
           ),
@@ -160,49 +167,38 @@ class _SettingsScreenState extends State<SettingsScreen>
         if (widget.services.trustSettings) return _trustSecurity(context, c, lock);
         return [
           // The biometric check is no longer a setting: the app opens and approves only with a fingerprint or face.
-          const ListTile(
-            key: Key('biometric'),
-            leading: Icon(Icons.fingerprint),
-            title: Text('Biometric check'),
-            subtitle: Text(
-                'Always required. Your fingerprint or face opens the '
-                'app and confirms every approval. It cannot be turned off.'),
-          ),
+          _biometricTile(t),
           ListTile(
             key: const Key('threshold'),
-            title: const Text('Approval threshold'),
-            subtitle: Text('${s.thresholdEur} EUR. Actions above it need your '
-                'phone. Raising it needs approval on this device.'),
+            title: Text(t.text('thresholdTitle')),
+            subtitle: Text(
+                t.text('thresholdSubtitle', {'amount': s.thresholdEur})),
             trailing: TextButton(
               key: const Key('threshold-change'),
               onPressed: enabled
                   ? () async {
                       final v = await askEur(context,
-                          title: 'Approval threshold',
+                          title: t.text('thresholdTitle'),
                           initial: s.thresholdEur,
                           current: s.thresholdEur,
-                          hint: 'Lowering applies at once. Raising needs '
-                              'approval on this device.');
+                          hint: f.text('lowerRaiseHint'));
                       if (v != null) await c.apply({'threshold_eur': v});
                     }
                   : null,
-              child: const Text('Change'),
+              child: Text(t.text('change')),
             ),
           ),
           SwitchListTile(
             key: const Key('block-unverified'),
-            title: const Text('Block applications without a proven domain'),
-            subtitle: const Text('Applications that have not proven their '
-                'domain cannot ask for approvals. Turning it off needs '
-                'approval on this device.'),
+            title: Text(t.text('blockUnverified')),
+            subtitle: Text(t.text('blockUnverifiedHelp')),
             value: s.blockUnprovenClients,
             onChanged: enabled
                 ? (v) => applyWithConfirm(
                     context, c, s, {'block_unverified_clients': v},
-                    title: 'Let applications without a proven domain ask?',
-                    message: 'Applications that have not proven their domain '
-                        'will be able to ask for approvals.',
-                    confirmLabel: 'Turn off')
+                    title: t.text('blockUnverifiedOffTitle'),
+                    message: t.text('blockUnverifiedOffBody'),
+                    confirmLabel: t.text('turnOff'))
                 : null,
           ),
           if (lock != null) _LockDelayTile(lock: lock),
@@ -210,8 +206,8 @@ class _SettingsScreenState extends State<SettingsScreen>
           ListTile(
             key: const Key('trusted-clients'),
             leading: const Icon(Icons.verified_user_outlined),
-            title: const Text('Trusted clients and thresholds'),
-            subtitle: const Text('Per-client limits, "always ask" and pauses.'),
+            title: Text(t.text('trustedClients')),
+            subtitle: Text(t.text('trustedClientsHelp')),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
               settings: const RouteSettings(name: '/settings/clients'),
@@ -226,17 +222,12 @@ class _SettingsScreenState extends State<SettingsScreen>
   /// Security with the user-held trust settings (`AppConfig.trustSettings`): the threshold and the linked services are screens of their own, inside this tab's stack so back returns here and the bar stays.
   List<Widget> _trustSecurity(
       BuildContext context, SettingsController c, LockController? lock) {
-    final s = TrustStrings.of();
+    final locale = Localizations.maybeLocaleOf(context);
+    final s = TrustStrings.of(locale);
     final settings = c.settings!;
     return [
       ...inactiveBanner(c),
-      const ListTile(
-        key: Key('biometric'),
-        leading: Icon(Icons.fingerprint),
-        title: Text('Biometric check'),
-        subtitle: Text('Always required. Your fingerprint or face opens the '
-            'app and confirms every approval. It cannot be turned off.'),
-      ),
+      _biometricTile(SettingsTexts.of(locale)),
       ListTile(
         key: const Key('threshold'),
         leading: const Icon(Icons.tune),
@@ -266,29 +257,38 @@ class _SettingsScreenState extends State<SettingsScreen>
     ];
   }
 
+  /// The biometric check is no longer a setting: the app opens and approves only with a fingerprint or face.
+  Widget _biometricTile(SettingsTexts t) => ListTile(
+        key: const Key('biometric'),
+        leading: const Icon(Icons.fingerprint),
+        title: Text(t.text('biometricTitle')),
+        subtitle: Text(t.text('biometricBody')),
+      );
+
   List<Widget> _about(BuildContext context) {
+    final locale = Localizations.maybeLocaleOf(context);
+    final t = SettingsTexts.of(locale);
     return [
-      const ListTile(
-        key: Key('about-version'),
-        leading: Icon(Icons.info_outline),
-        title: Text('Version'),
-        subtitle: Text(appVersion),
+      ListTile(
+        key: const Key('about-version'),
+        leading: const Icon(Icons.info_outline),
+        title: Text(t.text('version')),
+        subtitle: const Text(appVersion),
       ),
       ListTile(
         key: const Key('oidc-server'),
         leading: const Icon(Icons.dns_outlined),
-        title: const Text('Biatec OIDC server'),
+        title: Text(t.text('oidcServer')),
         subtitle: Text('${widget.config.oidcBaseUrl}\n'
-            '${endpointKind(widget.config)}'),
+            '${endpointKind(widget.config, locale)}'),
         isThreeLine: true,
       ),
       _DeviceKeyTile(services: widget.services),
       ListTile(
         key: const Key('about-privacy'),
         leading: const Icon(Icons.privacy_tip_outlined),
-        title: const Text('Privacy'),
-        subtitle: const Text('What the app stores and sends, and erasing '
-            'everything from this phone.'),
+        title: Text(t.text('privacy')),
+        subtitle: Text(t.text('privacyHelp')),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
             settings: const RouteSettings(name: '/settings/privacy'),
@@ -297,8 +297,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       ListTile(
         key: const Key('about-licenses'),
         leading: const Icon(Icons.description_outlined),
-        title: const Text('Open-source notices'),
-        subtitle: const Text('The libraries this app is built with.'),
+        title: Text(t.text('licenses')),
+        subtitle: Text(t.text('licensesHelp')),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => showLicensePage(
           context: context,
@@ -317,7 +317,7 @@ class _StayConnectedTile extends StatelessWidget {
   final StayConnectedController controller;
 
   Future<void> _toggle(BuildContext context, bool value) async {
-    final strings = ChannelStrings.of();
+    final strings = ChannelStrings.of(Localizations.maybeLocaleOf(context));
     await controller.setEnabled(value);
     if (!value || !context.mounted) return;
     if (!await controller.shouldOfferBatteryExemption()) return;
@@ -344,7 +344,7 @@ class _StayConnectedTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final strings = ChannelStrings.of();
+    final strings = ChannelStrings.of(Localizations.maybeLocaleOf(context));
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) => SwitchListTile(
@@ -389,19 +389,16 @@ class _AppearanceChoice extends StatelessWidget {
 
   final ThemeController controller;
 
+  /// The mode, the keys of its title and of its description ([SettingsTexts]), and its icon.
   static const _choices = [
-    (
-      ThemeMode.system,
-      'System',
-      'Follows your phone\'s setting.',
-      Icons.brightness_auto
-    ),
-    (ThemeMode.light, 'Light', 'Always light.', Icons.light_mode_outlined),
-    (ThemeMode.dark, 'Dark', 'Always dark.', Icons.dark_mode_outlined),
+    (ThemeMode.system, 'themeSystem', 'themeSystemHelp', Icons.brightness_auto),
+    (ThemeMode.light, 'themeLight', 'themeLightHelp', Icons.light_mode_outlined),
+    (ThemeMode.dark, 'themeDark', 'themeDarkHelp', Icons.dark_mode_outlined),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final t = SettingsTexts.of(Localizations.maybeLocaleOf(context));
     return Column(
       key: const Key('theme-mode'),
       children: [
@@ -411,11 +408,11 @@ class _AppearanceChoice extends StatelessWidget {
             child: ListTile(
               key: Key('theme-${mode.name}'),
               leading: Icon(icon),
-              title: Text(title),
-              subtitle: Text(description),
+              title: Text(t.text(title)),
+              subtitle: Text(t.text(description)),
               selected: controller.mode == mode,
               trailing: controller.mode == mode
-                  ? const Icon(Icons.check, semanticLabel: 'Chosen')
+                  ? Icon(Icons.check, semanticLabel: t.text('chosen'))
                   : null,
               onTap: () => controller.select(mode),
             ),
@@ -453,25 +450,26 @@ class _DeviceKeyTileState extends State<_DeviceKeyTile> {
       future: _key,
       builder: (context, snapshot) {
         final key = snapshot.data;
+        final locale = Localizations.maybeLocaleOf(context);
+        final t = SettingsTexts.of(locale);
         final String text;
         if (snapshot.connectionState != ConnectionState.done) {
-          text = 'Checking.';
+          text = t.text('keyChecking');
         } else if (snapshot.hasError) {
-          text =
-              'The keystore did not answer. Close and open the app to try again.';
+          text = t.text('keyNoAnswer');
         } else if (key == null) {
-          text = 'No key found for this device.';
+          text = t.text('keyNone');
         } else if (key.securityLevel == KeySecurityLevel.windowsAccount) {
-          text = EnrollStrings.of().softwareKeyShort;
+          text = EnrollStrings.of(locale).softwareKeyShort;
         } else if (key.securityLevel.isHardware) {
-          text = 'Kept in ${key.securityLevel.label}. It cannot be exported.';
+          text = t.text('keyHardware', {'level': key.securityLevel.label});
         } else {
-          text = 'Not in secure hardware (${key.securityLevel.label}).';
+          text = t.text('keySoftware', {'level': key.securityLevel.label});
         }
         return ListTile(
           key: const Key('about-key'),
           leading: const Icon(Icons.vpn_key_outlined),
-          title: const Text('Device key protection'),
+          title: Text(t.text('keyTitle')),
           subtitle: Text(text),
         );
       },
@@ -486,6 +484,7 @@ class _LockDelayTile extends StatelessWidget {
   final LockController lock;
 
   Future<void> _choose(BuildContext context) async {
+    final t = SettingsTexts.of(Localizations.maybeLocaleOf(context));
     final chosen = await showModalBottomSheet<LockDelay>(
       context: context,
       showDragHandle: true,
@@ -500,7 +499,7 @@ class _LockDelayTile extends StatelessWidget {
                     AppSpacing.l, 0, AppSpacing.l, AppSpacing.s),
                 child: Semantics(
                   header: true,
-                  child: Text('Lock the app',
+                  child: Text(t.text('lockTitle'),
                       style: Theme.of(context).textTheme.titleLarge),
                 ),
               ),
@@ -510,7 +509,7 @@ class _LockDelayTile extends StatelessWidget {
                   title: Text(d.label),
                   selected: d == lock.delay,
                   trailing: d == lock.delay
-                      ? const Icon(Icons.check, semanticLabel: 'Chosen')
+                      ? Icon(Icons.check, semanticLabel: t.text('chosen'))
                       : null,
                   onTap: () => Navigator.of(context).pop(d),
                 ),
@@ -522,21 +521,21 @@ class _LockDelayTile extends StatelessWidget {
     if (chosen == null || chosen == lock.delay || !context.mounted) return;
     final saved = await lock.setDelay(chosen);
     if (!saved && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Biometric check did not pass. Nothing changed.')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(t.text('lockFailed'))));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = SettingsTexts.of(Localizations.maybeLocaleOf(context));
     return ListenableBuilder(
       listenable: lock,
       builder: (context, _) => ListTile(
         key: const Key('lock-delay'),
         leading: const Icon(Icons.lock_clock),
-        title: const Text('Lock the app'),
-        subtitle: Text('${lock.delay.label} after you leave it. It also locks '
-            'when the screen locks and after 2 minutes without a touch.'),
+        title: Text(t.text('lockTitle')),
+        subtitle: Text(t.text('lockSubtitle', {'delay': lock.delay.label})),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => _choose(context),
       ),

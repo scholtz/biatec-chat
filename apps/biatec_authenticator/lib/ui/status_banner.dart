@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../theme.dart';
+import '../l10n/common_texts.dart';
 
 enum StatusSeverity { info, success, warning, danger }
 
@@ -33,12 +34,12 @@ class StatusBanner extends StatelessWidget {
       };
 
   /// The word a screen reader hears before the message, as color is not available to it.
-  static String severityWord(StatusSeverity s) => switch (s) {
-        StatusSeverity.info => 'Note',
-        StatusSeverity.success => 'Success',
-        StatusSeverity.warning => 'Warning',
-        StatusSeverity.danger => 'Problem',
-      };
+  static String severityWord(StatusSeverity s, [Locale? locale]) => CommonTexts.of(locale).text(switch (s) {
+        StatusSeverity.info => 'note',
+        StatusSeverity.success => 'success',
+        StatusSeverity.warning => 'warning',
+        StatusSeverity.danger => 'problem',
+      });
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +65,7 @@ class StatusBanner extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(icon ?? defaultIcon(severity),
-                  color: foreground, semanticLabel: severityWord(severity)),
+                  color: foreground, semanticLabel: severityWord(severity, Localizations.maybeLocaleOf(context))),
               const SizedBox(width: AppSpacing.m),
               Expanded(
                 child: Column(

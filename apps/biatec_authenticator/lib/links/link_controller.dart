@@ -114,7 +114,7 @@ class LinkController extends ChangeNotifier {
     try {
       final record = await enrollment.read();
       if (record == null) {
-        throw const ApprovalException('This device is not enrolled.');
+        throw ApprovalException(RpStrings.of().t('notEnrolled'));
       }
       final request =
           await client.fetchLink(record.deviceToken, code.linkId, code.secret);
@@ -122,16 +122,10 @@ class LinkController extends ChangeNotifier {
       _set(request.isExpired(now) ? LinkPhase.gone : LinkPhase.ready);
     } on LinkException catch (e) {
       _request = null;
-      final s = RpStrings.of();
-      switch (e.problem) {
-        case LinkProblem.gone:
-          _set(LinkPhase.gone);
-        case LinkProblem.notActive:
-          _set(LinkPhase.unavailable, unavailable: s.t('notActive'));
-        case LinkProblem.cannotShow:
-          _set(LinkPhase.unavailable, unavailable: s.t('cannotShowLink'));
-        case LinkProblem.other:
-          _set(LinkPhase.unavailable, unavailable: e.message);
+      if (e.problem == LinkProblem.gone) {
+        _set(LinkPhase.gone);
+      } else {
+        _set(LinkPhase.unavailable, unavailable: _problemText(e));
       }
     } on ApprovalException catch (e) {
       _set(LinkPhase.unavailable, unavailable: e.message, offline: e.offline);
@@ -140,11 +134,22 @@ class LinkController extends ChangeNotifier {
     }
   }
 
+  /// What a link problem other than "gone" says, in words (never the name of the problem).
+  static String _problemText(LinkException e) {
+    final s = RpStrings.of();
+    return switch (e.problem) {
+      LinkProblem.notActive => s.t('notActive'),
+      LinkProblem.cannotShow => s.t('cannotShowLink'),
+      LinkProblem.gone => s.t('goneBody'),
+      LinkProblem.other => e.message.isEmpty ? s.t('cannotShowLink') : e.message,
+    };
+  }
+
   /// The enrolled, active device and its keys (two-key mode only: a link statement is signed by the approval key). Throws [ApprovalException].
   Future<(String, DeviceIdentity)> _device() async {
     final record = await enrollment.read();
     if (record == null) {
-      throw const ApprovalException('This device is not enrolled.');
+      throw ApprovalException(RpStrings.of().t('notEnrolled'));
     }
     if (record.activeAt.isAfter(now)) {
       throw ApprovalException(RpStrings.of().t('notActive'));
@@ -174,7 +179,7 @@ class LinkController extends ChangeNotifier {
     try {
       final record = await enrollment.read();
       if (record == null) {
-        throw const ApprovalException('This device is not enrolled.');
+        throw ApprovalException(RpStrings.of().t('notEnrolled'));
       }
       final r =
           await client.fetchLink(record.deviceToken, code.linkId, code.secret);
@@ -189,7 +194,7 @@ class LinkController extends ChangeNotifier {
         _notifyLinked();
       } else {
         _uncertain = true;
-        _set(LinkPhase.ready, error: e.toString());
+        _set(LinkPhase.ready, error: _problemText(e));
       }
     } on ApprovalException catch (e) {
       _uncertain = true;
@@ -244,7 +249,7 @@ class LinkController extends ChangeNotifier {
           decision: LinkDecision.approve,
           clock: () => now,
           prompt: LinkPrompt(
-              title: LinkPrompt.fixedTitle, subtitle: clientLabel(shown.client)),
+              title: s.t('promptTitle'), subtitle: clientLabel(shown.client)),
         );
       } on KeyPromptCancelled {
         // Nothing was signed or sent: the link stays open and no code attempt is used.
@@ -254,7 +259,7 @@ class LinkController extends ChangeNotifier {
         _set(LinkPhase.ready, error: ApprovalKeyInvalidated.message);
         return;
       } on KeyPromptFailed catch (e) {
-        _set(LinkPhase.ready, error: 'Could not link: ${e.message}');
+        _set(LinkPhase.ready, error: s.t('couldNotLink', {'why': e.message}));
         return;
       }
       _sent = true;
@@ -286,7 +291,7 @@ class LinkController extends ChangeNotifier {
       _sent = false;
       _set(LinkPhase.ready, error: e.message, offline: e.offline);
     } on Object catch (e) {
-      _set(LinkPhase.ready, error: 'Could not link: $e');
+      _set(LinkPhase.ready, error: s.t('couldNotLink', {'why': '$e'}));
     }
   }
 
@@ -328,7 +333,8 @@ class LinkController extends ChangeNotifier {
       _sent = false;
       _set(LinkPhase.ready, error: e.message, offline: e.offline);
     } on Object catch (e) {
-      _set(LinkPhase.ready, error: 'Could not decline: $e');
+      _set(LinkPhase.ready,
+          error: RpStrings.of().t('couldNotDecline', {'why': '$e'}));
     }
   }
 
@@ -340,9 +346,10 @@ class LinkController extends ChangeNotifier {
       _set(LinkPhase.gone);
     } else if (outcome is LinkRefused) {
       _set(LinkPhase.ready,
-          error: 'Refused (${outcome.status}): ${outcome.description}');
+          error: RpStrings.of().t('refused',
+              {'status': '${outcome.status}', 'why': outcome.description}));
     } else {
-      _set(LinkPhase.ready, error: 'Unexpected answer from Biatec OIDC.');
+      _set(LinkPhase.ready, error: RpStrings.of().t('unexpectedAnswer'));
     }
   }
 
@@ -353,7 +360,7 @@ class LinkController extends ChangeNotifier {
       await history.add(HistoryEntry(
         authReqId: request.linkId,
         decision: decision.wire,
-        summary: 'Link a service',
+        summary: RpStrings.of().t('linkTitle'),
         clientLabel: clientLabel(request.client),
         decidedAt: now,
         receipt: {

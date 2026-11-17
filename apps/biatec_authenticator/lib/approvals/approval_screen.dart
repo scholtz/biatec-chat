@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../ui/ui.dart';
 import 'approval_card.dart';
 import 'approval_controller.dart';
+import 'approval_texts.dart';
 import 'approval_services.dart';
 import 'consent_request.dart';
 import 'widgets/approval_actions.dart';
@@ -119,8 +120,9 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = ApprovalTexts.ofContext(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Approval')),
+      appBar: AppBar(title: Text(t.text('approvalTitle'))),
       body: ListenableBuilder(
         listenable: _controller,
         builder: (context, _) => _body(context),
@@ -146,7 +148,9 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
                     child: FilledButton(
                       key: const Key('dismiss'),
                       onPressed: () => _dismiss(c),
-                      child: Text(RpStrings.of().t('dismiss')),
+                      child: Text(RpStrings.of(
+                              Localizations.maybeLocaleOf(context))
+                          .t('dismiss')),
                     ),
                   ),
                 ),
@@ -187,11 +191,10 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
       unawaited(Haptics.instance.error(context));
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(
-            key: Key('touch-obscured'),
-            content: Text('Another app is drawing over this screen, so the '
-                'approval was not sent. Close it (a chat bubble or a screen '
-                'filter) and tap Approve again.')));
+        ..showSnackBar(SnackBar(
+            key: const Key('touch-obscured'),
+            content: Text(
+                ApprovalTexts.ofContext(context).text('touchObscured'))));
       return;
     }
     await c.approve(_code.text);
@@ -206,7 +209,8 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(
           key: const Key('dismissed'),
-          content: Text(RpStrings.of().t('dismissed'))));
+          content: Text(RpStrings.of(Localizations.maybeLocaleOf(context))
+              .t('dismissed'))));
     _close();
   }
 
@@ -215,62 +219,58 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
 
   Widget _body(BuildContext context) {
     final c = _controller;
+    final t = ApprovalTexts.ofContext(context);
     switch (c.phase) {
       case ApprovalPhase.loading:
         return const LoadingSkeleton(key: Key('approval-loading'), rows: 4);
       case ApprovalPhase.unavailable:
-        final error = c.error ?? 'This request is not available.';
+        final error = c.error ?? t.text('notAvailable');
         if (!c.offline && _wasDecided(error)) {
           return ResultView(
             icon: Icons.task_alt,
-            title: 'Already decided',
+            title: t.text('alreadyDecidedTitle'),
             message: error,
-            actionLabel: 'Back to approvals',
+            actionLabel: t.text('backToApprovals'),
             onAction: _close,
           );
         }
         return ErrorState(
           offline: c.offline,
-          title: c.offline ? null : 'This request is not available',
-          message: c.offline
-              ? 'Offline. Approvals need a connection to Biatec OIDC.'
-              : error,
+          title: t.text(c.offline ? 'offlineTitle' : 'notAvailableTitle'),
+          message: c.offline ? t.text('offlineNeedsOidc') : error,
+          retryLabel: t.text('tryAgain'),
           onRetry: c.load,
         );
       case ApprovalPhase.approved:
         return ResultView(
           icon: Icons.check_circle,
-          title: 'Approved.',
-          message: 'Your approval was sent to Biatec OIDC, which continues '
-              'the action. You can close this screen.',
-          actionLabel: 'Done',
+          title: t.text('approvedTitle'),
+          message: t.text('approvedBody'),
+          actionLabel: t.text('done'),
           onAction: _close,
         );
       case ApprovalPhase.denied:
         return ResultView(
           icon: Icons.block,
-          title: 'Denied.',
-          message:
-              'Nothing was approved. Your decision was sent to Biatec OIDC.',
-          actionLabel: 'Done',
+          title: t.text('deniedTitle'),
+          message: t.text('deniedBody'),
+          actionLabel: t.text('done'),
           onAction: _close,
         );
       case ApprovalPhase.codeFailed:
         return ResultView(
           icon: Icons.gpp_bad,
-          title: 'Three wrong codes. The request was refused.',
-          message: c.error ??
-              'Start the action again to get a new request and a new code.',
-          actionLabel: 'Back to approvals',
+          title: t.text('codeFailedTitle'),
+          message: c.error ?? t.text('codeFailedBody'),
+          actionLabel: t.text('backToApprovals'),
           onAction: _close,
         );
       case ApprovalPhase.expired:
         return ResultView(
           icon: Icons.timer_off,
-          title: 'This request has expired.',
-          message: 'Nothing was approved. Start the action again to get a new '
-              'request.',
-          actionLabel: 'Back to approvals',
+          title: t.text('expired'),
+          message: t.text('expiredBody'),
+          actionLabel: t.text('backToApprovals'),
           onAction: _close,
         );
       case ApprovalPhase.ready:
@@ -279,11 +279,16 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
     }
   }
 
+  /// The controller's "already decided" and "no longer pending" (in either language), or a server's words that say so.
   static bool _wasDecided(String error) =>
-      error.contains('already decided') || error.contains('no longer pending');
+      error.contains('already decided') ||
+      error.contains('no longer pending') ||
+      ApprovalTexts.isMessage(error, 'alreadyDecided') ||
+      ApprovalTexts.isMessage(error, 'noLongerPending');
 
   Widget _ready(BuildContext context) {
     final c = _controller;
+    final t = ApprovalTexts.ofContext(context);
     final request = c.request!;
     final left = request.expiresAt.difference(c.now);
     final busy = c.phase == ApprovalPhase.working;
@@ -297,24 +302,22 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
               key: const Key('approval-error'),
               severity: StatusSeverity.warning,
               icon: Icons.cloud_off,
-              title: 'You are offline',
-              message: 'Offline. Nothing was approved. ${c.error ?? ''} '
-                      'Approve and Deny are off until Biatec OIDC can be reached '
-                      'again.'
+              title: t.text('offlineTitle'),
+              message: t
+                  .text('offlineBanner', {'error': c.error ?? ''})
                   .replaceAll('  ', ' '),
-              actionLabel: 'Try again',
+              actionLabel: t.text('tryAgain'),
               onAction: c.load,
             ),
             const SizedBox(height: AppSpacing.m),
           ] else if (left <= Duration.zero) ...[
             // Both buttons are off; this says why, with the way out.
-            const StatusBanner(
-              key: Key('approval-expired'),
+            StatusBanner(
+              key: const Key('approval-expired'),
               severity: StatusSeverity.danger,
               icon: Icons.timer_off,
-              title: 'This request has expired',
-              message: 'Approve and Deny are off: this request can no longer '
-                  'be approved or denied. Go back and start the action again.',
+              title: t.text('expiredBannerTitle'),
+              message: t.text('expiredBanner'),
             ),
             const SizedBox(height: AppSpacing.m),
           ] else ...[
@@ -322,20 +325,23 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
             if (c.keysState == KeysState.approvalKeyInvalidated)
               _keysBanner(
                   const Key('approval-key-invalidated'),
-                  'Approvals are off on this phone',
-                  '${ApprovalKeyInvalidated.message} Deny still works.',
+                  t.text('keyInvalidatedTitle'),
+                  t.text('keyInvalidatedBody',
+                      {'message': ApprovalKeyInvalidated.message}),
+                  t,
                   c)
             else if (c.keysState == KeysState.missing)
               _keysBanner(
                   const Key('approval-keys-missing'),
-                  'This phone has no device keys',
-                  '${ApprovalKeysMissing.message} It cannot approve or deny '
-                      'until then.',
+                  t.text('keysMissingTitle'),
+                  t.text('keysMissingBody',
+                      {'message': ApprovalKeysMissing.message}),
+                  t,
                   c),
             if (c.error != null &&
                 c.error != ApprovalKeyInvalidated.message &&
                 c.error != ApprovalKeysMissing.message) ...[
-              _errorBanner(c.error!),
+              _errorBanner(c.error!, t),
               const SizedBox(height: AppSpacing.m),
             ],
           ],
@@ -358,7 +364,8 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
         ]);
   }
 
-  Widget _keysBanner(Key key, String title, String message, ApprovalController c) =>
+  Widget _keysBanner(Key key, String title, String message, ApprovalTexts t,
+          ApprovalController c) =>
       Padding(
         padding: const EdgeInsets.only(bottom: AppSpacing.m),
         child: StatusBanner(
@@ -367,7 +374,7 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
           icon: Icons.fingerprint,
           title: title,
           message: message,
-          actionLabel: 'Enroll this device again',
+          actionLabel: t.text('enrollAgain'),
           onAction: () async {
             await c.startReenrollment();
             if (mounted) _close();
@@ -375,25 +382,39 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
         ),
       );
 
-  /// A step that did not go through, in words, with what to do next.
-  Widget _errorBanner(String error) {
-    final wrong = error.startsWith('Wrong code');
-    final changed = error.startsWith('The request changed');
-    final cancelled = error.startsWith('Approval cancelled');
-    final retryable = error.startsWith('Could not') ||
-        error.startsWith('Refused') ||
-        error.startsWith('Unexpected');
+  /// The controller's and the client's messages after which trying again can help.
+  static const _retryable = [
+    'couldNotApprove',
+    'couldNotDeny',
+    'couldNotSign',
+    'loadRequestsFailed',
+    'loadRequestFailed',
+    'refused',
+    'unexpectedAnswer',
+    'unexpectedResponse',
+  ];
+
+  /// A step that did not go through, in words, with what to do next. The message is recognised in either language (the controller makes it in the device's).
+  Widget _errorBanner(String error, ApprovalTexts t) {
+    bool any(List<String> keys) =>
+        keys.any((k) => ApprovalTexts.isMessage(error, k));
+    final wrong = any(const ['wrongCode', 'wrongCodeOne', 'wrongCodeN']) ||
+        error.startsWith(ApprovalTexts.en.text('wrongCode')) ||
+        error.startsWith(ApprovalTexts.sk.text('wrongCode'));
+    final changed = any(const ['requestChanged']);
+    final cancelled = any(const ['approvalCancelled']);
+    final retryable = any(_retryable);
     return StatusBanner(
       key: const Key('approval-error'),
       severity: StatusSeverity.danger,
-      title: wrong
-          ? 'Wrong code'
+      title: t.text(wrong
+          ? 'errorWrongCodeTitle'
           : changed
-              ? 'The request changed'
+              ? 'errorChangedTitle'
               : cancelled
-                  ? 'Approval cancelled'
-                  : 'Could not complete',
-      message: retryable ? '$error You can try again.' : error,
+                  ? 'errorCancelledTitle'
+                  : 'errorTitle'),
+      message: retryable ? t.text('canTryAgain', {'error': error}) : error,
     );
   }
 }

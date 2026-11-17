@@ -15,6 +15,7 @@ import 'add/qr_scan_screen.dart';
 import 'code_ticker.dart';
 import 'codes_controller.dart';
 import 'codes_services.dart';
+import 'codes_texts.dart';
 import 'widgets/code_tile.dart';
 
 /// The Codes tab: the two-factor accounts with their current codes.
@@ -51,6 +52,8 @@ class _CodesScreenState extends State<CodesScreen> {
   String? _lastAnnounced;
 
   static const revealFor = Duration(seconds: 10);
+
+  CodesTexts get _t => CodesTexts.from(context);
 
   @override
   void initState() {
@@ -100,9 +103,9 @@ class _CodesScreenState extends State<CodesScreen> {
     for (final e in _controller.entries) {
       if (e.account.type != OtpType.totp) continue;
       final left = OtpGenerator.secondsLeft(e.account, now);
-      if (left == 10) text = 'Codes renew in 10 seconds';
-      if (left == 5) text = 'Codes renew in 5 seconds';
-      if (left == e.account.period) text ??= 'Codes renewed';
+      if (left == 10) text = _t.text('renewIn10');
+      if (left == 5) text = _t.text('renewIn5');
+      if (left == e.account.period) text ??= _t.text('renewed');
     }
     if (text == null) return;
     final id = '$text ${now.millisecondsSinceEpoch ~/ 1000}';
@@ -130,9 +133,7 @@ class _CodesScreenState extends State<CodesScreen> {
     unawaited(Haptics.instance.copy(context));
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(
-          content: Text('Code copied. It is cleared from the clipboard in 30 '
-              'seconds.')));
+      ..showSnackBar(SnackBar(content: Text(_t.text('copied'))));
   }
 
   Future<void> _add([AddMethod? start]) async {
@@ -149,8 +150,8 @@ class _CodesScreenState extends State<CodesScreen> {
       await _run(e, action, index);
     } on Object {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('That could not be saved. Nothing was changed.')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(_t.text('changeNotSaved'))));
     }
   }
 
@@ -173,14 +174,11 @@ class _CodesScreenState extends State<CodesScreen> {
         : '${e.info.issuer}, ${e.info.label}';
     final yes = await confirmSheet(
       context,
-      title: 'Delete this account?',
-      message: '$name will be removed from this phone. You will not get its '
-          'codes here any more, and the key cannot be shown again. If you '
-          'still need to sign in with it, set it up again at the service '
-          'first.',
-      warning: 'This cannot be undone.',
-      confirmLabel: 'Delete',
-      cancelLabel: 'Keep',
+      title: _t.text('deleteTitle'),
+      message: _t.text('deleteMessage', {'name': name}),
+      warning: _t.text('deleteWarning'),
+      confirmLabel: _t.text('delete'),
+      cancelLabel: _t.text('keep'),
       confirmKey: const Key('confirm-delete'),
       cancelKey: const Key('keep-account'),
       biometric: true,
@@ -189,9 +187,8 @@ class _CodesScreenState extends State<CodesScreen> {
     if (!yes || !mounted) return;
     final done = await _controller.delete(e.info.id);
     if (!mounted || done) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('The fingerprint or face check did not pass. Nothing '
-            'was deleted.')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(_t.text('deleteAuthFailed'))));
   }
 
   Future<void> _rename(CodeEntry e) async {
@@ -205,6 +202,7 @@ class _CodesScreenState extends State<CodesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = _t;
     return Scaffold(
       appBar: AppBar(
         title: _searching
@@ -212,15 +210,15 @@ class _CodesScreenState extends State<CodesScreen> {
                 key: const Key('search-field'),
                 controller: _search,
                 autofocus: true,
-                decoration: const InputDecoration(
-                    hintText: 'Search accounts', border: InputBorder.none),
+                decoration: InputDecoration(
+                    hintText: t.text('searchHint'), border: InputBorder.none),
                 onChanged: (v) => _controller.query = v,
               )
-            : const Text('Codes'),
+            : Text(t.text('codesTitle')),
         actions: [
           IconButton(
             key: const Key('search'),
-            tooltip: _searching ? 'Close search' : 'Search',
+            tooltip: t.text(_searching ? 'closeSearch' : 'search'),
             constraints: const BoxConstraints(
                 minWidth: kMinTapTarget, minHeight: kMinTapTarget),
             icon: Icon(_searching ? Icons.close : Icons.search),
@@ -234,7 +232,7 @@ class _CodesScreenState extends State<CodesScreen> {
           ),
           IconButton(
             key: const Key('backup'),
-            tooltip: 'Backup and restore',
+            tooltip: t.text('backupAndRestore'),
             constraints: const BoxConstraints(
                 minWidth: kMinTapTarget, minHeight: kMinTapTarget),
             icon: const Icon(Icons.save_alt),
@@ -246,9 +244,8 @@ class _CodesScreenState extends State<CodesScreen> {
             listenable: _controller,
             builder: (context, _) => IconButton(
               key: const Key('tap-to-reveal'),
-              tooltip: _controller.tapToReveal
-                  ? 'Show codes without tapping'
-                  : 'Hide codes until tapped',
+              tooltip: t.text(
+                  _controller.tapToReveal ? 'showWithoutTap' : 'hideUntilTap'),
               constraints: const BoxConstraints(
                   minWidth: kMinTapTarget, minHeight: kMinTapTarget),
               icon: Icon(_controller.tapToReveal
@@ -268,7 +265,7 @@ class _CodesScreenState extends State<CodesScreen> {
                 key: const Key('add-account'),
                 onPressed: _add,
                 icon: const Icon(Icons.add),
-                label: const Text('Add account'),
+                label: Text(t.text('addAccount')),
               )
             : const SizedBox.shrink(),
       ),
@@ -281,15 +278,17 @@ class _CodesScreenState extends State<CodesScreen> {
   }
 
   Widget _body(BuildContext context) {
+    final t = _t;
     switch (_controller.phase) {
       case CodesPhase.loading:
         return const LoadingSkeleton(key: Key('codes-loading'));
       case CodesPhase.failed:
         return ErrorState(
           key: const Key('codes-failed'),
-          title: 'Your codes could not be opened',
-          message: _controller.problem ?? 'Try again.',
+          title: t.text('openFailedTitle'),
+          message: _controller.problem ?? t.text('tryAgain'),
           onRetry: _controller.load,
+          retryLabel: t.text('retry'),
         );
       case CodesPhase.ready:
         break;
@@ -305,15 +304,13 @@ class _CodesScreenState extends State<CodesScreen> {
     final searching = _controller.query.isNotEmpty;
     return Column(children: [
       if (!plausible)
-        const Padding(
-          padding: EdgeInsets.all(AppSpacing.s),
+        Padding(
+          padding: const EdgeInsets.all(AppSpacing.s),
           child: StatusBanner(
-            key: Key('clock-reset'),
+            key: const Key('clock-reset'),
             severity: StatusSeverity.danger,
-            title: 'Your phone\'s clock looks wrong',
-            message: 'The date is earlier than one this app has already seen, '
-                'so time-based codes would be wrong and are hidden. Turn on '
-                'automatic date and time in your phone\'s settings.',
+            title: t.text('clockResetTitle'),
+            message: t.text('clockResetMessage'),
           ),
         )
       else if (widget.services.serverClock.isOff)
@@ -322,10 +319,8 @@ class _CodesScreenState extends State<CodesScreen> {
           child: StatusBanner(
             key: const Key('clock-off'),
             severity: StatusSeverity.warning,
-            title: 'Your phone\'s clock is off',
-            message: 'It is ${_offBy()} from the server. Codes made from a '
-                'wrong clock are refused by the service. Turn on automatic '
-                'date and time in your phone\'s settings.',
+            title: t.text('clockOffTitle'),
+            message: t.text('clockOffMessage', {'offBy': _offBy()}),
           ),
         ),
       Expanded(
@@ -335,8 +330,8 @@ class _CodesScreenState extends State<CodesScreen> {
                   padding: const EdgeInsets.all(AppSpacing.l),
                   child: Text(
                       searching
-                          ? 'No account matches "${_controller.query}".'
-                          : 'No codes can be shown.',
+                          ? t.text('noMatch', {'query': _controller.query})
+                          : t.text('noCodes'),
                       key: const Key('no-match'),
                       textAlign: TextAlign.center),
                 ),
@@ -349,8 +344,11 @@ class _CodesScreenState extends State<CodesScreen> {
   String _offBy() {
     final d = widget.services.serverClock.offset!;
     final secs = d.abs().inSeconds;
-    final how = secs >= 120 ? '${d.abs().inMinutes} minutes' : '$secs seconds';
-    return d.isNegative ? '$how ahead' : '$how behind';
+    final t = _t;
+    final how = secs >= 120
+        ? t.count('minutes', d.abs().inMinutes)
+        : t.count('seconds', secs);
+    return t.text(d.isNegative ? 'offAhead' : 'offBehind', {'how': how});
   }
 
   Widget _list(List<CodeEntry> shown, List<CodeEntry> all, DateTime now,
@@ -400,6 +398,7 @@ class _CodesScreenState extends State<CodesScreen> {
   }
 
   Widget _empty() {
+    final t = _t;
     return ScrollableCenter(
       key: const Key('codes-empty'),
       child: Column(
@@ -410,35 +409,32 @@ class _CodesScreenState extends State<CodesScreen> {
           const SizedBox(height: AppSpacing.m),
           Semantics(
             header: true,
-            child: Text('No codes yet',
+            child: Text(t.text('emptyTitle'),
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleLarge),
           ),
           const SizedBox(height: AppSpacing.s),
-          const Text(
-              'Add an account from any service that asks for an authenticator '
-              'app. Pick the way it gives you the account.',
-              textAlign: TextAlign.center),
+          Text(t.text('emptyText'), textAlign: TextAlign.center),
           const SizedBox(height: AppSpacing.l),
           FilledButton.icon(
             key: const Key('empty-scan'),
             onPressed: () => _add(AddMethod.scan),
             icon: const Icon(Icons.qr_code_scanner),
-            label: const Text('Scan a QR code'),
+            label: Text(t.text('scanQr')),
           ),
           const SizedBox(height: AppSpacing.s),
           OutlinedButton.icon(
             key: const Key('empty-link'),
             onPressed: () => _add(AddMethod.link),
             icon: const Icon(Icons.link),
-            label: const Text('Paste a link'),
+            label: Text(t.text('pasteLink')),
           ),
           const SizedBox(height: AppSpacing.s),
           OutlinedButton.icon(
             key: const Key('empty-key'),
             onPressed: () => _add(AddMethod.key),
             icon: const Icon(Icons.keyboard),
-            label: const Text('Enter a setup key'),
+            label: Text(t.text('enterKey')),
           ),
         ],
       ),
@@ -476,12 +472,13 @@ class _RenameSheetState extends State<_RenameSheet> {
     } on OtpAccountException catch (e) {
       setState(() => _problem = e.message as String);
     } on Object {
-      setState(() => _problem = 'The name could not be saved. Try again.');
+      setState(() => _problem = CodesTexts.from(context).text('renameFailed'));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = CodesTexts.from(context);
     return SafeArea(
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(AppSpacing.l, 0, AppSpacing.l,
@@ -492,31 +489,31 @@ class _RenameSheetState extends State<_RenameSheet> {
           children: [
             Semantics(
                 header: true,
-                child: Text('Rename',
+                child: Text(t.text('rename'),
                     style: Theme.of(context).textTheme.titleLarge)),
             const SizedBox(height: AppSpacing.m),
             TextField(
               key: const Key('rename-issuer'),
               controller: _issuer,
-              decoration: const InputDecoration(labelText: 'Service'),
+              decoration: InputDecoration(labelText: t.text('service')),
             ),
             const SizedBox(height: AppSpacing.m),
             TextField(
               key: const Key('rename-label'),
               controller: _label,
               decoration: InputDecoration(
-                  labelText: 'Account name', errorText: _problem),
+                  labelText: t.text('accountName'), errorText: _problem),
             ),
             const SizedBox(height: AppSpacing.l),
             FilledButton(
                 key: const Key('rename-save'),
                 onPressed: _save,
-                child: const Text('Save')),
+                child: Text(t.text('save'))),
             const SizedBox(height: AppSpacing.s),
             OutlinedButton(
                 key: const Key('rename-cancel'),
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel')),
+                child: Text(t.text('cancel'))),
           ],
         ),
       ),

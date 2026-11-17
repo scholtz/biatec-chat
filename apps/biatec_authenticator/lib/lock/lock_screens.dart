@@ -5,6 +5,7 @@ import '../update/update_guard.dart';
 import '../ui/ui.dart';
 import 'biometric_authenticator.dart';
 import 'lock_controller.dart';
+import 'lock_texts.dart';
 
 /// The screen over a locked app: the name, one sentence and one button. It shows no count, name or code, and offers no other way in.
 class LockScreen extends StatelessWidget {
@@ -12,20 +13,21 @@ class LockScreen extends StatelessWidget {
 
   final LockController lock;
 
-  String? _problem(BiometricOutcome? outcome) => switch (outcome) {
-        BiometricOutcome.failed => 'That did not match. Try again.',
-        BiometricOutcome.lockout =>
-          'Too many tries. Your phone makes you wait before it checks again. '
-              'Wait a moment, then try again.',
-        BiometricOutcome.unavailable =>
-          'Your phone cannot check your fingerprint or face right now. Try '
-              'again in a moment.',
+  String? _problem(LockTexts t, BiometricOutcome? outcome) => switch (outcome) {
+        BiometricOutcome.failed => t.text('failed'),
+        BiometricOutcome.lockout => t.text('lockout'),
+        BiometricOutcome.unavailable => t.text('unavailable'),
         _ => null,
       };
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final t = LockTexts.of(Localizations.maybeLocaleOf(context));
+    // A computer asks for Windows Hello or the app's PIN, not a fingerprint or a face.
+    final desktop = theme.platform == TargetPlatform.windows ||
+        theme.platform == TargetPlatform.macOS ||
+        theme.platform == TargetPlatform.linux;
     return Scaffold(
       key: const Key('lock-screen'),
       body: SafeArea(
@@ -33,7 +35,7 @@ class LockScreen extends StatelessWidget {
           listenable: lock,
           builder: (context, _) {
             final busy = lock.state == AppLockState.unlocking;
-            final problem = _problem(lock.lastOutcome);
+            final problem = _problem(t, lock.lastOutcome);
             return ScrollableCenter(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -48,18 +50,16 @@ class LockScreen extends StatelessWidget {
                         style: theme.textTheme.headlineSmall),
                   ),
                   const SizedBox(height: AppSpacing.s),
-                  Text('Locked. Use your fingerprint or face to open it.',
+                  Text(t.text(desktop ? 'lockedDesktop' : 'locked'),
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyLarge),
                   if (lock.integrityWarning.isNotEmpty) ...[
                     const SizedBox(height: AppSpacing.m),
-                    const StatusBanner(
-                      key: Key('integrity-warning'),
+                    StatusBanner(
+                      key: const Key('integrity-warning'),
                       severity: StatusSeverity.warning,
-                      title: 'This phone failed a safety check',
-                      message:
-                          'This is a development build, so it opens anyway. '
-                          'A release build would stay closed.',
+                      title: t.text('integrityTitle'),
+                      message: t.text('integrityDev'),
                     ),
                   ],
                   if (problem != null) ...[
@@ -69,7 +69,7 @@ class LockScreen extends StatelessWidget {
                       child: StatusBanner(
                         key: const Key('lock-problem'),
                         severity: StatusSeverity.warning,
-                        title: 'Not unlocked',
+                        title: t.text('notUnlocked'),
                         message: problem,
                       ),
                     ),
@@ -79,7 +79,7 @@ class LockScreen extends StatelessWidget {
                     key: const Key('unlock'),
                     onPressed: busy ? null : lock.unlock,
                     icon: const Icon(Icons.fingerprint),
-                    label: Text(busy ? 'Checking' : 'Unlock'),
+                    label: Text(t.text(busy ? 'checking' : 'unlock')),
                   ),
                 ],
               ),
@@ -100,6 +100,7 @@ class NoBiometricScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final t = LockTexts.of(Localizations.maybeLocaleOf(context));
     return Scaffold(
       key: const Key('no-biometric'),
       body: SafeArea(
@@ -114,28 +115,25 @@ class NoBiometricScreen extends StatelessWidget {
               const SizedBox(height: AppSpacing.m),
               Semantics(
                 header: true,
-                child: Text('Set up a fingerprint or face',
+                child: Text(t.text('noBiometricTitle'),
                     textAlign: TextAlign.center,
                     style: theme.textTheme.headlineSmall),
               ),
               const SizedBox(height: AppSpacing.s),
-              const Text(
-                  'This app opens only with your fingerprint or face. It does '
-                  'not accept a PIN, a pattern or a password instead, so a '
-                  'stranger who learns your PIN cannot open it.'),
+              Text(t.text('noBiometricText')),
               const SizedBox(height: AppSpacing.m),
-              const Text('To use it:'),
+              Text(t.text('toUseIt')),
               const SizedBox(height: AppSpacing.xs),
-              const Text('1. Open your phone\'s Settings.'),
-              const Text('2. Go to Security, then Fingerprint or Face unlock.'),
-              const Text('3. Add a fingerprint or your face.'),
-              const Text('4. Come back here and tap Check again.'),
+              Text(t.text('step1')),
+              Text(t.text('step2')),
+              Text(t.text('step3')),
+              Text(t.text('step4')),
               const SizedBox(height: AppSpacing.l),
               FilledButton.icon(
                 key: const Key('check-again'),
                 onPressed: lock.unlock,
                 icon: const Icon(Icons.refresh),
-                label: const Text('Check again'),
+                label: Text(t.text('checkAgain')),
               ),
             ],
           ),
@@ -155,6 +153,7 @@ class BiometricsChangedScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final t = LockTexts.of(Localizations.maybeLocaleOf(context));
     return Scaffold(
       key: const Key('biometrics-changed'),
       body: SafeArea(
@@ -169,23 +168,17 @@ class BiometricsChangedScreen extends StatelessWidget {
               const SizedBox(height: AppSpacing.m),
               Semantics(
                 header: true,
-                child: Text('Your fingerprints or face changed',
+                child: Text(t.text('changedTitle'),
                     textAlign: TextAlign.center,
                     style: theme.textTheme.headlineSmall),
               ),
               const SizedBox(height: AppSpacing.s),
-              const Text(
-                  'A fingerprint or face was added or removed on this phone. '
-                  'For your safety the keys that protect your codes and your '
-                  'approvals stopped working, and the data they protect cannot '
-                  'be opened.'),
+              Text(t.text('changedText')),
               const SizedBox(height: AppSpacing.m),
-              const Text('What to do:'),
+              Text(t.text('whatToDo')),
               const SizedBox(height: AppSpacing.xs),
-              const Text('1. Restore your two-factor accounts from your '
-                  'backup file, or add them again at each service.'),
-              const Text('2. Enroll this device again to approve actions. Do '
-                  'it from another trusted device if you have one.'),
+              Text(t.text('changedStep1')),
+              Text(t.text('changedStep2')),
               if (restoreBuilder != null) ...[
                 const SizedBox(height: AppSpacing.l),
                 FilledButton.icon(
@@ -193,7 +186,7 @@ class BiometricsChangedScreen extends StatelessWidget {
                   onPressed: () => Navigator.of(context)
                       .push(MaterialPageRoute<void>(builder: restoreBuilder!)),
                   icon: const Icon(Icons.download),
-                  label: const Text('Restore from a backup file'),
+                  label: Text(t.text('restoreFromBackup')),
                 ),
               ],
             ],
@@ -213,6 +206,7 @@ class CompromisedScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final t = LockTexts.of(Localizations.maybeLocaleOf(context));
     return Scaffold(
       key: const Key('compromised'),
       body: SafeArea(
@@ -227,23 +221,19 @@ class CompromisedScreen extends StatelessWidget {
               const SizedBox(height: AppSpacing.m),
               Semantics(
                 header: true,
-                child: Text('This phone cannot be trusted',
+                child: Text(t.text('compromisedTitle'),
                     textAlign: TextAlign.center,
                     style: theme.textTheme.headlineSmall),
               ),
               const SizedBox(height: AppSpacing.s),
-              const Text('This phone, or this copy of the app, did not pass a '
-                  'safety check, so the app will not open your codes or '
-                  'approvals here. If you did not change anything, install '
-                  'the app again from the official store, or use another '
-                  'phone.'),
+              Text(t.text('compromisedText')),
               if (lock.canRecheckIntegrity) ...[
                 const SizedBox(height: AppSpacing.l),
                 OutlinedButton.icon(
                   key: const Key('integrity-recheck'),
                   onPressed: lock.recheckIntegrity,
                   icon: const Icon(Icons.refresh),
-                  label: const Text('Check again'),
+                  label: Text(t.text('checkAgain')),
                 ),
               ],
             ],
@@ -263,9 +253,8 @@ class UpdateRequiredScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final store = Theme.of(context).platform == TargetPlatform.iOS
-        ? 'the App Store'
-        : 'Google Play';
+    final t = LockTexts.of(Localizations.maybeLocaleOf(context));
+    final store = t.text(Theme.of(context).platform == TargetPlatform.iOS ? 'storeApple' : 'storeGoogle');
     final expired = lock.updateReason == UpdateReason.expired;
     return Scaffold(
       key: const Key('update-required'),
@@ -281,23 +270,14 @@ class UpdateRequiredScreen extends StatelessWidget {
               const SizedBox(height: AppSpacing.m),
               Semantics(
                 header: true,
-                child: Text('Please update the app',
+                child: Text(t.text('updateTitle'),
                     textAlign: TextAlign.center,
                     style: theme.textTheme.headlineSmall),
               ),
               const SizedBox(height: AppSpacing.s),
-              Text(
-                  expired
-                      ? 'This version of Biatec Authenticator has reached the '
-                          'end of its time. For your safety it will not open '
-                          'your codes or approvals any more.'
-                      : 'This version of Biatec Authenticator is older than '
-                          'the oldest one that is still safe to use, so it '
-                          'will not open your codes or approvals.',
-                  key: const Key('update-reason')),
+              Text(t.text(expired ? 'updateExpired' : 'updateTooOld'), key: const Key('update-reason')),
               const SizedBox(height: AppSpacing.m),
-              Text('Open $store, update Biatec Authenticator, then open it '
-                  'again. Your accounts and approvals stay on this phone.'),
+              Text(t.text('updateHow', {'store': store})),
             ],
           ),
         ),

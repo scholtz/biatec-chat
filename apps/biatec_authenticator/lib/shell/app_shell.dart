@@ -21,6 +21,7 @@ import '../ui/ui.dart';
 import '../update/update_guard.dart';
 import 'shell_controller.dart';
 import 'tab_reload.dart';
+import '../l10n/common_texts.dart';
 
 /// Width from which the bar moves to the side as a navigation rail (tablets, desktop).
 const double kRailBreakpoint = 840;
@@ -189,7 +190,7 @@ class _AppShellState extends State<AppShell> {
     return ValueListenableBuilder<int>(
       valueListenable: widget.controller.pendingCount,
       builder: (context, n, _) => Badge(
-        label: Text('$n', semanticsLabel: '$n pending'),
+        label: Text('$n', semanticsLabel: CommonTexts.of(Localizations.maybeLocaleOf(context)).text('pendingCount', {'n': n})),
         isLabelVisible: n > 0,
         child: Icon(icon),
       ),
@@ -266,7 +267,7 @@ class _AppShellState extends State<AppShell> {
                         NavigationRailDestination(
                           icon: _icon(tab, selected: false),
                           selectedIcon: _icon(tab, selected: true),
-                          label: Text(tab.label),
+                          label: Text(tab.labelIn(Localizations.maybeLocaleOf(context))),
                         ),
                     ],
                   ),
@@ -287,8 +288,8 @@ class _AppShellState extends State<AppShell> {
                     NavigationDestination(
                       icon: _icon(tab, selected: false),
                       selectedIcon: _icon(tab, selected: true),
-                      label: tab.label,
-                      tooltip: tab.label,
+                      label: tab.labelIn(Localizations.maybeLocaleOf(context)),
+                      tooltip: tab.labelIn(Localizations.maybeLocaleOf(context)),
                     ),
                 ],
               ),

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../security/pin_prompt.dart';
 import 'key_security_level.dart';
+import 'key_texts.dart';
 
 /// What a device key is used for (protocol 1.1, `biatec_key_use`).
 enum KeyUse {
@@ -123,7 +124,7 @@ enum KeyStoreStatus {
 class KeyPromptCancelled implements Exception {
   const KeyPromptCancelled();
   @override
-  String toString() => 'The biometric check was cancelled.';
+  String toString() => KeyTexts.of().text('cancelled');
 }
 
 /// The biometric prompt could not give a signature: [code] is `no_biometrics`, `locked_out`, `no_activity`, `prompt_active` (another approval prompt is open: try again) or `auth_failed`.
@@ -138,9 +139,8 @@ class KeyPromptFailed implements Exception {
 /// The approval key was invalidated by a change of the phone's biometrics (or is gone). The key can never sign again.
 class ApprovalKeyInvalidated implements Exception {
   const ApprovalKeyInvalidated();
-  static const message = 'The fingerprint or face settings on this phone '
-      'changed, so approvals are switched off on this device. You can still '
-      'deny requests. Enroll this device again to approve.';
+  /// In the language of the device (T-251).
+  static String get message => KeyTexts.of().text('invalidated');
   @override
   String toString() => message;
 }
@@ -148,8 +148,8 @@ class ApprovalKeyInvalidated implements Exception {
 /// The device keys are not on this phone (a restore, or something removed them): nothing can be signed.
 class ApprovalKeysMissing implements Exception {
   const ApprovalKeysMissing();
-  static const message = 'The device keys are gone from this phone. Enroll '
-      'this device again.';
+  /// In the language of the device (T-251).
+  static String get message => KeyTexts.of().text('missing');
   @override
   String toString() => message;
 }
@@ -258,7 +258,7 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
     } on PlatformException catch (e) {
       if (e.code != 'pin_required') rethrow;
       final pin = await askPin(create: true);
-      if (pin == null) throw PlatformException(code: 'cancelled', message: 'No PIN was chosen.');
+      if (pin == null) throw PlatformException(code: 'cancelled', message: 'No PIN was chosen.'); // l10n-ignore: the code is read, not the message
       return _channel.invokeMethod<Object?>(method, {'pin': pin});
     }
   }
@@ -327,7 +327,7 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
       // A key that is gone cannot sign by trying again: the device has to enroll again (the same typed answer as for the approval key).
       if (e.code == 'key_missing') throw const ApprovalKeysMissing();
       if (e.code == 'sign_failed' || e.code == 'key_failed' || e.code == 'no_tpm') {
-        throw const KeyPromptFailed('auth_failed', 'The device key could not sign. Try again.');
+        throw KeyPromptFailed('auth_failed', KeyTexts.of().text('couldNotSign'));
       }
       rethrow;
     }
@@ -359,7 +359,7 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
         case 'no_activity':
         case 'prompt_active':
         case 'auth_failed':
-          throw KeyPromptFailed(e.code, e.message ?? 'The biometric check did not succeed.');
+          throw KeyPromptFailed(e.code, e.message ?? KeyTexts.of().text('checkFailed'));
         // The Windows key store could not sign (the TPM refused, or the key vanished between the check and the signature): a plain failure, never its internal status.
         case 'key_missing':
           // The same answer as for a vanished presence key: the keys are gone and the device has to enroll again.
@@ -367,7 +367,7 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
         case 'sign_failed':
         case 'key_failed':
         case 'no_tpm':
-          throw const KeyPromptFailed('auth_failed', 'The device key could not sign. Try again.');
+          throw KeyPromptFailed('auth_failed', KeyTexts.of().text('couldNotSign'));
       }
       rethrow;
     }

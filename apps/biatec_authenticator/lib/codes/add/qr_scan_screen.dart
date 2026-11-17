@@ -3,6 +3,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../theme.dart';
 import '../../ui/ui.dart';
+import '../codes_texts.dart';
 
 /// Opens a scanner and returns the text of the first QR code it reads, or null when the user goes back. Replaced in tests.
 typedef QrScannerBuilder = Widget Function(
@@ -34,14 +35,14 @@ class _QrScanScreenState extends State<QrScanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = CodesTexts.from(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan a QR code')),
+      appBar: AppBar(title: Text(t.text('scanQr'))),
       body: Column(children: [
         Expanded(child: widget.builder(context, _scanned)),
-        const Padding(
-          padding: EdgeInsets.all(AppSpacing.m),
-          child: Text('Point the camera at the QR code the service shows. '
-              'Nothing is recorded.'),
+        Padding(
+          padding: const EdgeInsets.all(AppSpacing.m),
+          child: Text(t.text('scanHelp')),
         ),
       ]),
     );
@@ -83,11 +84,11 @@ class _CameraViewState extends State<_CameraView> {
         }
       },
       errorBuilder: (context, error) => ErrorState(
-        title: 'The camera is not available',
-        message: error.errorCode == MobileScannerErrorCode.permissionDenied
-            ? 'Allow the camera for this app in your phone\'s settings, or '
-                'paste the link or type the setup key instead.'
-            : 'You can paste the link or type the setup key instead.',
+        title: CodesTexts.from(context).text('cameraUnavailable'),
+        message: CodesTexts.from(context).text(
+            error.errorCode == MobileScannerErrorCode.permissionDenied
+                ? 'cameraDenied'
+                : 'cameraOther'),
       ),
     );
   }

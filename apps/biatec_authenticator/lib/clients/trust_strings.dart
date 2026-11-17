@@ -1,4 +1,5 @@
 import 'dart:ui';
+import '../l10n/texts.dart';
 
 /// The texts of the user-held trust settings: how a service is shown, the "New service" banner and "don't ask again" on the approval card, the approval threshold and the linked services. English and Slovak,
 /// chosen by the phone's language (Slovak for `sk`, English otherwise). A text may hold `{name}` places that [t] fills; what goes into one is the user's own value or a value this app computed
@@ -8,7 +9,7 @@ class TrustStrings {
 
   factory TrustStrings.of([Locale? locale]) {
     final language =
-        (locale ?? PlatformDispatcher.instance.locale).languageCode;
+        (locale ?? deviceLocale()).languageCode;
     return language == 'sk' ? sk : en;
   }
 
@@ -23,6 +24,9 @@ class TrustStrings {
 
   /// Every key, so a test can check that both languages have all of them.
   Iterable<String> get keys => _t.keys;
+
+  /// The texts of this language, by key (`test/l10n/settings_texts_test.dart` compares the two languages).
+  Map<String, String> get values => _t;
 
   static const en = TrustStrings._({
     // The identity widget.
@@ -136,6 +140,30 @@ class TrustStrings {
     'keepOn': 'Keep it on',
     'moreApplications': 'More applications could be trusted than the {max} offered here. Only the first {max} can be remembered with one approval.',
     'keepLinked': 'Keep it linked',
+    // The clients screen of before the trust settings (LegacyClientsScreen).
+    'legacyTitle': 'Trusted clients and thresholds',
+    'legacyNoClients':
+        'No client has asked for an approval yet. Each one that does will appear here.',
+    'legacyThisService': 'this service',
+    'legacyPausedUntil': 'Paused until {when}',
+    'legacyPausedBody':
+        'This client cannot ask for approvals while paused. Lifting the pause needs approval on this device.',
+    'legacyLiftTitle': 'Lift the pause for {name}?',
+    'legacyLiftBody':
+        '{name} will be able to ask for approvals again straight away.',
+    'legacyAlwaysAskHelp':
+        'Every action from this client needs your phone. Turning it off needs approval on this device.',
+    'legacyAlwaysAskOffTitle': 'Stop always asking for {name}?',
+    'legacyAlwaysAskOffBody':
+        'Small actions from {name} will no longer need your phone. Large ones still do.',
+    'legacyClientThreshold': 'Threshold for this client',
+    'legacyUsesAccount': 'Uses the account threshold ({amount} EUR).',
+    'legacyOwn': '{amount} EUR. Raising it needs approval on this device.',
+    'legacyThresholdFor': 'Threshold for {name}',
+    'legacyResetTitle': 'Use the account threshold for {name}?',
+    'legacyResetBody':
+        'It goes back to the account threshold of {amount} EUR. Actions up to that amount will no longer need your phone.',
+    'legacyUseAccount': 'Use account threshold',
   });
 
   static const sk = TrustStrings._({
@@ -245,5 +273,27 @@ class TrustStrings {
     'keepOn': 'Nechať zapnuté',
     'moreApplications': 'Dôverovať by sa dalo viac aplikácií, než je tu {max} ponúkaných. Jedným schválením sa dá zapamätať najviac prvých {max}.',
     'keepLinked': 'Ponechať prepojenú',
+    'legacyTitle': 'Dôveryhodní klienti a limity',
+    'legacyNoClients':
+        'Zatiaľ žiadny klient nežiadal o schválenie. Každý, ktorý o to požiada, sa zobrazí tu.',
+    'legacyThisService': 'táto služba',
+    'legacyPausedUntil': 'Pozastavený do {when}',
+    'legacyPausedBody':
+        'Počas pozastavenia tento klient nemôže žiadať o schválenie. Zrušenie pozastavenia treba schváliť v tomto zariadení.',
+    'legacyLiftTitle': '{name}: zrušiť pozastavenie?',
+    'legacyLiftBody': '{name} bude môcť hneď znova žiadať o schválenie.',
+    'legacyAlwaysAskHelp':
+        'Každá akcia tohto klienta vyžaduje váš telefón. Vypnutie treba schváliť v tomto zariadení.',
+    'legacyAlwaysAskOffTitle': '{name}: prestať sa vždy pýtať?',
+    'legacyAlwaysAskOffBody':
+        'Malé akcie ({name}) už nebudú vyžadovať váš telefón. Veľké ho vyžadujú aj naďalej.',
+    'legacyClientThreshold': 'Limit pre tohto klienta',
+    'legacyUsesAccount': 'Používa limit účtu ({amount} EUR).',
+    'legacyOwn': '{amount} EUR. Jeho zvýšenie treba schváliť v tomto zariadení.',
+    'legacyThresholdFor': 'Limit: {name}',
+    'legacyResetTitle': '{name}: použiť limit účtu?',
+    'legacyResetBody':
+        'Vráti sa na limit účtu {amount} EUR. Akcie do tejto sumy už nebudú vyžadovať váš telefón.',
+    'legacyUseAccount': 'Použiť limit účtu',
   });
 }

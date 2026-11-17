@@ -7,6 +7,10 @@ import '../keys/device_key_store.dart';
 import '../security/pinning/pinned_http.dart';
 import 'enrollment_proof.dart';
 import 'enrollment_state.dart';
+import 'onboarding_texts.dart';
+
+/// The messages of this client are made in English: the screens recognise them by that text and show them in their language (`OnboardingTexts.message`).
+const _en = OnboardingTexts.en;
 
 class EnrollmentException implements Exception {
   const EnrollmentException(this.message,
@@ -86,7 +90,7 @@ class OidcEnrollmentClient {
     } on PinningException catch (e) {
       throw EnrollmentException(e.message);
     } on Object catch (e) {
-      throw EnrollmentException('Could not reach Biatec OIDC: $e');
+      throw EnrollmentException(_en.text('msgUnreachable', {'why': e}));
     }
     return parseResponse(res.statusCode, res.body,
         twoKeys: presenceKey != null, recoverySent: recoveryCode != null);
@@ -166,7 +170,8 @@ class OidcEnrollmentClient {
     if (status != 201) {
       final detail = json['error_description'] ?? json['error'] ?? 'error';
       final code = json['error'];
-      throw EnrollmentException('Enrollment refused ($status): $detail',
+      throw EnrollmentException(
+          _en.text('msgRefused', {'status': status, 'detail': detail}),
           code: code is String ? code : null,
           status: status,
           recoveryCodeSent: recoverySent);
@@ -180,14 +185,13 @@ class OidcEnrollmentClient {
     final presenceKid = json['presence_kid'];
     final presenceAttestation = json['presence_attestation'];
     if (twoKeys && (presenceKid is! String || presenceAttestation is! String)) {
-      throw const EnrollmentException(
-          'Biatec OIDC did not enroll both device keys.');
+      throw EnrollmentException(_en.text('msgBothKeys'));
     }
     if (activeAt is! num ||
         token is! String ||
         kid is! String ||
         (attestation != null && attestation is! String)) {
-      throw const EnrollmentException('Malformed enrollment response.');
+      throw EnrollmentException(_en.text('msgMalformed'));
     }
     return EnrollmentRecord(
       kid: kid,
@@ -210,7 +214,7 @@ class OidcEnrollmentClient {
     } on Object {
       // Falls through to the error below.
     }
-    throw EnrollmentException('Unexpected response ($status).');
+    throw EnrollmentException(_en.text('msgUnexpected', {'status': status}));
   }
 
   Future<http.Response> _deviceCall(String path, String deviceToken) async {
@@ -222,7 +226,7 @@ class OidcEnrollmentClient {
     } on PinningException catch (e) {
       throw EnrollmentException(e.message);
     } on Object catch (e) {
-      throw EnrollmentException('Could not reach Biatec OIDC: $e');
+      throw EnrollmentException(_en.text('msgUnreachable', {'why': e}));
     }
   }
 
@@ -234,8 +238,8 @@ class OidcEnrollmentClient {
     final code = json['recovery_code'];
     if (res.statusCode != 200 || code is! String || code.isEmpty) {
       final detail = json['error_description'] ?? json['error'] ?? 'error';
-      throw EnrollmentException(
-          'Recovery code unavailable (${res.statusCode}): $detail');
+      throw EnrollmentException(_en.text('msgRecoveryUnavailable',
+          {'status': res.statusCode, 'detail': detail}));
     }
     return code;
   }
@@ -245,7 +249,7 @@ class OidcEnrollmentClient {
     final res = await _deviceCall('/devices/recovery-code/ack', deviceToken);
     if (res.statusCode != 200) {
       throw EnrollmentException(
-          'Could not confirm the recovery code (${res.statusCode}).');
+          _en.text('msgRecoveryAckFailed', {'status': res.statusCode}));
     }
   }
 }

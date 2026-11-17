@@ -9,6 +9,7 @@ import 'package:biatec_authenticator/keys/device_key_store.dart';
 import 'package:biatec_authenticator/lock/biometric_authenticator.dart';
 import 'package:biatec_authenticator/privacy/phone_eraser.dart';
 import 'package:biatec_authenticator/privacy/privacy_screen.dart';
+import 'package:biatec_authenticator/privacy/privacy_texts.dart';
 import 'package:biatec_authenticator/privacy/storage_inventory.dart';
 import 'package:biatec_authenticator/theme.dart';
 import 'package:biatec_authenticator/totp/vault/vault_storage.dart';
@@ -222,7 +223,8 @@ void main() {
       ]) {
         expect(find.text(i.title), findsOneWidget, reason: i.title);
       }
-      for (final t in neverCollected) {
+      for (final key in neverCollected) {
+        final t = PrivacyTexts.en.text(key);
         expect(find.text(t), findsOneWidget, reason: t);
       }
       expect(find.text('Stored on this phone'), findsOneWidget);

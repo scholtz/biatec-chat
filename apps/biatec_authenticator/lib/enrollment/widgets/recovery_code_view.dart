@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../theme.dart';
 import '../../ui/ui.dart';
+import '../onboarding_texts.dart';
 
 /// Shows the recovery code once. Moving on needs an explicit confirmation that it was saved: the button stays off until the box is ticked.
 class RecoveryCodeView extends StatefulWidget {
@@ -38,40 +39,45 @@ class _RecoveryCodeViewState extends State<RecoveryCodeView> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final t = OnboardingTexts.of(Localizations.maybeLocaleOf(context));
+    final error = widget.error;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Semantics(
           header: true,
-          child: Text('Recovery code', style: theme.textTheme.titleLarge),
+          child: Text(t.text('rcTitle'), style: theme.textTheme.titleLarge),
         ),
         const SizedBox(height: AppSpacing.s),
-        const Text('Write this code down and keep it safe. It activates a '
-            'replacement device immediately.'),
+        Text(t.text('rcIntro')),
         const SizedBox(height: AppSpacing.m),
-        const StatusBanner(
+        StatusBanner(
           severity: StatusSeverity.warning,
-          title: 'Shown only once',
-          message: 'You cannot see this code again after you continue.',
+          title: t.text('rcOnceTitle'),
+          message: t.text('rcOnce'),
         ),
         const SizedBox(height: AppSpacing.m),
         // Not selectable on purpose: a copied recovery code lands in the clipboard, which other apps and keyboards read (BCHAT-031).
         // A screen reader reads it character by character.
         Semantics(
-          label:
-              'Recovery code: ${widget.code.split('').map((c) => c == '-' ? 'dash' : c).join(' ')}',
+          label: t.text('rcSemantics', {
+            'chars': widget.code
+                .split('')
+                .map((c) => c == '-' ? t.text('rcDash') : c)
+                .join(' '),
+          }),
           excludeSemantics: true,
           child: Text(widget.code,
               textAlign: TextAlign.center,
               style: theme.textTheme.headlineMedium
                   ?.copyWith(fontFamily: 'monospace')),
         ),
-        if (widget.error != null) ...[
+        if (error != null) ...[
           const SizedBox(height: AppSpacing.m),
           StatusBanner(
             severity: StatusSeverity.danger,
-            title: 'Could not confirm',
-            message: '${widget.error} Your code is still shown. Try again.',
+            title: t.text('rcConfirmFailedTitle'),
+            message: t.text('rcConfirmFailed', {'why': t.message(error)}),
           ),
         ],
         const SizedBox(height: AppSpacing.m),
@@ -81,14 +87,13 @@ class _RecoveryCodeViewState extends State<RecoveryCodeView> {
           onChanged: (v) => setState(() => _written = v ?? false),
           controlAffinity: ListTileControlAffinity.leading,
           contentPadding: EdgeInsets.zero,
-          title: const Text(
-              'I have written the code down and keep it somewhere safe.'),
+          title: Text(t.text('rcWritten')),
         ),
         const SizedBox(height: AppSpacing.s),
         FilledButton(
           key: const Key('recovery-saved'),
           onPressed: _written && !_confirming ? _save : null,
-          child: const Text('I have saved it'),
+          child: Text(t.text('rcSaved')),
         ),
       ],
     );

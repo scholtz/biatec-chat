@@ -3,20 +3,32 @@ import 'package:material_ui/material_ui.dart';
 import '../../theme.dart';
 import '../history_store.dart';
 import 'history_status.dart';
+import 'history_texts.dart';
 
 /// Which decisions the list shows.
 enum HistoryFilter {
-  all('All', null, 'Nothing here yet'),
-  approved('Approved', HistoryStatus.approved, 'Nothing approved yet'),
-  denied('Denied', HistoryStatus.denied, 'Nothing denied yet'),
-  refused('Refused', HistoryStatus.refused, 'Nothing refused yet');
+  all('filterAll', null, 'filterAllEmpty'),
+  approved('statusApproved', HistoryStatus.approved, 'filterApprovedEmpty'),
+  denied('statusDenied', HistoryStatus.denied, 'filterDeniedEmpty'),
+  refused('statusRefused', HistoryStatus.refused, 'filterRefusedEmpty');
 
-  const HistoryFilter(this.label, this.status, this.emptyText);
+  const HistoryFilter(this._label, this.status, this._emptyText);
 
-  final String label;
+  final String _label;
+  final String _emptyText;
 
-  /// What the list says when this filter matches nothing.
-  final String emptyText;
+  /// The word on the chip, in the device's language.
+  String get label => labelIn(null);
+
+  /// The word on the chip, in the language of [locale] (the device's when null).
+  String labelIn(Locale? locale) => HistoryTexts.of(locale).text(_label);
+
+  /// What the list says when this filter matches nothing, in the device's language.
+  String get emptyText => emptyTextIn(null);
+
+  /// What the list says when this filter matches nothing, in the language of [locale] (the device's when null).
+  String emptyTextIn(Locale? locale) =>
+      HistoryTexts.of(locale).text(_emptyText);
 
   /// The status it keeps, or null for everything (including a decision this version does not know).
   final HistoryStatus? status;
@@ -34,6 +46,7 @@ class HistoryFilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final locale = Localizations.maybeLocaleOf(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(
           AppSpacing.m, AppSpacing.s, AppSpacing.m, 0),
@@ -44,7 +57,7 @@ class HistoryFilterBar extends StatelessWidget {
           for (final f in HistoryFilter.values)
             FilterChip(
               key: Key('history-filter-${f.name}'),
-              label: Text(f.label),
+              label: Text(f.labelIn(locale)),
               selected: f == selected,
               showCheckmark: true,
               onSelected: (_) => onSelected(f),

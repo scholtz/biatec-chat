@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'base32.dart';
 import 'otp_account.dart';
+import '../totp_texts.dart';
 
 /// Why an `otpauth://` link was refused. Each is a different thing for the user to fix.
 enum OtpUriError {
@@ -70,14 +71,14 @@ abstract final class OtpUri {
   };
 
   static OtpAccount parse(String link) {
-    const tooLong = OtpUriException(
-        OtpUriError.tooLong, 'This link is too long to be a setup link.');
+    final tooLong =
+        OtpUriException(OtpUriError.tooLong, TotpTexts.of().text('tooLong'));
     // Refused before anything is copied, with room for whitespace around a pasted link.
     if (link.length > 2 * maxLength) throw tooLong;
     final text = link.trim();
     if (text.length > maxLength) throw tooLong;
-    const notOtpAuth = OtpUriException(
-        OtpUriError.notOtpAuth, 'This is not a setup link for a code.');
+    final notOtpAuth = OtpUriException(
+        OtpUriError.notOtpAuth, TotpTexts.of().text('notOtpAuth'));
     final Uri uri;
     try {
       uri = Uri.parse(text);
@@ -101,8 +102,8 @@ abstract final class OtpUri {
       case 'hotp':
         type = OtpType.hotp;
       default:
-        throw const OtpUriException(OtpUriError.unsupportedType,
-            'Only time-based and counter-based codes are supported.');
+        throw OtpUriException(OtpUriError.unsupportedType,
+            TotpTexts.of().text('unsupportedType'));
     }
 
     // Names are compared without case, so `Secret` and `secret` count as the same setting given twice.
@@ -112,19 +113,19 @@ abstract final class OtpUri {
           (name, values) => (all[name.toLowerCase()] ??= []).addAll(values));
     } on FormatException {
       // Bad percent-encoding in a setting (invalid UTF-8, say); which one is not told, since it may be the secret.
-      throw const OtpUriException(OtpUriError.invalidEncoding,
-          'This link has a setting that cannot be read.');
+      throw OtpUriException(
+          OtpUriError.invalidEncoding, TotpTexts.of().text('invalidEncoding'));
     }
     for (final name in _single) {
       if ((all[name]?.length ?? 0) > 1) {
-        throw const OtpUriException(OtpUriError.duplicateParameter,
-            'This link sets the same value twice.');
+        throw OtpUriException(OtpUriError.duplicateParameter,
+            TotpTexts.of().text('duplicateParameter'));
       }
     }
     String? param(String name) => all[name]?.first;
 
-    const noSecret = OtpUriException(
-        OtpUriError.missingSecret, 'This link has no secret key.');
+    final noSecret = OtpUriException(
+        OtpUriError.missingSecret, TotpTexts.of().text('missingSecret'));
     final secretText = param('secret');
     if (secretText == null) throw noSecret;
     var algorithm = OtpAlgorithm.sha1;
@@ -132,8 +133,8 @@ abstract final class OtpUri {
     if (algorithmText != null) {
       final a = OtpAlgorithm.fromUriName(algorithmText);
       if (a == null) {
-        throw const OtpUriException(OtpUriError.invalidAlgorithm,
-            'This link uses a hash that is not supported (SHA1, SHA256 and SHA512 are).');
+        throw OtpUriException(OtpUriError.invalidAlgorithm,
+            TotpTexts.of().text('invalidAlgorithm'));
       }
       algorithm = a;
     }
@@ -144,7 +145,7 @@ abstract final class OtpUri {
     if (digitsText != null) {
       final d = _wholeNumber(digitsText);
       if (d == null) {
-        throw const OtpUriException(
+        throw OtpUriException(
             OtpUriError.invalidDigits, OtpLimits.digitsMessage);
       }
       digits = d;
@@ -156,7 +157,7 @@ abstract final class OtpUri {
       final p = _wholeNumber(periodText);
       // A counter-based account does not take a period (it would be lost in its link), so the account cannot judge this one: the same OtpLimits rule is applied here instead, and the value is then dropped. A bad value is never let through.
       if (p == null || (type == OtpType.hotp && !OtpLimits.validPeriod(p))) {
-        throw const OtpUriException(
+        throw OtpUriException(
             OtpUriError.invalidPeriod, OtpLimits.periodMessage);
       }
       if (type == OtpType.totp) period = p;
@@ -164,18 +165,18 @@ abstract final class OtpUri {
 
     final counterText = param('counter');
     if (counterText == null && type == OtpType.hotp) {
-      throw const OtpUriException(OtpUriError.missingCounter,
-          'A counter-based account needs its starting counter.');
+      throw OtpUriException(
+          OtpUriError.missingCounter, TotpTexts.of().text('missingCounter'));
     }
     final counter = counterText == null ? 0 : _wholeNumber(counterText);
     if (counter == null) {
-      throw const OtpUriException(
-          OtpUriError.invalidCounter, 'The counter in this link is not valid.');
+      throw OtpUriException(
+          OtpUriError.invalidCounter, TotpTexts.of().text('invalidCounter'));
     }
     // On a time-based link "counter=0" is harmless (generators that write every field add it); any other value means the link is for something else.
     if (type == OtpType.totp && counter != 0) {
-      throw const OtpUriException(OtpUriError.unexpectedCounter,
-          'A time-based account does not have a counter.');
+      throw OtpUriException(
+          OtpUriError.unexpectedCounter, TotpTexts.of().text('totpNoCounter'));
     }
 
     // The label is "Issuer:account" or just "account", percent-encoded. A "+" stays a "+" (RFC 3986 paths, and plus-addressed emails such as a+b@example.com depend on it); only the query turns "+" into a space.
@@ -226,11 +227,11 @@ abstract final class OtpUri {
       if (e.empty) throw noSecret;
       // Valid characters, too few to make a byte: as weak as any key under the floor.
       if (e.tooShort) {
-        throw const OtpUriException(
+        throw OtpUriException(
             OtpUriError.weakSecret, OtpLimits.weakSecretMessage);
       }
-      throw const OtpUriException(OtpUriError.invalidSecret,
-          'The secret key in this link is not valid.');
+      throw OtpUriException(
+          OtpUriError.invalidSecret, TotpTexts.of().text('invalidSecret'));
     }
     try {
       // The account checks the rest of its rules (key strength, name); its refusal is told as this link's error.
@@ -309,8 +310,8 @@ abstract final class OtpUri {
     for (final r in raw.runes) {
       if (r >= 0xD800 && r <= 0xDFFF) {
         // An unpaired surrogate: UTF-8 would turn it into U+FFFD and hide it from the name check.
-        throw const OtpUriException(
-            OtpUriError.invalidName, 'The name in this link is not valid.');
+        throw OtpUriException(
+            OtpUriError.invalidName, TotpTexts.of().text('invalidName'));
       }
       if (plusAsSpace && r == 0x2B) {
         encoded.write('%20');
@@ -326,8 +327,8 @@ abstract final class OtpUri {
       return Uri.decodeComponent(encoded.toString());
     } on FormatException {
       // Escapes that are not UTF-8.
-      throw const OtpUriException(
-          OtpUriError.invalidName, 'The name in this link is not valid.');
+      throw OtpUriException(
+          OtpUriError.invalidName, TotpTexts.of().text('invalidName'));
     }
   }
 

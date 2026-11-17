@@ -4,8 +4,10 @@ import 'package:http/http.dart' as http;
 
 import '../security/device_proof.dart';
 import '../security/pinning/pinned_http.dart';
+import 'approval_texts.dart';
 import 'models/link_request.dart';
 import 'consent_request.dart';
+import '../security/security_texts.dart';
 
 /// The request could not be reached or read. [offline] is true when the
 /// server was not reachable at all.
@@ -149,7 +151,8 @@ class ApprovalClient {
     try {
       return await signer.headers(method, url, token);
     } on Object catch (e) {
-      throw ApprovalException('The device proof could not be made: $e');
+      throw ApprovalException(
+          ApprovalTexts.of().text('proofFailed', {'why': '$e'}));
     }
   }
 
@@ -157,10 +160,12 @@ class ApprovalClient {
     try {
       return await call().timeout(_timeout);
     } on PinningException catch (e) {
-      // Not "offline": retrying will not help, and the user is told to update.
-      throw ApprovalException(e.message);
+      // Not "offline": retrying will not help, and the user is told to update. The words of PinningException.message (which stays English: the enrollment
+      // screen recognises it), in the language of the app.
+      throw ApprovalException(SecurityTexts.of().text('pinning', {'host': e.host}));
     } on Object catch (e) {
-      throw ApprovalException('Biatec OIDC is not reachable: $e',
+      throw ApprovalException(
+          ApprovalTexts.of().text('unreachable', {'why': '$e'}),
           offline: true);
     }
   }
@@ -172,7 +177,8 @@ class ApprovalClient {
     } on Object {
       // Falls through.
     }
-    throw ApprovalException('Unexpected response ($status).');
+    throw ApprovalException(
+        ApprovalTexts.of().text('unexpectedResponse', {'status': status}));
   }
 
   static String _detail(Map<String, Object?> json) =>
@@ -186,11 +192,13 @@ class ApprovalClient {
         _client.get(url, headers: await _auth('GET', url, deviceToken)));
     final json = _object(res.body, res.statusCode);
     if (res.statusCode != 200) {
-      throw ApprovalException(
-          'Could not load requests (${res.statusCode}): ${_detail(json)}');
+      throw ApprovalException(ApprovalTexts.of().text('loadRequestsFailed',
+          {'status': res.statusCode, 'why': _detail(json)}));
     }
     final list = json['requests'];
-    if (list is! List) throw const ApprovalException('Malformed request list.');
+    if (list is! List) {
+      throw ApprovalException(ApprovalTexts.of().text('malformedList'));
+    }
     final out = <ConsentRequest>[];
     for (final item in list) {
       if (item is! Map) continue;
@@ -212,8 +220,8 @@ class ApprovalClient {
         _client.get(url, headers: await _auth('GET', url, deviceToken)));
     final json = _object(res.body, res.statusCode);
     if (res.statusCode != 200) {
-      throw ApprovalException(
-          'Could not load the request (${res.statusCode}): ${_detail(json)}');
+      throw ApprovalException(ApprovalTexts.of().text('loadRequestFailed',
+          {'status': res.statusCode, 'why': _detail(json)}));
     }
     try {
       final r = ConsentRequest.fromJson(json, relyingParties: relyingParties);
@@ -222,7 +230,8 @@ class ApprovalClient {
       }
       return r;
     } on FormatException catch (e) {
-      throw ApprovalException('The request cannot be shown: ${e.message}');
+      throw ApprovalException(
+          ApprovalTexts.of().text('cannotShowRequest', {'why': e.message}));
     }
   }
 
@@ -288,15 +297,14 @@ class ApprovalClient {
     } on ApprovalException catch (e) {
       // The receipt may have arrived even though no answer did, so this is
       // not reported as "offline, nothing happened".
-      throw ApprovalException('No answer from Biatec OIDC, so the decision '
-          'may or may not be recorded. Reopen the request to check. '
-          '(${e.message})');
+      throw ApprovalException(
+          ApprovalTexts.of().text('noAnswerReceipt', {'why': e.message}));
     }
     final json = _object(res.body, res.statusCode);
     if (res.statusCode == 200) {
       final status = json['status'];
       if (status is! String) {
-        throw const ApprovalException('Malformed receipt response.');
+        throw ApprovalException(ApprovalTexts.of().text('malformedReceipt'));
       }
       return ReceiptAccepted(status);
     }
@@ -347,15 +355,14 @@ class ApprovalClient {
       // delivered it without the answer coming back.
       if (!e.offline) rethrow;
       throw ApprovalException(
-          'No answer from Biatec OIDC, so the decision may or may not be recorded. '
-          'Check Linked services in Settings. (${e.message})',
+          ApprovalTexts.of().text('noAnswerLink', {'why': e.message}),
           offline: true);
     }
     final json = _linkBody(res);
     if (res.statusCode == 200) {
       final status = json['status'];
       if (status is! String) {
-        throw const ApprovalException('Malformed link response.');
+        throw ApprovalException(ApprovalTexts.of().text('malformedLink'));
       }
       return LinkDone(status);
     }
@@ -387,7 +394,8 @@ class ApprovalClient {
         return const LinkException(LinkProblem.notActive);
       default:
         return LinkException(LinkProblem.other,
-            message: 'Could not load the link ($status): ${_detail(json)}');
+            message: ApprovalTexts.of().text(
+                'loadLinkFailed', {'status': status, 'why': _detail(json)}));
     }
   }
 }

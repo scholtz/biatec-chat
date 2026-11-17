@@ -20,6 +20,7 @@ import 'links/link_services.dart';
 import 'integrity/platform_integrity.dart';
 import 'lock/lock_controller.dart';
 import 'security/biometric_policy.dart';
+import 'l10n/texts.dart';
 import 'security/pin_prompt.dart';
 import 'security/pinning/pinned_http.dart';
 import 'security/pinning/pins.dart';
@@ -30,6 +31,7 @@ import 'shell/app_gate.dart';
 import 'shell/shell_controller.dart';
 import 'theme.dart';
 import 'update/update_guard.dart';
+import 'l10n/common_texts.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -136,9 +138,9 @@ void showRequestArrived(
   messenger.currentState
     ?..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(
-      content: const Text('New approval request'),
+      content: Text(CommonTexts.of().text('newRequest')),
       action: SnackBarAction(
-          label: 'Open',
+          label: CommonTexts.of().text('open'),
           // Back to the list if a card is open, else show the list.
           onPressed: shell.showApprovals),
     ));
@@ -296,6 +298,9 @@ class _AuthenticatorAppState extends State<AuthenticatorApp>
         navigatorKey: _navigatorKey,
         scaffoldMessengerKey: _messengerKey,
         title: 'Biatec Authenticator',
+        // Flutter's own texts (dialog buttons, dates, screen reader labels) in the language of the app's texts (T-251).
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: appLocales,
         theme: buildTheme(Brightness.light),
         darkTheme: buildTheme(Brightness.dark),
         themeMode: _theme.mode,
@@ -328,6 +333,8 @@ class ConfigErrorApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
         title: 'Biatec Authenticator',
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: appLocales,
         theme: buildTheme(Brightness.light),
         darkTheme: buildTheme(Brightness.dark),
         home: Scaffold(
@@ -338,7 +345,7 @@ class ConfigErrorApp extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('This build cannot start',
+                  Text(CommonTexts.of(Localizations.maybeLocaleOf(context)).text('cannotStart'),
                       key: const Key('config-error-title'),
                       style: Theme.of(context).textTheme.headlineSmall),
                   const SizedBox(height: 12),

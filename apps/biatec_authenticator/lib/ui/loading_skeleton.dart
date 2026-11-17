@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../theme.dart';
+import '../l10n/common_texts.dart';
 
 /// Placeholder rows shown while a list loads. Pulses gently, and holds still when the system asks to reduce motion.
 class LoadingSkeleton extends StatefulWidget {
@@ -40,7 +41,7 @@ class _LoadingSkeletonState extends State<LoadingSkeleton>
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.surfaceContainerHighest;
     return Semantics(
-      label: 'Loading',
+      label: CommonTexts.of(Localizations.maybeLocaleOf(context)).text('loading'),
       liveRegion: true,
       child: ExcludeSemantics(
         child: FadeTransition(

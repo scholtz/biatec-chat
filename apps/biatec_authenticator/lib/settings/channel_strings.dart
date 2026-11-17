@@ -1,4 +1,5 @@
 import 'dart:ui';
+import '../l10n/texts.dart';
 
 /// The texts of the device channel: the "Stay connected for approvals" setting, the notifications and the service's notification. English and Slovak, chosen by the phone's language (the rest of the app is English only for now). Notification texts are fixed here; nothing from Biatec OIDC goes into them.
 class ChannelStrings {
@@ -7,7 +8,7 @@ class ChannelStrings {
   /// The strings for [locale] (the phone's language when null): Slovak for `sk`, English otherwise.
   factory ChannelStrings.of([Locale? locale]) {
     final language =
-        (locale ?? PlatformDispatcher.instance.locale).languageCode;
+        (locale ?? deviceLocale()).languageCode;
     return language == 'sk' ? sk : en;
   }
 
@@ -38,6 +39,9 @@ class ChannelStrings {
 
   /// Every key, so a test can check that both languages have all of them.
   Iterable<String> get keys => _t.keys;
+
+  /// The texts of this language, by key (`test/l10n/settings_texts_test.dart` compares the two languages).
+  Map<String, String> get values => _t;
 
   static const en = ChannelStrings._({
     'stayTitle': 'Stay connected for approvals',

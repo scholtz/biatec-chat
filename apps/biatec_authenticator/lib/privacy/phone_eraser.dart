@@ -6,6 +6,7 @@ import '../lock/lock_controller.dart';
 import '../security/secure_storage.dart';
 import '../totp/vault/vault_key_store.dart';
 import '../totp/vault/vault_storage.dart';
+import 'privacy_texts.dart';
 
 /// Removes everything the app keeps in its secure storage (the keychain on iOS, encrypted preferences on Android): the enrollment, the history, the preferences, the vault's version counter.
 abstract class SecureWipe {
@@ -59,8 +60,11 @@ class PhoneEraser {
   final Duration stepTimeout;
 
   /// Null when the fresh biometric was refused (nothing was removed); otherwise what happened.
+  ///
+  /// What failed is named in the phone's language, the language of the Privacy screen that shows it.
   Future<EraseResult?> erase() async {
-    if (!await lock.reauthenticate('Erase everything on this phone')) {
+    final t = PrivacyTexts.of();
+    if (!await lock.reauthenticate(t.text('eraseReason'))) {
       return null;
     }
     final failed = <String>[];
@@ -76,14 +80,14 @@ class PhoneEraser {
     try {
       lock.clearSecretsFromMemory();
     } on Object {
-      failed.add('The codes shown on screen');
+      failed.add(t.text('stepCodes'));
     }
-    await step('The two-factor accounts', vaultStorage.delete);
-    await step('The keys that protect the two-factor accounts', () async {
+    await step(t.text('stepAccounts'), vaultStorage.delete);
+    await step(t.text('stepVaultKeys'), () async {
       await vaultKeys.deleteKeys();
       await vaultKeys.endSession();
     });
-    await step('The device key', () async {
+    await step(t.text('stepDeviceKey'), () async {
       await deviceKeys.deleteKeys();
       // The single key of an install from before the two keys, if there is one.
       final alias = await enrollment.readAlias();
@@ -91,10 +95,10 @@ class PhoneEraser {
     });
     // Anything left means the alias and the enrollment stay, so that trying again can find the key.
     if (failed.isNotEmpty) return EraseResult(failed);
-    await step('Settings, history and saved data', secure.deleteAll);
-    if (afterWipe != null) await step('Update information', afterWipe!);
+    await step(t.text('stepStorage'), secure.deleteAll);
+    if (afterWipe != null) await step(t.text('stepUpdate'), afterWipe!);
     // Last: this is what moves the app to the enrollment screen.
-    await step('The enrollment', () async {
+    await step(t.text('stepEnrollment'), () async {
       await enrollment.clearAlias();
       await enrollment.clear();
     });
