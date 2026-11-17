@@ -25,7 +25,8 @@ bool DialogStillOpen() {
   return g_dialog_open.load() && ::GetTickCount64() - g_dialog_started.load() < kDialogStale;
 }
 
-constexpr std::chrono::milliseconds kPromptTimeout{2 * 60 * 1000};
+// Shorter than the lock's own wait on the Dart side (2 minutes), so the native side ends and closes the dialog first.
+constexpr std::chrono::milliseconds kPromptTimeout{90 * 1000};
 constexpr std::chrono::seconds kCheckTimeout{10};
 constexpr std::chrono::milliseconds kCancelGrace{5000};
 

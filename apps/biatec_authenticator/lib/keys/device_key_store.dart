@@ -350,7 +350,8 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
           throw KeyPromptFailed(e.code, e.message ?? 'The biometric check did not succeed.');
         // The Windows key store could not sign (the TPM refused, or the key vanished between the check and the signature): a plain failure, never its internal status.
         case 'key_missing':
-          throw const ApprovalKeyInvalidated();
+          // The same answer as for a vanished presence key: the keys are gone and the device has to enroll again.
+          throw const ApprovalKeysMissing();
         case 'sign_failed':
         case 'key_failed':
         case 'no_tpm':

@@ -345,8 +345,8 @@ void main() {
         expect((e as KeyPromptFailed).code, code);
       }
       expect(await run('keystore_error'), isA<PlatformException>());
-      // The Windows key store: a vanished key is an invalidated one, a refusal of the TPM is a plain failure, and no internal status reaches the user.
-      expect(await run('key_missing'), isA<ApprovalKeyInvalidated>());
+      // The Windows key store: a vanished key is a missing one (enroll again), a refusal of the TPM is a plain failure, and no internal status reaches the user.
+      expect(await run('key_missing'), isA<ApprovalKeysMissing>());
       for (final code in ['sign_failed', 'key_failed']) {
         final e = await run(code);
         expect(e, isA<KeyPromptFailed>(), reason: code);
