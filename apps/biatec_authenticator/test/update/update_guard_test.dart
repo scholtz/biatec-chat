@@ -6,7 +6,7 @@ import 'package:biatec_authenticator/lock/lock_controller.dart';
 import 'package:biatec_authenticator/shell/app_lock_gate.dart';
 import 'package:biatec_authenticator/theme.dart';
 import 'package:biatec_authenticator/update/update_guard.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';

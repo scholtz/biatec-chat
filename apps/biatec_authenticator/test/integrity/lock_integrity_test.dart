@@ -9,7 +9,7 @@ import 'package:biatec_authenticator/lock/lock_controller.dart';
 import 'package:biatec_authenticator/lock/lock_screens.dart';
 import 'package:biatec_authenticator/shell/app_lock_gate.dart';
 import 'package:biatec_authenticator/theme.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

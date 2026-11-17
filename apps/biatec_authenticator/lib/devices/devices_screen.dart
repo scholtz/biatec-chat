@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../approvals/widgets/fact_row.dart';
 import '../enrollment/enrollment_strings.dart';

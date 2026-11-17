@@ -1,7 +1,7 @@
 import 'package:biatec_authenticator/channel/stay_connected.dart';
 import 'package:biatec_authenticator/config.dart';
 import 'package:biatec_authenticator/settings/settings_screen.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_state.dart';
 import 'package:biatec_authenticator/enrollment/enrollment_store.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';

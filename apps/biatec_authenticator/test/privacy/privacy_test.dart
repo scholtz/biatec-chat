@@ -12,7 +12,7 @@ import 'package:biatec_authenticator/privacy/privacy_screen.dart';
 import 'package:biatec_authenticator/privacy/storage_inventory.dart';
 import 'package:biatec_authenticator/theme.dart';
 import 'package:biatec_authenticator/totp/vault/vault_storage.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../codes/support.dart';

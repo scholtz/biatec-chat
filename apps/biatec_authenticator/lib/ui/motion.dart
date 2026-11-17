@@ -1,5 +1,5 @@
-import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart' show CupertinoPageTransitionsBuilder;
+import 'package:material_ui/material_ui.dart';
 
 /// The one answer to "may anything move?". The system's reduce-motion setting (Android "remove animations", iOS "reduce motion") reaches Flutter as `disableAnimations`; every animation and every haptic in the app asks here and does nothing when it is on.
 abstract final class Motion {

@@ -16,7 +16,7 @@ import 'package:biatec_authenticator/shell/app_shell.dart'
     show kRailMinHeight, railHeightNeeded;
 import 'package:biatec_authenticator/shell/shell_controller.dart';
 import 'package:biatec_authenticator/enrollment/observable_enrollment_store.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:http/http.dart' as http;
@@ -139,7 +139,8 @@ void main() {
       ]);
       for (final tab in AppTab.values) {
         expect(inBar(tab.label), findsOneWidget, reason: tab.label);
-        expect(find.byTooltip(tab.label), findsOneWidget, reason: tab.label);
+        // Not find.byTooltip: it matches the Tooltip of package:flutter/material.dart, and the app draws the one of material_ui.
+        expect(find.byWidgetPredicate((w) => w is Tooltip && w.message == tab.label), findsOneWidget, reason: tab.label);
       }
       expect(find.byIcon(Icons.pin_outlined), findsOneWidget);
       // The selected destination is also marked by a different (filled) icon, not by color alone.

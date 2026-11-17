@@ -5,7 +5,7 @@ import 'package:biatec_authenticator/security/settings_controller.dart';
 import 'package:biatec_authenticator/settings/threshold_screen.dart';
 import 'package:biatec_authenticator/shell/tab_reload.dart';
 import 'package:biatec_authenticator/theme.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support.dart';

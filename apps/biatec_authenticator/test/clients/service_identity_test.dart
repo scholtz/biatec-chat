@@ -3,7 +3,7 @@ import 'package:biatec_authenticator/clients/service_identity.dart';
 import 'package:biatec_authenticator/clients/trust_strings.dart';
 import 'package:biatec_authenticator/security/settings_client.dart';
 import 'package:biatec_authenticator/theme.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Future<void> _show(WidgetTester tester, Widget w) => tester.pumpWidget(

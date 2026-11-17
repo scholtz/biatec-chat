@@ -7,7 +7,7 @@ import 'package:biatec_authenticator/approvals/history_widgets/history_status.da
 import 'package:biatec_authenticator/approvals/history_widgets/history_tile.dart';
 import 'package:biatec_authenticator/theme.dart';
 import 'package:biatec_authenticator/ui/ui.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

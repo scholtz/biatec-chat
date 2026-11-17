@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../clients/amounts.dart';
 import '../clients/trust_strings.dart';
