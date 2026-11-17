@@ -1,13 +1,13 @@
 ---
 id: T-250
 title: "Authenticator: a protected key store for Windows (TPM and Windows Hello), so a desktop build can enroll"
-status: in-progress
+status: review
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-248]
 area: ["apps/biatec_authenticator/windows/runner/**", "apps/biatec_authenticator/lib/keys/**", "apps/biatec_authenticator/lib/lock/**", "apps/biatec_authenticator/lib/enrollment/**", "apps/biatec_authenticator/test/keys/**", "apps/biatec_authenticator/test/enrollment/**", "apps/biatec_authenticator/lib/approvals/device_identity.dart", "apps/biatec_authenticator/lib/security/settings_controller.dart", "apps/biatec_authenticator/test/approvals/support.dart", "apps/biatec_authenticator/test/privacy/privacy_test.dart", "apps/biatec_authenticator/README.md", "docs/authenticator-windows-key-store.md", "docs/authenticator-provider-setup.md", "PRODUCT-DESCRIPTION.md"]
 parallel: no
-conflicts_with: [T-249, T-251]
+conflicts_with: [T-249, T-251, T-252]
 issue: "#423"
 branch: "task/T-250"
 owner: "session-20261116-2350"
@@ -139,3 +139,4 @@ Windows Hello.
 - 2026-11-17 16:00 · scholtz · in-progress · owner asked for a way in when Windows Hello is not available: a PIN of the app, enforced by the TPM (lock key and two-key approval key), replaces the "set up Windows Hello first" refusal
 - 2026-11-17 11:00 · scholtz · in-progress · PR #425, review round 1 fixed (appGated, hello_unavailable, fresh keys per enrollment, worker lifetime, double-press guard)
 - 2026-11-17 14:30 · scholtz · in-progress · owner could still not enroll and asked for a way in without secure hardware: (1) the cause was found with a test program on the owner's computer: the hardware flag was asked of the key, a real TPM answers "not supported", so every TPM key was refused; it is asked of the provider now; (2) a computer without a usable TPM gets software keys of the Windows account, level `windows_account`, with a warning and tips; the keystore test program (windows/test/keystore_test.cpp) passed on the real TPM and in the software store
+- 2026-11-17 15:35 · scholtz · in-progress → review · the owner enrolled on a real computer (TPM key, screenshot); branch task/T-250 @ 5ba6401, PR #425. The last commit (the TPM fix and the software key store) has had no review round. The Hand-off is in the task file on the branch.
