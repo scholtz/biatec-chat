@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:biatec_authenticator/keys/device_key_store.dart';
 import 'package:biatec_authenticator/keys/key_security_level.dart';
+import 'package:flutter/foundation.dart' show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -261,7 +262,9 @@ void main() {
       }
     });
 
-    test('a Windows approval key is app gated, not auth bound, and either way it counts as gated', () async {
+    test('a Windows approval key is app gated, not auth bound, and either way it counts as gated; a phone cannot claim it', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
       answer((call) => {
             'approval': {...part('tpm'), 'appGated': true},
             'presence': {...part('tpm'), 'appGated': true},
@@ -275,6 +278,12 @@ void main() {
       expect(keys.presence.gestureRequired, isFalse);
       answer((call) => {'approval': part('tpm'), 'presence': part('tpm')});
       expect((await store.generateKeys()).approval.gestureRequired, isFalse, reason: 'neither guarantee reported');
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      answer((call) => {
+            'approval': {...part('tee'), 'appGated': true},
+            'presence': part('tee'),
+          });
+      expect((await store.generateKeys()).approval.gestureRequired, isFalse, reason: 'a phone cannot report the app gate: its hardware binds the gesture or it is refused');
     });
 
     test('status on a phone (a plugin without probe) is ready, and on a platform without a key store it throws', () async {

@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <memory>
 
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Security.Credentials.UI.h>
@@ -17,9 +18,9 @@ namespace ui = winrt::Windows::Security::Credentials::UI;
 // True from the start of a consent dialog until its operation ends.
 std::atomic<bool> g_dialog_open{false};
 
-constexpr std::chrono::minutes kPromptTimeout{2};
+constexpr std::chrono::milliseconds kPromptTimeout{2 * 60 * 1000};
 constexpr std::chrono::seconds kCheckTimeout{10};
-constexpr std::chrono::seconds kCancelGrace{5};
+constexpr std::chrono::milliseconds kCancelGrace{5000};
 
 // A worker thread joins the multithreaded apartment once; the main thread is a single-threaded apartment and does not call in here.
 void EnsureApartment() {
@@ -66,7 +67,7 @@ Availability Check() {
 
 Outcome Verify(HWND window, const std::wstring& message) {
   // A dialog of an earlier prompt that was cancelled but has not closed yet is still on the screen: no second one is opened over it.
-  if (g_dialog_open.load()) return Outcome::kFailed;
+  if (g_dialog_open.load()) return Outcome::kBusy;
   try {
     EnsureApartment();
     auto factory = winrt::get_activation_factory<ui::UserConsentVerifier,
@@ -74,26 +75,45 @@ Outcome Verify(HWND window, const std::wstring& message) {
     winrt::Windows::Foundation::IAsyncOperation<ui::UserConsentVerificationResult>
         operation{nullptr};
     const winrt::hstring text{message};
-    winrt::check_hresult(factory->RequestVerificationForWindowAsync(
+    g_dialog_open = true;
+    const HRESULT started = factory->RequestVerificationForWindowAsync(
         window, static_cast<HSTRING>(winrt::get_abi(text)),
         winrt::guid_of<winrt::Windows::Foundation::IAsyncOperation<
             ui::UserConsentVerificationResult>>(),
-        winrt::put_abi(operation)));
-    // The dialog counts as open until the operation really ends, whatever this function returns meanwhile.
-    g_dialog_open = true;
-    operation.Completed([](const auto&, winrt::Windows::Foundation::AsyncStatus) {
+        winrt::put_abi(operation));
+    if (FAILED(started)) {
       g_dialog_open = false;
+      return Outcome::kFailed;
+    }
+    // The one completion handler of this operation (an operation takes one; C++/WinRT's own wait_for would install another and throw, so it is not used here). It
+    // signals an event the wait below uses, and says when the dialog is really over. The event is shared with the handler because the handler can run after this
+    // function has returned.
+    auto done = std::make_shared<winrt::handle>(::CreateEventW(nullptr, TRUE, FALSE, nullptr));
+    if (!*done) {
+      operation.Cancel();
+      g_dialog_open = false;
+      return Outcome::kFailed;
+    }
+    operation.Completed([done](const auto&, winrt::Windows::Foundation::AsyncStatus) {
+      g_dialog_open = false;
+      ::SetEvent(done->get());
     });
     // A prompt nobody answers must not hold the worker (and with it every later approval) for ever: after this time it is taken as cancelled.
-    const auto answered = operation.wait_for(kPromptTimeout);
-    if (answered == winrt::Windows::Foundation::AsyncStatus::Started) {
+    if (::WaitForSingleObject(done->get(), static_cast<DWORD>(kPromptTimeout.count())) ==
+        WAIT_TIMEOUT) {
       operation.Cancel();
       // The dialog is closed by the cancel: wait for that (briefly). If it is slow, g_dialog_open keeps a second prompt from opening over it.
-      operation.wait_for(kCancelGrace);
+      ::WaitForSingleObject(done->get(), static_cast<DWORD>(kCancelGrace.count()));
       return Outcome::kCanceled;
     }
-    if (answered == winrt::Windows::Foundation::AsyncStatus::Error) return Outcome::kFailed;
-    if (answered == winrt::Windows::Foundation::AsyncStatus::Canceled) return Outcome::kCanceled;
+    switch (operation.Status()) {
+      case winrt::Windows::Foundation::AsyncStatus::Completed:
+        break;
+      case winrt::Windows::Foundation::AsyncStatus::Canceled:
+        return Outcome::kCanceled;
+      default:
+        return Outcome::kFailed;
+    }
     switch (operation.GetResults()) {
       case ui::UserConsentVerificationResult::Verified:
         return Outcome::kVerified;
@@ -109,7 +129,7 @@ Outcome Verify(HWND window, const std::wstring& message) {
         return Outcome::kFailed;
     }
   } catch (...) {
-    // Fails closed: nothing unexpected is a "verified".
+    // Fails closed: nothing unexpected is a "verified". (The dialog flag is not cleared here: if the operation exists, its handler clears it.)
     return Outcome::kFailed;
   }
 }

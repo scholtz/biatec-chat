@@ -23,6 +23,7 @@ enum class Outcome {
   kRetriesExhausted,
   kNotConfigured,
   kNoDevice,
+  kBusy,  // another consent dialog is still on the screen (nothing was asked)
   kFailed,
 };
 

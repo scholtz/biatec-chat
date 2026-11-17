@@ -5,7 +5,7 @@ status: in-progress
 priority: P1
 epic: "Consent & authenticator"
 blocked_by: [T-248]
-area: ["apps/biatec_authenticator/windows/runner/**", "apps/biatec_authenticator/lib/keys/**", "apps/biatec_authenticator/lib/lock/**", "apps/biatec_authenticator/lib/enrollment/**", "apps/biatec_authenticator/test/keys/**", "apps/biatec_authenticator/test/enrollment/**", "apps/biatec_authenticator/README.md", "docs/authenticator-windows-key-store.md", "PRODUCT-DESCRIPTION.md"]
+area: ["apps/biatec_authenticator/windows/runner/**", "apps/biatec_authenticator/lib/keys/**", "apps/biatec_authenticator/lib/lock/**", "apps/biatec_authenticator/lib/enrollment/**", "apps/biatec_authenticator/test/keys/**", "apps/biatec_authenticator/test/enrollment/**", "apps/biatec_authenticator/lib/approvals/device_identity.dart", "apps/biatec_authenticator/lib/security/settings_controller.dart", "apps/biatec_authenticator/test/approvals/support.dart", "apps/biatec_authenticator/test/privacy/privacy_test.dart", "apps/biatec_authenticator/README.md", "docs/authenticator-windows-key-store.md", "docs/authenticator-provider-setup.md", "PRODUCT-DESCRIPTION.md"]
 parallel: no
 conflicts_with: [T-249, T-251]
 issue: "#423"

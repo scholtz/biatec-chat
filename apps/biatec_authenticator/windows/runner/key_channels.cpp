@@ -180,6 +180,8 @@ EncodableValue SignApproval(HWND window, const std::vector<uint8_t>& data,
     case hello::Outcome::kNotConfigured:
     case hello::Outcome::kNoDevice:
       throw keystore::KeyError("no_biometrics", "Windows Hello is not set up on this computer.");
+    case hello::Outcome::kBusy:
+      throw keystore::KeyError("prompt_active", "Another Windows Hello prompt is still open. Try again.");
     default:
       throw keystore::KeyError("auth_failed", "The Windows Hello check did not succeed.");
   }
@@ -214,6 +216,7 @@ EncodableValue BiometricAuthenticate(HWND window, const std::string& reason) {
     case hello::Outcome::kNotConfigured:
       return Text("none_enrolled");
     case hello::Outcome::kNoDevice:
+    case hello::Outcome::kBusy:
       return Text("unavailable");
     default:
       return Text("failed");

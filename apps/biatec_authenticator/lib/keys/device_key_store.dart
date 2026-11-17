@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/services.dart';
 
 import 'key_security_level.dart';
@@ -249,7 +250,8 @@ class PlatformDeviceKeyStore implements DeviceKeyStore {
         securityLevel: KeySecurityLevel.fromWire(map['securityLevel']),
         // Only an explicit true counts, and only the approval key can be bound.
         authBound: use == KeyUse.approve && map['authBound'] == true,
-        appGated: use == KeyUse.approve && map['appGated'] == true,
+        // Only a Windows key store can say this (its approval check is the app's own); on a phone the hardware binds the gesture or the key is not accepted.
+        appGated: use == KeyUse.approve && map['appGated'] == true && defaultTargetPlatform == TargetPlatform.windows,
       );
     } on Object {
       throw const FormatException('The keystore returned malformed key data.');
